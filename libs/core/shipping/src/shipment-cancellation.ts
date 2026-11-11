@@ -357,27 +357,39 @@ export class ShipmentCancellation {
       })
       return VoidSettlements.FAILED
     }
-    const left = await this.finish(
-      storeId,
-      row,
-      ShipmentStatus.CANCEL_PENDING,
-      ShipmentStatus.CANCELLED,
-      {
-        actor: options.actor,
-        data: {
-          cancelledAt: new Date(),
-          lastError: null,
-          pickupId: null,
-          // Only what the contract allows is kept: a plugin that says anything else is read as a refund still pending
-          refundStatus:
-            typeof answer === 'object' &&
-            answer !== null &&
-            answer.refundStatus === GuideRefundStatus.CONFIRMED
-              ? GuideRefundStatus.CONFIRMED
-              : GuideRefundStatus.PENDING
+    let left: PickupLeft | null
+    try {
+      left = await this.finish(
+        storeId,
+        row,
+        ShipmentStatus.CANCEL_PENDING,
+        ShipmentStatus.CANCELLED,
+        {
+          actor: options.actor,
+          data: {
+            cancelledAt: new Date(),
+            lastError: null,
+            pickupId: null,
+            // Only what the contract allows is kept: a plugin that says anything else is read as a refund still pending
+            refundStatus:
+              typeof answer === 'object' &&
+              answer !== null &&
+              answer.refundStatus === GuideRefundStatus.CONFIRMED
+                ? GuideRefundStatus.CONFIRMED
+                : GuideRefundStatus.PENDING
+          }
         }
+      )
+    } catch (error) {
+      // An agent marked it voided while the carrier was being asked: the guide is where the job wanted it
+      if (
+        error instanceof PlatformException &&
+        error.code === ErrorCodes.SHIPPING_INVALID_STATUS_TRANSITION
+      ) {
+        return VoidSettlements.SKIPPED
       }
-    )
+      throw error
+    }
     await this.tellCarrierOfPickup(storeId, left, plugins).catch(() => undefined)
     return VoidSettlements.CANCELLED
   }
