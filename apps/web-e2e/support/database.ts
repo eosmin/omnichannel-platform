@@ -1148,7 +1148,7 @@ export interface SeededOrder {
 // writes it (the system, no text, a strict metadata). `previous` makes it a change of state.
 export async function removeOrderLinesOf(conversationId: string): Promise<void> {
   await withOwner(async owner => {
-    await owner.message.deleteMany({ where: { conversationId, type: 'ORDER_SUMMARY' } })
+    await owner.message.deleteMany({ where: { conversationId, type: MessageType.ORDER_SUMMARY } })
   })
 }
 
@@ -1163,8 +1163,8 @@ export async function addOrderLineTo(
       data: {
         storeId,
         conversationId,
-        type: 'ORDER_SUMMARY',
-        authorType: 'SYSTEM',
+        type: MessageType.ORDER_SUMMARY,
+        authorType: AuthorType.SYSTEM,
         content: null,
         metadata: {
           event: line.previous === undefined ? 'created' : 'status_changed',

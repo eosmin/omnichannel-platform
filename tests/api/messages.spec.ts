@@ -1649,6 +1649,36 @@ describe('The messages of a conversation', () => {
       expect((second.body as ThreadBody).hasMore).toBe(false)
     })
 
+    it('draws a creation and a change of state one after the other', async () => {
+      const { id } = await mk()
+      const base = line('T-TWO')
+      for (const metadata of [
+        base,
+        {
+          ...base,
+          event: 'status_changed',
+          previousStatus: 'PENDING_CONFIRMATION',
+          status: 'CONFIRMED'
+        }
+      ]) {
+        await owner.message.create({
+          data: {
+            storeId: ctx.storeA.id,
+            conversationId: id,
+            type: MessageType.ORDER_SUMMARY,
+            authorType: AuthorType.SYSTEM,
+            content: null,
+            metadata
+          }
+        })
+      }
+
+      const response = await asAdmin().get(ApiRoutes.conversations.messages(id))
+
+      expect(response.status).toBe(200)
+      expect((response.body as ThreadBody).data).toHaveLength(2)
+    })
+
     it('cannot be answered: a reply that quotes it finds no such message', async () => {
       const { id } = await mk()
       const created = await owner.message.create({
