@@ -1,5 +1,5 @@
 import { MediaPurpose } from './media-purpose'
-import { AvatarUpload, ProductImageUpload, UploadLimits } from './upload-constants'
+import { AvatarUpload, OrderFileUpload, ProductImageUpload, UploadLimits } from './upload-constants'
 import { refuseUpload, UploadRefusals } from './upload-rules'
 import { ClientUploadPurposes, confirmUploadSchema, requestUploadUrlSchema } from './upload-schemas'
 
@@ -100,10 +100,38 @@ describe('refuseUpload for a product', () => {
   })
 })
 
+describe('refuseUpload for an order', () => {
+  it('takes the three still image types and a PDF within 10 MB', () => {
+    for (const type of OrderFileUpload.CONTENT_TYPES) {
+      expect(refuseUpload(type, OrderFileUpload.MAX_SIZE_BYTES, MediaPurpose.ORDER)).toBeNull()
+    }
+  })
+
+  it.each(['image/gif', 'video/mp4', 'text/plain', 'image/svg+xml', 'text/html'])(
+    'refuses %s, which a message file may be or never is',
+    type => {
+      expect(refuseUpload(type, 10, MediaPurpose.ORDER)).toBe(UploadRefusals.TYPE_NOT_ALLOWED)
+    }
+  )
+
+  it('refuses one byte over the limit, and the type is compared as it is signed', () => {
+    expect(
+      refuseUpload('application/pdf', OrderFileUpload.MAX_SIZE_BYTES + 1, MediaPurpose.ORDER)
+    ).toBe(UploadRefusals.TOO_LARGE)
+    expect(refuseUpload('Application/PDF', 10, MediaPurpose.ORDER)).toBe(
+      UploadRefusals.TYPE_NOT_ALLOWED
+    )
+  })
+})
+
 describe('the upload schemas', () => {
   it('accept a request for a purpose a client may upload for', () => {
     expect(requestUploadUrlSchema.parse(request)).toEqual(request)
-    expect(ClientUploadPurposes).toEqual([MediaPurpose.MESSAGE, MediaPurpose.PRODUCT])
+    expect(ClientUploadPurposes).toEqual([
+      MediaPurpose.MESSAGE,
+      MediaPurpose.PRODUCT,
+      MediaPurpose.ORDER
+    ])
   })
 
   it('refuse the avatar as a purpose of a store: it has routes of its own', () => {
@@ -112,7 +140,7 @@ describe('the upload schemas', () => {
     ).toBe(false)
   })
 
-  it.each([MediaPurpose.EXPORT, MediaPurpose.ORDER, MediaPurpose.SHIPPING_LABEL])(
+  it.each([MediaPurpose.EXPORT, MediaPurpose.SHIPPING_LABEL])(
     'refuse the purpose %s: the server writes it or its step has not built it',
     purpose => {
       expect(requestUploadUrlSchema.safeParse({ ...request, purpose }).success).toBe(false)
@@ -151,6 +179,31 @@ describe('the upload schemas', () => {
 
     it('refuse a storeId beside the parentId', () => {
       expect(requestUploadUrlSchema.safeParse({ ...product, storeId: 'x' }).success).toBe(false)
+    })
+  })
+
+  describe('for an order', () => {
+    const order = { ...request, purpose: MediaPurpose.ORDER, parentId: crypto.randomUUID() }
+
+    it('need the id of the order, a UUID, on both routes', () => {
+      expect(requestUploadUrlSchema.safeParse(order).success).toBe(true)
+      expect(requestUploadUrlSchema.safeParse({ ...order, parentId: undefined }).success).toBe(
+        false
+      )
+      expect(requestUploadUrlSchema.safeParse({ ...order, parentId: 'nope' }).success).toBe(false)
+      const confirmOrder = {
+        ...order,
+        mediaId: crypto.randomUUID(),
+        key: 'stores/s/uploads/m/a.png'
+      }
+      expect(confirmUploadSchema.safeParse(confirmOrder).success).toBe(true)
+      expect(confirmUploadSchema.safeParse({ ...confirmOrder, parentId: undefined }).success).toBe(
+        false
+      )
+    })
+
+    it('refuse a storeId beside the parentId', () => {
+      expect(requestUploadUrlSchema.safeParse({ ...order, storeId: 'x' }).success).toBe(false)
     })
   })
 

@@ -38,6 +38,7 @@ import { StorageService } from '@platform/core/storage-module'
 import {
   countWithinQuota,
   refuseSignatureMismatch,
+  refuseUnlessMayRead,
   refuseUnlessMayUpload,
   refuseTypeOrSize,
   uploadVerificationFailed
@@ -68,7 +69,8 @@ const MEDIA_SELECT = {
   variants: true,
   processedAt: true,
   uploadedBy: true,
-  productId: true
+  productId: true,
+  orderId: true
 } as const
 
 type MediaRow = Omit<MediaView, 'purpose' | 'status'> & {
@@ -79,6 +81,7 @@ type MediaRow = Omit<MediaView, 'purpose' | 'status'> & {
   processedAt: Date | null
   uploadedBy: string | null
   productId: string | null
+  orderId: string | null
 }
 
 interface UploadKeys {
@@ -230,7 +233,7 @@ export class MediaService {
           id: body.mediaId,
           storeId,
           purpose: body.purpose,
-          productId: parentOf(body),
+          ...parentColumnsOf(body),
           uploadedBy: userId,
           key: keys.final,
           filename,
@@ -241,8 +244,10 @@ export class MediaService {
         select: MEDIA_SELECT
       })
     } catch (error) {
-      // The product was deleted after it was checked: the same answer as a product that is not there
-      if (isForeignKeyViolation(error)) throw resourceNotFound('product')
+      // The parent was deleted after it was checked: the same answer as a parent that is not there
+      if (isForeignKeyViolation(error)) {
+        throw resourceNotFound(body.purpose === MediaPurpose.ORDER ? 'order' : 'product')
+      }
       if (!isUniqueViolation(error)) throw error
       // Two confirmations at once: the other one won
       const winner = await this.find(storeId, body.mediaId)
@@ -258,9 +263,14 @@ export class MediaService {
 
   // Short-lived signed URLs on the bucket host (TDD_07 §6.6). Only a clean file is served; the original
   // is always a download, and only the WebP variants the worker made are shown inline.
-  async urlsFor(storeId: string, mediaId: string): Promise<MediaUrls> {
+  async urlsFor(
+    storeId: string,
+    mediaId: string,
+    held: readonly Permission[] | null
+  ): Promise<MediaUrls> {
     const media = await this.find(storeId, mediaId)
     if (media === null) throw resourceNotFound('Media not found')
+    refuseUnlessMayRead(media.purpose, held)
     assertMediaServable(media.status)
 
     const sign = (variant: (typeof ImageVariants)[keyof typeof ImageVariants]) =>
@@ -311,20 +321,26 @@ export class MediaService {
     })
   }
 
-  // The parent a file names must be a product of THIS store (the id of the header, never of the body). A
-  // product of another store and one that does not exist get the same answer, so the id of a foreign
-  // product cannot be probed. Not read at all for a purpose that has no parent.
+  // The parent a file names must be a product or an order of THIS store (the id of the header, never of
+  // the body). A parent of another store and one that does not exist get the same answer, so the id of a
+  // foreign one cannot be probed. Not read at all for a purpose that has no parent.
   private async requireParent(
     storeId: string,
     body: RequestUploadUrlBody | ConfirmUploadBody
   ): Promise<void> {
-    const productId = parentOf(body)
-    if (productId === null) return
-    const product = await this.prisma.client.product.findFirst({
-      where: { id: productId, storeId },
-      select: { id: true }
-    })
-    if (product === null) throw resourceNotFound('product')
+    if (body.purpose === MediaPurpose.PRODUCT) {
+      const product = await this.prisma.client.product.findFirst({
+        where: { id: body.parentId, storeId },
+        select: { id: true }
+      })
+      if (product === null) throw resourceNotFound('product')
+    } else if (body.purpose === MediaPurpose.ORDER) {
+      const order = await this.prisma.client.order.findFirst({
+        where: { id: body.parentId, storeId },
+        select: { id: true }
+      })
+      if (order === null) throw resourceNotFound('order')
+    }
   }
 
   private async again(
@@ -334,11 +350,13 @@ export class MediaService {
     body: ConfirmUploadBody
   ): Promise<MediaView> {
     // The same file, member, purpose and parent: a retry never moves a picture to another product or kind
+    const parent = parentColumnsOf(body)
     if (
       media.key !== keys.final ||
       media.uploadedBy !== userId ||
       media.purpose !== body.purpose ||
-      media.productId !== parentOf(body)
+      media.productId !== parent.productId ||
+      media.orderId !== parent.orderId
     ) {
       throw uploadVerificationFailed()
     }
@@ -377,9 +395,16 @@ export class MediaService {
   }
 }
 
-// The product a file is for, or null when its purpose has no parent
-function parentOf(body: RequestUploadUrlBody | ConfirmUploadBody): string | null {
-  return body.purpose === MediaPurpose.PRODUCT ? body.parentId : null
+// The parent columns of the row of a file: the product or the order it is for, null in both when its
+// purpose has no parent
+function parentColumnsOf(body: RequestUploadUrlBody | ConfirmUploadBody): {
+  productId: string | null
+  orderId: string | null
+} {
+  return {
+    productId: body.purpose === MediaPurpose.PRODUCT ? body.parentId : null,
+    orderId: body.purpose === MediaPurpose.ORDER ? body.parentId : null
+  }
 }
 
 const FOREIGN_KEY_CONSTRAINT_FAILED = 'P2003'

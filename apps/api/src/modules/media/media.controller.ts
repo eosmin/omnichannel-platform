@@ -64,9 +64,10 @@ export class MediaController {
   @Get(ApiRoutes.media.byId(':id'))
   urls(
     @CurrentStore() store: Store,
+    @CurrentPermissions() held: readonly Permission[],
     @Param('id', new ParseUUIDPipe()) id: string
   ): Promise<MediaUrls> {
-    return this.media.urlsFor(store.id, id)
+    return this.media.urlsFor(store.id, id, held)
   }
 
   // "Download all" of the gallery of a customer: 202 and the export to follow in the exports center
