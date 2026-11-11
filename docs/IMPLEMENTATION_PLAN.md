@@ -1583,7 +1583,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4.5 | Transfers between warehouses | done | PR #404 (transfers api: schema, service, routes, notification) | 2026-11-11 |
 | 4.6 | Physical counts | in review | PR #406 (API only; the screens are Step 4.7) | |
 | 4.7 | Inventory UI | done | PR A1 #408 (warehouses screen and api-client); B #410 (count screens); A2 #412 (transfers screens and api-client); #411 (fix); D (the cycle on a phone, e2e); E (the store stock screen, `/s/[storeId]/inventory`, and the link of the low-stock notice) | |
-| 4.8 | Carrier SDK, shipment engine and the `local` carrier | in progress | PR B1 (shipping schema, migration `20261127100000`); A, B2, C1, C2 pending | 2026-11-11 |
+| 4.8 | Carrier SDK, shipment engine and the `local` carrier | in progress | PR B1 #421 (shipping schema, migration `20261127100000`); A, B2, C1, C2 pending | 2026-11-11 |
 | 4.9 | Order confirmation and customer messages | todo | | |
 | 4.10 | Labels, bulk generation and cancellation | todo | | |
 | 4.11 | Pickups | todo | | |
