@@ -112,6 +112,14 @@ describe('createOrderSchema', () => {
     })
   })
 
+  it('takes the order it was copied from as an id, and nothing else', () => {
+    expect(createOrderSchema.safeParse({ ...valid, copiedFromOrderId: ID }).success).toBe(true)
+    expect(createOrderSchema.safeParse({ ...valid, copiedFromOrderId: 'not-an-id' }).success).toBe(
+      false
+    )
+    expect(createOrderSchema.parse(valid).copiedFromOrderId).toBeUndefined()
+  })
+
   it('refuses any price, total or status that comes from the client', () => {
     for (const forged of [
       { unitPriceCents: 1 },

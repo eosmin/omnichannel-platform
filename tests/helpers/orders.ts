@@ -36,6 +36,7 @@ export interface OrderBody {
   priceApprovedBy: string | null
   priceApprovedDiscountCents: number | null
   confirmedVia: string | null
+  copiedFromOrderId: string | null
   customerNotes?: string | null
   internalNotes?: string | null
   packingNotes?: string | null

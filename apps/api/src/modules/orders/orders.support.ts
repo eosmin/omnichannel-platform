@@ -1,7 +1,7 @@
 import { type AuditActionType } from '@platform/core/audit'
 import type { AuditService } from '@platform/core/audit-module'
 import { type Permission, Permissions } from '@platform/core/auth'
-import { lockStoreScope, type PrismaTransaction } from '@platform/core/database'
+import { lockStoreScope, type PrismaService, type PrismaTransaction } from '@platform/core/database'
 import {
   formatOrderNumber,
   ShipmentInactiveStatuses,
@@ -124,6 +124,34 @@ export async function resolveCustomerForOrder(
       return current
     }
     current = row.merged_into_id
+  }
+  throw new Error('a customer merge chain is longer than any merge could make')
+}
+
+// The same answer as resolveCustomerForOrder for a read that writes nothing (the draft of a copy): it follows the merge
+// without locking the customer rows, which a merge takes for update, so opening a draft never waits for one. The create
+// that follows locks them and decides again.
+export async function readCustomerForOrder(
+  client: PrismaService['client'],
+  storeId: string,
+  customerId: string
+): Promise<string> {
+  let current = customerId
+  for (let hop = 0; hop <= MAX_MERGE_HOPS; hop += 1) {
+    const row = await client.customer.findFirst({
+      where: { id: current, storeId },
+      select: { mergedIntoId: true, erasedAt: true }
+    })
+    if (row === null) throw resourceNotFound('customer')
+    if (row.mergedIntoId === null) {
+      if (row.erasedAt !== null) {
+        throw resourceConflict('the customer was erased', {
+          conflict: OrderConflicts.CUSTOMER_ERASED
+        })
+      }
+      return current
+    }
+    current = row.mergedIntoId
   }
   throw new Error('a customer merge chain is longer than any merge could make')
 }

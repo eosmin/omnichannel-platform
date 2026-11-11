@@ -2387,7 +2387,9 @@ describe('Tenant isolation', () => {
           .post(ApiRoutes.orders.payment(theirs.id))
           .send({ method: 'CASH', status: 'COMPLETED' }),
         asA().post(ApiRoutes.orders.priceApprovalApprove(theirs.id)).send({}),
-        asA().post(ApiRoutes.orders.priceApprovalReject(theirs.id)).send({})
+        asA().post(ApiRoutes.orders.priceApprovalReject(theirs.id)).send({}),
+        // The draft of a copy reads the old order: another store's is not there
+        asA().get(ApiRoutes.orders.copy(theirs.id))
       ])
 
       for (const response of responses) {
@@ -2395,6 +2397,58 @@ describe('Tenant isolation', () => {
         expect(JSON.stringify(response.body)).not.toMatch(/their (customer|care|packing) note/)
       }
       expect(await owner.order.findUniqueOrThrow({ where: { id: theirs.id } })).toEqual(before)
+    })
+
+    it('are not confirmed in bulk through another store: the order is reported as not found and does not change', async () => {
+      const theirs = await createOrder(owner, { storeId: ctx.storeB.id })
+      const mine = await createOrder(owner, { storeId: ctx.storeA.id })
+      const before = await owner.order.findUniqueOrThrow({ where: { id: theirs.id } })
+
+      const response = await asA()
+        .post(ApiRoutes.orders.confirmBulk)
+        .send({ ids: [theirs.id, mine.id], via: 'call' })
+
+      expect(response.status).toBe(200)
+      expect(response.body).toEqual({
+        succeeded: [mine.id],
+        failed: [{ id: theirs.id, code: ErrorCodes.RESOURCE_NOT_FOUND }]
+      })
+      expect(await owner.order.findUniqueOrThrow({ where: { id: theirs.id } })).toEqual(before)
+    })
+
+    it('name the order they were copied from only inside their own store', async () => {
+      const theirs = await createOrder(owner, { storeId: ctx.storeB.id })
+      const mine = await createCustomer(owner, { storeId: ctx.storeA.id })
+      const myProduct = await createProduct(owner, { storeId: ctx.storeA.id })
+      await owner.product.update({ where: { id: myProduct.id }, data: { trackInventory: false } })
+
+      const response = await asA()
+        .post(ApiRoutes.orders.create)
+        .send({
+          customerId: mine.id,
+          items: [{ productId: myProduct.id, quantity: 1 }],
+          paymentMethod: 'CASH',
+          recipientPhones: ['71234567'],
+          copiedFromOrderId: theirs.id
+        })
+
+      expect(response.status).toBe(404)
+      expect(response.body).toMatchObject({ error: { code: ErrorCodes.RESOURCE_NOT_FOUND } })
+      // The answer of a source of another store is the one of a source that does not exist
+      const none = await asA()
+        .post(ApiRoutes.orders.create)
+        .send({
+          customerId: mine.id,
+          items: [{ productId: myProduct.id, quantity: 1 }],
+          paymentMethod: 'CASH',
+          recipientPhones: ['71234567'],
+          copiedFromOrderId: randomUUID()
+        })
+      expect(none.status).toBe(404)
+      expect((none.body as { error: unknown }).error).toMatchObject({
+        code: ErrorCodes.RESOURCE_NOT_FOUND
+      })
+      expect(await owner.order.count({ where: { customerId: mine.id } })).toBe(0)
     })
 
     it('do not take the store from the body: another store named there is refused, and what is made lands in the header store', async () => {

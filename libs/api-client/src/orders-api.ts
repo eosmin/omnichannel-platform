@@ -83,6 +83,8 @@ export const orderDetailSchema = orderSummarySchema
     confirmedAt: z.string().nullable(),
     confirmedBy: z.string().nullable(),
     confirmedVia: z.string().nullable(),
+    // The order it was copied from; left out by a server that does not say
+    copiedFromOrderId: z.string().nullable().optional(),
     discountReason: z.string().nullable(),
     priceApprovalRequestedBy: z.string().nullable(),
     priceApprovedBy: z.string().nullable(),
@@ -238,6 +240,87 @@ export function confirmOrder(
     schema: orderDetailSchema,
     storeId
   })
+}
+
+// What "mark as confirmed" over a selection answers: the orders that changed and, for the others, our code for the reason
+const bulkConfirmSchema = z.object({
+  succeeded: z.array(z.string()),
+  failed: z.array(z.object({ id: z.string(), code: z.string() }))
+})
+export type BulkConfirmResult = z.infer<typeof bulkConfirmSchema>
+
+export function confirmOrdersBulk(
+  client: ApiClient,
+  storeId: string,
+  ids: readonly string[],
+  via: string
+): Promise<BulkConfirmResult> {
+  return client.request(ApiRoutes.orders.confirmBulk, {
+    method: 'POST',
+    body: { ids, via },
+    schema: bulkConfirmSchema,
+    storeId
+  })
+}
+
+// The draft of "Copy order": shaped as the body of the create route, with today's catalog prices on the side and a
+// warning per line the catalog no longer sells as it was. A code of a warning stays text, like a state.
+const orderCopySchema = z.object({
+  draft: z.object({
+    customerId: z.string(),
+    items: z.array(
+      z.object({
+        productId: z.string(),
+        variantId: z.string().optional(),
+        quantity: z.number().int()
+      })
+    ),
+    shippingCents: z.number().int(),
+    paymentMethod: z.string(),
+    recipientPhones: z.array(z.string()),
+    shippingAddress: z
+      .object({
+        line1: z.string(),
+        line2: z.string().optional(),
+        city: z.string(),
+        state: z.string().optional(),
+        postalCode: z.string().optional(),
+        country: z.string()
+      })
+      .optional(),
+    customerNotes: z.string().optional(),
+    internalNotes: z.string().optional(),
+    packingNotes: z.string().optional(),
+    copiedFromOrderId: z.string()
+  }),
+  lines: z.array(
+    z.object({
+      productId: z.string(),
+      variantId: z.string().nullable(),
+      productName: z.string(),
+      variantName: z.string().nullable(),
+      quantity: z.number().int(),
+      unitPriceCents: z.number().int().nullable(),
+      previousUnitPriceCents: z.number().int()
+    })
+  ),
+  warnings: z.array(
+    z.object({
+      code: z.string(),
+      itemIndex: z.number().int(),
+      productId: z.string(),
+      variantId: z.string().nullable()
+    })
+  )
+})
+export type OrderCopyView = z.infer<typeof orderCopySchema>
+
+export function getOrderCopy(
+  client: ApiClient,
+  storeId: string,
+  orderId: string
+): Promise<OrderCopyView> {
+  return client.request(ApiRoutes.orders.copy(orderId), { schema: orderCopySchema, storeId })
 }
 
 export function cancelOrder(

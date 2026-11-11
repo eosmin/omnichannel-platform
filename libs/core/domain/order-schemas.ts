@@ -161,6 +161,8 @@ export const createOrderSchema = z.strictObject({
   scheduledDeliveryDate: scheduledDeliveryDateSchema.nullable().default(null),
   // Shown only to members with ORDERS_CONFIRM; the server refuses the flag from a caller without it (TDD_17 §4.3)
   confirmOnCreate: z.boolean().default(false),
+  // The order this one was copied from (`GET /orders/:id/copy`); the server checks it belongs to the store
+  copiedFromOrderId: id.optional(),
   sendConfirmationMessage: z.boolean().default(true)
 })
 

@@ -14,15 +14,19 @@ import {
   type PrismaTransaction
 } from '@platform/core/database'
 import {
+  buildOrderCopyDraft,
   calendarDayToDate,
   CarrierConnectionStatus,
   checkOrderEdit,
+  copyStockKey,
+  type CopyStock,
   editableOrderFields,
   lockedOrderFields,
   isPriceApprovalBlocking,
   nextCalendarDay,
   normalizeNote,
   OrderConfirmationChannel,
+  type OrderCopyDraft,
   OrderLockScopes,
   OrderNotices,
   OrderListFilters,
@@ -31,6 +35,7 @@ import {
   OrderSorts,
   OrderStatus,
   orderFieldsOfEdit,
+  PaymentMethod,
   PaymentStatus,
   PriceApprovalStatus,
   scheduledDeliveryShortcutRange,
@@ -69,6 +74,7 @@ import {
   lockOrder,
   mayReadOrders,
   orderRefusal,
+  readCustomerForOrder,
   recordOrderAudit,
   resolveCustomerForOrder,
   takeOrderNumber
@@ -290,6 +296,108 @@ export class OrdersService {
     return view
   }
 
+  // "Copy order" (TDD_17 §4.3): the draft of a new order from an earlier one. It writes nothing; the prices are today's
+  // catalog prices, and the lines the catalog no longer sells as they were come back with a warning, not removed. The
+  // customer is the survivor when the old one was merged, and an erased one takes no order.
+  async copyDraft(storeId: string, orderId: string): Promise<OrderCopyDraft> {
+    // A read: no transaction and no row locks, so opening a draft never waits for a merge of the customer
+    const client = this.prisma.client
+    const order = await client.order.findFirst({
+      where: { id: orderId, storeId },
+      select: {
+        id: true,
+        customerId: true,
+        shippingCents: true,
+        paymentMethod: true,
+        shippingAddress: true,
+        recipientPhones: true,
+        customerNotes: true,
+        internalNotes: true,
+        packingNotes: true,
+        items: {
+          orderBy: { id: 'asc' },
+          select: {
+            productId: true,
+            variantId: true,
+            productName: true,
+            variantName: true,
+            quantity: true,
+            unitPriceCents: true,
+            originalUnitPriceCents: true
+          }
+        }
+      }
+    })
+    if (order === null) throw resourceNotFound('order')
+    const customerId = await readCustomerForOrder(client, storeId, order.customerId)
+    const products = await client.product.findMany({
+      where: { storeId, id: { in: order.items.map(item => item.productId) } },
+      select: {
+        id: true,
+        active: true,
+        priceCents: true,
+        trackInventory: true,
+        variants: { select: { id: true, active: true, priceCents: true } }
+      }
+    })
+    return buildOrderCopyDraft(
+      {
+        ...order,
+        customerId,
+        paymentMethod: order.paymentMethod as PaymentMethod,
+        recipientPhones: order.recipientPhones ?? []
+      },
+      products,
+      await this.stockToCopy(client, storeId, products)
+    )
+  }
+
+  // What the reservation of a new order would see: the warehouses the store sells from by priority, their levels, and the
+  // two settings that decide how a line is served
+  private async stockToCopy(
+    client: PrismaService['client'],
+    storeId: string,
+    products: readonly { id: string; trackInventory: boolean }[]
+  ): Promise<CopyStock> {
+    const tracked = products.filter(product => product.trackInventory).map(product => product.id)
+    const settings = await client.storeSettings.findUnique({
+      where: { storeId },
+      select: { allowNegativeStock: true, allowSplitFulfillment: true }
+    })
+    const available = new Map<string, number>()
+    let warehouseIds: string[] = []
+    if (tracked.length > 0) {
+      const links = await client.storeWarehouse.findMany({
+        where: { storeId, warehouse: { active: true } },
+        select: { warehouseId: true },
+        orderBy: { priority: 'asc' }
+      })
+      warehouseIds = links.map(link => link.warehouseId)
+      const levels = await client.inventoryLevel.findMany({
+        where: { storeId, productId: { in: tracked }, warehouseId: { in: warehouseIds } },
+        select: {
+          productId: true,
+          variantId: true,
+          warehouseId: true,
+          onHand: true,
+          reserved: true
+        }
+      })
+      for (const level of levels) {
+        available.set(
+          copyStockKey(level.productId, level.variantId, level.warehouseId),
+          level.onHand - level.reserved
+        )
+      }
+    }
+    return {
+      warehouseIds,
+      available,
+      allowSplitFulfillment: settings?.allowSplitFulfillment ?? false,
+      allowNegativeStock: settings?.allowNegativeStock ?? false
+    }
+  }
+
   async create(
     storeId: string,
     body: CreateOrderInput,
@@ -300,6 +408,8 @@ export class OrdersService {
     if (body.confirmOnCreate) assertHolds(held, Permissions.ORDERS_CONFIRM)
     // The thread of a conversation gets a line of the order: the member must be able to see the inbox
     if (body.conversationId !== undefined) assertHolds(held, Permissions.CONVERSATIONS_VIEW)
+    // Naming the order it was copied from tells whether that order exists: only who may read orders can (the draft needs it too)
+    if (body.copiedFromOrderId !== undefined) assertHolds(held, Permissions.ORDERS_VIEW)
     const canOverridePrice = held.includes(Permissions.ORDERS_OVERRIDE_PRICE)
 
     const created = await this.prisma.transaction(async tx => {
@@ -317,6 +427,11 @@ export class OrdersService {
         ) {
           throw resourceNotFound('conversation')
         }
+      }
+      // The order it was copied from is one of this store: another store's is one that does not exist
+      if (body.copiedFromOrderId !== undefined) {
+        const source = await tx.order.count({ where: { id: body.copiedFromOrderId, storeId } })
+        if (source === 0) throw resourceNotFound('order')
       }
       const store = await tx.store.findUniqueOrThrow({
         where: { id: storeId },
@@ -385,6 +500,9 @@ export class OrdersService {
                 confirmedVia: OrderConfirmationChannel.AT_CREATION
               }
             : {}),
+          ...(body.copiedFromOrderId === undefined
+            ? {}
+            : { copiedFromOrderId: body.copiedFromOrderId }),
           createdBy: actor.userId
         },
         select: { id: true, orderNumber: true }
