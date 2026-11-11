@@ -110,6 +110,8 @@ test.describe('the orders page', () => {
     await expect(row((seeded[1] as SeededOrder).orderNumber)).toBeVisible()
 
     await page.getByLabel(ORDERS.filters.status, { exact: true }).selectOption('')
+    // The next filter is built from the address: it must have lost the state first, or it would bring it back
+    await expect(page).not.toHaveURL(/status=/)
     await page.getByLabel(ORDERS.filters.paymentStatus, { exact: true }).selectOption('PENDING')
     await expect(row((seeded[1] as SeededOrder).orderNumber)).toBeHidden()
     await expect(row((seeded[0] as SeededOrder).orderNumber)).toBeVisible()

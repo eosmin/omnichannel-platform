@@ -86,7 +86,8 @@ test.describe('orders in the thread and the keyboard', () => {
 
   test('g o goes to the orders', async () => {
     await page.goto(AppPaths.store.inbox(storeId))
-    await expect(page.getByRole('main')).toBeVisible()
+    // The keys listen once the page is interactive: the list is what says so
+    await expect(page.getByRole('list', { name: en.inbox.listLabel })).toBeVisible()
 
     await page.keyboard.press('g')
     await page.keyboard.press('o')
