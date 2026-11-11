@@ -2656,7 +2656,8 @@
       "sku_in_use": "Otro producto o variante de esta tienda ya usa ese SKU.",
       "variant_name_in_use": "Este producto ya tiene una variante con ese nombre.",
       "too_many_variants": "Un producto puede tener hasta {max} variantes.",
-      "has_history": "Este producto forma parte del historial de la tienda, así que no se puede eliminar. Archívalo."
+      "has_history": "Este producto forma parte del historial de la tienda, así que no se puede eliminar. Archívalo.",
+      "in_transit": "Este producto tiene unidades en camino en un traslado en tránsito, así que todavía no se puede dejar de controlar su stock. Espera a que llegue o cancela el traslado."
     },
     "noMatchesYet": "Ningún producto cargado hasta ahora coincide. Muestra más productos para seguir buscando.",
     "stock": {

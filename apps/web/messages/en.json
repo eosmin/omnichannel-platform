@@ -2656,7 +2656,8 @@
       "sku_in_use": "Another product or variant of this store already uses that SKU.",
       "variant_name_in_use": "This product already has a variant with that name.",
       "too_many_variants": "A product can have up to {max} variants.",
-      "has_history": "This product is part of the history of the store, so it cannot be deleted. Archive it instead."
+      "has_history": "This product is part of the history of the store, so it cannot be deleted. Archive it instead.",
+      "in_transit": "This product has units on the road in a transfer in transit, so its stock cannot be switched off yet. Wait for the transfer to arrive or cancel it."
     },
     "noMatchesYet": "No product loaded so far matches. Show more products to keep looking.",
     "stock": {
