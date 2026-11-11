@@ -1,9 +1,14 @@
 import type { Type } from '@nestjs/common'
 
-import { declaredRedactedKeys } from '@platform/core/domain'
+import { CarrierId, declaredRedactedKeys } from '@platform/core/domain'
 import type { ChannelPlugin } from '@platform/plugins/sdk'
 
-import { OFFICIAL_CHANNEL_PLUGINS, officialRedactedKeys, redactedKeysOf } from './official-plugins'
+import {
+  OFFICIAL_CARRIER_PLUGINS,
+  OFFICIAL_CHANNEL_PLUGINS,
+  officialRedactedKeys,
+  redactedKeysOf
+} from './official-plugins'
 
 type WithKeys = Type<ChannelPlugin> & { redactedKeys?: unknown }
 const plugin = (): WithKeys => class {} as unknown as WithKeys
@@ -31,6 +36,14 @@ describe('officialRedactedKeys', () => {
   it('removes the secret of the second app of the Meta channels from the log', () => {
     expect(officialRedactedKeys()).toEqual(
       expect.arrayContaining(['instagramAppSecret', 'instagram_app_secret'])
+    )
+  })
+})
+
+describe('OFFICIAL_CARRIER_PLUGINS', () => {
+  it('lists the local courier, whose id the registry knows', () => {
+    expect(OFFICIAL_CARRIER_PLUGINS.map(entry => ('id' in entry ? entry.id : null))).toContain(
+      CarrierId.LOCAL
     )
   })
 })

@@ -140,7 +140,6 @@ export const PermissionsOfUnbuiltAreas: readonly string[] = [
   'settings:manage_webhooks',
   'settings:manage_api_keys',
   'settings:manage_retention',
-  'settings:manage_carriers',
   'settings:manage_order_templates'
 ]
 

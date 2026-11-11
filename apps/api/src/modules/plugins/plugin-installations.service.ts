@@ -5,11 +5,13 @@ import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { isUniqueViolation, lockStoreForWrite, PrismaService } from '@platform/core/database'
 import {
+  CarrierConnectionStatus,
   ChannelConnectionStatus,
   type ChannelOAuthDescriptor,
   PluginCatalogTypes,
   PluginInstallationStatus,
-  PluginStatus
+  PluginStatus,
+  ShippingPlugin
 } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -18,8 +20,14 @@ import {
   resourceNotFound
 } from '@platform/core/errors'
 import { PublicApiConfig } from '@platform/core/http'
-import { type ConnectFieldSnapshot, PluginRegistry } from '@platform/plugins/runtime'
+import {
+  CarrierRegistry,
+  type ConnectFieldSnapshot,
+  PluginRegistry
+} from '@platform/plugins/runtime'
 
+import { CarrierConnectionsService } from '../carriers/carrier-connections.service'
+import { OPEN_PICKUP_FILTER, OPEN_SHIPMENT_FILTER } from '../carriers/carrier-connections.views'
 import { ChannelConnectionsService } from '../channels/channel-connections.service'
 import { type PublicChannelDescriptor, publicDescriptorOf } from '../channels/public-descriptor'
 import type { Actor } from '../tenancy'
@@ -37,6 +45,10 @@ export interface PluginCatalogEntry {
   installationId: string | null
   // The connections of the installation that are not disconnected
   activeConnections: number
+  // What uninstalling would leave without a carrier to ask (the shipping plugin only; 0 for the others): shipments that are
+  // still on their way and pickups still waiting
+  openShipments: number
+  openPickups: number
   // How a channel is connected, for the settings page; null for a plugin that is not a registered
   // channel (it is drawn from this, not from knowing the channel by name)
   channel: ChannelConnectManifest | null
@@ -76,7 +88,9 @@ export class PluginInstallationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly registry: PluginRegistry,
+    private readonly carriers: CarrierRegistry,
     private readonly connections: ChannelConnectionsService,
+    private readonly carrierConnections: CarrierConnectionsService,
     private readonly publicApi: PublicApiConfig,
     private readonly audit: AuditService
   ) {}
@@ -84,7 +98,7 @@ export class PluginInstallationsService {
   // The approved plugins this store may see: the official ones and the private ones the registry
   // holds for it. A row the registry does not know is shown to nobody.
   async catalog(storeId: string): Promise<PluginCatalogEntry[]> {
-    const [plugins, installations, live] = await Promise.all([
+    const [plugins, installations, live, shipping] = await Promise.all([
       this.prisma.client.plugin.findMany({
         where: { status: PluginStatus.APPROVED },
         select: CATALOG_SELECT,
@@ -98,12 +112,20 @@ export class PluginInstallationsService {
         by: ['installationId'],
         where: { storeId, status: { not: ChannelConnectionStatus.DISCONNECTED } },
         _count: { _all: true }
-      })
+      }),
+      // Only where the platform runs carriers: a deployment with none has no shipping entry to count for
+      this.carriers.list().length > 0
+        ? this.shippingUsage(storeId)
+        : Promise.resolve({ active: 0, openShipments: 0, openPickups: 0 })
     ])
     const installationOf = new Map(installations.map(row => [row.pluginId, row]))
     const activeOf = new Map(live.map(row => [row.installationId, row._count._all]))
     return plugins
-      .filter(plugin => this.registry.isVisibleTo(plugin.id, storeId))
+      .filter(plugin =>
+        plugin.id === ShippingPlugin.ID
+          ? this.carriers.list().length > 0
+          : this.registry.isVisibleTo(plugin.id, storeId)
+      )
       .map(plugin => {
         const installation = installationOf.get(plugin.id)
         const installed =
@@ -113,7 +135,14 @@ export class PluginInstallationsService {
           ...plugin,
           installed,
           installationId: installation?.id ?? null,
-          activeConnections: installation ? (activeOf.get(installation.id) ?? 0) : 0,
+          activeConnections:
+            plugin.id === ShippingPlugin.ID
+              ? shipping.active
+              : installation
+                ? (activeOf.get(installation.id) ?? 0)
+                : 0,
+          openShipments: plugin.id === ShippingPlugin.ID ? shipping.openShipments : 0,
+          openPickups: plugin.id === ShippingPlugin.ID ? shipping.openPickups : 0,
           channel: this.manifestOf(plugin.id)
         }
       })
@@ -133,8 +162,13 @@ export class PluginInstallationsService {
     ) {
       throw resourceNotFound('plugin')
     }
-    // The integration plugins have a key and a consent screen, which Step 5.6 builds
-    if (plugin.type !== String(PluginCatalogTypes.CHANNEL) || !this.registry.has(pluginId)) {
+    // The shipping plugin installs when the platform runs at least one carrier; a channel when the registry holds it. The
+    // integration plugins have a key and a consent screen, which Step 5.6 builds
+    const installable =
+      pluginId === ShippingPlugin.ID
+        ? plugin.type === String(PluginCatalogTypes.CARRIER) && this.carriers.list().length > 0
+        : plugin.type === String(PluginCatalogTypes.CHANNEL) && this.registry.has(pluginId)
+    if (!installable) {
       throw new PlatformException(
         ErrorCodes.PLUGIN_INSTALLATION_FAILED,
         'this plugin cannot be installed yet',
@@ -149,7 +183,7 @@ export class PluginInstallationsService {
       select: { id: true, status: true }
     })
     if (previous !== null && previous.status !== String(PluginInstallationStatus.ACTIVE)) {
-      await this.disconnectOpen(storeId, previous.id, actor)
+      await this.disconnectOpen(storeId, previous.id, pluginId, actor)
     }
 
     const write = () =>
@@ -229,7 +263,7 @@ export class PluginInstallationsService {
       return changed.count === 1
     })
 
-    await this.disconnectOpen(storeId, installation.id, actor)
+    await this.disconnectOpen(storeId, installation.id, pluginId, actor)
     if (revoked) this.record(AuditAction.PLUGIN_REVOKED, storeId, installation.id, pluginId, actor)
     return this.entryOf(storeId, pluginId)
   }
@@ -237,8 +271,14 @@ export class PluginInstallationsService {
   private async disconnectOpen(
     storeId: string,
     installationId: string,
+    pluginId: string,
     actor: Actor
   ): Promise<void> {
+    // The carriers of a store hang from the one installation of the shipping plugin: all of them are disconnected
+    if (pluginId === ShippingPlugin.ID) {
+      await this.carrierConnections.disconnectAll(storeId, actor)
+      return
+    }
     const open = await this.prisma.client.channelConnection.findMany({
       where: { installationId, storeId, status: { not: ChannelConnectionStatus.DISCONNECTED } },
       select: { id: true },
@@ -247,6 +287,20 @@ export class PluginInstallationsService {
     for (const connection of open) {
       await this.connections.disconnect(storeId, connection.id, actor)
     }
+  }
+
+  // What the shipping plugin holds in the store: its live connections, and what uninstalling would leave without a carrier
+  private async shippingUsage(
+    storeId: string
+  ): Promise<{ active: number; openShipments: number; openPickups: number }> {
+    const [active, openShipments, openPickups] = await Promise.all([
+      this.prisma.client.carrierConnection.count({
+        where: { storeId, status: { not: CarrierConnectionStatus.DISABLED } }
+      }),
+      this.prisma.client.shipment.count({ where: { storeId, ...OPEN_SHIPMENT_FILTER } }),
+      this.prisma.client.pickupRequest.count({ where: { storeId, ...OPEN_PICKUP_FILTER } })
+    ])
+    return { active, openShipments, openPickups }
   }
 
   // Copies of what the registry kept at registration; null for a row whose plugin is not running here

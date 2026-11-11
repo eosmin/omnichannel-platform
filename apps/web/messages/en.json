@@ -566,6 +566,7 @@
     "RETURN_QUANTITY_EXCEEDS_DELIVERED": "You cannot return more than was delivered",
     "SHIPPING_ACTIVE_SHIPMENT_EXISTS": "The order already has an active shipment",
     "SHIPPING_CANNOT_CANCEL_AFTER_PICKUP": "The shipment cannot be cancelled after pickup",
+    "SHIPPING_CARRIER_CREDENTIALS_INVALID": "The carrier did not accept the credentials",
     "SHIPPING_CARRIER_CAPABILITY_MISSING": "The carrier does not support that action",
     "SHIPPING_CARRIER_NOT_ACTIVE": "The carrier is not active",
     "SHIPPING_CARRIER_REJECTED": "The carrier rejected the request",
@@ -3605,6 +3606,29 @@
       "submit": "Save",
       "cancel": "Cancel",
       "saved": "Alert threshold saved"
+    }
+  },
+  "shipping": {
+    "label": {
+      "from": "From",
+      "to": "To",
+      "collect": "Collect on delivery",
+      "paid": "PAID",
+      "order": "Order",
+      "packages": "Packages",
+      "service": "Service",
+      "notes": "Notes"
+    },
+    "carriers": {
+      "local": {
+        "name": "Local courier",
+        "services": {
+          "local": "Local delivery"
+        }
+      }
+    },
+    "plugin": {
+      "name": "Shipping"
     }
   }
 }

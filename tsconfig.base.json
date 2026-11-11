@@ -62,6 +62,7 @@
       "@platform/core/database": ["libs/core/database/src/index.ts"],
       "@platform/core/event-bus": ["libs/core/event-bus/src/index.ts"],
       "@platform/core/inventory": ["libs/core/inventory/src/index.ts"],
+      "@platform/core/shipping": ["libs/core/shipping/src/index.ts"],
       "@platform/core/messaging": ["libs/core/messaging/src/index.ts"],
       "@platform/core/logger": ["libs/core/logger/src/index.ts"],
       "@platform/core/metrics-module": ["libs/core/metrics/src/index.ts"],

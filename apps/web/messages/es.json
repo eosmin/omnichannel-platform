@@ -566,6 +566,7 @@
     "RETURN_QUANTITY_EXCEEDS_DELIVERED": "No puedes devolver más de lo que se entregó",
     "SHIPPING_ACTIVE_SHIPMENT_EXISTS": "El pedido ya tiene un envío activo",
     "SHIPPING_CANNOT_CANCEL_AFTER_PICKUP": "El envío no se puede cancelar después de la recolección",
+    "SHIPPING_CARRIER_CREDENTIALS_INVALID": "El transportista no aceptó las credenciales",
     "SHIPPING_CARRIER_CAPABILITY_MISSING": "El transportista no admite esa acción",
     "SHIPPING_CARRIER_NOT_ACTIVE": "El transportista no está activo",
     "SHIPPING_CARRIER_REJECTED": "El transportista rechazó la solicitud",
@@ -3605,6 +3606,29 @@
       "submit": "Guardar",
       "cancel": "Cancelar",
       "saved": "Umbral de alerta guardado"
+    }
+  },
+  "shipping": {
+    "label": {
+      "from": "De",
+      "to": "Para",
+      "collect": "Cobrar al entregar",
+      "paid": "PAGADO",
+      "order": "Pedido",
+      "packages": "Paquetes",
+      "service": "Servicio",
+      "notes": "Notas"
+    },
+    "carriers": {
+      "local": {
+        "name": "Mensajero local",
+        "services": {
+          "local": "Entrega local"
+        }
+      }
+    },
+    "plugin": {
+      "name": "Envíos"
     }
   }
 }

@@ -3,14 +3,16 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
+  CarrierCapability,
   CodePluginAuthor,
   OfficialPluginAuthor,
   PluginCatalogTypes,
   PluginPricingModels,
   PluginStatus,
+  ShippingPlugin,
   isOfficialChannelId
 } from '@platform/core/domain'
-import { PluginRegistry } from '@platform/plugins/runtime'
+import { CarrierRegistry, PluginRegistry } from '@platform/plugins/runtime'
 import type { ChannelPlugin } from '@platform/plugins/sdk'
 
 // What the catalog shows of a plugin that ships with the platform, and the manifest it keeps for it
@@ -46,6 +48,7 @@ export class PluginCatalogSync implements OnApplicationBootstrap {
   constructor(
     private readonly prisma: PrismaService,
     private readonly registry: PluginRegistry,
+    private readonly carriers: CarrierRegistry,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(PluginCatalogSync.name)
@@ -88,6 +91,60 @@ export class PluginCatalogSync implements OnApplicationBootstrap {
         await write()
       }
     }
+    await this.syncShipping()
     this.logger.info({ count: plugins.length }, 'plugins of the platform written to the catalog')
+  }
+
+  // The carriers are one entry of the catalog, `shipping` (D19): a store installs it once and connects the carriers it needs.
+  // Written when the platform registers at least one carrier, and refreshed with the list of them. Its status is written once,
+  // on creation, like the others.
+  private async syncShipping(): Promise<void> {
+    const carriers = this.carriers.list()
+    if (carriers.length === 0) return
+    // The id belongs to the platform: a row of that id that is not official was written by someone else and is left alone
+    const existing = await this.prisma.client.plugin.findUnique({
+      where: { id: ShippingPlugin.ID },
+      select: { isOfficial: true }
+    })
+    if (existing !== null && !existing.isOfficial) {
+      this.logger.error(
+        { pluginId: ShippingPlugin.ID },
+        'the id of the shipping plugin is taken by another plugin'
+      )
+      return
+    }
+    const data = {
+      name: ShippingPlugin.NAME,
+      authorName: OfficialPluginAuthor.NAME,
+      authorEmail: OfficialPluginAuthor.EMAIL,
+      type: PluginCatalogTypes.CARRIER,
+      isOfficial: true,
+      manifest: {
+        id: ShippingPlugin.ID,
+        name: ShippingPlugin.NAME,
+        type: PluginCatalogTypes.CARRIER,
+        carriers: carriers.map(carrier => ({
+          id: carrier.id,
+          version: carrier.version,
+          capabilities: Object.values(CarrierCapability).filter(capability =>
+            this.carriers.hasCapability(carrier.id, capability)
+          )
+        }))
+      },
+      pricingModel: PluginPricingModels.FREE
+    }
+    const write = () =>
+      this.prisma.client.plugin.upsert({
+        where: { id: ShippingPlugin.ID },
+        create: { id: ShippingPlugin.ID, ...data, status: PluginStatus.APPROVED },
+        update: data
+      })
+    try {
+      await write()
+    } catch (error) {
+      // Another instance booting at the same time wrote it first: the second write updates
+      if (!isUniqueViolation(error)) throw error
+      await write()
+    }
   }
 }

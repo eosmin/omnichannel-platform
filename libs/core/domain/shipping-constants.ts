@@ -42,6 +42,49 @@ export function formatLocalGuideNumber(prefix: string, sequence: number): string
   return `${prefix}${LocalGuide.SEPARATOR}${String(sequence).padStart(LocalGuide.SEQUENCE_DIGITS, '0')}`
 }
 
+// The carriers are one plugin of the catalog, `shipping` (D19): a store installs it once and then connects as many
+// carriers as it needs, each a CarrierConnection. The row of the catalog is written from the carrier registry at boot.
+export const ShippingPlugin = {
+  ID: 'shipping',
+  NAME: 'Shipping'
+} as const
+
+// The bounds of what a store configures for a carrier connection (TDD_17 §2, §4.13). The prefix of a guide is the one
+// `LocalGuide` and the database allow; a fee is a money amount in the cents of the store currency.
+export const CarrierConnectionLimits = {
+  DISPLAY_NAME_MAX_LENGTH: 80,
+  MAX_PER_STORE: 50,
+  MAX_FEE_CENTS: 100_000_000,
+  MAX_SERVICES: 50,
+  SERVICE_LABEL_MAX_LENGTH: 80,
+  SERVICE_CODE_MAX_LENGTH: 40,
+  MAX_REMINDER_MINUTES: 24 * 60,
+  MAX_POLL_MINUTES: 24 * 60,
+  MAX_DELIVERY_ATTEMPTS: 10,
+  CONTACT_PHONE_MAX_LENGTH: 30,
+  CONTACT_NOTES_MAX_LENGTH: 500,
+  // What the connect and test calls to the carrier may take before the answer is given up (the outcome of a test is
+  // not an unknown one: nothing was created)
+  PROVIDER_TIMEOUT_MS: 15_000
+} as const
+
+// One writer at a time per store for what reads and writes the connections as a whole (the count of a store, its default)
+export const CarrierLockScopes = { CONNECTIONS: 'carrier_connections' } as const
+
+// Why a connection is not healthy, as a name of a closed list (never the carrier's words, which could carry a secret or
+// a customer's data): what `CarrierConnection.lastError` holds and what the screen translates
+export const CarrierHealthReasons = {
+  AUTH: 'auth', // the carrier rejected the credentials
+  REJECTED: 'rejected', // the carrier refused the request
+  UNAVAILABLE: 'unavailable', // the carrier could not be reached, or did not answer in time
+  INVALID_ANSWER: 'invalid_answer', // the plugin answered with something the platform cannot use
+  CREDENTIALS_UNREADABLE: 'credentials_unreadable' // the stored credentials do not open (the key was rotated or the row is damaged)
+} as const
+export type CarrierHealthReason = (typeof CarrierHealthReasons)[keyof typeof CarrierHealthReasons]
+
+// The size of a webhook secret the platform makes for a connection (bytes of randomness, shown once as base64url)
+export const CARRIER_WEBHOOK_SECRET_BYTES = 32
+
 // Each value is an i18n key.
 export const OrderReturnReasons = {
   DEFECTIVE: 'orders.return.reason.DEFECTIVE',

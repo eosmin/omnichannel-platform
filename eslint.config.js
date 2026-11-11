@@ -159,7 +159,8 @@ export default defineConfig([
                 'scope:core-domain',
                 'scope:plugins',
                 'scope:plugins-sdk',
-                'scope:channels'
+                'scope:channels',
+                'scope:shipping'
               ]
             },
             {
@@ -169,7 +170,8 @@ export default defineConfig([
                 'scope:core-domain',
                 'scope:plugins',
                 'scope:plugins-sdk',
-                'scope:channels'
+                'scope:channels',
+                'scope:shipping'
               ]
             },
             {
@@ -206,15 +208,22 @@ export default defineConfig([
             },
             {
               sourceTag: 'scope:plugins',
-              // The runtime lists the official channel plugins, so it reaches their libraries
+              // The runtime lists the official channel and carrier plugins, so it reaches their libraries
               onlyDependOnLibsWithTags: [
                 'scope:plugins-sdk',
                 'scope:core-domain',
                 'scope:channels',
-                'scope:channels-shared'
+                'scope:channels-shared',
+                'scope:carriers'
               ]
             },
             // The SDK is what a third-party plugin compiles against: it never reaches the runtime
+            {
+              // The shipping engine (ShippingService and what it draws): core, plus the SDK whose types it speaks. It never
+              // reaches the runtime that holds the carriers: the callers pass the plugin in
+              sourceTag: 'scope:shipping',
+              onlyDependOnLibsWithTags: ['scope:core', 'scope:core-domain', 'scope:plugins-sdk']
+            },
             {
               sourceTag: 'scope:plugins-sdk',
               onlyDependOnLibsWithTags: ['scope:core-domain']

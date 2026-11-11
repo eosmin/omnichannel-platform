@@ -5,6 +5,7 @@ import { BullBoardPlatformModule, HttpPlatformModule } from '@platform/core/http
 import { officialRedactedKeys } from '@platform/plugins/runtime'
 
 import { AuthModule } from './modules/auth/auth.module'
+import { CarriersModule } from './modules/carriers/carriers.module'
 import { ChannelRegistryModule } from './modules/channel-registry'
 import { ChannelsModule } from './modules/channels/channels.module'
 import { ConversationsModule } from './modules/conversations/conversations.module'
@@ -50,6 +51,7 @@ import { WidgetModule } from './modules/widget/widget.module'
     NotificationsModule,
     ChannelRegistryModule,
     ChannelsModule,
+    CarriersModule,
     PluginsApiModule,
     MessagingWindowModule,
     RoutingModule,
