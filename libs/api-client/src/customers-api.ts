@@ -11,6 +11,8 @@ import {
   customerAddressSchema,
   type CustomerAddressView,
   customerDetailSchema,
+  createdCustomerSchema,
+  type CreatedCustomerView,
   customerIdentitySchema,
   type CustomerIdentityView,
   customerListPageSchema,
@@ -95,6 +97,26 @@ export function fetchCustomers(
     schema: customerListPageSchema,
     storeId,
     signal
+  })
+}
+
+// A customer made by hand (the create-order form); the answer lists the possible duplicates
+export interface CustomerCreateInput {
+  name?: string
+  email?: string
+  phone?: string
+}
+
+export function createCustomer(
+  client: ApiClient,
+  storeId: string,
+  input: CustomerCreateInput
+): Promise<CreatedCustomerView> {
+  return client.request(ApiRoutes.customers.list, {
+    method: 'POST',
+    body: input,
+    schema: createdCustomerSchema,
+    storeId
   })
 }
 

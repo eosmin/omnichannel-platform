@@ -620,6 +620,8 @@ export const customerDetailSchema = z.object({
   name: z.string().nullable(),
   email: z.string().nullable(),
   phone: z.string().nullable(),
+  // The phone without its country code, for the recipient phones of an order
+  nationalPhone: z.string().nullable().default(null),
   locale: z.string().nullable(),
   isCaution: z.boolean(),
   cautionReason: z.string().nullable(),
@@ -652,6 +654,24 @@ export const customerDetailSchema = z.object({
   updatedAt: z.string()
 })
 export type CustomerDetailView = z.output<typeof customerDetailSchema>
+
+// POST /customers: the customer that was saved and, apart, the customers of the store that share its e-mail or phone
+// (a hint: the customer exists whatever it looks like; empty when the caller may not see customers)
+export const createdCustomerSchema = customerDetailSchema.extend({
+  possibleDuplicates: z
+    .array(
+      z.object({
+        id: z.string(),
+        name: z.string().nullable(),
+        email: z.string().nullable(),
+        phone: z.string().nullable(),
+        // Which of the contact data matched (a value of DuplicateMatch)
+        matchedOn: z.array(z.string())
+      })
+    )
+    .default([])
+})
+export type CreatedCustomerView = z.output<typeof createdCustomerSchema>
 
 export type CustomerAddressView = CustomerDetailView['addresses'][number]
 export const customerAddressSchema = customerDetailSchema.shape.addresses.element

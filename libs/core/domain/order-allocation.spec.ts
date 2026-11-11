@@ -1,4 +1,8 @@
-import { planLineAllocation, type WarehouseAvailability } from './order-allocation'
+import {
+  checkRequestedAllocation,
+  planLineAllocation,
+  type WarehouseAvailability
+} from './order-allocation'
 
 const A = 'warehouse-a'
 const B = 'warehouse-b'
@@ -152,5 +156,100 @@ describe('planLineAllocation', () => {
         }).ok
       ).toBe(false)
     }
+  })
+})
+
+describe('checkRequestedAllocation', () => {
+  const base = {
+    warehouses: stock([A, 6], [B, 8]),
+    allowSplitFulfillment: true,
+    allowNegativeStock: false
+  }
+
+  it('takes a choice that adds up, is in stock and lists it in priority order', () => {
+    expect(
+      checkRequestedAllocation({
+        ...base,
+        quantity: 10,
+        requested: [
+          { warehouseId: B, quantity: 7 },
+          { warehouseId: A, quantity: 3 }
+        ]
+      })
+    ).toEqual({
+      ok: true,
+      allocations: [
+        { warehouseId: A, quantity: 3 },
+        { warehouseId: B, quantity: 7 }
+      ]
+    })
+  })
+
+  it('refuses a warehouse the store does not sell from, whatever the rest says', () => {
+    expect(
+      checkRequestedAllocation({
+        ...base,
+        quantity: 2,
+        requested: [{ warehouseId: C, quantity: 2 }]
+      })
+    ).toEqual({ ok: false, reason: 'not_linked', warehouseId: C })
+  })
+
+  it('refuses units that do not add up, a repeated warehouse and an empty choice', () => {
+    for (const requested of [
+      [{ warehouseId: A, quantity: 2 }],
+      [
+        { warehouseId: A, quantity: 2 },
+        { warehouseId: A, quantity: 2 }
+      ],
+      [
+        { warehouseId: A, quantity: 0 },
+        { warehouseId: B, quantity: 4 }
+      ],
+      []
+    ]) {
+      expect(checkRequestedAllocation({ ...base, quantity: 4, requested })).toEqual({
+        ok: false,
+        reason: 'quantity_mismatch'
+      })
+    }
+  })
+
+  it('refuses a split in a store that ships each line from one warehouse', () => {
+    expect(
+      checkRequestedAllocation({
+        ...base,
+        allowSplitFulfillment: false,
+        quantity: 4,
+        requested: [
+          { warehouseId: A, quantity: 2 },
+          { warehouseId: B, quantity: 2 }
+        ]
+      })
+    ).toEqual({ ok: false, reason: 'split_not_allowed' })
+  })
+
+  it('refuses a warehouse with less than it is asked for, naming the stock of each one, unless negative stock is on', () => {
+    const input = { ...base, quantity: 7, requested: [{ warehouseId: A, quantity: 7 }] }
+    expect(checkRequestedAllocation(input)).toEqual({
+      ok: false,
+      reason: 'insufficient',
+      availableByWarehouse: stock([A, 6], [B, 8])
+    })
+    expect(checkRequestedAllocation({ ...input, allowNegativeStock: true })).toEqual({
+      ok: true,
+      allocations: [{ warehouseId: A, quantity: 7 }]
+    })
+  })
+
+  it('never reports a negative stock in a refusal', () => {
+    expect(
+      checkRequestedAllocation({
+        ...base,
+        warehouses: stock([A, -3], [B, 8]),
+        quantity: 1,
+        requested: [{ warehouseId: A, quantity: 1 }]
+      })
+    ).toMatchObject({ availableByWarehouse: stock([A, 0], [B, 8]) })
   })
 })

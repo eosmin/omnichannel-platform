@@ -1,6 +1,7 @@
 import { createApiClient } from './api-client'
 import {
   attachCustomerTag,
+  createCustomer,
   createCustomerAddress,
   deleteCustomerNote,
   fetchCustomer,
@@ -280,5 +281,49 @@ describe('the identities', () => {
       'https://api.example.com/api/v1/customers/c1/identities/i1'
     )
     expect(unlink.fetchImpl.mock.calls[0]?.[1].method).toBe('DELETE')
+  })
+})
+
+describe('createCustomer', () => {
+  const created = {
+    id: 'c1',
+    name: 'Ana',
+    email: 'ana@example.com',
+    phone: '+503 7123 4567',
+    nationalPhone: '71234567',
+    locale: null,
+    isCaution: false,
+    cautionReason: null,
+    identities: [],
+    addresses: [],
+    tags: [],
+    createdAt: '2026-11-10T10:00:00.000Z',
+    updatedAt: '2026-11-10T10:00:00.000Z',
+    possibleDuplicates: [
+      { id: 'c0', name: 'Ana P', email: 'ana@example.com', phone: null, matchedOn: ['email'] }
+    ]
+  }
+
+  it('posts the fields to the store and reads the possible duplicates and the national phone', async () => {
+    const { client, fetchImpl } = setup(json(201, created))
+    const result = await createCustomer(client, 's1', { name: 'Ana', email: 'ana@example.com' })
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('https://api.example.com/api/v1/customers')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual({ name: 'Ana', email: 'ana@example.com' })
+    expect(result.nationalPhone).toBe('71234567')
+    expect(result.possibleDuplicates).toEqual([
+      { id: 'c0', name: 'Ana P', email: 'ana@example.com', phone: null, matchedOn: ['email'] }
+    ])
+  })
+
+  it('reads no duplicates, and no national phone, from an answer that has none', async () => {
+    const bare: Record<string, unknown> = { ...created }
+    delete bare['possibleDuplicates']
+    delete bare['nationalPhone']
+    const { client } = setup(json(201, bare))
+    const result = await createCustomer(client, 's1', { name: 'Ana' })
+    expect(result.possibleDuplicates).toEqual([])
+    expect(result.nationalPhone).toBeNull()
   })
 })

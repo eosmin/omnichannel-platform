@@ -81,7 +81,8 @@ function toAllocatable(lines: readonly OrderLine[], itemIds: readonly string[]):
     productId: line.productId,
     variantId: line.variantId,
     quantity: line.quantity,
-    trackInventory: line.trackInventory
+    trackInventory: line.trackInventory,
+    requested: line.requestedAllocations
   }))
 }
 

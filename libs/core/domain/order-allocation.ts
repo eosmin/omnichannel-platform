@@ -78,3 +78,74 @@ export function planLineAllocation({
     ? { ok: true, allocations: [{ warehouseId: first.warehouseId, quantity }] }
     : refused()
 }
+
+export interface CheckRequestedAllocationInput {
+  readonly quantity: number
+  // What the agent chose for the line (TDD_16 §4.1 rule 4)
+  readonly requested: readonly LineAllocation[]
+  // The warehouses the store sells from and that are switched on, with their available stock
+  readonly warehouses: readonly WarehouseAvailability[]
+  readonly allowSplitFulfillment: boolean
+  readonly allowNegativeStock: boolean
+}
+
+export type RequestedAllocationCheck =
+  | { readonly ok: true; readonly allocations: readonly LineAllocation[] }
+  | {
+      readonly ok: false
+      // 'not_linked': a warehouse the store does not sell from (or that is off, or another organization's);
+      // 'quantity_mismatch': the units do not add up to the line, or a warehouse is named twice or with no units;
+      // 'split_not_allowed': several warehouses in a store that ships each line from one;
+      // 'insufficient': a warehouse has less than the units asked of it (never in a store with negative stock)
+      readonly reason: 'not_linked' | 'quantity_mismatch' | 'split_not_allowed' | 'insufficient'
+      readonly warehouseId?: string
+      readonly availableByWarehouse?: readonly WarehouseAvailability[]
+    }
+
+// The same rules the planner follows, applied to the choice of the agent: the server never takes a choice on trust, it
+// checks that every warehouse is one the store sells from, that the units add up to the line, that a split is allowed
+// and that each warehouse has what it is asked for. The answer lists the warehouses in priority order, like the planner.
+export function checkRequestedAllocation({
+  quantity,
+  requested,
+  warehouses,
+  allowSplitFulfillment,
+  allowNegativeStock
+}: CheckRequestedAllocationInput): RequestedAllocationCheck {
+  const known = new Map(warehouses.map(warehouse => [warehouse.warehouseId, warehouse.available]))
+  for (const { warehouseId } of requested) {
+    if (!known.has(warehouseId)) return { ok: false, reason: 'not_linked', warehouseId }
+  }
+  const named = new Set(requested.map(row => row.warehouseId))
+  const total = requested.reduce((sum, row) => sum + row.quantity, 0)
+  if (
+    requested.length === 0 ||
+    named.size !== requested.length ||
+    requested.some(row => !Number.isInteger(row.quantity) || row.quantity < 1) ||
+    total !== quantity
+  ) {
+    return { ok: false, reason: 'quantity_mismatch' }
+  }
+  if (requested.length > 1 && !allowSplitFulfillment)
+    return { ok: false, reason: 'split_not_allowed' }
+  if (!allowNegativeStock) {
+    const short = requested.some(row => (known.get(row.warehouseId) as number) < row.quantity)
+    if (short) {
+      return {
+        ok: false,
+        reason: 'insufficient',
+        availableByWarehouse: warehouses.map(({ warehouseId, available }) => ({
+          warehouseId,
+          available: Math.max(available, 0)
+        }))
+      }
+    }
+  }
+  return {
+    ok: true,
+    allocations: warehouses.flatMap(({ warehouseId }) => {
+      const row = requested.find(item => item.warehouseId === warehouseId)
+      return row === undefined ? [] : [{ warehouseId, quantity: row.quantity }]
+    })
+  }
+}

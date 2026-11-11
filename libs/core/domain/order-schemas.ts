@@ -71,16 +71,37 @@ export const recipientPhonesSchema = z
 // 'YYYY-MM-DD', a calendar day in the timezone of the store; a past day is accepted (decision D18)
 export const scheduledDeliveryDateSchema = z.iso.date()
 
-const itemSchema = z.strictObject({
-  productId: id,
-  variantId: id.optional(),
-  // The price of a line is the catalog's, read by the server when the line is made. The only way to name another is
-  // `unitPriceCents` with its `priceReason`, which the server takes from a member with ORDERS_OVERRIDE_PRICE alone
-  // (TDD_17 §4.13, level 1) and refuses from anybody else: a price equal to the catalog's is no override.
-  quantity: z.number().int().min(1).max(OrderLimits.MAX_QUANTITY_PER_LINE),
-  unitPriceCents: cents.optional(),
-  priceReason: optionalText(OrderLimits.PRICE_REASON_MAX_LENGTH).optional()
+// Where the agent takes the units of a line from (TDD_16 §4.1 rule 4). Omitted, the server plans it by the priority of
+// the warehouses. The server checks the choice (linked warehouses, sums, stock); the schema only refuses a shape that
+// cannot be right.
+const allocationSchema = z.strictObject({
+  warehouseId: id,
+  quantity: z.number().int().min(1).max(OrderLimits.MAX_QUANTITY_PER_LINE)
 })
+
+const itemSchema = z
+  .strictObject({
+    productId: id,
+    variantId: id.optional(),
+    // The price of a line is the catalog's, read by the server when the line is made. The only way to name another is
+    // `unitPriceCents` with its `priceReason`, which the server takes from a member with ORDERS_OVERRIDE_PRICE alone
+    // (TDD_17 §4.13, level 1) and refuses from anybody else: a price equal to the catalog's is no override.
+    quantity: z.number().int().min(1).max(OrderLimits.MAX_QUANTITY_PER_LINE),
+    unitPriceCents: cents.optional(),
+    priceReason: optionalText(OrderLimits.PRICE_REASON_MAX_LENGTH).optional(),
+    allocations: z
+      .array(allocationSchema)
+      .min(1)
+      .max(OrderLimits.MAX_ALLOCATIONS_PER_LINE)
+      .optional()
+  })
+  .refine(
+    item =>
+      item.allocations === undefined ||
+      (new Set(item.allocations.map(row => row.warehouseId)).size === item.allocations.length &&
+        item.allocations.reduce((sum, row) => sum + row.quantity, 0) === item.quantity),
+    { message: 'the allocations of a line are one per warehouse and add up to its quantity' }
+  )
 
 // The same product and variant twice is one line with the quantities added: the form does that, the server refuses it
 function hasNoRepeatedLine(items: readonly { productId: string; variantId?: string }[]): boolean {

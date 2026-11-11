@@ -7,6 +7,7 @@ import { type ReactElement, type ReactNode, useEffect } from 'react'
 import { AppPaths } from '@platform/api-client'
 
 import { CustomerDrawerProvider } from '../../components/customers/customer-drawer-context'
+import { OrderDrawerProvider } from '../../components/orders/order-drawer-context'
 import { RealtimeProvider } from '../../components/providers/realtime-provider'
 import { StoreProvider } from '../../components/providers/store-context'
 import { StoreTimeZone } from '../../components/providers/time-zone-provider'
@@ -50,9 +51,11 @@ export function StoreShell({
             <PushSync storeId={storeId} />
             <RealtimeProvider storeId={storeId} userId={profile.id}>
               <CustomerDrawerProvider>
-                <AppFrame profile={profile} currentStoreId={storeId} nav={<StoreNav />}>
-                  {children}
-                </AppFrame>
+                <OrderDrawerProvider>
+                  <AppFrame profile={profile} currentStoreId={storeId} nav={<StoreNav />}>
+                    {children}
+                  </AppFrame>
+                </OrderDrawerProvider>
               </CustomerDrawerProvider>
             </RealtimeProvider>
           </StoreProvider>

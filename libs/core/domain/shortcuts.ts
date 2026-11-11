@@ -95,6 +95,7 @@ export const AvailableShortcuts = {
     'MARK_RESOLVED',
     'MARK_RESOLVED_OTHER_WAY',
     'SNOOZE',
+    'CREATE_ORDER',
     'OPEN_CUSTOMER'
   ],
   global: ['COMMAND_PALETTE', 'SEND_MESSAGE', 'GO_TO_INBOX', 'GO_TO_CUSTOMERS']
