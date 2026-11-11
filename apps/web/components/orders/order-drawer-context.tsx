@@ -62,7 +62,11 @@ export function OrderDrawerProvider({ children }: { children: ReactNode }): Reac
     isOpen: boolean
     openingId: number
   } | null>(null)
+  const isEditOpenRef = useRef(false)
+  isEditOpenRef.current = editing?.isOpen === true
   const openEdit = useCallback((orderId: string) => {
+    // Asking again while one is open must not start another form over the one in use (or edit another order by accident)
+    if (isEditOpenRef.current) return
     setEditing(previous => ({ orderId, isOpen: true, openingId: (previous?.openingId ?? 0) + 1 }))
   }, [])
   const value = useMemo(() => ({ openCreate, openEdit }), [openCreate, openEdit])

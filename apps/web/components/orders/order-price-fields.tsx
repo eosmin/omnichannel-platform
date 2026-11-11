@@ -22,13 +22,16 @@ export function OrderPriceFields({
   onChange,
   wrong,
   shippingLocked = false,
-  discountLocked = false
+  discountLocked = false,
+  reasonLocked = discountLocked
 }: {
   values: PriceValues
   onChange: (changes: Partial<PriceValues>) => void
   wrong: FormField | null
   shippingLocked?: boolean
   discountLocked?: boolean
+  // The reason also belongs to the fee when the discount is locked and the order has none
+  reasonLocked?: boolean
 }): ReactElement {
   const t = useTranslations('orders.create')
   const error = (field: FormField): ReactElement | null =>
@@ -72,7 +75,7 @@ export function OrderPriceFields({
         <Input
           id="order-discount-reason"
           autoComplete="off"
-          disabled={discountLocked}
+          disabled={reasonLocked}
           maxLength={OrderLimits.PRICE_REASON_MAX_LENGTH}
           value={values.discountReason}
           onChange={event => onChange({ discountReason: event.target.value })}

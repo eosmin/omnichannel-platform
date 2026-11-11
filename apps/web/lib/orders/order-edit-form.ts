@@ -149,24 +149,53 @@ export function buildUpdate(
     if (cents !== order.shippingCents) body.shippingCents = cents
   }
 
+  const reasonChanged = draft.discountReason.trim() !== (order.discountReason ?? '')
+  // The one reason field also carries the reason of a shipping fee outside its range: a reason typed next to a new fee
+  // travels with it. Only a reason that is NEW does: the one of a discount that is being taken back must not stay behind.
+  const travelsWithPrice = body.shippingCents !== undefined || body.items !== undefined
   if (editable.discount) {
     const cents = draft.discountText.trim() === '' ? 0 : parseCents(draft.discountText)
     if (cents === null) return { ok: false, field: 'discount' }
     const reason = draft.discountReason.trim()
     if (cents > 0 && reason === '') return { ok: false, field: 'discountReason' }
-    const reasonChanged = reason !== (order.discountReason ?? '')
-    // The one reason field also carries the reason of a shipping fee outside its range: a reason typed next to a new fee
-    // travels with it even when the discount stays at 0
-    const travelsWithPrice = body.shippingCents !== undefined || body.items !== undefined
     if (cents !== order.discountCents || (cents > 0 && reasonChanged)) {
       body.discountCents = cents
-      // A discount taken back loses its reason with it, unless the same request needs one for the fee
-      body.discountReason = cents > 0 || (travelsWithPrice && reason !== '') ? reason : null
+      // A discount taken back loses its reason with it, unless a new one was typed for the fee of the same request
+      body.discountReason =
+        cents > 0 || (travelsWithPrice && reasonChanged && reason !== '') ? reason : null
     } else if (reasonChanged && travelsWithPrice) {
       body.discountReason = reason === '' ? null : reason
     }
+  } else if (
+    editable.shipping &&
+    order.discountCents === 0 &&
+    body.shippingCents !== undefined &&
+    reasonChanged
+  ) {
+    // The status locks the discount but not the fee, and the order has no discount: the reason is the fee's
+    const reason = draft.discountReason.trim()
+    body.discountReason = reason === '' ? null : reason
   }
 
   if (Object.keys(body).length === 0) return { ok: false, field: 'nothing' }
   return { ok: true, value: body }
+}
+
+// A line taken out and put back is the line the order had (its price, its units), not a new one at today's catalog price
+export function restoreRemovedLines(
+  next: readonly DraftLine[],
+  current: readonly DraftLine[],
+  original: ReadonlyMap<string, DraftLine>
+): DraftLine[] {
+  const kept = new Set(current.map(line => line.key))
+  return next.map(line => (!kept.has(line.key) ? (original.get(line.key) ?? line) : line))
+}
+
+// Whether the reason field is open: it is the discount's, and also the fee's when the status locks the discount but the order
+// has none
+export function isReasonLocked(
+  order: Pick<OrderDetailView, 'discountCents'>,
+  editable: EditableParts
+): boolean {
+  return !editable.discount && !(editable.shipping && order.discountCents === 0)
 }

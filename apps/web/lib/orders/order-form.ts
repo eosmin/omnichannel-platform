@@ -257,6 +257,24 @@ export function stockRulesOf(input: {
   }
 }
 
+// The units an order already holds count as available again for its own edit (the edit gives them back before it plans)
+export function withReleased(
+  rules: StockRules,
+  held: readonly { warehouseId: string; quantity: number }[]
+): StockRules {
+  return {
+    ...rules,
+    warehouses: rules.warehouses.map(row => ({
+      ...row,
+      available:
+        row.available +
+        held
+          .filter(unit => unit.warehouseId === row.warehouseId)
+          .reduce((sum, unit) => sum + unit.quantity, 0)
+    }))
+  }
+}
+
 export type BuildResult =
   { ok: true; value: CreateOrderInput } | { ok: false; field: FormField; line?: string }
 

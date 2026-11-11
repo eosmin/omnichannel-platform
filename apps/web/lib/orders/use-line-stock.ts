@@ -7,7 +7,7 @@ import { ClientPermissions } from '@platform/core/auth'
 import { useStore } from '../../components/providers/store-context'
 import { useWarehousesOfStore } from '../inventory/use-inventory'
 
-import { type DraftLine, stockRulesOf } from './order-form'
+import { type DraftLine, stockRulesOf, withReleased } from './order-form'
 import type { StockOfLine } from './stock-of-line'
 import { useLineStocks, useStockSwitches } from './use-create-order'
 
@@ -63,21 +63,6 @@ export function useStockOfLines(
       allowSplitFulfillment: switches.data.allowSplitFulfillment,
       allowNegativeStock: switches.data.allowNegativeStock
     })
-    const own = released?.get(line.key) ?? []
-    return {
-      ...none,
-      rules: {
-        ...rules,
-        warehouses: rules.warehouses.map(row => ({
-          ...row,
-          available:
-            row.available +
-            own
-              .filter(held => held.warehouseId === row.warehouseId)
-              .reduce((sum, held) => sum + held.quantity, 0)
-        }))
-      },
-      canChoose: true
-    }
+    return { ...none, rules: withReleased(rules, released?.get(line.key) ?? []), canChoose: true }
   }
 }

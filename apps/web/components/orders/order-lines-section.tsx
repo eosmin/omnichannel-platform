@@ -11,7 +11,7 @@ import {
   shownPriceCents
 } from '../../lib/orders/order-form'
 import type { StockOfLine } from '../../lib/orders/stock-of-line'
-import { formatCents } from '../../lib/products/money'
+import { formatCents, parseCents } from '../../lib/products/money'
 
 import { OrderLineRow } from './order-line-row'
 import { OrderProductPicker } from './order-product-picker'
@@ -36,8 +36,12 @@ export function OrderLinesSection({
   const t = useTranslations('orders.create')
   const tLines = useTranslations('orders.create.lines')
   const format = useFormatter()
+  // A price the member is typing counts in the estimate (when they may write it and it reads as an amount)
+  const priceOf = (line: DraftLine): number =>
+    (canOverridePrice && !locked && line.priceText !== null ? parseCents(line.priceText) : null) ??
+    shownPriceCents(line)
   const subtotal = lines.reduce(
-    (sum, line) => sum + shownPriceCents(line) * (parseQuantity(line.quantity) ?? 0),
+    (sum, line) => sum + priceOf(line) * (parseQuantity(line.quantity) ?? 0),
     0
   )
   return (

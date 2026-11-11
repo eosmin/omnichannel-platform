@@ -5,10 +5,12 @@ import {
   draftFromOrder,
   editablePartsOf,
   type EditableParts,
-  releasedOf
+  isReasonLocked,
+  releasedOf,
+  restoreRemovedLines
 } from './order-edit-form'
 import type { StockRules } from './order-form'
-import { shownPriceCents } from './order-form'
+import { shownPriceCents, withReleased } from './order-form'
 
 const item = (
   over: Partial<OrderDetailView['items'][number]> = {}
@@ -351,5 +353,84 @@ describe('the lines of an existing order', () => {
     const line = draftFromOrder(sold).lines[0] as ReturnType<typeof draftFromOrder>['lines'][number]
     expect(shownPriceCents(line)).toBe(800)
     expect(releasedOf(sold).get(line.key)).toEqual([{ warehouseId: 'wa', quantity: 2 }])
+  })
+})
+
+describe('the reason of a fee, the units an order holds and the lines put back', () => {
+  it('does not leave the reason of a discount taken back behind, and sends a new one typed for the fee', () => {
+    const discounted = order({ discountCents: 200, discountReason: 'loyal' })
+    const draft = draftFromOrder(discounted)
+    draft.discountText = '0'
+    draft.shippingText = '9'
+    // the reason box still holds the old reason
+    expect(buildUpdate(draft, discounted, all, plain, none)).toEqual({
+      ok: true,
+      value: { shippingCents: 900, discountCents: 0, discountReason: null }
+    })
+  })
+
+  it('takes the reason of a fee when the status locks the discount and the order has none, and not when it has one', () => {
+    const locked: EditableParts = { items: false, shipping: true, discount: false }
+    const draft = draftFromOrder(order())
+    draft.shippingText = '9'
+    draft.discountReason = 'far away'
+    expect(isReasonLocked(order(), locked)).toBe(false)
+    expect(buildUpdate(draft, order(), locked, plain, none)).toEqual({
+      ok: true,
+      value: { shippingCents: 900, discountReason: 'far away' }
+    })
+    const discounted = order({ discountCents: 200, discountReason: 'loyal' })
+    expect(isReasonLocked(discounted, locked)).toBe(true)
+    const other = draftFromOrder(discounted)
+    other.shippingText = '9'
+    other.discountReason = 'changed'
+    expect(buildUpdate(other, discounted, locked, plain, none)).toEqual({
+      ok: true,
+      value: { shippingCents: 900 }
+    })
+  })
+
+  it('counts the units the order holds as available again for its own edit', () => {
+    const rules: StockRules = {
+      warehouses: [
+        { warehouseId: 'wa', available: 0 },
+        { warehouseId: 'wb', available: 3 }
+      ],
+      allowSplitFulfillment: false,
+      allowNegativeStock: false
+    }
+    expect(withReleased(rules, [{ warehouseId: 'wa', quantity: 5 }]).warehouses).toEqual([
+      { warehouseId: 'wa', available: 5 },
+      { warehouseId: 'wb', available: 3 }
+    ])
+    expect(withReleased(rules, [])).toEqual(rules)
+  })
+
+  it('puts a line taken out and added again back as the order had it', () => {
+    const sold = order({ items: [item({ unitPriceCents: 800, originalUnitPriceCents: 1000 })] })
+    const original = new Map(draftFromOrder(sold).lines.map(line => [line.key, line]))
+    const fresh = {
+      ...(draftFromOrder(sold).lines[0] as ReturnType<typeof draftFromOrder>['lines'][number]),
+      priceText: null,
+      soldPriceCents: null,
+      quantity: '1'
+    }
+    const back = restoreRemovedLines([fresh], [], original)
+    expect(back[0]).toMatchObject({ priceText: '8.00', soldPriceCents: 800, quantity: '2' })
+    // a line that was never removed is left alone, and a new product stays as it is
+    expect(restoreRemovedLines([fresh], [fresh], original)[0]).toBe(fresh)
+    const hat = { ...fresh, key: 'p9:', productId: 'p9' }
+    expect(restoreRemovedLines([hat], [], original)[0]).toBe(hat)
+  })
+
+  it('refuses the edit of a paid order whatever the status', () => {
+    const can = () => true
+    for (const status of ['PENDING_CONFIRMATION', 'CONFIRMED', 'PREPARING']) {
+      expect(editablePartsOf({ status, paymentStatus: 'COMPLETED' }, can)).toEqual({
+        items: false,
+        shipping: false,
+        discount: false
+      })
+    }
   })
 })

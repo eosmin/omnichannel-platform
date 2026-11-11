@@ -12,7 +12,9 @@ import {
   draftFromOrder,
   type EditDraft,
   editablePartsOf,
-  releasedOf
+  releasedOf,
+  restoreRemovedLines,
+  isReasonLocked
 } from '../../lib/orders/order-edit-form'
 import type { FormField, StockRules } from '../../lib/orders/order-form'
 import { useStockOfLines } from '../../lib/orders/use-line-stock'
@@ -114,17 +116,11 @@ function Body({
     )
   }
 
-  // A line taken out and put back is the line the order had (its price, its units), not a new one at today's catalog price
-  const original = new Map(draftFromOrder(base).lines.map(line => [line.key, line]))
   const patch = (changes: Partial<EditDraft>): void => {
     const next = { ...draft, ...changes }
     if (changes.lines !== undefined) {
-      const kept = new Set(draft.lines.map(line => line.key))
-      next.lines = changes.lines.map(line =>
-        !kept.has(line.key) && original.has(line.key)
-          ? (original.get(line.key) as typeof line)
-          : line
-      )
+      const original = new Map(draftFromOrder(base).lines.map(line => [line.key, line]))
+      next.lines = restoreRemovedLines(changes.lines, draft.lines, original)
     }
     setMade({ base, draft: next })
     setWrong(null)
@@ -176,6 +172,7 @@ function Body({
           wrong={wrong?.field ?? null}
           shippingLocked={!editable.shipping}
           discountLocked={!editable.discount}
+          reasonLocked={isReasonLocked(base, editable)}
         />
         {data.updatedAt !== base.updatedAt ? (
           <p role="status" className="text-sm text-amber-700 dark:text-amber-300">
