@@ -1,11 +1,13 @@
 import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
+import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { ChannelIds, ConversationStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 
 import { createConversation, createCustomer, createCustomerIdentity, createTag } from '../builders'
+import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
@@ -25,7 +27,7 @@ interface Page {
   hasMore: boolean
 }
 interface PreviewBody {
-  counts: Record<string, { survivor: number; absorbed: number; merged: number }>
+  counts: Record<string, { survivor: number; absorbed: number; merged: number } | null>
   conflicts: string[]
   error?: { code: string }
 }
@@ -270,8 +272,56 @@ describe('The activity of a customer', () => {
       expect(body.counts.notes).toEqual({ survivor: 0, absorbed: 1, merged: 1 })
       expect(body.counts.tags).toEqual({ survivor: 1, absorbed: 2, merged: 2 })
       expect(body.counts.identities).toEqual({ survivor: 1, absorbed: 1, merged: 2 })
+      expect(body.counts.orders).toEqual({ survivor: 0, absorbed: 0, merged: 0 })
       // Both have a different generated name
       expect(body.conflicts).toEqual(['name'])
+    })
+
+    it('counts the orders of each side, and leaves the count out for a viewer without ORDERS_VIEW', async () => {
+      const a = await createCustomer(owner, { storeId: storeId() })
+      const b = await createCustomer(owner, { storeId: storeId() })
+      const product = await owner.product.create({
+        data: { storeId: storeId(), name: `${prefix}-merge-p`, priceCents: 500 },
+        select: { id: true }
+      })
+      for (const [index, customerId] of [a.id, b.id, b.id].entries()) {
+        await owner.order.create({
+          data: {
+            storeId: storeId(),
+            customerId,
+            orderNumber: `${prefix}-M${index}`,
+            subtotalCents: 500,
+            totalCents: 500,
+            paymentMethod: 'CASH',
+            createdBy: ctx.adminA.id,
+            items: {
+              create: { productId: product.id, productName: 'P', quantity: 1, unitPriceCents: 500 }
+            }
+          }
+        })
+      }
+      const mergeOnly = await actorWithPermissions(owner, app, {
+        prefix,
+        organizationId: ctx.orgA.id,
+        storeId: storeId(),
+        name: 'mergeOnlyA',
+        permissions: [Permissions.CUSTOMERS_MERGE]
+      })
+
+      const withOrders = await asAdmin()
+        .get(ApiRoutes.customers.mergePreview(a.id))
+        .query({ absorbedId: b.id })
+      const without = await api(app, mergeOnly, ctx.storeA)
+        .get(ApiRoutes.customers.mergePreview(a.id))
+        .query({ absorbedId: b.id })
+
+      expect((withOrders.body as PreviewBody).counts.orders).toEqual({
+        survivor: 1,
+        absorbed: 2,
+        merged: 3
+      })
+      expect(without.status).toBe(OK)
+      expect((without.body as PreviewBody).counts.orders).toBeNull()
     })
 
     it('does not call a conflict the same email in another case or the same phone written another way', async () => {

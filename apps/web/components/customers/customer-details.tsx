@@ -12,10 +12,13 @@ import { conversationCount } from '../../lib/customers/conversation-count'
 import { customerDisplayName, initialsOfName, visitorTail } from '../../lib/customers/customer-name'
 import { tagDotColor } from '../../lib/customers/tag-color'
 import {
+  ORDERS_ALL,
   useCustomerConversations,
-  useCustomerIdentityEdits
+  useCustomerIdentityEdits,
+  useCustomerOrders
 } from '../../lib/customers/use-customer-data'
 import { useChannelName } from '../../lib/inbox/use-inbox-data'
+import { formatCents } from '../../lib/products/money'
 import { CustomerAvatar } from '../inbox/customer-avatar'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
@@ -93,8 +96,7 @@ function IdentityRow({
   )
 }
 
-// The count of conversations. The profile has no order figures until Step 4.4, so the stats are
-// "customer since" and this count.
+// The count of conversations
 function ConversationsStat({ customerId }: { customerId: string }): ReactElement | null {
   const t = useTranslations('customers.profile')
   const tCommon = useTranslations('common')
@@ -118,6 +120,51 @@ function ConversationsStat({ customerId }: { customerId: string }): ReactElement
       <dt>{t('stats.conversations')}</dt>
       <dd>{isExact ? count : t('stats.atLeast', { count })}</dd>
     </div>
+  )
+}
+
+// The order figures of TDD_09 §6: orders, total spent and average order, over the orders the store took on (the api
+// computes them; a pending, cancelled or returned order is not counted). They come with the first page of the
+// orders, the same query as the orders tab, so the profile reads them once. Only for who holds CUSTOMERS_VIEW and ORDERS_VIEW.
+function OrderFigures({ customerId }: { customerId: string }): ReactElement | null {
+  const t = useTranslations('customers.profile')
+  const tCommon = useTranslations('common')
+  const format = useFormatter()
+  const { storeId, can } = useStore()
+  // The route asks for both permissions
+  const mayRead = can(ClientPermissions.CUSTOMERS_VIEW) && can(ClientPermissions.ORDERS_VIEW)
+  const orders = useCustomerOrders(storeId, customerId, ORDERS_ALL, mayRead)
+  if (!mayRead) return null
+  const figures = orders.data?.pages[0]?.figures ?? null
+  if (figures === null) {
+    return (
+      <div className="flex justify-between text-sm">
+        <dt>{t('stats.orders')}</dt>
+        <dd className="text-muted-foreground">
+          {orders.isError ? t('stats.failed') : tCommon('loading')}
+        </dd>
+      </div>
+    )
+  }
+  return (
+    <>
+      <div className="flex justify-between text-sm">
+        <dt>{t('stats.orders')}</dt>
+        <dd>{figures.orders}</dd>
+      </div>
+      <div className="flex justify-between text-sm">
+        <dt>{t('stats.totalSpent')}</dt>
+        <dd>{formatCents(format, figures.totalSpentCents)}</dd>
+      </div>
+      <div className="flex justify-between text-sm">
+        <dt>{t('stats.averageOrder')}</dt>
+        <dd>
+          {figures.averageOrderCents === null
+            ? t('stats.none')
+            : formatCents(format, figures.averageOrderCents)}
+        </dd>
+      </div>
+    </>
   )
 }
 
@@ -236,6 +283,7 @@ export function CustomerDetails({
       <Section title={t('stats.title')}>
         <dl className="flex flex-col gap-1">
           <ConversationsStat customerId={customer.id} />
+          <OrderFigures customerId={customer.id} />
           <div className="flex justify-between text-sm">
             <dt>{t('stats.since')}</dt>
             <dd>

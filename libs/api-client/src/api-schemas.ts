@@ -726,7 +726,9 @@ export const customerMergePreviewSchema = z.object({
     notes: mergeCountSchema,
     addresses: mergeCountSchema,
     tags: mergeCountSchema,
-    identities: mergeCountSchema
+    identities: mergeCountSchema,
+    // Null when the viewer lacks ORDERS_VIEW (the api leaves the count out)
+    orders: mergeCountSchema.nullable()
   }),
   // A field this page does not know is dropped: the dialog can only draw the ones it has a label for
   conflicts: z.array(z.string())
@@ -740,7 +742,7 @@ export type CustomerIdentityView = z.output<typeof customerIdentitySchema>
 // POST /customers/:id/tags answers the tags the customer now holds
 export const customerTagListSchema = customerDetailSchema.shape.tags
 
-// The three kinds of entry of GET /customers/:id/timeline (orders join in Step 4.3)
+// The four kinds of entry of GET /customers/:id/timeline
 const timelineConversationSchema = z.object({
   type: z.literal('conversation'),
   id: z.string(),
@@ -766,8 +768,20 @@ const timelineMergeSchema = z.object({
   unmergeUntil: z.string(),
   unmergedAt: z.string().nullable()
 })
+// An order of the customer: the number, the state and the total, never a note, an address or a phone. The state
+// stays text so a value of a newer server still draws; money is whole cents of the order currency.
+const timelineOrderSchema = z.object({
+  type: z.literal('order'),
+  id: z.string(),
+  at: z.string(),
+  orderNumber: z.string(),
+  status: z.string(),
+  totalCents: z.number().int(),
+  currency: z.string()
+})
 export const customerTimelineEntrySchema = z.discriminatedUnion('type', [
   timelineConversationSchema,
+  timelineOrderSchema,
   timelineNoteSchema,
   timelineMergeSchema
 ])

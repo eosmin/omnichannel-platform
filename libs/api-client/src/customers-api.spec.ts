@@ -66,12 +66,30 @@ describe('fetchCustomerTimeline', () => {
   })
 
   it('leaves out an entry of a kind it does not know, and keeps the rest', async () => {
-    const future = { type: 'order', id: 'o1', at: '2026-10-30T10:00:00.000Z' }
+    const future = { type: 'refund', id: 'o1', at: '2026-10-30T10:00:00.000Z' }
     const { client } = setup(json(200, { data: [future, note], nextCursor: null, hasMore: false }))
 
     const page = await fetchCustomerTimeline(client, 's1', 'c1', undefined, null)
 
     expect(page.data).toEqual([note])
+  })
+
+  it('draws an order entry and drops one that is missing its total', async () => {
+    const order = {
+      type: 'order',
+      id: 'o1',
+      at: '2026-10-30T10:00:00.000Z',
+      orderNumber: '00012',
+      status: 'CONFIRMED',
+      totalCents: 1999,
+      currency: 'USD'
+    }
+    const broken = { type: 'order', id: 'o2', at: '2026-10-30T10:00:00.000Z' }
+    const { client } = setup(json(200, { data: [order, broken], nextCursor: null, hasMore: false }))
+
+    const page = await fetchCustomerTimeline(client, 's1', 'c1', 'order', null)
+
+    expect(page.data).toEqual([order])
   })
 
   it('sends the store of the request in X-Store-Id', async () => {
@@ -215,7 +233,8 @@ describe('the merge', () => {
           notes: count,
           addresses: count,
           tags: count,
-          identities: count
+          identities: count,
+          orders: count
         },
         conflicts: ['name']
       })
@@ -228,6 +247,28 @@ describe('the merge', () => {
     )
     expect(preview.conflicts).toEqual(['name'])
     expect(preview.counts.conversations.merged).toBe(6)
+  })
+
+  it('reads a preview whose order count the api left out', async () => {
+    const { client } = setup(
+      json(200, {
+        survivor: side('c1'),
+        absorbed: side('c2'),
+        counts: {
+          conversations: count,
+          notes: count,
+          addresses: count,
+          tags: count,
+          identities: count,
+          orders: null
+        },
+        conflicts: []
+      })
+    )
+
+    const preview = await fetchCustomerMergePreview(client, 's1', 'c1', 'c2')
+
+    expect(preview.counts.orders).toBeNull()
   })
 
   it('posts the absorbed customer and the choices to the survivor', async () => {

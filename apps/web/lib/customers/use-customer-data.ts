@@ -25,6 +25,7 @@ import {
   type CustomerIdentityInput,
   type CustomerIdentityView,
   type CustomerMergePreviewView,
+  type CustomerOrdersPageView,
   type CustomerDetailView,
   type CustomerListPageView,
   type CustomerNoteView,
@@ -34,6 +35,7 @@ import {
   detachCustomerTag,
   fetchCustomer,
   fetchCustomerMergePreview,
+  fetchCustomerOrders,
   fetchCustomers,
   fetchCustomerConversations,
   fetchCustomerTimeline,
@@ -52,6 +54,9 @@ import { PaginationLimits, type CustomerTimelineType } from '@platform/core/doma
 import { apiClient } from '../api'
 
 // `customerId` is null while the conversation that names it is still loading: nothing is read then
+// The value of the status filter that means "every state"
+export const ORDERS_ALL = 'all'
+
 export function useCustomer(
   storeId: string,
   customerId: string | null
@@ -74,6 +79,31 @@ export function useCustomerTimeline(
     queryFn: ({ pageParam, signal }) =>
       fetchCustomerTimeline(apiClient, storeId, customerId, type, pageParam, signal),
     getNextPageParam: last => (last.hasMore ? last.nextCursor : undefined)
+  })
+}
+
+// The orders of the customer, a page per cursor, narrowed by a state ('all' is no filter). The figures come
+// with the first page only. `enabled` is false for a viewer without ORDERS_VIEW, whom the route refuses.
+export function useCustomerOrders(
+  storeId: string,
+  customerId: string,
+  status: string,
+  enabled: boolean
+): UseInfiniteQueryResult<InfiniteData<CustomerOrdersPageView, string | null>> {
+  return useInfiniteQuery({
+    queryKey: QueryKeys.customers.orders(storeId, customerId, status),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) =>
+      fetchCustomerOrders(
+        apiClient,
+        storeId,
+        customerId,
+        status === ORDERS_ALL ? undefined : status,
+        pageParam,
+        signal
+      ),
+    getNextPageParam: last => (last.hasMore ? last.nextCursor : undefined),
+    enabled
   })
 }
 

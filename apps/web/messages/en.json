@@ -253,7 +253,11 @@
         "atLeast": "{count}+",
         "unknown": "Unknown",
         "since": "Customer since",
-        "failed": "Not available"
+        "failed": "Not available",
+        "orders": "Orders",
+        "totalSpent": "Total spent",
+        "averageOrder": "Average order",
+        "none": "None yet"
       },
       "tags": "Tags",
       "noTags": "No tags.",
@@ -262,7 +266,12 @@
       "defaultAddress": "Default",
       "failed": "The profile could not be loaded.",
       "noAccess": "You do not have access to customer profiles.",
-      "anonymous": "Visitor ····{digits}"
+      "anonymous": "Visitor ····{digits}",
+      "sectionLabel": "Section of the profile",
+      "sections": {
+        "activity": "Activity",
+        "orders": "Orders"
+      }
     },
     "panel": {
       "title": "Customer",
@@ -274,6 +283,7 @@
       "filters": {
         "all": "All",
         "conversation": "Conversations",
+        "order": "Orders",
         "note": "Notes"
       },
       "conversation": "Conversation on {channel}",
@@ -291,7 +301,9 @@
       "undoUntil": "Can be undone until {date}",
       "undoTitle": "Undo the merge?",
       "undoDescription": "The other customer comes back with their conversations, notes, addresses, tags and channels, as they were before the merge.",
-      "undoConfirm": "Undo the merge"
+      "undoConfirm": "Undo the merge",
+      "order": "Order #{number}",
+      "openOrder": "Open the order"
     },
     "edit": {
       "editProfile": "Edit the contact data",
@@ -381,7 +393,8 @@
         "notes": "Notes",
         "addresses": "Addresses",
         "tags": "Tags",
-        "identities": "Channels"
+        "identities": "Channels",
+        "orders": "Orders"
       },
       "countSum": "{survivor} + {absorbed} = {merged}",
       "countUnion": "{survivor} + {absorbed} = {merged} (without repeats)",
@@ -398,6 +411,16 @@
       "confirmLabel": "Type {word} to confirm",
       "confirm": "Merge the customers",
       "searchHint": "Type a name, email or phone number to find the duplicate."
+    },
+    "orders": {
+      "filterLabel": "Filter the orders",
+      "all": "All",
+      "failed": "The orders could not be loaded.",
+      "empty": "No orders yet.",
+      "noMatches": "No order in this state.",
+      "loadMore": "Load more",
+      "lines": "{count, plural, one {# line} other {# lines}}",
+      "viewAll": "View orders"
     }
   },
   "email": {

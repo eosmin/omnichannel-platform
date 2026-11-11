@@ -259,10 +259,16 @@ export class CustomersController {
   @Get(ApiRoutes.customers.mergePreview(':id'))
   mergePreview(
     @CurrentStore() store: { id: string },
+    @CurrentPermissions() held: readonly Permission[],
     @Param('id', id()) survivorId: string,
     @Query(new ZodValidationPipe(mergePreviewQuerySchema)) query: MergePreviewQuery
   ): Promise<MergePreview> {
-    return this.mergePreviews.preview(store.id, survivorId, query.absorbedId)
+    return this.mergePreviews.preview(
+      store.id,
+      survivorId,
+      query.absorbedId,
+      held.includes(Permissions.ORDERS_VIEW)
+    )
   }
 
   // Conversations, orders, notes and merges of the customer. The conversations follow the visibility of

@@ -32,6 +32,8 @@ export interface MergePreview {
     addresses: MergeCount
     tags: MergeCount
     identities: MergeCount
+    // Null for a viewer without ORDERS_VIEW: how many orders a customer has is not theirs to read
+    orders: MergeCount | null
   }
   // The contact fields the user chooses between: only those where both sides have a value and the
   // values differ. A field with one side empty is filled from the other by the merge.
@@ -46,7 +48,7 @@ const SIDE_SELECT = {
   phoneNormalized: true,
   identities: { select: { id: true, channelType: true } },
   tags: { select: { id: true } },
-  _count: { select: { conversations: true, notes: true, addresses: true } }
+  _count: { select: { conversations: true, notes: true, addresses: true, orders: true } }
 } as const
 
 // What a merge would do, counted before anyone confirms it (TDD_09 §6.1, step 2). Both customers are
@@ -55,7 +57,12 @@ const SIDE_SELECT = {
 export class CustomerMergePreviewService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async preview(storeId: string, survivorId: string, absorbedId: string): Promise<MergePreview> {
+  async preview(
+    storeId: string,
+    survivorId: string,
+    absorbedId: string,
+    mayViewOrders: boolean
+  ): Promise<MergePreview> {
     if (survivorId === absorbedId) {
       throw new PlatformException(
         ErrorCodes.CUSTOMER_MERGE_SAME_ID,
@@ -100,7 +107,8 @@ export class CustomerMergePreviewService {
           absorbed.tags.length,
           union(survivor.tags, absorbed.tags)
         ),
-        identities: count(survivor.identities.length, absorbed.identities.length)
+        identities: count(survivor.identities.length, absorbed.identities.length),
+        orders: mayViewOrders ? count(survivor._count.orders, absorbed._count.orders) : null
       },
       conflicts: MergeableFields.filter(field => {
         // The same address in another case, or the same number written another way, is no conflict
