@@ -12,6 +12,9 @@ export interface SettingsEntry {
   permission: Permission | null
   // A second permission the page needs to read its own data, when the api asks one the entry does not
   also?: Permission
+  // Another permission that opens the page in place of `permission`. Only the organization list uses it, and
+  // `visibleEntries` of `entries.ts` reads it: the store navigation, which every screen of the store loads, does not
+  or?: Permission
 }
 
 export function storeSettingsEntries(storeId: string): SettingsEntry[] {

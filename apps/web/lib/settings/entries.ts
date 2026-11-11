@@ -1,11 +1,11 @@
 import { AppPaths } from '@platform/api-client'
 import { type Permission, ClientPermissions } from '@platform/core/auth'
 
-import { type SettingsEntry, visibleEntries } from './store-entries'
+import { type SettingsEntry, visibleEntries as visibleStoreEntries } from './store-entries'
 
 // The store pages live in their own module so that the store navigation, which every screen of the
 // store loads, does not carry the organization and account lists with it
-export { type SettingsEntry, storeSettingsEntries, visibleEntries } from './store-entries'
+export { type SettingsEntry, storeSettingsEntries } from './store-entries'
 
 export const SettingsAreas = { STORE: 'store', ORG: 'org', ACCOUNT: 'account' } as const
 export type SettingsArea = (typeof SettingsAreas)[keyof typeof SettingsAreas]
@@ -22,6 +22,14 @@ export const ORG_SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     labelKey: 'warehouses',
     href: AppPaths.org.warehouses,
     permission: ClientPermissions.INVENTORY_VIEW
+  },
+  {
+    id: 'counts',
+    labelKey: 'counts',
+    href: AppPaths.org.counts,
+    permission: ClientPermissions.INVENTORY_MANAGE_COUNTS,
+    // An approver holds only the permission to apply: either one opens the page
+    or: ClientPermissions.INVENTORY_APPLY_COUNTS
   },
   {
     id: 'profile',
@@ -47,6 +55,22 @@ export const ACCOUNT_SETTINGS_ENTRIES: readonly SettingsEntry[] = [
   },
   { id: 'security', labelKey: 'security', href: AppPaths.account.security, permission: null }
 ]
+
+// What the person may open. An entry with `or` opens for either permission (the page of the counts: who counts or who
+// approves); the rest is the rule of the store list
+export function visibleEntries(
+  entries: readonly SettingsEntry[],
+  can: (permission: Permission) => boolean
+): SettingsEntry[] {
+  const alternative = (entry: SettingsEntry): boolean =>
+    entry.or !== undefined && entry.permission !== null && can(entry.or)
+  // An entry that its second permission does not allow stays out whichever one opened the page
+  return entries.filter(
+    entry =>
+      (alternative(entry) && (entry.also === undefined || can(entry.also))) ||
+      visibleStoreEntries([entry], can).length > 0
+  )
+}
 
 // The page to open when the area itself is opened ("/org", "/s/x/settings"): the first one the
 // person may see, or null when there is none

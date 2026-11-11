@@ -30,6 +30,7 @@ export const DestructiveActionTiers = {
   DELETE_TAG: HIGH, // Settings → Tags; takes the tag off every customer and conversation that has it
   CANCEL_IN_TRANSIT_TRANSFER: HIGH, // TDD_16
   APPLY_STOCK_COUNT: HIGH, // TDD_16
+  CANCEL_STOCK_COUNT: HIGH, // TDD_16; the quantities counted so far are thrown away and the sheet cannot be opened again
   DISCONNECT_CARRIER_WITH_OPEN_SHIPMENTS: HIGH, // TDD_17
   MARK_GUIDE_VOIDED_BY_HAND: HIGH, // TDD_17
   VOID_CONFIRMED_REMITTANCE: HIGH, // TDD_17
