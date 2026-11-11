@@ -494,7 +494,7 @@
     "INVENTORY_COUNT_LINES_REFUSED": "Algunas líneas del conteo no se pueden aplicar: revísalas o cancela el conteo",
     "INVENTORY_TRANSFER_EMPTY": "El traslado no tiene productos. Agrega al menos uno antes de enviarlo.",
     "INVENTORY_TRANSFER_INVALID_STATUS_TRANSITION": "El traslado no puede pasar a ese estado",
-    "INVENTORY_TRANSFER_LINES_OUT_OF_REACH": "Parte de lo que no llegó es de tiendas a las que no perteneces. Pide a alguien que las integre que cierre el traslado.",
+    "INVENTORY_TRANSFER_LINES_OUT_OF_REACH": "Una parte de este traslado es de tiendas a las que no perteneces. Pide a alguien que pertenezca a todas, como el dueño, que lo haga.",
     "INVENTORY_TRANSFER_RECEIVE_EXCEEDS_DISPATCHED": "No puedes recibir más unidades de las que faltan por llegar.",
     "INVENTORY_TRANSFER_SAME_WAREHOUSE": "El origen y el destino deben ser distintos",
     "INVENTORY_TRANSFER_SHORTAGE_ACTION_INVALID": "Elige qué hacer con cada producto que no llegó completo, y solo con esos.",
@@ -972,6 +972,131 @@
       "deactivate": "La bodega todavía tiene unidades o reservas. Muévelas o úsalas primero y luego desactívala.",
       "unlink": "Esa tienda tiene existencias reservadas en esta bodega. Espera a que sus pedidos se surtan o se cancelen y luego desvincúlala.",
       "openTransfer": "Un traslado en camino sale de esta bodega o llega a ella. Recíbelo o cancélalo primero."
+    }
+  },
+  "transfers": {
+    "title": "Traslados",
+    "detailTitle": "Traslado",
+    "description": "Movimientos de existencias entre las bodegas de la organización. Solo ves las líneas de tus tiendas.",
+    "back": "Todos los traslados",
+    "more": "Mostrar más",
+    "empty": "Todavía no hay traslados.",
+    "lineCount": "{count, plural, one {# línea} other {# líneas}}",
+    "createdAt": "Creado el {date}",
+    "dispatchedAt": "Enviado el {date}",
+    "closedAt": "Cerrado el {date}",
+    "dispatched": "Traslado enviado. Las unidades salieron del origen.",
+    "new": {
+      "open": "Nuevo traslado",
+      "title": "Nuevo traslado",
+      "description": "Elige de dónde salen las existencias y a dónde van. Los artículos se agregan en la página siguiente.",
+      "formLabel": "Nuevo traslado",
+      "from": "Sale de",
+      "to": "Va a",
+      "same": "El origen y el destino deben ser distintos.",
+      "needTwo": "Necesitas dos bodegas activas para mover existencias entre ellas.",
+      "submit": "Crear borrador"
+    },
+    "filters": {
+      "status": "Estado",
+      "allStatuses": "Todos los estados",
+      "warehouse": "Bodega",
+      "allWarehouses": "Todas las bodegas"
+    },
+    "status": {
+      "draft": "Borrador",
+      "in_transit": "En camino",
+      "received": "Recibido",
+      "cancelled": "Cancelado"
+    },
+    "picker": {
+      "heading": "Agregar artículos",
+      "store": "Tienda del artículo",
+      "search": "Buscar por nombre o SKU",
+      "units": "Unidades",
+      "wrongUnits": "Escribe un número entero de unidades, 1 o más.",
+      "chooseVariant": "¿Qué variante de {name}?",
+      "hint": "Escribe al menos {count} caracteres.",
+      "searching": "Buscando…",
+      "none": "Ningún artículo coincide.",
+      "failed": "La búsqueda falló. Inténtalo de nuevo."
+    },
+    "draft": {
+      "formLabel": "Borrador del traslado",
+      "from": "Sale de",
+      "to": "Va a",
+      "sameWarehouse": "El origen y el destino deben ser distintos.",
+      "note": "Nota (opcional)",
+      "linesLabel": "Artículos del traslado",
+      "lines": "{count, plural, one {# artículo} other {# artículos}}",
+      "noLines": "Agrega al menos un artículo antes de enviarlo.",
+      "ownStoresOnly": "Solo ves y cambias los artículos de tus tiendas.",
+      "saved": "Borrador guardado",
+      "save": "Guardar borrador",
+      "dispatch": "Enviar traslado",
+      "saveFirst": "Guarda tus cambios para poder enviarlo.",
+      "wrongUnits": "Escribe un número entero de unidades, 1 o más.",
+      "unitsOf": "Unidades de {name}",
+      "remove": "Quitar {name}"
+    },
+    "receive": {
+      "formLabel": "Recibir unidades",
+      "code": "Escanea o escribe un SKU",
+      "codeHint": "Enter suma una unidad de ese artículo. Si escribes un nombre, la lista se filtra.",
+      "notInTransfer": "Ese código no está en este traslado.",
+      "alreadyComplete": "Ese artículo ya llegó completo.",
+      "scanned": "Se sumó una unidad de {name}",
+      "all": "Recibir todo lo pendiente",
+      "noMatch": "Ninguna línea coincide.",
+      "nothingEntered": "Escribe las unidades que llegaron.",
+      "done": "Unidades recibidas",
+      "nothingPending": "Todo ya llegó.",
+      "submit": "Recibir",
+      "sent": "Enviadas",
+      "received": "Recibidas",
+      "pending": "Pendientes",
+      "complete": "Completa",
+      "lessOf": "Una unidad menos de {name}",
+      "moreOf": "Una unidad más de {name}",
+      "unitsOf": "Unidades recibidas de {name}",
+      "wrongUnits": "Escribe un número entero de 0 a {max}."
+    },
+    "close": {
+      "open": "Cerrar con faltante",
+      "title": "Cerrar con faltante",
+      "description": "Lo que no llegó ya no se espera. Indica qué pasa con cada unidad que falta.",
+      "nothingShort": "Todo llegó: no hay nada que cerrar.",
+      "missingOf": "{name}: {count, plural, one {falta # unidad} other {faltan # unidades}}",
+      "actions": {
+        "return_to_source": {
+          "label": "Devolver al origen",
+          "hint": "Las unidades vuelven a las existencias de {warehouse}."
+        },
+        "write_off": {
+          "label": "Dar de baja como perdidas",
+          "hint": "Las unidades salen de las existencias y quedan registradas como pérdida."
+        }
+      },
+      "chooseAll": "Elige qué hacer con cada línea que falta.",
+      "back": "Volver",
+      "submit": "Cerrar traslado",
+      "done": "Traslado cerrado"
+    },
+    "cancel": {
+      "open": "Cancelar traslado",
+      "title": "¿Cancelar este traslado?",
+      "draftBody": "El borrador se descarta. No se movió ninguna existencia.",
+      "inTransitBody": "{count, plural, one {La # unidad que no llegó vuelve a {warehouse}.} other {Las # unidades que no llegaron vuelven a {warehouse}.}} Lo que ya llegó se queda donde está.",
+      "confirm": "Cancelar traslado",
+      "done": "Traslado cancelado"
+    },
+    "lines": {
+      "label": "Artículos del traslado",
+      "heading": "{count, plural, one {# artículo} other {# artículos}}",
+      "progress": "{sent} enviadas, {received} recibidas",
+      "writtenOff": "{count, plural, one {# unidad dada de baja como perdida} other {# unidades dadas de baja como perdidas}}",
+      "returned": "{count, plural, one {# unidad devuelta al origen} other {# unidades devueltas al origen}}",
+      "ownStoresOnly": "Solo ves los artículos de tus tiendas."
     }
   },
   "realtime": {
@@ -1946,6 +2071,7 @@
         "title": "Organización",
         "stores": "Tiendas",
         "warehouses": "Bodegas",
+        "transfers": "Traslados",
         "profile": "Perfil"
       },
       "account": {
@@ -2682,6 +2808,7 @@
         "orderItems": "{count, plural, one {# línea de pedido} other {# líneas de pedido}}",
         "inventoryMovements": "{count, plural, one {# movimiento de inventario} other {# movimientos de inventario}}",
         "inventoryLevels": "{count, plural, one {# nivel de stock} other {# niveles de stock}}",
+        "transferLines": "{count, plural, one {# línea de traslado} other {# líneas de traslado}}",
         "media": "{count, plural, one {# imagen} other {# imágenes}}"
       }
     },

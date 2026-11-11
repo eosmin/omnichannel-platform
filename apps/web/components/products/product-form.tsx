@@ -135,7 +135,9 @@ export function ProductForm({
   const history = writes.remove.error
   const hasHistory = conflictOf(history) === ProductConflicts.HAS_HISTORY
   const counts = historyCountsOf(history)
-  const parts = (['orderItems', 'inventoryMovements', 'inventoryLevels', 'media'] as const)
+  const parts = (
+    ['orderItems', 'inventoryMovements', 'inventoryLevels', 'transferLines', 'media'] as const
+  )
     .filter(key => counts[key] > 0)
     .map(key => t(`delete.history.${key}`, { count: counts[key] }))
     .join(', ')

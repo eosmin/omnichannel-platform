@@ -12,6 +12,8 @@ export interface SettingsEntry {
   permission: Permission | null
   // A second permission the page needs to read its own data, when the api asks one the entry does not
   also?: Permission
+  // A page that opens with either of two permissions (the transfers: making them or receiving them)
+  orPermission?: Permission
 }
 
 export function storeSettingsEntries(storeId: string): SettingsEntry[] {
@@ -92,7 +94,9 @@ export function visibleEntries(
 ): SettingsEntry[] {
   return entries.filter(
     entry =>
-      (entry.permission === null || can(entry.permission)) &&
+      (entry.permission === null ||
+        can(entry.permission) ||
+        (entry.orPermission !== undefined && can(entry.orPermission))) &&
       (entry.also === undefined || can(entry.also))
   )
 }

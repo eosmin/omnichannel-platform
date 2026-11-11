@@ -24,6 +24,13 @@ export const ORG_SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     permission: ClientPermissions.INVENTORY_VIEW
   },
   {
+    id: 'transfers',
+    labelKey: 'transfers',
+    href: AppPaths.org.transfers,
+    permission: ClientPermissions.INVENTORY_MANAGE_TRANSFERS,
+    orPermission: ClientPermissions.INVENTORY_RECEIVE_TRANSFERS
+  },
+  {
     id: 'profile',
     labelKey: 'profile',
     href: AppPaths.org.profile,

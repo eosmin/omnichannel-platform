@@ -17,6 +17,8 @@ export const ClientPermissions = {
   CUSTOMERS_MERGE: 'customers:merge',
   CUSTOMERS_VIEW: 'customers:view',
   INVENTORY_ADJUST: 'inventory:adjust',
+  INVENTORY_MANAGE_TRANSFERS: 'inventory:manage_transfers',
+  INVENTORY_RECEIVE_TRANSFERS: 'inventory:receive_transfers',
   INVENTORY_VIEW: 'inventory:view',
   MEDIA_DOWNLOAD_ALL: 'media:download_all',
   MEDIA_UPLOAD: 'media:upload',

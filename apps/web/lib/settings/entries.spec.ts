@@ -18,6 +18,23 @@ const holding =
   (permission: string) =>
     held.includes(permission)
 
+describe('the transfers entry', () => {
+  const idsOf = (...held: string[]): string[] =>
+    visibleEntries(ORG_SETTINGS_ENTRIES, holding(...held)).map(entry => entry.id)
+
+  it('opens with either permission of transfers, and with neither it is not listed', () => {
+    expect(idsOf(Permissions.INVENTORY_MANAGE_TRANSFERS)).toEqual(['transfers'])
+    expect(idsOf(Permissions.INVENTORY_RECEIVE_TRANSFERS)).toEqual(['transfers'])
+    expect(idsOf(Permissions.INVENTORY_VIEW)).toEqual(['warehouses'])
+  })
+
+  it('is the first page of a person who only receives transfers', () => {
+    expect(
+      firstVisibleHref(ORG_SETTINGS_ENTRIES, holding(Permissions.INVENTORY_RECEIVE_TRANSFERS))
+    ).toBe('/org/transfers')
+  })
+})
+
 describe('settings entries', () => {
   it('shows an organization admin both organization pages', () => {
     const can = holding(

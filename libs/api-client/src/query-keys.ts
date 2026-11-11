@@ -112,8 +112,16 @@ export const QueryKeys = {
     all: (storeId: string) => ['warehouses', storeId] as const,
     list: (storeId: string) => ['warehouses', storeId, 'list'] as const
   },
+  // Keyed by the store of the request, like the warehouses: every mutation makes the ROOT stale, so the list and the
+  // detail of every store's cache are read again (what a transfer shows is the lines of the caller's stores)
   transfers: {
-    all: (storeId: string) => ['transfers', storeId] as const
+    root: ['transfers'] as const,
+    all: (storeId: string) => ['transfers', storeId] as const,
+    list: (storeId: string, status: string, warehouseId: string) =>
+      ['transfers', storeId, 'list', status, warehouseId] as const,
+    byId: (storeId: string, id: string) => ['transfers', storeId, id] as const,
+    // The autocomplete of the draft: the products of one store by text
+    picker: (storeId: string, q: string) => ['transfers', storeId, 'picker', q] as const
   },
   counts: {
     all: (storeId: string) => ['counts', storeId] as const

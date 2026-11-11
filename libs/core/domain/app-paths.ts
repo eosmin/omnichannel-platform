@@ -57,6 +57,7 @@ export const AppPaths = {
     stores: '/org/stores',
     warehouses: '/org/warehouses',
     transfers: '/org/transfers',
+    transfer: (id: string) => `/org/transfers/${id}`,
     counts: '/org/counts',
     auditLog: '/org/audit-log',
     compliance: '/org/compliance'
