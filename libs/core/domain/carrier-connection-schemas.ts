@@ -13,11 +13,17 @@ const MAX_CREDENTIALS_BYTES = 8 * 1024
 
 // A value that fits once written as JSON and holds no NUL character in a key or a text: Postgres refuses it, and that would
 // be a 500 where the answer is a 400
-function hasNul(value: unknown): boolean {
+// Depth is bounded first: a body nested tens of thousands of levels deep would overflow the stack of the walk and of
+// JSON.stringify, and that is a 400 here and not a 500 there
+const MAX_DEPTH = 8
+function hasNul(value: unknown, depth = 0): boolean {
+  if (depth > MAX_DEPTH) return true
   if (typeof value === 'string') return value.includes('\u0000')
-  if (Array.isArray(value)) return value.some(hasNul)
+  if (Array.isArray(value)) return value.some(inner => hasNul(inner, depth + 1))
   if (typeof value === 'object' && value !== null) {
-    return Object.entries(value).some(([key, inner]) => key.includes('\u0000') || hasNul(inner))
+    return Object.entries(value).some(
+      ([key, inner]) => key.includes('\u0000') || hasNul(inner, depth + 1)
+    )
   }
   return false
 }
@@ -26,9 +32,9 @@ const boundedRecord = z
   .record(z.string(), z.unknown())
   .refine(
     value =>
-      new TextEncoder().encode(JSON.stringify(value)).length <= MAX_CREDENTIALS_BYTES &&
-      !hasNul(value),
-    { message: 'too large, or it holds a NUL character' }
+      !hasNul(value) &&
+      new TextEncoder().encode(JSON.stringify(value)).length <= MAX_CREDENTIALS_BYTES,
+    { message: 'too large, too deep, or it holds a NUL character' }
   )
 
 const feeCents = z.number().int().min(0).max(CarrierConnectionLimits.MAX_FEE_CENTS)

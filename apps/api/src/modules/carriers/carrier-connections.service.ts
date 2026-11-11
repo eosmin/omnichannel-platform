@@ -9,6 +9,7 @@ import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { CredentialCipher, generateToken } from '@platform/core/crypto'
 import {
+  DatabaseNull,
   isUniqueViolation,
   lockStoreForWrite,
   lockStoreScope,
@@ -23,6 +24,7 @@ import {
   CarrierConnectionStatus,
   CarrierHealthReasons,
   CarrierLockScopes,
+  singleLineText,
   type ConnectCarrierBody,
   type CursorPage,
   isInstallationActive,
@@ -218,7 +220,12 @@ export class CarrierConnectionsService {
     const secret = this.registry.hasCapability(plugin.id, CarrierCapability.WEBHOOK_STATUS)
       ? generateToken(CARRIER_WEBHOOK_SECRET_BYTES)
       : null
-    const displayName = body.displayName ?? answer.displayName
+    // The name the plugin gives is cleaned as the one the owner types is: one visible line
+    const displayName =
+      body.displayName ??
+      singleLineText(CarrierConnectionLimits.DISPLAY_NAME_MAX_LENGTH, 1)
+        .catch(() => 'Carrier')
+        .parse(answer.displayName)
 
     let created: { id: string; view: CarrierConnectionView }
     try {
@@ -346,8 +353,12 @@ export class CarrierConnectionsService {
         ? null
         : await this.askToConnect(plugin, storeId, body.credentials)
     const answer = asked === null ? null : asked.answer
-    const credentials =
-      answer === null || internal ? undefined : this.cipher.seal(answer.credentials)
+    let credentials: ReturnType<CredentialCipher['seal']> | undefined
+    try {
+      credentials = answer === null || internal ? undefined : this.cipher.seal(answer.credentials)
+    } catch {
+      throw invalidInput('the credentials cannot be stored')
+    }
     const local = asked === null ? null : asked.local
 
     try {
@@ -433,7 +444,7 @@ export class CarrierConnectionsService {
             minShippingFeeCents: body.minShippingFeeCents,
             maxShippingFeeCents: body.maxShippingFeeCents,
             remittanceDeductsFee: body.remittanceDeductsFee,
-            ...(answer === null ? {} : { contact: contactOf(local, answer) }),
+            ...(answer === null ? {} : { contact: contactOf(local, answer) ?? DatabaseNull }),
             // New credentials that the carrier accepted clear what the last failure said
             ...(answer === null
               ? {}
@@ -465,10 +476,8 @@ export class CarrierConnectionsService {
         }
       })
     } catch (error) {
-      // New credentials that were not kept: the account the carrier made for them is not left behind
-      if (answer !== null && plugin !== undefined) {
-        await this.forget(plugin, storeId, connectionId, answer)
-      }
+      // New credentials that were not kept are NOT forgotten at the carrier: they may be a new key of the account the live
+      // connection still uses, and telling the carrier to drop it would kill that connection (plan 4.8, B2 (m))
       if (isUniqueViolation(error)) {
         throw new PlatformException(
           ErrorCodes.RESOURCE_ALREADY_EXISTS,
@@ -496,6 +505,8 @@ export class CarrierConnectionsService {
   async test(storeId: string, connectionId: string): Promise<CarrierTestResult> {
     const row = await this.rowOf(this.prisma.client, storeId, connectionId)
     if (row.status === String(CarrierConnectionStatus.DISABLED)) throw notActive()
+    // No credential is sent to a carrier for an installation that was revoked, even if its uninstall left the connection
+    await this.assertInstalled(this.prisma.client, storeId)
     const plugin = this.registry.find(row.carrierId)
     if (plugin === undefined) throw notActive()
 

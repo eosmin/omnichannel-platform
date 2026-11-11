@@ -23,6 +23,14 @@ describe('connectCarrierSchema', () => {
     ).toBe(false)
   })
 
+  it('refuses a body nested so deep that walking it would overflow the stack, as a validation error', () => {
+    let deep: unknown = 'x'
+    for (let level = 0; level < 50_000; level += 1) deep = [deep]
+    expect(connectCarrierSchema.safeParse({ ...base, credentials: { a: deep } }).success).toBe(
+      false
+    )
+  })
+
   it('bounds the size of the credentials', () => {
     expect(
       connectCarrierSchema.safeParse({ ...base, credentials: { a: 'x'.repeat(9000) } }).success

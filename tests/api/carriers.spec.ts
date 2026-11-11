@@ -376,7 +376,7 @@ describe('Settings → Carriers: the connections of a store', () => {
       expect(fake.callsTo('connect')).toHaveLength(asked)
     })
 
-    it('tells the carrier that the account of new credentials was not kept when the edit fails', async () => {
+    it('does not tell the carrier to forget new credentials of an edit that failed: they may be the key of the live account', async () => {
       const one = made(await external())
       const two = made(await external())
       const told = fake.callsTo('disconnect').length
@@ -384,7 +384,7 @@ describe('Settings → Carriers: the connections of a store', () => {
         .patch(ApiRoutes.carriers.byId(two.id))
         .send({ displayName: one.displayName, credentials: { apiKey: 'new-key' } })
       expect(clash.status).toBe(CONFLICT)
-      expect(fake.callsTo('disconnect')).toHaveLength(told + 1)
+      expect(fake.callsTo('disconnect')).toHaveLength(told)
     })
 
     it('refuses a body with a store, a field it does not know or a rule the carrier would break', async () => {
