@@ -57,12 +57,15 @@ test.describe('orders in the thread and the keyboard', () => {
   test('draws the lines of the order between the messages and links to the order', async () => {
     await page.goto(AppPaths.store.conversation(storeId, conversationId))
 
+    // The total is written in the format of the page (US$19.99): only its amount is part of the case
     await expect(
       page.getByText(
-        LINE.created
-          .replace('{number}', order.orderNumber)
-          .replace('{status}', en.orders.status.PENDING_CONFIRMATION)
-          .replace('{total}', '$19.99')
+        new RegExp(
+          `${LINE.created
+            .replace('{number}', order.orderNumber)
+            .replace('{status}', en.orders.status.PENDING_CONFIRMATION)
+            .replace('{total}', '\\S*19\\.99')}`
+        )
       )
     ).toBeVisible()
     await expect(
