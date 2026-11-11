@@ -90,8 +90,32 @@ export class ChannelTemplatesService {
   async render(storeId: string, body: TemplateBody, viewer: Viewer): Promise<RenderedTemplate> {
     // Asking the provider is for who may send the template, whoever calls this
     requireAnyPermission(viewer.held, [Permissions.MESSAGES_SEND_TEMPLATE])
+    return this.renderIn(
+      storeId,
+      body.conversationId,
+      { name: body.templateName, language: body.language, variables: body.variables },
+      viewer
+    )
+  }
+
+  // The same check for the platform itself: the order messages (TDD_17 §4.7) pick the template linked to the order template,
+  // no member picks it, so there is no viewer and no permission to ask. The conversation is still one of the store.
+  renderForSystem(
+    storeId: string,
+    conversationId: string,
+    template: { name: string; language: string; variables: readonly string[] }
+  ): Promise<RenderedTemplate> {
+    return this.renderIn(storeId, conversationId, template, null)
+  }
+
+  private async renderIn(
+    storeId: string,
+    conversationId: string,
+    wanted: { name: string; language: string; variables: readonly string[] },
+    viewer: Viewer | null
+  ): Promise<RenderedTemplate> {
     const conversation = await this.prisma.client.conversation.findFirst({
-      where: { id: body.conversationId, storeId },
+      where: { id: conversationId, storeId },
       select: {
         status: true,
         assignedTo: true,
@@ -103,7 +127,7 @@ export class ChannelTemplatesService {
         }
       }
     })
-    if (conversation === null || !canSee(viewer, conversation)) {
+    if (conversation === null || (viewer !== null && !canSee(viewer, conversation))) {
       throw resourceNotFound('conversation')
     }
     const { installation, ...row } = conversation.channelConnection
@@ -117,7 +141,7 @@ export class ChannelTemplatesService {
     }
     const templates = await this.listOf(row)
     const template = templates.find(
-      item => item.name === body.templateName && item.language === body.language
+      item => item.name === wanted.name && item.language === wanted.language
     )
     if (template === undefined) throw resourceNotFound('template')
     if (template.status !== TemplateStatuses.APPROVED) {
@@ -128,7 +152,7 @@ export class ChannelTemplatesService {
         { status: template.status }
       )
     }
-    return { content: fill(template.body, body.variables) }
+    return { content: fill(template.body, wanted.variables) }
   }
 
   private async listOf(

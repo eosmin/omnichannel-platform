@@ -93,6 +93,7 @@ model Store {
   pickupRequests          PickupRequest[]
   bulkLabelJobs           BulkLabelJob[]
   orderMessageTemplates   OrderMessageTemplate[]
+  orderMessageDispatches  OrderMessageDispatch[]
   orderReturns            OrderReturn[]
   orderReturnLines        OrderReturnLine[]
 
@@ -751,17 +752,20 @@ model Order {
   deliveredAt                DateTime? @map("delivered_at")
   cancelledAt                DateTime? @map("cancelled_at")
 
-  store              Store              @relation(fields: [storeId], references: [id]) // No cascade: tax retention
-  carrierConnection  CarrierConnection? @relation(fields: [storeId, carrierConnectionId], references: [storeId, id], onDelete: Restrict)
-  customer           Customer           @relation(fields: [customerId], references: [id])
+  store              Store                  @relation(fields: [storeId], references: [id]) // No cascade: tax retention
+  carrierConnection  CarrierConnection?     @relation(fields: [storeId, carrierConnectionId], references: [storeId, id], onDelete: Restrict)
+  customer           Customer               @relation(fields: [customerId], references: [id])
   items              OrderItem[]
   media              Media[]
   // The shipping tables of Step 4.8 point at the order with a plain foreign key (an order has no (store_id, id) key)
   shipments          Shipment[]
-  returns            OrderReturn[]      @relation("ReturnOrder")
-  replacementReturns OrderReturn[]      @relation("ReturnReplacement")
+  messageDispatches  OrderMessageDispatch[]
+  returns            OrderReturn[]          @relation("ReturnOrder")
+  replacementReturns OrderReturn[]          @relation("ReturnReplacement")
 
   @@unique([storeId, orderNumber])
+  // The key the records that hang from an order point at, so that the database refuses one of another store
+  @@unique([storeId, id])
   @@index([storeId, status, createdAt(sort: Desc)])
   @@index([storeId, carrierConnectionId])
   @@index([storeId, customerId])
@@ -1898,6 +1902,32 @@ model BulkLabelJob {
 }
 
 // The messages a store sends about an order, one template per kind and locale (§4.7).
+// Every message about an order that was due (TDD_17 §4.7): where it went, or why it did not. One row per idempotency key
+// (automatic: `(shipmentId, status, kind)`; manual change: `(orderId, kind, status)`), so a repeated carrier event or a
+// retried request sends nothing twice, and the timeline of the order can say "not sent, reason".
+model OrderMessageDispatch {
+  id             String   @id @default(uuid())
+  storeId        String   @map("store_id")
+  orderId        String   @map("order_id") // Composite foreign key with the store: the database refuses an order of another store
+  kind           String // OrderMessageKind
+  trigger        String // OrderMessageTrigger
+  route          String // OrderMessageRoute
+  reason         String? // OrderMessageNotSentReason, set only when the route is not_sent
+  idempotencyKey String   @map("idempotency_key")
+  messageId      String?  @map("message_id") // The outbound Message of a channel route; plain column like the other message links
+  shipmentId     String?  @map("shipment_id") // The package that caused an automatic message
+  requestedBy    String?  @map("requested_by") // The member who pressed "send" or changed the status; null for the system
+  locale         String? // The language of the template that was used
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  order Order @relation(fields: [storeId, orderId], references: [storeId, id], onDelete: Cascade)
+
+  @@unique([storeId, idempotencyKey])
+  @@index([storeId, orderId, createdAt(sort: Desc)])
+  @@map("order_message_dispatches")
+}
+
 model OrderMessageTemplate {
   id              String   @id @default(uuid())
   storeId         String   @map("store_id")

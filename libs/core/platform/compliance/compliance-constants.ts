@@ -34,6 +34,14 @@ export const LegalBases = {
   LEGITIMATE_INTERESTS: 'legitimate_interests'
 } as const
 
+// What a `ConsentRecord` of a customer is for. Only the purposes the platform reads are named here.
+export const ConsentPurposes = {
+  // Messages about an order the customer placed (TDD_17 §4.7). They rest on the contract (`LegalBases.CONTRACT`), so having
+  // no record is not a refusal; a record with `granted: false` is, and nothing is sent to that customer
+  ORDER_MESSAGES: 'order_messages'
+} as const
+export type ConsentPurpose = (typeof ConsentPurposes)[keyof typeof ConsentPurposes]
+
 export const CookieCategories = {
   NECESSARY: 'necessary', // No consent required
   FUNCTIONAL: 'functional', // Language, last store

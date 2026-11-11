@@ -208,10 +208,9 @@ export const NotificationGroupTypes: Record<NotificationGroup, readonly Notifica
 // only removes its types from this list.
 export const NotificationTypesWithoutEmitter: ReadonlySet<NotificationType> = new Set([
   // The orders raise `order.created`, `order.status_changed`, `order.price_approval_requested`, `order.price_overridden` and
-  // `order.packing_note_changed` since Step 4.3 PR B; the payment failure waits for the online gateway (Phase 2) and the
-  // message that was not sent for the customer messages (Step 4.9)
+  // `order.packing_note_changed` since Step 4.3 PR B, and `order.message_not_sent` since Step 4.9 PR C2a; the payment failure
+  // waits for the online gateway (Phase 2)
   NotificationTypes.ORDER_PAYMENT_FAILED,
-  NotificationTypes.ORDER_MESSAGE_NOT_SENT,
   // `inventory.low` has an emitter since Step 4.2 PR C, `transfer.dispatched` since Step 4.5 and `count.awaiting_apply` since
   // Step 4.6
   // `shipment.requires_review` and `shipment.failed_attempt` have an emitter since Step 4.8 PR C2b and `carrier.status_unmapped`

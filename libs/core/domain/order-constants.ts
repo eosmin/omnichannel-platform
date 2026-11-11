@@ -32,17 +32,56 @@ export const OrderMessageVariables = {
 export type OrderMessageVariable =
   (typeof OrderMessageVariables)[keyof typeof OrderMessageVariables]
 
-// Why a message that was due did not go (TDD_17 §4.7). Step 4.9 PR C2 adds the reasons of the window and of the channel
-// next to this one; the template editor and the rendering already need the first.
+// Why a message that was due did not go (TDD_17 §4.7). The timeline of the order shows it and the team is told
+// (`order.message_not_sent`): a message is never dropped silently.
 export const OrderMessageNotSentReasons = {
   // The template uses a variable the order has no value for ("your order arrives on ."): the send is refused, it does not
   // fall back to email because the email would carry the same hole
   MISSING_VARIABLE: 'missing_variable',
   // The message, filled in, is longer than a channel takes (a long list of items): sending it would be refused or cut
-  TOO_LONG: 'too_long'
+  TOO_LONG: 'too_long',
+  // The store has no template of this kind, neither in the customer's language nor in its own
+  NO_TEMPLATE: 'no_template',
+  // The order has no conversation, the customer has no open one and no email to fall back to
+  NO_CHANNEL: 'no_channel',
+  // The window of the channel is closed, no approved template is linked and the customer has no email
+  WINDOW_CLOSED: 'window_closed',
+  // A template is linked but the channel does not list it as approved, its placeholders do not match, or its plugin
+  // changed since it was linked; with no email to fall back to
+  TEMPLATE_UNAVAILABLE: 'template_unavailable',
+  // The customer was erased (`TDD_05 §10`): nothing is written to who asked to be forgotten
+  CUSTOMER_ERASED: 'customer_erased',
+  // The customer withdrew their consent to order messages (a `ConsentRecord` of purpose `order_messages`, granted false)
+  CONSENT_REVOKED: 'consent_revoked'
 } as const
 export type OrderMessageNotSentReason =
   (typeof OrderMessageNotSentReasons)[keyof typeof OrderMessageNotSentReasons]
+
+// Where a message went (TDD_17 §4.7): the two ways through the conversation's channel (what its plugin declares decides
+// which), the email fallback, or nowhere (with its reason)
+export const OrderMessageRoutes = {
+  CHANNEL_TEXT: 'channel_text',
+  CHANNEL_TEMPLATE: 'channel_template',
+  EMAIL: 'email',
+  NOT_SENT: 'not_sent'
+} as const
+export type OrderMessageRoute = (typeof OrderMessageRoutes)[keyof typeof OrderMessageRoutes]
+
+// What a request to send answered: it went, it did not (with its reason), or the key had been used and the answer is the earlier
+// one
+export const OrderMessageOutcomeStatus = {
+  SENT: 'sent',
+  NOT_SENT: 'not_sent',
+  DUPLICATE: 'duplicate'
+} as const
+
+// Who asked for the message: a rule of the platform (a carrier event, a creation, a status change that asked to notify) or a
+// person pressing "send"
+export const OrderMessageTriggers = {
+  AUTOMATIC: 'automatic',
+  MANUAL: 'manual'
+} as const
+export type OrderMessageTrigger = (typeof OrderMessageTriggers)[keyof typeof OrderMessageTriggers]
 
 // What the editor of a template tells the owner about it without refusing it (TDD_17 §4.7)
 export const OrderMessageWarnings = {
