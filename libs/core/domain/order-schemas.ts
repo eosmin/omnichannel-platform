@@ -275,16 +275,26 @@ export function orderScheduleFiltersAreConsistent(
 // The filters of the orders list that the export takes too (everything but the page and the sort): the text search, the
 // state, the payment, the price approval, the customer, and the day the order was made. Exported as a shape for the same
 // reason as the schedule one. The sort is the list's alone (`orderSortShape`).
+// A day of a filter of the list: a year Postgres can hold and `nextCalendarDay` can add one to (the year 0 or 9999 is a 500,
+// not a 400)
+const FIRST_FILTER_DAY = '1970-01-01'
+const LAST_FILTER_DAY = '2999-12-31'
+const filterDaySchema = z.iso
+  .date()
+  .refine(day => day >= FIRST_FILTER_DAY && day <= LAST_FILTER_DAY, {
+    message: 'the day is out of range'
+  })
+
 export const orderListFilterShape = {
   [OrderListFilters.Q]: freeText(OrderLimits.SEARCH_MAX_LENGTH).min(1).optional(),
   [OrderListFilters.STATUS]: z.enum(OrderStatus).optional(),
   [OrderListFilters.PAYMENT_STATUS]: z.enum(PaymentStatus).optional(),
   [OrderListFilters.PRICE_APPROVAL_STATUS]: z.enum(PriceApprovalStatus).optional(),
   [OrderListFilters.CUSTOMER_ID]: id.optional(),
-  [OrderListFilters.CREATED_FROM]: z.iso.date().optional(),
-  [OrderListFilters.CREATED_TO]: z.iso.date().optional(),
-  [OrderScheduleFilters.FROM]: scheduledDeliveryDateSchema.optional(),
-  [OrderScheduleFilters.TO]: scheduledDeliveryDateSchema.optional(),
+  [OrderListFilters.CREATED_FROM]: filterDaySchema.optional(),
+  [OrderListFilters.CREATED_TO]: filterDaySchema.optional(),
+  [OrderScheduleFilters.FROM]: filterDaySchema.optional(),
+  [OrderScheduleFilters.TO]: filterDaySchema.optional(),
   [OrderScheduleFilters.ON]: z.enum(OrderScheduledDeliveryShortcuts).optional()
 }
 

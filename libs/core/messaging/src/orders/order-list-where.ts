@@ -48,7 +48,12 @@ export interface OrderListWhere {
   AND?: Record<string, unknown>[]
 }
 
+// A few digits (with or without the '#') is an order number: it must not also be read as the end of somebody's phone, or
+// the list and the file would hold the orders and the contact data of people the person never meant
+const ORDER_NUMBER_ONLY = /^#?\d{1,7}$/
+
 export function orderTextWhere(q: string): Record<string, unknown> {
+  if (ORDER_NUMBER_ONLY.test(q)) return { OR: orderNumberConditions(q) }
   const text = escapeLike(q)
   const digits = PHONE_LIKE.test(q) ? q.replace(/\D/g, '') : ''
   return {

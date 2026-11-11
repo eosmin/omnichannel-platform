@@ -1639,6 +1639,12 @@ describe('The life of an order', () => {
       expect(await numbers('createdFrom=2026-11-11')).toEqual(['D11'])
       expect(await numbers('createdTo=2026-11-09')).toEqual(['D9'])
       expect((await list('createdFrom=2026-11-10&createdTo=2026-11-01')).status).toBe(BAD_REQUEST)
+      // A year Postgres cannot hold, or one a day cannot be added to, is a 400 and not a 500
+      for (const day of ['0000-01-01', '9999-12-31']) {
+        expect((await list(`createdFrom=${day}`)).status).toBe(BAD_REQUEST)
+        expect((await list(`createdTo=${day}`)).status).toBe(BAD_REQUEST)
+        expect((await list(`scheduledDeliveryFrom=${day}`)).status).toBe(BAD_REQUEST)
+      }
     })
 
     it('pages a search without losing or repeating a row', async () => {

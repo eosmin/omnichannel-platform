@@ -30,14 +30,26 @@ describe('orderListWhere', () => {
   })
 
   it('searches the number by prefix, a bare number as the padded one, and the customer by name, e-mail and phone', () => {
-    const where = orderListWhere(STORE, { q: '#12' })
+    const where = orderListWhere(STORE, { q: 'ana' })
     const or = (where.AND?.[0] as { OR: Record<string, unknown>[] }).OR
-    expect(or).toContainEqual({ orderNumber: { startsWith: '12' } })
-    expect(or).toContainEqual({ orderNumber: '00012' })
+    expect(or).toContainEqual({ orderNumber: { startsWith: 'ana' } })
+    const bare = orderListWhere(STORE, { q: '#12' }).AND?.[0] as { OR: Record<string, unknown>[] }
+    expect(bare.OR).toContainEqual({ orderNumber: '00012' })
     const customer = or.find(entry => 'customer' in entry) as {
       customer: { OR: Record<string, unknown>[] }
     }
     expect(customer.customer.OR).toHaveLength(2)
+  })
+
+  it('reads a few digits as an order number only, never as the end of a phone or a name', () => {
+    for (const q of ['12', '#00012', '1234567']) {
+      const where = orderListWhere(STORE, { q }).AND?.[0] as { OR: Record<string, unknown>[] }
+      expect(where.OR.some(entry => 'customer' in entry)).toBe(false)
+    }
+    const phone = orderListWhere(STORE, { q: '12345678' }).AND?.[0] as {
+      OR: Record<string, unknown>[]
+    }
+    expect(phone.OR.some(entry => 'customer' in entry)).toBe(true)
   })
 
   it('looks in the phones only for a text that is a phone, and never takes a wildcard as one', () => {
