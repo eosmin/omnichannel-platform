@@ -870,6 +870,81 @@
         "REFUSED_BY_CUSTOMER": "Refused by the customer",
         "WRONG_ITEM": "Wrong item"
       }
+    },
+    "paymentStatus": {
+      "PENDING": "Pending",
+      "COMPLETED": "Paid",
+      "FAILED": "Failed",
+      "REFUNDED": "Refunded"
+    },
+    "paymentMethod": {
+      "CASH": "Cash",
+      "TRANSFER": "Transfer",
+      "CARD": "Card",
+      "CASH_ON_DELIVERY": "Cash on delivery",
+      "OTHER": "Other"
+    },
+    "list": {
+      "title": "Orders",
+      "noAccess": "You do not have access to orders.",
+      "searchLabel": "Search orders",
+      "searchPlaceholder": "Search by order number or customer",
+      "export": "Export CSV",
+      "exportQueued": "The orders file is being prepared. It will be ready in the exports.",
+      "viewExports": "View exports",
+      "failed": "The orders could not be loaded.",
+      "empty": "There are no orders yet.",
+      "noMatches": "No order matches these filters.",
+      "loadMore": "Load more",
+      "number": "#{number}",
+      "priceModified": "Price changed",
+      "awaitingPriceApproval": "Awaiting price approval",
+      "unnamedCustomer": "Visitor",
+      "unknownStatus": "Unknown",
+      "unknownPayment": "Unknown",
+      "noSchedule": "Not scheduled",
+      "selectOrder": "Select order {number}",
+      "selectAll": "Select all the orders shown",
+      "selected": "{count, plural, one {# order selected} other {# orders selected}}",
+      "clearSelection": "Clear selection",
+      "columns": {
+        "number": "Order",
+        "customer": "Customer",
+        "created": "Made",
+        "status": "Status",
+        "payment": "Payment",
+        "scheduled": "Scheduled delivery",
+        "total": "Total"
+      },
+      "filters": {
+        "status": "Status",
+        "allStatuses": "All statuses",
+        "paymentStatus": "Payment",
+        "allPayments": "All payments",
+        "sort": "Sort by",
+        "sorts": {
+          "newest": "Newest first",
+          "scheduled_delivery": "Scheduled delivery"
+        },
+        "created": "Made between",
+        "createdFrom": "Made from",
+        "createdTo": "Made until",
+        "scheduled": "Scheduled delivery",
+        "scheduledFrom": "Scheduled delivery from",
+        "scheduledTo": "Scheduled delivery until",
+        "shortcuts": {
+          "today": "Today",
+          "tomorrow": "Tomorrow"
+        },
+        "customer": "Customer: {name}",
+        "removeCustomer": "Remove the filter by customer {name}",
+        "aCustomer": "one customer",
+        "clear": "{count, plural, one {Clear # filter} other {Clear # filters}}"
+      }
+    },
+    "detail": {
+      "title": "Order",
+      "back": "Back to orders"
     }
   },
   "org": {
@@ -1117,7 +1192,8 @@
       "customers": "Customers",
       "products": "Products",
       "exports": "Exports",
-      "settings": "Settings"
+      "settings": "Settings",
+      "orders": "Orders"
     },
     "notifications": {
       "open": "Notifications",
@@ -2072,7 +2148,8 @@
         "stores": "Stores",
         "warehouses": "Warehouses",
         "transfers": "Transfers",
-        "profile": "Profile"
+        "profile": "Profile",
+        "counts": "Counts"
       },
       "account": {
         "label": "My account",
@@ -2971,6 +3048,124 @@
       "refreshFailed": "The stock could not be refreshed. What is shown may be out of date.",
       "lowBanner": "<b>Low stock.</b> {available, plural, one {# available} other {# available}}, alert at {threshold}.",
       "adjustFor": "Adjust stock of {item} in {warehouse}"
+    }
+  },
+  "counts": {
+    "title": "Stock counts",
+    "description": "Count what a warehouse really holds, review the difference and apply it to the stock.",
+    "new": "New count",
+    "filter": "Status",
+    "filterAll": "All",
+    "empty": "There are no counts yet.",
+    "emptyFiltered": "No count has this status.",
+    "loadMore": "Show more",
+    "back": "Back to counts",
+    "status": {
+      "draft": "Draft",
+      "counting": "Counting",
+      "review": "In review",
+      "applied": "Applied",
+      "cancelled": "Cancelled"
+    },
+    "scopeAll": "Every store that keeps stock in the warehouse",
+    "scopeStore": "Only the products of {store}",
+    "createdAt": "Created {date}",
+    "startedAt": "started {date}",
+    "appliedAt": "applied {date}",
+    "draftNote": "Starting the count takes a snapshot of what the warehouse holds now. The count is measured against that snapshot.",
+    "cancelledNote": "This count was cancelled. Nothing was changed in the stock.",
+    "totalsNote": "You see the lines of the stores you belong to.",
+    "conflicts": {
+      "no_lines": "The warehouse has nothing to count: no product has stock there yet. Receive stock first, with an adjustment.",
+      "too_many_lines": "The warehouse holds more items than a count can have. Count it by store.",
+      "warehouse_inactive": "The warehouse is switched off: nobody can count in it.",
+      "short_stock": "Applying would leave some lines with less than zero stock.",
+      "lines_refused": "Some lines of the count cannot be applied."
+    },
+    "create": {
+      "title": "New count",
+      "description": "Choose the warehouse to count. It starts as a draft: nothing changes until you start it.",
+      "warehouse": "Warehouse",
+      "warehouseNone": "Choose a warehouse",
+      "warehousesFailed": "The warehouses could not be loaded.",
+      "noWarehouses": "There is no active warehouse.",
+      "warehouseRequired": "Choose a warehouse.",
+      "scope": "What to count",
+      "scopeAll": "Every store that keeps stock here",
+      "scopeHelp": "Counting one store at a time keeps the sheet short, and a warehouse with more than {max} items has to be counted that way.",
+      "note": "Note (optional)",
+      "submit": "Create count"
+    },
+    "actions": {
+      "cancel": "Cancel count",
+      "start": "Start count",
+      "submit": "Send for review",
+      "reopen": "Recount",
+      "apply": "Apply count"
+    },
+    "apply": {
+      "title": "Apply count {number}?",
+      "description": "The difference of each counted line against the snapshot is added to or taken out of the stock of {warehouse}. Sales and transfers made while counting are not touched. Lines that were not counted stay as they are. This cannot be undone.",
+      "confirm": "Apply count",
+      "done": "Count applied"
+    },
+    "cancel": {
+      "title": "Cancel count {number}?",
+      "description": "The quantities counted so far are thrown away and the stock is not changed. The count cannot be opened again; make a new one.",
+      "descriptionDraft": "The draft is discarded. Nothing was counted and the stock is not changed.",
+      "confirm": "Cancel count"
+    },
+    "sheet": {
+      "label": "Count sheet",
+      "progress": "{counted} of {total} counted",
+      "progressLabel": "Counting progress",
+      "search": "Search or scan a code",
+      "searchPlaceholder": "Name or SKU",
+      "filterLabel": "Show",
+      "filters": {
+        "all": "All",
+        "uncounted": "Not counted",
+        "counted": "Counted"
+      },
+      "noMatch": "No line matches the search.",
+      "allCounted": "Every line has been counted.",
+      "noLines": "There are no lines to show.",
+      "showMore": "{count, plural, one {Show # more line} other {Show # more lines}}",
+      "missingItem": "An item on the shelf that is not on the sheet has no stock in this warehouse yet: receive it with a stock adjustment and make a new count.",
+      "quantityOf": "Units counted of {name}",
+      "quantityPlaceholder": "Units",
+      "invalidQuantity": "Whole units, from 0.",
+      "save": {
+        "saved": "All saved",
+        "saving": "{count, plural, one {Saving # line} other {Saving # lines}}",
+        "offline": "{count, plural, one {# line is waiting for a signal; it is kept on this phone} other {# lines are waiting for a signal; they are kept on this phone}}",
+        "refused": "The quantities could not be saved.",
+        "notSent": "Some quantities are not saved yet, so the count was not sent. Wait for the signal and try again."
+      }
+    },
+    "review": {
+      "label": "Review of the count",
+      "snapshotNote": "The difference is counted minus what the warehouse held when the count started. Applying it adds or takes out only that difference: sales and transfers made while counting are not touched.",
+      "appliedNote": "This is what the count applied: only the difference against the snapshot. Sales and transfers made while counting were not touched.",
+      "withVariance": "Lines with a difference",
+      "unitsIn": "Units more",
+      "unitsOut": "Units less",
+      "uncounted": "Not counted",
+      "uncountedNote": "{count, plural, one {# line was not counted and stays as it is.} other {# lines were not counted and stay as they are.}}",
+      "noVariance": "No counted line differs from the snapshot.",
+      "expected": "Snapshot",
+      "counted": "Counted",
+      "variance": "Difference",
+      "applyWho": "Applying needs the permission to apply counts in every store that has a line with a difference. Whoever lacks it in one of them cannot close a count that includes it."
+    },
+    "refusal": {
+      "shortTitle": "Not applied: some lines would go below zero",
+      "refusedTitle": "Not applied: some lines cannot be applied",
+      "shortBody": "Sales or transfers during the count took stock that the difference would take again. Nothing was applied. Send the count back to counting to recount these lines.",
+      "refusedBody": "These lines cannot be changed from the count (a product no longer tracked, or a warehouse switched off or unlinked since the count started). Nothing was applied. Cancel the count and make a new one.",
+      "shortLine": "the difference takes out {requested}, the warehouse holds {onHand}",
+      "shortLineUnknown": "the difference takes out {requested}",
+      "recount": "Recount these lines"
     }
   }
 }

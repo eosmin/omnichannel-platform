@@ -59,6 +59,18 @@ describe('settings entries', () => {
     expect(visibleEntries(ORG_SETTINGS_ENTRIES, can).map(entry => entry.id)).toEqual(['warehouses'])
   })
 
+  it('shows the counts page to who counts and to who only approves, and to nobody else', () => {
+    const ids = (...held: string[]) =>
+      visibleEntries(ORG_SETTINGS_ENTRIES, holding(...held)).map(entry => entry.id)
+    expect(ids(Permissions.INVENTORY_MANAGE_COUNTS)).toEqual(['counts'])
+    expect(ids(Permissions.INVENTORY_APPLY_COUNTS)).toEqual(['counts'])
+    expect(ids(Permissions.INVENTORY_ADJUST)).toEqual([])
+    // /org opens the counts for an approver who holds nothing else of the area
+    expect(
+      firstVisibleHref(ORG_SETTINGS_ENTRIES, holding(Permissions.INVENTORY_APPLY_COUNTS))
+    ).toBe('/org/counts')
+  })
+
   it('hides the stores page from who cannot manage stores, and keeps the profile', () => {
     const can = holding(Permissions.SETTINGS_VIEW)
     expect(visibleEntries(ORG_SETTINGS_ENTRIES, can).map(entry => entry.id)).toEqual(['profile'])

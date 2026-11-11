@@ -4,7 +4,8 @@ import {
   calendarDayToDate,
   dateToCalendarDay,
   nextCalendarDay,
-  scheduledDeliveryShortcutRange
+  scheduledDeliveryShortcutRange,
+  startOfCalendarDayIn
 } from './order-schedule'
 
 // 2026-11-11 03:30 UTC is still the evening of the 10th in El Salvador (UTC-6, no daylight saving)
@@ -72,5 +73,36 @@ describe('scheduledDeliveryShortcutRange', () => {
         LATE_EVENING_IN_SV
       )
     ).toEqual({ from: '2026-11-12', to: '2026-11-12' })
+  })
+})
+
+describe('startOfCalendarDayIn', () => {
+  it('starts the day at midnight on the clock of the zone', () => {
+    expect(startOfCalendarDayIn('America/El_Salvador', '2026-11-10').toISOString()).toBe(
+      '2026-11-10T06:00:00.000Z'
+    )
+    expect(startOfCalendarDayIn('UTC', '2026-11-10').toISOString()).toBe('2026-11-10T00:00:00.000Z')
+    expect(startOfCalendarDayIn('Pacific/Auckland', '2026-11-10').toISOString()).toBe(
+      '2026-11-09T11:00:00.000Z'
+    )
+  })
+
+  it('puts the late evening of a day inside it and the next instant outside', () => {
+    const start = startOfCalendarDayIn('America/El_Salvador', '2026-11-10')
+    const next = startOfCalendarDayIn('America/El_Salvador', nextCalendarDay('2026-11-10'))
+    expect(calendarDayIn('America/El_Salvador', LATE_EVENING_IN_SV)).toBe('2026-11-10')
+    expect(LATE_EVENING_IN_SV.getTime()).toBeGreaterThanOrEqual(start.getTime())
+    expect(LATE_EVENING_IN_SV.getTime()).toBeLessThan(next.getTime())
+  })
+
+  it('settles a day with a clock change (23 hours long) in a zone that has one', () => {
+    const start = startOfCalendarDayIn('America/New_York', '2026-03-08')
+    const next = startOfCalendarDayIn('America/New_York', '2026-03-09')
+    expect(start.toISOString()).toBe('2026-03-08T05:00:00.000Z')
+    expect(next.toISOString()).toBe('2026-03-09T04:00:00.000Z')
+  })
+
+  it('refuses a day that does not exist', () => {
+    expect(() => startOfCalendarDayIn('UTC', '2026-02-30')).toThrow(RangeError)
   })
 })

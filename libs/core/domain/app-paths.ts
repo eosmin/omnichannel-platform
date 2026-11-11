@@ -59,6 +59,7 @@ export const AppPaths = {
     transfers: '/org/transfers',
     transfer: (id: string) => `/org/transfers/${id}`,
     counts: '/org/counts',
+    count: (countId: string) => `/org/counts/${countId}`,
     auditLog: '/org/audit-log',
     compliance: '/org/compliance'
   },

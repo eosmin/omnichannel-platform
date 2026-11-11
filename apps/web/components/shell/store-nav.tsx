@@ -13,8 +13,7 @@ import { mayOpenStoreSettings } from '../../lib/settings/may-open-settings'
 import { cn } from '../../lib/utils'
 import { useStore } from '../providers/store-context'
 
-// The pages of the store that exist, for who may open them. Orders and Analytics join with Steps 4.4
-// and 5.2. Settings is shown when the person may open at least one of its pages.
+// The pages of the store that exist, for who may open them. Analytics joins with Step 5.2. Settings is shown when the person may open at least one of its pages.
 export function StoreNav(): ReactElement {
   const t = useTranslations('shell.nav')
   const { storeId, can } = useStore()
@@ -34,6 +33,11 @@ export function StoreNav(): ReactElement {
       href: AppPaths.store.products(storeId),
       label: t('products'),
       isShown: can(ClientPermissions.PRODUCTS_VIEW)
+    },
+    {
+      href: AppPaths.store.orders(storeId),
+      label: t('orders'),
+      isShown: can(ClientPermissions.ORDERS_VIEW)
     },
     {
       href: AppPaths.store.exports(storeId),

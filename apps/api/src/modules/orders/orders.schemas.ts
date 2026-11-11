@@ -4,12 +4,10 @@ import {
   lowercasedUuidSchema,
   OrderConfirmationChannel,
   OrderLimits,
-  OrderStatus,
-  orderScheduleFilterShape,
-  orderScheduleFiltersAreConsistent,
-  PaginationLimits,
-  PaymentStatus,
-  PriceApprovalStatus
+  orderListFilterShape,
+  orderListFiltersAreConsistent,
+  orderSortShape,
+  PaginationLimits
 } from '@platform/core/domain'
 
 export const idSchema = lowercasedUuidSchema
@@ -61,15 +59,20 @@ export const listOrdersQuerySchema = z
       .min(1)
       .max(PaginationLimits.MAX)
       .default(PaginationLimits.DEFAULT),
-    status: z.enum(OrderStatus).optional(),
-    paymentStatus: z.enum(PaymentStatus).optional(),
-    priceApprovalStatus: z.enum(PriceApprovalStatus).optional(),
-    customerId: lowercasedUuidSchema.optional(),
-    ...orderScheduleFilterShape
+    ...orderListFilterShape,
+    ...orderSortShape
   })
-  .refine(orderScheduleFiltersAreConsistent, {
+  .refine(orderListFiltersAreConsistent, {
     message: 'give days or a shortcut, never both, and the first day not after the last'
   })
+
+// The export takes the filters of the list and no page and no sort: the file is the whole result
+export const exportOrdersQuerySchema = z
+  .strictObject(orderListFilterShape)
+  .refine(orderListFiltersAreConsistent, {
+    message: 'give days or a shortcut, never both, and the first day not after the last'
+  })
+export type ExportOrdersQuery = z.output<typeof exportOrdersQuerySchema>
 
 export type ListOrdersQuery = z.output<typeof listOrdersQuerySchema>
 

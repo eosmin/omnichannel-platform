@@ -59,10 +59,6 @@ export const QueryKeys = {
     mergePreview: (storeId: string, id: string, absorbedId: string) =>
       ['customer-merge-preview', storeId, id, absorbedId] as const
   },
-  orders: {
-    all: (storeId: string) => ['orders', storeId] as const,
-    byId: (storeId: string, id: string) => ['orders', storeId, id] as const
-  },
   products: {
     all: (storeId: string) => ['products', storeId] as const,
     // The page of the catalog, by the active filter ('all' | 'active' | 'archived')
@@ -73,6 +69,14 @@ export const QueryKeys = {
     // The autocomplete: by text, and by whether archived products may answer (a filter of the page)
     search: (storeId: string, q: string, includeArchived: boolean) =>
       ['products', storeId, 'search', q, includeArchived] as const
+  },
+  orders: {
+    all: (storeId: string) => ['orders', storeId] as const,
+    // A page of the list, by its filters and its sort (the cursor is the page param of the query)
+    list: (storeId: string, filter: object, sort: string) =>
+      ['orders', storeId, 'list', filter, sort] as const,
+    // Under the order: whatever changes an order makes its detail stale
+    byId: (storeId: string, orderId: string) => ['orders', storeId, orderId] as const
   },
   search: {
     global: (storeId: string, q: string) => ['search', storeId, q] as const
@@ -123,8 +127,15 @@ export const QueryKeys = {
     // The autocomplete of the draft: the products of one store by text
     picker: (storeId: string, q: string) => ['transfers', storeId, 'picker', q] as const
   },
+  // Keyed by the store the request goes through (the api reads the organization from X-Store-Id)
   counts: {
-    all: (storeId: string) => ['counts', storeId] as const
+    // Every store's cache: a count belongs to the organization, so a change makes the list of every store stale
+    root: ['counts'] as const,
+    all: (storeId: string) => ['counts', storeId] as const,
+    list: (storeId: string, status: string | null) => ['counts', storeId, 'list', status] as const,
+    // The whole sheet of one count: its header, its totals and every line
+    detail: (storeId: string, countId: string) => ['counts', storeId, 'detail', countId] as const,
+    warehouses: (storeId: string) => ['counts', storeId, 'warehouses'] as const
   },
 
   // Shipping (TDD_17 §3)

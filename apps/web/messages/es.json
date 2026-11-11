@@ -870,6 +870,81 @@
         "REFUSED_BY_CUSTOMER": "Rechazado por el cliente",
         "WRONG_ITEM": "Artículo equivocado"
       }
+    },
+    "paymentStatus": {
+      "PENDING": "Pendiente",
+      "COMPLETED": "Pagado",
+      "FAILED": "Fallido",
+      "REFUNDED": "Reembolsado"
+    },
+    "paymentMethod": {
+      "CASH": "Efectivo",
+      "TRANSFER": "Transferencia",
+      "CARD": "Tarjeta",
+      "CASH_ON_DELIVERY": "Contra entrega",
+      "OTHER": "Otro"
+    },
+    "list": {
+      "title": "Pedidos",
+      "noAccess": "No tienes acceso a los pedidos.",
+      "searchLabel": "Buscar pedidos",
+      "searchPlaceholder": "Buscar por número de pedido o cliente",
+      "export": "Exportar CSV",
+      "exportQueued": "El archivo de pedidos se está preparando. Estará listo en las exportaciones.",
+      "viewExports": "Ver exportaciones",
+      "failed": "No se pudieron cargar los pedidos.",
+      "empty": "Aún no hay pedidos.",
+      "noMatches": "Ningún pedido coincide con los filtros.",
+      "loadMore": "Cargar más",
+      "number": "#{number}",
+      "priceModified": "Precio modificado",
+      "awaitingPriceApproval": "Esperando aprobación de precio",
+      "unnamedCustomer": "Visitante",
+      "unknownStatus": "Desconocido",
+      "unknownPayment": "Desconocido",
+      "noSchedule": "Sin programar",
+      "selectOrder": "Seleccionar el pedido {number}",
+      "selectAll": "Seleccionar todos los pedidos que se ven",
+      "selected": "{count, plural, one {# pedido seleccionado} other {# pedidos seleccionados}}",
+      "clearSelection": "Quitar la selección",
+      "columns": {
+        "number": "Pedido",
+        "customer": "Cliente",
+        "created": "Creado",
+        "status": "Estado",
+        "payment": "Pago",
+        "scheduled": "Entrega programada",
+        "total": "Total"
+      },
+      "filters": {
+        "status": "Estado",
+        "allStatuses": "Todos los estados",
+        "paymentStatus": "Pago",
+        "allPayments": "Todos los pagos",
+        "sort": "Ordenar por",
+        "sorts": {
+          "newest": "Más recientes primero",
+          "scheduled_delivery": "Entrega programada"
+        },
+        "created": "Creado entre",
+        "createdFrom": "Creado desde",
+        "createdTo": "Creado hasta",
+        "scheduled": "Entrega programada",
+        "scheduledFrom": "Entrega programada desde",
+        "scheduledTo": "Entrega programada hasta",
+        "shortcuts": {
+          "today": "Hoy",
+          "tomorrow": "Mañana"
+        },
+        "customer": "Cliente: {name}",
+        "removeCustomer": "Quitar el filtro por el cliente {name}",
+        "aCustomer": "un cliente",
+        "clear": "{count, plural, one {Quitar # filtro} other {Quitar # filtros}}"
+      }
+    },
+    "detail": {
+      "title": "Pedido",
+      "back": "Volver a los pedidos"
     }
   },
   "org": {
@@ -1117,7 +1192,8 @@
       "customers": "Clientes",
       "products": "Productos",
       "exports": "Exportaciones",
-      "settings": "Ajustes"
+      "settings": "Ajustes",
+      "orders": "Pedidos"
     },
     "notifications": {
       "open": "Notificaciones",
@@ -2072,7 +2148,8 @@
         "stores": "Tiendas",
         "warehouses": "Bodegas",
         "transfers": "Traslados",
-        "profile": "Perfil"
+        "profile": "Perfil",
+        "counts": "Conteos"
       },
       "account": {
         "label": "Mi cuenta",
@@ -2971,6 +3048,124 @@
       "refreshFailed": "No se pudieron actualizar las existencias. Lo que se ve puede estar desactualizado.",
       "lowBanner": "<b>Existencias bajas.</b> {available, plural, one {# disponible} other {# disponibles}}, alerta en {threshold}.",
       "adjustFor": "Ajustar existencias de {item} en {warehouse}"
+    }
+  },
+  "counts": {
+    "title": "Conteos de inventario",
+    "description": "Cuenta lo que una bodega tiene en realidad, revisa la diferencia y aplícala a las existencias.",
+    "new": "Nuevo conteo",
+    "filter": "Estado",
+    "filterAll": "Todos",
+    "empty": "Todavía no hay conteos.",
+    "emptyFiltered": "Ningún conteo tiene este estado.",
+    "loadMore": "Mostrar más",
+    "back": "Volver a los conteos",
+    "status": {
+      "draft": "Borrador",
+      "counting": "Contando",
+      "review": "En revisión",
+      "applied": "Aplicado",
+      "cancelled": "Cancelado"
+    },
+    "scopeAll": "Todas las tiendas que guardan existencias en la bodega",
+    "scopeStore": "Solo los productos de {store}",
+    "createdAt": "Creado el {date}",
+    "startedAt": "iniciado el {date}",
+    "appliedAt": "aplicado el {date}",
+    "draftNote": "Al iniciar el conteo se toma una foto de lo que la bodega tiene ahora. El conteo se compara contra esa foto.",
+    "cancelledNote": "Este conteo se canceló. No se cambió nada en las existencias.",
+    "totalsNote": "Ves las líneas de las tiendas a las que perteneces.",
+    "conflicts": {
+      "no_lines": "La bodega no tiene nada que contar: ningún producto tiene existencias ahí todavía. Primero recibe existencias con un ajuste.",
+      "too_many_lines": "La bodega tiene más artículos de los que cabe en un conteo. Cuéntala por tienda.",
+      "warehouse_inactive": "La bodega está desactivada: nadie puede contar en ella.",
+      "short_stock": "Aplicar dejaría algunas líneas con existencias menores que cero.",
+      "lines_refused": "Algunas líneas del conteo no se pueden aplicar."
+    },
+    "create": {
+      "title": "Nuevo conteo",
+      "description": "Elige la bodega que vas a contar. Empieza como borrador: nada cambia hasta que lo inicies.",
+      "warehouse": "Bodega",
+      "warehouseNone": "Elige una bodega",
+      "warehousesFailed": "No se pudieron cargar las bodegas.",
+      "noWarehouses": "No hay ninguna bodega activa.",
+      "warehouseRequired": "Elige una bodega.",
+      "scope": "Qué contar",
+      "scopeAll": "Todas las tiendas que guardan existencias aquí",
+      "scopeHelp": "Contar una tienda a la vez acorta la hoja, y una bodega con más de {max} artículos se tiene que contar así.",
+      "note": "Nota (opcional)",
+      "submit": "Crear conteo"
+    },
+    "actions": {
+      "cancel": "Cancelar conteo",
+      "start": "Iniciar conteo",
+      "submit": "Enviar a revisión",
+      "reopen": "Volver a contar",
+      "apply": "Aplicar conteo"
+    },
+    "apply": {
+      "title": "¿Aplicar el conteo {number}?",
+      "description": "La diferencia de cada línea contada contra la foto se suma o se resta a las existencias de {warehouse}. Las ventas y transferencias hechas durante el conteo no se tocan. Las líneas que no se contaron quedan igual. Esto no se puede deshacer.",
+      "confirm": "Aplicar conteo",
+      "done": "Conteo aplicado"
+    },
+    "cancel": {
+      "title": "¿Cancelar el conteo {number}?",
+      "description": "Las cantidades contadas hasta ahora se descartan y las existencias no cambian. El conteo no se puede abrir otra vez; crea uno nuevo.",
+      "descriptionDraft": "El borrador se descarta. No se contó nada y las existencias no cambian.",
+      "confirm": "Cancelar conteo"
+    },
+    "sheet": {
+      "label": "Hoja de conteo",
+      "progress": "{counted} de {total} contadas",
+      "progressLabel": "Avance del conteo",
+      "search": "Buscar o escanear un código",
+      "searchPlaceholder": "Nombre o SKU",
+      "filterLabel": "Mostrar",
+      "filters": {
+        "all": "Todas",
+        "uncounted": "Sin contar",
+        "counted": "Contadas"
+      },
+      "noMatch": "Ninguna línea coincide con la búsqueda.",
+      "allCounted": "Ya se contaron todas las líneas.",
+      "noLines": "No hay líneas que mostrar.",
+      "showMore": "{count, plural, one {Mostrar # línea más} other {Mostrar # líneas más}}",
+      "missingItem": "Un artículo en el estante que no está en la hoja todavía no tiene existencias en esta bodega: recíbelo con un ajuste de existencias y haz un conteo nuevo.",
+      "quantityOf": "Unidades contadas de {name}",
+      "quantityPlaceholder": "Unidades",
+      "invalidQuantity": "Unidades enteras, desde 0.",
+      "save": {
+        "saved": "Todo guardado",
+        "saving": "{count, plural, one {Guardando # línea} other {Guardando # líneas}}",
+        "offline": "{count, plural, one {# línea espera señal; se guarda en este teléfono} other {# líneas esperan señal; se guardan en este teléfono}}",
+        "refused": "No se pudieron guardar las cantidades.",
+        "notSent": "Algunas cantidades todavía no se guardan, así que el conteo no se envió. Espera a tener señal e inténtalo otra vez."
+      }
+    },
+    "review": {
+      "label": "Revisión del conteo",
+      "snapshotNote": "La diferencia es lo contado menos lo que la bodega tenía cuando empezó el conteo. Aplicarla suma o resta solo esa diferencia: las ventas y transferencias hechas durante el conteo no se tocan.",
+      "appliedNote": "Esto fue lo que aplicó el conteo: solo la diferencia contra la foto. Las ventas y transferencias hechas durante el conteo no se tocaron.",
+      "withVariance": "Líneas con diferencia",
+      "unitsIn": "Unidades de más",
+      "unitsOut": "Unidades de menos",
+      "uncounted": "Sin contar",
+      "uncountedNote": "{count, plural, one {# línea no se contó y queda igual.} other {# líneas no se contaron y quedan igual.}}",
+      "noVariance": "Ninguna línea contada difiere de la foto.",
+      "expected": "Foto",
+      "counted": "Contado",
+      "variance": "Diferencia",
+      "applyWho": "Aplicar necesita el permiso de aplicar conteos en cada tienda que tenga una línea con diferencia. Quien no lo tenga en alguna no puede cerrar un conteo que la incluya."
+    },
+    "refusal": {
+      "shortTitle": "No se aplicó: algunas líneas quedarían por debajo de cero",
+      "refusedTitle": "No se aplicó: algunas líneas no se pueden aplicar",
+      "shortBody": "Hubo ventas o transferencias durante el conteo que ya sacaron existencias que la diferencia volvería a sacar. No se aplicó nada. Regresa el conteo a contar para recontar estas líneas.",
+      "refusedBody": "Estas líneas no se pueden cambiar desde el conteo (un producto que ya no se controla, o una bodega desactivada o desvinculada desde que empezó el conteo). No se aplicó nada. Cancela el conteo y crea uno nuevo.",
+      "shortLine": "la diferencia saca {requested}, la bodega tiene {onHand}",
+      "shortLineUnknown": "la diferencia saca {requested}",
+      "recount": "Volver a contar estas líneas"
     }
   }
 }

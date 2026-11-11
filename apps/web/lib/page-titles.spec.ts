@@ -42,6 +42,8 @@ const TITLE_OF_PAGE: Record<string, string> = {
   's/[storeId]/inbox/page.tsx': 'inbox',
   's/[storeId]/inbox/[conversationId]/page.tsx': 'inbox',
   's/[storeId]/customers/page.tsx': 'customers',
+  's/[storeId]/orders/page.tsx': 'orders',
+  's/[storeId]/orders/[orderId]/page.tsx': 'orders',
   's/[storeId]/products/page.tsx': 'products',
   's/[storeId]/exports/page.tsx': 'exports',
   's/[storeId]/settings/page.tsx': 'settings',
@@ -64,7 +66,9 @@ const TITLE_OF_PAGE: Record<string, string> = {
   'org/stores/page.tsx': 'orgStores',
   'org/warehouses/page.tsx': 'orgWarehouses',
   'org/transfers/page.tsx': 'orgTransfers',
-  'org/transfers/[id]/page.tsx': 'orgTransfer'
+  'org/transfers/[id]/page.tsx': 'orgTransfer',
+  'org/counts/page.tsx': 'orgCounts',
+  'org/counts/[countId]/page.tsx': 'orgCounts'
 }
 
 // WCAG 2.4.2: every page has its own title, or all the tabs of a browser read the same (QA F2-T12)

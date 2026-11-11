@@ -14,7 +14,7 @@ import { Events } from '@platform/core/events'
 import { NotificationTypes } from '@platform/core/notifications'
 import { QueueNames } from '@platform/core/queues'
 
-import { createProduct } from '../builders'
+import { createCustomer, createProduct } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
@@ -1520,6 +1520,152 @@ describe('The life of an order', () => {
       expect(
         (await pay(order.id, { method: 'CASH', status: 'COMPLETED' }, reader.agent)).status
       ).toBe(FORBIDDEN)
+    })
+  })
+
+  describe('the list for the orders page', () => {
+    interface Row {
+      id: string
+      orderNumber: string
+      customer: { id: string; name: string | null }
+    }
+    const list = (query: string, agent = kit.asAdmin()) =>
+      agent.get(`${ApiRoutes.orders.list}?${query}`)
+    const rowsOf = (response: { body: unknown }) => (response.body as { data: Row[] }).data
+
+    async function orderFor(customerId: string) {
+      const response = await kit
+        .asAdmin()
+        .post(ApiRoutes.orders.create)
+        .send({ ...(await kit.orderBody()), customerId })
+      expect(response.status).toBe(CREATED)
+      return (response.body as CreatedBody).order
+    }
+
+    it('names the customer of each row, and only by name', async () => {
+      const customer = await createCustomer(owner, {
+        storeId: ctx.storeA.id,
+        name: `${prefix}-Named`,
+        phone: '+50371234567'
+      })
+      await orderFor(customer.id)
+
+      const [row] = rowsOf(await list(`customerId=${customer.id}`))
+
+      expect(row?.customer).toEqual({ id: customer.id, name: `${prefix}-Named` })
+    })
+
+    it('finds an order by its number, a bare number, or a piece of the name, e-mail or phone of the customer', async () => {
+      const ana = await createCustomer(owner, {
+        storeId: ctx.storeA.id,
+        name: `${prefix}-Searchable Ana`,
+        phone: '+50378889999'
+      })
+      await owner.customer.update({
+        where: { id: ana.id },
+        data: { email: `${prefix}-ana@example.com` }
+      })
+      const other = await createCustomer(owner, { storeId: ctx.storeA.id, name: `${prefix}-Other` })
+      const mine = await orderFor(ana.id)
+      const theirs = await orderFor(other.id)
+      const idsOf = (response: { body: unknown }) => rowsOf(response).map(row => row.id)
+
+      expect(idsOf(await list(`q=${encodeURIComponent(`${prefix}-Searchable`)}`))).toEqual([
+        mine.id
+      ])
+      expect(idsOf(await list(`q=${encodeURIComponent(`${prefix}-ana@`)}`))).toEqual([mine.id])
+      expect(idsOf(await list('q=78889999'))).toEqual([mine.id])
+      expect(idsOf(await list(`q=${mine.orderNumber}`))).toContain(mine.id)
+      expect(idsOf(await list(`q=%23${mine.orderNumber}`))).toContain(mine.id)
+      expect(idsOf(await list(`q=${Number(mine.orderNumber)}`))).toContain(mine.id)
+      expect(
+        idsOf(await list(`q=${encodeURIComponent(`${prefix}-Searchable`)}&customerId=${other.id}`))
+      ).toEqual([])
+      expect(theirs.id).toBeDefined()
+      // A wildcard is text, not a pattern
+      expect(rowsOf(await list(`q=${encodeURIComponent('%')}`))).toEqual([])
+    })
+
+    it('does not find an order of another store by the name of its customer', async () => {
+      const foreign = await createCustomer(owner, {
+        storeId: ctx.storeB.id,
+        name: `${prefix}-ForeignNeedle`
+      })
+      await owner.order.create({
+        data: {
+          storeId: ctx.storeB.id,
+          customerId: foreign.id,
+          orderNumber: `${prefix}-FN`,
+          subtotalCents: 100,
+          totalCents: 100,
+          paymentMethod: 'CASH',
+          createdBy: ctx.adminB.id
+        }
+      })
+
+      expect(rowsOf(await list(`q=${encodeURIComponent(`${prefix}-ForeignNeedle`)}`))).toEqual([])
+    })
+
+    it('cuts the day it was made on the clock of the store, both ends included', async () => {
+      await owner.store.update({
+        where: { id: ctx.storeA.id },
+        data: { timezone: 'America/El_Salvador' }
+      })
+      const customer = await createCustomer(owner, { storeId: ctx.storeA.id })
+      const at = (createdAt: string, number: string) =>
+        owner.order.create({
+          data: {
+            storeId: ctx.storeA.id,
+            customerId: customer.id,
+            orderNumber: `${prefix}-${number}`,
+            subtotalCents: 100,
+            totalCents: 100,
+            paymentMethod: 'CASH',
+            createdBy: ctx.adminA.id,
+            createdAt: new Date(createdAt)
+          }
+        })
+      // 05:59 UTC is the 9th at night in El Salvador, 06:00 is the 10th, 05:59 of the 11th is the 10th still
+      await at('2026-11-10T05:59:00.000Z', 'D9')
+      await at('2026-11-10T06:00:00.000Z', 'D10A')
+      await at('2026-11-11T05:59:00.000Z', 'D10B')
+      await at('2026-11-11T06:00:00.000Z', 'D11')
+      const numbers = async (query: string) =>
+        rowsOf(await list(`customerId=${customer.id}&${query}`))
+          .map(row => row.orderNumber.replace(`${prefix}-`, ''))
+          .sort()
+
+      expect(await numbers('createdFrom=2026-11-10&createdTo=2026-11-10')).toEqual(['D10A', 'D10B'])
+      expect(await numbers('createdFrom=2026-11-11')).toEqual(['D11'])
+      expect(await numbers('createdTo=2026-11-09')).toEqual(['D9'])
+      expect((await list('createdFrom=2026-11-10&createdTo=2026-11-01')).status).toBe(BAD_REQUEST)
+      // A year Postgres cannot hold, or one a day cannot be added to, is a 400 and not a 500
+      for (const day of ['0000-01-01', '9999-12-31']) {
+        expect((await list(`createdFrom=${day}`)).status).toBe(BAD_REQUEST)
+        expect((await list(`createdTo=${day}`)).status).toBe(BAD_REQUEST)
+        expect((await list(`scheduledDeliveryFrom=${day}`)).status).toBe(BAD_REQUEST)
+      }
+    })
+
+    it('pages a search without losing or repeating a row', async () => {
+      const customer = await createCustomer(owner, {
+        storeId: ctx.storeA.id,
+        name: `${prefix}-Pager`
+      })
+      for (let index = 0; index < 3; index += 1) await orderFor(customer.id)
+      const query = `q=${encodeURIComponent(`${prefix}-Pager`)}`
+      const first = await list(`${query}&limit=2`)
+      const next = (first.body as { nextCursor: string }).nextCursor
+      const second = await list(`${query}&limit=2&cursor=${next}`)
+
+      const ids = [...rowsOf(first), ...rowsOf(second)].map(row => row.id)
+      expect(ids).toHaveLength(3)
+      expect(new Set(ids).size).toBe(3)
+    })
+
+    it('is still refused without orders:view', async () => {
+      const writer = await member('writer', [Permissions.ORDERS_CREATE])
+      expect((await list('q=a', writer.agent)).status).toBe(FORBIDDEN)
     })
   })
 
