@@ -89,7 +89,8 @@ export class ProductsService {
     }
   }
 
-  // The live files of a product, oldest first: the cover is one of them. Their links are asked one by one on
+  // The live files of a product, oldest first: the id breaks a tie of creation time (two rows written in the same
+  // millisecond), so the order is the same on every read. The cover is one of them. Their links are asked one by one on
   // GET /media/:id, which asks for media:view.
   async images(storeId: string, productId: string): Promise<ProductImageView[]> {
     const product = await this.prisma.client.product.findFirst({

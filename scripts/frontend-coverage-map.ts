@@ -124,6 +124,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'carriers.byId': { step: '4.14' },
   'carriers.test': { step: '4.14' },
   'carriers.disconnect': { step: '4.14' },
+  'carriers.webhookSecret': { step: '4.14' },
   'carriers.locations': { step: '4.14' },
   'carriers.statusMappings': { step: '4.14' },
   'carriers.statusMappingByCode': { step: '4.14' },

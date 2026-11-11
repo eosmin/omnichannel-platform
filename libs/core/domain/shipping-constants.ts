@@ -85,6 +85,27 @@ export type CarrierHealthReason = (typeof CarrierHealthReasons)[keyof typeof Car
 // The size of a webhook secret the platform makes for a connection (bytes of randomness, shown once as base64url)
 export const CARRIER_WEBHOOK_SECRET_BYTES = 32
 
+// What the public carrier webhook accepts and keeps (TDD_17 §4.9, §4.12). The body is the carrier's, signed by it, but the
+// route is open to the internet, so every size is bounded before anything is parsed or stored.
+export const CarrierWebhookLimits = {
+  // The raw body: a status push is a few hundred bytes, a batch of events a few kilobytes (the parser stops at 100 KB)
+  MAX_BODY_BYTES: 65_536,
+  // How many jobs go to the queue in one call (every event of a body is queued: the size of the body bounds them)
+  BULK_CHUNK: 100
+} as const
+
+// The status-mapping tables of a connection (TDD_17 §4.17), bounded so a faulty or hostile sender cannot grow them
+export const CarrierStatusLimits = {
+  // A normalized code, composite `status:reason` included
+  PROVIDER_CODE_MAX_LENGTH: 96,
+  // The sample of what the carrier said, kept for the screen
+  SAMPLE_MAX_LENGTH: 200,
+  // The codes waiting for the owner, per connection: past it a new code is counted in the metric and the log only
+  MAX_UNMAPPED_PER_CONNECTION: 200,
+  // The rows of mappings one connection may hold (the catalog plus what the owner adds)
+  MAX_MAPPINGS_PER_CONNECTION: 500
+} as const
+
 // Each value is an i18n key.
 export const OrderReturnReasons = {
   DEFECTIVE: 'orders.return.reason.DEFECTIVE',
@@ -135,10 +156,29 @@ export const CarrierReportableStatuses: readonly ShipmentStatus[] = [
 export function normalizeProviderStatusCode(raw: string): string {
   return raw
     .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
+    .replace(/\p{M}/gu, '') // Combining marks only: `\p{Diacritic}` also matches ^ ` and ¨, which are codes
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+// A code that can be stored and mapped: not empty, not longer than a column may hold, and no control character (a NUL is
+// refused by the database, and a code nobody can type into a mapping can never be mapped)
+export function isStorableProviderCode(code: string): boolean {
+  return (
+    code.length > 0 &&
+    code.length <= CarrierStatusLimits.PROVIDER_CODE_MAX_LENGTH &&
+    // eslint-disable-next-line no-control-regex -- a control character is what is refused
+    !/[\u0000-\u001f\u007f]/.test(code)
+  )
+}
+
+// The code a carrier event is looked up under (TDD_17 §4.17): the normalized status, and when the carrier sends a reason
+// beside it (C807: `16` and `115`) the composite `status:reason`. The reason is part of the code only when it is not empty.
+export function providerStatusCodeOf(rawStatus: string, rawReason?: string): string {
+  const status = normalizeProviderStatusCode(rawStatus)
+  const reason = rawReason === undefined ? '' : normalizeProviderStatusCode(rawReason)
+  return reason === '' ? status : `${status}:${reason}`
 }
 
 // Transition tables, enforced inside the owning service (TDD_17 §3).

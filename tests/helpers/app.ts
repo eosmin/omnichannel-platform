@@ -39,6 +39,9 @@ export async function createTestApp(
     // A scan is queued for the worker; the suite reads it, and nothing is left in the development queue
     .overrideProvider(getQueueToken(QueueNames.HEAVY_PROCESSING))
     .useValue(new CapturedQueue())
+    // The events a carrier pushed are queued for the worker; the suite reads them, and nothing is left in a development queue
+    .overrideProvider(getQueueToken(QueueNames.WEBHOOKS))
+    .useValue(new CapturedQueue())
   const moduleRef = await override(builder).compile()
   const app = moduleRef.createNestApplication<NestExpressApplication>({
     bufferLogs: true,

@@ -162,6 +162,7 @@ export const ApiRoutes = {
     byId: (id: string) => `/carriers/${id}`,
     test: (id: string) => `/carriers/${id}/test`,
     disconnect: (id: string) => `/carriers/${id}/disconnect`,
+    webhookSecret: (id: string) => `/carriers/${id}/webhook-secret`, // POST makes a new secret, shown once
     locations: (id: string) => `/carriers/${id}/locations`,
     statusMappings: (id: string) => `/carriers/${id}/status-mappings`,
     statusMappingByCode: (id: string, code: string) => `/carriers/${id}/status-mappings/${code}`, // PUT maps it, DELETE restores the plugin default

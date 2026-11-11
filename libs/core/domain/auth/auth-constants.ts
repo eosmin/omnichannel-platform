@@ -28,6 +28,10 @@ export const ThrottleProfiles = {
 // signature of the body is what authenticates it, so the limit is far above the default
 export const ChannelWebhookThrottle = { limit: 600, ttlMs: 60_000 } as const
 
+// A carrier pushes the status of the shipments of every store it serves from a few addresses, authenticated by the secret of
+// the connection: the same reasoning as a channel's webhook
+export const CarrierWebhookThrottle = { limit: 600, ttlMs: 60_000 } as const
+
 // The login profile of D2: 5 a minute per IP, and the same per hashed email, so the endpoint cannot
 // be used to mail-bomb an address from many IPs
 export const MagicLinkThrottle = { limit: 5, ttlMs: 60_000 } as const

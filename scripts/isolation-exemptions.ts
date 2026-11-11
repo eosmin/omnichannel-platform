@@ -22,14 +22,6 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
     step: '4.10',
     reason: 'Created by POST /shipments/bulk and read through its progress'
   },
-  CarrierStatusMapping: {
-    step: '4.8',
-    reason: 'Seeded with a connection, edited through the status mapping routes (PR C2)'
-  },
-  CarrierUnmappedStatus: {
-    step: '4.8',
-    reason: 'Written by the carrier event processor, listed in Settings → Carriers (PR C2)'
-  },
   ConsentRecord: { step: '7.2', reason: 'Written by the compliance flows' },
   DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' },
   MetricDaily: { step: '5.2', reason: 'Read only through the analytics queries' },
