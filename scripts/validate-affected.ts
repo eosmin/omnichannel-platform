@@ -9,7 +9,7 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import { argv, exit } from 'node:process'
 
-import { type AffectedStep, isDocsOnly, selectSteps } from './lib/affected'
+import { type AffectedStep, isDocsOnly, parseArgs, selectSteps } from './lib/affected'
 
 function git(...args: string[]): string {
   try {
@@ -35,13 +35,11 @@ function changedSince(commit: string): string[] {
   return git('diff', '--name-only', '--no-renames', commit, 'HEAD').split('\n').filter(Boolean)
 }
 
-const KNOWN_FLAGS = ['--since', '--full']
-const sinceAt = argv.indexOf('--since')
-const unknown = argv
-  .slice(2)
-  .filter((arg, i) => arg.startsWith('--') && !KNOWN_FLAGS.includes(arg) && i + 2 !== sinceAt + 1)
-if (unknown.length > 0) {
-  console.error(`unknown argument(s): ${unknown.join(' ')} (known: ${KNOWN_FLAGS.join(' ')})`)
+const args = parseArgs(argv.slice(2))
+if (args.unknown.length > 0) {
+  console.error(
+    `unknown or incomplete argument(s): ${args.unknown.join(' ')} (known: --since <sha> --full)`
+  )
   exit(1)
 }
 
@@ -60,8 +58,7 @@ if (changed.length === 0) {
 
 // A remote commit that this clone does not have, or that is no longer behind HEAD (a branch that
 // was rebased or rewritten), cannot tell what is pushed: then the whole branch is checked
-const sinceIndex = argv.indexOf('--since')
-const since = sinceIndex === -1 ? undefined : argv[sinceIndex + 1]
+const { since, full } = args
 const pushed = since !== undefined && isAncestorOfHead(since) ? changedSince(since) : changed
 if (pushed.length === 0) {
   console.log('nothing new is pushed: nothing to check')
@@ -107,7 +104,6 @@ const STEPS: AffectedStep[] = [
   { name: 'test:contracts', command: ['test:contracts'] }
 ]
 
-const full = argv.includes('--full')
 const toRun = selectSteps(STEPS, { full })
 for (const { name, command } of docsOnly
   ? toRun.filter(({ name }) => PLAN_CHECKS.includes(name))
