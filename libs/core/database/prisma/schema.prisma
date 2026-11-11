@@ -44,45 +44,57 @@ model Store {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  organization         Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  settings             StoreSettings?
-  businessHours        BusinessHours?
-  routingRules         RoutingRule[]
-  memberships          Membership[]
-  invitations          Invitation[]
-  roles                Role[]
-  conversations        Conversation[]
-  messages             Message[]
-  conversationOrigins  ConversationOrigin[]
-  messageReactions     MessageReaction[]
-  messageRevisions     MessageRevision[]
-  customers            Customer[]
-  customerIdentities   CustomerIdentity[]
-  customerMerges       CustomerMerge[]
-  orders               Order[]
-  products             Product[]
-  inventoryMovements   InventoryMovement[]
-  inventoryLevels      InventoryLevel[]
-  storeWarehouses      StoreWarehouse[]
-  orderItemAllocations OrderItemAllocation[]
-  stockCountLines      StockCountLine[]
-  stockTransferLines   StockTransferLine[]
-  tags                 Tag[]
-  snippets             Snippet[]
-  media                Media[]
-  channelConnections   ChannelConnection[]
-  pluginInstallations  PluginInstallation[]
-  webhooks             Webhook[]
-  apiKeys              ApiKey[]
-  notifications        Notification[]
-  notificationPrefs    NotificationPreference[]
-  retentionSettings    RetentionSettings?
-  scheduledReports     ScheduledReport[]
-  analyticsEvents      AnalyticsEvent[]
-  metricsHourly        MetricHourly[]
-  metricsDaily         MetricDaily[]
-  consentRecords       ConsentRecord[]
-  exports              Export[]
+  organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  settings                StoreSettings?
+  businessHours           BusinessHours?
+  routingRules            RoutingRule[]
+  memberships             Membership[]
+  invitations             Invitation[]
+  roles                   Role[]
+  conversations           Conversation[]
+  messages                Message[]
+  conversationOrigins     ConversationOrigin[]
+  messageReactions        MessageReaction[]
+  messageRevisions        MessageRevision[]
+  customers               Customer[]
+  customerIdentities      CustomerIdentity[]
+  customerMerges          CustomerMerge[]
+  orders                  Order[]
+  products                Product[]
+  inventoryMovements      InventoryMovement[]
+  inventoryLevels         InventoryLevel[]
+  storeWarehouses         StoreWarehouse[]
+  orderItemAllocations    OrderItemAllocation[]
+  stockCountLines         StockCountLine[]
+  stockTransferLines      StockTransferLine[]
+  tags                    Tag[]
+  snippets                Snippet[]
+  media                   Media[]
+  channelConnections      ChannelConnection[]
+  pluginInstallations     PluginInstallation[]
+  webhooks                Webhook[]
+  apiKeys                 ApiKey[]
+  notifications           Notification[]
+  notificationPrefs       NotificationPreference[]
+  retentionSettings       RetentionSettings?
+  scheduledReports        ScheduledReport[]
+  analyticsEvents         AnalyticsEvent[]
+  metricsHourly           MetricHourly[]
+  metricsDaily            MetricDaily[]
+  consentRecords          ConsentRecord[]
+  exports                 Export[]
+  carrierConnections      CarrierConnection[]
+  carrierServices         CarrierService[]
+  guideSequences          GuideSequence[]
+  shipments               Shipment[]
+  shipmentEvents          ShipmentEvent[]
+  carrierStatusMappings   CarrierStatusMapping[]
+  carrierUnmappedStatuses CarrierUnmappedStatus[]
+  pickupRequests          PickupRequest[]
+  bulkLabelJobs           BulkLabelJob[]
+  orderMessageTemplates   OrderMessageTemplate[]
+  orderReturns            OrderReturn[]
+  orderReturnLines        OrderReturnLine[]
 
   @@unique([organizationId, slug])
   // So that a link to a store can name its organization and the database check that they go together (StoreWarehouse)
@@ -739,10 +751,14 @@ model Order {
   deliveredAt                DateTime? @map("delivered_at")
   cancelledAt                DateTime? @map("cancelled_at")
 
-  store    Store       @relation(fields: [storeId], references: [id]) // No cascade: tax retention
-  customer Customer    @relation(fields: [customerId], references: [id])
-  items    OrderItem[]
-  media    Media[]
+  store              Store         @relation(fields: [storeId], references: [id]) // No cascade: tax retention
+  customer           Customer      @relation(fields: [customerId], references: [id])
+  items              OrderItem[]
+  media              Media[]
+  // The shipping tables of Step 4.8 point at the order with a plain foreign key (an order has no (store_id, id) key)
+  shipments          Shipment[]
+  returns            OrderReturn[] @relation("ReturnOrder")
+  replacementReturns OrderReturn[] @relation("ReturnReplacement")
 
   @@unique([storeId, orderNumber])
   @@index([storeId, status, createdAt(sort: Desc)])
@@ -770,6 +786,7 @@ model OrderItem {
   product     Product               @relation(fields: [productId], references: [id])
   variant     ProductVariant?       @relation(fields: [variantId], references: [id])
   allocations OrderItemAllocation[]
+  returnLines OrderReturnLine[]
 
   @@index([orderId])
   @@index([productId])
@@ -900,6 +917,8 @@ model Warehouse {
   counts       StockCount[]
   transfersOut StockTransfer[]       @relation("TransferFrom")
   transfersIn  StockTransfer[]       @relation("TransferTo")
+  shipments    Shipment[]
+  returnLines  OrderReturnLine[]
 
   @@unique([organizationId, code])
   // So that a link can name its organization and the database check that they go together (StoreWarehouse)
@@ -1604,4 +1623,345 @@ model RetentionSettings {
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
   @@map("retention_settings")
+}
+
+// ============================================================
+// SHIPPING (TDD_17 §2, §4.17; Step 4.8, PR B1). Schema only: no service reads or writes these tables yet.
+// Every table carries its store_id. A relation to another table of the same store names the store as well
+// (fields [storeId, x] -> references [storeId, id]), so the database refuses a link to another store's row.
+// Order, OrderItem and Warehouse have no (store_id, id) key to point at, so those links are plain foreign keys
+// and the migration adds triggers that check the store (or the organization of the store) of the row they reach.
+// The reception tables are Step 4.12, the remittance tables Step 4.13, and Order.carrierConnectionId stays a
+// plain column until its foreign key in Step 4.8 PR C1.
+// ============================================================
+
+// A store's account with a carrier (or the 'local' courier). Credentials and webhook secret are ciphertext.
+model CarrierConnection {
+  id                      String    @id @default(uuid())
+  storeId                 String    @map("store_id")
+  carrierId               String    @map("carrier_id") // CarrierId: 'forza' | 'c807' | 'local' | a private plugin's id
+  displayName             String    @map("display_name")
+  status                  String    @default("active") // CarrierConnectionStatus
+  credentials             Bytes? // Ciphertext; null for 'local'
+  webhookSecret           Bytes?    @map("webhook_secret") // Ciphertext; the secret of this connection's inbound webhook
+  defaultServiceCode      String?   @map("default_service_code") // A CarrierService.code of this connection
+  defaultShippingPayer    String    @default("sender") @map("default_shipping_payer") // ShippingPayer
+  labelFormat             String    @default("pdf_100x150") @map("label_format") // LabelFormat
+  contact                 Json? // 'local' only: { phone, notes }
+  pickupEnabled           Boolean   @default(false) @map("pickup_enabled")
+  pickupDays              Int[]     @default([1, 2, 3, 4, 5]) @map("pickup_days") // ISO weekdays, 1 = Monday
+  pickupCutoffTime        String?   @map("pickup_cutoff_time") // 'HH:mm' in the store timezone
+  autoPickup              Boolean   @default(false) @map("auto_pickup")
+  autoPickupTime          String?   @map("auto_pickup_time") // 'HH:mm' in the store timezone
+  pickupReminderMinutes   Int       @default(30) @map("pickup_reminder_minutes")
+  pollIntervalMinutes     Int?      @map("poll_interval_minutes") // Null = the plugin default; only for carriers polled instead of pushing
+  maxDeliveryAttempts     Int       @default(3) @map("max_delivery_attempts") // Attempts the carrier makes before returning the package; the {{maxAttempts}} of a message
+  defaultShippingFeeCents Int?      @map("default_shipping_fee_cents") // The fee charged to the customer: the preset and the accepted range (TDD_17 §4.13)
+  minShippingFeeCents     Int?      @map("min_shipping_fee_cents")
+  maxShippingFeeCents     Int?      @map("max_shipping_fee_cents")
+  remittanceDeductsFee    Boolean   @default(false) @map("remittance_deducts_fee") // The carrier subtracts its fee from what it remits when the sender pays (§4.15)
+  lastHealthyAt           DateTime? @map("last_healthy_at")
+  lastError               String?   @map("last_error")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  store            Store                   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  services         CarrierService[]
+  guideSequence    GuideSequence?
+  shipments        Shipment[]
+  pickups          PickupRequest[]
+  statusMappings   CarrierStatusMapping[]
+  unmappedStatuses CarrierUnmappedStatus[]
+
+  @@unique([storeId, displayName])
+  // So that what hangs from a connection can name its store and the database check that they go together
+  @@unique([storeId, id])
+  @@index([storeId, status])
+  @@map("carrier_connections")
+}
+
+// The service types a carrier offers (next day, express, ...). The code is what the carrier's API expects; the label
+// is what the owner sees. Seeded from the plugin's serviceCatalog() when the connection is created.
+model CarrierService {
+  id           String  @id @default(uuid())
+  storeId      String  @map("store_id")
+  connectionId String  @map("connection_id")
+  code         String // Carrier-specific, sent in the API call
+  label        String
+  active       Boolean @default(true)
+
+  store      Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  connection CarrierConnection @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Cascade)
+
+  @@unique([connectionId, code])
+  @@index([storeId])
+  @@map("carrier_services")
+}
+
+// Guide numbers of the 'local' carrier. One row per connection, advanced with
+// UPDATE ... SET next_value = next_value + 1 RETURNING in the same transaction as the Shipment.
+model GuideSequence {
+  connectionId String @id @map("connection_id")
+  storeId      String @map("store_id")
+  prefix       String // Printed in front of the number, e.g. 'JM'
+  nextValue    Int    @default(1) @map("next_value")
+
+  store      Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  connection CarrierConnection @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Cascade)
+
+  // The primary key already makes the connection unique; this is the key the composite relation to it needs
+  @@unique([storeId, connectionId])
+  @@index([storeId])
+  @@map("guide_sequences")
+}
+
+// One guide of one order from one warehouse. Its contents are the order's allocations from that warehouse
+// (TDD_16 §4.1): there is no shipment-lines table. The status is written only by ShippingService (lint rule).
+model Shipment {
+  id                 String    @id @default(uuid())
+  storeId            String    @map("store_id")
+  orderId            String    @map("order_id")
+  connectionId       String    @map("connection_id")
+  kind               String    @default("outbound") // ShipmentKind
+  returnId           String?   @map("return_id") // Set when kind = return
+  originWarehouseId  String?   @map("origin_warehouse_id") // The warehouse the goods leave from (§4.5)
+  status             String    @default("creating") // ShipmentStatus
+  serviceCode        String    @map("service_code")
+  shippingPayer      String    @map("shipping_payer") // ShippingPayer
+  codAmountCents     Int?      @map("cod_amount_cents") // Null = prepaid
+  codStatus          String    @default("not_applicable") @map("cod_status") // CodStatus
+  codExpectedCents   Int?      @map("cod_expected_cents") // Written when the shipment is delivered (§4.15)
+  codRemittedCents   Int?      @map("cod_remitted_cents")
+  codRemittanceId    String?   @map("cod_remittance_id") // Plain column until the remittance tables of Step 4.13
+  currency           String
+  packageCount       Int       @default(1) @map("package_count")
+  failedAttempts     Int       @default(0) @map("failed_attempts") // Delivery attempts that failed (§4.9)
+  weightGrams        Int?      @map("weight_grams")
+  guideNumber        String?   @map("guide_number") // The carrier's guide, or ours for 'local'
+  providerShipmentId String?   @map("provider_shipment_id") // The carrier's internal id, when it has one
+  trackingUrl        String?   @map("tracking_url")
+  labelMediaId       String?   @map("label_media_id") // Media purpose SHIPPING_LABEL; plain column like the other media ids
+  carrierCostCents   Int?      @map("carrier_cost_cents") // When the carrier reports it
+  refundStatus       String    @default("not_applicable") @map("refund_status") // GuideRefundStatus
+  idempotencyKey     String    @map("idempotency_key") // Unique per store (@@unique below)
+  pickupId           String?   @map("pickup_id")
+  lastError          String?   @map("last_error")
+  cancelRequestedAt  DateTime? @map("cancel_requested_at")
+  cancelledAt        DateTime? @map("cancelled_at")
+  createdBy          String    @map("created_by") // A user id or 'system'
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  store           Store             @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  order           Order             @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  connection      CarrierConnection @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Restrict)
+  pickup          PickupRequest?    @relation(fields: [storeId, pickupId], references: [storeId, id], onDelete: Restrict)
+  originWarehouse Warehouse?        @relation(fields: [originWarehouseId], references: [id], onDelete: Restrict)
+  orderReturn     OrderReturn?      @relation("ShipmentReturn", fields: [storeId, returnId], references: [storeId, id], onDelete: Restrict)
+  returnOf        OrderReturn[]     @relation("ReturnShipment")
+  events          ShipmentEvent[]
+
+  @@unique([storeId, id])
+  @@unique([storeId, idempotencyKey])
+  @@index([orderId])
+  @@index([storeId, status])
+  @@index([storeId, orderId])
+  @@index([connectionId, status])
+  @@index([pickupId])
+  @@index([originWarehouseId])
+  @@index([returnId])
+  @@map("shipments")
+}
+
+// Raw SQL of the migration (Prisma cannot express a partial unique index): shipments_one_active_outbound (one active
+// outbound guide per order and origin warehouse, NULLS NOT DISTINCT) and shipments_guide_per_connection.
+
+// The history of a shipment. A status the plugin could not map is stored with a null status (TDD_17 §4.17).
+model ShipmentEvent {
+  id              String   @id @default(uuid())
+  storeId         String   @map("store_id")
+  shipmentId      String   @map("shipment_id")
+  providerEventId String?  @map("provider_event_id")
+  status          String? // ShipmentStatus; null = an unmapped provider status, stored only
+  rawStatus       String?  @map("raw_status")
+  description     String?
+  occurredAt      DateTime @map("occurred_at")
+  receivedAt      DateTime @default(now()) @map("received_at")
+  source          String // ShipmentEventSource: webhook | poll | manual | system
+  payload         Json? // Redacted (§4.12)
+
+  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  shipment Shipment @relation(fields: [storeId, shipmentId], references: [storeId, id], onDelete: Cascade)
+
+  @@index([shipmentId, occurredAt])
+  @@index([storeId])
+  @@map("shipment_events")
+}
+
+// Raw SQL: shipment_events_provider_dedupe, unique on (shipment_id, provider_event_id) where provider_event_id is not null.
+
+// The owner's map from a carrier's own status code to a ShipmentStatus (§4.17). Seeded from the plugin's
+// statusCatalog() when the connection is created, editable afterwards.
+model CarrierStatusMapping {
+  id           String   @id @default(uuid())
+  storeId      String   @map("store_id")
+  connectionId String   @map("connection_id")
+  providerCode String   @map("provider_code") // Normalized: normalizeProviderStatusCode
+  label        String? // What the carrier calls it, for the screen
+  status       String? // ShipmentStatus; null = ignore on purpose (no effect, not counted as unknown)
+  source       String   @default("default") // CarrierStatusMappingSource: default | custom
+  updatedBy    String?  @map("updated_by")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  store      Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  connection CarrierConnection @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Cascade)
+
+  @@unique([connectionId, providerCode])
+  @@index([storeId])
+  @@map("carrier_status_mappings")
+}
+
+// A provider status code that arrived with no mapping and no plugin default (§4.17). One row per connection and code,
+// so the owner is told once and the screen lists what is waiting.
+model CarrierUnmappedStatus {
+  id                String    @id @default(uuid())
+  storeId           String    @map("store_id")
+  connectionId      String    @map("connection_id")
+  providerCode      String    @map("provider_code") // Normalized
+  sampleRawStatus   String    @map("sample_raw_status") // The text as the carrier sent it
+  sampleDescription String?   @map("sample_description")
+  occurrences       Int       @default(1)
+  firstSeenAt       DateTime  @default(now()) @map("first_seen_at")
+  lastSeenAt        DateTime  @default(now()) @map("last_seen_at")
+  resolvedAt        DateTime? @map("resolved_at")
+
+  store      Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  connection CarrierConnection @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Cascade)
+
+  @@unique([connectionId, providerCode])
+  @@index([storeId])
+  @@map("carrier_unmapped_statuses")
+}
+
+// A request to the carrier to collect packages on a day (§4.10). No unique index on (connection, date): a carrier whose
+// guides exist only inside a pickup can need several pickups on one day; "one open pickup per connection and day" is a
+// rule of ShippingService.ensurePickup, under an advisory lock.
+model PickupRequest {
+  id               String   @id @default(uuid())
+  storeId          String   @map("store_id")
+  connectionId     String   @map("connection_id")
+  pickupDate       DateTime @map("pickup_date") @db.Date // In the store timezone
+  status           String   @default("pending") // PickupStatus
+  packageCount     Int      @default(0) @map("package_count")
+  revision         Int      @default(1) // +1 each time the package count is modified
+  providerPickupId String?  @map("provider_pickup_id")
+  windowStart      String?  @map("window_start") // 'HH:mm', when the carrier lets us choose
+  windowEnd        String?  @map("window_end")
+  requestedBy      String   @map("requested_by") // A user id or 'system'
+  lastError        String?  @map("last_error")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  store      Store             @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  connection CarrierConnection @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Restrict)
+  shipments  Shipment[]
+
+  @@unique([storeId, id])
+  @@index([storeId, pickupDate])
+  @@index([connectionId])
+  @@map("pickup_requests")
+}
+
+model BulkLabelJob {
+  id            String    @id @default(uuid())
+  storeId       String    @map("store_id")
+  status        String    @default("queued") // BulkLabelJobStatus
+  orderIds      String[]  @map("order_ids") // In the order the agent selected them (the PDF keeps it)
+  total         Int
+  succeeded     Int       @default(0)
+  failed        Int       @default(0)
+  results       Json? // Per order: { orderId, shipmentId?, outcome, errorCode? }
+  mergedMediaId String?   @map("merged_media_id") // Media purpose BULK_LABELS; plain column like the other media ids
+  requestedBy   String    @map("requested_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  finishedAt    DateTime? @map("finished_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId, createdAt])
+  @@map("bulk_label_jobs")
+}
+
+// The messages a store sends about an order, one template per kind and locale (§4.7).
+model OrderMessageTemplate {
+  id              String   @id @default(uuid())
+  storeId         String   @map("store_id")
+  kind            String // OrderMessageKind
+  locale          String
+  body            String // Plain text with {{variables}} from OrderMessageVariables
+  autoSend        Boolean  @default(false) @map("auto_send")
+  attachSummary   Boolean  @default(false) @map("attach_summary") // Attach the order summary PDF when the channel supports documents
+  channelTemplate Json?    @map("channel_template") // { pluginId, name, language, variables } of a pre-approved channel template (§4.7)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, kind, locale])
+  @@map("order_message_templates")
+}
+
+// A return or an exchange of a delivered order (§4.11).
+model OrderReturn {
+  id                 String    @id @default(uuid())
+  storeId            String    @map("store_id")
+  orderId            String    @map("order_id")
+  type               String // OrderReturnType: refund | exchange
+  reason             String // OrderReturnReason
+  status             String    @default("requested") // OrderReturnStatus
+  shippingPayer      String    @map("shipping_payer") // Who pays the return leg and the replacement (§4.11)
+  replacementOrderId String?   @map("replacement_order_id") // Exchange: the new order
+  returnShipmentId   String?   @map("return_shipment_id")
+  refundAmountCents  Int?      @map("refund_amount_cents")
+  notes              String?
+  createdBy          String    @map("created_by")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  receivedAt         DateTime? @map("received_at")
+
+  store            Store             @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  order            Order             @relation("ReturnOrder", fields: [orderId], references: [id], onDelete: Restrict)
+  replacementOrder Order?            @relation("ReturnReplacement", fields: [replacementOrderId], references: [id], onDelete: Restrict)
+  returnShipment   Shipment?         @relation("ReturnShipment", fields: [storeId, returnShipmentId], references: [storeId, id], onDelete: Restrict)
+  shipments        Shipment[]        @relation("ShipmentReturn")
+  lines            OrderReturnLine[]
+
+  @@unique([storeId, id])
+  @@index([orderId])
+  @@index([storeId, orderId])
+  @@index([storeId, status])
+  @@index([replacementOrderId])
+  @@index([returnShipmentId])
+  @@map("order_returns")
+}
+
+model OrderReturnLine {
+  id                 String  @id @default(uuid())
+  storeId            String  @map("store_id")
+  returnId           String  @map("return_id")
+  orderItemId        String  @map("order_item_id")
+  quantity           Int
+  condition          String? // OrderReturnCondition, set on receipt
+  restockWarehouseId String? @map("restock_warehouse_id") // Set on receipt for resellable items
+
+  store            Store       @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  orderReturn      OrderReturn @relation(fields: [storeId, returnId], references: [storeId, id], onDelete: Cascade)
+  orderItem        OrderItem   @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  restockWarehouse Warehouse?  @relation(fields: [restockWarehouseId], references: [id], onDelete: Restrict)
+
+  @@unique([returnId, orderItemId])
+  @@index([storeId])
+  @@index([orderItemId])
+  @@index([restockWarehouseId])
+  @@map("order_return_lines")
 }
