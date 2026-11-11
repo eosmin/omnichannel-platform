@@ -399,6 +399,22 @@ describe('The shipping tables', () => {
       await ship(ctx.storeA.id, order.id, connection.id)
     })
 
+    it('frees the order when its package came back (returned), and still holds it once delivered', async () => {
+      const connection = await connect(ctx.storeA.id)
+      const order = await createOrder(owner, { storeId: ctx.storeA.id })
+      const first = await ship(ctx.storeA.id, order.id, connection.id)
+      await owner.shipment.update({
+        where: { id: first.id },
+        data: { status: ShipmentStatus.DELIVERED }
+      })
+      await refused(ship(ctx.storeA.id, order.id, connection.id), /Unique constraint/)
+      await owner.shipment.update({
+        where: { id: first.id },
+        data: { status: ShipmentStatus.RETURNED }
+      })
+      await ship(ctx.storeA.id, order.id, connection.id)
+    })
+
     it('has a guide number that is unique in its connection and an idempotency key that is unique', async () => {
       const connection = await connect(ctx.storeA.id)
       const other = await connect(ctx.storeA.id)

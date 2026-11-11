@@ -1,9 +1,12 @@
 import { type AuditActionType } from '@platform/core/audit'
 import type { AuditService } from '@platform/core/audit-module'
 import { type Permission, Permissions } from '@platform/core/auth'
-import type { PrismaTransaction } from '@platform/core/database'
+import { lockStoreScope, type PrismaTransaction } from '@platform/core/database'
 import {
   formatOrderNumber,
+  ShipmentInactiveStatuses,
+  ShipmentKind,
+  ShipmentLockScopes,
   OrderConflicts,
   OrderNumber,
   OrderResourceTypes
@@ -68,9 +71,29 @@ export async function lockOrder(
   storeId: string,
   orderId: string
 ): Promise<void> {
+  // The shipment engine holds this lock while it reads the order and writes a guide: taking it before the row, in that order,
+  // makes a cancel or an edit wait for a guide in the making (or be seen by it), and never deadlock with it
+  await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${orderId}`)
   const rows = await tx.$queryRaw<{ id: string }[]>`
     SELECT id FROM orders WHERE id = ${orderId} AND store_id = ${storeId} FOR UPDATE`
   if (rows.length === 0) throw resourceNotFound('order')
+}
+
+// Does the order hold a guide that is not over (TDD_17 §4.5 step 4): then its tracking number is the guide's
+export async function hasActiveGuide(
+  tx: PrismaTransaction,
+  storeId: string,
+  orderId: string
+): Promise<boolean> {
+  const active = await tx.shipment.count({
+    where: {
+      orderId,
+      storeId,
+      kind: ShipmentKind.OUTBOUND,
+      status: { notIn: [...ShipmentInactiveStatuses] }
+    }
+  })
+  return active > 0
 }
 
 // A customer absorbed by a merge is kept for 30 days with `mergedIntoId` set; an order for it belongs to the customer it

@@ -227,11 +227,20 @@ export class CarrierConnectionsService {
         .catch(() => 'Carrier')
         .parse(answer.displayName)
 
+    // Sealed here and not in the transaction: what cannot be written as JSON, or is too large, is the plugin's bad answer, and
+    // it is answered as such (the error itself is not handed on: it may hold what was being sealed)
+    let credentials: ReturnType<CredentialCipher['seal']> | null
+    let webhookSecret: ReturnType<CredentialCipher['seal']> | null
+    try {
+      credentials = internal ? null : this.cipher.seal(answer.credentials)
+      webhookSecret = secret === null ? null : this.cipher.seal({ secret })
+    } catch {
+      await this.forget(plugin, storeId, connectionId, answer)
+      throw invalidInput('the credentials cannot be stored')
+    }
     let created: { id: string; view: CarrierConnectionView }
     try {
       // Sealed here and not in the transaction: what cannot be written as JSON, or is too large, is the plugin's bad answer
-      const credentials = internal ? null : this.cipher.seal(answer.credentials)
-      const webhookSecret = secret === null ? null : this.cipher.seal({ secret })
       created = await this.prisma.transaction(async tx => {
         await lockStoreForWrite(tx, storeId)
         await lockStoreScope(tx, storeId, CarrierLockScopes.CONNECTIONS)
@@ -304,8 +313,12 @@ export class CarrierConnectionsService {
         }
       })
     } catch (error) {
-      // The carrier made an account for a connection that was not kept: tell it so, best effort
-      await this.forget(plugin, storeId, connectionId, answer)
+      // The carrier made an account for a connection that was not kept: tell it so, best effort. Not for a name that is taken:
+      // the account may be the very one a live connection of the store uses, and forgetting it would break that connection
+      const nameTaken =
+        isUniqueViolation(error) ||
+        (error instanceof PlatformException && error.code === ErrorCodes.RESOURCE_ALREADY_EXISTS)
+      if (!nameTaken) await this.forget(plugin, storeId, connectionId, answer)
       if (isUniqueViolation(error)) {
         throw new PlatformException(
           ErrorCodes.RESOURCE_ALREADY_EXISTS,
@@ -369,6 +382,11 @@ export class CarrierConnectionsService {
         const row = await this.rowOf(tx, storeId, connectionId)
         if (row.status === String(CarrierConnectionStatus.DISABLED) && !onlyRename) {
           throw notActive()
+        }
+        // As a connect does: a connection is not renewed under an installation that was revoked a moment ago
+        if (row.status !== String(CarrierConnectionStatus.DISABLED)) {
+          await this.lockInstallation(tx, storeId)
+          await this.assertInstalled(tx, storeId)
         }
         if (local !== null) await this.assertPrefixFree(tx, storeId, local.prefix, connectionId)
 
@@ -658,7 +676,10 @@ export class CarrierConnectionsService {
           { reason }
         )
       }
-      throw error
+      // The error of a plugin is never handed on: its request, its headers or its answer may hold the account's secret, and
+      // the filter that reports an unknown error sends the whole object to the log and to Sentry. Only the name was logged.
+      // eslint-disable-next-line preserve-caught-error -- the cause is left out on purpose: it may hold the secret
+      throw new Error(`the carrier plugin failed to connect (${reason})`)
     }
   }
 
@@ -723,16 +744,30 @@ export class CarrierConnectionsService {
     prefix: string,
     exceptConnectionId: string | null
   ): Promise<void> {
+    // A courier that was let go and printed no guide frees its prefix (what it printed is checked below)
     const taken = await tx.guideSequence.findFirst({
       where: {
         storeId,
         prefix,
+        connection: { status: { not: CarrierConnectionStatus.DISABLED } },
         ...(exceptConnectionId === null ? {} : { connectionId: { not: exceptConnectionId } })
       },
       select: { connectionId: true }
     })
     if (taken !== null)
       throw resourceConflict('another courier of the store uses that guide prefix')
+    // A prefix that another courier changed away from still prints on its guides: taking it would number two packages of
+    // the store with the same guide (no table forbids it across connections, because two carriers may share a number)
+    const printed = await tx.shipment.findFirst({
+      where: {
+        storeId,
+        guideNumber: { startsWith: `${prefix}${LocalGuide.SEPARATOR}` },
+        ...(exceptConnectionId === null ? {} : { connectionId: { not: exceptConnectionId } })
+      },
+      select: { id: true }
+    })
+    if (printed !== null)
+      throw resourceConflict('that guide prefix is printed on guides of another courier')
   }
 
   // What a carrier that makes no guide of its own (the `local` courier) gives back: the prefix of its guides, that must be

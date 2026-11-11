@@ -270,3 +270,103 @@ export const PickupStatusTransitions: Record<PickupStatus, readonly PickupStatus
   [PickupStatus.CANCELLED]: [],
   [PickupStatus.FAILED]: []
 }
+
+// ---------------------------------------------------------------- the shipment engine (TDD_17 §4.5, §4.8)
+
+// One guide at a time per order: the lock the write of a shipment takes (TDD_17 §4.5 step 7), kept apart from the lock of
+// the row of the order that the order service takes
+export const ShipmentLockScopes = { ORDER: 'order_shipping' } as const
+
+export const ShipmentLimits = {
+  // What a plugin may take for one call before the outcome is given up as unknown (a guide may exist: never "failed")
+  PROVIDER_TIMEOUT_MS: 30_000,
+  // A carrier that declares IDEMPOTENT_CREATE is asked again with the same key, never more than this many times in all
+  IDEMPOTENT_ATTEMPTS: 3,
+  RETRY_BASE_DELAY_MS: 250,
+  // The most shipments one call of `createShipments` takes, and the most one pickup-bound call carries when the plugin
+  // does not say
+  MAX_REQUESTS: 100,
+  DEFAULT_BATCH_SIZE: 50,
+  // What `lastError` keeps of what a carrier said: one line, bounded
+  LAST_ERROR_MAX_LENGTH: 300,
+  // A label is a page or a few: anything bigger is not one
+  LABEL_MAX_BYTES: 5 * 1024 * 1024,
+  GUIDE_NUMBER_MAX_LENGTH: 100,
+  NOTES_MAX_LENGTH: 500,
+  DESCRIPTION_MAX_LENGTH: 300
+} as const
+
+// Why a shipment is where it is, as a name of a closed list, for what the platform decided (what a carrier said, when it
+// refused, is its own message, trimmed)
+export const ShipmentFailureReasons = {
+  UNKNOWN_OUTCOME: 'unknown_outcome', // the call did not answer: a guide may exist
+  INVALID_ANSWER: 'invalid_answer', // the plugin answered with something the platform cannot use
+  AUTH: 'auth', // the carrier rejected the credentials
+  CREDENTIALS_UNREADABLE: 'credentials_unreadable', // the stored credentials do not open
+  LABEL_INVALID: 'label_invalid', // the label the carrier gave is not a PDF the platform can keep
+  RECORD_FAILED: 'record_failed', // the carrier made the guide and the platform could not write it down
+  MARKED_FAILED: 'marked_failed' // an agent decided it failed
+} as const
+export type ShipmentFailureReason =
+  (typeof ShipmentFailureReasons)[keyof typeof ShipmentFailureReasons]
+
+// The statuses in which a shipment still holds its order and warehouse in the database (the partial unique index
+// `shipments_one_active_outbound` lists the complement: cancelled, failed and returned, a package that is back)
+export const ShipmentInactiveStatuses: readonly ShipmentStatus[] = [
+  ShipmentStatus.CANCELLED,
+  ShipmentStatus.FAILED,
+  ShipmentStatus.RETURNED
+]
+
+// A guide may exist and nobody knows: nothing may be created again for the order
+export const ShipmentUnknownOutcomeStatuses: readonly ShipmentStatus[] = [
+  ShipmentStatus.CREATING,
+  ShipmentStatus.REQUIRES_REVIEW
+]
+
+// The package has left: the order cannot be cancelled any more (TDD_17 §4.8)
+export const ShipmentPastPickupStatuses: readonly ShipmentStatus[] = [
+  ShipmentStatus.PICKED_UP,
+  ShipmentStatus.IN_TRANSIT,
+  ShipmentStatus.OUT_FOR_DELIVERY,
+  ShipmentStatus.FAILED_ATTEMPT,
+  ShipmentStatus.DELIVERED,
+  ShipmentStatus.RETURNING
+]
+
+// What an agent may set by hand (TDD_17 §4.2, §4.9): the statuses the packages go through, and the two that settle a
+// guide whose outcome was unknown. The table of transitions still decides from where.
+export const ManualShipmentStatuses: readonly ShipmentStatus[] = [
+  ShipmentStatus.LABEL_CREATED,
+  ShipmentStatus.PICKED_UP,
+  ShipmentStatus.IN_TRANSIT,
+  ShipmentStatus.OUT_FOR_DELIVERY,
+  ShipmentStatus.FAILED_ATTEMPT,
+  ShipmentStatus.DELIVERED,
+  ShipmentStatus.RETURNING,
+  ShipmentStatus.RETURNED,
+  ShipmentStatus.FAILED
+]
+
+// The window of a pickup when nobody chose one (HH:mm, in the store timezone)
+export const PickupDefaults = { WINDOW_FROM: '09:00', WINDOW_TO: '17:00' } as const
+
+// The key a guide is asked for with (TDD_17 §4.5 step 2): the same order, origin and attempt always make the same key, so a
+// carrier that keeps its promise never makes a second guide for it. The store is not part of it (the column is unique per
+// store).
+export function shipmentIdempotencyKey(
+  orderId: string,
+  originWarehouseId: string | null,
+  attempt: number
+): string {
+  return `shipment:${orderId}:${originWarehouseId ?? 'none'}:${attempt}`
+}
+
+// What the history of a shipment says when the platform wrote the line itself: an i18n key, translated by the screen
+export const ShipmentEventNotes = { FOUND_AT_CARRIER: 'shipping.event.foundAtCarrier' } as const
+
+// The keys a carrier is called with besides the one of a guide (TDD_17 §4.5, §4.8): one for a whole pickup batch, one for a void
+export const pickupBatchKey = (pickupId: string): string => `pickup:${pickupId}`
+export const cancelShipmentKey = (guideKey: string): string => `cancel:${guideKey}`
+
+export const ShipmentResourceTypes = { SHIPMENT: 'shipment' } as const

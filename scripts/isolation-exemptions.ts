@@ -40,7 +40,5 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   PickupRequest: { step: '4.11', reason: 'Created and read through the pickups routes' },
   RetentionSettings: { step: '5.4', reason: 'Read and changed from the data retention settings' },
   ScheduledReport: { step: '5.2', reason: 'Managed from the analytics reports' },
-  Shipment: { step: '4.8', reason: 'Created and read through the shipments routes (PR C1)' },
-  ShipmentEvent: { step: '4.8', reason: 'Read through its shipment (PR C1)' },
   Webhook: { step: '5.4', reason: 'Managed from Settings' }
 }

@@ -1,5 +1,4 @@
 import {
-  CarrierCapability,
   type CarrierCapabilityType,
   type CarrierHealthReason,
   PickupStatus,
@@ -173,12 +172,3 @@ export interface ConnectionRow {
   guideSequence: { prefix: string } | null
   _count: { shipments: number; pickups: number }
 }
-
-export function hasCapability(
-  capabilities: readonly CarrierCapabilityType[],
-  capability: CarrierCapabilityType
-): boolean {
-  return capabilities.includes(capability)
-}
-
-export const WEBHOOK_CAPABILITY = CarrierCapability.WEBHOOK_STATUS

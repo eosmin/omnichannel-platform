@@ -12,6 +12,18 @@ export interface OrderInput {
   customerNotes?: string
   internalNotes?: string
   packingNotes?: string
+  // What a guide needs (TDD_17 §4.5): the address, the phones, how it is paid and what the customer was charged
+  shippingAddress?: Record<string, string> | null
+  recipientPhones?: string[]
+  paymentMethod?: string
+  paymentStatus?: string
+  shippingCents?: number
+  freeShipping?: boolean
+  priceApprovalStatus?: string
+  priceApprovedShippingCents?: number
+  carrierConnectionId?: string
+  // The warehouse that holds the units of the line: the guide leaves from there
+  allocatedAt?: string
 }
 
 // An order of the store with one line, written as the owner: the way to put an order in any store without the api
@@ -32,9 +44,22 @@ export async function createOrder(
       orderNumber: `T-${randomUUID().slice(0, 8)}`,
       status: input.status ?? 'PENDING_CONFIRMATION',
       subtotalCents: 1999,
-      totalCents: 1999,
-      paymentMethod: 'CASH',
-      recipientPhones: ['71234567'],
+      shippingCents: input.shippingCents ?? 0,
+      totalCents: 1999 + (input.shippingCents ?? 0),
+      paymentMethod: input.paymentMethod ?? 'CASH',
+      ...(input.paymentStatus === undefined ? {} : { paymentStatus: input.paymentStatus }),
+      recipientPhones: input.recipientPhones ?? ['71234567'],
+      ...(input.shippingAddress == null ? {} : { shippingAddress: input.shippingAddress }),
+      ...(input.freeShipping === undefined ? {} : { freeShipping: input.freeShipping }),
+      ...(input.priceApprovalStatus === undefined
+        ? {}
+        : { priceApprovalStatus: input.priceApprovalStatus }),
+      ...(input.priceApprovedShippingCents === undefined
+        ? {}
+        : { priceApprovedShippingCents: input.priceApprovedShippingCents }),
+      ...(input.carrierConnectionId === undefined
+        ? {}
+        : { carrierConnectionId: input.carrierConnectionId }),
       createdBy: author.userId,
       ...(input.scheduledDeliveryDate === undefined
         ? {}
@@ -53,6 +78,16 @@ export async function createOrder(
     },
     select: { id: true, items: { select: { id: true } } }
   })
+  if (input.allocatedAt !== undefined) {
+    await owner.orderItemAllocation.create({
+      data: {
+        storeId: input.storeId,
+        orderItemId: order.items[0]?.id ?? '',
+        warehouseId: input.allocatedAt,
+        quantity: 1
+      }
+    })
+  }
   return { id: order.id, itemId: order.items[0]?.id ?? '', productId: product.id }
 }
 
