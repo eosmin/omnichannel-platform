@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common'
 import { ChannelConnectionsLibModule } from '@platform/channels/connections'
 import { PublicApiPlatformModule } from '@platform/core/http'
 
+import { CarriersModule } from '../carriers/carriers.module'
 import { ChannelRegistryModule } from '../channel-registry'
 import { ChannelsModule } from '../channels/channels.module'
 import { TenancyModule } from '../tenancy'
@@ -16,6 +17,7 @@ import { PluginsController } from './plugins.controller'
 // module.
 @Module({
   imports: [
+    CarriersModule,
     ChannelConnectionsLibModule,
     ChannelRegistryModule,
     ChannelsModule,

@@ -1465,6 +1465,18 @@ All under `ApiRoutes`, with `AuthGuard`, `TenantGuard` and a permission decorato
 Cursor pagination on every list (`TDD_08 §2.4`). Bulk endpoints accept at most 100 ids and answer
 `202` with the job id.
 
+**As built (Step 4.8 PR B2; the checklist wins where this differs):** the `carriers` group is `GET /carriers`, `GET /carriers/:id`,
+`GET /carriers/registry` (`SHIPPING_VIEW`) and `POST /carriers` (the body names `carrierId` and its `credentials`), `PATCH /carriers/:id`,
+`POST /carriers/:id/test`, `POST /carriers/:id/disconnect` (`SETTINGS_MANAGE_CARRIERS`). `PATCH` takes the settings of the connection, the
+services to rename or switch off (`services: [{ code, label?, active? }]`), new `credentials` (checked with the carrier first) and
+`isDefault` (the default connection of the store, `StoreSettings.defaultCarrierConnectionId`, one at a time). The connection is never
+deleted: disconnecting sets `status = disabled`, deletes the credentials and the webhook secret and keeps its shipments, pickups and
+numbering, and what a disabled connection accepts is a new name. The non-secret settings a plugin returns from `connect` are kept in
+`CarrierConnection.contact` (a `local` courier's phone and notes, an account setting of another carrier); the prefix of a `local` courier
+is `GuideSequence.prefix`. A failure of a carrier is answered as `SHIPPING_CARRIER_CREDENTIALS_INVALID` (`400`, with `reason` from
+`CarrierHealthReasons`) or `SHIPPING_CARRIER_UNAVAILABLE` (`503`), and `CarrierConnection.lastError` holds the same name, never the
+carrier's words. The status mapping routes, `locations` and the webhook are later PRs and steps (see the plan, Step 4.8).
+
 ---
 
 ## 7. UI

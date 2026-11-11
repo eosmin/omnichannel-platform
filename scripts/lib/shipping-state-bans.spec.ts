@@ -275,3 +275,47 @@ describe('where the bans of the shipping states apply', () => {
     }
   })
 })
+
+// The library exists now (Step 4.8, PR B2): the same linter, run over the text of a write of a shipment status as if it were a
+// file of the library, and as if it were a file of the api, the worker and the inventory engine (the files named exist, so
+// that the typed parser finds them in their projects; only their text is replaced), proves that the one passes and the others
+// are refused
+describe('the write of a shipment status, linted at real paths', () => {
+  const root = path.resolve(__dirname, '../..')
+  const probe = 'await tx.shipment.update({ where: { id }, data: { status: next } })'
+
+  const flaggedAt = (file: string): number => {
+    const raw = execFileSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `import { ESLint } from 'eslint'
+           const eslint = new ESLint({ cwd: process.argv[1] })
+           const [result] = await eslint.lintText(process.argv[3], { filePath: process.argv[1] + '/' + process.argv[2] })
+           console.log(String(result.messages.filter(m => m.ruleId === 'no-restricted-syntax').length))`,
+        root,
+        file,
+        `export async function probe(tx: any, id: string, next: string): Promise<void> {\n  ${probe}\n}\n`
+      ],
+      { cwd: root, encoding: 'utf8' }
+    ).trim()
+    const count = Number(raw.split('\n').at(-1))
+    if (Number.isNaN(count)) throw new Error(`the linter said: ${raw}`)
+    return count
+  }
+
+  it('passes in the library that owns the state', () => {
+    expect(flaggedAt('libs/core/shipping/src/guide-numbering.ts')).toBe(0)
+  })
+
+  it('is refused in a module of the api, the worker and the inventory engine', () => {
+    for (const file of [
+      'apps/api/src/modules/carriers/carriers.module.ts',
+      'apps/worker/src/processors/analytics.processor.ts',
+      'libs/core/inventory/src/inventory.service.ts'
+    ]) {
+      expect(flaggedAt(file)).toBeGreaterThan(0)
+    }
+  })
+})

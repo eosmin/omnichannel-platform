@@ -7,6 +7,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { Permissions, RoleNames, TenantHeaders } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
+  CarrierId,
   ChannelIds,
   CountStatus,
   ConversationStatus,
@@ -16,6 +17,7 @@ import {
   MessageType,
   PaymentMethod,
   RoutingActionTypes,
+  ShippingPlugin,
   TransferStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -46,6 +48,8 @@ import {
   createTransfer,
   createWarehouse,
   linkWarehouse,
+  BUILT_SERVICE_CODE,
+  createCarrierConnection,
   createChannelConnection,
   createInvitation,
   createMember,
@@ -121,6 +125,8 @@ const conversationOf = (messageId: string): string => {
 // The sheet a count resource of the suite is made of: a warehouse of the organization of the store, one item of the store
 // with a snapshot of 5, and a sheet in the status given
 const countOfLine = new Map<string, string>()
+// The connection a service of the suite belongs to: a service is reached through its connection
+const connectionOfRow = new Map<string, string>()
 // Counts the numbers of the sheets the suite writes: unique inside an organization with no luck involved
 let countSerial = 100_000_000 + (process.pid % 1_000_000) * 100
 async function createCountOf(
@@ -235,6 +241,61 @@ const resources: IsolationResource[] = [
     untouched: async (owner, id) =>
       (await owner.channelConnection.findUnique({ where: { id }, select: { status: true } }))
         ?.status === 'active'
+  },
+  // The carrier connections of a store (Step 4.8, PR B2). The services and the guide numbering of a connection have no
+  // route of their own: they are read and changed through the connection, so the checks reach them by the route of the
+  // connection they belong to, and the row must be as it was after a refused change.
+  {
+    name: 'carrierConnection',
+    create: async (owner, input) => createCarrierConnection(owner, { storeId: input.storeId }),
+    readPath: ApiRoutes.carriers.byId,
+    listPath: ApiRoutes.carriers.list,
+    modify: { path: ApiRoutes.carriers.byId, body: { displayName: 'hacked' } },
+    untouched: async (owner, id) =>
+      (await owner.carrierConnection.findUnique({ where: { id }, select: { displayName: true } }))
+        ?.displayName !== 'hacked',
+    creation: {
+      path: ApiRoutes.carriers.create,
+      body: name => ({
+        carrierId: CarrierId.LOCAL,
+        credentials: { name, phone: '70000000', prefix: 'ISO' }
+      }),
+      strict: true,
+      countIn: (owner, storeId) => owner.carrierConnection.count({ where: { storeId } }),
+      storeOf: async (owner, id) =>
+        (await owner.carrierConnection.findUnique({ where: { id }, select: { storeId: true } }))
+          ?.storeId ?? null
+    }
+  },
+  {
+    name: 'carrierService',
+    create: async (owner, input) => {
+      const built = await createCarrierConnection(owner, { storeId: input.storeId })
+      connectionOfRow.set(built.serviceId, built.id)
+      return { id: built.serviceId }
+    },
+    modify: {
+      path: id => ApiRoutes.carriers.byId(connectionOfRow.get(id) ?? randomUUID()),
+      body: { services: [{ code: BUILT_SERVICE_CODE, label: 'hacked', active: false }] }
+    },
+    untouched: async (owner, id) => {
+      const row = await owner.carrierService.findUnique({ where: { id } })
+      return row !== null && row.label !== 'hacked' && row.active
+    }
+  },
+  {
+    name: 'guideSequence',
+    create: async (owner, input) => {
+      const built = await createCarrierConnection(owner, { storeId: input.storeId })
+      // The sequence is identified by its connection
+      return { id: built.id }
+    },
+    modify: {
+      path: ApiRoutes.carriers.byId,
+      body: { credentials: { name: 'x', phone: '70000000', prefix: 'HACK' } }
+    },
+    untouched: async (owner, id) =>
+      (await owner.guideSequence.findUnique({ where: { connectionId: id } }))?.prefix === 'T'
   },
   // Uninstalling is the one change a user can make; the installation is reached by its id
   {
@@ -950,6 +1011,8 @@ describe('Tenant isolation', () => {
     agentRoleId = ctx.roleIds[RoleNames.AGENT]
     reactorId = ctx.adminA.id
     conversationInA = (await createConversationOf(owner, { storeId: ctx.storeA.id })).id
+    // The shipping plugin is installed in store A, where the suite connects a carrier through the api
+    await ensurePluginInstallation(owner, { storeId: ctx.storeA.id, pluginId: ShippingPlugin.ID })
     scene = { app, owner, ctx }
   })
   afterAll(async () => {

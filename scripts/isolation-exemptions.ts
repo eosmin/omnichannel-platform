@@ -22,8 +22,6 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
     step: '4.10',
     reason: 'Created by POST /shipments/bulk and read through its progress'
   },
-  CarrierConnection: { step: '4.8', reason: 'Managed from Settings → Carriers (PR B2)' },
-  CarrierService: { step: '4.8', reason: 'Seeded with a connection and read through it (PR B2)' },
   CarrierStatusMapping: {
     step: '4.8',
     reason: 'Seeded with a connection, edited through the status mapping routes (PR C2)'
@@ -34,10 +32,6 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   },
   ConsentRecord: { step: '7.2', reason: 'Written by the compliance flows' },
   DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' },
-  GuideSequence: {
-    step: '4.8',
-    reason: 'Created with a local connection and advanced by guide creation (PR B2)'
-  },
   MetricDaily: { step: '5.2', reason: 'Read only through the analytics queries' },
   MetricHourly: { step: '5.2', reason: 'Read only through the analytics queries' },
   OrderMessageTemplate: { step: '4.9', reason: 'Managed from Settings → Order messages' },

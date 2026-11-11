@@ -12,6 +12,7 @@ import type { CarrierPlugin, ChannelPlugin } from '@platform/plugins/sdk'
 
 import { CarrierRegistry } from './carrier-registry'
 import {
+  type CarrierPluginSource,
   OFFICIAL_CARRIER_PLUGINS,
   OFFICIAL_CHANNEL_PLUGINS,
   OFFICIAL_PLUGIN_IMPORTS
@@ -20,9 +21,19 @@ import { PluginRegistry } from './plugin-registry'
 
 export interface PluginsModuleOptions {
   channels: readonly Type<ChannelPlugin>[]
-  carriers: readonly Type<CarrierPlugin>[]
+  carriers: readonly CarrierPluginSource[]
   // Modules that provide what the plugins inject
   imports?: readonly Type<unknown>[]
+}
+
+// A class is provided as itself; a plugin that is an object is provided as a value under a token of its own
+function carrierProviderOf(source: CarrierPluginSource): {
+  token: Type<CarrierPlugin> | symbol
+  provider: Provider
+} {
+  if (typeof source === 'function') return { token: source, provider: source }
+  const token = Symbol(`carrier:${source.id}`)
+  return { token, provider: { provide: token, useValue: source } }
 }
 
 const OFFICIAL: PluginsModuleOptions = {
@@ -77,6 +88,7 @@ export class PluginsModule {
       },
       inject: [PinoLogger, ...options.channels]
     }
+    const carrierProviders = options.carriers.map(carrierProviderOf)
     const carrierRegistry: Provider = {
       provide: CarrierRegistry,
       useFactory: (logger: PinoLogger, ...plugins: CarrierPlugin[]): CarrierRegistry => {
@@ -84,7 +96,7 @@ export class PluginsModule {
         for (const plugin of plugins) registry.register(plugin)
         return registry
       },
-      inject: [PinoLogger, ...options.carriers]
+      inject: [PinoLogger, ...carrierProviders.map(entry => entry.token)]
     }
     const identityKinds: Provider = {
       provide: CHANNEL_IDENTITY_KINDS,
@@ -109,7 +121,7 @@ export class PluginsModule {
         identityKinds,
         anonymity,
         ...options.channels,
-        ...options.carriers
+        ...carrierProviders.map(entry => entry.provider)
       ],
       exports: [PluginRegistry, CarrierRegistry, CHANNEL_IDENTITY_KINDS, CHANNEL_ANONYMITY]
     }

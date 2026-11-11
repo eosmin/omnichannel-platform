@@ -4,6 +4,8 @@ import { PluginInstallationStatus, PluginStatus } from './status-enums'
 // class in the code; a channel is the one the registry holds.
 export const PluginCatalogTypes = {
   CHANNEL: 'channel',
+  // The carriers of the shipping engine, one catalog entry for all of them (TDD_17 §1)
+  CARRIER: 'carrier',
   INTEGRATION: 'integration'
 } as const
 export type PluginCatalogType = (typeof PluginCatalogTypes)[keyof typeof PluginCatalogTypes]
