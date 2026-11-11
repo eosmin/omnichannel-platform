@@ -724,6 +724,55 @@ const resources: IsolationResource[] = [
       ) === '{}'
   },
   {
+    // The orders block of the same column (the create-order checkboxes and the cancellation reasons)
+    name: 'storeOrderPreferences',
+    create: resetStoreSettings,
+    own: {
+      set: async (owner, storeId, marker) => {
+        await owner.storeSettings.update({
+          where: { storeId },
+          // Neither marker is a factory default, so a read of an empty column is never taken for a store's own
+          data: {
+            preferences: {
+              orders: marker === 'A' ? { confirmOnCreate: true } : { sendSummaryOnCreate: false }
+            }
+          }
+        })
+      },
+      markerIn: body => {
+        const orders = (
+          body as { orders?: { confirmOnCreate?: boolean; sendSummaryOnCreate?: boolean } }
+        ).orders
+        return orders?.confirmOnCreate === true
+          ? 'A'
+          : orders?.sendSummaryOnCreate === false
+            ? 'B'
+            : null
+      }
+    },
+    readPath: () => ApiRoutes.settings.preferences,
+    modify: {
+      path: () => ApiRoutes.settings.preferences,
+      method: 'put',
+      body: {
+        orders: {
+          confirmOnCreate: true,
+          cancellationReasons: [{ id: 'other-store', label: 'Written by someone else' }]
+        }
+      }
+    },
+    // The factory state is an empty column: a change would have written the block
+    untouched: async (owner, id) =>
+      JSON.stringify(
+        (
+          await owner.storeSettings.findUnique({
+            where: { storeId: id },
+            select: { preferences: true }
+          })
+        )?.preferences
+      ) === '{}'
+  },
+  {
     name: 'conversation',
     create: createConversationOf,
     readPath: ApiRoutes.conversations.byId,

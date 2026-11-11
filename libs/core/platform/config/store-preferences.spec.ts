@@ -1,16 +1,34 @@
+import { OrderCancellationReasons } from '@platform/core/domain'
+
 import {
+  cancellationReasonsSchema,
+  CancellationReasonLimits,
+  defaultCancellationReasons,
   readOrderPreferences,
   readStorePreferences,
+  storePreferencesSchema,
   updateStorePreferencesSchema
 } from './store-preferences'
 
+const factoryOrders = {
+  confirmOnCreate: false,
+  sendSummaryOnCreate: true,
+  discountLimitPercent: 0,
+  freeShippingRule: 'all_items',
+  notifyOnPriceOverride: true,
+  failedAttemptMessages: 'every_attempt',
+  cancellationReasons: defaultCancellationReasons
+}
+const factory = { sendReadReceipts: true, assignOnReply: true, orders: factoryOrders }
+
 describe('readStorePreferences', () => {
   it('reads the factory defaults from an empty column', () => {
-    expect(readStorePreferences({})).toEqual({ sendReadReceipts: true, assignOnReply: true })
+    expect(readStorePreferences({})).toEqual(factory)
   })
 
   it('keeps what the store chose', () => {
     expect(readStorePreferences({ sendReadReceipts: false, assignOnReply: false })).toEqual({
+      ...factory,
       sendReadReceipts: false,
       assignOnReply: false
     })
@@ -18,8 +36,8 @@ describe('readStorePreferences', () => {
 
   it('keeps a switch the store turned off next to a key it does not know or that does not fit', () => {
     expect(readStorePreferences({ sendReadReceipts: false, other: { nested: 'x' } })).toEqual({
-      sendReadReceipts: false,
-      assignOnReply: true
+      ...factory,
+      sendReadReceipts: false
     })
   })
 
@@ -30,7 +48,7 @@ describe('readStorePreferences', () => {
   it.each([null, 'text', 42, { sendReadReceipts: 'no' }])(
     'reads the defaults from a value that does not fit: %j',
     raw => {
-      expect(readStorePreferences(raw)).toEqual({ sendReadReceipts: true, assignOnReply: true })
+      expect(readStorePreferences(raw)).toEqual(factory)
     }
   )
 })
@@ -60,12 +78,7 @@ describe('updateStorePreferencesSchema', () => {
 })
 
 describe('readOrderPreferences', () => {
-  const factory = {
-    discountLimitPercent: 0,
-    freeShippingRule: 'all_items',
-    notifyOnPriceOverride: true,
-    failedAttemptMessages: 'every_attempt'
-  }
+  const factory = factoryOrders
 
   it('reads the factory defaults from an empty column or one with no orders block', () => {
     expect(readOrderPreferences({})).toEqual(factory)
@@ -75,12 +88,7 @@ describe('readOrderPreferences', () => {
   it('keeps what the store chose', () => {
     expect(
       readOrderPreferences({ orders: { discountLimitPercent: 15, freeShippingRule: 'any_item' } })
-    ).toEqual({
-      discountLimitPercent: 15,
-      freeShippingRule: 'any_item',
-      notifyOnPriceOverride: true,
-      failedAttemptMessages: 'every_attempt'
-    })
+    ).toEqual({ ...factoryOrders, discountLimitPercent: 15, freeShippingRule: 'any_item' })
     expect(
       readOrderPreferences({ orders: { notifyOnPriceOverride: false } }).notifyOnPriceOverride
     ).toBe(false)
@@ -94,20 +102,10 @@ describe('readOrderPreferences', () => {
       readOrderPreferences({
         orders: { discountLimitPercent: 'a lot', freeShippingRule: 'any_item' }
       })
-    ).toEqual({
-      discountLimitPercent: 0,
-      freeShippingRule: 'any_item',
-      notifyOnPriceOverride: true,
-      failedAttemptMessages: 'every_attempt'
-    })
+    ).toEqual({ ...factoryOrders, freeShippingRule: 'any_item' })
     expect(
       readOrderPreferences({ orders: { discountLimitPercent: 20, freeShippingRule: 'never' } })
-    ).toEqual({
-      discountLimitPercent: 20,
-      freeShippingRule: 'all_items',
-      notifyOnPriceOverride: true,
-      failedAttemptMessages: 'every_attempt'
-    })
+    ).toEqual({ ...factoryOrders, discountLimitPercent: 20 })
   })
 
   it('reads how often the customer hears of a failed attempt, every one by default', () => {
@@ -131,4 +129,143 @@ describe('readOrderPreferences', () => {
       expect(readOrderPreferences(raw)).toEqual(factory)
     }
   )
+})
+
+describe('the orders keys of the create-order checkboxes', () => {
+  it('starts the summary checkbox on and the confirm checkbox off, in every store that never chose', () => {
+    expect(readOrderPreferences({}).sendSummaryOnCreate).toBe(true)
+    expect(readOrderPreferences({}).confirmOnCreate).toBe(false)
+  })
+
+  it('keeps what the store chose and reads a value of another type as the default, one key at a time', () => {
+    expect(
+      readOrderPreferences({ orders: { sendSummaryOnCreate: false, confirmOnCreate: true } })
+    ).toEqual({ ...factoryOrders, sendSummaryOnCreate: false, confirmOnCreate: true })
+    expect(
+      readOrderPreferences({ orders: { sendSummaryOnCreate: 'no', confirmOnCreate: true } })
+    ).toEqual({ ...factoryOrders, confirmOnCreate: true })
+  })
+})
+
+describe('orders.cancellationReasons', () => {
+  it('is seeded from OrderCancellationReasons, one entry per factory reason, in order', () => {
+    expect(defaultCancellationReasons.map(reason => reason.labelKey)).toEqual(
+      Object.values(OrderCancellationReasons)
+    )
+    expect(defaultCancellationReasons.map(reason => reason.id)).toEqual(
+      Object.keys(OrderCancellationReasons)
+    )
+    expect(readOrderPreferences({}).cancellationReasons).toEqual(defaultCancellationReasons)
+  })
+
+  it('keeps the list the store saved, factory and own entries together', () => {
+    const list = [
+      { id: 'CUSTOMER_REQUEST', labelKey: OrderCancellationReasons.CUSTOMER_REQUEST },
+      { id: 'c1', label: 'Fraud suspected' }
+    ]
+    expect(
+      readOrderPreferences({ orders: { cancellationReasons: list } }).cancellationReasons
+    ).toEqual(list)
+  })
+
+  it.each([
+    ['an empty list', []],
+    ['a list that is not a list', 'x'],
+    [
+      'an entry with both labelKey and label',
+      [{ id: 'a', labelKey: OrderCancellationReasons.OTHER, label: 'x' }]
+    ],
+    ['an entry with neither', [{ id: 'a' }]],
+    [
+      'a labelKey the product does not ship',
+      [{ id: 'a', labelKey: 'orders.cancellationReason.invented' }]
+    ],
+    [
+      'a repeated id',
+      [
+        { id: 'a', label: 'x' },
+        { id: 'a', label: 'y' }
+      ]
+    ],
+    [
+      'two entries with the same labelKey',
+      [
+        { id: 'a', labelKey: OrderCancellationReasons.OTHER },
+        { id: 'b', labelKey: OrderCancellationReasons.OTHER }
+      ]
+    ],
+    [
+      'two entries with the same label, whatever the case',
+      [
+        { id: 'a', label: 'Fraud' },
+        { id: 'b', label: 'fraud' }
+      ]
+    ],
+    ['a blank label', [{ id: 'a', label: '   ' }]]
+  ])('reads %s as the factory list, leaving the other keys alone', (_name, list) => {
+    expect(
+      readOrderPreferences({ orders: { cancellationReasons: list, confirmOnCreate: true } })
+    ).toEqual({ ...factoryOrders, confirmOnCreate: true })
+  })
+
+  it('holds a list to its limits', () => {
+    const entry = (id: string) => ({ id, label: `reason ${id}` })
+    const full = Array.from({ length: CancellationReasonLimits.MAX_ENTRIES }, (_, i) =>
+      entry(`r${i}`)
+    )
+    expect(cancellationReasonsSchema.safeParse(full).success).toBe(true)
+    expect(cancellationReasonsSchema.safeParse([...full, entry('extra')]).success).toBe(false)
+    expect(
+      cancellationReasonsSchema.safeParse([
+        { id: 'a'.repeat(CancellationReasonLimits.MAX_ID_LENGTH), label: 'x' }
+      ]).success
+    ).toBe(true)
+    expect(
+      cancellationReasonsSchema.safeParse([
+        { id: 'a'.repeat(CancellationReasonLimits.MAX_ID_LENGTH + 1), label: 'x' }
+      ]).success
+    ).toBe(false)
+    expect(
+      cancellationReasonsSchema.safeParse([
+        { id: 'a', label: 'y'.repeat(CancellationReasonLimits.MAX_LABEL_LENGTH + 1) }
+      ]).success
+    ).toBe(false)
+  })
+})
+
+describe('updateStorePreferencesSchema, the orders block', () => {
+  it('takes the keys of the block that change, alone or next to a flat key', () => {
+    expect(updateStorePreferencesSchema.parse({ orders: { confirmOnCreate: true } })).toEqual({
+      orders: { confirmOnCreate: true }
+    })
+    expect(
+      updateStorePreferencesSchema.parse({
+        assignOnReply: false,
+        orders: { sendSummaryOnCreate: false }
+      })
+    ).toEqual({ assignOnReply: false, orders: { sendSummaryOnCreate: false } })
+    expect(
+      updateStorePreferencesSchema.parse({
+        orders: { cancellationReasons: [{ id: 'a', label: 'Other' }] }
+      }).orders?.cancellationReasons
+    ).toEqual([{ id: 'a', label: 'Other' }])
+  })
+
+  it.each([
+    ['an empty block', { orders: {} }],
+    ['a key of the block that has no write path yet', { orders: { discountLimitPercent: 10 } }],
+    ['a key the block does not know', { orders: { confirmOnCreate: true, other: 1 } }],
+    ['a switch that is not a boolean', { orders: { sendSummaryOnCreate: 'off' } }],
+    ['null for a key', { orders: { confirmOnCreate: null } }],
+    ['an empty reason list', { orders: { cancellationReasons: [] } }],
+    ['a block that is not an object', { orders: true }]
+  ])('refuses %s', (_name, body) => {
+    expect(updateStorePreferencesSchema.safeParse(body).success).toBe(false)
+  })
+})
+
+describe('storePreferencesSchema', () => {
+  it('keeps the factory defaults in this one place', () => {
+    expect(storePreferencesSchema.parse({})).toEqual(factory)
+  })
 })
