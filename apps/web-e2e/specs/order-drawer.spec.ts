@@ -111,7 +111,7 @@ test.describe('the create-order drawer', () => {
 
     const duplicates = drawer().getByRole('region', { name: CREATE.customer.duplicates.title })
     await expect(duplicates).toBeVisible()
-    await expect(duplicates.getByText(oldName)).toBeVisible()
+    await expect(duplicates.getByText(oldName, { exact: true })).toBeVisible()
     await expect(duplicates.getByText(CREATE.customer.duplicates.matchedOn.email)).toBeVisible()
     await duplicates
       .getByRole('button', { name: CREATE.customer.duplicates.merge.replace('{name}', oldName) })
