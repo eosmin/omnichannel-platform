@@ -63,7 +63,8 @@ describe('readOrderPreferences', () => {
   const factory = {
     discountLimitPercent: 0,
     freeShippingRule: 'all_items',
-    notifyOnPriceOverride: true
+    notifyOnPriceOverride: true,
+    failedAttemptMessages: 'every_attempt'
   }
 
   it('reads the factory defaults from an empty column or one with no orders block', () => {
@@ -77,7 +78,8 @@ describe('readOrderPreferences', () => {
     ).toEqual({
       discountLimitPercent: 15,
       freeShippingRule: 'any_item',
-      notifyOnPriceOverride: true
+      notifyOnPriceOverride: true,
+      failedAttemptMessages: 'every_attempt'
     })
     expect(
       readOrderPreferences({ orders: { notifyOnPriceOverride: false } }).notifyOnPriceOverride
@@ -95,15 +97,28 @@ describe('readOrderPreferences', () => {
     ).toEqual({
       discountLimitPercent: 0,
       freeShippingRule: 'any_item',
-      notifyOnPriceOverride: true
+      notifyOnPriceOverride: true,
+      failedAttemptMessages: 'every_attempt'
     })
     expect(
       readOrderPreferences({ orders: { discountLimitPercent: 20, freeShippingRule: 'never' } })
     ).toEqual({
       discountLimitPercent: 20,
       freeShippingRule: 'all_items',
-      notifyOnPriceOverride: true
+      notifyOnPriceOverride: true,
+      failedAttemptMessages: 'every_attempt'
     })
+  })
+
+  it('reads how often the customer hears of a failed attempt, every one by default', () => {
+    for (const value of ['every_attempt', 'first_only', 'none']) {
+      expect(
+        readOrderPreferences({ orders: { failedAttemptMessages: value } }).failedAttemptMessages
+      ).toBe(value)
+    }
+    expect(
+      readOrderPreferences({ orders: { failedAttemptMessages: 'sometimes' } }).failedAttemptMessages
+    ).toBe('every_attempt')
   })
 
   it.each([101, -1, 2.5])('reads a limit of %s as the strictest one, none', limit => {

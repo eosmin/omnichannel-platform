@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 
 import type { PrismaTransaction } from '@platform/core/database'
 import {
+  CodStatus,
   PickupStatus,
   PickupStatusTransitions,
   ShipmentEventSource,
@@ -105,6 +106,17 @@ export class ShipmentWrites {
       data: { ...data, status: to }
     })
     if (moved.count === 0) throw conflict('the shipment changed while this was happening')
+    // A cash-on-delivery package that arrived now holds money for the carrier to remit (TDD_17 §4.15); a prepaid one has none
+    if (to === ShipmentStatus.DELIVERED) {
+      await tx.shipment.updateMany({
+        where: {
+          id: identity.shipmentId,
+          storeId: identity.storeId,
+          codStatus: CodStatus.NOT_DELIVERED
+        },
+        data: { codStatus: CodStatus.PENDING_REMITTANCE }
+      })
+    }
     await tx.shipmentEvent.create({
       data: {
         storeId: identity.storeId,
@@ -119,6 +131,29 @@ export class ShipmentWrites {
       }
     })
     this.announce(tx, identity, from, to, meta.actor)
+  }
+
+  // A line of the history with no move: an event that arrived too late, or says what the platform does not take from a
+  // carrier. The status of the shipment stays as it is and nothing is announced.
+  async recordHistory(
+    tx: PrismaTransaction,
+    identity: ShipmentIdentity,
+    status: ShipmentStatus | null,
+    meta: ShipmentMoveMeta
+  ): Promise<void> {
+    await tx.shipmentEvent.create({
+      data: {
+        storeId: identity.storeId,
+        shipmentId: identity.shipmentId,
+        status,
+        occurredAt: meta.occurredAt ?? new Date(),
+        source: meta.source,
+        ...(meta.description === undefined ? {} : { description: meta.description }),
+        ...(meta.providerEventId === undefined ? {} : { providerEventId: meta.providerEventId }),
+        ...(meta.rawStatus === undefined ? {} : { rawStatus: meta.rawStatus }),
+        payload: { actorId: meta.actor.id, ...(meta.payload ?? {}) }
+      }
+    })
   }
 
   // A pickup moves the same way, with its own table. It announces nothing: the pickup events belong to Step 4.11.

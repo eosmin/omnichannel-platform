@@ -6,7 +6,8 @@ import {
   CHANNEL_ID_PATTERN,
   ConversationStatus,
   ConversationStatusReasons,
-  idempotencyKeySchema
+  idempotencyKeySchema,
+  ShipmentStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
@@ -33,6 +34,14 @@ const exportSettled = z.object({
   exportType: z.string().min(1).max(64)
 })
 const actor = z.object({ type: z.enum(['user', 'system']), id: id.nullable() })
+const shipmentEvent = z.object({
+  storeId: id,
+  shipmentId: id,
+  orderId: id,
+  orderNumber: z.string().min(1).max(64),
+  connectionId: id,
+  actor
+})
 
 // What may cross from the worker to the api, event by event. Parsing keeps only these fields: a
 // payload that grows a text field one day does not carry it over the channel, and a message from
@@ -146,6 +155,12 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     channelConnectionId: id,
     pluginId: z.string().regex(CHANNEL_ID_PATTERN)
   }),
+  // A shipment moved: ids, the two statuses and who did it; no address, no phone, no carrier text
+  [Events.SHIPMENT_STATUS_CHANGED]: shipmentEvent.extend({
+    from: z.enum(ShipmentStatus),
+    to: z.enum(ShipmentStatus)
+  }),
+  [Events.SHIPMENT_REQUIRES_REVIEW]: shipmentEvent,
   [Events.MESSAGE_NOTE_ADDED]: z.object({
     storeId: id,
     conversationId: id,

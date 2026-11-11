@@ -62,7 +62,7 @@ export class OrderInventoryService {
       storeId: string
       orderId: string
       lines: readonly LineToAllocate[]
-      createdBy: string
+      createdBy: string | null
     }
   ): Promise<void> {
     const { storeId, orderId, createdBy } = input
@@ -219,13 +219,18 @@ export class OrderInventoryService {
     tx: PrismaTransaction,
     storeId: string,
     orderId: string,
-    createdBy: string
+    createdBy: string | null
   ): Promise<void> {
     return this.applyToAllocations(tx, storeId, orderId, Effects.RELEASE, createdBy)
   }
 
   // The order shipped: the stock leaves and its reservation is consumed
-  issue(tx: PrismaTransaction, storeId: string, orderId: string, createdBy: string): Promise<void> {
+  issue(
+    tx: PrismaTransaction,
+    storeId: string,
+    orderId: string,
+    createdBy: string | null
+  ): Promise<void> {
     return this.applyToAllocations(tx, storeId, orderId, Effects.ISSUE, createdBy)
   }
 
@@ -234,7 +239,7 @@ export class OrderInventoryService {
     tx: PrismaTransaction,
     storeId: string,
     orderId: string,
-    createdBy: string
+    createdBy: string | null
   ): Promise<void> {
     return this.applyToAllocations(tx, storeId, orderId, Effects.RETURN, createdBy)
   }
@@ -244,7 +249,7 @@ export class OrderInventoryService {
     storeId: string,
     orderId: string,
     effect: Effect,
-    createdBy: string
+    createdBy: string | null
   ): Promise<void> {
     const allocations = await tx.orderItemAllocation.findMany({
       where: { storeId, orderItem: { orderId } },
@@ -279,7 +284,7 @@ export class OrderInventoryService {
       variantId: string | null
       warehouseId: string
       quantity: number
-      createdBy: string
+      createdBy: string | null
     }
   ): MovementInput {
     return {

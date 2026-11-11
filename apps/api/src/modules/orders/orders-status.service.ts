@@ -151,8 +151,9 @@ export class OrdersStatusService {
         }
       } else {
         // The guide decides when the goods leave and arrive: a hand-made SHIPPED or DELIVERED would skip the stock issue and the
-        // payment effect that the shipment engine owns (TDD_17 §4.9). The engine itself changes the order through its own path
-        // (Step 4.8 PR C2); until it exists no hand may do it while a guide is alive.
+        // payment effect that the shipment follows (TDD_17 §4.9). The order follows its guide through its own path
+        // (`OrderShipmentEffects`, which is not this route and so is not stopped by it): a person who has to move the order
+        // moves the shipment (a manual status of the guide has the same effects), and without a live guide the order is theirs.
         if (
           (to === OrderStatus.SHIPPED || to === OrderStatus.DELIVERED) &&
           (await hasActiveGuide(tx, storeId, orderId))
