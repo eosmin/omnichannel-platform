@@ -1,5 +1,6 @@
-# What CI would fail on, for the projects the branch touches, except the builds and the suites that
-# need Docker or a database: seconds to a minute and a half. A push that only touches docs/ is not checked.
+# The cheap part of what CI would fail on, for the projects the branch touches: lint, type-check,
+# format, the validators and the plugin contracts. The unit tests are left to CI (`unit-tests`);
+# `pnpm validate:affected --full` runs them here. No builds, no Docker, no database. A push that only touches docs/ is not checked.
 #
 # Git writes one line per pushed ref on stdin: <local ref> <local sha> <remote ref> <remote sha>.
 # The remote sha is all zeros for a branch that is not on the remote yet.
