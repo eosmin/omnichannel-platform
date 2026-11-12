@@ -134,7 +134,8 @@ export interface ParsedRemittanceFile {
 // not part of the first cell. Returns the rows, and whether a quote was left open at the end.
 export function splitDelimited(
   text: string,
-  delimiter: RemittanceDelimiter
+  delimiter: RemittanceDelimiter,
+  maxRawRows = Number.POSITIVE_INFINITY
 ): {
   rows: string[][]
   lines: number[]
@@ -142,6 +143,8 @@ export function splitDelimited(
   openLine: number
   // The rows that have text right after a closing quote (`"12"34`): the cell is glued together and cannot be trusted
   strayRows: Set<number>
+  // The text had more rows than `maxRawRows`: the rest was not read
+  truncated: boolean
 } {
   const source = text.startsWith('\uFEFF') ? text.slice(1) : text
   const rows: string[][] = []
@@ -161,6 +164,7 @@ export function splitDelimited(
     row.push(cell)
     cell = ''
   }
+  let truncated = false
   const endRow = () => {
     endCell()
     rows.push(row)
@@ -170,6 +174,11 @@ export function splitDelimited(
     rowLine = line
   }
   for (let index = 0; index < source.length; index += 1) {
+    // A file of nothing but line breaks must not build millions of rows before the limits are looked at
+    if (rows.length > maxRawRows) {
+      truncated = true
+      break
+    }
     const char = source.charAt(index)
     if (quoted) {
       if (char === '"') {
@@ -187,9 +196,11 @@ export function splitDelimited(
       continue
     }
     // Text after the closing quote of a cell is not part of a well formed file
-    if (justClosed && char !== delimiter && char !== '\n' && char !== '\r')
+    if (justClosed && char !== delimiter && char !== '\n' && char !== '\r' && char !== ' ') {
       strayRows.add(rows.length)
-    justClosed = false
+    }
+    // Spaces between the closing quote and the delimiter are padding: they do not end the state of having just closed a quote
+    if (!(justClosed && char === ' ')) justClosed = false
     if (char === '"' && cell === '') {
       quoted = true
       quoteLine = line
@@ -206,9 +217,11 @@ export function splitDelimited(
       touched = true
     }
   }
-  if (quoted) return { rows, lines, unclosedQuote: true, openLine: quoteLine, strayRows }
+  if (truncated)
+    return { rows, lines, unclosedQuote: false, openLine: rowLine, strayRows, truncated }
+  if (quoted) return { rows, lines, unclosedQuote: true, openLine: quoteLine, strayRows, truncated }
   if (touched || cell !== '') endRow()
-  return { rows, lines, unclosedQuote: false, openLine: rowLine, strayRows }
+  return { rows, lines, unclosedQuote: false, openLine: rowLine, strayRows, truncated }
 }
 
 // One pattern for each decimal separator, built once
@@ -333,7 +346,8 @@ function resolveColumn(
 export function parseRemittanceFile(
   text: string,
   profile: RemittanceImportProfileShape,
-  options: { maxRows?: number } = {}
+  // `partial`: the text is a sample cut at a size (the preview): a row left open at the cut is dropped, not an error
+  options: { maxRows?: number; partial?: boolean } = {}
 ): ParsedRemittanceFile {
   const maxRows = options.maxRows ?? RemittanceImportLimits.MAX_ROWS
   const errors: ImportRowError[] = []
@@ -362,9 +376,19 @@ export function parseRemittanceFile(
     lines: startLines,
     unclosedQuote,
     openLine,
-    strayRows
-  } = splitDelimited(text, profile.delimiter)
-  if (unclosedQuote) {
+    strayRows,
+    truncated
+  } = splitDelimited(
+    text,
+    profile.delimiter,
+    // Blank lines count, so the room is the rows a file may hold, the header and some slack for empty lines
+    RemittanceImportLimits.MAX_ROWS * 2 + 10
+  )
+  if (truncated) {
+    fail(openLine, null, RemittanceImportErrors.TOO_MANY_ROWS, null)
+    return { ...empty, errorCount }
+  }
+  if (unclosedQuote && !options.partial) {
     fail(openLine, null, RemittanceImportErrors.UNCLOSED_QUOTE, null)
     return { ...empty, errorCount }
   }
@@ -372,6 +396,12 @@ export function parseRemittanceFile(
   const body = rows
     .map((cells, index) => ({ cells, line: startLines[index] ?? index + 1, index }))
     .filter(entry => entry.cells.some(cell => cell.trim() !== ''))
+  // A header with text glued after a closing quote would be read as a different header
+  const first = body[0]
+  if (profile.hasHeader && first !== undefined && strayRows.has(first.index)) {
+    fail(first.line, null, RemittanceImportErrors.STRAY_QUOTE, null)
+    return { ...empty, errorCount }
+  }
   if (body.length === 0) {
     fail(1, null, RemittanceImportErrors.EMPTY_FILE, null)
     return { ...empty, errorCount }

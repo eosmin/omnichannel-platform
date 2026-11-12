@@ -283,6 +283,30 @@ describe('parseRemittanceFile', () => {
     ])
   })
 
+  it('tolerates spaces between a closing quote and the delimiter, and refuses a header with glued text', () => {
+    const padded = parseRemittanceFile('Guia,Monto\n"G-1" ,"5.00" \n', profile())
+    expect(padded.errorCount).toBe(0)
+    expect(padded.lines).toEqual([{ guideNumber: 'G-1', reportedCents: 500, row: 2 }])
+    const glued = parseRemittanceFile('"Guia"x,Monto\nG-1,5\n', profile())
+    expect(glued.errors).toEqual([
+      { row: 1, field: null, code: RemittanceImportErrors.STRAY_QUOTE, value: null }
+    ])
+  })
+
+  it('does not build a million rows out of a file of line breaks', () => {
+    const result = parseRemittanceFile('\n'.repeat(1_000_000), profile())
+    expect(result.errors.map(error => error.code)).toEqual([RemittanceImportErrors.TOO_MANY_ROWS])
+  })
+
+  it('drops the row that a sample was cut in, instead of failing the whole sample', () => {
+    const cut = parseRemittanceFile('Guia,Monto\nG-1,5\n"G-2,6', profile(), { partial: true })
+    expect(cut.errors).toEqual([])
+    expect(cut.lines.map(line => line.guideNumber)).toEqual(['G-1'])
+    expect(parseRemittanceFile('Guia,Monto\nG-1,5\n"G-2,6', profile()).errors[0]?.code).toBe(
+      RemittanceImportErrors.UNCLOSED_QUOTE
+    )
+  })
+
   it('refuses two values read from the same column, whether named or by position', () => {
     const named = parseRemittanceFile(
       'Guia,Monto\nG-1,5\n',
