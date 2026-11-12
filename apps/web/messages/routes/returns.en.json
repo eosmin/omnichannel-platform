@@ -1,0 +1,66 @@
+{
+  "returns": {
+    "list": {
+      "pageTitle": "Returns",
+      "description": "The returns and exchanges of the store, newest first. Open one to approve it, receive it or close it.",
+      "caption": "Returns of the store",
+      "filtersLabel": "Filter the returns",
+      "filters": {
+        "status": "State",
+        "anyStatus": "Any state",
+        "orderNumber": "Order number",
+        "orderNumberHint": "As printed, for example 00041.",
+        "from": "From day",
+        "to": "To day",
+        "apply": "Apply",
+        "clear": "Clear filters",
+        "rangeBackwards": "The first day is after the last.",
+        "orderNumberTooLong": "That order number is too long."
+      },
+      "columns": {
+        "order": "Order",
+        "type": "Type",
+        "reason": "Reason",
+        "status": "State",
+        "created": "Created",
+        "units": "Units"
+      },
+      "openReturn": "Open the return of order {number}",
+      "units": "{count, plural, one {# unit} other {# units}}",
+      "empty": "There are no returns yet. A return starts from an order that was delivered.",
+      "emptyFiltered": "No return matches these filters.",
+      "loadMore": "Load more",
+      "receive": "Receive packages with the scanner"
+    },
+    "detail": {
+      "back": "Back to the returns",
+      "notFound": "This return does not exist in this store.",
+      "heading": "Return of order {number}",
+      "made": "Created {date}",
+      "receivedOn": "Received {date}",
+      "openOrder": "Open order {number}",
+      "reasonLabel": "Reason",
+      "notesLabel": "Notes for the team",
+      "payerLabel": "Who pays the way back",
+      "linesHeading": "Units that come back",
+      "lineColumns": {
+        "product": "Product",
+        "quantity": "Units",
+        "condition": "Condition"
+      },
+      "notReceived": "Not received yet",
+      "refunded": "Refunded by hand: {amount}",
+      "noRefund": "No refund recorded.",
+      "guideHeading": "The way back",
+      "hasGuide": "The guide of the way back is made. Its history is in the shipping panel of the order.",
+      "noGuide": "No guide of the way back yet.",
+      "replacementHeading": "Replacement",
+      "replacement": "Open the replacement order",
+      "exchangeNotice": "Cancelling or rejecting an exchange leaves its replacement order as it is: cancel that order too if the replacement should not go out.",
+      "actionsHeading": "What can be done",
+      "noActions": "Nothing more can be done with this return.",
+      "needsOrder": "The order of this return is still loading.",
+      "needsOrderPermission": "The moves of a return need to read its order: ask for the permission to view orders."
+    }
+  }
+}

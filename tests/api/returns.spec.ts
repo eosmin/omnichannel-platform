@@ -807,6 +807,50 @@ describe('The returns of an order', () => {
     })
   })
 
+  describe('listing them', () => {
+    it('filters by the number of the order and by the calendar days of the store, and refuses a range backwards', async () => {
+      const { order, itemId } = await delivered(2)
+      const ret = await opened(order.id, itemId, 1)
+      const other = await delivered(2)
+      await opened(other.order.id, other.itemId, 1)
+      const idsOf = (response: { body: unknown }) =>
+        (response.body as { data: { id: string }[] }).data.map(row => row.id)
+
+      const byNumber = await admin().get(ApiRoutes.returns.list).query({
+        orderNumber: order.orderNumber
+      })
+      expect(byNumber.status).toBe(OK)
+      expect(idsOf(byNumber)).toEqual([ret.id])
+      const none = await admin().get(ApiRoutes.returns.list).query({ orderNumber: 'no-such-order' })
+      expect(idsOf(none)).toEqual([])
+
+      // A day range around now holds it; a range in the past does not
+      const around = await admin()
+        .get(ApiRoutes.returns.list)
+        .query({ createdFrom: '2000-01-01', createdTo: '2999-12-31' })
+      expect(idsOf(around)).toContain(ret.id)
+      const past = await admin()
+        .get(ApiRoutes.returns.list)
+        .query({ createdFrom: '2000-01-01', createdTo: '2000-01-02' })
+      expect(past.status).toBe(OK)
+      expect(idsOf(past)).not.toContain(ret.id)
+
+      for (const query of [
+        { createdFrom: '2026-02-01', createdTo: '2026-01-01' },
+        { createdFrom: 'yesterday' },
+        { orderNumber: '' }
+      ]) {
+        expect((await admin().get(ApiRoutes.returns.list).query(query)).status).toBe(BAD_REQUEST)
+      }
+
+      // The number of an order of this store finds nothing in another one
+      const foreign = await api(app, ctx.adminB, ctx.storeB)
+        .get(ApiRoutes.returns.list)
+        .query({ orderNumber: order.orderNumber })
+      expect(idsOf(foreign)).not.toContain(ret.id)
+    })
+  })
+
   describe('who may', () => {
     it('lets a viewer read and nobody of another store see or move a return', async () => {
       const { order, itemId } = await delivered(2)

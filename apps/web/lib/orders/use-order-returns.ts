@@ -74,7 +74,8 @@ export function useReturnWrites(storeId: string, orderId: string): ReturnWrites 
   const queryClient = useQueryClient()
   const refresh = async (): Promise<void> => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: QueryKeys.returns.ofOrder(storeId, orderId) }),
+      // The returns of the order, the lists and the details of the returns screens are all under `returns`
+      queryClient.invalidateQueries({ queryKey: QueryKeys.returns.all(storeId) }),
       queryClient.invalidateQueries({ queryKey: QueryKeys.shipments.all(storeId) }),
       queryClient.invalidateQueries({ queryKey: QueryKeys.inventory.all(storeId) }),
       queryClient.invalidateQueries({ queryKey: QueryKeys.orders.byId(storeId, orderId) }),

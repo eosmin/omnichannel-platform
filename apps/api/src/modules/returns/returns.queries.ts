@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 
 import { PrismaService } from '@platform/core/database'
-import type { CursorPage } from '@platform/core/domain'
+import { type CursorPage, nextCalendarDay, startOfCalendarDayIn } from '@platform/core/domain'
 import { resourceNotFound } from '@platform/core/errors'
 
 import { encodeCursor } from '../customers/list-cursor'
@@ -19,11 +19,33 @@ export class ReturnsQueries {
 
   async list(storeId: string, query: ListReturnsQuery): Promise<CursorPage<ReturnView>> {
     const { cursor, limit } = query
+    // The days are the store's calendar days: its clock is read only when a day is asked for
+    const needsClock = query.createdFrom !== undefined || query.createdTo !== undefined
+    const store = needsClock
+      ? await this.prisma.client.store.findUnique({
+          where: { id: storeId },
+          select: { timezone: true }
+        })
+      : null
+    if (needsClock && store === null) throw resourceNotFound('store')
+    const timezone = store?.timezone ?? ''
+    const createdAt = {
+      ...(query.createdFrom === undefined
+        ? {}
+        : { gte: startOfCalendarDayIn(timezone, query.createdFrom) }),
+      ...(query.createdTo === undefined
+        ? {}
+        : { lt: startOfCalendarDayIn(timezone, nextCalendarDay(query.createdTo)) })
+    }
     const rows = await this.prisma.client.orderReturn.findMany({
       where: {
         storeId,
         ...(query.status === undefined ? {} : { status: query.status }),
         ...(query.orderId === undefined ? {} : { orderId: query.orderId }),
+        ...(query.orderNumber === undefined
+          ? {}
+          : { order: { storeId, orderNumber: query.orderNumber } }),
+        ...(Object.keys(createdAt).length === 0 ? {} : { createdAt }),
         ...(cursor === undefined
           ? {}
           : {

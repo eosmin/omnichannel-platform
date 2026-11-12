@@ -1,0 +1,66 @@
+{
+  "returns": {
+    "list": {
+      "pageTitle": "Devoluciones",
+      "description": "Las devoluciones y los cambios de la tienda, de la más reciente a la más antigua. Abre una para aprobarla, recibirla o cerrarla.",
+      "caption": "Devoluciones de la tienda",
+      "filtersLabel": "Filtrar las devoluciones",
+      "filters": {
+        "status": "Estado",
+        "anyStatus": "Cualquier estado",
+        "orderNumber": "Número de pedido",
+        "orderNumberHint": "Como está impreso, por ejemplo 00041.",
+        "from": "Desde el día",
+        "to": "Hasta el día",
+        "apply": "Aplicar",
+        "clear": "Quitar los filtros",
+        "rangeBackwards": "El primer día es posterior al último.",
+        "orderNumberTooLong": "Ese número de pedido es demasiado largo."
+      },
+      "columns": {
+        "order": "Pedido",
+        "type": "Tipo",
+        "reason": "Motivo",
+        "status": "Estado",
+        "created": "Creada",
+        "units": "Unidades"
+      },
+      "openReturn": "Abrir la devolución del pedido {number}",
+      "units": "{count, plural, one {# unidad} other {# unidades}}",
+      "empty": "Todavía no hay devoluciones. Una devolución empieza desde un pedido que ya se entregó.",
+      "emptyFiltered": "Ninguna devolución coincide con estos filtros.",
+      "loadMore": "Cargar más",
+      "receive": "Recibir paquetes con el escáner"
+    },
+    "detail": {
+      "back": "Volver a las devoluciones",
+      "notFound": "Esta devolución no existe en esta tienda.",
+      "heading": "Devolución del pedido {number}",
+      "made": "Creada el {date}",
+      "receivedOn": "Recibida el {date}",
+      "openOrder": "Abrir el pedido {number}",
+      "reasonLabel": "Motivo",
+      "notesLabel": "Notas para el equipo",
+      "payerLabel": "Quién paga el regreso",
+      "linesHeading": "Unidades que regresan",
+      "lineColumns": {
+        "product": "Producto",
+        "quantity": "Unidades",
+        "condition": "Condición"
+      },
+      "notReceived": "Aún sin recibir",
+      "refunded": "Reembolsado a mano: {amount}",
+      "noRefund": "No hay reembolso registrado.",
+      "guideHeading": "El regreso",
+      "hasGuide": "La guía del regreso ya está hecha. Su historial está en el panel de envío del pedido.",
+      "noGuide": "Todavía no hay guía del regreso.",
+      "replacementHeading": "Reemplazo",
+      "replacement": "Abrir el pedido de reemplazo",
+      "exchangeNotice": "Cancelar o rechazar un cambio deja el pedido de reemplazo como está: cancela también ese pedido si el reemplazo no debe salir.",
+      "actionsHeading": "Qué se puede hacer",
+      "noActions": "No se puede hacer nada más con esta devolución.",
+      "needsOrder": "El pedido de esta devolución todavía se está cargando.",
+      "needsOrderPermission": "Los movimientos de una devolución necesitan leer su pedido: pide el permiso para ver pedidos."
+    }
+  }
+}

@@ -172,6 +172,9 @@ export const QueryKeys = {
   },
   returns: {
     all: (storeId: string) => ['returns', storeId] as const,
+    list: (storeId: string, filter: object) => ['returns', storeId, 'list', filter] as const,
+    detail: (storeId: string, returnId: string) =>
+      ['returns', storeId, 'detail', returnId] as const,
     // The returns of one order (the panel of the order detail)
     ofOrder: (storeId: string, orderId: string) =>
       ['returns', storeId, 'of-order', orderId] as const,
