@@ -17,14 +17,14 @@ import {
   OrderLimits,
   OrderMessageOutcomeStatus,
   OrderStatus,
-  ShipmentInactiveStatuses,
-  ShipmentKind,
   ShipmentStatus
 } from '@platform/core/domain'
 
 // The actions over the rows ticked on the orders page (Step 4.14) and the report each one leaves. Pure: what is offered
 // depends on who may (permissions), what the carriers of the guides can do (capabilities, never a carrier's name) and the
 // rows themselves; the server still judges every order, and what it refuses comes back in the report.
+
+export { liveGuidesByOrder } from './order-guides'
 
 // What this page reads of a connection of the store
 export type BulkConnection = Pick<CarrierConnectionView, 'id' | 'displayName' | 'capabilities'>
@@ -81,27 +81,12 @@ export const BulkStillRunning = 'still_running'
 
 // Compared with the text the api answers: a state is text on the wire, not one of our enums
 const LABEL_CREATED: string = ShipmentStatus.LABEL_CREATED
-const OUTBOUND: string = ShipmentKind.OUTBOUND
 const PENDING_CONFIRMATION: string = OrderStatus.PENDING_CONFIRMATION
 
 const STILL_GOING: ReadonlySet<string> = new Set([
   BulkLabelJobStatus.QUEUED,
   BulkLabelJobStatus.RUNNING
 ])
-
-const INACTIVE: ReadonlySet<string> = new Set(ShipmentInactiveStatuses)
-
-// The guides that still hold their order: outbound and not cancelled, failed or returned. The newest comes first.
-export function liveGuidesByOrder(
-  shipments: readonly ShipmentSummaryView[]
-): ReadonlyMap<string, ShipmentSummaryView[]> {
-  const byOrder = new Map<string, ShipmentSummaryView[]>()
-  for (const shipment of shipments) {
-    if (shipment.kind !== OUTBOUND || INACTIVE.has(shipment.status)) continue
-    byOrder.set(shipment.orderId, [...(byOrder.get(shipment.orderId) ?? []), shipment])
-  }
-  return byOrder
-}
 
 export interface BulkInput {
   // The selection in the order it was made: the order of the pages of a merged file
