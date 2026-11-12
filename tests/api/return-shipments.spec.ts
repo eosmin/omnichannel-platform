@@ -176,7 +176,8 @@ describe('The return leg of a return', () => {
     expect(row).toMatchObject({
       kind: ShipmentKind.RETURN,
       returnId,
-      originWarehouseId: null,
+      // The warehouse the goods go to: the one that sent them
+      originWarehouseId: ctx.warehouseA.id,
       codAmountCents: null,
       codStatus: 'not_applicable'
     })
@@ -446,6 +447,33 @@ describe('The return leg of a return', () => {
       await expect(
         returns.receiveFromScan(ctx.storeA.id, { ...scan, shipmentId: failed.id }, by)
       ).rejects.toMatchObject({ code: ErrorCodes.SHIPPING_INVALID_STATUS_TRANSITION })
+    })
+
+    it('counts the units in the warehouse the guide went to, not the one that sent them', async () => {
+      const { product, returnId } = await approved()
+      await owner.warehouse.update({
+        where: { id: ctx.warehouseASecond.id },
+        data: { address: { line1: 'Bodega 2', city: 'Ilopango', country: 'SV' } }
+      })
+      const guide = await guideOf(returnId, { warehouseId: ctx.warehouseASecond.id })
+      expect(guide.status).toBe(CREATED)
+      expect(
+        (await owner.shipment.findUniqueOrThrow({ where: { id: (guide.body as GuideBody).id } }))
+          .originWarehouseId
+      ).toBe(ctx.warehouseASecond.id)
+
+      await returns.receiveFromScan(
+        ctx.storeA.id,
+        {
+          shipmentId: (guide.body as GuideBody).id,
+          reason: 'DEFECTIVE',
+          condition: OrderReturnCondition.RESELLABLE
+        },
+        { userId: ctx.adminA.id, storeId: ctx.storeA.id }
+      )
+
+      expect(await kit.level(product.id, ctx.warehouseASecond.id)).toMatchObject({ onHand: 4 })
+      expect(await kit.level(product.id, ctx.warehouseA.id)).toMatchObject({ onHand: 6 })
     })
 
     it('refuses lines that are not all the lines of the return with their units, so units that did not arrive are never counted', async () => {

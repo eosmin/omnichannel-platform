@@ -1172,6 +1172,15 @@ export class ShippingService {
     if (row.status !== String(ShipmentStatus.REQUIRES_REVIEW)) {
       throw this.invalidTransition('only a guide in review is checked with the carrier')
     }
+    // The carrier is asked by the number of the order, which is also the reference of the outbound guide: a guide of the way back
+    // is settled by hand (the agent finds it at the carrier and sets its number)
+    if (row.kind !== String(ShipmentKind.OUTBOUND)) {
+      throw new PlatformException(
+        ErrorCodes.SHIPPING_CHECK_NOT_SUPPORTED,
+        'the guide of a return is settled by hand',
+        HttpStatusCodes.CONFLICT
+      )
+    }
     const plugin = plugins(row.connection.carrierId)
     if (plugin === undefined || row.connection.status !== String(CarrierConnectionStatus.ACTIVE)) {
       throw shippingRefusal(

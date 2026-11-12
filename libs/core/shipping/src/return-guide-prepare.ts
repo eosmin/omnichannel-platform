@@ -156,12 +156,17 @@ export async function prepareReturnGuide(
 
   // The destination: the warehouse the agent chose (it must be usable, or the guide is refused), else the one that sent most of the
   // returned units (the one a resellable unit goes back to by default) while it is still usable, else the first warehouse of the store
-  const sent = orderReturn.lines.flatMap(line =>
-    line.orderItem.allocations.map(allocation => ({
-      warehouseId: allocation.warehouseId,
-      quantity: allocation.quantity
-    }))
-  )
+  // (what each warehouse sent of the units that come back: an allocation counts up to the units of its line)
+  const sentBy = new Map<string, number>()
+  for (const line of orderReturn.lines) {
+    for (const allocation of line.orderItem.allocations) {
+      sentBy.set(
+        allocation.warehouseId,
+        (sentBy.get(allocation.warehouseId) ?? 0) + Math.min(allocation.quantity, line.quantity)
+      )
+    }
+  }
+  const sent = [...sentBy.entries()].map(([warehouseId, quantity]) => ({ warehouseId, quantity }))
   const usable = (warehouseId: string) =>
     tx.warehouse.findFirst({
       where: {
@@ -192,16 +197,13 @@ export async function prepareReturnGuide(
   }
 
   // What the return already has: a guide whose outcome is unknown stops a new one, and so does any active one
-  const existing = await tx.shipment.findMany({
-    where: {
-      returnId: orderReturn.id,
-      storeId,
-      kind: ShipmentKind.RETURN,
-      status: { notIn: [...ShipmentInactiveStatuses] }
-    },
+  const legs = await tx.shipment.findMany({
+    where: { returnId: orderReturn.id, storeId, kind: ShipmentKind.RETURN },
     select: { status: true }
   })
-  const active = existing[0]
+  const active = legs.find(
+    leg => !ShipmentInactiveStatuses.some(status => String(status) === leg.status)
+  )
   if (active !== undefined) {
     const unknown = ShipmentUnknownOutcomeStatuses.some(status => String(status) === active.status)
     throw shippingRefusal(
@@ -211,10 +213,7 @@ export async function prepareReturnGuide(
         : 'the return already has an active guide'
     )
   }
-  const attempt =
-    (await tx.shipment.count({
-      where: { returnId: orderReturn.id, storeId, kind: ShipmentKind.RETURN }
-    })) + 1
+  const attempt = legs.length + 1
   const idempotencyKey = returnShipmentIdempotencyKey(orderReturn.id, attempt)
 
   const contact = asRecord(connection.contact)
@@ -268,7 +267,8 @@ export async function prepareReturnGuide(
       connectionId: connection.id,
       kind: ShipmentKind.RETURN,
       returnId: orderReturn.id,
-      originWarehouseId: null,
+      // For a return it is the warehouse the goods go TO: the scan restocks there unless the line names another one
+      originWarehouseId: warehouse.id,
       serviceCode: service.code,
       shippingPayer,
       codAmountCents: null,

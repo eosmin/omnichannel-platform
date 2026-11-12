@@ -37,6 +37,7 @@ import {
   ShipmentInactiveStatuses,
   ShipmentKind,
   ShipmentStatus,
+  ShipmentUnknownOutcomeStatuses,
   unitsHeld
 } from '@platform/core/domain'
 import {
@@ -520,13 +521,6 @@ export class ReturnsService {
           }
         )
       }
-      await tx.orderReturn.update({
-        where: { id: row.id },
-        data: {
-          returnShipmentId:
-            (shipment.kind as ShipmentKind) === ShipmentKind.RETURN ? shipment.id : null
-        }
-      })
       const settled = await this.settle(
         tx,
         storeId,
@@ -574,16 +568,19 @@ export class ReturnsService {
       await tx.$queryRaw`SELECT id FROM shipments WHERE id = ${input.shipmentId} AND store_id = ${storeId} FOR UPDATE`
       const shipment = await tx.shipment.findFirst({
         where: { id: input.shipmentId, storeId, returnId, kind: ShipmentKind.RETURN },
-        select: { id: true, status: true, connectionId: true }
+        select: { id: true, status: true, connectionId: true, originWarehouseId: true }
       })
       if (shipment === null) throw resourceNotFound('shipment')
       const from = shipment.status as ShipmentStatus
       // A package that is here is received whatever its guide says (a guide that was cancelled while the parcel was already on its
       // way still brings it): only a guide that was never made, or whose outcome is not known, has no package
-      if (from === ShipmentStatus.CREATING || from === ShipmentStatus.FAILED) {
+      if (
+        from === ShipmentStatus.FAILED ||
+        ShipmentUnknownOutcomeStatuses.some(status => status === from)
+      ) {
         throw conflict(
           ErrorCodes.SHIPPING_INVALID_STATUS_TRANSITION,
-          'the guide of the return was not made, so no package comes by it'
+          'the guide of the return was not made or may not exist: settle it first'
         )
       }
       // A scan that names lines names every line of the return with its units, as `receive` does: a package that is not the
@@ -607,12 +604,13 @@ export class ReturnsService {
         loaded,
         loaded.lines.map(line => {
           const chosen = given.get(line.orderItemId)
+          // The guide went to a warehouse (the one the agent chose or the one that sent most): the units are counted there unless the
+          // scan names another one
+          const restockAt = chosen?.restockWarehouseId ?? shipment.originWarehouseId ?? undefined
           return {
             orderItemId: line.orderItemId,
             condition: chosen?.condition ?? input.condition,
-            ...(chosen?.restockWarehouseId === undefined
-              ? {}
-              : { restockWarehouseId: chosen.restockWarehouseId })
+            ...(restockAt === undefined ? {} : { restockWarehouseId: restockAt })
           }
         }),
         actor
