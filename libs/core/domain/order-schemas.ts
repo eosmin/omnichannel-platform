@@ -317,7 +317,8 @@ export function orderScheduleFiltersAreConsistent(
 // not a 400)
 const FIRST_FILTER_DAY = '1970-01-01'
 const LAST_FILTER_DAY = '2999-12-31'
-const filterDaySchema = z.iso
+// A calendar day typed in a filter (`2026-11-12`): the lists that filter by day share it
+export const filterDaySchema = z.iso
   .date()
   .refine(day => day >= FIRST_FILTER_DAY && day <= LAST_FILTER_DAY, {
     message: 'the day is out of range'

@@ -61,6 +61,11 @@ export interface ListReturnsParams {
   limit?: number
   status?: OrderReturnStatus
   orderId?: string
+  // The number of the order as the store prints it
+  orderNumber?: string
+  // Calendar days of the store, both included
+  createdFrom?: string
+  createdTo?: string
 }
 
 function query(params: Record<string, string | undefined>): string {
@@ -82,7 +87,10 @@ export function fetchReturns(
     cursor: params.cursor ?? undefined,
     limit: params.limit === undefined ? undefined : String(params.limit),
     status: params.status,
-    orderId: params.orderId
+    orderId: params.orderId,
+    orderNumber: params.orderNumber,
+    createdFrom: params.createdFrom,
+    createdTo: params.createdTo
   })
   return client.request(`${ApiRoutes.returns.list}${search}`, {
     schema: returnPageSchema,

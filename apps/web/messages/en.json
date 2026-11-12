@@ -1801,6 +1801,7 @@
       "settings": "Settings",
       "orders": "Orders",
       "inventory": "Inventory",
+      "returns": "Returns",
       "remittances": "Remittances",
       "shipments": "Shipments",
       "pickups": "Pickups"

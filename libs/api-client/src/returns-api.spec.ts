@@ -77,13 +77,16 @@ describe('returns api', () => {
     const page = await fetchReturns(client, 's1', {
       status: OrderReturnStatus.REQUESTED,
       orderId: 'o1',
+      orderNumber: '00001',
+      createdFrom: '2026-11-01',
+      createdTo: '2026-11-12',
       limit: 10
     })
 
     expect(page.data[0]?.orderNumber).toBe('00001')
     const [url] = fetchImpl.mock.calls[0] ?? []
     expect(url).toBe(
-      `https://api.example.com/api/v1${ApiRoutes.returns.list}?limit=10&status=requested&orderId=o1`
+      `https://api.example.com/api/v1${ApiRoutes.returns.list}?limit=10&status=requested&orderId=o1&orderNumber=00001&createdFrom=2026-11-01&createdTo=2026-11-12`
     )
   })
 

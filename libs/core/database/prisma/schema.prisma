@@ -1990,6 +1990,7 @@ model OrderReturn {
   @@index([orderId])
   @@index([storeId, orderId])
   @@index([storeId, status])
+  @@index([storeId, createdAt(sort: Desc), id(sort: Desc)], map: "order_returns_store_created_idx")
   @@index([replacementOrderId])
   @@index([returnShipmentId])
   @@map("order_returns")
