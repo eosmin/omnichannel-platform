@@ -10,9 +10,9 @@ const ZONE = 'America/El_Salvador' // UTC-6
 // 2026-11-12 is a Thursday (4); 14:30 UTC is 08:30 in the store
 const at = (hhmm: string, day = '2026-11-12'): Date => {
   const [h, m] = hhmm.split(':').map(Number)
-  return new Date(
-    `${day}T${String((h ?? 0) + 6).padStart(2, '0')}:${String(m).padStart(2, '0')}:00.000Z`
-  )
+  const [year, month, date] = day.split('-').map(Number)
+  // The store is six hours behind UTC; the hour may roll into the next UTC day
+  return new Date(Date.UTC(year ?? 0, (month ?? 1) - 1, date ?? 1, (h ?? 0) + 6, m ?? 0))
 }
 const RULES: PickupScheduleRules = {
   pickupDays: [1, 2, 3, 4, 5],
