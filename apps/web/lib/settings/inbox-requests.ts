@@ -18,9 +18,6 @@ const inboxSchema = z.object({
 export type InboxSettingsView = z.output<typeof inboxSchema>
 export type InboxSettingsInput = Partial<InboxSettingsView>
 
-const preferencesSchema = z.object({ sendReadReceipts: z.boolean(), assignOnReply: z.boolean() })
-export type PreferencesView = z.output<typeof preferencesSchema>
-
 export function fetchInboxSettings(
   client: ApiClient,
   storeId: string,
@@ -42,28 +39,5 @@ export function saveInboxSettings(
   })
 }
 
-export function fetchPreferences(
-  client: ApiClient,
-  storeId: string,
-  signal?: AbortSignal
-): Promise<PreferencesView> {
-  return client.request(ApiRoutes.settings.preferences, {
-    schema: preferencesSchema,
-    storeId,
-    signal
-  })
-}
-
-// Only the keys that change are sent: the others keep their value on the api
-export function savePreferences(
-  client: ApiClient,
-  storeId: string,
-  input: Partial<PreferencesView>
-): Promise<PreferencesView> {
-  return client.request(ApiRoutes.settings.preferences, {
-    method: 'PUT',
-    body: input,
-    schema: preferencesSchema,
-    storeId
-  })
-}
+// The preferences moved to their own file, which the Preferences page shares
+export { fetchPreferences, type PreferencesView, savePreferences } from './preferences-requests'

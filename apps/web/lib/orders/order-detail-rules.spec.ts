@@ -141,6 +141,8 @@ describe('editable fields', () => {
     expect(editableFieldsOf(OrderStatus.PENDING_CONFIRMATION)).toContain('items')
     expect(editableFieldsOf(OrderStatus.PREPARING)).not.toContain('items')
     expect(editableFieldsOf(OrderStatus.SHIPPED)).toContain('trackingNumber')
+    // The tracking number is the carrier's while a guide is live
+    expect(editableFieldsOf(OrderStatus.SHIPPED, true)).not.toContain('trackingNumber')
     expect(editableFieldsOf(OrderStatus.SHIPPED)).not.toContain('packingNotes')
     expect(editableFieldsOf(OrderStatus.DELIVERED)).toEqual(['customerNotes', 'internalNotes'])
     expect(editableFieldsOf(OrderStatus.CANCELLED)).not.toContain('items')

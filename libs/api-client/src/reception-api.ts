@@ -48,6 +48,8 @@ const receptionItemSchema = z.object({
   lines: z.array(receptionLineSchema),
   flagCustomer: z.boolean(),
   flagReason: z.string().nullable(),
+  // The agent confirmed that a package whose guide is DELIVERED came back anyway
+  confirmDelivered: z.boolean(),
   outcome: z.enum(ReceptionItemOutcome).nullable(),
   // The code of the error: the screen translates it
   errorCode: z.string().nullable(),
@@ -79,20 +81,25 @@ const receptionBatchSchema = receptionBatchSummarySchema.extend({
 })
 export type ReceptionBatchView = z.output<typeof receptionBatchSchema>
 
+const scanCandidateSchema = z.object({
+  shipmentId: z.string(),
+  guideNumber: z.string().nullable(),
+  orderNumber: z.string(),
+  status: z.enum(ShipmentStatus),
+  kind: z.enum(ShipmentKind)
+})
+
 const scanResultSchema = z.discriminatedUnion('result', [
   z.object({ result: z.literal(ReceptionScanResults.ADDED), item: receptionItemSchema }),
   z.object({ result: z.literal(ReceptionScanResults.NOT_FOUND) }),
   z.object({
     result: z.literal(ReceptionScanResults.AMBIGUOUS),
-    candidates: z.array(
-      z.object({
-        shipmentId: z.string(),
-        guideNumber: z.string().nullable(),
-        orderNumber: z.string(),
-        status: z.enum(ShipmentStatus),
-        kind: z.enum(ShipmentKind)
-      })
-    )
+    candidates: z.array(scanCandidateSchema)
+  }),
+  // The guide is DELIVERED: the scan is sent again with `confirmDelivered` once the agent confirms
+  z.object({
+    result: z.literal(ReceptionScanResults.NEEDS_CONFIRMATION),
+    candidate: scanCandidateSchema
   })
 ])
 export type ScanResultView = z.output<typeof scanResultSchema>
@@ -135,8 +142,8 @@ export function fetchReceptionBatch(
   })
 }
 
-// A code from the reader: found (the package joins the batch), not found (nothing changes) or ambiguous (the agent picks one and
-// scans again with its `shipmentId`)
+// A code from the reader: found (the package joins the batch), not found (nothing changes), ambiguous (the agent picks one and
+// scans again with its `shipmentId`) or delivered (the agent confirms and scans again with `confirmDelivered`)
 export function scanReceptionCode(
   client: ApiClient,
   storeId: string,

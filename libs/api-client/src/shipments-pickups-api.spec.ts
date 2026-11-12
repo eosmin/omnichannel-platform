@@ -11,7 +11,6 @@ import {
   cancelShipment,
   checkShipmentWithCarrier,
   fetchShipment,
-  fetchShipmentLabel,
   fetchShipmentList,
   markShipmentVoided,
   setShipmentStatus
@@ -164,14 +163,6 @@ describe('shipments api', () => {
       status: 'label_created',
       guideNumber: 'G-9'
     })
-  })
-
-  it('asks for the label link when pressed', async () => {
-    const { client, fetchImpl } = setup(
-      json(200, { url: 'https://files/x.pdf', filename: 'x.pdf' })
-    )
-    expect((await fetchShipmentLabel(client, 's1', 'sh1')).filename).toBe('x.pdf')
-    expect(callOf(fetchImpl).url).toContain('/shipments/sh1/label')
   })
 })
 

@@ -23,7 +23,7 @@ import {
   fetchPickupManifest,
   fetchPickups,
   fetchShipment,
-  fetchShipmentLabel,
+  fetchShipmentLabelLink,
   fetchShipmentList,
   markShipmentVoided,
   type PickupChangeView,
@@ -138,7 +138,7 @@ export function useSetShipmentStatus(
 export function useShipmentLabel(
   storeId: string
 ): UseMutationResult<ShipmentLabelLinkView, Error, string> {
-  return useMutation({ mutationFn: id => fetchShipmentLabel(apiClient, storeId, id) })
+  return useMutation({ mutationFn: id => fetchShipmentLabelLink(apiClient, storeId, id) })
 }
 
 export function usePickupList(

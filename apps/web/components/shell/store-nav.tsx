@@ -50,6 +50,11 @@ export function StoreNav(): ReactElement {
       isShown: can(ClientPermissions.SHIPPING_VIEW)
     },
     {
+      href: AppPaths.store.remittances(storeId),
+      label: t('remittances'),
+      isShown: can(ClientPermissions.REMITTANCES_VIEW)
+    },
+    {
       href: AppPaths.store.inventory(storeId),
       label: t('inventory'),
       isShown: can(ClientPermissions.INVENTORY_VIEW)

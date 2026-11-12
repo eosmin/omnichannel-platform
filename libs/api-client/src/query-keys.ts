@@ -180,15 +180,34 @@ export const QueryKeys = {
   },
   returns: {
     all: (storeId: string) => ['returns', storeId] as const,
+    // The returns of one order (the panel of the order detail)
+    ofOrder: (storeId: string, orderId: string) =>
+      ['returns', storeId, 'of-order', orderId] as const,
     receptionBatches: (storeId: string) => ['returns', storeId, 'reception-batches'] as const,
     receptionBatch: (storeId: string, batchId: string) =>
       ['returns', storeId, 'reception-batches', batchId] as const
   },
   orderTemplates: {
-    all: (storeId: string) => ['order-templates', storeId] as const
+    all: (storeId: string) => ['order-templates', storeId] as const,
+    // The writes in flight (save, delete) of the store's templates
+    writing: (storeId: string) => ['order-template-write', storeId] as const,
+    // Apart from `all`, so that saving a template does not refetch the previews
+    preview: (storeId: string, locale: string, body: string) =>
+      ['order-template-preview', storeId, locale, body] as const
+  },
+  // Who pays the return leg by default (Settings → Returns)
+  returnSettings: {
+    store: (storeId: string) => ['return-settings', storeId] as const
   },
   remittances: {
-    all: (storeId: string) => ['remittances', storeId] as const
+    all: (storeId: string) => ['remittances', storeId] as const,
+    list: (storeId: string, filter: object) => ['remittances', storeId, 'list', filter] as const,
+    pending: (storeId: string, connectionId: string | null) =>
+      ['remittances', storeId, 'pending', connectionId] as const,
+    detail: (storeId: string, remittanceId: string) =>
+      ['remittances', storeId, 'detail', remittanceId] as const,
+    profiles: (storeId: string, connectionId: string | null) =>
+      ['remittances', storeId, 'profiles', connectionId] as const
   },
   returnReception: {
     batch: (storeId: string, batchId: string) => ['return-reception', storeId, batchId] as const

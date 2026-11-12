@@ -149,11 +149,13 @@ export const ReceptionReasons = {
   REFUSED: 'REFUSED_BY_CUSTOMER'
 } as const satisfies Record<string, OrderReturnReasonKey>
 
-// What scanning a code answers: the package joined the batch, no shipment answers to the code, or more than one does
+// What scanning a code answers: the package joined the batch, no shipment answers to the code, more than one does, or the
+// guide was already delivered and the agent has to confirm that the package came back anyway
 export const ReceptionScanResults = {
   ADDED: 'added',
   NOT_FOUND: 'not_found',
-  AMBIGUOUS: 'ambiguous'
+  AMBIGUOUS: 'ambiguous',
+  NEEDS_CONFIRMATION: 'needs_confirmation'
 } as const
 
 // The code a reader typed, as it came: the lookup ignores the case and the blanks, the field only refuses what a query cannot hold
@@ -165,7 +167,9 @@ export const scanCodeSchema = z.strictObject({
     .max(ReceptionLimits.CODE_MAX_LENGTH)
     .refine(value => !value.includes('\u0000'), { message: 'a NUL character' }),
   // The shipment the agent picked when the code matched more than one
-  shipmentId: uuidSchema.optional()
+  shipmentId: uuidSchema.optional(),
+  // The agent confirmed that a package whose guide is DELIVERED came back anyway (TDD_17 §4.16)
+  confirmDelivered: z.boolean().optional()
 })
 export type ScanCodeBody = z.output<typeof scanCodeSchema>
 

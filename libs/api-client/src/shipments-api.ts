@@ -104,21 +104,6 @@ export function fetchShipment(
   })
 }
 
-// The label is a link that is good for minutes: it is asked for at the press and never kept
-const labelLinkSchema = z.object({ url: z.string(), filename: z.string() })
-export type ShipmentLabelLinkView = z.output<typeof labelLinkSchema>
-
-export function fetchShipmentLabel(
-  client: ApiClient,
-  storeId: string,
-  shipmentId: string
-): Promise<ShipmentLabelLinkView> {
-  return client.request(ApiRoutes.shipments.label(shipmentId), {
-    schema: labelLinkSchema,
-    storeId
-  })
-}
-
 // Void the guide: at its carrier when the carrier can, and the answer says where it stands (`cancelled`, or `cancel_pending`
 // while the carrier is asked, or `cancel_failed` when it could not be)
 export function cancelShipment(

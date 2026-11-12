@@ -49,6 +49,9 @@ export const AppPaths = {
     returns: (storeId: string) => `/s/${storeId}/returns`,
     returnsReception: (storeId: string) => `/s/${storeId}/returns/receive`,
     remittances: (storeId: string) => `/s/${storeId}/remittances`,
+    remittance: (storeId: string, remittanceId: string) =>
+      `/s/${storeId}/remittances/${remittanceId}`,
+    remittanceImport: (storeId: string) => `/s/${storeId}/remittances/import`,
     analytics: (storeId: string) => `/s/${storeId}/analytics`,
     settings: (storeId: string, section: StoreSettingsSection = StoreSettingsSections.GENERAL) =>
       `/s/${storeId}/settings/${section}`,
