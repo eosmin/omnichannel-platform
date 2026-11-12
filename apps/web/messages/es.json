@@ -869,7 +869,7 @@
     "remittance": {
       "overdue": {
         "title": "Remesa vencida",
-        "body": "Un transportista no remitió a tiempo los pagos contra entrega."
+        "body": "{carrier} no ha remitido el contra entrega de {count} paquetes entregados hace más de {days} días."
       }
     },
     "return": {
