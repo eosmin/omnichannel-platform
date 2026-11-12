@@ -481,8 +481,8 @@ export class NotificationsEventsListener {
   }
 
   // A pickup that a person has to arrange with the carrier (TDD_17 §4.10): the carrier has no pickup API, or did not take the
-  // request. The members who manage pickups are told once while the earlier warning is unread, so a day of pickups that all fail is
-  // one line. The event carries ids and the count, never what the carrier said.
+  // request. The members who manage pickups are told once per pickup while the earlier warning is unread (a pickup that
+  // is asked again and fails again is one line); a store with several failing connections gets one line for each. The event carries ids and the count, never what the carrier said.
   @OnEvent(Events.PICKUP_MANUAL_REQUIRED)
   async onPickupManualRequired(payload: PickupManualRequiredPayload): Promise<void> {
     const { storeId, pickupId } = payload

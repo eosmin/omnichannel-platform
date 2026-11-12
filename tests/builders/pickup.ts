@@ -11,6 +11,9 @@ import {
 import { createCarrierConnection } from './carrier-connection'
 import { createOrder } from './order'
 
+// A different day for every pickup built, so two pickups of one connection never share their day
+let nextDay = 0
+
 // A guide of a store on a connection that exists (a label made, no pickup), written as the owner: the way to have guides waiting
 // for a pickup without asking a carrier for each
 export async function createGuideOn(
@@ -75,7 +78,7 @@ export async function createPickup(
     data: {
       storeId: input.storeId,
       connectionId,
-      pickupDate: new Date(Date.UTC(2031, 0, 1 + Math.floor(Math.random() * 25))),
+      pickupDate: new Date(Date.UTC(2031, 0, 1 + (nextDay++ % 28))),
       status: input.status ?? PickupStatus.MANUAL_REQUIRED,
       packageCount: 1,
       requestedBy: 'system'

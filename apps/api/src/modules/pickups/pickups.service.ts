@@ -123,21 +123,13 @@ export class PickupsApiService {
       storeId,
       {
         connectionId: pickup.connectionId,
+        pickupId,
         shipmentIds: body.shipmentIds,
-        date: pickup.pickupDate.toISOString().slice(0, 10),
         confirmAfterCutoff: body.confirmAfterCutoff,
         actor: { type: 'user', id: actor.userId }
       },
       this.plugins
     )
-    // The pickup was cancelled or is over: a new one must not appear behind the back of the agent
-    if (result.pickupId !== pickupId) {
-      throw new PlatformException(
-        ErrorCodes.PICKUP_NOT_EDITABLE,
-        'the pickup is over',
-        HttpStatusCodes.CONFLICT
-      )
-    }
     return this.answer(storeId, result, actor, false)
   }
 

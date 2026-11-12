@@ -553,7 +553,9 @@ export const PickupManualReasons = {
   // The carrier has no pickup API (or no way to request one)
   NO_API: 'no_api',
   // The carrier did not take the request after every attempt
-  FAILED: 'failed'
+  FAILED: 'failed',
+  // Nobody knows if the carrier took it: a person looks at the carrier before asking again
+  REVIEW: 'review'
 } as const
 export type PickupManualReason = (typeof PickupManualReasons)[keyof typeof PickupManualReasons]
 
@@ -565,7 +567,8 @@ export const PickupFailureNotes = {
   CREDENTIALS_UNREADABLE: 'credentials_unreadable',
   UNKNOWN_OUTCOME: 'unknown_outcome',
   UNUSABLE_ANSWER: 'unusable_answer',
-  CONNECTION_LOST: 'connection_not_active'
+  CONNECTION_LOST: 'connection_not_active',
+  EMPTY: 'pickup_empty'
 } as const
 
 export const PickupResourceTypes = { PICKUP: 'pickup' } as const

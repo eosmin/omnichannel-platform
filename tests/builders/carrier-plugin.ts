@@ -546,6 +546,11 @@ export function buildFakeCarrier(options: FakeCarrierOptions = {}): FakeCarrier 
             params: Parameters<NonNullable<CarrierPlugin['cancelPickup']>>[1]
           ) => {
             record('cancelPickup', params)
+            try {
+              pickupFault()
+            } catch (error) {
+              return Promise.reject(error instanceof Error ? error : new Error(String(error)))
+            }
             state.pickups.delete(params.pickupRef)
             return Promise.resolve()
           }

@@ -2,13 +2,19 @@ import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
 import { CredentialCipher } from '@platform/core/crypto'
-import { lockStoreForWrite, PrismaService, type PrismaTransaction } from '@platform/core/database'
+import {
+  lockStoreForWrite,
+  lockStoreScope,
+  PrismaService,
+  type PrismaTransaction
+} from '@platform/core/database'
 import {
   CarrierCapability,
   CarrierConnectionStatus,
   PickupDefaults,
   PickupFailureNotes,
   PickupLeaveNotes,
+  PickupLockScopes,
   PickupManualReasons,
   PickupStatus,
   pickupRequestKey
@@ -29,6 +35,8 @@ import { clampCarrierMessage } from './shipment-rules'
 import { ShipmentWrites } from './shipment-writes'
 
 export const PickupSyncOutcomes = { DONE: 'done', RETRY: 'retry' } as const
+// Inside a run: the carrier took a new count, so the pickup is read again (a change may have landed while it was told)
+const MODIFIED = 'modified'
 export type PickupSyncOutcome = (typeof PickupSyncOutcomes)[keyof typeof PickupSyncOutcomes]
 
 // A change that lands while the carrier is being told is told again at once, a few times; the sweep of the scheduler catches the rest
@@ -86,7 +94,8 @@ export class PickupSync {
         return PickupSyncOutcomes.DONE
       }
       const outcome = await this.modify(storeId, pickup, plugins, lastAttempt)
-      if (outcome !== PickupSyncOutcomes.DONE) return outcome
+      // Only a count the carrier took asks for another look: a note, a refusal or a carrier that cannot change it end the job
+      if (outcome !== MODIFIED) return outcome
     }
     return PickupSyncOutcomes.DONE
   }
@@ -100,6 +109,11 @@ export class PickupSync {
     lastAttempt: boolean
   ): Promise<PickupSyncOutcome> {
     const plugin = plugins(pickup.connection.carrierId)
+    // Every guide left before the carrier was asked: there is nothing to collect, and the carrier is not asked for an empty pickup
+    if (pickup.packageCount === 0) {
+      await this.end(storeId, pickup, PickupStatus.FAILED, PickupFailureNotes.EMPTY, false)
+      return PickupSyncOutcomes.DONE
+    }
     if (pickup.connection.status !== String(CarrierConnectionStatus.ACTIVE)) {
       await this.end(storeId, pickup, PickupStatus.FAILED, PickupFailureNotes.CONNECTION_LOST)
       return PickupSyncOutcomes.DONE
@@ -110,7 +124,7 @@ export class PickupSync {
     ) {
       // The carrier lost the way to ask: a person arranges it
       await this.prisma.transaction(async tx => {
-        await lockStoreForWrite(tx, storeId)
+        await this.lock(tx, storeId, pickup.connectionId)
         await this.writes.movePickup(
           tx,
           storeId,
@@ -134,8 +148,9 @@ export class PickupSync {
       this.cipher
     )
     const sent = pickup.packageCount
+    let answer: unknown
     try {
-      const answer = await withDeadline(() =>
+      answer = await withDeadline(() =>
         requestPickup(context, {
           idempotencyKey: pickupRequestKey(pickup.id),
           window: {
@@ -146,36 +161,38 @@ export class PickupSync {
           packageCount: sent
         })
       )
-      const ref = (answer as { pickupRef?: unknown } | null)?.pickupRef
-      if (
-        typeof ref !== 'string' ||
-        ref === '' ||
-        ref.trim() !== ref ||
-        ref.length > MAX_PICKUP_REF_LENGTH
-      ) {
-        await this.end(
-          storeId,
-          pickup,
-          PickupStatus.REQUIRES_REVIEW,
-          PickupFailureNotes.UNUSABLE_ANSWER
-        )
-        return PickupSyncOutcomes.DONE
-      }
-      await this.prisma.transaction(async tx => {
-        await lockStoreForWrite(tx, storeId)
-        await this.writes.movePickup(
-          tx,
-          storeId,
-          pickup.id,
-          PickupStatus.PENDING,
-          PickupStatus.REQUESTED,
-          { providerPickupId: ref, carrierPackageCount: sent, lastError: null }
-        )
-      })
-      return PickupSyncOutcomes.DONE
     } catch (error) {
       return this.requestFailed(storeId, pickup, error, lastAttempt)
     }
+    const ref = (answer as { pickupRef?: unknown } | null)?.pickupRef
+    if (
+      typeof ref !== 'string' ||
+      ref === '' ||
+      ref.trim() !== ref ||
+      ref.length > MAX_PICKUP_REF_LENGTH
+    ) {
+      await this.end(
+        storeId,
+        pickup,
+        PickupStatus.REQUIRES_REVIEW,
+        PickupFailureNotes.UNUSABLE_ANSWER
+      )
+      return PickupSyncOutcomes.DONE
+    }
+    // The carrier holds the pickup. Writing it down is outside the try of the call: a fault here is a fault of the database, not
+    // of the carrier, and the job asks again with the same key (the carrier answers the same pickup)
+    await this.prisma.transaction(async tx => {
+      await this.lock(tx, storeId, pickup.connectionId)
+      await this.writes.movePickup(
+        tx,
+        storeId,
+        pickup.id,
+        PickupStatus.PENDING,
+        PickupStatus.REQUESTED,
+        { providerPickupId: ref, carrierPackageCount: sent, lastError: null }
+      )
+    })
+    return PickupSyncOutcomes.DONE
   }
 
   private async requestFailed(
@@ -220,10 +237,11 @@ export class PickupSync {
     storeId: string,
     pickup: PickupRow,
     to: PickupStatus.FAILED | PickupStatus.REQUIRES_REVIEW,
-    note: string
+    note: string,
+    tellTeam = true
   ): Promise<void> {
     await this.prisma.transaction(async tx => {
-      await lockStoreForWrite(tx, storeId)
+      await this.lock(tx, storeId, pickup.connectionId)
       await this.writes.movePickup(tx, storeId, pickup.id, PickupStatus.PENDING, to, {
         lastError: note
       })
@@ -233,8 +251,21 @@ export class PickupSync {
           data: { pickupId: null }
         })
       }
-      this.announce(tx, storeId, pickup, PickupManualReasons.FAILED)
+      if (tellTeam) {
+        this.announce(
+          tx,
+          storeId,
+          pickup,
+          to === PickupStatus.FAILED ? PickupManualReasons.FAILED : PickupManualReasons.REVIEW
+        )
+      }
     })
+  }
+
+  // The same lock `PickupsService` takes: a pickup is never moved while a request joins a guide to it
+  private async lock(tx: PrismaTransaction, storeId: string, connectionId: string): Promise<void> {
+    await lockStoreForWrite(tx, storeId)
+    await lockStoreScope(tx, storeId, `${PickupLockScopes.CONNECTION}:${connectionId}`)
   }
 
   private announce(
@@ -260,7 +291,7 @@ export class PickupSync {
     pickup: PickupRow,
     plugins: PluginLookup,
     lastAttempt: boolean
-  ): Promise<PickupSyncOutcome> {
+  ): Promise<PickupSyncOutcome | typeof MODIFIED> {
     const plugin = plugins(pickup.connection.carrierId)
     const pickupRef = pickup.providerPickupId
     const note = (lastError: string): Promise<unknown> =>
@@ -315,7 +346,7 @@ export class PickupSync {
       },
       data: { carrierPackageCount: sent, lastError: null }
     })
-    return PickupSyncOutcomes.DONE
+    return MODIFIED
   }
 }
 

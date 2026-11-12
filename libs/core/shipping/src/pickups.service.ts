@@ -49,6 +49,8 @@ export interface EnsurePickupInput {
   shipmentIds?: readonly string[] | undefined
   // 'YYYY-MM-DD'; without it the next day the connection takes pickups
   date?: string | undefined
+  // Join this pickup and no other (adding guides to a pickup the agent named): a pickup that is over refuses, nothing new is made
+  pickupId?: string | undefined
   // A person confirmed the change of a pickup of today after its cutoff
   confirmAfterCutoff?: boolean | undefined
   actor: ActorRef
@@ -140,7 +142,22 @@ export class PickupsService {
         pickupDays: connection.pickupDays,
         pickupCutoffTime: connection.pickupCutoffTime
       }
-      const day = resolvePickupDate(now, store.timezone, rules, input.date)
+      const target =
+        input.pickupId === undefined
+          ? null
+          : await tx.pickupRequest.findFirst({
+              where: { id: input.pickupId, storeId, connectionId: input.connectionId }
+            })
+      if (input.pickupId !== undefined) {
+        if (target === null) throw resourceNotFound('pickup')
+        if (!PickupOpenStatuses.includes(target.status as PickupStatus)) {
+          throw notEditable('the pickup is over')
+        }
+      }
+      const day =
+        target === null
+          ? resolvePickupDate(now, store.timezone, rules, input.date)
+          : { date: dayOf(target.pickupDate) }
       if ('refusal' in day) {
         throw day.refusal === 'no_days'
           ? new PlatformException(
@@ -157,19 +174,50 @@ export class PickupsService {
             )
       }
       const eligible = await this.eligibleShipments(tx, storeId, input)
-      const open = await tx.pickupRequest.findFirst({
-        where: {
-          storeId,
-          connectionId: input.connectionId,
-          pickupDate: new Date(`${day.date}T00:00:00.000Z`),
-          status: { in: [...PickupOpenStatuses] }
-        },
-        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
-      })
+      const open =
+        target ??
+        (await tx.pickupRequest.findFirst({
+          where: {
+            storeId,
+            connectionId: input.connectionId,
+            pickupDate: new Date(`${day.date}T00:00:00.000Z`),
+            status: { in: [...PickupOpenStatuses] }
+          },
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
+        }))
       if (open === null) {
-        return eligible.length === 0
-          ? { pickupId: null, created: false, joined: [], waiting: [], sync: false, revision: 0 }
-          : this.createPickup(tx, storeId, input, day.date, eligible, plugin)
+        if (eligible.length === 0) {
+          return {
+            pickupId: null,
+            created: false,
+            joined: [],
+            waiting: [],
+            sync: false,
+            revision: 0
+          }
+        }
+        // A pickup of today is not made after its cutoff without the confirmation of a person: what the scheduler offers waits
+        if (
+          isPickupCutoffPassed(now, store.timezone, day.date, connection.pickupCutoffTime) &&
+          input.confirmAfterCutoff !== true
+        ) {
+          if (input.actor.type === 'user') {
+            throw new PlatformException(
+              ErrorCodes.PICKUP_CUTOFF_PASSED,
+              'the cutoff of this day has passed',
+              HttpStatusCodes.CONFLICT
+            )
+          }
+          return {
+            pickupId: null,
+            created: false,
+            joined: [],
+            waiting: [],
+            sync: false,
+            revision: 0
+          }
+        }
+        return this.createPickup(tx, storeId, input, day.date, eligible, plugin)
       }
       const cutoffPassed = isPickupCutoffPassed(
         now,
@@ -220,7 +268,7 @@ export class PickupsService {
       })
       const count = await this.heldCount(tx, storeId, open.id)
       const updated = await tx.pickupRequest.update({
-        where: { id: open.id },
+        where: { storeId_id: { storeId, id: open.id } },
         data: {
           packageCount: count,
           ...(decision.tellCarrier ? { revision: { increment: 1 } } : {})
@@ -246,8 +294,7 @@ export class PickupsService {
   ): Promise<PickupChange> {
     return this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
-      const pickup = await this.pickupOf(tx, storeId, pickupId)
-      await lockStoreScope(tx, storeId, `${PickupLockScopes.CONNECTION}:${pickup.connectionId}`)
+      const pickup = await this.lockedPickup(tx, storeId, pickupId)
       const status = pickup.status as PickupStatus
       const editable =
         status === PickupStatus.PENDING ||
@@ -275,15 +322,14 @@ export class PickupsService {
       }
       await tx.shipment.updateMany({ where: { id: shipmentId, storeId }, data: { pickupId: null } })
       const carrierHolds = status === PickupStatus.REQUESTED || status === PickupStatus.CONFIRMED
-      await tx.pickupRequest.update({
-        where: { id: pickupId },
+      const updated = await tx.pickupRequest.update({
+        where: { storeId_id: { storeId, id: pickupId } },
         data: { packageCount: count, ...(carrierHolds ? { revision: { increment: 1 } } : {}) }
       })
       if (count === 0) {
         await this.writes.movePickup(tx, storeId, pickupId, status, PickupStatus.CANCELLED, {})
       }
-      const revision = await this.revisionOf(tx, storeId, pickupId)
-      return { pickupId, sync: carrierHolds, revision }
+      return { pickupId, sync: carrierHolds, revision: updated.revision }
     })
   }
 
@@ -291,7 +337,7 @@ export class PickupsService {
   async confirm(storeId: string, pickupId: string): Promise<void> {
     await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
-      const pickup = await this.pickupOf(tx, storeId, pickupId)
+      const pickup = await this.lockedPickup(tx, storeId, pickupId)
       const status = pickup.status as PickupStatus
       if (status !== PickupStatus.MANUAL_REQUIRED && status !== PickupStatus.REQUESTED) {
         throw notEditable('only a pickup that waits for the courier can be confirmed')
@@ -310,13 +356,14 @@ export class PickupsService {
     })
     if (pickup === null) throw resourceNotFound('pickup')
     const status = pickup.status as PickupStatus
-    if (status === PickupStatus.REQUESTED || status === PickupStatus.CONFIRMED) {
-      await this.cancelAtCarrier(storeId, pickup, plugins)
-    }
+    const heldByCarrier = status === PickupStatus.REQUESTED || status === PickupStatus.CONFIRMED
+    if (heldByCarrier) await this.cancelAtCarrier(storeId, pickup, plugins)
     await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
-      const current = await this.pickupOf(tx, storeId, pickupId)
+      const current = await this.lockedPickup(tx, storeId, pickupId)
       const from = current.status as PickupStatus
+      // The carrier did cancel it and somebody else ended it here meanwhile: the answer is the one that was asked for
+      if (heldByCarrier && from === PickupStatus.CANCELLED) return
       // A pickup whose outcome nobody knows ends as failed (the carrier's side is settled by the agent there); the others as cancelled
       const to =
         from === PickupStatus.REQUIRES_REVIEW ? PickupStatus.FAILED : PickupStatus.CANCELLED
@@ -483,16 +530,11 @@ export class PickupsService {
     return held._sum.packageCount ?? 0
   }
 
-  private async revisionOf(
-    tx: PrismaTransaction,
-    storeId: string,
-    pickupId: string
-  ): Promise<number> {
-    const row = await tx.pickupRequest.findFirst({
-      where: { id: pickupId, storeId },
-      select: { revision: true }
-    })
-    return row?.revision ?? 0
+  // The pickup, read again once the lock of its connection is held: what was read before the lock may have moved while waiting
+  private async lockedPickup(tx: PrismaTransaction, storeId: string, pickupId: string) {
+    const first = await this.pickupOf(tx, storeId, pickupId)
+    await lockStoreScope(tx, storeId, `${PickupLockScopes.CONNECTION}:${first.connectionId}`)
+    return this.pickupOf(tx, storeId, pickupId)
   }
 
   private async pickupOf(tx: PrismaTransaction, storeId: string, pickupId: string) {

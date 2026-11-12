@@ -487,6 +487,53 @@ describe('Pickups (TDD_17 §4.10)', () => {
       expect((await shipmentRow(guide.id)).pickupId).toBeNull()
     })
 
+    it('does not ask the carrier for a pickup that lost every guide, and asks a refused count once', async () => {
+      const lone = await guideOn(fullId)
+      const made = (await request({ connectionId: fullId })).body as RequestBody
+      // Its only guide was voided before the job ran
+      await owner.shipment.update({ where: { id: lone.id }, data: { pickupId: null } })
+      await owner.pickupRequest.update({ where: { id: made.pickup.id }, data: { packageCount: 0 } })
+
+      expect(await runSync(made.pickup.id)).toBe(PickupSyncOutcomes.DONE)
+
+      expect(full.callsTo('requestPickup')).toHaveLength(0)
+      expect((await pickupRow(made.pickup.id)).status).toBe(PickupStatus.FAILED)
+
+      await guideOn(fullId)
+      const second = (await request({ connectionId: fullId })).body as RequestBody
+      await runSync(second.pickup.id)
+      await guideOn(fullId)
+      await request({ connectionId: fullId })
+      // The lone guide of the first pickup waits again, so the carrier holds 2 and the guides hold 3: the count has to be told
+      expect(await pickupRow(second.pickup.id)).toMatchObject({
+        packageCount: 3,
+        carrierPackageCount: 2
+      })
+      full.state.pickup = FakeCarrierBehaviors.REJECT
+      full.state.calls.length = 0
+
+      await runSync(second.pickup.id)
+
+      // A refusal does not change by asking again inside the same job: one call, a note for the agent, the count still behind
+      expect(full.callsTo('modifyPickup')).toHaveLength(1)
+      expect(await pickupRow(second.pickup.id)).toMatchObject({
+        lastError: 'shipment_left_carrier_not_updated',
+        carrierPackageCount: 2
+      })
+    })
+
+    it('answers 503 and keeps the pickup when the carrier does not cancel it', async () => {
+      await guideOn(fullId)
+      const made = (await request({ connectionId: fullId })).body as RequestBody
+      await runSync(made.pickup.id)
+      full.state.pickup = FakeCarrierBehaviors.TIMEOUT_BEFORE
+
+      const cancelled = await asAdmin().post(ApiRoutes.pickups.cancel(made.pickup.id)).send()
+
+      expect(cancelled.status).toBe(503)
+      expect((await pickupRow(made.pickup.id)).status).toBe(PickupStatus.REQUESTED)
+    })
+
     it('does not take the last guide out of a pickup the carrier holds', async () => {
       const guide = await guideOn(fullId)
       const made = (await request({ connectionId: fullId })).body as RequestBody
@@ -523,6 +570,51 @@ describe('Pickups (TDD_17 §4.10)', () => {
       const refused = await request({ connectionId: localId, shipmentIds: [gone.id] })
       expect(refused.status).toBe(CONFLICT)
       expect((refused.body as ErrorBody).error.code).toBe(ErrorCodes.PICKUP_SHIPMENT_NOT_ELIGIBLE)
+    })
+
+    it('does not join guides to a pickup that is over, and makes no other pickup behind the back of the agent', async () => {
+      const first = await guideOn(localId)
+      const made = (await request({ connectionId: localId })).body as RequestBody
+      await asAdmin().post(ApiRoutes.pickups.cancel(made.pickup.id)).send()
+      const later = await guideOn(localId)
+
+      const add = await asAdmin()
+        .post(ApiRoutes.pickups.shipments(made.pickup.id))
+        .send({ shipmentIds: [later.id] })
+
+      expect(add.status).toBe(CONFLICT)
+      expect((add.body as ErrorBody).error.code).toBe(ErrorCodes.PICKUP_NOT_EDITABLE)
+      expect((await shipmentRow(later.id)).pickupId).toBeNull()
+      expect((await shipmentRow(first.id)).pickupId).toBeNull()
+      const open = await owner.pickupRequest.count({
+        where: { connectionId: localId, status: { not: PickupStatus.CANCELLED } }
+      })
+      expect(open).toBe(0)
+    })
+
+    it('does not make a pickup of today after its cutoff without the confirmation of a person', async () => {
+      await guideOn(localId)
+      await owner.carrierConnection.update({
+        where: { id: localId },
+        data: { pickupCutoffTime: '00:00' }
+      })
+      // Today as the store reads it
+      const { timezone } = await owner.store.findUniqueOrThrow({
+        where: { id: ctx.storeA.id },
+        select: { timezone: true }
+      })
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(new Date())
+
+      const refused = await request({ connectionId: localId, date: today })
+
+      expect(refused.status).toBe(CONFLICT)
+      expect((refused.body as ErrorBody).error.code).toBe(ErrorCodes.PICKUP_CUTOFF_PASSED)
+      const confirmed = await request({
+        connectionId: localId,
+        date: today,
+        confirmAfterCutoff: true
+      })
+      expect(confirmed.status).toBe(CREATED)
     })
 
     it('refuses a day that is over and a day the carrier does not come', async () => {
