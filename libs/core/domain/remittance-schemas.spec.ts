@@ -1,6 +1,8 @@
 import { RemittanceLimits } from './remittance-rules'
 import {
   addRemittanceLinesSchema,
+  createRemittanceImportProfileSchema,
+  remittanceImportPreviewSchema,
   confirmRemittanceSchema,
   createRemittanceSchema,
   remittancePendingQuerySchema,
@@ -72,5 +74,55 @@ describe('remittance schemas', () => {
     expect(voidRemittanceSchema.safeParse({}).success).toBe(true)
     expect(remittancePendingQuerySchema.safeParse({ connectionId: 'nope' }).success).toBe(false)
     expect(remittancePendingQuerySchema.safeParse({ connectionId: id }).success).toBe(true)
+  })
+})
+
+describe('the import profile schemas', () => {
+  const columns = { guideNumber: 'Guia', amount: 'Monto' }
+  it('refuses a delimiter that is also the decimal separator', () => {
+    const base = { connectionId: id, name: 'x', columns }
+    expect(
+      createRemittanceImportProfileSchema.safeParse({
+        ...base,
+        delimiter: ',',
+        decimalSeparator: ','
+      }).success
+    ).toBe(false)
+    expect(
+      createRemittanceImportProfileSchema.safeParse({
+        ...base,
+        delimiter: ';',
+        decimalSeparator: ','
+      }).success
+    ).toBe(true)
+    // The defaults are a comma and a dot
+    expect(createRemittanceImportProfileSchema.safeParse(base).success).toBe(true)
+  })
+  it('refuses two values read from the same column', () => {
+    const base = { connectionId: id, name: 'x' }
+    for (const same of [
+      { guideNumber: 'Total', amount: ' total ' },
+      { guideNumber: 0, amount: 0 },
+      { guideNumber: 'A', amount: 'B', fee: 'b' }
+    ]) {
+      expect(
+        createRemittanceImportProfileSchema.safeParse({ ...base, columns: same }).success
+      ).toBe(false)
+    }
+    expect(
+      createRemittanceImportProfileSchema.safeParse({
+        ...base,
+        columns: { guideNumber: 0, amount: 1, fee: 'Fee' }
+      }).success
+    ).toBe(true)
+  })
+  it('measures the sample of a preview in bytes', () => {
+    const profile = { columns }
+    const fits = 'a'.repeat(32 * 1024)
+    expect(remittanceImportPreviewSchema.safeParse({ text: fits, profile }).success).toBe(true)
+    // 16,385 characters of two bytes each are 32 KB and 2 bytes
+    expect(
+      remittanceImportPreviewSchema.safeParse({ text: 'é'.repeat(16 * 1024 + 1), profile }).success
+    ).toBe(false)
   })
 })

@@ -7,10 +7,9 @@ import {
   type BulkLabelJobView,
   confirmOrdersBulk,
   fetchBulkLabelJob,
-  fetchCarrierConnections,
+  fetchAllCarrierConnections,
   fetchShipmentsForOrders,
   mergeLabels,
-  type CarrierConnectionSummaryView,
   type ShipmentSummaryView,
   QueryKeys,
   requestPickup,
@@ -25,6 +24,7 @@ import { errorCodeOf } from '../error-message'
 import {
   BulkActionKinds,
   type BulkActionKind,
+  type BulkConnection,
   type BulkInput,
   type BulkReport,
   confirmReport,
@@ -66,10 +66,10 @@ export function useOrderShipments(
 export function useCarrierConnections(
   storeId: string,
   enabled: boolean
-): readonly CarrierConnectionSummaryView[] {
+): readonly BulkConnection[] {
   const query = useQuery({
-    queryKey: QueryKeys.carriers.connections(storeId),
-    queryFn: ({ signal }) => fetchCarrierConnections(apiClient, storeId, signal),
+    queryKey: QueryKeys.carriers.list(storeId),
+    queryFn: ({ signal }) => fetchAllCarrierConnections(apiClient, storeId, signal),
     enabled
   })
   return query.data ?? NONE

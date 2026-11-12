@@ -81,6 +81,9 @@ export const StorageKeys = {
   // The merged file of labels (a bulk run, or the print of guides that exist): one folder per file, found by its media id
   bulkLabels: (storeId: string, mediaId: string, filename: string) =>
     `stores/${storeId}/bulk-labels/${mediaId}/${filename}`,
+  // The file a carrier's settlement was imported from: one folder per file, found by its media id
+  remittanceFile: (storeId: string, mediaId: string, filename: string) =>
+    `stores/${storeId}/remittance-files/${mediaId}/${filename}`,
   export: (storeId: string, exportId: string, filename: string) =>
     `stores/${storeId}/exports/${exportId}/${filename}`,
   exportPrefix: (storeId: string, exportId: string) => `stores/${storeId}/exports/${exportId}/`,

@@ -899,6 +899,22 @@ export async function addReadOnlySettingsUser(
     })
 }
 
+// A person who may read the carriers of a store and change nothing: settings:view and shipping:view, with no
+// settings:manage_carriers. Returns what removes the person and the role again.
+export function addShippingViewer(storeId: string, email: string): Promise<() => Promise<void>> {
+  return addUserWithPermissions(storeId, {
+    email,
+    userName: 'Shipping Viewer',
+    roleName: 'E2E shipping viewer',
+    permissions: [
+      Permissions.SETTINGS_VIEW,
+      Permissions.SHIPPING_VIEW,
+      Permissions.CONVERSATIONS_VIEW,
+      Permissions.MESSAGES_VIEW
+    ]
+  })
+}
+
 // A person with a role of exactly these permissions in a store: no seeded role holds the combinations the cases
 // need, so the case makes one. Returns what removes the person and the role again.
 async function addUserWithPermissions(

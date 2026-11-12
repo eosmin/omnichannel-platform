@@ -33,6 +33,7 @@ export const DestructiveActionTiers = {
   CANCEL_STOCK_COUNT: HIGH, // TDD_16; the quantities counted so far are thrown away and the sheet cannot be opened again
   DISCONNECT_CARRIER_WITH_OPEN_SHIPMENTS: HIGH, // TDD_17
   MARK_GUIDE_VOIDED_BY_HAND: HIGH, // TDD_17
+  ROTATE_CARRIER_WEBHOOK_SECRET: HIGH, // Settings → Carriers; the old secret stops working at once, so the carrier's panel must be updated right after
   VOID_CONFIRMED_REMITTANCE: HIGH, // TDD_17
 
   // Moderate

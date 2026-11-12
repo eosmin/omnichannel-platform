@@ -168,6 +168,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'remittances.list': { step: '4.14' },
   'remittances.byId': { step: '4.14' },
   'remittances.imports': { step: '4.14' },
+  'remittances.importPreview': { step: '4.14' },
   'remittances.pending': { step: '4.14' },
   'remittances.lines': { step: '4.14' },
   'remittances.lineById': { step: '4.14' },

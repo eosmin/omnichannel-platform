@@ -4,14 +4,14 @@ import { Loader2, Printer, Send, Truck, Check, X, Tag } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 
-import type { CarrierConnectionSummaryView } from '@platform/api-client'
 import { CarrierCapability, OrderConfirmationChannel } from '@platform/core/domain'
 
 import { SELECT_CLASS } from '../../components/ui/field-classes'
 import {
   type BulkActionKind,
   BulkActionKinds,
-  type BulkAvailability
+  type BulkAvailability,
+  type BulkConnection
 } from '../../lib/orders/order-bulk'
 import type { OrderBulk } from '../../lib/orders/use-order-bulk'
 import { Button } from '../ui/button'
@@ -31,7 +31,7 @@ const CONFIRM_CHANNELS = Object.values(OrderConfirmationChannel).filter(
 )
 
 // A connection that can make a guide by a request of its own or by the platform: the ones a run of labels can be pinned to
-function canMakeGuides(connection: CarrierConnectionSummaryView): boolean {
+function canMakeGuides(connection: BulkConnection): boolean {
   return (
     connection.capabilities.includes(CarrierCapability.CREATE_SHIPMENT) ||
     connection.capabilities.includes(CarrierCapability.INTERNAL_GUIDE) ||
@@ -102,7 +102,7 @@ export function OrderBulkBar({
   bulk: OrderBulk
   availability: BulkAvailability
   selectedCount: number
-  connections: readonly CarrierConnectionSummaryView[]
+  connections: readonly BulkConnection[]
   onClear: () => void
 }): ReactElement {
   const t = useTranslations('orders.bulk')

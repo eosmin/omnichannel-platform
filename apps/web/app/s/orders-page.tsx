@@ -8,7 +8,6 @@ import { type ReactElement, useEffect, useMemo, useState } from 'react'
 
 import {
   AppPaths,
-  type CarrierConnectionSummaryView,
   type OrderListFilter,
   type OrderSummaryView,
   type ShipmentSummaryView
@@ -35,7 +34,7 @@ import { Button } from '../../components/ui/button'
 import { SELECT_CLASS } from '../../components/ui/field-classes'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
-import { availabilityOf, liveGuidesByOrder } from '../../lib/orders/order-bulk'
+import { availabilityOf, type BulkConnection, liveGuidesByOrder } from '../../lib/orders/order-bulk'
 import {
   activeFilterCount,
   withScheduledDays,
@@ -117,7 +116,7 @@ function ShippingCells({
   guides
 }: {
   order: OrderSummaryView
-  connections: readonly CarrierConnectionSummaryView[]
+  connections: readonly BulkConnection[]
   guides: readonly ShipmentSummaryView[]
 }): ReactElement {
   const t = useTranslations('orders.list')
@@ -174,7 +173,7 @@ function Row({
   isSelected: boolean
   onToggle: () => void
   shipping: {
-    connections: readonly CarrierConnectionSummaryView[]
+    connections: readonly BulkConnection[]
     guides: readonly ShipmentSummaryView[]
   } | null
 }): ReactElement {

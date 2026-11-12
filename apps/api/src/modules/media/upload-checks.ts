@@ -67,7 +67,8 @@ const READ_PERMISSIONS: Record<MediaPurposeType, Permission | null> = {
   [MediaPurpose.SHIPPING_LABEL]: Permissions.SHIPPING_MANAGE,
   // The labels carry the name, address and phone of every customer in the file: only who prints guides reads it
   [MediaPurpose.BULK_LABELS]: Permissions.SHIPPING_MANAGE,
-  [MediaPurpose.REMITTANCE_FILE]: null
+  // A settlement file holds amounts and guide numbers, no customer: who may read the remittances may read it
+  [MediaPurpose.REMITTANCE_FILE]: Permissions.REMITTANCES_VIEW
 }
 
 export function refuseUnlessMayRead(purpose: string, held: readonly Permission[] | null): void {

@@ -1,7 +1,7 @@
 import type {
   BulkConfirmResult,
   BulkLabelJobView,
-  CarrierConnectionSummaryView,
+  CarrierConnectionView,
   LabelMergeView,
   OrderMessageOutcomeView,
   OrderSummaryView,
@@ -25,6 +25,9 @@ import {
 // The actions over the rows ticked on the orders page (Step 4.14) and the report each one leaves. Pure: what is offered
 // depends on who may (permissions), what the carriers of the guides can do (capabilities, never a carrier's name) and the
 // rows themselves; the server still judges every order, and what it refuses comes back in the report.
+
+// What this page reads of a connection of the store
+export type BulkConnection = Pick<CarrierConnectionView, 'id' | 'displayName' | 'capabilities'>
 
 export const BulkActionKinds = {
   CONFIRM: 'confirm',
@@ -105,7 +108,7 @@ export interface BulkInput {
   selectedIds: readonly string[]
   rows: readonly OrderSummaryView[]
   guides: ReadonlyMap<string, ShipmentSummaryView[]>
-  connections: readonly CarrierConnectionSummaryView[]
+  connections: readonly BulkConnection[]
   can: (permission: Permission) => boolean
 }
 
@@ -120,17 +123,14 @@ export interface BulkAvailability {
 }
 
 function capabilitiesOf(
-  connections: readonly CarrierConnectionSummaryView[],
+  connections: readonly BulkConnection[],
   connectionId: string
 ): readonly string[] {
   return connections.find(connection => connection.id === connectionId)?.capabilities ?? []
 }
 
 // A pickup is asked of a carrier that has an API for it and whose guides do not travel inside the pickup itself
-function asksPickups(
-  connections: readonly CarrierConnectionSummaryView[],
-  connectionId: string
-): boolean {
+function asksPickups(connections: readonly BulkConnection[], connectionId: string): boolean {
   const capabilities = capabilitiesOf(connections, connectionId)
   return (
     capabilities.includes(CarrierCapability.PICKUP_REQUEST) &&

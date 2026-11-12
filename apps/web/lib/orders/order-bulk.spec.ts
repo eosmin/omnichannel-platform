@@ -1,8 +1,4 @@
-import type {
-  CarrierConnectionSummaryView,
-  OrderSummaryView,
-  ShipmentSummaryView
-} from '@platform/api-client'
+import type { OrderSummaryView, ShipmentSummaryView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
 import {
   BulkOrderOutcomes,
@@ -15,6 +11,7 @@ import {
 
 import {
   availabilityOf,
+  type BulkConnection,
   BulkActionKinds,
   type BulkInput,
   BulkOutcomes,
@@ -58,16 +55,8 @@ function guide(
   }
 }
 
-function connection(capabilities: string[]): CarrierConnectionSummaryView {
-  return {
-    id: 'c1',
-    carrierId: 'x',
-    carrierName: 'X',
-    displayName: 'X',
-    status: 'active',
-    isDefault: true,
-    capabilities
-  }
+function connection(capabilities: string[]): BulkConnection {
+  return { id: 'c1', displayName: 'X', capabilities }
 }
 
 const everything = (): boolean => true

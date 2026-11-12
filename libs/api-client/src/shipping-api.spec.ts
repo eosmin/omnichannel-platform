@@ -1,7 +1,6 @@
 import { createApiClient } from './api-client'
 import {
   fetchBulkLabelJob,
-  fetchCarrierConnections,
   fetchShipmentsForOrders,
   mergeLabels,
   requestPickup,
@@ -90,33 +89,6 @@ describe('shipping api', () => {
     expect(urls[1]?.get('cursor')).toBe('next')
     expect(urls[2]?.get('orderIds')?.split(',')).toHaveLength(50)
     expect(urls[2]?.get('cursor')).toBeNull()
-  })
-
-  it('reads the connections as a list, keeping the capabilities as text', async () => {
-    const { client } = setup(
-      json(200, {
-        data: [
-          {
-            id: 'c1',
-            carrierId: 'x',
-            carrierName: 'X',
-            displayName: 'X courier',
-            status: 'active',
-            isDefault: true,
-            capabilities: ['pickup_request', 'a_capability_of_a_newer_server'],
-            ignoredField: 1
-          }
-        ],
-        nextCursor: null,
-        hasMore: false
-      })
-    )
-    const connections = await fetchCarrierConnections(client, 's1')
-    expect(connections).toHaveLength(1)
-    expect(connections[0]?.capabilities).toEqual([
-      'pickup_request',
-      'a_capability_of_a_newer_server'
-    ])
   })
 
   it('starts a run with the orders in the order of the selection and the carrier when one is chosen', async () => {

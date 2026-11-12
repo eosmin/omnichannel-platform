@@ -58,37 +58,6 @@ export async function fetchShipmentsForOrders(
   return { data, nextCursor: null, hasMore: false }
 }
 
-const connectionSchema = z.object({
-  id: z.string(),
-  carrierId: z.string(),
-  carrierName: z.string(),
-  displayName: z.string(),
-  status: z.string(),
-  isDefault: z.boolean(),
-  capabilities: z.array(z.string())
-})
-export type CarrierConnectionSummaryView = z.output<typeof connectionSchema>
-
-const connectionPageSchema = z.object({
-  data: z.array(connectionSchema),
-  nextCursor: z.string().nullable(),
-  hasMore: z.boolean()
-})
-
-export function fetchCarrierConnections(
-  client: ApiClient,
-  storeId: string,
-  signal?: AbortSignal
-): Promise<CarrierConnectionSummaryView[]> {
-  return client
-    .request(`${ApiRoutes.carriers.list}?limit=${PaginationLimits.MAX}`, {
-      schema: connectionPageSchema,
-      storeId,
-      signal
-    })
-    .then(page => page.data)
-}
-
 const fileLinkSchema = z.object({ url: z.string(), filename: z.string() })
 
 const bulkEntrySchema = z.object({
