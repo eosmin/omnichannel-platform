@@ -159,7 +159,8 @@ export function pickupOf(
 // (what the screen showed is what is made); the pickup only for a carrier that takes one.
 export function guideBody(
   draft: GuideDraft,
-  connection: GuideConnection | undefined
+  connection: GuideConnection | undefined,
+  freeShipping: boolean
 ): CreateShipmentBody | null {
   if (connection === undefined) return null
   const pickup = needsPickup(connection) ? pickupOf(draft) : undefined
@@ -168,7 +169,8 @@ export function guideBody(
   return {
     connectionId: connection.id,
     ...(draft.serviceCode === '' ? {} : { serviceCode: draft.serviceCode }),
-    shippingPayer: draft.payer,
+    // A free-shipping order is paid by the sender whatever the draft holds
+    shippingPayer: freeShipping ? ShippingPayer.SENDER : draft.payer,
     ...(notes === '' ? {} : { notes }),
     ...(pickup === undefined ? {} : { pickup })
   }

@@ -64,7 +64,7 @@ export function useShipmentWrites(storeId: string, orderId: string): ShipmentWri
   const queryClient = useQueryClient()
   const refresh = async (): Promise<void> => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: QueryKeys.shipments.byOrder(storeId, orderId) }),
+      queryClient.invalidateQueries({ queryKey: QueryKeys.shipments.all(storeId) }),
       queryClient.invalidateQueries({ queryKey: QueryKeys.orders.byId(storeId, orderId) }),
       queryClient.invalidateQueries({ queryKey: [...QueryKeys.orders.all(storeId), 'list'] })
     ])

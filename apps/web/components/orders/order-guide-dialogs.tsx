@@ -147,7 +147,7 @@ export function CreateGuideDialog({
     initialDraft(defaultConnection(usable), order.freeShipping)
   )
   const connection = usable.find(entry => entry.id === draft.connectionId)
-  const body = guideBody(draft, connection)
+  const body = guideBody(draft, connection, order.freeShipping)
   const cod = codPreview(order)
   const pickupBad = connection !== undefined && needsPickup(connection) && pickupOf(draft) === null
   const mutation = writes.create

@@ -44,7 +44,7 @@ export function OrderReturns({
   connections
 }: {
   order: OrderDetailView
-  outboundStatuses: readonly string[]
+  outboundStatuses: readonly string[] | null
   warehouses: readonly WarehouseOption[]
   connections: readonly CarrierConnectionView[] | undefined
 }): ReactElement | null {

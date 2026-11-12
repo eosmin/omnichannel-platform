@@ -105,6 +105,13 @@ describe('remainingUnits and canStartReturn', () => {
     expect(canStartReturn({ ...base, outboundStatuses: [ShipmentStatus.RETURNING] })).toBe(true)
   })
 
+  it('leaves a delivered or shipped order to the api while its guides are not known', () => {
+    const base = { items, returns, outboundStatuses: null }
+    expect(canStartReturn({ ...base, orderStatus: OrderStatus.DELIVERED })).toBe(true)
+    expect(canStartReturn({ ...base, orderStatus: OrderStatus.SHIPPED })).toBe(true)
+    expect(canStartReturn({ ...base, orderStatus: OrderStatus.CONFIRMED })).toBe(false)
+  })
+
   it('does not start when every unit is already in a return', () => {
     const all = [
       { status: OrderReturnStatus.APPROVED, lines: [{ orderItemId: 'i1', quantity: 3 }] }
@@ -189,6 +196,16 @@ describe('approveBody', () => {
       recipientPhones: ['70001111'],
       shippingAddress: { line1: 'Calle 1', city: 'San Salvador' }
     })
+  })
+
+  it('refuses a replacement quantity past the limit of a line', () => {
+    expect(
+      approveBody(
+        OrderReturnType.EXCHANGE,
+        { lines: [{ ...line, quantity: '99999' }], shipping: '' },
+        order
+      )
+    ).toBeNull()
   })
 
   it('refuses an exchange with no products, a bad quantity or a bad fee', () => {

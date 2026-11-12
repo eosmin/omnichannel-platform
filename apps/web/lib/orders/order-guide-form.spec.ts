@@ -147,7 +147,7 @@ describe('guideBody', () => {
   const draft = initialDraft(connection(), false)
 
   it('sends the connection, the service and the payer that were shown', () => {
-    expect(guideBody(draft, connection())).toEqual({
+    expect(guideBody(draft, connection(), false)).toEqual({
       connectionId: 'c1',
       serviceCode: 'std',
       shippingPayer: ShippingPayer.RECIPIENT
@@ -155,24 +155,32 @@ describe('guideBody', () => {
   })
 
   it('sends the notes trimmed and nothing for empty ones', () => {
-    expect(guideBody({ ...draft, notes: ' call first ' }, connection())).toMatchObject({
+    expect(guideBody({ ...draft, notes: ' call first ' }, connection(), false)).toMatchObject({
       notes: 'call first'
     })
-    expect(guideBody({ ...draft, notes: '  ' }, connection())).not.toHaveProperty('notes')
+    expect(guideBody({ ...draft, notes: '  ' }, connection(), false)).not.toHaveProperty('notes')
   })
 
   it('sends the pickup only to a carrier that takes one, and waits for a whole window', () => {
     const bound = connection({ capabilities: [CarrierCapability.PICKUP_BOUND_GUIDES] })
     const window = { pickupDate: '2026-11-20', pickupFrom: '09:00', pickupTo: '12:00' }
-    expect(guideBody({ ...draft, ...window }, bound)).toMatchObject({
+    expect(guideBody({ ...draft, ...window }, bound, false)).toMatchObject({
       pickup: { date: '2026-11-20' }
     })
-    expect(guideBody({ ...draft, ...window }, connection())).not.toHaveProperty('pickup')
-    expect(guideBody({ ...draft, pickupDate: '2026-11-20' }, bound)).toBeNull()
+    expect(guideBody({ ...draft, ...window }, connection(), false)).not.toHaveProperty('pickup')
+    expect(guideBody({ ...draft, pickupDate: '2026-11-20' }, bound, false)).toBeNull()
+  })
+
+  it('sends the sender as payer for a free-shipping order whatever the draft holds', () => {
+    expect(
+      guideBody({ ...draft, payer: ShippingPayer.RECIPIENT }, connection(), true)
+    ).toMatchObject({
+      shippingPayer: ShippingPayer.SENDER
+    })
   })
 
   it('is not ready without a connection', () => {
-    expect(guideBody(draft, undefined)).toBeNull()
+    expect(guideBody(draft, undefined, false)).toBeNull()
   })
 })
 

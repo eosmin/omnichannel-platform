@@ -173,6 +173,7 @@ export function OrderDetailPage(): ReactElement {
     orderId,
     mayView && can(ClientPermissions.SHIPPING_VIEW)
   )
+  const canSeeShipments = can(ClientPermissions.SHIPPING_VIEW)
   const shipmentWrites = useShipmentWrites(storeId, orderId)
   const connections = useGuideConnections(storeId, mayView && can(ClientPermissions.SHIPPING_VIEW))
   const [guideOpen, setGuideOpen] = useState(false)
@@ -275,7 +276,9 @@ export function OrderDetailPage(): ReactElement {
           />
           <OrderReturns
             order={data}
-            outboundStatuses={outboundStatusesOf(shipments.data ?? [])}
+            outboundStatuses={
+              shipments.data === undefined ? null : outboundStatusesOf(shipments.data)
+            }
             warehouses={warehouses.data ?? []}
             connections={connections.data}
           />
@@ -294,7 +297,12 @@ export function OrderDetailPage(): ReactElement {
           <OrderDelivery
             order={data}
             writes={writes}
-            hasActiveShipment={liveOutbound(shipments.data ?? []).length > 0}
+            hasActiveShipment={
+              // Fail closed while the guides are not known (loading or failed): a member who may not read them is left to the api
+              canSeeShipments
+                ? shipments.data === undefined || liveOutbound(shipments.data).length > 0
+                : false
+            }
           />
           <OrderEvents order={data} />
         </div>

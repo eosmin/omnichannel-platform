@@ -6,7 +6,9 @@ import {
   type CreateReturnBody,
   OrderReturnCondition,
   OrderReturnStatus,
+  OrderLimits,
   OrderReturnType,
+  OrderStatus,
   type OrderReturnReasonKey,
   OrderReturnReasonKeys,
   type ReceiveReturnBody,
@@ -108,16 +110,22 @@ export function remainingUnits(
 // A return starts on a delivered order or on one that is on its way back, and only while some unit is left (the api's own rule)
 export function canStartReturn(input: {
   orderStatus: string
-  outboundStatuses: readonly string[]
+  // Null while the guides are not known (loading, failed, or the member may not read them): the api then decides for a shipped order
+  outboundStatuses: readonly string[] | null
   items: readonly ItemLike[]
   returns: readonly ReturnLike[]
 }): boolean {
   const status = asOrderStatus(input.orderStatus)
   if (status === null) return false
-  const outbound = Object.values(ShipmentStatus).filter(known =>
-    input.outboundStatuses.includes(known)
-  )
-  if (!checkReturnableOrder({ orderStatus: status, outboundStatuses: outbound }).ok) return false
+  if (input.outboundStatuses === null) {
+    // A delivered order is returnable whatever its guides say; a shipped one depends on them, which the api reads
+    const maybe = status === OrderStatus.DELIVERED || status === OrderStatus.SHIPPED
+    if (!maybe) return false
+  } else {
+    const known = input.outboundStatuses
+    const outbound = Object.values(ShipmentStatus).filter(value => known.includes(value))
+    if (!checkReturnableOrder({ orderStatus: status, outboundStatuses: outbound }).ok) return false
+  }
   return [...remainingUnits(input.items, input.returns).values()].some(left => left > 0)
 }
 
@@ -208,8 +216,8 @@ export function approveBody(
   if (draft.lines.length === 0) return null
   const items: { productId: string; variantId?: string; quantity: number }[] = []
   for (const line of draft.lines) {
-    const quantity = /^\d{1,4}$/.test(line.quantity.trim()) ? Number(line.quantity) : 0
-    if (quantity < 1) return null
+    const quantity = /^\d{1,5}$/.test(line.quantity.trim()) ? Number(line.quantity) : 0
+    if (quantity < 1 || quantity > OrderLimits.MAX_QUANTITY_PER_LINE) return null
     items.push({
       productId: line.productId,
       ...(line.variantId === null ? {} : { variantId: line.variantId }),

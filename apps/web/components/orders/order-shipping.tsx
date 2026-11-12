@@ -51,13 +51,18 @@ function safeHref(url: string | null): string | null {
   }
 }
 
-// Opens the link of a label in a new tab right away: it is good for minutes and is kept nowhere
-function openInNewTab(url: string): void {
-  const link = document.createElement('a')
-  link.href = url
-  link.target = '_blank'
-  link.rel = 'noopener noreferrer'
-  link.click()
+// The label opens in a tab that is opened by the click itself (a tab opened after the answer arrives is a popup, which the browser
+// may block) and is pointed at the link when it comes: the link is good for minutes and is kept nowhere. The new tab has no opener.
+function printLabel(ask: (onLink: (url: string) => void, onFail: () => void) => void): void {
+  const tab = window.open('about:blank', '_blank')
+  if (tab !== null) tab.opener = null
+  ask(
+    url => {
+      if (tab === null) window.open(url, '_blank', 'noopener,noreferrer')
+      else tab.location.href = url
+    },
+    () => tab?.close()
+  )
 }
 
 function ConfirmMove({
@@ -136,7 +141,12 @@ function ShipmentRow({
   const reason = failure === null ? null : asFailureReason(failure)
   const run = (action: ShipmentAction): void => {
     if (action === ShipmentActions.PRINT_LABEL) {
-      writes.label.mutate(shipment.id, { onSuccess: link => openInNewTab(link.url) })
+      printLabel((onLink, onFail) =>
+        writes.label.mutate(shipment.id, {
+          onSuccess: link => onLink(link.url),
+          onError: onFail
+        })
+      )
       return
     }
     writes.cancel.reset()
