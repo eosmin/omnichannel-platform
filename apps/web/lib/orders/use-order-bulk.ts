@@ -1,16 +1,13 @@
 'use client'
 
-import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   type BulkLabelJobView,
   confirmOrdersBulk,
   fetchBulkLabelJob,
-  fetchAllCarrierConnections,
-  fetchShipmentsForOrders,
   mergeLabels,
-  type ShipmentSummaryView,
   QueryKeys,
   requestPickup,
   sendOrderMessage,
@@ -24,7 +21,6 @@ import { errorCodeOf } from '../error-message'
 import {
   BulkActionKinds,
   type BulkActionKind,
-  type BulkConnection,
   type BulkInput,
   type BulkReport,
   confirmReport,
@@ -44,37 +40,6 @@ const POLL_MS = 2000
 // A run that is neither done nor failed after this long is shown as it stands: the report says what the server last said
 const POLL_LIMIT_MS = 10 * 60 * 1000
 const SUMMARY_CONCURRENCY = 3
-const NONE: readonly never[] = []
-
-// The guides of the orders on the screen, for the guide and carrier columns and for the actions that start from a guide.
-// Without `shipping:view` nothing is asked and the columns are not drawn.
-export function useOrderShipments(
-  storeId: string,
-  orderIds: readonly string[],
-  enabled: boolean
-): readonly ShipmentSummaryView[] {
-  const query = useQuery({
-    queryKey: QueryKeys.shipments.forOrders(storeId, orderIds),
-    queryFn: ({ signal }) => fetchShipmentsForOrders(apiClient, storeId, orderIds, signal),
-    enabled: enabled && orderIds.length > 0,
-    placeholderData: keepPreviousData
-  })
-  return query.data?.data ?? NONE
-}
-
-// The connections of the store: their names for the filter and the column, and what each can do
-export function useCarrierConnections(
-  storeId: string,
-  enabled: boolean
-): readonly BulkConnection[] {
-  const query = useQuery({
-    queryKey: QueryKeys.carriers.list(storeId),
-    queryFn: ({ signal }) => fetchAllCarrierConnections(apiClient, storeId, signal),
-    enabled
-  })
-  return query.data ?? NONE
-}
-
 // A poll that fails is asked again a few times: the run goes on in the worker whatever the network does
 const POLL_RETRIES = 3
 
