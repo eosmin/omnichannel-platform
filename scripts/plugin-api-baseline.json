@@ -109,6 +109,7 @@
     "products.variants",
     "remittances.byId",
     "remittances.confirm",
+    "remittances.importPreview",
     "remittances.importProfileById",
     "remittances.importProfiles",
     "remittances.imports",

@@ -1,5 +1,11 @@
 import { z } from 'zod'
 
+import {
+  RemittanceDateFormats,
+  RemittanceDecimalSeparators,
+  RemittanceDelimiters,
+  RemittanceImportLimits
+} from './remittance-import'
 import { RemittanceLimits } from './remittance-rules'
 import { isoDaySchema } from './shipment-schemas'
 import { singleLineText, uuidSchema } from './validation'
@@ -70,3 +76,93 @@ export const remittancePendingQuerySchema = z.strictObject({
   connectionId: uuidSchema.optional()
 })
 export type RemittancePendingQuery = z.output<typeof remittancePendingQuerySchema>
+
+// ------------------------------------------------------------------------------------------------------ the import
+
+// A column of the file: the text of its header, or its position (0 is the first column)
+const columnRefSchema = z.union([singleLineText(80, 1), z.number().int().min(0).max(200)])
+
+export const remittanceImportMappingSchema = z.strictObject({
+  guideNumber: columnRefSchema,
+  amount: columnRefSchema,
+  fee: columnRefSchema.optional(),
+  date: columnRefSchema.optional(),
+  reference: columnRefSchema.optional()
+})
+
+const delimiterSchema = z.enum([
+  RemittanceDelimiters.COMMA,
+  RemittanceDelimiters.SEMICOLON,
+  RemittanceDelimiters.TAB
+])
+const decimalSchema = z.enum([RemittanceDecimalSeparators.DOT, RemittanceDecimalSeparators.COMMA])
+const dateFormatSchema = z.enum([
+  RemittanceDateFormats.ISO,
+  RemittanceDateFormats.DAY_FIRST_SLASH,
+  RemittanceDateFormats.MONTH_FIRST_SLASH,
+  RemittanceDateFormats.DAY_FIRST_DASH
+])
+
+// A file with no header row can only be read by the position of its columns
+function namesNeedAHeader(value: {
+  hasHeader: boolean
+  columns: Record<string, string | number | undefined>
+}): boolean {
+  return value.hasHeader || Object.values(value.columns).every(ref => typeof ref !== 'string')
+}
+const HEADER_MESSAGE = { message: 'a file with no header is mapped by column position' }
+
+export const remittanceImportProfileBodySchema = z.strictObject({
+  delimiter: delimiterSchema.default(RemittanceDelimiters.COMMA),
+  hasHeader: z.boolean().default(true),
+  decimalSeparator: decimalSchema.default(RemittanceDecimalSeparators.DOT),
+  dateFormat: dateFormatSchema.default(RemittanceDateFormats.ISO),
+  columns: remittanceImportMappingSchema
+})
+export type RemittanceImportProfileBody = z.output<typeof remittanceImportProfileBodySchema>
+
+export const createRemittanceImportProfileSchema = z
+  .strictObject({
+    connectionId: uuidSchema,
+    name: singleLineText(80, 1),
+    delimiter: delimiterSchema.default(RemittanceDelimiters.COMMA),
+    hasHeader: z.boolean().default(true),
+    decimalSeparator: decimalSchema.default(RemittanceDecimalSeparators.DOT),
+    dateFormat: dateFormatSchema.default(RemittanceDateFormats.ISO),
+    columns: remittanceImportMappingSchema
+  })
+  .refine(namesNeedAHeader, HEADER_MESSAGE)
+export type CreateRemittanceImportProfileBody = z.output<typeof createRemittanceImportProfileSchema>
+
+export const updateRemittanceImportProfileSchema = z
+  .strictObject({
+    name: singleLineText(80, 1).optional(),
+    delimiter: delimiterSchema.optional(),
+    hasHeader: z.boolean().optional(),
+    decimalSeparator: decimalSchema.optional(),
+    dateFormat: dateFormatSchema.optional(),
+    columns: remittanceImportMappingSchema.optional()
+  })
+  .refine(body => Object.values(body).some(value => value !== undefined), {
+    message: 'nothing to change'
+  })
+export type UpdateRemittanceImportProfileBody = z.output<typeof updateRemittanceImportProfileSchema>
+
+// The mapper's preview: a sample of the file and the mapping being tried, before anything is saved
+export const remittanceImportPreviewSchema = z.strictObject({
+  text: z.string().min(1).max(RemittanceImportLimits.PREVIEW_MAX_BYTES),
+  profile: remittanceImportProfileBodySchema.refine(namesNeedAHeader, HEADER_MESSAGE)
+})
+export type RemittanceImportPreviewBody = z.output<typeof remittanceImportPreviewSchema>
+
+// The query of the import of a file: the connection it came from and the saved profile that reads it. The file is the body.
+export const remittanceImportQuerySchema = z.strictObject({
+  connectionId: uuidSchema,
+  profileId: uuidSchema
+})
+export type RemittanceImportQuery = z.output<typeof remittanceImportQuerySchema>
+
+export const remittanceImportProfilesQuerySchema = z.strictObject({
+  connectionId: uuidSchema.optional()
+})
+export type RemittanceImportProfilesQuery = z.output<typeof remittanceImportProfilesQuerySchema>

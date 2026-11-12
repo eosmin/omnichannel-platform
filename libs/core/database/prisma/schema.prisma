@@ -44,60 +44,61 @@ model Store {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  organization            Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  settings                StoreSettings?
-  businessHours           BusinessHours?
-  routingRules            RoutingRule[]
-  memberships             Membership[]
-  invitations             Invitation[]
-  roles                   Role[]
-  conversations           Conversation[]
-  messages                Message[]
-  conversationOrigins     ConversationOrigin[]
-  messageReactions        MessageReaction[]
-  messageRevisions        MessageRevision[]
-  customers               Customer[]
-  customerIdentities      CustomerIdentity[]
-  customerMerges          CustomerMerge[]
-  orders                  Order[]
-  products                Product[]
-  inventoryMovements      InventoryMovement[]
-  inventoryLevels         InventoryLevel[]
-  storeWarehouses         StoreWarehouse[]
-  orderItemAllocations    OrderItemAllocation[]
-  stockCountLines         StockCountLine[]
-  stockTransferLines      StockTransferLine[]
-  tags                    Tag[]
-  snippets                Snippet[]
-  media                   Media[]
-  channelConnections      ChannelConnection[]
-  pluginInstallations     PluginInstallation[]
-  webhooks                Webhook[]
-  apiKeys                 ApiKey[]
-  notifications           Notification[]
-  notificationPrefs       NotificationPreference[]
-  retentionSettings       RetentionSettings?
-  scheduledReports        ScheduledReport[]
-  analyticsEvents         AnalyticsEvent[]
-  metricsHourly           MetricHourly[]
-  metricsDaily            MetricDaily[]
-  consentRecords          ConsentRecord[]
-  exports                 Export[]
-  carrierConnections      CarrierConnection[]
-  carrierServices         CarrierService[]
-  guideSequences          GuideSequence[]
-  shipments               Shipment[]
-  shipmentEvents          ShipmentEvent[]
-  carrierStatusMappings   CarrierStatusMapping[]
-  carrierUnmappedStatuses CarrierUnmappedStatus[]
-  pickupRequests          PickupRequest[]
-  bulkLabelJobs           BulkLabelJob[]
-  orderMessageTemplates   OrderMessageTemplate[]
-  orderMessageDispatches  OrderMessageDispatch[]
-  codRemittances          CodRemittance[]
-  codRemittanceLines      CodRemittanceLine[]
-  orderReturns            OrderReturn[]
-  orderReturnLines        OrderReturnLine[]
+  organization             Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  settings                 StoreSettings?
+  businessHours            BusinessHours?
+  routingRules             RoutingRule[]
+  memberships              Membership[]
+  invitations              Invitation[]
+  roles                    Role[]
+  conversations            Conversation[]
+  messages                 Message[]
+  conversationOrigins      ConversationOrigin[]
+  messageReactions         MessageReaction[]
+  messageRevisions         MessageRevision[]
+  customers                Customer[]
+  customerIdentities       CustomerIdentity[]
+  customerMerges           CustomerMerge[]
+  orders                   Order[]
+  products                 Product[]
+  inventoryMovements       InventoryMovement[]
+  inventoryLevels          InventoryLevel[]
+  storeWarehouses          StoreWarehouse[]
+  orderItemAllocations     OrderItemAllocation[]
+  stockCountLines          StockCountLine[]
+  stockTransferLines       StockTransferLine[]
+  tags                     Tag[]
+  snippets                 Snippet[]
+  media                    Media[]
+  channelConnections       ChannelConnection[]
+  pluginInstallations      PluginInstallation[]
+  webhooks                 Webhook[]
+  apiKeys                  ApiKey[]
+  notifications            Notification[]
+  notificationPrefs        NotificationPreference[]
+  retentionSettings        RetentionSettings?
+  scheduledReports         ScheduledReport[]
+  analyticsEvents          AnalyticsEvent[]
+  metricsHourly            MetricHourly[]
+  metricsDaily             MetricDaily[]
+  consentRecords           ConsentRecord[]
+  exports                  Export[]
+  carrierConnections       CarrierConnection[]
+  carrierServices          CarrierService[]
+  guideSequences           GuideSequence[]
+  shipments                Shipment[]
+  shipmentEvents           ShipmentEvent[]
+  carrierStatusMappings    CarrierStatusMapping[]
+  carrierUnmappedStatuses  CarrierUnmappedStatus[]
+  pickupRequests           PickupRequest[]
+  bulkLabelJobs            BulkLabelJob[]
+  orderMessageTemplates    OrderMessageTemplate[]
+  orderMessageDispatches   OrderMessageDispatch[]
+  codRemittances           CodRemittance[]
+  codRemittanceLines       CodRemittanceLine[]
+  remittanceImportProfiles RemittanceImportProfile[]
+  orderReturns             OrderReturn[]
+  orderReturnLines         OrderReturnLine[]
 
   @@unique([organizationId, slug])
   // So that a link to a store can name its organization and the database check that they go together (StoreWarehouse)
@@ -1673,7 +1674,7 @@ model CarrierConnection {
   createdAt               DateTime  @default(now()) @map("created_at")
   updatedAt               DateTime  @updatedAt @map("updated_at")
 
-  store            Store                   @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store            Store                     @relation(fields: [storeId], references: [id], onDelete: Cascade)
   services         CarrierService[]
   guideSequence    GuideSequence?
   shipments        Shipment[]
@@ -1682,6 +1683,7 @@ model CarrierConnection {
   statusMappings   CarrierStatusMapping[]
   unmappedStatuses CarrierUnmappedStatus[]
   remittances      CodRemittance[]
+  importProfiles   RemittanceImportProfile[]
 
   @@unique([storeId, displayName])
   // So that what hangs from a connection can name its store and the database check that they go together
@@ -2020,7 +2022,7 @@ model CodRemittance {
   status          String    @default("draft") // RemittanceStatus
   reference       String? // The carrier's settlement number
   receivedOn      DateTime? @map("received_on") @db.Date
-  importProfileId String?   @map("import_profile_id") // The profile an import used (Step 4.13, import PR)
+  importProfileId String?   @map("import_profile_id") // The profile an import used
   sourceMediaId   String?   @map("source_media_id") // The uploaded file, Media purpose REMITTANCE_FILE; plain column like the other media ids
   expectedCents   BigInt    @default(0) @map("expected_cents")
   reportedCents   BigInt    @default(0) @map("reported_cents")
@@ -2034,10 +2036,11 @@ model CodRemittance {
   voidedBy        String?   @map("voided_by")
   voidReason      String?   @map("void_reason") // Why a confirmed remittance was voided
 
-  store      Store               @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  connection CarrierConnection   @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Restrict)
-  lines      CodRemittanceLine[]
-  shipments  Shipment[]          @relation("RemittedShipment")
+  store         Store                    @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  connection    CarrierConnection        @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Restrict)
+  importProfile RemittanceImportProfile? @relation(fields: [storeId, importProfileId], references: [storeId, id], onDelete: Restrict)
+  lines         CodRemittanceLine[]
+  shipments     Shipment[]               @relation("RemittedShipment")
 
   // So that its lines and the shipments it settled can name their store and the database check that they go together
   @@unique([storeId, id])
@@ -2066,4 +2069,29 @@ model CodRemittanceLine {
   @@unique([remittanceId, position])
   @@index([shipmentId])
   @@map("cod_remittance_lines")
+}
+
+// How a carrier's settlement file is read (TDD_17 §4.15): saved per connection, so the second import of a carrier is one click. The
+// columns name where each value is, by the header text or by the position of the column. Nothing in it is a formula.
+model RemittanceImportProfile {
+  id               String   @id @default(uuid())
+  storeId          String   @map("store_id")
+  connectionId     String   @map("connection_id")
+  name             String
+  delimiter        String   @default(",") // ',' | ';' | tab
+  hasHeader        Boolean  @default(true) @map("has_header")
+  decimalSeparator String   @default(".") @map("decimal_separator") // '.' | ','
+  dateFormat       String   @default("yyyy-MM-dd") @map("date_format")
+  columns          Json // { guideNumber, amount, fee?, date?, reference? } -> header name or column position
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  store       Store             @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  connection  CarrierConnection @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Restrict)
+  remittances CodRemittance[]
+
+  // So that what an import points at can name its store and the database check that they go together
+  @@unique([storeId, id])
+  @@unique([connectionId, name])
+  @@map("remittance_import_profiles")
 }
