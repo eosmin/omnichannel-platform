@@ -990,7 +990,10 @@
         "status": "Estado",
         "payment": "Pago",
         "scheduled": "Entrega programada",
-        "total": "Total"
+        "total": "Total",
+        "carrier": "Transportista",
+        "guide": "Guía",
+        "shipment": "Envío"
       },
       "filters": {
         "status": "Estado",
@@ -1015,9 +1018,20 @@
         "customer": "Cliente: {name}",
         "removeCustomer": "Quitar el filtro por el cliente {name}",
         "aCustomer": "un cliente",
-        "clear": "{count, plural, one {Quitar # filtro} other {Quitar # filtros}}"
+        "clear": "{count, plural, one {Quitar # filtro} other {Quitar # filtros}}",
+        "carrier": "Transportista",
+        "allCarriers": "Todos los transportistas",
+        "guide": "Guía",
+        "anyGuide": "Con o sin guía",
+        "guides": {
+          "with_guide": "Con guía",
+          "without_guide": "Sin guía"
+        }
       },
-      "newOrder": "Nuevo pedido"
+      "newOrder": "Nuevo pedido",
+      "noCarrier": "Sin transportista",
+      "noGuide": "Sin guía",
+      "guidePending": "Guía en proceso"
     },
     "detail": {
       "title": "Pedido",
@@ -1384,6 +1398,110 @@
       "saved": "El pedido se actualizó.",
       "savedAwaitingApproval": "El pedido se actualizó. Su precio espera una aprobación.",
       "changedMeanwhile": "El pedido cambió mientras lo editabas. Solo se guarda lo que tú cambiaste."
+    },
+    "bulk": {
+      "label": "Acciones para los pedidos seleccionados",
+      "selected": "{count, plural, one {# pedido seleccionado} other {# pedidos seleccionados}}",
+      "clear": "Quitar la selección",
+      "confirm": {
+        "button": "Marcar como confirmados",
+        "title": "Marcar los pedidos como confirmados",
+        "description": "Solo cambian los pedidos que esperan confirmación. Indica cómo confirmaron los clientes; los demás se dejan como están y aparecen en el reporte.",
+        "viaLabel": "¿Cómo confirmaron los clientes?",
+        "viaChoose": "Elige una",
+        "via": {
+          "message_reply": "Respondieron en el chat",
+          "call": "Por teléfono",
+          "in_person": "En persona",
+          "other": "Otro"
+        },
+        "cancel": "Cancelar",
+        "submit": "Confirmar pedidos"
+      },
+      "summary": "Enviar resumen",
+      "labels": "Generar etiquetas",
+      "print": "Imprimir etiquetas",
+      "pickup": "Solicitar recolección",
+      "carrierLabel": "Transportista de las etiquetas",
+      "plannedCarrier": "El transportista planeado de cada pedido",
+      "tooMany": "Selecciona 100 pedidos como máximo para actuar sobre ellos a la vez.",
+      "running": "Trabajando en los pedidos seleccionados…",
+      "runningProgress": "Trabajando en los pedidos seleccionados: {percent}%",
+      "shipmentStatus": {
+        "creating": "Creando la guía",
+        "label_created": "Guía creada",
+        "picked_up": "Recogido",
+        "in_transit": "En tránsito",
+        "out_for_delivery": "En reparto",
+        "failed_attempt": "Intento de entrega fallido",
+        "delivered": "Entregado",
+        "returning": "Regresando",
+        "returned": "Devuelto",
+        "cancel_pending": "Cancelando",
+        "cancelled": "Cancelado",
+        "cancel_failed": "No se pudo cancelar",
+        "requires_review": "Requiere revisión",
+        "failed": "Falló"
+      },
+      "report": {
+        "title": {
+          "confirm": "Confirmar pedidos",
+          "summary": "Enviar resumen",
+          "labels": "Generar etiquetas",
+          "print": "Imprimir etiquetas",
+          "pickup": "Solicitar recolección"
+        },
+        "failedTitle": "No se pudo ejecutar la acción",
+        "summary": "{done, plural, one {# pedido se procesó} other {# pedidos se procesaron}}; {left, plural, one {# quedó fuera} other {# quedaron fuera}}.",
+        "openFile": "Abrir {name}",
+        "mixedSizes": "Las etiquetas no son todas del mismo tamaño: revisa la impresora antes de imprimir.",
+        "nothingLeftOut": "Ningún pedido quedó fuera.",
+        "leftOut": "{count, plural, one {# pedido quedó fuera} other {# pedidos quedaron fuera}}",
+        "tableCaption": "Resultado y estado final de cada pedido",
+        "columns": {
+          "order": "Pedido",
+          "result": "Resultado",
+          "orderStatus": "Estado del pedido",
+          "guide": "Guía"
+        },
+        "outcome": {
+          "done": "Hecho",
+          "reused": "Ya tenía su etiqueta",
+          "skipped": "Quedó fuera",
+          "failed": "Falló"
+        },
+        "noGuide": "Sin guía",
+        "unknown": "Desconocido",
+        "close": "Cerrar",
+        "rules": {
+          "not_pending_confirmation": "El pedido no está esperando confirmación.",
+          "no_guide": "El pedido no tiene una guía con etiqueta para imprimir.",
+          "not_waiting_for_pickup": "El pedido no tiene una guía esperando recolección.",
+          "pickup_not_offered": "El transportista de la guía no recibe solicitudes de recolección desde aquí."
+        },
+        "reasons": {
+          "not_printable": "La guía está anulada o en proceso de anulación.",
+          "no_label": "La guía no tiene etiqueta guardada.",
+          "not_ready": "La etiqueta aún no está lista.",
+          "unreadable": "No se puede leer el archivo de la etiqueta.",
+          "too_large": "El archivo se llenó y la etiqueta no cupo.",
+          "not_found": "El envío no es de esta tienda.",
+          "carrier_cannot_modify": "El transportista ya tiene la recolección y no puede cambiarla: la guía espera a la siguiente.",
+          "under_review": "La recolección está en revisión: la guía espera a que una persona la resuelva.",
+          "cutoff_passed": "Pasó la hora de corte del día: confirma el cambio desde la pantalla de recolecciones.",
+          "missing_variable": "El mensaje necesita datos que el pedido no tiene.",
+          "too_long": "El mensaje es más largo de lo que acepta el canal.",
+          "no_template": "La tienda no tiene plantilla para este mensaje.",
+          "no_channel": "El cliente no tiene conversación ni correo a dónde escribirle.",
+          "window_closed": "La ventana del canal está cerrada y no hay plantilla aprobada ni correo.",
+          "template_unavailable": "La plantilla aprobada no está disponible.",
+          "customer_erased": "El cliente pidió que lo olviden.",
+          "consent_revoked": "El cliente retiró su consentimiento para los mensajes de pedidos.",
+          "send_failed": "No se pudo enviar el mensaje.",
+          "unknown": "El servidor dio una razón que esta pantalla no conoce.",
+          "still_running": "La corrida sigue en marcha: revisa los pedidos otra vez en un momento."
+        }
+      }
     }
   },
   "org": {

@@ -990,7 +990,10 @@
         "status": "Status",
         "payment": "Payment",
         "scheduled": "Scheduled delivery",
-        "total": "Total"
+        "total": "Total",
+        "carrier": "Carrier",
+        "guide": "Guide",
+        "shipment": "Shipment"
       },
       "filters": {
         "status": "Status",
@@ -1015,9 +1018,20 @@
         "customer": "Customer: {name}",
         "removeCustomer": "Remove the filter by customer {name}",
         "aCustomer": "one customer",
-        "clear": "{count, plural, one {Clear # filter} other {Clear # filters}}"
+        "clear": "{count, plural, one {Clear # filter} other {Clear # filters}}",
+        "carrier": "Carrier",
+        "allCarriers": "All carriers",
+        "guide": "Guide",
+        "anyGuide": "With or without a guide",
+        "guides": {
+          "with_guide": "With a guide",
+          "without_guide": "Without a guide"
+        }
       },
-      "newOrder": "New order"
+      "newOrder": "New order",
+      "noCarrier": "No carrier",
+      "noGuide": "No guide",
+      "guidePending": "Guide being made"
     },
     "detail": {
       "title": "Order",
@@ -1384,6 +1398,110 @@
       "saved": "The order was updated.",
       "savedAwaitingApproval": "The order was updated. Its price waits for an approval.",
       "changedMeanwhile": "The order changed while you were editing. Only what you changed is saved."
+    },
+    "bulk": {
+      "label": "Actions for the selected orders",
+      "selected": "{count, plural, one {# order selected} other {# orders selected}}",
+      "clear": "Clear selection",
+      "confirm": {
+        "button": "Mark as confirmed",
+        "title": "Mark the orders as confirmed",
+        "description": "Only the orders waiting for confirmation change. Say how the customers confirmed; the rest are left as they are and listed in the report.",
+        "viaLabel": "How did the customers confirm?",
+        "viaChoose": "Choose one",
+        "via": {
+          "message_reply": "Replied in the chat",
+          "call": "By phone",
+          "in_person": "In person",
+          "other": "Other"
+        },
+        "cancel": "Cancel",
+        "submit": "Confirm orders"
+      },
+      "summary": "Send summary",
+      "labels": "Generate labels",
+      "print": "Print labels",
+      "pickup": "Request pickup",
+      "carrierLabel": "Carrier for the labels",
+      "plannedCarrier": "Each order's planned carrier",
+      "tooMany": "Select at most 100 orders to act on them at once.",
+      "running": "Working on the selected orders…",
+      "runningProgress": "Working on the selected orders: {percent}%",
+      "shipmentStatus": {
+        "creating": "Making the guide",
+        "label_created": "Guide created",
+        "picked_up": "Picked up",
+        "in_transit": "In transit",
+        "out_for_delivery": "Out for delivery",
+        "failed_attempt": "Delivery attempt failed",
+        "delivered": "Delivered",
+        "returning": "Coming back",
+        "returned": "Returned",
+        "cancel_pending": "Cancelling",
+        "cancelled": "Cancelled",
+        "cancel_failed": "Could not cancel",
+        "requires_review": "Needs review",
+        "failed": "Failed"
+      },
+      "report": {
+        "title": {
+          "confirm": "Confirm orders",
+          "summary": "Send summary",
+          "labels": "Generate labels",
+          "print": "Print labels",
+          "pickup": "Request pickup"
+        },
+        "failedTitle": "The action could not run",
+        "summary": "{done, plural, one {# order went through} other {# orders went through}}; {left, plural, one {# was left out} other {# were left out}}.",
+        "openFile": "Open {name}",
+        "mixedSizes": "The labels are not all the same size: check the printer before printing.",
+        "nothingLeftOut": "No order was left out.",
+        "leftOut": "{count, plural, one {# order left out} other {# orders left out}}",
+        "tableCaption": "Result and final state of each order",
+        "columns": {
+          "order": "Order",
+          "result": "Result",
+          "orderStatus": "Order status",
+          "guide": "Guide"
+        },
+        "outcome": {
+          "done": "Done",
+          "reused": "Already had its label",
+          "skipped": "Left out",
+          "failed": "Failed"
+        },
+        "noGuide": "No guide",
+        "unknown": "Unknown",
+        "close": "Close",
+        "rules": {
+          "not_pending_confirmation": "The order is not waiting for confirmation.",
+          "no_guide": "The order has no guide with a label to print.",
+          "not_waiting_for_pickup": "The order has no guide waiting for a pickup.",
+          "pickup_not_offered": "The carrier of the guide does not take pickup requests from here."
+        },
+        "reasons": {
+          "not_printable": "The guide is cancelled or being cancelled.",
+          "no_label": "The guide has no stored label.",
+          "not_ready": "The label is not ready yet.",
+          "unreadable": "The label file cannot be read.",
+          "too_large": "The file was full and the label did not fit.",
+          "not_found": "The shipment is not of this store.",
+          "carrier_cannot_modify": "The carrier already has the pickup and cannot change it: the guide waits for the next one.",
+          "under_review": "The pickup is under review: the guide waits until a person settles it.",
+          "cutoff_passed": "The cutoff of the day passed: confirm the change from the pickups screen.",
+          "missing_variable": "The message needs data the order does not have.",
+          "too_long": "The message is longer than the channel takes.",
+          "no_template": "The store has no template for this message.",
+          "no_channel": "The customer has no conversation or email to reach.",
+          "window_closed": "The channel window is closed and there is no approved template or email.",
+          "template_unavailable": "The approved template is not available.",
+          "customer_erased": "The customer asked to be forgotten.",
+          "consent_revoked": "The customer withdrew consent to order messages.",
+          "send_failed": "The message could not be sent.",
+          "unknown": "The server gave a reason this page does not know.",
+          "still_running": "The run is still going: look at the orders again in a moment."
+        }
+      }
     }
   },
   "org": {
