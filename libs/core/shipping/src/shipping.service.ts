@@ -1023,7 +1023,7 @@ export class ShippingService {
             : inReview > 0
               ? PickupStatus.REQUIRES_REVIEW
               : PickupStatus.FAILED,
-          { providerPickupId: answer.pickupRef, packageCount: made }
+          { providerPickupId: answer.pickupRef, packageCount: made, carrierPackageCount: made }
         )
       })
     } catch (error) {

@@ -32,7 +32,7 @@ describe('groupPreferences', () => {
     const groups = groupPreferences([
       row(NotificationTypes.CONVERSATION_ASSIGNED),
       row(NotificationTypes.ORDER_PAYMENT_FAILED),
-      row(NotificationTypes.PICKUP_MANUAL_REQUIRED),
+      row(NotificationTypes.REMITTANCE_OVERDUE),
       row(NotificationTypes.PLUGIN_ERROR),
       row(NotificationTypes.WEBHOOK_AUTO_DISABLED),
       row(NotificationTypes.CHANNEL_DISCONNECTED)
