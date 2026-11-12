@@ -94,7 +94,10 @@ export default defineConfig([
       // the IDE (root) and Nx (the project): aliases were unresolved from the root.
       'import-x/resolver': {
         typescript: { project: path.join(import.meta.dirname, 'tsconfig.base.json') }
-      }
+      },
+      // The workspace libs are internal imports wherever a package.json sits beside them (the one of
+      // libs/api-client declares it free of side effects); without this they would count as external
+      'import-x/internal-regex': '^@platform/'
     },
     languageOptions: {
       parserOptions: {
