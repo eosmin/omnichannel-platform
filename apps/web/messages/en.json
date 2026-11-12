@@ -1425,7 +1425,7 @@
       "carrierLabel": "Carrier for the labels",
       "plannedCarrier": "Each order's planned carrier",
       "tooMany": "Select at most 100 orders to act on them at once.",
-      "running": "Working on the selected orders...",
+      "running": "Working on the selected orders…",
       "runningProgress": "Working on the selected orders: {percent}%",
       "shipmentStatus": {
         "creating": "Making the guide",

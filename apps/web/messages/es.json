@@ -1425,7 +1425,7 @@
       "carrierLabel": "Transportista de las etiquetas",
       "plannedCarrier": "El transportista planeado de cada pedido",
       "tooMany": "Selecciona 100 pedidos como máximo para actuar sobre ellos a la vez.",
-      "running": "Trabajando en los pedidos seleccionados...",
+      "running": "Trabajando en los pedidos seleccionados…",
       "runningProgress": "Trabajando en los pedidos seleccionados: {percent}%",
       "shipmentStatus": {
         "creating": "Creando la guía",
