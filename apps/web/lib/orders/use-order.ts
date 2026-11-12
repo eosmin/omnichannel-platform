@@ -50,7 +50,7 @@ export function useOrder(
 export interface OrderWrites {
   status: UseMutationResult<OrderDetailView, Error, ChangeOrderStatusInput>
   confirm: UseMutationResult<OrderDetailView, Error, string>
-  cancel: UseMutationResult<OrderDetailView, Error, string>
+  cancel: UseMutationResult<OrderDetailView, Error, { reason: string; notifyCustomer?: boolean }>
   update: UseMutationResult<OrderDetailView, Error, UpdateOrderInput>
   payment: UseMutationResult<OrderDetailView, Error, RecordOrderPaymentInput>
   decidePrice: UseMutationResult<
@@ -68,6 +68,8 @@ export function useOrderWrites(storeId: string, orderId: string): OrderWrites {
     // A refresh that started before the write must not land after it and bring the old state back
     await queryClient.cancelQueries({ queryKey: QueryKeys.orders.byId(storeId, orderId) })
     queryClient.setQueryData(QueryKeys.orders.byId(storeId, orderId), order)
+    // A status or a cancel may have told the customer: the history of messages has a new row
+    void queryClient.invalidateQueries({ queryKey: QueryKeys.orders.messages(storeId, orderId) })
     // The lists hold `list` under the same root as the detail: only the pages of the list are refreshed
     void queryClient.invalidateQueries({
       queryKey: [...QueryKeys.orders.all(storeId), 'list']
@@ -84,7 +86,8 @@ export function useOrderWrites(storeId: string, orderId: string): OrderWrites {
       onSuccess: keep
     }),
     cancel: useMutation({
-      mutationFn: (reason: string) => cancelOrder(apiClient, storeId, orderId, reason),
+      mutationFn: ({ reason, notifyCustomer }: { reason: string; notifyCustomer?: boolean }) =>
+        cancelOrder(apiClient, storeId, orderId, reason, notifyCustomer),
       onSuccess: keep
     }),
     update: useMutation({

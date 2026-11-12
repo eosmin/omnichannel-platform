@@ -4,6 +4,7 @@ import {
   fetchOrderMessages,
   fetchShipmentsForOrders,
   mergeLabels,
+  previewOrderMessage,
   requestPickup,
   sendOrderMessage,
   startBulkLabels
@@ -182,5 +183,16 @@ describe('shipping api', () => {
     const { url, headers } = callOf(fetchImpl)
     expect(url).toContain('/orders/o1/messages?cursor=c1')
     expect(headers.get('x-store-id')).toBe('s1')
+  })
+
+  it('previews a message with the preview flag and no key, and reads a refusal', async () => {
+    const { client, fetchImpl } = setup(
+      json(200, { preview: true, ok: false, reason: 'missing_variable', missing: ['trackingUrl'] })
+    )
+    const preview = await previewOrderMessage(client, 's1', 'o1', 'order_shipped')
+    expect(preview).toEqual({ ok: false, reason: 'missing_variable', missing: ['trackingUrl'] })
+    const { url, init } = callOf(fetchImpl)
+    expect(url).toContain('/orders/o1/messages?preview=true')
+    expect(JSON.parse(init.body as string)).toEqual({ kind: 'order_shipped' })
   })
 })

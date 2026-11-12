@@ -25,6 +25,7 @@ import { OrderFileLink } from '../../components/orders/order-file-link'
 import { OrderFlowButtons } from '../../components/orders/order-flows'
 import { CreateGuideDialog } from '../../components/orders/order-guide-dialogs'
 import { OrderLines } from '../../components/orders/order-lines'
+import { OrderMessages } from '../../components/orders/order-messages'
 import { OrderNotes } from '../../components/orders/order-notes'
 import { OrderPayment } from '../../components/orders/order-payment'
 import { OrderPrintButtons } from '../../components/orders/order-print'
@@ -34,7 +35,11 @@ import { useStore } from '../../components/providers/store-context'
 import { Button } from '../../components/ui/button'
 import { useWarehousesOfStore } from '../../lib/inventory/use-inventory'
 import { asOrderStatus, asPriceApprovalStatus } from '../../lib/orders/order-detail-rules'
-import { liveOutbound, outboundStatusesOf } from '../../lib/orders/order-shipping-rules'
+import {
+  liveOutbound,
+  outboundStatusesOf,
+  takesPickupRequests
+} from '../../lib/orders/order-shipping-rules'
 import { useOrder, useOrderWrites } from '../../lib/orders/use-order'
 import {
   useGuideConnections,
@@ -273,6 +278,10 @@ export function OrderDetailPage(): ReactElement {
               const found = connections.data?.find(entry => entry.id === connectionId)
               return found === undefined ? null : found.capabilities.includes(CANCEL_CAPABILITY)
             }}
+            carrierTakesPickups={connectionId => {
+              const found = connections.data?.find(entry => entry.id === connectionId)
+              return found === undefined ? null : takesPickupRequests(found)
+            }}
             onCreateGuide={
               connections.data === undefined
                 ? undefined
@@ -282,6 +291,7 @@ export function OrderDetailPage(): ReactElement {
                   }
             }
           />
+          <OrderMessages order={data} />
           <OrderReturns
             order={data}
             outboundStatuses={
