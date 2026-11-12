@@ -33,6 +33,8 @@ export const CustomerLimits = {
   SEARCH_MAX_LENGTH: 100,
   CHANNEL_IDENTITY_MAX_LENGTH: 255,
   NOTE_MAX_LENGTH: 5000,
+  // The reason of the caution flag: one line the team reads in a banner (TDD_17 §4.16)
+  CAUTION_REASON_MAX_LENGTH: 500,
   USERNAME_MAX_LENGTH: 100,
   AVATAR_URL_MAX_LENGTH: 2048,
   ADDRESS_LABEL_MAX_LENGTH: 60,

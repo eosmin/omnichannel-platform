@@ -34,7 +34,7 @@ const summary = {
   id: 'o1',
   orderNumber: '00001',
   customerId: 'c1',
-  customer: { id: 'c1', name: 'Ana' },
+  customer: { id: 'c1', name: 'Ana', isCaution: false },
   status: 'CONFIRMED',
   subtotalCents: 1000,
   shippingCents: 200,
@@ -76,7 +76,14 @@ const detail = {
   createdBy: 'u1',
   shippedAt: null,
   deliveredAt: null,
-  customer: { id: 'c1', name: 'Ana', email: null, phone: null, nationalPhone: null },
+  customer: {
+    id: 'c1',
+    name: 'Ana',
+    email: null,
+    phone: null,
+    nationalPhone: null,
+    isCaution: false
+  },
   items: [],
   priceModified: false
 }

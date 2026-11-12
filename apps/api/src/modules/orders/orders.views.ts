@@ -23,7 +23,7 @@ export const ORDER_LIST_SELECT = {
   createdAt: true,
   updatedAt: true,
   // Who made the order, for the column of the list: the name only (the contact data is in the detail)
-  customer: { select: { id: true, name: true } },
+  customer: { select: { id: true, name: true, isCaution: true } },
   // The "price modified" badge of the list: one row is enough to know
   items: { where: { originalUnitPriceCents: { not: null } }, select: { id: true }, take: 1 }
 } as const
@@ -71,7 +71,16 @@ export const ORDER_DETAIL_SELECT = {
   updatedAt: true,
   shippedAt: true,
   deliveredAt: true,
-  customer: { select: { id: true, name: true, email: true, phone: true, phoneNormalized: true } },
+  customer: {
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      phone: true,
+      phoneNormalized: true,
+      isCaution: true
+    }
+  },
   items: {
     select: {
       id: true,
@@ -112,7 +121,7 @@ interface ListRow {
   scheduledDeliveryDate: Date | null
   createdAt: Date
   updatedAt: Date
-  customer: { id: string; name: string | null }
+  customer: { id: string; name: string | null; isCaution: boolean }
   items: { id: string }[]
 }
 
@@ -149,6 +158,7 @@ interface DetailRow extends Omit<ListRow, 'items'> {
     email: string | null
     phone: string | null
     phoneNormalized: string | null
+    isCaution: boolean
   }
   items: OrderItemView[]
 }
@@ -180,6 +190,10 @@ export interface OrderCustomerView {
   phone: string | null
   // The phone without its country code, for the recipient phones of the form: the web never parses a phone
   nationalPhone: string | null
+  // The caution flag informs and never blocks (TDD_17 §4.16). Null: the caller may not read the contact data of the
+  // customer, so the flag is not known to them (not `false`). The reason is not here: it is free text about a person
+  // and is read in the customer detail, behind `customers:view`.
+  isCaution: boolean | null
 }
 
 export interface OrderDetailView extends Omit<
@@ -249,7 +263,14 @@ export function detailView(row: DetailRow, canRead: boolean): OrderDetailView {
       recipientPhones: [],
       scheduledDeliveryDate:
         scheduledDeliveryDate === null ? null : dateToCalendarDay(scheduledDeliveryDate),
-      customer: { id: customer.id, name: null, email: null, phone: null, nationalPhone: null },
+      customer: {
+        id: customer.id,
+        name: null,
+        email: null,
+        phone: null,
+        nationalPhone: null,
+        isCaution: null
+      },
       items: items.map(item => ({
         ...item,
         priceOverrideReason: null,
@@ -272,7 +293,8 @@ export function detailView(row: DetailRow, canRead: boolean): OrderDetailView {
       email: customer.email,
       phone: customer.phone,
       nationalPhone:
-        customer.phoneNormalized === null ? null : nationalPhoneNumber(customer.phoneNormalized)
+        customer.phoneNormalized === null ? null : nationalPhoneNumber(customer.phoneNormalized),
+      isCaution: customer.isCaution
     },
     items: items.map(item => ({ ...item })),
     priceModified: items.some(item => item.originalUnitPriceCents !== null)

@@ -64,10 +64,10 @@ if (pushed.length === 0) {
   console.log('nothing new is pushed: nothing to check')
   exit(0)
 }
-// The plan is read by two validators (the isolation exemptions and the frontend map), so a push that
-// only edits it runs those two: a step renamed or deferred must not first break in CI
+// The plan is read by three validators (the isolation exemptions, the frontend map and the plugin API map), so a push that
+// only edits it runs those three: a step renamed or deferred must not first break in CI
 const PLAN_FILE = 'docs/IMPLEMENTATION_PLAN.md'
-const PLAN_CHECKS = ['validate:isolation', 'validate:frontend']
+const PLAN_CHECKS = ['validate:isolation', 'validate:frontend', 'validate:plugin-api']
 const docsOnly = isDocsOnly(pushed)
 if (docsOnly && !pushed.includes(PLAN_FILE)) {
   console.log('only docs/ changed in what is pushed: nothing to check')
@@ -100,6 +100,7 @@ const STEPS: AffectedStep[] = [
   { name: 'validate:frontend', command: ['validate:frontend'] },
   { name: 'validate:channel-agnostic', command: ['validate:channel-agnostic'] },
   { name: 'validate:carrier-agnostic', command: ['validate:carrier-agnostic'] },
+  { name: 'validate:plugin-api', command: ['validate:plugin-api'] },
   { name: 'validate:image-hosts', command: ['validate:image-hosts'] },
   // Pure code, a second to run: a contract that breaks is seen before the push and not in CI
   { name: 'test:contracts', command: ['test:contracts'] }

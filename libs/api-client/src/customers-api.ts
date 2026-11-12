@@ -9,6 +9,8 @@ import {
   conversationPageSchema,
   type CustomerDetailView,
   customerAddressSchema,
+  customerCautionSchema,
+  type CustomerCautionView,
   type CustomerAddressView,
   customerDetailSchema,
   createdCustomerSchema,
@@ -258,6 +260,33 @@ export function detachCustomerTag(
   return client.request(ApiRoutes.customers.tagById(customerId, tagId), {
     method: 'DELETE',
     schema: z.undefined(),
+    storeId
+  })
+}
+
+// Flags the customer with caution (the reason is required); flagging again replaces the reason
+export function setCustomerCaution(
+  client: ApiClient,
+  storeId: string,
+  customerId: string,
+  reason: string
+): Promise<CustomerCautionView> {
+  return client.request(ApiRoutes.customers.caution(customerId), {
+    method: 'PUT',
+    body: { reason },
+    schema: customerCautionSchema,
+    storeId
+  })
+}
+
+export function clearCustomerCaution(
+  client: ApiClient,
+  storeId: string,
+  customerId: string
+): Promise<CustomerCautionView> {
+  return client.request(ApiRoutes.customers.caution(customerId), {
+    method: 'DELETE',
+    schema: customerCautionSchema,
     storeId
   })
 }

@@ -2293,13 +2293,18 @@ describe('Tenant isolation', () => {
         asA().get(ApiRoutes.customers.orders(theirs.id)),
         asA().get(ApiRoutes.customers.conversations(theirs.id)),
         asA().get(ApiRoutes.customers.mergePreview(mine.id)).query({ absorbedId: theirs.id }),
-        asA().get(ApiRoutes.customers.mergePreview(theirs.id)).query({ absorbedId: mine.id })
+        asA().get(ApiRoutes.customers.mergePreview(theirs.id)).query({ absorbedId: mine.id }),
+        asA().put(ApiRoutes.customers.caution(theirs.id)).send({ reason: 'not mine to flag' }),
+        asA().delete(ApiRoutes.customers.caution(theirs.id))
       ])
 
       for (const response of responses) {
         expect(response.status).toBe(404)
         expect(JSON.stringify(response.body)).not.toContain('secret note')
       }
+      expect((await owner.customer.findUniqueOrThrow({ where: { id: theirs.id } })).isCaution).toBe(
+        false
+      )
     })
   })
 

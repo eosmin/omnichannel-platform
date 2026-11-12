@@ -29,7 +29,7 @@ export function flattenKeys(tree: Readonly<Record<string, unknown>>, prefix = ''
 }
 
 // A step that is deferred will not draw anything in the MVP: what depends on it has no interface
-const DEFERRED_STATUS = /^deferred/i
+export const DEFERRED_STATUS = /^deferred/i
 
 // An entry is exactly one of a step that exists and is not deferred, or a reason
 function isInvalid(entry: unknown, steps: ReadonlyMap<string, string>): boolean {
