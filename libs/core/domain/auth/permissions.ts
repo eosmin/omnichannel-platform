@@ -121,9 +121,7 @@ export const ReservedPermissions: Readonly<Record<string, string>> = {
   [Permissions.CONVERSATIONS_CREATE]:
     'Step 5.6: POST /plugin-api/conversations (scope conversations:write) is the first route that starts a conversation',
   [Permissions.CONVERSATIONS_DELETE]:
-    'Step 5.4: the manual deletion of a conversation, next to the data retention settings',
-  [Permissions.CUSTOMERS_FLAG_CAUTION]:
-    'Step 4.12: PUT and DELETE /customers/:id/caution, with returns'
+    'Step 5.4: the manual deletion of a conversation, next to the data retention settings'
 }
 
 // The prefixes of the resources whose milestone is not built (Milestones 4 and 5): their permissions

@@ -1,6 +1,7 @@
 import { createApiClient } from './api-client'
 import {
   attachCustomerTag,
+  clearCustomerCaution,
   createCustomer,
   createCustomerAddress,
   deleteCustomerNote,
@@ -11,6 +12,7 @@ import {
   fetchCustomerTimeline,
   linkCustomerIdentity,
   mergeCustomers,
+  setCustomerCaution,
   unlinkCustomerIdentity,
   unmergeCustomers,
   updateCustomer
@@ -292,6 +294,31 @@ describe('the merge', () => {
     const [url, init] = fetchImpl.mock.calls[0] ?? []
     expect(url).toBe('https://api.example.com/api/v1/customers/c1/unmerge')
     expect(init?.body).toBe(JSON.stringify({ mergeId: 'm1' }))
+  })
+})
+
+describe('the caution flag', () => {
+  it('puts the reason and reads the flag it answers', async () => {
+    const { client, fetchImpl } = setup(json(200, { isCaution: true, cautionReason: 'refused' }))
+
+    const flag = await setCustomerCaution(client, 's1', 'c1', 'refused')
+
+    const [url, init] = fetchImpl.mock.calls[0] ?? []
+    expect(url).toBe('https://api.example.com/api/v1/customers/c1/caution')
+    expect(init?.method).toBe('PUT')
+    expect(init?.body).toBe(JSON.stringify({ reason: 'refused' }))
+    expect(flag).toEqual({ isCaution: true, cautionReason: 'refused' })
+  })
+
+  it('clears it with a DELETE and no body', async () => {
+    const { client, fetchImpl } = setup(json(200, { isCaution: false, cautionReason: null }))
+
+    const flag = await clearCustomerCaution(client, 's1', 'c1')
+
+    const [url, init] = fetchImpl.mock.calls[0] ?? []
+    expect(url).toBe('https://api.example.com/api/v1/customers/c1/caution')
+    expect(init?.method).toBe('DELETE')
+    expect(flag.isCaution).toBe(false)
   })
 })
 

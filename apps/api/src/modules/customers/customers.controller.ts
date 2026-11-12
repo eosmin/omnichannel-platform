@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   Res
@@ -51,6 +52,7 @@ import {
 } from '../tenancy'
 
 import { AddressesService } from './addresses.service'
+import { type CautionView, CustomerCautionService } from './customer-caution.service'
 import { CustomerMediaService } from './customer-media.service'
 import type { GalleryPage } from './customer-media.views'
 import { CustomerMergePreviewService, type MergePreview } from './customer-merge-preview.service'
@@ -67,6 +69,8 @@ import {
   createCustomerSchema,
   type CreateNoteBody,
   createNoteSchema,
+  type SetCautionBody,
+  setCautionSchema,
   idSchema,
   type LinkIdentityBody,
   linkIdentitySchema,
@@ -111,6 +115,7 @@ export class CustomersController {
     private readonly identities: IdentitiesService,
     private readonly addresses: AddressesService,
     private readonly notes: NotesService,
+    private readonly caution: CustomerCautionService,
     private readonly tags: CustomerTagsService,
     private readonly merges: CustomerMergeService,
     private readonly mergePreviews: CustomerMergePreviewService,
@@ -184,6 +189,31 @@ export class CustomersController {
     return this.customers
       .update(store.id, customerId, body)
       .then(customer => withAnonymousIdentities(this.anonymity, customer))
+  }
+
+  // The caution flag informs and never blocks (TDD_17 §4.16). Its own permission: whoever edits a customer
+  // does not flag it by that.
+  @RequirePermissions(Permissions.CUSTOMERS_FLAG_CAUTION)
+  @Put(ApiRoutes.customers.caution(':id'))
+  setCaution(
+    @CurrentStore() store: ResolvedTenant['store'],
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) customerId: string,
+    @Body(new ZodValidationPipe(setCautionSchema)) body: SetCautionBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<CautionView> {
+    return this.caution.set(store.id, customerId, body, actorOf(user, store, req))
+  }
+
+  @RequirePermissions(Permissions.CUSTOMERS_FLAG_CAUTION)
+  @Delete(ApiRoutes.customers.caution(':id'))
+  clearCaution(
+    @CurrentStore() store: ResolvedTenant['store'],
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) customerId: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<CautionView> {
+    return this.caution.clear(store.id, customerId, actorOf(user, store, req))
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_DELETE)

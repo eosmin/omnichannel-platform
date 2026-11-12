@@ -1542,7 +1542,7 @@ describe('The life of an order', () => {
       return (response.body as CreatedBody).order
     }
 
-    it('names the customer of each row, and only by name', async () => {
+    it('names the customer of each row, by name and caution flag only', async () => {
       const customer = await createCustomer(owner, {
         storeId: ctx.storeA.id,
         name: `${prefix}-Named`,
@@ -1552,7 +1552,11 @@ describe('The life of an order', () => {
 
       const [row] = rowsOf(await list(`customerId=${customer.id}`))
 
-      expect(row?.customer).toEqual({ id: customer.id, name: `${prefix}-Named` })
+      expect(row?.customer).toEqual({
+        id: customer.id,
+        name: `${prefix}-Named`,
+        isCaution: false
+      })
     })
 
     it('finds an order by its number, a bare number, or a piece of the name, e-mail or phone of the customer', async () => {
