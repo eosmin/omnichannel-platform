@@ -66,13 +66,31 @@ describe('buildOrder', () => {
       paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
       recipientPhones: ['71234567'],
       scheduledDeliveryDate: null,
-      confirmOnCreate: false,
-      // no message goes to the customer that the agent did not ask for
-      sendConfirmationMessage: false
+      confirmOnCreate: false
     })
+    // the summary is left to the preference of the store unless the agent chose it
+    expect(result.value).not.toHaveProperty('sendConfirmationMessage')
+    expect(result.value).not.toHaveProperty('copiedFromOrderId')
     expect(Object.keys(result.value)).not.toEqual(
       expect.arrayContaining(['totalCents', 'subtotalCents', 'status'])
     )
+  })
+
+  it('sends what the agent chose for the summary and the order it was copied from', () => {
+    const result = buildOrder(form(), allowed, {
+      stock: new Map(),
+      sendSummary: false,
+      copiedFromOrderId: 'o9'
+    })
+    expect(result.ok && result.value).toMatchObject({
+      sendConfirmationMessage: false,
+      copiedFromOrderId: 'o9'
+    })
+  })
+
+  it('sends a summary the agent asked for', () => {
+    const result = buildOrder(form(), allowed, { stock: new Map(), sendSummary: true })
+    expect(result.ok && result.value).toMatchObject({ sendConfirmationMessage: true })
   })
 
   it('names the first field that is wrong', () => {

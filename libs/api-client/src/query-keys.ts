@@ -79,7 +79,10 @@ export const QueryKeys = {
     list: (storeId: string, filter: object, sort: string) =>
       ['orders', storeId, 'list', filter, sort] as const,
     // Under the order: whatever changes an order makes its detail stale
-    byId: (storeId: string, orderId: string) => ['orders', storeId, orderId] as const
+    byId: (storeId: string, orderId: string) => ['orders', storeId, orderId] as const,
+    // The draft of "Copy order": read fresh every time it is opened, and outside `orders.all` so that an event of the
+    // orders never rebuilds a draft the agent is editing
+    copy: (storeId: string, orderId: string) => ['order-copy', storeId, orderId] as const
   },
   search: {
     global: (storeId: string, q: string) => ['search', storeId, q] as const
@@ -186,7 +189,9 @@ export const QueryKeys = {
     urls: (storeId: string, mediaId: string) => ['media', storeId, mediaId, 'urls'] as const
   },
   preferences: {
-    store: (storeId: string) => ['preferences', storeId] as const
+    store: (storeId: string) => ['preferences', storeId] as const,
+    // The `orders` block, which the create-order drawer reads for its checkboxes and the discount limit
+    orders: (storeId: string) => ['preferences', storeId, 'orders'] as const
   },
   members: {
     directory: (storeId: string) => ['members', storeId, 'directory'] as const

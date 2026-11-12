@@ -374,3 +374,27 @@ export function decideOrderPrice(
     storeId
   })
 }
+
+// What the create-order drawer reads of the `orders` block of GET /settings/preferences (which needs `settings:view`): the
+// initial state of its two checkboxes and the discount limit. The factory defaults live on the api, in one place.
+const orderPreferencesSchema = z.object({
+  orders: z.object({
+    confirmOnCreate: z.boolean(),
+    sendSummaryOnCreate: z.boolean(),
+    discountLimitPercent: z.number().int()
+  })
+})
+export type OrderPreferencesView = z.infer<typeof orderPreferencesSchema>['orders']
+
+export async function fetchOrderPreferences(
+  client: ApiClient,
+  storeId: string,
+  signal?: AbortSignal
+): Promise<OrderPreferencesView> {
+  const view = await client.request(ApiRoutes.settings.preferences, {
+    schema: orderPreferencesSchema,
+    storeId,
+    signal
+  })
+  return view.orders
+}

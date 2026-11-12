@@ -18,6 +18,7 @@ import {
   PriceApprovalStatus
 } from '@platform/core/domain'
 
+import { CautionChip } from '../../components/customers/caution-chip'
 import { useCustomerDrawer } from '../../components/customers/customer-drawer-context'
 import { MutationError } from '../../components/customers/mutation-error'
 import { useOrderDrawer } from '../../components/orders/order-drawer-context'
@@ -145,6 +146,11 @@ function Row({
         ) : (
           <span>{name}</span>
         )}
+        {order.customer.isCaution ? (
+          <span className="mt-1 block">
+            <CautionChip />
+          </span>
+        ) : null}
       </td>
       <td className="text-muted-foreground py-2 pr-3 text-sm whitespace-nowrap">
         {Number.isNaN(made.getTime()) ? '' : format.dateTime(made, { dateStyle: 'medium' })}

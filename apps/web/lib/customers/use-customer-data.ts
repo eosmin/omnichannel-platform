@@ -16,6 +16,8 @@ import { useCallback } from 'react'
 import {
   type ConversationPageView,
   attachCustomerTag,
+  clearCustomerCaution,
+  type CustomerCautionView,
   createCustomerAddress,
   createCustomerNote,
   type CustomerAddressChanges,
@@ -43,6 +45,7 @@ import {
   mergeCustomers,
   type MergeFieldChoices,
   QueryKeys,
+  setCustomerCaution,
   type TagView,
   unlinkCustomerIdentity,
   unmergeCustomers,
@@ -297,4 +300,31 @@ export function useCustomerIdentityEdits(
     onSuccess: refresh
   })
   return { link, unlink }
+}
+
+// Flag or clear the caution of a customer (`customers:flag_caution`). The flag shows on the profile, the lists, the
+// conversation header and the orders, so all of them are read again; it informs and never blocks anything.
+export function useCustomerCaution(
+  storeId: string,
+  customerId: string
+): {
+  set: UseMutationResult<CustomerCautionView, Error, string>
+  clear: UseMutationResult<CustomerCautionView, Error, void>
+} {
+  const queryClient = useQueryClient()
+  // Not awaited: the dialog closes when the flag is saved, not when every list has been read again
+  const refresh = (): void => {
+    void queryClient.invalidateQueries({ queryKey: QueryKeys.customers.all(storeId) })
+    void queryClient.invalidateQueries({ queryKey: QueryKeys.conversations.all(storeId) })
+    void queryClient.invalidateQueries({ queryKey: QueryKeys.orders.all(storeId) })
+  }
+  const set = useMutation({
+    mutationFn: (reason: string) => setCustomerCaution(apiClient, storeId, customerId, reason),
+    onSuccess: refresh
+  })
+  const clear = useMutation({
+    mutationFn: () => clearCustomerCaution(apiClient, storeId, customerId),
+    onSuccess: refresh
+  })
+  return { set, clear }
 }
