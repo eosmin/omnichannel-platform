@@ -40,6 +40,9 @@ test.describe('Settings → Order messages, Returns and Preferences', () => {
     await expect(page).toHaveURL(new RegExp(`${pathOf(StoreSettingsSections.ORDER_TEMPLATES)}$`))
     await expect(page.getByRole('heading', { name: messages.title, level: 1 })).toBeVisible()
 
+    // The names of the kinds and languages end in "Unsaved changes" while a draft is open: scope every button of the
+    // editor to its own form, and ask for the exact name
+    const editor = page.getByRole('form', { name: messages.editorLabel })
     const kinds = page.getByRole('navigation', { name: messages.kindsLabel })
     await kinds.getByRole('button', { name: messages.kinds.order_shipped.label }).click()
     const body = page.getByLabel(messages.body)
@@ -84,12 +87,12 @@ test.describe('Settings → Order messages, Returns and Preferences', () => {
       }
     )
     await page.getByLabel(messages.body).fill('Hola {{nombre}}')
-    await page.getByRole('button', { name: messages.save }).click()
+    await editor.getByRole('button', { name: messages.save, exact: true }).click()
     await expect(page.getByRole('alert').getByText(messages.problems.unknownVariable)).toBeVisible()
     expect(puts).toHaveLength(0)
 
     await page.getByLabel(messages.body).fill('Hola {{customerName}}, tu pedido {{orderNumber}}')
-    await page.getByRole('button', { name: messages.save }).click()
+    await editor.getByRole('button', { name: messages.save, exact: true }).click()
     await expect(page.getByText(messages.saved).first()).toBeVisible()
     expect(puts).toEqual([
       {
@@ -110,7 +113,7 @@ test.describe('Settings → Order messages, Returns and Preferences', () => {
     await expect(page.getByRole('checkbox', { name: messages.sending.auto })).not.toBeChecked()
 
     // Deleting it asks first, and the platform text is used again
-    await page.getByRole('button', { name: messages.delete.button }).click()
+    await editor.getByRole('button', { name: messages.delete.button, exact: true }).click()
     await expect(page.getByRole('alertdialog')).toBeVisible()
     await page
       .getByRole('alertdialog')
@@ -132,7 +135,7 @@ test.describe('Settings → Order messages, Returns and Preferences', () => {
     const customer = page.getByRole('radio', {
       name: new RegExp(`^${returns.payer.options.recipient.label}`)
     })
-    const save = page.getByRole('button', { name: returns.save })
+    const save = page.getByRole('button', { name: returns.save, exact: true })
     await expect(store).toBeChecked()
     await expect(save).toBeDisabled()
 
@@ -163,7 +166,9 @@ test.describe('Settings → Order messages, Returns and Preferences', () => {
     // The factory state: the boxes start as the preferences of the store say
     const confirm = page.getByRole('checkbox', { name: preferences.create.confirm })
     const summary = page.getByRole('checkbox', { name: preferences.create.summary })
-    const save = page.getByRole('button', { name: preferences.save })
+    const save = page
+      .getByRole('form', { name: preferences.formLabel })
+      .getByRole('button', { name: preferences.save, exact: true })
     await expect(confirm).not.toBeChecked()
     await expect(summary).toBeChecked()
     await expect(save).toBeDisabled()
@@ -188,7 +193,7 @@ test.describe('Settings → Order messages, Returns and Preferences', () => {
       .selectOption({ label: preferences.delivery.failedPolicies.first_only })
     await page.getByLabel(preferences.delivery.overdueLabel).fill('10')
     await page.getByLabel(preferences.reasons.newLabel).fill('Fraud suspected')
-    await page.getByRole('button', { name: preferences.reasons.add }).click()
+    await page.getByRole('button', { name: preferences.reasons.add, exact: true }).click()
     await save.click()
     await expect(page.getByText(preferences.saved).first()).toBeVisible()
     expect(puts).toHaveLength(1)
@@ -223,11 +228,15 @@ test.describe('Settings → Order messages, Returns and Preferences', () => {
       await expect(page.getByRole('heading', { name: preferences.title, level: 1 })).toBeVisible()
       await expect(page.getByText(preferences.readOnly)).toBeVisible()
       await expect(page.getByRole('checkbox', { name: preferences.create.confirm })).toBeDisabled()
-      await expect(page.getByRole('button', { name: preferences.save })).toHaveCount(0)
+      await expect(
+        page
+          .getByRole('form', { name: preferences.formLabel })
+          .getByRole('button', { name: preferences.save, exact: true })
+      ).toHaveCount(0)
 
       await page.goto(AppPaths.store.settings(mainStoreId, StoreSettingsSections.RETURNS))
       await expect(page.getByText(returns.readOnly)).toBeVisible()
-      await expect(page.getByRole('button', { name: returns.save })).toHaveCount(0)
+      await expect(page.getByRole('button', { name: returns.save, exact: true })).toHaveCount(0)
     } finally {
       await remove()
     }
