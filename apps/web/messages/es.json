@@ -3243,7 +3243,7 @@
       "noneAvailable": "Todavía no hay ningún transportista disponible en esta tienda.",
       "empty": {
         "title": "Ningún transportista conectado",
-        "body": "Conecta un transportista para crear guías y seguir tus envíos."
+        "body": "Conecta un transportista para crear guías y seguir tus envíos. Si no se puede conectar, instala antes Shipping en Plugins."
       },
       "past": {
         "title": "Transportistas desconectados",

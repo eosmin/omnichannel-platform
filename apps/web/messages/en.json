@@ -3243,7 +3243,7 @@
       "noneAvailable": "No carrier is available in this store yet.",
       "empty": {
         "title": "No carrier connected",
-        "body": "Connect a carrier to create guides and follow your shipments."
+        "body": "Connect a carrier to create guides and follow your shipments. If it cannot be connected, install Shipping in Plugins first."
       },
       "past": {
         "title": "Disconnected carriers",

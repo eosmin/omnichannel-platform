@@ -30,6 +30,13 @@ test.describe('Settings → Carriers', () => {
   }) => {
     await signIn(page, ownerEmail)
     await page.waitForURL(/\/s\/[^/]+\//)
+    // Shipping is installed in the store first, as the owner does in Plugins: a carrier cannot be connected before
+    await page.goto(AppPaths.store.settings(storeId, StoreSettingsSections.PLUGINS))
+    const shipping = page
+      .getByRole('listitem')
+      .filter({ has: page.getByRole('heading', { name: 'Shipping' }) })
+    await shipping.getByRole('button', { name: en.settings.plugins.install.action }).click()
+    await expect(shipping.getByText(en.settings.plugins.installed)).toBeVisible()
     await page.goto(AppPaths.store.settings(storeId, StoreSettingsSections.GENERAL))
     await page
       .getByRole('navigation', { name: en.settings.nav.store.label })
