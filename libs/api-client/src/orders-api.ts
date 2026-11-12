@@ -31,6 +31,8 @@ const orderSummarySchema = z.object({
   priceApprovalStatus: z.string(),
   freeShipping: z.boolean(),
   scheduledDeliveryDate: z.string().nullable(),
+  // The planned carrier (a connection id), or none
+  carrierConnectionId: z.string().nullable(),
   // True when a line was sold at a price other than the catalog's
   priceModified: z.boolean(),
   createdAt: z.string(),
@@ -65,7 +67,7 @@ export type OrderItemView = z.output<typeof orderItemSchema>
 // payment reference and the notes): those arrive null or empty, and the internal notes may be missing altogether.
 // The screens hide what is not there.
 export const orderDetailSchema = orderSummarySchema
-  .omit({ customer: true, priceModified: true })
+  .omit({ customer: true, priceModified: true, carrierConnectionId: true })
   .extend({
     conversationId: z.string().nullable(),
     paymentReference: z.string().nullable(),
@@ -125,6 +127,9 @@ export interface OrderListFilter {
   paymentStatus?: string
   priceApprovalStatus?: string
   customerId?: string
+  // The planned carrier, and whether the order holds a live guide (a value of OrderGuideFilters)
+  carrierConnectionId?: string
+  guide?: string
   createdFrom?: string
   createdTo?: string
   scheduledDeliveryFrom?: string
