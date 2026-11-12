@@ -99,6 +99,8 @@ export interface ShipmentChange {
   orderId: string
   from: ShipmentStatus
   to: ShipmentStatus
+  // The same manual event was already recorded: nothing was written, so nothing is audited or announced
+  repeated?: true
 }
 
 // A row that is still CREATING after this long was not left by a call in flight (a call gives up after the deadline times
@@ -1115,14 +1117,21 @@ export class ShippingService {
           HttpStatusCodes.BAD_REQUEST
         )
       }
-      // The same event again (same status, same moment) changes nothing, as for a carrier's event: a double click or a retry
-      // must not count a second failed attempt. Without a moment each call is its own moment, as it always was.
+      // The same manual event again (same status, same moment) changes nothing, as for a carrier's event: a double click or a
+      // retry must not count a second failed attempt. Only a hand-made event is a twin: a carrier's event at that moment is
+      // another thing that happened. Without a moment each call is its own moment, as it always was.
       if (from === to && body.occurredAt !== undefined) {
         const twin = await tx.shipmentEvent.findFirst({
-          where: { storeId, shipmentId, status: to, occurredAt: new Date(body.occurredAt) },
+          where: {
+            storeId,
+            shipmentId,
+            status: to,
+            source: ShipmentEventSource.MANUAL,
+            occurredAt: new Date(body.occurredAt)
+          },
           select: { id: true }
         })
-        if (twin !== null) return { shipmentId, orderId: row.orderId, from, to }
+        if (twin !== null) return { shipmentId, orderId: row.orderId, from, to, repeated: true }
       }
       const data: Parameters<ShipmentWrites['move']>[4] = {}
       if (to === ShipmentStatus.LABEL_CREATED) {

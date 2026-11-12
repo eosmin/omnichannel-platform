@@ -82,7 +82,7 @@ export function offeredFlows(
   order: OrderFlowInput,
   can: CanDo,
   userId: string | null,
-  hasActiveGuide = false
+  hasActiveGuide: boolean
 ): FlowOffer[] {
   const status = asOrderStatus(order.status)
   const approval = asPriceApprovalStatus(order.priceApprovalStatus)

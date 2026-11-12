@@ -34,7 +34,7 @@ function flowsOf(
   can: (p: Permission) => boolean,
   user: string | null = 'u1'
 ) {
-  return offeredFlows(input, can, user).map(offer => offer.flow)
+  return offeredFlows(input, can, user, false).map(offer => offer.flow)
 }
 
 describe('offeredFlows', () => {
@@ -98,7 +98,7 @@ describe('offeredFlows', () => {
 
   it('draws confirm, prepare and ship disabled while a price waits for approval, never deliver or cancel', () => {
     const waiting = order(OrderStatus.CONFIRMED, PriceApprovalStatus.PENDING)
-    const offers = offeredFlows(waiting, everything, 'u1')
+    const offers = offeredFlows(waiting, everything, 'u1', false)
     const byFlow = Object.fromEntries(offers.map(offer => [offer.flow, offer]))
     expect(byFlow[OrderFlows.PREPARE]).toMatchObject({
       disabled: true,
@@ -109,7 +109,8 @@ describe('offeredFlows', () => {
     const pending = offeredFlows(
       order(OrderStatus.PENDING_CONFIRMATION, PriceApprovalStatus.PENDING),
       everything,
-      'u1'
+      'u1',
+      false
     )
     expect(pending.find(offer => offer.flow === OrderFlows.CONFIRM)).toMatchObject({
       disabled: true
@@ -120,7 +121,8 @@ describe('offeredFlows', () => {
     const offers = offeredFlows(
       order(OrderStatus.CONFIRMED, PriceApprovalStatus.REJECTED),
       everything,
-      'u1'
+      'u1',
+      false
     )
     expect(offers.find(offer => offer.flow === OrderFlows.SHIP)?.disabled).toBe(true)
     // Nothing to decide: the request was already answered

@@ -226,6 +226,8 @@ export class ShipmentsService {
       type: 'user',
       id: actor.userId
     })
+    // A repeat of an event already recorded wrote nothing, so it leaves no second audit line
+    if (change.repeated === true) return shipmentViewOf(await this.rowOf(storeId, shipmentId))
     this.record(storeId, AuditAction.SHIPMENT_STATUS_SET_MANUALLY, shipmentId, actor, {
       orderId: change.orderId,
       from: change.from,
