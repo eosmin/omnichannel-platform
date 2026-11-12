@@ -22,6 +22,8 @@ import {
 } from '@platform/core/domain'
 import { resourceNotFound } from '@platform/core/errors'
 import { RemittancesService as RemittanceWrites } from '@platform/core/shipping'
+import { MediaPurpose } from '@platform/core/storage'
+import { StorageService } from '@platform/core/storage-module'
 
 import { encodeCursor } from '../customers/list-cursor'
 import type { Actor } from '../tenancy'
@@ -49,7 +51,8 @@ export class RemittancesApiService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly writes: RemittanceWrites,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly storage: StorageService
   ) {}
 
   async list(storeId: string, query: ListRemittancesQuery): Promise<CursorPage<RemittanceView>> {
@@ -259,8 +262,22 @@ export class RemittancesApiService {
     return this.get(storeId, remittanceId)
   }
 
+  // A draft nobody wants goes with the file it was imported from: the file is the evidence of a remittance, and there is none
   async discard(storeId: string, remittanceId: string): Promise<void> {
+    const draft = await this.prisma.client.codRemittance.findFirst({
+      where: { id: remittanceId, storeId },
+      select: { sourceMediaId: true }
+    })
     await this.writes.discardDraft(storeId, remittanceId)
+    if (draft?.sourceMediaId === null || draft === null) return
+    const file = await this.prisma.client.media.findFirst({
+      where: { id: draft.sourceMediaId, storeId, purpose: MediaPurpose.REMITTANCE_FILE },
+      select: { id: true, key: true }
+    })
+    if (file === null) return
+    await this.prisma.client.media.deleteMany({ where: { id: file.id, storeId } })
+    // A failure leaves a stray object that nothing points to: not worth failing a discard that already happened
+    await this.storage.delete(file.key).catch(() => undefined)
   }
 
   async confirm(

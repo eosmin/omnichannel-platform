@@ -62,6 +62,7 @@ import {
   BUILT_SERVICE_CODE,
   createCarrierConnection,
   createRemittance,
+  createRemittanceImportProfile,
   createPickup,
   createShipment,
   createChannelConnection,
@@ -596,6 +597,27 @@ const resources: IsolationResource[] = [
     untouched: async (owner, id) =>
       (await owner.codRemittanceLine.findUnique({ where: { id }, select: { excluded: true } }))
         ?.excluded === false
+  },
+  // How a carrier's settlement file is read (Step 4.13, PR C): listed by the store of the request and renamed by its id. It has no
+  // route that reads one profile: the list is what the screen draws.
+  {
+    name: 'remittanceImportProfile',
+    create: async (owner, input) => {
+      const connection = await createCarrierConnection(owner, { storeId: input.storeId })
+      return createRemittanceImportProfile(owner, {
+        storeId: input.storeId,
+        connectionId: connection.id
+      })
+    },
+    listPath: ApiRoutes.remittances.importProfiles,
+    modify: {
+      path: ApiRoutes.remittances.importProfileById,
+      method: 'patch',
+      body: { name: 'Taken over' }
+    },
+    untouched: async (owner, id) =>
+      (await owner.remittanceImportProfile.findUnique({ where: { id }, select: { name: true } }))
+        ?.name !== 'Taken over'
   },
   // Uninstalling is the one change a user can make; the installation is reached by its id
   {

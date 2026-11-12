@@ -32,6 +32,7 @@ export const PageTitles = {
   settingsOrderTemplates: ['settings.nav.store.orderMessages', 'shell.nav.settings'],
   settingsReturns: ['settings.nav.store.returns', 'shell.nav.settings'],
   settingsPreferences: ['settings.nav.store.preferences', 'shell.nav.settings'],
+  settingsCarriers: ['settings.nav.store.carriers', 'shell.nav.settings'],
   accountProfile: ['settings.nav.account.profile', 'settings.nav.account.title'],
   accountPreferences: ['settings.nav.account.preferences', 'settings.nav.account.title'],
   accountNotifications: ['settings.nav.account.notifications', 'settings.nav.account.title'],

@@ -31,6 +31,8 @@ export const LabelPageSizesMm: Record<LabelFormatType, { widthMm: number; height
 export const LocalGuide = {
   SEPARATOR: '-',
   SEQUENCE_DIGITS: 6,
+  // What a form lets the owner type (the pattern below is what decides)
+  PREFIX_MAX_LENGTH: 6,
   PREFIX_PATTERN: /^[A-Z0-9]{1,6}$/
 } as const
 

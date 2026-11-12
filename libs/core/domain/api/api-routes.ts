@@ -228,6 +228,8 @@ export const ApiRoutes = {
     lineById: (id: string, lineId: string) => `/remittances/${id}/lines/${lineId}`,
     confirm: (id: string) => `/remittances/${id}/confirm`,
     void: (id: string) => `/remittances/${id}/void`,
+    // A table pasted or a sample of a file, read with the mapping being tried: writes nothing (the mapper's preview)
+    importPreview: '/remittances/imports/preview',
     importProfiles: '/remittances/import-profiles',
     importProfileById: (id: string) => `/remittances/import-profiles/${id}`
   },

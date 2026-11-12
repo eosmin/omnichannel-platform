@@ -61,6 +61,7 @@ const TITLE_OF_PAGE: Record<string, string> = {
   's/[storeId]/settings/order-templates/page.tsx': 'settingsOrderTemplates',
   's/[storeId]/settings/returns/page.tsx': 'settingsReturns',
   's/[storeId]/settings/preferences/page.tsx': 'settingsPreferences',
+  's/[storeId]/settings/carriers/page.tsx': 'settingsCarriers',
   'account/profile/page.tsx': 'accountProfile',
   'account/preferences/page.tsx': 'accountPreferences',
   'account/notifications/page.tsx': 'accountNotifications',

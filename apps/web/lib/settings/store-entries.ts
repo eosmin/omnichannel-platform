@@ -103,6 +103,13 @@ export function storeSettingsEntries(storeId: string): SettingsEntry[] {
       labelKey: 'preferences',
       href: AppPaths.store.settings(storeId, StoreSettingsSections.PREFERENCES),
       permission: ClientPermissions.SETTINGS_VIEW
+    },
+    {
+      id: StoreSettingsSections.CARRIERS,
+      labelKey: 'carriers',
+      href: AppPaths.store.settings(storeId, StoreSettingsSections.CARRIERS),
+      // The api reads the connections with shipping:view; the page's controls ask settings:manage_carriers
+      permission: ClientPermissions.SHIPPING_VIEW
     }
   ]
 }
