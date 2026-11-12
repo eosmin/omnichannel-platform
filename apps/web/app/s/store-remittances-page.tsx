@@ -12,7 +12,7 @@ import { useStore } from '../../components/providers/store-context'
 import { PendingPanel } from '../../components/remittances/pending-panel'
 import { RemittanceStatusText } from '../../components/remittances/remittance-badges'
 import { LoadFailed, PageLoading, PermissionDenied } from '../../components/settings/states'
-import { Button } from '../../components/ui/button'
+import { Button, buttonVariants } from '../../components/ui/button'
 import { SELECT_CLASS } from '../../components/ui/field-classes'
 import { Label } from '../../components/ui/label'
 import { formatCents } from '../../lib/products/money'
@@ -198,15 +198,25 @@ function History(): ReactElement {
 // remittances, drafts included. Opening asks for remittances:view; what changes a remittance is on its own page.
 export function StoreRemittancesPage(): ReactElement {
   const t = useTranslations('remittances.list')
-  const { can } = useStore()
+  const { storeId, can } = useStore()
   if (!can(ClientPermissions.REMITTANCES_VIEW)) {
     return <PermissionDenied permission={ClientPermissions.REMITTANCES_VIEW} />
   }
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold">{t('pageTitle')}</h1>
-        <p className="text-muted-foreground text-sm">{t('description')}</p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-xl font-semibold">{t('pageTitle')}</h1>
+          <p className="text-muted-foreground text-sm">{t('description')}</p>
+        </div>
+        {can(ClientPermissions.REMITTANCES_MANAGE) ? (
+          <Link
+            href={AppPaths.store.remittanceImport(storeId)}
+            className={buttonVariants({ variant: 'outline' })}
+          >
+            {t('importAction')}
+          </Link>
+        ) : null}
       </header>
       <PendingPanel />
       <History />

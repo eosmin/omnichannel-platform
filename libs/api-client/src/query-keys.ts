@@ -210,7 +210,10 @@ export const QueryKeys = {
     detail: (storeId: string, remittanceId: string) =>
       ['remittances', storeId, 'detail', remittanceId] as const,
     profiles: (storeId: string, connectionId: string | null) =>
-      ['remittances', storeId, 'profiles', connectionId] as const
+      ['remittances', storeId, 'profiles', connectionId] as const,
+    // The preview of the mapper: the sample and the mapping being tried
+    preview: (storeId: string, request: object) =>
+      ['remittances', storeId, 'preview', request] as const
   },
   returnReception: {
     batch: (storeId: string, batchId: string) => ['return-reception', storeId, batchId] as const

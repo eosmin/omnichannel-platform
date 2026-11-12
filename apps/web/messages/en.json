@@ -4383,7 +4383,8 @@
         "reported": "Reported",
         "difference": "Difference"
       },
-      "loadMore": "Load more"
+      "loadMore": "Load more",
+      "importAction": "Import a file"
     },
     "pending": {
       "title": "Still owed by carriers",
@@ -4491,6 +4492,125 @@
       },
       "draftNote": "This draft settles nothing until it is confirmed. The result of each line is worked out again after every change.",
       "downloadFile": "Download the file"
+    },
+    "import": {
+      "title": "Import a settlement file",
+      "description": "Paste or upload the file a carrier sends with its settlement, say which column is which, check what is read, and make a draft.",
+      "back": "Back to remittances",
+      "noConnections": "No carrier connection of this store can collect cash on delivery, so there is nothing to import.",
+      "connection": "Carrier",
+      "fields": {
+        "guideNumber": "Guide column",
+        "amount": "Amount column",
+        "fee": "Fee column (optional)",
+        "date": "Day column (optional)",
+        "reference": "Settlement number column (optional)"
+      },
+      "source": {
+        "title": "The file",
+        "file": "Choose a CSV or TSV file",
+        "fileHint": "Up to 5 MB and 5,000 rows. An Excel workbook (.xlsx) is not read: save it as CSV first.",
+        "encoding": "File encoding",
+        "encodings": {
+          "utf8": "UTF-8",
+          "windows1252": "Windows-1252 (Excel)"
+        },
+        "paste": "Or paste the table",
+        "pastePlaceholder": "Guide,Amount\nG-1001,15.50",
+        "fromFile": "Read from {name}",
+        "clearFile": "Remove the file",
+        "problems": {
+          "too_large": "The file is larger than 5 MB.",
+          "empty": "The file is empty.",
+          "not_text": "The file cannot be read as text in this encoding. Try the other encoding, or save it as CSV."
+        }
+      },
+      "mapping": {
+        "title": "Which column is which",
+        "profile": "Saved mapping",
+        "newProfile": "A new mapping",
+        "delimiter": "Separator of cells",
+        "delimiters": {
+          "comma": "Comma",
+          "semicolon": "Semicolon",
+          "tab": "Tab"
+        },
+        "decimal": "Decimal separator",
+        "decimals": {
+          "dot": "Point (15.50)",
+          "comma": "Comma (15,50)"
+        },
+        "dateFormat": "Day format",
+        "hasHeader": "The first row names the columns",
+        "byHeader": "Type the text of each column header exactly as the file writes it.",
+        "byPosition": "The file has no header: type the position of each column, 0 for the first.",
+        "problems": {
+          "required": "{field}: choose a column.",
+          "position": "{field}: type a whole number from 0 to 200.",
+          "rule": "Each value needs a column of its own, and the cell separator cannot also be the decimal comma."
+        },
+        "name": "Name of the mapping",
+        "save": "Save mapping",
+        "update": "Update mapping",
+        "saved": "Mapping saved",
+        "delete": "Delete mapping",
+        "deleteDialog": {
+          "title": "Delete the mapping {name}?",
+          "description": "Remittances already made from it keep their lines. Files can no longer be read with it.",
+          "cancel": "Keep it",
+          "confirm": "Delete"
+        }
+      },
+      "preview": {
+        "title": "What is read",
+        "empty": "Choose or paste a file to see what is read from it.",
+        "hint": "Choose the guide and amount columns to see a preview. Nothing is saved by the preview.",
+        "rows": "{count, plural, one {# row read} other {# rows read}}, {shown} shown",
+        "reference": "settlement {value}",
+        "receivedOn": "day {value}",
+        "sampleOnly": "The preview reads only the start of the file. The whole file is checked when you import.",
+        "noLines": "No row could be read with this mapping.",
+        "caption": "The first rows read from the file",
+        "columns": {
+          "row": "Row",
+          "guide": "Guide",
+          "amount": "Amount",
+          "fee": "Fee"
+        }
+      },
+      "errors": {
+        "total": "{count, plural, one {# row cannot be read} other {# rows cannot be read}}.",
+        "moreNotShown": "Showing the first {count}.",
+        "caption": "Rows that cannot be read",
+        "row": "Row",
+        "field": "Value",
+        "problem": "Problem",
+        "value": "Cell",
+        "codes": {
+          "column_not_found": "The file has no column with that name or position",
+          "column_ambiguous": "Two columns have that name",
+          "missing_cell": "The row has fewer cells than the column asks for",
+          "empty_value": "The cell is empty",
+          "invalid_amount": "Not an amount (digits and one decimal separator, at most two decimals)",
+          "invalid_date": "Not a day in the chosen format",
+          "invalid_text": "The text has a control or invisible character",
+          "too_many_rows": "The file has more than 5,000 rows",
+          "empty_file": "The file has no rows",
+          "unclosed_quote": "A quote is never closed",
+          "row_too_wide": "More cells than the header: a separator may be inside a cell",
+          "stray_quote": "Text after the closing quote of a cell",
+          "column_reused": "Two values read the same column",
+          "unknown": "The row cannot be read"
+        }
+      },
+      "action": {
+        "title": "Make the draft",
+        "description": "The file becomes a draft remittance. Nothing is settled until you confirm it.",
+        "saveFirst": "Save the mapping first: the file is read with the saved mapping.",
+        "import": "Import the file",
+        "done": "Draft created",
+        "refused": "The file was not imported: some rows cannot be read. Fix them in the file, or change the mapping, and try again."
+      }
     }
   },
   "shipments": {
