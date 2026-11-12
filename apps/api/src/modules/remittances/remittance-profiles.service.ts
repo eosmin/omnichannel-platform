@@ -3,11 +3,11 @@ import { Injectable } from '@nestjs/common'
 import { isUniqueViolation, lockStoreForWrite, PrismaService } from '@platform/core/database'
 import {
   type CreateRemittanceImportProfileBody,
-  type RemittanceColumnRef,
   type RemittanceDateFormat,
   type RemittanceDecimalSeparator,
   type RemittanceDelimiter,
   type RemittanceImportMapping,
+  remittanceProfileProblem,
   type UpdateRemittanceImportProfileBody
 } from '@platform/core/domain'
 import {
@@ -72,10 +72,6 @@ export function profileViewOf(row: Row): RemittanceImportProfileView {
   }
 }
 
-function hasNamedColumn(columns: Record<string, RemittanceColumnRef | undefined>): boolean {
-  return Object.values(columns).some(ref => typeof ref === 'string')
-}
-
 // The saved mappings of a carrier's settlement file, one set per connection (TDD_17 §4.15). They are only how a file is read: no
 // money moves through them, so the routes ask for remittances:manage and nothing is audited.
 @Injectable()
@@ -138,22 +134,17 @@ export class RemittanceProfilesService {
           select: SELECT
         })
         if (current === null) throw resourceNotFound('import profile')
-        const hasHeader = body.hasHeader ?? current.hasHeader
-        const columns = body.columns ?? (current.columns as unknown as RemittanceImportMapping)
-        // A file with no header can only be read by the position of its columns: the merged profile is checked, not the change
-        if (!hasHeader && hasNamedColumn({ ...columns })) {
+        // The profile the change would leave is held to the same rules as one that is created
+        const problem = remittanceProfileProblem({
+          hasHeader: body.hasHeader ?? current.hasHeader,
+          delimiter: body.delimiter ?? current.delimiter,
+          decimalSeparator: body.decimalSeparator ?? current.decimalSeparator,
+          columns: { ...(body.columns ?? (current.columns as unknown as RemittanceImportMapping)) }
+        })
+        if (problem !== null) {
           throw new PlatformException(
             ErrorCodes.VALIDATION_FAILED,
-            'a file with no header is mapped by column position',
-            HttpStatusCodes.BAD_REQUEST
-          )
-        }
-        const delimiter = body.delimiter ?? current.delimiter
-        const decimalSeparator = body.decimalSeparator ?? current.decimalSeparator
-        if (delimiter === decimalSeparator) {
-          throw new PlatformException(
-            ErrorCodes.VALIDATION_FAILED,
-            'the delimiter and the decimal separator must differ',
+            problem,
             HttpStatusCodes.BAD_REQUEST
           )
         }

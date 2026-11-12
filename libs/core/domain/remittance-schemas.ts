@@ -103,20 +103,27 @@ const dateFormatSchema = z.enum([
   RemittanceDateFormats.DAY_FIRST_DASH
 ])
 
-// A file with no header row can only be read by the position of its columns
-function namesNeedAHeader(value: {
+// The two rules a profile must keep, written once: the schemas refuse a profile that breaks one (400) and the service checks the
+// profile a change would leave (the database repeats the second as a CHECK). Returns what is wrong, or null.
+export function remittanceProfileProblem(value: {
   hasHeader: boolean
+  delimiter: string
+  decimalSeparator: string
   columns: Record<string, string | number | undefined>
-}): boolean {
-  return value.hasHeader || Object.values(value.columns).every(ref => typeof ref !== 'string')
+}): string | null {
+  // A file with no header can only be read by the position of its columns
+  if (!value.hasHeader && Object.values(value.columns).some(ref => typeof ref === 'string')) {
+    return 'a file with no header is mapped by column position'
+  }
+  // A comma that separates the cells cannot also be the decimal comma: "12,50" would be two cells
+  if (value.delimiter === value.decimalSeparator) {
+    return 'the delimiter and the decimal separator must differ'
+  }
+  return null
 }
-const HEADER_MESSAGE = { message: 'a file with no header is mapped by column position' }
-
-// A comma that separates the cells cannot also be the decimal comma: "12,50" would be two cells
-function separatorsDiffer(value: { delimiter: string; decimalSeparator: string }): boolean {
-  return value.delimiter !== value.decimalSeparator
-}
-const SEPARATOR_MESSAGE = { message: 'the delimiter and the decimal separator must differ' }
+const profileIsValid = (value: Parameters<typeof remittanceProfileProblem>[0]): boolean =>
+  remittanceProfileProblem(value) === null
+const PROFILE_MESSAGE = { message: 'the profile breaks a rule of the import profiles' }
 
 export const remittanceImportProfileBodySchema = z.strictObject({
   delimiter: delimiterSchema.default(RemittanceDelimiters.COMMA),
@@ -137,8 +144,7 @@ export const createRemittanceImportProfileSchema = z
     dateFormat: dateFormatSchema.default(RemittanceDateFormats.ISO),
     columns: remittanceImportMappingSchema
   })
-  .refine(namesNeedAHeader, HEADER_MESSAGE)
-  .refine(separatorsDiffer, SEPARATOR_MESSAGE)
+  .refine(profileIsValid, PROFILE_MESSAGE)
 export type CreateRemittanceImportProfileBody = z.output<typeof createRemittanceImportProfileSchema>
 
 export const updateRemittanceImportProfileSchema = z
@@ -167,9 +173,7 @@ export const remittanceImportPreviewSchema = z.strictObject({
         message: 'the sample is larger than a preview takes'
       }
     ),
-  profile: remittanceImportProfileBodySchema
-    .refine(namesNeedAHeader, HEADER_MESSAGE)
-    .refine(separatorsDiffer, SEPARATOR_MESSAGE)
+  profile: remittanceImportProfileBodySchema.refine(profileIsValid, PROFILE_MESSAGE)
 })
 export type RemittanceImportPreviewBody = z.output<typeof remittanceImportPreviewSchema>
 

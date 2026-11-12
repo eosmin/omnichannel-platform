@@ -31,7 +31,7 @@ import { StorageService } from '@platform/core/storage-module'
 
 import type { Actor } from '../tenancy'
 
-import { ImportContentTypes } from './remittance-import-body'
+import { type ImportBody, ImportContentTypes } from './remittance-import-body'
 import { RemittancesApiService } from './remittances.service'
 import type { RemittanceDetailView } from './remittances.views'
 
@@ -90,7 +90,7 @@ export class RemittanceImportsService {
   async importFile(
     storeId: string,
     query: RemittanceImportQuery,
-    text: string,
+    file: ImportBody,
     actor: Actor
   ): Promise<RemittanceDetailView> {
     const profile = await this.prisma.client.remittanceImportProfile.findFirst({
@@ -98,7 +98,7 @@ export class RemittanceImportsService {
     })
     // A profile of another connection or store is not found: it says nothing about which of them it is
     if (profile === null) throw resourceNotFound('import profile')
-    const parsed = parseRemittanceFile(text, shapeOf(profile))
+    const parsed = parseRemittanceFile(file.text, shapeOf(profile))
     if (parsed.errorCount > 0) {
       throw new PlatformException(
         ErrorCodes.REMITTANCE_IMPORT_INVALID,
@@ -107,7 +107,7 @@ export class RemittanceImportsService {
         { errorCount: parsed.errorCount, errors: parsed.errors }
       )
     }
-    const bytes = Buffer.from(text, 'utf8')
+    const bytes = file.bytes
     const mediaId = randomUUID()
     const tab = profile.delimiter === String(RemittanceDelimiters.TAB)
     const contentType = tab ? ImportContentTypes.TSV : ImportContentTypes.CSV

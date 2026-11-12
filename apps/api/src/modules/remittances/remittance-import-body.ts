@@ -30,10 +30,19 @@ export function isImportContentType(header: string | undefined): boolean {
   return ACCEPTED.includes(mediaTypeOf(header))
 }
 
+// What was read: the text, and the bytes it was made from (the file that is kept as evidence is the one that was sent, byte for byte)
+export interface ImportBody {
+  text: string
+  bytes: Buffer
+}
+
+// After the limit, what is left of an upload is read and thrown away only up to this much more: past it the connection is closed
+const DRAIN_EXTRA_BYTES = 1024 * 1024
+
 export async function readImportBody(
   request: Readable & { headers: Record<string, string | string[] | undefined> },
   maxBytes: number
-): Promise<string> {
+): Promise<ImportBody> {
   const length = Number(request.headers['content-length'])
   if (Number.isFinite(length) && length > maxBytes) {
     throw refusal(
@@ -58,7 +67,11 @@ export async function readImportBody(
       if (size > maxBytes) {
         request.off('data', onData)
         // Nothing more is kept: what is left of the upload is read and thrown away, so the answer can go out
-        request.on('data', () => undefined)
+        let drained = 0
+        request.on('data', (rest: Buffer | string) => {
+          drained += rest.length
+          if (drained > DRAIN_EXTRA_BYTES) request.destroy()
+        })
         reject(tooLarge())
         return
       }
@@ -68,8 +81,10 @@ export async function readImportBody(
     request.once('end', resolve)
     request.once('error', reject)
   })
+  const bytes = Buffer.concat(chunks)
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks))
+    // The BOM stays in the bytes that are kept, and is not part of the text that is read
+    return { text: new TextDecoder('utf-8', { fatal: true }).decode(bytes), bytes }
   } catch {
     throw refusal(
       ErrorCodes.REMITTANCE_IMPORT_INVALID,

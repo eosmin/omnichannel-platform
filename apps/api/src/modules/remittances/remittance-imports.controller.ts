@@ -128,7 +128,7 @@ export class RemittanceImportsController {
         HttpStatusCodes.BAD_REQUEST
       )
     }
-    const text = await readImportBody(req, RemittanceImportLimits.MAX_BYTES)
-    return this.imports.importFile(store.id, query, text, actorOf(user, store, req))
+    const file = await readImportBody(req, RemittanceImportLimits.MAX_BYTES)
+    return this.imports.importFile(store.id, query, file, actorOf(user, store, req))
   }
 }

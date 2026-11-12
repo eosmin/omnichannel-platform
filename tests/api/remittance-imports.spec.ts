@@ -207,7 +207,7 @@ describe('Importing the settlement file of a carrier (TDD_17 §4.15, Step 4.13 P
       expect(same.status).toBe(BAD_REQUEST)
     })
 
-    it('lets the remittances that it read keep their lines when it is deleted', async () => {
+    it('lets the remittances that it read keep their lines, and the id of how they were read, when it is deleted', async () => {
       const id = await profile()
       await pending('PRO-DEL-1', 500)
       const made = await sendFile(id, 'Guia,Monto\nPRO-DEL-1,5.00\n')
@@ -221,7 +221,9 @@ describe('Importing the settlement file of a carrier (TDD_17 §4.15, Step 4.13 P
         where: { id: draft.id },
         include: { lines: true }
       })
-      expect(row.importProfileId).toBeNull()
+      // The id stays as the evidence of how the file was read; the profile itself is gone
+      expect(row.importProfileId).toBe(id)
+      expect(await owner.remittanceImportProfile.count({ where: { id } })).toBe(0)
       expect(row.lines).toHaveLength(1)
     })
   })
@@ -342,6 +344,24 @@ describe('Importing the settlement file of a carrier (TDD_17 §4.15, Step 4.13 P
       expect((await asAdmin().delete(ApiRoutes.remittances.byId(draft.id))).status).toBe(NO_CONTENT)
       expect(await owner.media.count({ where: { id: media.id } })).toBe(0)
       expect(await app.get(StorageService).head(media.key)).toBeNull()
+    })
+
+    it('keeps the file as it was sent, with its BOM, and reads it without the BOM', async () => {
+      const id = await profile()
+      const sent = Buffer.concat([
+        Buffer.from([0xef, 0xbb, 0xbf]),
+        Buffer.from('Guia,Monto,\nBOM-1,1.00,\n')
+      ])
+      const made = await sendFile(id, sent)
+      expect(made.status).toBe(CREATED)
+      expect((made.body as DraftBody).lines).toHaveLength(1)
+      const stored = await owner.codRemittance.findUniqueOrThrow({
+        where: { id: (made.body as DraftBody).id }
+      })
+      const media = await owner.media.findUniqueOrThrow({
+        where: { id: stored.sourceMediaId ?? '' }
+      })
+      expect(media.fileSize).toBe(sent.length)
     })
 
     it('reads a table pasted with tabs as text/plain', async () => {

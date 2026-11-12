@@ -209,6 +209,24 @@ describe('parseRemittanceFile', () => {
     ])
   })
 
+  it('tolerates empty cells past the header (a trailing delimiter) and refuses a filled one', () => {
+    const ok = parseRemittanceFile('Guia,Monto\nG-1,5,\nG-2,6,,\n', profile())
+    expect(ok.errorCount).toBe(0)
+    expect(ok.lines).toHaveLength(2)
+    const shifted = parseRemittanceFile('Guia,Monto\nG-1,5,x\n', profile())
+    expect(shifted.errors[0]?.code).toBe(RemittanceImportErrors.ROW_TOO_WIDE)
+  })
+
+  it('points the open quote at the line where its row starts', () => {
+    const result = parseRemittanceFile(
+      'Guia,Monto,Nota\nG-1,5,"a\nb\nc"\nG-2,6,"never closed\n',
+      profile()
+    )
+    expect(result.errors).toEqual([
+      { row: 5, field: null, code: RemittanceImportErrors.UNCLOSED_QUOTE, value: null }
+    ])
+  })
+
   it('refuses a day that Postgres cannot store', () => {
     expect(parseImportDay('0000-01-01', RemittanceDateFormats.ISO)).toBeNull()
     expect(parseImportDay('1969-12-31', RemittanceDateFormats.ISO)).toBeNull()

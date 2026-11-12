@@ -9,14 +9,16 @@ const request = (chunks: Buffer[], headers: Record<string, string> = {}) =>
 
 describe('readImportBody', () => {
   it('reads the text of the body, in as many chunks as it comes', async () => {
-    const text = await readImportBody(
+    const { text } = await readImportBody(
       request([Buffer.from('Guia,Mo'), Buffer.from('nto\nG-1,5\n')]),
       1024
     )
     expect(text).toBe('Guia,Monto\nG-1,5\n')
   })
   it('reads accents as they were sent', async () => {
-    expect(await readImportBody(request([Buffer.from('Guía,Cañón')]), 1024)).toBe('Guía,Cañón')
+    expect((await readImportBody(request([Buffer.from('Guía,Cañón')]), 1024)).text).toBe(
+      'Guía,Cañón'
+    )
   })
   it('refuses a body larger than the limit while reading it, and by its declared length before', async () => {
     await expect(readImportBody(request([Buffer.alloc(11)]), 10)).rejects.toMatchObject({
@@ -34,8 +36,15 @@ describe('readImportBody', () => {
       code: ErrorCodes.REMITTANCE_IMPORT_INVALID
     })
   })
+  it('keeps the bytes that were sent, a BOM included', async () => {
+    const sent = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('a,b')])
+    const body = await readImportBody(request([sent]), 1024)
+    expect(body.bytes.equals(sent)).toBe(true)
+    expect(body.text).toBe('a,b')
+  })
+
   it('reads an empty body as empty text', async () => {
-    expect(await readImportBody(request([]), 10)).toBe('')
+    expect((await readImportBody(request([]), 10)).text).toBe('')
   })
 })
 

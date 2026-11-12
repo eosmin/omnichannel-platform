@@ -120,7 +120,7 @@ export interface ParsedRemittanceFile {
 export function splitDelimited(
   text: string,
   delimiter: RemittanceDelimiter
-): { rows: string[][]; lines: number[]; unclosedQuote: boolean } {
+): { rows: string[][]; lines: number[]; unclosedQuote: boolean; openLine: number } {
   const source = text.startsWith('\uFEFF') ? text.slice(1) : text
   const rows: string[][] = []
   // The line of the file where each row starts, as an editor counts them: a line break inside a quoted cell counts too
@@ -172,9 +172,15 @@ export function splitDelimited(
       touched = true
     }
   }
-  if (quoted) return { rows, lines, unclosedQuote: true }
+  if (quoted) return { rows, lines, unclosedQuote: true, openLine: rowLine }
   if (touched || cell !== '') endRow()
-  return { rows, lines, unclosedQuote: false }
+  return { rows, lines, unclosedQuote: false, openLine: rowLine }
+}
+
+// One pattern for each decimal separator, built once
+const MONEY_PATTERNS: Record<RemittanceDecimalSeparator, RegExp> = {
+  [RemittanceDecimalSeparators.DOT]: /^(\d{1,12})(?:\.(\d{1,2}))?$/,
+  [RemittanceDecimalSeparators.COMMA]: /^(\d{1,12})(?:,(\d{1,2}))?$/
 }
 
 // Digits with at most one decimal separator and at most two decimals: "12", "12.5", "12.50" (or with the comma, when the profile
@@ -184,14 +190,10 @@ export function parseMoneyCents(
   cell: string,
   decimalSeparator: RemittanceDecimalSeparator
 ): number | null {
-  const text = cell.trim()
-  const separator = decimalSeparator === RemittanceDecimalSeparators.COMMA ? ',' : '.'
-  const pattern = new RegExp(`^(\\d{1,12})(?:${separator === '.' ? '\\.' : ','}(\\d{1,2}))?$`)
-  const match = pattern.exec(text)
+  const match = MONEY_PATTERNS[decimalSeparator].exec(cell.trim())
   if (match === null) return null
   const whole = Number(match[1])
-  const fraction = (match[2] ?? '').padEnd(2, '0')
-  const cents = whole * 100 + Number(fraction === '' ? '0' : fraction)
+  const cents = whole * 100 + Number((match[2] ?? '').padEnd(2, '0'))
   return Number.isSafeInteger(cents) && cents <= RemittanceLimits.MAX_AMOUNT_CENTS ? cents : null
 }
 
@@ -288,9 +290,14 @@ export function parseRemittanceFile(
     reference: null,
     receivedOn: null
   }
-  const { rows, lines: startLines, unclosedQuote } = splitDelimited(text, profile.delimiter)
+  const {
+    rows,
+    lines: startLines,
+    unclosedQuote,
+    openLine
+  } = splitDelimited(text, profile.delimiter)
   if (unclosedQuote) {
-    fail((startLines.at(-1) ?? 0) + 1, null, RemittanceImportErrors.UNCLOSED_QUOTE, null)
+    fail(openLine, null, RemittanceImportErrors.UNCLOSED_QUOTE, null)
     return { ...empty, errorCount }
   }
   // Each row with the line of the file where it starts (empty lines are counted and then skipped)
@@ -359,7 +366,8 @@ export function parseRemittanceFile(
     const before = errorCount
     // A row with more cells than the header has is a cell with an unquoted delimiter in it: the columns after it moved, so no
     // amount of this row can be trusted
-    if (profile.hasHeader && cells.length > headerRow.length) {
+    // (cells that are empty past the header, a trailing delimiter, move nothing)
+    if (profile.hasHeader && cells.slice(headerRow.length).some(extra => extra.trim() !== '')) {
       fail(row, null, RemittanceImportErrors.ROW_TOO_WIDE, String(cells.length))
       continue
     }
