@@ -27,19 +27,20 @@ import {
 
 import { useCustomerDrawer } from '../../components/customers/customer-drawer-context'
 import { MutationError } from '../../components/customers/mutation-error'
-import { OrderBulkBar, OrderBulkReport } from '../../components/orders/lazy-bulk'
+import { OrderBulkPanel } from '../../components/orders/lazy-bulk'
 import { useOrderDrawer } from '../../components/orders/order-drawer-context'
 import { useStore } from '../../components/providers/store-context'
 import { Button } from '../../components/ui/button'
 import { SELECT_CLASS } from '../../components/ui/field-classes'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
-import { availabilityOf, type BulkConnection, liveGuidesByOrder } from '../../lib/orders/order-bulk'
+import type { BulkConnection } from '../../lib/orders/order-bulk'
 import {
   activeFilterCount,
   withScheduledDays,
   withScheduledShortcut
 } from '../../lib/orders/order-filters'
+import { liveGuidesByOrder } from '../../lib/orders/order-guides'
 import {
   keepShown,
   NO_SELECTION,
@@ -47,12 +48,8 @@ import {
   toggleAll,
   toggleOrder
 } from '../../lib/orders/order-selection'
-import {
-  useCarrierConnections,
-  useOrderBulk,
-  useOrderShipments
-} from '../../lib/orders/use-order-bulk'
 import { useOrderFilters } from '../../lib/orders/use-order-filters'
+import { useCarrierConnections, useOrderShipments } from '../../lib/orders/use-order-shipping'
 import { useExportOrders, useOrderList } from '../../lib/orders/use-orders'
 import { formatCents } from '../../lib/products/money'
 import { toast } from '../../lib/toast'
@@ -283,12 +280,6 @@ export function OrdersPage(): ReactElement {
   const guides = useMemo(() => liveGuidesByOrder(shipments), [shipments])
   const rowsById = useMemo(() => new Map(rows.map(row => [row.id, row])), [rows])
   const selectedIds = useMemo(() => [...selection], [selection])
-  const bulkInput = useMemo(
-    () => ({ selectedIds, rows, guides, connections, can }),
-    [selectedIds, rows, guides, connections, can]
-  )
-  const bulk = useOrderBulk(storeId, bulkInput)
-  const availability = availabilityOf(bulkInput)
   useEffect(() => {
     setSelection(current => keepShown(current, shownIds))
   }, [shownIds])
@@ -620,21 +611,15 @@ export function OrdersPage(): ReactElement {
       ) : null}
 
       {selection.size > 0 ? (
-        <OrderBulkBar
-          bulk={bulk}
-          availability={availability}
-          selectedCount={selection.size}
-          connections={connections}
-          onClear={() => setSelection(NO_SELECTION)}
-        />
-      ) : null}
-      {bulk.report !== null || bulk.failure !== null ? (
-        <OrderBulkReport
-          report={bulk.report}
-          failure={bulk.failure}
-          rows={rowsById}
+        <OrderBulkPanel
+          storeId={storeId}
+          selectedIds={selectedIds}
+          rows={rows}
+          rowsById={rowsById}
           guides={guides}
-          onClose={bulk.dismiss}
+          connections={connections}
+          can={can}
+          onClear={() => setSelection(NO_SELECTION)}
         />
       ) : null}
 

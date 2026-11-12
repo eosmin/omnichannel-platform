@@ -1,6 +1,8 @@
 import type { CarrierConnectionView } from '@platform/api-client'
 
 import {
+  acceptsCashOnDelivery,
+  canPoll,
   carrierRulesChanges,
   carrierRulesDraftOf,
   carrierRulesProblems,
@@ -99,6 +101,105 @@ describe('carrier rules draft', () => {
   it('sends new credentials only when typed', () => {
     const draft = { ...carrierRulesDraftOf(view), credentials: '{"apiKey":"k"}' }
     expect(carrierRulesChanges(view, draft)).toEqual({ credentials: { apiKey: 'k' } })
+  })
+})
+
+describe('carrier shipping settings', () => {
+  const withServices: CarrierConnectionView = {
+    ...view,
+    defaultServiceCode: 'std',
+    services: [
+      { code: 'std', label: 'Standard', active: true },
+      { code: 'exp', label: 'Express', active: true }
+    ],
+    defaultShippingFeeCents: 500,
+    minShippingFeeCents: 300,
+    maxShippingFeeCents: 900
+  }
+
+  it('shows the money as dollars and sends cents, only for what changed', () => {
+    const draft = carrierRulesDraftOf(withServices)
+    expect(draft.defaultFee).toBe('5.00')
+    expect(carrierRulesChanges(withServices, draft)).toEqual({})
+    const edited = {
+      ...draft,
+      defaultFee: '6,5',
+      maxFee: '',
+      defaultShippingPayer: 'recipient',
+      labelFormat: 'pdf_a4',
+      maxDeliveryAttempts: '5',
+      pollIntervalMinutes: '15',
+      remittanceDeductsFee: true,
+      defaultServiceCode: 'exp',
+      services: [
+        { code: 'std', label: ' Standard plus ', active: true },
+        { code: 'exp', label: 'Express', active: false }
+      ]
+    }
+    expect(carrierRulesChanges(withServices, edited)).toEqual({
+      defaultShippingFeeCents: 650,
+      maxShippingFeeCents: null,
+      defaultShippingPayer: 'recipient',
+      labelFormat: 'pdf_a4',
+      maxDeliveryAttempts: 5,
+      pollIntervalMinutes: 15,
+      remittanceDeductsFee: true,
+      defaultServiceCode: 'exp',
+      services: [
+        { code: 'std', label: 'Standard plus' },
+        { code: 'exp', active: false }
+      ]
+    })
+  })
+
+  it('refuses what the table refuses', () => {
+    const base = carrierRulesDraftOf(withServices)
+    expect(carrierRulesProblems({ ...base, defaultFee: '1.234' })).toEqual(['fee'])
+    expect(carrierRulesProblems({ ...base, minFee: '9', maxFee: '4' })).toEqual(['feeRange'])
+    expect(carrierRulesProblems({ ...base, maxDeliveryAttempts: '11' })).toEqual(['attempts'])
+    expect(carrierRulesProblems({ ...base, maxDeliveryAttempts: '0' })).toEqual(['attempts'])
+    expect(carrierRulesProblems({ ...base, pollIntervalMinutes: '1441' })).toEqual(['poll'])
+    expect(carrierRulesProblems({ ...base, pollIntervalMinutes: '' })).toEqual([])
+    expect(
+      carrierRulesProblems({ ...base, services: [{ code: 'std', label: ' ', active: true }] })
+    ).toEqual(['serviceLabel'])
+    // Switching the default service off needs another default first
+    expect(
+      carrierRulesProblems({
+        ...base,
+        services: [
+          { code: 'std', label: 'Standard', active: false },
+          { code: 'exp', label: 'Express', active: true }
+        ]
+      })
+    ).toEqual(['defaultService'])
+    expect(carrierRulesProblems({ ...base, defaultFee: '2000000' })).toEqual(['fee'])
+  })
+
+  it('sends nothing for what did not change, clears the interval and the fee on empty, and keeps the default', () => {
+    const saved = { ...withServices, pollIntervalMinutes: 20 }
+    const draft = {
+      ...carrierRulesDraftOf(saved),
+      pollIntervalMinutes: '',
+      minFee: '',
+      defaultServiceCode: '',
+      services: [
+        { code: 'std', label: 'Standard', active: true },
+        { code: 'exp', label: 'Express', active: true },
+        { code: 'gone', label: 'Not ours', active: false }
+      ]
+    }
+    expect(carrierRulesChanges(saved, draft)).toEqual({
+      pollIntervalMinutes: null,
+      minShippingFeeCents: null
+    })
+  })
+
+  it('knows what a connection declares', () => {
+    expect(canPoll(['fetch_status'])).toBe(true)
+    expect(canPoll([])).toBe(false)
+    expect(acceptsCashOnDelivery(['cod'])).toBe(true)
+    expect(acceptsCashOnDelivery([])).toBe(false)
   })
 })
 

@@ -20,7 +20,7 @@ import {
   type ShipmentAction,
   ShipmentActions
 } from '../../lib/orders/order-shipping-rules'
-import { type ShipmentWrites } from '../../lib/orders/use-order-shipping'
+import { type ShipmentWrites } from '../../lib/orders/use-order-guides'
 import { formatCents } from '../../lib/products/money'
 import { toast } from '../../lib/toast'
 import { MutationError } from '../customers/mutation-error'

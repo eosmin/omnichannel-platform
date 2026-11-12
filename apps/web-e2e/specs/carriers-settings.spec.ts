@@ -68,9 +68,27 @@ test.describe('Settings → Carriers', () => {
     await rules.getByRole('checkbox', { name: carriers.rules.pickup.weekdays['1'] }).check()
     await rules.getByRole('checkbox', { name: carriers.rules.pickup.weekdays['3'] }).check()
     await rules.getByLabel(carriers.rules.pickup.cutoff).fill('15:00')
+    // The shipping settings: who pays, the usual fee and the attempts; a fee range that does not hold is refused first
+    await rules.getByLabel(carriers.rules.shipping.payer).selectOption('recipient')
+    await rules.getByLabel(carriers.rules.shipping.fees.default).fill('9')
+    await rules.getByLabel(carriers.rules.shipping.fees.max).fill('5')
+    await rules.getByRole('button', { name: carriers.rules.save }).click()
+    await expect(rules.getByRole('alert').getByText(carriers.rules.problems.feeRange)).toBeVisible()
+    await rules.getByLabel(carriers.rules.shipping.fees.max).fill('12')
+    await rules.getByLabel(carriers.rules.shipping.attempts).fill('5')
     await rules.getByRole('button', { name: carriers.rules.save }).click()
     await expect(page.getByText('Juan local').first()).toBeVisible()
     await expect(rules).toHaveCount(0)
+
+    // What was saved is what comes back when the dialog is opened again (fees travel as cents and come back as dollars)
+    await card.getByRole('button', { name: carriers.card.edit }).click()
+    const reopened = page.getByRole('dialog', { name: /Juan local/ })
+    await expect(reopened.getByLabel(carriers.rules.shipping.payer)).toHaveValue('recipient')
+    await expect(reopened.getByLabel(carriers.rules.shipping.fees.default)).toHaveValue('9.00')
+    await expect(reopened.getByLabel(carriers.rules.shipping.fees.max)).toHaveValue('12.00')
+    await expect(reopened.getByLabel(carriers.rules.shipping.attempts)).toHaveValue('5')
+    await reopened.getByRole('button', { name: en.common.cancel }).click()
+    await expect(reopened).toHaveCount(0)
 
     // The status mapping tab: nothing waits and nothing is mapped for a courier that sends no statuses
     await page.getByRole('tab', { name: carriers.sections.mapping }).click()

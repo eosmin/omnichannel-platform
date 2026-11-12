@@ -7,8 +7,11 @@ import {
   CarrierCapability,
   CarrierConnectionLimits,
   CLOCK_TIME_PATTERN,
-  LocalGuide
+  LocalGuide,
+  shippingFeeRangeProblem
 } from '@platform/core/domain'
+
+import { centsToInput, parseCents } from '../products/money'
 
 // The forms of Settings → Carriers as plain values, and the checks done before the request. The api checks the same and
 // decides. Nothing here knows a carrier: what a form asks for comes from the capabilities the connection or the registry
@@ -24,7 +27,13 @@ export const CarrierRulesProblems = {
   AUTO_NEEDS_PICKUPS: 'autoNeedsPickups',
   AUTO_TIME: 'autoTime',
   REMINDER: 'reminder',
-  CREDENTIALS: 'credentials'
+  CREDENTIALS: 'credentials',
+  SERVICE_LABEL: 'serviceLabel',
+  DEFAULT_SERVICE: 'defaultService',
+  FEE: 'fee',
+  FEE_RANGE: 'feeRange',
+  ATTEMPTS: 'attempts',
+  POLL: 'poll'
 } as const
 export type CarrierRulesProblem = (typeof CarrierRulesProblems)[keyof typeof CarrierRulesProblems]
 
@@ -41,6 +50,19 @@ export interface CarrierRulesDraft {
   pickupReminderMinutes: string
   // New credentials, as a JSON object; empty keeps the ones the connection has
   credentials: string
+  defaultServiceCode: string
+  defaultShippingPayer: string
+  labelFormat: string
+  // Money as typed ("15.50"); empty is "none"
+  defaultFee: string
+  minFee: string
+  maxFee: string
+  remittanceDeductsFee: boolean
+  // Digits as typed
+  maxDeliveryAttempts: string
+  // Digits as typed; empty is "the platform's own interval"
+  pollIntervalMinutes: string
+  services: { code: string; label: string; active: boolean }[]
 }
 
 export function carrierRulesDraftOf(view: CarrierConnectionView): CarrierRulesDraft {
@@ -53,8 +75,35 @@ export function carrierRulesDraftOf(view: CarrierConnectionView): CarrierRulesDr
     autoPickup: view.autoPickup,
     autoPickupTime: view.autoPickupTime ?? '',
     pickupReminderMinutes: String(view.pickupReminderMinutes),
-    credentials: ''
+    credentials: '',
+    defaultServiceCode: view.defaultServiceCode ?? '',
+    defaultShippingPayer: view.defaultShippingPayer,
+    labelFormat: view.labelFormat,
+    defaultFee: feeInput(view.defaultShippingFeeCents),
+    minFee: feeInput(view.minShippingFeeCents),
+    maxFee: feeInput(view.maxShippingFeeCents),
+    remittanceDeductsFee: view.remittanceDeductsFee,
+    maxDeliveryAttempts: String(view.maxDeliveryAttempts),
+    pollIntervalMinutes: view.pollIntervalMinutes === null ? '' : String(view.pollIntervalMinutes),
+    services: view.services.map(service => ({ ...service }))
   }
+}
+
+const feeInput = (cents: number | null): string => (cents === null ? '' : centsToInput(cents))
+
+// Empty is none (null); otherwise an amount in dollars. Undefined is a text that is not one, or is over the limit.
+function feeOf(text: string): number | null | undefined {
+  if (text.trim() === '') return null
+  const cents = parseCents(text)
+  return cents !== null && cents <= CarrierConnectionLimits.MAX_FEE_CENTS ? cents : undefined
+}
+
+// Whole numbers inside a range; undefined for a text that is not one
+function wholeOf(text: string, min: number, max: number): number | undefined {
+  const trimmed = text.trim()
+  if (!/^\d+$/.test(trimmed)) return undefined
+  const value = Number(trimmed)
+  return value >= min && value <= max ? value : undefined
 }
 
 // Empty is none (null); a time is HH:MM. Undefined is a text that is neither.
@@ -108,6 +157,46 @@ export function carrierRulesProblems(draft: CarrierRulesDraft): CarrierRulesProb
   if (parseCredentials(draft.credentials) === undefined) {
     problems.push(CarrierRulesProblems.CREDENTIALS)
   }
+  if (
+    draft.services.some(
+      service =>
+        service.label.trim() === '' ||
+        service.label.trim().length > CarrierConnectionLimits.SERVICE_LABEL_MAX_LENGTH
+    )
+  ) {
+    problems.push(CarrierRulesProblems.SERVICE_LABEL)
+  }
+  // The default service is one that stays active: switching it off needs another default first
+  if (
+    draft.defaultServiceCode !== '' &&
+    draft.services.some(service => service.code === draft.defaultServiceCode && !service.active)
+  ) {
+    problems.push(CarrierRulesProblems.DEFAULT_SERVICE)
+  }
+  const fees = [feeOf(draft.defaultFee), feeOf(draft.minFee), feeOf(draft.maxFee)]
+  if (fees.includes(undefined)) {
+    problems.push(CarrierRulesProblems.FEE)
+  } else if (
+    shippingFeeRangeProblem({
+      defaultShippingFeeCents: fees[0],
+      minShippingFeeCents: fees[1],
+      maxShippingFeeCents: fees[2]
+    }) !== null
+  ) {
+    problems.push(CarrierRulesProblems.FEE_RANGE)
+  }
+  if (
+    wholeOf(draft.maxDeliveryAttempts, 1, CarrierConnectionLimits.MAX_DELIVERY_ATTEMPTS) ===
+    undefined
+  ) {
+    problems.push(CarrierRulesProblems.ATTEMPTS)
+  }
+  if (
+    draft.pollIntervalMinutes.trim() !== '' &&
+    wholeOf(draft.pollIntervalMinutes, 1, CarrierConnectionLimits.MAX_POLL_MINUTES) === undefined
+  ) {
+    problems.push(CarrierRulesProblems.POLL)
+  }
   return problems
 }
 
@@ -145,6 +234,52 @@ export function carrierRulesChanges(
   }
   const credentials = parseCredentials(draft.credentials)
   if (credentials !== null && credentials !== undefined) changes.credentials = credentials
+  if (draft.defaultServiceCode !== '' && draft.defaultServiceCode !== saved.defaultServiceCode) {
+    changes.defaultServiceCode = draft.defaultServiceCode
+  }
+  if (draft.defaultShippingPayer !== saved.defaultShippingPayer) {
+    changes.defaultShippingPayer = draft.defaultShippingPayer
+  }
+  if (draft.labelFormat !== saved.labelFormat) changes.labelFormat = draft.labelFormat
+  const defaultFee = feeOf(draft.defaultFee)
+  if (defaultFee !== undefined && defaultFee !== saved.defaultShippingFeeCents) {
+    changes.defaultShippingFeeCents = defaultFee
+  }
+  const minFee = feeOf(draft.minFee)
+  if (minFee !== undefined && minFee !== saved.minShippingFeeCents) {
+    changes.minShippingFeeCents = minFee
+  }
+  const maxFee = feeOf(draft.maxFee)
+  if (maxFee !== undefined && maxFee !== saved.maxShippingFeeCents) {
+    changes.maxShippingFeeCents = maxFee
+  }
+  if (draft.remittanceDeductsFee !== saved.remittanceDeductsFee) {
+    changes.remittanceDeductsFee = draft.remittanceDeductsFee
+  }
+  const attempts = wholeOf(
+    draft.maxDeliveryAttempts,
+    1,
+    CarrierConnectionLimits.MAX_DELIVERY_ATTEMPTS
+  )
+  if (attempts !== undefined && attempts !== saved.maxDeliveryAttempts) {
+    changes.maxDeliveryAttempts = attempts
+  }
+  const poll =
+    draft.pollIntervalMinutes.trim() === ''
+      ? null
+      : wholeOf(draft.pollIntervalMinutes, 1, CarrierConnectionLimits.MAX_POLL_MINUTES)
+  if (poll !== undefined && poll !== saved.pollIntervalMinutes) {
+    changes.pollIntervalMinutes = poll
+  }
+  const services = draft.services.flatMap(service => {
+    const before = saved.services.find(item => item.code === service.code)
+    if (before === undefined) return []
+    const edit: { code: string; label?: string; active?: boolean } = { code: service.code }
+    if (service.label.trim() !== before.label) edit.label = service.label.trim()
+    if (service.active !== before.active) edit.active = service.active
+    return Object.keys(edit).length > 1 ? [edit] : []
+  })
+  if (services.length > 0) changes.services = services
   return changes
 }
 
@@ -154,6 +289,14 @@ export function hasInternalGuide(capabilities: readonly string[]): boolean {
 }
 
 // The pickup rules, the status mapping and the secret of the webhook are offered only where the connection can use them
+export function canPoll(capabilities: readonly string[]): boolean {
+  return capabilities.includes(CarrierCapability.FETCH_STATUS)
+}
+
+export function acceptsCashOnDelivery(capabilities: readonly string[]): boolean {
+  return capabilities.includes(CarrierCapability.COD)
+}
+
 export function canReceiveWebhook(capabilities: readonly string[]): boolean {
   return capabilities.includes(CarrierCapability.WEBHOOK_STATUS)
 }

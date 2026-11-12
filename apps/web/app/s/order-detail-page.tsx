@@ -36,9 +36,9 @@ import { liveOutbound, outboundStatusesOf } from '../../lib/orders/order-shippin
 import { useOrder, useOrderWrites } from '../../lib/orders/use-order'
 import {
   useGuideConnections,
-  useOrderShipments,
+  useOrderGuides,
   useShipmentWrites
-} from '../../lib/orders/use-order-shipping'
+} from '../../lib/orders/use-order-guides'
 
 const CANCEL_CAPABILITY: string = CarrierCapability.CANCEL_SHIPMENT
 
@@ -168,7 +168,7 @@ export function OrderDetailPage(): ReactElement {
   const mayView = can(ClientPermissions.ORDERS_VIEW)
   const order = useOrder(storeId, orderId, mayView)
   const writes = useOrderWrites(storeId, orderId)
-  const shipments = useOrderShipments(
+  const shipments = useOrderGuides(
     storeId,
     orderId,
     mayView && can(ClientPermissions.SHIPPING_VIEW)

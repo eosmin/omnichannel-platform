@@ -20,8 +20,8 @@ import {
   returnGuideBody,
   returnGuideConnections
 } from '../../lib/orders/order-guide-form'
+import type { ShipmentWrites } from '../../lib/orders/use-order-guides'
 import type { ReturnWrites } from '../../lib/orders/use-order-returns'
-import type { ShipmentWrites } from '../../lib/orders/use-order-shipping'
 import { formatCents } from '../../lib/products/money'
 import { toast } from '../../lib/toast'
 import { MutationError } from '../customers/mutation-error'
