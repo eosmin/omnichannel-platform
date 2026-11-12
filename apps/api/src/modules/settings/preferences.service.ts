@@ -56,20 +56,16 @@ export class PreferencesService {
       const changes: JsonObject = Object.fromEntries(
         Object.entries(flatChanges).filter(([, value]) => value !== undefined)
       )
-      if (orderChanges !== undefined) {
-        changes['orders'] = {
-          ...asRecord(base['orders']),
-          ...(Object.fromEntries(
-            Object.entries(orderChanges).filter(([, value]) => value !== undefined)
-          ) as JsonObject)
-        }
-      }
-      if (remittanceChanges !== undefined) {
-        changes['remittances'] = {
-          ...asRecord(base['remittances']),
-          ...(Object.fromEntries(
-            Object.entries(remittanceChanges).filter(([, value]) => value !== undefined)
-          ) as JsonObject)
+      for (const [block, blockChanges] of [
+        ['orders', orderChanges],
+        ['remittances', remittanceChanges]
+      ] as const) {
+        if (blockChanges === undefined) continue
+        changes[block] = {
+          ...asRecord(base[block]),
+          ...Object.fromEntries(
+            Object.entries(blockChanges).filter(([, value]) => value !== undefined)
+          )
         }
       }
       const before = readStorePreferences(base)

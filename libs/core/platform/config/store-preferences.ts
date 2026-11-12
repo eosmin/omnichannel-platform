@@ -115,26 +115,21 @@ export const RemittancePreferenceLimits = {
   DEFAULT_OVERDUE_DAYS: 7
 } as const
 
+// The accepted range, written once: what the api takes is held to it, and a stored value that does not fit reads as the default
+const overdueAfterDaysField = z
+  .number()
+  .int()
+  .min(RemittancePreferenceLimits.MIN_OVERDUE_DAYS)
+  .max(RemittancePreferenceLimits.MAX_OVERDUE_DAYS)
+
 export const remittancePreferencesSchema = z.object({
-  overdueAfterDays: z
-    .number()
-    .int()
-    .min(RemittancePreferenceLimits.MIN_OVERDUE_DAYS)
-    .max(RemittancePreferenceLimits.MAX_OVERDUE_DAYS)
-    .catch(RemittancePreferenceLimits.DEFAULT_OVERDUE_DAYS)
+  overdueAfterDays: overdueAfterDaysField.catch(RemittancePreferenceLimits.DEFAULT_OVERDUE_DAYS)
 })
 
 export type RemittancePreferences = z.output<typeof remittancePreferencesSchema>
 
 export const updateRemittancePreferencesSchema = z
-  .strictObject({
-    overdueAfterDays: z
-      .number()
-      .int()
-      .min(RemittancePreferenceLimits.MIN_OVERDUE_DAYS)
-      .max(RemittancePreferenceLimits.MAX_OVERDUE_DAYS)
-      .optional()
-  })
+  .strictObject({ overdueAfterDays: overdueAfterDaysField.optional() })
   .refine(body => Object.values(body).some(value => value !== undefined), {
     message: 'nothing to change'
   })

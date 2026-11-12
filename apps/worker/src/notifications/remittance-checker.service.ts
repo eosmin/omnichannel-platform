@@ -67,7 +67,11 @@ export class RemittanceChecker {
           count: group._count._all,
           overdueAfterDays,
           oldestAgeDays: ageInDays(oldest, now),
-          totalOwedCents: (group._sum.codExpectedCents ?? 0) - (group._sum.codRemittedCents ?? 0)
+          // What is still owed; a carrier that sent more than was due leaves nothing owed, never a negative amount
+          totalOwedCents: Math.max(
+            0,
+            (group._sum.codExpectedCents ?? 0) - (group._sum.codRemittedCents ?? 0)
+          )
         })
         return Promise.resolve()
       })

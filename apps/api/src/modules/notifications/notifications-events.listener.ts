@@ -333,7 +333,14 @@ export class NotificationsEventsListener {
         select: { displayName: true }
       })
       const carrier = connection === null ? null : textForParams(connection.displayName)
-      if (carrier === null) return
+      if (carrier === null) {
+        // Said, because the daily check will raise it again until somebody looks at the connection
+        this.logger.warn(
+          { connectionId },
+          'an overdue remittance names a connection that cannot be told'
+        )
+        return
+      }
       await this.notifications.sendToStore({
         storeId,
         type: NotificationTypes.REMITTANCE_OVERDUE,

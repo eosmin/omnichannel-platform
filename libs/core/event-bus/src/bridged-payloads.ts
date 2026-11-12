@@ -180,7 +180,7 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     count: z.number().int().min(1),
     overdueAfterDays: z.number().int().min(1),
     oldestAgeDays: z.number().int().min(0),
-    totalOwedCents: z.number().int()
+    totalOwedCents: z.number().int().min(0)
   }),
   // A bulk run of labels: ids and counts, never what was made of each order
   [Events.BULK_LABELS_PROGRESS]: z.object({
