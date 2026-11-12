@@ -176,6 +176,7 @@ same checks and the merge waits for it.
 - [ ] Integration test added if the step touches an API endpoint
 - [ ] Tenant isolation test added if the step introduces a tenant-scoped resource
 - [ ] Every new route, realtime event or channel capability is mapped in `scripts/frontend-coverage-map.ts` to the step that draws it (or to a reason it has no interface); `pnpm validate:frontend` fails otherwise
+- [ ] Every new route is mapped in `scripts/plugin-api-coverage-map.ts` to a plugin scope or to a reason; `pnpm validate:plugin-api` fails if not
 - [ ] The step's own "Done when" criterion verified, not assumed
 - [ ] `/code-review` run on the working tree before the PR is opened, for every PR with no exception for size or kind (a test-only or docs-touching change included), with every lens the PR requires (see "Code review of a step"); the mechanical gates do not replace it
 - [ ] The step's PR is green on GitHub with every CI job that exists at that point; if the step created a CI job, the plan says which check to add to the `main` ruleset

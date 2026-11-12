@@ -99,6 +99,8 @@ jobs:
       - run: pnpm validate:channel-agnostic --require-main
       # Rule 13 for carriers: no concrete carrier named outside libs/carriers/*; the baseline only shrinks
       - run: pnpm validate:carrier-agnostic --require-main
+      # Everything a person can do must be reachable by a plugin through a scope, or say why not; what is not exposed yet only shrinks
+      - run: pnpm validate:plugin-api --require-main
       # The image hosts of the CSP are written from what the plugins declare; a plugin that changes them must regenerate the file
       - run: pnpm validate:image-hosts
 
