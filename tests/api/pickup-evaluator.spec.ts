@@ -172,6 +172,11 @@ describe('The pickup scheduler (TDD_17 §4.10)', () => {
       where: { connectionId: { in: [localId, fullId, boundId] } },
       data: { status: PickupStatus.CANCELLED }
     })
+    // The orders of earlier cases are no longer planned for the pickup-bound carrier
+    await owner.order.updateMany({
+      where: { carrierConnectionId: boundId },
+      data: { status: OrderStatus.CANCELLED }
+    })
   })
 
   const guideOn = (connectionId: string) =>
@@ -417,8 +422,31 @@ describe('The pickup scheduler (TDD_17 §4.10)', () => {
       const second = await evaluator.evaluate(new Date(NOW.getTime() + MINUTE_MS))
 
       expect(first.failed).toBeGreaterThanOrEqual(1)
-      // (an order of an earlier case, whose guide was voided, is planned for the connection too)
-      expect(second.guidesMade).toBeGreaterThanOrEqual(1)
+      expect(second.guidesMade).toBe(1)
+      expect(await owner.shipment.count({ where: { orderId: order.id } })).toBe(1)
+    })
+
+    it('leaves the day open when its first run found no orders, so one confirmed later is still made', async () => {
+      // Nothing is planned for the carrier yet: a run with no orders claims nothing
+      await evaluator.evaluate(NOW)
+      const order = await createOrder(owner, {
+        storeId: ctx.storeA.id,
+        status: OrderStatus.CONFIRMED,
+        carrierConnectionId: boundId,
+        shippingAddress: { line1: 'Calle 1', city: 'San Salvador', state: 'SS', country: 'SV' },
+        allocatedAt: ctx.warehouseA.id
+      })
+      await createInventoryLevel(owner, {
+        storeId: ctx.storeA.id,
+        productId: order.productId,
+        warehouseId: ctx.warehouseA.id,
+        onHand: 5,
+        reserved: 1
+      })
+
+      const later = await evaluator.evaluate(new Date(NOW.getTime() + MINUTE_MS))
+
+      expect(later.guidesMade).toBeGreaterThanOrEqual(1)
       expect(await owner.shipment.count({ where: { orderId: order.id } })).toBe(1)
     })
 

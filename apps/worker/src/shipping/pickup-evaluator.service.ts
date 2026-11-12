@@ -42,6 +42,7 @@ import { ShipmentCreationModes } from '@platform/plugins/sdk'
 // A tick that starts later than this after its minute is not run: what it would decide is about a moment that is over
 const STALE_TICK_MS = 10 * 60 * 1000
 const MINUTE_MS = 60_000
+const DAY_MS = 24 * 60 * MINUTE_MS
 // The guides one `autoPickup` run asks for (one call of the engine)
 const AUTO_RUN_ORDERS = 100
 // ... and the most pages of them in one run
@@ -85,7 +86,16 @@ export class PickupEvaluator {
       )
       return Promise.resolve(null)
     }
-    return this.claimMinute(job.minute).then(first => (first ? this.evaluate(at) : null))
+    return this.claimMinute(job.minute).then(async first => {
+      if (!first) return null
+      try {
+        return await this.evaluate(at)
+      } catch (error) {
+        // A minute that ended in a fault is the next attempt's to run
+        await this.redis.del(CacheKeys.pickup.evaluation(job.minute)).catch(() => undefined)
+        throw error
+      }
+    })
   }
 
   // One evaluation per minute, whatever the retention of the queue and however many replicas tick: the job id does the same, but
@@ -165,6 +175,9 @@ export class PickupEvaluator {
       if (due) report.guidesMade += await this.makeGuides(connection, clock.date)
       return
     }
+    const reminder = cutoffReminderDue(connection, clock)
+    // Nothing is counted in the minutes when nothing is due: the two decisions only read the clock
+    if (!due && reminder === null) return
     let waiting = await this.waiting(connection)
     if (due && waiting > 0) {
       // One failing step does not take the reminder with it: that is when the reminder matters most
@@ -187,7 +200,6 @@ export class PickupEvaluator {
         )
       }
     }
-    const reminder = cutoffReminderDue(connection, clock)
     if (reminder === null || waiting === 0) return
     // Once per connection and day, however many minutes the window lasts and however many replicas look
     const key = CacheKeys.pickup.cutoffReminder(connection.id, clock.date)
@@ -233,15 +245,10 @@ export class PickupEvaluator {
     connection: { id: string; storeId: string },
     day: string
   ): Promise<number> {
-    const first = await this.redis.set(
-      CacheKeys.pickup.autoRun(connection.id, day),
-      '1',
-      'EX',
-      PickupSchedule.MEMORY_TTL_SECONDS,
-      'NX'
-    )
-    if (first !== 'OK') return 0
+    const key = CacheKeys.pickup.autoRun(connection.id, day)
     let made = 0
+    let refused = 0
+    let claimed = false
     try {
       // In pages by id: what the engine refuses stays an order with no guide, and a cursor passes it instead of asking again
       let after: string | undefined
@@ -264,6 +271,19 @@ export class PickupEvaluator {
           take: AUTO_RUN_ORDERS
         })
         if (orders.length === 0) break
+        if (!claimed) {
+          // The day is claimed by the first run that has orders: a minute with none leaves the day open for an order confirmed later
+          // (before the cutoff), and what the engine refuses is not asked again each minute
+          const first = await this.redis.set(
+            key,
+            '1',
+            'EX',
+            PickupSchedule.MEMORY_TTL_SECONDS,
+            'NX'
+          )
+          if (first !== 'OK') return 0
+          claimed = true
+        }
         const outcomes = await this.shipping.createShipments(
           connection.storeId,
           orders.map(order => ({ orderId: order.id, connectionId: connection.id })),
@@ -271,16 +291,23 @@ export class PickupEvaluator {
           carrierId => this.registry.find(carrierId)
         )
         made += outcomes.filter(outcome => outcome.ok).length
+        refused += outcomes.filter(outcome => !outcome.ok).length
         after = orders.at(-1)?.id
         if (orders.length < AUTO_RUN_ORDERS) break
+        if (page === AUTO_RUN_MAX_PAGES - 1) {
+          this.logger.warn(
+            { connectionId: connection.id, pages: AUTO_RUN_MAX_PAGES },
+            'an automatic pickup run stopped at its page limit: the rest waits for the next day'
+          )
+        }
       }
     } catch (error) {
       // A run that failed before it finished is tried again the next minute (the orders that already have a guide are not asked again)
-      await this.redis.del(CacheKeys.pickup.autoRun(connection.id, day)).catch(() => undefined)
+      if (claimed) await this.redis.del(key).catch(() => undefined)
       throw error
     }
     this.logger.info(
-      { connectionId: connection.id, made },
+      { connectionId: connection.id, made, refused },
       'an automatic pickup run asked for its guides'
     )
     return made
@@ -294,7 +321,9 @@ export class PickupEvaluator {
     const pending = await this.prisma.client.pickupRequest.findMany({
       where: {
         status: PickupStatus.PENDING,
-        createdAt: { lt: new Date(now.getTime() - PickupSchedule.PENDING_STALE_MS) }
+        createdAt: { lt: new Date(now.getTime() - PickupSchedule.PENDING_STALE_MS) },
+        // A pickup of a day that is over is not asked for any more
+        pickupDate: { gte: new Date(now.getTime() - DAY_MS) }
       },
       select: { id: true, storeId: true },
       orderBy: { createdAt: 'asc' },
@@ -310,6 +339,7 @@ export class PickupEvaluator {
         AND carrier_package_count IS NOT NULL
         AND carrier_package_count <> package_count
         AND package_count > 0
+        AND pickup_date >= ${new Date(now.getTime() - DAY_MS)}::date
         AND updated_at < ${new Date(now.getTime() - PickupSchedule.RESYNC_AFTER_MS)}
       ORDER BY updated_at ASC
       LIMIT ${PickupSchedule.SWEEP_BATCH}`
