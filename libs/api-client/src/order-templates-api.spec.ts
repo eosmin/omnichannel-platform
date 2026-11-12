@@ -51,9 +51,9 @@ describe('order templates requests', () => {
 
   it('keeps a kind or a warning it does not know as the text it came as', async () => {
     const { client } = setup(json(200, [{ ...template, kind: 'future_kind', warnings: ['new'] }]))
-    const [view] = await fetchOrderTemplates(client, 's-1')
-    expect(view.kind).toBe('future_kind')
-    expect(view.warnings).toEqual(['new'])
+    const views = await fetchOrderTemplates(client, 's-1')
+    expect(views[0]?.kind).toBe('future_kind')
+    expect(views[0]?.warnings).toEqual(['new'])
   })
 
   it('puts a template by kind and language, with the link to a channel template', async () => {
