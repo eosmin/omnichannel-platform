@@ -203,6 +203,25 @@ function PreferencesForm({ saved: loaded }: { saved: PreferencesView }): ReactEl
       </fieldset>
 
       <fieldset className="flex flex-col gap-3 rounded-lg border p-4">
+        <legend className="px-1 text-sm font-medium">{t('returns.legend')}</legend>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={draft.preselectCautionOnRefusal}
+            onChange={event => set({ preselectCautionOnRefusal: event.target.checked })}
+            disabled={disabled}
+            className="mt-1"
+          />
+          <span>
+            {t('returns.preselectCaution')}
+            <span className="text-muted-foreground block text-xs">
+              {t('returns.preselectCautionHint')}
+            </span>
+          </span>
+        </label>
+      </fieldset>
+
+      <fieldset className="flex flex-col gap-3 rounded-lg border p-4">
         <legend className="px-1 text-sm font-medium">{t('reasons.legend')}</legend>
         <p className="text-muted-foreground text-xs">{t('reasons.hint')}</p>
         <CancellationReasonsEditor

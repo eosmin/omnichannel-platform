@@ -3703,6 +3703,11 @@
         "overdueLabel": "Días para que una remesa se considere atrasada",
         "overdueHint": "El efectivo que un transportista cobró contra entrega está atrasado si no se ha pagado pasados estos días desde la entrega. De {min} a {max}."
       },
+      "returns": {
+        "legend": "Devoluciones recibidas con escáner",
+        "preselectCaution": "Preseleccionar la marca de precaución cuando un paquete fue rechazado",
+        "preselectCautionHint": "En la pantalla de recepción, un paquete cuyo motivo es rechazado por el cliente empieza con la marca de precaución del cliente activada, para quien puede marcar clientes. El agente siempre puede quitarla."
+      },
       "reasons": {
         "legend": "Motivos de cancelación",
         "hint": "Las opciones del diálogo de cancelar, en este orden. Un pedido conserva el texto con el que se canceló, así que cambiar un motivo nunca cambia los pedidos anteriores.",

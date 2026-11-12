@@ -2,3 +2,4 @@
 // short relative import (the lint rule allows two levels at most). Each page of the area adds its line here.
 export { ReturnDetailPage } from '../../return-detail-page'
 export { ReturnsLayout } from '../../returns-layout'
+export { ReturnsReceptionPage } from '../../returns-reception-page'
