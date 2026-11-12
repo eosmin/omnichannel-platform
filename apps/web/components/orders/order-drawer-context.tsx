@@ -29,6 +29,8 @@ export interface OpenCreateOrder {
   customerId?: string
   // The conversation the order comes from: the chat stays visible beside the drawer, and the order is linked to it
   conversationId?: string
+  // An order to copy: the drawer starts from its draft (`GET /orders/:id/copy`) instead of an empty form
+  copyOfOrderId?: string
 }
 
 interface OrderDrawerValue {
@@ -79,6 +81,7 @@ export function OrderDrawerProvider({ children }: { children: ReactNode }): Reac
           key={request.openingId}
           customerId={request.customerId}
           conversationId={request.conversationId}
+          copyOfOrderId={request.copyOfOrderId}
           isOpen={isOpen}
           onClose={() => setOpen(false)}
         />

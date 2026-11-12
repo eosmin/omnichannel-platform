@@ -283,7 +283,14 @@ export type BuildResult =
 export function buildOrder(
   form: DraftForm,
   allowed: AllowedBy,
-  options: { conversationId?: string; stock: ReadonlyMap<string, StockRules> }
+  options: {
+    conversationId?: string
+    stock: ReadonlyMap<string, StockRules>
+    // The order this one is copied from (`GET /orders/:id/copy`)
+    copiedFromOrderId?: string
+    // Send the summary message to the customer: left out, the preference of the store decides on the server
+    sendSummary?: boolean
+  }
 ): BuildResult {
   if (form.customerId === null) return { ok: false, field: 'customer' }
   if (form.lines.length === 0) return { ok: false, field: 'lines' }
@@ -349,6 +356,9 @@ export function buildOrder(
     value: {
       customerId: form.customerId,
       ...(options.conversationId === undefined ? {} : { conversationId: options.conversationId }),
+      ...(options.copiedFromOrderId === undefined
+        ? {}
+        : { copiedFromOrderId: options.copiedFromOrderId }),
       items,
       shippingCents,
       discountCents,
@@ -360,8 +370,7 @@ export function buildOrder(
       packingNotes: note(form.packingNotes),
       scheduledDeliveryDate: form.scheduledDate === '' ? null : form.scheduledDate,
       confirmOnCreate: allowed.canConfirm && form.confirmOnCreate,
-      // The form has no choice for it yet (Step 4.14): no message goes to the customer that the agent did not ask for
-      sendConfirmationMessage: false
+      ...(options.sendSummary === undefined ? {} : { sendConfirmationMessage: options.sendSummary })
     }
   }
 }

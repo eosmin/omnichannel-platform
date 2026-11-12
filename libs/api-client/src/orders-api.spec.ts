@@ -6,6 +6,7 @@ import {
   changeOrderStatus,
   confirmOrder,
   confirmOrdersBulk,
+  fetchOrderPreferences,
   decideOrderPrice,
   fetchOrder,
   fetchOrders,
@@ -181,6 +182,15 @@ describe('orders api', () => {
       ['/orders/o1/price-approval/approve', 'POST', JSON.stringify({})],
       ['/orders/o1/price-approval/reject', 'POST', JSON.stringify({ reason: 'too low' })]
     ])
+  })
+
+  it('reads the orders block of the preferences for the create drawer', async () => {
+    const orders = { confirmOnCreate: true, sendSummaryOnCreate: false, discountLimitPercent: 5 }
+    const { client, fetchImpl } = setup(json(200, { sendReadReceipts: true, orders, returns: {} }))
+    expect(await fetchOrderPreferences(client, 's1')).toEqual(orders)
+    expect(new URL(fetchImpl.mock.calls[0]?.[0] as string).pathname).toBe(
+      '/api/v1/settings/preferences'
+    )
   })
 
   it('confirms a selection in one call and reads what changed and what did not', async () => {

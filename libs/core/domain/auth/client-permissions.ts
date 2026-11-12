@@ -15,6 +15,7 @@ export const ClientPermissions = {
   CUSTOMERS_DELETE: 'customers:delete',
   CUSTOMERS_EDIT: 'customers:edit',
   CUSTOMERS_EXPORT: 'customers:export',
+  CUSTOMERS_FLAG_CAUTION: 'customers:flag_caution',
   CUSTOMERS_MERGE: 'customers:merge',
   CUSTOMERS_VIEW: 'customers:view',
   INVENTORY_ADJUST: 'inventory:adjust',

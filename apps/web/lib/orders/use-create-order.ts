@@ -11,6 +11,10 @@ import {
 
 import {
   createCustomer,
+  fetchOrderPreferences,
+  getOrderCopy,
+  type OrderPreferencesView,
+  type OrderCopyView,
   createOrder,
   type CreatedCustomerView,
   type CreatedOrderView,
@@ -126,4 +130,42 @@ export function useConversationCustomerId(
     isLoading: conversationId !== undefined && conversation.isPending,
     isFailed: conversation.isError
   }
+}
+
+// The `orders` block of the store preferences (GET /settings/preferences needs `settings:view`): the initial state of the two
+// checkboxes and the discount limit. A member without `settings:view` gets `preferences: null` and the form does not guess:
+// it starts unchecked and leaves the summary to the server, which reads the preference itself.
+export function useOrderPreferences(
+  storeId: string,
+  isReadable: boolean
+): { preferences: OrderPreferencesView | null; isSettled: boolean } {
+  const query = useQuery({
+    queryKey: QueryKeys.preferences.orders(storeId),
+    queryFn: ({ signal }) => fetchOrderPreferences(apiClient, storeId, signal),
+    enabled: isReadable,
+    // A refusal settles the form at once instead of after the retries
+    retry: false
+  })
+  return {
+    preferences: isReadable ? (query.data ?? null) : null,
+    // A refused or failed read must not hold the form: it falls back like the member without the permission
+    isSettled: !isReadable || !query.isPending
+  }
+}
+
+// The draft of "Copy order": the prices are today's, so it is never taken from the cache
+export function useOrderCopy(
+  storeId: string,
+  orderId: string | undefined
+): UseQueryResult<OrderCopyView> {
+  return useQuery({
+    queryKey: QueryKeys.orders.copy(storeId, orderId ?? ''),
+    queryFn: () => getOrderCopy(apiClient, storeId, orderId ?? ''),
+    enabled: orderId !== undefined,
+    gcTime: 0,
+    staleTime: 0,
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false
+  })
 }

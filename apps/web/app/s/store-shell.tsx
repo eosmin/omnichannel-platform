@@ -50,13 +50,14 @@ export function StoreShell({
             <StoreTimeZone />
             <PushSync storeId={storeId} />
             <RealtimeProvider storeId={storeId} userId={profile.id}>
-              <CustomerDrawerProvider>
-                <OrderDrawerProvider>
+              {/* The order drawer is outside: the profile of a customer, drawn by the customer provider, opens "Copy order" */}
+              <OrderDrawerProvider>
+                <CustomerDrawerProvider>
                   <AppFrame profile={profile} currentStoreId={storeId} nav={<StoreNav />}>
                     {children}
                   </AppFrame>
-                </OrderDrawerProvider>
-              </CustomerDrawerProvider>
+                </CustomerDrawerProvider>
+              </OrderDrawerProvider>
             </RealtimeProvider>
           </StoreProvider>
         )

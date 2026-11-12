@@ -421,6 +421,27 @@
       "loadMore": "Load more",
       "lines": "{count, plural, one {# line} other {# lines}}",
       "viewAll": "View orders"
+    },
+    "cautionFlag": {
+      "chip": "Caution",
+      "open": {
+        "set": "Flag with caution",
+        "clear": "Remove the caution flag"
+      },
+      "set": {
+        "title": "Flag with caution",
+        "description": "Tells the team in the conversation, on orders and when one is created. It never stops a sale or a reply.",
+        "submit": "Flag"
+      },
+      "clear": {
+        "title": "Remove the caution flag",
+        "description": "The customer stops showing with caution. The reason is cleared.",
+        "submit": "Remove the flag"
+      },
+      "reason": "Reason",
+      "reasonHelp": "Required. Whoever can view customers sees it.",
+      "changeReason": "Change the reason",
+      "cancel": "Cancel"
     }
   },
   "email": {
@@ -1350,7 +1371,8 @@
       "address": {
         "label": "Shipping address",
         "none": "No address yet",
-        "option": "{line1}, {city}"
+        "option": "{line1}, {city}",
+        "copied": "Address of the copied order: {line1}, {city}"
       },
       "payment": {
         "label": "How the order is paid"
@@ -1384,7 +1406,19 @@
       "created": "Order {number} created.",
       "createdAwaitingApproval": "Order {number} created. Its price waits for an approval.",
       "confirmationSkipped": "It was not confirmed: the price waits for an approval.",
-      "open": "Open the order"
+      "open": "Open the order",
+      "cautionBanner": {
+        "title": "Customer flagged with caution."
+      },
+      "sendSummary": {
+        "label": "Send the order summary",
+        "help": "The customer gets a message with what they ordered."
+      },
+      "discountHint": {
+        "overridden": "You may change prices: this discount needs no approval.",
+        "within_limit": "The discount is within the store limit ({limit}%).",
+        "needs_approval": "The discount is over the store limit ({limit}%). The order is created and its price waits for an approval."
+      }
     },
     "edit": {
       "title": "Edit order",
@@ -1502,6 +1536,21 @@
           "still_running": "The run is still going: look at the orders again in a moment."
         }
       }
+    },
+    "copy": {
+      "open": "Copy order",
+      "heading": "Copy of an order",
+      "help": "The quantities, the shipping fee, the phones and the notes come from the original order. The prices are today's.",
+      "failed": "The order could not be read to copy it.",
+      "warnings": {
+        "product_inactive": "{name} is no longer active in the catalog.",
+        "variant_unavailable": "{name} is no longer available.",
+        "variant_required": "{name} has variants now: pick one before creating the order.",
+        "out_of_stock": "{name} does not have enough stock.",
+        "price_changed": "{name} changed price: it was {previous}, now {current}.",
+        "unknown": "{name} needs a look before the order is created."
+      },
+      "openNamed": "Copy order {number}"
     }
   },
   "org": {
