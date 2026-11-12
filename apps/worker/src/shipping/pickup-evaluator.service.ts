@@ -89,7 +89,12 @@ export class PickupEvaluator {
     return this.claimMinute(job.minute).then(async first => {
       if (!first) return null
       try {
-        return await this.evaluate(at)
+        const report = await this.evaluate(at)
+        this.logger.info(
+          { minute: job.minute, ...report },
+          'the pickups of the minute were evaluated'
+        )
+        return report
       } catch (error) {
         // A minute that ended in a fault is the next attempt's to run
         await this.redis.del(CacheKeys.pickup.evaluation(job.minute)).catch(() => undefined)
@@ -198,6 +203,8 @@ export class PickupEvaluator {
           { connectionId: connection.id, errorName: errorName(error) },
           'the automatic pickup of a connection failed'
         )
+        // What the pickup took before it failed is not waiting any more: the reminder counts what is
+        waiting = await this.waiting(connection)
       }
     }
     if (reminder === null || waiting === 0) return
@@ -246,6 +253,8 @@ export class PickupEvaluator {
     day: string
   ): Promise<number> {
     const key = CacheKeys.pickup.autoRun(connection.id, day)
+    // A day that was run is not looked at again: no query for the orders the engine refused
+    if ((await this.redis.exists(key)) === 1) return 0
     let made = 0
     let refused = 0
     let claimed = false

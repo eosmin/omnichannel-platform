@@ -7,7 +7,13 @@ import { ApiRoutes } from '@platform/core/api'
 import { CacheKeys } from '@platform/core/cache'
 import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { CarrierId, OrderStatus, PickupStatus, ShipmentStatus } from '@platform/core/domain'
+import {
+  CarrierId,
+  OrderStatus,
+  PickupSchedule,
+  PickupStatus,
+  ShipmentStatus
+} from '@platform/core/domain'
 import { DomainEvents } from '@platform/core/event-bus'
 import { NotificationTypes } from '@platform/core/notifications'
 import {
@@ -509,7 +515,7 @@ describe('The pickup scheduler (TDD_17 §4.10)', () => {
 
       await evaluator.evaluate(NOW)
 
-      const bucket = Math.floor(NOW.getTime() / (30 * MINUTE_MS))
+      const bucket = Math.floor(NOW.getTime() / PickupSchedule.SWEEP_BUCKET_MS)
       expect(syncJobsOf(stuck.id).map(job => job.opts?.jobId)).toEqual([
         syncPickupSweepJobId(stuck.id, bucket)
       ])
@@ -588,7 +594,7 @@ describe('The pickup scheduler (TDD_17 §4.10)', () => {
       expect(jobs.map(job => job.opts?.jobId)).toEqual([evaluatePickupsJobId(minute)])
       expect(jobs[0]?.data).toEqual({ minute })
 
-      // A minute of its own for each run of this case: the claim of a minute lives for three
+      // A minute of its own for each run of this case: the claim of a minute outlives a late tick
       const mine = minute + (Date.now() % 1_000_000)
       const atMinute = mine * MINUTE_MS
       expect(await evaluator.run({ minute: mine }, atMinute + 11 * MINUTE_MS)).toBeNull()
