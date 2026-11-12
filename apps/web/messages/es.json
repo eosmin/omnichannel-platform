@@ -4383,7 +4383,8 @@
         "reported": "Reportado",
         "difference": "Diferencia"
       },
-      "loadMore": "Cargar más"
+      "loadMore": "Cargar más",
+      "importAction": "Importar un archivo"
     },
     "pending": {
       "title": "Lo que aún deben los transportistas",
@@ -4491,6 +4492,126 @@
       },
       "draftNote": "Este borrador no liquida nada hasta que se confirma. El resultado de cada línea se calcula de nuevo tras cada cambio.",
       "downloadFile": "Descargar el archivo"
+    },
+    "import": {
+      "title": "Importar un archivo de liquidación",
+      "description": "Pega o sube el archivo que el transportista envía con su liquidación, indica qué columna es cuál, revisa lo que se lee y crea un borrador.",
+      "back": "Volver a remesas",
+      "noConnections": "Ninguna conexión de transportista de esta tienda puede cobrar contra entrega, así que no hay nada que importar.",
+      "connection": "Transportista",
+      "fields": {
+        "guideNumber": "Columna de la guía",
+        "amount": "Columna del monto",
+        "fee": "Columna de la comisión (opcional)",
+        "date": "Columna del día (opcional)",
+        "reference": "Columna del número de liquidación (opcional)"
+      },
+      "source": {
+        "title": "El archivo",
+        "file": "Elige un archivo CSV o TSV",
+        "fileHint": "Hasta 5 MB y 5,000 filas. Un libro de Excel (.xlsx) no se lee: guárdalo antes como CSV.",
+        "encoding": "Codificación del archivo",
+        "encodings": {
+          "utf8": "UTF-8",
+          "windows1252": "Windows-1252 (Excel)"
+        },
+        "paste": "O pega la tabla",
+        "pastePlaceholder": "Guia,Monto\nG-1001,15.50",
+        "fromFile": "Leído de {name}",
+        "clearFile": "Quitar el archivo",
+        "problems": {
+          "too_large": "El archivo pesa más de 5 MB.",
+          "empty": "El archivo está vacío.",
+          "not_text": "El archivo no se puede leer como texto con esta codificación. Prueba la otra codificación o guárdalo como CSV."
+        }
+      },
+      "mapping": {
+        "title": "Qué columna es cuál",
+        "profile": "Mapeo guardado",
+        "newProfile": "Un mapeo nuevo",
+        "delimiter": "Separador de celdas",
+        "delimiters": {
+          "comma": "Coma",
+          "semicolon": "Punto y coma",
+          "tab": "Tabulador"
+        },
+        "decimal": "Separador decimal",
+        "decimals": {
+          "dot": "Punto (15.50)",
+          "comma": "Coma (15,50)"
+        },
+        "dateFormat": "Formato del día",
+        "hasHeader": "La primera fila nombra las columnas",
+        "byHeader": "Escribe el texto de cada encabezado tal como lo escribe el archivo.",
+        "byPosition": "El archivo no tiene encabezado: escribe la posición de cada columna, 0 para la primera.",
+        "problems": {
+          "required": "{field}: elige una columna.",
+          "position": "{field}: escribe un número entero de 0 a 200.",
+          "rule": "Cada valor necesita su propia columna, y el separador de celdas no puede ser también la coma decimal."
+        },
+        "name": "Nombre del mapeo",
+        "save": "Guardar mapeo",
+        "update": "Actualizar mapeo",
+        "saved": "Mapeo guardado",
+        "delete": "Eliminar mapeo",
+        "deleteDialog": {
+          "title": "¿Eliminar el mapeo {name}?",
+          "description": "Las remesas ya hechas con él conservan sus líneas. Ya no se podrán leer archivos con él.",
+          "cancel": "Conservarlo",
+          "confirm": "Eliminar"
+        }
+      },
+      "preview": {
+        "title": "Lo que se lee",
+        "empty": "Elige o pega un archivo para ver lo que se lee de él.",
+        "hint": "Elige las columnas de la guía y del monto para ver una vista previa. La vista previa no guarda nada.",
+        "rows": "{count, plural, one {# fila leída} other {# filas leídas}}, {shown} mostradas",
+        "reference": "liquidación {value}",
+        "receivedOn": "día {value}",
+        "sampleOnly": "La vista previa lee solo el comienzo del archivo. El archivo completo se revisa al importar.",
+        "noLines": "Ninguna fila se pudo leer con este mapeo.",
+        "caption": "Las primeras filas leídas del archivo",
+        "columns": {
+          "row": "Fila",
+          "guide": "Guía",
+          "amount": "Monto",
+          "fee": "Comisión"
+        },
+        "firstLineTooLarge": "La primera línea del archivo es más grande de lo que admite la vista previa (32 KB). Revisa el separador o usa un archivo más pequeño."
+      },
+      "errors": {
+        "total": "{count, plural, one {# fila no se puede leer} other {# filas no se pueden leer}}.",
+        "moreNotShown": "Se muestran las primeras {count}.",
+        "caption": "Filas que no se pueden leer",
+        "row": "Fila",
+        "field": "Valor",
+        "problem": "Problema",
+        "value": "Celda",
+        "codes": {
+          "column_not_found": "El archivo no tiene una columna con ese nombre o posición",
+          "column_ambiguous": "Dos columnas tienen ese nombre",
+          "missing_cell": "La fila tiene menos celdas de las que pide la columna",
+          "empty_value": "La celda está vacía",
+          "invalid_amount": "No es un monto (dígitos y un separador decimal, con a lo sumo dos decimales)",
+          "invalid_date": "No es un día en el formato elegido",
+          "invalid_text": "El texto tiene un carácter de control o invisible",
+          "too_many_rows": "El archivo tiene más de 5,000 filas",
+          "empty_file": "El archivo no tiene filas",
+          "unclosed_quote": "Hay una comilla que nunca se cierra",
+          "row_too_wide": "Más celdas que el encabezado: puede haber un separador dentro de una celda",
+          "stray_quote": "Hay texto después de la comilla que cierra una celda",
+          "column_reused": "Dos valores leen la misma columna",
+          "unknown": "La fila no se puede leer"
+        }
+      },
+      "action": {
+        "title": "Crear el borrador",
+        "description": "El archivo se convierte en una remesa en borrador. No se liquida nada hasta que la confirmes.",
+        "saveFirst": "Guarda primero el mapeo: el archivo se lee con el mapeo guardado.",
+        "import": "Importar el archivo",
+        "done": "Borrador creado",
+        "refused": "No se importó el archivo: hay filas que no se pueden leer. Corrígelas en el archivo o cambia el mapeo, e inténtalo de nuevo."
+      }
     }
   },
   "shipments": {
