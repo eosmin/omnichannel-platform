@@ -21,6 +21,7 @@ import {
   MessageType,
   OriginKinds,
   OriginMediaSlots,
+  PaymentStatus,
   type SystemMessageEvent
 } from '@platform/core/domain'
 import { ExportTypes } from '@platform/core/queues'
@@ -1483,6 +1484,8 @@ export async function addShippableOrder(
     const created = await createOrder(owner, {
       storeId,
       status,
+      // A delivered order was paid on delivery: money never collected is not given back
+      ...(status === 'DELIVERED' ? { paymentStatus: PaymentStatus.COMPLETED } : {}),
       shippingAddress: SHIPPING_ADDRESS,
       allocatedAt: scenario.warehouse.id,
       carrierConnectionId: scenario.connection.id
