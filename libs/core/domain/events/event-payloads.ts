@@ -121,6 +121,12 @@ export interface OrderEventPayload {
   actor: ActorRef
 }
 
+// What every event of a return says: which return, of which order, and who did it. Ids and numbers only: no note, no address and
+// no phone travels in an event (TDD_17 §8). `actor.id` is null for a change made by the system.
+export interface ReturnEventPayload extends OrderEventPayload {
+  returnId: string
+}
+
 // A message about an order that did not go (TDD_17 §4.7): which kind and why. Never the text, the customer or the address.
 export interface OrderMessageNotSentPayload extends OrderEventPayload {
   kind: OrderMessageKindType
@@ -135,6 +141,15 @@ export interface ShipmentEventPayload {
   shipmentId: string
   orderId: string
   orderNumber: string
+  connectionId: string
+  actor: ActorRef
+}
+
+// A remittance of cash collected on delivery that was confirmed or voided (TDD_17 §4.15): the totals are in the remittance, the
+// event only says which one and who did it
+export interface RemittanceEventPayload {
+  storeId: string
+  remittanceId: string
   connectionId: string
   actor: ActorRef
 }
@@ -462,11 +477,17 @@ export interface DomainEventPayloads {
   [Events.ORDER_PRICE_REJECTED]: OrderEventPayload
   [Events.ORDER_PACKING_NOTE_CHANGED]: OrderEventPayload
   [Events.ORDER_MESSAGE_NOT_SENT]: OrderMessageNotSentPayload
+  [Events.RETURN_REQUESTED]: ReturnEventPayload
+  [Events.RETURN_APPROVED]: ReturnEventPayload
+  [Events.RETURN_IN_TRANSIT]: ReturnEventPayload
+  [Events.RETURN_RECEIVED]: ReturnEventPayload
   [Events.SHIPMENT_CREATED]: ShipmentEventPayload
   [Events.SHIPMENT_STATUS_CHANGED]: ShipmentStatusChangedPayload
   [Events.SHIPMENT_CANCELLED]: ShipmentEventPayload
   [Events.SHIPMENT_REQUIRES_REVIEW]: ShipmentEventPayload
   [Events.SHIPMENT_CANCEL_FAILED]: ShipmentEventPayload
+  [Events.REMITTANCE_CONFIRMED]: RemittanceEventPayload
+  [Events.REMITTANCE_VOIDED]: RemittanceEventPayload
   [Events.CARRIER_STATUS_UNMAPPED]: CarrierStatusUnmappedPayload
   [Events.BULK_LABELS_PROGRESS]: BulkLabelsProgressPayload
   [Events.BULK_LABELS_DONE]: BulkLabelsDonePayload

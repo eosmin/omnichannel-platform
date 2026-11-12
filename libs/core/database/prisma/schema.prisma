@@ -94,6 +94,8 @@ model Store {
   bulkLabelJobs           BulkLabelJob[]
   orderMessageTemplates   OrderMessageTemplate[]
   orderMessageDispatches  OrderMessageDispatch[]
+  codRemittances          CodRemittance[]
+  codRemittanceLines      CodRemittanceLine[]
   orderReturns            OrderReturn[]
   orderReturnLines        OrderReturnLine[]
 
@@ -1679,6 +1681,7 @@ model CarrierConnection {
   pickups          PickupRequest[]
   statusMappings   CarrierStatusMapping[]
   unmappedStatuses CarrierUnmappedStatus[]
+  remittances      CodRemittance[]
 
   @@unique([storeId, displayName])
   // So that what hangs from a connection can name its store and the database check that they go together
@@ -1739,7 +1742,8 @@ model Shipment {
   codStatus          String    @default("not_applicable") @map("cod_status") // CodStatus
   codExpectedCents   Int?      @map("cod_expected_cents") // Written when the shipment is delivered (§4.15)
   codRemittedCents   Int?      @map("cod_remitted_cents")
-  codRemittanceId    String?   @map("cod_remittance_id") // Plain column until the remittance tables of Step 4.13
+  codRemittanceId    String?   @map("cod_remittance_id") // The confirmed remittance that settled it (Step 4.13)
+  deliveredAt        DateTime? @map("delivered_at") // When the carrier delivered it: the age of what it owes (§4.15)
   currency           String
   packageCount       Int       @default(1) @map("package_count")
   failedAttempts     Int       @default(0) @map("failed_attempts") // Delivery attempts that failed (§4.9)
@@ -1759,14 +1763,16 @@ model Shipment {
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
-  store           Store             @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  order           Order             @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  connection      CarrierConnection @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Restrict)
-  pickup          PickupRequest?    @relation(fields: [storeId, pickupId], references: [storeId, id], onDelete: Restrict)
-  originWarehouse Warehouse?        @relation(fields: [originWarehouseId], references: [id], onDelete: Restrict)
-  orderReturn     OrderReturn?      @relation("ShipmentReturn", fields: [storeId, returnId], references: [storeId, id], onDelete: Restrict)
-  returnOf        OrderReturn[]     @relation("ReturnShipment")
+  store           Store               @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  order           Order               @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  connection      CarrierConnection   @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Restrict)
+  pickup          PickupRequest?      @relation(fields: [storeId, pickupId], references: [storeId, id], onDelete: Restrict)
+  originWarehouse Warehouse?          @relation(fields: [originWarehouseId], references: [id], onDelete: Restrict)
+  orderReturn     OrderReturn?        @relation("ShipmentReturn", fields: [storeId, returnId], references: [storeId, id], onDelete: Restrict)
+  returnOf        OrderReturn[]       @relation("ReturnShipment")
   events          ShipmentEvent[]
+  remittance      CodRemittance?      @relation("RemittedShipment", fields: [storeId, codRemittanceId], references: [storeId, id], onDelete: Restrict)
+  remittanceLines CodRemittanceLine[]
 
   @@unique([storeId, id])
   @@unique([storeId, idempotencyKey])
@@ -1778,6 +1784,8 @@ model Shipment {
   @@index([pickupId])
   @@index([originWarehouseId])
   @@index([returnId])
+  @@index([storeId, connectionId, codStatus]) // The pending screen and the daily check of what is owed
+  @@index([codRemittanceId])
   @@map("shipments")
 }
 
@@ -2000,4 +2008,62 @@ model OrderReturnLine {
   @@index([orderItemId])
   @@index([restockWarehouseId])
   @@map("order_return_lines")
+}
+
+// The carrier's settlement of cash collected on delivery (TDD_17 §4.15). A draft is built by hand or from an import and
+// confirmed once; a confirmed remittance is immutable and can only be voided. The status is written only by
+// RemittancesService (lint rule). The three totals are written at confirmation.
+model CodRemittance {
+  id              String    @id @default(uuid())
+  storeId         String    @map("store_id")
+  connectionId    String    @map("connection_id")
+  status          String    @default("draft") // RemittanceStatus
+  reference       String? // The carrier's settlement number
+  receivedOn      DateTime? @map("received_on") @db.Date
+  importProfileId String?   @map("import_profile_id") // The profile an import used (Step 4.13, import PR)
+  sourceMediaId   String?   @map("source_media_id") // The uploaded file, Media purpose REMITTANCE_FILE; plain column like the other media ids
+  expectedCents   BigInt    @default(0) @map("expected_cents")
+  reportedCents   BigInt    @default(0) @map("reported_cents")
+  feeCents        BigInt    @default(0) @map("fee_cents")
+  note            String?
+  createdBy       String    @map("created_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  confirmedAt     DateTime? @map("confirmed_at")
+  confirmedBy     String?   @map("confirmed_by")
+  voidedAt        DateTime? @map("voided_at")
+  voidedBy        String?   @map("voided_by")
+  voidReason      String?   @map("void_reason") // Why a confirmed remittance was voided
+
+  store      Store               @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  connection CarrierConnection   @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Restrict)
+  lines      CodRemittanceLine[]
+  shipments  Shipment[]          @relation("RemittedShipment")
+
+  // So that its lines and the shipments it settled can name their store and the database check that they go together
+  @@unique([storeId, id])
+  @@index([storeId, connectionId, status])
+  @@map("cod_remittances")
+}
+
+model CodRemittanceLine {
+  id               String  @id @default(uuid())
+  storeId          String  @map("store_id")
+  remittanceId     String  @map("remittance_id")
+  position         Int // 1-based order of the line in its remittance: of two lines for one guide, the first one counts
+  shipmentId       String? @map("shipment_id") // Null when the guide matched nothing
+  guideNumber      String  @map("guide_number") // As it appeared in the file, trimmed
+  reportedCents    Int     @map("reported_cents")
+  reportedFeeCents Int?    @map("reported_fee_cents")
+  expectedCents    Int?    @map("expected_cents")
+  outcome          String // RemittanceLineOutcome
+  excluded         Boolean @default(false) // The agent left it out of the confirmation
+  note             String?
+
+  store      Store         @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  remittance CodRemittance @relation(fields: [storeId, remittanceId], references: [storeId, id], onDelete: Cascade)
+  shipment   Shipment?     @relation(fields: [storeId, shipmentId], references: [storeId, id], onDelete: Restrict)
+
+  @@unique([remittanceId, position])
+  @@index([shipmentId])
+  @@map("cod_remittance_lines")
 }

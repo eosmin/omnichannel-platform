@@ -290,6 +290,14 @@ export const CodStatusTransitions: Record<CodStatus, readonly CodStatus[]> = {
   [CodStatus.VOID]: []
 }
 
+// The statuses of a package that never brought its cash: a cash-on-delivery guide that reaches one without having been
+// delivered goes to VOID (TDD_17 §4.15)
+export const CodVoidingStatuses: readonly ShipmentStatus[] = [
+  ShipmentStatus.CANCELLED,
+  ShipmentStatus.RETURNING,
+  ShipmentStatus.RETURNED
+]
+
 export const RemittanceStatusTransitions: Record<RemittanceStatus, readonly RemittanceStatus[]> = {
   [RemittanceStatus.DRAFT]: [RemittanceStatus.CONFIRMED],
   [RemittanceStatus.CONFIRMED]: [RemittanceStatus.VOIDED],
@@ -514,6 +522,12 @@ export const PickupLeaveNotes = {
   EMPTY_NOT_CANCELLED: 'pickup_emptied_carrier_not_cancelled'
 } as const
 
+// The description of a manual event is a key the screen translates (Step 4.14 writes the texts)
+export const ShipmentEventNotes = {
+  FOUND_AT_CARRIER: 'shipping.event.foundAtCarrier',
+  RECEIVED_AT_WAREHOUSE: 'shipping.event.receivedAtWarehouse'
+} as const
+
 // One writer at a time per connection when a pickup is made or joined (TDD_17 §4.10): a manual request and the scheduler never
 // create two pickups for one connection and day. Kept apart from the lock of the order.
 export const PickupLockScopes = { CONNECTION: 'pickup_connection' } as const
@@ -590,15 +604,18 @@ export const PickupResourceTypes = { PICKUP: 'pickup' } as const
 // promise never makes a second pickup for it
 export const pickupRequestKey = (pickupId: string): string => `pickup-request:${pickupId}`
 
-export const ShipmentEventNotes = { FOUND_AT_CARRIER: 'shipping.event.foundAtCarrier' } as const
-
 // The keys a carrier is called with besides the one of a guide (TDD_17 §4.5, §4.8): one for a whole pickup batch, one for a void
 export const pickupBatchKey = (pickupId: string): string => `pickup:${pickupId}`
 export const cancelShipmentKey = (guideKey: string): string => `cancel:${guideKey}`
 
+export const ReturnResourceTypes = {
+  RETURN: 'return'
+} as const
+
 export const ShipmentResourceTypes = {
   SHIPMENT: 'shipment',
-  BULK_LABEL_JOB: 'bulk_label_job'
+  BULK_LABEL_JOB: 'bulk_label_job',
+  REMITTANCE: 'remittance'
 } as const
 
 // The statuses a carrier moves a package into (TDD_17 §4.9; `CarrierReportableStatuses` is what a plugin may map to). Every other status is the platform's to set: a carrier that
