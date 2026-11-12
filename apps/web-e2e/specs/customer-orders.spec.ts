@@ -82,6 +82,12 @@ test.describe('the orders in the customer profile', () => {
       .click()
     for (const order of seeded) {
       await expect(profile.getByRole('link', { name: numberText(order) })).toBeVisible()
+      // Each order offers its own "Copy order", named by its number, next to the link
+      await expect(
+        profile.getByRole('button', {
+          name: en.orders.copy.openNamed.replace('{number}', order.orderNumber)
+        })
+      ).toBeVisible()
     }
     await profile.getByRole('tab', { name: en.orders.status.DELIVERED }).click()
     await expect(
