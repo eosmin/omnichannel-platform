@@ -211,6 +211,60 @@ describe('The return leg of a return', () => {
     expect(after.trackingNumber).toBeNull()
   })
 
+  it('does not take the guide of the way back for the tracking number of the order', async () => {
+    const { order, returnId } = await approved()
+    // The one live outbound guide has no number yet: the first number that arrives would become the order's tracking number
+    const outbound = await owner.shipment.create({
+      data: {
+        storeId: ctx.storeA.id,
+        orderId: order.id,
+        connectionId: forzaId,
+        serviceCode: 'standard',
+        shippingPayer: ShippingPayer.SENDER,
+        currency: 'USD',
+        status: ShipmentStatus.IN_TRANSIT,
+        idempotencyKey: `out-${randomUUID()}`,
+        createdBy: 'system'
+      }
+    })
+
+    expect((await guideOf(returnId)).status).toBe(CREATED)
+
+    expect(
+      (await owner.order.findUniqueOrThrow({ where: { id: order.id } })).trackingNumber
+    ).toBeNull()
+    expect(outbound.guideNumber).toBeNull()
+  })
+
+  it('needs a phone for the courier to call', async () => {
+    const { order, returnId } = await approved()
+    await owner.order.update({ where: { id: order.id }, data: { recipientPhones: [] } })
+
+    const response = await guideOf(returnId)
+
+    expect(response.status).toBe(400)
+    expect(errorOf(response).code).toBe(ErrorCodes.SHIPPING_RECIPIENT_PHONE_MISSING)
+    expect(fake.callsTo('createShipment')).toHaveLength(0)
+  })
+
+  it('does not cancel a return that has a live guide, and cancels it once the guide is over', async () => {
+    const { returnId } = await approved()
+    const guide = (await guideOf(returnId)).body as GuideBody
+
+    const refused = await admin().post(ApiRoutes.returns.cancel(returnId)).send({})
+    expect(refused.status).toBe(CONFLICT)
+    expect(errorOf(refused).code).toBe(ErrorCodes.SHIPPING_ACTIVE_SHIPMENT_EXISTS)
+    expect((await owner.orderReturn.findUniqueOrThrow({ where: { id: returnId } })).status).toBe(
+      OrderReturnStatus.APPROVED
+    )
+
+    await owner.shipment.update({
+      where: { id: guide.id },
+      data: { status: ShipmentStatus.CANCELLED }
+    })
+    expect((await admin().post(ApiRoutes.returns.cancel(returnId)).send({})).status).toBe(OK)
+  })
+
   it('swaps the payer of the guide when the customer pays', async () => {
     const { returnId } = await approved()
     await owner.orderReturn.update({
@@ -355,6 +409,69 @@ describe('The return leg of a return', () => {
         )
       ).rejects.toMatchObject({ code: ErrorCodes.RETURN_INVALID_STATUS_TRANSITION })
       expect(await kit.level(product.id, ctx.warehouseA.id)).toMatchObject({ onHand: 10 })
+    })
+
+    it('receives a package whose guide was cancelled meanwhile, and refuses one whose guide was never made', async () => {
+      const { returnId } = await approved()
+      const guide = (await guideOf(returnId)).body as GuideBody
+      await owner.shipment.update({
+        where: { id: guide.id },
+        data: { status: ShipmentStatus.CANCELLED }
+      })
+      const scan = {
+        shipmentId: guide.id,
+        reason: 'DEFECTIVE',
+        condition: OrderReturnCondition.RESELLABLE
+      }
+      const by = { userId: ctx.adminA.id, storeId: ctx.storeA.id }
+
+      expect((await returns.receiveFromScan(ctx.storeA.id, scan, by)).returnId).toBe(returnId)
+
+      const other = await approved()
+      const failed = await owner.shipment.create({
+        data: {
+          storeId: ctx.storeA.id,
+          orderId: other.order.id,
+          connectionId: forzaId,
+          kind: ShipmentKind.RETURN,
+          returnId: other.returnId,
+          serviceCode: 'standard',
+          shippingPayer: ShippingPayer.SENDER,
+          currency: 'USD',
+          status: ShipmentStatus.FAILED,
+          idempotencyKey: `failed-${randomUUID()}`,
+          createdBy: 'system'
+        }
+      })
+      await expect(
+        returns.receiveFromScan(ctx.storeA.id, { ...scan, shipmentId: failed.id }, by)
+      ).rejects.toMatchObject({ code: ErrorCodes.SHIPPING_INVALID_STATUS_TRANSITION })
+    })
+
+    it('refuses lines that are not all the lines of the return with their units, so units that did not arrive are never counted', async () => {
+      const { product, returnId } = await approved()
+      const guide = (await guideOf(returnId)).body as GuideBody
+      const item = await owner.orderItem.findFirstOrThrow({ where: { productId: product.id } })
+
+      await expect(
+        returns.receiveFromScan(
+          ctx.storeA.id,
+          {
+            shipmentId: guide.id,
+            reason: 'DEFECTIVE',
+            condition: OrderReturnCondition.RESELLABLE,
+            lines: [
+              { orderItemId: item.id, quantity: 3, condition: OrderReturnCondition.RESELLABLE }
+            ]
+          },
+          { userId: ctx.adminA.id, storeId: ctx.storeA.id }
+        )
+      ).rejects.toMatchObject({ code: ErrorCodes.VALIDATION_INVALID_INPUT })
+
+      expect(await kit.level(product.id, ctx.warehouseA.id)).toMatchObject({ onHand: 6 })
+      expect((await owner.orderReturn.findUniqueOrThrow({ where: { id: returnId } })).status).toBe(
+        OrderReturnStatus.APPROVED
+      )
     })
 
     it('takes the condition and warehouse the scan names for the lines of the return, and refuses a line that is not of it', async () => {

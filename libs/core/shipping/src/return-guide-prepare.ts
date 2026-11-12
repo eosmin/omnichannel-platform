@@ -83,6 +83,13 @@ export async function prepareReturnGuide(
     )
   }
 
+  if (
+    plugin.capabilities.includes(CarrierCapability.REQUIRES_LOCATION_IDS) &&
+    request.locationIds === undefined
+  ) {
+    throw shippingRefusal(ErrorCodes.SHIPPING_LOCATION_REQUIRED, 'the carrier needs location ids')
+  }
+
   const orderReturn = await tx.orderReturn.findFirst({
     where: { id: request.returnId, storeId },
     select: {
@@ -117,6 +124,13 @@ export async function prepareReturnGuide(
     )
   }
   const { order } = orderReturn
+  // The courier calls the sender to collect the parcel: a return with nobody to call is the same refusal an outbound guide gives
+  if (order.recipientPhones[0] === undefined) {
+    throw shippingRefusal(
+      ErrorCodes.SHIPPING_RECIPIENT_PHONE_MISSING,
+      'the order has no phone for the courier to call'
+    )
+  }
   const origin = asRecord(order.shippingAddress)
   const customerAddress = origin === null ? null : carrierAddress(origin)
   if (origin === null || customerAddress === null) {
@@ -140,35 +154,34 @@ export async function prepareReturnGuide(
     )
   }
 
-  // The destination: the warehouse the agent chose, else the one that sent most of the returned units (the one a resellable
-  // unit goes back to by default), else the first warehouse of the store
+  // The destination: the warehouse the agent chose (it must be usable, or the guide is refused), else the one that sent most of the
+  // returned units (the one a resellable unit goes back to by default) while it is still usable, else the first warehouse of the store
   const sent = orderReturn.lines.flatMap(line =>
     line.orderItem.allocations.map(allocation => ({
       warehouseId: allocation.warehouseId,
       quantity: allocation.quantity
     }))
   )
-  let destinationId = request.warehouseId ?? defaultRestockWarehouse(sent)
-  if (destinationId === null) {
+  const usable = (warehouseId: string) =>
+    tx.warehouse.findFirst({
+      where: {
+        id: warehouseId,
+        active: true,
+        organizationId: store.organizationId,
+        stores: { some: { storeId } }
+      },
+      select: { id: true, name: true, address: true }
+    })
+  const preferred = request.warehouseId ?? defaultRestockWarehouse(sent)
+  let warehouse = preferred === null ? null : await usable(preferred)
+  if (warehouse === null && request.warehouseId === undefined) {
     const first = await tx.storeWarehouse.findFirst({
       where: { storeId, warehouse: { active: true } },
       orderBy: { priority: 'asc' },
       select: { warehouseId: true }
     })
-    destinationId = first?.warehouseId ?? null
+    warehouse = first === null ? null : await usable(first.warehouseId)
   }
-  const warehouse =
-    destinationId === null
-      ? null
-      : await tx.warehouse.findFirst({
-          where: {
-            id: destinationId,
-            active: true,
-            organizationId: store.organizationId,
-            stores: { some: { storeId } }
-          },
-          select: { id: true, name: true, address: true }
-        })
   const warehouseAddress = warehouse === null ? null : asRecord(warehouse.address)
   const destination = warehouseAddress === null ? null : carrierAddress(warehouseAddress)
   if (warehouse === null || warehouseAddress === null || destination === null) {

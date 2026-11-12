@@ -555,7 +555,8 @@ export class ReturnsService {
   }
 
   // The package of a return leg was scanned (TDD_17 §4.11, §4.16): the return that made the guide is the one received, with the
-  // reason, condition and lines of the scan, and the guide says it arrived. No second return is made, so the units are counted
+  // condition and lines of the scan (the reason stays the one of the request; the reason of the scan is in the audit entry), and
+  // the guide says it arrived. No second return is made, so the units are counted
   // once. The return must be approved or in transit (a receipt of anything else is refused as `receive` refuses it).
   private async receiveReturnLeg(
     storeId: string,
@@ -577,20 +578,27 @@ export class ReturnsService {
       })
       if (shipment === null) throw resourceNotFound('shipment')
       const from = shipment.status as ShipmentStatus
-      if (ShipmentInactiveStatuses.includes(from)) {
+      // A package that is here is received whatever its guide says (a guide that was cancelled while the parcel was already on its
+      // way still brings it): only a guide that was never made, or whose outcome is not known, has no package
+      if (from === ShipmentStatus.CREATING || from === ShipmentStatus.FAILED) {
         throw conflict(
-          ErrorCodes.RETURN_ORDER_NOT_DELIVERED,
-          'the guide of the return is not one a package comes back by'
+          ErrorCodes.SHIPPING_INVALID_STATUS_TRANSITION,
+          'the guide of the return was not made, so no package comes by it'
         )
       }
+      // A scan that names lines names every line of the return with its units, as `receive` does: a package that is not the
+      // whole return is received by hand, never with units that did not arrive
       const given = new Map((input.lines ?? []).map(line => [line.orderItemId, line]))
-      for (const orderItemId of given.keys()) {
-        if (!loaded.lines.some(line => line.orderItemId === orderItemId)) {
-          throw invalid(
-            'a line of the scan is not a line of the return',
-            ErrorCodes.VALIDATION_INVALID_INPUT
-          )
-        }
+      if (
+        input.lines !== undefined &&
+        (given.size !== input.lines.length ||
+          given.size !== loaded.lines.length ||
+          loaded.lines.some(line => given.get(line.orderItemId)?.quantity !== line.quantity))
+      ) {
+        throw invalid(
+          'the lines of the scan are not the lines of the return',
+          ErrorCodes.VALIDATION_INVALID_INPUT
+        )
       }
       // A package of a return holds the lines of that return: the scan chooses their condition and warehouse, not their units
       const receipt = await this.applyReceipt(
@@ -610,6 +618,12 @@ export class ReturnsService {
         actor
       )
       loaded.status = OrderReturnStatus.RECEIVED
+      if (input.notes !== undefined) {
+        await tx.orderReturn.update({
+          where: { id: returnId },
+          data: { notes: await this.withNote(tx, returnId, input.notes) }
+        })
+      }
       // The package is at the warehouse: its guide says so with a manual event, when the table allows it from where it is (a
       // carrier that already said it, or a guide that has not left, stays as it is)
       if (isShipmentTransitionAllowed(from, ShipmentStatus.DELIVERED)) {
@@ -672,6 +686,25 @@ export class ReturnsService {
     return this.prisma.transaction(async tx => {
       const loaded = await this.lock(tx, storeId, returnId, false)
       this.assertMove(loaded.status, to)
+      // A return that has a live guide of the way back (one being made at the carrier counts) is not cancelled: the guide may be
+      // paid and on its way. It is voided first, from the shipments, and the return can be cancelled after. The guide is made under
+      // the lock of the return, so a guide and a cancel never both win.
+      if (to === OrderReturnStatus.CANCELLED) {
+        const live = await tx.shipment.count({
+          where: {
+            storeId,
+            returnId,
+            kind: ShipmentKind.RETURN,
+            status: { notIn: [...ShipmentInactiveStatuses] }
+          }
+        })
+        if (live > 0) {
+          throw conflict(
+            ErrorCodes.SHIPPING_ACTIVE_SHIPMENT_EXISTS,
+            'the return has a live guide: void it first'
+          )
+        }
+      }
       await tx.orderReturn.update({
         where: { id: returnId },
         data: {

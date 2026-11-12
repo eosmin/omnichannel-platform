@@ -336,7 +336,7 @@ export class ShippingService {
           { guideNumber, labelMediaId: stored.mediaId },
           { actor: caller.actor, source: ShipmentEventSource.SYSTEM }
         )
-        await this.copyTrackingNumber(tx, prepared.identity, guideNumber)
+        await this.copyTrackingNumber(tx, prepared.identity, guideNumber, prepared.row.kind)
         return true
       }, LOCAL_GUIDE_TRANSACTION)
       if (done)
@@ -542,7 +542,7 @@ export class ShippingService {
           },
           { actor: caller.actor, source: ShipmentEventSource.SYSTEM }
         )
-        await this.copyTrackingNumber(tx, identity, guideNumber)
+        await this.copyTrackingNumber(tx, identity, guideNumber, prepared.row.kind)
       })
       if (stored !== null) await this.queueScan(stored)
       return {
@@ -1150,7 +1150,7 @@ export class ShippingService {
         throw error
       }
       if (to === ShipmentStatus.LABEL_CREATED && body.guideNumber !== undefined) {
-        await this.copyTrackingNumber(tx, this.identityOf(row), body.guideNumber)
+        await this.copyTrackingNumber(tx, this.identityOf(row), body.guideNumber, row.kind)
       }
       return { shipmentId, orderId: row.orderId, from, to }
     })
@@ -1271,7 +1271,7 @@ export class ShippingService {
             description: ShipmentEventNotes.FOUND_AT_CARRIER
           }
         )
-        await this.copyTrackingNumber(tx, this.identityOf(row), found.guideNumber)
+        await this.copyTrackingNumber(tx, this.identityOf(row), found.guideNumber, row.kind)
         return {
           shipmentId,
           orderId: row.orderId,
@@ -1301,6 +1301,7 @@ export class ShippingService {
       storeId: true,
       orderId: true,
       connectionId: true,
+      kind: true,
       status: true,
       guideNumber: true,
       providerShipmentId: true,
@@ -1407,8 +1408,11 @@ export class ShippingService {
   private async copyTrackingNumber(
     tx: PrismaTransaction,
     identity: Omit<ShipmentIdentity, 'shipmentId'>,
-    guideNumber: string
+    guideNumber: string,
+    kind: string
   ): Promise<void> {
+    // The guide of the way back is never the tracking number of the order
+    if (kind !== String(ShipmentKind.OUTBOUND)) return
     const where = {
       orderId: identity.orderId,
       storeId: identity.storeId,
