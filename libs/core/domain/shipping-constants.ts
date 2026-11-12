@@ -596,7 +596,14 @@ export const pickupBatchKey = (pickupId: string): string => `pickup:${pickupId}`
 export const cancelShipmentKey = (guideKey: string): string => `cancel:${guideKey}`
 
 export const ReturnResourceTypes = {
-  RETURN: 'return'
+  RETURN: 'return',
+  // The store-wide returns settings (Settings → Returns)
+  RETURN_SETTINGS: 'return_settings'
+} as const
+
+// The store-wide advisory lock of the returns settings, which are read and written back whole
+export const ReturnLockScopes = {
+  RETURN_SETTINGS: 'return_settings'
 } as const
 
 export const ShipmentResourceTypes = {

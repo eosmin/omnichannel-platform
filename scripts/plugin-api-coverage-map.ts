@@ -323,6 +323,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'settings.inbox': { none: SETTINGS_ADMIN },
   'settings.inboxBehavior': { none: SETTINGS_ADMIN },
   'settings.preferences': { proposed: ['settings:read', 'settings:write'], step: STEP },
+  'settings.returns': { proposed: ['settings:read', 'settings:write'], step: STEP },
   'settings.inventory': { proposed: ['inventory:read', 'settings:write'], step: STEP },
   'settings.routing': { none: SETTINGS_ADMIN },
   'settings.routingOrder': { none: SETTINGS_ADMIN },

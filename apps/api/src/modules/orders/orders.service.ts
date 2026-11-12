@@ -16,8 +16,11 @@ import {
 import {
   buildOrderCopyDraft,
   calendarDayToDate,
+  applyExchangeCredit,
   CarrierConnectionStatus,
   checkOrderEdit,
+  computeOrderTotals,
+  exchangeCreditReason,
   guideAffectingChanges,
   copyStockKey,
   type CopyStock,
@@ -43,6 +46,7 @@ import {
   shouldWarnWarehouseOfPackingNote,
   startOfCalendarDayIn,
   type CreateOrderInput,
+  type ReplacementOrderBody,
   type UpdateOrderInput
 } from '@platform/core/domain'
 import { ErrorCodes, resourceNotFound } from '@platform/core/errors'
@@ -54,6 +58,7 @@ import {
   writeOrderSummaryLine
 } from '@platform/core/messaging'
 import { ExportFormats, ExportTypes } from '@platform/core/queues'
+import { type ReplacementOrderMade } from '@platform/core/shipping'
 import { readOrderPreferences } from '@platform/core/store-preferences'
 
 import { ExportsService, type ExportView } from '../exports'
@@ -589,6 +594,158 @@ export class OrdersService {
       })
     }
     return { order: await this.get(storeId, created.order.id, held), notices: created.notices }
+  }
+
+  // The replacement order of an exchange (TDD_17 §4.11), made inside the transaction of the return that approves it. It is born
+  // CONFIRMED (the approval is the customer's confirmation) for the customer of the returned order, reserves stock like any order,
+  // and its discount is the credit of the return: written by the system, exempt from the store's discount limit and from the price
+  // approval, and never above the products of the replacement. A shipping fee outside the range of the carrier is refused as in any
+  // order. The audit entries leave after the commit (`afterCommit`).
+  async createReplacement(
+    tx: PrismaTransaction,
+    storeId: string,
+    input: {
+      ofOrderId: string
+      returnId: string
+      creditCents: number
+      replacement: ReplacementOrderBody
+    },
+    actor: Actor
+  ): Promise<ReplacementOrderMade> {
+    const source = await tx.order.findFirst({
+      where: { id: input.ofOrderId, storeId },
+      select: { customerId: true }
+    })
+    if (source === null) throw resourceNotFound('order')
+    const customerId = await resolveCustomerForOrder(tx, storeId, source.customerId)
+    const body = input.replacement
+    const store = await tx.store.findUniqueOrThrow({
+      where: { id: storeId },
+      select: { currency: true, settings: { select: { preferences: true } } }
+    })
+    const { lines } = await resolveLines(tx, storeId, body.items, {
+      userId: actor.userId,
+      canOverridePrice: false
+    })
+    const planned = await planCarrier(tx, storeId, body.carrierConnectionId, true)
+    // The fee and the free-shipping rule are judged as in any order, with no discount (the credit is the system's). The replacement
+    // is born CONFIRMED, so a fee that would wait for an approval is refused: an exchange is no way round the range of the carrier
+    const { freeShipping, control } = priceOrder({
+      feeBounds: planned.bounds,
+      lines,
+      shippingCents: body.shippingCents,
+      discountCents: 0,
+      discountReason: exchangeCreditReason(input.returnId),
+      linePriceChanged: false,
+      canOverridePrice: false,
+      preferences: readOrderPreferences(store.settings?.preferences),
+      approvalStatus: PriceApprovalStatus.NOT_REQUIRED,
+      approved: null
+    })
+    if (control.approvalStatus !== PriceApprovalStatus.NOT_REQUIRED) {
+      throw orderRefusal(ErrorCodes.SHIPPING_FEE_OUT_OF_RANGE)
+    }
+    const gross = computeOrderTotals({
+      lines,
+      shippingCents: body.shippingCents,
+      discountCents: 0
+    })
+    if (!gross.ok) throw orderRefusal(gross.code)
+    const { discountCents, excessCents } = applyExchangeCredit({
+      subtotalCents: gross.subtotalCents,
+      creditCents: input.creditCents
+    })
+    const totals = computeOrderTotals({
+      lines,
+      shippingCents: body.shippingCents,
+      discountCents
+    })
+    if (!totals.ok) throw orderRefusal(totals.code)
+    const now = new Date()
+    const order = await tx.order.create({
+      data: {
+        storeId,
+        customerId,
+        orderNumber: await takeOrderNumber(tx, storeId),
+        status: OrderStatus.CONFIRMED,
+        subtotalCents: totals.subtotalCents,
+        shippingCents: totals.shippingCents,
+        discountCents: totals.discountCents,
+        totalCents: totals.totalCents,
+        carrierConnectionId: planned.connectionId,
+        currency: store.currency,
+        paymentMethod: body.paymentMethod,
+        ...(body.shippingAddress === undefined ? {} : { shippingAddress: body.shippingAddress }),
+        recipientPhones: body.recipientPhones,
+        customerNotes: normalizeNote(body.customerNotes),
+        internalNotes: normalizeNote(body.internalNotes),
+        packingNotes: normalizeNote(body.packingNotes),
+        scheduledDeliveryDate:
+          body.scheduledDeliveryDate === null
+            ? null
+            : calendarDayToDate(body.scheduledDeliveryDate),
+        freeShipping,
+        discountReason: totals.discountCents > 0 ? exchangeCreditReason(input.returnId) : null,
+        priceApprovalStatus: PriceApprovalStatus.NOT_REQUIRED,
+        confirmedAt: now,
+        confirmedBy: actor.userId,
+        confirmedVia: OrderConfirmationChannel.OTHER,
+        exchangeOfOrderId: input.ofOrderId,
+        createdBy: actor.userId
+      },
+      select: { id: true, orderNumber: true }
+    })
+    const itemIds = await this.writeLines(tx, order.id, lines)
+    await this.stock.allocateAndReserve(tx, {
+      storeId,
+      orderId: order.id,
+      lines: toAllocatable(lines, itemIds),
+      createdBy: actor.userId
+    })
+    const common = {
+      storeId,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      actor: actorRef(actor)
+    }
+    this.events.publish(tx, Events.ORDER_CREATED, {
+      ...common,
+      customerId,
+      conversationId: null,
+      totalCents: totals.totalCents,
+      currency: store.currency,
+      sendSummary: null
+    })
+    this.events.publish(tx, Events.ORDER_CONFIRMED, common)
+    const trail = { storeId, orderId: order.id, actor }
+    return {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      totalCents: totals.totalCents,
+      creditAppliedCents: totals.discountCents,
+      excessCents,
+      afterCommit: () => {
+        recordOrderAudit(this.audit, AuditAction.ORDER_CREATED, trail, {
+          orderNumber: order.orderNumber,
+          status: OrderStatus.CONFIRMED,
+          customerId,
+          totalCents: totals.totalCents,
+          items: lines.length,
+          exchangeOfOrderId: input.ofOrderId,
+          returnId: input.returnId
+        })
+        recordOrderAudit(this.audit, AuditAction.ORDER_CONFIRMED, trail, {
+          via: OrderConfirmationChannel.OTHER
+        })
+        if (totals.discountCents > 0) {
+          recordOrderAudit(this.audit, AuditAction.ORDER_DISCOUNT_APPLIED, trail, {
+            discountCents: totals.discountCents,
+            subtotalCents: totals.subtotalCents,
+            reason: exchangeCreditReason(input.returnId)
+          })
+        }
+      }
+    }
   }
 
   async update(

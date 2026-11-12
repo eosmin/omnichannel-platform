@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import { ApiRoutes } from '@platform/core/api'
 import {
+  type ApproveReturnBody,
   type CompleteReturnBody,
   type CreateReturnBody,
   OrderReturnCondition,
@@ -129,8 +130,21 @@ function moveWith<Body>(
     client.request(route(returnId), { method: 'POST', body, schema: returnSchema, storeId })
 }
 
-// Requested → approved: the agent checked the reason and the evidence
-export const approveReturn = move(ApiRoutes.returns.approve)
+// Requested → approved: the agent checked the reason and the evidence. An exchange names its replacement order, which the
+// server makes in the same step (already confirmed, its discount the value of what comes back); a refund names none
+export function approveReturn(
+  client: ApiClient,
+  storeId: string,
+  returnId: string,
+  body: ApproveReturnBody = {}
+): Promise<ReturnView> {
+  return client.request(ApiRoutes.returns.approve(returnId), {
+    method: 'POST',
+    body,
+    schema: returnSchema,
+    storeId
+  })
+}
 // Approved → in transit: the goods are on their way back (the people who receive them are told)
 export const markReturnInTransit = move(ApiRoutes.returns.inTransit)
 export const rejectReturn = moveWith<ReturnDecisionBody>(ApiRoutes.returns.reject)
@@ -139,3 +153,32 @@ export const cancelReturn = moveWith<ReturnDecisionBody>(ApiRoutes.returns.cance
 export const receiveReturn = moveWith<ReceiveReturnBody>(ApiRoutes.returns.receive)
 // Received → completed: a refund records the money given back by hand
 export const completeReturn = moveWith<CompleteReturnBody>(ApiRoutes.returns.complete)
+
+// Settings → Returns (TDD_17 §4.11): who pays the return leg and the shipping of a replacement when a return does not say
+export const returnSettingsSchema = z.strictObject({ returnShippingPayer: z.enum(ShippingPayer) })
+export type ReturnSettingsView = z.output<typeof returnSettingsSchema>
+
+export function fetchReturnSettings(
+  client: ApiClient,
+  storeId: string,
+  signal?: AbortSignal
+): Promise<ReturnSettingsView> {
+  return client.request(ApiRoutes.settings.returns, {
+    schema: returnSettingsSchema,
+    storeId,
+    signal
+  })
+}
+
+export function updateReturnSettings(
+  client: ApiClient,
+  storeId: string,
+  body: { returnShippingPayer?: ShippingPayer }
+): Promise<ReturnSettingsView> {
+  return client.request(ApiRoutes.settings.returns, {
+    method: 'PATCH',
+    body,
+    schema: returnSettingsSchema,
+    storeId
+  })
+}

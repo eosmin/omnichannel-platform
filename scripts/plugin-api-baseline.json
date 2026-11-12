@@ -138,6 +138,7 @@
     "search.products",
     "settings.inventory",
     "settings.preferences",
+    "settings.returns",
     "settings.tagById",
     "settings.tags",
     "shipments.bulk",

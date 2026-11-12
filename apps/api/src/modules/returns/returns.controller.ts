@@ -1,11 +1,13 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query, Req } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
-import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
+import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import {
   type CompleteReturnBody,
   completeReturnSchema,
+  type ApproveReturnBody,
+  approveReturnSchema,
   type CreateReturnBody,
   createReturnSchema,
   type CursorPage,
@@ -19,7 +21,14 @@ import { ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import { ReturnsService } from '@platform/core/shipping'
 
-import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
+import { permissionDenied } from '../orders/orders.support'
+import {
+  actorOf,
+  CurrentPermissions,
+  CurrentStore,
+  RequirePermissions,
+  type ResolvedTenant
+} from '../tenancy'
 
 import { ReturnsQueries } from './returns.queries'
 import { type ListReturnsQuery, listReturnsQuerySchema, returnIdSchema } from './returns.schemas'
@@ -31,7 +40,7 @@ const id = () => new ZodValidationPipe(returnIdSchema)
 
 // The returns of the store in X-Store-Id (TDD_17 §6). Reading them asks for returns:view; everything that changes one asks for
 // returns:manage. The store is the one TenantGuard resolved, never a value of the request. The return leg (a guide made for the
-// way back) and the exchange are the work of PR R1b; the reception by scanner, of PR R2.
+// way back) is the work of PR R1b-2; the reception by scanner, of PR R2.
 @Controller()
 export class ReturnsController {
   constructor(
@@ -75,10 +84,18 @@ export class ReturnsController {
     @CurrentStore() store: Store,
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', id()) returnId: string,
+    @Body(new ZodValidationPipe(approveReturnSchema.default({}))) body: ApproveReturnBody,
+    @CurrentPermissions() held: readonly Permission[],
     @Req() req: AuthenticatedRequest
   ): Promise<ReturnView> {
+    // The replacement of an exchange is an order, made and confirmed: who approves it must be able to create and confirm orders
+    if (body.replacement !== undefined) {
+      for (const permission of [Permissions.ORDERS_CREATE, Permissions.ORDERS_CONFIRM]) {
+        if (!held.includes(permission)) throw permissionDenied(permission)
+      }
+    }
     return this.returns
-      .approve(store.id, returnId, actorOf(user, store, req))
+      .approve(store.id, returnId, body, actorOf(user, store, req))
       .then(returnId => this.queries.get(store.id, returnId))
   }
 
