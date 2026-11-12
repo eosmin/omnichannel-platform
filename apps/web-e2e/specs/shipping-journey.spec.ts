@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { type BrowserContext, type Page } from '@playwright/test'
 
 import { AppPaths } from '@platform/api-client'
+import { ShipmentStatus } from '@platform/core/domain'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
 import routes from '../../web/messages/routes/order-detail.en.json' with { type: 'json' }
@@ -88,7 +89,7 @@ test.describe('the shipping journey of an order', () => {
     await expect(shipping().getByText(SHIPPING.empty, { exact: true })).toBeHidden()
     // One live guide: the order offers no second one
     await expect(shipping().getByRole('button', { name: SHIPPING.makeGuide })).toHaveCount(0)
-    expect(await shipmentStatusesOf(guided.id)).toEqual(['LABEL_CREATED'])
+    expect(await shipmentStatusesOf(guided.id)).toEqual([ShipmentStatus.LABEL_CREATED])
 
     // The label is asked of the api by the press, and no carrier is called to print it
     const asked = page.waitForResponse(response =>
@@ -118,7 +119,7 @@ test.describe('the shipping journey of an order', () => {
     await expect(shipping().getByRole('button', { name: SHIPPING.action.print_label })).toHaveCount(
       0
     )
-    expect(await shipmentStatusesOf(guided.id)).toEqual(['CANCELLED'])
+    expect(await shipmentStatusesOf(guided.id)).toEqual([ShipmentStatus.CANCELLED])
     // The order is free to get another guide
     await expect(shipping().getByRole('button', { name: SHIPPING.makeGuide })).toBeVisible()
   })
