@@ -32,7 +32,7 @@ import { useStore } from '../../components/providers/store-context'
 import { Button } from '../../components/ui/button'
 import { useWarehousesOfStore } from '../../lib/inventory/use-inventory'
 import { asOrderStatus, asPriceApprovalStatus } from '../../lib/orders/order-detail-rules'
-import { outboundStatusesOf } from '../../lib/orders/order-shipping-rules'
+import { liveOutbound, outboundStatusesOf } from '../../lib/orders/order-shipping-rules'
 import { useOrder, useOrderWrites } from '../../lib/orders/use-order'
 import {
   useGuideConnections,
@@ -291,7 +291,11 @@ export function OrderDetailPage(): ReactElement {
         <div className="flex flex-col gap-6">
           <CustomerBlock order={data} />
           <OrderPayment order={data} writes={writes} />
-          <OrderDelivery order={data} writes={writes} />
+          <OrderDelivery
+            order={data}
+            writes={writes}
+            hasActiveShipment={liveOutbound(shipments.data ?? []).length > 0}
+          />
           <OrderEvents order={data} />
         </div>
       </div>

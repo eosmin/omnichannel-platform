@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { ApiRoutes } from '@platform/core/api'
-import type { CreateShipmentBody, OrderMessageKindType } from '@platform/core/domain'
+import type { CreateShipmentBody } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
 
@@ -108,33 +108,6 @@ export function fetchShipmentLabelLink(
 ): Promise<ShipmentLabelLinkView> {
   return client.request(ApiRoutes.shipments.label(shipmentId), {
     schema: labelLinkSchema,
-    storeId
-  })
-}
-
-// What a message of a kind would say about the order, with nothing sent (`?preview=true`): the text, or what is missing for it
-const previewSchema = z.discriminatedUnion('ok', [
-  z.object({ preview: z.literal(true), ok: z.literal(true), text: z.string(), locale: z.string() }),
-  z.object({
-    preview: z.literal(true),
-    ok: z.literal(false),
-    reason: z.string(),
-    missing: z.array(z.string())
-  })
-])
-export type OrderMessagePreviewView = z.output<typeof previewSchema>
-
-export function previewOrderMessage(
-  client: ApiClient,
-  storeId: string,
-  orderId: string,
-  kind: OrderMessageKindType,
-  shipmentId?: string
-): Promise<OrderMessagePreviewView> {
-  return client.request(`${ApiRoutes.orders.messages(orderId)}?preview=true`, {
-    method: 'POST',
-    body: { kind, ...(shipmentId === undefined ? {} : { shipmentId }) },
-    schema: previewSchema,
     storeId
   })
 }
