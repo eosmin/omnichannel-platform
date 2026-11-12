@@ -161,6 +161,9 @@ export const QueryKeys = {
   },
   returns: {
     all: (storeId: string) => ['returns', storeId] as const,
+    // The returns of one order (the panel of the order detail)
+    ofOrder: (storeId: string, orderId: string) =>
+      ['returns', storeId, 'of-order', orderId] as const,
     receptionBatches: (storeId: string) => ['returns', storeId, 'reception-batches'] as const,
     receptionBatch: (storeId: string, batchId: string) =>
       ['returns', storeId, 'reception-batches', batchId] as const

@@ -24,11 +24,15 @@ import { OrderLines } from '../../components/orders/order-lines'
 import { OrderNotes } from '../../components/orders/order-notes'
 import { OrderPayment } from '../../components/orders/order-payment'
 import { OrderPrintButtons } from '../../components/orders/order-print'
+import { OrderReturns } from '../../components/orders/order-returns'
+import { OrderShipping } from '../../components/orders/order-shipping'
 import { useStore } from '../../components/providers/store-context'
 import { Button } from '../../components/ui/button'
 import { useWarehousesOfStore } from '../../lib/inventory/use-inventory'
 import { asOrderStatus, asPriceApprovalStatus } from '../../lib/orders/order-detail-rules'
+import { outboundStatusesOf } from '../../lib/orders/order-shipping-rules'
 import { useOrder, useOrderWrites } from '../../lib/orders/use-order'
+import { useOrderShipments, useShipmentWrites } from '../../lib/orders/use-order-shipping'
 
 function BackLink(): ReactElement {
   const t = useTranslations('orders.detail')
@@ -156,6 +160,12 @@ export function OrderDetailPage(): ReactElement {
   const mayView = can(ClientPermissions.ORDERS_VIEW)
   const order = useOrder(storeId, orderId, mayView)
   const writes = useOrderWrites(storeId, orderId)
+  const shipments = useOrderShipments(
+    storeId,
+    orderId,
+    mayView && can(ClientPermissions.SHIPPING_VIEW)
+  )
+  const shipmentWrites = useShipmentWrites(storeId, orderId)
   const warehouses = useWarehousesOfStore(storeId, can(ClientPermissions.INVENTORY_VIEW))
   const warehouseNames = new Map((warehouses.data ?? []).map(w => [w.id, w.name]))
 
@@ -234,6 +244,19 @@ export function OrderDetailPage(): ReactElement {
         <div className="flex flex-col gap-6">
           <OrderNotes order={data} writes={writes} />
           <OrderLines order={data} warehouseNames={warehouseNames} />
+          <OrderShipping
+            order={data}
+            shipments={shipments.data ?? []}
+            isPending={shipments.isPending}
+            isError={shipments.isError}
+            writes={shipmentWrites}
+            carrierCanCancel={() => null}
+          />
+          <OrderReturns
+            order={data}
+            outboundStatuses={outboundStatusesOf(shipments.data ?? [])}
+            warehouses={warehouses.data ?? []}
+          />
         </div>
         <div className="flex flex-col gap-6">
           <CustomerBlock order={data} />
