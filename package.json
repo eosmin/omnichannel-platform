@@ -40,9 +40,10 @@
     "validate:isolation": "tsx scripts/check-isolation-coverage.ts",
     "validate:frontend": "tsx scripts/check-frontend-coverage.ts",
     "validate:channel-agnostic": "tsx scripts/validate-channel-agnostic.ts",
+    "validate:carrier-agnostic": "tsx scripts/validate-carrier-agnostic.ts",
     "gen:image-hosts": "tsx libs/plugins/runtime/tools/generate-image-hosts.ts",
     "validate:image-hosts": "tsx libs/plugins/runtime/tools/generate-image-hosts.ts --check",
-    "validate:all": "pnpm lint && pnpm type-check && pnpm format:check && pnpm validate:translations && pnpm validate:deprecations && pnpm validate:rollbacks && pnpm validate:isolation && pnpm validate:frontend && pnpm validate:channel-agnostic && pnpm validate:image-hosts && pnpm test && pnpm test:contracts",
+    "validate:all": "pnpm lint && pnpm type-check && pnpm format:check && pnpm validate:translations && pnpm validate:deprecations && pnpm validate:rollbacks && pnpm validate:isolation && pnpm validate:frontend && pnpm validate:channel-agnostic && pnpm validate:carrier-agnostic && pnpm validate:image-hosts && pnpm test && pnpm test:contracts",
     "validate:affected": "tsx scripts/validate-affected.ts"
   },
   "devDependencies": {

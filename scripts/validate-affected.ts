@@ -99,6 +99,7 @@ const STEPS: AffectedStep[] = [
   { name: 'validate:isolation', command: ['validate:isolation'] },
   { name: 'validate:frontend', command: ['validate:frontend'] },
   { name: 'validate:channel-agnostic', command: ['validate:channel-agnostic'] },
+  { name: 'validate:carrier-agnostic', command: ['validate:carrier-agnostic'] },
   { name: 'validate:image-hosts', command: ['validate:image-hosts'] },
   // Pure code, a second to run: a contract that breaks is seen before the push and not in CI
   { name: 'test:contracts', command: ['test:contracts'] }
