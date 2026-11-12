@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import type { OwnerClient } from '@platform/core/database-testing'
 import { RemittanceLineOutcome, RemittanceStatus } from '@platform/core/domain'
 
@@ -33,4 +35,20 @@ export async function createRemittance(
     select: { id: true }
   })
   return { id: remittance.id, lineId: line.id }
+}
+
+// A saved mapping of a carrier's settlement file, written as the owner
+export async function createRemittanceImportProfile(
+  owner: OwnerClient,
+  input: { storeId: string; connectionId: string; name?: string }
+): Promise<{ id: string }> {
+  return owner.remittanceImportProfile.create({
+    data: {
+      storeId: input.storeId,
+      connectionId: input.connectionId,
+      name: input.name ?? `Profile ${randomUUID().slice(0, 8)}`,
+      columns: { guideNumber: 'Guia', amount: 'Monto' }
+    },
+    select: { id: true }
+  })
 }

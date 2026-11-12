@@ -84,6 +84,8 @@ export async function cleanUp(owner: OwnerClient, prefix: string): Promise<void>
   await owner.codRemittanceLine.deleteMany({ where: ofRun })
   await owner.shipment.deleteMany({ where: ofRun })
   await owner.codRemittance.deleteMany({ where: ofRun })
+  // A profile is pointed at by the remittances an import made, so it goes after them
+  await owner.remittanceImportProfile.deleteMany({ where: ofRun })
   await owner.orderReturn.deleteMany({ where: ofRun })
   await owner.pickupRequest.deleteMany({ where: ofRun })
   // An order is not deleted with its store (it is kept for the tax window), so the owner removes the

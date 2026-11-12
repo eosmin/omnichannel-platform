@@ -74,14 +74,12 @@ describe('refuseUnlessMayRead', () => {
     ).not.toThrow()
   })
 
-  it.each([
-    MediaPurpose.ORIGIN,
-    MediaPurpose.AVATAR,
-    MediaPurpose.EXPORT,
-    MediaPurpose.REMITTANCE_FILE
-  ])('keeps reading %s with the permission of the route alone', purpose => {
-    expect(() => refuseUnlessMayRead(purpose, [])).not.toThrow()
-  })
+  it.each([MediaPurpose.ORIGIN, MediaPurpose.AVATAR, MediaPurpose.EXPORT])(
+    'keeps reading %s with the permission of the route alone',
+    purpose => {
+      expect(() => refuseUnlessMayRead(purpose, [])).not.toThrow()
+    }
+  )
 
   it.each([MediaPurpose.SHIPPING_LABEL, MediaPurpose.BULK_LABELS])(
     'asks for SHIPPING_MANAGE to read %s (name, address and phone of customers), and never serves it to a non-member',
@@ -98,6 +96,18 @@ describe('refuseUnlessMayRead', () => {
       expect(() => refuseUnlessMayRead(purpose, [Permissions.SHIPPING_MANAGE])).not.toThrow()
     }
   )
+
+  it('asks for REMITTANCES_VIEW to read a settlement file, and never serves it to a non-member', () => {
+    for (const held of [[], [Permissions.MEDIA_VIEW], null]) {
+      expect(() => refuseUnlessMayRead(MediaPurpose.REMITTANCE_FILE, held)).toThrow()
+    }
+    expect(() =>
+      refuseUnlessMayRead(MediaPurpose.REMITTANCE_FILE, [
+        Permissions.MEDIA_VIEW,
+        Permissions.REMITTANCES_VIEW
+      ])
+    ).not.toThrow()
+  })
 
   it('refuses a purpose the table does not know instead of serving it', () => {
     expect(() => refuseUnlessMayRead('something_new', [Permissions.MEDIA_VIEW])).toThrow()

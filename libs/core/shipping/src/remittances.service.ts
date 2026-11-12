@@ -72,10 +72,12 @@ export class RemittancesService {
 
   // ---------------------------------------------------------------------------------------------------- the draft
 
+  // `source` is what an import adds: the profile that read the file and the file kept as evidence (a client never names them)
   async createDraft(
     storeId: string,
     body: CreateRemittanceBody,
-    actor: ActorRef
+    actor: ActorRef,
+    source: { importProfileId?: string; sourceMediaId?: string } = {}
   ): Promise<{ id: string }> {
     return this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
@@ -94,7 +96,11 @@ export class RemittancesService {
           ...(body.receivedOn === undefined
             ? {}
             : { receivedOn: new Date(`${body.receivedOn}T00:00:00.000Z`) }),
-          ...(body.note === undefined ? {} : { note: body.note })
+          ...(body.note === undefined ? {} : { note: body.note }),
+          ...(source.importProfileId === undefined
+            ? {}
+            : { importProfileId: source.importProfileId }),
+          ...(source.sourceMediaId === undefined ? {} : { sourceMediaId: source.sourceMediaId })
         },
         select: { id: true }
       })
