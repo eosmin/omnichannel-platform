@@ -1,6 +1,11 @@
 import { z } from 'zod'
 
-import { OrderReturnStatus, PaginationLimits, uuidSchema } from '@platform/core/domain'
+import {
+  OrderReturnStatus,
+  PaginationLimits,
+  ReceptionBatchStatus,
+  uuidSchema
+} from '@platform/core/domain'
 
 import { cursorSchema } from '../customers/list-cursor'
 
@@ -14,3 +19,10 @@ export const listReturnsQuerySchema = z.strictObject({
   orderId: uuidSchema.optional()
 })
 export type ListReturnsQuery = z.output<typeof listReturnsQuerySchema>
+
+export const receptionIdSchema = uuidSchema
+
+export const listReceptionBatchesQuerySchema = z.strictObject({
+  status: z.enum(ReceptionBatchStatus).optional()
+})
+export type ListReceptionBatchesQuery = z.output<typeof listReceptionBatchesQuerySchema>

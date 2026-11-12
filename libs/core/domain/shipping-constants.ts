@@ -622,6 +622,7 @@ export const cancelShipmentKey = (guideKey: string): string => `cancel:${guideKe
 
 export const ReturnResourceTypes = {
   RETURN: 'return',
+  RECEPTION_BATCH: 'return_reception_batch',
   // The store-wide returns settings (Settings → Returns)
   RETURN_SETTINGS: 'return_settings'
 } as const

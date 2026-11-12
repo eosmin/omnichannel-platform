@@ -21,13 +21,34 @@ const factoryOrders = {
   failedAttemptMessages: 'every_attempt',
   cancellationReasons: defaultCancellationReasons
 }
+const factoryReturns = { preselectCautionOnRefusal: false }
 const factoryRemittances = { overdueAfterDays: 7 }
 const factory = {
   sendReadReceipts: true,
   assignOnReply: true,
   orders: factoryOrders,
+  returns: factoryReturns,
   remittances: factoryRemittances
 }
+
+describe('the returns block', () => {
+  it('reads the reception toggle off by default and keeps what the store chose', () => {
+    expect(readStorePreferences({}).returns).toEqual(factoryReturns)
+    expect(readStorePreferences({ returns: { preselectCautionOnRefusal: true } }).returns).toEqual({
+      preselectCautionOnRefusal: true
+    })
+  })
+
+  it('reads the default for a value that does not fit, without touching the orders block', () => {
+    const read = readStorePreferences({
+      returns: { preselectCautionOnRefusal: 'yes' },
+      orders: { confirmOnCreate: true }
+    })
+    expect(read.returns).toEqual(factoryReturns)
+    expect(read.orders.confirmOnCreate).toBe(true)
+    expect(readStorePreferences({ returns: 'text' }).returns).toEqual(factoryReturns)
+  })
+})
 
 describe('readStorePreferences', () => {
   it('reads the factory defaults from an empty column', () => {

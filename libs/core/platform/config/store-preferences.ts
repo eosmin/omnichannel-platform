@@ -107,6 +107,14 @@ export const updateOrderPreferencesSchema = z
 
 export type UpdateOrderPreferencesBody = z.output<typeof updateOrderPreferencesSchema>
 
+// The `returns` block of the preferences (TDD_17 §4.16). Read here and written by the Settings → Returns page of Step 4.14.
+export const returnPreferencesSchema = z.object({
+  // A package scanned with the reason "refused by the customer" has the reception "flag customer" toggle preselected
+  preselectCautionOnRefusal: z.boolean().catch(false)
+})
+
+export type ReturnPreferences = z.output<typeof returnPreferencesSchema>
+
 // The `remittances` block (TDD_17 §4.15): when the cash a carrier collected on delivery is late. The daily check tells the team
 // about a connection with shipments delivered longer ago than this and still unpaid.
 export const RemittancePreferenceLimits = {
@@ -146,6 +154,8 @@ export const storePreferencesSchema = z.object({
   assignOnReply: z.boolean().catch(true),
   // The orders block (TDD_17 §4.14); a column with none reads as every default of the block
   orders: orderPreferencesSchema.catch(() => orderPreferencesSchema.parse({})),
+  // The returns block (TDD_17 §4.16); a column with none reads as every default of the block
+  returns: returnPreferencesSchema.catch(() => returnPreferencesSchema.parse({})),
   // The remittances block (TDD_17 §4.15); a column with none reads as every default of the block
   remittances: remittancePreferencesSchema.catch(() => remittancePreferencesSchema.parse({}))
 })

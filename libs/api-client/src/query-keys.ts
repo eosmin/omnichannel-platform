@@ -160,7 +160,10 @@ export const QueryKeys = {
     all: (storeId: string) => ['pickups', storeId] as const
   },
   returns: {
-    all: (storeId: string) => ['returns', storeId] as const
+    all: (storeId: string) => ['returns', storeId] as const,
+    receptionBatches: (storeId: string) => ['returns', storeId, 'reception-batches'] as const,
+    receptionBatch: (storeId: string, batchId: string) =>
+      ['returns', storeId, 'reception-batches', batchId] as const
   },
   orderTemplates: {
     all: (storeId: string) => ['order-templates', storeId] as const
