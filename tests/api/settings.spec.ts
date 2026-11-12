@@ -758,6 +758,31 @@ describe('The settings of the inbox of a store', () => {
       }
     })
 
+    it('change the caution preselection of the reception, write only that block and refuse what is not a switch', async () => {
+      const before = (await asAdmin().get(ApiRoutes.settings.preferences)).body as object
+      const put = await asAdmin()
+        .put(ApiRoutes.settings.preferences)
+        .send({ returns: { preselectCautionOnRefusal: true } })
+      expect(put.status).toBe(OK)
+      expect(put.body).toEqual({ ...before, returns: { preselectCautionOnRefusal: true } })
+      const settings = await owner.storeSettings.findUniqueOrThrow({
+        where: { storeId: ctx.storeA.id }
+      })
+      expect(settings.preferences).toMatchObject({ returns: { preselectCautionOnRefusal: true } })
+      for (const body of [
+        { returns: { preselectCautionOnRefusal: 'yes' } },
+        { returns: { stranger: 1 } },
+        { returns: {} }
+      ]) {
+        const refused = await asAdmin().put(ApiRoutes.settings.preferences).send(body)
+        expect(refused.status).toBe(BAD_REQUEST)
+      }
+      // Back to the factory value, so the tests that follow read the defaults
+      await asAdmin()
+        .put(ApiRoutes.settings.preferences)
+        .send({ returns: { preselectCautionOnRefusal: false } })
+    })
+
     it('read the orders block at its factory defaults and change only the keys that are sent', async () => {
       const as = api(app, ctx.adminA2, ctx.storeA2)
       await owner.storeSettings.update({
