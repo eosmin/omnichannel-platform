@@ -55,8 +55,9 @@ function matches(line: string): boolean {
 }
 
 // Lines, not occurrences: a line that names three channels is one reference. A line is a comment when
-// it starts with // or lives inside /* */; a trailing comment counts as code, the stricter side
-export function countReferences(source: string): Counts {
+// it starts with // or lives inside /* */; a trailing comment counts as code, the stricter side.
+// The carrier ratchet (scripts/lib/carrier-agnostic.ts) counts the same way with its own matcher.
+export function countMatchingLines(source: string, matchesLine: (line: string) => boolean): Counts {
   const counts: Counts = { code: 0, comment: 0 }
   let inBlock = false
   for (const line of source.split('\n')) {
@@ -65,11 +66,15 @@ export function countReferences(source: string): Counts {
     const isComment = inBlock || startsBlock || trimmed.startsWith('//')
     if (startsBlock) inBlock = !trimmed.includes('*/', 2)
     else if (inBlock && trimmed.includes('*/')) inBlock = false
-    if (!matches(line)) continue
+    if (!matchesLine(line)) continue
     if (isComment) counts.comment += 1
     else counts.code += 1
   }
   return counts
+}
+
+export function countReferences(source: string): Counts {
+  return countMatchingLines(source, matches)
 }
 
 export interface BaselineFinding {
