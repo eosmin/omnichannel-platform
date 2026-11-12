@@ -96,7 +96,9 @@ export class RemittanceImportsService {
   // The mapper's preview: the sample is read with the mapping being tried, and no file, no draft and no profile is written
   preview(body: RemittanceImportPreviewBody): ImportPreviewView {
     const parsed = parseRemittanceFile(body.text, shapeOf(body.profile), {
-      maxRows: RemittanceImportLimits.PREVIEW_ROWS
+      maxRows: RemittanceImportLimits.PREVIEW_ROWS,
+      // A sample is cut at a size: what was open at the cut is not a mistake of the file
+      partial: true
     })
     return {
       headers: parsed.headers,
