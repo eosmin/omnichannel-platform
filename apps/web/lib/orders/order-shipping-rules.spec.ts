@@ -1,4 +1,4 @@
-import { OrderStatus, ShipmentKind, ShipmentStatus } from '@platform/core/domain'
+import { CarrierCapability, OrderStatus, ShipmentKind, ShipmentStatus } from '@platform/core/domain'
 
 import {
   asShipmentStatus,
@@ -7,7 +7,8 @@ import {
   liveOutbound,
   offeredShipmentActions,
   outboundStatusesOf,
-  ShipmentActions
+  ShipmentActions,
+  takesPickupRequests
 } from './order-shipping-rules'
 
 const offer = (
@@ -16,8 +17,12 @@ const offer = (
 ): string[] =>
   offeredShipmentActions({
     status,
+    kind: ShipmentKind.OUTBOUND,
     hasLabel: true,
     mayManage: true,
+    pickupId: null,
+    mayRequestPickup: false,
+    carrierTakesPickups: null,
     carrierCanCancel: true,
     ...extra
   })
@@ -120,5 +125,55 @@ describe('guideBlockOf', () => {
     expect(with_(ShipmentStatus.REQUIRES_REVIEW)).toBe(GuideBlocks.HAS_GUIDE)
     expect(with_(ShipmentStatus.CANCELLED)).toBeNull()
     expect(with_(ShipmentStatus.FAILED)).toBeNull()
+  })
+})
+
+describe('requesting a pickup from a guide', () => {
+  const ask = { mayRequestPickup: true, carrierTakesPickups: true }
+
+  it('is offered for a made guide with no pickup at a carrier that takes requests, to who manages pickups', () => {
+    expect(offer(ShipmentStatus.LABEL_CREATED, ask)).toContain(ShipmentActions.REQUEST_PICKUP)
+  })
+
+  it('does not need shipping:manage, and needs shipping:manage_pickups', () => {
+    expect(offer(ShipmentStatus.LABEL_CREATED, { ...ask, mayManage: false })).toEqual([
+      ShipmentActions.REQUEST_PICKUP
+    ])
+    expect(offer(ShipmentStatus.LABEL_CREATED, { ...ask, mayRequestPickup: false })).not.toContain(
+      ShipmentActions.REQUEST_PICKUP
+    )
+  })
+
+  it('is not offered for the guide of the way back', () => {
+    expect(
+      offer(ShipmentStatus.LABEL_CREATED, { ...ask, kind: ShipmentKind.RETURN })
+    ).not.toContain(ShipmentActions.REQUEST_PICKUP)
+  })
+
+  it('is not offered when the guide is in a pickup, is not just made, or the carrier does not take requests', () => {
+    expect(offer(ShipmentStatus.LABEL_CREATED, { ...ask, pickupId: 'p1' })).not.toContain(
+      ShipmentActions.REQUEST_PICKUP
+    )
+    expect(offer(ShipmentStatus.IN_TRANSIT, ask)).not.toContain(ShipmentActions.REQUEST_PICKUP)
+    for (const carrierTakesPickups of [false, null]) {
+      expect(offer(ShipmentStatus.LABEL_CREATED, { ...ask, carrierTakesPickups })).not.toContain(
+        ShipmentActions.REQUEST_PICKUP
+      )
+    }
+  })
+})
+
+describe('takesPickupRequests', () => {
+  it('needs the pickup enabled, the capability to request and a carrier whose guides are not bound to the pickup', () => {
+    const request = [CarrierCapability.PICKUP_REQUEST]
+    expect(takesPickupRequests({ pickupEnabled: true, capabilities: request })).toBe(true)
+    expect(takesPickupRequests({ pickupEnabled: false, capabilities: request })).toBe(false)
+    expect(takesPickupRequests({ pickupEnabled: true, capabilities: [] })).toBe(false)
+    expect(
+      takesPickupRequests({
+        pickupEnabled: true,
+        capabilities: [...request, CarrierCapability.PICKUP_BOUND_GUIDES]
+      })
+    ).toBe(false)
   })
 })

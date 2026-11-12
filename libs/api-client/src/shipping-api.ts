@@ -176,6 +176,28 @@ const messageOutcomeSchema = z.object({
 })
 export type OrderMessageOutcomeView = z.output<typeof messageOutcomeSchema>
 
+// What a preview answers: the text the customer would read, or why the message cannot be made (with the variables that have no value)
+const messagePreviewSchema = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true), text: z.string(), locale: z.string() }),
+  z.object({ ok: z.literal(false), reason: z.string(), missing: z.array(z.string()) })
+])
+export type OrderMessagePreviewView = z.output<typeof messagePreviewSchema>
+
+// The message as the customer would read it, from the real order; nothing is sent and nothing is written
+export function previewOrderMessage(
+  client: ApiClient,
+  storeId: string,
+  orderId: string,
+  kind: string
+): Promise<OrderMessagePreviewView> {
+  return client.request(`${ApiRoutes.orders.messages(orderId)}?preview=true`, {
+    method: 'POST',
+    body: { kind },
+    schema: messagePreviewSchema,
+    storeId
+  })
+}
+
 // One press of the button is one key: the order is sent once even when the answer is lost and the press is repeated
 export function sendOrderMessage(
   client: ApiClient,
@@ -221,13 +243,15 @@ export function fetchOrderMessages(
   client: ApiClient,
   storeId: string,
   orderId: string,
-  cursor?: string
+  cursor?: string,
+  signal?: AbortSignal
 ): Promise<OrderMessageHistoryPageView> {
   const search = new URLSearchParams()
   if (cursor !== undefined) search.set('cursor', cursor)
   const query = search.size === 0 ? '' : `?${search.toString()}`
   return client.request(`${ApiRoutes.orders.messages(orderId)}${query}`, {
     schema: messageHistoryPageSchema,
-    storeId
+    storeId,
+    signal
   })
 }

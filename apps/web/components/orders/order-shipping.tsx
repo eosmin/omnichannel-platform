@@ -1,6 +1,6 @@
 'use client'
 
-import { ExternalLink, Printer } from 'lucide-react'
+import { CalendarClock, ExternalLink, Printer } from 'lucide-react'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 
@@ -34,6 +34,8 @@ import {
   DialogHeader,
   DialogTitle
 } from '../ui/dialog'
+
+import { OrderPickupDialog } from './order-pickup-dialog'
 
 const RETURN_KIND: string = ShipmentKind.RETURN
 // A reason of the closed list reads in the language of the person; anything else is the one line the carrier said
@@ -118,13 +120,17 @@ function ConfirmMove({
 function ShipmentRow({
   shipment,
   carrierCanCancel,
+  carrierTakesPickups,
   writes,
-  onMove
+  onMove,
+  onRequestPickup
 }: {
   shipment: OrderShipmentView
   carrierCanCancel: boolean | null
+  carrierTakesPickups: boolean | null
   writes: ShipmentWrites
   onMove: (action: typeof ShipmentActions.CANCEL | typeof ShipmentActions.MARK_VOIDED) => void
+  onRequestPickup: () => void
 }): ReactElement {
   const t = useTranslations('orders.detail.shipping')
   const format = useFormatter()
@@ -133,8 +139,12 @@ function ShipmentRow({
   const href = safeHref(shipment.trackingUrl)
   const actions = offeredShipmentActions({
     status: shipment.status,
+    kind: shipment.kind,
     hasLabel: shipment.hasLabel,
     mayManage: can(ClientPermissions.SHIPPING_MANAGE),
+    pickupId: shipment.pickupId,
+    mayRequestPickup: can(ClientPermissions.SHIPPING_MANAGE_PICKUPS),
+    carrierTakesPickups,
     carrierCanCancel
   })
   const failure = shipment.lastError
@@ -147,6 +157,10 @@ function ShipmentRow({
           onError: onFail
         })
       )
+      return
+    }
+    if (action === ShipmentActions.REQUEST_PICKUP) {
+      onRequestPickup()
       return
     }
     writes.cancel.reset()
@@ -207,6 +221,7 @@ function ShipmentRow({
               onClick={() => run(action)}
             >
               {action === ShipmentActions.PRINT_LABEL ? <Printer aria-hidden /> : null}
+              {action === ShipmentActions.REQUEST_PICKUP ? <CalendarClock aria-hidden /> : null}
               {t(`action.${action}`)}
             </Button>
           ))}
@@ -226,6 +241,7 @@ export function OrderShipping({
   isError,
   writes,
   carrierCanCancel,
+  carrierTakesPickups,
   onCreateGuide
 }: {
   order: OrderDetailView
@@ -234,6 +250,8 @@ export function OrderShipping({
   isError: boolean
   writes: ShipmentWrites
   carrierCanCancel: (connectionId: string) => boolean | null
+  // Whether a connection's carrier is asked for pickups from here; null while the connections are not known
+  carrierTakesPickups: (connectionId: string) => boolean | null
   onCreateGuide?: () => void
 }): ReactElement | null {
   const t = useTranslations('orders.detail.shipping')
@@ -242,8 +260,11 @@ export function OrderShipping({
     action: typeof ShipmentActions.CANCEL | typeof ShipmentActions.MARK_VOIDED
     id: string
   } | null>(null)
+  const [pickupFor, setPickupFor] = useState<string | null>(null)
   if (!can(ClientPermissions.SHIPPING_VIEW)) return null
   const target = moving === null ? undefined : shipments.find(entry => entry.id === moving.id)
+  const pickupTarget =
+    pickupFor === null ? undefined : shipments.find(entry => entry.id === pickupFor)
   const block = isPending || isError ? null : guideBlockOf({ order, shipments })
   const mayMake =
     can(ClientPermissions.SHIPPING_MANAGE) && onCreateGuide !== undefined && block === null
@@ -276,8 +297,10 @@ export function OrderShipping({
               key={shipment.id}
               shipment={shipment}
               carrierCanCancel={carrierCanCancel(shipment.connectionId)}
+              carrierTakesPickups={carrierTakesPickups(shipment.connectionId)}
               writes={writes}
               onMove={action => setMoving({ action, id: shipment.id })}
+              onRequestPickup={() => setPickupFor(shipment.id)}
             />
           ))}
         </ul>
@@ -286,6 +309,9 @@ export function OrderShipping({
         <p className="text-muted-foreground text-xs">{t(`blocked.${block}`)}</p>
       )}
       <MutationError error={writes.label.error} />
+      {pickupTarget === undefined ? null : (
+        <OrderPickupDialog shipment={pickupTarget} onClose={() => setPickupFor(null)} />
+      )}
       {moving !== null && target !== undefined ? (
         <ConfirmMove
           action={moving.action}
