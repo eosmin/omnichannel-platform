@@ -78,7 +78,10 @@ export async function cleanUp(owner: OwnerClient, prefix: string): Promise<void>
   // returns and the pickups. The connections and what hangs from them go with their store (cascade).
   await owner.orderReturn.updateMany({ where: ofRun, data: { returnShipmentId: null } })
   await owner.orderReturnLine.deleteMany({ where: ofRun })
+  // The lines of a remittance restrict their shipment, and the shipments they settled restrict the remittance
+  await owner.codRemittanceLine.deleteMany({ where: ofRun })
   await owner.shipment.deleteMany({ where: ofRun })
+  await owner.codRemittance.deleteMany({ where: ofRun })
   await owner.orderReturn.deleteMany({ where: ofRun })
   await owner.pickupRequest.deleteMany({ where: ofRun })
   // An order is not deleted with its store (it is kept for the tax window), so the owner removes the

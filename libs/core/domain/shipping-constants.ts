@@ -290,6 +290,14 @@ export const CodStatusTransitions: Record<CodStatus, readonly CodStatus[]> = {
   [CodStatus.VOID]: []
 }
 
+// The statuses of a package that never brought its cash: a cash-on-delivery guide that reaches one without having been
+// delivered goes to VOID (TDD_17 §4.15)
+export const CodVoidingStatuses: readonly ShipmentStatus[] = [
+  ShipmentStatus.CANCELLED,
+  ShipmentStatus.RETURNING,
+  ShipmentStatus.RETURNED
+]
+
 export const RemittanceStatusTransitions: Record<RemittanceStatus, readonly RemittanceStatus[]> = {
   [RemittanceStatus.DRAFT]: [RemittanceStatus.CONFIRMED],
   [RemittanceStatus.CONFIRMED]: [RemittanceStatus.VOIDED],
@@ -600,7 +608,8 @@ export const ReturnLockScopes = {
 
 export const ShipmentResourceTypes = {
   SHIPMENT: 'shipment',
-  BULK_LABEL_JOB: 'bulk_label_job'
+  BULK_LABEL_JOB: 'bulk_label_job',
+  REMITTANCE: 'remittance'
 } as const
 
 // The statuses a carrier moves a package into (TDD_17 §4.9; `CarrierReportableStatuses` is what a plugin may map to). Every other status is the platform's to set: a carrier that

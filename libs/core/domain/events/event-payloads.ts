@@ -145,6 +145,15 @@ export interface ShipmentEventPayload {
   actor: ActorRef
 }
 
+// A remittance of cash collected on delivery that was confirmed or voided (TDD_17 §4.15): the totals are in the remittance, the
+// event only says which one and who did it
+export interface RemittanceEventPayload {
+  storeId: string
+  remittanceId: string
+  connectionId: string
+  actor: ActorRef
+}
+
 export interface ShipmentStatusChangedPayload extends ShipmentEventPayload {
   from: ShipmentStatus
   to: ShipmentStatus
@@ -467,6 +476,8 @@ export interface DomainEventPayloads {
   [Events.SHIPMENT_CANCELLED]: ShipmentEventPayload
   [Events.SHIPMENT_REQUIRES_REVIEW]: ShipmentEventPayload
   [Events.SHIPMENT_CANCEL_FAILED]: ShipmentEventPayload
+  [Events.REMITTANCE_CONFIRMED]: RemittanceEventPayload
+  [Events.REMITTANCE_VOIDED]: RemittanceEventPayload
   [Events.CARRIER_STATUS_UNMAPPED]: CarrierStatusUnmappedPayload
   [Events.BULK_LABELS_PROGRESS]: BulkLabelsProgressPayload
   [Events.BULK_LABELS_DONE]: BulkLabelsDonePayload
