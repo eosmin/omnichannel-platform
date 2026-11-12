@@ -37,7 +37,7 @@ describe('Orders by carrier and guide', () => {
   let limited: ReturnType<typeof api>
   let live = { orderId: '', connectionId: '' }
   let cancelled = { orderId: '', connectionId: '' }
-  let elsewhere = { orderId: '' }
+  let elsewhere = { orderId: '', connectionId: '' }
 
   beforeAll(async () => {
     owner = ownerClient()
