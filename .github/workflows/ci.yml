@@ -97,6 +97,8 @@ jobs:
       - run: pnpm validate:frontend
       # Rule 13: no new knowledge of a channel or Meta outside libs/channels/*; the baseline only shrinks
       - run: pnpm validate:channel-agnostic --require-main
+      # Rule 13 for carriers: no concrete carrier named outside libs/carriers/*; the baseline only shrinks
+      - run: pnpm validate:carrier-agnostic --require-main
       # The image hosts of the CSP are written from what the plugins declare; a plugin that changes them must regenerate the file
       - run: pnpm validate:image-hosts
 

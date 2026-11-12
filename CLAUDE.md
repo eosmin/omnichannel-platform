@@ -160,6 +160,11 @@ same checks and the merge waits for it.
     a plugin without editing core or the UI. `pnpm validate:channel-agnostic` (CI and pre-push) freezes today's references in
     `scripts/channel-agnostic-baseline.json`, which can only shrink: lower it with `--update-down` as a file is made agnostic,
     never raise it, never add an exception to get a green check.
+    **The same holds for carriers (owner, 2026-11-12):** core, SDK, runtime, API, worker, web, api-client and the
+    channel plugins know no concrete carrier. No id or name of one (`forza`, `c807`, `local`, `CarrierId.<carrier>`, ...,
+    the list is `CarrierId` in `libs/core/domain/shipping-constants.ts`) outside `libs/carriers/*`; what a carrier can do
+    is read from its `CarrierCapability` declarations and its manifest. `pnpm validate:carrier-agnostic` (CI and pre-push)
+    freezes today's references in `scripts/carrier-agnostic-baseline.json`, with the same rules as the channel one.
 
 ---
 
