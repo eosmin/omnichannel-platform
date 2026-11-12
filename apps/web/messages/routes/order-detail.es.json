@@ -149,7 +149,8 @@
         "action": {
           "print_label": "Imprimir etiqueta",
           "cancel": "Cancelar guía",
-          "mark_voided": "Marcar como anulada"
+          "mark_voided": "Marcar como anulada",
+          "request_pickup": "Solicitar recolección"
         },
         "blocked": {
           "not_confirmed": "Se puede hacer una guía cuando el pedido esté confirmado.",
@@ -170,6 +171,15 @@
             "confirm": "Marcar como anulada",
             "done": "La guía está marcada como anulada."
           }
+        },
+        "pickup": {
+          "title": "Solicitar recolección",
+          "description": "Se le pide al transportista que pase por la guía {guide}.",
+          "confirm": "Solicitar recolección",
+          "done": "Recolección solicitada.",
+          "cutoffPassed": "Pasó la hora de corte del día: la recolección sería para el día siguiente. ¿Solicitarla de todos modos?",
+          "confirmAnyway": "Solicitar de todos modos",
+          "cancel": "Cancelar"
         }
       },
       "guide": {
@@ -202,6 +212,65 @@
         "returnPayer": "Quién paga: {payer} (lo elegido en la devolución).",
         "returnConfirm": "Hacer guía",
         "returnDone": "Se pidió la guía del regreso."
+      },
+      "messages": {
+        "heading": "Mensajes",
+        "loading": "Cargando mensajes",
+        "failed": "No se pudieron cargar los mensajes.",
+        "empty": "No se ha pedido ningún mensaje sobre este pedido.",
+        "kindLabel": "Mensaje",
+        "preview": "Vista previa",
+        "send": "Enviar al cliente",
+        "loadMore": "Mostrar mensajes anteriores",
+        "kind": {
+          "order_summary": "Resumen del pedido",
+          "order_shipped": "Pedido enviado",
+          "order_out_for_delivery": "En reparto",
+          "order_delivered": "Pedido entregado",
+          "order_failed_attempt": "Intento de entrega fallido",
+          "order_cancelled": "Pedido cancelado",
+          "return_approved": "Devolución aprobada",
+          "exchange_shipped": "Reemplazo enviado"
+        },
+        "unknownKind": "Mensaje",
+        "unknownRoute": "Enviado de una forma que esta página no conoce",
+        "status": {
+          "sent": "Enviado",
+          "not_sent": "No enviado"
+        },
+        "route": {
+          "channel_text": "Por la conversación",
+          "channel_template": "Por la conversación, con plantilla aprobada",
+          "email": "Por correo",
+          "not_sent": "No enviado"
+        },
+        "byPlatform": "Por la plataforma",
+        "byMember": "Pedido por {name}",
+        "delivery": {
+          "queued": "Esperando salir",
+          "sent": "Recibido por el canal",
+          "delivered": "Entregado",
+          "read": "Leído",
+          "failed": "El canal no lo entregó"
+        },
+        "reason": {
+          "missing_variable": "El mensaje necesita datos que el pedido no tiene.",
+          "too_long": "El mensaje es más largo de lo que admite el canal.",
+          "no_template": "La tienda no tiene plantilla para este mensaje.",
+          "no_channel": "El cliente no tiene conversación ni correo al que llegar.",
+          "window_closed": "La ventana del canal está cerrada y no hay plantilla aprobada ni correo.",
+          "template_unavailable": "La plantilla aprobada no está disponible.",
+          "customer_erased": "El cliente pidió ser olvidado.",
+          "consent_revoked": "El cliente retiró su consentimiento a los mensajes de pedido.",
+          "unknown": "El servidor dio un motivo que esta página no conoce."
+        },
+        "sendDone": "Mensaje enviado.",
+        "sendDuplicate": "Esta pulsación ya se había enviado.",
+        "sendNotSent": "El mensaje no se envió. {reason}",
+        "notify": {
+          "label": "Notificar al cliente",
+          "hint": "Empieza según la configuración de la plantilla del mensaje."
+        }
       }
     }
   }

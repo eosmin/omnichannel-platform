@@ -80,6 +80,9 @@ export const QueryKeys = {
       ['orders', storeId, 'list', filter, sort] as const,
     // Under the order: whatever changes an order makes its detail stale
     byId: (storeId: string, orderId: string) => ['orders', storeId, orderId] as const,
+    // The messages that were asked for about the order (its history), under the order
+    messages: (storeId: string, orderId: string) =>
+      ['orders', storeId, orderId, 'messages'] as const,
     // The draft of "Copy order": read fresh every time it is opened, and outside `orders.all` so that an event of the
     // orders never rebuilds a draft the agent is editing
     copy: (storeId: string, orderId: string) => ['order-copy', storeId, orderId] as const
@@ -155,7 +158,11 @@ export const QueryKeys = {
     // The shipments of the orders a page draws, for the guide and carrier columns
     forOrders: (storeId: string, orderIds: readonly string[]) =>
       ['shipments', storeId, 'orders', [...orderIds].sort().join(',')] as const,
-    bulkJob: (storeId: string, jobId: string) => ['shipments', storeId, 'bulk', jobId] as const
+    bulkJob: (storeId: string, jobId: string) => ['shipments', storeId, 'bulk', jobId] as const,
+    // The Shipments screen: the list for its filters, and one guide with its history
+    list: (storeId: string, filter: object) => ['shipments', storeId, 'list', filter] as const,
+    detail: (storeId: string, shipmentId: string) =>
+      ['shipments', storeId, 'detail', shipmentId] as const
   },
   carriers: {
     all: (storeId: string) => ['carriers', storeId] as const,
@@ -168,7 +175,11 @@ export const QueryKeys = {
       ['carriers', storeId, connectionId, 'unmapped-statuses'] as const
   },
   pickups: {
-    all: (storeId: string) => ['pickups', storeId] as const
+    all: (storeId: string) => ['pickups', storeId] as const,
+    // The Pickups screen: the list for its filters, and the manifest of one pickup
+    list: (storeId: string, filter: object) => ['pickups', storeId, 'list', filter] as const,
+    manifest: (storeId: string, pickupId: string) =>
+      ['pickups', storeId, 'manifest', pickupId] as const
   },
   returns: {
     all: (storeId: string) => ['returns', storeId] as const,
@@ -202,7 +213,10 @@ export const QueryKeys = {
     detail: (storeId: string, remittanceId: string) =>
       ['remittances', storeId, 'detail', remittanceId] as const,
     profiles: (storeId: string, connectionId: string | null) =>
-      ['remittances', storeId, 'profiles', connectionId] as const
+      ['remittances', storeId, 'profiles', connectionId] as const,
+    // The preview of the mapper: the sample and the mapping being tried
+    preview: (storeId: string, request: object) =>
+      ['remittances', storeId, 'preview', request] as const
   },
   returnReception: {
     batch: (storeId: string, batchId: string) => ['return-reception', storeId, batchId] as const

@@ -9,6 +9,7 @@ import { ConversationsModule } from '../conversations'
 import { MessagingWindowModule } from '../messaging-window'
 import { TenancyModule } from '../tenancy'
 
+import { OrderMessageHistoryService } from './order-message-history.service'
 import { OrderMessageListener } from './order-message-triggers.listener'
 import { OrderMessagesController } from './order-messages.controller'
 import { OrderMessagesService } from './order-messages.service'
@@ -27,7 +28,13 @@ import { OrderTemplatesService } from './order-templates.service'
     TenancyModule
   ],
   controllers: [OrderTemplatesController, OrderMessagesController],
-  providers: [OrderTemplatesService, OrderMessagesService, OrderMessageListener, OutboundQueue],
+  providers: [
+    OrderTemplatesService,
+    OrderMessagesService,
+    OrderMessageHistoryService,
+    OrderMessageListener,
+    OutboundQueue
+  ],
   exports: [OrderTemplatesService, OrderMessagesService]
 })
 export class OrderMessagesModule {}

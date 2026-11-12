@@ -1802,7 +1802,9 @@
       "orders": "Pedidos",
       "inventory": "Inventario",
       "returns": "Devoluciones",
-      "remittances": "Remesas"
+      "remittances": "Remesas",
+      "shipments": "Envíos",
+      "pickups": "Recolecciones"
     },
     "notifications": {
       "open": "Notificaciones",
@@ -4382,7 +4384,8 @@
         "reported": "Reportado",
         "difference": "Diferencia"
       },
-      "loadMore": "Cargar más"
+      "loadMore": "Cargar más",
+      "importAction": "Importar un archivo"
     },
     "pending": {
       "title": "Lo que aún deben los transportistas",
@@ -4490,6 +4493,330 @@
       },
       "draftNote": "Este borrador no liquida nada hasta que se confirma. El resultado de cada línea se calcula de nuevo tras cada cambio.",
       "downloadFile": "Descargar el archivo"
+    },
+    "import": {
+      "title": "Importar un archivo de liquidación",
+      "description": "Pega o sube el archivo que el transportista envía con su liquidación, indica qué columna es cuál, revisa lo que se lee y crea un borrador.",
+      "back": "Volver a remesas",
+      "noConnections": "Ninguna conexión de transportista de esta tienda puede cobrar contra entrega, así que no hay nada que importar.",
+      "connection": "Transportista",
+      "fields": {
+        "guideNumber": "Columna de la guía",
+        "amount": "Columna del monto",
+        "fee": "Columna de la comisión (opcional)",
+        "date": "Columna del día (opcional)",
+        "reference": "Columna del número de liquidación (opcional)"
+      },
+      "source": {
+        "title": "El archivo",
+        "file": "Elige un archivo CSV o TSV",
+        "fileHint": "Hasta 5 MB y 5,000 filas. Un libro de Excel (.xlsx) no se lee: guárdalo antes como CSV.",
+        "encoding": "Codificación del archivo",
+        "encodings": {
+          "utf8": "UTF-8",
+          "windows1252": "Windows-1252 (Excel)"
+        },
+        "paste": "O pega la tabla",
+        "pastePlaceholder": "Guia,Monto\nG-1001,15.50",
+        "fromFile": "Leído de {name}",
+        "clearFile": "Quitar el archivo",
+        "problems": {
+          "too_large": "El archivo pesa más de 5 MB.",
+          "empty": "El archivo está vacío.",
+          "not_text": "El archivo no se puede leer como texto con esta codificación. Prueba la otra codificación o guárdalo como CSV."
+        }
+      },
+      "mapping": {
+        "title": "Qué columna es cuál",
+        "profile": "Mapeo guardado",
+        "newProfile": "Un mapeo nuevo",
+        "delimiter": "Separador de celdas",
+        "delimiters": {
+          "comma": "Coma",
+          "semicolon": "Punto y coma",
+          "tab": "Tabulador"
+        },
+        "decimal": "Separador decimal",
+        "decimals": {
+          "dot": "Punto (15.50)",
+          "comma": "Coma (15,50)"
+        },
+        "dateFormat": "Formato del día",
+        "hasHeader": "La primera fila nombra las columnas",
+        "byHeader": "Escribe el texto de cada encabezado tal como lo escribe el archivo.",
+        "byPosition": "El archivo no tiene encabezado: escribe la posición de cada columna, 0 para la primera.",
+        "problems": {
+          "required": "{field}: elige una columna.",
+          "position": "{field}: escribe un número entero de 0 a 200.",
+          "rule": "Cada valor necesita su propia columna, y el separador de celdas no puede ser también la coma decimal."
+        },
+        "name": "Nombre del mapeo",
+        "save": "Guardar mapeo",
+        "update": "Actualizar mapeo",
+        "saved": "Mapeo guardado",
+        "delete": "Eliminar mapeo",
+        "deleteDialog": {
+          "title": "¿Eliminar el mapeo {name}?",
+          "description": "Las remesas ya hechas con él conservan sus líneas. Ya no se podrán leer archivos con él.",
+          "cancel": "Conservarlo",
+          "confirm": "Eliminar"
+        }
+      },
+      "preview": {
+        "title": "Lo que se lee",
+        "empty": "Elige o pega un archivo para ver lo que se lee de él.",
+        "hint": "Elige las columnas de la guía y del monto para ver una vista previa. La vista previa no guarda nada.",
+        "rows": "{count, plural, one {# fila leída} other {# filas leídas}}, {shown} mostradas",
+        "reference": "liquidación {value}",
+        "receivedOn": "día {value}",
+        "sampleOnly": "La vista previa lee solo el comienzo del archivo. El archivo completo se revisa al importar.",
+        "noLines": "Ninguna fila se pudo leer con este mapeo.",
+        "caption": "Las primeras filas leídas del archivo",
+        "columns": {
+          "row": "Fila",
+          "guide": "Guía",
+          "amount": "Monto",
+          "fee": "Comisión"
+        },
+        "firstLineTooLarge": "La primera línea del archivo es más grande de lo que admite la vista previa (32 KB). Revisa el separador o usa un archivo más pequeño."
+      },
+      "errors": {
+        "total": "{count, plural, one {# fila no se puede leer} other {# filas no se pueden leer}}.",
+        "moreNotShown": "Se muestran las primeras {count}.",
+        "caption": "Filas que no se pueden leer",
+        "row": "Fila",
+        "field": "Valor",
+        "problem": "Problema",
+        "value": "Celda",
+        "codes": {
+          "column_not_found": "El archivo no tiene una columna con ese nombre o posición",
+          "column_ambiguous": "Dos columnas tienen ese nombre",
+          "missing_cell": "La fila tiene menos celdas de las que pide la columna",
+          "empty_value": "La celda está vacía",
+          "invalid_amount": "No es un monto (dígitos y un separador decimal, con a lo sumo dos decimales)",
+          "invalid_date": "No es un día en el formato elegido",
+          "invalid_text": "El texto tiene un carácter de control o invisible",
+          "too_many_rows": "El archivo tiene más de 5,000 filas",
+          "empty_file": "El archivo no tiene filas",
+          "unclosed_quote": "Hay una comilla que nunca se cierra",
+          "row_too_wide": "Más celdas que el encabezado: puede haber un separador dentro de una celda",
+          "stray_quote": "Hay texto después de la comilla que cierra una celda",
+          "column_reused": "Dos valores leen la misma columna",
+          "unknown": "La fila no se puede leer"
+        }
+      },
+      "action": {
+        "title": "Crear el borrador",
+        "description": "El archivo se convierte en una remesa en borrador. No se liquida nada hasta que la confirmes.",
+        "saveFirst": "Guarda primero el mapeo: el archivo se lee con el mapeo guardado.",
+        "import": "Importar el archivo",
+        "done": "Borrador creado",
+        "refused": "No se importó el archivo: hay filas que no se pueden leer. Corrígelas en el archivo o cambia el mapeo, e inténtalo de nuevo."
+      }
+    }
+  },
+  "shipments": {
+    "list": {
+      "title": "Envíos",
+      "filters": {
+        "status": "Estado",
+        "anyStatus": "Todos los estados",
+        "carrier": "Transportista",
+        "anyCarrier": "Todos los transportistas",
+        "from": "Desde",
+        "to": "Hasta",
+        "oneOrder": "Solo un pedido",
+        "removeOrder": "Quitar el filtro de pedido",
+        "clear": "Quitar filtros"
+      },
+      "columns": {
+        "guide": "Guía",
+        "status": "Estado",
+        "carrier": "Transportista",
+        "order": "Pedido",
+        "created": "Creado",
+        "actions": "Acciones"
+      },
+      "guidePending": "Sin número todavía",
+      "orderNumber": "Pedido #{number}",
+      "open": "Abrir",
+      "openGuide": "Abrir el envío {guide}",
+      "empty": "Todavía no hay envíos.",
+      "noMatches": "Ningún envío coincide con los filtros.",
+      "loadMore": "Cargar más"
+    },
+    "detail": {
+      "title": "Envío {guide}",
+      "description": "Datos de la guía, su historial y lo que puedes hacer con ella.",
+      "noGuide": "Sin número",
+      "orderNumber": "Pedido #{number}",
+      "actions": {
+        "label": "Imprimir etiqueta",
+        "check": "Consultar al transportista",
+        "settle": "Resolver a mano",
+        "markVoided": "Marcar como anulada",
+        "cancel": "Cancelar guía"
+      },
+      "requiresReview": "No sabemos si el transportista hizo esta guía. Consúltalo con él o resuélvela a mano antes de crear otra.",
+      "cancelFailed": "El transportista no pudo anular la guía. Anúlala con él y márcala como anulada aquí.",
+      "lastError": "Último error: {error}",
+      "fields": {
+        "status": "Estado",
+        "carrier": "Transportista",
+        "order": "Pedido",
+        "guide": "Guía",
+        "created": "Creado",
+        "packages": "Paquetes",
+        "failedAttempts": "Intentos fallidos"
+      },
+      "history": "Historial",
+      "noEvents": "Sin eventos todavía.",
+      "eventNoStatus": "Estado sin nombre",
+      "source": {
+        "webhook": "Aviso del transportista",
+        "poll": "Consulta al transportista",
+        "manual": "A mano",
+        "system": "Plataforma"
+      },
+      "unmapped": "El transportista envió un estado que ninguna regla conoce.",
+      "mapIt": "Asignarle un estado en Ajustes",
+      "note": {
+        "shipping": {
+          "event": {
+            "foundAtCarrier": "La guía se encontró en el transportista.",
+            "receivedAtWarehouse": "Recibido en la bodega."
+          }
+        }
+      },
+      "checkFound": "El transportista tiene la guía.",
+      "checkNotFound": "El transportista no tiene esta guía."
+    },
+    "dialogs": {
+      "keep": "Volver",
+      "cancel": {
+        "title": "¿Cancelar la guía?",
+        "description": "La guía {guide} se anulará y el pedido podrá recibir otra.",
+        "confirm": "Cancelar guía",
+        "done": "Guía cancelada.",
+        "localOnly": "El transportista de esta guía no se puede consultar desde aquí: anúlala también con él."
+      },
+      "markVoided": {
+        "title": "¿Marcar como anulada?",
+        "description": "Confirma que ya anulaste la guía {guide} con el transportista.",
+        "confirm": "Marcar como anulada",
+        "done": "Guía marcada como anulada."
+      },
+      "settle": {
+        "title": "Resolver una guía en revisión",
+        "description": "Mira con el transportista si la guía existe y dinos qué encontraste.",
+        "found": "El transportista la tiene",
+        "notFound": "El transportista no la tiene: la guía falló",
+        "guideNumber": "Número de guía",
+        "cancel": "Cancelar",
+        "save": "Guardar",
+        "doneFound": "Guía recuperada.",
+        "doneFailed": "Guía marcada como fallida."
+      }
+    }
+  },
+  "pickups": {
+    "list": {
+      "title": "Recolecciones",
+      "request": "Solicitar recolección",
+      "filters": {
+        "status": "Estado",
+        "anyStatus": "Todos los estados",
+        "carrier": "Transportista",
+        "anyCarrier": "Todos los transportistas",
+        "from": "Desde",
+        "to": "Hasta",
+        "clear": "Quitar filtros"
+      },
+      "columns": {
+        "day": "Día",
+        "carrier": "Transportista",
+        "status": "Estado",
+        "packages": "Paquetes",
+        "actions": "Acciones"
+      },
+      "open": "Abrir",
+      "openPickup": "Abrir la recolección de {carrier} del {day}",
+      "empty": "Todavía no hay recolecciones.",
+      "noMatches": "Ninguna recolección coincide con los filtros.",
+      "loadMore": "Cargar más"
+    },
+    "status": {
+      "pending": "Pidiéndola al transportista",
+      "requires_review": "Requiere revisión",
+      "requested": "Solicitada",
+      "confirmed": "Confirmada",
+      "manual_required": "Pídela tú al transportista",
+      "cancelled": "Cancelada",
+      "failed": "Falló",
+      "unknown": "Desconocido"
+    },
+    "failure": {
+      "carrier_unavailable": "El transportista no respondió.",
+      "credentials_rejected": "El transportista no aceptó las credenciales.",
+      "credentials_unreadable": "Las credenciales guardadas no se pueden leer.",
+      "unknown_outcome": "No sabemos si el transportista recibió la solicitud.",
+      "unusable_answer": "El transportista dio una respuesta que no se puede usar.",
+      "connection_not_active": "La conexión con el transportista no está activa.",
+      "pickup_empty": "La recolección se quedó sin guías."
+    },
+    "detail": {
+      "title": "Recolección de {carrier} del {day}",
+      "window": "de {from} a {to}",
+      "needsReview": "No sabemos si el transportista recibió la solicitud. Míralo con él: confírmala si la tiene o termínala si no.",
+      "needsManual": "Este transportista no recibe solicitudes desde aquí. Pide la recolección con él y confírmala aquí.",
+      "lastError": "Último error:",
+      "cancelWithCarrier": "El transportista no puede cancelar desde aquí: cancélala con él.",
+      "actions": {
+        "print": "Imprimir manifiesto",
+        "confirm": "Confirmar a mano",
+        "cancel": "Cancelar recolección"
+      },
+      "confirmed": "Recolección confirmada.",
+      "cancelled": "Recolección cancelada.",
+      "manifest": "{count, plural, one {Manifiesto: # paquete} other {Manifiesto: # paquetes}}",
+      "noGuides": "La recolección no tiene guías.",
+      "noGuide": "Sin número",
+      "orderNumber": "Pedido #{number}",
+      "columns": {
+        "guide": "Guía",
+        "order": "Pedido",
+        "recipient": "Destinatario",
+        "packages": "Paquetes",
+        "actions": "Acciones"
+      },
+      "remove": "Quitar",
+      "removeGuide": "Quitar la guía {guide} de la recolección",
+      "cancelDialog": {
+        "title": "¿Cancelar la recolección?",
+        "description": "Las guías de esta recolección esperarán a la siguiente.",
+        "keep": "Volver",
+        "confirm": "Cancelar recolección"
+      },
+      "join": {
+        "title": "Añadir guías",
+        "none": "No hay guías esperando recolección.",
+        "orderNumber": "Pedido #{number}",
+        "loadMore": "Cargar más",
+        "cutoffPassed": "Ya pasó la hora de corte del día. Confirma que quieres cambiar la recolección de todos modos.",
+        "add": "{count, plural, one {Añadir # guía} other {Añadir # guías}}",
+        "addAnyway": "{count, plural, one {Añadir # guía de todos modos} other {Añadir # guías de todos modos}}"
+      }
+    },
+    "request": {
+      "title": "Solicitar recolección",
+      "description": "Se pedirá al transportista que pase por todas las guías que están esperando.",
+      "carrier": "Transportista",
+      "cutoffPassed": "Ya pasó la hora de corte del día. Confirma que quieres solicitarla de todos modos.",
+      "send": "Solicitar",
+      "sendAnyway": "Solicitar de todos modos",
+      "cancel": "Cancelar",
+      "done": "Recolección solicitada.",
+      "doneSomeWait": "Recolección solicitada: algunas guías esperan a la siguiente."
     }
   }
 }

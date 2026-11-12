@@ -1,6 +1,11 @@
 import { OrderMessageKind } from '@platform/core/domain'
 
-import { sendOrderMessageQuerySchema, sendOrderMessageSchema } from './order-messages.schemas'
+import {
+  encodeOrderMessageCursor,
+  listOrderMessagesQuerySchema,
+  sendOrderMessageQuerySchema,
+  sendOrderMessageSchema
+} from './order-messages.schemas'
 
 describe('sendOrderMessageSchema', () => {
   const valid = { kind: OrderMessageKind.ORDER_SUMMARY, idempotencyKey: 'press-one-of-the-day' }
@@ -57,5 +62,35 @@ describe('sendOrderMessageQuerySchema', () => {
   it('refuses any other value and any other parameter', () => {
     expect(sendOrderMessageQuerySchema.safeParse({ preview: 'yes' }).success).toBe(false)
     expect(sendOrderMessageQuerySchema.safeParse({ storeId: 'x' }).success).toBe(false)
+  })
+})
+
+describe('listOrderMessagesQuerySchema', () => {
+  const row = {
+    createdAt: new Date('2026-11-12T10:00:00.000Z'),
+    id: '2b7f1c1e-5f0d-4c3e-9d3a-0f6f1d2a3b4c'
+  }
+
+  it('takes the default page size and no cursor', () => {
+    expect(listOrderMessagesQuerySchema.parse({})).toEqual({ limit: 25 })
+  })
+
+  it('reads back the cursor it made', () => {
+    expect(
+      listOrderMessagesQuerySchema.parse({ cursor: encodeOrderMessageCursor(row), limit: '10' })
+    ).toEqual({ cursor: row, limit: 10 })
+  })
+
+  it('refuses a cursor that is not ours, a limit out of range and any other parameter', () => {
+    const bad = [
+      { cursor: 'nope' },
+      { cursor: Buffer.from('[1,2]').toString('base64url') },
+      { limit: '0' },
+      { limit: '101' },
+      { storeId: 'x' }
+    ]
+    for (const query of bad) {
+      expect(listOrderMessagesQuerySchema.safeParse(query).success).toBe(false)
+    }
   })
 })
