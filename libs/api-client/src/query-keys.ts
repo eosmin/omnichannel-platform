@@ -177,7 +177,16 @@ export const QueryKeys = {
       ['returns', storeId, 'reception-batches', batchId] as const
   },
   orderTemplates: {
-    all: (storeId: string) => ['order-templates', storeId] as const
+    all: (storeId: string) => ['order-templates', storeId] as const,
+    // The writes in flight (save, delete) of the store's templates
+    writing: (storeId: string) => ['order-template-write', storeId] as const,
+    // Apart from `all`, so that saving a template does not refetch the previews
+    preview: (storeId: string, locale: string, body: string) =>
+      ['order-template-preview', storeId, locale, body] as const
+  },
+  // Who pays the return leg by default (Settings → Returns)
+  returnSettings: {
+    store: (storeId: string) => ['return-settings', storeId] as const
   },
   remittances: {
     all: (storeId: string) => ['remittances', storeId] as const

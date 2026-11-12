@@ -1,6 +1,6 @@
 // A checkbox or switch in apps/web never carries its initial state in the component (TDD_17 §4.14): a control that
 // starts checked reads that from the store's preferences, where its factory default lives in exactly one place
-// (libs/core/platform/config/store-preferences.ts), so a new control has to add its key there. The rule lives in
+// (libs/core/domain/store-preferences.ts), so a new control has to add its key there. The rule lives in
 // this file so that a spec can run it (scripts/lib/web-controls-rule.spec.ts).
 //
 // It reports, on `<input type="checkbox">`, `<input role="switch">` and the components named Checkbox or Switch:
@@ -100,11 +100,11 @@ const noFixedInitialChecked = {
     schema: [],
     messages: {
       defaultChecked:
-        'A checkbox or switch has no defaultChecked: read its initial state from the store preferences (libs/core/platform/config/store-preferences.ts)',
+        'A checkbox or switch has no defaultChecked: read its initial state from the store preferences (libs/core/domain/store-preferences.ts)',
       literalChecked:
-        'A checkbox or switch has no literal checked: read its state from the store preferences (libs/core/platform/config/store-preferences.ts)',
+        'A checkbox or switch has no literal checked: read its state from the store preferences (libs/core/domain/store-preferences.ts)',
       stateStartsChecked:
-        'A checkbox or switch does not start checked from useState(true): read its initial state from the store preferences (libs/core/platform/config/store-preferences.ts)'
+        'A checkbox or switch does not start checked from useState(true): read its initial state from the store preferences (libs/core/domain/store-preferences.ts)'
     }
   },
   create(context) {

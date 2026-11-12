@@ -839,16 +839,47 @@ describe('The settings of the inbox of a store', () => {
       const settings = await owner.storeSettings.findUniqueOrThrow({
         where: { storeId: ctx.storeA.id }
       })
-      // A key the write path does not own (the discount limit) survives the write of another
+      // A key this write does not send (the discount limit) survives the write of another
       expect((settings.preferences as { orders: Record<string, unknown> }).orders).toMatchObject({
         discountLimitPercent: 15,
         sendSummaryOnCreate: false
       })
     })
 
+    it('write the free-shipping rule and the failed-attempt policy, and nothing else', async () => {
+      const before = (await asAdmin().get(ApiRoutes.settings.preferences)).body as PreferencesBody
+      // Values that differ from what the store holds, so that a write that is dropped cannot pass
+      const freeShippingRule =
+        before.orders.freeShippingRule === 'any_item' ? 'all_items' : 'any_item'
+      const failedAttemptMessages =
+        before.orders.failedAttemptMessages === 'first_only' ? 'none' : 'first_only'
+      const put = await asAdmin()
+        .put(ApiRoutes.settings.preferences)
+        .send({ orders: { freeShippingRule, failedAttemptMessages } })
+      expect(put.status).toBe(OK)
+      expect((put.body as PreferencesBody).orders).toEqual({
+        ...before.orders,
+        freeShippingRule,
+        failedAttemptMessages
+      })
+      const read = await asAdmin().get(ApiRoutes.settings.preferences)
+      expect((read.body as PreferencesBody).orders).toEqual((put.body as PreferencesBody).orders)
+    })
+
     it.each([
       ['an empty block', { orders: {} }],
-      ['a key of the block with no write path yet', { orders: { discountLimitPercent: 10 } }],
+      [
+        'a key of the block with no write path (the discount limit)',
+        { orders: { discountLimitPercent: 10 } }
+      ],
+      [
+        'the price-override notice, an approval control',
+        { orders: { notifyOnPriceOverride: false } }
+      ],
+      [
+        'a failed-attempt policy that does not exist',
+        { orders: { failedAttemptMessages: 'twice' } }
+      ],
       [
         'a reason with both a key and a label',
         {

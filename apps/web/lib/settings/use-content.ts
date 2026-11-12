@@ -16,13 +16,16 @@ import { apiClient } from '../api'
 import { ContentKeys } from './content-keys'
 import {
   fetchInboxSettings,
-  fetchPreferences,
   type InboxSettingsInput,
   type InboxSettingsView,
-  type PreferencesView,
-  saveInboxSettings,
-  savePreferences
+  saveInboxSettings
 } from './inbox-requests'
+import {
+  fetchPreferences,
+  type PreferencesInput,
+  type PreferencesView,
+  savePreferences
+} from './preferences-requests'
 import {
   createStoreSnippet,
   deleteStoreSnippet,
@@ -170,10 +173,10 @@ export function useSaveInboxSettings(
 
 export function useSavePreferences(
   storeId: string
-): UseMutationResult<PreferencesView, Error, Partial<PreferencesView>> {
+): UseMutationResult<PreferencesView, Error, PreferencesInput> {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: Partial<PreferencesView>) => savePreferences(apiClient, storeId, input),
+    mutationFn: (input: PreferencesInput) => savePreferences(apiClient, storeId, input),
     onSuccess: view => queryClient.setQueryData(ContentKeys.preferences(storeId), view)
   })
 }
