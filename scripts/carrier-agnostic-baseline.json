@@ -1,0 +1,58 @@
+{
+  "apps/api/src/modules/carriers/carrier-connections.service.ts": {
+    "code": 0,
+    "comment": 3
+  },
+  "apps/api/src/modules/carriers/carrier-connections.support.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/api/src/modules/carriers/carrier-connections.views.ts": {
+    "code": 0,
+    "comment": 2
+  },
+  "apps/api/src/modules/orders/order-guides.service.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "apps/api/src/modules/shipments/shipments.service.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "libs/core/database/prisma/schema.prisma": {
+    "code": 2,
+    "comment": 2
+  },
+  "libs/core/domain/carrier-connection-schemas.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "libs/core/domain/order-constants.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "libs/core/shipping/src/carrier-context.ts": {
+    "code": 0,
+    "comment": 2
+  },
+  "libs/core/shipping/src/guide-numbering.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "libs/core/shipping/src/shipment-cancellation.ts": {
+    "code": 0,
+    "comment": 2
+  },
+  "libs/core/shipping/src/shipping.service.ts": {
+    "code": 0,
+    "comment": 2
+  },
+  "libs/plugins/sdk/src/carrier-label.ts": {
+    "code": 0,
+    "comment": 1
+  },
+  "libs/plugins/sdk/src/carrier-plugin.interface.ts": {
+    "code": 0,
+    "comment": 1
+  }
+}

@@ -548,6 +548,17 @@ other red) and the script prints a notice; `pnpm validate:channel-agnostic --upd
 the baseline and refuses to raise it. CI compares the
 baseline with the one of `main`, so it cannot be edited upward to pass (`--require-main`, used in CI, fails when main cannot be found).
 
+**Carrier-agnostic ratchet** (`scripts/validate-carrier-agnostic.ts`, same place and same rules as the
+channel one, CLAUDE.md rule 13): counts the lines that name a concrete carrier in the same roots plus
+`libs/channels/*`; `libs/carriers/*` is free. The carriers are read from `CarrierId`
+(`libs/core/domain/shipping-constants.ts`, itself allowed with its reason written in `scripts/lib/carrier-agnostic.ts`),
+so a new official carrier needs no edit to the script. `forza` and `c807` count as a word or inside an identifier (`ForzaAdapter`, `isC807`), also as a
+`CarrierId.<KEY>` or a `carriers/<id>` path; `local`, which is also an ordinary word, counts quoted (or in
+backticks) on a line that talks about a carrier, a courier, a guide or a shipment, or as `localCarrier`. An id
+of an official carrier that is an ordinary word is added to `ORDINARY_WORD_IDS` in review (a spec pins the list).
+Baseline: `scripts/carrier-agnostic-baseline.json`; `pnpm validate:carrier-agnostic --update-down`
+tightens it and refuses to raise it; `--require-main` is used in CI.
+
 **Deprecation scanner** (`scripts/validate-deprecations.ts`, runs in `lint-and-types`):
 greps the codebase for removed or renamed APIs and fails on any hit. The list is the
 compat notes of this TDD set; each entry names the replacement:
