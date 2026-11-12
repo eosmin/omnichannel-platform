@@ -73,7 +73,12 @@ test.describe('the caution flag and "Copy order"', () => {
     if (seeded === undefined) throw new Error('the order was not seeded')
     await page.goto(AppPaths.store.order(storeId, seeded.id))
     await expect(page.getByText(CAUTION.chip, { exact: true })).toBeVisible()
-    await page.getByRole('button', { name: en.orders.copy.open, exact: true }).click()
+    await page
+      .getByRole('button', {
+        name: en.orders.copy.openNamed.replace('{number}', seeded.orderNumber),
+        exact: true
+      })
+      .click()
 
     await expect(drawer()).toBeVisible()
     await expect(drawer().getByText(en.orders.copy.heading, { exact: true })).toBeVisible()
