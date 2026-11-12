@@ -98,6 +98,24 @@ describe('the import profile schemas', () => {
     // The defaults are a comma and a dot
     expect(createRemittanceImportProfileSchema.safeParse(base).success).toBe(true)
   })
+  it('refuses two values read from the same column', () => {
+    const base = { connectionId: id, name: 'x' }
+    for (const same of [
+      { guideNumber: 'Total', amount: ' total ' },
+      { guideNumber: 0, amount: 0 },
+      { guideNumber: 'A', amount: 'B', fee: 'b' }
+    ]) {
+      expect(
+        createRemittanceImportProfileSchema.safeParse({ ...base, columns: same }).success
+      ).toBe(false)
+    }
+    expect(
+      createRemittanceImportProfileSchema.safeParse({
+        ...base,
+        columns: { guideNumber: 0, amount: 1, fee: 'Fee' }
+      }).success
+    ).toBe(true)
+  })
   it('measures the sample of a preview in bytes', () => {
     const profile = { columns }
     const fits = 'a'.repeat(32 * 1024)

@@ -9,8 +9,10 @@ import { AuditService } from '@platform/core/audit-module'
 import { PrismaService } from '@platform/core/database'
 import {
   type ImportedLine,
+  type ImportRowError,
   MediaStatus,
   parseRemittanceFile,
+  RemittanceImportFiles,
   RemittanceDelimiters,
   RemittanceImportLimits,
   type RemittanceImportPreviewBody,
@@ -31,7 +33,7 @@ import { StorageService } from '@platform/core/storage-module'
 
 import type { Actor } from '../tenancy'
 
-import { type ImportBody, ImportContentTypes } from './remittance-import-body'
+import type { ImportBody } from './remittance-import-body'
 import { RemittancesApiService } from './remittances.service'
 import type { RemittanceDetailView } from './remittances.views'
 
@@ -40,7 +42,7 @@ export interface ImportPreviewView {
   // The rows with data that were read, good or bad, and the lines that read well (the first ones)
   rowCount: number
   lines: ImportedLine[]
-  errors: ReturnType<typeof parseRemittanceFile>['errors']
+  errors: ImportRowError[]
   errorCount: number
   reference: string | null
   receivedOn: string | null
@@ -79,7 +81,7 @@ export class RemittanceImportsService {
     return {
       headers: parsed.headers,
       rowCount: parsed.rowCount,
-      lines: parsed.lines.slice(0, RemittanceImportLimits.PREVIEW_ROWS),
+      lines: parsed.lines,
       errors: parsed.errors,
       errorCount: parsed.errorCount,
       reference: parsed.reference,
@@ -109,10 +111,13 @@ export class RemittanceImportsService {
     }
     const bytes = file.bytes
     const mediaId = randomUUID()
-    const tab = profile.delimiter === String(RemittanceDelimiters.TAB)
-    const contentType = tab ? ImportContentTypes.TSV : ImportContentTypes.CSV
+    const kind =
+      profile.delimiter === String(RemittanceDelimiters.TAB)
+        ? RemittanceImportFiles.TSV
+        : RemittanceImportFiles.CSV
+    const contentType = kind.contentType
     const filename = sanitizeFilename(
-      `remittance-${new Date().toISOString().slice(0, 10)}.${tab ? 'tsv' : 'csv'}`
+      `${RemittanceImportFiles.FILENAME_PREFIX}-${new Date().toISOString().slice(0, 10)}.${kind.extension}`
     )
     const key = StorageKeys.remittanceFile(storeId, mediaId, filename)
     await this.storage.put(key, bytes, contentType)

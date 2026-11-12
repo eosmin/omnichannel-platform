@@ -149,7 +149,7 @@ export class RemittanceProfilesService {
           )
         }
         return tx.remittanceImportProfile.update({
-          where: { id: profileId },
+          where: { storeId_id: { storeId, id: profileId } },
           data: {
             ...(body.name === undefined ? {} : { name: body.name }),
             ...(body.delimiter === undefined ? {} : { delimiter: body.delimiter }),
@@ -171,7 +171,8 @@ export class RemittanceProfilesService {
     }
   }
 
-  // The remittances that were read with it keep their lines and forget the profile (the database does it, in that column only)
+  // The remittances that were read with it keep their lines and the id of the profile that read them (a plain column: the evidence of
+  // how the file was read, which no screen needs to resolve)
   async remove(storeId: string, profileId: string): Promise<void> {
     await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
@@ -180,7 +181,7 @@ export class RemittanceProfilesService {
         select: { id: true }
       })
       if (found === null) throw resourceNotFound('import profile')
-      await tx.remittanceImportProfile.delete({ where: { id: profileId } })
+      await tx.remittanceImportProfile.delete({ where: { storeId_id: { storeId, id: profileId } } })
     })
   }
 }

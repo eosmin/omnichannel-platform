@@ -209,6 +209,24 @@ describe('parseRemittanceFile', () => {
     ])
   })
 
+  it('matches a header as it was saved: accents composed or not, one space between words, any case', () => {
+    const composed = 'N\u00FAmero de gu\u00EDa'
+    const decomposed = 'Nu\u0301mero\u00A0de  gui\u0301a'
+    const result = parseRemittanceFile(
+      `${decomposed},Monto\nG-1,5\n`,
+      profile({
+        columns: { guideNumber: composed.toUpperCase(), amount: 'Monto' }
+      })
+    )
+    expect(result.errorCount).toBe(0)
+    expect(result.lines).toHaveLength(1)
+  })
+
+  it('keeps a guide as one string whichever way it came: NFC and one space between words', () => {
+    const result = parseRemittanceFile('Guia,Monto\n"AB  1\u00A02",5\n"Cafe\u0301",5\n', profile())
+    expect(result.lines.map(line => line.guideNumber)).toEqual(['AB 1 2', 'Caf\u00E9'])
+  })
+
   it('tolerates empty cells past the header (a trailing delimiter) and refuses a filled one', () => {
     const ok = parseRemittanceFile('Guia,Monto\nG-1,5,\nG-2,6,,\n', profile())
     expect(ok.errorCount).toBe(0)

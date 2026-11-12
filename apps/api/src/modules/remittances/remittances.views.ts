@@ -67,6 +67,8 @@ export interface RemittanceView {
   receivedOn: string | null
   importProfileId: string | null
   hasSourceFile: boolean
+  // The file the draft was imported from (a `Media` of purpose REMITTANCE_FILE, read with remittances:view through the media link route)
+  sourceMediaId: string | null
   // For a draft the totals are worked out now from its lines; a confirmed remittance keeps the ones written when it was confirmed
   totals: RemittanceTotalsView
   lineCount: number
@@ -111,6 +113,7 @@ export function remittanceViewOf(row: RemittanceRow, totals: RemittanceTotalsVie
     receivedOn: row.receivedOn?.toISOString().slice(0, 10) ?? null,
     importProfileId: row.importProfileId,
     hasSourceFile: row.sourceMediaId !== null,
+    sourceMediaId: row.sourceMediaId,
     totals,
     lineCount: row._count.lines,
     note: row.note,

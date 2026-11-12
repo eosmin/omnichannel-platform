@@ -1,17 +1,16 @@
 import type { Readable } from 'node:stream'
 
+import { RemittanceImportFiles } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 
 // The body of the import of a settlement file is the file itself (text/csv, text/tab-separated-values or text/plain), up to 5 MB:
 // the json parser of the app takes 100 KB and ignores these types, so the route reads its own body. It stops reading at the limit
 // (the rest of the upload is never held), and a body that is not UTF-8 text is refused instead of being read with wrong letters.
-export const ImportContentTypes = {
-  CSV: 'text/csv',
-  TSV: 'text/tab-separated-values',
-  PLAIN: 'text/plain'
-} as const
-
-const ACCEPTED: readonly string[] = Object.values(ImportContentTypes)
+const ACCEPTED: readonly string[] = [
+  RemittanceImportFiles.CSV.contentType,
+  RemittanceImportFiles.TSV.contentType,
+  RemittanceImportFiles.PLAIN.contentType
+]
 
 function refusal(
   code: typeof ErrorCodes.REMITTANCE_IMPORT_INVALID | typeof ErrorCodes.PAYLOAD_TOO_LARGE,

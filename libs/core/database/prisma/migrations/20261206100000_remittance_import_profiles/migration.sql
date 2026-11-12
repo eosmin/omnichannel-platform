@@ -15,9 +15,6 @@ CREATE TABLE "remittance_import_profiles" (
     CONSTRAINT "remittance_import_profiles_pkey" PRIMARY KEY ("id")
 );
 
--- CreateIndex (the profile a remittance was read with: a plain column, the profile may be deleted later)
-CREATE INDEX "cod_remittances_store_id_import_profile_id_idx" ON "cod_remittances"("store_id", "import_profile_id");
-
 -- CreateIndex
 CREATE UNIQUE INDEX "remittance_import_profiles_store_id_id_key" ON "remittance_import_profiles"("store_id", "id");
 

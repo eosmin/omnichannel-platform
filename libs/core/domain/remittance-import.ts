@@ -1,4 +1,5 @@
 import { RemittanceLimits } from './remittance-rules'
+import { plainName } from './text'
 
 // The deterministic reading of a carrier's settlement file (TDD_17 §4.15): a CSV or TSV file or a table pasted as text, read with
 // the saved mapping of the carrier. No AI, no guessing of a locale, no formula evaluated: a cell is text, and a cell that is not
@@ -32,6 +33,14 @@ export const RemittanceDateFormats = {
 } as const
 export type RemittanceDateFormat =
   (typeof RemittanceDateFormats)[keyof typeof RemittanceDateFormats]
+
+// How the file is kept and named (the content type of what was sent decides the extension of the copy that is kept)
+export const RemittanceImportFiles = {
+  CSV: { contentType: 'text/csv', extension: 'csv' },
+  TSV: { contentType: 'text/tab-separated-values', extension: 'tsv' },
+  PLAIN: { contentType: 'text/plain', extension: 'txt' },
+  FILENAME_PREFIX: 'remittance'
+} as const
 
 // The values a mapping can point at
 export const RemittanceImportFields = {
@@ -233,7 +242,8 @@ export function parseImportDay(cell: string, format: RemittanceDateFormat): stri
 // space would make two guides that look the same different), and the text is only ever stored, never rendered as markup.
 const CONTROL_OR_INVISIBLE = /[\p{Cc}\p{Cf}\u2028\u2029]/u
 function cleanText(cell: string, maxLength: number): string | null {
-  const text = cell.trim()
+  // As a guide typed by hand is kept (NFC, one space between words), so that the same guide is one string whichever way it came
+  const text = plainName(cell)
   if (text === '' || text.length > maxLength || CONTROL_OR_INVISIBLE.test(text)) return null
   return text
 }
@@ -247,6 +257,11 @@ function shown(cell: string): string {
 
 // ------------------------------------------------------------------------------------------------------ the file
 
+// A header is compared as the mapping was saved: NFC, one space between words, no case
+export function headerKey(header: string): string {
+  return plainName(header).toLowerCase()
+}
+
 function resolveColumn(
   ref: RemittanceColumnRef | undefined,
   headers: readonly string[],
@@ -256,8 +271,8 @@ function resolveColumn(
   if (ref === undefined) return undefined
   if (typeof ref === 'number') return ref < width ? ref : null
   if (!hasHeader) return null
-  const wanted = ref.trim().toLowerCase()
-  const found = headers.findIndex(header => header.trim().toLowerCase() === wanted)
+  const wanted = headerKey(ref)
+  const found = headers.findIndex(header => headerKey(header) === wanted)
   return found === -1 ? null : found
 }
 

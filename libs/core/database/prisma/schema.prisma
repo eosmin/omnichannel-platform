@@ -2044,7 +2044,6 @@ model CodRemittance {
   // So that its lines and the shipments it settled can name their store and the database check that they go together
   @@unique([storeId, id])
   @@index([storeId, connectionId, status])
-  @@index([storeId, importProfileId])
   @@map("cod_remittances")
 }
 

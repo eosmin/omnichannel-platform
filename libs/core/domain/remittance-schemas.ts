@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import {
+  headerKey,
   RemittanceDateFormats,
   RemittanceDecimalSeparators,
   RemittanceDelimiters,
@@ -115,6 +116,10 @@ export function remittanceProfileProblem(value: {
   if (!value.hasHeader && Object.values(value.columns).some(ref => typeof ref === 'string')) {
     return 'a file with no header is mapped by column position'
   }
+  // Each value has a column of its own: a guide and an amount read from the same column would be a number twice
+  const refs = Object.values(value.columns).filter(ref => ref !== undefined)
+  const keys = refs.map(ref => (typeof ref === 'string' ? `h:${headerKey(ref)}` : `i:${ref}`))
+  if (new Set(keys).size !== keys.length) return 'each value must be read from a column of its own'
   // A comma that separates the cells cannot also be the decimal comma: "12,50" would be two cells
   if (value.delimiter === value.decimalSeparator) {
     return 'the delimiter and the decimal separator must differ'
