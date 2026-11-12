@@ -29,6 +29,27 @@ describe('orderListWhere', () => {
     })
   })
 
+  it('filters by the planned carrier and by whether a live outbound guide holds the order', () => {
+    expect(orderListWhere(STORE, { carrierConnectionId: 'conn-1' })).toEqual({
+      storeId: STORE,
+      carrierConnectionId: 'conn-1'
+    })
+    const live = { kind: 'outbound', status: { notIn: ['cancelled', 'failed', 'returned'] } }
+    expect(orderListWhere(STORE, { guide: 'with_guide' })).toEqual({
+      storeId: STORE,
+      AND: [{ shipments: { some: live } }]
+    })
+    expect(orderListWhere(STORE, { guide: 'without_guide' })).toEqual({
+      storeId: STORE,
+      AND: [{ shipments: { none: live } }]
+    })
+  })
+
+  it('keeps the text search next to the guide filter', () => {
+    const where = orderListWhere(STORE, { q: '12', guide: 'with_guide' })
+    expect(where.AND).toHaveLength(2)
+  })
+
   it('searches the number by prefix, a bare number as the padded one, and the customer by name, e-mail and phone', () => {
     const where = orderListWhere(STORE, { q: 'ana' })
     const or = (where.AND?.[0] as { OR: Record<string, unknown>[] }).OR

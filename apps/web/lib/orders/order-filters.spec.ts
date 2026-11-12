@@ -39,6 +39,16 @@ describe('the orders address', () => {
     expect(from('createdFrom=2026-02-30').filter).toEqual({})
   })
 
+  it('reads the planned carrier and the guide filter, and leaves out what the api would refuse', () => {
+    expect(from(`carrierConnectionId=${ID}&guide=with_guide`).filter).toEqual({
+      carrierConnectionId: ID,
+      guide: 'with_guide'
+    })
+    expect(from('carrierConnectionId=1&guide=maybe').filter).toEqual({})
+    const state = from(`carrierConnectionId=${ID}&guide=without_guide`)
+    expect(from(new URLSearchParams(paramsFromState(state)).toString())).toEqual(state)
+  })
+
   it('lets the shortcut win over the days, and drops an inverted range', () => {
     expect(from('scheduledDeliveryOn=today&scheduledDeliveryFrom=2026-11-01').filter).toEqual({
       scheduledDeliveryOn: 'today'

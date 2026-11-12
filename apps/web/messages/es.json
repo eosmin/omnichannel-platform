@@ -1011,7 +1011,10 @@
         "status": "Estado",
         "payment": "Pago",
         "scheduled": "Entrega programada",
-        "total": "Total"
+        "total": "Total",
+        "carrier": "Transportista",
+        "guide": "Guía",
+        "shipment": "Envío"
       },
       "filters": {
         "status": "Estado",
@@ -1036,9 +1039,20 @@
         "customer": "Cliente: {name}",
         "removeCustomer": "Quitar el filtro por el cliente {name}",
         "aCustomer": "un cliente",
-        "clear": "{count, plural, one {Quitar # filtro} other {Quitar # filtros}}"
+        "clear": "{count, plural, one {Quitar # filtro} other {Quitar # filtros}}",
+        "carrier": "Transportista",
+        "allCarriers": "Todos los transportistas",
+        "guide": "Guía",
+        "anyGuide": "Con o sin guía",
+        "guides": {
+          "with_guide": "Con guía",
+          "without_guide": "Sin guía"
+        }
       },
-      "newOrder": "Nuevo pedido"
+      "newOrder": "Nuevo pedido",
+      "noCarrier": "Sin transportista",
+      "noGuide": "Sin guía",
+      "guidePending": "Guía en proceso"
     },
     "detail": {
       "title": "Pedido",
@@ -1418,6 +1432,110 @@
       "saved": "El pedido se actualizó.",
       "savedAwaitingApproval": "El pedido se actualizó. Su precio espera una aprobación.",
       "changedMeanwhile": "El pedido cambió mientras lo editabas. Solo se guarda lo que tú cambiaste."
+    },
+    "bulk": {
+      "label": "Acciones para los pedidos seleccionados",
+      "selected": "{count, plural, one {# pedido seleccionado} other {# pedidos seleccionados}}",
+      "clear": "Quitar la selección",
+      "confirm": {
+        "button": "Marcar como confirmados",
+        "title": "Marcar los pedidos como confirmados",
+        "description": "Solo cambian los pedidos que esperan confirmación. Indica cómo confirmaron los clientes; los demás se dejan como están y aparecen en el reporte.",
+        "viaLabel": "¿Cómo confirmaron los clientes?",
+        "viaChoose": "Elige una",
+        "via": {
+          "message_reply": "Respondieron en el chat",
+          "call": "Por teléfono",
+          "in_person": "En persona",
+          "other": "Otro"
+        },
+        "cancel": "Cancelar",
+        "submit": "Confirmar pedidos"
+      },
+      "summary": "Enviar resumen",
+      "labels": "Generar etiquetas",
+      "print": "Imprimir etiquetas",
+      "pickup": "Solicitar recolección",
+      "carrierLabel": "Transportista de las etiquetas",
+      "plannedCarrier": "El transportista planeado de cada pedido",
+      "tooMany": "Selecciona 100 pedidos como máximo para actuar sobre ellos a la vez.",
+      "running": "Trabajando en los pedidos seleccionados…",
+      "runningProgress": "Trabajando en los pedidos seleccionados: {percent}%",
+      "shipmentStatus": {
+        "creating": "Creando la guía",
+        "label_created": "Guía creada",
+        "picked_up": "Recogido",
+        "in_transit": "En tránsito",
+        "out_for_delivery": "En reparto",
+        "failed_attempt": "Intento de entrega fallido",
+        "delivered": "Entregado",
+        "returning": "Regresando",
+        "returned": "Devuelto",
+        "cancel_pending": "Cancelando",
+        "cancelled": "Cancelado",
+        "cancel_failed": "No se pudo cancelar",
+        "requires_review": "Requiere revisión",
+        "failed": "Falló"
+      },
+      "report": {
+        "title": {
+          "confirm": "Confirmar pedidos",
+          "summary": "Enviar resumen",
+          "labels": "Generar etiquetas",
+          "print": "Imprimir etiquetas",
+          "pickup": "Solicitar recolección"
+        },
+        "failedTitle": "No se pudo ejecutar la acción",
+        "summary": "{done, plural, one {# pedido se procesó} other {# pedidos se procesaron}}; {left, plural, one {# quedó fuera} other {# quedaron fuera}}.",
+        "openFile": "Abrir {name}",
+        "mixedSizes": "Las etiquetas no son todas del mismo tamaño: revisa la impresora antes de imprimir.",
+        "nothingLeftOut": "Ningún pedido quedó fuera.",
+        "leftOut": "{count, plural, one {# pedido quedó fuera} other {# pedidos quedaron fuera}}",
+        "tableCaption": "Resultado y estado final de cada pedido",
+        "columns": {
+          "order": "Pedido",
+          "result": "Resultado",
+          "orderStatus": "Estado del pedido",
+          "guide": "Guía"
+        },
+        "outcome": {
+          "done": "Hecho",
+          "reused": "Ya tenía su etiqueta",
+          "skipped": "Quedó fuera",
+          "failed": "Falló"
+        },
+        "noGuide": "Sin guía",
+        "unknown": "Desconocido",
+        "close": "Cerrar",
+        "rules": {
+          "not_pending_confirmation": "El pedido no está esperando confirmación.",
+          "no_guide": "El pedido no tiene una guía con etiqueta para imprimir.",
+          "not_waiting_for_pickup": "El pedido no tiene una guía esperando recolección.",
+          "pickup_not_offered": "El transportista de la guía no recibe solicitudes de recolección desde aquí."
+        },
+        "reasons": {
+          "not_printable": "La guía está anulada o en proceso de anulación.",
+          "no_label": "La guía no tiene etiqueta guardada.",
+          "not_ready": "La etiqueta aún no está lista.",
+          "unreadable": "No se puede leer el archivo de la etiqueta.",
+          "too_large": "El archivo se llenó y la etiqueta no cupo.",
+          "not_found": "El envío no es de esta tienda.",
+          "carrier_cannot_modify": "El transportista ya tiene la recolección y no puede cambiarla: la guía espera a la siguiente.",
+          "under_review": "La recolección está en revisión: la guía espera a que una persona la resuelva.",
+          "cutoff_passed": "Pasó la hora de corte del día: confirma el cambio desde la pantalla de recolecciones.",
+          "missing_variable": "El mensaje necesita datos que el pedido no tiene.",
+          "too_long": "El mensaje es más largo de lo que acepta el canal.",
+          "no_template": "La tienda no tiene plantilla para este mensaje.",
+          "no_channel": "El cliente no tiene conversación ni correo a dónde escribirle.",
+          "window_closed": "La ventana del canal está cerrada y no hay plantilla aprobada ni correo.",
+          "template_unavailable": "La plantilla aprobada no está disponible.",
+          "customer_erased": "El cliente pidió que lo olviden.",
+          "consent_revoked": "El cliente retiró su consentimiento para los mensajes de pedidos.",
+          "send_failed": "No se pudo enviar el mensaje.",
+          "unknown": "El servidor dio una razón que esta pantalla no conoce.",
+          "still_running": "La corrida sigue en marcha: revisa los pedidos otra vez en un momento."
+        }
+      }
     },
     "copy": {
       "open": "Copiar pedido",
@@ -2643,7 +2761,8 @@
         "tags": "Etiquetas",
         "snippets": "Respuestas guardadas",
         "inbox": "Bandeja",
-        "inventory": "Inventario"
+        "inventory": "Inventario",
+        "carriers": "Transportistas"
       },
       "org": {
         "label": "Organización",
@@ -2704,14 +2823,16 @@
       "comingLater": "Aún no disponible",
       "install": {
         "action": "Instalar",
-        "done": "{name} se instaló. Puedes conectarlo en Canales."
+        "done": "{name} se instaló. Puedes conectarlo en Canales.",
+        "doneCarrier": "{name} se instaló. Puedes conectar un transportista en Transportistas."
       },
       "uninstall": {
         "action": "Desinstalar",
         "title": "¿Desinstalar {name}?",
         "description": "{count, plural, =0 {El plugin deja de funcionar en esta tienda.} one {El plugin deja de funcionar y se desconecta su cuenta conectada.} other {El plugin deja de funcionar y se desconectan sus # cuentas conectadas.}} Las conversaciones y los clientes se conservan.",
         "confirm": "Desinstalar",
-        "done": "{name} se desinstaló."
+        "done": "{name} se desinstaló.",
+        "descriptionShipping": "{count, plural, =0 {El plugin deja de funcionar en esta tienda.} one {El plugin deja de funcionar y se desconecta su transportista conectado.} other {El plugin deja de funcionar y se desconectan sus # transportistas conectados.}} {shipments, plural, =0 {} one {# envío sigue en camino y ya no se le dará seguimiento. } other {# envíos siguen en camino y ya no se les dará seguimiento. }}{pickups, plural, =0 {} one {# recolección sigue en espera. } other {# recolecciones siguen en espera. }}Los pedidos, los clientes y los envíos ya hechos se conservan."
       }
     },
     "team": {
@@ -3273,6 +3394,209 @@
       },
       "problems": {
         "threshold": "El umbral debe ser un número entero de 0 o más, o quedar vacío."
+      }
+    },
+    "carriers": {
+      "title": "Transportistas",
+      "description": "Los transportistas que llevan tus paquetes: conecta una cuenta, revisa cómo va y decide qué significa cada estado que envían.",
+      "add": "Conectar un transportista",
+      "sections": {
+        "label": "Secciones de transportistas",
+        "connections": "Conexiones",
+        "mapping": "Mapeo de estados"
+      },
+      "listLabel": "Transportistas conectados",
+      "registryFailed": "No se pudieron cargar los transportistas que puedes conectar.",
+      "noneAvailable": "Todavía no hay ningún transportista disponible en esta tienda.",
+      "empty": {
+        "title": "Ningún transportista conectado",
+        "body": "Conecta un transportista para crear guías y seguir tus envíos. Si no se puede conectar, instala antes Shipping en Plugins."
+      },
+      "past": {
+        "title": "Transportistas desconectados",
+        "show": "{count, plural, one {Mostrar # transportista desconectado} other {Mostrar # transportistas desconectados}}",
+        "hide": "{count, plural, one {Ocultar # transportista desconectado} other {Ocultar # transportistas desconectados}}",
+        "hint": "Estas conexiones ya no crean guías. Cambia el nombre de una para liberarlo y usarlo en una conexión nueva."
+      },
+      "capabilities": {
+        "create_shipment": "Crea guías",
+        "pickup_bound_guides": "Las guías llegan con la recolección",
+        "cancel_shipment": "Cancela guías",
+        "return_shipment": "Guías de devolución",
+        "idempotent_create": "Se puede reintentar sin duplicar",
+        "fetch_status": "Consulta de estados",
+        "webhook_status": "Envía estados",
+        "pickup_request": "Solicita recolecciones",
+        "pickup_modify": "Cambia recolecciones",
+        "pickup_cancel": "Cancela recolecciones",
+        "requires_location_ids": "Pide los códigos de ubicación del transportista",
+        "internal_guide": "Guías hechas aquí",
+        "cod": "Cobro contra entrega"
+      },
+      "health": {
+        "auth": "El transportista rechazó las credenciales. Reemplázalas en Editar.",
+        "rejected": "El transportista rechazó la última solicitud.",
+        "unavailable": "No se pudo contactar al transportista.",
+        "invalid_answer": "El transportista respondió de forma inesperada.",
+        "credentials_unreadable": "Las credenciales guardadas no se pueden leer. Reemplázalas en Editar."
+      },
+      "card": {
+        "default": "Predeterminado",
+        "status": {
+          "active": "Activo",
+          "error": "Requiere atención",
+          "disabled": "Desconectado"
+        },
+        "disconnectedNote": "Esta conexión está desconectada. Conserva sus envíos y recolecciones.",
+        "healthUnknown": "El transportista informó de un problema.",
+        "neverHealthy": "Todavía no se ha comprobado.",
+        "lastHealthy": "Última vez que funcionó: {date}",
+        "capabilities": "Lo que puede hacer este transportista",
+        "webhook": {
+          "secretSet": "El secreto de los avisos está configurado.",
+          "secretMissing": "Todavía no hay secreto de los avisos.",
+          "url": "dirección de los avisos"
+        },
+        "edit": "Editar",
+        "rename": "Cambiar nombre",
+        "test": {
+          "action": "Probar conexión",
+          "healthy": "{name} funciona.",
+          "unhealthy": "{name} no funciona. Revisa sus credenciales."
+        },
+        "rotate": {
+          "action": "Nuevo secreto de los avisos",
+          "title": "¿Hacer un secreto nuevo para los avisos de estado de {name}?",
+          "description": "El secreto anterior deja de funcionar de inmediato. Verás el nuevo una sola vez: pégalo enseguida en el panel del transportista o rechazaremos sus avisos de estado.",
+          "confirm": "Hacer un secreto nuevo"
+        },
+        "disconnect": {
+          "action": "Desconectar",
+          "title": "¿Desconectar {name}?",
+          "description": "{shipments, plural, =0 {} one {# envío sigue en camino y ya no se le dará seguimiento. } other {# envíos siguen en camino y ya no se les dará seguimiento. }}{pickups, plural, =0 {} one {# recolección sigue en espera. } other {# recolecciones siguen en espera. }}Se borran las credenciales y no se crean guías nuevas con esta conexión. Los envíos existentes se conservan. Para usarla de nuevo hay que conectarla otra vez.",
+          "confirm": "Desconectar",
+          "done": "{name} se desconectó."
+        }
+      },
+      "connect": {
+        "title": "Conectar un transportista",
+        "description": "Elige el transportista y escribe lo que pide. Los secretos se guardan cifrados y no se vuelven a mostrar.",
+        "carrier": "Transportista",
+        "carrierPlaceholder": "Elige un transportista",
+        "courierName": "Nombre del mensajero",
+        "courierPhone": "Teléfono del mensajero",
+        "courierPrefix": "Prefijo de las guías",
+        "courierPrefixHint": "Hasta 6 letras mayúsculas o dígitos, por ejemplo JM. Las guías se numeran JM-000001, JM-000002…",
+        "courierNotes": "Notas (opcional)",
+        "credentials": "Credenciales",
+        "credentialsPlaceholder": "{\"apiKey\": \"…\"}",
+        "credentialsHint": "Un objeto JSON con lo que te dio el transportista. Se guarda cifrado y no se vuelve a mostrar.",
+        "displayName": "Nombre en la lista (opcional)",
+        "displayNameHint": "Déjalo vacío para usar el nombre de la cuenta.",
+        "isDefault": "Usarlo de forma predeterminada en las guías nuevas",
+        "connecting": "Conectando…",
+        "submit": "Conectar",
+        "connected": "{name} está conectado.",
+        "problems": {
+          "carrier": "Elige un transportista.",
+          "name": "El nombre es demasiado largo.",
+          "credentials": "Escribe las credenciales como un objeto JSON.",
+          "courierName": "Escribe el nombre del mensajero (hasta 80 caracteres).",
+          "courierPhone": "Escribe el teléfono del mensajero (hasta 30 caracteres).",
+          "courierPrefix": "El prefijo son de 1 a 6 letras mayúsculas o dígitos.",
+          "courierNotes": "Las notas son demasiado largas."
+        }
+      },
+      "rules": {
+        "title": "Editar {name}",
+        "description": "Solo se guarda lo que cambies.",
+        "descriptionDisconnected": "Esta conexión está desconectada: solo puedes cambiarle el nombre, por ejemplo para liberarlo y usarlo en una conexión nueva.",
+        "name": "Nombre",
+        "isDefault": "Transportista predeterminado",
+        "isDefaultHint": "Las guías nuevas y el panel de pedidos empiezan con este. Al elegir otro como predeterminado, este deja de serlo.",
+        "credentials": "Reemplazar las credenciales (opcional)",
+        "credentialsPlaceholder": "{\"apiKey\": \"…\"}",
+        "credentialsHint": "Un objeto JSON. El transportista lo comprueba primero; si lo rechaza, se quedan las credenciales anteriores.",
+        "pickup": {
+          "legend": "Recolecciones",
+          "enabled": "Este transportista recolecta paquetes",
+          "enabledHint": "Donde el transportista no tiene servicio de recolección, la recolección se hace a mano con una lista imprimible.",
+          "days": "Días de recolección",
+          "weekdays": {
+            "1": "Lun",
+            "2": "Mar",
+            "3": "Mié",
+            "4": "Jue",
+            "5": "Vie",
+            "6": "Sáb",
+            "7": "Dom"
+          },
+          "cutoff": "Hora de corte",
+          "cutoffHint": "Formato de 24 horas, por ejemplo 15:00. Después de esa hora la solicitud es para el siguiente día de recolección. Vacío significa sin corte.",
+          "reminder": "Recordatorio antes del corte (minutos)",
+          "reminderHint": "0 apaga el recordatorio.",
+          "timePlaceholder": "HH:MM",
+          "auto": "Solicitar la recolección automáticamente",
+          "autoHint": "A la hora de abajo, en los días de recolección, con las guías que estén listas.",
+          "autoTime": "Hora de la solicitud automática"
+        },
+        "problems": {
+          "name": "Escribe un nombre de hasta 80 caracteres.",
+          "noDays": "Elige al menos un día de recolección.",
+          "cutoff": "El corte es una hora como 15:00, o vacío.",
+          "autoNeedsPickups": "La recolección automática necesita las recolecciones activadas.",
+          "autoTime": "Escribe la hora de la solicitud automática, como 09:30.",
+          "reminder": "El recordatorio es un número entero de minutos, de 1440 como máximo.",
+          "credentials": "Escribe las credenciales como un objeto JSON."
+        },
+        "save": "Guardar",
+        "saving": "Guardando…",
+        "saved": "{name} se guardó."
+      },
+      "secret": {
+        "title": "Secreto de los avisos de {name}",
+        "description": "Pega los dos en el panel del transportista para que pueda avisarnos de sus envíos.",
+        "once": "Este secreto se muestra solo ahora. Si lo pierdes, haz uno nuevo.",
+        "secretLabel": "Secreto",
+        "urlLabel": "Dirección de los avisos"
+      },
+      "mapping": {
+        "description": "Cada transportista llama a sus estados con sus propias palabras. Aquí decides a qué estado nuestro equivale cada uno. Un código que nadie ha mapeado espera, con sus envíos, hasta que lo decidas.",
+        "noConnections": "Conecta un transportista para mapear sus estados.",
+        "connection": "Transportista",
+        "ignore": "Ignorar este código",
+        "statuses": {
+          "label_created": "Guía creada",
+          "picked_up": "Recolectado",
+          "in_transit": "En tránsito",
+          "out_for_delivery": "En reparto",
+          "failed_attempt": "Intento fallido",
+          "delivered": "Entregado",
+          "returning": "En regreso",
+          "returned": "Devuelto",
+          "cancelled": "Cancelado"
+        },
+        "waiting": {
+          "title": "Códigos a la espera de una decisión",
+          "none": "Ningún código está en espera.",
+          "more": "Mostrar más",
+          "seen": "{count, plural, one {Visto una vez} other {Visto # veces}}, la última el {date}",
+          "shipments": "{count, plural, =0 {ningún envío en espera} one {# envío en espera} other {# envíos en espera}}",
+          "mapTo": "Estado para {code}",
+          "mapPlaceholder": "Mapear a…",
+          "apply": "Aplicar",
+          "mapped": "{code} quedó mapeado. Sus envíos se actualizarán."
+        },
+        "table": {
+          "title": "Códigos mapeados",
+          "none": "Todavía no hay ningún código mapeado.",
+          "more": "Mostrar más",
+          "custom": "Elegido por ti",
+          "default": "Predeterminado del transportista",
+          "statusOf": "Estado para {code}",
+          "restore": "Restaurar el predeterminado",
+          "ignored": "Ignorado"
+        }
       }
     }
   },

@@ -47,6 +47,7 @@ const summary = {
   priceApprovalStatus: 'not_required',
   freeShipping: false,
   scheduledDeliveryDate: '2026-11-12',
+  carrierConnectionId: null,
   priceModified: false,
   createdAt: '2026-11-10T10:00:00.000Z',
   updatedAt: '2026-11-10T10:00:00.000Z'
@@ -98,6 +99,8 @@ describe('orders api', () => {
       q: ' ana ',
       status: 'CONFIRMED',
       scheduledDeliveryOn: 'today',
+      carrierConnectionId: 'conn-1',
+      guide: 'with_guide',
       sort: 'scheduled_delivery',
       cursor: 'c2',
       createdFrom: undefined
@@ -110,6 +113,8 @@ describe('orders api', () => {
       q: 'ana',
       status: 'CONFIRMED',
       scheduledDeliveryOn: 'today',
+      carrierConnectionId: 'conn-1',
+      guide: 'with_guide',
       sort: 'scheduled_delivery',
       cursor: 'c2'
     })

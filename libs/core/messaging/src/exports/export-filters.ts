@@ -6,6 +6,7 @@ import {
   CustomerLimits,
   lowercasedUuidSchema,
   OrderLimits,
+  OrderGuideFilters,
   OrderStatus,
   PaymentStatus,
   PriceApprovalStatus
@@ -75,6 +76,8 @@ export const ordersExportFiltersSchema = z.strictObject({
   paymentStatus: z.enum(PaymentStatus).optional(),
   priceApprovalStatus: z.enum(PriceApprovalStatus).optional(),
   customerId: lowercasedUuidSchema.optional(),
+  carrierConnectionId: lowercasedUuidSchema.optional(),
+  guide: z.enum(OrderGuideFilters).optional(),
   createdFrom: z.iso.datetime().optional(),
   createdBefore: z.iso.datetime().optional(),
   scheduledDeliveryFrom: z.iso.date().optional(),
