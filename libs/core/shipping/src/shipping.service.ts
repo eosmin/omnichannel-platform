@@ -366,8 +366,8 @@ export class ShippingService {
   }
 
   // The guide of the way back of a return (TDD_17 §4.11): the same order of things as `createOne` (the row first and committed, the
-  // carrier second), for a connection whose plugin declares RETURN_SHIPMENT. The return is locked with the order, so a return
-  // that is cancelled or received at the same time never gets a guide, and the row is linked to its return in the same
+  // carrier second), for a connection whose plugin declares RETURN_SHIPMENT. The row of the return is locked (the cancel and the
+  // receipt lock it too), so a return that is cancelled or received at the same time never gets a guide, and the row is linked to its return in the same
   // transaction (`OrderReturn.returnShipmentId`: the last guide made for it, the one a failed one leaves is replaced by the next).
   async createReturnShipment(
     storeId: string,

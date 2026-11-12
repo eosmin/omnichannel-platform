@@ -968,20 +968,29 @@ export class OrderMessagesService {
     maxDeliveryAttempts: number
     codAmountCents: number | null
   } | null> {
+    // The way back is told with the guide of the way back; everything else with an outbound one. A guide the caller names must be of
+    // that kind too: the number of the wrong guide would reach the customer as the right one
+    const wanted =
+      kind === OrderMessageKind.RETURN_APPROVED ? ShipmentKind.RETURN : ShipmentKind.OUTBOUND
+    const live = {
+      storeId,
+      orderId,
+      kind: wanted,
+      status: { notIn: [...ShipmentInactiveStatuses] }
+    }
+    // Two live guides of the way back (two returns of one order): the message is about one of them and nothing here says which, so
+    // it is not guessed; the agent names the guide
+    if (
+      shipmentId === undefined &&
+      wanted === ShipmentKind.RETURN &&
+      (await this.prisma.client.shipment.count({ where: live })) > 1
+    ) {
+      return null
+    }
+    const where =
+      shipmentId === undefined ? live : { id: shipmentId, storeId, orderId, kind: wanted }
     const row = await this.prisma.client.shipment.findFirst({
-      where:
-        shipmentId === undefined
-          ? {
-              storeId,
-              orderId,
-              // The way back is told with the guide of the way back; everything else with the outbound one
-              kind:
-                kind === OrderMessageKind.RETURN_APPROVED
-                  ? ShipmentKind.RETURN
-                  : ShipmentKind.OUTBOUND,
-              status: { notIn: [...ShipmentInactiveStatuses] }
-            }
-          : { id: shipmentId, storeId, orderId },
+      where,
       orderBy: { createdAt: 'desc' },
       select: {
         guideNumber: true,

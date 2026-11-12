@@ -989,6 +989,43 @@ describe('Order messages', () => {
       expect(JSON.stringify(await messagesOf(scenario.conversationId))).not.toContain('RET-9999')
     })
 
+    it('does not tell the way back with an outbound guide, nor a shipped order with a guide of the way back, nor guess between two returns', async () => {
+      await template(OrderMessageKind.RETURN_APPROVED, 'Devolución guía {{trackingNumber}}')
+      await template(OrderMessageKind.ORDER_SHIPPED, 'Va guía {{trackingNumber}}')
+      const scenario = await scene({ channel: NO_WINDOW })
+      const outbound = await guided(scenario.orderId, 'OUT-7777', 'outbound')
+      const first = await guided(scenario.orderId, 'RET-1111', 'return')
+      const press = (kind: OrderMessageKindType, shipmentId?: string) =>
+        post(sender, scenario.orderId, {
+          kind,
+          idempotencyKey: randomUUID(),
+          ...(shipmentId === undefined ? {} : { shipmentId })
+        })
+      const notSent = {
+        status: OrderMessageOutcomeStatus.NOT_SENT,
+        reason: OrderMessageNotSentReasons.MISSING_VARIABLE
+      }
+
+      // The wrong kind of guide is not found for the kind of the message
+      expect((await press(OrderMessageKind.RETURN_APPROVED, outbound.id)).body).toMatchObject(
+        notSent
+      )
+      expect((await press(OrderMessageKind.ORDER_SHIPPED, first.id)).body).toMatchObject(notSent)
+      // One live guide of the way back is the one; a second return makes it ambiguous and the message is not sent until one is named
+      expect((await press(OrderMessageKind.RETURN_APPROVED)).body).toMatchObject({
+        status: OrderMessageOutcomeStatus.SENT
+      })
+      const second = await guided(scenario.orderId, 'RET-2222', 'return')
+      expect((await press(OrderMessageKind.RETURN_APPROVED)).body).toMatchObject(notSent)
+      expect((await press(OrderMessageKind.RETURN_APPROVED, second.id)).body).toMatchObject({
+        status: OrderMessageOutcomeStatus.SENT
+      })
+      const texts = (await messagesOf(scenario.conversationId)).map(message => message.content)
+      expect(texts.join('|')).toContain('RET-1111')
+      expect(texts.join('|')).toContain('RET-2222')
+      expect(texts.join('|')).not.toContain('OUT-7777')
+    })
+
     it('tells a replacement with the outbound guide of the replacement order', async () => {
       await template(
         OrderMessageKind.EXCHANGE_SHIPPED,

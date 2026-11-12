@@ -266,6 +266,24 @@ describe('The return leg of a return', () => {
     expect((await admin().post(ApiRoutes.returns.cancel(returnId)).send({})).status).toBe(OK)
   })
 
+  it('does not make a second guide while one may exist at the carrier, and settles a return guide in review by hand', async () => {
+    const { returnId } = await approved()
+    const guide = (await guideOf(returnId)).body as GuideBody
+    await owner.shipment.update({
+      where: { id: guide.id },
+      data: { status: ShipmentStatus.REQUIRES_REVIEW }
+    })
+
+    const again = await guideOf(returnId)
+    expect(again.status).toBe(CONFLICT)
+    expect(errorOf(again).code).toBe(ErrorCodes.SHIPPING_OUTCOME_UNKNOWN)
+
+    // The carrier is asked by the number of the order, which is also the reference of the outbound guide: not for this one
+    const check = await admin().post(ApiRoutes.shipments.check(guide.id)).send({})
+    expect(check.status).toBe(CONFLICT)
+    expect(errorOf(check).code).toBe(ErrorCodes.SHIPPING_CHECK_NOT_SUPPORTED)
+  })
+
   it('swaps the payer of the guide when the customer pays', async () => {
     const { returnId } = await approved()
     await owner.orderReturn.update({
