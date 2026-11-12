@@ -20,8 +20,12 @@ import {
   MediaStatus,
   MessageType,
   OriginKinds,
+  CodStatus,
+  OrderReturnCondition,
+  OrderStatus,
   OriginMediaSlots,
   PaymentStatus,
+  ShipmentStatus,
   type SystemMessageEvent
 } from '@platform/core/domain'
 import { ExportTypes } from '@platform/core/queues'
@@ -30,6 +34,7 @@ import { MediaPurpose, StorageKeys } from '@platform/core/storage'
 // The e2e cases build their rows with the builders of the suites in tests/
 // eslint-disable-next-line no-restricted-imports -- the only deep relative import, to a folder no alias covers
 import {
+  BUILT_SERVICE_CODE,
   createCarrierConnection,
   createChannelConnection,
   createConversation,
@@ -1569,6 +1574,19 @@ async function removeOrdersAndGuides(orderIds: string[], connectionId: string): 
         // Kept by a row that cannot go (the ledger): the next run uses its own names
       }
     }
+    // The packages scanned from these guides, and the batches they filled, go before the returns and guides they point at
+    const scanned = await owner.returnReceptionItem.findMany({
+      where: { shipment: { orderId: { in: all } } },
+      select: { batchId: true }
+    })
+    await attempt(() =>
+      owner.returnReceptionItem.deleteMany({ where: { shipment: { orderId: { in: all } } } })
+    )
+    await attempt(() =>
+      owner.returnReceptionBatch.deleteMany({
+        where: { id: { in: scanned.map(row => row.batchId) }, items: { none: {} } }
+      })
+    )
     await attempt(() =>
       owner.orderReturnLine.deleteMany({ where: { returnId: { in: returns.map(row => row.id) } } })
     )
@@ -1665,4 +1683,180 @@ export async function addShippingLists(storeId: string, run: string): Promise<Sh
         await owner.carrierConnection.deleteMany({ where: { id: made.connection.id } })
       })
   }
+}
+
+// A package on its way back, or one the customer already received: a shipped (or delivered) order with a line allocated at the
+// scenario's warehouse and a guide of the scenario's courier in a state the reception screen reads. `delivered` makes the guide
+// say DELIVERED, which the screen takes only after the agent confirms that the package came back anyway.
+export interface ComingBackPackage {
+  orderId: string
+  orderNumber: string
+  guideNumber: string
+  orderItemId: string
+  productName: string
+}
+
+export async function addComingBackPackage(
+  storeId: string,
+  scenario: ShippingScenario,
+  options: { delivered?: boolean } = {}
+): Promise<ComingBackPackage> {
+  const delivered = options.delivered === true
+  const made = await withOwner(owner =>
+    createGuideOn(owner, {
+      storeId,
+      connectionId: scenario.connection.id,
+      serviceCode: BUILT_SERVICE_CODE,
+      status: delivered ? ShipmentStatus.DELIVERED : ShipmentStatus.IN_TRANSIT,
+      guideNumber: `RCV-${randomUUID().slice(0, 8).toUpperCase()}`,
+      ...(delivered ? { deliveredAt: new Date() } : {}),
+      order: {
+        status: delivered ? OrderStatus.DELIVERED : OrderStatus.SHIPPED,
+        paymentStatus: PaymentStatus.COMPLETED,
+        shippingAddress: SHIPPING_ADDRESS,
+        allocatedAt: scenario.warehouse.id,
+        carrierConnectionId: scenario.connection.id
+      }
+    })
+  )
+  scenarioOrders.get(scenario.warehouse.id)?.push(made.orderId)
+  return {
+    orderId: made.orderId,
+    orderNumber: made.orderNumber,
+    guideNumber: made.guideNumber,
+    orderItemId: made.itemId,
+    productName: await productNameOfItem(made.itemId)
+  }
+}
+
+function productNameOfItem(itemId: string): Promise<string> {
+  return withOwner(async owner => {
+    const item = await owner.orderItem.findUniqueOrThrow({
+      where: { id: itemId },
+      select: { productName: true }
+    })
+    return item.productName
+  })
+}
+
+// What the reception screen could not make by itself: the package of an open batch whose return the api will refuse at closing
+// (more units than the order sent), so that the others of the batch show that one failure does not undo them
+export function overstateUnitsOfScannedPackage(
+  guideNumber: string,
+  orderItemId: string
+): Promise<void> {
+  return withOwner(async owner => {
+    await owner.returnReceptionItem.updateMany({
+      where: { shipment: { guideNumber } },
+      data: { lines: [{ orderItemId, quantity: 99, condition: OrderReturnCondition.RESELLABLE }] }
+    })
+  })
+}
+
+// The return a closed batch made for an order, with its reason and the condition of its lines
+export function returnsOfOrder(
+  orderId: string
+): Promise<{ reason: string; status: string; conditions: string[] }[]> {
+  return withOwner(async owner => {
+    const rows = await owner.orderReturn.findMany({
+      where: { orderId },
+      select: { reason: true, status: true, lines: { select: { condition: true } } }
+    })
+    return rows.map(row => ({
+      reason: row.reason,
+      status: row.status,
+      conditions: row.lines.map(line => line.condition ?? '')
+    }))
+  })
+}
+
+// Whether the customer of an order is flagged as a caution
+export function customerOfOrderIsCaution(orderId: string): Promise<boolean> {
+  return withOwner(async owner => {
+    const order = await owner.order.findUniqueOrThrow({
+      where: { id: orderId },
+      select: { customer: { select: { isCaution: true } } }
+    })
+    return order.customer?.isCaution === true
+  })
+}
+
+// A COD guide that a carrier delivered and still owes the cash of, on the scenario's courier: the line of a settlement file that
+// names its number matches it
+export function addCodDeliveredGuide(
+  storeId: string,
+  scenario: ShippingScenario,
+  codCents: number
+): Promise<string> {
+  return withOwner(async owner => {
+    const guideNumber = `COD-${randomUUID().slice(0, 8).toUpperCase()}`
+    const made = await createShipment(owner, {
+      storeId,
+      connectionId: scenario.connection.id,
+      guideNumber,
+      status: ShipmentStatus.DELIVERED,
+      codAmountCents: codCents,
+      codExpectedCents: codCents,
+      codStatus: CodStatus.PENDING_REMITTANCE,
+      deliveredAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+    })
+    scenarioOrders.get(scenario.warehouse.id)?.push(made.orderId)
+    return guideNumber
+  })
+}
+
+// The remittances of a store's courier that the browser made (drafts), and what removes them again
+export function removeRemittancesOf(connectionId: string): Promise<void> {
+  return withOwner(async owner => {
+    const ids = (
+      await owner.codRemittance.findMany({ where: { connectionId }, select: { id: true } })
+    ).map(row => row.id)
+    await owner.codRemittanceLine.deleteMany({ where: { remittanceId: { in: ids } } })
+    await owner.codRemittance.deleteMany({ where: { id: { in: ids } } })
+    await owner.remittanceImportProfile.deleteMany({ where: { connectionId } })
+  })
+}
+
+// Several confirmed orders of one customer, each ready for a guide at the scenario's courier: the orders page finds them by the
+// customer's name and a bulk run makes their labels
+export async function addShippableOrdersOfOneCustomer(
+  storeId: string,
+  scenario: ShippingScenario,
+  count: number,
+  customerName: string
+): Promise<ShippableOrder[]> {
+  const made: ShippableOrder[] = []
+  for (let index = 0; index < count; index += 1) {
+    made.push(await addShippableOrder(storeId, scenario, 'CONFIRMED'))
+  }
+  await withOwner(async owner => {
+    const ids = made.map(order => order.id)
+    const replaced = (
+      await owner.order.findMany({ where: { id: { in: ids } }, select: { customerId: true } })
+    ).flatMap(row => (row.customerId === null ? [] : [row.customerId]))
+    const customer = await createCustomer(owner, { storeId, name: customerName })
+    await owner.order.updateMany({ where: { id: { in: ids } }, data: { customerId: customer.id } })
+    // The customers that `createOrder` made for each order have no order left
+    await owner.customer.deleteMany({ where: { id: { in: replaced } } })
+  })
+  return made.map(order => ({ ...order, customerName }))
+}
+
+// The states the guides of the orders stand in, in the order of the orders given
+export async function shipmentStatusesOfOrders(orderIds: string[]): Promise<string[][]> {
+  return Promise.all(orderIds.map(id => shipmentStatusesOf(id)))
+}
+
+// The open batches of the store (and what they hold): a batch another run left behind would be taken as it is by the reception
+// screen and change what a case counts
+export function clearOpenReceptionBatches(storeId: string): Promise<void> {
+  return withOwner(async owner => {
+    const open = await owner.returnReceptionBatch.findMany({
+      where: { storeId, completedAt: null },
+      select: { id: true }
+    })
+    const ids = open.map(batch => batch.id)
+    await owner.returnReceptionItem.deleteMany({ where: { batchId: { in: ids } } })
+    await owner.returnReceptionBatch.deleteMany({ where: { id: { in: ids } } })
+  })
 }

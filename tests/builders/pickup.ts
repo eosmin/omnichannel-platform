@@ -25,10 +25,34 @@ export async function createGuideOn(
     status?: ShipmentStatus
     packageCount?: number
     pickupId?: string
+    // The order the guide belongs to, when it must be more than a confirmed order with no stock behind it (a package that
+    // comes back: shipped, paid, a line allocated at a warehouse, an address)
+    order?: {
+      status?: string
+      paymentStatus?: string
+      allocatedAt?: string
+      shippingAddress?: Record<string, string>
+      carrierConnectionId?: string
+    }
+    guideNumber?: string
+    deliveredAt?: Date
   }
-): Promise<{ id: string; orderId: string; guideNumber: string }> {
-  const order = await createOrder(owner, { storeId: input.storeId, status: 'CONFIRMED' })
-  const guideNumber = `G-${randomUUID()}`
+): Promise<{
+  id: string
+  orderId: string
+  guideNumber: string
+  orderNumber: string
+  itemId: string
+}> {
+  const order = await createOrder(owner, {
+    storeId: input.storeId,
+    ...input.order,
+    status: input.order?.status ?? 'CONFIRMED'
+  })
+  const orderNumber = (
+    await owner.order.findUniqueOrThrow({ where: { id: order.id }, select: { orderNumber: true } })
+  ).orderNumber
+  const guideNumber = input.guideNumber ?? `G-${randomUUID()}`
   const shipment = await owner.shipment.create({
     data: {
       storeId: input.storeId,
@@ -41,6 +65,7 @@ export async function createGuideOn(
       guideNumber,
       packageCount: input.packageCount ?? 1,
       pickupId: input.pickupId ?? null,
+      ...(input.deliveredAt === undefined ? {} : { deliveredAt: input.deliveredAt }),
       idempotencyKey: `built-${randomUUID()}`,
       createdBy: 'system'
     },
@@ -55,7 +80,7 @@ export async function createGuideOn(
       source: ShipmentEventSource.SYSTEM
     }
   })
-  return { id: shipment.id, orderId: order.id, guideNumber }
+  return { id: shipment.id, orderId: order.id, guideNumber, orderNumber, itemId: order.itemId }
 }
 
 // A pickup of a store with its own `local` connection and no guides, written as the owner
