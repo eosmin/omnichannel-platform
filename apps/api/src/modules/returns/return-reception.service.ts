@@ -84,6 +84,20 @@ interface BatchRow {
 const BatchLocks = { NONE: 'none', SHARED: 'shared', EXCLUSIVE: 'exclusive' } as const
 type BatchLock = (typeof BatchLocks)[keyof typeof BatchLocks]
 
+const candidateOf = (match: {
+  id: string
+  guideNumber: string | null
+  status: string
+  kind: string
+  order: { orderNumber: string }
+}): ReceptionCandidateView => ({
+  shipmentId: match.id,
+  guideNumber: match.guideNumber,
+  orderNumber: match.order.orderNumber,
+  status: match.status as ShipmentStatus,
+  kind: match.kind as ShipmentKind
+})
+
 const mayFlag = (held: readonly Permission[]): boolean =>
   held.includes(Permissions.CUSTOMERS_FLAG_CAUTION)
 
@@ -189,20 +203,18 @@ export class ReturnReceptionService {
     if (picked === undefined) {
       return {
         result: ReceptionScanResults.AMBIGUOUS,
-        candidates: matches.slice(0, ReceptionLimits.MAX_CANDIDATES).map(match => ({
-          shipmentId: match.id,
-          guideNumber: match.guideNumber,
-          orderNumber: match.order.orderNumber,
-          status: match.status as ShipmentStatus,
-          kind: match.kind as ShipmentKind
-        })) satisfies ReceptionCandidateView[]
+        candidates: matches.slice(0, ReceptionLimits.MAX_CANDIDATES).map(candidateOf)
       }
     }
     // Said first: a package that came back leaves its order RETURNED, which would otherwise read as "not eligible"
     await this.assertNotReceived(this.prisma.client, storeId, picked.id)
+    // A DELIVERED guide is a package the customer received: it is taken only after the agent confirmed that it came back anyway
+    const isDelivered =
+      (picked.kind as ShipmentKind) === ShipmentKind.OUTBOUND &&
+      (picked.status as ShipmentStatus) === ShipmentStatus.DELIVERED
     if (
       (picked.kind as ShipmentKind) !== ShipmentKind.OUTBOUND ||
-      !ScannableShipmentStatuses.includes(picked.status as ShipmentStatus) ||
+      !(isDelivered || ScannableShipmentStatuses.includes(picked.status as ShipmentStatus)) ||
       !([OrderStatus.SHIPPED, OrderStatus.DELIVERED] as string[]).includes(picked.order.status)
     ) {
       throw conflict(
@@ -210,6 +222,10 @@ export class ReturnReceptionService {
         'no package comes back from this shipment',
         { shipmentStatus: picked.status, shipmentKind: picked.kind }
       )
+    }
+    // Asked after the refusals above: nobody is asked to confirm a package that would be refused anyway
+    if (isDelivered && body.confirmDelivered !== true) {
+      return { result: ReceptionScanResults.NEEDS_CONFIRMATION, candidate: candidateOf(picked) }
     }
     const itemId = await this.prisma
       .transaction(async tx => {
@@ -232,7 +248,8 @@ export class ReturnReceptionService {
             batchId,
             shipmentId: picked.id,
             reason: ReceptionReasons.DEFAULT,
-            condition: OrderReturnCondition.RESELLABLE
+            condition: OrderReturnCondition.RESELLABLE,
+            confirmDelivered: isDelivered
           },
           select: { id: true }
         })
@@ -388,6 +405,7 @@ export class ReturnReceptionService {
           lines: true,
           flagCustomer: true,
           flagReason: true,
+          confirmDelivered: true,
           outcome: true,
           returnId: true,
           flagAppliedAt: true
@@ -454,6 +472,7 @@ export class ReturnReceptionService {
       lines: unknown
       flagCustomer: boolean
       flagReason: string | null
+      confirmDelivered: boolean
       outcome: string | null
       returnId: string | null
       flagAppliedAt: Date | null
@@ -487,7 +506,8 @@ export class ReturnReceptionService {
           reason: item.reason,
           condition: item.condition as OrderReturnCondition,
           notes: item.note ?? undefined,
-          lines: lines.length === 0 ? undefined : lines
+          lines: lines.length === 0 ? undefined : lines,
+          confirmDelivered: item.confirmDelivered
         },
         actor
       )

@@ -127,15 +127,26 @@ export function offeredFlows(
   return offers
 }
 
-// The fields of the detail the order accepts in its status: the api's table, with no shipment drawing the tracking number
-// yet (Step 4.14)
-export function editableFieldsOf(status: string): readonly OrderEditableField[] {
+// The fields of the detail the order accepts in its status: the api's table. While a guide is live the tracking number is the
+// carrier's and nobody types over it (`hasActiveShipment`, from the guides the Shipping panel reads).
+export function editableFieldsOf(
+  status: string,
+  hasActiveShipment = false
+): readonly OrderEditableField[] {
   const known = asOrderStatus(status)
-  return known === null ? [] : editableOrderFields(known, { hasActiveShipment: false })
+  return known === null ? [] : editableOrderFields(known, { hasActiveShipment })
 }
 
-export function canEditField(status: string, field: OrderEditableField, can: CanDo): boolean {
-  return can(ClientPermissions.ORDERS_EDIT) && editableFieldsOf(status).includes(field)
+export function canEditField(
+  status: string,
+  field: OrderEditableField,
+  can: CanDo,
+  hasActiveShipment = false
+): boolean {
+  return (
+    can(ClientPermissions.ORDERS_EDIT) &&
+    editableFieldsOf(status, hasActiveShipment).includes(field)
+  )
 }
 
 // The payment states a record may move to from the current one (the same one is allowed: a reference added later), as the api

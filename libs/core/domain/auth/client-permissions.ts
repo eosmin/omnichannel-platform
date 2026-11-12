@@ -52,6 +52,8 @@ export const ClientPermissions = {
   PRODUCTS_VIEW_COST: 'products:view_cost',
   REMITTANCES_MANAGE: 'remittances:manage',
   REMITTANCES_VIEW: 'remittances:view',
+  RETURNS_MANAGE: 'returns:manage',
+  RETURNS_VIEW: 'returns:view',
   SETTINGS_EDIT: 'settings:edit',
   SETTINGS_MANAGE_ORDER_TEMPLATES: 'settings:manage_order_templates',
   SETTINGS_MANAGE_CARRIERS: 'settings:manage_carriers',

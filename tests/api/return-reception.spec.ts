@@ -44,6 +44,7 @@ interface ItemBody {
   lines: unknown[]
   flagCustomer: boolean
   flagReason: string | null
+  confirmDelivered: boolean
   outcome: string | null
   errorCode: string | null
   returnId: string | null
@@ -62,6 +63,7 @@ interface ScanBody {
   result: string
   item?: ItemBody
   candidates?: { shipmentId: string }[]
+  candidate?: { shipmentId: string; orderNumber: string; status: string }
 }
 
 // The reception of the packages that come back by scanner (Step 4.12 PR R2, TDD_17 §4.16)
@@ -306,7 +308,7 @@ describe('Return reception by scanner', () => {
       })
     })
 
-    it.each([ShipmentStatus.LABEL_CREATED, ShipmentStatus.DELIVERED, ShipmentStatus.CANCELLED])(
+    it.each([ShipmentStatus.LABEL_CREATED, ShipmentStatus.CANCELLED])(
       'refuses a shipment that is %s: no package comes back from it',
       async status => {
         const { guideNumber } = await shipped({ status })
@@ -321,6 +323,67 @@ describe('Return reception by scanner', () => {
         expect((await read(batchId)).items).toHaveLength(0)
       }
     )
+
+    it('asks for a confirmation when the guide is DELIVERED and adds nothing until it comes', async () => {
+      const { guideNumber, shipmentId, order } = await shipped({ status: ShipmentStatus.DELIVERED })
+      const batchId = await newBatch()
+
+      const asked = await scan(batchId, { code: guideNumber })
+
+      expect(asked.status).toBe(OK)
+      expect(asked.body).toMatchObject({
+        result: ReceptionScanResults.NEEDS_CONFIRMATION,
+        candidate: { shipmentId, orderNumber: order.orderNumber, status: ShipmentStatus.DELIVERED }
+      })
+      expect((await read(batchId)).items).toHaveLength(0)
+
+      const confirmed = await scan(batchId, { code: guideNumber, confirmDelivered: true })
+
+      expect(confirmed.status).toBe(OK)
+      expect((confirmed.body as ScanBody).result).toBe(ReceptionScanResults.ADDED)
+      expect((confirmed.body as ScanBody).item).toMatchObject({
+        shipmentId,
+        confirmDelivered: true
+      })
+    })
+
+    it('refuses a DELIVERED guide of an order that cannot take a return, without asking to confirm', async () => {
+      const { guideNumber, order } = await shipped({ status: ShipmentStatus.DELIVERED })
+      await owner.order.update({ where: { id: order.id }, data: { status: 'CANCELLED' } })
+      const batchId = await newBatch()
+
+      const response = await scan(batchId, { code: guideNumber })
+
+      expect(response.status).toBe(CONFLICT)
+      expect(response.body).toMatchObject({
+        error: { code: ErrorCodes.RECEPTION_SHIPMENT_NOT_ELIGIBLE }
+      })
+    })
+
+    it('does not mark a package of a guide that is not delivered as confirmed, even when the scan says so', async () => {
+      const { guideNumber } = await shipped({ status: ShipmentStatus.IN_TRANSIT })
+      const batchId = await newBatch()
+
+      const response = await scan(batchId, { code: guideNumber, confirmDelivered: true })
+
+      expect((response.body as ScanBody).item).toMatchObject({ confirmDelivered: false })
+    })
+
+    it('receives a confirmed DELIVERED package on completing: the return is made and the guide stays DELIVERED', async () => {
+      const made = await shipped({ status: ShipmentStatus.DELIVERED })
+      const batchId = await newBatch()
+      await scan(batchId, { code: made.guideNumber, confirmDelivered: true })
+
+      const response = await complete(batchId)
+
+      expect(response.status).toBe(OK)
+      const body = response.body as BatchBody
+      expect(body.counts).toEqual({ total: 1, received: 1, failed: 0, pending: 0 })
+      expect((await orderOf(made.order.id)).status).toBe('RETURNED')
+      expect(
+        (await owner.shipment.findUniqueOrThrow({ where: { id: made.shipmentId } })).status
+      ).toBe(ShipmentStatus.DELIVERED)
+    })
 
     it('refuses the guide of a return leg: its package is received through its return', async () => {
       const { guideNumber, shipmentId } = await shipped()

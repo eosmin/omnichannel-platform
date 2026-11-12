@@ -21,6 +21,7 @@ export const receptionItemSelect = {
   lines: true,
   flagCustomer: true,
   flagReason: true,
+  confirmDelivered: true,
   outcome: true,
   errorCode: true,
   returnId: true,
@@ -55,6 +56,7 @@ export interface ReceptionItemRow {
   lines: unknown
   flagCustomer: boolean
   flagReason: string | null
+  confirmDelivered: boolean
   outcome: string | null
   errorCode: string | null
   returnId: string | null
@@ -89,6 +91,8 @@ export interface ReceptionItemView {
   lines: ReceptionLine[]
   flagCustomer: boolean
   flagReason: string | null
+  // The agent confirmed that a package whose guide is DELIVERED came back anyway
+  confirmDelivered: boolean
   outcome: ReceptionItemOutcome | null
   errorCode: string | null
   returnId: string | null
@@ -128,6 +132,8 @@ export type ScanResultView =
   | { result: typeof ReceptionScanResults.ADDED; item: ReceptionItemView }
   | { result: typeof ReceptionScanResults.NOT_FOUND }
   | { result: typeof ReceptionScanResults.AMBIGUOUS; candidates: ReceptionCandidateView[] }
+  // The guide is DELIVERED: the package is added only when the scan is sent again with `confirmDelivered`
+  | { result: typeof ReceptionScanResults.NEEDS_CONFIRMATION; candidate: ReceptionCandidateView }
 
 const mayReadFlagReason = (held: readonly Permission[]): boolean =>
   held.includes(Permissions.CUSTOMERS_FLAG_CAUTION) || held.includes(Permissions.CUSTOMERS_VIEW)
@@ -151,6 +157,7 @@ export function receptionItemView(
     lines: row.lines as ReceptionLine[],
     flagCustomer: row.flagCustomer,
     flagReason: mayReadFlagReason(held) ? row.flagReason : null,
+    confirmDelivered: row.confirmDelivered,
     outcome: row.outcome as ReceptionItemOutcome | null,
     errorCode: row.errorCode,
     returnId: row.returnId,

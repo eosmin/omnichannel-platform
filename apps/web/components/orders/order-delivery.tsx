@@ -196,19 +196,22 @@ function TrackingForm({ initial, api }: { initial: string; api: EditorApi }): Re
   )
 }
 
+// `hasActiveShipment`: a guide is live, so the tracking number is the carrier's and is not typed over
 export function OrderDelivery({
   order,
-  writes
+  writes,
+  hasActiveShipment
 }: {
   order: OrderDetailView
   writes: OrderWrites
+  hasActiveShipment: boolean
 }): ReactElement {
   const t = useTranslations('orders.detail.delivery')
   const dayText = useDayText()
   const { can } = useStore()
   const address = readAddress(order.shippingAddress)
   const editable = (field: Parameters<typeof canEditField>[1]): boolean =>
-    canEditField(order.status, field, can)
+    canEditField(order.status, field, can, hasActiveShipment)
   return (
     <section aria-labelledby="order-delivery-heading" className="flex flex-col gap-3">
       <h2 id="order-delivery-heading" className="text-base font-semibold">
