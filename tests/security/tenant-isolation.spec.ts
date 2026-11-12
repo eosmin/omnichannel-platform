@@ -45,6 +45,9 @@ import {
   createCustomerIdentity,
   createCustomerMerge,
   createAllocationOf,
+  createReturn,
+  createReturnLineOf,
+  returnOfLine,
   createLevelOf,
   createMovementOf,
   createOrder,
@@ -635,6 +638,24 @@ const resources: IsolationResource[] = [
     // An id the builder did not make (the check asks for a random one to compare the answers) reads an order that does not exist
     readPath: id => ApiRoutes.orders.byId(orderOfAllocation.get(id) ?? randomUUID()),
     untouched: async (owner, id) => (await owner.orderItemAllocation.count({ where: { id } })) === 1
+  },
+  // A return has its own routes; its lines are read with it, and written only with it (ReturnsService). Every change of a
+  // return is a POST on its own id, checked in `describe('returns')` below
+  {
+    name: 'orderReturn',
+    create: async (owner, input) => ({ id: (await createReturn(owner, input)).id }),
+    readPath: ApiRoutes.returns.byId,
+    listPath: ApiRoutes.returns.list,
+    untouched: async (owner, id) =>
+      (await owner.orderReturn.findUnique({ where: { id }, select: { status: true } }))?.status ===
+      'requested'
+  },
+  {
+    name: 'orderReturnLine',
+    create: createReturnLineOf,
+    // An id the builder did not make (the check asks for a random one to compare the answers) reads a return that does not exist
+    readPath: id => ApiRoutes.returns.byId(returnOfLine.get(id) ?? randomUUID()),
+    untouched: async (owner, id) => (await owner.orderReturnLine.count({ where: { id } })) === 1
   },
   {
     name: 'warehouse',

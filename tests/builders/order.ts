@@ -117,3 +117,45 @@ export async function createAllocationOf(
   orderOfAllocation.set(allocation.id, order.id)
   return allocation
 }
+
+// A line has no route of its own: it is read with its return
+export const returnOfLine = new Map<string, string>()
+
+// A return (and its one line) of a new order of the store, in the state a return starts in
+export async function createReturn(
+  owner: OwnerClient,
+  input: { storeId: string; status?: string }
+): Promise<{ id: string; lineId: string }> {
+  const order = await createOrder(owner, { storeId: input.storeId, status: 'DELIVERED' })
+  const author = await owner.membership.findFirstOrThrow({
+    where: { storeId: input.storeId },
+    select: { userId: true }
+  })
+  const made = await owner.orderReturn.create({
+    data: {
+      storeId: input.storeId,
+      orderId: order.id,
+      type: 'refund',
+      reason: 'DEFECTIVE',
+      status: input.status ?? 'requested',
+      shippingPayer: 'sender',
+      createdBy: author.userId
+    },
+    select: { id: true }
+  })
+  const line = await owner.orderReturnLine.create({
+    data: { storeId: input.storeId, returnId: made.id, orderItemId: order.itemId, quantity: 1 },
+    select: { id: true }
+  })
+  returnOfLine.set(line.id, made.id)
+  return { id: made.id, lineId: line.id }
+}
+
+// A line of a new return of the store
+export async function createReturnLineOf(
+  owner: OwnerClient,
+  input: { storeId: string }
+): Promise<{ id: string }> {
+  const made = await createReturn(owner, input)
+  return { id: made.lineId }
+}

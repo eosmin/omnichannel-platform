@@ -120,6 +120,7 @@ export enum InventoryReferenceType {
   ORDER = 'order',
   TRANSFER = 'transfer',
   COUNT = 'count',
+  RETURN = 'return',
   MANUAL = 'manual'
 }
 

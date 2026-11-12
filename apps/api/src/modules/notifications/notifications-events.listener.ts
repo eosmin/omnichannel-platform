@@ -19,6 +19,7 @@ import {
   PackingNoteNotice,
   PickupResourceTypes,
   ProductResourceTypes,
+  ReturnResourceTypes,
   ShipmentResourceTypes,
   ShipmentStatus,
   StoreSettingsSections,
@@ -42,6 +43,7 @@ import {
   type OrderEventPayload,
   type OrderMessageNotSentPayload,
   type OrderStatusChangedPayload,
+  type ReturnEventPayload,
   type PickupManualRequiredPayload,
   type ShipmentEventPayload,
   type ShipmentStatusChangedPayload,
@@ -561,6 +563,35 @@ export class NotificationsEventsListener {
     }
   }
 
+  // The goods of a return are on their way back (TDD_17 §4.11): the members who receive returns are told, except who marked it. A
+  // return that is one of several waiting is one line each (the order number says which); the event carries ids only.
+  @OnEvent(Events.RETURN_IN_TRANSIT)
+  async onReturnInTransit(payload: ReturnEventPayload): Promise<void> {
+    const { storeId, returnId, orderNumber, actor } = payload
+    try {
+      // The notice links to the returns screen, not to an order: who receives returns need not read orders
+      const members = await this.membersWith(
+        storeId,
+        [Permissions.RETURNS_MANAGE],
+        actor.id,
+        Permissions.RETURNS_VIEW
+      )
+      await this.notifications.sendToUsers(members, {
+        storeId,
+        type: NotificationTypes.RETURN_AWAITING_RECEIPT,
+        params: { orderNumber },
+        resourceType: ReturnResourceTypes.RETURN,
+        resourceId: returnId,
+        actionPath: AppPaths.store.returns(storeId)
+      })
+    } catch (error) {
+      this.logger.error(
+        { returnId, err: String(error) },
+        'a return awaiting receipt could not be notified'
+      )
+    }
+  }
+
   // A message about an order was due and did not go (TDD_17 §4.7, Step 4.9): the members who may send order messages are told,
   // so a customer is never left uninformed without somebody knowing. The event carries the kind and the reason, never the text.
   // Once per order while the earlier warning is unread: three packages that cannot be told about are one line in the center.
@@ -591,7 +622,9 @@ export class NotificationsEventsListener {
   private async membersWith(
     storeId: string,
     permissions: readonly Permission[],
-    exceptUserId: string | null
+    exceptUserId: string | null,
+    // The notice links to a screen, so it goes to who may read it: orders by default, another screen says which permission
+    readPermission: Permission = Permissions.ORDERS_VIEW
   ): Promise<string[]> {
     const members = await this.prisma.client.membership.findMany({
       where: {
@@ -602,7 +635,7 @@ export class NotificationsEventsListener {
         // Who holds one of the permissions AND may read orders: the notice carries a link to the order
         AND: [
           { role: { permissions: { some: { name: { in: [...permissions] } } } } },
-          { role: { permissions: { some: { name: Permissions.ORDERS_VIEW } } } }
+          { role: { permissions: { some: { name: readPermission } } } }
         ]
       },
       select: { userId: true }

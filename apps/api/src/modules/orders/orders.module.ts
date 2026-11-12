@@ -8,6 +8,7 @@ import { ShipmentsModule } from '../shipments/shipments.module'
 import { TenancyModule } from '../tenancy'
 
 import { OrderGuides } from './order-guides.service'
+import { OrderReturnEffects } from './order-return-effects.service'
 import { OrderShipmentEffects } from './order-shipment-effects.service'
 import { OrderInventoryService } from './orders-inventory.service'
 import { OrdersStatusService } from './orders-status.service'
@@ -26,8 +27,9 @@ import { ShipmentEffectsListener } from './shipment-effects.listener'
     OrderInventoryService,
     OrderShipmentEffects,
     OrderGuides,
+    OrderReturnEffects,
     ShipmentEffectsListener
   ],
-  exports: [OrdersService]
+  exports: [OrdersService, OrdersStatusService, OrderReturnEffects]
 })
 export class OrdersModule {}
