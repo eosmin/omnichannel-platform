@@ -49,7 +49,7 @@ const receptionItemSchema = z.object({
   flagCustomer: z.boolean(),
   flagReason: z.string().nullable(),
   outcome: z.enum(ReceptionItemOutcome).nullable(),
-  // An ErrorCodes value: the screen translates it
+  // The code of the error: the screen translates it
   errorCode: z.string().nullable(),
   returnId: z.string().nullable(),
   flagApplied: z.boolean(),

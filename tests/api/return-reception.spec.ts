@@ -4,7 +4,7 @@ import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
-import { Permissions } from '@platform/core/auth'
+import { type Permission, Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   OrderReturnCondition,
@@ -80,7 +80,7 @@ describe('Return reception by scanner', () => {
     app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
     kit = ordersKit(owner, app, ctx)
-    const grant = (name: string, permissions: string[]) =>
+    const grant = (name: string, permissions: Permission[]) =>
       actorWithPermissions(owner, app, {
         prefix,
         organizationId: ctx.orgA.id,

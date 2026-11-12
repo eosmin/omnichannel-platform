@@ -18,6 +18,8 @@ import { api } from '../helpers/http'
 type PreferencesBody = { orders: Record<string, unknown> }
 
 // What the orders block reads as for a store that chose nothing (TDD_17 §4.14)
+// The returns block of the preferences (TDD_17 §4.16): read here, written by the page of Step 4.14
+const FACTORY_RETURNS = { preselectCautionOnRefusal: false }
 const FACTORY_ORDERS = {
   confirmOnCreate: false,
   sendSummaryOnCreate: true,
@@ -596,7 +598,8 @@ describe('The settings of the inbox of a store', () => {
       expect(response.body).toEqual({
         sendReadReceipts: true,
         assignOnReply: true,
-        orders: FACTORY_ORDERS
+        orders: FACTORY_ORDERS,
+        returns: FACTORY_RETURNS
       })
     })
 
@@ -609,11 +612,17 @@ describe('The settings of the inbox of a store', () => {
       expect(response.body).toEqual({
         sendReadReceipts: false,
         assignOnReply: true,
-        orders: FACTORY_ORDERS
+        orders: FACTORY_ORDERS,
+        returns: FACTORY_RETURNS
       })
       expect(
         (await api(app, ctx.adminA2, ctx.storeA2).get(ApiRoutes.settings.preferences)).body
-      ).toEqual({ sendReadReceipts: false, assignOnReply: true, orders: FACTORY_ORDERS })
+      ).toEqual({
+        sendReadReceipts: false,
+        assignOnReply: true,
+        orders: FACTORY_ORDERS,
+        returns: FACTORY_RETURNS
+      })
       const settings = await owner.storeSettings.findUniqueOrThrow({
         where: { storeId: ctx.storeA2.id }
       })
@@ -693,7 +702,8 @@ describe('The settings of the inbox of a store', () => {
       expect((await asAdmin().get(ApiRoutes.settings.preferences)).body).toEqual({
         sendReadReceipts: true,
         assignOnReply: true,
-        orders: FACTORY_ORDERS
+        orders: FACTORY_ORDERS,
+        returns: FACTORY_RETURNS
       })
       const put = await asAdmin()
         .put(ApiRoutes.settings.preferences)
@@ -701,7 +711,8 @@ describe('The settings of the inbox of a store', () => {
       expect(put.body).toEqual({
         sendReadReceipts: false,
         assignOnReply: true,
-        orders: FACTORY_ORDERS
+        orders: FACTORY_ORDERS,
+        returns: FACTORY_RETURNS
       })
     })
 
