@@ -42,6 +42,7 @@ import {
   type OrderEventPayload,
   type OrderMessageNotSentPayload,
   type OrderStatusChangedPayload,
+  type PickupCutoffApproachingPayload,
   type PickupManualRequiredPayload,
   type ShipmentEventPayload,
   type ShipmentStatusChangedPayload,
@@ -498,6 +499,29 @@ export class NotificationsEventsListener {
       })
     } catch (error) {
       this.logger.error({ pickupId, err: String(error) }, 'a pickup warning could not be notified')
+    }
+  }
+
+  // The cutoff of a pickup day is near and guides still wait (TDD_17 §4.10): the members who manage pickups are told. The scheduler
+  // raises it once per connection and day, so this adds no memory of its own; a line still unread is not repeated.
+  @OnEvent(Events.PICKUP_CUTOFF_APPROACHING)
+  async onPickupCutoffApproaching(payload: PickupCutoffApproachingPayload): Promise<void> {
+    const { storeId, connectionId } = payload
+    try {
+      const members = await this.membersWith(storeId, [Permissions.SHIPPING_MANAGE_PICKUPS], null)
+      await this.notifications.sendToUsersOnce(members, {
+        storeId,
+        type: NotificationTypes.PICKUP_CUTOFF_APPROACHING,
+        params: { count: payload.waiting, date: payload.pickupDate, minutes: payload.minutesLeft },
+        resourceType: CarrierResourceTypes.CARRIER_CONNECTION,
+        resourceId: connectionId,
+        actionPath: AppPaths.store.pickups(storeId)
+      })
+    } catch (error) {
+      this.logger.error(
+        { connectionId, err: String(error) },
+        'a pickup cutoff warning could not be notified'
+      )
     }
   }
 

@@ -106,6 +106,8 @@ export const Events = {
   // A pickup that a person has to arrange with the carrier: it has no API, or did not take the request (TDD_17 §4.10). The
   // people who manage pickups are told
   PICKUP_MANUAL_REQUIRED: 'pickup.manual_required',
+  // The cutoff of a pickup day is near and guides still wait for a pickup (TDD_17 §4.10): raised once per connection and day
+  PICKUP_CUTOFF_APPROACHING: 'pickup.cutoff_approaching',
   RETURN_REQUESTED: 'return.requested',
   RETURN_APPROVED: 'return.approved',
   RETURN_RECEIVED: 'return.received',
@@ -225,7 +227,8 @@ export const BridgedEvents = [
   Events.BULK_LABELS_PROGRESS,
   Events.BULK_LABELS_DONE,
   // The worker asks the carriers for pickups: the team is told in the api when a pickup needs a person
-  Events.PICKUP_MANUAL_REQUIRED
+  Events.PICKUP_MANUAL_REQUIRED,
+  Events.PICKUP_CUTOFF_APPROACHING
 ] as const satisfies readonly EventName[]
 
 export type BridgedEvent = (typeof BridgedEvents)[number]

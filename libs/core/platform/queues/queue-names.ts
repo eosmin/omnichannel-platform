@@ -107,6 +107,14 @@ export const bulkLabelsMergeJobId = (jobId: string): string =>
 export const syncPickupJobId = (pickupId: string, revision: number): string =>
   `${JobNames.SYNC_PICKUP}-${pickupId}-${revision}`
 
+// One evaluation of the pickups per minute (TDD_17 §4.10): the scheduler of any replica, or two ticks of one minute, ask for the same job
+export const evaluatePickupsJobId = (minute: number): string =>
+  `${JobNames.EVALUATE_PICKUPS}-${minute}`
+
+// The sweep asks the carrier about a pickup again at most once in a bucket of time, apart from the request side's own job
+export const syncPickupSweepJobId = (pickupId: string, bucket: number): string =>
+  `${JobNames.SYNC_PICKUP}-${pickupId}-sweep-${bucket}`
+
 export const cancelShipmentJobId = (shipmentId: string, requestedAtMs: number): string =>
   `${JobNames.CANCEL_SHIPMENT}-${shipmentId}-${requestedAtMs}`
 

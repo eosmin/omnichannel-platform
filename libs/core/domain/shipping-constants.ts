@@ -571,6 +571,19 @@ export const PickupFailureNotes = {
   EMPTY: 'pickup_empty'
 } as const
 
+// How the scheduler and its sweep behave (TDD_17 §4.10)
+export const PickupSchedule = {
+  // A pickup still PENDING after this long was never queued (the queue was down) or its job was lost: the sweep queues it again
+  PENDING_STALE_MS: 5 * 60 * 1000,
+  // A pickup whose count the carrier has not acknowledged for this long is told again by the sweep, at most once per bucket
+  RESYNC_AFTER_MS: 5 * 60 * 1000,
+  SWEEP_BUCKET_MS: 30 * 60 * 1000,
+  // The most pickups the sweep queues in one minute: the rest wait for the next
+  SWEEP_BATCH: 100,
+  // How long what the scheduler did for a day is remembered (the day of the store ends well inside it)
+  MEMORY_TTL_SECONDS: 36 * 60 * 60
+} as const
+
 export const PickupResourceTypes = { PICKUP: 'pickup' } as const
 
 // The key a pickup is requested of the carrier with: the same pickup always makes the same key, so a carrier that keeps its

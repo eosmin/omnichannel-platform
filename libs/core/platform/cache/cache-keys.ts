@@ -114,6 +114,14 @@ export const CacheKeys = {
   rateLimit: (subject: string, endpoint: string) => `rl:${subject}:${endpoint}`,
   lock: (name: string) => `lock:${name}`,
 
+  // What the pickup scheduler has done for a connection on a day of the store (TDD_17 §4.10): the cutoff reminder is raised once, and
+  // the guides of an `autoPickup` run are asked for once, however many times the minute job looks again
+  pickup: {
+    cutoffReminder: (connectionId: string, day: string) =>
+      `pickup:cutoff-reminder:${connectionId}:${day}`,
+    autoRun: (connectionId: string, day: string) => `pickup:auto-run:${connectionId}:${day}`
+  },
+
   // Patterns for bulk invalidation: use with delPattern()
   patterns: {
     storeAll: (storeId: string) => `store:${storeId}:*`,
