@@ -15,10 +15,18 @@ describe('sendOrderMessageSchema', () => {
     })
   })
 
-  it('refuses the kinds that are about another shipment than the outbound one, until the returns step gives them theirs', () => {
+  it('takes the kinds that are about the way back and the replacement, with the package they refer to', () => {
+    const shipmentId = '2b7f1c1e-5f0d-4c3e-9d3a-0f6f1d2a3b4c'
     for (const kind of [OrderMessageKind.RETURN_APPROVED, OrderMessageKind.EXCHANGE_SHIPPED]) {
-      expect(sendOrderMessageSchema.safeParse({ ...valid, kind }).success).toBe(false)
+      expect(sendOrderMessageSchema.parse({ ...valid, kind, shipmentId })).toEqual({
+        ...valid,
+        kind,
+        shipmentId
+      })
     }
+    expect(sendOrderMessageSchema.safeParse({ ...valid, shipmentId: 'not-a-uuid' }).success).toBe(
+      false
+    )
   })
 
   it('refuses a kind that does not exist', () => {

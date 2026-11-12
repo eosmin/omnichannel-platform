@@ -105,6 +105,8 @@ export interface PreparedGuide {
     orderId: string
     connectionId: string
     kind: ShipmentKind
+    // Set on the guide of a return leg: the return it belongs to (`Shipment.returnId`)
+    returnId?: string
     originWarehouseId: string | null
     serviceCode: string
     shippingPayer: ShippingPayer
@@ -127,7 +129,7 @@ export interface PreparedGuide {
   label: LabelParts
 }
 
-function addressLines(address: Record<string, unknown>): string[] {
+export function addressLines(address: Record<string, unknown>): string[] {
   const text = (key: string): string => {
     const value = address[key]
     return typeof value === 'string' ? value.trim() : ''
@@ -137,7 +139,7 @@ function addressLines(address: Record<string, unknown>): string[] {
   return [text('line1'), text('line2'), place, tail].filter(line => line !== '')
 }
 
-function carrierAddress(address: Record<string, unknown>): CarrierAddress | null {
+export function carrierAddress(address: Record<string, unknown>): CarrierAddress | null {
   const text = (key: string): string | undefined => {
     const value = address[key]
     return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
@@ -158,7 +160,7 @@ function carrierAddress(address: Record<string, unknown>): CarrierAddress | null
   }
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
+export function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? Object.fromEntries(Object.entries(value))
     : null

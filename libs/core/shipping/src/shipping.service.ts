@@ -57,6 +57,7 @@ import { takeLocalGuideNumber } from './guide-numbering'
 import { LabelRenderError } from './label-fit'
 import { renderLabelPdf } from './label-pdf'
 import { labelTextsFor } from './label-texts'
+import { prepareReturnGuide, type ReturnShipmentRequest } from './return-guide-prepare'
 import { type StoredLabel, ShipmentLabels } from './shipment-labels'
 import {
   type PluginLookup,
@@ -335,7 +336,7 @@ export class ShippingService {
           { guideNumber, labelMediaId: stored.mediaId },
           { actor: caller.actor, source: ShipmentEventSource.SYSTEM }
         )
-        await this.copyTrackingNumber(tx, prepared.identity, guideNumber)
+        await this.copyTrackingNumber(tx, prepared.identity, guideNumber, prepared.row.kind)
         return true
       }, LOCAL_GUIDE_TRANSACTION)
       if (done)
@@ -355,6 +356,53 @@ export class ShippingService {
     } catch (error) {
       // A plugin that answers with something the code cannot read, or any fault after the carrier may have acted: the guide
       // may exist, so the row goes to review and the batch keeps its other outcomes
+      this.logger.error({ shipmentId, err: error }, 'a carrier call ended in a fault')
+      return this.settleReview(
+        { ...prepared.identity, shipmentId },
+        caller,
+        ShipmentFailureReasons.UNKNOWN_OUTCOME
+      )
+    }
+  }
+
+  // The guide of the way back of a return (TDD_17 §4.11): the same order of things as `createOne` (the row first and committed, the
+  // carrier second), for a connection whose plugin declares RETURN_SHIPMENT. The row of the return is locked (the cancel and the
+  // receipt lock it too), so a return that is cancelled or received at the same time never gets a guide, and the row is linked to its return in the same
+  // transaction (`OrderReturn.returnShipmentId`: the last guide made for it, the one a failed one leaves is replaced by the next).
+  async createReturnShipment(
+    storeId: string,
+    request: ReturnShipmentRequest,
+    caller: ShipmentCaller,
+    plugins: PluginLookup
+  ): Promise<ShipmentOutcome> {
+    const store = await this.storeFacts(storeId)
+    const owner = await this.prisma.client.orderReturn.findFirst({
+      where: { id: request.returnId, storeId },
+      select: { orderId: true }
+    })
+    if (owner === null) return this.refused('', resourceNotFound('return'))
+    const { orderId } = owner
+    let prepared: PreparedGuide | undefined
+    let shipmentId = ''
+    try {
+      await this.prisma.transaction(async tx => {
+        await lockStoreForWrite(tx, storeId)
+        await lockStoreScope(tx, storeId, `${ShipmentLockScopes.ORDER}:${orderId}`)
+        await tx.$queryRaw`SELECT id FROM order_returns WHERE id = ${request.returnId} AND store_id = ${storeId} FOR UPDATE`
+        prepared = await prepareReturnGuide(tx, store, request, caller, plugins)
+        shipmentId = await this.writes.insertCreating(tx, prepared.row, caller.actor)
+        await tx.orderReturn.updateMany({
+          where: { id: request.returnId, storeId },
+          data: { returnShipmentId: shipmentId }
+        })
+      })
+    } catch (error) {
+      return this.refused(orderId, this.refusalOf(error))
+    }
+    if (prepared === undefined) return this.unknownRecord(orderId, shipmentId)
+    try {
+      return await this.callAndRecord(prepared, shipmentId, caller)
+    } catch (error) {
       this.logger.error({ shipmentId, err: error }, 'a carrier call ended in a fault')
       return this.settleReview(
         { ...prepared.identity, shipmentId },
@@ -494,7 +542,7 @@ export class ShippingService {
           },
           { actor: caller.actor, source: ShipmentEventSource.SYSTEM }
         )
-        await this.copyTrackingNumber(tx, identity, guideNumber)
+        await this.copyTrackingNumber(tx, identity, guideNumber, prepared.row.kind)
       })
       if (stored !== null) await this.queueScan(stored)
       return {
@@ -1102,7 +1150,7 @@ export class ShippingService {
         throw error
       }
       if (to === ShipmentStatus.LABEL_CREATED && body.guideNumber !== undefined) {
-        await this.copyTrackingNumber(tx, this.identityOf(row), body.guideNumber)
+        await this.copyTrackingNumber(tx, this.identityOf(row), body.guideNumber, row.kind)
       }
       return { shipmentId, orderId: row.orderId, from, to }
     })
@@ -1123,6 +1171,15 @@ export class ShippingService {
     if (row === null) throw resourceNotFound('shipment')
     if (row.status !== String(ShipmentStatus.REQUIRES_REVIEW)) {
       throw this.invalidTransition('only a guide in review is checked with the carrier')
+    }
+    // The carrier is asked by the number of the order, which is also the reference of the outbound guide: a guide of the way back
+    // is settled by hand (the agent finds it at the carrier and sets its number)
+    if (row.kind !== String(ShipmentKind.OUTBOUND)) {
+      throw new PlatformException(
+        ErrorCodes.SHIPPING_CHECK_NOT_SUPPORTED,
+        'the guide of a return is settled by hand',
+        HttpStatusCodes.CONFLICT
+      )
     }
     const plugin = plugins(row.connection.carrierId)
     if (plugin === undefined || row.connection.status !== String(CarrierConnectionStatus.ACTIVE)) {
@@ -1223,7 +1280,7 @@ export class ShippingService {
             description: ShipmentEventNotes.FOUND_AT_CARRIER
           }
         )
-        await this.copyTrackingNumber(tx, this.identityOf(row), found.guideNumber)
+        await this.copyTrackingNumber(tx, this.identityOf(row), found.guideNumber, row.kind)
         return {
           shipmentId,
           orderId: row.orderId,
@@ -1253,6 +1310,7 @@ export class ShippingService {
       storeId: true,
       orderId: true,
       connectionId: true,
+      kind: true,
       status: true,
       guideNumber: true,
       providerShipmentId: true,
@@ -1359,8 +1417,11 @@ export class ShippingService {
   private async copyTrackingNumber(
     tx: PrismaTransaction,
     identity: Omit<ShipmentIdentity, 'shipmentId'>,
-    guideNumber: string
+    guideNumber: string,
+    kind: string
   ): Promise<void> {
+    // The guide of the way back is never the tracking number of the order
+    if (kind !== String(ShipmentKind.OUTBOUND)) return
     const where = {
       orderId: identity.orderId,
       storeId: identity.storeId,

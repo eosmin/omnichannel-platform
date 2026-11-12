@@ -32,6 +32,7 @@ import { ChannelCapability, type MessageTemplate } from '@platform/plugins/sdk'
 import { OrderMessagesService } from '../../apps/api/src/modules/order-messages/order-messages.service'
 import {
   buildChannelPlugin,
+  createCarrierConnection,
   createConversation,
   createCustomerIdentity,
   createOrder
@@ -908,6 +909,141 @@ describe('Order messages', () => {
       api(app, actor, ctx.storeA)
         .post(`${ApiRoutes.orders.messages(orderId)}${query}`)
         .send(body)
+
+    // The packages a message of the way back or of a replacement refers to (Step 4.12, R1b-2): the guide of the return leg, and the
+    // outbound one of the replacement order
+    async function guided(orderId: string, guideNumber: string, kind: 'return' | 'outbound') {
+      const connection = await createCarrierConnection(owner, {
+        storeId: ctx.storeA.id,
+        prefix: `M${randomUUID()
+          .slice(0, 3)
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, '0')}`
+      })
+      const orderReturn =
+        kind === 'return'
+          ? await owner.orderReturn.create({
+              data: {
+                storeId: ctx.storeA.id,
+                orderId,
+                type: 'refund',
+                reason: 'DEFECTIVE',
+                status: 'approved',
+                shippingPayer: 'sender',
+                createdBy: sender.id
+              },
+              select: { id: true }
+            })
+          : null
+      return owner.shipment.create({
+        data: {
+          storeId: ctx.storeA.id,
+          orderId,
+          connectionId: connection.id,
+          kind,
+          ...(orderReturn === null ? {} : { returnId: orderReturn.id }),
+          serviceCode: connection.serviceCode,
+          shippingPayer: 'sender',
+          currency: 'USD',
+          status: 'label_created',
+          guideNumber,
+          idempotencyKey: `m-${randomUUID()}`,
+          createdBy: 'system'
+        },
+        select: { id: true }
+      })
+    }
+
+    it('tells the way back with the guide of the return, by the id it names or by the live one, and never reads the guide of another order', async () => {
+      await template(
+        OrderMessageKind.RETURN_APPROVED,
+        'Devolución {{orderNumber}} guía {{trackingNumber}}'
+      )
+      const scenario = await scene({ channel: NO_WINDOW })
+      const guide = await guided(scenario.orderId, 'RET-0001', 'return')
+      const other = await scene({ channel: NO_WINDOW })
+      const foreign = await guided(other.orderId, 'RET-9999', 'return')
+      const press = (shipmentId?: string, orderId = scenario.orderId) =>
+        post(sender, orderId, {
+          kind: OrderMessageKind.RETURN_APPROVED,
+          idempotencyKey: randomUUID(),
+          ...(shipmentId === undefined ? {} : { shipmentId })
+        })
+
+      expect((await press(guide.id)).body as MessageOutcomeBody).toMatchObject({
+        status: OrderMessageOutcomeStatus.SENT
+      })
+      expect((await press()).body as MessageOutcomeBody).toMatchObject({
+        status: OrderMessageOutcomeStatus.SENT
+      })
+      const texts = (await messagesOf(scenario.conversationId)).map(message => message.content)
+      expect(texts).toHaveLength(2)
+      for (const text of texts) expect(text).toContain('RET-0001')
+
+      // A guide of another order is not found for this one: the message has no number and is not sent
+      const refused = await press(foreign.id)
+      expect(refused.body as MessageOutcomeBody).toMatchObject({
+        status: OrderMessageOutcomeStatus.NOT_SENT,
+        reason: OrderMessageNotSentReasons.MISSING_VARIABLE
+      })
+      expect(JSON.stringify(await messagesOf(scenario.conversationId))).not.toContain('RET-9999')
+    })
+
+    it('does not tell the way back with an outbound guide, nor a shipped order with a guide of the way back, nor guess between two returns', async () => {
+      await template(OrderMessageKind.RETURN_APPROVED, 'Devolución guía {{trackingNumber}}')
+      await template(OrderMessageKind.ORDER_SHIPPED, 'Va guía {{trackingNumber}}')
+      const scenario = await scene({ channel: NO_WINDOW })
+      const outbound = await guided(scenario.orderId, 'OUT-7777', 'outbound')
+      const first = await guided(scenario.orderId, 'RET-1111', 'return')
+      const press = (kind: OrderMessageKindType, shipmentId?: string) =>
+        post(sender, scenario.orderId, {
+          kind,
+          idempotencyKey: randomUUID(),
+          ...(shipmentId === undefined ? {} : { shipmentId })
+        })
+      const notSent = {
+        status: OrderMessageOutcomeStatus.NOT_SENT,
+        reason: OrderMessageNotSentReasons.MISSING_VARIABLE
+      }
+
+      // The wrong kind of guide is not found for the kind of the message
+      expect((await press(OrderMessageKind.RETURN_APPROVED, outbound.id)).body).toMatchObject(
+        notSent
+      )
+      expect((await press(OrderMessageKind.ORDER_SHIPPED, first.id)).body).toMatchObject(notSent)
+      // One live guide of the way back is the one; a second return makes it ambiguous and the message is not sent until one is named
+      expect((await press(OrderMessageKind.RETURN_APPROVED)).body).toMatchObject({
+        status: OrderMessageOutcomeStatus.SENT
+      })
+      const second = await guided(scenario.orderId, 'RET-2222', 'return')
+      expect((await press(OrderMessageKind.RETURN_APPROVED)).body).toMatchObject(notSent)
+      expect((await press(OrderMessageKind.RETURN_APPROVED, second.id)).body).toMatchObject({
+        status: OrderMessageOutcomeStatus.SENT
+      })
+      const texts = (await messagesOf(scenario.conversationId)).map(message => message.content)
+      expect(texts.join('|')).toContain('RET-1111')
+      expect(texts.join('|')).toContain('RET-2222')
+      expect(texts.join('|')).not.toContain('OUT-7777')
+    })
+
+    it('tells a replacement with the outbound guide of the replacement order', async () => {
+      await template(
+        OrderMessageKind.EXCHANGE_SHIPPED,
+        'Cambio {{orderNumber}} guía {{trackingNumber}}'
+      )
+      const scenario = await scene({ channel: NO_WINDOW })
+      await guided(scenario.orderId, 'OUT-0001', 'outbound')
+
+      const response = await post(sender, scenario.orderId, {
+        kind: OrderMessageKind.EXCHANGE_SHIPPED,
+        idempotencyKey: randomUUID()
+      })
+
+      expect(response.body as MessageOutcomeBody).toMatchObject({
+        status: OrderMessageOutcomeStatus.SENT
+      })
+      expect((await messagesOf(scenario.conversationId))[0]?.content).toContain('OUT-0001')
+    })
 
     it('sends by hand with the key of the press, and the same key sends once', async () => {
       await template(OrderMessageKind.ORDER_SUMMARY, 'Resumen {{orderNumber}}')

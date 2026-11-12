@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { CustomerLimits } from './customer-constants'
 import { ORDER_MAX_AMOUNT_CENTS, OrderLimits } from './order-constants'
 import { createOrderSchema } from './order-schemas'
+import { createShipmentSchema } from './shipment-schemas'
 import { OrderReturnReasons } from './shipping-constants'
 import { OrderReturnCondition, OrderReturnType, ShippingPayer } from './status-enums'
 import { singleLineText, uuidSchema } from './validation'
@@ -89,6 +90,18 @@ export const approveReturnSchema = z.strictObject({
   replacement: replacementOrderSchema.optional()
 })
 export type ApproveReturnBody = z.output<typeof approveReturnSchema>
+
+// The guide of the way back (TDD_17 §4.11): the connection whose carrier declares RETURN_SHIPMENT, and what the agent may choose.
+// The payer is the one of the return (`OrderReturn.shippingPayer`) and the guide is never cash on delivery, so neither is asked.
+// `warehouseId` is where the goods go (the one that sent most of them by default).
+export const createReturnShipmentSchema = z.strictObject({
+  connectionId: uuidSchema,
+  serviceCode: createShipmentSchema.shape.serviceCode,
+  warehouseId: uuidSchema.optional(),
+  locationIds: createShipmentSchema.shape.locationIds,
+  notes: createShipmentSchema.shape.notes
+})
+export type CreateReturnShipmentBody = z.output<typeof createReturnShipmentSchema>
 
 // One line of a receipt: what came back, in which condition and where it goes (resellable units only)
 export const receiveReturnLineSchema = z.strictObject({

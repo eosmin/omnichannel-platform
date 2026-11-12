@@ -1736,7 +1736,7 @@ model Shipment {
   connectionId       String    @map("connection_id")
   kind               String    @default("outbound") // ShipmentKind
   returnId           String?   @map("return_id") // Set when kind = return
-  originWarehouseId  String?   @map("origin_warehouse_id") // The warehouse the goods leave from (§4.5)
+  originWarehouseId  String?   @map("origin_warehouse_id") // The warehouse the goods leave from (§4.5); of a return guide, the one they go to
   status             String    @default("creating") // ShipmentStatus
   serviceCode        String    @map("service_code")
   shippingPayer      String    @map("shipping_payer") // ShippingPayer

@@ -1,4 +1,8 @@
-import { approveReturnSchema, replacementOrderSchema } from './return-schemas'
+import {
+  approveReturnSchema,
+  createReturnShipmentSchema,
+  replacementOrderSchema
+} from './return-schemas'
 import { PaymentMethod } from './status-enums'
 
 const replacement = {
@@ -62,5 +66,35 @@ describe('approveReturnSchema', () => {
 
   it('refuses any other key', () => {
     expect(approveReturnSchema.safeParse({ status: 'approved' }).success).toBe(false)
+  })
+})
+
+describe('createReturnShipmentSchema', () => {
+  const connectionId = '4f8c8a54-3b0f-4a52-9a44-0a2b6f9d6a11'
+
+  it('takes the connection and what the agent may choose', () => {
+    expect(createReturnShipmentSchema.parse({ connectionId })).toEqual({ connectionId })
+    expect(
+      createReturnShipmentSchema.parse({
+        connectionId,
+        serviceCode: 'standard',
+        warehouseId: connectionId,
+        notes: 'Frágil'
+      })
+    ).toMatchObject({ serviceCode: 'standard', warehouseId: connectionId, notes: 'Frágil' })
+  })
+
+  it('needs a connection and has no key for the payer, the cash, the store or the order', () => {
+    expect(createReturnShipmentSchema.safeParse({}).success).toBe(false)
+    expect(createReturnShipmentSchema.safeParse({ connectionId: 'x' }).success).toBe(false)
+    for (const extra of [
+      { shippingPayer: 'sender' },
+      { cod: { amountCents: 1 } },
+      { storeId: connectionId },
+      { originWarehouseId: connectionId },
+      { pickup: { date: '2026-11-20', from: '09:00', to: '10:00' } }
+    ]) {
+      expect(createReturnShipmentSchema.safeParse({ connectionId, ...extra }).success).toBe(false)
+    }
   })
 })
