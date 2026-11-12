@@ -129,6 +129,8 @@ let templateStores: string[] = []
 let agentRoleId = ''
 // A user for the reactions the suite writes as the owner
 let reactorId = ''
+// The batch that holds each reception item the suite makes: the routes of an item name its batch
+const batchOfReceptionItem = new Map<string, string>()
 // A conversation of store A, where the creation check writes its messages
 let conversationInA = ''
 // A row the suite changes must have been made by createMessageOf: otherwise the check would be
@@ -719,6 +721,54 @@ const resources: IsolationResource[] = [
     // An id the builder did not make (the check asks for a random one to compare the answers) reads a return that does not exist
     readPath: id => ApiRoutes.returns.byId(returnOfLine.get(id) ?? randomUUID()),
     untouched: async (owner, id) => (await owner.orderReturnLine.count({ where: { id } })) === 1
+  },
+  // The reception by scanner: a batch and its packages are read, changed and completed only through the store of the request
+  {
+    name: 'returnReceptionBatch',
+    create: async (owner, { storeId }) => ({
+      id: (
+        await owner.returnReceptionBatch.create({
+          data: { storeId, createdBy: 'system' },
+          select: { id: true }
+        })
+      ).id
+    }),
+    readPath: ApiRoutes.returns.reception.batchById,
+    listPath: ApiRoutes.returns.reception.batches,
+    modify: { path: ApiRoutes.returns.reception.complete, method: 'post', body: {} },
+    untouched: async (owner, id) =>
+      (await owner.returnReceptionBatch.findUnique({ where: { id }, select: { status: true } }))
+        ?.status === 'draft'
+  },
+  {
+    name: 'returnReceptionItem',
+    create: async (owner, { storeId }) => {
+      const shipment = await createShipment(owner, {
+        storeId,
+        status: ShipmentStatus.RETURNING
+      })
+      const batch = await owner.returnReceptionBatch.create({
+        data: { storeId, createdBy: 'system' },
+        select: { id: true }
+      })
+      const item = await owner.returnReceptionItem.create({
+        data: { storeId, batchId: batch.id, shipmentId: shipment.id, reason: 'DELIVERY_FAILED' },
+        select: { id: true }
+      })
+      batchOfReceptionItem.set(item.id, batch.id)
+      return { id: item.id }
+    },
+    // An id the builder did not make (the check asks for a random one to compare the answers) reads a batch that does not exist
+    readPath: id =>
+      ApiRoutes.returns.reception.batchById(batchOfReceptionItem.get(id) ?? randomUUID()),
+    modify: {
+      path: id =>
+        ApiRoutes.returns.reception.itemById(batchOfReceptionItem.get(id) ?? randomUUID(), id),
+      body: { note: 'hacked' }
+    },
+    untouched: async (owner, id) =>
+      (await owner.returnReceptionItem.findUnique({ where: { id }, select: { note: true } }))
+        ?.note === null
   },
   {
     name: 'warehouse',
@@ -2833,6 +2883,56 @@ describe('Tenant isolation', () => {
         internalNotes: 'a customer care note',
         packingNotes: 'a packing note'
       })
+    })
+  })
+
+  describe('the reception of returns by scanner', () => {
+    it('scans, deletes and completes nothing of another store, and a foreign guide matches nothing', async () => {
+      const foreign = await createShipment(owner, {
+        storeId: ctx.storeB.id,
+        status: ShipmentStatus.RETURNING
+      })
+      const guide = (await owner.shipment.findUniqueOrThrow({ where: { id: foreign.id } }))
+        .guideNumber as string
+      const foreignBatch = await owner.returnReceptionBatch.create({
+        data: { storeId: ctx.storeB.id, createdBy: 'system' },
+        select: { id: true }
+      })
+      const foreignItem = await owner.returnReceptionItem.create({
+        data: {
+          storeId: ctx.storeB.id,
+          batchId: foreignBatch.id,
+          shipmentId: foreign.id,
+          reason: 'DELIVERY_FAILED'
+        },
+        select: { id: true }
+      })
+      const asA = () => api(app, ctx.adminA, ctx.storeA)
+      const mine = await asA().post(ApiRoutes.returns.reception.batches)
+      const myBatch = (mine.body as { id: string }).id
+
+      // The code of a package of store B finds nothing in a batch of store A
+      const scanned = await asA()
+        .post(ApiRoutes.returns.reception.scan(myBatch))
+        .send({ code: guide })
+      expect(scanned.body).toEqual({ result: 'not_found' })
+      // A batch of store B is not scanned into, nor completed, nor emptied, from store A
+      for (const response of [
+        await asA().post(ApiRoutes.returns.reception.scan(foreignBatch.id)).send({ code: guide }),
+        await asA().post(ApiRoutes.returns.reception.complete(foreignBatch.id)),
+        await asA().delete(ApiRoutes.returns.reception.itemById(foreignBatch.id, foreignItem.id))
+      ]) {
+        expect(response.status).toBe(404)
+      }
+      // An item of store B named through a batch of store A is not found either
+      expect(
+        (await asA().delete(ApiRoutes.returns.reception.itemById(myBatch, foreignItem.id))).status
+      ).toBe(404)
+      expect(await owner.returnReceptionItem.count({ where: { id: foreignItem.id } })).toBe(1)
+      expect(
+        (await owner.returnReceptionBatch.findUniqueOrThrow({ where: { id: foreignBatch.id } }))
+          .status
+      ).toBe('draft')
     })
   })
 })

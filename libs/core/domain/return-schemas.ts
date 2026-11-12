@@ -1,10 +1,11 @@
 import { z } from 'zod'
 
+import { CustomerLimits } from './customer-constants'
 import { ORDER_MAX_AMOUNT_CENTS, OrderLimits } from './order-constants'
 import { createOrderSchema } from './order-schemas'
 import { OrderReturnReasons } from './shipping-constants'
 import { OrderReturnCondition, OrderReturnType, ShippingPayer } from './status-enums'
-import { uuidSchema } from './validation'
+import { singleLineText, uuidSchema } from './validation'
 
 // What a client sends about a return (TDD_17 §4.11, §6). Every shape is strict and none carries a store, a status or an amount
 // of stock: the store is the one the guard resolved and the status is moved by the endpoint that is called.
@@ -114,3 +115,70 @@ export const returnDecisionSchema = z.strictObject({
   notes: notesSchema.optional()
 })
 export type ReturnDecisionBody = z.output<typeof returnDecisionSchema>
+
+// ---------------------------------------------------------------------------------------------------- reception (TDD_17 §4.16)
+
+export const ReceptionLimits = {
+  // A batch is one table of packages on a desk: more than this is a second batch
+  MAX_ITEMS: 200,
+  // What a barcode reader types: a guide number is far shorter
+  CODE_MAX_LENGTH: 100,
+  // A completion that has been running longer than this died with its process: another may take the batch
+  PROCESSING_STALE_MS: 10 * 60 * 1000,
+  LIST_LIMIT: 50,
+  // The shipments a code that more than one matches offers to choose from
+  MAX_CANDIDATES: 10
+} as const
+
+// The reason a scanned package starts with, and the one that preselects the flag of its customer (TDD_17 §4.16)
+export const ReceptionReasons = {
+  DEFAULT: 'DELIVERY_FAILED',
+  REFUSED: 'REFUSED_BY_CUSTOMER'
+} as const satisfies Record<string, OrderReturnReasonKey>
+
+// What scanning a code answers: the package joined the batch, no shipment answers to the code, or more than one does
+export const ReceptionScanResults = {
+  ADDED: 'added',
+  NOT_FOUND: 'not_found',
+  AMBIGUOUS: 'ambiguous'
+} as const
+
+// The code a reader typed, as it came: the lookup ignores the case and the blanks, the field only refuses what a query cannot hold
+export const scanCodeSchema = z.strictObject({
+  code: z
+    .string()
+    .trim()
+    .min(1)
+    .max(ReceptionLimits.CODE_MAX_LENGTH)
+    .refine(value => !value.includes('\u0000'), { message: 'a NUL character' }),
+  // The shipment the agent picked when the code matched more than one
+  shipmentId: uuidSchema.optional()
+})
+export type ScanCodeBody = z.output<typeof scanCodeSchema>
+
+// One line of a package that did not come back whole: what came back, in which condition and where it goes (resellable only)
+export const receptionLineSchema = z.strictObject({
+  orderItemId: uuidSchema,
+  quantity: z.number().int().min(1).max(ReturnLimits.MAX_LINE_QUANTITY),
+  condition: z.enum(OrderReturnCondition),
+  restockWarehouseId: uuidSchema.optional()
+})
+export type ReceptionLine = z.output<typeof receptionLineSchema>
+
+export const receptionLinesSchema = z.array(receptionLineSchema).max(ReturnLimits.MAX_LINES)
+
+// What the agent decides about a package before the batch is completed. `lines: []` is every unit of the order that is not in a
+// return yet, in `condition`. The flag reason is a line about a person: it never reaches the audit entry nor a log.
+export const updateReceptionItemSchema = z
+  .strictObject({
+    reason: reasonSchema.optional(),
+    condition: z.enum(OrderReturnCondition).optional(),
+    note: notesSchema.nullable().optional(),
+    lines: receptionLinesSchema.optional(),
+    flagCustomer: z.boolean().optional(),
+    flagReason: singleLineText(CustomerLimits.CAUTION_REASON_MAX_LENGTH, 1).nullable().optional()
+  })
+  .refine(body => Object.values(body).some(value => value !== undefined), {
+    message: 'nothing to change'
+  })
+export type UpdateReceptionItemBody = z.output<typeof updateReceptionItemSchema>

@@ -59,7 +59,7 @@ import { isShipmentTransitionAllowed } from './shipment-rules'
 import { ShipmentWrites } from './shipment-writes'
 
 // The shipments a package can be scanned from (TDD_17 §4.16): the carrier's status often lags the physical return
-const SCANNABLE_STATUSES: readonly ShipmentStatus[] = [
+export const ScannableShipmentStatuses: readonly ShipmentStatus[] = [
   ShipmentStatus.IN_TRANSIT,
   ShipmentStatus.OUT_FOR_DELIVERY,
   ShipmentStatus.FAILED_ATTEMPT,
@@ -396,7 +396,7 @@ export class ReturnsService {
       // new one, so a scan of it is refused here
       if (
         (shipment.kind as ShipmentKind) !== ShipmentKind.OUTBOUND ||
-        !SCANNABLE_STATUSES.includes(from)
+        !ScannableShipmentStatuses.includes(from)
       ) {
         throw conflict(
           ErrorCodes.RETURN_ORDER_NOT_DELIVERED,
