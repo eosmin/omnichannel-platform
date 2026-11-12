@@ -94,8 +94,8 @@ model Store {
   bulkLabelJobs           BulkLabelJob[]
   orderMessageTemplates   OrderMessageTemplate[]
   orderMessageDispatches  OrderMessageDispatch[]
-codRemittances          CodRemittance[]
-codRemittanceLines      CodRemittanceLine[]
+  codRemittances          CodRemittance[]
+  codRemittanceLines      CodRemittanceLine[]
   orderReturns            OrderReturn[]
   orderReturnLines        OrderReturnLine[]
 
@@ -1763,15 +1763,15 @@ model Shipment {
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
-  store           Store             @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  order           Order             @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  connection      CarrierConnection @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Restrict)
-  pickup          PickupRequest?    @relation(fields: [storeId, pickupId], references: [storeId, id], onDelete: Restrict)
-  originWarehouse Warehouse?        @relation(fields: [originWarehouseId], references: [id], onDelete: Restrict)
-  orderReturn     OrderReturn?      @relation("ShipmentReturn", fields: [storeId, returnId], references: [storeId, id], onDelete: Restrict)
-  returnOf        OrderReturn[]     @relation("ReturnShipment")
+  store           Store               @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  order           Order               @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  connection      CarrierConnection   @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Restrict)
+  pickup          PickupRequest?      @relation(fields: [storeId, pickupId], references: [storeId, id], onDelete: Restrict)
+  originWarehouse Warehouse?          @relation(fields: [originWarehouseId], references: [id], onDelete: Restrict)
+  orderReturn     OrderReturn?        @relation("ShipmentReturn", fields: [storeId, returnId], references: [storeId, id], onDelete: Restrict)
+  returnOf        OrderReturn[]       @relation("ReturnShipment")
   events          ShipmentEvent[]
-  remittance      CodRemittance?    @relation("RemittedShipment", fields: [storeId, codRemittanceId], references: [storeId, id], onDelete: Restrict)
+  remittance      CodRemittance?      @relation("RemittedShipment", fields: [storeId, codRemittanceId], references: [storeId, id], onDelete: Restrict)
   remittanceLines CodRemittanceLine[]
 
   @@unique([storeId, id])
@@ -1864,20 +1864,21 @@ model CarrierUnmappedStatus {
 // guides exist only inside a pickup can need several pickups on one day; "one open pickup per connection and day" is a
 // rule of ShippingService.ensurePickup, under an advisory lock.
 model PickupRequest {
-  id               String   @id @default(uuid())
-  storeId          String   @map("store_id")
-  connectionId     String   @map("connection_id")
-  pickupDate       DateTime @map("pickup_date") @db.Date // In the store timezone
-  status           String   @default("pending") // PickupStatus
-  packageCount     Int      @default(0) @map("package_count")
-  revision         Int      @default(1) // +1 each time the package count is modified
-  providerPickupId String?  @map("provider_pickup_id")
-  windowStart      String?  @map("window_start") // 'HH:mm', when the carrier lets us choose
-  windowEnd        String?  @map("window_end")
-  requestedBy      String   @map("requested_by") // A user id or 'system'
-  lastError        String?  @map("last_error")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  id                  String   @id @default(uuid())
+  storeId             String   @map("store_id")
+  connectionId        String   @map("connection_id")
+  pickupDate          DateTime @map("pickup_date") @db.Date // In the store timezone
+  status              String   @default("pending") // PickupStatus
+  packageCount        Int      @default(0) @map("package_count")
+  revision            Int      @default(1) // +1 each time the package count is modified
+  carrierPackageCount Int?     @map("carrier_package_count") // What the carrier last acknowledged; null = what we hold
+  providerPickupId    String?  @map("provider_pickup_id")
+  windowStart         String?  @map("window_start") // 'HH:mm', when the carrier lets us choose
+  windowEnd           String?  @map("window_end")
+  requestedBy         String   @map("requested_by") // A user id or 'system'
+  lastError           String?  @map("last_error")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
 
   store      Store             @relation(fields: [storeId], references: [id], onDelete: Restrict)
   connection CarrierConnection @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Restrict)

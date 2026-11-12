@@ -22,7 +22,11 @@ module.exports = {
     '!src/shipment-cancellation.ts',
     // The settlement of the cash collected on delivery: reads and writes the remittance and its shipments inside one transaction
     // under a lock. Covered by tests/api/remittances.spec.ts
-    '!src/remittances.service.ts'
+    '!src/remittances.service.ts',
+    // The pickups: read and write the pickup and its guides inside transactions and call the carrier. Covered by
+    // tests/api/pickups.spec.ts; the decisions they make are pure and tested to the line in pickup-rules.spec.ts
+    '!src/pickups.service.ts',
+    '!src/pickup-sync.ts'
   ],
   coverageThreshold: { global: { lines: 90, branches: 85 } }
 }

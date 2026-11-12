@@ -22,6 +22,7 @@ import {
   PaymentMethod,
   RemittanceStatus,
   RoutingActionTypes,
+  PickupStatus,
   ShipmentStatus,
   ShippingPlugin,
   TransferStatus
@@ -58,6 +59,7 @@ import {
   BUILT_SERVICE_CODE,
   createCarrierConnection,
   createRemittance,
+  createPickup,
   createShipment,
   createChannelConnection,
   createInvitation,
@@ -475,6 +477,22 @@ const resources: IsolationResource[] = [
       if (event === null) return false
       return (await owner.shipmentEvent.count({ where: { shipmentId: event.shipmentId } })) === 1
     }
+  },
+  // The pickups of a store (Step 4.11). A pickup of another store is a 404 on every route, the list of the other store never
+  // holds it, and a confirm from outside leaves it as it was. Making one from a connection of another store is covered by
+  // tests/api/pickups.spec.ts (it needs a waiting guide of that connection).
+  {
+    name: 'pickupRequest',
+    create: async (owner, input) => {
+      const built = await createPickup(owner, { storeId: input.storeId })
+      return { id: built.id }
+    },
+    readPath: ApiRoutes.pickups.manifest,
+    listPath: ApiRoutes.pickups.list,
+    modify: { path: ApiRoutes.pickups.confirm, method: 'post', body: {} },
+    untouched: async (owner, id) =>
+      (await owner.pickupRequest.findUnique({ where: { id }, select: { status: true } }))
+        ?.status === PickupStatus.MANUAL_REQUIRED
   },
   {
     name: 'orderMessageDispatch',

@@ -57,6 +57,7 @@ export const JobNames = {
   CREATE_SHIPMENTS: 'create-shipments', // One batch
   BULK_LABELS_MERGE: 'bulk-labels-merge',
   CANCEL_SHIPMENT: 'cancel-shipment',
+  SYNC_PICKUP: 'sync-pickup', // Asks the carrier for a pickup, or tells it the new count
   POLL_SHIPMENT_STATUS: 'poll-shipment-status',
   REPROCESS_CARRIER_EVENTS: 'reprocess-carrier-events', // After the owner maps a carrier status code
 
@@ -101,6 +102,11 @@ export const bulkLabelsMergeJobId = (jobId: string): string =>
 
 // One void per guide and request: the request asked twice is one job, and a retry of a failed void (a later request) is another
 // (dashes, no colon)
+// One sync per pickup and revision of its count: two requests of one moment are one job, a later change of the count is another
+// (dashes, no colon)
+export const syncPickupJobId = (pickupId: string, revision: number): string =>
+  `${JobNames.SYNC_PICKUP}-${pickupId}-${revision}`
+
 export const cancelShipmentJobId = (shipmentId: string, requestedAtMs: number): string =>
   `${JobNames.CANCEL_SHIPMENT}-${shipmentId}-${requestedAtMs}`
 

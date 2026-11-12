@@ -166,6 +166,14 @@ describe('bridgedPayload', () => {
       connectionId: randomUUID(),
       actor: { type: 'system', id: null }
     },
+    [Events.PICKUP_MANUAL_REQUIRED]: {
+      storeId: randomUUID(),
+      pickupId: randomUUID(),
+      connectionId: randomUUID(),
+      pickupDate: '2026-11-13',
+      packageCount: 3,
+      reason: 'no_api'
+    },
     [Events.CARRIER_STATUS_UNMAPPED]: {
       storeId: randomUUID(),
       connectionId: randomUUID(),

@@ -215,7 +215,7 @@ export class ShipmentWrites {
     })
   }
 
-  // A pickup moves the same way, with its own table. It announces nothing: the pickup events belong to Step 4.11.
+  // A pickup moves the same way, with its own table. It announces nothing itself: the caller that ends a pickup in a state that needs a person publishes `pickup.manual_required`.
   async movePickup(
     tx: PrismaTransaction,
     storeId: string,
@@ -225,6 +225,7 @@ export class ShipmentWrites {
     data: {
       providerPickupId?: string | null
       packageCount?: number
+      carrierPackageCount?: number | null
       lastError?: string | null
     }
   ): Promise<void> {

@@ -9,6 +9,7 @@ import {
   ConversationStatus,
   ConversationStatusReasons,
   idempotencyKeySchema,
+  PickupManualReasons,
   ShipmentStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -187,6 +188,15 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     requestedBy: id,
     status: z.enum(BulkLabelJobStatus),
     mergedMediaId: id.nullable()
+  }),
+  // A pickup that needs a person: ids, the day, the count and why; nothing the carrier said
+  [Events.PICKUP_MANUAL_REQUIRED]: z.object({
+    storeId: id,
+    pickupId: id,
+    connectionId: id,
+    pickupDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    packageCount: z.number().int().min(0),
+    reason: z.enum(PickupManualReasons)
   }),
   [Events.MESSAGE_NOTE_ADDED]: z.object({
     storeId: id,
