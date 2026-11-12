@@ -151,6 +151,9 @@ export const QueryKeys = {
   },
   carriers: {
     all: (storeId: string) => ['carriers', storeId] as const,
+    // Settings → Carriers: what can be connected, and the connections of the store
+    registry: (storeId: string) => ['carriers', storeId, 'registry'] as const,
+    list: (storeId: string) => ['carriers', storeId, 'list'] as const,
     statusMappings: (storeId: string, connectionId: string) =>
       ['carriers', storeId, connectionId, 'status-mappings'] as const,
     unmappedStatuses: (storeId: string, connectionId: string) =>

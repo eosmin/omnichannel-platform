@@ -29,6 +29,7 @@ export const PageTitles = {
   settingsSnippets: ['settings.nav.store.snippets', 'shell.nav.settings'],
   settingsInbox: ['settings.nav.store.inbox', 'shell.nav.settings'],
   settingsInventory: ['settings.nav.store.inventory', 'shell.nav.settings'],
+  settingsCarriers: ['settings.nav.store.carriers', 'shell.nav.settings'],
   accountProfile: ['settings.nav.account.profile', 'settings.nav.account.title'],
   accountPreferences: ['settings.nav.account.preferences', 'settings.nav.account.title'],
   accountNotifications: ['settings.nav.account.notifications', 'settings.nav.account.title'],

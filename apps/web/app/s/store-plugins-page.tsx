@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
 import { ClientPermissions } from '@platform/core/auth'
-import type { DestructiveAction } from '@platform/core/domain'
+import { type DestructiveAction, ShippingPlugin } from '@platform/core/domain'
 
 import { useStore } from '../../components/providers/store-context'
 import { LoadFailed, PageLoading, PermissionDenied } from '../../components/settings/states'
@@ -76,15 +76,22 @@ function PluginRow({ entry }: { entry: PluginCatalogEntryView }): ReactElement {
   const install = useInstallPlugin(storeId)
   const uninstall = useUninstallPlugin(storeId)
   const canManage = can(ClientPermissions.SETTINGS_MANAGE_PLUGINS)
-  // Only a channel plugin can be installed today; the others are registered in Step 5.6
-  const installable = entry.channel !== null
+  // A channel plugin and the shipping entry can be installed; the others are registered in Step 5.6
+  const isShipping = entry.id === ShippingPlugin.ID
+  const installable = entry.channel !== null || isShipping
 
   const askToUninstall = (): void => {
     const installationId = entry.installationId
     if (installationId === null) return
     run(UNINSTALL_ACTION, {
       title: t('uninstall.title', { name: entry.name }),
-      description: t('uninstall.description', { count: entry.activeConnections }),
+      description: isShipping
+        ? t('uninstall.descriptionShipping', {
+            count: entry.activeConnections,
+            shipments: entry.openShipments,
+            pickups: entry.openPickups
+          })
+        : t('uninstall.description', { count: entry.activeConnections }),
       confirmLabel: t('uninstall.confirm'),
       onConfirm: async () => {
         try {
@@ -99,7 +106,8 @@ function PluginRow({ entry }: { entry: PluginCatalogEntryView }): ReactElement {
 
   const doInstall = (): void => {
     install.mutate(entry.id, {
-      onSuccess: () => toast.success(t('install.done', { name: entry.name })),
+      onSuccess: () =>
+        toast.success(t(isShipping ? 'install.doneCarrier' : 'install.done', { name: entry.name })),
       onError: error => toast.error(errorText(error))
     })
   }
