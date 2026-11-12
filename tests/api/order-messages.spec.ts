@@ -35,6 +35,7 @@ import {
   createCarrierConnection,
   createConversation,
   createCustomerIdentity,
+  createMessageOf,
   createOrder
 } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
@@ -1232,6 +1233,169 @@ describe('Order messages', () => {
       // And nothing went out: no message to a channel, no email
       expect(outbound.jobs).toHaveLength(0)
       expect(emailsOf(app).jobs).toHaveLength(0)
+    })
+  })
+
+  describe('the history of an order', () => {
+    const history = (actor: typeof sender, orderId: string, query = '', store = ctx.storeA) =>
+      api(app, actor, store).get(`${ApiRoutes.orders.messages(orderId)}${query}`)
+    const dispatch = (orderId: string, over: object = {}) =>
+      owner.orderMessageDispatch.create({
+        data: {
+          storeId: ctx.storeA.id,
+          orderId,
+          kind: OrderMessageKind.ORDER_SHIPPED,
+          trigger: OrderMessageTriggers.MANUAL,
+          route: OrderMessageRoutes.EMAIL,
+          idempotencyKey: `hist-${randomUUID()}`,
+          ...over
+        }
+      })
+
+    it('lists the messages newest first, with who asked, the reason of one that did not go and a page cursor', async () => {
+      const order = await createOrder(owner, { storeId: ctx.storeA.id })
+      const at = (minutes: number) => new Date(Date.now() - (3 - minutes) * 60_000)
+      const first = await dispatch(order.id, { requestedBy: sender.id, createdAt: at(1) })
+      await dispatch(order.id, {
+        route: OrderMessageRoutes.NOT_SENT,
+        reason: OrderMessageNotSentReasons.MISSING_VARIABLE,
+        createdAt: at(2)
+      })
+      const third = await dispatch(order.id, { requestedBy: randomUUID(), createdAt: at(3) })
+
+      const page = await history(viewer, order.id, '?limit=2')
+      expect(page.status).toBe(OK)
+      const body = page.body as {
+        data: Array<Record<string, unknown>>
+        nextCursor: string | null
+        hasMore: boolean
+      }
+      expect(body.hasMore).toBe(true)
+      expect(body.data).toHaveLength(2)
+      expect(body.data[0]).toMatchObject({ id: third.id, status: 'sent', requestedBy: null })
+      expect(body.data[1]).toMatchObject({
+        status: OrderMessageOutcomeStatus.NOT_SENT,
+        reason: OrderMessageNotSentReasons.MISSING_VARIABLE
+      })
+      expect(JSON.stringify(body)).not.toContain('idempotencyKey')
+
+      const next = await history(viewer, order.id, `?limit=2&cursor=${body.nextCursor ?? ''}`)
+      const rest = next.body as { data: Array<Record<string, unknown>>; hasMore: boolean }
+      expect(rest.hasMore).toBe(false)
+      expect(rest.data).toHaveLength(1)
+      expect(rest.data[0]).toMatchObject({ id: first.id, requestedBy: { id: sender.id } })
+    })
+
+    it('breaks a tie of the moment by id, so a page never repeats or skips a row', async () => {
+      const order = await createOrder(owner, { storeId: ctx.storeA.id })
+      const same = new Date(Date.now() - 60_000)
+      const rows = [
+        await dispatch(order.id, { createdAt: same }),
+        await dispatch(order.id, { createdAt: same }),
+        await dispatch(order.id, { createdAt: same })
+      ]
+      const seen: string[] = []
+      let cursor = ''
+      for (let page = 0; page < 3; page += 1) {
+        const body = (await history(viewer, order.id, `?limit=1${cursor}`)).body as {
+          data: Array<{ id: string }>
+          nextCursor: string | null
+        }
+        seen.push(...body.data.map(row => row.id))
+        cursor = `&cursor=${body.nextCursor ?? ''}`
+      }
+      expect(seen).toEqual(
+        rows
+          .map(row => row.id)
+          .sort()
+          .reverse()
+      )
+    })
+
+    it('names only a member who is still in the store, and reads no delivery of another store', async () => {
+      const order = await createOrder(owner, { storeId: ctx.storeA.id })
+      const foreignMessage = await createMessageOf(owner, { storeId: ctx.storeB.id })
+      await owner.message.update({
+        where: { id: foreignMessage.id },
+        data: { deliveryStatus: DeliveryStatus.FAILED, deliveryError: 'of_store_b' }
+      })
+      const outsider = await actorWithPermissions(owner, app, {
+        prefix,
+        name: 'orderMessageOutsider',
+        organizationId: ctx.orgB.id,
+        storeId: ctx.storeB.id,
+        permissions: [Permissions.ORDERS_VIEW]
+      })
+      await dispatch(order.id, {
+        route: OrderMessageRoutes.CHANNEL_TEXT,
+        messageId: foreignMessage.id,
+        requestedBy: outsider.id
+      })
+
+      const body = (await history(viewer, order.id)).body as {
+        data: Array<Record<string, unknown>>
+      }
+      expect(body.data[0]).toMatchObject({
+        status: OrderMessageOutcomeStatus.SENT,
+        deliveryStatus: null,
+        deliveryError: null,
+        requestedBy: null
+      })
+    })
+
+    it('says whether the channel took a message that went through one', async () => {
+      const order = await createOrder(owner, { storeId: ctx.storeA.id })
+      const made = await createMessageOf(owner, { storeId: ctx.storeA.id })
+      const message = await owner.message.update({
+        where: { id: made.id },
+        data: {
+          content: 'texto privado',
+          deliveryStatus: DeliveryStatus.FAILED,
+          deliveryError: 'channel_rejected'
+        }
+      })
+      await dispatch(order.id, { route: OrderMessageRoutes.CHANNEL_TEXT, messageId: message.id })
+
+      const body = (await history(viewer, order.id)).body as {
+        data: Array<Record<string, unknown>>
+      }
+      expect(body.data[0]).toMatchObject({
+        route: OrderMessageRoutes.CHANNEL_TEXT,
+        deliveryStatus: DeliveryStatus.FAILED,
+        deliveryError: 'channel_rejected'
+      })
+      expect(JSON.stringify(body)).not.toContain('texto privado')
+    })
+
+    it('needs the permission to see orders, and refuses a bad cursor or limit', async () => {
+      const order = await createOrder(owner, { storeId: ctx.storeA.id })
+      const blind = await actorWithPermissions(owner, app, {
+        prefix,
+        name: 'orderMessageBlind',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions: [Permissions.CONVERSATIONS_VIEW]
+      })
+
+      expect((await history(blind, order.id)).status).toBe(FORBIDDEN)
+      expect((await history(viewer, order.id, '?cursor=nope')).status).toBe(BAD_REQUEST)
+      expect((await history(viewer, order.id, '?limit=101')).status).toBe(BAD_REQUEST)
+    })
+
+    it('does not reach the history of an order of another store, and never lists a row of another store', async () => {
+      const foreign = await createOrder(owner, { storeId: ctx.storeB.id })
+      await owner.orderMessageDispatch.create({
+        data: {
+          storeId: ctx.storeB.id,
+          orderId: foreign.id,
+          kind: OrderMessageKind.ORDER_SHIPPED,
+          trigger: OrderMessageTriggers.MANUAL,
+          route: OrderMessageRoutes.EMAIL,
+          idempotencyKey: `hist-${randomUUID()}`
+        }
+      })
+
+      expect((await history(viewer, foreign.id)).status).toBe(NOT_FOUND)
     })
   })
 
