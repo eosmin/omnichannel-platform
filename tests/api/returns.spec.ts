@@ -9,6 +9,7 @@ import type { OwnerClient } from '@platform/core/database-testing'
 import { PaymentMethod } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 
+import { createCarrierConnection } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
@@ -648,6 +649,142 @@ describe('The returns of an order', () => {
           'requested'
         )
       }
+    })
+
+    it('credits only what the customer paid when the returned order had a discount', async () => {
+      // 4 units of 1000 with a discount of 2000: 4000 of products, 2000 paid. Two units come back: they are worth 1000
+      const product = await kit.stocked(10)
+      const body = await kit.orderBody({
+        items: [{ productId: product.id, quantity: 4 }],
+        discountCents: 2000,
+        discountReason: 'loyal customer'
+      })
+      const created = await admin().post(ApiRoutes.orders.create).send(body)
+      expect(created.status).toBe(CREATED)
+      const order = (created.body as CreatedBody).order
+      for (const next of ['CONFIRMED', 'SHIPPED', 'DELIVERED']) {
+        expect((await orderStatus(order.id, { status: next })).status).toBe(OK)
+      }
+      const detail = (await admin().get(ApiRoutes.orders.byId(order.id))).body as OrderBody
+      const ex = (
+        await exchange(order.id, [{ orderItemId: detail.items[0]?.id ?? '', quantity: 2 }])
+      ).body as ReturnBody
+      const other = await kit.stocked(5, 0, 3000)
+
+      const approved = await admin()
+        .post(ApiRoutes.returns.approve(ex.id))
+        .send(replacementOf(other.id, 1))
+
+      expect(approved.status).toBe(OK)
+      const replacement = (
+        await admin().get(
+          ApiRoutes.orders.byId(
+            (approved.body as { replacementOrderId: string }).replacementOrderId
+          )
+        )
+      ).body as OrderBody
+      expect(replacement).toMatchObject({ discountCents: 1000, totalCents: 2000 })
+    })
+
+    it('records, by hand, the refund of what the credit left over, and no more', async () => {
+      // 4 units come back (credit 4000), a replacement of 1000: 3000 is left over. The order was paid on delivery
+      const { ret, order, itemId } = await approvedExchange({
+        returned: 4,
+        replacementPriceCents: 1000,
+        replacementQuantity: 1
+      })
+      expect(
+        (
+          await owner.order.update({
+            where: { id: order.id },
+            data: { paymentStatus: 'COMPLETED' }
+          })
+        ).paymentStatus
+      ).toBe('COMPLETED')
+      expect(
+        (
+          await admin()
+            .post(ApiRoutes.returns.receive(ret.id))
+            .send({ lines: [{ orderItemId: itemId, condition: 'resellable' }] })
+        ).status
+      ).toBe(OK)
+
+      const above = await admin()
+        .post(ApiRoutes.returns.complete(ret.id))
+        .send({ refundAmountCents: 3001 })
+      expect(above.status).toBe(CONFLICT)
+      expect(errorOf(above).code).toBe(ErrorCodes.RETURN_REFUND_EXCEEDS_PAID)
+      expect(errorOf(above).metadata).toMatchObject({ roomCents: 3000 })
+
+      const done = await admin()
+        .post(ApiRoutes.returns.complete(ret.id))
+        .send({ refundAmountCents: 3000 })
+      expect(done.status).toBe(OK)
+      expect((done.body as ReturnBody).refundAmountCents).toBe(3000)
+      // The returned order keeps its payment: the customer keeps the goods of the replacement
+      expect(
+        ((await admin().get(ApiRoutes.orders.byId(order.id))).body as OrderBody).paymentStatus
+      ).toBe('COMPLETED')
+    })
+
+    it('refuses a price of the agent in a line of the replacement, and a member who cannot create and confirm orders', async () => {
+      const { order, itemId } = await delivered(2)
+      const other = await kit.stocked(5, 0, 1000)
+      const ex = (await exchange(order.id, [{ orderItemId: itemId, quantity: 1 }]))
+        .body as ReturnBody
+      const priced = {
+        replacement: {
+          ...replacementOf(other.id, 1).replacement,
+          items: [{ productId: other.id, quantity: 1, unitPriceCents: 1, priceReason: 'x' }]
+        }
+      }
+      expect((await admin().post(ApiRoutes.returns.approve(ex.id)).send(priced)).status).toBe(
+        BAD_REQUEST
+      )
+
+      for (const permissions of [
+        [Permissions.RETURNS_MANAGE, Permissions.RETURNS_VIEW],
+        [Permissions.RETURNS_MANAGE, Permissions.RETURNS_VIEW, Permissions.ORDERS_CREATE]
+      ]) {
+        const member = await actorWithPermissions(owner, app, {
+          prefix,
+          name: `exchangeApprover${permissions.length}`,
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA.id,
+          permissions
+        })
+        const denied = await api(app, member, ctx.storeA)
+          .post(ApiRoutes.returns.approve(ex.id))
+          .send(replacementOf(other.id, 1))
+        expect(denied.status).toBe(FORBIDDEN)
+      }
+      expect(((await admin().get(ApiRoutes.returns.byId(ex.id))).body as ReturnBody).status).toBe(
+        'requested'
+      )
+    })
+
+    it('refuses a replacement whose shipping fee is out of the range of its carrier', async () => {
+      const { order, itemId } = await delivered(2)
+      const other = await kit.stocked(5, 0, 1000)
+      const connection = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
+      await owner.carrierConnection.update({
+        where: { id: connection.id },
+        data: { minShippingFeeCents: 500 }
+      })
+      const ex = (await exchange(order.id, [{ orderItemId: itemId, quantity: 1 }]))
+        .body as ReturnBody
+
+      const refused = await admin()
+        .post(ApiRoutes.returns.approve(ex.id))
+        .send(
+          replacementOf(other.id, 1, { carrierConnectionId: connection.id, shippingCents: 100 })
+        )
+
+      expect(refused.status).toBe(CONFLICT)
+      expect(errorOf(refused).code).toBe(ErrorCodes.SHIPPING_FEE_OUT_OF_RANGE)
+      expect(((await admin().get(ApiRoutes.returns.byId(ex.id))).body as ReturnBody).status).toBe(
+        'requested'
+      )
     })
 
     it('refuses a replacement of a product of another store, and approving it twice makes one order', async () => {

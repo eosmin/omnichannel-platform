@@ -199,11 +199,17 @@ export function refundRoom(input: {
 
 // ---------------------------------------------------------------- exchange credit (TDD_17 §4.11)
 
-// What the returned units are worth: the price each unit was sold at (an override included), times the units that come back
+// What the returned units are worth to the customer: the price each unit was sold at times the units that come back, less the
+// share of the discount of the order that those units carried (the order-level discount is spread over its products by value, rounded
+// down so the credit never passes what was paid). An order with no products has no credit.
 export function exchangeCreditCents(
-  lines: readonly { unitPriceCents: number; quantity: number }[]
+  lines: readonly { unitPriceCents: number; quantity: number }[],
+  order: { subtotalCents: number; discountCents: number }
 ): number {
-  return lines.reduce((sum, line) => sum + line.unitPriceCents * line.quantity, 0)
+  const gross = lines.reduce((sum, line) => sum + line.unitPriceCents * line.quantity, 0)
+  if (order.subtotalCents <= 0) return 0
+  const paid = Math.max(0, order.subtotalCents - order.discountCents)
+  return Math.floor((gross * paid) / order.subtotalCents)
 }
 
 // The credit goes against the products of the replacement and never against its shipping fee (an order's discount cannot pass its

@@ -195,14 +195,50 @@ describe('the machine and the refund', () => {
 })
 
 describe('exchangeCreditCents', () => {
+  const order = { subtotalCents: 6000, discountCents: 0 }
+
   it('is the price each unit was sold at times the units that come back', () => {
     expect(
-      exchangeCreditCents([
-        { unitPriceCents: 1500, quantity: 2 },
-        { unitPriceCents: 999, quantity: 1 }
-      ])
+      exchangeCreditCents(
+        [
+          { unitPriceCents: 1500, quantity: 2 },
+          { unitPriceCents: 999, quantity: 1 }
+        ],
+        order
+      )
     ).toBe(3999)
-    expect(exchangeCreditCents([])).toBe(0)
+    expect(exchangeCreditCents([], order)).toBe(0)
+  })
+
+  it('takes the share of the discount of the order that the returned units carried', () => {
+    // 100.00 of products with a 30.00 discount: the customer paid 70.00, and one unit of 40.00 is worth 28.00
+    expect(
+      exchangeCreditCents([{ unitPriceCents: 4000, quantity: 1 }], {
+        subtotalCents: 10000,
+        discountCents: 3000
+      })
+    ).toBe(2800)
+  })
+
+  it('rounds down, never gives more than was paid, and has nothing for an order with no products', () => {
+    expect(
+      exchangeCreditCents([{ unitPriceCents: 333, quantity: 1 }], {
+        subtotalCents: 1000,
+        discountCents: 1
+      })
+    ).toBe(332)
+    expect(
+      exchangeCreditCents([{ unitPriceCents: 1000, quantity: 1 }], {
+        subtotalCents: 1000,
+        discountCents: 1000
+      })
+    ).toBe(0)
+    expect(
+      exchangeCreditCents([{ unitPriceCents: 1000, quantity: 1 }], {
+        subtotalCents: 0,
+        discountCents: 0
+      })
+    ).toBe(0)
   })
 })
 

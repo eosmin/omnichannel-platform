@@ -228,26 +228,13 @@ export class ReturnsService {
       }
       let replacement: ReplacementOrderMade | null = null
       if (body.replacement !== undefined) {
-        const items = await tx.orderItem.findMany({
-          where: {
-            id: { in: loaded.lines.map(line => line.orderItemId) },
-            orderId: loaded.orderId
-          },
-          select: { id: true, unitPriceCents: true }
-        })
-        const priceOf = new Map(items.map(item => [item.id, item.unitPriceCents]))
         replacement = await this.orders.createReplacement(
           tx,
           storeId,
           {
             ofOrderId: loaded.orderId,
             returnId,
-            creditCents: exchangeCreditCents(
-              loaded.lines.map(line => ({
-                unitPriceCents: priceOf.get(line.orderItemId) ?? 0,
-                quantity: line.quantity
-              }))
-            ),
+            creditCents: await this.exchangeCredit(tx, loaded),
             replacement: body.replacement
           },
           actor
@@ -816,11 +803,19 @@ export class ReturnsService {
     refundCents: number | null
     paymentRefunded: boolean
   }> {
-    if (loaded.type !== OrderReturnType.REFUND && refundCents !== undefined) {
-      throw invalid('an exchange has no refund', ErrorCodes.VALIDATION_INVALID_INPUT)
-    }
     let paymentRefunded = false
-    if (refundCents !== undefined) {
+    if (loaded.type === OrderReturnType.EXCHANGE && refundCents !== undefined) {
+      // An exchange refunds only what its credit left over (a replacement that costs less than what came back), by hand, and
+      // never moves the payment of the returned order to REFUNDED: the customer keeps the goods of the replacement
+      const room = await this.exchangeRefundRoom(tx, storeId, loaded)
+      if (refundCents > room) {
+        throw conflict(
+          ErrorCodes.RETURN_REFUND_EXCEEDS_PAID,
+          'the refund is more than the credit left over',
+          { roomCents: room }
+        )
+      }
+    } else if (refundCents !== undefined) {
       const order = await tx.order.findFirstOrThrow({
         where: { id: loaded.orderId, storeId },
         select: { totalCents: true, paymentStatus: true }
@@ -872,6 +867,52 @@ export class ReturnsService {
       refundCents: refundCents ?? null,
       paymentRefunded
     }
+  }
+
+  // What the returned lines are worth to the customer (`exchangeCreditCents`): read from the order the return is of, which the caller
+  // holds locked. A line whose item is gone is a broken return, never a credit of zero.
+  private async exchangeCredit(tx: PrismaTransaction, loaded: LoadedReturn): Promise<number> {
+    const order = await tx.order.findFirstOrThrow({
+      where: { id: loaded.orderId },
+      select: {
+        subtotalCents: true,
+        discountCents: true,
+        items: { select: { id: true, unitPriceCents: true } }
+      }
+    })
+    const priceOf = new Map(order.items.map(item => [item.id, item.unitPriceCents]))
+    return exchangeCreditCents(
+      loaded.lines.map(line => {
+        const unitPriceCents = priceOf.get(line.orderItemId)
+        if (unitPriceCents === undefined) {
+          throw invalid(
+            'a line of the return names an item that the order does not have',
+            ErrorCodes.VALIDATION_INVALID_INPUT
+          )
+        }
+        return { unitPriceCents, quantity: line.quantity }
+      }),
+      order
+    )
+  }
+
+  // The credit of an exchange minus what its replacement took of it, less the refunds of the other returns of the order: what the
+  // owner may still settle by hand. Money that was never collected is not given back.
+  private async exchangeRefundRoom(
+    tx: PrismaTransaction,
+    storeId: string,
+    loaded: LoadedReturn
+  ): Promise<number> {
+    const row = await tx.orderReturn.findFirstOrThrow({
+      where: { id: loaded.id, storeId },
+      select: {
+        order: { select: { paymentStatus: true } },
+        replacementOrder: { select: { discountCents: true } }
+      }
+    })
+    if ((row.order.paymentStatus as PaymentStatus) !== PaymentStatus.COMPLETED) return 0
+    const credit = await this.exchangeCredit(tx, loaded)
+    return Math.max(0, credit - (row.replacementOrder?.discountCents ?? 0))
   }
 
   // A decision's note is added to the note of the request, never in place of it: what the agent saw stays with the return

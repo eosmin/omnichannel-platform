@@ -173,8 +173,8 @@ describe('the returns settings', () => {
 
     expect(read).toEqual({ returnShippingPayer: 'recipient' })
     expect(changed).toEqual({ returnShippingPayer: 'recipient' })
-    expect(fetchImpl.mock.calls.map(([url, init]) => [String(url), init.method])).toEqual([
-      [`https://api.example.com/api/v1${ApiRoutes.settings.returns}`, undefined],
+    expect(fetchImpl.mock.calls.map(([url, init]) => [String(url), init.method ?? 'GET'])).toEqual([
+      [`https://api.example.com/api/v1${ApiRoutes.settings.returns}`, 'GET'],
       [`https://api.example.com/api/v1${ApiRoutes.settings.returns}`, 'PATCH']
     ])
   })

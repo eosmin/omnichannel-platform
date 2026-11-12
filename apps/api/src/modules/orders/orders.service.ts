@@ -58,6 +58,7 @@ import {
   writeOrderSummaryLine
 } from '@platform/core/messaging'
 import { ExportFormats, ExportTypes } from '@platform/core/queues'
+import { type ReplacementOrderMade } from '@platform/core/shipping'
 import { readOrderPreferences } from '@platform/core/store-preferences'
 
 import { ExportsService, type ExportView } from '../exports'
@@ -125,16 +126,6 @@ export interface CreatedOrder {
 // The orders of the store of the request. Every query is filtered by that store (TenantGuard) and the store is never
 // read from the body or the query string. The prices and the totals are computed here, never taken from the client.
 // The changes of status and the decisions on a price are in OrdersStatusService.
-export interface ReplacementOrder {
-  orderId: string
-  orderNumber: string
-  totalCents: number
-  creditAppliedCents: number
-  // What the credit has left over: the owner settles it with the customer by hand
-  excessCents: number
-  afterCommit: () => void
-}
-
 @Injectable()
 export class OrdersService {
   constructor(
@@ -620,7 +611,7 @@ export class OrdersService {
       replacement: ReplacementOrderBody
     },
     actor: Actor
-  ): Promise<ReplacementOrder> {
+  ): Promise<ReplacementOrderMade> {
     const source = await tx.order.findFirst({
       where: { id: input.ofOrderId, storeId },
       select: { customerId: true }
@@ -637,19 +628,23 @@ export class OrdersService {
       canOverridePrice: false
     })
     const planned = await planCarrier(tx, storeId, body.carrierConnectionId, true)
-    // The fee and the free-shipping rule are judged as in any order, with no discount: the credit is the system's, not a discount
-    const { freeShipping } = priceOrder({
+    // The fee and the free-shipping rule are judged as in any order, with no discount (the credit is the system's). The replacement
+    // is born CONFIRMED, so a fee that would wait for an approval is refused: an exchange is no way round the range of the carrier
+    const { freeShipping, control } = priceOrder({
       feeBounds: planned.bounds,
       lines,
       shippingCents: body.shippingCents,
       discountCents: 0,
-      discountReason: undefined,
+      discountReason: exchangeCreditReason(input.returnId),
       linePriceChanged: false,
       canOverridePrice: false,
       preferences: readOrderPreferences(store.settings?.preferences),
       approvalStatus: PriceApprovalStatus.NOT_REQUIRED,
       approved: null
     })
+    if (control.approvalStatus !== PriceApprovalStatus.NOT_REQUIRED) {
+      throw orderRefusal(ErrorCodes.SHIPPING_FEE_OUT_OF_RANGE)
+    }
     const gross = computeOrderTotals({
       lines,
       shippingCents: body.shippingCents,

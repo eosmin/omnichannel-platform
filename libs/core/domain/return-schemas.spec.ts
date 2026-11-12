@@ -27,6 +27,33 @@ describe('replacementOrderSchema', () => {
   })
 })
 
+describe('a line of the replacement', () => {
+  const line = replacement.items[0]
+
+  it('has no price, no reason for a price and no warehouses', () => {
+    for (const extra of [
+      { unitPriceCents: 1 },
+      { priceReason: 'friend' },
+      { allocations: [{ warehouseId: 'w', quantity: 2 }] }
+    ]) {
+      expect(
+        replacementOrderSchema.safeParse({ ...replacement, items: [{ ...line, ...extra }] }).success
+      ).toBe(false)
+    }
+  })
+
+  it('names a product once, with a variant or without', () => {
+    expect(replacementOrderSchema.safeParse({ ...replacement, items: [line, line] }).success).toBe(
+      false
+    )
+    expect(replacementOrderSchema.safeParse({ ...replacement, items: [] }).success).toBe(false)
+    const variant = { ...line, variantId: '5a8c8a54-3b0f-4a52-9a44-0a2b6f9d6a22' }
+    expect(
+      replacementOrderSchema.safeParse({ ...replacement, items: [line, variant] }).success
+    ).toBe(true)
+  })
+})
+
 describe('approveReturnSchema', () => {
   it('takes no replacement for a refund and one for an exchange', () => {
     expect(approveReturnSchema.parse({})).toEqual({})
