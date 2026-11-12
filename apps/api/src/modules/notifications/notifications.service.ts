@@ -45,6 +45,9 @@ export interface SendNotification {
   resourceType?: string
   resourceId?: string
   actionPath?: string // Built with AppPaths, never a literal
+  // Only the center: no sound, no push and no email. For what happened a while ago and is told now (the replay of an event the
+  // owner mapped late): it is written, never shouted
+  inAppOnly?: boolean
 }
 
 export interface SendNotificationToStore extends Omit<SendNotification, 'userId'> {
@@ -69,7 +72,9 @@ export class NotificationsService {
 
   async send(input: SendNotification): Promise<void> {
     const defaults = NotificationDefaults[input.type]
-    const prefs = await this.preferences.resolve(input.userId, input.storeId, input.type)
+    const resolved = await this.preferences.resolve(input.userId, input.storeId, input.type)
+    const prefs =
+      input.inAppOnly === true ? { ...resolved, push: false, sound: false, email: false } : resolved
     // The email is wanted only if the type has it on and the person did not switch the digest off;
     // the settings are read only for a type that has it, so the rest pays nothing for them
     const frequency = prefs.email

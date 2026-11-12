@@ -7,8 +7,8 @@ import type {
   ConversationStatus,
   ConversationStatusReason,
   InventoryMovementType,
+  OrderMessageAlertReason,
   OrderMessageKindType,
-  OrderMessageNotSentReason,
   OrderStatus,
   PaymentStatus,
   ShipmentStatus,
@@ -106,6 +106,8 @@ export interface OrderCreatedPayload extends OrderEventPayload {
   conversationId: string | null
   totalCents: number
   currency: string
+  // What the person asked for the summary message: send it, do not, or nothing (the preference `orders.sendSummaryOnCreate` says)
+  sendSummary: boolean | null
 }
 
 // What every event of an order says: which order, and who did it. Ids and numbers only: no note (the customer's, the
@@ -121,7 +123,7 @@ export interface OrderEventPayload {
 // A message about an order that did not go (TDD_17 §4.7): which kind and why. Never the text, the customer or the address.
 export interface OrderMessageNotSentPayload extends OrderEventPayload {
   kind: OrderMessageKindType
-  reason: OrderMessageNotSentReason
+  reason: OrderMessageAlertReason
 }
 
 // What every event of a shipment says: which shipment, of which order and connection, and who did it. Ids and numbers
@@ -172,6 +174,9 @@ export interface BulkLabelsDonePayload {
 export interface OrderStatusChangedPayload extends OrderEventPayload {
   from: OrderStatus
   to: OrderStatus
+  // The "Notify customer" box of a change made by a person: checked, unchecked, or nothing (the `autoSend` of the template of the
+  // matching kind says). Always false for a change the order made by following its shipment: the package tells the customer
+  notifyCustomer: boolean | null
 }
 
 export interface OrderPaymentPayload extends OrderEventPayload {

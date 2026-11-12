@@ -107,9 +107,10 @@ describe('createOrderSchema', () => {
       shippingCents: 0,
       discountCents: 0,
       scheduledDeliveryDate: null,
-      confirmOnCreate: false,
-      sendConfirmationMessage: true
+      confirmOnCreate: false
     })
+    // Left out, it stays out: the preference of the store decides, never a default of the schema
+    expect(createOrderSchema.parse(valid)).not.toHaveProperty('sendConfirmationMessage')
   })
 
   it('takes the order it was copied from as an id, and nothing else', () => {
@@ -446,6 +447,27 @@ describe('changeOrderStatusSchema', () => {
       changeOrderStatusSchema.safeParse({ status: OrderStatus.DELIVERED, deliveredAt: 'yesterday' })
         .success
     ).toBe(false)
+  })
+
+  it('takes the "Notify customer" box only for a status the customer is told about', () => {
+    for (const status of [OrderStatus.SHIPPED, OrderStatus.DELIVERED]) {
+      expect(changeOrderStatusSchema.safeParse({ status, notifyCustomer: false }).success).toBe(
+        true
+      )
+    }
+    expect(
+      changeOrderStatusSchema.safeParse({
+        status: OrderStatus.CANCELLED,
+        cancellationReason: 'Sin stock',
+        notifyCustomer: true
+      }).success
+    ).toBe(true)
+    for (const status of [OrderStatus.CONFIRMED, OrderStatus.PREPARING, OrderStatus.RETURNED]) {
+      expect(changeOrderStatusSchema.safeParse({ status, notifyCustomer: true }).success).toBe(
+        false
+      )
+    }
+    expect(changeOrderStatusSchema.safeParse({ status: OrderStatus.SHIPPED }).success).toBe(true)
   })
 
   it('takes the restock choice only to return', () => {

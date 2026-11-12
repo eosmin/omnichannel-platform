@@ -1,9 +1,16 @@
-import { FailedAttemptMessagePolicy, OrderMessageKind } from './order-constants'
+import {
+  FailedAttemptMessagePolicy,
+  type FailedAttemptMessagePolicyType,
+  OrderMessageKind,
+  OrderStatusMessageKinds
+} from './order-constants'
 import {
   carrierPollInterval,
+  customerMessageOfShipment,
   defaultAutoSend,
   failedAttemptVariables,
   isFailedAttemptMessageDue,
+  ShipmentStatusesTold,
   orderMessageAutoSendSchema,
   planOrderFollow
 } from './shipment-effects'
@@ -158,5 +165,87 @@ describe('carrierPollInterval (TDD_17 §4.9)', () => {
   it('asks a connection the carrier pushes to only as a safety net, an hour apart or its own if longer', () => {
     expect(carrierPollInterval({ configured: 10, pushed: true })).toBe(60)
     expect(carrierPollInterval({ configured: 120, pushed: true })).toBe(120)
+  })
+})
+
+describe('customerMessageOfShipment (TDD_17 §4.9)', () => {
+  const every = FailedAttemptMessagePolicy.EVERY_ATTEMPT
+  const of = (
+    to: ShipmentStatus,
+    failedAttempts = 0,
+    policy: FailedAttemptMessagePolicyType = every
+  ) => customerMessageOfShipment({ to, failedAttempts, policy })
+
+  it('tells that the package left once, whichever of picked up and in transit comes first', () => {
+    const shipped = { kind: OrderMessageKind.ORDER_SHIPPED, status: ShipmentStatus.PICKED_UP }
+    expect(of(ShipmentStatus.PICKED_UP)).toEqual(shipped)
+    expect(of(ShipmentStatus.IN_TRANSIT)).toEqual(shipped)
+  })
+
+  it('tells that it is out for delivery and that it was delivered', () => {
+    expect(of(ShipmentStatus.OUT_FOR_DELIVERY)).toEqual({
+      kind: OrderMessageKind.ORDER_OUT_FOR_DELIVERY,
+      status: ShipmentStatus.OUT_FOR_DELIVERY
+    })
+    expect(of(ShipmentStatus.DELIVERED)).toEqual({
+      kind: OrderMessageKind.ORDER_DELIVERED,
+      status: ShipmentStatus.DELIVERED
+    })
+  })
+
+  it('tells each failed attempt, with its number, as the preference allows', () => {
+    expect(of(ShipmentStatus.FAILED_ATTEMPT, 2)).toEqual({
+      kind: OrderMessageKind.ORDER_FAILED_ATTEMPT,
+      status: ShipmentStatus.FAILED_ATTEMPT,
+      attempt: 2
+    })
+    expect(of(ShipmentStatus.FAILED_ATTEMPT, 2, FailedAttemptMessagePolicy.FIRST_ONLY)).toBeNull()
+    expect(
+      of(ShipmentStatus.FAILED_ATTEMPT, 1, FailedAttemptMessagePolicy.FIRST_ONLY)
+    ).not.toBeNull()
+    expect(of(ShipmentStatus.FAILED_ATTEMPT, 1, FailedAttemptMessagePolicy.NONE)).toBeNull()
+  })
+
+  it('looks at exactly the five statuses that can tell the customer something', () => {
+    expect([...ShipmentStatusesTold].sort()).toEqual(
+      [
+        ShipmentStatus.PICKED_UP,
+        ShipmentStatus.IN_TRANSIT,
+        ShipmentStatus.OUT_FOR_DELIVERY,
+        ShipmentStatus.FAILED_ATTEMPT,
+        ShipmentStatus.DELIVERED
+      ].sort()
+    )
+  })
+
+  it('is silent exactly for the statuses that are not in the list the listener looks at', () => {
+    for (const status of Object.values(ShipmentStatus)) {
+      const told = ShipmentStatusesTold.includes(status)
+      expect(of(status, 1) !== null).toBe(told)
+    }
+  })
+
+  it.each([
+    ShipmentStatus.CREATING,
+    ShipmentStatus.LABEL_CREATED,
+    ShipmentStatus.RETURNING,
+    ShipmentStatus.RETURNED,
+    ShipmentStatus.CANCEL_PENDING,
+    ShipmentStatus.CANCELLED,
+    ShipmentStatus.CANCEL_FAILED,
+    ShipmentStatus.REQUIRES_REVIEW,
+    ShipmentStatus.FAILED
+  ])('says nothing to the customer for %s', status => {
+    expect(of(status)).toBeNull()
+  })
+})
+
+describe('OrderStatusMessageKinds (TDD_09 §5.3)', () => {
+  it('names the message of the three statuses a person can set that the customer is told about', () => {
+    expect(OrderStatusMessageKinds).toEqual({
+      [OrderStatus.SHIPPED]: OrderMessageKind.ORDER_SHIPPED,
+      [OrderStatus.DELIVERED]: OrderMessageKind.ORDER_DELIVERED,
+      [OrderStatus.CANCELLED]: OrderMessageKind.ORDER_CANCELLED
+    })
   })
 })

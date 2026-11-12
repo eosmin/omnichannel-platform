@@ -191,7 +191,11 @@ export class OrdersController {
     return this.lifecycle.changeStatus(
       store.id,
       orderId,
-      { status: OrderStatus.CANCELLED, cancellationReason: body.cancellationReason },
+      {
+        status: OrderStatus.CANCELLED,
+        cancellationReason: body.cancellationReason,
+        ...(body.notifyCustomer === undefined ? {} : { notifyCustomer: body.notifyCustomer })
+      },
       actorOf(user, store, req),
       held
     )
