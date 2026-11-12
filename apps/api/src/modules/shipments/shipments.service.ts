@@ -66,8 +66,9 @@ export class ShipmentsService {
         storeId,
         ...(query.status === undefined ? {} : { status: query.status }),
         ...(query.connectionId === undefined ? {} : { connectionId: query.connectionId }),
-        ...(query.orderId === undefined ? {} : { orderId: query.orderId }),
-        ...(query.orderIds === undefined ? {} : { orderId: { in: query.orderIds } }),
+        ...(query.orderId === undefined && query.orderIds === undefined
+          ? {}
+          : { orderId: { in: query.orderIds ?? [query.orderId as string] } }),
         ...(query.from === undefined && query.to === undefined
           ? {}
           : {

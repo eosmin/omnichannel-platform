@@ -33,6 +33,8 @@ describe('Orders by carrier and guide', () => {
   let ctx: TestContext
   let agent: ReturnType<typeof api>
   let exporter: ReturnType<typeof api>
+  let shippingExporter: ReturnType<typeof api>
+  let limited: ReturnType<typeof api>
   let live = { orderId: '', connectionId: '' }
   let cancelled = { orderId: '', connectionId: '' }
   let elsewhere = { orderId: '' }
@@ -57,12 +59,28 @@ describe('Orders by carrier and guide', () => {
       permissions: [Permissions.ORDERS_VIEW, Permissions.ORDERS_EXPORT]
     })
     exporter = api(app, exporting, ctx.storeA)
+    const fullExporter = await actorWithPermissions(owner, app, {
+      prefix,
+      name: `fullexp${randomUUID().slice(0, 6)}`,
+      organizationId: ctx.orgA.id,
+      storeId: ctx.storeA.id,
+      permissions: [Permissions.ORDERS_VIEW, Permissions.ORDERS_EXPORT, Permissions.SHIPPING_VIEW]
+    })
+    shippingExporter = api(app, fullExporter, ctx.storeA)
     live = await createShipment(owner, { storeId: ctx.storeA.id })
     cancelled = await createShipment(owner, {
       storeId: ctx.storeA.id,
       status: ShipmentStatus.CANCELLED
     })
     elsewhere = await createShipment(owner, { storeId: ctx.storeB.id })
+    const viewer = await actorWithPermissions(owner, app, {
+      prefix,
+      name: `viewer${randomUUID().slice(0, 6)}`,
+      organizationId: ctx.orgA.id,
+      storeId: ctx.storeA.id,
+      permissions: [Permissions.ORDERS_VIEW]
+    })
+    limited = api(app, viewer, ctx.storeA)
     await owner.order.update({
       where: { id: live.orderId },
       data: { carrierConnectionId: live.connectionId }
@@ -113,7 +131,9 @@ describe('Orders by carrier and guide', () => {
     const query = `guide=${OrderGuideFilters.WITH}&carrierConnectionId=${live.connectionId}`
     // Without the right to export, the filters change nothing: the same refusal as before
     expect((await agent.get(`${ApiRoutes.orders.export}?${query}`)).status).toBe(FORBIDDEN)
-    const response = await exporter.get(`${ApiRoutes.orders.export}?${query}`)
+    // The right to export is not the right to see the shipping data the filters read
+    expect((await exporter.get(`${ApiRoutes.orders.export}?${query}`)).status).toBe(FORBIDDEN)
+    const response = await shippingExporter.get(`${ApiRoutes.orders.export}?${query}`)
     expect(response.status).toBe(ACCEPTED)
     const row = await owner.export.findFirstOrThrow({
       where: { storeId: ctx.storeA.id },
@@ -124,6 +144,26 @@ describe('Orders by carrier and guide', () => {
       guide: OrderGuideFilters.WITH,
       carrierConnectionId: live.connectionId
     })
+  })
+
+  it('asks shipping:view for the carrier and guide filters, on the list and the export', async () => {
+    const guide = `guide=${OrderGuideFilters.WITH}`
+    const carrier = `carrierConnectionId=${live.connectionId}`
+    for (const query of [guide, carrier]) {
+      expect((await limited.get(`${ApiRoutes.orders.list}?${query}`)).status).toBe(FORBIDDEN)
+    }
+    expect((await limited.get(ApiRoutes.orders.list)).status).toBe(OK)
+  })
+
+  it('never finds an order of this store through a carrier connection of another', async () => {
+    // An order of store A that points at the connection of store B cannot exist (composite key): the filter finds nothing
+    const response = await agent.get(
+      `${ApiRoutes.orders.list}?carrierConnectionId=${elsewhere.connectionId}&guide=${OrderGuideFilters.WITH}`
+    )
+    expect(response.status).toBe(OK)
+    expect(idsOf(response.body)).toEqual([])
+    const without = await agent.get(`${ApiRoutes.orders.list}?guide=${OrderGuideFilters.WITH}`)
+    expect(idsOf(without.body)).not.toContain(elsewhere.orderId)
   })
 
   it('refuses a guide filter that is not ours', async () => {
@@ -153,6 +193,7 @@ describe('Orders by carrier and guide', () => {
       'orderIds=not-an-id',
       `orderIds=${tooMany}`,
       `orderIds=${live.orderId},${live.orderId}`,
+      `orderIds=${live.orderId},${live.orderId.toUpperCase()}`,
       `orderIds=${live.orderId}&orderId=${live.orderId}`
     ]) {
       const response = await agent.get(`${ApiRoutes.shipments.list}?${query}`)

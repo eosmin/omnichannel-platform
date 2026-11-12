@@ -16,7 +16,14 @@ export const shipmentIdSchema = uuidSchema
 // Ids that arrive as one comma-separated query value ('a,b,c'): the page of orders asks for the shipments of the rows it draws
 const idList = z
   .string()
-  .transform(text => text.split(',').filter(part => part !== ''))
+  // The longest honest list is a run of 36-character ids with commas: a longer text is refused before it is split
+  .max(BulkLabelLimits.MAX_ORDERS * 37)
+  .transform(text =>
+    text
+      .toLowerCase()
+      .split(',')
+      .filter(part => part !== '')
+  )
   .pipe(
     z
       .array(uuidSchema)
