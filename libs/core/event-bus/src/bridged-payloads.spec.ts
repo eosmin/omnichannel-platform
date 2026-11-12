@@ -174,6 +174,13 @@ describe('bridgedPayload', () => {
       packageCount: 3,
       reason: 'no_api'
     },
+    [Events.PICKUP_CUTOFF_APPROACHING]: {
+      storeId: randomUUID(),
+      connectionId: randomUUID(),
+      pickupDate: '2026-11-13',
+      waiting: 4,
+      minutesLeft: 30
+    },
     [Events.CARRIER_STATUS_UNMAPPED]: {
       storeId: randomUUID(),
       connectionId: randomUUID(),

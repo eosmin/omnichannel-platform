@@ -214,8 +214,8 @@ export const NotificationTypesWithoutEmitter: ReadonlySet<NotificationType> = ne
   // `inventory.low` has an emitter since Step 4.2 PR C, `transfer.dispatched` since Step 4.5 and `count.awaiting_apply` since
   // Step 4.6
   // `shipment.requires_review` and `shipment.failed_attempt` have an emitter since Step 4.8 PR C2b and `carrier.status_unmapped`
-  // since PR C2c, `bulk_labels.ready` since Step 4.10 PR D1, `shipment.cancel_failed` since Step 4.10 PR D2, `pickup.manual_required` since Step 4.11 and
-  // `return.awaiting_receipt` since Step 4.12 PR R1 and `remittance.overdue` since Step 4.13 PR B; the rest of
+  // since PR C2c, `bulk_labels.ready` since Step 4.10 PR D1, `shipment.cancel_failed` since Step 4.10 PR D2, `pickup.manual_required` and
+  // `pickup.cutoff_approaching` since Step 4.11, `return.awaiting_receipt` since Step 4.12 PR R1 and `remittance.overdue` since Step 4.13 PR B; the rest of
   // the shipping group does not yet
   ...NotificationGroupTypes[SHIPPING].filter(
     type =>
@@ -225,6 +225,7 @@ export const NotificationTypesWithoutEmitter: ReadonlySet<NotificationType> = ne
       type !== NotificationTypes.BULK_LABELS_READY &&
       type !== NotificationTypes.SHIPMENT_CANCEL_FAILED &&
       type !== NotificationTypes.PICKUP_MANUAL_REQUIRED &&
+      type !== NotificationTypes.PICKUP_CUTOFF_APPROACHING &&
       type !== NotificationTypes.RETURN_AWAITING_RECEIPT &&
       type !== NotificationTypes.REMITTANCE_OVERDUE
   ),

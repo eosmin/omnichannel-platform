@@ -140,6 +140,7 @@ describe('NotificationTypesWithoutEmitter', () => {
       NotificationTypes.SHIPMENT_CANCEL_FAILED,
       // Step 4.11: a pickup that a person has to arrange with the carrier
       NotificationTypes.PICKUP_MANUAL_REQUIRED,
+      NotificationTypes.PICKUP_CUTOFF_APPROACHING,
       // Raised since Step 4.12 PR R1 (a return on its way back)
       NotificationTypes.RETURN_AWAITING_RECEIPT,
       // Raised since Step 4.13 PR B (the daily check of the cash a carrier owes)

@@ -1,5 +1,11 @@
 import { ApiRoutes } from '@platform/core/api'
-import { OrderReturnCondition, OrderReturnStatus, OrderReturnType } from '@platform/core/domain'
+import {
+  OrderReturnCondition,
+  OrderReturnStatus,
+  OrderReturnType,
+  PaymentMethod,
+  ShippingPayer
+} from '@platform/core/domain'
 
 import { createApiClient } from './api-client'
 import { ApiError } from './api-error'
@@ -9,10 +15,12 @@ import {
   completeReturn,
   createReturn,
   fetchReturn,
+  fetchReturnSettings,
   fetchReturns,
   markReturnInTransit,
   receiveReturn,
-  rejectReturn
+  rejectReturn,
+  updateReturnSettings
 } from './returns-api'
 
 const json = (status: number, body: unknown): Response =>
@@ -130,5 +138,49 @@ describe('returns api', () => {
         lines: [{ orderItemId: 'i1', quantity: 9 }]
       })
     ).rejects.toBeInstanceOf(ApiError)
+  })
+})
+
+describe('approving an exchange', () => {
+  it('sends the replacement in the body, and nothing for a refund', async () => {
+    const { client, fetchImpl } = setup(json(200, view))
+    await approveReturn(client, 's1', 'r1', {
+      replacement: {
+        items: [{ productId: 'p1', quantity: 1 }],
+        shippingCents: 0,
+        paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
+        recipientPhones: ['71234567'],
+        scheduledDeliveryDate: null
+      }
+    })
+    await approveReturn(client, 's1', 'r1')
+
+    const bodies = fetchImpl.mock.calls.map(
+      ([, init]) => JSON.parse(init.body as string) as unknown
+    )
+    expect(bodies[0]).toMatchObject({ replacement: { items: [{ productId: 'p1', quantity: 1 }] } })
+    expect(bodies[1]).toEqual({})
+  })
+})
+
+describe('the returns settings', () => {
+  it('reads and changes who pays the return leg through its own route', async () => {
+    const { client, fetchImpl } = setup(json(200, { returnShippingPayer: 'recipient' }))
+    const read = await fetchReturnSettings(client, 's1')
+    const changed = await updateReturnSettings(client, 's1', {
+      returnShippingPayer: ShippingPayer.RECIPIENT
+    })
+
+    expect(read).toEqual({ returnShippingPayer: 'recipient' })
+    expect(changed).toEqual({ returnShippingPayer: 'recipient' })
+    expect(fetchImpl.mock.calls.map(([url, init]) => [String(url), init.method ?? 'GET'])).toEqual([
+      [`https://api.example.com/api/v1${ApiRoutes.settings.returns}`, 'GET'],
+      [`https://api.example.com/api/v1${ApiRoutes.settings.returns}`, 'PATCH']
+    ])
+  })
+
+  it('refuses an answer that names a payer that does not exist', async () => {
+    const { client } = setup(json(200, { returnShippingPayer: 'the-moon' }))
+    await expect(fetchReturnSettings(client, 's1')).rejects.toBeInstanceOf(Error)
   })
 })

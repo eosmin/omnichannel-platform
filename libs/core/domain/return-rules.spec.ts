@@ -1,10 +1,14 @@
 import { ErrorCodes } from './errors/error-codes'
 import {
+  applyExchangeCredit,
   canMoveReturn,
   checkReturnableOrder,
   checkReturnLines,
   coversEveryUnit,
   defaultRestockWarehouse,
+  EXCHANGE_CREDIT_REASON_PREFIX,
+  exchangeCreditCents,
+  exchangeCreditReason,
   hasReceivedUnits,
   holdsUnits,
   movementsOfReceipt,
@@ -187,5 +191,82 @@ describe('the machine and the refund', () => {
     // All of it already given back leaves none, and nothing given back leaves the whole total
     expect(refundRoom({ orderTotalCents: 5000, alreadyRefundedCents: 5000 })).toBe(0)
     expect(refundRoom({ orderTotalCents: 5000, alreadyRefundedCents: 0 })).toBe(5000)
+  })
+})
+
+describe('exchangeCreditCents', () => {
+  const order = { subtotalCents: 6000, discountCents: 0 }
+
+  it('is the price each unit was sold at times the units that come back', () => {
+    expect(
+      exchangeCreditCents(
+        [
+          { unitPriceCents: 1500, quantity: 2 },
+          { unitPriceCents: 999, quantity: 1 }
+        ],
+        order
+      )
+    ).toBe(3999)
+    expect(exchangeCreditCents([], order)).toBe(0)
+  })
+
+  it('takes the share of the discount of the order that the returned units carried', () => {
+    // 100.00 of products with a 30.00 discount: the customer paid 70.00, and one unit of 40.00 is worth 28.00
+    expect(
+      exchangeCreditCents([{ unitPriceCents: 4000, quantity: 1 }], {
+        subtotalCents: 10000,
+        discountCents: 3000
+      })
+    ).toBe(2800)
+  })
+
+  it('rounds down, never gives more than was paid, and has nothing for an order with no products', () => {
+    expect(
+      exchangeCreditCents([{ unitPriceCents: 333, quantity: 1 }], {
+        subtotalCents: 1000,
+        discountCents: 1
+      })
+    ).toBe(332)
+    expect(
+      exchangeCreditCents([{ unitPriceCents: 1000, quantity: 1 }], {
+        subtotalCents: 1000,
+        discountCents: 1000
+      })
+    ).toBe(0)
+    expect(
+      exchangeCreditCents([{ unitPriceCents: 1000, quantity: 1 }], {
+        subtotalCents: 0,
+        discountCents: 0
+      })
+    ).toBe(0)
+  })
+})
+
+describe('applyExchangeCredit', () => {
+  it('leaves the price difference to pay when the replacement costs more than what came back', () => {
+    expect(applyExchangeCredit({ subtotalCents: 5000, creditCents: 3000 })).toEqual({
+      discountCents: 3000,
+      excessCents: 0
+    })
+  })
+
+  it('takes the whole credit and nothing left over when the values are equal', () => {
+    expect(applyExchangeCredit({ subtotalCents: 3000, creditCents: 3000 })).toEqual({
+      discountCents: 3000,
+      excessCents: 0
+    })
+  })
+
+  it('never takes more than the replacement is worth and keeps the rest as the refund of the owner', () => {
+    expect(applyExchangeCredit({ subtotalCents: 2000, creditCents: 3000 })).toEqual({
+      discountCents: 2000,
+      excessCents: 1000
+    })
+  })
+})
+
+describe('exchangeCreditReason', () => {
+  it('names the return that made the credit', () => {
+    expect(exchangeCreditReason('r-1')).toBe(`${EXCHANGE_CREDIT_REASON_PREFIX}r-1`)
   })
 })

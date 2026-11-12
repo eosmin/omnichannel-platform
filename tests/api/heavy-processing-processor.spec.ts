@@ -17,6 +17,7 @@ describe('HeavyProcessingProcessor', () => {
   const runBulk = jest.fn().mockResolvedValue(undefined)
   const runVoid = jest.fn().mockResolvedValue('cancelled')
   const runPickup = jest.fn().mockResolvedValue(undefined)
+  const evaluatePickups = jest.fn().mockResolvedValue(null)
   const support = {
     run: (_queue: string, current: ProcessorJob, work: (job: ProcessorJob) => Promise<void>) =>
       work(current)
@@ -31,7 +32,8 @@ describe('HeavyProcessingProcessor', () => {
     { reprocess } as never, // the replay of carrier events: what it is handed is what is tested
     { run: runBulk } as never, // the bulk labels: what it is handed is what is tested
     { run: runVoid } as never, // the void of a guide: what it is handed is what is tested
-    { run: runPickup } as never // the pickup sync: what it is handed is what is tested
+    { run: runPickup } as never, // the pickup sync: what it is handed is what is tested
+    { run: evaluatePickups } as never // the pickup evaluation: what it is handed is what is tested
   )
 
   const base = {
@@ -61,6 +63,7 @@ describe('HeavyProcessingProcessor', () => {
     runBulk.mockClear()
     runVoid.mockClear()
     runPickup.mockClear()
+    evaluatePickups.mockClear()
   })
 
   it('hands the inbound media job to the fetcher with the id the widget chose for the file', async () => {
@@ -352,6 +355,31 @@ describe('HeavyProcessingProcessor', () => {
     ])('refuses for good a job with %s, and asks nothing', async (_name, data) => {
       await expect(pickupJob(data)).rejects.toBeInstanceOf(UnrecoverableError)
       expect(runPickup).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('the evaluation of the pickups', () => {
+    const evaluateJob = (data: unknown): Promise<void> =>
+      processor.process({
+        name: JobNames.EVALUATE_PICKUPS,
+        data: JSON.parse(JSON.stringify(data)) as unknown,
+        attemptsMade: 0,
+        opts: { attempts: 1 }
+      } as unknown as ProcessorJob)
+
+    it('hands the minute to the evaluator and keeps nothing else the job carries', async () => {
+      await evaluateJob({ minute: 29_000_000, extra: 'dropped' })
+
+      expect(evaluatePickups).toHaveBeenCalledWith({ minute: 29_000_000 })
+    })
+
+    it.each([
+      ['no minute', {}],
+      ['a minute that is not a number', { minute: 'now' }],
+      ['a minute that is not whole', { minute: 1.5 }]
+    ])('refuses for good a job with %s, and evaluates nothing', async (_name, data) => {
+      await expect(evaluateJob(data)).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(evaluatePickups).not.toHaveBeenCalled()
     })
   })
 })

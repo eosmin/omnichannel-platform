@@ -207,6 +207,13 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     packageCount: z.number().int().min(0),
     reason: z.enum(PickupManualReasons)
   }),
+  [Events.PICKUP_CUTOFF_APPROACHING]: z.object({
+    storeId: id,
+    connectionId: id,
+    pickupDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    waiting: z.number().int().min(0),
+    minutesLeft: z.number().int().min(0)
+  }),
   [Events.MESSAGE_NOTE_ADDED]: z.object({
     storeId: id,
     conversationId: id,

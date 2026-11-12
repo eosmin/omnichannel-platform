@@ -235,6 +235,8 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'settings.preferences': { step: '3.6' },
   // The switches of Settings → Inventory (negative stock, split fulfillment, default threshold) are drawn by PR D of Step 4.2
   'settings.inventory': { step: '4.2' },
+  // Settings → Returns: who pays the return leg by default (Step 4.14 draws the returns screens)
+  'settings.returns': { step: '4.14' },
   'settings.members': { step: '3.6' },
   'settings.memberById': { step: '3.6' },
   'settings.memberSuspend': { step: '3.6' },

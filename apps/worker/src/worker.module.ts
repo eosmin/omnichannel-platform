@@ -48,6 +48,7 @@ import { InventoryReconcileScheduler } from './schedulers/inventory-reconcile.sc
 import { LeaderLockService } from './schedulers/leader-lock.service'
 import { OrphanMediaScheduler } from './schedulers/orphan-media.scheduler'
 import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.scheduler'
+import { PickupEvaluateScheduler } from './schedulers/pickup-evaluate.scheduler'
 import { RemittanceCheckScheduler } from './schedulers/remittance-check.scheduler'
 import { ShipmentPollScheduler } from './schedulers/shipment-poll.scheduler'
 import { SnoozeWakeScheduler } from './schedulers/snooze-wake.scheduler'
@@ -113,6 +114,7 @@ import { ShippingWorkerModule } from './shipping/shipping.module'
     InventoryReconcileScheduler,
     ShipmentPollScheduler,
     RemittanceCheckScheduler,
+    PickupEvaluateScheduler,
     BulkLabelsScheduler
   ]
 })

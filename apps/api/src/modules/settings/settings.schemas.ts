@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import {
   ProductLimits,
+  ShippingPayer,
   SettingsLimits,
   singleLineText,
   SNIPPET_SHORTCUT_PATTERN,
@@ -126,3 +127,13 @@ export const updateInventorySettingsSchema = z
   .refine(changesSomething, nothingToChange)
 
 export type UpdateInventorySettingsBody = z.infer<typeof updateInventorySettingsSchema>
+
+// Settings → Returns (TDD_17 §4.11, §4.14): who pays the return leg and the replacement shipping when a return does not say.
+// Each key is optional and keeps its value when it is left out.
+export const updateReturnSettingsSchema = z
+  .strictObject({
+    returnShippingPayer: z.enum(ShippingPayer).optional()
+  })
+  .refine(changesSomething, nothingToChange)
+
+export type UpdateReturnSettingsBody = z.infer<typeof updateReturnSettingsSchema>

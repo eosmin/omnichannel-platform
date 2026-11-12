@@ -196,3 +196,35 @@ export function refundRoom(input: {
 }): number {
   return Math.max(0, input.orderTotalCents - input.alreadyRefundedCents)
 }
+
+// ---------------------------------------------------------------- exchange credit (TDD_17 §4.11)
+
+// What the returned units are worth to the customer: the price each unit was sold at times the units that come back, less the
+// share of the discount of the order that those units carried (the order-level discount is spread over its products by value, rounded
+// down so the credit never passes what was paid). An order with no products has no credit.
+export function exchangeCreditCents(
+  lines: readonly { unitPriceCents: number; quantity: number }[],
+  order: { subtotalCents: number; discountCents: number }
+): number {
+  const gross = lines.reduce((sum, line) => sum + line.unitPriceCents * line.quantity, 0)
+  if (order.subtotalCents <= 0) return 0
+  const paid = Math.max(0, order.subtotalCents - order.discountCents)
+  return Math.floor((gross * paid) / order.subtotalCents)
+}
+
+// The credit goes against the products of the replacement and never against its shipping fee (an order's discount cannot pass its
+// subtotal), so the total is the price difference: `max(0, replacement value - credit)` plus the fee. What the credit has left over
+// is what the owner settles with the customer by hand (a refund).
+export function applyExchangeCredit(input: { subtotalCents: number; creditCents: number }): {
+  discountCents: number
+  excessCents: number
+} {
+  const discountCents = Math.min(input.subtotalCents, input.creditCents)
+  return { discountCents, excessCents: input.creditCents - discountCents }
+}
+
+// The reason the replacement order keeps for its credit: it names the return that made it, so it is told apart from a discount an
+// agent typed (which has a limit and an approval)
+export const EXCHANGE_CREDIT_REASON_PREFIX = 'exchange_credit:'
+export const exchangeCreditReason = (returnId: string): string =>
+  `${EXCHANGE_CREDIT_REASON_PREFIX}${returnId}`
