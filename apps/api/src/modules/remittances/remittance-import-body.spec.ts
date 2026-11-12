@@ -43,6 +43,15 @@ describe('readImportBody', () => {
     expect(body.text).toBe('a,b')
   })
 
+  it('stops waiting when the client drops the connection before the end', async () => {
+    const stream = new Readable({ read: () => undefined })
+    const dropped = Object.assign(stream, { headers: {} })
+    const reading = readImportBody(dropped, 1024)
+    stream.push(Buffer.from('Guia,Mo'))
+    stream.destroy()
+    await expect(reading).rejects.toMatchObject({ code: ErrorCodes.REMITTANCE_IMPORT_INVALID })
+  })
+
   it('reads an empty body as empty text', async () => {
     expect((await readImportBody(request([]), 10)).text).toBe('')
   })

@@ -43,7 +43,7 @@ interface DraftBody {
   reference: string | null
   receivedOn: string | null
   importProfileId: string | null
-  hasSourceFile: boolean
+  sourceMediaId: string | null
   totals: { expectedCents: number; reportedCents: number; feeCents: number }
   lines: { guideNumber: string; outcome: RemittanceLineOutcome; row?: number }[]
 }
@@ -292,7 +292,7 @@ describe('Importing the settlement file of a carrier (TDD_17 §4.15, Step 4.13 P
         reference: 'LIQ-77',
         receivedOn: '2026-11-12',
         importProfileId: id,
-        hasSourceFile: true
+        sourceMediaId: expect.any(String) as string
       })
       expect(draft.lines.map(line => [line.guideNumber, line.outcome])).toEqual([
         ['IMP-MATCH', RemittanceLineOutcome.MATCHED],

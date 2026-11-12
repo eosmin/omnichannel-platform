@@ -227,6 +227,55 @@ describe('parseRemittanceFile', () => {
     expect(result.lines.map(line => line.guideNumber)).toEqual(['AB 1 2', 'Caf\u00E9'])
   })
 
+  it('refuses a header that two columns share instead of reading from the first', () => {
+    const result = parseRemittanceFile('Guia,Monto,monto\nG-1,5,6\n', profile())
+    expect(result.errors).toEqual([
+      { row: 1, field: 'amount', code: RemittanceImportErrors.COLUMN_AMBIGUOUS, value: 'Monto' }
+    ])
+    expect(result.lines).toEqual([])
+  })
+
+  it('judges the mapping at the header line even when blank lines come first, and a position past the header is not a column', () => {
+    const result = parseRemittanceFile(
+      '\n\nGuia,Monto\nG-1,5\n',
+      profile({ columns: { guideNumber: 'Guia', amount: 'Monto', fee: 'Comision' } })
+    )
+    expect(result.errors).toEqual([
+      { row: 3, field: 'fee', code: RemittanceImportErrors.COLUMN_NOT_FOUND, value: 'Comision' }
+    ])
+    const byPosition = parseRemittanceFile(
+      'Guia,Monto\nG-1,5,9\n',
+      profile({ columns: { guideNumber: 0, amount: 1, fee: 2 } })
+    )
+    expect(byPosition.errors[0]).toMatchObject({
+      row: 1,
+      field: 'fee',
+      code: RemittanceImportErrors.COLUMN_NOT_FOUND
+    })
+  })
+
+  it('refuses a shifted row in a file with no header, by the width of its first row', () => {
+    const result = parseRemittanceFile(
+      'G1,Perez,10.00\nG2,Juan,Perez,20.00\n',
+      profile({
+        hasHeader: false,
+        columns: { guideNumber: 0, amount: 2 }
+      })
+    )
+    expect(result.lines).toEqual([{ guideNumber: 'G1', reportedCents: 1000, row: 1 }])
+    expect(result.errors).toEqual([
+      { row: 2, field: null, code: RemittanceImportErrors.ROW_TOO_WIDE, value: '4' }
+    ])
+  })
+
+  it('refuses a guide with a pile of combining marks, as a typed one is', () => {
+    const result = parseRemittanceFile(`Guia,Monto\nA${'\u0301'.repeat(30)},5\n`, profile())
+    expect(result.errors[0]).toMatchObject({
+      field: 'guideNumber',
+      code: RemittanceImportErrors.INVALID_TEXT
+    })
+  })
+
   it('tolerates empty cells past the header (a trailing delimiter) and refuses a filled one', () => {
     const ok = parseRemittanceFile('Guia,Monto\nG-1,5,\nG-2,6,,\n', profile())
     expect(ok.errorCount).toBe(0)

@@ -79,6 +79,18 @@ export async function readImportBody(
     request.on('data', onData)
     request.once('end', resolve)
     request.once('error', reject)
+    // A client that drops the connection mid-upload closes the request without an end: the read must not wait for ever
+    request.once('close', () => {
+      if (!request.readableEnded) {
+        reject(
+          refusal(
+            ErrorCodes.REMITTANCE_IMPORT_INVALID,
+            'the upload was interrupted',
+            HttpStatusCodes.BAD_REQUEST
+          )
+        )
+      }
+    })
   })
   const bytes = Buffer.concat(chunks)
   try {

@@ -1,5 +1,5 @@
 import { RemittanceLimits } from './remittance-rules'
-import { plainName } from './text'
+import { hasMisleadingCharacters, plainName } from './text'
 
 // The deterministic reading of a carrier's settlement file (TDD_17 §4.15): a CSV or TSV file or a table pasted as text, read with
 // the saved mapping of the carrier. No AI, no guessing of a locale, no formula evaluated: a cell is text, and a cell that is not
@@ -57,6 +57,8 @@ export type RemittanceImportField =
 export const RemittanceImportErrors = {
   // The mapping names a header the file does not have, or a position past the end of a row
   COLUMN_NOT_FOUND: 'column_not_found',
+  // Two columns of the header have the text the mapping names
+  COLUMN_AMBIGUOUS: 'column_ambiguous',
   // The row has fewer cells than the column asks for
   MISSING_CELL: 'missing_cell',
   EMPTY_VALUE: 'empty_value',
@@ -66,7 +68,7 @@ export const RemittanceImportErrors = {
   TOO_MANY_ROWS: 'too_many_rows',
   EMPTY_FILE: 'empty_file',
   UNCLOSED_QUOTE: 'unclosed_quote',
-  // A row has more cells than the header: an unquoted delimiter inside a cell moved the columns
+  // A row has more cells than the header (or than the first row of a file with none): an unquoted delimiter inside a cell moved the columns
   ROW_TOO_WIDE: 'row_too_wide'
 } as const
 export type RemittanceImportError =
@@ -244,7 +246,14 @@ const CONTROL_OR_INVISIBLE = /[\p{Cc}\p{Cf}\u2028\u2029]/u
 function cleanText(cell: string, maxLength: number): string | null {
   // As a guide typed by hand is kept (NFC, one space between words), so that the same guide is one string whichever way it came
   const text = plainName(cell)
-  if (text === '' || text.length > maxLength || CONTROL_OR_INVISIBLE.test(text)) return null
+  if (
+    text === '' ||
+    text.length > maxLength ||
+    CONTROL_OR_INVISIBLE.test(text) ||
+    hasMisleadingCharacters(text)
+  ) {
+    return null
+  }
   return text
 }
 
@@ -262,18 +271,21 @@ export function headerKey(header: string): string {
   return plainName(header).toLowerCase()
 }
 
+// Where a column is: its position, or the one header that has its text. A header that two columns share is not a place to read from
+// ('ambiguous'), because the first of them would be taken and every row would be read from a column nobody chose.
 function resolveColumn(
   ref: RemittanceColumnRef | undefined,
   headers: readonly string[],
   hasHeader: boolean,
   width: number
-): number | null | undefined {
+): number | null | 'ambiguous' | undefined {
   if (ref === undefined) return undefined
   if (typeof ref === 'number') return ref < width ? ref : null
   if (!hasHeader) return null
   const wanted = headerKey(ref)
-  const found = headers.findIndex(header => headerKey(header) === wanted)
-  return found === -1 ? null : found
+  const found = headers.flatMap((header, index) => (headerKey(header) === wanted ? [index] : []))
+  if (found.length > 1) return 'ambiguous'
+  return found[0] ?? null
 }
 
 // Reads the whole text with the profile. Every problem is returned, none is thrown: the file is accepted only when `errorCount`
@@ -324,10 +336,11 @@ export function parseRemittanceFile(
     return { ...empty, errorCount }
   }
   const headerRow = profile.hasHeader ? (body[0]?.cells ?? []) : []
+  // The line of the file where the mapping is judged: the header, which may follow blank lines, or the first row of a file with none
+  const headerLine = body[0]?.line ?? 1
   const data = profile.hasHeader ? body.slice(1) : body
-  if (profile.hasHeader && body.length > 0 && data.length === 0) {
-    fail(1, null, RemittanceImportErrors.EMPTY_FILE, null)
-  }
+  if (profile.hasHeader && data.length === 0)
+    fail(headerLine, null, RemittanceImportErrors.EMPTY_FILE, null)
   if (data.length > RemittanceImportLimits.MAX_ROWS) {
     // Said at once: a file of millions of rows is not read any further
     fail(
@@ -338,28 +351,29 @@ export function parseRemittanceFile(
     )
     return { ...empty, headers: headerRow, errorCount }
   }
-  // Where each value is. A row of the file is as wide as the widest one for the positions
-  let width = headerRow.length
-  for (const entry of data) if (entry.cells.length > width) width = entry.cells.length
+  // How wide a row is: as the header says, or as the first row says when there is none. A position past it is a column that is not
+  // there, and a filled cell past it is a column that moved.
+  const width = profile.hasHeader ? headerRow.length : (data[0]?.cells.length ?? 0)
   const columns: Partial<Record<RemittanceImportField, number>> = {}
-  const mapping: [RemittanceImportField, RemittanceColumnRef | undefined, boolean][] = [
-    [RemittanceImportFields.GUIDE_NUMBER, profile.columns.guideNumber, true],
-    [RemittanceImportFields.AMOUNT, profile.columns.amount, true],
-    [RemittanceImportFields.FEE, profile.columns.fee, false],
-    [RemittanceImportFields.DATE, profile.columns.date, false],
-    [RemittanceImportFields.REFERENCE, profile.columns.reference, false]
+  const mapping: [RemittanceImportField, RemittanceColumnRef | undefined][] = [
+    [RemittanceImportFields.GUIDE_NUMBER, profile.columns.guideNumber],
+    [RemittanceImportFields.AMOUNT, profile.columns.amount],
+    [RemittanceImportFields.FEE, profile.columns.fee],
+    [RemittanceImportFields.DATE, profile.columns.date],
+    [RemittanceImportFields.REFERENCE, profile.columns.reference]
   ]
-  for (const [field, ref, required] of mapping) {
+  for (const [field, ref] of mapping) {
     const index = resolveColumn(ref, headerRow, profile.hasHeader, width)
-    if (index === null) {
+    if (index === null || index === 'ambiguous') {
       fail(
-        profile.hasHeader ? 1 : 0,
+        headerLine,
         field,
-        RemittanceImportErrors.COLUMN_NOT_FOUND,
+        index === null
+          ? RemittanceImportErrors.COLUMN_NOT_FOUND
+          : RemittanceImportErrors.COLUMN_AMBIGUOUS,
         ref === undefined ? null : shown(String(ref))
       )
     } else if (index !== undefined) columns[field] = index
-    else if (required) fail(0, field, RemittanceImportErrors.COLUMN_NOT_FOUND, null)
   }
   const lines: ImportedLine[] = []
   const references = new Set<string>()
@@ -382,7 +396,7 @@ export function parseRemittanceFile(
     // A row with more cells than the header has is a cell with an unquoted delimiter in it: the columns after it moved, so no
     // amount of this row can be trusted
     // (cells that are empty past the header, a trailing delimiter, move nothing)
-    if (profile.hasHeader && cells.slice(headerRow.length).some(extra => extra.trim() !== '')) {
+    if (cells.slice(width).some(extra => extra.trim() !== '')) {
       fail(row, null, RemittanceImportErrors.ROW_TOO_WIDE, String(cells.length))
       continue
     }
