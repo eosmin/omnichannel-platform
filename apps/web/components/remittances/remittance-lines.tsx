@@ -236,10 +236,11 @@ export function RemittanceLines({
                   </td>
                 ) : null}
               </tr>
-              {editing === line.id ? (
+              {canEdit && editing === line.id ? (
                 <tr>
                   <td colSpan={8} className="pb-3">
                     <LineEditor
+                      key={`${line.id}:${line.reportedCents}:${line.reportedFeeCents}:${line.note}:${line.excluded}`}
                       line={line}
                       remittanceId={remittanceId}
                       onDone={() => setEditing(null)}

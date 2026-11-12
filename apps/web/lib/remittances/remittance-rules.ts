@@ -5,6 +5,7 @@ import type {
 } from '@platform/api-client'
 import {
   RemittanceLimits,
+  SettlingOutcomes,
   RemittanceLineOutcome,
   RemittanceStatus,
   type UpdateRemittanceLineBody
@@ -13,13 +14,6 @@ import {
 import { parseCents } from '../products/money'
 
 // The rules the remittance screens apply, as pure functions. Every amount is whole cents: nothing here goes through a float.
-
-// The outcomes that settle a line when the remittance is confirmed (matched, or matched with a different amount). The same
-// two the api counts (`SettlingOutcomes` of the domain, which the browser does not import: it is a shipping rule)
-const SETTLING: readonly RemittanceLineOutcome[] = [
-  RemittanceLineOutcome.MATCHED,
-  RemittanceLineOutcome.AMOUNT_DIFFERS
-]
 
 export type OutcomeTone = 'ok' | 'warning' | 'problem'
 
@@ -38,7 +32,7 @@ export function outcomeTone(outcome: RemittanceLineOutcome): OutcomeTone {
 }
 
 export function isSettling(line: Pick<RemittanceLineView, 'outcome' | 'excluded'>): boolean {
-  return !line.excluded && SETTLING.includes(line.outcome)
+  return !line.excluded && SettlingOutcomes.includes(line.outcome)
 }
 
 export function outcomeCounts(
@@ -65,7 +59,8 @@ export function mayConfirm(remittance: RemittanceDetailView): boolean {
 
 // The lines that are not left out and that settle nothing: shown as a count before the confirmation, so a person reads them
 export function unsettledCount(remittance: RemittanceDetailView): number {
-  return remittance.lines.filter(line => !line.excluded && !SETTLING.includes(line.outcome)).length
+  return remittance.lines.filter(line => !line.excluded && !SettlingOutcomes.includes(line.outcome))
+    .length
 }
 
 // What a person typed for an amount, as cents: "15", "15.50", "15,5". Null for anything else, and for more than a line takes

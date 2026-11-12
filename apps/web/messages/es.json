@@ -4441,7 +4441,7 @@
       "reference": "Número de liquidación",
       "receivedOn": "Día en que llegó",
       "note": "Nota",
-      "unsettled": "{count, plural, one {# línea no liquidará} other {# líneas no liquidarán}} nada: ningún envío coincide. Léelas arriba antes de confirmar.",
+      "unsettled": "{count, plural, one {# línea no liquidará} other {# líneas no liquidarán}} nada: la guía no coincide, el envío no está entregado, ya fue remesado o está repetido. Léelas arriba antes de confirmar.",
       "nothingToSettle": "Nada de este borrador liquidaría un envío.",
       "action": "Confirmar remesa",
       "done": "Remesa confirmada",
@@ -4487,7 +4487,8 @@
         "fee": "Comisiones",
         "difference": "Diferencia"
       },
-      "draftNote": "Este borrador no liquida nada hasta que se confirma. El resultado de cada línea se calcula de nuevo tras cada cambio."
+      "draftNote": "Este borrador no liquida nada hasta que se confirma. El resultado de cada línea se calcula de nuevo tras cada cambio.",
+      "downloadFile": "Descargar el archivo"
     }
   }
 }

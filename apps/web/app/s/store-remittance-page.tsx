@@ -6,9 +6,10 @@ import { useParams } from 'next/navigation'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 
-import { AppPaths, fetchMediaUrls, type RemittanceDetailView } from '@platform/api-client'
+import { ApiError, AppPaths, fetchMediaUrls, type RemittanceDetailView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
 import { RemittanceStatus } from '@platform/core/domain'
+import { HttpStatusCodes } from '@platform/core/errors'
 
 import { useStore } from '../../components/providers/store-context'
 import {
@@ -24,6 +25,7 @@ import { apiClient } from '../../lib/api'
 import { formatCents } from '../../lib/products/money'
 import { isDraft } from '../../lib/remittances/remittance-rules'
 import { useRemittance } from '../../lib/remittances/use-remittances'
+import { useErrorText } from '../../lib/use-error-text'
 
 function Figure({ label, value }: { label: string; value: string }): ReactElement {
   return (
@@ -34,36 +36,63 @@ function Figure({ label, value }: { label: string; value: string }): ReactElemen
   )
 }
 
-// The file the draft was imported from, as a signed link asked for when the person presses. A file that the scan refused is gone
-// from the bucket: the api says so, and the page says it too instead of offering a link that does nothing.
+// The file the draft was imported from, as a signed link asked for when the person presses and then offered as a plain link
+// (a window opened after the wait is dropped by the popup blockers of Safari). A file that the scan refused is gone from the
+// bucket: the api answers not found and the page says so; any other failure says what it was.
 function SourceFile({ mediaId }: { mediaId: string }): ReactElement {
   const t = useTranslations('remittances.detail')
+  const errorText = useErrorText()
   const { storeId } = useStore()
-  const [state, setState] = useState<'idle' | 'busy' | 'gone'>('idle')
-  const open = async (): Promise<void> => {
-    setState('busy')
+  const [state, setState] = useState<
+    | { kind: 'idle' }
+    | { kind: 'busy' }
+    | { kind: 'gone' }
+    | { kind: 'failed'; error: unknown }
+    | { kind: 'ready'; url: string }
+  >({ kind: 'idle' })
+  const ask = async (): Promise<void> => {
+    setState({ kind: 'busy' })
     try {
       const urls = await fetchMediaUrls(apiClient, storeId, mediaId)
-      window.open(urls.url, '_blank', 'noopener,noreferrer')
-      setState('idle')
-    } catch {
-      setState('gone')
+      setState({ kind: 'ready', url: urls.url })
+    } catch (error) {
+      setState(
+        error instanceof ApiError && error.status === HttpStatusCodes.NOT_FOUND
+          ? { kind: 'gone' }
+          : { kind: 'failed', error }
+      )
     }
   }
   return (
     <div className="flex flex-col gap-1">
-      <Button
-        variant="outline"
-        size="sm"
-        className="self-start"
-        disabled={state === 'busy'}
-        onClick={() => void open()}
-      >
-        {t('openFile')}
-      </Button>
-      {state === 'gone' ? (
+      {state.kind === 'ready' ? (
+        <a
+          href={state.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sm underline underline-offset-2"
+        >
+          {t('downloadFile')}
+        </a>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          className="self-start"
+          disabled={state.kind === 'busy'}
+          onClick={() => void ask()}
+        >
+          {t('openFile')}
+        </Button>
+      )}
+      {state.kind === 'gone' ? (
         <p role="alert" className="text-destructive text-sm">
           {t('fileGone')}
+        </p>
+      ) : null}
+      {state.kind === 'failed' ? (
+        <p role="alert" className="text-destructive text-sm">
+          {errorText(state.error)}
         </p>
       ) : null}
     </div>
@@ -81,7 +110,15 @@ function Detail({ remittance }: { remittance: RemittanceDetailView }): ReactElem
     const date = new Date(value)
     return Number.isNaN(date.getTime()) ? null : format.dateTime(date, { dateStyle: 'medium' })
   }
-  const received = day(remittance.receivedOn)
+  // The day the money arrived is a calendar day, not an instant: read in the zone of the viewer it would move a day back
+  const dayOf = (value: string | null): string | null => {
+    if (value === null) return null
+    const date = new Date(`${value}T00:00:00Z`)
+    return Number.isNaN(date.getTime())
+      ? null
+      : format.dateTime(date, { dateStyle: 'medium', timeZone: 'UTC' })
+  }
+  const received = dayOf(remittance.receivedOn)
   const confirmed = day(remittance.confirmedAt)
   const voided = day(remittance.voidedAt)
   return (
@@ -151,7 +188,7 @@ export function StoreRemittancePage(): ReactElement {
   const { storeId, can } = useStore()
   const { remittanceId = '' } = useParams<{ remittanceId?: string }>()
   const canView = can(ClientPermissions.REMITTANCES_VIEW)
-  const query = useRemittance(storeId, remittanceId, canView)
+  const query = useRemittance(storeId, remittanceId, canView && remittanceId !== '')
   if (!canView) return <PermissionDenied permission={ClientPermissions.REMITTANCES_VIEW} />
   if (query.isError) return <LoadFailed error={query.error} onRetry={() => void query.refetch()} />
   if (query.data === undefined) return <PageLoading />

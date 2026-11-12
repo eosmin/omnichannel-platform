@@ -1,5 +1,10 @@
 import type { RemittanceDetailView, RemittanceLineView } from '@platform/api-client'
-import { RemittanceLineOutcome, RemittanceStatus } from '@platform/core/domain'
+import {
+  ProductLimits,
+  RemittanceLimits,
+  RemittanceLineOutcome,
+  RemittanceStatus
+} from '@platform/core/domain'
 
 import {
   isOverdue,
@@ -107,8 +112,14 @@ describe('parseAmountInput', () => {
   })
 
   it('refuses more than a line takes', () => {
-    expect(parseAmountInput('1000000')).toBe(100_000_000)
-    expect(parseAmountInput('1000000.01')).toBeNull()
+    const limit = RemittanceLimits.MAX_AMOUNT_CENTS
+    expect(parseAmountInput(String(limit / 100))).toBe(limit)
+    expect(parseAmountInput(`${limit / 100}.01`)).toBeNull()
+  })
+
+  it('is never stricter than the catalog parser it reads with', () => {
+    // parseAmountInput reads through the catalog's parser: its own limit must not cut a remittance amount the api takes
+    expect(ProductLimits.MAX_AMOUNT_CENTS).toBeGreaterThanOrEqual(RemittanceLimits.MAX_AMOUNT_CENTS)
   })
 })
 
@@ -142,6 +153,13 @@ describe('lineEditBody', () => {
     expect(lineEditBody(line(), { ...same, fee: '1.5' })).toEqual({
       ok: true,
       body: { reportedFeeCents: 150 }
+    })
+  })
+
+  it('refuses a bad amount even when the line is being left out', () => {
+    expect(lineEditBody(line(), { ...same, reported: 'x', excluded: true })).toEqual({
+      ok: false,
+      field: 'reported'
     })
   })
 

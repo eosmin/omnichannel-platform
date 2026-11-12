@@ -4441,7 +4441,7 @@
       "reference": "Settlement number",
       "receivedOn": "Day it arrived",
       "note": "Note",
-      "unsettled": "{count, plural, one {# line} other {# lines}} will settle nothing: no shipment matches. Read them above before confirming.",
+      "unsettled": "{count, plural, one {# line} other {# lines}} will settle nothing: no guide matches, or the shipment is not delivered, was already remitted or is repeated. Read them above before confirming.",
       "nothingToSettle": "Nothing in this draft would settle a shipment.",
       "action": "Confirm remittance",
       "done": "Remittance confirmed",
@@ -4487,7 +4487,8 @@
         "fee": "Fees",
         "difference": "Difference"
       },
-      "draftNote": "This draft settles nothing until it is confirmed. The result of each line is worked out again after every change."
+      "draftNote": "This draft settles nothing until it is confirmed. The result of each line is worked out again after every change.",
+      "downloadFile": "Download the file"
     }
   }
 }

@@ -107,7 +107,9 @@ export function useRemittanceConnections(
   return useQuery({
     queryKey: QueryKeys.carriers.list(storeId),
     queryFn: ({ signal }) => fetchAllCarrierConnections(apiClient, storeId, signal),
-    enabled
+    enabled,
+    // The list is read with the permission of shipping: a person without it gets no carrier filter, not a retry
+    retry: false
   })
 }
 
@@ -125,18 +127,27 @@ export function useOverdueThreshold(storeId: string, enabled: boolean): number |
 
 // The answer of a change is the remittance as it is now: it replaces the cached one, and everything that listed remittances,
 // or what is still owed, is read again (a confirmation or a void moves shipments in and out of the pending list)
-function useSettle(storeId: string): (remittance: RemittanceDetailView) => void {
+// A correction of a line moves no shipment, so it reads only the lists again (a draft's totals are in them); creating, confirming
+// or voiding moves shipments in and out of the pending list too. The detail is never read again: the answer is it.
+function useSettle(
+  storeId: string,
+  movesShipments: boolean
+): (remittance: RemittanceDetailView) => void {
   const queryClient = useQueryClient()
   return remittance => {
     queryClient.setQueryData(QueryKeys.remittances.detail(storeId, remittance.id), remittance)
-    void queryClient.invalidateQueries({ queryKey: QueryKeys.remittances.all(storeId) })
+    void queryClient.invalidateQueries({
+      queryKey: QueryKeys.remittances.all(storeId),
+      predicate: query =>
+        query.queryKey[2] !== 'detail' && (movesShipments || query.queryKey[2] !== 'pending')
+    })
   }
 }
 
 export function useCreateRemittance(
   storeId: string
 ): UseMutationResult<RemittanceDetailView, Error, CreateRemittanceInput> {
-  const settle = useSettle(storeId)
+  const settle = useSettle(storeId, true)
   return useMutation({
     mutationFn: input => createRemittance(apiClient, storeId, input),
     onSuccess: settle
@@ -148,8 +159,16 @@ export function useDiscardRemittance(storeId: string): UseMutationResult<void, E
   return useMutation({
     mutationFn: id => discardRemittance(apiClient, storeId, id),
     onSuccess: (_result, id) => {
-      queryClient.removeQueries({ queryKey: QueryKeys.remittances.detail(storeId, id) })
-      void queryClient.invalidateQueries({ queryKey: QueryKeys.remittances.all(storeId) })
+      // The page of the discarded draft is still mounted until the router leaves it: its entry is not read again (a 404 would
+      // flash), only the lists and the pending totals are
+      void queryClient.invalidateQueries({
+        queryKey: QueryKeys.remittances.all(storeId),
+        predicate: query => query.queryKey[2] !== 'detail'
+      })
+      queryClient.removeQueries({
+        queryKey: QueryKeys.remittances.detail(storeId, id),
+        type: 'inactive'
+      })
     }
   })
 }
@@ -162,7 +181,7 @@ export function useUpdateRemittanceLine(
   Error,
   { lineId: string; body: UpdateRemittanceLineBody }
 > {
-  const settle = useSettle(storeId)
+  const settle = useSettle(storeId, false)
   return useMutation({
     mutationFn: ({ lineId, body }) =>
       updateRemittanceLine(apiClient, storeId, remittanceId, lineId, body),
@@ -174,7 +193,7 @@ export function useConfirmRemittance(
   storeId: string,
   remittanceId: string
 ): UseMutationResult<RemittanceDetailView, Error, ConfirmRemittanceBody> {
-  const settle = useSettle(storeId)
+  const settle = useSettle(storeId, true)
   return useMutation({
     mutationFn: input => confirmRemittance(apiClient, storeId, remittanceId, input),
     onSuccess: settle
@@ -185,7 +204,7 @@ export function useVoidRemittance(
   storeId: string,
   remittanceId: string
 ): UseMutationResult<RemittanceDetailView, Error, string | null> {
-  const settle = useSettle(storeId)
+  const settle = useSettle(storeId, true)
   return useMutation({
     mutationFn: reason =>
       voidRemittance(apiClient, storeId, remittanceId, reason === null ? {} : { reason }),

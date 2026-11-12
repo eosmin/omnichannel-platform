@@ -110,33 +110,38 @@ function History(): ReactElement {
             ))}
           </select>
         </div>
-        <div className="flex flex-col gap-1">
-          <Label htmlFor="remittances-carrier">{t('filters.carrier')}</Label>
-          <select
-            id="remittances-carrier"
-            className={SELECT_CLASS}
-            value={connectionId}
-            onChange={event => setConnectionId(event.target.value)}
-          >
-            <option value={ALL}>{t('filters.anyCarrier')}</option>
-            {(connections.data ?? NONE).map(connection => (
-              <option key={connection.id} value={connection.id}>
-                {connection.displayName}
-              </option>
-            ))}
-          </select>
-        </div>
+        {connections.data === undefined ? null : (
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="remittances-carrier">{t('filters.carrier')}</Label>
+            <select
+              id="remittances-carrier"
+              className={SELECT_CLASS}
+              value={connectionId}
+              onChange={event => setConnectionId(event.target.value)}
+            >
+              <option value={ALL}>{t('filters.anyCarrier')}</option>
+              {connections.data.map(connection => (
+                <option key={connection.id} value={connection.id}>
+                  {connection.displayName}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
       {list.isError ? (
         <LoadFailed error={list.error} onRetry={() => void list.refetch()} />
       ) : list.data === undefined ? (
         <PageLoading />
-      ) : rows.length === 0 ? (
+      ) : rows.length === 0 && !list.isPlaceholderData ? (
         <p className="text-muted-foreground text-sm">
           {isFiltered ? t('emptyFiltered') : t('empty')}
         </p>
       ) : (
-        <div className="overflow-x-auto">
+        <div
+          className={list.isPlaceholderData ? 'overflow-x-auto opacity-60' : 'overflow-x-auto'}
+          aria-busy={list.isPlaceholderData}
+        >
           <table className="w-full text-left">
             <caption className="sr-only">{t('caption')}</caption>
             <thead>

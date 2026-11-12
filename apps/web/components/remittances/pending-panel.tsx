@@ -21,7 +21,7 @@ function Shipments({ connectionId }: { connectionId: string }): ReactElement {
   const query = useRemittancePending(storeId, connectionId, true)
   if (query.isError) return <LoadFailed error={query.error} onRetry={() => void query.refetch()} />
   if (query.data === undefined) return <PageLoading />
-  const connection = query.data[0]
+  const connection = query.data.find(entry => entry.connectionId === connectionId)
   if (connection === undefined || connection.shipments.length === 0) {
     return <p className="text-muted-foreground text-sm">{t('noShipments')}</p>
   }

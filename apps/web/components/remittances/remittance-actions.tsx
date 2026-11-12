@@ -227,7 +227,14 @@ export function DiscardButton({ remittance }: { remittance: RemittanceDetailView
   const [asking, setAsking] = useState(false)
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => setAsking(true)}>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => {
+          discard.reset()
+          setAsking(true)
+        }}
+      >
         {t('action')}
       </Button>
       {discard.isError ? (
