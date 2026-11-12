@@ -74,10 +74,9 @@ function History(): ReactElement {
   const t = useTranslations('remittances.list')
   const tAll = useTranslations()
   const { storeId, can } = useStore()
-  const canView = can(ClientPermissions.REMITTANCES_VIEW)
   const [status, setStatus] = useState(ALL)
   const [connectionId, setConnectionId] = useState(ALL)
-  const connections = useRemittanceConnections(storeId, canView)
+  const connections = useRemittanceConnections(storeId, can(ClientPermissions.SHIPPING_VIEW))
   const filter = useMemo<RemittanceListFilter>(
     () => ({
       status: status === ALL ? null : (status as RemittanceStatus),
@@ -85,7 +84,7 @@ function History(): ReactElement {
     }),
     [status, connectionId]
   )
-  const list = useRemittances(storeId, filter, canView)
+  const list = useRemittances(storeId, filter, true)
   const rows = useMemo(() => list.data?.pages.flatMap(page => page.data) ?? NONE, [list.data])
   const isFiltered = filter.status !== null || filter.connectionId !== null
   return (
@@ -209,7 +208,7 @@ export function StoreRemittancesPage(): ReactElement {
           <h1 className="text-xl font-semibold">{t('pageTitle')}</h1>
           <p className="text-muted-foreground text-sm">{t('description')}</p>
         </div>
-        {can(ClientPermissions.REMITTANCES_MANAGE) ? (
+        {can(ClientPermissions.REMITTANCES_MANAGE) && can(ClientPermissions.SHIPPING_VIEW) ? (
           <Link
             href={AppPaths.store.remittanceImport(storeId)}
             className={buttonVariants({ variant: 'outline' })}

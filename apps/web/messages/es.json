@@ -4576,7 +4576,8 @@
           "guide": "Guía",
           "amount": "Monto",
           "fee": "Comisión"
-        }
+        },
+        "firstLineTooLarge": "La primera línea del archivo es más grande de lo que admite la vista previa (32 KB). Revisa el separador o usa un archivo más pequeño."
       },
       "errors": {
         "total": "{count, plural, one {# fila no se puede leer} other {# filas no se pueden leer}}.",

@@ -4576,7 +4576,8 @@
           "guide": "Guide",
           "amount": "Amount",
           "fee": "Fee"
-        }
+        },
+        "firstLineTooLarge": "The first line of the file is larger than the preview takes (32 KB). Check the separator, or use a smaller file."
       },
       "errors": {
         "total": "{count, plural, one {# row cannot be read} other {# rows cannot be read}}.",

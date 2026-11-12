@@ -74,6 +74,18 @@ describe('sampleOf', () => {
     expect(sampleOf('a,b\n1,2')).toBe('a,b\n1,2')
   })
 
+  it('leaves nothing when the first line alone is larger than a preview takes', () => {
+    expect(sampleOf('x'.repeat(RemittanceImportLimits.PREVIEW_MAX_BYTES + 10))).toBe('')
+  })
+
+  it('keeps whole lines of a text with every kind of line break', () => {
+    const rows = Array.from({ length: 5000 }, (_, index) => `G-${index},15.50`)
+    const sample = sampleOf(rows.join('\r\n'))
+    expect(byteLength(sample)).toBeLessThanOrEqual(RemittanceImportLimits.PREVIEW_MAX_BYTES)
+    expect(sample.split('\n').every(row => /^G-\d+,15\.50$/.test(row))).toBe(true)
+    expect(sample.split('\n')[0]).toBe('G-0,15.50')
+  })
+
   it('cuts a large one at a whole line, in bytes and not in characters', () => {
     const line = 'é'.repeat(100)
     const text = Array.from({ length: 1000 }, () => line).join('\n')

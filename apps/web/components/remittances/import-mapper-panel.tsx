@@ -145,7 +145,10 @@ function Preview({ form, text }: { form: MapperForm; text: string }): ReactEleme
   const mapping = useMemo(() => mappingOf(form), [form])
   const sample = useMemo(() => sampleOf(text), [text])
   const wanted = useMemo(
-    () => (mapping.ok && text !== '' ? { text: sample, profile: mapping.profile } : null),
+    () =>
+      mapping.ok && text !== '' && sample !== ''
+        ? { text: sample, profile: mapping.profile }
+        : null,
     [mapping, text, sample]
   )
   // The preview asks after the person stops typing, not at every key
@@ -160,6 +163,13 @@ function Preview({ form, text }: { form: MapperForm; text: string }): ReactEleme
   }, [wanted])
   const preview = useImportPreview(storeId, request)
   const errorText = useErrorText()
+  if (sample === '') {
+    return (
+      <p role="alert" className="text-destructive text-sm">
+        {t('firstLineTooLarge')}
+      </p>
+    )
+  }
   if (request === null) {
     return <p className="text-muted-foreground text-sm">{t('hint')}</p>
   }
@@ -180,9 +190,7 @@ function Preview({ form, text }: { form: MapperForm; text: string }): ReactEleme
         {data.reference === null ? '' : ` · ${t('reference', { value: data.reference })}`}
         {data.receivedOn === null ? '' : ` · ${t('receivedOn', { value: data.receivedOn })}`}
       </p>
-      {sampleOf(text) !== text ? (
-        <p className="text-muted-foreground text-sm">{t('sampleOnly')}</p>
-      ) : null}
+      {sample !== text ? <p className="text-muted-foreground text-sm">{t('sampleOnly')}</p> : null}
       {data.errorCount > 0 ? <RowErrors errors={data.errors} count={data.errorCount} /> : null}
       {data.lines.length > 0 ? (
         <div className={stale ? 'overflow-x-auto opacity-60' : 'overflow-x-auto'}>
@@ -266,38 +274,53 @@ export default function ImportMapperPanel(): ReactElement {
   const importFile = useImportRemittanceFile(storeId)
 
   const mapping = mappingOf(form)
-  const bytes = byteLength(text)
-  const tooLarge = bytes > RemittanceImportLimits.MAX_BYTES
+  // A file can be 5 MB: its size is worked out when the text changes, not at every key typed in the form
+  const tooLarge = useMemo(() => byteLength(text) > RemittanceImportLimits.MAX_BYTES, [text])
   const suggestions = useMemo(() => headerSuggestions(text, form.delimiter), [text, form.delimiter])
   const saved = profile !== undefined && sameAsProfile(form, profile)
   const refused = importErrorsOf(importFile.error)
 
-  const change = (patch: Partial<MapperForm>): void =>
+  // Another mapping makes the errors of the last refused import stale: they belong to the mapping that was on screen then
+  const change = (patch: Partial<MapperForm>): void => {
+    importFile.reset()
     setForm(current => ({ ...current, ...patch }))
+  }
 
-  // A new text or file: a suggested delimiter until a saved mapping says otherwise
-  const takeText = (next: string, from: string | null): void => {
+  // A new text or file. The delimiter is suggested only when there was no text before (never over a choice the person made)
+  // and no saved mapping is picked
+  const takeText = (next: string, from: string | null, suggest: boolean): void => {
+    const first = text === ''
     setText(next)
     setFileName(from)
     importFile.reset()
-    if (profile === undefined && next !== '') change({ delimiter: guessDelimiter(next) })
+    if (suggest && first && profile === undefined && next !== '') {
+      setForm(current => ({ ...current, delimiter: guessDelimiter(next) }))
+    }
+  }
+
+  // A file that cannot be used leaves no trace of the one before it: Import would otherwise send the old text
+  const rejectFile = (problem: string): void => {
+    setFileProblem(problem)
+    setText('')
+    setFileName(null)
+    importFile.reset()
   }
 
   const readFile = async (file: File, as: ImportEncoding): Promise<void> => {
     if (file.size > RemittanceImportLimits.MAX_BYTES) {
-      setFileProblem('too_large')
+      setFileBuffer(null)
+      rejectFile('too_large')
       return
     }
     const buffer = await file.arrayBuffer()
     const decoded = decodeFile(buffer, as)
     setFileBuffer(buffer)
     if (!decoded.ok) {
-      setFileProblem(decoded.reason)
-      setText('')
+      rejectFile(decoded.reason)
       return
     }
     setFileProblem(null)
-    takeText(decoded.text, file.name)
+    takeText(decoded.text, file.name, true)
   }
 
   const onFile = (event: ChangeEvent<HTMLInputElement>): void => {
@@ -312,19 +335,22 @@ export default function ImportMapperPanel(): ReactElement {
     if (fileBuffer === null) return
     const decoded = decodeFile(fileBuffer, next)
     if (!decoded.ok) {
-      setFileProblem(decoded.reason)
-      setText('')
+      rejectFile(decoded.reason)
       return
     }
     setFileProblem(null)
-    takeText(decoded.text, fileName)
+    takeText(decoded.text, fileName, false)
   }
 
   const choose = (id: string): void => {
     setProfileId(id)
     importFile.reset()
     const next = (profiles.data ?? []).find(entry => entry.id === id)
-    if (next === undefined) return
+    if (next === undefined) {
+      // Back to a new mapping: it does not keep the name of the one that was left (a second one with the same name)
+      setName('')
+      return
+    }
     setForm(formOf(next))
     setName(next.name)
   }
@@ -341,6 +367,10 @@ export default function ImportMapperPanel(): ReactElement {
       {
         onSuccess: result => {
           setProfileId(result.id)
+          // What the api kept (it trims and collapses the text of a header, and a position is a number): the form shows that,
+          // so that it is the saved mapping and Import is offered
+          setForm(formOf(result))
+          setName(result.name)
           toast.success(t('mapping.saved'))
         }
       }
@@ -462,7 +492,7 @@ export default function ImportMapperPanel(): ReactElement {
                 : t('source.fromFile', { name: fileName })
             }
             disabled={fileName !== null}
-            onChange={event => takeText(event.target.value, null)}
+            onChange={event => takeText(event.target.value, null, true)}
           />
           {fileName === null ? null : (
             <Button
@@ -473,7 +503,7 @@ export default function ImportMapperPanel(): ReactElement {
                 setFileBuffer(null)
                 setFileProblem(null)
                 if (picker.current !== null) picker.current.value = ''
-                takeText('', null)
+                takeText('', null, false)
               }}
             >
               {t('source.clearFile')}
@@ -614,7 +644,12 @@ export default function ImportMapperPanel(): ReactElement {
           </div>
           <Button
             variant="outline"
-            disabled={!mapping.ok || name.trim() === '' || save.isPending || saved}
+            disabled={
+              !mapping.ok ||
+              name.trim() === '' ||
+              save.isPending ||
+              (saved && name.trim() === profile?.name)
+            }
             onClick={saveMapping}
           >
             {profile === undefined ? t('mapping.save') : t('mapping.update')}

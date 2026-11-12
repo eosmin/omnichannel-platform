@@ -84,7 +84,13 @@ export function useSaveImportProfile(
             name: input.name,
             ...input.profile
           }),
-    onSuccess: () => {
+    onSuccess: (saved, input) => {
+      // The saved profile is in the list before the screen selects it (the refetch that follows would arrive after it), so a
+      // second press of Save changes this profile and does not make another
+      queryClient.setQueryData<RemittanceImportProfileView[]>(
+        QueryKeys.remittances.profiles(storeId, input.connectionId),
+        current => [...(current ?? []).filter(entry => entry.id !== saved.id), saved]
+      )
       void queryClient.invalidateQueries({
         queryKey: QueryKeys.remittances.all(storeId),
         predicate: query => query.queryKey[2] === 'profiles'

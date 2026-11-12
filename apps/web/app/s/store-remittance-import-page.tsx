@@ -21,6 +21,10 @@ export function StoreRemittanceImportPage(): ReactElement {
   if (!can(ClientPermissions.REMITTANCES_MANAGE)) {
     return <PermissionDenied permission={ClientPermissions.REMITTANCES_MANAGE} />
   }
+  // The carriers that can collect cash are read with the permission of shipping: without it the page could never load them
+  if (!can(ClientPermissions.SHIPPING_VIEW)) {
+    return <PermissionDenied permission={ClientPermissions.SHIPPING_VIEW} />
+  }
   return (
     <div className="flex max-w-4xl flex-col gap-5">
       <Link

@@ -44,15 +44,28 @@ export function byteLength(text: string): number {
 // The first rows of the text, whole lines only, as many as fit in what a preview takes (the sample travels as JSON and the
 // api refuses a larger one). A first line that alone is too large leaves nothing: the person is told to use a smaller file.
 export function sampleOf(text: string): string {
-  if (byteLength(text) <= RemittanceImportLimits.PREVIEW_MAX_BYTES) return text
-  const lines = text.split(/\r\n|\n|\r/)
+  const limit = RemittanceImportLimits.PREVIEW_MAX_BYTES
+  // A character takes at most three bytes in UTF-16 text that is not an astral one, four otherwise: a short text needs no count
+  if (text.length * 4 <= limit) return text
+  // Only the start of the text is looked at (a 5 MB file is not split into lines to keep 32 KB of it)
+  const head = text.slice(0, limit + 1)
+  if (byteLength(head) <= limit && head.length === text.length) return text
   const kept: string[] = []
+  const breaks = /\r\n|\n|\r/g
   let size = 0
-  for (const line of lines) {
+  let start = 0
+  while (start < head.length) {
+    breaks.lastIndex = start
+    const match = breaks.exec(head)
+    // A line that reaches the end of the slice may be cut: it is kept only when the text really ends there
+    if (match === null && head.length < text.length) break
+    const end = match === null ? head.length : match.index
+    const line = head.slice(start, end)
     const next = size + byteLength(line) + 1
-    if (next > RemittanceImportLimits.PREVIEW_MAX_BYTES) break
+    if (next > limit) break
     kept.push(line)
     size = next
+    start = match === null ? head.length : end + match[0].length
   }
   return kept.join('\n')
 }
