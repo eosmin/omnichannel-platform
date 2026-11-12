@@ -1115,6 +1115,15 @@ export class ShippingService {
           HttpStatusCodes.BAD_REQUEST
         )
       }
+      // The same event again (same status, same moment) changes nothing, as for a carrier's event: a double click or a retry
+      // must not count a second failed attempt. Without a moment each call is its own moment, as it always was.
+      if (from === to && body.occurredAt !== undefined) {
+        const twin = await tx.shipmentEvent.findFirst({
+          where: { storeId, shipmentId, status: to, occurredAt: new Date(body.occurredAt) },
+          select: { id: true }
+        })
+        if (twin !== null) return { shipmentId, orderId: row.orderId, from, to }
+      }
       const data: Parameters<ShipmentWrites['move']>[4] = {}
       if (to === ShipmentStatus.LABEL_CREATED) {
         if (!isUsableGuideNumber(body.guideNumber)) {

@@ -38,6 +38,19 @@ function flowsOf(
 }
 
 describe('offeredFlows', () => {
+  it('does not offer shipped or delivered while a guide is live: the guide moves the order (the api refuses it)', () => {
+    const live = (status: OrderStatus) =>
+      offeredFlows(order(status), everything, 'u1', true).map(offer => offer.flow)
+    // Prepare, return and cancel are still the member's: the api lets them through with a live guide
+    expect(live(OrderStatus.CONFIRMED)).toEqual([OrderFlows.PREPARE, OrderFlows.CANCEL])
+    expect(live(OrderStatus.PREPARING)).toEqual([OrderFlows.CANCEL])
+    expect(live(OrderStatus.SHIPPED)).toEqual([OrderFlows.RETURN])
+    // Without a live guide nothing changes
+    expect(
+      offeredFlows(order(OrderStatus.CONFIRMED), everything, 'u1', false).map(o => o.flow)
+    ).toEqual([OrderFlows.PREPARE, OrderFlows.SHIP, OrderFlows.CANCEL])
+  })
+
   it('offers confirm, cancel and nothing that skips a state to a pending order', () => {
     expect(flowsOf(order(OrderStatus.PENDING_CONFIRMATION), everything)).toEqual([
       OrderFlows.CONFIRM,

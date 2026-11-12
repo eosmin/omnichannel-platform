@@ -76,17 +76,20 @@ const OTHER_REASON = OrderCancellationReasons.OTHER
 // as it is now, which the page draws (the writes put it in the cache).
 export function OrderFlowButtons({
   order,
-  writes
+  writes,
+  hasActiveGuide
 }: {
   order: OrderDetailView
   writes: OrderWrites
+  // A guide is live: the guide moves the order to shipped and delivered, so those two buttons are not drawn
+  hasActiveGuide: boolean
 }): ReactElement | null {
   const t = useTranslations('orders.detail.flows')
   const { can } = useStore()
   const profile = useProfile()
   const [open, setOpen] = useState<OrderFlow | null>(null)
   const hintId = useId()
-  const offers = offeredFlows(order, can, profile.data?.id ?? null)
+  const offers = offeredFlows(order, can, profile.data?.id ?? null, hasActiveGuide)
   if (offers.length === 0) return null
   const waiting = offers.some(offer => offer.blockedBy === 'price_approval')
   return (

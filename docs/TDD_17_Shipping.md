@@ -1337,7 +1337,7 @@ makes every price change deliberate, limited and visible.
   none is `unmanaged` and only the free-shipping rule limits its fee, so a store that has not set its carriers up is not stopped
   from charging one (Settings → Carriers is Step 4.14). Changing the planned carrier prices the order again and the fee is judged
   against the new range (the reason field of the edit carries the reason). At guide time the range of the connection that will carry
-  the guide decides, whatever the planned carrier was.
+  the guide decides, whatever the planned carrier was. The override of the caller applies at that moment as everywhere (an Admin holds `ORDERS_OVERRIDE_PRICE`, so for an Admin a fee outside the range of the connection does not stop the guide; a member without it is stopped with `SHIPPING_FEE_OUT_OF_RANGE`, with or without a planned carrier).
 - **Copying an order** (§4.3) never copies overrides or discounts: the draft carries catalog prices, the
   planned carrier and that carrier's default shipping fee, and the reason is required again.
 - **Visibility:** the orders list shows a "price modified" badge and an approval-state chip and can
