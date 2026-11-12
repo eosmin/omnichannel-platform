@@ -48,21 +48,19 @@ export interface MatchShipment {
   shippingPayer: ShippingPayer
 }
 
-// The amount a line is held against. The expected amount written at delivery wins; a shipment delivered before its fee was
-// known (the carrier reports it in the settlement file) is read again with the fee of the line, when the connection deducts it.
+// The amount a line is held against. The expected amount written at delivery wins, except in two cases where the fee is known
+// better now: the carrier's cost arrived after the delivery (the amount written was gross and the cost is known now, so it is
+// worked out again), or the fee came only in the settlement file (the line's own fee). Both need a connection that deducts the
+// fee and a sender who pays; never below zero.
 export function lineExpectedCents(
   shipment: MatchShipment,
   reportedFeeCents: number | null,
   deductsFee: boolean
 ): number | null {
   if (shipment.codAmountCents === null) return null
-  if (
-    shipment.carrierCostCents === null &&
-    reportedFeeCents !== null &&
-    deductsFee &&
-    shipment.shippingPayer === ShippingPayer.SENDER
-  ) {
-    return Math.max(0, shipment.codAmountCents - reportedFeeCents)
+  if (deductsFee && shipment.shippingPayer === ShippingPayer.SENDER) {
+    const fee = shipment.carrierCostCents ?? reportedFeeCents
+    if (fee !== null) return Math.max(0, shipment.codAmountCents - fee)
   }
   return shipment.codExpectedCents ?? shipment.codAmountCents
 }

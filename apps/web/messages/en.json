@@ -588,6 +588,7 @@
     "REMITTANCE_IMPORT_INVALID": "The remittance file is not valid",
     "REMITTANCE_INVALID_STATUS_TRANSITION": "The remittance cannot change to that status",
     "REMITTANCE_NOTHING_TO_SETTLE": "There is nothing to settle in this remittance",
+    "REMITTANCE_TOO_MANY_LINES": "A remittance holds at most 5,000 lines",
     "RESOURCE_ALREADY_EXISTS": "That already exists",
     "RESOURCE_CONFLICT": "Someone changed this at the same time. Reload and try again",
     "RESOURCE_NOT_FOUND": "It does not exist or you cannot open it",

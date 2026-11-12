@@ -18,6 +18,7 @@ import {
   RemittanceLimits,
   RemittanceLineOutcome,
   RemittanceLockScopes,
+  ShipmentKind,
   type RemittanceLineInput,
   RemittanceStatus,
   RemittanceStatusTransitions,
@@ -119,7 +120,7 @@ export class RemittancesService {
       const count = await tx.codRemittanceLine.count({ where: { storeId, remittanceId } })
       if (count + body.lines.length > RemittanceLimits.MAX_LINES) {
         throw new PlatformException(
-          ErrorCodes.REMITTANCE_IMPORT_INVALID,
+          ErrorCodes.REMITTANCE_TOO_MANY_LINES,
           'a remittance holds at most the lines of one settlement file',
           HttpStatusCodes.BAD_REQUEST
         )
@@ -208,43 +209,36 @@ export class RemittancesService {
         throw refusal(ErrorCodes.REMITTANCE_NOTHING_TO_SETTLE, 'no line settles a shipment')
       }
       let discrepancies = 0
-      for (const line of settling) {
+      const current = await tx.shipment.findMany({
+        where: { storeId, id: { in: settling.map(line => line.shipmentId ?? '') } },
+        select: { id: true, codStatus: true }
+      })
+      const statusOf = new Map(current.map(row => [row.id, row.codStatus as CodStatus]))
+      const settles = settling.map(line => {
         const differs = line.outcome === String(RemittanceLineOutcome.AMOUNT_DIFFERS)
         const next = differs ? CodStatus.DISCREPANCY : CodStatus.REMITTED
         if (differs) discrepancies += 1
-        const current = await tx.shipment.findFirst({
-          where: { id: line.shipmentId ?? '', storeId },
-          select: { codStatus: true }
-        })
+        const from = statusOf.get(line.shipmentId ?? '')
         // A shipment in discrepancy that still differs stays in it, with the newer amount and remittance
-        const stays = current?.codStatus === next
-        if (
-          current === null ||
-          (!stays && !CodStatusTransitions[current.codStatus as CodStatus].includes(next))
-        ) {
+        if (from === undefined || (from !== next && !CodStatusTransitions[from].includes(next))) {
           throw refusal(
             ErrorCodes.REMITTANCE_INVALID_STATUS_TRANSITION,
             'a shipment changed while the remittance was being confirmed'
           )
         }
-        const moved = await tx.shipment.updateMany({
-          where: {
-            id: line.shipmentId ?? '',
-            storeId,
-            codStatus: current.codStatus
-          },
-          data: {
-            codStatus: next,
-            codRemittedCents: line.reportedCents,
-            codRemittanceId: remittanceId
-          }
-        })
-        if (moved.count === 0) {
-          throw refusal(
-            ErrorCodes.REMITTANCE_INVALID_STATUS_TRANSITION,
-            'a shipment changed while the remittance was being confirmed'
-          )
-        }
+        return { id: line.shipmentId, from, next, reported: line.reportedCents }
+      })
+      // One statement for every shipment, each held to the status it was read in: a count short of the lines means one changed
+      const settled = await tx.$executeRaw`
+        UPDATE shipments s
+        SET cod_status = v.next, cod_remitted_cents = v.reported, cod_remittance_id = ${remittanceId}, updated_at = now()
+        FROM jsonb_to_recordset(${JSON.stringify(settles)}::jsonb) AS v(id text, "from" text, next text, reported int)
+        WHERE s.id = v.id AND s.store_id = ${storeId} AND s.cod_status = v."from"`
+      if (settled !== settles.length) {
+        throw refusal(
+          ErrorCodes.REMITTANCE_INVALID_STATUS_TRANSITION,
+          'a shipment changed while the remittance was being confirmed'
+        )
       }
       const totals = remittanceTotals(
         lines.map(line => ({
@@ -297,7 +291,12 @@ export class RemittancesService {
 
   // A confirmed remittance can be voided: its shipments go back to waiting for a remittance and it stays as the evidence of what
   // was undone. A shipment that a later remittance settled again is not touched (it names the later one).
-  async void(storeId: string, remittanceId: string, actor: ActorRef): Promise<RemittanceVoided> {
+  async void(
+    storeId: string,
+    remittanceId: string,
+    actor: ActorRef,
+    reason?: string
+  ): Promise<RemittanceVoided> {
     return this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
       const row = await this.lockedRemittance(tx, storeId, remittanceId)
@@ -328,7 +327,8 @@ export class RemittancesService {
         data: {
           status: RemittanceStatus.VOIDED,
           voidedAt: new Date(),
-          voidedBy: actor.id ?? 'system'
+          voidedBy: actor.id ?? 'system',
+          ...(reason === undefined ? {} : { voidReason: reason })
         }
       })
       if (voided.count === 0) {
@@ -442,14 +442,20 @@ export class RemittancesService {
     >`
       SELECT id, guide_number, cod_status, cod_amount_cents, cod_expected_cents, carrier_cost_cents, shipping_payer
       FROM shipments
-      WHERE store_id = ${storeId} AND connection_id = ${draft.connectionId} AND kind = 'outbound'
-        AND guide_number IS NOT NULL AND lower(btrim(guide_number)) = ANY(${keys}::text[])`
+      WHERE store_id = ${storeId} AND connection_id = ${draft.connectionId} AND kind = ${ShipmentKind.OUTBOUND}
+        AND guide_number IS NOT NULL AND lower(regexp_replace(guide_number, '^\\s+|\\s+$', '', 'g')) = ANY(${keys}::text[])`
     const byKey = new Map<string, typeof shipments>()
     for (const row of shipments) {
       const key = guideKey(row.guide_number)
       byKey.set(key, [...(byKey.get(key) ?? []), row])
     }
     const seen = new Set<string>()
+    const changes: {
+      id: string
+      outcome: RemittanceLineOutcome
+      expected_cents: number | null
+      shipment_id: string | null
+    }[] = []
     for (const line of lines) {
       const key = guideKey(line.guideNumber)
       const candidates = byKey.get(key) ?? []
@@ -477,18 +483,29 @@ export class RemittancesService {
         },
         deductsFee
       )
-      seen.add(key)
+      // A line left out does not hold the guide: the next one for it counts
+      if (!line.excluded) seen.add(key)
       const shipmentId = found?.id ?? null
       if (
         String(result.outcome) !== line.outcome ||
         result.expectedCents !== line.expectedCents ||
         shipmentId !== line.shipmentId
       ) {
-        await tx.codRemittanceLine.update({
-          where: { id: line.id },
-          data: { outcome: result.outcome, expectedCents: result.expectedCents, shipmentId }
+        changes.push({
+          id: line.id,
+          outcome: result.outcome,
+          expected_cents: result.expectedCents,
+          shipment_id: shipmentId
         })
       }
     }
+    if (changes.length === 0) return
+    // One statement for every line that changed: a file of 5,000 rows must not cost 5,000 round trips inside one transaction
+    await tx.$executeRaw`
+      UPDATE cod_remittance_lines l
+      SET outcome = v.outcome, expected_cents = v.expected_cents, shipment_id = v.shipment_id
+      FROM jsonb_to_recordset(${JSON.stringify(changes)}::jsonb)
+        AS v(id text, outcome text, expected_cents int, shipment_id text)
+      WHERE l.id = v.id AND l.store_id = ${storeId}`
   }
 }

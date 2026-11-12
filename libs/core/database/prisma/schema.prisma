@@ -2022,9 +2022,9 @@ model CodRemittance {
   receivedOn      DateTime? @map("received_on") @db.Date
   importProfileId String?   @map("import_profile_id") // The profile an import used (Step 4.13, import PR)
   sourceMediaId   String?   @map("source_media_id") // The uploaded file, Media purpose REMITTANCE_FILE; plain column like the other media ids
-  expectedCents   Int       @default(0) @map("expected_cents")
-  reportedCents   Int       @default(0) @map("reported_cents")
-  feeCents        Int       @default(0) @map("fee_cents")
+  expectedCents   BigInt    @default(0) @map("expected_cents")
+  reportedCents   BigInt    @default(0) @map("reported_cents")
+  feeCents        BigInt    @default(0) @map("fee_cents")
   note            String?
   createdBy       String    @map("created_by")
   createdAt       DateTime  @default(now()) @map("created_at")
@@ -2032,6 +2032,7 @@ model CodRemittance {
   confirmedBy     String?   @map("confirmed_by")
   voidedAt        DateTime? @map("voided_at")
   voidedBy        String?   @map("voided_by")
+  voidReason      String?   @map("void_reason") // Why a confirmed remittance was voided
 
   store      Store               @relation(fields: [storeId], references: [id], onDelete: Restrict)
   connection CarrierConnection   @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Restrict)

@@ -53,6 +53,13 @@ describe('lineExpectedCents', () => {
       lineExpectedCents(shipment({ carrierCostCents: 50, codExpectedCents: 950 }), 120, true)
     ).toBe(950)
     expect(lineExpectedCents(shipment(), 5000, true)).toBe(0)
+    // The cost arrived after the delivery wrote the gross amount: it is worked out again with the cost
+    expect(
+      lineExpectedCents(shipment({ carrierCostCents: 300, codExpectedCents: 1000 }), null, true)
+    ).toBe(700)
+    expect(
+      lineExpectedCents(shipment({ carrierCostCents: 300, codExpectedCents: 1000 }), null, false)
+    ).toBe(1000)
   })
   it('has no amount for a prepaid shipment', () => {
     expect(lineExpectedCents(shipment({ codAmountCents: null }), null, true)).toBeNull()

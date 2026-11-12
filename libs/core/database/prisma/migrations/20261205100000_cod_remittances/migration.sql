@@ -11,9 +11,9 @@ CREATE TABLE "cod_remittances" (
     "received_on" DATE,
     "import_profile_id" TEXT,
     "source_media_id" TEXT,
-    "expected_cents" INTEGER NOT NULL DEFAULT 0,
-    "reported_cents" INTEGER NOT NULL DEFAULT 0,
-    "fee_cents" INTEGER NOT NULL DEFAULT 0,
+    "expected_cents" BIGINT NOT NULL DEFAULT 0,
+    "reported_cents" BIGINT NOT NULL DEFAULT 0,
+    "fee_cents" BIGINT NOT NULL DEFAULT 0,
     "note" TEXT,
     "created_by" TEXT NOT NULL,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -21,6 +21,7 @@ CREATE TABLE "cod_remittances" (
     "confirmed_by" TEXT,
     "voided_at" TIMESTAMP(3),
     "voided_by" TEXT,
+    "void_reason" TEXT,
 
     CONSTRAINT "cod_remittances_pkey" PRIMARY KEY ("id")
 );

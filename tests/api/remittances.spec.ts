@@ -6,6 +6,7 @@ import {
   CodStatus,
   OrderStatus,
   PaymentMethod,
+  RemittanceLimits,
   RemittanceLineOutcome,
   RemittanceStatus,
   ShipmentStatus,
@@ -281,6 +282,72 @@ describe('COD remittances (TDD_17 §4.15)', () => {
       expect(draft.totals.feeCents).toBe(120)
     })
 
+    it('holds a line against the net amount when the cost arrived after the delivery', async () => {
+      await owner.carrierConnection.update({
+        where: { id: connectionId },
+        data: { remittanceDeductsFee: true }
+      })
+      await pendingShipment('COST-LATE', 1000, { codExpectedCents: 1000, carrierCostCents: 300 })
+      const body = await draftWith([{ guideNumber: 'COST-LATE', reportedCents: 700 }])
+      await owner.carrierConnection.update({
+        where: { id: connectionId },
+        data: { remittanceDeductsFee: false }
+      })
+      expect(lineOf(body, 'COST-LATE').outcome).toBe(RemittanceLineOutcome.MATCHED)
+    })
+
+    it('lets the second line of a guide count when the first one is left out', async () => {
+      await pendingShipment('DUP-EXCL', 500)
+      const draft = await draftWith([
+        { guideNumber: 'DUP-EXCL', reportedCents: 450 },
+        { guideNumber: 'dup-excl', reportedCents: 500 }
+      ])
+      expect(draft.lines.map(line => line.outcome)).toEqual([
+        RemittanceLineOutcome.AMOUNT_DIFFERS,
+        RemittanceLineOutcome.DUPLICATE_IN_FILE
+      ])
+      const first = draft.lines[0]
+      if (first === undefined) throw new Error('no first line')
+      const left = await asAdmin()
+        .patch(ApiRoutes.remittances.lineById(draft.id, first.id))
+        .send({ excluded: true })
+      expect((left.body as RemittanceBody).lines.map(line => line.outcome)).toEqual([
+        RemittanceLineOutcome.AMOUNT_DIFFERS,
+        RemittanceLineOutcome.MATCHED
+      ])
+    })
+
+    it('takes a file of six hundred rows in one request and refuses more lines than a settlement file holds', async () => {
+      const lines = Array.from({ length: 600 }, (_, index) => ({
+        guideNumber: `BULK-${index}`,
+        reportedCents: 1
+      }))
+      const made = await asAdmin().post(ApiRoutes.remittances.list).send({ connectionId, lines })
+      expect(made.status).toBe(CREATED)
+      const draft = made.body as RemittanceBody
+      expect(draft.lines).toHaveLength(600)
+      await owner.codRemittanceLine.createMany({
+        data: Array.from({ length: RemittanceLimits.MAX_LINES - 601 }, (_, index) => ({
+          storeId: ctx.storeA.id,
+          remittanceId: draft.id,
+          position: 601 + index,
+          guideNumber: `FILL-${index}`,
+          reportedCents: 1,
+          outcome: RemittanceLineOutcome.NOT_FOUND
+        }))
+      })
+      const over = await asAdmin()
+        .post(ApiRoutes.remittances.lines(draft.id))
+        .send({
+          lines: [
+            { guideNumber: 'ONE-MORE', reportedCents: 1 },
+            { guideNumber: 'TWO-MORE', reportedCents: 1 }
+          ]
+        })
+      expect(over.status).toBe(400)
+      expect(errorCode(over.body)).toBe(ErrorCodes.REMITTANCE_TOO_MANY_LINES)
+    })
+
     it('lets a line be left out, annotated and added by hand, and a draft be discarded', async () => {
       await pendingShipment('HAND-1', 400)
       await pendingShipment('HAND-2', 600)
@@ -370,6 +437,17 @@ describe('COD remittances (TDD_17 §4.15)', () => {
       expect((await asAdmin().delete(ApiRoutes.remittances.byId(draft.id))).status).toBe(CONFLICT)
     })
 
+    it('keeps totals that do not fit in 32 bits', async () => {
+      const guides = Array.from({ length: 22 }, (_, index) => `BIG-${index}`)
+      for (const guide of guides) await pendingShipment(guide, 100_000_000)
+      const draft = await draftWith(
+        guides.map(guideNumber => ({ guideNumber, reportedCents: 100_000_000 }))
+      )
+      const done = await asAdmin().post(ApiRoutes.remittances.confirm(draft.id)).send({})
+      expect(done.status).toBe(OK)
+      expect((done.body as RemittanceBody).totals.reportedCents).toBe(2_200_000_000)
+    })
+
     it('ends with one confirmation when two overlap', async () => {
       await pendingShipment('RACE-1', 700)
       const draft = await draftWith([{ guideNumber: 'RACE-1', reportedCents: 700 }])
@@ -382,7 +460,7 @@ describe('COD remittances (TDD_17 §4.15)', () => {
       expect(results.filter(result => result.status === CONFLICT)).toHaveLength(2)
       const row = await owner.codRemittance.findUniqueOrThrow({ where: { id: draft.id } })
       expect(row.status).toBe(RemittanceStatus.CONFIRMED)
-      expect(row.reportedCents).toBe(700)
+      expect(Number(row.reportedCents)).toBe(700)
     })
 
     it('does not settle a shipment that another remittance settled since the draft was made', async () => {
@@ -440,8 +518,11 @@ describe('COD remittances (TDD_17 §4.15)', () => {
         { guideNumber: 'VD-B', reportedCents: 1700 }
       ])
       await asAdmin().post(ApiRoutes.remittances.confirm(draft.id)).send({})
-      const voided = await asAdmin().post(ApiRoutes.remittances.void(draft.id)).send({})
+      const voided = await asAdmin()
+        .post(ApiRoutes.remittances.void(draft.id))
+        .send({ reason: 'the carrier sent it twice' })
       expect(voided.status).toBe(OK)
+      expect((voided.body as { voidReason: string }).voidReason).toBe('the carrier sent it twice')
       expect((voided.body as RemittanceBody).status).toBe(RemittanceStatus.VOIDED)
       for (const id of [a.id, b.id]) {
         const row = await shipmentRow(id)

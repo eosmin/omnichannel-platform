@@ -21,6 +21,7 @@ export const REMITTANCE_SELECT = {
   confirmedBy: true,
   voidedAt: true,
   voidedBy: true,
+  voidReason: true,
   connection: { select: { displayName: true, carrierId: true } },
   _count: { select: { lines: true } }
 } as const
@@ -33,9 +34,9 @@ export interface RemittanceRow {
   receivedOn: Date | null
   importProfileId: string | null
   sourceMediaId: string | null
-  expectedCents: number
-  reportedCents: number
-  feeCents: number
+  expectedCents: bigint
+  reportedCents: bigint
+  feeCents: bigint
   note: string | null
   createdBy: string
   createdAt: Date
@@ -43,6 +44,7 @@ export interface RemittanceRow {
   confirmedBy: string | null
   voidedAt: Date | null
   voidedBy: string | null
+  voidReason: string | null
   connection: { displayName: string; carrierId: string }
   _count: { lines: number }
 }
@@ -75,6 +77,7 @@ export interface RemittanceView {
   confirmedBy: string | null
   voidedAt: string | null
   voidedBy: string | null
+  voidReason: string | null
 }
 
 export interface RemittanceLineView {
@@ -116,7 +119,8 @@ export function remittanceViewOf(row: RemittanceRow, totals: RemittanceTotalsVie
     confirmedAt: row.confirmedAt?.toISOString() ?? null,
     confirmedBy: row.confirmedBy,
     voidedAt: row.voidedAt?.toISOString() ?? null,
-    voidedBy: row.voidedBy
+    voidedBy: row.voidedBy,
+    voidReason: row.voidReason
   }
 }
 

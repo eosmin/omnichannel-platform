@@ -17,7 +17,8 @@ import {
   remittanceTotals,
   SettlingOutcomes,
   ShipmentResourceTypes,
-  type UpdateRemittanceLineBody
+  type UpdateRemittanceLineBody,
+  type VoidRemittanceBody
 } from '@platform/core/domain'
 import { resourceNotFound } from '@platform/core/errors'
 import { RemittancesService as RemittanceWrites } from '@platform/core/shipping'
@@ -259,11 +260,17 @@ export class RemittancesApiService {
     return this.get(storeId, remittanceId)
   }
 
-  async void(storeId: string, remittanceId: string, actor: Actor): Promise<RemittanceDetailView> {
-    const done = await this.writes.void(storeId, remittanceId, refOf(actor))
+  async void(
+    storeId: string,
+    remittanceId: string,
+    actor: Actor,
+    body: VoidRemittanceBody
+  ): Promise<RemittanceDetailView> {
+    const done = await this.writes.void(storeId, remittanceId, refOf(actor), body.reason)
     this.record(storeId, AuditAction.REMITTANCE_VOIDED, remittanceId, actor, {
       connectionId: done.connectionId,
-      restored: done.restored
+      restored: done.restored,
+      ...(body.reason === undefined ? {} : { reason: body.reason })
     })
     return this.get(storeId, remittanceId)
   }
@@ -297,12 +304,12 @@ export class RemittancesApiService {
       _sum: { expectedCents: true, reportedCents: true, reportedFeeCents: true }
     })
     for (const sum of sums) {
-      const expectedCents = sum._sum.expectedCents ?? 0
-      const reportedCents = sum._sum.reportedCents ?? 0
+      const expectedCents = Number(sum._sum.expectedCents ?? 0)
+      const reportedCents = Number(sum._sum.reportedCents ?? 0)
       totals.set(sum.remittanceId, {
         expectedCents,
         reportedCents,
-        feeCents: sum._sum.reportedFeeCents ?? 0,
+        feeCents: Number(sum._sum.reportedFeeCents ?? 0),
         differenceCents: reportedCents - expectedCents
       })
     }
@@ -336,10 +343,10 @@ export class RemittancesApiService {
 
 function storedTotals(row: RemittanceRow): RemittanceTotalsView {
   return {
-    expectedCents: row.expectedCents,
-    reportedCents: row.reportedCents,
-    feeCents: row.feeCents,
-    differenceCents: row.reportedCents - row.expectedCents
+    expectedCents: Number(row.expectedCents),
+    reportedCents: Number(row.reportedCents),
+    feeCents: Number(row.feeCents),
+    differenceCents: Number(row.reportedCents) - Number(row.expectedCents)
   }
 }
 

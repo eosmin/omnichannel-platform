@@ -156,9 +156,9 @@ export class RemittancesController {
     @CurrentStore() store: Store,
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', id()) remittanceId: string,
-    @Body(new ZodValidationPipe(voidRemittanceSchema)) _body: VoidRemittanceBody,
+    @Body(new ZodValidationPipe(voidRemittanceSchema)) body: VoidRemittanceBody,
     @Req() req: AuthenticatedRequest
   ): Promise<RemittanceDetailView> {
-    return this.remittances.void(store.id, remittanceId, actorOf(user, store, req))
+    return this.remittances.void(store.id, remittanceId, actorOf(user, store, req), body)
   }
 }
