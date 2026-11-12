@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common'
 import { CryptoPlatformModule, QueuesPlatformModule } from '@platform/core/http'
 import {
   MergedLabels,
+  PickupSync,
   ShipmentCancellation,
   ShipmentLabels,
   ShipmentWrites,
@@ -14,6 +15,7 @@ import { CarriersWorkerModule } from '../carriers/carriers.module'
 
 import { BulkLabelsCleaner } from './bulk-labels-cleaner.service'
 import { BulkLabelsRunner } from './bulk-labels-runner.service'
+import { PickupSyncer } from './pickup-syncer.service'
 import { ShipmentCanceller } from './shipment-canceller.service'
 import { ShipmentPoller } from './shipment-poller.service'
 
@@ -37,8 +39,10 @@ import { ShipmentPoller } from './shipment-poller.service'
     BulkLabelsRunner,
     BulkLabelsCleaner,
     ShipmentCancellation,
-    ShipmentCanceller
+    ShipmentCanceller,
+    PickupSync,
+    PickupSyncer
   ],
-  exports: [ShipmentPoller, BulkLabelsRunner, BulkLabelsCleaner, ShipmentCanceller]
+  exports: [ShipmentPoller, BulkLabelsRunner, BulkLabelsCleaner, ShipmentCanceller, PickupSyncer]
 })
 export class ShippingWorkerModule {}

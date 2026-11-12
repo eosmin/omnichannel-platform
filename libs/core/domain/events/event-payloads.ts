@@ -11,6 +11,7 @@ import type {
   OrderMessageKindType,
   OrderStatus,
   PaymentStatus,
+  PickupManualReason,
   ShipmentStatus,
   TransferStatus
 } from '../index'
@@ -161,6 +162,17 @@ export interface BulkLabelsProgressPayload {
   done: number
   total: number
   failed: number
+}
+
+// A pickup that needs a person: ids, the day and the count, and why. No address, no carrier text.
+export interface PickupManualRequiredPayload {
+  storeId: string
+  pickupId: string
+  connectionId: string
+  // 'YYYY-MM-DD' in the timezone of the store
+  pickupDate: string
+  packageCount: number
+  reason: PickupManualReason
 }
 
 export interface BulkLabelsDonePayload {
@@ -448,6 +460,7 @@ export interface DomainEventPayloads {
   [Events.CARRIER_STATUS_UNMAPPED]: CarrierStatusUnmappedPayload
   [Events.BULK_LABELS_PROGRESS]: BulkLabelsProgressPayload
   [Events.BULK_LABELS_DONE]: BulkLabelsDonePayload
+  [Events.PICKUP_MANUAL_REQUIRED]: PickupManualRequiredPayload
   [Events.INVENTORY_MOVED]: InventoryMovedPayload
   [Events.INVENTORY_LOW]: InventoryLowPayload
   [Events.COUNT_SUBMITTED]: CountSubmittedPayload

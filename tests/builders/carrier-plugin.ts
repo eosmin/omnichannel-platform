@@ -93,6 +93,8 @@ export interface FakeCarrierState {
   calls: FakeCarrierCall[]
   create: FakeCarrierBehavior
   cancel: FakeCarrierBehavior
+  // What requestPickup and modifyPickup do (a timeout is a CarrierUnavailableError, a refusal a CarrierRejectedError)
+  pickup: FakeCarrierBehavior
   // The references the carrier refuses inside a batch while accepting the rest
   rejectReferences: Set<string>
   // Creates under way now, and the most there were at once since the last reset
@@ -215,6 +217,7 @@ export function buildFakeCarrier(options: FakeCarrierOptions = {}): FakeCarrier 
     calls: [],
     create: FakeCarrierBehaviors.OK,
     cancel: FakeCarrierBehaviors.OK,
+    pickup: FakeCarrierBehaviors.OK,
     rejectReferences: new Set(),
     inFlight: 0,
     peakInFlight: 0,
@@ -226,6 +229,15 @@ export function buildFakeCarrier(options: FakeCarrierOptions = {}): FakeCarrier 
 
   const record = (method: string, args: unknown): void => {
     state.calls.push({ method, args })
+  }
+  // A pickup call that the carrier does not take: it did nothing, whatever the way it says so
+  const pickupFault = (): void => {
+    if (state.pickup === FakeCarrierBehaviors.REJECT) {
+      throw new CarrierRejectedError('The fake carrier refuses pickups')
+    }
+    if (state.pickup !== FakeCarrierBehaviors.OK) {
+      throw new CarrierUnavailableError('The fake carrier does not answer pickups')
+    }
   }
 
   // The carrier's side of one create: the guide exists from here on
@@ -488,6 +500,11 @@ export function buildFakeCarrier(options: FakeCarrierOptions = {}): FakeCarrier 
             params: Parameters<NonNullable<CarrierPlugin['requestPickup']>>[1]
           ) => {
             record('requestPickup', params)
+            try {
+              pickupFault()
+            } catch (error) {
+              return Promise.reject(error instanceof Error ? error : new Error(String(error)))
+            }
             const pickupRef = `FAKE-PICKUP-${++pickupSequence}`
             state.pickups.set(pickupRef, {
               window: params.window,
@@ -509,6 +526,7 @@ export function buildFakeCarrier(options: FakeCarrierOptions = {}): FakeCarrier 
           ) =>
             settle(() => {
               record('modifyPickup', params)
+              pickupFault()
               const pickup = state.pickups.get(params.pickupRef)
               if (!pickup)
                 throw new CarrierRejectedError('The fake carrier does not know that pickup')

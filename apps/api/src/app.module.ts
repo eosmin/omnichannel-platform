@@ -21,6 +21,7 @@ import { NotificationsModule } from './modules/notifications'
 import { OrderMessagesModule } from './modules/order-messages'
 import { OrdersModule } from './modules/orders/orders.module'
 import { OrganizationsModule } from './modules/organizations/organizations.module'
+import { PickupsModule } from './modules/pickups/pickups.module'
 import { PluginsApiModule } from './modules/plugins/plugins.module'
 import { ProductsModule } from './modules/products/products.module'
 import { RealtimeModule } from './modules/realtime/realtime.module'
@@ -67,6 +68,7 @@ import { WidgetModule } from './modules/widget/widget.module'
     WarehousesModule,
     SettingsModule,
     ShipmentsModule,
+    PickupsModule,
     InvitationsModule,
     WebhooksModule,
     WidgetModule

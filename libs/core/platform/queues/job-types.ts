@@ -164,6 +164,13 @@ export interface CancelShipmentJob extends BaseJob {
   shipmentId: string
   requestedBy: string | null
 }
+// The carrier is asked for a pickup, or told that the count it holds is out of date (TDD_17 §4.10). The pickup row says which: the
+// job carries no count, the worker reads the pickup as it is when it runs. Who asked signs the audit; null is the system.
+export interface SyncPickupJob extends BaseJob {
+  storeId: string
+  pickupId: string
+  requestedBy: string | null
+}
 export interface FetchInboundMediaJob extends BaseJob {
   messageId: string
   // Place of the file in the message: with the message it names the media, so a retry is one file

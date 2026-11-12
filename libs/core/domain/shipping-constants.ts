@@ -514,6 +514,66 @@ export const PickupLeaveNotes = {
   EMPTY_NOT_CANCELLED: 'pickup_emptied_carrier_not_cancelled'
 } as const
 
+// One writer at a time per connection when a pickup is made or joined (TDD_17 §4.10): a manual request and the scheduler never
+// create two pickups for one connection and day. Kept apart from the lock of the order.
+export const PickupLockScopes = { CONNECTION: 'pickup_connection' } as const
+
+export const PickupLimits = {
+  // The carrier is asked again by the queue while it does not answer; the last attempt leaves the pickup FAILED
+  JOB_ATTEMPTS: 5,
+  BACKOFF_BASE_MS: 30_000,
+  // The most guides one request names
+  MAX_SHIPMENTS: 200
+} as const
+
+// A pickup that is still alive: a connection has at most one of these per day (a standalone carrier), and a guide joins one of
+// them. FAILED and CANCELLED are over.
+export const PickupOpenStatuses: readonly PickupStatus[] = [
+  PickupStatus.PENDING,
+  PickupStatus.REQUIRES_REVIEW,
+  PickupStatus.REQUESTED,
+  PickupStatus.CONFIRMED,
+  PickupStatus.MANUAL_REQUIRED
+]
+
+// Why a guide that was offered to a pickup was not put in it and waits for the next pickup day (TDD_17 §4.10): the agent is shown
+// the reason
+export const PickupWaitReasons = {
+  // The pickup already reached the carrier and the carrier cannot change its count
+  CARRIER_CANNOT_MODIFY: 'carrier_cannot_modify',
+  // Nobody knows if the carrier took the request: nothing joins it until a person settles it
+  UNDER_REVIEW: 'under_review',
+  // The cutoff of the day passed: a change of the pickup of today needs the confirmation of a person
+  CUTOFF_PASSED: 'cutoff_passed'
+} as const
+export type PickupWaitReason = (typeof PickupWaitReasons)[keyof typeof PickupWaitReasons]
+
+// Why a pickup asks for a person (`pickup.manual_required`)
+export const PickupManualReasons = {
+  // The carrier has no pickup API (or no way to request one)
+  NO_API: 'no_api',
+  // The carrier did not take the request after every attempt
+  FAILED: 'failed'
+} as const
+export type PickupManualReason = (typeof PickupManualReasons)[keyof typeof PickupManualReasons]
+
+// What `PickupRequest.lastError` says when the platform ended a request itself (a refusal keeps the carrier's own line, bounded):
+// names the screen translates
+export const PickupFailureNotes = {
+  UNAVAILABLE: 'carrier_unavailable',
+  CREDENTIALS_REJECTED: 'credentials_rejected',
+  CREDENTIALS_UNREADABLE: 'credentials_unreadable',
+  UNKNOWN_OUTCOME: 'unknown_outcome',
+  UNUSABLE_ANSWER: 'unusable_answer',
+  CONNECTION_LOST: 'connection_not_active'
+} as const
+
+export const PickupResourceTypes = { PICKUP: 'pickup' } as const
+
+// The key a pickup is requested of the carrier with: the same pickup always makes the same key, so a carrier that keeps its
+// promise never makes a second pickup for it
+export const pickupRequestKey = (pickupId: string): string => `pickup-request:${pickupId}`
+
 export const ShipmentEventNotes = { FOUND_AT_CARRIER: 'shipping.event.foundAtCarrier' } as const
 
 // The keys a carrier is called with besides the one of a guide (TDD_17 §4.5, §4.8): one for a whole pickup batch, one for a void
