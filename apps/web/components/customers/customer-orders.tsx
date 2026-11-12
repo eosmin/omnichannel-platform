@@ -11,6 +11,7 @@ import { OrderListFilters, OrderStatus } from '@platform/core/domain'
 import { ORDERS_ALL, useCustomerOrders } from '../../lib/customers/use-customer-data'
 import { orderStatusKey } from '../../lib/orders/order-status'
 import { formatCents } from '../../lib/products/money'
+import { OrderCopyButton } from '../orders/order-copy-button'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 import { Tabs, TabsList, TabsTrigger } from '../ui/tabs'
@@ -44,6 +45,9 @@ function OrderRow({
           {tOrders('list.number', { number: order.orderNumber })}
         </Link>
         <span className="font-medium">{formatCents(format, order.totalCents)}</span>
+      </div>
+      <div className="flex justify-end">
+        <OrderCopyButton orderId={order.id} orderNumber={order.orderNumber} onOpened={onNavigate} />
       </div>
       <div className="text-muted-foreground flex flex-wrap items-center justify-between gap-2 text-xs">
         <span>

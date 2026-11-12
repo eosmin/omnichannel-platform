@@ -421,6 +421,27 @@
       "loadMore": "Load more",
       "lines": "{count, plural, one {# line} other {# lines}}",
       "viewAll": "View orders"
+    },
+    "cautionFlag": {
+      "chip": "Caution",
+      "open": {
+        "set": "Flag with caution",
+        "clear": "Remove the caution flag"
+      },
+      "set": {
+        "title": "Flag with caution",
+        "description": "Tells the team in the conversation, on orders and when one is created. It never stops a sale or a reply.",
+        "submit": "Flag"
+      },
+      "clear": {
+        "title": "Remove the caution flag",
+        "description": "The customer stops showing with caution. The reason is cleared.",
+        "submit": "Remove the flag"
+      },
+      "reason": "Reason",
+      "reasonHelp": "Required. Whoever can view customers sees it.",
+      "changeReason": "Change the reason",
+      "cancel": "Cancel"
     }
   },
   "email": {
@@ -1552,7 +1573,8 @@
       "address": {
         "label": "Shipping address",
         "none": "No address yet",
-        "option": "{line1}, {city}"
+        "option": "{line1}, {city}",
+        "copied": "Address of the copied order: {line1}, {city}"
       },
       "payment": {
         "label": "How the order is paid"
@@ -1586,7 +1608,19 @@
       "created": "Order {number} created.",
       "createdAwaitingApproval": "Order {number} created. Its price waits for an approval.",
       "confirmationSkipped": "It was not confirmed: the price waits for an approval.",
-      "open": "Open the order"
+      "open": "Open the order",
+      "cautionBanner": {
+        "title": "Customer flagged with caution."
+      },
+      "sendSummary": {
+        "label": "Send the order summary",
+        "help": "The customer gets a message with what they ordered."
+      },
+      "discountHint": {
+        "overridden": "You may change prices: this discount needs no approval.",
+        "within_limit": "The discount is within the store limit ({limit}%).",
+        "needs_approval": "The discount is over the store limit ({limit}%). The order is created and its price waits for an approval."
+      }
     },
     "edit": {
       "title": "Edit order",
@@ -1704,6 +1738,21 @@
           "still_running": "The run is still going: look at the orders again in a moment."
         }
       }
+    },
+    "copy": {
+      "open": "Copy order",
+      "heading": "Copy of an order",
+      "help": "The quantities, the shipping fee, the phones and the notes come from the original order. The prices are today's.",
+      "failed": "The order could not be read to copy it.",
+      "warnings": {
+        "product_inactive": "{name} is no longer active in the catalog.",
+        "variant_unavailable": "{name} is no longer available.",
+        "variant_required": "{name} has variants now: pick one before creating the order.",
+        "out_of_stock": "{name} does not have enough stock.",
+        "price_changed": "{name} changed price: it was {previous}, now {current}.",
+        "unknown": "{name} needs a look before the order is created."
+      },
+      "openNamed": "Copy order {number}"
     }
   },
   "org": {
@@ -2915,7 +2964,10 @@
         "snippets": "Snippets",
         "inbox": "Inbox behavior",
         "inventory": "Inventory",
-        "carriers": "Carriers"
+        "carriers": "Carriers",
+        "orderMessages": "Order messages",
+        "returns": "Returns",
+        "preferences": "Preferences"
       },
       "org": {
         "label": "Organization",
@@ -3791,6 +3843,249 @@
           "ignored": "Ignored"
         }
       }
+    },
+    "returns": {
+      "title": "Returns",
+      "description": "Who pays for the way back of a return, and for the shipping of a replacement, when the return itself does not say.",
+      "formLabel": "Returns settings",
+      "readOnly": "You can see these settings but not change them.",
+      "save": "Save",
+      "saved": "Returns settings saved",
+      "payer": {
+        "legend": "Who pays the shipping of a return",
+        "hint": "A return that is already made keeps the payer it had when it was made: changing this only affects the ones that come next.",
+        "options": {
+          "sender": {
+            "label": "The store",
+            "hint": "The store pays the guide of the way back and of the replacement."
+          },
+          "recipient": {
+            "label": "The customer",
+            "hint": "The customer pays: the cost is charged to them."
+          }
+        }
+      }
+    },
+    "preferences": {
+      "title": "Preferences",
+      "description": "What this store decides about its orders and its remittances. The inbox switches are on the Inbox behavior page.",
+      "formLabel": "Store preferences",
+      "readOnly": "You can see these preferences but not change them.",
+      "save": "Save",
+      "saved": "Preferences saved",
+      "create": {
+        "legend": "When an order is created",
+        "confirm": "Mark new orders as confirmed",
+        "confirmHint": "The box in the new-order form starts checked. Off, an order waits for someone to confirm it.",
+        "summary": "Send the order summary to the customer",
+        "summaryHint": "The box in the new-order form starts checked, and the summary goes out when an order is created."
+      },
+      "shipping": {
+        "legend": "Shipping",
+        "freeShippingLabel": "When an order counts as free shipping",
+        "freeShippingHint": "A free-shipping order is shipped with the store paying the guide.",
+        "freeShippingRules": {
+          "all_items": "When every item has free shipping",
+          "any_item": "When any item has free shipping"
+        }
+      },
+      "delivery": {
+        "legend": "Delivery and remittances",
+        "failedLabel": "Messages about a failed delivery attempt",
+        "failedHint": "A carrier tries up to three times. Choose how many times the customer is told.",
+        "failedPolicies": {
+          "every_attempt": "At every failed attempt",
+          "first_only": "Only at the first failed attempt",
+          "none": "Never"
+        },
+        "overdueLabel": "Days before a remittance is late",
+        "overdueHint": "The cash a carrier collected on delivery is late when it has not been paid this many days after the delivery. From {min} to {max}."
+      },
+      "reasons": {
+        "legend": "Cancellation reasons",
+        "hint": "The options of the cancel dialog, in this order. An order keeps the text it was cancelled with, so changing a reason never changes old orders.",
+        "listLabel": "Cancellation reasons",
+        "textLabel": "Text of reason {position}",
+        "moveUp": "Move up: {reason}",
+        "moveDown": "Move down: {reason}",
+        "remove": "Remove: {reason}",
+        "newLabel": "New reason",
+        "newPlaceholder": "A reason of your own",
+        "add": "Add",
+        "restore": "Restore the original list",
+        "full": "The list is full: remove a reason to add another."
+      },
+      "problems": {
+        "overdueDays": "The days before a remittance is late must be a whole number within the range shown.",
+        "reasonsEmpty": "Keep at least one cancellation reason.",
+        "reasonsTooMany": "There are too many cancellation reasons: remove some.",
+        "reasonBlank": "A reason of your own cannot be empty.",
+        "reasonTooLong": "A reason of your own is too long.",
+        "reasonDuplicate": "Two cancellation reasons read the same."
+      }
+    },
+    "orderMessages": {
+      "title": "Order messages",
+      "description": "The texts the store sends its customers about an order, one per kind of message and language. Where there is none, the platform sends its own text.",
+      "kindsLabel": "Kinds of message",
+      "localesLabel": "Language",
+      "unsavedMark": "Unsaved changes",
+      "languagesSet": "{count, plural, =0 {Not set up} one {1 language} other {# languages}}",
+      "kinds": {
+        "order_summary": {
+          "label": "Order summary",
+          "hint": "What the customer gets with the details of their order."
+        },
+        "order_shipped": {
+          "label": "Order shipped",
+          "hint": "Goes out when the order is handed to the carrier."
+        },
+        "order_out_for_delivery": {
+          "label": "Out for delivery",
+          "hint": "Goes out when the carrier takes the package out for delivery."
+        },
+        "order_delivered": {
+          "label": "Order delivered",
+          "hint": "Goes out when the package is delivered."
+        },
+        "order_failed_attempt": {
+          "label": "Failed delivery attempt",
+          "hint": "Goes out when the carrier could not deliver. How often is set in Preferences."
+        },
+        "order_cancelled": {
+          "label": "Order cancelled",
+          "hint": "Goes out when the order is cancelled."
+        },
+        "return_approved": {
+          "label": "Return approved",
+          "hint": "Sent by a person when a return is approved, with the guide of the way back."
+        },
+        "exchange_shipped": {
+          "label": "Replacement shipped",
+          "hint": "Sent by a person when the replacement of an exchange is shipped."
+        }
+      },
+      "locales": {
+        "es": "Spanish",
+        "en": "English",
+        "pt-BR": "Portuguese (Brazil)"
+      },
+      "editorLabel": "Message template",
+      "notSet": "No text of your own in this language: the platform sends its own.",
+      "isSet": "The store text is used in this language.",
+      "readOnly": "You can see these texts but not change them.",
+      "body": "Text of the message",
+      "bodyHint": "Write it as you would to the customer. Put the details of the order where the variables go.",
+      "variablesTitle": "Insert a variable",
+      "variables": {
+        "customerName": {
+          "label": "Customer name",
+          "hint": "The name of the customer"
+        },
+        "orderNumber": {
+          "label": "Order number",
+          "hint": "The number of the order"
+        },
+        "itemsList": {
+          "label": "List of items",
+          "hint": "The products of the order, one per line"
+        },
+        "total": {
+          "label": "Total",
+          "hint": "What the order costs"
+        },
+        "shippingAddress": {
+          "label": "Shipping address",
+          "hint": "Where the order is going"
+        },
+        "carrierName": {
+          "label": "Carrier",
+          "hint": "The name of the carrier"
+        },
+        "trackingNumber": {
+          "label": "Tracking number",
+          "hint": "The tracking number of the guide"
+        },
+        "trackingUrl": {
+          "label": "Tracking link",
+          "hint": "The page where the package can be followed"
+        },
+        "storeName": {
+          "label": "Store name",
+          "hint": "The name of the store"
+        },
+        "codAmount": {
+          "label": "Amount to pay on delivery",
+          "hint": "The cash the customer pays when they receive the package"
+        },
+        "attemptNumber": {
+          "label": "Attempt number",
+          "hint": "The delivery attempt that has just failed"
+        },
+        "maxAttempts": {
+          "label": "Attempts allowed",
+          "hint": "How many attempts the carrier makes in all"
+        },
+        "scheduledDeliveryDate": {
+          "label": "Scheduled delivery date",
+          "hint": "The day the order was scheduled for; an order with no date is not sent"
+        }
+      },
+      "previewTitle": "Preview",
+      "previewEmpty": "Write the text to see it here.",
+      "previewHint": "Filled in with a sample order. What you see is what the customer receives.",
+      "sending": {
+        "legend": "How it is sent",
+        "auto": "Send it automatically",
+        "autoHint": "It goes out by itself when the event happens. Off, it is sent only when someone sends it from the order.",
+        "attach": "Attach the order summary (PDF)",
+        "attachHint": "The summary document travels with the message.",
+        "byPreferenceSummary": "This message goes out when an order is created if the preference to send the summary is on. It has no switch of its own.",
+        "byPreferenceFailedAttempt": "How often this message goes out is set in Preferences. It has no switch of its own."
+      },
+      "warnings": {
+        "autoSendNeedsScheduledDate": "This text uses the scheduled delivery date and goes out by itself: an order with no scheduled date will not be sent."
+      },
+      "link": {
+        "legend": "Template approved by the channel",
+        "use": "Use a template approved by the channel when the window to write to the customer is closed",
+        "useHint": "Some channels only allow a pre-approved template once the customer has been silent for a while. Link the one that matches this text.",
+        "channelGone": "The channel of this link is not available any more. Remove the link or save it as it is.",
+        "channel": "Channel",
+        "account": "Account",
+        "approved": "Approved template",
+        "approvedLoading": "Loading templates…",
+        "approvedNone": "The channel has no approved templates",
+        "approvedPick": "Choose a template",
+        "name": "Name of the template",
+        "language": "Language of the template",
+        "languageHint": "As the channel names it.",
+        "placeholders": "What fills each placeholder",
+        "placeholdersHint": "The template of the channel has numbered placeholders. Choose the variable that goes in each one, in order.",
+        "placeholder": "Placeholder {number}",
+        "chooseVariable": "Choose a variable",
+        "removePlaceholder": "Remove placeholder {number}",
+        "addPlaceholder": "Add a placeholder"
+      },
+      "problems": {
+        "bodyBlank": "Write the text of the message.",
+        "bodyTooLong": "The text is too long.",
+        "unknownVariable": "The text uses a variable that does not exist. Use the buttons to insert them.",
+        "linkFields": "The linked template needs a channel, a name and a language.",
+        "linkVariables": "Choose a variable for every placeholder of the linked template."
+      },
+      "save": "Save",
+      "saved": "Message saved",
+      "deleted": "Message deleted. The platform text is used again.",
+      "discard": "Discard changes",
+      "delete": {
+        "button": "Delete",
+        "title": "Delete this text?",
+        "body": "The platform text will be sent in this language until you write another. Messages already sent do not change.",
+        "cancel": "Cancel",
+        "confirm": "Delete"
+      },
+      "previewUnavailable": "The preview is only available to who may edit these texts."
     }
   },
   "emptyStates": {

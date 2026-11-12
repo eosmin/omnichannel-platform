@@ -1,6 +1,6 @@
 'use client'
 
-import { Pencil, Plus, X } from 'lucide-react'
+import { Pencil, Plus, TriangleAlert, X } from 'lucide-react'
 import dynamic from 'next/dynamic'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useState } from 'react'
@@ -43,6 +43,10 @@ const ProfileForm = dynamic(() => import('./profile-form').then(module => module
 const TagEditor = dynamic(() => import('./tag-editor').then(module => module.TagEditor), {
   ssr: false
 })
+const CautionDialog = dynamic(
+  () => import('./caution-dialog').then(module => module.CautionDialog),
+  { ssr: false }
+)
 const IdentityLinkForm = dynamic(
   () => import('./identity-link-form').then(module => module.IdentityLinkForm),
   { ssr: false }
@@ -182,6 +186,7 @@ export function CustomerDetails({
   const t = useTranslations('customers.profile')
   const tEdit = useTranslations('customers.edit')
   const tIdentity = useTranslations('customers.identity')
+  const tCaution = useTranslations('customers.cautionFlag')
   const { can } = useStore()
   const mayEdit = editable && can(ClientPermissions.CUSTOMERS_EDIT)
   const mayMerge = editable && can(ClientPermissions.CUSTOMERS_MERGE)
@@ -189,6 +194,7 @@ export function CustomerDetails({
   const [isLinking, setLinking] = useState(false)
   // `absorbedId` is set by "Merge instead", which skips the search for the duplicate
   const [merge, setMerge] = useState<MergeRequest | null>(null)
+  const [isCautionOpen, setCautionOpen] = useState(false)
   const format = useFormatter()
   const name = customerDisplayName(customer)
   const tail = visitorTail(customer)
@@ -231,10 +237,33 @@ export function CustomerDetails({
         </div>
       )}
       {customer.isCaution ? (
-        <p role="note" className="bg-muted rounded-md p-2 text-sm">
+        <p
+          role="note"
+          className="rounded-md border border-amber-500/60 bg-amber-50 p-2 text-sm dark:bg-amber-950/30"
+        >
           <span className="font-medium">{t('caution')}</span>
           {customer.cautionReason === null ? null : ` ${customer.cautionReason}`}
         </p>
+      ) : null}
+      {editable && can(ClientPermissions.CUSTOMERS_FLAG_CAUTION) ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="self-start"
+          onClick={() => setCautionOpen(true)}
+        >
+          <TriangleAlert aria-hidden />
+          {tCaution(customer.isCaution ? 'open.clear' : 'open.set')}
+        </Button>
+      ) : null}
+      {isCautionOpen ? (
+        <CautionDialog
+          customerId={customer.id}
+          isFlagged={customer.isCaution}
+          currentReason={customer.cautionReason}
+          onClose={() => setCautionOpen(false)}
+        />
       ) : null}
 
       <Section title={t('identities')}>

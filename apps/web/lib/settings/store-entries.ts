@@ -85,6 +85,26 @@ export function storeSettingsEntries(storeId: string): SettingsEntry[] {
       permission: ClientPermissions.SETTINGS_VIEW
     },
     {
+      id: StoreSettingsSections.ORDER_TEMPLATES,
+      labelKey: 'orderMessages',
+      href: AppPaths.store.settings(storeId, StoreSettingsSections.ORDER_TEMPLATES),
+      permission: ClientPermissions.SETTINGS_VIEW,
+      // The api lists the templates for who may see orders
+      also: ClientPermissions.ORDERS_VIEW
+    },
+    {
+      id: StoreSettingsSections.RETURNS,
+      labelKey: 'returns',
+      href: AppPaths.store.settings(storeId, StoreSettingsSections.RETURNS),
+      permission: ClientPermissions.SETTINGS_VIEW
+    },
+    {
+      id: StoreSettingsSections.PREFERENCES,
+      labelKey: 'preferences',
+      href: AppPaths.store.settings(storeId, StoreSettingsSections.PREFERENCES),
+      permission: ClientPermissions.SETTINGS_VIEW
+    },
+    {
       id: StoreSettingsSections.CARRIERS,
       labelKey: 'carriers',
       href: AppPaths.store.settings(storeId, StoreSettingsSections.CARRIERS),

@@ -421,6 +421,27 @@
       "loadMore": "Cargar más",
       "lines": "{count, plural, one {# línea} other {# líneas}}",
       "viewAll": "Ver pedidos"
+    },
+    "cautionFlag": {
+      "chip": "Precaución",
+      "open": {
+        "set": "Marcar con precaución",
+        "clear": "Quitar la marca de precaución"
+      },
+      "set": {
+        "title": "Marcar con precaución",
+        "description": "Avisa al equipo en la conversación, en los pedidos y al crear uno. No impide vender ni atender.",
+        "submit": "Marcar"
+      },
+      "clear": {
+        "title": "Quitar la marca de precaución",
+        "description": "El cliente deja de mostrarse con precaución. La razón se borra.",
+        "submit": "Quitar la marca"
+      },
+      "reason": "Razón",
+      "reasonHelp": "Obligatoria. La ven quienes pueden ver a los clientes.",
+      "changeReason": "Cambiar la razón",
+      "cancel": "Cancelar"
     }
   },
   "email": {
@@ -1552,7 +1573,8 @@
       "address": {
         "label": "Dirección de envío",
         "none": "Aún sin dirección",
-        "option": "{line1}, {city}"
+        "option": "{line1}, {city}",
+        "copied": "Dirección del pedido copiado: {line1}, {city}"
       },
       "payment": {
         "label": "Cómo se paga el pedido"
@@ -1586,7 +1608,19 @@
       "created": "Pedido {number} creado.",
       "createdAwaitingApproval": "Pedido {number} creado. Su precio espera una aprobación.",
       "confirmationSkipped": "No se confirmó: el precio espera una aprobación.",
-      "open": "Abrir el pedido"
+      "open": "Abrir el pedido",
+      "cautionBanner": {
+        "title": "Cliente con precaución."
+      },
+      "sendSummary": {
+        "label": "Enviar el resumen del pedido",
+        "help": "El cliente recibe un mensaje con lo que pidió."
+      },
+      "discountHint": {
+        "overridden": "Tienes permiso para cambiar precios: este descuento no necesita aprobación.",
+        "within_limit": "El descuento está dentro del límite de la tienda ({limit} %).",
+        "needs_approval": "El descuento pasa del límite de la tienda ({limit} %). El pedido se crea y su precio espera una aprobación."
+      }
     },
     "edit": {
       "title": "Editar pedido",
@@ -1704,6 +1738,21 @@
           "still_running": "La corrida sigue en marcha: revisa los pedidos otra vez en un momento."
         }
       }
+    },
+    "copy": {
+      "open": "Copiar pedido",
+      "heading": "Copia de un pedido",
+      "help": "Las cantidades, el costo de envío, los teléfonos y las notas vienen del pedido original. Los precios son los de hoy.",
+      "failed": "No se pudo leer el pedido para copiarlo.",
+      "warnings": {
+        "product_inactive": "{name} ya no está activo en el catálogo.",
+        "variant_unavailable": "{name} ya no está disponible.",
+        "variant_required": "{name} ahora tiene variantes: elige una antes de crear el pedido.",
+        "out_of_stock": "{name} no tiene existencias suficientes.",
+        "price_changed": "{name} cambió de precio: antes {previous}, ahora {current}.",
+        "unknown": "{name} necesita revisión antes de crear el pedido."
+      },
+      "openNamed": "Copiar el pedido {number}"
     }
   },
   "org": {
@@ -2915,7 +2964,10 @@
         "snippets": "Respuestas guardadas",
         "inbox": "Bandeja",
         "inventory": "Inventario",
-        "carriers": "Transportistas"
+        "carriers": "Transportistas",
+        "orderMessages": "Mensajes de pedido",
+        "returns": "Devoluciones",
+        "preferences": "Preferencias"
       },
       "org": {
         "label": "Organización",
@@ -3791,6 +3843,249 @@
           "ignored": "Ignorado"
         }
       }
+    },
+    "returns": {
+      "title": "Devoluciones",
+      "description": "Quién paga el envío de regreso de una devolución, y el envío de un reemplazo, cuando la devolución no lo indica.",
+      "formLabel": "Ajustes de devoluciones",
+      "readOnly": "Puedes ver estos ajustes pero no cambiarlos.",
+      "save": "Guardar",
+      "saved": "Ajustes de devoluciones guardados",
+      "payer": {
+        "legend": "Quién paga el envío de una devolución",
+        "hint": "Una devolución ya hecha conserva el pagador que tenía al crearse: este cambio solo afecta a las que vengan después.",
+        "options": {
+          "sender": {
+            "label": "La tienda",
+            "hint": "La tienda paga la guía de regreso y la del reemplazo."
+          },
+          "recipient": {
+            "label": "El cliente",
+            "hint": "El cliente paga: el costo se le cobra a él."
+          }
+        }
+      }
+    },
+    "preferences": {
+      "title": "Preferencias",
+      "description": "Lo que esta tienda decide sobre sus pedidos y sus remesas. Los interruptores de la bandeja están en la página Comportamiento de la bandeja.",
+      "formLabel": "Preferencias de la tienda",
+      "readOnly": "Puedes ver estas preferencias pero no cambiarlas.",
+      "save": "Guardar",
+      "saved": "Preferencias guardadas",
+      "create": {
+        "legend": "Al crear un pedido",
+        "confirm": "Marcar los pedidos nuevos como confirmados",
+        "confirmHint": "La casilla del formulario de pedido nuevo empieza marcada. Sin marcar, el pedido espera a que alguien lo confirme.",
+        "summary": "Enviar el resumen del pedido al cliente",
+        "summaryHint": "La casilla del formulario de pedido nuevo empieza marcada, y el resumen sale al crear el pedido."
+      },
+      "shipping": {
+        "legend": "Envío",
+        "freeShippingLabel": "Cuándo un pedido cuenta como envío gratis",
+        "freeShippingHint": "Un pedido con envío gratis sale con la tienda pagando la guía.",
+        "freeShippingRules": {
+          "all_items": "Cuando todos los productos tienen envío gratis",
+          "any_item": "Cuando algún producto tiene envío gratis"
+        }
+      },
+      "delivery": {
+        "legend": "Entregas y remesas",
+        "failedLabel": "Mensajes de un intento de entrega fallido",
+        "failedHint": "Un transportista intenta hasta tres veces. Elige cuántas veces se avisa al cliente.",
+        "failedPolicies": {
+          "every_attempt": "En cada intento fallido",
+          "first_only": "Solo en el primer intento fallido",
+          "none": "Nunca"
+        },
+        "overdueLabel": "Días para que una remesa se considere atrasada",
+        "overdueHint": "El efectivo que un transportista cobró contra entrega está atrasado si no se ha pagado pasados estos días desde la entrega. De {min} a {max}."
+      },
+      "reasons": {
+        "legend": "Motivos de cancelación",
+        "hint": "Las opciones del diálogo de cancelar, en este orden. Un pedido conserva el texto con el que se canceló, así que cambiar un motivo nunca cambia los pedidos anteriores.",
+        "listLabel": "Motivos de cancelación",
+        "textLabel": "Texto del motivo {position}",
+        "moveUp": "Subir: {reason}",
+        "moveDown": "Bajar: {reason}",
+        "remove": "Quitar: {reason}",
+        "newLabel": "Motivo nuevo",
+        "newPlaceholder": "Un motivo propio",
+        "add": "Agregar",
+        "restore": "Restaurar la lista original",
+        "full": "La lista está llena: quita un motivo para agregar otro."
+      },
+      "problems": {
+        "overdueDays": "Los días para que una remesa se considere atrasada deben ser un número entero dentro del rango indicado.",
+        "reasonsEmpty": "Deja al menos un motivo de cancelación.",
+        "reasonsTooMany": "Hay demasiados motivos de cancelación: quita algunos.",
+        "reasonBlank": "Un motivo propio no puede estar vacío.",
+        "reasonTooLong": "Un motivo propio es demasiado largo.",
+        "reasonDuplicate": "Dos motivos de cancelación dicen lo mismo."
+      }
+    },
+    "orderMessages": {
+      "title": "Mensajes de pedido",
+      "description": "Los textos que la tienda envía a sus clientes sobre un pedido, uno por tipo de mensaje e idioma. Donde no hay uno, la plataforma envía su propio texto.",
+      "kindsLabel": "Tipos de mensaje",
+      "localesLabel": "Idioma",
+      "unsavedMark": "Cambios sin guardar",
+      "languagesSet": "{count, plural, =0 {Sin configurar} one {1 idioma} other {# idiomas}}",
+      "kinds": {
+        "order_summary": {
+          "label": "Resumen del pedido",
+          "hint": "Lo que recibe el cliente con el detalle de su pedido."
+        },
+        "order_shipped": {
+          "label": "Pedido enviado",
+          "hint": "Sale cuando el pedido se entrega al transportista."
+        },
+        "order_out_for_delivery": {
+          "label": "En camino a entregarse",
+          "hint": "Sale cuando el transportista sale a entregar el paquete."
+        },
+        "order_delivered": {
+          "label": "Pedido entregado",
+          "hint": "Sale cuando el paquete se entrega."
+        },
+        "order_failed_attempt": {
+          "label": "Intento de entrega fallido",
+          "hint": "Sale cuando el transportista no pudo entregar. Cuántas veces se envía se define en Preferencias."
+        },
+        "order_cancelled": {
+          "label": "Pedido cancelado",
+          "hint": "Sale cuando el pedido se cancela."
+        },
+        "return_approved": {
+          "label": "Devolución aprobada",
+          "hint": "Lo envía una persona al aprobar una devolución, con la guía de regreso."
+        },
+        "exchange_shipped": {
+          "label": "Reemplazo enviado",
+          "hint": "Lo envía una persona cuando se envía el reemplazo de un cambio."
+        }
+      },
+      "locales": {
+        "es": "Español",
+        "en": "Inglés",
+        "pt-BR": "Portugués (Brasil)"
+      },
+      "editorLabel": "Plantilla del mensaje",
+      "notSet": "No hay un texto propio en este idioma: la plataforma envía el suyo.",
+      "isSet": "En este idioma se usa el texto de la tienda.",
+      "readOnly": "Puedes ver estos textos pero no cambiarlos.",
+      "body": "Texto del mensaje",
+      "bodyHint": "Escríbelo como se lo dirías al cliente. Pon los datos del pedido donde van las variables.",
+      "variablesTitle": "Insertar una variable",
+      "variables": {
+        "customerName": {
+          "label": "Nombre del cliente",
+          "hint": "El nombre del cliente"
+        },
+        "orderNumber": {
+          "label": "Número de pedido",
+          "hint": "El número del pedido"
+        },
+        "itemsList": {
+          "label": "Lista de productos",
+          "hint": "Los productos del pedido, uno por línea"
+        },
+        "total": {
+          "label": "Total",
+          "hint": "Lo que cuesta el pedido"
+        },
+        "shippingAddress": {
+          "label": "Dirección de envío",
+          "hint": "A dónde va el pedido"
+        },
+        "carrierName": {
+          "label": "Transportista",
+          "hint": "El nombre del transportista"
+        },
+        "trackingNumber": {
+          "label": "Número de rastreo",
+          "hint": "El número de rastreo de la guía"
+        },
+        "trackingUrl": {
+          "label": "Enlace de rastreo",
+          "hint": "La página donde se puede seguir el paquete"
+        },
+        "storeName": {
+          "label": "Nombre de la tienda",
+          "hint": "El nombre de la tienda"
+        },
+        "codAmount": {
+          "label": "Monto a pagar contra entrega",
+          "hint": "El efectivo que el cliente paga al recibir el paquete"
+        },
+        "attemptNumber": {
+          "label": "Número de intento",
+          "hint": "El intento de entrega que acaba de fallar"
+        },
+        "maxAttempts": {
+          "label": "Intentos permitidos",
+          "hint": "Cuántos intentos hace el transportista en total"
+        },
+        "scheduledDeliveryDate": {
+          "label": "Fecha de entrega programada",
+          "hint": "El día para el que se programó el pedido; un pedido sin fecha no se envía"
+        }
+      },
+      "previewTitle": "Vista previa",
+      "previewEmpty": "Escribe el texto para verlo aquí.",
+      "previewHint": "Con un pedido de ejemplo. Lo que ves es lo que recibe el cliente.",
+      "sending": {
+        "legend": "Cómo se envía",
+        "auto": "Enviarlo automáticamente",
+        "autoHint": "Sale solo cuando ocurre el evento. Sin marcar, se envía únicamente cuando alguien lo envía desde el pedido.",
+        "attach": "Adjuntar el resumen del pedido (PDF)",
+        "attachHint": "El documento del resumen viaja con el mensaje.",
+        "byPreferenceSummary": "Este mensaje sale al crear un pedido si la preferencia de enviar el resumen está activa. No tiene un interruptor propio.",
+        "byPreferenceFailedAttempt": "Cuántas veces sale este mensaje se define en Preferencias. No tiene un interruptor propio."
+      },
+      "warnings": {
+        "autoSendNeedsScheduledDate": "Este texto usa la fecha de entrega programada y sale solo: un pedido sin fecha programada no se enviará."
+      },
+      "link": {
+        "legend": "Plantilla aprobada por el canal",
+        "use": "Usar una plantilla aprobada por el canal cuando la ventana para escribir al cliente está cerrada",
+        "useHint": "Algunos canales solo permiten una plantilla aprobada de antemano cuando el cliente lleva un tiempo sin escribir. Vincula la que corresponde a este texto.",
+        "channelGone": "El canal de este vínculo ya no está disponible. Quita el vínculo o guárdalo tal como está.",
+        "channel": "Canal",
+        "account": "Cuenta",
+        "approved": "Plantilla aprobada",
+        "approvedLoading": "Cargando plantillas…",
+        "approvedNone": "El canal no tiene plantillas aprobadas",
+        "approvedPick": "Elige una plantilla",
+        "name": "Nombre de la plantilla",
+        "language": "Idioma de la plantilla",
+        "languageHint": "Como lo nombra el canal.",
+        "placeholders": "Qué llena cada espacio",
+        "placeholdersHint": "La plantilla del canal tiene espacios numerados. Elige la variable que va en cada uno, en orden.",
+        "placeholder": "Espacio {number}",
+        "chooseVariable": "Elige una variable",
+        "removePlaceholder": "Quitar el espacio {number}",
+        "addPlaceholder": "Agregar un espacio"
+      },
+      "problems": {
+        "bodyBlank": "Escribe el texto del mensaje.",
+        "bodyTooLong": "El texto es demasiado largo.",
+        "unknownVariable": "El texto usa una variable que no existe. Usa los botones para insertarlas.",
+        "linkFields": "La plantilla vinculada necesita un canal, un nombre y un idioma.",
+        "linkVariables": "Elige una variable para cada espacio de la plantilla vinculada."
+      },
+      "save": "Guardar",
+      "saved": "Mensaje guardado",
+      "deleted": "Mensaje eliminado. Se vuelve a usar el texto de la plataforma.",
+      "discard": "Descartar cambios",
+      "delete": {
+        "button": "Eliminar",
+        "title": "¿Eliminar este texto?",
+        "body": "Se enviará el texto de la plataforma en este idioma hasta que escribas otro. Los mensajes ya enviados no cambian.",
+        "cancel": "Cancelar",
+        "confirm": "Eliminar"
+      },
+      "previewUnavailable": "La vista previa solo está disponible para quien puede editar estos textos."
     }
   },
   "emptyStates": {

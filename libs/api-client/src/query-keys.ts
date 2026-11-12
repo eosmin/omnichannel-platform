@@ -79,7 +79,10 @@ export const QueryKeys = {
     list: (storeId: string, filter: object, sort: string) =>
       ['orders', storeId, 'list', filter, sort] as const,
     // Under the order: whatever changes an order makes its detail stale
-    byId: (storeId: string, orderId: string) => ['orders', storeId, orderId] as const
+    byId: (storeId: string, orderId: string) => ['orders', storeId, orderId] as const,
+    // The draft of "Copy order": read fresh every time it is opened, and outside `orders.all` so that an event of the
+    // orders never rebuilds a draft the agent is editing
+    copy: (storeId: string, orderId: string) => ['order-copy', storeId, orderId] as const
   },
   search: {
     global: (storeId: string, q: string) => ['search', storeId, q] as const
@@ -177,7 +180,16 @@ export const QueryKeys = {
       ['returns', storeId, 'reception-batches', batchId] as const
   },
   orderTemplates: {
-    all: (storeId: string) => ['order-templates', storeId] as const
+    all: (storeId: string) => ['order-templates', storeId] as const,
+    // The writes in flight (save, delete) of the store's templates
+    writing: (storeId: string) => ['order-template-write', storeId] as const,
+    // Apart from `all`, so that saving a template does not refetch the previews
+    preview: (storeId: string, locale: string, body: string) =>
+      ['order-template-preview', storeId, locale, body] as const
+  },
+  // Who pays the return leg by default (Settings → Returns)
+  returnSettings: {
+    store: (storeId: string) => ['return-settings', storeId] as const
   },
   remittances: {
     all: (storeId: string) => ['remittances', storeId] as const
@@ -197,7 +209,9 @@ export const QueryKeys = {
     urls: (storeId: string, mediaId: string) => ['media', storeId, mediaId, 'urls'] as const
   },
   preferences: {
-    store: (storeId: string) => ['preferences', storeId] as const
+    store: (storeId: string) => ['preferences', storeId] as const,
+    // The `orders` block, which the create-order drawer reads for its checkboxes and the discount limit
+    orders: (storeId: string) => ['preferences', storeId, 'orders'] as const
   },
   members: {
     directory: (storeId: string) => ['members', storeId, 'directory'] as const

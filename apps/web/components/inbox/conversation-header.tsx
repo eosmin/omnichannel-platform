@@ -15,6 +15,7 @@ import { useCustomerName } from '../../lib/inbox/use-customer-name'
 import { useChannelName, useConversation } from '../../lib/inbox/use-inbox-data'
 import { useInboxFilters } from '../../lib/inbox/use-inbox-filters'
 import { useErrorText } from '../../lib/use-error-text'
+import { CautionChip } from '../customers/caution-chip'
 import { useCustomerDrawer } from '../customers/customer-drawer-context'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
@@ -139,6 +140,11 @@ function LoadedHeader({
           {name}
         </h1>
         <p className="text-muted-foreground truncate text-xs">{channelName}</p>
+        {customer.isCaution ? (
+          <span className="mt-1 self-start">
+            <CautionChip />
+          </span>
+        ) : null}
       </div>
       <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1">
         {can(ClientPermissions.CUSTOMERS_VIEW) ? (

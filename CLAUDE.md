@@ -234,7 +234,7 @@ scoped runs returned exactly 10 each). A run that returns 10 has **not** run out
 | API route constant                                      | `libs/core/domain/api/api-routes.ts`                       |
 | Status enum                                             | `libs/core/domain/status-enums.ts`                  |
 | Shipping constant (carrier ids, capabilities, label formats) | `libs/core/domain/shipping-constants.ts`       |
-| Store preference and its factory default                | `libs/core/platform/config/store-preferences.ts`             |
+| Store preference and its factory default                | `libs/core/domain/store-preferences.ts`             |
 | Queue/job name                                          | `libs/core/platform/queues/queue-names.ts`                   |
 | Realtime event                                          | `libs/core/domain/realtime/realtime-events.ts`             |
 | Socket limit, presence timing, room name                | `libs/core/domain/realtime/` (`socket-limits.ts`, `presence-timing.ts`, `room-names.ts`) |

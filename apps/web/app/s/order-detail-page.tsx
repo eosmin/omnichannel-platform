@@ -16,7 +16,9 @@ import {
 } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 
+import { CautionChip } from '../../components/customers/caution-chip'
 import { useCustomerDrawer } from '../../components/customers/customer-drawer-context'
+import { OrderCopyButton } from '../../components/orders/order-copy-button'
 import { OrderDelivery } from '../../components/orders/order-delivery'
 import { OrderEditButton } from '../../components/orders/order-edit-button'
 import { OrderFileLink } from '../../components/orders/order-file-link'
@@ -148,6 +150,11 @@ function CustomerBlock({ order }: { order: OrderDetailView }): ReactElement {
         ) : (
           <p className="font-medium">{order.customer.name ?? tList('unnamedCustomer')}</p>
         )}
+        {order.customer.isCaution === true ? (
+          <span className="self-start">
+            <CautionChip />
+          </span>
+        ) : null}
         {order.customer.email === null ? null : <p>{order.customer.email}</p>}
         {order.customer.phone === null ? null : <p>{order.customer.phone}</p>}
       </div>
@@ -247,6 +254,7 @@ export function OrderDetailPage(): ReactElement {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <OrderEditButton order={data} />
+          <OrderCopyButton orderId={data.id} orderNumber={data.orderNumber} />
           <OrderFlowButtons order={data} writes={writes} />
         </div>
         <OrderPrintButtons order={data} warehouseNames={warehouseNames} />

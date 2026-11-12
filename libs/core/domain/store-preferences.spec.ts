@@ -1,5 +1,4 @@
-import { OrderCancellationReasons } from '@platform/core/domain'
-
+import { OrderCancellationReasons } from './order-constants'
 import {
   cancellationReasonsSchema,
   readRemittancePreferences,
@@ -263,6 +262,14 @@ describe('orders.cancellationReasons', () => {
 })
 
 describe('updateStorePreferencesSchema, the orders block', () => {
+  it('takes the keys Settings → Preferences draws, each held to its type', () => {
+    const body = {
+      freeShippingRule: 'any_item',
+      failedAttemptMessages: 'first_only'
+    }
+    expect(updateStorePreferencesSchema.parse({ orders: body })).toEqual({ orders: body })
+  })
+
   it('takes the keys of the block that change, alone or next to a flat key', () => {
     expect(updateStorePreferencesSchema.parse({ orders: { confirmOnCreate: true } })).toEqual({
       orders: { confirmOnCreate: true }
@@ -282,7 +289,16 @@ describe('updateStorePreferencesSchema, the orders block', () => {
 
   it.each([
     ['an empty block', { orders: {} }],
-    ['a key of the block that has no write path yet', { orders: { discountLimitPercent: 10 } }],
+    [
+      'a key of the block with no write path (the discount limit)',
+      { orders: { discountLimitPercent: 10 } }
+    ],
+    [
+      'the price-override notice, which is an approval control',
+      { orders: { notifyOnPriceOverride: false } }
+    ],
+    ['a failed-attempt policy that does not exist', { orders: { failedAttemptMessages: 'twice' } }],
+    ['a free-shipping rule that does not exist', { orders: { freeShippingRule: 'some_items' } }],
     ['a key the block does not know', { orders: { confirmOnCreate: true, other: 1 } }],
     ['a switch that is not a boolean', { orders: { sendSummaryOnCreate: 'off' } }],
     ['null for a key', { orders: { confirmOnCreate: null } }],
