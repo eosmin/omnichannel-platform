@@ -55,7 +55,7 @@ describe('buildPushPayload', () => {
   it('has a message for every type that can be pushed, in both languages', () => {
     for (const type of Object.values(NotificationTypes)) {
       for (const locale of [Locales.EN, Locales.ES]) {
-        // The parameters a message may ask for (the day a token stops, the number of a count, the carrier and the code of a status nobody mapped); a type that asks for none
+        // The parameters a message may ask for (the day a token stops, the number of a count, the carrier and the code of a status nobody mapped, the packages and days of a remittance that is late); a type that asks for none
         // ignores them
         const payload = buildPushPayload(
           row({
@@ -65,7 +65,9 @@ describe('buildPushPayload', () => {
               date: '2026-11-14',
               number: 'CT-0001',
               carrier: 'Courier One',
-              code: '16:115'
+              code: '16:115',
+              count: 3,
+              days: 7
             }
           }),
           locale

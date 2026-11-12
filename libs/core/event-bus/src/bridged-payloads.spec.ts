@@ -179,6 +179,14 @@ describe('bridgedPayload', () => {
       connectionId: randomUUID(),
       providerCode: '16:115'
     },
+    [Events.REMITTANCE_OVERDUE]: {
+      storeId: randomUUID(),
+      connectionId: randomUUID(),
+      count: 4,
+      overdueAfterDays: 7,
+      oldestAgeDays: 12,
+      totalOwedCents: 45_000
+    },
     [Events.BULK_LABELS_PROGRESS]: {
       storeId: randomUUID(),
       jobId: randomUUID(),

@@ -154,6 +154,18 @@ export interface RemittanceEventPayload {
   actor: ActorRef
 }
 
+// A connection whose cash on delivery is overdue (TDD_17 §4.15): ids and numbers only, no guide and no customer
+export interface RemittanceOverduePayload {
+  storeId: string
+  connectionId: string
+  // How many shipments are overdue, the days the store allows, and the oldest one's age
+  count: number
+  overdueAfterDays: number
+  oldestAgeDays: number
+  // What is still owed on them, in cents of the store currency
+  totalOwedCents: number
+}
+
 export interface ShipmentStatusChangedPayload extends ShipmentEventPayload {
   from: ShipmentStatus
   to: ShipmentStatus
@@ -478,6 +490,7 @@ export interface DomainEventPayloads {
   [Events.SHIPMENT_CANCEL_FAILED]: ShipmentEventPayload
   [Events.REMITTANCE_CONFIRMED]: RemittanceEventPayload
   [Events.REMITTANCE_VOIDED]: RemittanceEventPayload
+  [Events.REMITTANCE_OVERDUE]: RemittanceOverduePayload
   [Events.CARRIER_STATUS_UNMAPPED]: CarrierStatusUnmappedPayload
   [Events.BULK_LABELS_PROGRESS]: BulkLabelsProgressPayload
   [Events.BULK_LABELS_DONE]: BulkLabelsDonePayload

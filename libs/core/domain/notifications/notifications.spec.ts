@@ -118,7 +118,6 @@ describe('NotificationTypesWithoutEmitter', () => {
   it('holds the commerce types, the webhook and the plugin ones, and none the inbox raises', () => {
     for (const type of [
       NotificationTypes.ORDER_PAYMENT_FAILED,
-      NotificationTypes.REMITTANCE_OVERDUE,
       NotificationTypes.WEBHOOK_AUTO_DISABLED,
       NotificationTypes.PLUGIN_ERROR
     ]) {
@@ -142,7 +141,9 @@ describe('NotificationTypesWithoutEmitter', () => {
       // Step 4.11: a pickup that a person has to arrange with the carrier
       NotificationTypes.PICKUP_MANUAL_REQUIRED,
       // Raised since Step 4.12 PR R1 (a return on its way back)
-      NotificationTypes.RETURN_AWAITING_RECEIPT
+      NotificationTypes.RETURN_AWAITING_RECEIPT,
+      // Raised since Step 4.13 PR B (the daily check of the cash a carrier owes)
+      NotificationTypes.REMITTANCE_OVERDUE
     ]) {
       expect(NotificationTypesWithoutEmitter.has(type)).toBe(false)
       expect(NotificationGroupTypes[NotificationGroups.SHIPPING]).toContain(type)

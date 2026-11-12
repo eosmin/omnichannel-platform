@@ -173,6 +173,15 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     connectionId: id,
     providerCode: z.string().min(1).max(CarrierStatusLimits.PROVIDER_CODE_MAX_LENGTH)
   }),
+  // The cash on delivery a carrier has kept too long: ids and numbers, no guide, no customer
+  [Events.REMITTANCE_OVERDUE]: z.object({
+    storeId: id,
+    connectionId: id,
+    count: z.number().int().min(1),
+    overdueAfterDays: z.number().int().min(1),
+    oldestAgeDays: z.number().int().min(0),
+    totalOwedCents: z.number().int()
+  }),
   // A bulk run of labels: ids and counts, never what was made of each order
   [Events.BULK_LABELS_PROGRESS]: z.object({
     storeId: id,

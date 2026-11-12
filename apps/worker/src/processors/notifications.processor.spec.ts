@@ -4,6 +4,7 @@ import { DigestFrequency } from '@platform/core/domain'
 import { JobNames, type SendWebPushJob } from '@platform/core/queues'
 
 import type { EmailDigestService } from '../notifications/email-digest.service'
+import type { RemittanceChecker } from '../notifications/remittance-checker.service'
 import type { WebPushSender } from '../notifications/web-push-sender.service'
 
 import { NotificationsProcessor } from './notifications.processor'
@@ -20,10 +21,12 @@ describe('NotificationsProcessor', () => {
   }
   const handleQueued = jest.fn<Promise<void>, [string, string, Date]>()
   const sendDigest = jest.fn<Promise<void>, [string, string, Date]>()
+  const check = jest.fn<Promise<number>, [string, Date]>()
   const processor = new NotificationsProcessor(
     support as unknown as ProcessorSupport,
     { send } as unknown as WebPushSender,
-    { handleQueued, sendDigest } as unknown as EmailDigestService
+    { handleQueued, sendDigest } as unknown as EmailDigestService,
+    { check } as unknown as RemittanceChecker
   )
   const job = (name: string, data: unknown): Job<SendWebPushJob> =>
     ({ name, data }) as unknown as Job<SendWebPushJob>
@@ -32,6 +35,19 @@ describe('NotificationsProcessor', () => {
     send.mockReset().mockResolvedValue(undefined)
     handleQueued.mockReset().mockResolvedValue(undefined)
     sendDigest.mockReset().mockResolvedValue(undefined)
+    check.mockReset().mockResolvedValue(0)
+  })
+
+  it('hands the daily check of the cash owed to the remittance checker', async () => {
+    await processor.process(job(JobNames.CHECK_REMITTANCES, { storeId: USER }))
+    expect(check).toHaveBeenCalledWith(USER, expect.any(Date))
+  })
+
+  it('does not retry a remittance check that does not fit its schema', async () => {
+    await expect(
+      processor.process(job(JobNames.CHECK_REMITTANCES, { storeId: 'nope' }))
+    ).rejects.toBeInstanceOf(UnrecoverableError)
+    expect(check).not.toHaveBeenCalled()
   })
 
   it('hands the queued email of a notification to the digest service', async () => {

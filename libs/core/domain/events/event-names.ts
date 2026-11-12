@@ -113,6 +113,8 @@ export const Events = {
   RETURN_RECEIVED: 'return.received',
   REMITTANCE_CONFIRMED: 'remittance.confirmed',
   REMITTANCE_VOIDED: 'remittance.voided',
+  // A carrier has kept cash on delivery for longer than the store allows (the daily check, TDD_17 §4.15)
+  REMITTANCE_OVERDUE: 'remittance.overdue',
 
   // Tags and snippets
   TAG_CREATED: 'tag.created',
@@ -223,6 +225,8 @@ export const BridgedEvents = [
   Events.SHIPMENT_CANCEL_FAILED,
   // The worker reads what the carriers push: the owner is told in the api
   Events.CARRIER_STATUS_UNMAPPED,
+  // The daily check of the cash owed runs in the worker and the team is told in the api
+  Events.REMITTANCE_OVERDUE,
   // The worker runs the bulk generation of labels: the requester hears it in the api
   Events.BULK_LABELS_PROGRESS,
   Events.BULK_LABELS_DONE,

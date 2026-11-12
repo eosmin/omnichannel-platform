@@ -107,6 +107,40 @@ export const updateOrderPreferencesSchema = z
 
 export type UpdateOrderPreferencesBody = z.output<typeof updateOrderPreferencesSchema>
 
+// The `remittances` block (TDD_17 §4.15): when the cash a carrier collected on delivery is late. The daily check tells the team
+// about a connection with shipments delivered longer ago than this and still unpaid.
+export const RemittancePreferenceLimits = {
+  MIN_OVERDUE_DAYS: 1,
+  MAX_OVERDUE_DAYS: 90,
+  DEFAULT_OVERDUE_DAYS: 7
+} as const
+
+export const remittancePreferencesSchema = z.object({
+  overdueAfterDays: z
+    .number()
+    .int()
+    .min(RemittancePreferenceLimits.MIN_OVERDUE_DAYS)
+    .max(RemittancePreferenceLimits.MAX_OVERDUE_DAYS)
+    .catch(RemittancePreferenceLimits.DEFAULT_OVERDUE_DAYS)
+})
+
+export type RemittancePreferences = z.output<typeof remittancePreferencesSchema>
+
+export const updateRemittancePreferencesSchema = z
+  .strictObject({
+    overdueAfterDays: z
+      .number()
+      .int()
+      .min(RemittancePreferenceLimits.MIN_OVERDUE_DAYS)
+      .max(RemittancePreferenceLimits.MAX_OVERDUE_DAYS)
+      .optional()
+  })
+  .refine(body => Object.values(body).some(value => value !== undefined), {
+    message: 'nothing to change'
+  })
+
+export type UpdateRemittancePreferencesBody = z.output<typeof updateRemittancePreferencesSchema>
+
 // Each key falls back to its own default (`catch`): a value that does not fit in one key must not reset
 // the others, least of all a switch the store turned off.
 export const storePreferencesSchema = z.object({
@@ -116,7 +150,9 @@ export const storePreferencesSchema = z.object({
   // default, in the stores that already exist too (a key that is missing reads as this)
   assignOnReply: z.boolean().catch(true),
   // The orders block (TDD_17 §4.14); a column with none reads as every default of the block
-  orders: orderPreferencesSchema.catch(() => orderPreferencesSchema.parse({}))
+  orders: orderPreferencesSchema.catch(() => orderPreferencesSchema.parse({})),
+  // The remittances block (TDD_17 §4.15); a column with none reads as every default of the block
+  remittances: remittancePreferencesSchema.catch(() => remittancePreferencesSchema.parse({}))
 })
 
 export type StorePreferences = z.output<typeof storePreferencesSchema>
@@ -132,6 +168,10 @@ export function readOrderPreferences(raw: unknown): OrderPreferences {
   return readStorePreferences(raw).orders
 }
 
+export function readRemittancePreferences(raw: unknown): RemittancePreferences {
+  return readStorePreferences(raw).remittances
+}
+
 // What PUT /settings/preferences takes: the keys the caller changes, each held to its real type (the
 // `catch` above is for reading what is stored, never for accepting what a client sends). Keys that are
 // not named keep their value, so a page that draws only some of them cannot reset the others. The `orders`
@@ -140,7 +180,8 @@ export const updateStorePreferencesSchema = z
   .strictObject({
     sendReadReceipts: z.boolean().optional(),
     assignOnReply: z.boolean().optional(),
-    orders: updateOrderPreferencesSchema.optional()
+    orders: updateOrderPreferencesSchema.optional(),
+    remittances: updateRemittancePreferencesSchema.optional()
   })
   .refine(body => Object.values(body).some(value => value !== undefined), {
     message: 'nothing to change'
