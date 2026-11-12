@@ -24,6 +24,7 @@ import {
   OrderEditablePriceStatuses,
   OrderLockScopes,
   OrderSummaryEvents,
+  OrderReturnStatus,
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
@@ -38,7 +39,7 @@ import {
   resourceNotFound
 } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
-import { Events } from '@platform/core/events'
+import { type ActorRef, Events } from '@platform/core/events'
 import { writeOrderSummaryLine } from '@platform/core/messaging'
 import { MediaPurpose } from '@platform/core/storage'
 
@@ -95,6 +96,103 @@ export class OrdersStatusService {
   ): Promise<OrderDetailView> {
     await this.applyStatus(storeId, orderId, body, actor, held)
     return this.orders.get(storeId, orderId, held)
+  }
+
+  // The order is returned because its returns that are back cover every unit (TDD_17 §4.11): the one writer of that status
+  // outside the table of a hand-made change. The caller holds the order (`lockOrder`) and the transaction; the stock was already
+  // moved by the receipt, so none moves here.
+  async markReturnedByReturns(
+    tx: PrismaTransaction,
+    storeId: string,
+    orderId: string,
+    actor: ActorRef
+  ): Promise<{ from: OrderStatus; orderNumber: string } | null> {
+    const order = await tx.order.findFirstOrThrow({
+      where: { id: orderId, storeId },
+      select: {
+        orderNumber: true,
+        status: true,
+        conversationId: true,
+        totalCents: true,
+        currency: true,
+        _count: { select: { items: true } }
+      }
+    })
+    const from = order.status as OrderStatus
+    if (from === OrderStatus.RETURNED) return null
+    const verdict = checkOrderTransition(from, OrderStatus.RETURNED)
+    if (!verdict.ok) throw orderRefusal(verdict.code)
+    await tx.order.update({
+      where: { id: orderId, storeId },
+      data: { status: OrderStatus.RETURNED }
+    })
+    if (order.conversationId !== null) {
+      await writeOrderSummaryLine(tx, storeId, order.conversationId, {
+        event: OrderSummaryEvents.STATUS_CHANGED,
+        orderId,
+        orderNumber: order.orderNumber,
+        status: OrderStatus.RETURNED,
+        previousStatus: from,
+        totalCents: order.totalCents,
+        currency: order.currency,
+        itemCount: order._count.items,
+        actor
+      })
+    }
+    this.events.publish(tx, Events.ORDER_STATUS_CHANGED, {
+      storeId,
+      orderId,
+      orderNumber: order.orderNumber,
+      actor,
+      from,
+      to: OrderStatus.RETURNED,
+      notifyCustomer: null
+    })
+    return { from, orderNumber: order.orderNumber }
+  }
+
+  // The money given back by the returns of the order reached what the customer paid: the payment is REFUNDED (TDD_17 §4.11).
+  // Same holding rules as `markReturnedByReturns`; a payment that was never completed has nothing to refund.
+  async markRefundedByReturns(
+    tx: PrismaTransaction,
+    storeId: string,
+    orderId: string,
+    actor: ActorRef
+  ): Promise<boolean> {
+    const order = await tx.order.findFirstOrThrow({
+      where: { id: orderId, storeId },
+      select: { orderNumber: true, paymentStatus: true }
+    })
+    const from = order.paymentStatus as PaymentStatus
+    if (from !== PaymentStatus.COMPLETED) return false
+    await tx.order.update({
+      where: { id: orderId, storeId },
+      data: { paymentStatus: PaymentStatus.REFUNDED }
+    })
+    this.events.publish(tx, Events.ORDER_PAYMENT_STATUS_CHANGED, {
+      storeId,
+      orderId,
+      orderNumber: order.orderNumber,
+      actor,
+      from,
+      to: PaymentStatus.REFUNDED
+    })
+    return true
+  }
+
+  private async hasReturnsHoldingUnits(
+    tx: PrismaTransaction,
+    storeId: string,
+    orderId: string
+  ): Promise<boolean> {
+    const count = await tx.orderReturn.count({
+      where: {
+        storeId,
+        orderId,
+        status: { notIn: [OrderReturnStatus.REJECTED, OrderReturnStatus.CANCELLED] }
+      }
+    })
+    return count > 0
   }
 
   // "Mark as confirmed" over many orders of the list. Each is a change of its own (its own lock and transaction, its own
@@ -263,7 +361,12 @@ export class OrdersStatusService {
           break
         }
         case OrderStatus.RETURNED:
-          // An order with no OrderReturn (Step 4.12): the agent chooses to put the units back on the shelf or not
+          // The return flow puts an order here when the goods are back and counts the stock once (`ReturnsService`); a hand-made
+          // RETURNED next to a return that holds units would count it twice or contradict it
+          if (await this.hasReturnsHoldingUnits(tx, storeId, orderId)) {
+            throw orderRefusal(ErrorCodes.ORDER_HAS_ACTIVE_RETURNS)
+          }
+          // An order with no OrderReturn: the agent chooses to put the units back on the shelf or not
           if (body.restock === true) await this.stock.restock(tx, storeId, orderId, actor.userId)
           break
         case OrderStatus.PENDING_CONFIRMATION:

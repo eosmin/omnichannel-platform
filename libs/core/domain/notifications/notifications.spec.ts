@@ -140,7 +140,9 @@ describe('NotificationTypesWithoutEmitter', () => {
       NotificationTypes.BULK_LABELS_READY,
       NotificationTypes.SHIPMENT_CANCEL_FAILED,
       // Step 4.11: a pickup that a person has to arrange with the carrier
-      NotificationTypes.PICKUP_MANUAL_REQUIRED
+      NotificationTypes.PICKUP_MANUAL_REQUIRED,
+      // Raised since Step 4.12 PR R1 (a return on its way back)
+      NotificationTypes.RETURN_AWAITING_RECEIPT
     ]) {
       expect(NotificationTypesWithoutEmitter.has(type)).toBe(false)
       expect(NotificationGroupTypes[NotificationGroups.SHIPPING]).toContain(type)

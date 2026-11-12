@@ -26,6 +26,7 @@ import { PluginsApiModule } from './modules/plugins/plugins.module'
 import { ProductsModule } from './modules/products/products.module'
 import { RealtimeModule } from './modules/realtime/realtime.module'
 import { RemittancesModule } from './modules/remittances/remittances.module'
+import { ReturnsModule } from './modules/returns/returns.module'
 import { RoutingModule } from './modules/routing/routing.module'
 import { SettingsModule } from './modules/settings/settings.module'
 import { ShipmentsModule } from './modules/shipments/shipments.module'
@@ -64,6 +65,7 @@ import { WidgetModule } from './modules/widget/widget.module'
     InventoryModule,
     CountsModule,
     OrdersModule,
+    ReturnsModule,
     ProductsModule,
     TransfersModule,
     WarehousesModule,
