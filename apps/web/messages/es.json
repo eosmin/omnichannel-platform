@@ -3498,11 +3498,51 @@
           "autoNeedsPickups": "La recolección automática necesita las recolecciones activadas.",
           "autoTime": "Escribe la hora de la solicitud automática, como 09:30.",
           "reminder": "El recordatorio es un número entero de minutos, de 1440 como máximo.",
-          "credentials": "Escribe las credenciales como un objeto JSON."
+          "credentials": "Escribe las credenciales como un objeto JSON.",
+          "serviceLabel": "Cada servicio necesita un nombre de hasta 80 caracteres.",
+          "fee": "Una tarifa es un monto como 15.50, o vacío.",
+          "feeRange": "La tarifa mínima no puede ser mayor que la habitual, ni la habitual mayor que la máxima.",
+          "attempts": "Los intentos de entrega son un número entero de 1 a 10.",
+          "poll": "El intervalo de consulta es un número entero de minutos de 1 a 1440, o vacío.",
+          "defaultService": "El servicio predeterminado debe seguir activo: elige antes otro predeterminado."
         },
         "save": "Guardar",
         "saving": "Guardando…",
-        "saved": "{name} se guardó."
+        "saved": "{name} se guardó.",
+        "shipping": {
+          "legend": "Envío",
+          "payer": "Quién paga el envío de forma predeterminada",
+          "payers": {
+            "sender": "La tienda",
+            "recipient": "El cliente"
+          },
+          "labelFormat": "Formato de la etiqueta",
+          "labelFormats": {
+            "pdf_100x150": "100 x 150 mm (rollo térmico)",
+            "pdf_a6": "A6",
+            "pdf_a4": "A4"
+          },
+          "fees": {
+            "default": "Tarifa habitual (US$)",
+            "min": "Tarifa mínima (US$)",
+            "max": "Tarifa máxima (US$)"
+          },
+          "feesHint": "La tarifa habitual se sugiere en las guías nuevas; una tarifa fuera de la mínima y la máxima se señala. Vacío significa ninguna.",
+          "attempts": "Intentos de entrega",
+          "attemptsHint": "Cuántos intentos hace el transportista antes de regresar el paquete, de 1 a 10.",
+          "poll": "Consultar los estados cada (minutos)",
+          "pollHint": "Vacío usa el intervalo propio de la plataforma.",
+          "deductsFee": "El transportista descuenta su tarifa del efectivo que cobra",
+          "deductsFeeHint": "La remesa llega entonces sin la tarifa del envío."
+        },
+        "services": {
+          "legend": "Servicios",
+          "default": "Servicio predeterminado",
+          "noDefault": "Sin servicio predeterminado",
+          "label": "Nombre del servicio {code}",
+          "active": "Activo",
+          "activeOf": "El servicio {code} está activo"
+        }
       },
       "secret": {
         "title": "Secreto de los avisos de {name}",
