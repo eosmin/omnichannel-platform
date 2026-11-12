@@ -12,7 +12,7 @@ import {
   ShipmentStatus,
   ShippingPayer
 } from '@platform/core/domain'
-import { ErrorCodes } from '@platform/core/errors'
+import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 
 import {
   createCarrierConnection,
@@ -28,6 +28,7 @@ import { api } from '../helpers/http'
 const OK = 200
 const CREATED = 201
 const NO_CONTENT = 204
+const BAD_REQUEST = HttpStatusCodes.BAD_REQUEST
 const FORBIDDEN = 403
 const NOT_FOUND = 404
 const CONFLICT = 409
@@ -74,6 +75,13 @@ describe('COD remittances (TDD_17 §4.15)', () => {
     })
     connectionId = (await createCarrierConnection(owner, { storeId: ctx.storeA.id, prefix: 'RM' }))
       .id
+  })
+  // A test that turns the fee rule on must not leave it on for the next one, whatever it did before it failed
+  afterEach(async () => {
+    await owner.carrierConnection.update({
+      where: { id: connectionId },
+      data: { remittanceDeductsFee: false }
+    })
   })
   afterAll(async () => {
     await cleanUp(owner, prefix)
@@ -360,7 +368,7 @@ describe('COD remittances (TDD_17 §4.15)', () => {
             { guideNumber: 'TWO-MORE', reportedCents: 1 }
           ]
         })
-      expect(over.status).toBe(400)
+      expect(over.status).toBe(BAD_REQUEST)
       expect(errorCode(over.body)).toBe(ErrorCodes.REMITTANCE_TOO_MANY_LINES)
     })
 
@@ -378,7 +386,7 @@ describe('COD remittances (TDD_17 §4.15)', () => {
         .patch(ApiRoutes.remittances.lineById(draft.id, second.id))
         .send({ excluded: true, note: 'not in the file' })
       expect(left.status).toBe(OK)
-      expect((left.body as RemittanceBody).totals.reportedCents).toBe(400)
+      expect((left.body as RemittanceBody).totals.reportedCents).toBe(BAD_REQUEST)
       const gone = await asAdmin().delete(ApiRoutes.remittances.byId(draft.id))
       expect(gone.status).toBe(NO_CONTENT)
       expect((await asAdmin().get(ApiRoutes.remittances.byId(draft.id))).status).toBe(NOT_FOUND)
@@ -393,11 +401,11 @@ describe('COD remittances (TDD_17 §4.15)', () => {
       const bad = await asAdmin()
         .post(ApiRoutes.remittances.list)
         .send({ connectionId, lines: [{ guideNumber: 'X', reportedCents: 10.5 }] })
-      expect(bad.status).toBe(400)
+      expect(bad.status).toBe(BAD_REQUEST)
       const stray = await asAdmin()
         .post(ApiRoutes.remittances.list)
         .send({ connectionId, storeId: ctx.storeB.id })
-      expect(stray.status).toBe(400)
+      expect(stray.status).toBe(BAD_REQUEST)
     })
   })
 
@@ -668,13 +676,22 @@ describe('COD remittances (TDD_17 §4.15)', () => {
       expect((await asViewer().get(ApiRoutes.remittances.byId(draft.id))).status).toBe(OK)
       expect((await asViewer().get(ApiRoutes.remittances.pending)).status).toBe(OK)
       expect((await asViewer().get(ApiRoutes.remittances.list)).status).toBe(OK)
+      const line = { lines: [{ guideNumber: 'PERM-1', reportedCents: 1 }] }
+      for (const who of [asViewer, asAgent]) {
+        for (const request of [
+          who().post(ApiRoutes.remittances.list).send({ connectionId }),
+          who().post(ApiRoutes.remittances.confirm(draft.id)).send({}),
+          who().post(ApiRoutes.remittances.void(draft.id)).send({}),
+          who().post(ApiRoutes.remittances.lines(draft.id)).send(line),
+          who().patch(ApiRoutes.remittances.lineById(draft.id, draft.id)).send({ excluded: true }),
+          who().delete(ApiRoutes.remittances.byId(draft.id))
+        ]) {
+          expect((await request).status).toBe(FORBIDDEN)
+        }
+      }
       for (const request of [
-        asViewer().post(ApiRoutes.remittances.list).send({ connectionId }),
-        asViewer().post(ApiRoutes.remittances.confirm(draft.id)).send({}),
-        asViewer().post(ApiRoutes.remittances.void(draft.id)).send({}),
-        asViewer().post(ApiRoutes.remittances.lines(draft.id)).send({ lines: [] }),
-        asViewer().delete(ApiRoutes.remittances.byId(draft.id)),
         asAgent().get(ApiRoutes.remittances.list),
+        asAgent().get(ApiRoutes.remittances.byId(draft.id)),
         asAgent().get(ApiRoutes.remittances.pending)
       ]) {
         expect((await request).status).toBe(FORBIDDEN)

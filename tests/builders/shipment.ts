@@ -33,6 +33,10 @@ export async function createShipment(
   owner: OwnerClient,
   input: ShipmentInput
 ): Promise<{ id: string; orderId: string; connectionId: string; eventId: string }> {
+  // A COD state is only valid with the amount to collect (the database checks the pair): a caller that gives one alone is wrong
+  if (input.codStatus !== undefined && input.codAmountCents === undefined) {
+    throw new Error('createShipment: codStatus needs codAmountCents')
+  }
   const order = await createOrder(owner, { storeId: input.storeId, status: 'CONFIRMED' })
   const connection =
     input.connectionId === undefined
