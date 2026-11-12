@@ -12,6 +12,7 @@ import {
   connectionsNeedingLocations,
   defaultConnection,
   guideBody,
+  type GuideConnection,
   guideConnections,
   initialDraft,
   needsPickup,
@@ -47,7 +48,7 @@ function ConnectionSelect({
   onChange
 }: {
   id: string
-  connections: readonly CarrierConnectionView[]
+  connections: readonly GuideConnection[]
   value: string
   onChange: (connectionId: string) => void
 }): ReactElement {
@@ -78,7 +79,7 @@ function ServiceSelect({
   onChange
 }: {
   id: string
-  connection: CarrierConnectionView
+  connection: GuideConnection
   value: string
   onChange: (code: string) => void
 }): ReactElement | null {
