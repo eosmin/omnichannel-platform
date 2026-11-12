@@ -34,26 +34,43 @@ export class RemittanceChecker {
     })
     const { overdueAfterDays } = readRemittancePreferences(settings?.preferences)
     const cutoff = new Date(now.getTime() - overdueAfterDays * DAY_MS)
-    const groups = await this.prisma.client.shipment.groupBy({
-      by: ['connectionId'],
+    const shipments = await this.prisma.client.shipment.findMany({
       where: {
         storeId,
         codStatus: { in: [...RemittableCodStatuses] },
         deliveredAt: { lt: cutoff }
       },
-      _count: { _all: true },
-      _sum: { codExpectedCents: true, codRemittedCents: true },
-      _min: { deliveredAt: true }
+      select: {
+        connectionId: true,
+        codExpectedCents: true,
+        codRemittedCents: true,
+        deliveredAt: true
+      }
     })
+    // What is owed is added shipment by shipment, each one never below zero: a carrier that overpaid one package does not
+    // cancel what it still owes for another
+    const groups = new Map<string, { count: number; owed: number; oldest: Date | null }>()
+    for (const shipment of shipments) {
+      const group = groups.get(shipment.connectionId) ?? { count: 0, owed: 0, oldest: null }
+      group.count += 1
+      group.owed += Math.max(0, (shipment.codExpectedCents ?? 0) - (shipment.codRemittedCents ?? 0))
+      if (
+        shipment.deliveredAt !== null &&
+        (group.oldest === null || shipment.deliveredAt < group.oldest)
+      ) {
+        group.oldest = shipment.deliveredAt
+      }
+      groups.set(shipment.connectionId, group)
+    }
     let announced = 0
-    for (const group of groups) {
-      const oldest = group._min.deliveredAt
+    for (const [connectionId, group] of groups) {
+      const oldest = group.oldest
       if (oldest === null) continue
       const warned = await this.prisma.client.notification.findFirst({
         where: {
           storeId,
           type: NotificationTypes.REMITTANCE_OVERDUE,
-          resourceId: group.connectionId,
+          resourceId: connectionId,
           createdAt: { gte: new Date(now.getTime() - REPEAT_AFTER_DAYS * DAY_MS) }
         },
         select: { id: true }
@@ -63,15 +80,11 @@ export class RemittanceChecker {
       await this.prisma.transaction(tx => {
         this.events.publish(tx, Events.REMITTANCE_OVERDUE, {
           storeId,
-          connectionId: group.connectionId,
-          count: group._count._all,
+          connectionId,
+          count: group.count,
           overdueAfterDays,
           oldestAgeDays: ageInDays(oldest, now),
-          // What is still owed; a carrier that sent more than was due leaves nothing owed, never a negative amount
-          totalOwedCents: Math.max(
-            0,
-            (group._sum.codExpectedCents ?? 0) - (group._sum.codRemittedCents ?? 0)
-          )
+          totalOwedCents: group.owed
         })
         return Promise.resolve()
       })

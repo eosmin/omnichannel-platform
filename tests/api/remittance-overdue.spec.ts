@@ -8,7 +8,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { AppPaths, CodStatus, ShipmentStatus } from '@platform/core/domain'
+import { AppPaths, CarrierResourceTypes, CodStatus, ShipmentStatus } from '@platform/core/domain'
 import { DomainEvents } from '@platform/core/event-bus'
 import { NotificationTypes } from '@platform/core/notifications'
 import { checkRemittancesJobId, JobNames, QueueNames } from '@platform/core/queues'
@@ -112,7 +112,6 @@ describe('The daily check of overdue remittances', () => {
         owner.notification.count({ where: { storeId: ctx.storeA.id, resourceId: connectionId } }),
       count => count > 0
     )
-  const waitForRows = (count: number) => until(rowsOf, rows => rows.length >= count)
   async function manager() {
     return actorWithPermissions(owner, app, {
       prefix,
@@ -138,13 +137,18 @@ describe('The daily check of overdue remittances', () => {
 
     expect(await checker.check(ctx.storeA.id, NOW)).toBe(1)
 
-    const rows = await waitForRows(1)
+    // The listener writes a row for each recipient: wait for the one of the holder, then look at who else was told
+    await until(
+      () => owner.notification.count({ where: { storeId: ctx.storeA.id, userId: holder.id } }),
+      count => count > 0
+    )
+    const rows = await rowsOf()
     const told = rows.map(row => row.userId)
     expect(told).toContain(holder.id)
     expect(told).not.toContain(viewer.id)
     expect(told).not.toContain(ctx.adminB.id)
     expect(rows.find(row => row.userId === holder.id)).toMatchObject({
-      resourceType: 'carrier_connection',
+      resourceType: CarrierResourceTypes.CARRIER_CONNECTION,
       resourceId: connection.id,
       actionPath: AppPaths.store.remittances(ctx.storeA.id),
       params: { carrier: 'Courier Late', count: 2, days: 7 }
@@ -181,6 +185,8 @@ describe('The daily check of overdue remittances', () => {
       overdueAfterDays: 2
     })
     expect(await checker.check(ctx.storeA.id, NOW)).toBe(1)
+    // The listener finishes before the next test starts
+    await warned(connection.id)
   })
 
   it('says it once a week for each connection, and again when the week has passed', async () => {
@@ -201,6 +207,20 @@ describe('The daily check of overdue remittances', () => {
       data: { createdAt: new Date(NOW.getTime() - 8 * DAY_MS) }
     })
     expect(await checker.check(ctx.storeA.id, new Date(NOW.getTime() + DAY_MS))).toBe(1)
+  })
+
+  it('adds what is owed shipment by shipment, so an overpaid package hides no debt', async () => {
+    const holder = await manager()
+    const connection = await connectionOf(ctx.storeA.id)
+    await owed(connection.id, 20, { codStatus: CodStatus.DISCREPANCY, codRemittedCents: 1500 })
+    await owed(connection.id, 20)
+    expect(await checker.check(ctx.storeA.id, NOW)).toBe(1)
+    await until(
+      () => owner.notification.count({ where: { storeId: ctx.storeA.id, userId: holder.id } }),
+      count => count > 0
+    )
+    const row = (await rowsOf()).find(entry => entry.userId === holder.id)
+    expect(row?.params).toMatchObject({ count: 2 })
   })
 
   it('does not look at the shipments of another store', async () => {
@@ -227,7 +247,7 @@ describe('The daily check of overdue remittances', () => {
     const logger = { setContext: () => undefined, error: () => undefined } as unknown as PinoLogger
     const queue = new CapturedQueue()
 
-    it('queues one check for each store that is owed cash, once a day', async () => {
+    it('queues one check for each store that is owed cash, named by the store and the day', async () => {
       queue.jobs.length = 0
       const connection = await connectionOf(ctx.storeA.id)
       await owed(connection.id, 1)

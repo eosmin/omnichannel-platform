@@ -717,15 +717,27 @@ describe('The settings of the inbox of a store', () => {
     })
 
     it('change the days after which the cash of a carrier is late, bounded, and write only that block', async () => {
+      const before = (await asAdmin().get(ApiRoutes.settings.preferences)).body as object
       const put = await asAdmin()
         .put(ApiRoutes.settings.preferences)
         .send({ remittances: { overdueAfterDays: 14 } })
       expect(put.status).toBe(OK)
       expect((put.body as { remittances: unknown }).remittances).toEqual({ overdueAfterDays: 14 })
+      // The other keys kept what they had
+      expect(put.body).toEqual({ ...before, remittances: { overdueAfterDays: 14 } })
       const settings = await owner.storeSettings.findUniqueOrThrow({
         where: { storeId: ctx.storeA.id }
       })
       expect(settings.preferences).toMatchObject({ remittances: { overdueAfterDays: 14 } })
+      // A stored value out of range reads as the default
+      await owner.storeSettings.update({
+        where: { storeId: ctx.storeA.id },
+        data: { preferences: { remittances: { overdueAfterDays: 500 } } }
+      })
+      expect(
+        ((await asAdmin().get(ApiRoutes.settings.preferences)).body as { remittances: unknown })
+          .remittances
+      ).toEqual(FACTORY_REMITTANCES)
       for (const body of [
         { remittances: { overdueAfterDays: 0 } },
         { remittances: { overdueAfterDays: 91 } },
