@@ -632,7 +632,14 @@ export class ReturnsService {
           }
         )
       }
-      const settled = await this.settle(tx, storeId, loaded, input.refundAmountCents, undefined, actor)
+      const settled = await this.settle(
+        tx,
+        storeId,
+        loaded,
+        input.refundAmountCents,
+        undefined,
+        actor
+      )
       return { orderId: loaded.orderId, settled, receipt }
     })
     this.record(AuditAction.RETURN_RECEIVED_BY_SCAN, storeId, returnId, actor, {

@@ -191,7 +191,8 @@ export class ReturnsController {
     @Req() req: AuthenticatedRequest
   ): Promise<ShipmentView> {
     // A guide is made at a carrier and may cost money: who makes it must be able to make guides of an order
-    if (!held.includes(Permissions.SHIPPING_MANAGE)) throw permissionDenied(Permissions.SHIPPING_MANAGE)
+    if (!held.includes(Permissions.SHIPPING_MANAGE))
+      throw permissionDenied(Permissions.SHIPPING_MANAGE)
     return this.shipments.createReturnLeg(store.id, returnId, body, actorOf(user, store, req))
   }
 }

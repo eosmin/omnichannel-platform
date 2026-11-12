@@ -14,7 +14,12 @@ import {
   ShippingPayer,
   returnShipmentIdempotencyKey
 } from '@platform/core/domain'
-import { ErrorCodes, HttpStatusCodes, PlatformException, resourceNotFound } from '@platform/core/errors'
+import {
+  ErrorCodes,
+  HttpStatusCodes,
+  PlatformException,
+  resourceNotFound
+} from '@platform/core/errors'
 import { type CreateShipmentParams, ShipmentCreationModes } from '@platform/plugins/sdk'
 
 import {
@@ -188,7 +193,9 @@ export async function prepareReturnGuide(
     const unknown = ShipmentUnknownOutcomeStatuses.some(status => String(status) === active.status)
     throw shippingRefusal(
       unknown ? ErrorCodes.SHIPPING_OUTCOME_UNKNOWN : ErrorCodes.SHIPPING_ACTIVE_SHIPMENT_EXISTS,
-      unknown ? 'a guide of the return may exist at the carrier' : 'the return already has an active guide'
+      unknown
+        ? 'a guide of the return may exist at the carrier'
+        : 'the return already has an active guide'
     )
   }
   const attempt =
@@ -203,7 +210,10 @@ export async function prepareReturnGuide(
   const customerPhone = order.recipientPhones[0] ?? ''
   const labelFormat = connection.labelFormat as LabelFormatType
   // What the agent wrote for the courier: one line, bounded (the schema does that for the request)
-  const notes = request.notes === undefined || request.notes === '' ? undefined : request.notes.slice(0, ShipmentLimits.NOTES_MAX_LENGTH)
+  const notes =
+    request.notes === undefined || request.notes === ''
+      ? undefined
+      : request.notes.slice(0, ShipmentLimits.NOTES_MAX_LENGTH)
   // The payer of a return is said as the guides of the store say it (TDD_17 §4.11: the replacement's guide uses the same one):
   // SENDER is the store, RECIPIENT the customer. The sender of THIS guide is the customer, so the sides swap: when the store
   // pays, the one the carrier bills is the recipient of the guide (the warehouse), and when the customer pays, its sender.

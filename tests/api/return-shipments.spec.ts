@@ -18,6 +18,7 @@ import { ReturnsService } from '@platform/core/shipping'
 import { CarrierRegistry } from '@platform/plugins/runtime'
 import type { CreateShipmentParams } from '@platform/plugins/sdk'
 
+import { OrderShipmentEffects } from '../../apps/api/src/modules/orders/order-shipment-effects.service'
 import {
   buildFakeCarrier,
   createCarrierConnection,
@@ -111,7 +112,7 @@ describe('The return leg of a return', () => {
     fake.callsTo('createShipment').map(call => call.args as CreateShipmentParams)
 
   // A delivered order of 4 units, and a return of all of them, approved
-  async function approved(status: string = OrderReturnStatus.APPROVED) {
+  async function approved(status: OrderReturnStatus = OrderReturnStatus.APPROVED) {
     const product = await kit.stocked(10)
     const body = await kit.orderBody({ items: [{ productId: product.id, quantity: 4 }] })
     const created = await admin().post(ApiRoutes.orders.create).send(body)
@@ -191,6 +192,25 @@ describe('The return leg of a return', () => {
     expect(after.trackingNumber).toBeNull()
   })
 
+  it('does not let a guide of the way back move the order the way an outbound guide does', async () => {
+    // A confirmed order whose outbound guide just left would be SHIPPED; the same event of a return guide must change nothing
+    const { order, returnId } = await approved()
+    await owner.order.update({ where: { id: order.id }, data: { status: 'CONFIRMED' } })
+    const guide = (await guideOf(returnId)).body as GuideBody
+    await owner.shipment.update({
+      where: { id: guide.id },
+      data: { status: ShipmentStatus.IN_TRANSIT }
+    })
+
+    await app
+      .get(OrderShipmentEffects, { strict: false })
+      .follow(ctx.storeA.id, guide.id, { type: 'user', id: ctx.adminA.id }, true)
+
+    const after = await owner.order.findUniqueOrThrow({ where: { id: order.id } })
+    expect(after.status).toBe('CONFIRMED')
+    expect(after.trackingNumber).toBeNull()
+  })
+
   it('swaps the payer of the guide when the customer pays', async () => {
     const { returnId } = await approved()
     await owner.orderReturn.update({
@@ -245,7 +265,10 @@ describe('The return leg of a return', () => {
     const again = await guideOf(returnId)
 
     expect(again.status).toBe(CREATED)
-    const rows = await owner.shipment.findMany({ where: { returnId }, orderBy: { createdAt: 'asc' } })
+    const rows = await owner.shipment.findMany({
+      where: { returnId },
+      orderBy: { createdAt: 'asc' }
+    })
     expect(rows).toHaveLength(2)
     expect(rows[0]?.idempotencyKey).not.toBe(rows[1]?.idempotencyKey)
     expect(
@@ -319,9 +342,9 @@ describe('The return leg of a return', () => {
         'RETURNED'
       )
       expect(await kit.level(product.id, ctx.warehouseA.id)).toMatchObject({ onHand: 10 })
-      expect(
-        (await owner.shipment.findUniqueOrThrow({ where: { id: guide.id } })).status
-      ).toBe(ShipmentStatus.DELIVERED)
+      expect((await owner.shipment.findUniqueOrThrow({ where: { id: guide.id } })).status).toBe(
+        ShipmentStatus.DELIVERED
+      )
 
       // Scanned again: the return is over, nothing is counted twice
       await expect(
@@ -346,7 +369,9 @@ describe('The return leg of a return', () => {
             shipmentId: guide.id,
             reason: 'DEFECTIVE',
             condition: OrderReturnCondition.RESELLABLE,
-            lines: [{ orderItemId: randomUUID(), quantity: 1, condition: OrderReturnCondition.DAMAGED }]
+            lines: [
+              { orderItemId: randomUUID(), quantity: 1, condition: OrderReturnCondition.DAMAGED }
+            ]
           },
           { userId: ctx.adminA.id, storeId: ctx.storeA.id }
         )

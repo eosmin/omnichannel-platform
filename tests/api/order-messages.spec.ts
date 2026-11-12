@@ -915,7 +915,10 @@ describe('Order messages', () => {
     async function guided(orderId: string, guideNumber: string, kind: 'return' | 'outbound') {
       const connection = await createCarrierConnection(owner, {
         storeId: ctx.storeA.id,
-        prefix: `M${randomUUID().slice(0, 3).toUpperCase().replace(/[^A-Z0-9]/g, '0')}`
+        prefix: `M${randomUUID()
+          .slice(0, 3)
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, '0')}`
       })
       const orderReturn =
         kind === 'return'
@@ -952,7 +955,10 @@ describe('Order messages', () => {
     }
 
     it('tells the way back with the guide of the return, by the id it names or by the live one, and never reads the guide of another order', async () => {
-      await template(OrderMessageKind.RETURN_APPROVED, 'Devolución {{orderNumber}} guía {{trackingNumber}}')
+      await template(
+        OrderMessageKind.RETURN_APPROVED,
+        'Devolución {{orderNumber}} guía {{trackingNumber}}'
+      )
       const scenario = await scene({ channel: NO_WINDOW })
       const guide = await guided(scenario.orderId, 'RET-0001', 'return')
       const other = await scene({ channel: NO_WINDOW })
@@ -984,7 +990,10 @@ describe('Order messages', () => {
     })
 
     it('tells a replacement with the outbound guide of the replacement order', async () => {
-      await template(OrderMessageKind.EXCHANGE_SHIPPED, 'Cambio {{orderNumber}} guía {{trackingNumber}}')
+      await template(
+        OrderMessageKind.EXCHANGE_SHIPPED,
+        'Cambio {{orderNumber}} guía {{trackingNumber}}'
+      )
       const scenario = await scene({ channel: NO_WINDOW })
       await guided(scenario.orderId, 'OUT-0001', 'outbound')
 

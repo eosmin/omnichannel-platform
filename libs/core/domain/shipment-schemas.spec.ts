@@ -11,6 +11,7 @@ import {
   ShipmentInactiveStatuses,
   ShipmentPastPickupStatuses,
   ShipmentUnknownOutcomeStatuses,
+  returnShipmentIdempotencyKey,
   shipmentIdempotencyKey
 } from './shipping-constants'
 import { ShipmentStatus, ShippingPayer } from './status-enums'
@@ -107,6 +108,15 @@ describe('the key a guide is asked for with', () => {
       shipmentIdempotencyKey('o1', null, 1)
     ])
     expect(keys.size).toBe(5)
+  })
+})
+
+describe('the key a return guide is asked for with', () => {
+  it('is the same for the same return and attempt, and differs by either, and never meets an outbound key', () => {
+    expect(returnShipmentIdempotencyKey('r1', 1)).toBe(returnShipmentIdempotencyKey('r1', 1))
+    expect(returnShipmentIdempotencyKey('r1', 1)).not.toBe(returnShipmentIdempotencyKey('r1', 2))
+    expect(returnShipmentIdempotencyKey('r1', 1)).not.toBe(returnShipmentIdempotencyKey('r2', 1))
+    expect(returnShipmentIdempotencyKey('r1', 1)).not.toBe(shipmentIdempotencyKey('r1', null, 1))
   })
 })
 

@@ -144,9 +144,11 @@ describe('returns api', () => {
       guide
     )
     const [url, init] = fetchImpl.mock.calls[0] ?? ['', {}]
-    expect(String(url)).toBe(`https://api.example.com/api/v1${ApiRoutes.returns.returnShipment('r1')}`)
+    expect(String(url)).toBe(
+      `https://api.example.com/api/v1${ApiRoutes.returns.returnShipment('r1')}`
+    )
     expect(init.method).toBe('POST')
-    expect(JSON.parse(String(init.body))).toEqual({ connectionId: 'c1' })
+    expect(JSON.parse(init.body as string)).toEqual({ connectionId: 'c1' })
   })
 
   it('raises the error of the api', async () => {
