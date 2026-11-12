@@ -5,6 +5,7 @@ import { AuditService } from '@platform/core/audit-module'
 import { type Permission, Permissions } from '@platform/core/auth'
 import { PrismaService } from '@platform/core/database'
 import {
+  type CreateReturnShipmentBody,
   type CreateShipmentBody,
   type CursorPage,
   MediaStatus,
@@ -151,6 +152,39 @@ export class ShipmentsService {
     const view = shipmentViewOf(await this.rowOf(storeId, outcome.shipmentId))
     this.record(storeId, AuditAction.SHIPMENT_CREATED, outcome.shipmentId, actor, {
       orderId,
+      status: view.status,
+      connectionId: view.connectionId
+    })
+    return view
+  }
+
+  // POST /returns/:id/return-shipment: the guide of the way back of an approved return (TDD_17 §4.11). The same answers as `create`:
+  // a refusal after the row was written names the shipment, and who asked for a guide that may cost money is on record.
+  async createReturnLeg(
+    storeId: string,
+    returnId: string,
+    body: CreateReturnShipmentBody,
+    actor: Actor
+  ): Promise<ShipmentView> {
+    const outcome = await this.shipping.createReturnShipment(
+      storeId,
+      { ...body, returnId },
+      { actor: { type: 'user', id: actor.userId }, canOverridePrice: false },
+      this.plugins
+    )
+    if (!outcome.ok) {
+      if (outcome.shipmentId !== undefined) {
+        this.record(storeId, AuditAction.SHIPMENT_CREATED, outcome.shipmentId, actor, {
+          returnId,
+          refused: outcome.error.code
+        })
+      }
+      throw outcome.error
+    }
+    const view = shipmentViewOf(await this.rowOf(storeId, outcome.shipmentId))
+    this.record(storeId, AuditAction.SHIPMENT_CREATED, outcome.shipmentId, actor, {
+      returnId,
+      orderId: outcome.orderId,
       status: view.status,
       connectionId: view.connectionId
     })

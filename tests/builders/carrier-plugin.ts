@@ -65,6 +65,9 @@ export interface FakeCarrierOptions {
   pickupModify?: boolean
   pickupCancel?: boolean
   cod?: boolean
+  // Declares RETURN_SHIPMENT: the carrier makes the guide of the way back (customer to warehouse) with the same createShipment, told
+  // apart by `params.kind`. Only the standalone mode can (the registry refuses the rest). The core never reads the carrier's name for this
+  returnShipment?: boolean
   maxBatchSize?: number
   // standalone: the most guides the platform may ask for at the same time (the plugin's own declaration)
   maxConcurrency?: number
@@ -309,6 +312,7 @@ export function buildFakeCarrier(options: FakeCarrierOptions = {}): FakeCarrier 
   declare(options.pickupModify === true, CarrierCapability.PICKUP_MODIFY)
   declare(options.pickupCancel === true, CarrierCapability.PICKUP_CANCEL)
   declare(withCod, CarrierCapability.COD)
+  declare(options.returnShipment === true, CarrierCapability.RETURN_SHIPMENT)
 
   const plugin: CarrierPlugin = {
     id,

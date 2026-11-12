@@ -85,9 +85,7 @@ export type TemplateStatus = (typeof TemplateStatuses)[keyof typeof TemplateStat
 // a sentence, so that the interface chooses the words in the language of the person
 export const ValidationMessages = {
   // What an agent sends as a reaction is not one emoji
-  EMOJI_NOT_SINGLE: 'EMOJI_NOT_SINGLE',
-  // A kind of order message that is not sent by hand from the order (it has its own flow)
-  ORDER_MESSAGE_KIND_NOT_MANUAL: 'ORDER_MESSAGE_KIND_NOT_MANUAL'
+  EMOJI_NOT_SINGLE: 'EMOJI_NOT_SINGLE'
 } as const
 
 // Characters that reorder or hide text (bidi controls, zero-width ones): they reach the customer as

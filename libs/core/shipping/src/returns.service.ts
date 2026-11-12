@@ -37,6 +37,7 @@ import {
   ShipmentInactiveStatuses,
   ShipmentKind,
   ShipmentStatus,
+  ShipmentUnknownOutcomeStatuses,
   unitsHeld
 } from '@platform/core/domain'
 import {
@@ -109,6 +110,8 @@ export interface ScannedReturnInput {
   // The condition of the lines that name none
   condition: OrderReturnCondition
   refundAmountCents?: number | undefined
+  // The guide is already DELIVERED: the package is received only when the person confirmed that it came back anyway (TDD_17 §4.16)
+  confirmDelivered?: boolean | undefined
 }
 
 interface LoadedReturn {
@@ -364,9 +367,13 @@ export class ReturnsService {
   ): Promise<{ returnId: string; orderId: string }> {
     const shipmentRow = await this.prisma.client.shipment.findFirst({
       where: { id: input.shipmentId, storeId },
-      select: { orderId: true }
+      select: { orderId: true, kind: true, returnId: true }
     })
     if (shipmentRow === null) throw resourceNotFound('shipment')
+    // The package of a return leg belongs to the return that made it: it is received through that return, never as a new one
+    if ((shipmentRow.kind as ShipmentKind) === ShipmentKind.RETURN) {
+      return this.receiveReturnLeg(storeId, input, shipmentRow.returnId, actor)
+    }
     const done = await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
       await this.orders.lockOrder(tx, storeId, shipmentRow.orderId)
@@ -392,11 +399,20 @@ export class ReturnsService {
       })
       if (shipment === null) throw resourceNotFound('shipment')
       const from = shipment.status as ShipmentStatus
-      // The package of a return leg belongs to the return that made it: it is received through that return (PR R1b), never as a
-      // new one, so a scan of it is refused here
+      // A return leg was taken above; what is left is the package of an outbound guide
+      // A DELIVERED guide is a package the customer received: one that comes back anyway is taken only after the person confirmed it
+      // (the guide stays DELIVERED: its status is the carrier's, the return is ours)
+      const confirmedDelivered =
+        from === ShipmentStatus.DELIVERED && input.confirmDelivered === true
+      if (from === ShipmentStatus.DELIVERED && !confirmedDelivered) {
+        throw invalid(
+          'the package was delivered: confirm that it came back to receive it',
+          ErrorCodes.RETURN_RECEIPT_INVALID
+        )
+      }
       if (
         (shipment.kind as ShipmentKind) !== ShipmentKind.OUTBOUND ||
-        !SCANNABLE_STATUSES.includes(from)
+        !(SCANNABLE_STATUSES.includes(from) || confirmedDelivered)
       ) {
         throw conflict(
           ErrorCodes.RETURN_ORDER_NOT_DELIVERED,
@@ -491,7 +507,25 @@ export class ReturnsService {
       )
       loaded.status = OrderReturnStatus.RECEIVED
       // The package is back: its shipment says so, with a manual event (a carrier that already said it leaves it as it is)
-      if (from !== ShipmentStatus.RETURNED) {
+      if (confirmedDelivered) {
+        // Only a line of the history: the status of a delivered guide is not ours to change
+        await this.shipmentWrites.recordHistory(
+          tx,
+          {
+            shipmentId: shipment.id,
+            storeId,
+            orderId: shipment.orderId,
+            orderNumber: shipment.order.orderNumber,
+            connectionId: shipment.connectionId
+          },
+          null,
+          {
+            actor: actorRef(actor),
+            source: ShipmentEventSource.MANUAL,
+            description: ShipmentEventNotes.RECEIVED_AT_WAREHOUSE
+          }
+        )
+      } else if (from !== ShipmentStatus.RETURNED) {
         if (!isShipmentTransitionAllowed(from, ShipmentStatus.RETURNED)) {
           throw conflict(
             ErrorCodes.SHIPPING_INVALID_STATUS_TRANSITION,
@@ -517,13 +551,6 @@ export class ReturnsService {
           }
         )
       }
-      await tx.orderReturn.update({
-        where: { id: row.id },
-        data: {
-          returnShipmentId:
-            (shipment.kind as ShipmentKind) === ShipmentKind.RETURN ? shipment.id : null
-        }
-      })
       const settled = await this.settle(
         tx,
         storeId,
@@ -551,6 +578,129 @@ export class ReturnsService {
     return { returnId: done.returnId, orderId: done.orderId }
   }
 
+  // The package of a return leg was scanned (TDD_17 §4.11, §4.16): the return that made the guide is the one received, with the
+  // condition and lines of the scan (the reason stays the one of the request; the reason of the scan is in the audit entry), and
+  // the guide says it arrived. No second return is made, so the units are counted
+  // once. The return must be approved or in transit (a receipt of anything else is refused as `receive` refuses it).
+  private async receiveReturnLeg(
+    storeId: string,
+    input: ScannedReturnInput,
+    returnId: string | null,
+    actor: ReturnActor
+  ): Promise<{ returnId: string; orderId: string }> {
+    if (returnId === null) {
+      throw conflict(ErrorCodes.RETURN_ORDER_NOT_DELIVERED, 'the guide belongs to no return')
+    }
+    const done = await this.prisma.transaction(async tx => {
+      const loaded = await this.lock(tx, storeId, returnId, true)
+      this.assertMove(loaded.status, OrderReturnStatus.RECEIVED)
+      // The guide is held until the end, as the shipment engine holds it for its own moves
+      await tx.$queryRaw`SELECT id FROM shipments WHERE id = ${input.shipmentId} AND store_id = ${storeId} FOR UPDATE`
+      const shipment = await tx.shipment.findFirst({
+        where: { id: input.shipmentId, storeId, returnId, kind: ShipmentKind.RETURN },
+        select: { id: true, status: true, connectionId: true, originWarehouseId: true }
+      })
+      if (shipment === null) throw resourceNotFound('shipment')
+      const from = shipment.status as ShipmentStatus
+      // A package that is here is received whatever its guide says (a guide that was cancelled while the parcel was already on its
+      // way still brings it): only a guide that was never made, or whose outcome is not known, has no package
+      if (
+        from === ShipmentStatus.FAILED ||
+        ShipmentUnknownOutcomeStatuses.some(status => status === from)
+      ) {
+        throw conflict(
+          ErrorCodes.SHIPPING_INVALID_STATUS_TRANSITION,
+          'the guide of the return was not made or may not exist: settle it first'
+        )
+      }
+      // A scan that names lines names every line of the return with its units, as `receive` does: a package that is not the
+      // whole return is received by hand, never with units that did not arrive
+      const given = new Map((input.lines ?? []).map(line => [line.orderItemId, line]))
+      if (
+        input.lines !== undefined &&
+        (given.size !== input.lines.length ||
+          given.size !== loaded.lines.length ||
+          loaded.lines.some(line => given.get(line.orderItemId)?.quantity !== line.quantity))
+      ) {
+        throw invalid(
+          'the lines of the scan are not the lines of the return',
+          ErrorCodes.VALIDATION_INVALID_INPUT
+        )
+      }
+      // A package of a return holds the lines of that return: the scan chooses their condition and warehouse, not their units
+      const receipt = await this.applyReceipt(
+        tx,
+        storeId,
+        loaded,
+        loaded.lines.map(line => {
+          const chosen = given.get(line.orderItemId)
+          // The guide went to a warehouse (the one the agent chose or the one that sent most): the units are counted there unless the
+          // scan names another one
+          const restockAt = chosen?.restockWarehouseId ?? shipment.originWarehouseId ?? undefined
+          return {
+            orderItemId: line.orderItemId,
+            condition: chosen?.condition ?? input.condition,
+            ...(restockAt === undefined ? {} : { restockWarehouseId: restockAt })
+          }
+        }),
+        actor
+      )
+      loaded.status = OrderReturnStatus.RECEIVED
+      if (input.notes !== undefined) {
+        await tx.orderReturn.update({
+          where: { id: returnId },
+          data: { notes: await this.withNote(tx, returnId, input.notes) }
+        })
+      }
+      // The package is at the warehouse: its guide says so with a manual event, when the table allows it from where it is (a
+      // carrier that already said it, or a guide that has not left, stays as it is)
+      if (isShipmentTransitionAllowed(from, ShipmentStatus.DELIVERED)) {
+        await this.shipmentWrites.move(
+          tx,
+          {
+            shipmentId: shipment.id,
+            storeId,
+            orderId: loaded.orderId,
+            orderNumber: loaded.orderNumber,
+            connectionId: shipment.connectionId
+          },
+          from,
+          ShipmentStatus.DELIVERED,
+          {},
+          {
+            actor: actorRef(actor),
+            source: ShipmentEventSource.MANUAL,
+            description: ShipmentEventNotes.RECEIVED_AT_WAREHOUSE
+          }
+        )
+      }
+      const settled = await this.settle(
+        tx,
+        storeId,
+        loaded,
+        input.refundAmountCents,
+        undefined,
+        actor
+      )
+      return { orderId: loaded.orderId, settled, receipt }
+    })
+    this.record(AuditAction.RETURN_RECEIVED_BY_SCAN, storeId, returnId, actor, {
+      orderNumber: done.settled.orderNumber,
+      shipmentId: input.shipmentId,
+      reason: input.reason
+    })
+    this.recordOrderReturned(storeId, returnId, actor, done.receipt)
+    this.recordPaymentRefunded(storeId, returnId, actor, done.settled)
+    if (done.settled.refundCents !== null) {
+      this.record(AuditAction.RETURN_REFUND_RECORDED, storeId, returnId, actor, {
+        orderNumber: done.settled.orderNumber,
+        refundAmountCents: done.settled.refundCents,
+        paymentRefunded: done.settled.paymentRefunded
+      })
+    }
+    return { returnId, orderId: done.orderId }
+  }
+
   // ------------------------------------------------------------------------------------------ inside the transaction
 
   // The plain moves: the table of `OrderReturnStatusTransitions` decides, nothing else changes but the status and a note
@@ -564,6 +714,25 @@ export class ReturnsService {
     return this.prisma.transaction(async tx => {
       const loaded = await this.lock(tx, storeId, returnId, false)
       this.assertMove(loaded.status, to)
+      // A return that has a live guide of the way back (one being made at the carrier counts) is not cancelled: the guide may be
+      // paid and on its way. It is voided first, from the shipments, and the return can be cancelled after. The guide is made under
+      // the lock of the return, so a guide and a cancel never both win.
+      if (to === OrderReturnStatus.CANCELLED) {
+        const live = await tx.shipment.count({
+          where: {
+            storeId,
+            returnId,
+            kind: ShipmentKind.RETURN,
+            status: { notIn: [...ShipmentInactiveStatuses] }
+          }
+        })
+        if (live > 0) {
+          throw conflict(
+            ErrorCodes.SHIPPING_ACTIVE_SHIPMENT_EXISTS,
+            'the return has a live guide: void it first'
+          )
+        }
+      }
       await tx.orderReturn.update({
         where: { id: returnId },
         data: {

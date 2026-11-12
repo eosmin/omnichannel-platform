@@ -1,6 +1,7 @@
 import type {
   GuideRefundStatus,
   LabelFormatType,
+  ShipmentKind,
   ShipmentStatus,
   ShippingPayer
 } from '@platform/core/domain'
@@ -72,6 +73,9 @@ export interface CarrierLocationIds {
 export interface CreateShipmentParams {
   reference: string // the order number
   idempotencyKey: string
+  // Left out, the guide is the outbound one (the store to the customer). `return` is the way back: `sender` is the customer and
+  // `recipient` the warehouse; only a plugin that declares RETURN_SHIPMENT is asked for it
+  kind?: ShipmentKind
   sender: { name: string; address: CarrierAddress; phone: string }
   recipient: {
     name: string
