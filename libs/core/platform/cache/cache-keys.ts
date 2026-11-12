@@ -119,7 +119,9 @@ export const CacheKeys = {
   pickup: {
     cutoffReminder: (connectionId: string, day: string) =>
       `pickup:cutoff-reminder:${connectionId}:${day}`,
-    autoRun: (connectionId: string, day: string) => `pickup:auto-run:${connectionId}:${day}`
+    autoRun: (connectionId: string, day: string) => `pickup:auto-run:${connectionId}:${day}`,
+    // One evaluation per minute, whatever the retention of the queue
+    evaluation: (minute: number) => `pickup:evaluation:${minute}`
   },
 
   // Patterns for bulk invalidation: use with delPattern()

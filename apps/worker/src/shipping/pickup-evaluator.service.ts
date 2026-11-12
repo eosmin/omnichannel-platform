@@ -9,8 +9,8 @@ import { PrismaService } from '@platform/core/database'
 import {
   CarrierConnectionStatus,
   OrderStatus,
-  PickupLimits,
   PickupSchedule,
+  pickupSyncJobOptions,
   PickupStatus,
   ShipmentInactiveStatuses,
   ShipmentKind
@@ -31,7 +31,6 @@ import {
   cutoffReminderDue,
   isAutoPickupDue,
   PickupEligibleStatuses,
-  pickupNeedsSync,
   PickupsService,
   type PickupScheduleRules,
   ShippingService,
@@ -45,6 +44,8 @@ const STALE_TICK_MS = 10 * 60 * 1000
 const MINUTE_MS = 60_000
 // The guides one `autoPickup` run asks for (one call of the engine)
 const AUTO_RUN_ORDERS = 100
+// ... and the most pages of them in one run
+const AUTO_RUN_MAX_PAGES = 20
 
 export interface PickupEvaluation {
   connections: number
@@ -84,7 +85,20 @@ export class PickupEvaluator {
       )
       return Promise.resolve(null)
     }
-    return this.evaluate(at)
+    return this.claimMinute(job.minute).then(first => (first ? this.evaluate(at) : null))
+  }
+
+  // One evaluation per minute, whatever the retention of the queue and however many replicas tick: the job id does the same, but
+  // a finished job record can be trimmed by a burst of other heavy jobs
+  private async claimMinute(minute: number): Promise<boolean> {
+    const first = await this.redis.set(
+      CacheKeys.pickup.evaluation(minute),
+      '1',
+      'EX',
+      PickupSchedule.EVALUATION_MEMORY_SECONDS,
+      'NX'
+    )
+    return first === 'OK'
   }
 
   async evaluate(now: Date): Promise<PickupEvaluation> {
@@ -151,40 +165,50 @@ export class PickupEvaluator {
       if (due) report.guidesMade += await this.makeGuides(connection, clock.date)
       return
     }
-    if (due && (await this.waiting(connection)) > 0) {
-      const result = await this.pickups.ensurePickup(
-        connection.storeId,
-        { connectionId: connection.id, actor: { type: 'system', id: null }, now },
-        carrierId => this.registry.find(carrierId)
-      )
-      if (result.created) report.pickupsMade += 1
-      if (result.sync && result.pickupId !== null) {
-        await this.queueSync(connection.storeId, result.pickupId, result.revision)
+    let waiting = await this.waiting(connection)
+    if (due && waiting > 0) {
+      // One failing step does not take the reminder with it: that is when the reminder matters most
+      try {
+        const result = await this.pickups.ensurePickup(
+          connection.storeId,
+          { connectionId: connection.id, actor: { type: 'system', id: null }, now },
+          carrierId => this.registry.find(carrierId)
+        )
+        if (result.created) report.pickupsMade += 1
+        if (result.sync && result.pickupId !== null) {
+          await this.queueSync(connection.storeId, result.pickupId, result.revision)
+        }
+        if (result.joined.length > 0) waiting = await this.waiting(connection)
+      } catch (error) {
+        report.failed += 1
+        this.logger.error(
+          { connectionId: connection.id, errorName: errorName(error) },
+          'the automatic pickup of a connection failed'
+        )
       }
     }
     const reminder = cutoffReminderDue(connection, clock)
-    if (reminder === null) return
-    const waiting = await this.waiting(connection)
-    if (waiting === 0) return
+    if (reminder === null || waiting === 0) return
     // Once per connection and day, however many minutes the window lasts and however many replicas look
-    const first = await this.redis.set(
-      CacheKeys.pickup.cutoffReminder(connection.id, clock.date),
-      '1',
-      'EX',
-      PickupSchedule.MEMORY_TTL_SECONDS,
-      'NX'
-    )
+    const key = CacheKeys.pickup.cutoffReminder(connection.id, clock.date)
+    const first = await this.redis.set(key, '1', 'EX', PickupSchedule.MEMORY_TTL_SECONDS, 'NX')
     if (first !== 'OK') return
-    await this.prisma.transaction(tx => {
-      this.events.publish(tx, Events.PICKUP_CUTOFF_APPROACHING, {
-        storeId: connection.storeId,
-        connectionId: connection.id,
-        pickupDate: clock.date,
-        waiting,
-        minutesLeft: reminder.minutesLeft
+    try {
+      await this.prisma.transaction(tx => {
+        this.events.publish(tx, Events.PICKUP_CUTOFF_APPROACHING, {
+          storeId: connection.storeId,
+          connectionId: connection.id,
+          pickupDate: clock.date,
+          waiting,
+          minutesLeft: reminder.minutesLeft
+        })
+        return Promise.resolve()
       })
-      return Promise.resolve()
-    })
+    } catch (error) {
+      // The day's reminder was not raised: the next minute of the window tries again
+      await this.redis.del(key).catch(() => undefined)
+      throw error
+    }
     report.reminders += 1
   }
 
@@ -217,29 +241,46 @@ export class PickupEvaluator {
       'NX'
     )
     if (first !== 'OK') return 0
-    const orders = await this.prisma.client.order.findMany({
-      where: {
-        storeId: connection.storeId,
-        carrierConnectionId: connection.id,
-        status: { in: [OrderStatus.CONFIRMED, OrderStatus.PREPARING] },
-        shipments: {
-          none: { kind: ShipmentKind.OUTBOUND, status: { notIn: [...ShipmentInactiveStatuses] } }
-        }
-      },
-      select: { id: true },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      take: AUTO_RUN_ORDERS
-    })
-    if (orders.length === 0) return 0
-    const outcomes = await this.shipping.createShipments(
-      connection.storeId,
-      orders.map(order => ({ orderId: order.id, connectionId: connection.id })),
-      { actor: { type: 'system', id: null }, canOverridePrice: false },
-      carrierId => this.registry.find(carrierId)
-    )
-    const made = outcomes.filter(outcome => outcome.ok).length
+    let made = 0
+    try {
+      // In pages by id: what the engine refuses stays an order with no guide, and a cursor passes it instead of asking again
+      let after: string | undefined
+      for (let page = 0; page < AUTO_RUN_MAX_PAGES; page += 1) {
+        const orders = await this.prisma.client.order.findMany({
+          where: {
+            storeId: connection.storeId,
+            carrierConnectionId: connection.id,
+            status: { in: [OrderStatus.CONFIRMED, OrderStatus.PREPARING] },
+            shipments: {
+              none: {
+                kind: ShipmentKind.OUTBOUND,
+                status: { notIn: [...ShipmentInactiveStatuses] }
+              }
+            },
+            ...(after === undefined ? {} : { id: { gt: after } })
+          },
+          select: { id: true },
+          orderBy: { id: 'asc' },
+          take: AUTO_RUN_ORDERS
+        })
+        if (orders.length === 0) break
+        const outcomes = await this.shipping.createShipments(
+          connection.storeId,
+          orders.map(order => ({ orderId: order.id, connectionId: connection.id })),
+          { actor: { type: 'system', id: null }, canOverridePrice: false },
+          carrierId => this.registry.find(carrierId)
+        )
+        made += outcomes.filter(outcome => outcome.ok).length
+        after = orders.at(-1)?.id
+        if (orders.length < AUTO_RUN_ORDERS) break
+      }
+    } catch (error) {
+      // A run that failed before it finished is tried again the next minute (the orders that already have a guide are not asked again)
+      await this.redis.del(CacheKeys.pickup.autoRun(connection.id, day)).catch(() => undefined)
+      throw error
+    }
     this.logger.info(
-      { connectionId: connection.id, asked: orders.length, made },
+      { connectionId: connection.id, made },
       'an automatic pickup run asked for its guides'
     )
     return made
@@ -259,35 +300,23 @@ export class PickupEvaluator {
       orderBy: { createdAt: 'asc' },
       take: PickupSchedule.SWEEP_BATCH
     })
-    const held = await this.prisma.client.pickupRequest.findMany({
-      where: {
-        status: { in: [PickupStatus.REQUESTED, PickupStatus.CONFIRMED] },
-        providerPickupId: { not: null },
-        carrierPackageCount: { not: null },
-        updatedAt: { lt: new Date(now.getTime() - PickupSchedule.RESYNC_AFTER_MS) }
-      },
-      select: {
-        id: true,
-        storeId: true,
-        status: true,
-        providerPickupId: true,
-        packageCount: true,
-        carrierPackageCount: true
-      },
-      orderBy: { updatedAt: 'asc' },
-      take: PickupSchedule.SWEEP_BATCH
-    })
-    const behind = held.filter(pickup =>
-      pickupNeedsSync({ ...pickup, status: pickup.status as PickupStatus })
-    )
+    // The comparison of the two counts is in the query: filtered after a `take`, the pickups that agree (never touched again, so always
+    // the oldest) would crowd out the ones that do not
+    const behind = await this.prisma.client.$queryRaw<{ id: string; storeId: string }[]>`
+      SELECT id, store_id AS "storeId"
+      FROM pickup_requests
+      WHERE status IN (${PickupStatus.REQUESTED}, ${PickupStatus.CONFIRMED})
+        AND provider_pickup_id IS NOT NULL
+        AND carrier_package_count IS NOT NULL
+        AND carrier_package_count <> package_count
+        AND package_count > 0
+        AND updated_at < ${new Date(now.getTime() - PickupSchedule.RESYNC_AFTER_MS)}
+      ORDER BY updated_at ASC
+      LIMIT ${PickupSchedule.SWEEP_BATCH}`
     const jobs = [...pending, ...behind].map(pickup => ({
       name: JobNames.SYNC_PICKUP,
       data: { storeId: pickup.storeId, pickupId: pickup.id, requestedBy: null },
-      opts: {
-        jobId: syncPickupSweepJobId(pickup.id, bucket),
-        attempts: PickupLimits.JOB_ATTEMPTS,
-        backoff: { type: 'exponential', delay: PickupLimits.BACKOFF_BASE_MS }
-      }
+      opts: pickupSyncJobOptions(syncPickupSweepJobId(pickup.id, bucket))
     }))
     if (jobs.length > 0) await this.queue.addBulk(jobs)
     return jobs.length
@@ -297,11 +326,7 @@ export class PickupEvaluator {
     return this.queue.add(
       JobNames.SYNC_PICKUP,
       { storeId, pickupId, requestedBy: null },
-      {
-        jobId: syncPickupJobId(pickupId, revision),
-        attempts: PickupLimits.JOB_ATTEMPTS,
-        backoff: { type: 'exponential', delay: PickupLimits.BACKOFF_BASE_MS }
-      }
+      pickupSyncJobOptions(syncPickupJobId(pickupId, revision))
     )
   }
 }

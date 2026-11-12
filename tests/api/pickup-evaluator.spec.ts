@@ -37,7 +37,6 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import type { CapturedQueue } from '../helpers/queue'
 
-const CREATED = 201
 const ATTEMPTS = 80
 const POLL_MS = 100
 const MINUTE_MS = 60_000
@@ -310,8 +309,39 @@ describe('The pickup scheduler (TDD_17 §4.10)', () => {
         () => reminders(localId),
         rows => rows.length > 0
       )
-      expect(told.length).toBeGreaterThan(0)
-      expect(new Set(told.map(row => row.userId)).size).toBe(told.length)
+      // The members who manage pickups, once each: an administrator hears it and a viewer does not
+      const heard = told.map(row => row.userId)
+      expect(heard).toContain(ctx.adminA.id)
+      expect(heard).not.toContain(ctx.viewerA.id)
+      expect(new Set(heard).size).toBe(heard.length)
+    })
+
+    it('is still raised when the automatic pickup of the same minute fails', async () => {
+      await guideOn(localId)
+      const pickups = app.get(PickupsService, { strict: false })
+      const spy = jest.spyOn(pickups, 'ensurePickup').mockRejectedValueOnce(new Error('lock lost'))
+
+      const report = await evaluator.evaluate(NOW)
+      spy.mockRestore()
+
+      expect(report.failed).toBeGreaterThanOrEqual(1)
+      expect(report.reminders).toBeGreaterThanOrEqual(1)
+    })
+
+    it('is tried again the next minute when it could not be raised', async () => {
+      await owner.carrierConnection.update({ where: { id: localId }, data: { autoPickup: false } })
+      await guideOn(localId)
+      const events = app.get(DomainEvents, { strict: false })
+      const spy = jest.spyOn(events, 'publish').mockImplementationOnce(() => {
+        throw new Error('database blip')
+      })
+
+      const first = await evaluator.evaluate(NOW)
+      spy.mockRestore()
+      const second = await evaluator.evaluate(new Date(NOW.getTime() + MINUTE_MS))
+
+      expect(first.reminders).toBe(0)
+      expect(second.reminders).toBe(1)
     })
 
     it('is not raised outside its window, or when nothing waits', async () => {
@@ -362,6 +392,34 @@ describe('The pickup scheduler (TDD_17 §4.10)', () => {
       expect(made).toHaveLength(1)
       expect(made[0]?.pickupId).not.toBeNull()
       expect(bound.callsTo('createShipmentsWithPickup')).toHaveLength(1)
+    })
+
+    it('is tried again when a run fails before it ends, and does not repeat a run that ended', async () => {
+      const order = await createOrder(owner, {
+        storeId: ctx.storeA.id,
+        status: OrderStatus.CONFIRMED,
+        carrierConnectionId: boundId,
+        shippingAddress: { line1: 'Calle 1', city: 'San Salvador', state: 'SS', country: 'SV' },
+        allocatedAt: ctx.warehouseA.id
+      })
+      await createInventoryLevel(owner, {
+        storeId: ctx.storeA.id,
+        productId: order.productId,
+        warehouseId: ctx.warehouseA.id,
+        onHand: 5,
+        reserved: 1
+      })
+      const engine = app.get(ShippingService, { strict: false })
+      const spy = jest.spyOn(engine, 'createShipments').mockRejectedValueOnce(new Error('down'))
+
+      const first = await evaluator.evaluate(NOW)
+      spy.mockRestore()
+      const second = await evaluator.evaluate(new Date(NOW.getTime() + MINUTE_MS))
+
+      expect(first.failed).toBeGreaterThanOrEqual(1)
+      // (an order of an earlier case, whose guide was voided, is planned for the connection too)
+      expect(second.guidesMade).toBeGreaterThanOrEqual(1)
+      expect(await owner.shipment.count({ where: { orderId: order.id } })).toBe(1)
     })
 
     it('does not make guides when auto requests are off', async () => {
@@ -438,6 +496,41 @@ describe('The pickup scheduler (TDD_17 §4.10)', () => {
       })
     })
 
+    it('finds the pickups that are behind however many that agree are older', async () => {
+      const old = new Date(NOW.getTime() - 120 * MINUTE_MS)
+      const older = new Date(NOW.getTime() - 240 * MINUTE_MS)
+      await owner.pickupRequest.createMany({
+        data: Array.from({ length: 105 }, (_unused, index) => ({
+          storeId: ctx.storeA.id,
+          connectionId: fullId,
+          pickupDate: new Date(Date.UTC(2032, 0, 1 + (index % 28))),
+          status: PickupStatus.REQUESTED,
+          packageCount: 2,
+          carrierPackageCount: 2,
+          providerPickupId: `FAKE-AGREED-${index}`,
+          requestedBy: 'system',
+          updatedAt: older
+        }))
+      })
+      const behind = await owner.pickupRequest.create({
+        data: {
+          storeId: ctx.storeA.id,
+          connectionId: fullId,
+          pickupDate: new Date('2031-01-10T00:00:00.000Z'),
+          status: PickupStatus.REQUESTED,
+          packageCount: 4,
+          carrierPackageCount: 3,
+          providerPickupId: 'FAKE-BEHIND',
+          requestedBy: 'system'
+        }
+      })
+      await owner.pickupRequest.updateMany({ where: { id: behind.id }, data: { updatedAt: old } })
+
+      await evaluator.evaluate(NOW)
+
+      expect(syncJobsOf(behind.id)).toHaveLength(1)
+    })
+
     it('leaves a recent pickup alone', async () => {
       const fresh = await owner.pickupRequest.create({
         data: {
@@ -458,22 +551,22 @@ describe('The pickup scheduler (TDD_17 §4.10)', () => {
   })
 
   describe('the minute job', () => {
-    it('is one job per minute whoever asks, and a tick that starts late is dropped', async () => {
+    it('is one job per minute whoever asks, and one evaluation per minute whatever the queue keeps', async () => {
       const scheduler = new PickupEvaluateScheduler({} as never, queue as never, quietLogger)
 
       await scheduler.enqueue(NOW)
-      await scheduler.enqueue(new Date(NOW.getTime() + 20_000))
-
       const minute = Math.floor(NOW.getTime() / MINUTE_MS)
       const jobs = queue.jobs.filter(job => job.name === JobNames.EVALUATE_PICKUPS)
-      expect(jobs.map(job => job.opts?.jobId)).toEqual([
-        evaluatePickupsJobId(minute),
-        evaluatePickupsJobId(minute)
-      ])
+      expect(jobs.map(job => job.opts?.jobId)).toEqual([evaluatePickupsJobId(minute)])
       expect(jobs[0]?.data).toEqual({ minute })
-      expect(await evaluator.run({ minute }, NOW.getTime() + 11 * MINUTE_MS)).toBeNull()
-      expect(await evaluator.run({ minute }, NOW.getTime() + MINUTE_MS)).not.toBeNull()
-      expect(CREATED).toBe(201)
+
+      // A minute of its own for each run of this case: the claim of a minute lives for three
+      const mine = minute + (Date.now() % 1_000_000)
+      const atMinute = mine * MINUTE_MS
+      expect(await evaluator.run({ minute: mine }, atMinute + 11 * MINUTE_MS)).toBeNull()
+      expect(await evaluator.run({ minute: mine }, atMinute + MINUTE_MS)).not.toBeNull()
+      // The same minute asked again (a second replica, a retention that forgot the first job) evaluates nothing
+      expect(await evaluator.run({ minute: mine }, atMinute + MINUTE_MS)).toBeNull()
     })
   })
 })
