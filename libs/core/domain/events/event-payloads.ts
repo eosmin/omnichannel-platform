@@ -190,6 +190,16 @@ export interface PickupManualRequiredPayload {
   reason: PickupManualReason
 }
 
+// The cutoff of a pickup day is near: ids, the day, how many guides wait and how long is left
+export interface PickupCutoffApproachingPayload {
+  storeId: string
+  connectionId: string
+  // 'YYYY-MM-DD' in the timezone of the store
+  pickupDate: string
+  waiting: number
+  minutesLeft: number
+}
+
 export interface BulkLabelsDonePayload {
   storeId: string
   jobId: string
@@ -482,6 +492,7 @@ export interface DomainEventPayloads {
   [Events.BULK_LABELS_PROGRESS]: BulkLabelsProgressPayload
   [Events.BULK_LABELS_DONE]: BulkLabelsDonePayload
   [Events.PICKUP_MANUAL_REQUIRED]: PickupManualRequiredPayload
+  [Events.PICKUP_CUTOFF_APPROACHING]: PickupCutoffApproachingPayload
   [Events.INVENTORY_MOVED]: InventoryMovedPayload
   [Events.INVENTORY_LOW]: InventoryLowPayload
   [Events.COUNT_SUBMITTED]: CountSubmittedPayload

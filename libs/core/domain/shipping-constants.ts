@@ -585,6 +585,31 @@ export const PickupFailureNotes = {
   EMPTY: 'pickup_empty'
 } as const
 
+// How a sync job is queued, wherever it comes from (a request, the scheduler, its sweep): the same attempts and backoff
+export const pickupSyncJobOptions = (
+  jobId: string
+): { jobId: string; attempts: number; backoff: { type: 'exponential'; delay: number } } => ({
+  jobId,
+  attempts: PickupLimits.JOB_ATTEMPTS,
+  backoff: { type: 'exponential', delay: PickupLimits.BACKOFF_BASE_MS }
+})
+
+// How the scheduler and its sweep behave (TDD_17 §4.10)
+export const PickupSchedule = {
+  // A pickup still PENDING after this long was never queued (the queue was down) or its job was lost: the sweep queues it again
+  // (longer than the five attempts of a job with its backoff, so the sweep never doubles a job that is still asking again)
+  PENDING_STALE_MS: 15 * 60 * 1000,
+  // A pickup whose count the carrier has not acknowledged for this long is told again by the sweep, at most once per bucket
+  RESYNC_AFTER_MS: 15 * 60 * 1000,
+  SWEEP_BUCKET_MS: 30 * 60 * 1000,
+  // The most pickups the sweep queues in one minute: the rest wait for the next
+  SWEEP_BATCH: 100,
+  // How long what the scheduler did for a day is remembered (the day of the store ends well inside it)
+  MEMORY_TTL_SECONDS: 36 * 60 * 60,
+  // How long the claim of a minute is kept: longer than the ten minutes a late tick is still run
+  EVALUATION_MEMORY_SECONDS: 11 * 60
+} as const
+
 export const PickupResourceTypes = { PICKUP: 'pickup' } as const
 
 // The key a pickup is requested of the carrier with: the same pickup always makes the same key, so a carrier that keeps its
