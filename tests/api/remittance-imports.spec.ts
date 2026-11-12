@@ -404,6 +404,17 @@ describe('Importing the settlement file of a carrier (TDD_17 §4.15, Step 4.13 P
       ])
     })
 
+    it('refuses a profile that was edited into one that breaks the rules, with a clean answer', async () => {
+      const id = await profile()
+      await owner.remittanceImportProfile.update({
+        where: { id },
+        data: { columns: { guideNumber: { nope: true }, amount: 'Monto' } }
+      })
+      const refused = await sendFile(id, 'Guia,Monto\nX,1\n')
+      expect(refused.status).toBe(CONFLICT)
+      expect((refused.body as ErrorBody).error.code).toBe(ErrorCodes.VALIDATION_FAILED)
+    })
+
     it('refuses a column that the file does not have, an empty file and a body that is not text', async () => {
       const id = await profile()
       const missing = await sendFile(id, 'A,B\n1,2\n')

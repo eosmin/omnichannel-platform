@@ -62,7 +62,13 @@ function shapeOf(profile: {
   // refused with a clean answer and not read with a mapping that is not one
   const parsed = remittanceImportProfileBodySchema
     .refine(value => remittanceProfileProblem(value) === null)
-    .safeParse(profile)
+    .safeParse({
+      delimiter: profile.delimiter,
+      hasHeader: profile.hasHeader,
+      decimalSeparator: profile.decimalSeparator,
+      dateFormat: profile.dateFormat,
+      columns: profile.columns
+    })
   if (!parsed.success) {
     throw new PlatformException(
       ErrorCodes.VALIDATION_FAILED,
