@@ -6,26 +6,36 @@ import { useRouter } from 'next/navigation'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, useEffect, useMemo, useState } from 'react'
 
-import { AppPaths, type OrderListFilter, type OrderSummaryView } from '@platform/api-client'
+import {
+  AppPaths,
+  type CarrierConnectionSummaryView,
+  type OrderListFilter,
+  type OrderSummaryView,
+  type ShipmentSummaryView
+} from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
 import {
+  OrderGuideFilters,
   OrderLimits,
   OrderScheduledDeliveryShortcuts,
   OrderSorts,
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
-  PriceApprovalStatus
+  PriceApprovalStatus,
+  ShipmentStatus
 } from '@platform/core/domain'
 
 import { useCustomerDrawer } from '../../components/customers/customer-drawer-context'
 import { MutationError } from '../../components/customers/mutation-error'
+import { OrderBulkBar, OrderBulkReport } from '../../components/orders/lazy-bulk'
 import { useOrderDrawer } from '../../components/orders/order-drawer-context'
 import { useStore } from '../../components/providers/store-context'
 import { Button } from '../../components/ui/button'
 import { SELECT_CLASS } from '../../components/ui/field-classes'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
+import { availabilityOf, liveGuidesByOrder } from '../../lib/orders/order-bulk'
 import {
   activeFilterCount,
   withScheduledDays,
@@ -38,6 +48,11 @@ import {
   toggleAll,
   toggleOrder
 } from '../../lib/orders/order-selection'
+import {
+  useCarrierConnections,
+  useOrderBulk,
+  useOrderShipments
+} from '../../lib/orders/use-order-bulk'
 import { useOrderFilters } from '../../lib/orders/use-order-filters'
 import { useExportOrders, useOrderList } from '../../lib/orders/use-orders'
 import { formatCents } from '../../lib/products/money'
@@ -95,14 +110,73 @@ function PaymentCell({ order }: { order: OrderSummaryView }): ReactElement {
   )
 }
 
+// The carrier the order is planned for, its live guide and the state of that guide: columns of who may view shipping
+function ShippingCells({
+  order,
+  connections,
+  guides
+}: {
+  order: OrderSummaryView
+  connections: readonly CarrierConnectionSummaryView[]
+  guides: readonly ShipmentSummaryView[]
+}): ReactElement {
+  const t = useTranslations('orders.list')
+  const tBulk = useTranslations('orders.bulk')
+  const guide = guides[0]
+  const planned = connections.find(connection => connection.id === order.carrierConnectionId)
+  return (
+    <>
+      <td className="py-2 pr-3 text-sm">
+        {guide !== undefined ? (
+          guide.connectionName
+        ) : planned !== undefined ? (
+          planned.displayName
+        ) : (
+          <span className="text-muted-foreground">{t('noCarrier')}</span>
+        )}
+      </td>
+      <td className="py-2 pr-3 text-sm whitespace-nowrap">
+        {guide === undefined ? (
+          <span className="text-muted-foreground">{t('noGuide')}</span>
+        ) : guide.guideNumber === null ? (
+          <span className="text-muted-foreground">{t('guidePending')}</span>
+        ) : guide.trackingUrl === null ? (
+          guide.guideNumber
+        ) : (
+          <a
+            href={guide.trackingUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="underline-offset-2 hover:underline"
+          >
+            {guide.guideNumber}
+          </a>
+        )}
+      </td>
+      <td className="py-2 pr-3 text-sm">
+        {guide === undefined
+          ? null
+          : isKnown(ShipmentStatus, guide.status)
+            ? tBulk(`shipmentStatus.${guide.status}`)
+            : t('unknownStatus')}
+      </td>
+    </>
+  )
+}
+
 function Row({
   order,
   isSelected,
-  onToggle
+  onToggle,
+  shipping
 }: {
   order: OrderSummaryView
   isSelected: boolean
   onToggle: () => void
+  shipping: {
+    connections: readonly CarrierConnectionSummaryView[]
+    guides: readonly ShipmentSummaryView[]
+  } | null
 }): ReactElement {
   const t = useTranslations('orders.list')
   const format = useFormatter()
@@ -162,6 +236,9 @@ function Row({
           dayText(order.scheduledDeliveryDate)
         )}
       </td>
+      {shipping === null ? null : (
+        <ShippingCells order={order} connections={shipping.connections} guides={shipping.guides} />
+      )}
       <td className="py-2 text-right text-sm whitespace-nowrap tabular-nums">
         {formatCents(format, order.totalCents)}
       </td>
@@ -199,6 +276,20 @@ export function OrdersPage(): ReactElement {
 
   // Only rows still on the screen stay ticked
   const shownIds = useMemo(() => rows.map(row => row.id), [rows])
+  // Shipping is read for who may view it: the carrier, guide and shipment columns, the carrier filter and the actions that
+  // start from a guide are not there for anyone else
+  const canShip = can(ClientPermissions.SHIPPING_VIEW)
+  const connections = useCarrierConnections(storeId, canShip)
+  const shipments = useOrderShipments(storeId, shownIds, canShip)
+  const guides = useMemo(() => liveGuidesByOrder(shipments), [shipments])
+  const rowsById = useMemo(() => new Map(rows.map(row => [row.id, row])), [rows])
+  const selectedIds = useMemo(() => [...selection], [selection])
+  const bulkInput = useMemo(
+    () => ({ selectedIds, rows, guides, connections, can }),
+    [selectedIds, rows, guides, connections, can]
+  )
+  const bulk = useOrderBulk(storeId, bulkInput)
+  const availability = availabilityOf(bulkInput)
   useEffect(() => {
     setSelection(current => keepShown(current, shownIds))
   }, [shownIds])
@@ -343,6 +434,57 @@ export function OrdersPage(): ReactElement {
         </div>
       </div>
 
+      {canShip ? (
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="orders-carrier" className="text-xs">
+              {t('filters.carrier')}
+            </Label>
+            <select
+              id="orders-carrier"
+              className={SELECT_CLASS}
+              value={filter.carrierConnectionId ?? ''}
+              onChange={event =>
+                change({
+                  ...filter,
+                  carrierConnectionId: event.target.value === '' ? undefined : event.target.value
+                })
+              }
+            >
+              <option value="">{t('filters.allCarriers')}</option>
+              {connections.map(connection => (
+                <option key={connection.id} value={connection.id}>
+                  {connection.displayName}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <Label htmlFor="orders-guide" className="text-xs">
+              {t('filters.guide')}
+            </Label>
+            <select
+              id="orders-guide"
+              className={SELECT_CLASS}
+              value={filter.guide ?? ''}
+              onChange={event =>
+                change({
+                  ...filter,
+                  guide: event.target.value === '' ? undefined : event.target.value
+                })
+              }
+            >
+              <option value="">{t('filters.anyGuide')}</option>
+              {Object.values(OrderGuideFilters).map(value => (
+                <option key={value} value={value}>
+                  {t(`filters.guides.${value}`)}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-end gap-3">
         <fieldset className="flex flex-wrap items-end gap-2">
           <legend className="mb-1 text-xs font-medium">{t('filters.created')}</legend>
@@ -479,12 +621,22 @@ export function OrdersPage(): ReactElement {
       ) : null}
 
       {selection.size > 0 ? (
-        <div role="status" className="flex items-center gap-3 text-sm">
-          <span>{t('selected', { count: selection.size })}</span>
-          <Button variant="ghost" size="sm" onClick={() => setSelection(NO_SELECTION)}>
-            {t('clearSelection')}
-          </Button>
-        </div>
+        <OrderBulkBar
+          bulk={bulk}
+          availability={availability}
+          selectedCount={selection.size}
+          connections={connections}
+          onClear={() => setSelection(NO_SELECTION)}
+        />
+      ) : null}
+      {bulk.report !== null || bulk.failure !== null ? (
+        <OrderBulkReport
+          report={bulk.report}
+          failure={bulk.failure}
+          rows={rowsById}
+          guides={guides}
+          onClose={bulk.dismiss}
+        />
       ) : null}
 
       {rows.length === 0 ? null : (
@@ -510,6 +662,13 @@ export function OrdersPage(): ReactElement {
                 <th className="py-2 pr-3 font-medium">{t('columns.status')}</th>
                 <th className="py-2 pr-3 font-medium">{t('columns.payment')}</th>
                 <th className="py-2 pr-3 font-medium">{t('columns.scheduled')}</th>
+                {canShip ? (
+                  <>
+                    <th className="py-2 pr-3 font-medium">{t('columns.carrier')}</th>
+                    <th className="py-2 pr-3 font-medium">{t('columns.guide')}</th>
+                    <th className="py-2 pr-3 font-medium">{t('columns.shipment')}</th>
+                  </>
+                ) : null}
                 <th className="py-2 text-right font-medium">{t('columns.total')}</th>
               </tr>
             </thead>
@@ -520,6 +679,7 @@ export function OrdersPage(): ReactElement {
                   order={order}
                   isSelected={selection.has(order.id)}
                   onToggle={() => setSelection(current => toggleOrder(current, order.id))}
+                  shipping={canShip ? { connections, guides: guides.get(order.id) ?? [] } : null}
                 />
               ))}
             </tbody>

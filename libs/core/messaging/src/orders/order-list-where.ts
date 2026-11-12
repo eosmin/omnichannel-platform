@@ -1,4 +1,11 @@
-import { formatOrderNumber, OrderNumber } from '@platform/core/domain'
+import {
+  formatOrderNumber,
+  type OrderGuideFilter,
+  OrderGuideFilters,
+  OrderNumber,
+  ShipmentInactiveStatuses,
+  ShipmentKind
+} from '@platform/core/domain'
 
 import { escapeLike } from '../customers/customers.support'
 
@@ -11,6 +18,9 @@ export interface ResolvedOrderFilters {
   paymentStatus?: string
   priceApprovalStatus?: string
   customerId?: string
+  // The planned carrier, and whether the order holds a live outbound guide
+  carrierConnectionId?: string
+  guide?: OrderGuideFilter
   // Inclusive start and exclusive end of the range of `createdAt`
   createdFrom?: Date
   createdBefore?: Date
@@ -44,6 +54,7 @@ export interface OrderListWhere {
   paymentStatus?: string
   priceApprovalStatus?: string
   customerId?: string
+  carrierConnectionId?: string
   createdAt?: { gte?: Date; lt?: Date }
   AND?: Record<string, unknown>[]
 }
@@ -73,6 +84,19 @@ export function orderTextWhere(q: string): Record<string, unknown> {
   }
 }
 
+// A live guide is an outbound one that is not cancelled, failed or returned: the statuses the one-active-guide index lists
+export function orderGuideWhere(guide: OrderGuideFilter): Record<string, unknown> {
+  const live = {
+    shipments: {
+      [guide === OrderGuideFilters.WITH ? 'some' : 'none']: {
+        kind: ShipmentKind.OUTBOUND,
+        status: { notIn: [...ShipmentInactiveStatuses] }
+      }
+    }
+  }
+  return live
+}
+
 export function orderListWhere(storeId: string, filters: ResolvedOrderFilters): OrderListWhere {
   return {
     storeId,
@@ -90,6 +114,16 @@ export function orderListWhere(storeId: string, filters: ResolvedOrderFilters): 
             ...(filters.createdBefore === undefined ? {} : { lt: filters.createdBefore })
           }
         }),
-    ...(filters.q === undefined ? {} : { AND: [orderTextWhere(filters.q)] })
+    ...(filters.carrierConnectionId === undefined
+      ? {}
+      : { carrierConnectionId: filters.carrierConnectionId }),
+    ...(filters.q === undefined && filters.guide === undefined
+      ? {}
+      : {
+          AND: [
+            ...(filters.q === undefined ? [] : [orderTextWhere(filters.q)]),
+            ...(filters.guide === undefined ? [] : [orderGuideWhere(filters.guide)])
+          ]
+        })
   }
 }

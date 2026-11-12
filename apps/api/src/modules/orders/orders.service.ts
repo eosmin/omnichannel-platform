@@ -168,6 +168,8 @@ export class OrdersService {
         paymentStatus: filters[OrderListFilters.PAYMENT_STATUS],
         priceApprovalStatus: filters[OrderListFilters.PRICE_APPROVAL_STATUS],
         customerId: filters[OrderListFilters.CUSTOMER_ID],
+        carrierConnectionId: filters[OrderListFilters.CARRIER_CONNECTION_ID],
+        guide: filters[OrderListFilters.GUIDE],
         createdFrom:
           createdFrom === undefined ? undefined : startOfCalendarDayIn(timezone, createdFrom),
         // The day after the last one starts where the last one ends
@@ -197,6 +199,10 @@ export class OrdersService {
           ? {}
           : { priceApprovalStatus: where.priceApprovalStatus }),
         ...(where.customerId === undefined ? {} : { customerId: where.customerId }),
+        ...(where.carrierConnectionId === undefined
+          ? {}
+          : { carrierConnectionId: where.carrierConnectionId }),
+        ...(where.guide === undefined ? {} : { guide: where.guide }),
         ...(where.createdFrom === undefined
           ? {}
           : { createdFrom: where.createdFrom.toISOString() }),

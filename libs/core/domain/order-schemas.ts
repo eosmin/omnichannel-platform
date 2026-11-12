@@ -4,6 +4,7 @@ import { CustomerLimits, DEFAULT_PHONE_REGION } from './customer-constants'
 import {
   ORDER_MAX_AMOUNT_CENTS,
   OrderLimits,
+  OrderGuideFilters,
   OrderListFilters,
   OrderScheduleFilters,
   OrderScheduledDeliveryShortcuts,
@@ -330,6 +331,8 @@ export const orderListFilterShape = {
   [OrderListFilters.CUSTOMER_ID]: id.optional(),
   [OrderListFilters.CREATED_FROM]: filterDaySchema.optional(),
   [OrderListFilters.CREATED_TO]: filterDaySchema.optional(),
+  [OrderListFilters.CARRIER_CONNECTION_ID]: id.optional(),
+  [OrderListFilters.GUIDE]: z.enum(OrderGuideFilters).optional(),
   [OrderScheduleFilters.FROM]: filterDaySchema.optional(),
   [OrderScheduleFilters.TO]: filterDaySchema.optional(),
   [OrderScheduleFilters.ON]: z.enum(OrderScheduledDeliveryShortcuts).optional()

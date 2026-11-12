@@ -47,6 +47,8 @@ export function ordersExportSource(
       paymentStatus: filters.paymentStatus,
       priceApprovalStatus: filters.priceApprovalStatus,
       customerId: filters.customerId,
+      carrierConnectionId: filters.carrierConnectionId,
+      guide: filters.guide,
       createdFrom: filters.createdFrom === undefined ? undefined : new Date(filters.createdFrom),
       createdBefore:
         filters.createdBefore === undefined ? undefined : new Date(filters.createdBefore)
