@@ -276,6 +276,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'remittances.list': { proposed: ['remittances:read', 'remittances:write'], step: STEP },
   'remittances.byId': { proposed: ['remittances:read', 'remittances:write'], step: STEP },
   'remittances.imports': { proposed: 'remittances:write', step: STEP },
+  'remittances.importPreview': { proposed: 'remittances:write', step: STEP },
   'remittances.pending': { proposed: 'remittances:read', step: STEP },
   'remittances.lines': { proposed: 'remittances:write', step: STEP },
   'remittances.lineById': { proposed: 'remittances:write', step: STEP },
