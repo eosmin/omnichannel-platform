@@ -20,6 +20,9 @@ type PreferencesBody = { orders: Record<string, unknown> }
 // What the orders block reads as for a store that chose nothing (TDD_17 §4.14)
 // The returns block of the preferences (TDD_17 §4.16): read here, written by the page of Step 4.14
 const FACTORY_RETURNS = { preselectCautionOnRefusal: false }
+
+// The remittances block of the preferences at its factory value (TDD_17 §4.15)
+const FACTORY_REMITTANCES = { overdueAfterDays: 7 }
 const FACTORY_ORDERS = {
   confirmOnCreate: false,
   sendSummaryOnCreate: true,
@@ -599,7 +602,8 @@ describe('The settings of the inbox of a store', () => {
         sendReadReceipts: true,
         assignOnReply: true,
         orders: FACTORY_ORDERS,
-        returns: FACTORY_RETURNS
+        returns: FACTORY_RETURNS,
+        remittances: FACTORY_REMITTANCES
       })
     })
 
@@ -613,7 +617,8 @@ describe('The settings of the inbox of a store', () => {
         sendReadReceipts: false,
         assignOnReply: true,
         orders: FACTORY_ORDERS,
-        returns: FACTORY_RETURNS
+        returns: FACTORY_RETURNS,
+        remittances: FACTORY_REMITTANCES
       })
       expect(
         (await api(app, ctx.adminA2, ctx.storeA2).get(ApiRoutes.settings.preferences)).body
@@ -621,7 +626,8 @@ describe('The settings of the inbox of a store', () => {
         sendReadReceipts: false,
         assignOnReply: true,
         orders: FACTORY_ORDERS,
-        returns: FACTORY_RETURNS
+        returns: FACTORY_RETURNS,
+        remittances: FACTORY_REMITTANCES
       })
       const settings = await owner.storeSettings.findUniqueOrThrow({
         where: { storeId: ctx.storeA2.id }
@@ -703,7 +709,8 @@ describe('The settings of the inbox of a store', () => {
         sendReadReceipts: true,
         assignOnReply: true,
         orders: FACTORY_ORDERS,
-        returns: FACTORY_RETURNS
+        returns: FACTORY_RETURNS,
+        remittances: FACTORY_REMITTANCES
       })
       const put = await asAdmin()
         .put(ApiRoutes.settings.preferences)
@@ -712,8 +719,43 @@ describe('The settings of the inbox of a store', () => {
         sendReadReceipts: false,
         assignOnReply: true,
         orders: FACTORY_ORDERS,
-        returns: FACTORY_RETURNS
+        returns: FACTORY_RETURNS,
+        remittances: FACTORY_REMITTANCES
       })
+    })
+
+    it('change the days after which the cash of a carrier is late, bounded, and write only that block', async () => {
+      const before = (await asAdmin().get(ApiRoutes.settings.preferences)).body as object
+      const put = await asAdmin()
+        .put(ApiRoutes.settings.preferences)
+        .send({ remittances: { overdueAfterDays: 14 } })
+      expect(put.status).toBe(OK)
+      expect((put.body as { remittances: unknown }).remittances).toEqual({ overdueAfterDays: 14 })
+      // The other keys kept what they had
+      expect(put.body).toEqual({ ...before, remittances: { overdueAfterDays: 14 } })
+      const settings = await owner.storeSettings.findUniqueOrThrow({
+        where: { storeId: ctx.storeA.id }
+      })
+      expect(settings.preferences).toMatchObject({ remittances: { overdueAfterDays: 14 } })
+      // A stored value out of range reads as the default
+      await owner.storeSettings.update({
+        where: { storeId: ctx.storeA.id },
+        data: { preferences: { remittances: { overdueAfterDays: 500 } } }
+      })
+      expect(
+        ((await asAdmin().get(ApiRoutes.settings.preferences)).body as { remittances: unknown })
+          .remittances
+      ).toEqual(FACTORY_REMITTANCES)
+      for (const body of [
+        { remittances: { overdueAfterDays: 0 } },
+        { remittances: { overdueAfterDays: 91 } },
+        { remittances: { overdueAfterDays: 2.5 } },
+        { remittances: { stranger: 1 } },
+        { remittances: {} }
+      ]) {
+        const refused = await asAdmin().put(ApiRoutes.settings.preferences).send(body)
+        expect(refused.status).toBe(BAD_REQUEST)
+      }
     })
 
     it('read the orders block at its factory defaults and change only the keys that are sent', async () => {

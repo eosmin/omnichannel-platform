@@ -32,6 +32,7 @@ import {
   type ConversationReopenedPayload,
   type ConversationSnoozeExpiredPayload,
   type CarrierStatusUnmappedPayload,
+  type RemittanceOverduePayload,
   type CountSubmittedPayload,
   type ExportSettledPayload,
   Events,
@@ -317,6 +318,43 @@ export class NotificationsEventsListener {
       this.logger.error(
         { connectionId, err: String(error) },
         'an unmapped carrier status could not be notified'
+      )
+    }
+  }
+
+  // A carrier has kept the cash on delivery of delivered packages for longer than the store allows (TDD_17 §4.15). The worker's
+  // daily check raises it at most once a week for each connection; the people who settle remittances are told, and only while
+  // they still hold the permission. The connection is read under the store of the event: an id of another store tells nobody.
+  @OnEvent(Events.REMITTANCE_OVERDUE)
+  async onRemittanceOverdue(payload: RemittanceOverduePayload): Promise<void> {
+    const { storeId, connectionId, count, overdueAfterDays } = payload
+    try {
+      const connection = await this.prisma.client.carrierConnection.findFirst({
+        where: { id: connectionId, storeId },
+        select: { displayName: true }
+      })
+      const carrier = connection === null ? null : textForParams(connection.displayName)
+      if (carrier === null) {
+        // Said, because the daily check will raise it again until somebody looks at the connection
+        this.logger.warn(
+          { connectionId },
+          'an overdue remittance names a connection that cannot be told'
+        )
+        return
+      }
+      await this.notifications.sendToStore({
+        storeId,
+        type: NotificationTypes.REMITTANCE_OVERDUE,
+        params: { carrier, count, days: overdueAfterDays },
+        resourceType: CarrierResourceTypes.CARRIER_CONNECTION,
+        resourceId: connectionId,
+        actionPath: AppPaths.store.remittances(storeId),
+        requiredPermission: Permissions.REMITTANCES_MANAGE
+      })
+    } catch (error) {
+      this.logger.error(
+        { connectionId, err: String(error) },
+        'an overdue remittance could not be notified'
       )
     }
   }

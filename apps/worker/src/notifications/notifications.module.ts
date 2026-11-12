@@ -6,6 +6,7 @@ import { NotificationsProcessor } from '../processors/notifications.processor'
 import { ProcessorSupport } from '../processors/processor-support'
 
 import { EmailDigestService } from './email-digest.service'
+import { RemittanceChecker } from './remittance-checker.service'
 import { WebPushSender } from './web-push-sender.service'
 import { WebPushGateway } from './web-push.gateway'
 
@@ -17,6 +18,7 @@ import { WebPushGateway } from './web-push.gateway'
     WebPushGateway,
     WebPushSender,
     EmailDigestService,
+    RemittanceChecker,
     NotificationsProcessor
   ],
   exports: [EmailDigestService]

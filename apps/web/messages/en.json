@@ -875,7 +875,7 @@
     "remittance": {
       "overdue": {
         "title": "Remittance overdue",
-        "body": "A carrier has not remitted cash on delivery payments on time."
+        "body": "{carrier} has not remitted the cash on delivery of {count} packages delivered more than {days} days ago."
       }
     },
     "return": {

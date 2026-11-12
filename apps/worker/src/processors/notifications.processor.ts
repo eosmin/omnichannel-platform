@@ -4,6 +4,7 @@ import { z } from 'zod'
 
 import { DigestFrequency } from '@platform/core/domain'
 import {
+  type CheckRemittancesJob,
   JobNames,
   QueueNames,
   type QueueEmailDigestJob,
@@ -12,15 +13,18 @@ import {
 } from '@platform/core/queues'
 
 import { EmailDigestService } from '../notifications/email-digest.service'
+import { RemittanceChecker } from '../notifications/remittance-checker.service'
 import { WebPushSender } from '../notifications/web-push-sender.service'
 
 import { BaseProcessor } from './base.processor'
 import { ProcessorSupport } from './processor-support'
 
 const notificationJobSchema = z.object({ userId: z.uuid(), notificationId: z.uuid() })
+const checkRemittancesJobSchema = z.object({ storeId: z.uuid() })
 const digestJobSchema = z.object({ userId: z.uuid(), frequency: z.enum(DigestFrequency) })
 
-type NotificationsJob = SendWebPushJob | QueueEmailDigestJob | SendEmailDigestJob
+type NotificationsJob =
+  SendWebPushJob | QueueEmailDigestJob | SendEmailDigestJob | CheckRemittancesJob
 
 // Web push and the email of the notifications (TDD_06 §6.4, §7.1)
 @Processor(QueueNames.NOTIFICATIONS, { concurrency: 10 })
@@ -28,7 +32,8 @@ export class NotificationsProcessor extends BaseProcessor<NotificationsJob> {
   constructor(
     support: ProcessorSupport,
     private readonly push: WebPushSender,
-    private readonly digest: EmailDigestService
+    private readonly digest: EmailDigestService,
+    private readonly remittances: RemittanceChecker
   ) {
     super(QueueNames.NOTIFICATIONS, support)
   }
@@ -53,6 +58,13 @@ export class NotificationsProcessor extends BaseProcessor<NotificationsJob> {
         const parsed = digestJobSchema.safeParse(job.data)
         if (!parsed.success) throw new UnrecoverableError('the digest job does not fit its schema')
         await this.digest.sendDigest(parsed.data.userId, parsed.data.frequency, new Date())
+        return
+      }
+      case JobNames.CHECK_REMITTANCES: {
+        const parsed = checkRemittancesJobSchema.safeParse(job.data)
+        if (!parsed.success)
+          throw new UnrecoverableError('the remittance check does not fit its schema')
+        await this.remittances.check(parsed.data.storeId, new Date())
         return
       }
       default:

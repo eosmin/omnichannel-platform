@@ -2,6 +2,8 @@ import { OrderCancellationReasons } from '@platform/core/domain'
 
 import {
   cancellationReasonsSchema,
+  readRemittancePreferences,
+  updateRemittancePreferencesSchema,
   CancellationReasonLimits,
   defaultCancellationReasons,
   readOrderPreferences,
@@ -20,11 +22,13 @@ const factoryOrders = {
   cancellationReasons: defaultCancellationReasons
 }
 const factoryReturns = { preselectCautionOnRefusal: false }
+const factoryRemittances = { overdueAfterDays: 7 }
 const factory = {
   sendReadReceipts: true,
   assignOnReply: true,
   orders: factoryOrders,
-  returns: factoryReturns
+  returns: factoryReturns,
+  remittances: factoryRemittances
 }
 
 describe('the returns block', () => {
@@ -292,5 +296,34 @@ describe('updateStorePreferencesSchema, the orders block', () => {
 describe('storePreferencesSchema', () => {
   it('keeps the factory defaults in this one place', () => {
     expect(storePreferencesSchema.parse({})).toEqual(factory)
+  })
+})
+
+describe('the remittances block (TDD_17 §4.15)', () => {
+  it('reads seven days when the column has none, or a value that does not fit', () => {
+    expect(readRemittancePreferences({})).toEqual(factoryRemittances)
+    for (const value of [0, 91, 2.5, '7', null, -1]) {
+      expect(readRemittancePreferences({ remittances: { overdueAfterDays: value } })).toEqual(
+        factoryRemittances
+      )
+    }
+    expect(readRemittancePreferences({ remittances: 'x' })).toEqual(factoryRemittances)
+  })
+
+  it('keeps a number of days inside the range', () => {
+    for (const days of [1, 14, 90]) {
+      expect(
+        readRemittancePreferences({ remittances: { overdueAfterDays: days } }).overdueAfterDays
+      ).toBe(days)
+    }
+  })
+
+  it('takes a change that is inside the range and refuses the rest', () => {
+    expect(updateStorePreferencesSchema.parse({ remittances: { overdueAfterDays: 3 } })).toEqual({
+      remittances: { overdueAfterDays: 3 }
+    })
+    for (const body of [{}, { overdueAfterDays: 0 }, { overdueAfterDays: 91 }, { other: 1 }]) {
+      expect(updateRemittancePreferencesSchema.safeParse(body).success).toBe(false)
+    }
   })
 })
