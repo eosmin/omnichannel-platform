@@ -100,6 +100,10 @@ const catalogEntrySchema = z.object({
   installed: z.boolean(),
   installationId: z.string().nullable(),
   activeConnections: z.number().int(),
+  // What uninstalling the shipping entry leaves without a carrier to ask (0 for any other entry, and for a server that
+  // does not say)
+  openShipments: z.number().int().catch(0),
+  openPickups: z.number().int().catch(0),
   channel: z
     .object({
       // One field the browser cannot read makes the channel's whole form unreadable (the channel is then listed

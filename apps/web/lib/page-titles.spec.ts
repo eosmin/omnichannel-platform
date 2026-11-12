@@ -58,6 +58,7 @@ const TITLE_OF_PAGE: Record<string, string> = {
   's/[storeId]/settings/snippets/page.tsx': 'settingsSnippets',
   's/[storeId]/settings/inbox/page.tsx': 'settingsInbox',
   's/[storeId]/settings/inventory/page.tsx': 'settingsInventory',
+  's/[storeId]/settings/carriers/page.tsx': 'settingsCarriers',
   'account/profile/page.tsx': 'accountProfile',
   'account/preferences/page.tsx': 'accountPreferences',
   'account/notifications/page.tsx': 'accountNotifications',

@@ -52,6 +52,7 @@ export const ClientPermissions = {
   RETURNS_MANAGE: 'returns:manage',
   RETURNS_VIEW: 'returns:view',
   SETTINGS_EDIT: 'settings:edit',
+  SETTINGS_MANAGE_CARRIERS: 'settings:manage_carriers',
   SETTINGS_MANAGE_PLUGINS: 'settings:manage_plugins',
   SETTINGS_MANAGE_PREFERENCES: 'settings:manage_preferences',
   SETTINGS_MANAGE_ROUTING: 'settings:manage_routing',
