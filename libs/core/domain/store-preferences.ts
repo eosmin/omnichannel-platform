@@ -110,13 +110,21 @@ export const updateOrderPreferencesSchema = z
 
 export type UpdateOrderPreferencesBody = z.output<typeof updateOrderPreferencesSchema>
 
-// The `returns` block of the preferences (TDD_17 §4.16). Read here and written by the Settings → Returns page of Step 4.14.
+// The `returns` block of the preferences (TDD_17 §4.16). Read by the reception, written by `PUT /settings/preferences`.
 export const returnPreferencesSchema = z.object({
   // A package scanned with the reason "refused by the customer" has the reception "flag customer" toggle preselected
   preselectCautionOnRefusal: z.boolean().catch(false)
 })
 
 export type ReturnPreferences = z.output<typeof returnPreferencesSchema>
+
+export const updateReturnPreferencesSchema = z
+  .strictObject({ preselectCautionOnRefusal: z.boolean().optional() })
+  .refine(body => Object.values(body).some(value => value !== undefined), {
+    message: 'nothing to change'
+  })
+
+export type UpdateReturnPreferencesBody = z.output<typeof updateReturnPreferencesSchema>
 
 // The `remittances` block (TDD_17 §4.15): when the cash a carrier collected on delivery is late. The daily check tells the team
 // about a connection with shipments delivered longer ago than this and still unpaid.
@@ -182,13 +190,14 @@ export function readRemittancePreferences(raw: unknown): RemittancePreferences {
 
 // What PUT /settings/preferences takes: the keys the caller changes, each held to its real type (the
 // `catch` above is for reading what is stored, never for accepting what a client sends). Keys that are
-// not named keep their value, so a page that draws only some of them cannot reset the others. The `orders`
-// block is merged key by key too.
+// not named keep their value, so a page that draws only some of them cannot reset the others. The `orders`,
+// `returns` and `remittances` blocks are merged key by key too.
 export const updateStorePreferencesSchema = z
   .strictObject({
     sendReadReceipts: z.boolean().optional(),
     assignOnReply: z.boolean().optional(),
     orders: updateOrderPreferencesSchema.optional(),
+    returns: updateReturnPreferencesSchema.optional(),
     remittances: updateRemittancePreferencesSchema.optional()
   })
   .refine(body => Object.values(body).some(value => value !== undefined), {

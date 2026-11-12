@@ -343,3 +343,19 @@ describe('the remittances block (TDD_17 §4.15)', () => {
     }
   })
 })
+
+describe('updateStorePreferencesSchema, the returns block', () => {
+  it('takes the switch that changes', () => {
+    expect(
+      updateStorePreferencesSchema.parse({ returns: { preselectCautionOnRefusal: true } })
+    ).toEqual({ returns: { preselectCautionOnRefusal: true } })
+  })
+
+  it.each([
+    ['an empty block', { returns: {} }],
+    ['a key it does not know', { returns: { stranger: true } }],
+    ['a switch that is not a boolean', { returns: { preselectCautionOnRefusal: 'on' } }]
+  ])('refuses %s', (_name, body) => {
+    expect(updateStorePreferencesSchema.safeParse(body).success).toBe(false)
+  })
+})
