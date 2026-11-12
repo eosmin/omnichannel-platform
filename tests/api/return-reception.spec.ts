@@ -516,7 +516,7 @@ describe('Return reception by scanner', () => {
         const failed = (done.body as BatchBody).items[0]
         expect(failed).toMatchObject({
           outcome: ReceptionItemOutcome.FAILED,
-          errorCode: ErrorCodes.VALIDATION_INVALID_INPUT,
+          errorCode: ErrorCodes.RECEPTION_FLAG_NEEDS_REASON,
           returnId: null
         })
         // Nothing was received
@@ -700,6 +700,54 @@ describe('Return reception by scanner', () => {
       // The first package was not received a second time
       expect(await owner.orderReturn.count({ where: { orderId: good.order.id } })).toBe(1)
       expect(await kit.level(good.product.id, ctx.warehouseA.id)).toMatchObject({ onHand: 10 })
+    })
+
+    it('settles a batch that ended with errors once nothing is left to do, and a fixed package waits again', async () => {
+      const good = await shipped()
+      const bad = await shipped()
+      const batchId = await newBatch()
+      await scan(batchId, { code: good.guideNumber })
+      const badItem = ((await scan(batchId, { code: bad.guideNumber })).body as ScanBody)
+        .item as ItemBody
+      const patchBad = (body: Record<string, unknown>) =>
+        asAdmin().patch(ApiRoutes.returns.reception.itemById(batchId, badItem.id)).send(body)
+      await patchBad({
+        lines: [
+          { orderItemId: bad.itemId, quantity: 99, condition: OrderReturnCondition.RESELLABLE }
+        ]
+      })
+      const first = (await complete(batchId)).body as BatchBody
+      expect(first.status).toBe(ReceptionBatchStatus.COMPLETED_WITH_ERRORS)
+
+      // Fixing the failed package makes it pending again, with no old error
+      const fixed = await patchBad({ lines: [] })
+      expect(fixed.body).toMatchObject({ outcome: null, errorCode: null })
+      // Giving it up instead leaves nothing to do: completing again settles the batch
+      await asAdmin().delete(ApiRoutes.returns.reception.itemById(batchId, badItem.id))
+      const settled = await complete(batchId)
+
+      expect(settled.status).toBe(OK)
+      expect((settled.body as BatchBody).status).toBe(ReceptionBatchStatus.COMPLETED)
+      expect((settled.body as BatchBody).counts).toEqual({
+        total: 1,
+        received: 1,
+        failed: 0,
+        pending: 0
+      })
+    })
+
+    it('takes the shipment that was picked even when the code names more than the candidates a scan lists', async () => {
+      const code = `MANY-${randomUUID()}`
+      const all = []
+      for (let index = 0; index < ReceptionLimits.MAX_CANDIDATES + 2; index += 1) {
+        all.push(await shipped({ guideNumber: code }))
+      }
+      const batchId = await newBatch()
+      const last = [...all].sort((a, b) => a.shipmentId.localeCompare(b.shipmentId)).at(-1)
+
+      const picked = await scan(batchId, { code, shipmentId: last?.shipmentId })
+
+      expect((picked.body as ScanBody).item?.shipmentId).toBe(last?.shipmentId)
     })
 
     it('keeps the reason and the author of a flag that was already on the customer', async () => {

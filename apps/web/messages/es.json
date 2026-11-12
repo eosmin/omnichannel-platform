@@ -590,6 +590,8 @@
     "RECEPTION_BATCH_PROCESSING": "El lote se está completando. Espera un momento",
     "RECEPTION_FLAG_FAILED": "El paquete se recibió pero no se pudo marcar al cliente. Inténtalo de nuevo",
     "RECEPTION_BATCH_EMPTY": "El lote no tiene paquetes que recibir",
+    "RECEPTION_BATCH_FULL": "El lote está lleno. Complétalo y empieza otro",
+    "RECEPTION_FLAG_NEEDS_REASON": "Para marcar al cliente, escribe un motivo o una nota",
     "REMITTANCE_ALREADY_CONFIRMED": "La remesa ya está confirmada",
     "REMITTANCE_IMPORT_INVALID": "El archivo de la remesa no es válido",
     "REMITTANCE_INVALID_STATUS_TRANSITION": "La remesa no puede pasar a ese estado",

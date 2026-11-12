@@ -189,6 +189,10 @@ export const ErrorCodes = {
   RECEPTION_FLAG_FAILED: 'RECEPTION_FLAG_FAILED',
   // The batch has no package to process
   RECEPTION_BATCH_EMPTY: 'RECEPTION_BATCH_EMPTY',
+  // A batch holds ReceptionLimits.MAX_ITEMS packages
+  RECEPTION_BATCH_FULL: 'RECEPTION_BATCH_FULL',
+  // A package flagged for its customer has neither a reason for the flag nor a note to take it from
+  RECEPTION_FLAG_NEEDS_REASON: 'RECEPTION_FLAG_NEEDS_REASON',
   RECEPTION_ALREADY_RECEIVED: 'RECEPTION_ALREADY_RECEIVED',
 
   // Files

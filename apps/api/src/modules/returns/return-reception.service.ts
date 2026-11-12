@@ -60,6 +60,14 @@ function conflict(
   return new PlatformException(code, message, HttpStatusCodes.CONFLICT, metadata)
 }
 
+function flagNeedsReason() {
+  return new PlatformException(
+    ErrorCodes.RECEPTION_FLAG_NEEDS_REASON,
+    'a flagged customer needs a reason or a note',
+    HttpStatusCodes.BAD_REQUEST
+  )
+}
+
 function invalid(message: string) {
   return new PlatformException(
     ErrorCodes.VALIDATION_INVALID_INPUT,
@@ -168,7 +176,7 @@ export class ReturnReceptionService {
     held: readonly Permission[]
   ): Promise<ScanResultView> {
     await this.assertBatch(this.prisma.client, storeId, batchId, [ReceptionBatchStatus.DRAFT])
-    const matches = await this.shipmentsNamed(storeId, body.code)
+    const matches = await this.shipmentsNamed(storeId, body.code, body.shipmentId)
     const picked =
       body.shipmentId === undefined
         ? matches.length === 1
@@ -215,7 +223,9 @@ export class ReturnReceptionService {
         )
         await this.assertNotReceived(tx, storeId, picked.id)
         const count = await tx.returnReceptionItem.count({ where: { storeId, batchId } })
-        if (count >= ReceptionLimits.MAX_ITEMS) throw invalid('the batch is full')
+        if (count >= ReceptionLimits.MAX_ITEMS) {
+          throw conflict(ErrorCodes.RECEPTION_BATCH_FULL, 'the batch is full')
+        }
         const created = await tx.returnReceptionItem.create({
           data: {
             storeId,
@@ -261,8 +271,8 @@ export class ReturnReceptionService {
         if (!dropsFlag) {
           throw conflict(ErrorCodes.RECEPTION_ALREADY_RECEIVED, 'the package was already received')
         }
-        await tx.returnReceptionItem.update({
-          where: { id: itemId },
+        await tx.returnReceptionItem.updateMany({
+          where: { id: itemId, storeId },
           data: { flagCustomer: false, flagReason: null, errorCode: null }
         })
         return
@@ -299,17 +309,21 @@ export class ReturnReceptionService {
       // Said when the agent decides the flag; a refusal that preselects it may still have nothing to say (the completion checks)
       const decidesFlag = body.flagCustomer === true || body.flagReason !== undefined
       if (decidesFlag && flagCustomer && flagReasonOf({ flagReason, note }) === null) {
-        throw invalid('a flagged customer needs a reason or a note')
+        throw flagNeedsReason()
       }
       if (body.lines !== undefined)
         await this.assertLinesOfOrder(tx, storeId, item.shipmentId, body.lines)
-      await tx.returnReceptionItem.update({
-        where: { id: itemId },
+      await tx.returnReceptionItem.updateMany({
+        where: { id: itemId, storeId },
         data: {
           reason,
           note,
           flagCustomer,
           flagReason,
+          // A package that failed and was fixed waits for the next completion again
+          ...(item.outcome === ReceptionItemOutcome.FAILED
+            ? { outcome: null, errorCode: null }
+            : {}),
           ...(body.condition === undefined ? {} : { condition: body.condition }),
           ...(body.lines === undefined ? {} : { lines: body.lines })
         }
@@ -325,7 +339,7 @@ export class ReturnReceptionService {
       if (item.outcome === ReceptionItemOutcome.RECEIVED) {
         throw conflict(ErrorCodes.RECEPTION_ALREADY_RECEIVED, 'the package was already received')
       }
-      await tx.returnReceptionItem.delete({ where: { id: itemId } })
+      await tx.returnReceptionItem.deleteMany({ where: { id: itemId, storeId } })
     })
   }
 
@@ -338,6 +352,7 @@ export class ReturnReceptionService {
     held: readonly Permission[]
   ): Promise<ReceptionBatchView> {
     const { work, claimedAt } = await this.claim(storeId, batchId, held)
+    if (claimedAt === null) return this.getBatch(storeId, batchId, held)
     try {
       for (const item of work) await this.process(storeId, item, actor)
     } finally {
@@ -378,7 +393,14 @@ export class ReturnReceptionService {
           flagAppliedAt: true
         }
       })
-      if (items.length === 0) {
+      const batchRow = await tx.returnReceptionBatch.findFirstOrThrow({
+        where: { id: batchId, storeId },
+        select: { status: true }
+      })
+      // A batch that ended with errors and has nothing left to do (the failed packages were removed, or a flag was dropped) is
+      // settled by completing it again
+      const settles = (batchRow.status as ReceptionBatchStatus) !== ReceptionBatchStatus.DRAFT
+      if (items.length === 0 && !settles) {
         throw conflict(ErrorCodes.RECEPTION_BATCH_EMPTY, 'the batch has no packages')
       }
       const work = items.filter(
@@ -387,7 +409,18 @@ export class ReturnReceptionService {
           (item.flagCustomer && item.flagAppliedAt === null)
       )
       if (work.length === 0) {
-        throw conflict(ErrorCodes.RECEPTION_BATCH_CLOSED, 'there is nothing left to process')
+        if (!settles) {
+          throw conflict(ErrorCodes.RECEPTION_BATCH_CLOSED, 'there is nothing left to process')
+        }
+        await tx.returnReceptionBatch.updateMany({
+          where: { id: batchId, storeId },
+          data: {
+            status: ReceptionBatchStatus.COMPLETED,
+            processingStartedAt: null,
+            completedAt: new Date()
+          }
+        })
+        return { work: [], claimedAt: null }
       }
       // The flag is a decision about a person: completing does not let someone without the permission carry it out
       if (work.some(item => item.flagCustomer) && !mayFlag(held)) {
@@ -397,9 +430,9 @@ export class ReturnReceptionService {
           HttpStatusCodes.FORBIDDEN
         )
       }
-      const claimedAt = new Date()
-      await tx.returnReceptionBatch.update({
-        where: { id: batchId },
+      const claimedAt: Date | null = new Date()
+      await tx.returnReceptionBatch.updateMany({
+        where: { id: batchId, storeId },
         data: {
           status: ReceptionBatchStatus.PROCESSING,
           processingStartedAt: claimedAt,
@@ -444,7 +477,7 @@ export class ReturnReceptionService {
       await this.assertNotReceived(this.prisma.client, storeId, item.shipmentId)
       // A flag with nothing to say is refused before the package is received, not after
       if (item.flagCustomer && flagReasonOf(item) === null) {
-        throw invalid('a flagged customer needs a reason or a note')
+        throw flagNeedsReason()
       }
       const lines = receptionLinesSchema.parse(item.lines)
       const { returnId } = await this.returns.receiveFromScan(
@@ -458,8 +491,8 @@ export class ReturnReceptionService {
         },
         actor
       )
-      await this.prisma.client.returnReceptionItem.update({
-        where: { id: item.id },
+      await this.prisma.client.returnReceptionItem.updateMany({
+        where: { id: item.id, storeId },
         data: { outcome: ReceptionItemOutcome.RECEIVED, errorCode: null, returnId }
       })
       return true
@@ -471,8 +504,13 @@ export class ReturnReceptionService {
           'a scanned package failed with an unexpected error'
         )
       }
-      await this.prisma.client.returnReceptionItem.update({
-        where: { id: item.id },
+      // Only a package nobody has received: a run that lost its claim must not overwrite what the run that took over wrote
+      await this.prisma.client.returnReceptionItem.updateMany({
+        where: {
+          id: item.id,
+          storeId,
+          OR: [{ outcome: null }, { outcome: ReceptionItemOutcome.FAILED }]
+        },
         data: { outcome: ReceptionItemOutcome.FAILED, errorCode: code }
       })
       return false
@@ -486,7 +524,7 @@ export class ReturnReceptionService {
   ): Promise<void> {
     try {
       const reason = flagReasonOf(item)
-      if (reason === null) throw invalid('a flagged customer needs a reason or a note')
+      if (reason === null) throw flagNeedsReason()
       const row = await this.prisma.client.returnReceptionItem.findFirstOrThrow({
         where: { id: item.id, storeId },
         select: { shipment: { select: { order: { select: { customerId: true } } } } }
@@ -498,8 +536,8 @@ export class ReturnReceptionService {
       })
       // A customer who is already flagged keeps the reason and the author of the first flag: this one adds nothing to it
       if (!customer.isCaution) await this.caution.set(storeId, customerId, { reason }, actor)
-      await this.prisma.client.returnReceptionItem.update({
-        where: { id: item.id },
+      await this.prisma.client.returnReceptionItem.updateMany({
+        where: { id: item.id, storeId },
         data: { flagAppliedAt: new Date(), errorCode: null }
       })
     } catch (error) {
@@ -509,8 +547,8 @@ export class ReturnReceptionService {
           'the customer of a scanned package could not be flagged'
         )
       }
-      await this.prisma.client.returnReceptionItem.update({
-        where: { id: item.id },
+      await this.prisma.client.returnReceptionItem.updateMany({
+        where: { id: item.id, storeId },
         data: { errorCode: ErrorCodes.RECEPTION_FLAG_FAILED }
       })
     }
@@ -585,13 +623,15 @@ export class ReturnReceptionService {
     return readStorePreferences(settings?.preferences).returns.preselectCautionOnRefusal
   }
 
-  private async shipmentsNamed(storeId: string, code: string) {
-    const normalized = code.replace(/\s+/g, '').toLowerCase()
+  private async shipmentsNamed(storeId: string, code: string, shipmentId: string | undefined) {
+    // Only the blanks of ASCII, as the expression of the index strips them
+    const normalized = code.replace(/[ \t\n\r\f\v]+/g, '').toLowerCase()
     // The same expression as the index of shipments (store, guide without blanks and in lower case)
     const ids = await this.prisma.client.$queryRaw<{ id: string }[]>`
       SELECT id FROM shipments
       WHERE store_id = ${storeId}
         AND lower(regexp_replace(guide_number, '[[:space:]]', '', 'g')) = ${normalized}
+        AND (${shipmentId ?? null}::text IS NULL OR id = ${shipmentId ?? null}::text)
       ORDER BY id
       LIMIT ${ReceptionLimits.MAX_CANDIDATES + 1}`
     if (ids.length === 0) return []
