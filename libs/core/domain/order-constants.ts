@@ -215,8 +215,19 @@ export const OrderListFilters = {
   CUSTOMER_ID: 'customerId',
   CREATED_FROM: 'createdFrom',
   CREATED_TO: 'createdTo',
+  // The carrier the order is planned for, and whether it holds a live guide (TDD_17 §4.13, Step 4.14)
+  CARRIER_CONNECTION_ID: 'carrierConnectionId',
+  GUIDE: 'guide',
   SORT: 'sort'
 } as const
+
+// The two readings of the guide filter: an order with a guide that still holds it (not cancelled, failed or returned) and one
+// with none. A guide that was voided leaves its order "without a guide", ready to make another.
+export const OrderGuideFilters = {
+  WITH: 'with_guide',
+  WITHOUT: 'without_guide'
+} as const
+export type OrderGuideFilter = (typeof OrderGuideFilters)[keyof typeof OrderGuideFilters]
 
 // The orders of GET /orders come newest first unless the caller asks for the days of delivery, soonest first
 export const OrderSorts = {

@@ -29,6 +29,7 @@ import { MediaPurpose, StorageKeys } from '@platform/core/storage'
 // The e2e cases build their rows with the builders of the suites in tests/
 // eslint-disable-next-line no-restricted-imports -- the only deep relative import, to a folder no alias covers
 import {
+  createCarrierConnection,
   createChannelConnection,
   createConversation,
   createConversationOf,
@@ -36,6 +37,7 @@ import {
   createInventoryLevel,
   createInventoryMovement,
   createProduct,
+  createShipment,
   createWarehouse as createWarehouseRow,
   linkWarehouse,
   createCustomerIdentity,
@@ -1256,6 +1258,58 @@ export async function addOrdersTo(
       withOwner(async owner => {
         await owner.order.deleteMany({ where: { customerId: made.customerId } })
         await owner.customer.deleteMany({ where: { id: made.customerId } })
+      })
+  }
+}
+
+// Orders of a customer that hold a live guide (label created, a guide number, no pickup) of one `local` courier of the store:
+// the carrier, guide and shipment columns and the guide filter of the orders page read them. The builder makes the shipment
+// with its order (a guide only changes status through ShippingService), and the order is handed to the customer.
+export async function addGuidedOrdersTo(
+  storeId: string,
+  customerId: string,
+  count: number
+): Promise<{
+  orders: (SeededOrder & { guideNumber: string })[]
+  connectionName: string
+  remove: () => Promise<void>
+}> {
+  const made = await withOwner(async owner => {
+    const connection = await createCarrierConnection(owner, {
+      storeId,
+      prefix: `E${randomUUID()
+        .slice(0, 3)
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '0')}`
+    })
+    const orders: (SeededOrder & { guideNumber: string })[] = []
+    for (let index = 0; index < count; index += 1) {
+      const guideNumber = `E2E-${randomUUID().slice(0, 8).toUpperCase()}`
+      const shipment = await createShipment(owner, {
+        storeId,
+        connectionId: connection.id,
+        guideNumber
+      })
+      const order = await owner.order.update({
+        where: { id: shipment.orderId },
+        data: { customerId },
+        select: { id: true, orderNumber: true }
+      })
+      orders.push({ ...order, guideNumber })
+    }
+    return { connection, orders }
+  })
+  return {
+    orders: made.orders,
+    connectionName: made.connection.displayName,
+    remove: () =>
+      withOwner(async owner => {
+        const ids = made.orders.map(order => order.id)
+        await owner.shipmentEvent.deleteMany({ where: { shipment: { orderId: { in: ids } } } })
+        await owner.shipment.deleteMany({ where: { orderId: { in: ids } } })
+        await owner.order.deleteMany({ where: { id: { in: ids } } })
+        await owner.carrierService.deleteMany({ where: { connectionId: made.connection.id } })
+        await owner.carrierConnection.deleteMany({ where: { id: made.connection.id } })
       })
   }
 }

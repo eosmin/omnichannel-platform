@@ -55,6 +55,17 @@ export function permissionDenied(permission: Permission): PlatformException {
   )
 }
 
+// The carrier and guide filters tell which orders hold a live guide and which carrier each is planned for: shipping data, so
+// they need shipping:view next to orders:view
+export function assertShippingFilters(
+  query: { guide?: string; carrierConnectionId?: string },
+  held: readonly Permission[]
+): void {
+  if (query.guide !== undefined || query.carrierConnectionId !== undefined) {
+    assertHolds(held, Permissions.SHIPPING_VIEW)
+  }
+}
+
 export function assertHolds(held: readonly Permission[], permission: Permission): void {
   if (!held.includes(permission)) throw permissionDenied(permission)
 }

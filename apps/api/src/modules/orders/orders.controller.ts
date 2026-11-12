@@ -46,6 +46,7 @@ import {
   priceDecisionSchema
 } from './orders.schemas'
 import { type CreatedOrder, OrdersService } from './orders.service'
+import { assertShippingFilters } from './orders.support'
 import type { OrderDetailView, OrderPage } from './orders.views'
 
 const id = () => new ZodValidationPipe(idSchema)
@@ -65,8 +66,10 @@ export class OrdersController {
   @Get(ApiRoutes.orders.list)
   list(
     @CurrentStore() store: { id: string },
+    @CurrentPermissions() held: readonly Permission[],
     @Query(new ZodValidationPipe(listOrdersQuerySchema)) query: ListOrdersQuery
   ): Promise<OrderPage> {
+    assertShippingFilters(query, held)
     return this.orders.list(store.id, query)
   }
 
@@ -78,8 +81,10 @@ export class OrdersController {
   requestExport(
     @CurrentStore() store: { id: string },
     @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
     @Query(new ZodValidationPipe(exportOrdersQuerySchema)) query: ExportOrdersQuery
   ): Promise<ExportView> {
+    assertShippingFilters(query, held)
     return this.orders.requestExport(store.id, user.id, query)
   }
 

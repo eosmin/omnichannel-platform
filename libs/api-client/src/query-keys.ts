@@ -147,7 +147,12 @@ export const QueryKeys = {
   // Shipping (TDD_17 §3)
   shipments: {
     all: (storeId: string) => ['shipments', storeId] as const,
-    byOrder: (storeId: string, orderId: string) => ['shipments', storeId, 'order', orderId] as const
+    byOrder: (storeId: string, orderId: string) =>
+      ['shipments', storeId, 'order', orderId] as const,
+    // The shipments of the orders a page draws, for the guide and carrier columns
+    forOrders: (storeId: string, orderIds: readonly string[]) =>
+      ['shipments', storeId, 'orders', [...orderIds].sort().join(',')] as const,
+    bulkJob: (storeId: string, jobId: string) => ['shipments', storeId, 'bulk', jobId] as const
   },
   carriers: {
     all: (storeId: string) => ['carriers', storeId] as const,

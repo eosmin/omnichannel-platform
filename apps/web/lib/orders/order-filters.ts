@@ -1,5 +1,6 @@
 import type { OrderListFilter } from '@platform/api-client'
 import {
+  OrderGuideFilters,
   OrderListFilters,
   OrderScheduleFilters,
   OrderScheduledDeliveryShortcuts,
@@ -19,6 +20,7 @@ const STATUSES: ReadonlySet<string> = new Set(Object.values(OrderStatus))
 const PAYMENT_STATUSES: ReadonlySet<string> = new Set(Object.values(PaymentStatus))
 const SHORTCUTS: ReadonlySet<string> = new Set(Object.values(OrderScheduledDeliveryShortcuts))
 const SORTS: ReadonlySet<string> = new Set(Object.values(OrderSorts))
+const GUIDES: ReadonlySet<string> = new Set(Object.values(OrderGuideFilters))
 
 export interface OrderListState {
   filter: OrderListFilter
@@ -33,6 +35,8 @@ export const ORDER_PARAMS: readonly string[] = [
   OrderListFilters.STATUS,
   OrderListFilters.PAYMENT_STATUS,
   OrderListFilters.CUSTOMER_ID,
+  OrderListFilters.CARRIER_CONNECTION_ID,
+  OrderListFilters.GUIDE,
   OrderListFilters.CREATED_FROM,
   OrderListFilters.CREATED_TO,
   OrderListFilters.SORT,
@@ -55,6 +59,8 @@ export function stateFromParams(params: Pick<URLSearchParams, 'get'>): OrderList
   const status = params.get(OrderListFilters.STATUS)
   const paymentStatus = params.get(OrderListFilters.PAYMENT_STATUS)
   const customerId = params.get(OrderListFilters.CUSTOMER_ID)
+  const carrierConnectionId = params.get(OrderListFilters.CARRIER_CONNECTION_ID)
+  const guide = params.get(OrderListFilters.GUIDE)
   const on = params.get(OrderScheduleFilters.ON)
   const sort = params.get(OrderListFilters.SORT)
   const scheduledFrom = day(params.get(OrderScheduleFilters.FROM))
@@ -68,6 +74,10 @@ export function stateFromParams(params: Pick<URLSearchParams, 'get'>): OrderList
     ...(status !== null && STATUSES.has(status) ? { status } : {}),
     ...(paymentStatus !== null && PAYMENT_STATUSES.has(paymentStatus) ? { paymentStatus } : {}),
     ...(customerId !== null && ID.test(customerId) ? { customerId: customerId.toLowerCase() } : {}),
+    ...(carrierConnectionId !== null && ID.test(carrierConnectionId)
+      ? { carrierConnectionId: carrierConnectionId.toLowerCase() }
+      : {}),
+    ...(guide !== null && GUIDES.has(guide) ? { guide } : {}),
     ...(createdFrom === undefined ? {} : { createdFrom }),
     ...(createdTo === undefined ? {} : { createdTo }),
     ...(shortcut === undefined
@@ -113,6 +123,8 @@ export function paramsFromState(state: OrderListState): [string, string][] {
     [OrderListFilters.STATUS, filter.status],
     [OrderListFilters.PAYMENT_STATUS, filter.paymentStatus],
     [OrderListFilters.CUSTOMER_ID, filter.customerId],
+    [OrderListFilters.CARRIER_CONNECTION_ID, filter.carrierConnectionId],
+    [OrderListFilters.GUIDE, filter.guide],
     [OrderListFilters.CREATED_FROM, filter.createdFrom],
     [OrderListFilters.CREATED_TO, filter.createdTo],
     [OrderScheduleFilters.FROM, filter.scheduledDeliveryFrom],

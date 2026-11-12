@@ -20,6 +20,8 @@ export const ORDER_LIST_SELECT = {
   priceApprovalStatus: true,
   freeShipping: true,
   scheduledDeliveryDate: true,
+  // The planned carrier (the column of the list)
+  carrierConnectionId: true,
   createdAt: true,
   updatedAt: true,
   // Who made the order, for the column of the list: the name only (the contact data is in the detail)
@@ -119,13 +121,14 @@ interface ListRow {
   priceApprovalStatus: string
   freeShipping: boolean
   scheduledDeliveryDate: Date | null
+  carrierConnectionId: string | null
   createdAt: Date
   updatedAt: Date
   customer: { id: string; name: string | null; isCaution: boolean }
   items: { id: string }[]
 }
 
-interface DetailRow extends Omit<ListRow, 'items'> {
+interface DetailRow extends Omit<ListRow, 'items' | 'carrierConnectionId'> {
   conversationId: string | null
   paymentReference: string | null
   paymentProofMediaId: string | null
