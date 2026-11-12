@@ -17,6 +17,8 @@ import {
   RemittanceImportLimits,
   type RemittanceImportPreviewBody,
   type RemittanceImportProfileShape,
+  remittanceImportProfileBodySchema,
+  remittanceProfileProblem,
   type RemittanceImportQuery,
   ShipmentResourceTypes
 } from '@platform/core/domain'
@@ -56,7 +58,19 @@ function shapeOf(profile: {
   dateFormat: string
   columns: unknown
 }): RemittanceImportProfileShape {
-  return profile as RemittanceImportProfileShape
+  // A profile is read again with the rules it was made with: one that was edited by hand, or made before a rule changed, is
+  // refused with a clean answer and not read with a mapping that is not one
+  const parsed = remittanceImportProfileBodySchema
+    .refine(value => remittanceProfileProblem(value) === null)
+    .safeParse(profile)
+  if (!parsed.success) {
+    throw new PlatformException(
+      ErrorCodes.VALIDATION_FAILED,
+      'the import profile is not valid: edit it before importing',
+      HttpStatusCodes.CONFLICT
+    )
+  }
+  return parsed.data
 }
 
 // The import of a carrier's settlement file (TDD_17 §4.15): read with the saved profile, strictly (one bad cell refuses the file and

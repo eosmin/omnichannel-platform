@@ -69,7 +69,11 @@ export const RemittanceImportErrors = {
   EMPTY_FILE: 'empty_file',
   UNCLOSED_QUOTE: 'unclosed_quote',
   // A row has more cells than the header (or than the first row of a file with none): an unquoted delimiter inside a cell moved the columns
-  ROW_TOO_WIDE: 'row_too_wide'
+  ROW_TOO_WIDE: 'row_too_wide',
+  // Text follows the closing quote of a cell (`"1500"0`): the cell was glued together
+  STRAY_QUOTE: 'stray_quote',
+  // Two values of the mapping resolve to the same column of the file
+  COLUMN_REUSED: 'column_reused'
 } as const
 export type RemittanceImportError =
   (typeof RemittanceImportErrors)[keyof typeof RemittanceImportErrors]
@@ -131,7 +135,14 @@ export interface ParsedRemittanceFile {
 export function splitDelimited(
   text: string,
   delimiter: RemittanceDelimiter
-): { rows: string[][]; lines: number[]; unclosedQuote: boolean; openLine: number } {
+): {
+  rows: string[][]
+  lines: number[]
+  unclosedQuote: boolean
+  openLine: number
+  // The rows that have text right after a closing quote (`"12"34`): the cell is glued together and cannot be trusted
+  strayRows: Set<number>
+} {
   const source = text.startsWith('\uFEFF') ? text.slice(1) : text
   const rows: string[][] = []
   // The line of the file where each row starts, as an editor counts them: a line break inside a quoted cell counts too
@@ -142,6 +153,10 @@ export function splitDelimited(
   let touched = false
   let line = 1
   let rowLine = 1
+  // The line where the quote that is open began, and whether the last character closed one
+  let quoteLine = 1
+  let justClosed = false
+  const strayRows = new Set<number>()
   const endCell = () => {
     row.push(cell)
     cell = ''
@@ -161,15 +176,23 @@ export function splitDelimited(
         if (source.charAt(index + 1) === '"') {
           cell += '"'
           index += 1
-        } else quoted = false
+        } else {
+          quoted = false
+          justClosed = true
+        }
       } else {
         if (char === '\n' || (char === '\r' && source.charAt(index + 1) !== '\n')) line += 1
         cell += char
       }
       continue
     }
+    // Text after the closing quote of a cell is not part of a well formed file
+    if (justClosed && char !== delimiter && char !== '\n' && char !== '\r')
+      strayRows.add(rows.length)
+    justClosed = false
     if (char === '"' && cell === '') {
       quoted = true
+      quoteLine = line
       touched = true
     } else if (char === delimiter) {
       endCell()
@@ -183,9 +206,9 @@ export function splitDelimited(
       touched = true
     }
   }
-  if (quoted) return { rows, lines, unclosedQuote: true, openLine: rowLine }
+  if (quoted) return { rows, lines, unclosedQuote: true, openLine: quoteLine, strayRows }
   if (touched || cell !== '') endRow()
-  return { rows, lines, unclosedQuote: false, openLine: rowLine }
+  return { rows, lines, unclosedQuote: false, openLine: rowLine, strayRows }
 }
 
 // One pattern for each decimal separator, built once
@@ -257,10 +280,27 @@ function cleanText(cell: string, maxLength: number): string | null {
   return text
 }
 
+// The width most rows have: the one that a row of the file is judged by when there is no header to say it
+function widthOfMostRows(widths: readonly number[]): number {
+  const counts = new Map<number, number>()
+  for (const width of widths) counts.set(width, (counts.get(width) ?? 0) + 1)
+  let best = 0
+  let bestCount = 0
+  for (const [width, count] of counts) {
+    if (count > bestCount || (count === bestCount && width > best)) {
+      best = width
+      bestCount = count
+    }
+  }
+  return best
+}
+
+// What a cell said, for an error: on one line and cut by characters, never in the middle of one
 function shown(cell: string): string {
   const flat = cell.replace(/[\p{Cc}\p{Cf}\u2028\u2029]/gu, ' ').trim()
-  return flat.length > RemittanceImportLimits.ERROR_VALUE_MAX_LENGTH
-    ? `${flat.slice(0, RemittanceImportLimits.ERROR_VALUE_MAX_LENGTH)}…`
+  const characters = Array.from(flat)
+  return characters.length > RemittanceImportLimits.ERROR_VALUE_MAX_LENGTH
+    ? `${characters.slice(0, RemittanceImportLimits.ERROR_VALUE_MAX_LENGTH).join('')}…`
     : flat
 }
 
@@ -321,7 +361,8 @@ export function parseRemittanceFile(
     rows,
     lines: startLines,
     unclosedQuote,
-    openLine
+    openLine,
+    strayRows
   } = splitDelimited(text, profile.delimiter)
   if (unclosedQuote) {
     fail(openLine, null, RemittanceImportErrors.UNCLOSED_QUOTE, null)
@@ -329,7 +370,7 @@ export function parseRemittanceFile(
   }
   // Each row with the line of the file where it starts (empty lines are counted and then skipped)
   const body = rows
-    .map((cells, index) => ({ cells, line: startLines[index] ?? index + 1 }))
+    .map((cells, index) => ({ cells, line: startLines[index] ?? index + 1, index }))
     .filter(entry => entry.cells.some(cell => cell.trim() !== ''))
   if (body.length === 0) {
     fail(1, null, RemittanceImportErrors.EMPTY_FILE, null)
@@ -353,7 +394,14 @@ export function parseRemittanceFile(
   }
   // How wide a row is: as the header says, or as the first row says when there is none. A position past it is a column that is not
   // there, and a filled cell past it is a column that moved.
-  const width = profile.hasHeader ? headerRow.length : (data[0]?.cells.length ?? 0)
+  const width = profile.hasHeader
+    ? headerRow.length
+    : widthOfMostRows(data.map(entry => entry.cells.length))
+  // The positions of a file with no header are judged by its widest row: a row that ends early (empty fields trimmed) is no reason
+  // to say a column does not exist
+  const reach = profile.hasHeader
+    ? width
+    : data.reduce((most, entry) => Math.max(most, entry.cells.length), 0)
   const columns: Partial<Record<RemittanceImportField, number>> = {}
   const mapping: [RemittanceImportField, RemittanceColumnRef | undefined][] = [
     [RemittanceImportFields.GUIDE_NUMBER, profile.columns.guideNumber],
@@ -363,7 +411,7 @@ export function parseRemittanceFile(
     [RemittanceImportFields.REFERENCE, profile.columns.reference]
   ]
   for (const [field, ref] of mapping) {
-    const index = resolveColumn(ref, headerRow, profile.hasHeader, width)
+    const index = resolveColumn(ref, headerRow, profile.hasHeader, reach)
     if (index === null || index === 'ambiguous') {
       fail(
         headerLine,
@@ -373,7 +421,11 @@ export function parseRemittanceFile(
           : RemittanceImportErrors.COLUMN_AMBIGUOUS,
         ref === undefined ? null : shown(String(ref))
       )
-    } else if (index !== undefined) columns[field] = index
+    } else if (index !== undefined) {
+      if (Object.values(columns).includes(index)) {
+        fail(headerLine, field, RemittanceImportErrors.COLUMN_REUSED, shown(String(ref)))
+      } else columns[field] = index
+    }
   }
   const lines: ImportedLine[] = []
   const references = new Set<string>()
@@ -390,9 +442,13 @@ export function parseRemittanceFile(
       receivedOn: null
     }
   }
-  for (const { cells, line: row } of data.slice(0, maxRows)) {
+  for (const { cells, line: row, index: at } of data.slice(0, maxRows)) {
     rowCount += 1
     const before = errorCount
+    if (strayRows.has(at)) {
+      fail(row, null, RemittanceImportErrors.STRAY_QUOTE, null)
+      continue
+    }
     // A row with more cells than the header has is a cell with an unquoted delimiter in it: the columns after it moved, so no
     // amount of this row can be trusted
     // (cells that are empty past the header, a trailing delimiter, move nothing)

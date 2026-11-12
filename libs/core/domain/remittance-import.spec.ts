@@ -254,18 +254,62 @@ describe('parseRemittanceFile', () => {
     })
   })
 
-  it('refuses a shifted row in a file with no header, by the width of its first row', () => {
+  it('refuses a shifted row in a file with no header, by the width most rows have', () => {
     const result = parseRemittanceFile(
-      'G1,Perez,10.00\nG2,Juan,Perez,20.00\n',
-      profile({
-        hasHeader: false,
-        columns: { guideNumber: 0, amount: 2 }
-      })
+      'G1,Perez,10.00\nG2,Ruiz,12.00\nG3,Juan,Perez,20.00\n',
+      profile({ hasHeader: false, columns: { guideNumber: 0, amount: 2 } })
     )
-    expect(result.lines).toEqual([{ guideNumber: 'G1', reportedCents: 1000, row: 1 }])
+    expect(result.lines.map(line => line.guideNumber)).toEqual(['G1', 'G2'])
     expect(result.errors).toEqual([
-      { row: 2, field: null, code: RemittanceImportErrors.ROW_TOO_WIDE, value: '4' }
+      { row: 3, field: null, code: RemittanceImportErrors.ROW_TOO_WIDE, value: '4' }
     ])
+  })
+
+  it('does not say a column is missing from a headerless file because its first row ended early', () => {
+    const result = parseRemittanceFile(
+      'G1,100\nG2,200,5\nG3,300,6\n',
+      profile({ hasHeader: false, columns: { guideNumber: 0, amount: 1, fee: 2 } })
+    )
+    expect(result.errors).toEqual([])
+    expect(result.lines.map(line => line.reportedFeeCents)).toEqual([undefined, 500, 600])
+  })
+
+  it('refuses text after the closing quote of a cell instead of gluing it ("1500"0 is not 15000)', () => {
+    const result = parseRemittanceFile('Guia,Monto\nG-1,"1500"0\nG-2,"7"\n"G-3"x,5\n', profile())
+    expect(result.lines.map(line => line.guideNumber)).toEqual(['G-2'])
+    expect(result.errors).toEqual([
+      { row: 2, field: null, code: RemittanceImportErrors.STRAY_QUOTE, value: null },
+      { row: 4, field: null, code: RemittanceImportErrors.STRAY_QUOTE, value: null }
+    ])
+  })
+
+  it('refuses two values read from the same column, whether named or by position', () => {
+    const named = parseRemittanceFile(
+      'Guia,Monto\nG-1,5\n',
+      profile({ columns: { guideNumber: 'Guia', amount: 0 } })
+    )
+    expect(named.errors).toEqual([
+      { row: 1, field: 'amount', code: RemittanceImportErrors.COLUMN_REUSED, value: '0' }
+    ])
+    expect(named.lines).toEqual([])
+  })
+
+  it('points the open quote at the line of the quote itself', () => {
+    const result = parseRemittanceFile(
+      'Guia,Monto,Nota\nG-1,5,"a\nb"\nG-2,6,x,"never closed\n',
+      profile()
+    )
+    expect(result.errors).toEqual([
+      { row: 4, field: null, code: RemittanceImportErrors.UNCLOSED_QUOTE, value: null }
+    ])
+  })
+
+  it('cuts the value of an error by characters, never in the middle of one', () => {
+    const emoji = '\u{1F600}'.repeat(60)
+    const result = parseRemittanceFile(`Guia,Monto\nG-1,${emoji}\n`, profile())
+    const value = result.errors[0]?.value ?? ''
+    expect(Array.from(value.replace('…', '')).length).toBe(40)
+    expect(value.endsWith('…')).toBe(true)
   })
 
   it('refuses a guide with a pile of combining marks, as a typed one is', () => {
@@ -282,16 +326,6 @@ describe('parseRemittanceFile', () => {
     expect(ok.lines).toHaveLength(2)
     const shifted = parseRemittanceFile('Guia,Monto\nG-1,5,x\n', profile())
     expect(shifted.errors[0]?.code).toBe(RemittanceImportErrors.ROW_TOO_WIDE)
-  })
-
-  it('points the open quote at the line where its row starts', () => {
-    const result = parseRemittanceFile(
-      'Guia,Monto,Nota\nG-1,5,"a\nb\nc"\nG-2,6,"never closed\n',
-      profile()
-    )
-    expect(result.errors).toEqual([
-      { row: 5, field: null, code: RemittanceImportErrors.UNCLOSED_QUOTE, value: null }
-    ])
   })
 
   it('refuses a day that Postgres cannot store', () => {
