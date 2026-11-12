@@ -2594,7 +2594,8 @@
         "tags": "Tags",
         "snippets": "Snippets",
         "inbox": "Inbox behavior",
-        "inventory": "Inventory"
+        "inventory": "Inventory",
+        "carriers": "Carriers"
       },
       "org": {
         "label": "Organization",
@@ -2655,14 +2656,16 @@
       "comingLater": "Not available yet",
       "install": {
         "action": "Install",
-        "done": "{name} was installed. You can connect it in Channels."
+        "done": "{name} was installed. You can connect it in Channels.",
+        "doneCarrier": "{name} was installed. You can connect a carrier in Carriers."
       },
       "uninstall": {
         "action": "Uninstall",
         "title": "Uninstall {name}?",
         "description": "{count, plural, =0 {The plugin stops working in this store.} one {The plugin stops working and its connected account is disconnected.} other {The plugin stops working and its # connected accounts are disconnected.}} Conversations and customers stay.",
         "confirm": "Uninstall",
-        "done": "{name} was uninstalled."
+        "done": "{name} was uninstalled.",
+        "descriptionShipping": "{count, plural, =0 {The plugin stops working in this store.} one {The plugin stops working and its connected carrier is disconnected.} other {The plugin stops working and its # connected carriers are disconnected.}} {shipments, plural, =0 {} one {# shipment is still on its way and will no longer be followed. } other {# shipments are still on their way and will no longer be followed. }}{pickups, plural, =0 {} one {# pickup is still waiting. } other {# pickups are still waiting. }}Orders, customers and the shipments already made stay."
       }
     },
     "team": {
@@ -3224,6 +3227,209 @@
       },
       "problems": {
         "threshold": "The threshold must be a whole number of 0 or more, or empty."
+      }
+    },
+    "carriers": {
+      "title": "Carriers",
+      "description": "The carriers that take your packages: connect an account, check how it is doing and decide what each status they send means.",
+      "add": "Connect a carrier",
+      "sections": {
+        "label": "Carriers sections",
+        "connections": "Connections",
+        "mapping": "Status mapping"
+      },
+      "listLabel": "Connected carriers",
+      "registryFailed": "The carriers you can connect could not be loaded.",
+      "noneAvailable": "No carrier is available in this store yet.",
+      "empty": {
+        "title": "No carrier connected",
+        "body": "Connect a carrier to create guides and follow your shipments."
+      },
+      "past": {
+        "title": "Disconnected carriers",
+        "show": "{count, plural, one {Show # disconnected carrier} other {Show # disconnected carriers}}",
+        "hide": "{count, plural, one {Hide # disconnected carrier} other {Hide # disconnected carriers}}",
+        "hint": "These connections no longer create guides. Rename one to free its name for a new connection."
+      },
+      "capabilities": {
+        "create_shipment": "Creates guides",
+        "pickup_bound_guides": "Guides come with the pickup",
+        "cancel_shipment": "Cancels guides",
+        "return_shipment": "Return guides",
+        "idempotent_create": "Safe to retry",
+        "fetch_status": "Status polling",
+        "webhook_status": "Pushes statuses",
+        "pickup_request": "Requests pickups",
+        "pickup_modify": "Changes pickups",
+        "pickup_cancel": "Cancels pickups",
+        "requires_location_ids": "Needs the carrier's location codes",
+        "internal_guide": "Guides made here",
+        "cod": "Cash on delivery"
+      },
+      "health": {
+        "auth": "The carrier rejected the credentials. Replace them in Edit.",
+        "rejected": "The carrier refused the last request.",
+        "unavailable": "The carrier could not be reached.",
+        "invalid_answer": "The carrier answered in an unexpected way.",
+        "credentials_unreadable": "The saved credentials cannot be read. Replace them in Edit."
+      },
+      "card": {
+        "default": "Default",
+        "status": {
+          "active": "Active",
+          "error": "Needs attention",
+          "disabled": "Disconnected"
+        },
+        "disconnectedNote": "This connection is disconnected. It keeps its shipments and pickups.",
+        "healthUnknown": "The carrier reported a problem.",
+        "neverHealthy": "It has not been checked yet.",
+        "lastHealthy": "Last working: {date}",
+        "capabilities": "What this carrier can do",
+        "webhook": {
+          "secretSet": "The secret for status notices is set.",
+          "secretMissing": "No secret for status notices yet.",
+          "url": "notice address"
+        },
+        "edit": "Edit",
+        "rename": "Rename",
+        "test": {
+          "action": "Test connection",
+          "healthy": "{name} works.",
+          "unhealthy": "{name} does not work. Check its credentials."
+        },
+        "rotate": {
+          "action": "New secret for notices",
+          "title": "Make a new secret for the status notices of {name}?",
+          "description": "The old secret stops working at once. You will see the new one once: paste it in the carrier's panel right away or its status updates will be refused.",
+          "confirm": "Make a new secret"
+        },
+        "disconnect": {
+          "action": "Disconnect",
+          "title": "Disconnect {name}?",
+          "description": "{shipments, plural, =0 {} one {# shipment is still on its way and will no longer be followed. } other {# shipments are still on their way and will no longer be followed. }}{pickups, plural, =0 {} one {# pickup is still waiting. } other {# pickups are still waiting. }}The credentials are deleted and no new guides are made with it. Existing shipments stay. To use it again, connect it again.",
+          "confirm": "Disconnect",
+          "done": "{name} was disconnected."
+        }
+      },
+      "connect": {
+        "title": "Connect a carrier",
+        "description": "Choose the carrier and give what it asks for. Secrets are saved encrypted and are not shown again.",
+        "carrier": "Carrier",
+        "carrierPlaceholder": "Choose a carrier",
+        "courierName": "Name of the courier",
+        "courierPhone": "Phone of the courier",
+        "courierPrefix": "Prefix of the guides",
+        "courierPrefixHint": "Up to 6 capital letters or digits, for example JM. Guides are numbered JM-000001, JM-000002…",
+        "courierNotes": "Notes (optional)",
+        "credentials": "Credentials",
+        "credentialsPlaceholder": "{\"apiKey\": \"…\"}",
+        "credentialsHint": "A JSON object with what the carrier gave you. It is saved encrypted and is not shown again.",
+        "displayName": "Name in the list (optional)",
+        "displayNameHint": "Leave it empty to use the name of the account.",
+        "isDefault": "Use it by default for new guides",
+        "connecting": "Connecting…",
+        "submit": "Connect",
+        "connected": "{name} is connected.",
+        "problems": {
+          "carrier": "Choose a carrier.",
+          "name": "The name is too long.",
+          "credentials": "Write the credentials as a JSON object.",
+          "courierName": "Write the name of the courier (up to 80 characters).",
+          "courierPhone": "Write the phone of the courier (up to 30 characters).",
+          "courierPrefix": "The prefix is 1 to 6 capital letters or digits.",
+          "courierNotes": "The notes are too long."
+        }
+      },
+      "rules": {
+        "title": "Edit {name}",
+        "description": "Only what you change is saved.",
+        "descriptionDisconnected": "This connection is disconnected: you can only change its name, for example to free it for a new connection.",
+        "name": "Name",
+        "isDefault": "Default carrier",
+        "isDefaultHint": "New guides and the order drawer start with this one. Choosing another carrier as default takes it off this one.",
+        "credentials": "Replace the credentials (optional)",
+        "credentialsPlaceholder": "{\"apiKey\": \"…\"}",
+        "credentialsHint": "A JSON object. The carrier checks it first; if it refuses, the old credentials stay.",
+        "pickup": {
+          "legend": "Pickups",
+          "enabled": "This carrier collects packages",
+          "enabledHint": "Where the carrier has no pickup service, the pickup is made by hand from a printable list.",
+          "days": "Pickup days",
+          "weekdays": {
+            "1": "Mon",
+            "2": "Tue",
+            "3": "Wed",
+            "4": "Thu",
+            "5": "Fri",
+            "6": "Sat",
+            "7": "Sun"
+          },
+          "cutoff": "Cutoff time",
+          "cutoffHint": "24-hour format, for example 15:00. After it the request is for the next pickup day. Empty means no cutoff.",
+          "reminder": "Reminder before the cutoff (minutes)",
+          "reminderHint": "0 turns the reminder off.",
+          "timePlaceholder": "HH:MM",
+          "auto": "Request the pickup automatically",
+          "autoHint": "At the time below, on pickup days, for the guides that are ready.",
+          "autoTime": "Time of the automatic request"
+        },
+        "problems": {
+          "name": "Write a name of up to 80 characters.",
+          "noDays": "Choose at least one pickup day.",
+          "cutoff": "The cutoff is a time like 15:00, or empty.",
+          "autoNeedsPickups": "Automatic pickups need pickups turned on.",
+          "autoTime": "Write the time of the automatic request, like 09:30.",
+          "reminder": "The reminder is a whole number of minutes, at most 1440.",
+          "credentials": "Write the credentials as a JSON object."
+        },
+        "save": "Save",
+        "saving": "Saving…",
+        "saved": "{name} was saved."
+      },
+      "secret": {
+        "title": "Secret for the notices of {name}",
+        "description": "Paste both in the panel of the carrier so it can tell us about its shipments.",
+        "once": "This secret is shown only now. If you lose it, make a new one.",
+        "secretLabel": "Secret",
+        "urlLabel": "Notice address"
+      },
+      "mapping": {
+        "description": "Each carrier calls its statuses in its own words. Here you decide which status of ours each one is. A code nobody has mapped waits, with its shipments, until you do.",
+        "noConnections": "Connect a carrier to map its statuses.",
+        "connection": "Carrier",
+        "ignore": "Ignore this code",
+        "statuses": {
+          "label_created": "Guide created",
+          "picked_up": "Picked up",
+          "in_transit": "In transit",
+          "out_for_delivery": "Out for delivery",
+          "failed_attempt": "Failed attempt",
+          "delivered": "Delivered",
+          "returning": "Coming back",
+          "returned": "Returned",
+          "cancelled": "Cancelled"
+        },
+        "waiting": {
+          "title": "Codes waiting for a decision",
+          "none": "No code is waiting.",
+          "more": "Show more",
+          "seen": "{count, plural, one {Seen once} other {Seen # times}}, last on {date}",
+          "shipments": "{count, plural, =0 {no shipment waiting} one {# shipment waiting} other {# shipments waiting}}",
+          "mapTo": "Status for {code}",
+          "mapPlaceholder": "Map to…",
+          "apply": "Apply",
+          "mapped": "{code} is mapped. Its shipments will be updated."
+        },
+        "table": {
+          "title": "Mapped codes",
+          "none": "No code is mapped yet.",
+          "more": "Show more",
+          "custom": "Chosen by you",
+          "default": "Default of the carrier",
+          "statusOf": "Status for {code}",
+          "restore": "Restore default",
+          "ignored": "Ignored"
+        }
       }
     }
   },
