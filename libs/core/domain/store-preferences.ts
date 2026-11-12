@@ -4,10 +4,10 @@ import {
   FailedAttemptMessagePolicy,
   OrderCancellationReasons,
   OrderFreeShippingRules
-} from '@platform/core/domain'
+} from './order-constants'
 
-// Imported as '@platform/core/store-preferences', not through the config barrel, which the lint rule
-// keeps to the libraries that read the env.
+// Imported as '@platform/core/store-preferences', not through the domain barrel: the web reads it too, and it is pure
+// (zod and constants only).
 //
 // What a store may change without a deploy, kept in StoreSettings.preferences (a Json column).
 // This file is the only place of the factory defaults: a key missing from the column reads as the
@@ -92,13 +92,16 @@ export const orderPreferencesSchema = z.object({
 
 export type OrderPreferences = z.output<typeof orderPreferencesSchema>
 
-// What PUT /settings/preferences takes for the `orders` block: only the keys Settings → Preferences draws today. The
-// others (discount limit, free shipping rule, failed-attempt policy, price-override notice) are read from the column but
-// are written by the page of Step 4.14 that draws them. Each key is held to its real type.
+// What PUT /settings/preferences takes for the `orders` block: the keys Settings → Preferences draws. Each key is held to its
+// real type (the `catch` above is for what is stored, never for what a client sends). The discount limit and the price-override
+// notice are read but not written here: they are approval controls and `settings:manage_preferences` is not the approver's
+// permission (debt in Step 4.14 of the plan).
 export const updateOrderPreferencesSchema = z
   .strictObject({
     confirmOnCreate: z.boolean().optional(),
     sendSummaryOnCreate: z.boolean().optional(),
+    freeShippingRule: z.enum(OrderFreeShippingRules).optional(),
+    failedAttemptMessages: z.enum(FailedAttemptMessagePolicy).optional(),
     cancellationReasons: cancellationReasonsSchema.optional()
   })
   .refine(body => Object.values(body).some(value => value !== undefined), {

@@ -138,7 +138,12 @@ describe('inbox and preferences requests', () => {
   it('reads and puts the switches of the store preferences, one key at a time', async () => {
     const view = { sendReadReceipts: true, assignOnReply: true }
     const read = setup(view)
-    await expect(fetchPreferences(read.client, 's-1')).resolves.toEqual(view)
+    // A key the api did not send reads as its factory default
+    await expect(fetchPreferences(read.client, 's-1')).resolves.toMatchObject(view)
+    await expect(fetchPreferences(read.client, 's-1')).resolves.toMatchObject({
+      orders: { confirmOnCreate: false, sendSummaryOnCreate: true },
+      remittances: { overdueAfterDays: 7 }
+    })
     expect(read.call()[0]).toBe('https://api.example.com/api/v1/settings/preferences')
     const put = setup({ ...view, sendReadReceipts: false })
     await savePreferences(put.client, 's-1', { sendReadReceipts: false })

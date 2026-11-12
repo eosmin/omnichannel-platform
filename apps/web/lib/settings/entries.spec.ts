@@ -94,12 +94,12 @@ describe('settings entries', () => {
     ).toEqual(['general'])
   })
 
-  it('shows Channels, Plugins, Routing, Business hours, Tags, Snippets, Inbox behavior and Inventory to who may see settings, and General only to who manages stores', () => {
+  it('shows Channels, Plugins, Routing, Business hours, Tags, Snippets, Inbox behavior, Inventory, Order messages, Returns and Preferences to who may see settings, and General only to who manages stores', () => {
     const entries = storeSettingsEntries('s-1')
     expect(
       visibleEntries(
         entries,
-        holding(Permissions.SETTINGS_VIEW, Permissions.CONVERSATIONS_VIEW)
+        holding(Permissions.SETTINGS_VIEW, Permissions.CONVERSATIONS_VIEW, Permissions.ORDERS_VIEW)
       ).map(entry => entry.href)
     ).toEqual([
       '/s/s-1/settings/channels',
@@ -109,8 +109,21 @@ describe('settings entries', () => {
       '/s/s-1/settings/tags',
       '/s/s-1/settings/snippets',
       '/s/s-1/settings/inbox',
-      '/s/s-1/settings/inventory'
+      '/s/s-1/settings/inventory',
+      '/s/s-1/settings/order-templates',
+      '/s/s-1/settings/returns',
+      '/s/s-1/settings/preferences'
     ])
+  })
+
+  it('hides Order messages from who may see settings but not orders', () => {
+    const hrefs = visibleEntries(
+      storeSettingsEntries('s-1'),
+      holding(Permissions.SETTINGS_VIEW)
+    ).map(entry => entry.href)
+    expect(hrefs).not.toContain('/s/s-1/settings/order-templates')
+    expect(hrefs).toContain('/s/s-1/settings/returns')
+    expect(hrefs).toContain('/s/s-1/settings/preferences')
   })
 
   it('hides Tags and Snippets from who may see settings but not conversations', () => {
