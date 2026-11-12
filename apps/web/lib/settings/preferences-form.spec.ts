@@ -22,7 +22,8 @@ describe('the draft of the preferences', () => {
     expect(draft()).toMatchObject({
       confirmOnCreate: false,
       sendSummaryOnCreate: true,
-      overdueAfterDays: '7'
+      overdueAfterDays: '7',
+      preselectCautionOnRefusal: false
     })
     expect(draft().cancellationReasons).toEqual(factoryReasons())
   })
@@ -31,6 +32,14 @@ describe('the draft of the preferences', () => {
     const copy = draft()
     copy.cancellationReasons[0] = { id: 'x', label: 'X' }
     expect(saved.orders.cancellationReasons[0]?.id).toBe('CUSTOMER_REQUEST')
+  })
+})
+
+describe('the returns switch', () => {
+  it('sends the returns block alone, with only its key, when it is the one that changed', () => {
+    expect(preferencesChanges(saved, { ...draft(), preselectCautionOnRefusal: true })).toEqual({
+      returns: { preselectCautionOnRefusal: true }
+    })
   })
 })
 

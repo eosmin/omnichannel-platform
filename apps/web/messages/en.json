@@ -3703,6 +3703,11 @@
         "overdueLabel": "Days before a remittance is late",
         "overdueHint": "The cash a carrier collected on delivery is late when it has not been paid this many days after the delivery. From {min} to {max}."
       },
+      "returns": {
+        "legend": "Returns received by scanner",
+        "preselectCaution": "Preselect the caution flag when a package was refused",
+        "preselectCautionHint": "On the reception screen, a package whose reason is refused by the customer starts with the customer's caution flag checked, for who may flag customers. The agent can always uncheck it."
+      },
       "reasons": {
         "legend": "Cancellation reasons",
         "hint": "The options of the cancel dialog, in this order. An order keeps the text it was cancelled with, so changing a reason never changes old orders.",
