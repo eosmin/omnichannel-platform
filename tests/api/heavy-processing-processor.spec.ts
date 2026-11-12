@@ -16,6 +16,7 @@ describe('HeavyProcessingProcessor', () => {
   const reprocess = jest.fn().mockResolvedValue(clean)
   const runBulk = jest.fn().mockResolvedValue(undefined)
   const runVoid = jest.fn().mockResolvedValue('cancelled')
+  const runPickup = jest.fn().mockResolvedValue(undefined)
   const support = {
     run: (_queue: string, current: ProcessorJob, work: (job: ProcessorJob) => Promise<void>) =>
       work(current)
@@ -29,7 +30,8 @@ describe('HeavyProcessingProcessor', () => {
     { poll } as never, // the poller of the carriers: what it is handed is what is tested
     { reprocess } as never, // the replay of carrier events: what it is handed is what is tested
     { run: runBulk } as never, // the bulk labels: what it is handed is what is tested
-    { run: runVoid } as never // the void of a guide: what it is handed is what is tested
+    { run: runVoid } as never, // the void of a guide: what it is handed is what is tested
+    { run: runPickup } as never // the pickup sync: what it is handed is what is tested
   )
 
   const base = {
@@ -58,6 +60,7 @@ describe('HeavyProcessingProcessor', () => {
     reprocess.mockClear()
     runBulk.mockClear()
     runVoid.mockClear()
+    runPickup.mockClear()
   })
 
   it('hands the inbound media job to the fetcher with the id the widget chose for the file', async () => {
@@ -301,6 +304,54 @@ describe('HeavyProcessingProcessor', () => {
     ])('refuses for good a job with %s, and voids nothing', async (_name, data) => {
       await expect(voidJob(data)).rejects.toBeInstanceOf(UnrecoverableError)
       expect(runVoid).not.toHaveBeenCalled()
+    })
+  })
+  describe('the sync of a pickup', () => {
+    const STORE_ID = '0b1f5a63-8d2e-4c4d-9a41-0a1b2c3d4e5f'
+    const PICKUP_ID = '7c0e7c7a-2f3b-4a53-8f0e-6f5d2c1b9a11'
+    const USER_ID = '0a4bb3b1-3b6c-4a4f-8b53-6dd1b5a5c2f0'
+    const pickupJob = (data: unknown, attemptsMade = 0): Promise<void> =>
+      processor.process({
+        name: JobNames.SYNC_PICKUP,
+        data: JSON.parse(JSON.stringify(data)) as unknown,
+        attemptsMade,
+        opts: { attempts: 5 }
+      } as unknown as ProcessorJob)
+
+    it('hands the pickup over with who asked, and keeps nothing else', async () => {
+      await pickupJob({ storeId: STORE_ID, pickupId: PICKUP_ID, requestedBy: USER_ID, extra: 'x' })
+
+      expect(runPickup).toHaveBeenCalledWith(
+        { storeId: STORE_ID, pickupId: PICKUP_ID, requestedBy: USER_ID },
+        false
+      )
+    })
+
+    it('tells the syncer when this is the last of the five attempts', async () => {
+      await pickupJob({ storeId: STORE_ID, pickupId: PICKUP_ID, requestedBy: null }, 4)
+
+      expect(runPickup).toHaveBeenCalledWith(
+        { storeId: STORE_ID, pickupId: PICKUP_ID, requestedBy: null },
+        true
+      )
+    })
+
+    it('lets the queue ask again when the carrier did not answer', async () => {
+      runPickup.mockRejectedValueOnce(new Error('asking again'))
+
+      await expect(
+        pickupJob({ storeId: STORE_ID, pickupId: PICKUP_ID, requestedBy: null })
+      ).rejects.not.toBeInstanceOf(UnrecoverableError)
+    })
+
+    it.each([
+      ['no pickup', { storeId: STORE_ID, requestedBy: null }],
+      ['a pickup that is no id', { storeId: STORE_ID, pickupId: 'x', requestedBy: null }],
+      ['no store', { pickupId: PICKUP_ID, requestedBy: null }],
+      ['no word on who asked', { storeId: STORE_ID, pickupId: PICKUP_ID }]
+    ])('refuses for good a job with %s, and asks nothing', async (_name, data) => {
+      await expect(pickupJob(data)).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(runPickup).not.toHaveBeenCalled()
     })
   })
 })

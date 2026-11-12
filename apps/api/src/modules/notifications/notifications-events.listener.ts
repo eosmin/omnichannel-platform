@@ -17,6 +17,7 @@ import {
   OrderResourceTypes,
   OrderStatus,
   PackingNoteNotice,
+  PickupResourceTypes,
   ProductResourceTypes,
   ShipmentResourceTypes,
   ShipmentStatus,
@@ -41,6 +42,7 @@ import {
   type OrderEventPayload,
   type OrderMessageNotSentPayload,
   type OrderStatusChangedPayload,
+  type PickupManualRequiredPayload,
   type ShipmentEventPayload,
   type ShipmentStatusChangedPayload,
   type TransferChangedPayload
@@ -476,6 +478,27 @@ export class NotificationsEventsListener {
   @OnEvent(Events.SHIPMENT_CANCEL_FAILED)
   async onShipmentCancelFailed(payload: ShipmentEventPayload): Promise<void> {
     await this.tellShipmentManagers(payload, NotificationTypes.SHIPMENT_CANCEL_FAILED)
+  }
+
+  // A pickup that a person has to arrange with the carrier (TDD_17 §4.10): the carrier has no pickup API, or did not take the
+  // request. The members who manage pickups are told once per pickup while the earlier warning is unread (a pickup that
+  // is asked again and fails again is one line); a store with several failing connections gets one line for each. The event carries ids and the count, never what the carrier said.
+  @OnEvent(Events.PICKUP_MANUAL_REQUIRED)
+  async onPickupManualRequired(payload: PickupManualRequiredPayload): Promise<void> {
+    const { storeId, pickupId } = payload
+    try {
+      const members = await this.membersWith(storeId, [Permissions.SHIPPING_MANAGE_PICKUPS], null)
+      await this.notifications.sendToUsersOnce(members, {
+        storeId,
+        type: NotificationTypes.PICKUP_MANUAL_REQUIRED,
+        params: { count: payload.packageCount, date: payload.pickupDate },
+        resourceType: PickupResourceTypes.PICKUP,
+        resourceId: pickupId,
+        actionPath: AppPaths.store.pickups(storeId)
+      })
+    } catch (error) {
+      this.logger.error({ pickupId, err: String(error) }, 'a pickup warning could not be notified')
+    }
   }
 
   private async tellShipmentManagers(

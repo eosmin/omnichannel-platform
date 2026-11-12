@@ -517,7 +517,9 @@ export class ShipmentCancellation {
     const current = pickup.status as PickupStatus
     // A pickup that is over keeps what it was
     if (current === PickupStatus.CANCELLED || current === PickupStatus.FAILED) return null
-    const remaining = await tx.shipment.count({
+    // The packages that are left: the sum of the package counts of the guides that still hold the pickup (TDD_17 §4.10)
+    const held = await tx.shipment.aggregate({
+      _sum: { packageCount: true },
       where: {
         storeId: row.storeId,
         pickupId: pickup.id,
@@ -525,6 +527,7 @@ export class ShipmentCancellation {
         status: { notIn: [...ShipmentInactiveStatuses] }
       }
     })
+    const remaining = held._sum.packageCount ?? 0
     await tx.pickupRequest.updateMany({
       where: { id: pickup.id, storeId: row.storeId },
       data: { packageCount: remaining, revision: { increment: 1 } }
@@ -622,6 +625,12 @@ export class ShipmentCancellation {
       } else if (!empty && plugin.modifyPickup !== undefined) {
         const modifyPickup = plugin.modifyPickup.bind(plugin)
         await withDeadline(() => modifyPickup(context, { pickupRef, packageCount: left.remaining }))
+        // What the carrier now holds is what it was told, whatever the guides hold by the time this lands: a pickup told out of
+        // order is told again by the resync (`PickupSync`)
+        await this.prisma.client.pickupRequest.updateMany({
+          where: { id: left.pickupId, storeId },
+          data: { carrierPackageCount: left.remaining }
+        })
       } else {
         await note(empty ? PickupLeaveNotes.EMPTY_NOT_CANCELLED : PickupLeaveNotes.NOT_UPDATED)
       }

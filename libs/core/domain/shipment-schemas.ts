@@ -17,6 +17,12 @@ function isCalendarDay(value: string): boolean {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(value)
 }
 
+// A day of the calendar as 'YYYY-MM-DD'
+export const isoDaySchema = z
+  .string()
+  .regex(ISO_DATE)
+  .refine(isCalendarDay, { message: 'not a day of the calendar' })
+
 // A clock that runs a little fast is not a lie about the future
 const CLOCK_ALLOWANCE_MS = 5 * 60 * 1000
 const clock = z.string().regex(CLOCK_TIME_PATTERN)
@@ -32,10 +38,7 @@ export const shipmentLocationIdsSchema = z.strictObject({
 // The day and hours a pickup-bound carrier comes for the guides. Without it the next valid day of the connection is used
 export const shipmentPickupSchema = z
   .strictObject({
-    date: z
-      .string()
-      .regex(ISO_DATE)
-      .refine(isCalendarDay, { message: 'not a day of the calendar' }),
+    date: isoDaySchema,
     from: clock,
     to: clock
   })

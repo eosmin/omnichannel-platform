@@ -24,7 +24,6 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   MetricHourly: { step: '5.2', reason: 'Read only through the analytics queries' },
   OrderReturn: { step: '4.12', reason: 'Created and read through the returns routes' },
   OrderReturnLine: { step: '4.12', reason: 'Read and written through its return' },
-  PickupRequest: { step: '4.11', reason: 'Created and read through the pickups routes' },
   RetentionSettings: { step: '5.4', reason: 'Read and changed from the data retention settings' },
   ScheduledReport: { step: '5.2', reason: 'Managed from the analytics reports' },
   Webhook: { step: '5.4', reason: 'Managed from Settings' }
