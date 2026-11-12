@@ -7,11 +7,11 @@ import { type Permission, Permissions } from '@platform/core/auth'
 import { isUniqueViolation, PrismaService, type PrismaTransaction } from '@platform/core/database'
 import {
   OrderReturnCondition,
-  OrderReturnReasons,
   OrderStatus,
   ReceptionBatchStatus,
   ReceptionItemOutcome,
   ReceptionLimits,
+  ReceptionReasons,
   ReceptionScanResults,
   type ReceptionLine,
   receptionLinesSchema,
@@ -45,9 +45,6 @@ import {
   receptionItemView,
   type ScanResultView
 } from './return-reception.views'
-
-const DEFAULT_REASON = 'DELIVERY_FAILED' satisfies keyof typeof OrderReturnReasons
-const REFUSED_REASON = 'REFUSED_BY_CUSTOMER' satisfies keyof typeof OrderReturnReasons
 
 // A batch accepts changes to its packages while it is a draft, and after a completion that left some failed (to fix and retry)
 const EDITABLE: readonly string[] = [
@@ -213,7 +210,8 @@ export class ReturnReceptionService {
           storeId,
           batchId,
           [ReceptionBatchStatus.DRAFT],
-          BatchLocks.SHARED
+          // Exclusive: two scans of one batch count its packages one after the other, so the cap holds
+          BatchLocks.EXCLUSIVE
         )
         await this.assertNotReceived(tx, storeId, picked.id)
         const count = await tx.returnReceptionItem.count({ where: { storeId, batchId } })
@@ -223,7 +221,7 @@ export class ReturnReceptionService {
             storeId,
             batchId,
             shipmentId: picked.id,
-            reason: DEFAULT_REASON,
+            reason: ReceptionReasons.DEFAULT,
             condition: OrderReturnCondition.RESELLABLE
           },
           select: { id: true }
@@ -254,7 +252,20 @@ export class ReturnReceptionService {
       await this.assertBatch(tx, storeId, batchId, EDITABLE, BatchLocks.SHARED)
       const item = await this.ownItem(tx, storeId, batchId, itemId)
       if (item.outcome === ReceptionItemOutcome.RECEIVED) {
-        throw conflict(ErrorCodes.RECEPTION_ALREADY_RECEIVED, 'the package was already received')
+        // The one thing left to decide about a package that came back: drop a flag that could not be set (it would be retried
+        // for ever). A flag that is already on the customer is not undone from here.
+        const dropsFlag =
+          body.flagCustomer === false &&
+          Object.keys(body).length === 1 &&
+          item.flagAppliedAt === null
+        if (!dropsFlag) {
+          throw conflict(ErrorCodes.RECEPTION_ALREADY_RECEIVED, 'the package was already received')
+        }
+        await tx.returnReceptionItem.update({
+          where: { id: itemId },
+          data: { flagCustomer: false, flagReason: null, errorCode: null }
+        })
+        return
       }
       const reason = body.reason ?? item.reason
       const note = body.note === undefined ? item.note : body.note
@@ -262,8 +273,8 @@ export class ReturnReceptionService {
       // A refusal preselects the flag when the store asks for it, for who may flag; an explicit choice always wins
       if (
         body.flagCustomer === undefined &&
-        body.reason === REFUSED_REASON &&
-        item.reason !== REFUSED_REASON &&
+        body.reason === ReceptionReasons.REFUSED &&
+        item.reason !== ReceptionReasons.REFUSED &&
         preselect &&
         mayFlag(held)
       ) {
@@ -285,7 +296,9 @@ export class ReturnReceptionService {
           ? item.flagReason
           : body.flagReason
         : null
-      if (flagCustomer && flagReasonOf({ flagReason, note }) === null) {
+      // Said when the agent decides the flag; a refusal that preselects it may still have nothing to say (the completion checks)
+      const decidesFlag = body.flagCustomer === true || body.flagReason !== undefined
+      if (decidesFlag && flagCustomer && flagReasonOf({ flagReason, note }) === null) {
         throw invalid('a flagged customer needs a reason or a note')
       }
       if (body.lines !== undefined)
@@ -324,11 +337,11 @@ export class ReturnReceptionService {
     actor: Actor,
     held: readonly Permission[]
   ): Promise<ReceptionBatchView> {
-    const work = await this.claim(storeId, batchId, held)
+    const { work, claimedAt } = await this.claim(storeId, batchId, held)
     try {
       for (const item of work) await this.process(storeId, item, actor)
     } finally {
-      await this.release(storeId, batchId, actor)
+      await this.release(storeId, batchId, actor, claimedAt)
     }
     return this.getBatch(storeId, batchId, held)
   }
@@ -384,15 +397,16 @@ export class ReturnReceptionService {
           HttpStatusCodes.FORBIDDEN
         )
       }
+      const claimedAt = new Date()
       await tx.returnReceptionBatch.update({
         where: { id: batchId },
         data: {
           status: ReceptionBatchStatus.PROCESSING,
-          processingStartedAt: new Date(),
+          processingStartedAt: claimedAt,
           completedAt: null
         }
       })
-      return work
+      return { work, claimedAt }
     })
   }
 
@@ -427,12 +441,10 @@ export class ReturnReceptionService {
     actor: Actor
   ): Promise<boolean> {
     try {
-      const alreadyReceived = await this.prisma.client.returnReceptionItem.findFirst({
-        where: { storeId, shipmentId: item.shipmentId, outcome: ReceptionItemOutcome.RECEIVED },
-        select: { id: true }
-      })
-      if (alreadyReceived !== null) {
-        throw conflict(ErrorCodes.RECEPTION_ALREADY_RECEIVED, 'the package was already received')
+      await this.assertNotReceived(this.prisma.client, storeId, item.shipmentId)
+      // A flag with nothing to say is refused before the package is received, not after
+      if (item.flagCustomer && flagReasonOf(item) === null) {
+        throw invalid('a flagged customer needs a reason or a note')
       }
       const lines = receptionLinesSchema.parse(item.lines)
       const { returnId } = await this.returns.receiveFromScan(
@@ -479,7 +491,13 @@ export class ReturnReceptionService {
         where: { id: item.id, storeId },
         select: { shipment: { select: { order: { select: { customerId: true } } } } }
       })
-      await this.caution.set(storeId, row.shipment.order.customerId, { reason }, actor)
+      const customerId = row.shipment.order.customerId
+      const customer = await this.prisma.client.customer.findFirstOrThrow({
+        where: { id: customerId, storeId },
+        select: { isCaution: true }
+      })
+      // A customer who is already flagged keeps the reason and the author of the first flag: this one adds nothing to it
+      if (!customer.isCaution) await this.caution.set(storeId, customerId, { reason }, actor)
       await this.prisma.client.returnReceptionItem.update({
         where: { id: item.id },
         data: { flagAppliedAt: new Date(), errorCode: null }
@@ -500,7 +518,12 @@ export class ReturnReceptionService {
 
   // Ends a run: the batch is completed when every package is received and every requested flag is set, and otherwise keeps
   // what failed for a retry
-  private async release(storeId: string, batchId: string, actor: Actor): Promise<void> {
+  private async release(
+    storeId: string,
+    batchId: string,
+    actor: Actor,
+    claimedAt: Date
+  ): Promise<void> {
     const items = await this.prisma.client.returnReceptionItem.findMany({
       where: { storeId, batchId },
       select: { outcome: true, flagCustomer: true, flagAppliedAt: true }
@@ -511,14 +534,21 @@ export class ReturnReceptionService {
         (!item.flagCustomer || item.flagAppliedAt !== null)
     )
     const counts = receptionCounts(items)
-    await this.prisma.client.returnReceptionBatch.update({
-      where: { id: batchId },
+    // Only the run that holds the claim ends it: one that was taken over (it ran past the stale limit) leaves the batch to the new run
+    const ended = await this.prisma.client.returnReceptionBatch.updateMany({
+      where: {
+        id: batchId,
+        storeId,
+        status: ReceptionBatchStatus.PROCESSING,
+        processingStartedAt: claimedAt
+      },
       data: {
         status: clean ? ReceptionBatchStatus.COMPLETED : ReceptionBatchStatus.COMPLETED_WITH_ERRORS,
         processingStartedAt: null,
         completedAt: new Date()
       }
     })
+    if (ended.count === 0) return
     this.audit.log({
       action: AuditAction.RETURN_RECEPTION_BATCH_COMPLETED,
       actor: { userId: actor.userId },
@@ -562,6 +592,7 @@ export class ReturnReceptionService {
       SELECT id FROM shipments
       WHERE store_id = ${storeId}
         AND lower(regexp_replace(guide_number, '[[:space:]]', '', 'g')) = ${normalized}
+      ORDER BY id
       LIMIT ${ReceptionLimits.MAX_CANDIDATES + 1}`
     if (ids.length === 0) return []
     return this.prisma.client.shipment.findMany({
@@ -637,7 +668,8 @@ export class ReturnReceptionService {
         note: true,
         outcome: true,
         flagCustomer: true,
-        flagReason: true
+        flagReason: true,
+        flagAppliedAt: true
       }
     })
     if (item === null) throw resourceNotFound('reception item')

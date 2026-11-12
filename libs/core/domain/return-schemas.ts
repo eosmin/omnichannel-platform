@@ -130,6 +130,12 @@ export const ReceptionLimits = {
   MAX_CANDIDATES: 10
 } as const
 
+// The reason a scanned package starts with, and the one that preselects the flag of its customer (TDD_17 §4.16)
+export const ReceptionReasons = {
+  DEFAULT: 'DELIVERY_FAILED',
+  REFUSED: 'REFUSED_BY_CUSTOMER'
+} as const satisfies Record<string, OrderReturnReasonKey>
+
 // What scanning a code answers: the package joined the batch, no shipment answers to the code, or more than one does
 export const ReceptionScanResults = {
   ADDED: 'added',

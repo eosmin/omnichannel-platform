@@ -498,6 +498,69 @@ describe('Return reception by scanner', () => {
       }
     })
 
+    it('lets a refusal preselect the flag with nothing to say, and fails that package before receiving it', async () => {
+      await owner.storeSettings.update({
+        where: { storeId: ctx.storeA.id },
+        data: { preferences: { returns: { preselectCautionOnRefusal: true } } }
+      })
+      try {
+        const { batchId, item, order } = await withItem()
+        const picked = await as(managerAndFlagger)
+          .patch(ApiRoutes.returns.reception.itemById(batchId, item.id))
+          .send({ reason: 'REFUSED_BY_CUSTOMER' })
+        expect(picked.status).toBe(OK)
+        expect((picked.body as ItemBody).flagCustomer).toBe(true)
+
+        const done = await complete(batchId, managerAndFlagger)
+
+        const failed = (done.body as BatchBody).items[0]
+        expect(failed).toMatchObject({
+          outcome: ReceptionItemOutcome.FAILED,
+          errorCode: ErrorCodes.VALIDATION_INVALID_INPUT,
+          returnId: null
+        })
+        // Nothing was received
+        expect((await orderOf(order.id)).status).toBe('SHIPPED')
+        expect(await owner.orderReturn.count({ where: { orderId: order.id } })).toBe(0)
+      } finally {
+        await owner.storeSettings.update({
+          where: { storeId: ctx.storeA.id },
+          data: { preferences: {} }
+        })
+      }
+    })
+
+    it('lets the agent drop a flag that could not be set from a package that came back, and nothing else of it', async () => {
+      const { batchId, item } = await withItem()
+      await complete(batchId)
+      await owner.returnReceptionItem.update({
+        where: { id: item.id },
+        data: {
+          flagCustomer: true,
+          flagReason: 'Refused',
+          errorCode: ErrorCodes.RECEPTION_FLAG_FAILED
+        }
+      })
+      // The batch ended with errors, as it does when a flag cannot be set
+      await owner.returnReceptionBatch.update({
+        where: { id: batchId },
+        data: { status: ReceptionBatchStatus.COMPLETED_WITH_ERRORS }
+      })
+      const edit = (body: Record<string, unknown>) =>
+        asAdmin().patch(ApiRoutes.returns.reception.itemById(batchId, item.id)).send(body)
+
+      expect((await edit({ note: 'late' })).status).toBe(CONFLICT)
+      const dropped = await edit({ flagCustomer: false })
+
+      expect(dropped.status).toBe(OK)
+      expect(dropped.body).toMatchObject({
+        flagCustomer: false,
+        flagReason: null,
+        errorCode: null,
+        outcome: ReceptionItemOutcome.RECEIVED
+      })
+    })
+
     it('removes a package that was not received, and 404 for one that is not in the batch', async () => {
       const { batchId, item } = await withItem()
       const removed = await asAdmin().delete(ApiRoutes.returns.reception.itemById(batchId, item.id))
@@ -637,6 +700,32 @@ describe('Return reception by scanner', () => {
       // The first package was not received a second time
       expect(await owner.orderReturn.count({ where: { orderId: good.order.id } })).toBe(1)
       expect(await kit.level(good.product.id, ctx.warehouseA.id)).toMatchObject({ onHand: 10 })
+    })
+
+    it('keeps the reason and the author of a flag that was already on the customer', async () => {
+      const made = await shipped()
+      await owner.customer.update({
+        where: { id: made.customerId },
+        data: {
+          isCaution: true,
+          cautionReason: 'The first reason',
+          cautionSetBy: ctx.adminA.id,
+          cautionSetAt: new Date()
+        }
+      })
+      const batchId = await newBatch()
+      const item = ((await scan(batchId, { code: made.guideNumber })).body as ScanBody)
+        .item as ItemBody
+      await as(managerAndFlagger)
+        .patch(ApiRoutes.returns.reception.itemById(batchId, item.id))
+        .send({ flagCustomer: true, flagReason: 'A second reason' })
+
+      const done = await complete(batchId, managerAndFlagger)
+
+      expect((done.body as BatchBody).status).toBe(ReceptionBatchStatus.COMPLETED)
+      expect(
+        await owner.customer.findUniqueOrThrow({ where: { id: made.customerId } })
+      ).toMatchObject({ cautionReason: 'The first reason', cautionSetBy: ctx.adminA.id })
     })
 
     it('does not put the reason of the flag in the audit entries', async () => {
