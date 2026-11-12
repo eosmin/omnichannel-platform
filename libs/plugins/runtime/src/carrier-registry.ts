@@ -170,6 +170,15 @@ export class CarrierRegistry {
         `Carrier ${printable(id)} creates guides as ${plugin.shipmentCreation} but does not declare ${mode.capability}`
       )
     }
+    // The way back is asked for with `createShipment` and a `kind`: a carrier that cannot make a standalone guide has no return leg
+    if (
+      capabilities.includes(CarrierCapability.RETURN_SHIPMENT) &&
+      plugin.shipmentCreation !== ShipmentCreationModes.STANDALONE
+    ) {
+      throw contractViolation(
+        `Carrier ${printable(id)} declares ${CarrierCapability.RETURN_SHIPMENT} but does not create standalone guides`
+      )
+    }
     // The other creation capabilities would be promises with no method behind them
     for (const other of Object.values(CREATION)) {
       if (other !== mode && capabilities.includes(other.capability)) {

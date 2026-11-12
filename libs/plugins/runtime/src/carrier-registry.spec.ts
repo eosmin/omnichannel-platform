@@ -127,6 +127,27 @@ describe('CarrierRegistry', () => {
     expect(() => build().register(plugin)).not.toThrow()
   })
 
+  describe('the way back', () => {
+    it('accepts RETURN_SHIPMENT from a carrier that makes standalone guides', () => {
+      const plugin = carrier({
+        capabilities: [CarrierCapability.CREATE_SHIPMENT, CarrierCapability.RETURN_SHIPMENT]
+      })
+      expect(() => build().register(plugin)).not.toThrow()
+    })
+
+    it('refuses RETURN_SHIPMENT from a carrier that cannot make a standalone guide', () => {
+      const pickupBound = carrier({
+        id: CarrierId.C807,
+        shipmentCreation: ShipmentCreationModes.PICKUP_BOUND,
+        capabilities: [CarrierCapability.PICKUP_BOUND_GUIDES, CarrierCapability.RETURN_SHIPMENT],
+        createShipment: undefined,
+        createShipmentsWithPickup: unused,
+        maxBatchSize: 50
+      })
+      expect(codeOf(() => build().register(pickupBound))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
+    })
+  })
+
   describe('how guides are created', () => {
     it('accepts a pickup-bound carrier', () => {
       const plugin = carrier({

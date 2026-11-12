@@ -121,6 +121,38 @@ describe('Receiving a scanned package', () => {
     })
   })
 
+  it('takes the package of a delivered guide only after the person confirmed it, and leaves the guide delivered', async () => {
+    const { order, product, shipmentId } = await shipped(ShipmentStatus.DELIVERED)
+    const scan = {
+      shipmentId,
+      reason: 'REFUSED_BY_CUSTOMER',
+      condition: OrderReturnCondition.RESELLABLE
+    }
+
+    expect(await failure(returns.receiveFromScan(ctx.storeA.id, scan, actor()))).toBe(
+      ErrorCodes.RETURN_RECEIPT_INVALID
+    )
+    expect(await owner.orderReturn.count({ where: { orderId: order.id } })).toBe(0)
+
+    const done = await returns.receiveFromScan(
+      ctx.storeA.id,
+      { ...scan, confirmDelivered: true },
+      actor()
+    )
+
+    expect(done.orderId).toBe(order.id)
+    const shipment = await owner.shipment.findUniqueOrThrow({ where: { id: shipmentId } })
+    expect(shipment.status).toBe(ShipmentStatus.DELIVERED)
+    const events = await owner.shipmentEvent.findMany({ where: { shipmentId } })
+    expect(events.map(event => [event.status, event.source, event.description])).toContainEqual([
+      null,
+      ShipmentEventSource.MANUAL,
+      'shipping.event.receivedAtWarehouse'
+    ])
+    expect((await orderOf(order.id)).status).toBe('RETURNED')
+    expect(await kit.level(product.id, ctx.warehouseA.id)).toMatchObject({ onHand: 10 })
+  })
+
   it('leaves a defective package out of the stock, and a package scanned twice is refused', async () => {
     const { order, product, shipmentId } = await shipped(ShipmentStatus.RETURNING)
 

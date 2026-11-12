@@ -12,6 +12,9 @@ module.exports = {
     '!src/guide-numbering.ts',
     '!src/shipment-labels.ts',
     '!src/shipment-prepare.ts',
+    // The guide of the way back: reads the return, the order and the warehouse inside the transaction that writes it, like
+    // shipment-prepare.ts. Covered by tests/api/return-shipments.spec.ts
+    '!src/return-guide-prepare.ts',
     '!src/shipment-status-engine.ts',
     '!src/shipment-writes.ts',
     // Reads and writes the history inside a transaction: tests/api/carrier-event-processing.spec.ts covers it

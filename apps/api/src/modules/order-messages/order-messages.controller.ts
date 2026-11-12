@@ -40,7 +40,10 @@ export class OrderMessagesController {
     @Body(new ZodValidationPipe(sendOrderMessageSchema)) body: SendOrderMessageBody
   ): Promise<OrderMessageOutcome | ({ preview: true } & OrderMessagePreviewResult)> {
     if (query.preview) {
-      return { preview: true, ...(await this.messages.preview(store.id, orderId, body.kind)) }
+      return {
+        preview: true,
+        ...(await this.messages.preview(store.id, orderId, body.kind, body.shipmentId))
+      }
     }
     if (body.idempotencyKey === undefined) {
       throw invalidInput('a message is sent with the key of its press (idempotencyKey)')
@@ -51,6 +54,7 @@ export class OrderMessagesController {
       kind: body.kind,
       trigger: OrderMessageTriggers.MANUAL,
       idempotencyKey: pressedDispatchKey(orderId, body.kind, body.idempotencyKey),
+      shipmentId: body.shipmentId,
       requestedBy: user.id
     })
   }
