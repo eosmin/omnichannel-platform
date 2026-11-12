@@ -107,6 +107,14 @@ export const updateOrderPreferencesSchema = z
 
 export type UpdateOrderPreferencesBody = z.output<typeof updateOrderPreferencesSchema>
 
+// The `returns` block of the preferences (TDD_17 §4.16). Read here and written by the Settings → Returns page of Step 4.14.
+export const returnPreferencesSchema = z.object({
+  // A package scanned with the reason "refused by the customer" has the reception "flag customer" toggle preselected
+  preselectCautionOnRefusal: z.boolean().catch(false)
+})
+
+export type ReturnPreferences = z.output<typeof returnPreferencesSchema>
+
 // Each key falls back to its own default (`catch`): a value that does not fit in one key must not reset
 // the others, least of all a switch the store turned off.
 export const storePreferencesSchema = z.object({
@@ -116,7 +124,9 @@ export const storePreferencesSchema = z.object({
   // default, in the stores that already exist too (a key that is missing reads as this)
   assignOnReply: z.boolean().catch(true),
   // The orders block (TDD_17 §4.14); a column with none reads as every default of the block
-  orders: orderPreferencesSchema.catch(() => orderPreferencesSchema.parse({}))
+  orders: orderPreferencesSchema.catch(() => orderPreferencesSchema.parse({})),
+  // The returns block (TDD_17 §4.16); a column with none reads as every default of the block
+  returns: returnPreferencesSchema.catch(() => returnPreferencesSchema.parse({}))
 })
 
 export type StorePreferences = z.output<typeof storePreferencesSchema>

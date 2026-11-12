@@ -96,6 +96,8 @@ model Store {
   orderMessageDispatches  OrderMessageDispatch[]
   orderReturns            OrderReturn[]
   orderReturnLines        OrderReturnLine[]
+  returnReceptionBatches  ReturnReceptionBatch[]
+  returnReceptionItems    ReturnReceptionItem[]
 
   @@unique([organizationId, slug])
   // So that a link to a store can name its organization and the database check that they go together (StoreWarehouse)
@@ -1637,7 +1639,7 @@ model RetentionSettings {
 // (fields [storeId, x] -> references [storeId, id]), so the database refuses a link to another store's row.
 // Order, OrderItem and Warehouse have no (store_id, id) key to point at, so those links are plain foreign keys
 // and the migration adds triggers that check the store (or the organization of the store) of the row they reach.
-// The reception tables are Step 4.12, the remittance tables Step 4.13, and Order.carrierConnectionId stays a
+// The reception tables arrived with Step 4.12 (PR R2), the remittance tables Step 4.13, and Order.carrierConnectionId stays a
 // plain column until its foreign key in Step 4.8 PR C1.
 // ============================================================
 
@@ -1759,13 +1761,14 @@ model Shipment {
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
-  store           Store             @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  order           Order             @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  connection      CarrierConnection @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Restrict)
-  pickup          PickupRequest?    @relation(fields: [storeId, pickupId], references: [storeId, id], onDelete: Restrict)
-  originWarehouse Warehouse?        @relation(fields: [originWarehouseId], references: [id], onDelete: Restrict)
-  orderReturn     OrderReturn?      @relation("ShipmentReturn", fields: [storeId, returnId], references: [storeId, id], onDelete: Restrict)
-  returnOf        OrderReturn[]     @relation("ReturnShipment")
+  store           Store                 @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  order           Order                 @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  connection      CarrierConnection     @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Restrict)
+  pickup          PickupRequest?        @relation(fields: [storeId, pickupId], references: [storeId, id], onDelete: Restrict)
+  originWarehouse Warehouse?            @relation(fields: [originWarehouseId], references: [id], onDelete: Restrict)
+  orderReturn     OrderReturn?          @relation("ShipmentReturn", fields: [storeId, returnId], references: [storeId, id], onDelete: Restrict)
+  returnOf        OrderReturn[]         @relation("ReturnShipment")
+  receptionItems  ReturnReceptionItem[]
   events          ShipmentEvent[]
 
   @@unique([storeId, id])
@@ -1965,12 +1968,13 @@ model OrderReturn {
   updatedAt          DateTime  @updatedAt @map("updated_at")
   receivedAt         DateTime? @map("received_at")
 
-  store            Store             @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  order            Order             @relation("ReturnOrder", fields: [orderId], references: [id], onDelete: Restrict)
-  replacementOrder Order?            @relation("ReturnReplacement", fields: [replacementOrderId], references: [id], onDelete: Restrict)
-  returnShipment   Shipment?         @relation("ReturnShipment", fields: [storeId, returnShipmentId], references: [storeId, id], onDelete: Restrict)
-  shipments        Shipment[]        @relation("ShipmentReturn")
+  store            Store                 @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  order            Order                 @relation("ReturnOrder", fields: [orderId], references: [id], onDelete: Restrict)
+  replacementOrder Order?                @relation("ReturnReplacement", fields: [replacementOrderId], references: [id], onDelete: Restrict)
+  returnShipment   Shipment?             @relation("ReturnShipment", fields: [storeId, returnShipmentId], references: [storeId, id], onDelete: Restrict)
+  shipments        Shipment[]            @relation("ShipmentReturn")
   lines            OrderReturnLine[]
+  receptionItems   ReturnReceptionItem[]
 
   @@unique([storeId, id])
   @@index([orderId])
@@ -2000,4 +2004,55 @@ model OrderReturnLine {
   @@index([orderItemId])
   @@index([restockWarehouseId])
   @@map("order_return_lines")
+}
+
+// A scanning session of the returns reception (TDD_17 §4.16). Saved as a draft while the agent scans, so a refresh or a lost
+// connection loses nothing. `processing` is the claim of one completion (a second one is refused until it ends, or until it is
+// older than ReceptionLimits.PROCESSING_STALE_MS, a run that died).
+model ReturnReceptionBatch {
+  id                  String    @id @default(uuid())
+  storeId             String    @map("store_id")
+  status              String    @default("draft") // ReceptionBatchStatus
+  createdBy           String    @map("created_by")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  processingStartedAt DateTime? @map("processing_started_at")
+  completedAt         DateTime? @map("completed_at")
+
+  store Store                 @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  items ReturnReceptionItem[]
+
+  @@unique([storeId, id])
+  @@index([storeId, status])
+  @@map("return_reception_batches")
+}
+
+// One package of a batch. `lines` is empty while the agent has not narrowed the package (every unit of the order that is not in a
+// return yet comes back, in `condition`) and otherwise holds [{ orderItemId, quantity, condition, restockWarehouseId? }].
+// `outcome` is null until the batch is completed; `returnId` is set when the package was received.
+model ReturnReceptionItem {
+  id            String    @id @default(uuid())
+  storeId       String    @map("store_id")
+  batchId       String    @map("batch_id")
+  shipmentId    String    @map("shipment_id")
+  reason        String // OrderReturnReason key
+  condition     String    @default("resellable") // OrderReturnCondition, for the lines that name none
+  note          String?
+  lines         Json      @default("[]")
+  flagCustomer  Boolean   @default(false) @map("flag_customer")
+  flagReason    String?   @map("flag_reason")
+  outcome       String? // ReceptionItemOutcome
+  errorCode     String?   @map("error_code")
+  returnId      String?   @map("return_id")
+  flagAppliedAt DateTime? @map("flag_applied_at")
+  scannedAt     DateTime  @default(now()) @map("scanned_at")
+
+  store       Store                @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  batch       ReturnReceptionBatch @relation(fields: [storeId, batchId], references: [storeId, id], onDelete: Cascade)
+  shipment    Shipment             @relation(fields: [storeId, shipmentId], references: [storeId, id], onDelete: Restrict)
+  orderReturn OrderReturn?         @relation(fields: [storeId, returnId], references: [storeId, id], onDelete: Restrict)
+
+  @@unique([batchId, shipmentId])
+  @@index([storeId, shipmentId])
+  @@index([storeId, returnId])
+  @@map("return_reception_items")
 }

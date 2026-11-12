@@ -40,6 +40,6 @@ import { NotesService } from './notes.service'
     CustomerOrdersService,
     CustomerIdentityService
   ],
-  exports: [CustomersService, CustomerIdentityService]
+  exports: [CustomersService, CustomerIdentityService, CustomerCautionService]
 })
 export class CustomersModule {}

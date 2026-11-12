@@ -588,7 +588,8 @@ export const pickupBatchKey = (pickupId: string): string => `pickup:${pickupId}`
 export const cancelShipmentKey = (guideKey: string): string => `cancel:${guideKey}`
 
 export const ReturnResourceTypes = {
-  RETURN: 'return'
+  RETURN: 'return',
+  RECEPTION_BATCH: 'return_reception_batch'
 } as const
 
 export const ShipmentResourceTypes = {

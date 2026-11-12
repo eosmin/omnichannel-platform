@@ -135,6 +135,7 @@ export const AuditAction = {
   RETURN_REFUND_RECORDED: 'return.refund_recorded',
   RETURN_COMPLETED: 'return.completed',
   RETURN_RECEIVED_BY_SCAN: 'return.received_by_scan',
+  RETURN_RECEPTION_BATCH_COMPLETED: 'return.reception_batch_completed',
   BULK_LABELS_REQUESTED: 'bulk_labels.requested',
   SHIPMENT_LABELS_MERGED: 'shipment.labels_merged',
   REMITTANCE_IMPORTED: 'remittance.imported',

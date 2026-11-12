@@ -173,6 +173,18 @@ export const ErrorCodes = {
   REMITTANCE_ALREADY_CONFIRMED: 'REMITTANCE_ALREADY_CONFIRMED',
   REMITTANCE_INVALID_STATUS_TRANSITION: 'REMITTANCE_INVALID_STATUS_TRANSITION',
   RECEPTION_SHIPMENT_NOT_FOUND: 'RECEPTION_SHIPMENT_NOT_FOUND',
+  // The same shipment was scanned twice in one batch
+  RECEPTION_DUPLICATE_SCAN: 'RECEPTION_DUPLICATE_SCAN',
+  // A shipment no package comes back from (not sent yet, cancelled, already delivered, or the guide of a return leg, which is received through its return)
+  RECEPTION_SHIPMENT_NOT_ELIGIBLE: 'RECEPTION_SHIPMENT_NOT_ELIGIBLE',
+  // A batch that was completed takes no more packages and no more changes
+  RECEPTION_BATCH_CLOSED: 'RECEPTION_BATCH_CLOSED',
+  // Another run is completing the batch
+  RECEPTION_BATCH_PROCESSING: 'RECEPTION_BATCH_PROCESSING',
+  // The package was received and its customer could not be flagged (the batch is retried for that)
+  RECEPTION_FLAG_FAILED: 'RECEPTION_FLAG_FAILED',
+  // The batch has no package to process
+  RECEPTION_BATCH_EMPTY: 'RECEPTION_BATCH_EMPTY',
   RECEPTION_ALREADY_RECEIVED: 'RECEPTION_ALREADY_RECEIVED',
 
   // Files

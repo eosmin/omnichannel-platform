@@ -76,6 +76,8 @@ export async function cleanUp(owner: OwnerClient, prefix: string): Promise<void>
   // Shipments and returns restrict the deletion of their order, store and connection, and a return and its return
   // shipment restrict each other: the link is cut first, then the lines, the shipments (their events go with them), the
   // returns and the pickups. The connections and what hangs from them go with their store (cascade).
+  // The reception batches point at shipments and returns (their items go with them)
+  await owner.returnReceptionBatch.deleteMany({ where: ofRun })
   await owner.orderReturn.updateMany({ where: ofRun, data: { returnShipmentId: null } })
   await owner.orderReturnLine.deleteMany({ where: ofRun })
   await owner.shipment.deleteMany({ where: ofRun })

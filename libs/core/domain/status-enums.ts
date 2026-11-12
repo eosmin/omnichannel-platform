@@ -349,9 +349,13 @@ export enum RemittanceLineOutcome {
   DUPLICATE_IN_FILE = 'duplicate_in_file'
 }
 
+// A scanning session of the returns reception (TDD_17 §4.16). `processing` is the claim of the run that is completing it; a run
+// that left a package failed ends as `completed_with_errors`, and completing again retries what failed
 export enum ReceptionBatchStatus {
   DRAFT = 'draft',
-  COMPLETED = 'completed'
+  PROCESSING = 'processing',
+  COMPLETED = 'completed',
+  COMPLETED_WITH_ERRORS = 'completed_with_errors'
 }
 
 export enum ReceptionItemOutcome {
