@@ -19,7 +19,7 @@ const orderSummarySchema = z.object({
   orderNumber: z.string(),
   customerId: z.string(),
   // The name only: the contact data of the customer is in the detail. A customer without a name is null.
-  customer: z.object({ id: z.string(), name: z.string().nullable() }),
+  customer: z.object({ id: z.string(), name: z.string().nullable(), isCaution: z.boolean() }),
   status: z.string(),
   subtotalCents: z.number().int(),
   shippingCents: z.number().int(),
@@ -100,7 +100,10 @@ export const orderDetailSchema = orderSummarySchema
       email: z.string().nullable(),
       phone: z.string().nullable(),
       // The phone without its country code, for the recipient phones of the form
-      nationalPhone: z.string().nullable()
+      nationalPhone: z.string().nullable(),
+      // Informs and never blocks (TDD_17 §4.16); null when the caller may not read the customer. The reason is in
+      // the customer detail.
+      isCaution: z.boolean().nullable()
     }),
     items: z.array(orderItemSchema),
     priceModified: z.boolean()

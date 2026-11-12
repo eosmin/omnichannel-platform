@@ -173,7 +173,9 @@ export const conversationListItemSchema = z.object({
     username: z.string().nullable(),
     // A link a plugin chose: untrusted, drawn under the img-src of the CSP and replaced by the
     // initials when it fails
-    avatarUrl: z.string().nullable()
+    avatarUrl: z.string().nullable(),
+    // The chip of the conversation header (TDD_17 §4.16)
+    isCaution: z.boolean()
   }),
   lastMessage: z
     .object({
@@ -692,6 +694,13 @@ export const createdCustomerSchema = customerDetailSchema.extend({
 export type CreatedCustomerView = z.output<typeof createdCustomerSchema>
 
 export type CustomerAddressView = CustomerDetailView['addresses'][number]
+// PUT and DELETE /customers/:id/caution: the flag after the call, not the profile
+export const customerCautionSchema = z.object({
+  isCaution: z.boolean(),
+  cautionReason: z.string().nullable()
+})
+export type CustomerCautionView = z.output<typeof customerCautionSchema>
+
 export const customerAddressSchema = customerDetailSchema.shape.addresses.element
 
 // GET /customers: a row of the customers page
