@@ -13,17 +13,20 @@ import {
   cancelReturn,
   completeReturn,
   createReturn,
+  createReturnShipment,
   fetchReturns,
   markReturnInTransit,
   QueryKeys,
   receiveReturn,
   rejectReturn,
+  type ReturnShipmentView,
   type ReturnView
 } from '@platform/api-client'
 import type {
   ApproveReturnBody,
   CompleteReturnBody,
   CreateReturnBody,
+  CreateReturnShipmentBody,
   ReceiveReturnBody,
   ReturnDecisionBody
 } from '@platform/core/domain'
@@ -56,6 +59,12 @@ export interface ReturnWrites {
   inTransit: UseMutationResult<ReturnView, Error, string>
   receive: UseMutationResult<ReturnView, Error, { returnId: string; body: ReceiveReturnBody }>
   complete: UseMutationResult<ReturnView, Error, { returnId: string; body: CompleteReturnBody }>
+  // The guide of the way back: it makes a guide, so the guides of the order are read again too
+  returnGuide: UseMutationResult<
+    ReturnShipmentView,
+    Error,
+    { returnId: string; body: CreateReturnShipmentBody }
+  >
 }
 
 // A return changes what its order shows (the stock, the status of an order that came back whole, a replacement order born of an
@@ -66,6 +75,7 @@ export function useReturnWrites(storeId: string, orderId: string): ReturnWrites 
   const refresh = async (): Promise<void> => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: QueryKeys.returns.ofOrder(storeId, orderId) }),
+      queryClient.invalidateQueries({ queryKey: QueryKeys.shipments.byOrder(storeId, orderId) }),
       queryClient.invalidateQueries({ queryKey: QueryKeys.orders.byId(storeId, orderId) }),
       queryClient.invalidateQueries({ queryKey: [...QueryKeys.orders.all(storeId), 'list'] })
     ])
@@ -97,6 +107,10 @@ export function useReturnWrites(storeId: string, orderId: string): ReturnWrites 
     }),
     complete: useMutation({
       mutationFn: ({ returnId, body }) => completeReturn(apiClient, storeId, returnId, body),
+      onSuccess: refresh
+    }),
+    returnGuide: useMutation({
+      mutationFn: ({ returnId, body }) => createReturnShipment(apiClient, storeId, returnId, body),
       onSuccess: refresh
     })
   }

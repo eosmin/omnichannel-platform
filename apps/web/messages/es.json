@@ -1410,6 +1410,37 @@
             "done": "La guía está marcada como anulada."
           }
         }
+      },
+      "guide": {
+        "title": "Hacer la guía del pedido {number}",
+        "description": "El transportista hace la guía y su etiqueta. Una guía se puede cancelar mientras no se haya recogido el paquete.",
+        "connectionLabel": "Conexión del transportista",
+        "serviceLabel": "Servicio",
+        "payerLabel": "Quién paga el envío",
+        "payerFreeShipping": "El pedido tiene envío gratis: paga la tienda.",
+        "codLabel": "El transportista cobra",
+        "codNone": "Nada",
+        "codReasonCollects": "El pedido es contra entrega y aún no está pagado. El monto es el del pedido y no se cambia aquí.",
+        "codReasonPrepaid": "El pedido ya está pagado o se pagó por adelantado.",
+        "pickupLegend": "Recolección",
+        "pickupHint": "Este transportista hace la guía junto con una recolección. Déjalo vacío para usar el siguiente día válido de la conexión.",
+        "pickupDate": "Día",
+        "pickupFrom": "Desde",
+        "pickupTo": "Hasta",
+        "pickupInvalid": "Escribe un día y una ventana que termine después de empezar, o deja los tres vacíos.",
+        "notesLabel": "Nota para el mensajero (opcional)",
+        "notesHint": "El mensajero la lee en la etiqueta. La nota de empaque nunca va en ella.",
+        "confirm": "Hacer guía",
+        "done": "Se pidió la guía.",
+        "noConnection": "Ninguna conexión de la tienda puede hacer guías. Conecta un transportista en Ajustes.",
+        "onlyWithLocations": "{count, plural, one {La conexión que puede hacer guías pide} other {Las # conexiones que pueden hacer guías piden}} los códigos propios del transportista para los lugares, que esta pantalla aún no puede recibir.",
+        "returnTitle": "Hacer la guía del regreso",
+        "returnDescription": "Una guía del cliente a la bodega, para un transportista que pueda hacerla. Nunca es contra entrega.",
+        "warehouseLabel": "Bodega a la que van los productos",
+        "warehouseDefault": "La bodega que envió la mayor parte",
+        "returnPayer": "Quién paga: {payer} (lo elegido en la devolución).",
+        "returnConfirm": "Hacer guía",
+        "returnDone": "Se pidió la guía del regreso."
       }
     },
     "create": {

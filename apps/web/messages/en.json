@@ -1410,6 +1410,37 @@
             "done": "The guide is marked as voided."
           }
         }
+      },
+      "guide": {
+        "title": "Make the guide of order {number}",
+        "description": "The carrier makes the guide and its label. A guide can be cancelled while the package has not been picked up.",
+        "connectionLabel": "Carrier connection",
+        "serviceLabel": "Service",
+        "payerLabel": "Who pays the shipping",
+        "payerFreeShipping": "The order has free shipping: the store pays.",
+        "codLabel": "The carrier collects",
+        "codNone": "Nothing",
+        "codReasonCollects": "The order is cash on delivery and not paid yet. The amount is the order's and cannot be changed here.",
+        "codReasonPrepaid": "The order is already paid or paid in advance.",
+        "pickupLegend": "Pickup",
+        "pickupHint": "This carrier makes the guide together with a pickup. Leave it empty to use the next valid day of the connection.",
+        "pickupDate": "Day",
+        "pickupFrom": "From",
+        "pickupTo": "To",
+        "pickupInvalid": "Write a day and a window that ends after it starts, or leave all three empty.",
+        "notesLabel": "Note for the courier (optional)",
+        "notesHint": "The courier reads it on the label. The packing note never goes on it.",
+        "confirm": "Make guide",
+        "done": "The guide was requested.",
+        "noConnection": "No connection of the store can make a guide. Connect a carrier in Settings.",
+        "onlyWithLocations": "{count, plural, one {The connection that can make guides asks} other {The # connections that can make guides ask}} for the carrier's own ids of the places, which this screen cannot take yet.",
+        "returnTitle": "Make the guide of the way back",
+        "returnDescription": "A guide from the customer to the warehouse, for a carrier that can make it. It is never cash on delivery.",
+        "warehouseLabel": "Warehouse the goods go to",
+        "warehouseDefault": "The warehouse that sent most of them",
+        "returnPayer": "Who pays: {payer} (the choice of the return).",
+        "returnConfirm": "Make guide",
+        "returnDone": "The guide of the way back was requested."
       }
     },
     "create": {

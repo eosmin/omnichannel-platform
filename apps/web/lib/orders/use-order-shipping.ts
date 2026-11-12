@@ -9,7 +9,10 @@ import {
 } from '@tanstack/react-query'
 
 import {
+  type CarrierConnectionView,
   cancelOrderShipment,
+  createOrderShipment,
+  fetchAllCarrierConnections,
   fetchOrderShipments,
   fetchShipmentLabelLink,
   markOrderShipmentVoided,
@@ -17,8 +20,22 @@ import {
   QueryKeys,
   type ShipmentLabelLinkView
 } from '@platform/api-client'
+import type { CreateShipmentBody } from '@platform/core/domain'
 
 import { apiClient } from '../api'
+
+// The connections of the store, for the dialogs that make a guide: the cache is the one of Settings → Carriers, so a connection
+// edited there is read again here. Reading them asks for shipping:view.
+export function useGuideConnections(
+  storeId: string,
+  enabled: boolean
+): UseQueryResult<CarrierConnectionView[]> {
+  return useQuery({
+    queryKey: QueryKeys.carriers.list(storeId),
+    queryFn: ({ signal }) => fetchAllCarrierConnections(apiClient, storeId, signal),
+    enabled
+  })
+}
 
 // The guides of one order, newest first. Reading them asks for shipping:view.
 export function useOrderShipments(
@@ -34,6 +51,7 @@ export function useOrderShipments(
 }
 
 export interface ShipmentWrites {
+  create: UseMutationResult<OrderShipmentView, Error, CreateShipmentBody>
   cancel: UseMutationResult<OrderShipmentView, Error, string>
   markVoided: UseMutationResult<OrderShipmentView, Error, string>
   // A link good for minutes, asked when the button is pressed and never kept
@@ -52,6 +70,11 @@ export function useShipmentWrites(storeId: string, orderId: string): ShipmentWri
     ])
   }
   return {
+    create: useMutation({
+      mutationFn: (body: CreateShipmentBody) =>
+        createOrderShipment(apiClient, storeId, orderId, body),
+      onSuccess: refresh
+    }),
     cancel: useMutation({
       mutationFn: (shipmentId: string) => cancelOrderShipment(apiClient, storeId, shipmentId),
       onSuccess: refresh

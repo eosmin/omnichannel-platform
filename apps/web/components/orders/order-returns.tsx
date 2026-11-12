@@ -4,9 +4,15 @@ import Link from 'next/link'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 
-import { AppPaths, type OrderDetailView, type ReturnView } from '@platform/api-client'
+import {
+  AppPaths,
+  type CarrierConnectionView,
+  type OrderDetailView,
+  type ReturnView
+} from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
 
+import { returnGuideConnections } from '../../lib/orders/order-guide-form'
 import {
   asReturnReasonKey,
   canStartReturn,
@@ -19,6 +25,7 @@ import { formatCents } from '../../lib/products/money'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 
+import { ReturnGuideDialog } from './order-guide-dialogs'
 import {
   CreateReturnDialog,
   ReturnActionDialog,
@@ -29,17 +36,17 @@ type DialogAction = Exclude<ReturnAction, typeof ReturnActions.RETURN_GUIDE>
 
 // The Returns panel of the order detail (TDD_17 §4.11): the returns of the order with their lines and state, the moves each one
 // accepts (the api's table of transitions, with returns:manage), and the form of a new one. The guide of the way back is made by
-// the shipping panel's dialog: `onReturnGuide` opens it for the return, and is left out when no connection of the store can make one.
+// a dialog of its own, offered while a connection of the store (`connections`, read with shipping:view) can make one.
 export function OrderReturns({
   order,
   outboundStatuses,
   warehouses,
-  onReturnGuide
+  connections
 }: {
   order: OrderDetailView
   outboundStatuses: readonly string[]
   warehouses: readonly WarehouseOption[]
-  onReturnGuide?: (returnView: ReturnView) => void
+  connections: readonly CarrierConnectionView[] | undefined
 }): ReactElement | null {
   const t = useTranslations('orders.detail.returns')
   const tAll = useTranslations()
@@ -50,6 +57,7 @@ export function OrderReturns({
   const returns = useOrderReturns(storeId, order.id, mayView)
   const writes = useReturnWrites(storeId, order.id)
   const [creating, setCreating] = useState(false)
+  const [guiding, setGuiding] = useState<string | null>(null)
   const [moving, setMoving] = useState<{ action: DialogAction; id: string } | null>(null)
   if (!mayView) return null
 
@@ -103,7 +111,7 @@ export function OrderReturns({
               status: entry.status,
               returnShipmentId: entry.returnShipmentId,
               mayManage,
-              canMakeReturnGuide: onReturnGuide !== undefined
+              canMakeReturnGuide: returnGuideConnections(connections ?? []).length > 0
             })
             return (
               <li key={entry.id} className="flex flex-col gap-1.5 rounded border p-2 text-sm">
@@ -162,7 +170,8 @@ export function OrderReturns({
                         }
                         onClick={() => {
                           if (action === ReturnActions.RETURN_GUIDE) {
-                            onReturnGuide?.(entry)
+                            writes.returnGuide.reset()
+                            setGuiding(entry.id)
                             return
                           }
                           writes.approve.reset()
@@ -190,6 +199,15 @@ export function OrderReturns({
           returns={list}
           writes={writes}
           onClose={() => setCreating(false)}
+        />
+      ) : null}
+      {guiding !== null && list.some(entry => entry.id === guiding) ? (
+        <ReturnGuideDialog
+          returnView={list.find(entry => entry.id === guiding) as ReturnView}
+          connections={connections ?? []}
+          warehouses={warehouses}
+          writes={writes}
+          onClose={() => setGuiding(null)}
         />
       ) : null}
       {moving !== null && target !== undefined ? (
