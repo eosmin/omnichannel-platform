@@ -105,6 +105,8 @@ export const Events = {
   PICKUP_UPDATED: 'pickup.updated',
   RETURN_REQUESTED: 'return.requested',
   RETURN_APPROVED: 'return.approved',
+  // The goods are on their way back: the people who receive them are told (`return.awaiting_receipt`)
+  RETURN_IN_TRANSIT: 'return.in_transit',
   RETURN_RECEIVED: 'return.received',
   REMITTANCE_CONFIRMED: 'remittance.confirmed',
   REMITTANCE_VOIDED: 'remittance.voided',

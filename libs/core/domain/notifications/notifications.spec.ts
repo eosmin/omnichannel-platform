@@ -138,7 +138,9 @@ describe('NotificationTypesWithoutEmitter', () => {
       NotificationTypes.SHIPMENT_FAILED_ATTEMPT,
       NotificationTypes.CARRIER_STATUS_UNMAPPED,
       NotificationTypes.BULK_LABELS_READY,
-      NotificationTypes.SHIPMENT_CANCEL_FAILED
+      NotificationTypes.SHIPMENT_CANCEL_FAILED,
+      // Raised since Step 4.12 PR R1 (a return on its way back)
+      NotificationTypes.RETURN_AWAITING_RECEIPT
     ]) {
       expect(NotificationTypesWithoutEmitter.has(type)).toBe(false)
       expect(NotificationGroupTypes[NotificationGroups.SHIPPING]).toContain(type)

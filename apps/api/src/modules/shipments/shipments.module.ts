@@ -33,6 +33,12 @@ import { ShipmentsService } from './shipments.service'
     ShipmentsService,
     BulkLabelsService
   ],
-  exports: [ShipmentsService, ShippingService, ShipmentCancellation, ShipmentVoidQueue]
+  exports: [
+    ShipmentsService,
+    ShippingService,
+    ShipmentCancellation,
+    ShipmentVoidQueue,
+    ShipmentWrites
+  ]
 })
 export class ShipmentsModule {}

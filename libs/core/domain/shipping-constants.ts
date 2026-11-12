@@ -520,6 +520,10 @@ export const ShipmentEventNotes = { FOUND_AT_CARRIER: 'shipping.event.foundAtCar
 export const pickupBatchKey = (pickupId: string): string => `pickup:${pickupId}`
 export const cancelShipmentKey = (guideKey: string): string => `cancel:${guideKey}`
 
+export const ReturnResourceTypes = {
+  RETURN: 'return'
+} as const
+
 export const ShipmentResourceTypes = {
   SHIPMENT: 'shipment',
   BULK_LABEL_JOB: 'bulk_label_job'

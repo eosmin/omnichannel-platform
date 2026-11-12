@@ -120,6 +120,12 @@ export interface OrderEventPayload {
   actor: ActorRef
 }
 
+// What every event of a return says: which return, of which order, and who did it. Ids and numbers only: no note, no address and
+// no phone travels in an event (TDD_17 §8). `actor.id` is null for a change made by the system.
+export interface ReturnEventPayload extends OrderEventPayload {
+  returnId: string
+}
+
 // A message about an order that did not go (TDD_17 §4.7): which kind and why. Never the text, the customer or the address.
 export interface OrderMessageNotSentPayload extends OrderEventPayload {
   kind: OrderMessageKindType
@@ -440,6 +446,10 @@ export interface DomainEventPayloads {
   [Events.ORDER_PRICE_REJECTED]: OrderEventPayload
   [Events.ORDER_PACKING_NOTE_CHANGED]: OrderEventPayload
   [Events.ORDER_MESSAGE_NOT_SENT]: OrderMessageNotSentPayload
+  [Events.RETURN_REQUESTED]: ReturnEventPayload
+  [Events.RETURN_APPROVED]: ReturnEventPayload
+  [Events.RETURN_IN_TRANSIT]: ReturnEventPayload
+  [Events.RETURN_RECEIVED]: ReturnEventPayload
   [Events.SHIPMENT_CREATED]: ShipmentEventPayload
   [Events.SHIPMENT_STATUS_CHANGED]: ShipmentStatusChangedPayload
   [Events.SHIPMENT_CANCELLED]: ShipmentEventPayload
