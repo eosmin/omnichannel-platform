@@ -50,6 +50,8 @@ export const ClientPermissions = {
   PRODUCTS_EDIT: 'products:edit',
   PRODUCTS_VIEW: 'products:view',
   PRODUCTS_VIEW_COST: 'products:view_cost',
+  REMITTANCES_MANAGE: 'remittances:manage',
+  REMITTANCES_VIEW: 'remittances:view',
   RETURNS_MANAGE: 'returns:manage',
   RETURNS_VIEW: 'returns:view',
   SETTINGS_EDIT: 'settings:edit',

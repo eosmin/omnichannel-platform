@@ -12,6 +12,9 @@ export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 export interface RequestOptions<T> {
   method?: HttpMethod
   body?: unknown
+  // A file or pasted table sent as it is, with its own content type (the import of a settlement file): the api reads it as text and
+  // not as JSON. It replaces `body`, never goes with it.
+  textBody?: { text: string; contentType: string }
   // The store the request is about: the api reads it from X-Store-Id and nowhere else
   storeId?: string
   // Every answer is parsed with it; z.undefined() for a 204
@@ -46,14 +49,20 @@ export function createApiClient({
     token: string | null
   ): Promise<Response> => {
     const headers: Record<string, string> = {}
-    if (options.body !== undefined) headers['content-type'] = 'application/json'
+    if (options.textBody !== undefined) headers['content-type'] = options.textBody.contentType
+    else if (options.body !== undefined) headers['content-type'] = 'application/json'
     if (token !== null) headers.authorization = `Bearer ${token}`
     if (options.storeId !== undefined) headers[TenantHeaders.STORE_ID] = options.storeId
     try {
       return await fetchImpl(`${baseUrl}${API_PREFIX}${path}`, {
         method: options.method ?? 'GET',
         headers,
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        body:
+          options.textBody !== undefined
+            ? options.textBody.text
+            : options.body === undefined
+              ? undefined
+              : JSON.stringify(options.body),
         signal: options.signal
       })
     } catch (error) {

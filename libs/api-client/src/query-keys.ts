@@ -192,7 +192,14 @@ export const QueryKeys = {
     store: (storeId: string) => ['return-settings', storeId] as const
   },
   remittances: {
-    all: (storeId: string) => ['remittances', storeId] as const
+    all: (storeId: string) => ['remittances', storeId] as const,
+    list: (storeId: string, filter: object) => ['remittances', storeId, 'list', filter] as const,
+    pending: (storeId: string, connectionId: string | null) =>
+      ['remittances', storeId, 'pending', connectionId] as const,
+    detail: (storeId: string, remittanceId: string) =>
+      ['remittances', storeId, 'detail', remittanceId] as const,
+    profiles: (storeId: string, connectionId: string | null) =>
+      ['remittances', storeId, 'profiles', connectionId] as const
   },
   returnReception: {
     batch: (storeId: string, batchId: string) => ['return-reception', storeId, batchId] as const

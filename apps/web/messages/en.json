@@ -1800,7 +1800,8 @@
       "exports": "Exports",
       "settings": "Settings",
       "orders": "Orders",
-      "inventory": "Inventory"
+      "inventory": "Inventory",
+      "remittances": "Remittances"
     },
     "notifications": {
       "open": "Notifications",
@@ -4339,6 +4340,155 @@
     },
     "plugin": {
       "name": "Shipping"
+    }
+  },
+  "remittances": {
+    "status": {
+      "draft": "Draft",
+      "confirmed": "Confirmed",
+      "voided": "Voided"
+    },
+    "outcome": {
+      "matched": "Matches",
+      "amount_differs": "Different amount",
+      "not_found": "No guide found",
+      "not_delivered": "Not delivered yet",
+      "already_remitted": "Already remitted",
+      "duplicate_in_file": "Repeated in the file"
+    },
+    "list": {
+      "pageTitle": "Remittances",
+      "description": "The cash that carriers collect on delivery, what they still owe and the settlements that bring it.",
+      "title": "Remittances",
+      "noReference": "No settlement number",
+      "openRemittance": "Open remittance {name}",
+      "filters": {
+        "status": "Status",
+        "anyStatus": "Any status",
+        "carrier": "Carrier",
+        "anyCarrier": "Any carrier"
+      },
+      "empty": "There are no remittances yet.",
+      "emptyFiltered": "No remittance matches these filters.",
+      "caption": "Remittances of the store",
+      "columns": {
+        "reference": "Settlement",
+        "carrier": "Carrier",
+        "status": "Status",
+        "created": "Created",
+        "lines": "Lines",
+        "expected": "Expected",
+        "reported": "Reported",
+        "difference": "Difference"
+      },
+      "loadMore": "Load more"
+    },
+    "pending": {
+      "title": "Still owed by carriers",
+      "empty": "No carrier owes cash on delivery right now.",
+      "total": "{amount} owed on {count, plural, one {# shipment} other {# shipments}}",
+      "noShipments": "No shipment is waiting for a remittance.",
+      "shipmentsCaption": "Shipments that {name} still owes",
+      "columns": {
+        "guide": "Guide",
+        "order": "Order",
+        "expected": "Expected",
+        "remitted": "Remitted",
+        "owed": "Owed",
+        "age": "Waiting"
+      },
+      "noGuide": "No guide",
+      "days": "{count, plural, one {# day} other {# days}}",
+      "truncated": "Showing the {count} oldest shipments. The total counts all of them.",
+      "shipmentCount": "{count, plural, one {# shipment} other {# shipments}}",
+      "oldest": "the oldest has waited {count, plural, one {# day} other {# days}}",
+      "overdue": "Late: the store allows {days, plural, one {# day} other {# days}} to receive the cash.",
+      "owed": "Owed",
+      "showShipments": "Show shipments",
+      "hideShipments": "Hide shipments",
+      "showShipmentsOf": "Show the shipments that {name} owes",
+      "hideShipmentsOf": "Hide the shipments that {name} owes"
+    },
+    "lines": {
+      "empty": "This remittance has no lines.",
+      "caption": "Lines of the remittance and the result of matching each one",
+      "columns": {
+        "guide": "Guide",
+        "order": "Order",
+        "outcome": "Result",
+        "expected": "Expected",
+        "reported": "Reported",
+        "fee": "Fee",
+        "difference": "Difference",
+        "actions": "Actions"
+      },
+      "leftOut": "Left out",
+      "editLine": "Edit line {guide}",
+      "edit": {
+        "open": "Edit",
+        "label": "Edit line {guide}",
+        "reported": "Amount reported",
+        "fee": "Fee",
+        "note": "Note",
+        "invalidAmount": "Type an amount such as 15 or 15.50.",
+        "excluded": "Leave this line out of the confirmation",
+        "save": "Save line",
+        "cancel": "Cancel"
+      }
+    },
+    "confirm": {
+      "title": "Confirm the remittance",
+      "reference": "Settlement number",
+      "receivedOn": "Day it arrived",
+      "note": "Note",
+      "unsettled": "{count, plural, one {# line} other {# lines}} will settle nothing: no guide matches, or the shipment is not delivered, was already remitted or is repeated. Read them above before confirming.",
+      "nothingToSettle": "Nothing in this draft would settle a shipment.",
+      "action": "Confirm remittance",
+      "done": "Remittance confirmed",
+      "dialog": {
+        "title": "Confirm this remittance?",
+        "description": "{count, plural, one {# shipment} other {# shipments}} of {carrier} will be marked as remitted, for {amount} reported. Only voiding the remittance can undo this.",
+        "cancel": "Go back",
+        "confirm": "Confirm"
+      }
+    },
+    "void": {
+      "title": "Void the remittance",
+      "description": "Its shipments go back to waiting for a remittance. The reason is kept in the audit log.",
+      "reason": "Reason (optional)",
+      "action": "Void remittance",
+      "done": "Remittance voided",
+      "dialog": {
+        "title": "Void remittance {name}?",
+        "description": "The shipments it settled go back to waiting for a remittance and the amounts it recorded are forgotten.",
+        "confirm": "Void remittance"
+      }
+    },
+    "discard": {
+      "action": "Discard draft",
+      "dialog": {
+        "title": "Discard this draft?",
+        "description": "The draft and the file it came from are deleted. Nothing is settled.",
+        "cancel": "Keep draft",
+        "confirm": "Discard"
+      }
+    },
+    "detail": {
+      "back": "Back to remittances",
+      "noReference": "No settlement number",
+      "receivedOn": "arrived {date}",
+      "confirmedOn": "confirmed {date}",
+      "voidedOn": "Voided {date}",
+      "openFile": "Open the imported file",
+      "fileGone": "The file is no longer available.",
+      "totals": {
+        "expected": "Expected",
+        "reported": "Reported",
+        "fee": "Fees",
+        "difference": "Difference"
+      },
+      "draftNote": "This draft settles nothing until it is confirmed. The result of each line is worked out again after every change.",
+      "downloadFile": "Download the file"
     }
   }
 }
