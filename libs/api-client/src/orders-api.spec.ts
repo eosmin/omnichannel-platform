@@ -236,4 +236,17 @@ describe('orders api', () => {
 
     expect(new URL(fetchImpl.mock.calls[0]?.[0] as string).pathname).toBe('/api/v1/orders/o1/copy')
   })
+
+  it('sends the notify choice of a cancellation only when it is given', async () => {
+    const { client, fetchImpl } = setup(json(200, detail))
+    await cancelOrder(client, 's1', 'o1', 'duplicate')
+    await cancelOrder(client, 's1', 'o1', 'duplicate', false)
+    const bodies = fetchImpl.mock.calls.map(
+      ([, init]) => JSON.parse(init.body as string) as unknown
+    )
+    expect(bodies).toEqual([
+      { cancellationReason: 'duplicate' },
+      { cancellationReason: 'duplicate', notifyCustomer: false }
+    ])
+  })
 })

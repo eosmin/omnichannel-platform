@@ -149,7 +149,8 @@
         "action": {
           "print_label": "Print label",
           "cancel": "Cancel guide",
-          "mark_voided": "Mark as voided"
+          "mark_voided": "Mark as voided",
+          "request_pickup": "Request pickup"
         },
         "blocked": {
           "not_confirmed": "A guide can be made once the order is confirmed.",
@@ -170,6 +171,15 @@
             "confirm": "Mark as voided",
             "done": "The guide is marked as voided."
           }
+        },
+        "pickup": {
+          "title": "Request a pickup",
+          "description": "The carrier is asked to come for the guide {guide}.",
+          "confirm": "Request pickup",
+          "done": "Pickup requested.",
+          "cutoffPassed": "The cutoff of the day passed: the pickup would be for the next day. Request it anyway?",
+          "confirmAnyway": "Request anyway",
+          "cancel": "Cancel"
         }
       },
       "guide": {
@@ -202,6 +212,65 @@
         "returnPayer": "Who pays: {payer} (the choice of the return).",
         "returnConfirm": "Make guide",
         "returnDone": "The guide of the way back was requested."
+      },
+      "messages": {
+        "heading": "Messages",
+        "loading": "Loading messages",
+        "failed": "The messages could not be loaded.",
+        "empty": "No message has been asked for about this order.",
+        "kindLabel": "Message",
+        "preview": "Preview",
+        "send": "Send to the customer",
+        "loadMore": "Show older messages",
+        "kind": {
+          "order_summary": "Order summary",
+          "order_shipped": "Order shipped",
+          "order_out_for_delivery": "Out for delivery",
+          "order_delivered": "Order delivered",
+          "order_failed_attempt": "Failed delivery attempt",
+          "order_cancelled": "Order cancelled",
+          "return_approved": "Return approved",
+          "exchange_shipped": "Replacement shipped"
+        },
+        "unknownKind": "Message",
+        "unknownRoute": "Sent a way this page does not know",
+        "status": {
+          "sent": "Sent",
+          "not_sent": "Not sent"
+        },
+        "route": {
+          "channel_text": "By the conversation",
+          "channel_template": "By the conversation, with an approved template",
+          "email": "By email",
+          "not_sent": "Not sent"
+        },
+        "byPlatform": "By the platform",
+        "byMember": "Asked by {name}",
+        "delivery": {
+          "queued": "Waiting to go out",
+          "sent": "Taken by the channel",
+          "delivered": "Delivered",
+          "read": "Read",
+          "failed": "The channel did not deliver it"
+        },
+        "reason": {
+          "missing_variable": "The message needs data the order does not have.",
+          "too_long": "The message is longer than the channel takes.",
+          "no_template": "The store has no template for this message.",
+          "no_channel": "The customer has no conversation or email to reach.",
+          "window_closed": "The channel window is closed and there is no approved template or email.",
+          "template_unavailable": "The approved template is not available.",
+          "customer_erased": "The customer asked to be forgotten.",
+          "consent_revoked": "The customer withdrew consent to order messages.",
+          "unknown": "The server gave a reason this page does not know."
+        },
+        "sendDone": "Message sent.",
+        "sendDuplicate": "This press was already sent.",
+        "sendNotSent": "The message was not sent. {reason}",
+        "notify": {
+          "label": "Notify the customer",
+          "hint": "Starts from the setting of the message template."
+        }
       }
     }
   }

@@ -19,7 +19,9 @@ import {
   OrderFlows,
   offeredFlows
 } from '../../lib/orders/order-detail-rules'
+import { messageKindOfStatus, notifyStartsOn } from '../../lib/orders/order-messages-rules'
 import type { OrderWrites, UploadedOrderFile } from '../../lib/orders/use-order'
+import { useOrderTemplatesForNotify } from '../../lib/orders/use-order-messages'
 import { toast } from '../../lib/toast'
 import { useProfile } from '../../lib/use-profile'
 import { MutationError } from '../customers/mutation-error'
@@ -54,6 +56,17 @@ const ICONS = {
 const CONFIRM_CHANNELS = Object.values(OrderConfirmationChannel).filter(
   channel => channel !== OrderConfirmationChannel.AT_CREATION
 )
+// The status each flow sets, for the flows that tell the customer; the rest have none
+const NOTIFY_STATUS: Readonly<Record<OrderFlow, OrderStatus | undefined>> = {
+  [OrderFlows.CONFIRM]: undefined,
+  [OrderFlows.PREPARE]: undefined,
+  [OrderFlows.SHIP]: OrderStatus.SHIPPED,
+  [OrderFlows.DELIVER]: OrderStatus.DELIVERED,
+  [OrderFlows.RETURN]: undefined,
+  [OrderFlows.CANCEL]: OrderStatus.CANCELLED,
+  [OrderFlows.APPROVE_PRICE]: undefined,
+  [OrderFlows.REJECT_PRICE]: undefined
+}
 const FACTORY_REASONS = Object.values(OrderCancellationReasons)
 // The one that asks the person to write the reason
 const OTHER_REASON = OrderCancellationReasons.OTHER
@@ -147,17 +160,30 @@ function FlowDialog({
 }): ReactElement {
   const t = useTranslations('orders.detail.flows')
   const tAll = useTranslations()
-  const { can } = useStore()
+  const tMessages = useTranslations('orders.detail.messages')
+  const { can, storeId } = useStore()
   const [via, setVia] = useState<string>('')
   const [reasonKey, setReasonKey] = useState<string>(OrderCancellationReasons.CUSTOMER_REQUEST)
   const [reasonText, setReasonText] = useState('')
   const [decisionReason, setDecisionReason] = useState('')
   const [proof, setProof] = useState<UploadedOrderFile | null>(null)
   const [restock, setRestock] = useState(false)
+  // The notify box: null while the person has not touched it
+  const [notifyTouched, setNotifyTouched] = useState<boolean | null>(null)
   const [uploading, setUploading] = useState(false)
   const reasonId = useId()
   const viaId = useId()
   const mayRestock = can(ClientPermissions.INVENTORY_ADJUST)
+  // Shipped, delivered and cancelled tell the customer: the box starts from the template of the kind and is for who may send messages
+  const notifyKind = messageKindOfStatus(NOTIFY_STATUS[flow])
+  const wantsNotify = notifyKind !== undefined && can(ClientPermissions.ORDERS_SEND_MESSAGES)
+  const templates = useOrderTemplatesForNotify(storeId, wantsNotify)
+  // The box is drawn once the templates are known, so what it shows is what is sent; if they cannot be read, there is no box and the
+  // template decides on the server
+  const showNotify = wantsNotify && templates.isSuccess
+  const notifyChecked =
+    notifyTouched ?? (notifyKind === undefined ? false : notifyStartsOn(templates.data, notifyKind))
+  const notifyBody = showNotify ? { notifyCustomer: notifyChecked } : {}
 
   // The mutation of the flow, so the dialog reads its state (pending, refused) from one place
   const mutation =
@@ -189,13 +215,14 @@ function FlowDialog({
         writes.status.mutate({ status: OrderStatus.PREPARING }, options)
         return
       case OrderFlows.SHIP:
-        writes.status.mutate({ status: OrderStatus.SHIPPED }, options)
+        writes.status.mutate({ status: OrderStatus.SHIPPED, ...notifyBody }, options)
         return
       case OrderFlows.DELIVER:
         writes.status.mutate(
           {
             status: OrderStatus.DELIVERED,
-            ...(proof === null ? {} : { proofOfDeliveryMediaId: proof.mediaId })
+            ...(proof === null ? {} : { proofOfDeliveryMediaId: proof.mediaId }),
+            ...notifyBody
           },
           options
         )
@@ -207,7 +234,7 @@ function FlowDialog({
         )
         return
       case OrderFlows.CANCEL:
-        writes.cancel.mutate(cancelReason, options)
+        writes.cancel.mutate({ reason: cancelReason, ...notifyBody }, options)
         return
       case OrderFlows.APPROVE_PRICE:
       case OrderFlows.REJECT_PRICE: {
@@ -326,6 +353,20 @@ function FlowDialog({
           <DialogDescription>{t(`${flow}.description`)}</DialogDescription>
         </DialogHeader>
         {body}
+        {showNotify ? (
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4 accent-current pointer-coarse:size-5"
+              checked={notifyChecked}
+              onChange={event => setNotifyTouched(event.target.checked)}
+            />
+            <span>
+              <span className="block font-medium">{tMessages('notify.label')}</span>
+              <span className="text-muted-foreground block">{tMessages('notify.hint')}</span>
+            </span>
+          </label>
+        ) : null}
         <MutationError error={mutation.error} />
         <DialogFooter>
           <Button type="button" variant="outline" disabled={pending} onClick={onClose}>

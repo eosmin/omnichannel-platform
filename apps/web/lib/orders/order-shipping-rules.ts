@@ -1,4 +1,5 @@
 import {
+  CarrierCapability,
   OrderStatus,
   PriceApprovalStatus,
   ShipmentInactiveStatuses,
@@ -25,10 +26,24 @@ const UNKNOWN_OUTCOME: readonly string[] = ShipmentUnknownOutcomeStatuses
 
 export const ShipmentActions = {
   PRINT_LABEL: 'print_label',
+  REQUEST_PICKUP: 'request_pickup',
   CANCEL: 'cancel',
   MARK_VOIDED: 'mark_voided'
 } as const
 export type ShipmentAction = (typeof ShipmentActions)[keyof typeof ShipmentActions]
+
+// A carrier a pickup is asked of from the screens: it has an API for it and its guides do not travel inside the pickup itself
+// (a pickup-bound carrier gets its pickup with the guides). By capability, never by the carrier's name.
+export function takesPickupRequests(connection: {
+  pickupEnabled: boolean
+  capabilities: readonly string[]
+}): boolean {
+  return (
+    connection.pickupEnabled &&
+    connection.capabilities.includes(CarrierCapability.PICKUP_REQUEST) &&
+    !connection.capabilities.includes(CarrierCapability.PICKUP_BOUND_GUIDES)
+  )
+}
 
 const KNOWN_SHIPMENT_STATUSES: readonly string[] = Object.values(ShipmentStatus)
 
@@ -42,15 +57,32 @@ const CANCELLABLE: readonly string[] = [LABEL_CREATED_STATUS, CANCEL_FAILED_STAT
 // cancel is voided by hand ("mark as voided": whoever made it tells the carrier); a cancel that failed offers both.
 export function offeredShipmentActions(input: {
   status: string
+  // A guide of the way back is picked up by the customer's side, never asked of the carrier from here
+  kind: string
   hasLabel: boolean
   mayManage: boolean
+  // The guide is not in a pickup yet, and the member holds shipping:manage_pickups
+  pickupId: string | null
+  mayRequestPickup: boolean
+  // Whether the connection's carrier is asked for pickups from here (`takesPickupRequests`); null while the connections are not known
+  carrierTakesPickups: boolean | null
   // Whether the connection's carrier can cancel a guide; null while the connections are not known
   carrierCanCancel: boolean | null
 }): ShipmentAction[] {
-  if (!input.mayManage) return []
   const status = asShipmentStatus(input.status)
   if (status === null) return []
   const actions: ShipmentAction[] = []
+  // A pickup is asked for a guide that waits for it: made, with no pickup, at a carrier that takes requests
+  if (
+    input.mayRequestPickup &&
+    input.kind === OUTBOUND &&
+    input.status === LABEL_CREATED_STATUS &&
+    input.pickupId === null &&
+    input.carrierTakesPickups === true
+  ) {
+    actions.push(ShipmentActions.REQUEST_PICKUP)
+  }
+  if (!input.mayManage) return actions
   const live = !INACTIVE.includes(input.status) && input.status !== FAILED
   if (input.hasLabel && live) actions.push(ShipmentActions.PRINT_LABEL)
   if (CANCELLABLE.includes(input.status) && input.carrierCanCancel !== false) {

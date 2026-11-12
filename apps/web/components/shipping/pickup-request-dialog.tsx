@@ -4,9 +4,9 @@ import { useTranslations } from 'next-intl'
 import { type ReactElement, useId, useState } from 'react'
 
 import { ApiError, type CarrierConnectionView } from '@platform/api-client'
-import { CarrierCapability } from '@platform/core/domain'
 import { ClientErrorCodes } from '@platform/core/errors'
 
+import { takesPickupRequests } from '../../lib/orders/order-shipping-rules'
 import { useRequestPickup } from '../../lib/shipping/use-shipping-screens'
 import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
@@ -21,12 +21,7 @@ import { Label } from '../ui/label'
 export function connectionsThatTakeRequests(
   connections: readonly CarrierConnectionView[]
 ): readonly CarrierConnectionView[] {
-  return connections.filter(
-    connection =>
-      connection.pickupEnabled &&
-      connection.capabilities.includes(CarrierCapability.PICKUP_REQUEST) &&
-      !connection.capabilities.includes(CarrierCapability.PICKUP_BOUND_GUIDES)
-  )
+  return connections.filter(takesPickupRequests)
 }
 
 // "Request now": asks the carrier for every guide of the connection that is waiting
