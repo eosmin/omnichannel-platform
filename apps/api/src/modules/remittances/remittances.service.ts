@@ -149,7 +149,28 @@ export class RemittancesApiService {
       _sum: { codExpectedCents: true, codRemittedCents: true },
       _min: { deliveredAt: true }
     })
-    if (groups.length === 0) return []
+    if (groups.length === 0) {
+      // A connection that was asked for and owes nothing is a zero, not an empty answer; one that is not the store's is a 404
+      if (connectionId === undefined) return []
+      const connection = await this.prisma.client.carrierConnection.findFirst({
+        where: { id: connectionId, storeId },
+        select: { id: true, displayName: true, carrierId: true }
+      })
+      if (connection === null) throw resourceNotFound('carrier connection')
+      return [
+        {
+          connectionId: connection.id,
+          connectionName: connection.displayName,
+          carrierId: connection.carrierId,
+          count: 0,
+          totalOwedCents: 0,
+          oldestDeliveredAt: null,
+          oldestAgeDays: null,
+          shipments: [],
+          truncated: false
+        }
+      ]
+    }
     const connections = await this.prisma.client.carrierConnection.findMany({
       where: { storeId, id: { in: groups.map(group => group.connectionId) } },
       select: { id: true, displayName: true, carrierId: true }

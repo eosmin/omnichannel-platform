@@ -130,3 +130,8 @@ SET delivered_at = (
   SELECT min(e.occurred_at) FROM shipment_events e WHERE e.shipment_id = s.id AND e.status = 'delivered'
 )
 WHERE s.status = 'delivered' AND s.delivered_at IS NULL;
+
+-- The matching of a settlement file looks a guide up ignoring case and the whitespace around it (§4.15): the index serves that
+-- exact expression, so a file of thousands of guides does not scan every shipment of the connection
+CREATE INDEX shipments_guide_key ON shipments (connection_id, lower(regexp_replace(guide_number, '^\s+|\s+$', '', 'g')))
+  WHERE guide_number IS NOT NULL;

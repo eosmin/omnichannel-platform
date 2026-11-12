@@ -317,6 +317,22 @@ describe('COD remittances (TDD_17 §4.15)', () => {
       ])
     })
 
+    it('keeps two guides that differ only in case apart', async () => {
+      const upper = await pendingShipment('CASE-ab', 300)
+      const lower = await pendingShipment('case-AB', 400)
+      const draft = await draftWith([
+        { guideNumber: 'CASE-ab', reportedCents: 300 },
+        { guideNumber: 'case-AB', reportedCents: 400 }
+      ])
+      expect(draft.lines.map(line => line.outcome)).toEqual([
+        RemittanceLineOutcome.MATCHED,
+        RemittanceLineOutcome.MATCHED
+      ])
+      await asAdmin().post(ApiRoutes.remittances.confirm(draft.id)).send({})
+      expect((await shipmentRow(upper.id)).codStatus).toBe(CodStatus.REMITTED)
+      expect((await shipmentRow(lower.id)).codStatus).toBe(CodStatus.REMITTED)
+    })
+
     it('takes a file of six hundred rows in one request and refuses more lines than a settlement file holds', async () => {
       const lines = Array.from({ length: 600 }, (_, index) => ({
         guideNumber: `BULK-${index}`,
@@ -448,6 +464,27 @@ describe('COD remittances (TDD_17 §4.15)', () => {
       expect((done.body as RemittanceBody).totals.reportedCents).toBe(2_200_000_000)
     })
 
+    it('writes the amount the line was held against, so what is owed agrees with the remittance', async () => {
+      await owner.carrierConnection.update({
+        where: { id: connectionId },
+        data: { remittanceDeductsFee: true }
+      })
+      const shipment = await pendingShipment('EXP-NET', 1000, {
+        codExpectedCents: 1000,
+        carrierCostCents: 300
+      })
+      const draft = await draftWith([{ guideNumber: 'EXP-NET', reportedCents: 600 }])
+      await asAdmin().post(ApiRoutes.remittances.confirm(draft.id)).send({})
+      await owner.carrierConnection.update({
+        where: { id: connectionId },
+        data: { remittanceDeductsFee: false }
+      })
+      const row = await shipmentRow(shipment.id)
+      expect(row.codStatus).toBe(CodStatus.DISCREPANCY)
+      expect(row.codExpectedCents).toBe(700)
+      expect(row.codRemittedCents).toBe(600)
+    })
+
     it('ends with one confirmation when two overlap', async () => {
       await pendingShipment('RACE-1', 700)
       const draft = await draftWith([{ guideNumber: 'RACE-1', reportedCents: 700 }])
@@ -542,6 +579,18 @@ describe('COD remittances (TDD_17 §4.15)', () => {
       expect(lineOf(fresh, 'VD-A').outcome).toBe(RemittanceLineOutcome.MATCHED)
     })
 
+    it('refuses to change a voided remittance, with the status error and not the confirmed one', async () => {
+      await pendingShipment('VD-EDIT', 100)
+      const draft = await draftWith([{ guideNumber: 'VD-EDIT', reportedCents: 100 }])
+      await asAdmin().post(ApiRoutes.remittances.confirm(draft.id)).send({})
+      await asAdmin().post(ApiRoutes.remittances.void(draft.id)).send({})
+      const refused = await asAdmin()
+        .post(ApiRoutes.remittances.lines(draft.id))
+        .send({ lines: [{ guideNumber: 'VD-EDIT', reportedCents: 1 }] })
+      expect(refused.status).toBe(CONFLICT)
+      expect(errorCode(refused.body)).toBe(ErrorCodes.REMITTANCE_INVALID_STATUS_TRANSITION)
+    })
+
     it('leaves a shipment that a later remittance settled alone', async () => {
       const shipment = await pendingShipment('VD-LATE', 1000)
       const first = await draftWith([{ guideNumber: 'VD-LATE', reportedCents: 600 }])
@@ -556,6 +605,19 @@ describe('COD remittances (TDD_17 §4.15)', () => {
   })
 
   describe('what is still owed', () => {
+    it("answers a zero for a connection that owes nothing and a 404 for one that is not the store's", async () => {
+      const quiet = await createCarrierConnection(owner, { storeId: ctx.storeA.id, prefix: 'QT' })
+      const none = await asAdmin().get(`${ApiRoutes.remittances.pending}?connectionId=${quiet.id}`)
+      expect(none.status).toBe(OK)
+      expect(none.body).toMatchObject([
+        { connectionId: quiet.id, count: 0, totalOwedCents: 0, shipments: [] }
+      ])
+      const foreign = await createCarrierConnection(owner, { storeId: ctx.storeB.id })
+      expect(
+        (await asAdmin().get(`${ApiRoutes.remittances.pending}?connectionId=${foreign.id}`)).status
+      ).toBe(NOT_FOUND)
+    })
+
     it('lists the pending shipments of a connection with their age and the total owed', async () => {
       const own = await createCarrierConnection(owner, { storeId: ctx.storeA.id, prefix: 'PN' })
       await pendingShipment('PN-1', 1000, {

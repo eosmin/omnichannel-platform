@@ -9,6 +9,7 @@ UPDATE "shipments"
 SET cod_status = 'pending_remittance', cod_remitted_cents = NULL, cod_remittance_id = NULL
 WHERE cod_status IN ('remitted', 'discrepancy');
 UPDATE "shipments" SET cod_remittance_id = NULL WHERE cod_remittance_id IS NOT NULL;
+DROP INDEX IF EXISTS shipments_guide_key;
 DROP INDEX IF EXISTS "shipments_cod_remittance_id_idx";
 DROP INDEX IF EXISTS "shipments_store_id_connection_id_cod_status_idx";
 ALTER TABLE "shipments" DROP COLUMN IF EXISTS "delivered_at";

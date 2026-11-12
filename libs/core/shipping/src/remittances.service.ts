@@ -226,13 +226,20 @@ export class RemittancesService {
             'a shipment changed while the remittance was being confirmed'
           )
         }
-        return { id: line.shipmentId, from, next, reported: line.reportedCents }
+        return {
+          id: line.shipmentId,
+          from,
+          next,
+          reported: line.reportedCents,
+          expected: line.expectedCents
+        }
       })
       // One statement for every shipment, each held to the status it was read in: a count short of the lines means one changed
       const settled = await tx.$executeRaw`
         UPDATE shipments s
-        SET cod_status = v.next, cod_remitted_cents = v.reported, cod_remittance_id = ${remittanceId}, updated_at = now()
-        FROM jsonb_to_recordset(${JSON.stringify(settles)}::jsonb) AS v(id text, "from" text, next text, reported int)
+        SET cod_status = v.next, cod_remitted_cents = v.reported, cod_remittance_id = ${remittanceId},
+            cod_expected_cents = COALESCE(v.expected, s.cod_expected_cents), updated_at = now()
+        FROM jsonb_to_recordset(${JSON.stringify(settles)}::jsonb) AS v(id text, "from" text, next text, reported int, expected int)
         WHERE s.id = v.id AND s.store_id = ${storeId} AND s.cod_status = v."from"`
       if (settled !== settles.length) {
         throw refusal(
@@ -358,10 +365,16 @@ export class RemittancesService {
     await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
       const draft = await this.lockedRemittance(tx, storeId, remittanceId)
-      if (draft.status !== String(RemittanceStatus.DRAFT)) {
+      if (draft.status === String(RemittanceStatus.CONFIRMED)) {
         throw refusal(
           ErrorCodes.REMITTANCE_ALREADY_CONFIRMED,
           'only a draft can be changed: a confirmed remittance is immutable'
+        )
+      }
+      if (draft.status !== String(RemittanceStatus.DRAFT)) {
+        throw refusal(
+          ErrorCodes.REMITTANCE_INVALID_STATUS_TRANSITION,
+          `a ${draft.status} remittance cannot be changed`
         )
       }
       await work(tx, draft)
@@ -478,13 +491,13 @@ export class RemittancesService {
         {
           reportedCents: line.reportedCents,
           reportedFeeCents: line.reportedFeeCents,
-          duplicate: seen.has(key),
+          duplicate: seen.has(found?.id ?? key),
           shipment
         },
         deductsFee
       )
       // A line left out does not hold the guide: the next one for it counts
-      if (!line.excluded) seen.add(key)
+      if (!line.excluded) seen.add(found?.id ?? key)
       const shipmentId = found?.id ?? null
       if (
         String(result.outcome) !== line.outcome ||

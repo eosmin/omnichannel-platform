@@ -1,23 +1,12 @@
 import { z } from 'zod'
 
 import { RemittanceLimits } from './remittance-rules'
+import { isoDaySchema } from './shipment-schemas'
 import { singleLineText, uuidSchema } from './validation'
 
 // What a client sends to build, edit and settle a remittance (TDD_17 §4.15, §6). Every shape is strict: a store, a status, a
 // total or an outcome is never taken from the request, the service works them out (the status moves only through its own
 // routes, the totals are written at confirmation and the outcome comes from the matching).
-
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
-
-function isCalendarDay(value: string): boolean {
-  const parsed = new Date(`${value}T00:00:00.000Z`)
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(value)
-}
-
-export const remittanceDaySchema = z
-  .string()
-  .regex(ISO_DATE)
-  .refine(isCalendarDay, { message: 'not a day of the calendar' })
 
 // A free note: one block of text without NUL (Postgres text cannot hold it)
 const noteSchema = z
@@ -42,7 +31,7 @@ export type RemittanceLineInput = z.output<typeof remittanceLineInputSchema>
 export const createRemittanceSchema = z.strictObject({
   connectionId: uuidSchema,
   reference: singleLineText(RemittanceLimits.REFERENCE_MAX_LENGTH, 1).optional(),
-  receivedOn: remittanceDaySchema.optional(),
+  receivedOn: isoDaySchema.optional(),
   note: noteSchema.optional(),
   lines: z.array(remittanceLineInputSchema).max(RemittanceLimits.MAX_LINES).default([])
 })
@@ -69,7 +58,7 @@ export type UpdateRemittanceLineBody = z.output<typeof updateRemittanceLineSchem
 // The settlement number and the day it arrived are often known only when the agent confirms
 export const confirmRemittanceSchema = z.strictObject({
   reference: singleLineText(RemittanceLimits.REFERENCE_MAX_LENGTH, 1).optional(),
-  receivedOn: remittanceDaySchema.optional(),
+  receivedOn: isoDaySchema.optional(),
   note: noteSchema.optional()
 })
 export type ConfirmRemittanceBody = z.output<typeof confirmRemittanceSchema>

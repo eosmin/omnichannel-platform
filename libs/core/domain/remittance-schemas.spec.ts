@@ -3,7 +3,6 @@ import {
   addRemittanceLinesSchema,
   confirmRemittanceSchema,
   createRemittanceSchema,
-  remittanceDaySchema,
   remittancePendingQuerySchema,
   updateRemittanceLineSchema,
   voidRemittanceSchema
@@ -53,9 +52,11 @@ describe('remittance schemas', () => {
     expect(addRemittanceLinesSchema.safeParse({ lines }).success).toBe(false)
   })
   it('takes a day that exists', () => {
-    expect(remittanceDaySchema.safeParse('2026-02-28').success).toBe(true)
-    expect(remittanceDaySchema.safeParse('2026-02-31').success).toBe(false)
-    expect(remittanceDaySchema.safeParse('12/11/2026').success).toBe(false)
+    const day = (receivedOn: string) =>
+      createRemittanceSchema.safeParse({ connectionId: id, receivedOn }).success
+    expect(day('2026-02-28')).toBe(true)
+    expect(day('2026-02-31')).toBe(false)
+    expect(day('12/11/2026')).toBe(false)
   })
   it('needs one change in a line and takes null to clear a note or a fee', () => {
     expect(updateRemittanceLineSchema.safeParse({}).success).toBe(false)
