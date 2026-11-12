@@ -9,7 +9,6 @@ import { type ReactElement, useState } from 'react'
 import { ApiError, AppPaths, type OrderDetailView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
 import {
-  CarrierCapability,
   OrderCancellationReasons,
   OrderConfirmationChannel,
   PriceApprovalStatus
@@ -36,6 +35,7 @@ import { Button } from '../../components/ui/button'
 import { useWarehousesOfStore } from '../../lib/inventory/use-inventory'
 import { asOrderStatus, asPriceApprovalStatus } from '../../lib/orders/order-detail-rules'
 import {
+  carrierCancels,
   liveOutbound,
   outboundStatusesOf,
   takesPickupRequests
@@ -46,8 +46,6 @@ import {
   useOrderGuides,
   useShipmentWrites
 } from '../../lib/orders/use-order-guides'
-
-const CANCEL_CAPABILITY: string = CarrierCapability.CANCEL_SHIPMENT
 
 function BackLink(): ReactElement {
   const t = useTranslations('orders.detail')
@@ -276,7 +274,7 @@ export function OrderDetailPage(): ReactElement {
             writes={shipmentWrites}
             carrierCanCancel={connectionId => {
               const found = connections.data?.find(entry => entry.id === connectionId)
-              return found === undefined ? null : found.capabilities.includes(CANCEL_CAPABILITY)
+              return found === undefined ? null : carrierCancels(found.capabilities)
             }}
             carrierTakesPickups={connectionId => {
               const found = connections.data?.find(entry => entry.id === connectionId)
