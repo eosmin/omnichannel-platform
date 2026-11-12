@@ -75,6 +75,7 @@ interface JobBody {
         orderId: string
         outcome: string
         shipmentId?: string
+        shipmentIds?: string[]
         errorCode?: string
         reason?: string
       }[]
@@ -148,6 +149,10 @@ describe('Bulk labels and "print labels" (TDD_17 §4.6)', () => {
     await owner.warehouse.update({
       where: { id: ctx.warehouseA.id },
       data: { address: { line1: 'Bodega 1', city: 'Soyapango', country: 'SV' } }
+    })
+    await owner.warehouse.update({
+      where: { id: ctx.warehouseASecond.id },
+      data: { address: { line1: 'Bodega 2', city: 'Santa Tecla', country: 'SV' } }
     })
     localId = (await createCarrierConnection(owner, { storeId: ctx.storeA.id, prefix: 'BA' })).id
     forzaId = (
@@ -735,6 +740,292 @@ describe('Bulk labels and "print labels" (TDD_17 §4.6)', () => {
       expect(body.leftOut).toEqual([
         { shipmentId: a?.id, reason: BulkLabelLeftOutReasons.UNREADABLE }
       ])
+    })
+  })
+
+  describe('an order split between two warehouses (TDD_16 §4.1, TDD_17 §4.6)', () => {
+    // An order whose two lines leave from two warehouses of the store
+    const splitOrder = async (over: Partial<Parameters<typeof createOrder>[1]> = {}) => {
+      const order = await confirmed(over)
+      const item = await owner.orderItem.findFirstOrThrow({ where: { orderId: order.id } })
+      const second = await owner.orderItem.create({
+        data: {
+          orderId: order.id,
+          productId: item.productId,
+          productName: 'second line',
+          quantity: 1,
+          unitPriceCents: 1000
+        }
+      })
+      await owner.orderItemAllocation.create({
+        data: {
+          storeId: ctx.storeA.id,
+          orderItemId: second.id,
+          warehouseId: ctx.warehouseASecond.id,
+          quantity: 1
+        }
+      })
+      return order
+    }
+    const guidesOf = (orderId: string) =>
+      owner.shipment.findMany({ where: { orderId }, orderBy: { createdAt: 'asc' } })
+    // The guide the order has at a warehouse, made the way the agent makes one
+    const guideAt = async (orderId: string, warehouseId: string, connectionId = forzaId) => {
+      const made = await asAdmin()
+        .post(ApiRoutes.shipments.forOrder(orderId))
+        .send({ connectionId, originWarehouseId: warehouseId })
+      expect(made.status).toBe(201)
+      await owner.media.updateMany({
+        where: { storeId: ctx.storeA.id, status: MediaStatus.PENDING },
+        data: { status: MediaStatus.CLEAN }
+      })
+      return owner.shipment.findFirstOrThrow({
+        where: { orderId, originWarehouseId: warehouseId },
+        orderBy: { createdAt: 'desc' }
+      })
+    }
+    const startAndRun = async (orderIds: string[]): Promise<JobBody> => {
+      const accepted = (await start(orderIds)).body as JobBody
+      await withScan(() => run(accepted.id))
+      return read(accepted.id)
+    }
+    const fileOf = async (jobId: string): Promise<number[]> => {
+      const row = await owner.bulkLabelJob.findUniqueOrThrow({ where: { id: jobId } })
+      return pagesOf(row.mergedMediaId ?? '')
+    }
+
+    it('makes one guide for each warehouse and puts every label of the order in the file', async () => {
+      const order = await splitOrder()
+      const job = await startAndRun([order.id])
+      const guides = await guidesOf(order.id)
+      expect(guides.map(guide => guide.originWarehouseId).sort()).toEqual(
+        [ctx.warehouseA.id, ctx.warehouseASecond.id].sort()
+      )
+      expect(standalone.callsTo('createShipment')).toHaveLength(2)
+      // One order, one success: the account counts orders, and names both guides in the order of the parts
+      expect(job).toMatchObject({
+        status: BulkLabelJobStatus.COMPLETED,
+        total: 1,
+        succeeded: 1,
+        failed: 0
+      })
+      expect(job.results).toHaveLength(1)
+      expect(job.results?.[0]).toMatchObject({
+        orderId: order.id,
+        outcome: BulkOrderOutcomes.CREATED
+      })
+      expect([...(job.results?.[0]?.shipmentIds ?? [])].sort()).toEqual(
+        guides.map(guide => guide.id).sort()
+      )
+      expect(job.results?.[0]?.shipmentId).toBe(job.results?.[0]?.shipmentIds?.[0])
+      expect(await fileOf(job.id)).toEqual(
+        (job.results?.[0]?.shipmentIds ?? []).map(id =>
+          labelHeightOf(guides.find(guide => guide.id === id)?.guideNumber ?? '')
+        )
+      )
+    })
+
+    it('splits the amount to collect between the guides so that they add up to the order', async () => {
+      const order = await splitOrder({ paymentMethod: 'CASH_ON_DELIVERY' })
+      await owner.order.update({
+        where: { id: order.id },
+        data: { subtotalCents: 2999, totalCents: 3199, shippingCents: 200 }
+      })
+      const job = await startAndRun([order.id])
+      expect(job.status).toBe(BulkLabelJobStatus.COMPLETED)
+      const guides = await guidesOf(order.id)
+      expect(guides).toHaveLength(2)
+      expect(guides.reduce((sum, guide) => sum + (guide.codAmountCents ?? 0), 0)).toBe(3199)
+    })
+
+    it('makes only the guide the order is missing and reuses the one it has, with no call for it', async () => {
+      const order = await splitOrder()
+      const first = await guideAt(order.id, ctx.warehouseA.id)
+      standalone.state.calls.length = 0
+      const job = await startAndRun([order.id])
+      expect(standalone.callsTo('createShipment')).toHaveLength(1)
+      const guides = await guidesOf(order.id)
+      expect(guides).toHaveLength(2)
+      expect(job.results?.[0]).toMatchObject({ outcome: BulkOrderOutcomes.CREATED })
+      expect(job.results?.[0]?.shipmentIds).toContain(first.id)
+      expect(job.results?.[0]?.shipmentIds).toHaveLength(2)
+      expect(await fileOf(job.id)).toHaveLength(2)
+    })
+
+    it('calls nobody for an order whose guides all exist: it is reused and every label is printed', async () => {
+      const order = await splitOrder()
+      const a = await guideAt(order.id, ctx.warehouseA.id)
+      const b = await guideAt(order.id, ctx.warehouseASecond.id)
+      standalone.state.calls.length = 0
+      const job = await startAndRun([order.id])
+      expect(standalone.state.calls).toHaveLength(0)
+      expect(job.results?.[0]).toMatchObject({ outcome: BulkOrderOutcomes.REUSED })
+      expect([...(job.results?.[0]?.shipmentIds ?? [])].sort()).toEqual([a.id, b.id].sort())
+      expect(await fileOf(job.id)).toHaveLength(2)
+    })
+
+    it('fails the order when one part cannot be printed yet, and still prints the label of the other', async () => {
+      const order = await splitOrder()
+      const a = await guideAt(order.id, ctx.warehouseA.id)
+      const b = await guideAt(order.id, ctx.warehouseASecond.id)
+      await owner.shipment.update({
+        where: { id: b.id },
+        data: { status: ShipmentStatus.CANCEL_PENDING }
+      })
+      standalone.state.calls.length = 0
+      const job = await startAndRun([order.id])
+      expect(standalone.state.calls).toHaveLength(0)
+      expect(job).toMatchObject({
+        status: BulkLabelJobStatus.COMPLETED_WITH_ERRORS,
+        succeeded: 0,
+        failed: 1
+      })
+      expect(job.results?.[0]).toMatchObject({
+        outcome: BulkOrderOutcomes.SKIPPED,
+        errorCode: ErrorCodes.SHIPPING_ACTIVE_SHIPMENT_EXISTS,
+        shipmentId: b.id,
+        shipmentIds: [a.id]
+      })
+      expect(await fileOf(job.id)).toEqual([labelHeightOf(a.guideNumber ?? '')])
+    })
+
+    it('never prints the label of a guide that was voided, and makes the part a new one', async () => {
+      const order = await splitOrder()
+      await guideAt(order.id, ctx.warehouseA.id)
+      const voided = await guideAt(order.id, ctx.warehouseASecond.id)
+      await owner.shipment.update({
+        where: { id: voided.id },
+        data: { status: ShipmentStatus.CANCELLED }
+      })
+      standalone.state.calls.length = 0
+      const job = await startAndRun([order.id])
+      expect(standalone.callsTo('createShipment')).toHaveLength(1)
+      expect(job.results?.[0]?.shipmentIds).not.toContain(voided.id)
+      expect(job.results?.[0]?.shipmentIds).toHaveLength(2)
+      expect(await fileOf(job.id)).toHaveLength(2)
+    })
+
+    it('keeps the labels of a split order together and in the order of the selection', async () => {
+      const [before, order, after] = await Promise.all([confirmed(), splitOrder(), confirmed()])
+      const job = await startAndRun([before.id, order.id, after.id])
+      expect(job).toMatchObject({ status: BulkLabelJobStatus.COMPLETED, total: 3, succeeded: 3 })
+      const guides = await guidesOf(order.id)
+      const heights = [
+        await heightOfOrder(before.id),
+        ...(job.results?.[1]?.shipmentIds ?? []).map(id =>
+          labelHeightOf(guides.find(guide => guide.id === id)?.guideNumber ?? '')
+        ),
+        await heightOfOrder(after.id)
+      ]
+      expect(await fileOf(job.id)).toEqual(heights)
+    })
+
+    it('asks a carrier whose guides exist inside a pickup for both guides of the order in one call', async () => {
+      const order = await splitOrder({ carrierConnectionId: c807Id })
+      const job = await startAndRun([order.id])
+      expect(pickupBound.callsTo('createShipmentsWithPickup')).toHaveLength(1)
+      expect(job).toMatchObject({ status: BulkLabelJobStatus.COMPLETED, succeeded: 1 })
+      expect(job.results?.[0]?.shipmentIds).toHaveLength(2)
+      expect(await guidesOf(order.id)).toHaveLength(2)
+    })
+
+    it('makes no second guide for an order whose lines moved to another warehouse after its guide was made', async () => {
+      const order = await confirmed()
+      const made = await asAdmin()
+        .post(ApiRoutes.shipments.forOrder(order.id))
+        .send({ connectionId: forzaId })
+      expect(made.status).toBe(201)
+      await owner.media.updateMany({
+        where: { storeId: ctx.storeA.id, status: MediaStatus.PENDING },
+        data: { status: MediaStatus.CLEAN }
+      })
+      // The lines moved to the other warehouse after the guide was made (the database never lets a guide change its origin)
+      await owner.orderItemAllocation.updateMany({
+        where: { orderItem: { orderId: order.id } },
+        data: { warehouseId: ctx.warehouseASecond.id }
+      })
+      standalone.state.calls.length = 0
+      const job = await startAndRun([order.id])
+      expect(standalone.state.calls).toHaveLength(0)
+      expect(await guidesOf(order.id)).toHaveLength(1)
+      expect(job.results?.[0]).toMatchObject({ outcome: BulkOrderOutcomes.REUSED })
+      expect(job.succeeded).toBe(1)
+    })
+
+    it('fails the order when the carrier refuses one part, and prints the label of the part that was made', async () => {
+      const order = await splitOrder()
+      // The carrier takes the first guide and refuses the second: the references are the order number for both, so refuse by call
+      const original = standalone.plugin.createShipment?.bind(standalone.plugin)
+      let calls = 0
+      Object.assign(standalone.plugin, {
+        createShipment: (...args: Parameters<NonNullable<typeof original>>) => {
+          calls += 1
+          if (calls === 2) return Promise.reject(new Error('refused'))
+          return (original as NonNullable<typeof original>)(...args)
+        }
+      })
+      try {
+        const job = await startAndRun([order.id])
+        expect(job).toMatchObject({
+          status: BulkLabelJobStatus.COMPLETED_WITH_ERRORS,
+          succeeded: 0,
+          failed: 1
+        })
+        expect(job.results?.[0]?.outcome).toBe(BulkOrderOutcomes.FAILED)
+        expect(job.results?.[0]?.shipmentIds).toHaveLength(1)
+        expect(job.results?.[0]?.errorCode).toBeDefined()
+        expect(await fileOf(job.id)).toHaveLength(1)
+      } finally {
+        Object.assign(standalone.plugin, { createShipment: original })
+      }
+    })
+
+    it('makes the guides in the order of the priority of the warehouses in the store', async () => {
+      // One row after the other, each to a value nobody holds (the priority of a store is unique)
+      const prioritise = async (priorities: { warehouseId: string; priority: number }[]) => {
+        for (const entry of priorities) {
+          await owner.storeWarehouse.updateMany({
+            where: { storeId: ctx.storeA.id, warehouseId: entry.warehouseId },
+            data: { priority: entry.priority }
+          })
+        }
+      }
+      const before = await owner.storeWarehouse.findMany({
+        where: {
+          storeId: ctx.storeA.id,
+          warehouseId: { in: [ctx.warehouseA.id, ctx.warehouseASecond.id] }
+        },
+        select: { warehouseId: true, priority: true }
+      })
+      try {
+        await prioritise([
+          { warehouseId: ctx.warehouseASecond.id, priority: 2000 },
+          { warehouseId: ctx.warehouseA.id, priority: 2001 }
+        ])
+        const order = await splitOrder()
+        const job = await startAndRun([order.id])
+        const guides = await guidesOf(order.id)
+        expect(guides.map(guide => guide.originWarehouseId)).toEqual([
+          ctx.warehouseASecond.id,
+          ctx.warehouseA.id
+        ])
+        expect(job.results?.[0]?.shipmentIds).toEqual(guides.map(guide => guide.id))
+      } finally {
+        await prioritise(before)
+      }
+    })
+
+    it('prints every label of a split order with "print labels"', async () => {
+      const order = await splitOrder()
+      const a = await guideAt(order.id, ctx.warehouseA.id)
+      const b = await guideAt(order.id, ctx.warehouseASecond.id)
+      standalone.state.calls.length = 0
+      const response = await asAdmin()
+        .post(ApiRoutes.shipments.mergeLabels)
+        .send({ shipmentIds: [b.id, a.id] })
+      expect(response.status).toBe(OK)
+      expect((response.body as MergeBody).merged).toEqual([b.id, a.id])
+      expect(standalone.state.calls).toHaveLength(0)
     })
   })
 

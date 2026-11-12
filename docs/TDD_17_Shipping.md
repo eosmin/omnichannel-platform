@@ -946,6 +946,7 @@ files are `Media` of purpose `bulk_labels`, readable with `shipping:manage`, and
 A run is read only by the person who asked for it (another member gets a 404: the file holds the customers of their orders), and a
 store may have at most five runs queued or running (429 after that). A standalone or internal carrier is asked for at most `maxConcurrency` guides at a time per connection (an optional field of
 the plugin, three by default, ten at most); a pickup-bound carrier gets one call per batch, split by its `maxBatchSize`.
+**Split orders (Step 4.10 PR D3).** An order whose lines leave from several warehouses (`TDD_16 §4.1`) is made of one part per warehouse; the run makes the guide each part is missing (one request per warehouse, one after another so the amounts to collect add up, `§4.4`), reuses the printable guide a part has, and puts every label of the order together in the file. The account keeps one entry per order: it is a success only when every part has its label, and it lists the guides whose labels are pages of the file in `shipmentIds`; a part that failed fails the order but the labels of the other parts are still printed.
 
 ### 4.7 Customer messages with templates
 
