@@ -18,6 +18,9 @@ import { api } from '../helpers/http'
 type PreferencesBody = { orders: Record<string, unknown> }
 
 // What the orders block reads as for a store that chose nothing (TDD_17 §4.14)
+// The returns block of the preferences (TDD_17 §4.16): read here, written by the page of Step 4.14
+const FACTORY_RETURNS = { preselectCautionOnRefusal: false }
+
 // The remittances block of the preferences at its factory value (TDD_17 §4.15)
 const FACTORY_REMITTANCES = { overdueAfterDays: 7 }
 const FACTORY_ORDERS = {
@@ -599,6 +602,7 @@ describe('The settings of the inbox of a store', () => {
         sendReadReceipts: true,
         assignOnReply: true,
         orders: FACTORY_ORDERS,
+        returns: FACTORY_RETURNS,
         remittances: FACTORY_REMITTANCES
       })
     })
@@ -613,6 +617,7 @@ describe('The settings of the inbox of a store', () => {
         sendReadReceipts: false,
         assignOnReply: true,
         orders: FACTORY_ORDERS,
+        returns: FACTORY_RETURNS,
         remittances: FACTORY_REMITTANCES
       })
       expect(
@@ -621,6 +626,7 @@ describe('The settings of the inbox of a store', () => {
         sendReadReceipts: false,
         assignOnReply: true,
         orders: FACTORY_ORDERS,
+        returns: FACTORY_RETURNS,
         remittances: FACTORY_REMITTANCES
       })
       const settings = await owner.storeSettings.findUniqueOrThrow({
@@ -703,6 +709,7 @@ describe('The settings of the inbox of a store', () => {
         sendReadReceipts: true,
         assignOnReply: true,
         orders: FACTORY_ORDERS,
+        returns: FACTORY_RETURNS,
         remittances: FACTORY_REMITTANCES
       })
       const put = await asAdmin()
@@ -712,6 +719,7 @@ describe('The settings of the inbox of a store', () => {
         sendReadReceipts: false,
         assignOnReply: true,
         orders: FACTORY_ORDERS,
+        returns: FACTORY_RETURNS,
         remittances: FACTORY_REMITTANCES
       })
     })

@@ -177,6 +177,22 @@ export const ErrorCodes = {
   // A draft cannot hold more lines than one settlement file does
   REMITTANCE_TOO_MANY_LINES: 'REMITTANCE_TOO_MANY_LINES',
   RECEPTION_SHIPMENT_NOT_FOUND: 'RECEPTION_SHIPMENT_NOT_FOUND',
+  // The same shipment was scanned twice in one batch
+  RECEPTION_DUPLICATE_SCAN: 'RECEPTION_DUPLICATE_SCAN',
+  // A shipment no package comes back from (not sent yet, cancelled, already delivered, or the guide of a return leg, which is received through its return)
+  RECEPTION_SHIPMENT_NOT_ELIGIBLE: 'RECEPTION_SHIPMENT_NOT_ELIGIBLE',
+  // A batch that was completed takes no more packages and no more changes
+  RECEPTION_BATCH_CLOSED: 'RECEPTION_BATCH_CLOSED',
+  // Another run is completing the batch
+  RECEPTION_BATCH_PROCESSING: 'RECEPTION_BATCH_PROCESSING',
+  // The package was received and its customer could not be flagged (the batch is retried for that)
+  RECEPTION_FLAG_FAILED: 'RECEPTION_FLAG_FAILED',
+  // The batch has no package to process
+  RECEPTION_BATCH_EMPTY: 'RECEPTION_BATCH_EMPTY',
+  // A batch holds ReceptionLimits.MAX_ITEMS packages
+  RECEPTION_BATCH_FULL: 'RECEPTION_BATCH_FULL',
+  // A package flagged for its customer has neither a reason for the flag nor a note to take it from
+  RECEPTION_FLAG_NEEDS_REASON: 'RECEPTION_FLAG_NEEDS_REASON',
   RECEPTION_ALREADY_RECEIVED: 'RECEPTION_ALREADY_RECEIVED',
 
   // Files
