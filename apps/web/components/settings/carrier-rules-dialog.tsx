@@ -4,12 +4,19 @@ import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useId, useState } from 'react'
 
 import { type CarrierConnectionView } from '@platform/api-client'
-import { CarrierConnectionLimits, CarrierConnectionStatus } from '@platform/core/domain'
+import {
+  CarrierConnectionLimits,
+  CarrierConnectionStatus,
+  LabelFormat,
+  ShippingPayer
+} from '@platform/core/domain'
 
 import {
   carrierRulesChanges,
   carrierRulesDraftOf,
   type CarrierRulesDraft,
+  acceptsCashOnDelivery,
+  canPoll,
   carrierRulesProblems,
   hasInternalGuide,
   PICKUP_WEEKDAYS
@@ -219,6 +226,174 @@ export function CarrierRulesDialog({
                   </>
                 ) : null}
               </fieldset>
+              <fieldset className="flex flex-col gap-3 rounded-lg border p-4">
+                <legend className="px-1 text-sm font-medium">{t('shipping.legend')}</legend>
+                <div className="grid gap-1.5">
+                  <Label htmlFor={`${id}-payer`}>{t('shipping.payer')}</Label>
+                  <select
+                    id={`${id}-payer`}
+                    value={draft.defaultShippingPayer}
+                    onChange={event => set({ defaultShippingPayer: event.target.value })}
+                    disabled={pending}
+                    className="border-input bg-background h-9 max-w-xs rounded-md border px-2 text-sm"
+                  >
+                    {Object.values(ShippingPayer).map(payer => (
+                      <option key={payer} value={payer}>
+                        {t(`shipping.payers.${payer}`)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor={`${id}-format`}>{t('shipping.labelFormat')}</Label>
+                  <select
+                    id={`${id}-format`}
+                    value={draft.labelFormat}
+                    onChange={event => set({ labelFormat: event.target.value })}
+                    disabled={pending}
+                    className="border-input bg-background h-9 max-w-xs rounded-md border px-2 text-sm"
+                  >
+                    {Object.values(LabelFormat).map(format => (
+                      <option key={format} value={format}>
+                        {t(`shipping.labelFormats.${format}`)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {(
+                    [
+                      ['defaultFee', 'fees.default'],
+                      ['minFee', 'fees.min'],
+                      ['maxFee', 'fees.max']
+                    ] as const
+                  ).map(([field, label]) => (
+                    <div key={field} className="grid gap-1.5">
+                      <Label htmlFor={`${id}-${field}`}>{t(`shipping.${label}`)}</Label>
+                      <Input
+                        id={`${id}-${field}`}
+                        inputMode="decimal"
+                        value={draft[field]}
+                        onChange={event => set({ [field]: event.target.value })}
+                        disabled={pending}
+                        aria-invalid={has('fee') || has('feeRange')}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-muted-foreground text-xs">{t('shipping.feesHint')}</p>
+                <div className="grid gap-1.5">
+                  <Label htmlFor={`${id}-attempts`}>{t('shipping.attempts')}</Label>
+                  <Input
+                    id={`${id}-attempts`}
+                    inputMode="numeric"
+                    value={draft.maxDeliveryAttempts}
+                    onChange={event => set({ maxDeliveryAttempts: event.target.value })}
+                    disabled={pending}
+                    className="max-w-32"
+                    aria-invalid={has('attempts')}
+                  />
+                  <p className="text-muted-foreground text-xs">{t('shipping.attemptsHint')}</p>
+                </div>
+                {canPoll(connection.capabilities) ? (
+                  <div className="grid gap-1.5">
+                    <Label htmlFor={`${id}-poll`}>{t('shipping.poll')}</Label>
+                    <Input
+                      id={`${id}-poll`}
+                      inputMode="numeric"
+                      value={draft.pollIntervalMinutes}
+                      onChange={event => set({ pollIntervalMinutes: event.target.value })}
+                      disabled={pending}
+                      className="max-w-32"
+                      aria-invalid={has('poll')}
+                    />
+                    <p className="text-muted-foreground text-xs">{t('shipping.pollHint')}</p>
+                  </div>
+                ) : null}
+                {acceptsCashOnDelivery(connection.capabilities) ? (
+                  <label className="flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={draft.remittanceDeductsFee}
+                      onChange={event => set({ remittanceDeductsFee: event.target.checked })}
+                      disabled={pending}
+                      className="mt-1"
+                    />
+                    <span>
+                      {t('shipping.deductsFee')}
+                      <span className="text-muted-foreground block text-xs">
+                        {t('shipping.deductsFeeHint')}
+                      </span>
+                    </span>
+                  </label>
+                ) : null}
+              </fieldset>
+              {draft.services.length === 0 ? null : (
+                <fieldset className="flex flex-col gap-3 rounded-lg border p-4">
+                  <legend className="px-1 text-sm font-medium">{t('services.legend')}</legend>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor={`${id}-service`}>{t('services.default')}</Label>
+                    <select
+                      id={`${id}-service`}
+                      value={draft.defaultServiceCode}
+                      onChange={event => set({ defaultServiceCode: event.target.value })}
+                      disabled={pending}
+                      className="border-input bg-background h-9 max-w-xs rounded-md border px-2 text-sm"
+                    >
+                      {draft.defaultServiceCode === '' ? (
+                        <option value="">{t('services.noDefault')}</option>
+                      ) : null}
+                      {draft.services
+                        .filter(
+                          service => service.active || service.code === draft.defaultServiceCode
+                        )
+                        .map(service => (
+                          <option key={service.code} value={service.code}>
+                            {service.label}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  <ul aria-label={t('services.legend')} className="flex flex-col gap-2">
+                    {draft.services.map((service, index) => (
+                      <li key={service.code} className="flex items-center gap-2">
+                        <Input
+                          aria-label={t('services.label', { code: service.code })}
+                          value={service.label}
+                          onChange={event =>
+                            set({
+                              services: draft.services.map((item, position) =>
+                                position === index ? { ...item, label: event.target.value } : item
+                              )
+                            })
+                          }
+                          maxLength={CarrierConnectionLimits.SERVICE_LABEL_MAX_LENGTH}
+                          disabled={pending}
+                          aria-invalid={has('serviceLabel')}
+                        />
+                        <label className="flex items-center gap-1 text-sm whitespace-nowrap">
+                          <input
+                            type="checkbox"
+                            aria-label={t('services.activeOf', { code: service.code })}
+                            checked={service.active}
+                            onChange={event =>
+                              set({
+                                services: draft.services.map((item, position) =>
+                                  position === index
+                                    ? { ...item, active: event.target.checked }
+                                    : item
+                                )
+                              })
+                            }
+                            disabled={pending}
+                          />
+                          {t('services.active')}
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </fieldset>
+              )}
               {connection.hasCredentials && !hasInternalGuide(connection.capabilities) ? (
                 <div className="grid gap-1.5">
                   <Label htmlFor={`${id}-credentials`}>{t('credentials')}</Label>
