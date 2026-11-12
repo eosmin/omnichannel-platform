@@ -10,7 +10,7 @@ import type { PreferencesInput, PreferencesView } from './preferences-requests'
 
 // The form of Settings → Preferences as plain values, and the checks done before the request. The api checks the same and
 // decides. The discount limit and the price-override notice are approval controls with no write path here (see the plan, Step 4.14).
-// The keys the Inbox behavior page draws (`sendReadReceipts`, `assignOnReply`) and the returns block are not here.
+// The keys the Inbox behavior page draws (`sendReadReceipts`, `assignOnReply`) are not here.
 
 export interface PreferencesDraft {
   confirmOnCreate: boolean
@@ -19,6 +19,7 @@ export interface PreferencesDraft {
   failedAttemptMessages: FailedAttemptMessagePolicyType
   // Digits as typed
   overdueAfterDays: string
+  preselectCautionOnRefusal: boolean
   cancellationReasons: CancellationReason[]
 }
 
@@ -39,6 +40,7 @@ export function preferencesDraftOf(view: PreferencesView): PreferencesDraft {
     freeShippingRule: view.orders.freeShippingRule,
     failedAttemptMessages: view.orders.failedAttemptMessages,
     overdueAfterDays: String(view.remittances.overdueAfterDays),
+    preselectCautionOnRefusal: view.returns.preselectCautionOnRefusal,
     cancellationReasons: view.orders.cancellationReasons.map(reason => ({ ...reason }))
   }
 }
@@ -123,6 +125,9 @@ export function preferencesChanges(
   )
   if (overdue !== undefined && overdue !== saved.remittances.overdueAfterDays) {
     changes.remittances = { overdueAfterDays: overdue }
+  }
+  if (draft.preselectCautionOnRefusal !== saved.returns.preselectCautionOnRefusal) {
+    changes.returns = { preselectCautionOnRefusal: draft.preselectCautionOnRefusal }
   }
   return Object.keys(changes).length > 0 ? changes : null
 }
