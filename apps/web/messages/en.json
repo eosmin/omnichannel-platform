@@ -1800,7 +1800,9 @@
       "exports": "Exports",
       "settings": "Settings",
       "orders": "Orders",
-      "inventory": "Inventory"
+      "inventory": "Inventory",
+      "shipments": "Shipments",
+      "pickups": "Pickups"
     },
     "notifications": {
       "open": "Notifications",
@@ -4093,6 +4095,210 @@
     },
     "plugin": {
       "name": "Shipping"
+    }
+  },
+  "shipments": {
+    "list": {
+      "title": "Shipments",
+      "filters": {
+        "status": "Status",
+        "anyStatus": "Every status",
+        "carrier": "Carrier",
+        "anyCarrier": "Every carrier",
+        "from": "From",
+        "to": "To",
+        "oneOrder": "One order only",
+        "removeOrder": "Remove the order filter",
+        "clear": "Clear filters"
+      },
+      "columns": {
+        "guide": "Guide",
+        "status": "Status",
+        "carrier": "Carrier",
+        "order": "Order",
+        "created": "Created",
+        "actions": "Actions"
+      },
+      "guidePending": "No number yet",
+      "orderNumber": "Order #{number}",
+      "open": "Open",
+      "openGuide": "Open shipment {guide}",
+      "empty": "There are no shipments yet.",
+      "noMatches": "No shipment matches the filters.",
+      "loadMore": "Load more"
+    },
+    "detail": {
+      "title": "Shipment {guide}",
+      "description": "The guide's data, its history and what you can do with it.",
+      "noGuide": "No number",
+      "orderNumber": "Order #{number}",
+      "actions": {
+        "label": "Print label",
+        "check": "Ask the carrier",
+        "settle": "Settle by hand",
+        "markVoided": "Mark as voided",
+        "cancel": "Cancel guide"
+      },
+      "requiresReview": "We do not know whether the carrier made this guide. Ask the carrier or settle it by hand before making another.",
+      "cancelFailed": "The carrier could not void the guide. Void it with the carrier and mark it as voided here.",
+      "lastError": "Last error: {error}",
+      "fields": {
+        "status": "Status",
+        "carrier": "Carrier",
+        "order": "Order",
+        "guide": "Guide",
+        "created": "Created",
+        "packages": "Packages",
+        "failedAttempts": "Failed attempts"
+      },
+      "history": "History",
+      "noEvents": "No events yet.",
+      "eventNoStatus": "Unnamed status",
+      "source": {
+        "webhook": "Carrier notice",
+        "poll": "Carrier check",
+        "manual": "By hand",
+        "system": "Platform"
+      },
+      "unmapped": "The carrier sent a status that no rule knows.",
+      "mapIt": "Give it a status in Settings",
+      "note": {
+        "shipping": {
+          "event": {
+            "foundAtCarrier": "The guide was found at the carrier.",
+            "receivedAtWarehouse": "Received at the warehouse."
+          }
+        }
+      },
+      "checkFound": "The carrier has the guide.",
+      "checkNotFound": "The carrier does not have this guide."
+    },
+    "dialogs": {
+      "keep": "Go back",
+      "cancel": {
+        "title": "Cancel the guide?",
+        "description": "Guide {guide} will be voided and the order can get another.",
+        "confirm": "Cancel guide",
+        "done": "Guide cancelled.",
+        "localOnly": "This guide's carrier cannot be asked from here: void it with the carrier too."
+      },
+      "markVoided": {
+        "title": "Mark as voided?",
+        "description": "Confirm that you already voided guide {guide} with the carrier.",
+        "confirm": "Mark as voided",
+        "done": "Guide marked as voided."
+      },
+      "settle": {
+        "title": "Settle a guide under review",
+        "description": "Check with the carrier whether the guide exists and tell us what you found.",
+        "found": "The carrier has it",
+        "notFound": "The carrier does not have it: the guide failed",
+        "guideNumber": "Guide number",
+        "cancel": "Cancel",
+        "save": "Save",
+        "doneFound": "Guide recovered.",
+        "doneFailed": "Guide marked as failed."
+      }
+    }
+  },
+  "pickups": {
+    "list": {
+      "title": "Pickups",
+      "request": "Request pickup",
+      "filters": {
+        "status": "Status",
+        "anyStatus": "Every status",
+        "carrier": "Carrier",
+        "anyCarrier": "Every carrier",
+        "from": "From",
+        "to": "To",
+        "clear": "Clear filters"
+      },
+      "columns": {
+        "day": "Day",
+        "carrier": "Carrier",
+        "status": "Status",
+        "packages": "Packages",
+        "actions": "Actions"
+      },
+      "open": "Open",
+      "openPickup": "Open the {carrier} pickup of {day}",
+      "empty": "There are no pickups yet.",
+      "noMatches": "No pickup matches the filters.",
+      "loadMore": "Load more"
+    },
+    "status": {
+      "pending": "Being asked of the carrier",
+      "requires_review": "Needs review",
+      "requested": "Requested",
+      "confirmed": "Confirmed",
+      "manual_required": "Ask the carrier yourself",
+      "cancelled": "Cancelled",
+      "failed": "Failed",
+      "unknown": "Unknown"
+    },
+    "failure": {
+      "carrier_unavailable": "The carrier did not answer.",
+      "credentials_rejected": "The carrier did not accept the credentials.",
+      "credentials_unreadable": "The stored credentials cannot be read.",
+      "unknown_outcome": "We do not know whether the carrier received the request.",
+      "unusable_answer": "The carrier gave an answer that cannot be used.",
+      "connection_not_active": "The connection with the carrier is not active.",
+      "pickup_empty": "The pickup was left with no guides."
+    },
+    "detail": {
+      "title": "{carrier} pickup of {day}",
+      "window": "from {from} to {to}",
+      "needsReview": "We do not know whether the carrier received the request. Check with the carrier: confirm it if it has it, or end it if not.",
+      "needsManual": "This carrier takes no requests from here. Ask the carrier for the pickup and confirm it here.",
+      "lastError": "Last error:",
+      "cancelWithCarrier": "The carrier cannot cancel from here: cancel it with the carrier.",
+      "actions": {
+        "print": "Print manifest",
+        "confirm": "Confirm by hand",
+        "cancel": "Cancel pickup"
+      },
+      "confirmed": "Pickup confirmed.",
+      "cancelled": "Pickup cancelled.",
+      "manifest": "{count, plural, one {Manifest: # package} other {Manifest: # packages}}",
+      "noGuides": "The pickup has no guides.",
+      "noGuide": "No number",
+      "orderNumber": "Order #{number}",
+      "columns": {
+        "guide": "Guide",
+        "order": "Order",
+        "recipient": "Recipient",
+        "packages": "Packages",
+        "actions": "Actions"
+      },
+      "remove": "Remove",
+      "removeGuide": "Remove guide {guide} from the pickup",
+      "cancelDialog": {
+        "title": "Cancel the pickup?",
+        "description": "The guides of this pickup will wait for the next one.",
+        "keep": "Go back",
+        "confirm": "Cancel pickup"
+      },
+      "join": {
+        "title": "Add guides",
+        "none": "No guide is waiting for a pickup.",
+        "orderNumber": "Order #{number}",
+        "loadMore": "Load more",
+        "cutoffPassed": "The cutoff of the day has passed. Confirm that you want to change the pickup anyway.",
+        "add": "{count, plural, one {Add # guide} other {Add # guides}}",
+        "addAnyway": "{count, plural, one {Add # guide anyway} other {Add # guides anyway}}"
+      }
+    },
+    "request": {
+      "title": "Request pickup",
+      "description": "The carrier will be asked to come for every guide that is waiting.",
+      "carrier": "Carrier",
+      "cutoffPassed": "The cutoff of the day has passed. Confirm that you want to request it anyway.",
+      "send": "Request",
+      "sendAnyway": "Request anyway",
+      "cancel": "Cancel",
+      "done": "Pickup requested.",
+      "doneSomeWait": "Pickup requested: some guides wait for the next one."
     }
   }
 }

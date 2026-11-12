@@ -1800,7 +1800,9 @@
       "exports": "Exportaciones",
       "settings": "Ajustes",
       "orders": "Pedidos",
-      "inventory": "Inventario"
+      "inventory": "Inventario",
+      "shipments": "Envíos",
+      "pickups": "Recolecciones"
     },
     "notifications": {
       "open": "Notificaciones",
@@ -4093,6 +4095,210 @@
     },
     "plugin": {
       "name": "Envíos"
+    }
+  },
+  "shipments": {
+    "list": {
+      "title": "Envíos",
+      "filters": {
+        "status": "Estado",
+        "anyStatus": "Todos los estados",
+        "carrier": "Transportista",
+        "anyCarrier": "Todos los transportistas",
+        "from": "Desde",
+        "to": "Hasta",
+        "oneOrder": "Solo un pedido",
+        "removeOrder": "Quitar el filtro de pedido",
+        "clear": "Quitar filtros"
+      },
+      "columns": {
+        "guide": "Guía",
+        "status": "Estado",
+        "carrier": "Transportista",
+        "order": "Pedido",
+        "created": "Creado",
+        "actions": "Acciones"
+      },
+      "guidePending": "Sin número todavía",
+      "orderNumber": "Pedido #{number}",
+      "open": "Abrir",
+      "openGuide": "Abrir el envío {guide}",
+      "empty": "Todavía no hay envíos.",
+      "noMatches": "Ningún envío coincide con los filtros.",
+      "loadMore": "Cargar más"
+    },
+    "detail": {
+      "title": "Envío {guide}",
+      "description": "Datos de la guía, su historial y lo que puedes hacer con ella.",
+      "noGuide": "Sin número",
+      "orderNumber": "Pedido #{number}",
+      "actions": {
+        "label": "Imprimir etiqueta",
+        "check": "Consultar al transportista",
+        "settle": "Resolver a mano",
+        "markVoided": "Marcar como anulada",
+        "cancel": "Cancelar guía"
+      },
+      "requiresReview": "No sabemos si el transportista hizo esta guía. Consúltalo con él o resuélvela a mano antes de crear otra.",
+      "cancelFailed": "El transportista no pudo anular la guía. Anúlala con él y márcala como anulada aquí.",
+      "lastError": "Último error: {error}",
+      "fields": {
+        "status": "Estado",
+        "carrier": "Transportista",
+        "order": "Pedido",
+        "guide": "Guía",
+        "created": "Creado",
+        "packages": "Paquetes",
+        "failedAttempts": "Intentos fallidos"
+      },
+      "history": "Historial",
+      "noEvents": "Sin eventos todavía.",
+      "eventNoStatus": "Estado sin nombre",
+      "source": {
+        "webhook": "Aviso del transportista",
+        "poll": "Consulta al transportista",
+        "manual": "A mano",
+        "system": "Plataforma"
+      },
+      "unmapped": "El transportista envió un estado que ninguna regla conoce.",
+      "mapIt": "Asignarle un estado en Ajustes",
+      "note": {
+        "shipping": {
+          "event": {
+            "foundAtCarrier": "La guía se encontró en el transportista.",
+            "receivedAtWarehouse": "Recibido en la bodega."
+          }
+        }
+      },
+      "checkFound": "El transportista tiene la guía.",
+      "checkNotFound": "El transportista no tiene esta guía."
+    },
+    "dialogs": {
+      "keep": "Volver",
+      "cancel": {
+        "title": "¿Cancelar la guía?",
+        "description": "La guía {guide} se anulará y el pedido podrá recibir otra.",
+        "confirm": "Cancelar guía",
+        "done": "Guía cancelada.",
+        "localOnly": "El transportista de esta guía no se puede consultar desde aquí: anúlala también con él."
+      },
+      "markVoided": {
+        "title": "¿Marcar como anulada?",
+        "description": "Confirma que ya anulaste la guía {guide} con el transportista.",
+        "confirm": "Marcar como anulada",
+        "done": "Guía marcada como anulada."
+      },
+      "settle": {
+        "title": "Resolver una guía en revisión",
+        "description": "Mira con el transportista si la guía existe y dinos qué encontraste.",
+        "found": "El transportista la tiene",
+        "notFound": "El transportista no la tiene: la guía falló",
+        "guideNumber": "Número de guía",
+        "cancel": "Cancelar",
+        "save": "Guardar",
+        "doneFound": "Guía recuperada.",
+        "doneFailed": "Guía marcada como fallida."
+      }
+    }
+  },
+  "pickups": {
+    "list": {
+      "title": "Recolecciones",
+      "request": "Solicitar recolección",
+      "filters": {
+        "status": "Estado",
+        "anyStatus": "Todos los estados",
+        "carrier": "Transportista",
+        "anyCarrier": "Todos los transportistas",
+        "from": "Desde",
+        "to": "Hasta",
+        "clear": "Quitar filtros"
+      },
+      "columns": {
+        "day": "Día",
+        "carrier": "Transportista",
+        "status": "Estado",
+        "packages": "Paquetes",
+        "actions": "Acciones"
+      },
+      "open": "Abrir",
+      "openPickup": "Abrir la recolección de {carrier} del {day}",
+      "empty": "Todavía no hay recolecciones.",
+      "noMatches": "Ninguna recolección coincide con los filtros.",
+      "loadMore": "Cargar más"
+    },
+    "status": {
+      "pending": "Pidiéndola al transportista",
+      "requires_review": "Requiere revisión",
+      "requested": "Solicitada",
+      "confirmed": "Confirmada",
+      "manual_required": "Pídela tú al transportista",
+      "cancelled": "Cancelada",
+      "failed": "Falló",
+      "unknown": "Desconocido"
+    },
+    "failure": {
+      "carrier_unavailable": "El transportista no respondió.",
+      "credentials_rejected": "El transportista no aceptó las credenciales.",
+      "credentials_unreadable": "Las credenciales guardadas no se pueden leer.",
+      "unknown_outcome": "No sabemos si el transportista recibió la solicitud.",
+      "unusable_answer": "El transportista dio una respuesta que no se puede usar.",
+      "connection_not_active": "La conexión con el transportista no está activa.",
+      "pickup_empty": "La recolección se quedó sin guías."
+    },
+    "detail": {
+      "title": "Recolección de {carrier} del {day}",
+      "window": "de {from} a {to}",
+      "needsReview": "No sabemos si el transportista recibió la solicitud. Míralo con él: confírmala si la tiene o termínala si no.",
+      "needsManual": "Este transportista no recibe solicitudes desde aquí. Pide la recolección con él y confírmala aquí.",
+      "lastError": "Último error:",
+      "cancelWithCarrier": "El transportista no puede cancelar desde aquí: cancélala con él.",
+      "actions": {
+        "print": "Imprimir manifiesto",
+        "confirm": "Confirmar a mano",
+        "cancel": "Cancelar recolección"
+      },
+      "confirmed": "Recolección confirmada.",
+      "cancelled": "Recolección cancelada.",
+      "manifest": "{count, plural, one {Manifiesto: # paquete} other {Manifiesto: # paquetes}}",
+      "noGuides": "La recolección no tiene guías.",
+      "noGuide": "Sin número",
+      "orderNumber": "Pedido #{number}",
+      "columns": {
+        "guide": "Guía",
+        "order": "Pedido",
+        "recipient": "Destinatario",
+        "packages": "Paquetes",
+        "actions": "Acciones"
+      },
+      "remove": "Quitar",
+      "removeGuide": "Quitar la guía {guide} de la recolección",
+      "cancelDialog": {
+        "title": "¿Cancelar la recolección?",
+        "description": "Las guías de esta recolección esperarán a la siguiente.",
+        "keep": "Volver",
+        "confirm": "Cancelar recolección"
+      },
+      "join": {
+        "title": "Añadir guías",
+        "none": "No hay guías esperando recolección.",
+        "orderNumber": "Pedido #{number}",
+        "loadMore": "Cargar más",
+        "cutoffPassed": "Ya pasó la hora de corte del día. Confirma que quieres cambiar la recolección de todos modos.",
+        "add": "{count, plural, one {Añadir # guía} other {Añadir # guías}}",
+        "addAnyway": "{count, plural, one {Añadir # guía de todos modos} other {Añadir # guías de todos modos}}"
+      }
+    },
+    "request": {
+      "title": "Solicitar recolección",
+      "description": "Se pedirá al transportista que pase por todas las guías que están esperando.",
+      "carrier": "Transportista",
+      "cutoffPassed": "Ya pasó la hora de corte del día. Confirma que quieres solicitarla de todos modos.",
+      "send": "Solicitar",
+      "sendAnyway": "Solicitar de todos modos",
+      "cancel": "Cancelar",
+      "done": "Recolección solicitada.",
+      "doneSomeWait": "Recolección solicitada: algunas guías esperan a la siguiente."
     }
   }
 }
