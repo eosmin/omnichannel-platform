@@ -2,6 +2,7 @@ import { CarrierCapability, OrderStatus, ShipmentKind, ShipmentStatus } from '@p
 
 import {
   asShipmentStatus,
+  carrierCancels,
   GuideBlocks,
   guideBlockOf,
   liveOutbound,
@@ -68,6 +69,31 @@ describe('offeredShipmentActions', () => {
 
   it('offers neither while a cancel is pending', () => {
     expect(offer(ShipmentStatus.CANCEL_PENDING)).toEqual([ShipmentActions.PRINT_LABEL])
+  })
+})
+
+describe('carrierCancels', () => {
+  it('reads a carrier that is asked or a guide of the platform as able to cancel', () => {
+    expect(carrierCancels([CarrierCapability.CANCEL_SHIPMENT])).toBe(true)
+    expect(carrierCancels([CarrierCapability.INTERNAL_GUIDE, CarrierCapability.COD])).toBe(true)
+  })
+  it('refuses a carrier that declares neither', () => {
+    expect(carrierCancels([CarrierCapability.COD])).toBe(false)
+    expect(carrierCancels([])).toBe(false)
+  })
+  it('offers the cancel, and not the manual void, for a made guide of a platform courier', () => {
+    const actions = offeredShipmentActions({
+      status: ShipmentStatus.LABEL_CREATED,
+      kind: ShipmentKind.OUTBOUND,
+      hasLabel: true,
+      mayManage: true,
+      pickupId: null,
+      mayRequestPickup: false,
+      carrierTakesPickups: false,
+      carrierCanCancel: carrierCancels([CarrierCapability.INTERNAL_GUIDE])
+    })
+    expect(actions).toContain(ShipmentActions.CANCEL)
+    expect(actions).not.toContain(ShipmentActions.MARK_VOIDED)
   })
 })
 
