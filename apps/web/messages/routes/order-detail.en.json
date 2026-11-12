@@ -1,0 +1,277 @@
+{
+  "orders": {
+    "detail": {
+      "returns": {
+        "heading": "Returns",
+        "new": "New return",
+        "loading": "Loading returns",
+        "failed": "The returns could not be loaded.",
+        "empty": "This order has no returns.",
+        "refunded": "Refunded: {amount}",
+        "hasGuide": "The guide of the way back is made.",
+        "replacement": "See the replacement order",
+        "type": {
+          "refund": "Refund",
+          "exchange": "Exchange"
+        },
+        "payer": {
+          "sender": "The store pays",
+          "recipient": "The customer pays"
+        },
+        "status": {
+          "requested": "Requested",
+          "approved": "Approved",
+          "in_transit": "On its way back",
+          "received": "Received",
+          "completed": "Completed",
+          "rejected": "Rejected",
+          "cancelled": "Cancelled"
+        },
+        "condition": {
+          "resellable": "Resellable",
+          "defective": "Defective",
+          "damaged": "Damaged"
+        },
+        "create": {
+          "title": "New return of order {number}",
+          "description": "Choose the units that come back and why. Nothing moves until someone approves it.",
+          "typeLabel": "What the customer gets",
+          "reasonLabel": "Reason",
+          "reasonChoose": "Choose a reason",
+          "unitsLegend": "Units that come back",
+          "available": "({count, plural, one {# unit left} other {# units left}})",
+          "payerLabel": "Who pays the way back",
+          "payerDefault": "The default of the store",
+          "notesLabel": "Notes for the team (optional)",
+          "confirm": "Create return",
+          "done": "The return was created."
+        },
+        "action": {
+          "notesLabel": "Note for the team (optional)",
+          "approve": {
+            "button": "Approve",
+            "title": "Approve the return",
+            "description": {
+              "refund": "The goods can come back. The money is given back by hand when they arrive.",
+              "exchange": "The goods can come back. Choose the products that go out instead: the replacement order is made now, already confirmed."
+            },
+            "replacementLegend": "Replacement products",
+            "quantityLabel": "Units of {name}",
+            "remove": "Remove {name}",
+            "shippingLabel": "Shipping fee of the replacement (optional)",
+            "confirm": "Approve return",
+            "done": "The return is approved."
+          },
+          "reject": {
+            "button": "Reject",
+            "title": "Reject the return",
+            "description": "The goods do not come back. The customer is not told the note.",
+            "confirm": "Reject return",
+            "done": "The return is rejected."
+          },
+          "cancel": {
+            "button": "Cancel",
+            "title": "Cancel the return",
+            "description": "The units go back to being returnable.",
+            "confirm": "Cancel return",
+            "done": "The return is cancelled."
+          },
+          "in_transit": {
+            "button": "Mark on its way",
+            "title": "Mark the return on its way",
+            "description": "The goods are on their way back. The people who receive them are told.",
+            "confirm": "Mark on its way",
+            "done": "The return is on its way back."
+          },
+          "receive": {
+            "button": "Receive",
+            "title": "Receive the return",
+            "description": "Say in which condition each line came back. The stock moves with it.",
+            "conditionLabel": "Condition of {name}",
+            "conditionChoose": "Choose a condition",
+            "warehouseLabel": "Warehouse for {name}",
+            "warehouseDefault": "The warehouse that sent most of it",
+            "confirm": "Receive return",
+            "done": "The return is received."
+          },
+          "complete": {
+            "button": "Complete",
+            "title": "Complete the return",
+            "description": "Close the return. A refund records the money given back by hand: the platform does not move any money.",
+            "amountLabel": "Money given back (optional)",
+            "amountHint": "Write an amount like 12.50.",
+            "confirm": "Complete return",
+            "done": "The return is completed."
+          },
+          "return_guide": {
+            "button": "Make the guide of the way back"
+          }
+        }
+      },
+      "shipping": {
+        "heading": "Shipping",
+        "makeGuide": "Make the guide",
+        "loading": "Loading guides",
+        "failed": "The guides could not be loaded.",
+        "empty": "This order has no guide yet.",
+        "guide": "Guide",
+        "collects": "The carrier collects {amount}",
+        "track": "Track the package",
+        "opensInNewTab": "(opens in a new tab)",
+        "returnLeg": "Way back",
+        "unknownStatus": "Unknown state",
+        "status": {
+          "creating": "Being made",
+          "label_created": "Guide made",
+          "picked_up": "Picked up",
+          "in_transit": "In transit",
+          "out_for_delivery": "Out for delivery",
+          "failed_attempt": "Delivery failed",
+          "delivered": "Delivered",
+          "returning": "Coming back",
+          "returned": "Came back",
+          "cancel_pending": "Cancelling",
+          "cancelled": "Cancelled",
+          "cancel_failed": "Cancel failed",
+          "requires_review": "Needs review",
+          "failed": "Refused"
+        },
+        "failure": {
+          "unknown_outcome": "The carrier did not answer: a guide may exist. Check it before making another.",
+          "invalid_answer": "The carrier answered with something the platform cannot use.",
+          "auth": "The carrier rejected the credentials of the connection.",
+          "credentials_unreadable": "The credentials of the connection cannot be read. Save them again.",
+          "label_invalid": "The label the carrier gave cannot be kept.",
+          "record_failed": "The carrier made the guide and the platform could not write it down.",
+          "marked_failed": "Someone marked the guide as failed.",
+          "not_queued": "The cancellation could not be sent. Ask again."
+        },
+        "action": {
+          "print_label": "Print label",
+          "cancel": "Cancel guide",
+          "mark_voided": "Mark as voided",
+          "request_pickup": "Request pickup"
+        },
+        "blocked": {
+          "not_confirmed": "A guide can be made once the order is confirmed.",
+          "price_approval": "A guide can be made once the price is approved.",
+          "no_address": "A guide needs the shipping address of the order.",
+          "no_phone": "A guide needs a phone number of the recipient."
+        },
+        "move": {
+          "cancel": {
+            "title": "Cancel the guide",
+            "description": "The carrier is asked to cancel guide {guide}. It stays \"cancelling\" until the carrier answers.",
+            "confirm": "Cancel guide",
+            "done": "The cancellation was requested."
+          },
+          "mark_voided": {
+            "title": "Mark the guide as voided",
+            "description": "Guide {guide} is dead on our side. The carrier is not asked: tell it yourself if it still has the guide.",
+            "confirm": "Mark as voided",
+            "done": "The guide is marked as voided."
+          }
+        },
+        "pickup": {
+          "title": "Request a pickup",
+          "description": "The carrier is asked to come for the guide {guide}.",
+          "confirm": "Request pickup",
+          "done": "Pickup requested.",
+          "cutoffPassed": "The cutoff of the day passed: the pickup would be for the next day. Request it anyway?",
+          "confirmAnyway": "Request anyway",
+          "cancel": "Cancel"
+        }
+      },
+      "guide": {
+        "title": "Make the guide of order {number}",
+        "description": "The carrier makes the guide and its label. A guide can be cancelled while the package has not been picked up.",
+        "connectionLabel": "Carrier connection",
+        "serviceLabel": "Service",
+        "payerLabel": "Who pays the shipping",
+        "payerFreeShipping": "The order has free shipping: the store pays.",
+        "codLabel": "The carrier collects",
+        "codNone": "Nothing",
+        "codReasonCollects": "The order is cash on delivery and not paid yet. The amount is the order's and cannot be changed here.",
+        "codReasonPrepaid": "The order is already paid or paid in advance.",
+        "pickupLegend": "Pickup",
+        "pickupHint": "This carrier makes the guide together with a pickup. Leave it empty to use the next valid day of the connection.",
+        "pickupDate": "Day",
+        "pickupFrom": "From",
+        "pickupTo": "To",
+        "pickupInvalid": "Write a day and a window that ends after it starts, or leave all three empty.",
+        "notesLabel": "Note for the courier (optional)",
+        "notesHint": "The courier reads it on the label. The packing note never goes on it.",
+        "confirm": "Make guide",
+        "done": "The guide was requested.",
+        "noConnection": "No connection of the store can make a guide. Connect a carrier in Settings.",
+        "onlyWithLocations": "{count, plural, one {The connection that can make guides asks} other {The # connections that can make guides ask}} for the carrier's own ids of the places, which this screen cannot take yet.",
+        "returnTitle": "Make the guide of the way back",
+        "returnDescription": "A guide from the customer to the warehouse, for a carrier that can make it. It is never cash on delivery.",
+        "warehouseLabel": "Warehouse the goods go to",
+        "warehouseDefault": "The warehouse that sent most of them",
+        "returnPayer": "Who pays: {payer} (the choice of the return).",
+        "returnConfirm": "Make guide",
+        "returnDone": "The guide of the way back was requested."
+      },
+      "messages": {
+        "heading": "Messages",
+        "loading": "Loading messages",
+        "failed": "The messages could not be loaded.",
+        "empty": "No message has been asked for about this order.",
+        "kindLabel": "Message",
+        "preview": "Preview",
+        "send": "Send to the customer",
+        "loadMore": "Show older messages",
+        "kind": {
+          "order_summary": "Order summary",
+          "order_shipped": "Order shipped",
+          "order_out_for_delivery": "Out for delivery",
+          "order_delivered": "Order delivered",
+          "order_failed_attempt": "Failed delivery attempt",
+          "order_cancelled": "Order cancelled",
+          "return_approved": "Return approved",
+          "exchange_shipped": "Replacement shipped"
+        },
+        "unknownKind": "Message",
+        "unknownRoute": "Sent a way this page does not know",
+        "status": {
+          "sent": "Sent",
+          "not_sent": "Not sent"
+        },
+        "route": {
+          "channel_text": "By the conversation",
+          "channel_template": "By the conversation, with an approved template",
+          "email": "By email",
+          "not_sent": "Not sent"
+        },
+        "byPlatform": "By the platform",
+        "byMember": "Asked by {name}",
+        "delivery": {
+          "queued": "Waiting to go out",
+          "sent": "Taken by the channel",
+          "delivered": "Delivered",
+          "read": "Read",
+          "failed": "The channel did not deliver it"
+        },
+        "reason": {
+          "missing_variable": "The message needs data the order does not have.",
+          "too_long": "The message is longer than the channel takes.",
+          "no_template": "The store has no template for this message.",
+          "no_channel": "The customer has no conversation or email to reach.",
+          "window_closed": "The channel window is closed and there is no approved template or email.",
+          "template_unavailable": "The approved template is not available.",
+          "customer_erased": "The customer asked to be forgotten.",
+          "consent_revoked": "The customer withdrew consent to order messages.",
+          "unknown": "The server gave a reason this page does not know."
+        },
+        "sendDone": "Message sent.",
+        "sendDuplicate": "This press was already sent.",
+        "sendNotSent": "The message was not sent. {reason}",
+        "notify": {
+          "label": "Notify the customer",
+          "hint": "Starts from the setting of the message template."
+        }
+      }
+    }
+  }
+}

@@ -4,11 +4,12 @@ import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useFormatter, useTranslations } from 'next-intl'
-import type { ReactElement } from 'react'
+import { type ReactElement, useState } from 'react'
 
 import { ApiError, AppPaths, type OrderDetailView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
 import {
+  CarrierCapability,
   OrderCancellationReasons,
   OrderConfirmationChannel,
   PriceApprovalStatus
@@ -22,15 +23,31 @@ import { OrderDelivery } from '../../components/orders/order-delivery'
 import { OrderEditButton } from '../../components/orders/order-edit-button'
 import { OrderFileLink } from '../../components/orders/order-file-link'
 import { OrderFlowButtons } from '../../components/orders/order-flows'
+import { CreateGuideDialog } from '../../components/orders/order-guide-dialogs'
 import { OrderLines } from '../../components/orders/order-lines'
+import { OrderMessages } from '../../components/orders/order-messages'
 import { OrderNotes } from '../../components/orders/order-notes'
 import { OrderPayment } from '../../components/orders/order-payment'
 import { OrderPrintButtons } from '../../components/orders/order-print'
+import { OrderReturns } from '../../components/orders/order-returns'
+import { OrderShipping } from '../../components/orders/order-shipping'
 import { useStore } from '../../components/providers/store-context'
 import { Button } from '../../components/ui/button'
 import { useWarehousesOfStore } from '../../lib/inventory/use-inventory'
 import { asOrderStatus, asPriceApprovalStatus } from '../../lib/orders/order-detail-rules'
+import {
+  liveOutbound,
+  outboundStatusesOf,
+  takesPickupRequests
+} from '../../lib/orders/order-shipping-rules'
 import { useOrder, useOrderWrites } from '../../lib/orders/use-order'
+import {
+  useGuideConnections,
+  useOrderGuides,
+  useShipmentWrites
+} from '../../lib/orders/use-order-guides'
+
+const CANCEL_CAPABILITY: string = CarrierCapability.CANCEL_SHIPMENT
 
 function BackLink(): ReactElement {
   const t = useTranslations('orders.detail')
@@ -163,6 +180,15 @@ export function OrderDetailPage(): ReactElement {
   const mayView = can(ClientPermissions.ORDERS_VIEW)
   const order = useOrder(storeId, orderId, mayView)
   const writes = useOrderWrites(storeId, orderId)
+  const shipments = useOrderGuides(
+    storeId,
+    orderId,
+    mayView && can(ClientPermissions.SHIPPING_VIEW)
+  )
+  const canSeeShipments = can(ClientPermissions.SHIPPING_VIEW)
+  const shipmentWrites = useShipmentWrites(storeId, orderId)
+  const connections = useGuideConnections(storeId, mayView && can(ClientPermissions.SHIPPING_VIEW))
+  const [guideOpen, setGuideOpen] = useState(false)
   const warehouses = useWarehousesOfStore(storeId, can(ClientPermissions.INVENTORY_VIEW))
   const warehouseNames = new Map((warehouses.data ?? []).map(w => [w.id, w.name]))
 
@@ -242,11 +268,60 @@ export function OrderDetailPage(): ReactElement {
         <div className="flex flex-col gap-6">
           <OrderNotes order={data} writes={writes} />
           <OrderLines order={data} warehouseNames={warehouseNames} />
+          <OrderShipping
+            order={data}
+            shipments={shipments.data ?? []}
+            isPending={shipments.isPending}
+            isError={shipments.isError}
+            writes={shipmentWrites}
+            carrierCanCancel={connectionId => {
+              const found = connections.data?.find(entry => entry.id === connectionId)
+              return found === undefined ? null : found.capabilities.includes(CANCEL_CAPABILITY)
+            }}
+            carrierTakesPickups={connectionId => {
+              const found = connections.data?.find(entry => entry.id === connectionId)
+              return found === undefined ? null : takesPickupRequests(found)
+            }}
+            onCreateGuide={
+              connections.data === undefined
+                ? undefined
+                : () => {
+                    shipmentWrites.create.reset()
+                    setGuideOpen(true)
+                  }
+            }
+          />
+          <OrderMessages order={data} />
+          <OrderReturns
+            order={data}
+            outboundStatuses={
+              shipments.data === undefined ? null : outboundStatusesOf(shipments.data)
+            }
+            warehouses={warehouses.data ?? []}
+            connections={connections.data}
+          />
+          {guideOpen && connections.data !== undefined ? (
+            <CreateGuideDialog
+              order={data}
+              connections={connections.data}
+              writes={shipmentWrites}
+              onClose={() => setGuideOpen(false)}
+            />
+          ) : null}
         </div>
         <div className="flex flex-col gap-6">
           <CustomerBlock order={data} />
           <OrderPayment order={data} writes={writes} />
-          <OrderDelivery order={data} writes={writes} />
+          <OrderDelivery
+            order={data}
+            writes={writes}
+            hasActiveShipment={
+              // Fail closed while the guides are not known (loading or failed): a member who may not read them is left to the api
+              canSeeShipments
+                ? shipments.data === undefined || liveOutbound(shipments.data).length > 0
+                : false
+            }
+          />
           <OrderEvents order={data} />
         </div>
       </div>

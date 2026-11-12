@@ -49,6 +49,7 @@ const item = {
   lines: [],
   flagCustomer: false,
   flagReason: null,
+  confirmDelivered: false,
   outcome: null,
   errorCode: null,
   returnId: null,
@@ -110,7 +111,7 @@ describe('reception api', () => {
     expect(gone.fetchImpl.mock.calls[0]?.[1].method).toBe('DELETE')
   })
 
-  it('reads the three answers of a scan', async () => {
+  it('reads the four answers of a scan', async () => {
     const added = setup(json(200, { result: ReceptionScanResults.ADDED, item }))
     const found = await scanReceptionCode(added.client, 's', 'b1', { code: 'G-1' })
     expect(found.result).toBe(ReceptionScanResults.ADDED)
@@ -137,5 +138,29 @@ describe('reception api', () => {
     )
     const answer = await scanReceptionCode(many.client, 's', 'b1', { code: 'G-1' })
     expect(answer.result === ReceptionScanResults.AMBIGUOUS && answer.candidates).toHaveLength(1)
+
+    const delivered = setup(
+      json(200, {
+        result: ReceptionScanResults.NEEDS_CONFIRMATION,
+        candidate: {
+          shipmentId: 's1',
+          guideNumber: 'G-1',
+          orderNumber: '00001',
+          status: ShipmentStatus.DELIVERED,
+          kind: ShipmentKind.OUTBOUND
+        }
+      })
+    )
+    const asked = await scanReceptionCode(delivered.client, 's', 'b1', {
+      code: 'G-1',
+      confirmDelivered: true
+    })
+    expect(asked.result === ReceptionScanResults.NEEDS_CONFIRMATION && asked.candidate.status).toBe(
+      ShipmentStatus.DELIVERED
+    )
+    expect(JSON.parse(delivered.fetchImpl.mock.calls[0]?.[1].body as string)).toEqual({
+      code: 'G-1',
+      confirmDelivered: true
+    })
   })
 })

@@ -1,0 +1,143 @@
+{
+  "returns": {
+    "list": {
+      "pageTitle": "Devoluciones",
+      "description": "Las devoluciones y los cambios de la tienda, de la más reciente a la más antigua. Abre una para aprobarla, recibirla o cerrarla.",
+      "caption": "Devoluciones de la tienda",
+      "filtersLabel": "Filtrar las devoluciones",
+      "filters": {
+        "status": "Estado",
+        "anyStatus": "Cualquier estado",
+        "orderNumber": "Número de pedido",
+        "orderNumberHint": "Como está impreso, por ejemplo 00041.",
+        "from": "Desde el día",
+        "to": "Hasta el día",
+        "apply": "Aplicar",
+        "clear": "Quitar los filtros",
+        "rangeBackwards": "El primer día es posterior al último.",
+        "orderNumberTooLong": "Ese número de pedido es demasiado largo."
+      },
+      "columns": {
+        "order": "Pedido",
+        "type": "Tipo",
+        "reason": "Motivo",
+        "status": "Estado",
+        "created": "Creada",
+        "units": "Unidades"
+      },
+      "openReturn": "Abrir la devolución del pedido {number}",
+      "units": "{count, plural, one {# unidad} other {# unidades}}",
+      "empty": "Todavía no hay devoluciones. Una devolución empieza desde un pedido que ya se entregó.",
+      "emptyFiltered": "Ninguna devolución coincide con estos filtros.",
+      "loadMore": "Cargar más",
+      "receive": "Recibir paquetes con el escáner"
+    },
+    "detail": {
+      "back": "Volver a las devoluciones",
+      "notFound": "Esta devolución no existe en esta tienda.",
+      "heading": "Devolución del pedido {number}",
+      "made": "Creada el {date}",
+      "receivedOn": "Recibida el {date}",
+      "openOrder": "Abrir el pedido {number}",
+      "reasonLabel": "Motivo",
+      "notesLabel": "Notas para el equipo",
+      "payerLabel": "Quién paga el regreso",
+      "linesHeading": "Unidades que regresan",
+      "lineColumns": {
+        "product": "Producto",
+        "quantity": "Unidades",
+        "condition": "Condición"
+      },
+      "notReceived": "Aún sin recibir",
+      "refunded": "Reembolsado a mano: {amount}",
+      "noRefund": "No hay reembolso registrado.",
+      "guideHeading": "El regreso",
+      "hasGuide": "La guía del regreso ya está hecha. Su historial está en el panel de envío del pedido.",
+      "noGuide": "Todavía no hay guía del regreso.",
+      "replacementHeading": "Reemplazo",
+      "replacement": "Abrir el pedido de reemplazo",
+      "exchangeNotice": "Cancelar o rechazar un cambio deja el pedido de reemplazo como está: cancela también ese pedido si el reemplazo no debe salir.",
+      "actionsHeading": "Qué se puede hacer",
+      "noActions": "No se puede hacer nada más con esta devolución.",
+      "needsOrder": "El pedido de esta devolución todavía se está cargando.",
+      "needsOrderPermission": "Los movimientos de una devolución necesitan leer su pedido: pide el permiso para ver pedidos."
+    },
+    "reception": {
+      "pageTitle": "Recibir paquetes devueltos",
+      "description": "Escanea los paquetes que vuelven a la bodega. Cada uno se convierte en una devolución al cerrar el lote.",
+      "start": {
+        "body": "No hay un lote abierto. Empieza uno y escanea los paquetes a medida que llegan; se guarda sobre la marcha.",
+        "button": "Empezar un lote"
+      },
+      "batch": {
+        "counts": "{total, plural, one {# paquete} other {# paquetes}} en el lote, {received} recibidos, {failed} con error.",
+        "processing": "El lote se está recibiendo. La página se actualiza cuando termine.",
+        "empty": "Aún no se escaneó ningún paquete.",
+        "listLabel": "Paquetes del lote"
+      },
+      "scan": {
+        "formLabel": "Escanear un paquete",
+        "label": "Número de guía o de pedido",
+        "button": "Agregar",
+        "hint": "El lector escribe el código y pulsa Enter. También puedes escribirlo a mano.",
+        "notFound": "Ningún envío de esta tienda responde a {code}.",
+        "added": "Paquete del pedido {order} agregado."
+      },
+      "item": {
+        "label": "Paquete del pedido {order}",
+        "order": "Pedido {number}",
+        "guide": "Guía {number}",
+        "noGuide": "Sin número de guía",
+        "line": "{quantity} x {name}",
+        "confirmedDelivered": "Confirmado: la guía decía entregado y el paquete volvió igual.",
+        "customerIsCaution": "Este cliente ya está marcado con precaución.",
+        "flagPlanned": "El cliente se marcará al cerrar el lote.",
+        "flagApplied": "El cliente fue marcado.",
+        "edit": "Editar",
+        "remove": "Quitar el paquete del pedido {order}",
+        "removeShort": "Quitar",
+        "state": {
+          "pending": "En espera",
+          "received": "Recibido",
+          "failed": "Con error"
+        }
+      },
+      "editor": {
+        "formLabel": "Editar el paquete del pedido {order}",
+        "reason": "Motivo",
+        "condition": "Estado",
+        "note": "Nota",
+        "flag": "Marcar al cliente con precaución",
+        "flagHint": "Avisa al equipo en el perfil del cliente.",
+        "flagReason": "¿Por qué se marca al cliente?",
+        "flagNeedsReason": "Indica el motivo, aquí o en la nota.",
+        "save": "Guardar",
+        "cancel": "Cancelar"
+      },
+      "picker": {
+        "title": "¿Cuál es el paquete?",
+        "description": "Más de un envío responde a {code}. Elige el que tienes en las manos.",
+        "option": "Pedido {order}, guía {guide}",
+        "noGuide": "sin número",
+        "cancel": "Cancelar"
+      },
+      "confirmDelivered": {
+        "title": "Esta guía dice entregado",
+        "description": "La guía {guide} del pedido {order} se marcó como entregada. Agrégalo solo si el paquete de verdad volvió.",
+        "noGuide": "sin número",
+        "confirm": "Volvió, agregarlo",
+        "cancel": "Cancelar"
+      },
+      "complete": {
+        "button": "Cerrar el lote",
+        "retry": "Cerrar de nuevo y reintentar los que fallaron",
+        "title": "¿Cerrar el lote?",
+        "description": "{count, plural, one {Se recibirá # paquete} other {Se recibirán # paquetes}}: cada uno se convierte en una devolución y se registra su stock.",
+        "confirm": "Recibirlos",
+        "cancel": "Volver",
+        "done": "{count, plural, one {# paquete recibido.} other {# paquetes recibidos.}}",
+        "withErrors": "{received} recibidos, {failed} con error. Corrige los que fallaron y cierra de nuevo."
+      }
+    }
+  }
+}

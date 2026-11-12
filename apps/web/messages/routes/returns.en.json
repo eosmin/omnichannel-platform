@@ -1,0 +1,143 @@
+{
+  "returns": {
+    "list": {
+      "pageTitle": "Returns",
+      "description": "The returns and exchanges of the store, newest first. Open one to approve it, receive it or close it.",
+      "caption": "Returns of the store",
+      "filtersLabel": "Filter the returns",
+      "filters": {
+        "status": "State",
+        "anyStatus": "Any state",
+        "orderNumber": "Order number",
+        "orderNumberHint": "As printed, for example 00041.",
+        "from": "From day",
+        "to": "To day",
+        "apply": "Apply",
+        "clear": "Clear filters",
+        "rangeBackwards": "The first day is after the last.",
+        "orderNumberTooLong": "That order number is too long."
+      },
+      "columns": {
+        "order": "Order",
+        "type": "Type",
+        "reason": "Reason",
+        "status": "State",
+        "created": "Created",
+        "units": "Units"
+      },
+      "openReturn": "Open the return of order {number}",
+      "units": "{count, plural, one {# unit} other {# units}}",
+      "empty": "There are no returns yet. A return starts from an order that was delivered.",
+      "emptyFiltered": "No return matches these filters.",
+      "loadMore": "Load more",
+      "receive": "Receive packages with the scanner"
+    },
+    "detail": {
+      "back": "Back to the returns",
+      "notFound": "This return does not exist in this store.",
+      "heading": "Return of order {number}",
+      "made": "Created {date}",
+      "receivedOn": "Received {date}",
+      "openOrder": "Open order {number}",
+      "reasonLabel": "Reason",
+      "notesLabel": "Notes for the team",
+      "payerLabel": "Who pays the way back",
+      "linesHeading": "Units that come back",
+      "lineColumns": {
+        "product": "Product",
+        "quantity": "Units",
+        "condition": "Condition"
+      },
+      "notReceived": "Not received yet",
+      "refunded": "Refunded by hand: {amount}",
+      "noRefund": "No refund recorded.",
+      "guideHeading": "The way back",
+      "hasGuide": "The guide of the way back is made. Its history is in the shipping panel of the order.",
+      "noGuide": "No guide of the way back yet.",
+      "replacementHeading": "Replacement",
+      "replacement": "Open the replacement order",
+      "exchangeNotice": "Cancelling or rejecting an exchange leaves its replacement order as it is: cancel that order too if the replacement should not go out.",
+      "actionsHeading": "What can be done",
+      "noActions": "Nothing more can be done with this return.",
+      "needsOrder": "The order of this return is still loading.",
+      "needsOrderPermission": "The moves of a return need to read its order: ask for the permission to view orders."
+    },
+    "reception": {
+      "pageTitle": "Receive returned packages",
+      "description": "Scan the packages that come back to the warehouse. Each one becomes a return when you close the batch.",
+      "start": {
+        "body": "There is no batch open. Start one and scan the packages as they arrive; it is saved as you go.",
+        "button": "Start a batch"
+      },
+      "batch": {
+        "counts": "{total, plural, one {# package} other {# packages}} in the batch, {received} received, {failed} failed.",
+        "processing": "The batch is being received. This page updates when it ends.",
+        "empty": "No package scanned yet.",
+        "listLabel": "Packages of the batch"
+      },
+      "scan": {
+        "formLabel": "Scan a package",
+        "label": "Guide number or order number",
+        "button": "Add",
+        "hint": "The reader types the code and presses Enter. You can also type it by hand.",
+        "notFound": "No shipment of this store answers to {code}.",
+        "added": "Package of order {order} added."
+      },
+      "item": {
+        "label": "Package of order {order}",
+        "order": "Order {number}",
+        "guide": "Guide {number}",
+        "noGuide": "No guide number",
+        "line": "{quantity} x {name}",
+        "confirmedDelivered": "Confirmed: the guide said delivered and the package came back anyway.",
+        "customerIsCaution": "This customer is already flagged as a caution.",
+        "flagPlanned": "The customer will be flagged when the batch closes.",
+        "flagApplied": "The customer was flagged.",
+        "edit": "Edit",
+        "remove": "Remove the package of order {order}",
+        "removeShort": "Remove",
+        "state": {
+          "pending": "Waiting",
+          "received": "Received",
+          "failed": "Failed"
+        }
+      },
+      "editor": {
+        "formLabel": "Edit the package of order {order}",
+        "reason": "Reason",
+        "condition": "Condition",
+        "note": "Note",
+        "flag": "Flag the customer as a caution",
+        "flagHint": "Warns the team in the customer's profile.",
+        "flagReason": "Why is the customer flagged?",
+        "flagNeedsReason": "Say why, here or in the note.",
+        "save": "Save",
+        "cancel": "Cancel"
+      },
+      "picker": {
+        "title": "Which package is it?",
+        "description": "More than one shipment answers to {code}. Pick the one in your hands.",
+        "option": "Order {order}, guide {guide}",
+        "noGuide": "no number",
+        "cancel": "Cancel"
+      },
+      "confirmDelivered": {
+        "title": "This guide says delivered",
+        "description": "The guide {guide} of order {order} was marked as delivered. Add it only if the package really came back.",
+        "noGuide": "no number",
+        "confirm": "It came back, add it",
+        "cancel": "Cancel"
+      },
+      "complete": {
+        "button": "Close the batch",
+        "retry": "Close again and retry the failed packages",
+        "title": "Close the batch?",
+        "description": "{count, plural, one {# package} other {# packages}} will be received: each becomes a return and its stock is recorded.",
+        "confirm": "Receive them",
+        "cancel": "Back",
+        "done": "{count, plural, one {# package received.} other {# packages received.}}",
+        "withErrors": "{received} received, {failed} failed. Fix the failed ones and close again."
+      }
+    }
+  }
+}

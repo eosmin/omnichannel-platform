@@ -335,11 +335,13 @@ export function cancelOrder(
   client: ApiClient,
   storeId: string,
   orderId: string,
-  cancellationReason: string
+  cancellationReason: string,
+  // The "Notify customer" box: left out, the `autoSend` of the cancellation template decides
+  notifyCustomer?: boolean
 ): Promise<OrderDetailView> {
   return client.request(ApiRoutes.orders.cancel(orderId), {
     method: 'POST',
-    body: { cancellationReason },
+    body: { cancellationReason, ...(notifyCustomer === undefined ? {} : { notifyCustomer }) },
     schema: orderDetailSchema,
     storeId
   })

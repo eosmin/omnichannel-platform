@@ -1,8 +1,10 @@
 import { createApiClient } from './api-client'
 import {
   fetchBulkLabelJob,
+  fetchOrderMessages,
   fetchShipmentsForOrders,
   mergeLabels,
+  previewOrderMessage,
   requestPickup,
   sendOrderMessage,
   startBulkLabels
@@ -155,5 +157,42 @@ describe('shipping api', () => {
       kind: 'order_summary',
       idempotencyKey: 'press-0001'
     })
+  })
+
+  it('reads a page of the history of an order and follows its cursor', async () => {
+    const item = {
+      id: 'd1',
+      kind: 'order_shipped',
+      trigger: 'manual',
+      route: 'not_sent',
+      status: 'not_sent',
+      reason: 'missing_variable',
+      locale: null,
+      shipmentId: null,
+      deliveryStatus: null,
+      deliveryError: null,
+      requestedBy: { id: 'u1', name: 'Ana' },
+      createdAt: '2026-11-12T10:00:00.000Z'
+    }
+    const { client, fetchImpl } = setup(
+      json(200, { data: [item], nextCursor: 'c2', hasMore: true })
+    )
+    const page = await fetchOrderMessages(client, 's1', 'o1', 'c1')
+    expect(page.data[0]?.reason).toBe('missing_variable')
+    expect(page.nextCursor).toBe('c2')
+    const { url, headers } = callOf(fetchImpl)
+    expect(url).toContain('/orders/o1/messages?cursor=c1')
+    expect(headers.get('x-store-id')).toBe('s1')
+  })
+
+  it('previews a message with the preview flag and no key, and reads a refusal', async () => {
+    const { client, fetchImpl } = setup(
+      json(200, { preview: true, ok: false, reason: 'missing_variable', missing: ['trackingUrl'] })
+    )
+    const preview = await previewOrderMessage(client, 's1', 'o1', 'order_shipped')
+    expect(preview).toEqual({ ok: false, reason: 'missing_variable', missing: ['trackingUrl'] })
+    const { url, init } = callOf(fetchImpl)
+    expect(url).toContain('/orders/o1/messages?preview=true')
+    expect(JSON.parse(init.body as string)).toEqual({ kind: 'order_shipped' })
   })
 })

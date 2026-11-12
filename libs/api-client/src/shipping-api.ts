@@ -176,6 +176,28 @@ const messageOutcomeSchema = z.object({
 })
 export type OrderMessageOutcomeView = z.output<typeof messageOutcomeSchema>
 
+// What a preview answers: the text the customer would read, or why the message cannot be made (with the variables that have no value)
+const messagePreviewSchema = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true), text: z.string(), locale: z.string() }),
+  z.object({ ok: z.literal(false), reason: z.string(), missing: z.array(z.string()) })
+])
+export type OrderMessagePreviewView = z.output<typeof messagePreviewSchema>
+
+// The message as the customer would read it, from the real order; nothing is sent and nothing is written
+export function previewOrderMessage(
+  client: ApiClient,
+  storeId: string,
+  orderId: string,
+  kind: string
+): Promise<OrderMessagePreviewView> {
+  return client.request(`${ApiRoutes.orders.messages(orderId)}?preview=true`, {
+    method: 'POST',
+    body: { kind },
+    schema: messagePreviewSchema,
+    storeId
+  })
+}
+
 // One press of the button is one key: the order is sent once even when the answer is lost and the press is repeated
 export function sendOrderMessage(
   client: ApiClient,
@@ -188,5 +210,48 @@ export function sendOrderMessage(
     body: input,
     schema: messageOutcomeSchema,
     storeId
+  })
+}
+
+// One message about an order that was asked for (the history of the Messages panel): where it went, or why it did not. The text of
+// the message is not part of it. States, routes, kinds and reasons stay text, as above.
+const messageHistoryItemSchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  trigger: z.string(),
+  route: z.string(),
+  status: z.string(),
+  reason: z.string().nullable(),
+  locale: z.string().nullable(),
+  shipmentId: z.string().nullable(),
+  deliveryStatus: z.string().nullable(),
+  deliveryError: z.string().nullable(),
+  requestedBy: z.object({ id: z.string(), name: z.string() }).nullable(),
+  createdAt: z.string()
+})
+export type OrderMessageHistoryItemView = z.output<typeof messageHistoryItemSchema>
+
+const messageHistoryPageSchema = z.object({
+  data: z.array(messageHistoryItemSchema),
+  nextCursor: z.string().nullable(),
+  hasMore: z.boolean()
+})
+export type OrderMessageHistoryPageView = z.output<typeof messageHistoryPageSchema>
+
+// A page of the history, newest first; the cursor of the last page asks for the next one
+export function fetchOrderMessages(
+  client: ApiClient,
+  storeId: string,
+  orderId: string,
+  cursor?: string,
+  signal?: AbortSignal
+): Promise<OrderMessageHistoryPageView> {
+  const search = new URLSearchParams()
+  if (cursor !== undefined) search.set('cursor', cursor)
+  const query = search.size === 0 ? '' : `?${search.toString()}`
+  return client.request(`${ApiRoutes.orders.messages(orderId)}${query}`, {
+    schema: messageHistoryPageSchema,
+    storeId,
+    signal
   })
 }

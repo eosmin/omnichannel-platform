@@ -47,8 +47,12 @@ export const AppPaths = {
     shipments: (storeId: string) => `/s/${storeId}/shipments`,
     pickups: (storeId: string) => `/s/${storeId}/pickups`,
     returns: (storeId: string) => `/s/${storeId}/returns`,
+    return: (storeId: string, returnId: string) => `/s/${storeId}/returns/${returnId}`,
     returnsReception: (storeId: string) => `/s/${storeId}/returns/receive`,
     remittances: (storeId: string) => `/s/${storeId}/remittances`,
+    remittance: (storeId: string, remittanceId: string) =>
+      `/s/${storeId}/remittances/${remittanceId}`,
+    remittanceImport: (storeId: string) => `/s/${storeId}/remittances/import`,
     analytics: (storeId: string) => `/s/${storeId}/analytics`,
     settings: (storeId: string, section: StoreSettingsSection = StoreSettingsSections.GENERAL) =>
       `/s/${storeId}/settings/${section}`,

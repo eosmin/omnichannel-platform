@@ -52,12 +52,18 @@ export class PreferencesService {
       // Merged over what is stored, key by key: a key this version does not know stays as it is, and the
       // `orders` block is merged by its own keys, so a page that sends one of them cannot reset the rest
       const base = asRecord(current.preferences)
-      const { orders: orderChanges, remittances: remittanceChanges, ...flatChanges } = body
+      const {
+        orders: orderChanges,
+        returns: returnChanges,
+        remittances: remittanceChanges,
+        ...flatChanges
+      } = body
       const changes: JsonObject = Object.fromEntries(
         Object.entries(flatChanges).filter(([, value]) => value !== undefined)
       )
       for (const [block, blockChanges] of [
         ['orders', orderChanges],
+        ['returns', returnChanges],
         ['remittances', remittanceChanges]
       ] as const) {
         if (blockChanges === undefined) continue
@@ -105,11 +111,12 @@ function asRecord(value: unknown): JsonObject {
     : {}
 }
 
-// The preferences as one level of keys, `orders.<key>` and `remittances.<key>` for the keys of the blocks
+// The preferences as one level of keys, `orders.<key>`, `returns.<key>` and `remittances.<key>` for the keys of the blocks
 function flatten(preferences: StorePreferences): Record<string, unknown> {
-  const { orders, remittances, ...flat } = preferences
+  const { orders, returns, remittances, ...flat } = preferences
   return {
     ...flat,
+    ...Object.fromEntries(Object.entries(returns).map(([key, value]) => [`returns.${key}`, value])),
     ...Object.fromEntries(Object.entries(orders).map(([key, value]) => [`orders.${key}`, value])),
     ...Object.fromEntries(
       Object.entries(remittances).map(([key, value]) => [`remittances.${key}`, value])

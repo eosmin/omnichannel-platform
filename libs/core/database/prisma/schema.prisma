@@ -1990,6 +1990,7 @@ model OrderReturn {
   @@index([orderId])
   @@index([storeId, orderId])
   @@index([storeId, status])
+  @@index([storeId, createdAt(sort: Desc), id(sort: Desc)], map: "order_returns_store_created_idx")
   @@index([replacementOrderId])
   @@index([returnShipmentId])
   @@map("order_returns")
@@ -2040,21 +2041,23 @@ model ReturnReceptionBatch {
 // return yet comes back, in `condition`) and otherwise holds [{ orderItemId, quantity, condition, restockWarehouseId? }].
 // `outcome` is null until the batch is completed; `returnId` is set when the package was received.
 model ReturnReceptionItem {
-  id            String    @id @default(uuid())
-  storeId       String    @map("store_id")
-  batchId       String    @map("batch_id")
-  shipmentId    String    @map("shipment_id")
-  reason        String // OrderReturnReason key
-  condition     String    @default("resellable") // OrderReturnCondition, for the lines that name none
-  note          String?
-  lines         Json      @default("[]")
-  flagCustomer  Boolean   @default(false) @map("flag_customer")
-  flagReason    String?   @map("flag_reason")
-  outcome       String? // ReceptionItemOutcome
-  errorCode     String?   @map("error_code")
-  returnId      String?   @map("return_id")
-  flagAppliedAt DateTime? @map("flag_applied_at")
-  scannedAt     DateTime  @default(now()) @map("scanned_at")
+  id               String    @id @default(uuid())
+  storeId          String    @map("store_id")
+  batchId          String    @map("batch_id")
+  shipmentId       String    @map("shipment_id")
+  reason           String // OrderReturnReason key
+  condition        String    @default("resellable") // OrderReturnCondition, for the lines that name none
+  note             String?
+  lines            Json      @default("[]")
+  flagCustomer     Boolean   @default(false) @map("flag_customer")
+  flagReason       String?   @map("flag_reason")
+  // The agent confirmed that a package whose guide is DELIVERED came back anyway (TDD_17 §4.16)
+  confirmDelivered Boolean   @default(false) @map("confirm_delivered")
+  outcome          String? // ReceptionItemOutcome
+  errorCode        String?   @map("error_code")
+  returnId         String?   @map("return_id")
+  flagAppliedAt    DateTime? @map("flag_applied_at")
+  scannedAt        DateTime  @default(now()) @map("scanned_at")
 
   store       Store                @relation(fields: [storeId], references: [id], onDelete: Restrict)
   batch       ReturnReceptionBatch @relation(fields: [storeId, batchId], references: [storeId, id], onDelete: Cascade)
