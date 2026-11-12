@@ -6,6 +6,8 @@ import { CurrentUser } from '@platform/core/auth-module'
 import {
   type CompleteReturnBody,
   completeReturnSchema,
+  type ApproveReturnBody,
+  approveReturnSchema,
   type CreateReturnBody,
   createReturnSchema,
   type CursorPage,
@@ -75,10 +77,11 @@ export class ReturnsController {
     @CurrentStore() store: Store,
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', id()) returnId: string,
+    @Body(new ZodValidationPipe(approveReturnSchema.default({}))) body: ApproveReturnBody,
     @Req() req: AuthenticatedRequest
   ): Promise<ReturnView> {
     return this.returns
-      .approve(store.id, returnId, actorOf(user, store, req))
+      .approve(store.id, returnId, body, actorOf(user, store, req))
       .then(returnId => this.queries.get(store.id, returnId))
   }
 

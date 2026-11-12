@@ -9,6 +9,7 @@ import {
   type PrismaTransaction
 } from '@platform/core/database'
 import {
+  type ApproveReturnBody,
   canMoveReturn,
   checkReturnableOrder,
   checkReturnLines,
@@ -16,6 +17,7 @@ import {
   type CompleteReturnBody,
   type CreateReturnBody,
   defaultRestockWarehouse,
+  exchangeCreditCents,
   InventoryReferenceType,
   OrderLockScopes,
   OrderReturnCondition,
@@ -52,7 +54,7 @@ import {
   warehouseNotLinked
 } from '@platform/core/inventory'
 
-import { ReturnOrderPort } from './return-order.port'
+import { type ReplacementOrderMade, ReturnOrderPort } from './return-order.port'
 import { isShipmentTransitionAllowed } from './shipment-rules'
 import { ShipmentWrites } from './shipment-writes'
 
@@ -136,10 +138,6 @@ export class ReturnsService {
   // ------------------------------------------------------------------------------------------ the life of a return
 
   async create(storeId: string, body: CreateReturnBody, actor: ReturnActor): Promise<string> {
-    // The replacement order of an exchange is the work of PR R1b (the plan of Step 4.12 owns it): until then only a refund is made
-    if (body.type !== OrderReturnType.REFUND) {
-      throw invalid('exchanges are not available yet', ErrorCodes.VALIDATION_INVALID_INPUT)
-    }
     const created = await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
       await this.orders.lockOrder(tx, storeId, body.orderId)
@@ -206,10 +204,82 @@ export class ReturnsService {
     return created.id
   }
 
-  async approve(storeId: string, returnId: string, actor: ReturnActor): Promise<string> {
-    const result = await this.move(storeId, returnId, OrderReturnStatus.APPROVED, actor, null)
+  // Approving a refund only moves the status. Approving an exchange also makes its replacement order (TDD_17 §4.11), in the same
+  // transaction: a replacement that cannot be made (no stock, a fee out of range) leaves the return as it was. The credit is the
+  // value of the returned lines at the price they were sold at; the replacement is what the agent picked, so its total is the price
+  // difference, and what the credit has left over is the refund the owner settles by hand.
+  async approve(
+    storeId: string,
+    returnId: string,
+    body: ApproveReturnBody,
+    actor: ReturnActor
+  ): Promise<string> {
+    const result = await this.prisma.transaction(async tx => {
+      const loaded = await this.lock(tx, storeId, returnId, true)
+      this.assertMove(loaded.status, OrderReturnStatus.APPROVED)
+      const isExchange = loaded.type === OrderReturnType.EXCHANGE
+      if (isExchange !== (body.replacement !== undefined)) {
+        throw invalid(
+          isExchange
+            ? 'an exchange is approved with its replacement'
+            : 'only an exchange has a replacement',
+          ErrorCodes.VALIDATION_INVALID_INPUT
+        )
+      }
+      let replacement: ReplacementOrderMade | null = null
+      if (body.replacement !== undefined) {
+        const items = await tx.orderItem.findMany({
+          where: {
+            id: { in: loaded.lines.map(line => line.orderItemId) },
+            orderId: loaded.orderId
+          },
+          select: { id: true, unitPriceCents: true }
+        })
+        const priceOf = new Map(items.map(item => [item.id, item.unitPriceCents]))
+        replacement = await this.orders.createReplacement(
+          tx,
+          storeId,
+          {
+            ofOrderId: loaded.orderId,
+            returnId,
+            creditCents: exchangeCreditCents(
+              loaded.lines.map(line => ({
+                unitPriceCents: priceOf.get(line.orderItemId) ?? 0,
+                quantity: line.quantity
+              }))
+            ),
+            replacement: body.replacement
+          },
+          actor
+        )
+      }
+      await tx.orderReturn.update({
+        where: { id: returnId },
+        data: {
+          status: OrderReturnStatus.APPROVED,
+          ...(replacement === null ? {} : { replacementOrderId: replacement.orderId })
+        }
+      })
+      this.events.publish(tx, Events.RETURN_APPROVED, {
+        storeId,
+        orderId: loaded.orderId,
+        orderNumber: loaded.orderNumber,
+        returnId,
+        actor: actorRef(actor)
+      })
+      return { orderNumber: loaded.orderNumber, replacement }
+    })
+    result.replacement?.afterCommit()
     this.record(AuditAction.RETURN_APPROVED, storeId, returnId, actor, {
-      orderNumber: result.orderNumber
+      orderNumber: result.orderNumber,
+      ...(result.replacement === null
+        ? {}
+        : {
+            replacementOrderId: result.replacement.orderId,
+            replacementOrderNumber: result.replacement.orderNumber,
+            creditAppliedCents: result.replacement.creditAppliedCents,
+            excessCents: result.replacement.excessCents
+          })
     })
     return returnId
   }
