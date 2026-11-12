@@ -1,9 +1,9 @@
-import { Body, Controller, HttpCode, Param, Post, Query } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, Param, Post, Query } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
-import { OrderMessageTriggers, uuidSchema } from '@platform/core/domain'
+import { type CursorPage, OrderMessageTriggers, uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 import { invalidInput } from '@platform/core/messaging'
@@ -12,6 +12,12 @@ import { pressedDispatchKey } from '@platform/core/shipping'
 import { CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
 
 import {
+  type OrderMessageHistoryItem,
+  OrderMessageHistoryService
+} from './order-message-history.service'
+import {
+  type ListOrderMessagesQuery,
+  listOrderMessagesQuerySchema,
   type SendOrderMessageBody,
   type SendOrderMessageQuery,
   sendOrderMessageQuerySchema,
@@ -27,7 +33,21 @@ import {
 // TenantGuard resolved, never by a value of the request, so an order of another store is one that does not exist.
 @Controller()
 export class OrderMessagesController {
-  constructor(private readonly messages: OrderMessagesService) {}
+  constructor(
+    private readonly messages: OrderMessagesService,
+    private readonly history: OrderMessageHistoryService
+  ) {}
+
+  // What was sent about the order, or not sent and why, newest first
+  @RequirePermissions(Permissions.ORDERS_VIEW)
+  @Get(ApiRoutes.orders.messages(':id'))
+  list(
+    @CurrentStore() store: ResolvedTenant['store'],
+    @Param('id', new ZodValidationPipe(uuidSchema)) orderId: string,
+    @Query(new ZodValidationPipe(listOrderMessagesQuerySchema)) query: ListOrderMessagesQuery
+  ): Promise<CursorPage<OrderMessageHistoryItem>> {
+    return this.history.list(store.id, orderId, query)
+  }
 
   @RequirePermissions(Permissions.ORDERS_SEND_MESSAGES)
   @Post(ApiRoutes.orders.messages(':id'))

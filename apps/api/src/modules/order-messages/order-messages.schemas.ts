@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { uuidSchema } from '@platform/core/domain'
+import { PaginationLimits, uuidSchema } from '@platform/core/domain'
 
 import { kindSchema } from './order-templates.schemas'
 
@@ -29,3 +29,33 @@ export const sendOrderMessageQuerySchema = z.strictObject({
     .transform(value => value === 'true')
 })
 export type SendOrderMessageQuery = z.output<typeof sendOrderMessageQuerySchema>
+
+// Where the next page of the history of an order starts: the moment and the id of the last row shown, so that a row written
+// meanwhile does not shift the page
+export interface OrderMessageCursor {
+  createdAt: Date
+  id: string
+}
+
+export function encodeOrderMessageCursor(row: OrderMessageCursor): string {
+  return Buffer.from(JSON.stringify([row.createdAt.toISOString(), row.id])).toString('base64url')
+}
+
+const cursorParts = z.tuple([z.iso.datetime(), z.uuid()])
+
+export const orderMessageCursorSchema = z.string().transform((text, ctx): OrderMessageCursor => {
+  try {
+    const parts = cursorParts.safeParse(JSON.parse(Buffer.from(text, 'base64url').toString('utf8')))
+    if (parts.success) return { createdAt: new Date(parts.data[0]), id: parts.data[1] }
+  } catch {
+    // Not JSON: the issue below says so
+  }
+  ctx.addIssue({ code: 'custom', message: 'not a cursor of this api' })
+  return z.NEVER
+})
+
+export const listOrderMessagesQuerySchema = z.strictObject({
+  cursor: orderMessageCursorSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
+})
+export type ListOrderMessagesQuery = z.output<typeof listOrderMessagesQuerySchema>

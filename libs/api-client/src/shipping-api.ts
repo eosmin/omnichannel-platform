@@ -190,3 +190,44 @@ export function sendOrderMessage(
     storeId
   })
 }
+
+// One message about an order that was asked for (the history of the Messages panel): where it went, or why it did not. The text of
+// the message is not part of it. States, routes, kinds and reasons stay text, as above.
+const messageHistoryItemSchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  trigger: z.string(),
+  route: z.string(),
+  status: z.string(),
+  reason: z.string().nullable(),
+  locale: z.string().nullable(),
+  shipmentId: z.string().nullable(),
+  deliveryStatus: z.string().nullable(),
+  deliveryError: z.string().nullable(),
+  requestedBy: z.object({ id: z.string(), name: z.string() }).nullable(),
+  createdAt: z.string()
+})
+export type OrderMessageHistoryItemView = z.output<typeof messageHistoryItemSchema>
+
+const messageHistoryPageSchema = z.object({
+  data: z.array(messageHistoryItemSchema),
+  nextCursor: z.string().nullable(),
+  hasMore: z.boolean()
+})
+export type OrderMessageHistoryPageView = z.output<typeof messageHistoryPageSchema>
+
+// A page of the history, newest first; the cursor of the last page asks for the next one
+export function fetchOrderMessages(
+  client: ApiClient,
+  storeId: string,
+  orderId: string,
+  cursor?: string
+): Promise<OrderMessageHistoryPageView> {
+  const search = new URLSearchParams()
+  if (cursor !== undefined) search.set('cursor', cursor)
+  const query = search.size === 0 ? '' : `?${search.toString()}`
+  return client.request(`${ApiRoutes.orders.messages(orderId)}${query}`, {
+    schema: messageHistoryPageSchema,
+    storeId
+  })
+}

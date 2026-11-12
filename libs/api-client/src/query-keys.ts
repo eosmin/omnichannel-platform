@@ -80,6 +80,9 @@ export const QueryKeys = {
       ['orders', storeId, 'list', filter, sort] as const,
     // Under the order: whatever changes an order makes its detail stale
     byId: (storeId: string, orderId: string) => ['orders', storeId, orderId] as const,
+    // The messages that were asked for about the order (its history), under the order
+    messages: (storeId: string, orderId: string) =>
+      ['orders', storeId, orderId, 'messages'] as const,
     // The draft of "Copy order": read fresh every time it is opened, and outside `orders.all` so that an event of the
     // orders never rebuilds a draft the agent is editing
     copy: (storeId: string, orderId: string) => ['order-copy', storeId, orderId] as const
