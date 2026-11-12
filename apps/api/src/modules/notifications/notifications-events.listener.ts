@@ -547,7 +547,12 @@ export class NotificationsEventsListener {
     const { storeId, returnId, orderNumber, actor } = payload
     try {
       // The notice links to the returns screen, not to an order: who receives returns need not read orders
-      const members = await this.membersWith(storeId, [Permissions.RETURNS_MANAGE], actor.id, false)
+      const members = await this.membersWith(
+        storeId,
+        [Permissions.RETURNS_MANAGE],
+        actor.id,
+        Permissions.RETURNS_VIEW
+      )
       await this.notifications.sendToUsers(members, {
         storeId,
         type: NotificationTypes.RETURN_AWAITING_RECEIPT,
@@ -595,8 +600,8 @@ export class NotificationsEventsListener {
     storeId: string,
     permissions: readonly Permission[],
     exceptUserId: string | null,
-    // The notices of orders link to the order, so they go to who may read orders; a notice that links elsewhere says so
-    needsOrdersView = true
+    // The notice links to a screen, so it goes to who may read it: orders by default, another screen says which permission
+    readPermission: Permission = Permissions.ORDERS_VIEW
   ): Promise<string[]> {
     const members = await this.prisma.client.membership.findMany({
       where: {
@@ -607,9 +612,7 @@ export class NotificationsEventsListener {
         // Who holds one of the permissions AND may read orders: the notice carries a link to the order
         AND: [
           { role: { permissions: { some: { name: { in: [...permissions] } } } } },
-          ...(needsOrdersView
-            ? [{ role: { permissions: { some: { name: Permissions.ORDERS_VIEW } } } }]
-            : [])
+          { role: { permissions: { some: { name: readPermission } } } }
         ]
       },
       select: { userId: true }

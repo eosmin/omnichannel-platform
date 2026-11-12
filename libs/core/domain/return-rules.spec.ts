@@ -36,6 +36,17 @@ describe('which orders can be returned', () => {
         checkReturnableOrder({ orderStatus: OrderStatus.SHIPPED, outboundStatuses: [status] }).ok
       ).toBe(true)
     }
+    // A shipped order is returnable from its guides: with none, or with none coming back, it is not; with one of several guides
+    // coming back it is (the units are counted when they arrive, never before)
+    expect(
+      checkReturnableOrder({ orderStatus: OrderStatus.SHIPPED, outboundStatuses: [] }).ok
+    ).toBe(false)
+    expect(
+      checkReturnableOrder({
+        orderStatus: OrderStatus.SHIPPED,
+        outboundStatuses: [ShipmentStatus.RETURNING, ShipmentStatus.IN_TRANSIT]
+      }).ok
+    ).toBe(true)
     for (const orderStatus of [
       OrderStatus.SHIPPED,
       OrderStatus.CONFIRMED,
@@ -173,5 +184,8 @@ describe('the machine and the refund', () => {
   it('leaves no room for a refund above what the customer paid', () => {
     expect(refundRoom({ orderTotalCents: 5000, alreadyRefundedCents: 2000 })).toBe(3000)
     expect(refundRoom({ orderTotalCents: 5000, alreadyRefundedCents: 6000 })).toBe(0)
+    // All of it already given back leaves none, and nothing given back leaves the whole total
+    expect(refundRoom({ orderTotalCents: 5000, alreadyRefundedCents: 5000 })).toBe(0)
+    expect(refundRoom({ orderTotalCents: 5000, alreadyRefundedCents: 0 })).toBe(5000)
   })
 })

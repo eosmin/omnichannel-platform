@@ -8,7 +8,8 @@ import {
   OrderReturnStatus,
   OrderReturnType,
   type ReceiveReturnBody,
-  type ReturnDecisionBody
+  type ReturnDecisionBody,
+  ShippingPayer
 } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
@@ -33,7 +34,7 @@ const returnSchema = z.object({
   // The key of the reason (`DEFECTIVE`): the screen translates it
   reason: z.string(),
   status: z.enum(OrderReturnStatus),
-  shippingPayer: z.string(),
+  shippingPayer: z.enum(ShippingPayer),
   replacementOrderId: z.string().nullable(),
   returnShipmentId: z.string().nullable(),
   refundAmountCents: z.number().int().nullable(),

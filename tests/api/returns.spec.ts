@@ -118,6 +118,17 @@ describe('The returns of an order', () => {
       // A rejected return gives its units back
       expect((await admin().post(ApiRoutes.returns.reject(first.id)).send({})).status).toBe(OK)
       expect((await open(order.id, [{ orderItemId: itemId, quantity: 3 }])).status).toBe(CREATED)
+      // So does a cancelled one: everything is held again (3 + 1), and the unit it frees can be asked for
+      const full = await open(order.id, [{ orderItemId: itemId, quantity: 1 }])
+      expect(full.status).toBe(CONFLICT)
+      expect(
+        (
+          await admin()
+            .post(ApiRoutes.returns.cancel((last.body as ReturnBody).id))
+            .send({})
+        ).status
+      ).toBe(OK)
+      expect((await open(order.id, [{ orderItemId: itemId, quantity: 1 }])).status).toBe(CREATED)
       expect(((await admin().get(ApiRoutes.orders.byId(order.id))).body as OrderBody).status).toBe(
         'DELIVERED'
       )
@@ -157,6 +168,26 @@ describe('The returns of an order', () => {
     })
   })
 
+  describe('the notes', () => {
+    it('keeps the note of the request when a decision adds its own', async () => {
+      const { order, itemId } = await delivered(2)
+      const ret = (
+        await open(order.id, [{ orderItemId: itemId, quantity: 1 }], {
+          notes: 'box arrived crushed'
+        })
+      ).body as ReturnBody
+
+      const rejected = await admin()
+        .post(ApiRoutes.returns.reject(ret.id))
+        .send({ notes: 'duplicate' })
+
+      expect(rejected.status).toBe(OK)
+      expect((rejected.body as ReturnBody & { notes: string }).notes).toBe(
+        'box arrived crushed\nduplicate'
+      )
+    })
+  })
+
   describe('the machine of states', () => {
     it('moves forward only, and a receipt needs an approval first', async () => {
       const { order, itemId } = await delivered(2)
@@ -170,14 +201,18 @@ describe('The returns of an order', () => {
       expect((await admin().post(ApiRoutes.returns.approve(ret.id)).send()).status).toBe(OK)
       const again = await admin().post(ApiRoutes.returns.approve(ret.id)).send()
       expect(again.status).toBe(CONFLICT)
+      expect(errorOf(again).code).toBe(ErrorCodes.RETURN_INVALID_STATUS_TRANSITION)
       expect((await admin().post(ApiRoutes.returns.inTransit(ret.id)).send()).status).toBe(OK)
-      expect((await admin().post(ApiRoutes.returns.cancel(ret.id)).send({})).status).toBe(CONFLICT)
+      const cancelled = await admin().post(ApiRoutes.returns.cancel(ret.id)).send({})
+      expect(cancelled.status).toBe(CONFLICT)
+      expect(errorOf(cancelled).code).toBe(ErrorCodes.RETURN_INVALID_STATUS_TRANSITION)
       expect(
         (await admin().post(ApiRoutes.returns.receive(ret.id)).send({ lines: line })).status
       ).toBe(OK)
       expect((await admin().post(ApiRoutes.returns.complete(ret.id)).send({})).status).toBe(OK)
       const done = await admin().post(ApiRoutes.returns.complete(ret.id)).send({})
       expect(done.status).toBe(CONFLICT)
+      expect(errorOf(done).code).toBe(ErrorCodes.RETURN_INVALID_STATUS_TRANSITION)
     })
   })
 
@@ -189,6 +224,14 @@ describe('The returns of an order', () => {
       const receiver = await actorWithPermissions(owner, app, {
         prefix,
         name: `rr${randomUUID().slice(0, 6)}`,
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions: [Permissions.RETURNS_MANAGE, Permissions.RETURNS_VIEW]
+      })
+      // Without the permission to read the screen the notice links to, nobody is told
+      const blind = await actorWithPermissions(owner, app, {
+        prefix,
+        name: `rb${randomUUID().slice(0, 6)}`,
         organizationId: ctx.orgA.id,
         storeId: ctx.storeA.id,
         permissions: [Permissions.RETURNS_MANAGE]
@@ -204,9 +247,15 @@ describe('The returns of an order', () => {
         })
         if (told.length === 0) await new Promise(resolve => setTimeout(resolve, 100))
       }
+      // The rows come one per recipient: after the first, the others get a moment to arrive before "nobody else" is asserted
+      await new Promise(resolve => setTimeout(resolve, 500))
+      told = await owner.notification.findMany({
+        where: { storeId: ctx.storeA.id, resourceId: ret.id, type: 'return.awaiting_receipt' }
+      })
       const users = told.map(row => row.userId)
       expect(users).toContain(receiver.id)
       expect(users).not.toContain(ctx.adminA.id)
+      expect(users).not.toContain(blind.id)
     })
   })
 

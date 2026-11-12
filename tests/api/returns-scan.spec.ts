@@ -253,4 +253,113 @@ describe('Receiving a scanned package', () => {
     ).toBe(total)
     expect((await orderOf(order.id)).paymentStatus).toBe('REFUNDED')
   })
+
+  it('refuses to guess the units of a package of an order sent in parts, and takes them when the lines are named', async () => {
+    const { order, product, shipmentId, itemId } = await shipped()
+    const connection = await createCarrierConnection(owner, {
+      storeId: ctx.storeA.id,
+      prefix: `P${randomUUID()
+        .slice(0, 4)
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '0')}`
+    })
+    await owner.shipment.update({
+      where: { id: shipmentId },
+      data: { originWarehouseId: ctx.warehouseA.id }
+    })
+    await owner.shipment.create({
+      data: {
+        storeId: ctx.storeA.id,
+        orderId: order.id,
+        connectionId: connection.id,
+        serviceCode: connection.serviceCode,
+        shippingPayer: ShippingPayer.SENDER,
+        currency: 'USD',
+        status: ShipmentStatus.IN_TRANSIT,
+        originWarehouseId: ctx.warehouseASecond.id,
+        guideNumber: `G-${randomUUID()}`,
+        idempotencyKey: `scan-${randomUUID()}`,
+        createdBy: 'system'
+      }
+    })
+
+    const guessed = await failure(
+      returns.receiveFromScan(
+        ctx.storeA.id,
+        { shipmentId, reason: 'OTHER', condition: OrderReturnCondition.RESELLABLE },
+        actor()
+      )
+    )
+    expect(guessed).toBe(ErrorCodes.VALIDATION_INVALID_INPUT)
+    expect(await kit.level(product.id, ctx.warehouseA.id)).toMatchObject({ onHand: 6 })
+
+    await returns.receiveFromScan(
+      ctx.storeA.id,
+      {
+        shipmentId,
+        reason: 'OTHER',
+        condition: OrderReturnCondition.RESELLABLE,
+        lines: [{ orderItemId: itemId, quantity: 2, condition: OrderReturnCondition.RESELLABLE }]
+      },
+      actor()
+    )
+    expect(await kit.level(product.id, ctx.warehouseA.id)).toMatchObject({ onHand: 8 })
+    expect((await orderOf(order.id)).status).toBe('SHIPPED')
+  })
+
+  it('refuses a refund of money that was never collected, and writes nothing', async () => {
+    const { order, product, shipmentId } = await shipped()
+
+    const refused = await failure(
+      returns.receiveFromScan(
+        ctx.storeA.id,
+        {
+          shipmentId,
+          reason: 'REFUSED_BY_CUSTOMER',
+          condition: OrderReturnCondition.RESELLABLE,
+          refundAmountCents: 100
+        },
+        actor()
+      )
+    )
+
+    expect(refused).toBe(ErrorCodes.RETURN_REFUND_EXCEEDS_PAID)
+    expect(await owner.orderReturn.count({ where: { orderId: order.id } })).toBe(0)
+    expect(await kit.level(product.id, ctx.warehouseA.id)).toMatchObject({ onHand: 6 })
+  })
+
+  it('leaves a trail on the order when the return puts it in RETURNED', async () => {
+    const { order, shipmentId } = await shipped()
+    const done = await returns.receiveFromScan(
+      ctx.storeA.id,
+      { shipmentId, reason: 'DELIVERY_FAILED', condition: OrderReturnCondition.RESELLABLE },
+      actor()
+    )
+
+    const entries = await waitForAuditEntries(owner, {
+      action: AuditAction.ORDER_STATUS_CHANGED,
+      resourceId: order.id,
+      metadata: { path: ['returnId'], equals: done.returnId }
+    })
+    expect(entries[0]?.metadata).toMatchObject({ from: 'SHIPPED', to: 'RETURNED' })
+  })
+
+  it('applies a package scanned by two scanners at once to the stock one time', async () => {
+    const { order, product, shipmentId } = await shipped()
+    const scan = () =>
+      failure(
+        returns.receiveFromScan(
+          ctx.storeA.id,
+          { shipmentId, reason: 'OTHER', condition: OrderReturnCondition.RESELLABLE },
+          actor()
+        )
+      )
+
+    const outcomes = await Promise.all([scan(), scan()])
+
+    expect(outcomes.filter(code => code === null)).toHaveLength(1)
+    expect(outcomes.filter(code => code !== null)).toHaveLength(1)
+    expect(await owner.orderReturn.count({ where: { orderId: order.id } })).toBe(1)
+    expect(await kit.level(product.id, ctx.warehouseA.id)).toMatchObject({ onHand: 10 })
+  })
 })

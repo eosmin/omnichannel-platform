@@ -514,7 +514,11 @@ export const PickupLeaveNotes = {
   EMPTY_NOT_CANCELLED: 'pickup_emptied_carrier_not_cancelled'
 } as const
 
-export const ShipmentEventNotes = { FOUND_AT_CARRIER: 'shipping.event.foundAtCarrier' } as const
+// The description of a manual event is a key the screen translates (Step 4.14 writes the texts)
+export const ShipmentEventNotes = {
+  FOUND_AT_CARRIER: 'shipping.event.foundAtCarrier',
+  RECEIVED_AT_WAREHOUSE: 'shipping.event.receivedAtWarehouse'
+} as const
 
 // The keys a carrier is called with besides the one of a guide (TDD_17 §4.5, §4.8): one for a whole pickup batch, one for a void
 export const pickupBatchKey = (pickupId: string): string => `pickup:${pickupId}`

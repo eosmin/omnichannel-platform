@@ -19,7 +19,11 @@ module.exports = {
     '!src/shipping.service.ts',
     // The void of a guide: reads and writes the shipment and its pickup inside transactions and calls the carrier. Covered by
     // tests/api/shipment-cancellation.spec.ts
-    '!src/shipment-cancellation.ts'
+    '!src/shipment-cancellation.ts',
+    // The returns: reads and writes the return, the stock and the order inside transactions. Its rules are pure and tested to the
+    // line in libs/core/domain/return-rules.spec.ts; the service is covered by tests/api/returns.spec.ts and returns-scan.spec.ts
+    '!src/returns.service.ts',
+    '!src/return-order.port.ts'
   ],
   coverageThreshold: { global: { lines: 90, branches: 85 } }
 }

@@ -21,13 +21,18 @@ import {
   OrderReturnCondition,
   OrderReturnStatus,
   OrderReturnType,
+  OrderResourceTypes,
   OrderStatus,
+  PaymentStatus,
   type ReceiveReturnBody,
   refundRoom,
   ReturnResourceTypes,
   returnMovementKey,
   movementsOfReceipt,
+  ShipmentEventNotes,
   ShipmentEventSource,
+  ShippingPayer,
+  ShipmentInactiveStatuses,
   ShipmentKind,
   ShipmentStatus,
   unitsHeld
@@ -168,7 +173,8 @@ export class ReturnsService {
           type: body.type,
           reason: body.reason,
           status: OrderReturnStatus.REQUESTED,
-          shippingPayer: body.shippingPayer ?? settings?.returnShippingPayer ?? 'sender',
+          shippingPayer:
+            body.shippingPayer ?? settings?.returnShippingPayer ?? ShippingPayer.SENDER,
           notes: body.notes ?? null,
           createdBy: actor.userId
         },
@@ -255,7 +261,11 @@ export class ReturnsService {
       this.assertMove(loaded.status, OrderReturnStatus.RECEIVED)
       return this.applyReceipt(tx, storeId, loaded, body.lines, actor)
     })
-    this.record(AuditAction.RETURN_RECEIVED, storeId, returnId, actor, result)
+    this.record(AuditAction.RETURN_RECEIVED, storeId, returnId, actor, {
+      orderNumber: result.orderNumber,
+      orderReturned: result.orderReturned
+    })
+    this.recordOrderReturned(storeId, returnId, actor, result)
     return returnId
   }
 
@@ -282,6 +292,7 @@ export class ReturnsService {
         paymentRefunded: result.paymentRefunded
       })
     }
+    this.recordPaymentRefunded(storeId, returnId, actor, result)
     return returnId
   }
 
@@ -324,8 +335,10 @@ export class ReturnsService {
       })
       if (shipment === null) throw resourceNotFound('shipment')
       const from = shipment.status as ShipmentStatus
+      // The package of a return leg belongs to the return that made it: it is received through that return (PR R1b), never as a
+      // new one, so a scan of it is refused here
       if (
-        (shipment.kind as ShipmentKind) === ShipmentKind.OUTBOUND &&
+        (shipment.kind as ShipmentKind) !== ShipmentKind.OUTBOUND ||
         !SCANNABLE_STATUSES.includes(from)
       ) {
         throw conflict(
@@ -338,6 +351,25 @@ export class ReturnsService {
         throw conflict(ErrorCodes.RETURN_ORDER_NOT_DELIVERED, 'the order cannot be returned now')
       }
       const items = shipment.order.items
+      // A package does not say which units it holds: the units of "everything" are the order's only when this is its only guide.
+      // An order sent in parts needs the lines of the package, or stock that is still on its way would be counted in.
+      if (input.lines === undefined) {
+        const others = await tx.shipment.count({
+          where: {
+            storeId,
+            orderId: shipment.orderId,
+            kind: ShipmentKind.OUTBOUND,
+            id: { not: shipment.id },
+            status: { notIn: [...ShipmentInactiveStatuses] }
+          }
+        })
+        if (others > 0) {
+          throw invalid(
+            'an order sent in parts needs the lines of the package',
+            ErrorCodes.VALIDATION_INVALID_INPUT
+          )
+        }
+      }
       const held = unitsHeld(await this.returnsOf(tx, storeId, shipment.orderId))
       const lines =
         input.lines === undefined
@@ -362,7 +394,7 @@ export class ReturnsService {
           type: OrderReturnType.REFUND,
           reason: input.reason,
           status: OrderReturnStatus.APPROVED,
-          shippingPayer: 'sender',
+          shippingPayer: ShippingPayer.SENDER,
           notes: input.notes ?? null,
           createdBy: actor.userId
         },
@@ -387,7 +419,7 @@ export class ReturnsService {
           select: { id: true, orderItemId: true, quantity: true }
         })
       }
-      await this.applyReceipt(
+      const receipt = await this.applyReceipt(
         tx,
         storeId,
         loaded,
@@ -424,7 +456,7 @@ export class ReturnsService {
           {
             actor: actorRef(actor),
             source: ShipmentEventSource.MANUAL,
-            description: 'received at the warehouse'
+            description: ShipmentEventNotes.RECEIVED_AT_WAREHOUSE
           }
         )
       }
@@ -443,13 +475,15 @@ export class ReturnsService {
         undefined,
         actor
       )
-      return { returnId: row.id, orderId: shipment.orderId, settled }
+      return { returnId: row.id, orderId: shipment.orderId, settled, receipt }
     })
     this.record(AuditAction.RETURN_RECEIVED_BY_SCAN, storeId, done.returnId, actor, {
       orderNumber: done.settled.orderNumber,
       shipmentId: input.shipmentId,
       reason: input.reason
     })
+    this.recordOrderReturned(storeId, done.returnId, actor, done.receipt)
+    this.recordPaymentRefunded(storeId, done.returnId, actor, done.settled)
     if (done.settled.refundCents !== null) {
       this.record(AuditAction.RETURN_REFUND_RECORDED, storeId, done.returnId, actor, {
         orderNumber: done.settled.orderNumber,
@@ -475,7 +509,12 @@ export class ReturnsService {
       this.assertMove(loaded.status, to)
       await tx.orderReturn.update({
         where: { id: returnId },
-        data: { status: to, ...(notes === undefined || notes === null ? {} : { notes }) }
+        data: {
+          status: to,
+          ...(notes === undefined || notes === null
+            ? {}
+            : { notes: await this.withNote(tx, returnId, notes) })
+        }
       })
       const payload = {
         storeId,
@@ -579,7 +618,12 @@ export class ReturnsService {
       restockWarehouseId?: string | undefined
     }[],
     actor: ReturnActor
-  ): Promise<{ orderNumber: string; orderReturned: boolean }> {
+  ): Promise<{
+    orderId: string
+    orderNumber: string
+    orderReturned: boolean
+    orderFrom: OrderStatus | null
+  }> {
     // Nothing is assumed resellable: the receipt names every line of the return, once
     const names = new Set(chosen.map(line => line.orderItemId))
     const wanted = new Set(loaded.lines.map(line => line.orderItemId))
@@ -623,7 +667,14 @@ export class ReturnsService {
       if (warehouseId === null) {
         throw invalid('a warehouse is needed for the units', ErrorCodes.RETURN_RECEIPT_INVALID)
       }
-      await this.assertWarehouse(tx, storeId, warehouseId)
+      // A unit that is discarded at once only passes through the warehouse: a warehouse that was switched off or unlinked since
+      // does not stop its receipt unless the person chose it
+      if (
+        choice.condition === OrderReturnCondition.RESELLABLE ||
+        choice.restockWarehouseId !== undefined
+      ) {
+        await this.assertWarehouse(tx, storeId, warehouseId)
+      }
       warehouseOf.set(line.orderItemId, warehouseId)
       for (const step of movementsOfReceipt(choice.condition)) {
         movements.push({
@@ -668,12 +719,17 @@ export class ReturnsService {
       select: { items: { select: { id: true, quantity: true } } }
     })
     const all = await this.returnsOf(tx, storeId, loaded.orderId)
-    let orderReturned = false
+    let orderFrom: OrderStatus | null = null
     if (coversEveryUnit(order.items, all)) {
-      orderReturned =
-        (await this.orders.markReturned(tx, storeId, loaded.orderId, actorRef(actor))) !== null
+      orderFrom =
+        (await this.orders.markReturned(tx, storeId, loaded.orderId, actorRef(actor)))?.from ?? null
     }
-    return { orderNumber: loaded.orderNumber, orderReturned }
+    return {
+      orderId: loaded.orderId,
+      orderNumber: loaded.orderNumber,
+      orderReturned: orderFrom !== null,
+      orderFrom
+    }
   }
 
   // Completing: the refund by hand (a refund return only) and the payment it settles
@@ -684,7 +740,12 @@ export class ReturnsService {
     refundCents: number | undefined,
     notes: string | undefined,
     actor: ReturnActor
-  ): Promise<{ orderNumber: string; refundCents: number | null; paymentRefunded: boolean }> {
+  ): Promise<{
+    orderId: string
+    orderNumber: string
+    refundCents: number | null
+    paymentRefunded: boolean
+  }> {
     if (loaded.type !== OrderReturnType.REFUND && refundCents !== undefined) {
       throw invalid('an exchange has no refund', ErrorCodes.VALIDATION_INVALID_INPUT)
     }
@@ -704,7 +765,11 @@ export class ReturnsService {
         _sum: { refundAmountCents: true }
       })
       const already = others._sum.refundAmountCents ?? 0
-      const room = refundRoom({ orderTotalCents: order.totalCents, alreadyRefundedCents: already })
+      // Money that was never collected is not given back: only a payment that was completed has anything to refund
+      const room =
+        (order.paymentStatus as PaymentStatus) === PaymentStatus.COMPLETED
+          ? refundRoom({ orderTotalCents: order.totalCents, alreadyRefundedCents: already })
+          : 0
       if (refundCents > room) {
         throw conflict(
           ErrorCodes.RETURN_REFUND_EXCEEDS_PAID,
@@ -728,10 +793,24 @@ export class ReturnsService {
       data: {
         status: OrderReturnStatus.COMPLETED,
         ...(refundCents === undefined ? {} : { refundAmountCents: refundCents }),
-        ...(notes === undefined ? {} : { notes })
+        ...(notes === undefined ? {} : { notes: await this.withNote(tx, loaded.id, notes) })
       }
     })
-    return { orderNumber: loaded.orderNumber, refundCents: refundCents ?? null, paymentRefunded }
+    return {
+      orderId: loaded.orderId,
+      orderNumber: loaded.orderNumber,
+      refundCents: refundCents ?? null,
+      paymentRefunded
+    }
+  }
+
+  // A decision's note is added to the note of the request, never in place of it: what the agent saw stays with the return
+  private async withNote(tx: PrismaTransaction, returnId: string, note: string): Promise<string> {
+    const row = await tx.orderReturn.findUniqueOrThrow({
+      where: { id: returnId },
+      select: { notes: true }
+    })
+    return row.notes === null || row.notes === '' ? note : `${row.notes}\n${note}`
   }
 
   private async assertWarehouse(
@@ -745,6 +824,55 @@ export class ReturnsService {
     })
     if (link === null) throw warehouseNotLinked(warehouseId)
     if (!link.warehouse.active) throw warehouseInactive(warehouseId)
+  }
+
+  // The order changed because of a return: its own trail says so, as it does for a status set by hand
+  private recordOrderReturned(
+    storeId: string,
+    returnId: string,
+    actor: ReturnActor,
+    receipt: { orderId: string; orderNumber: string; orderFrom: OrderStatus | null }
+  ): void {
+    if (receipt.orderFrom === null) return
+    this.audit.log({
+      action: AuditAction.ORDER_STATUS_CHANGED,
+      actor: { userId: actor.userId },
+      storeId,
+      resourceType: OrderResourceTypes.ORDER,
+      resourceId: receipt.orderId,
+      metadata: {
+        orderNumber: receipt.orderNumber,
+        from: receipt.orderFrom,
+        to: OrderStatus.RETURNED,
+        returnId
+      },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
+  }
+
+  private recordPaymentRefunded(
+    storeId: string,
+    returnId: string,
+    actor: ReturnActor,
+    settled: { orderId: string; orderNumber: string; paymentRefunded: boolean }
+  ): void {
+    if (!settled.paymentRefunded) return
+    this.audit.log({
+      action: AuditAction.ORDER_PAYMENT_STATUS_CHANGED,
+      actor: { userId: actor.userId },
+      storeId,
+      resourceType: OrderResourceTypes.ORDER,
+      resourceId: settled.orderId,
+      metadata: {
+        orderNumber: settled.orderNumber,
+        from: PaymentStatus.COMPLETED,
+        to: PaymentStatus.REFUNDED,
+        returnId
+      },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
   }
 
   private record(
