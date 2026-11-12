@@ -132,6 +132,10 @@ export interface FetchOriginMediaJob extends BaseJob {
 export interface ReconcileInventoryJob extends BaseJob {
   storeId: string
 }
+// The daily check of the cash on delivery that one store's carriers still owe (TDD_17 §4.15): read only, it raises an event
+export interface CheckRemittancesJob extends BaseJob {
+  storeId: string
+}
 // One poll of one connection (TDD_17 §4.9); `includeOld` also asks the packages older than two weeks, once a day
 export interface PollShipmentStatusJob extends BaseJob {
   storeId: string

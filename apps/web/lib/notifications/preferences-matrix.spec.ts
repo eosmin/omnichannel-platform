@@ -32,7 +32,6 @@ describe('groupPreferences', () => {
     const groups = groupPreferences([
       row(NotificationTypes.CONVERSATION_ASSIGNED),
       row(NotificationTypes.ORDER_PAYMENT_FAILED),
-      row(NotificationTypes.REMITTANCE_OVERDUE),
       row(NotificationTypes.PLUGIN_ERROR),
       row(NotificationTypes.WEBHOOK_AUTO_DISABLED),
       row(NotificationTypes.CHANNEL_DISCONNECTED)
@@ -76,6 +75,12 @@ describe('groupPreferences', () => {
       NotificationTypes.TRANSFER_DISPATCHED,
       NotificationTypes.COUNT_AWAITING_APPLY
     ])
+  })
+
+  it('shows the switch of the cash that a carrier owes too long, which the daily check raises since Step 4.13', () => {
+    const groups = groupPreferences([row(NotificationTypes.REMITTANCE_OVERDUE)])
+    expect(groups.map(entry => entry.group)).toEqual(['shipping'])
+    expect(groups[0]?.rows.map(entry => entry.type)).toEqual([NotificationTypes.REMITTANCE_OVERDUE])
   })
 
   it('draws nothing for an empty answer', () => {
