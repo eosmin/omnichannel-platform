@@ -75,10 +75,14 @@ export interface FlowOffer {
 
 // The buttons of the status flows, in the order of the life of an order. A flow whose transition the table does not list is
 // not offered at all; one the table allows but that waits for something (a price approval) is drawn disabled with its reason.
+// `hasActiveGuide`: a guide is live, so the guide decides when the goods leave and arrive and the api refuses a hand-made
+// shipped or delivered (`ORDER_STATUS_DRIVEN_BY_SHIPMENT`, TDD_17 §4.9): those two are not offered. Preparing, returning and
+// cancelling stay as they are: the api lets them through.
 export function offeredFlows(
   order: OrderFlowInput,
   can: CanDo,
-  userId: string | null
+  userId: string | null,
+  hasActiveGuide: boolean
 ): FlowOffer[] {
   const status = asOrderStatus(order.status)
   const approval = asPriceApprovalStatus(order.priceApprovalStatus)
@@ -101,10 +105,10 @@ export function offeredFlows(
   if (canTransitionOrder(status, OrderStatus.PREPARING)) {
     offer(OrderFlows.PREPARE, can(ClientPermissions.ORDERS_CHANGE_STATUS), true)
   }
-  if (canTransitionOrder(status, OrderStatus.SHIPPED)) {
+  if (!hasActiveGuide && canTransitionOrder(status, OrderStatus.SHIPPED)) {
     offer(OrderFlows.SHIP, can(ClientPermissions.ORDERS_CHANGE_STATUS), true)
   }
-  if (canTransitionOrder(status, OrderStatus.DELIVERED)) {
+  if (!hasActiveGuide && canTransitionOrder(status, OrderStatus.DELIVERED)) {
     offer(OrderFlows.DELIVER, can(ClientPermissions.ORDERS_CHANGE_STATUS), false)
   }
   if (canTransitionOrder(status, OrderStatus.RETURNED)) {

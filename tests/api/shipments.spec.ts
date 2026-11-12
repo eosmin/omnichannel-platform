@@ -508,6 +508,49 @@ describe('Shipments: the engine that makes guides (TDD_17 §4.5, §4.8)', () => 
       expect(entries).toHaveLength(5)
     })
 
+    it('counts a failed attempt sent twice with the same moment once, and a new moment again', async () => {
+      const order = await confirmed()
+      const body = (await ship(order.id, localId)).body as ShipmentBody
+      const set = (status: ShipmentStatus, extra: Record<string, unknown> = {}) =>
+        asAdmin()
+          .post(ApiRoutes.shipments.status(body.id))
+          .send({ status, ...extra })
+      expect((await set(ShipmentStatus.PICKED_UP)).status).toBe(OK)
+      expect((await set(ShipmentStatus.OUT_FOR_DELIVERY)).status).toBe(OK)
+      // After the guide was made and not in the future: the api refuses both. The pauses keep the moments apart on a fast clock.
+      await new Promise(resolve => setTimeout(resolve, 25))
+      const moment = new Date().toISOString()
+      const first = await set(ShipmentStatus.FAILED_ATTEMPT, { occurredAt: moment })
+      expect(first.body).toMatchObject({ failedAttempts: 1 })
+      // The same request again (a double click, a retry) is the same event: it changes nothing
+      const again = await set(ShipmentStatus.FAILED_ATTEMPT, { occurredAt: moment })
+      expect(again.status).toBe(OK)
+      expect(again.body).toMatchObject({ failedAttempts: 1 })
+      // Another moment is another attempt
+      await new Promise(resolve => setTimeout(resolve, 25))
+      const later = await set(ShipmentStatus.FAILED_ATTEMPT, {
+        occurredAt: new Date().toISOString()
+      })
+      expect(later.body).toMatchObject({ failedAttempts: 2 })
+      const detail = (await asAdmin().get(ApiRoutes.shipments.byId(body.id))).body as {
+        events: { status: string }[]
+      }
+      expect(
+        detail.events.filter(event => event.status === String(ShipmentStatus.FAILED_ATTEMPT))
+      ).toHaveLength(2)
+      // The repeat wrote nothing, so it is not audited either: two moves forward and two attempts
+      const entries = await waitForAuditEntries(
+        owner,
+        {
+          storeId: ctx.storeA.id,
+          action: AuditAction.SHIPMENT_STATUS_SET_MANUALLY,
+          resourceId: body.id
+        },
+        4
+      )
+      expect(entries).toHaveLength(4)
+    })
+
     it('never goes backwards, nor sideways where the table has no arrow', async () => {
       const order = await confirmed()
       const body = (await ship(order.id, localId)).body as ShipmentBody

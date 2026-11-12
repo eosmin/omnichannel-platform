@@ -34,10 +34,23 @@ function flowsOf(
   can: (p: Permission) => boolean,
   user: string | null = 'u1'
 ) {
-  return offeredFlows(input, can, user).map(offer => offer.flow)
+  return offeredFlows(input, can, user, false).map(offer => offer.flow)
 }
 
 describe('offeredFlows', () => {
+  it('does not offer shipped or delivered while a guide is live: the guide moves the order (the api refuses it)', () => {
+    const live = (status: OrderStatus) =>
+      offeredFlows(order(status), everything, 'u1', true).map(offer => offer.flow)
+    // Prepare, return and cancel are still the member's: the api lets them through with a live guide
+    expect(live(OrderStatus.CONFIRMED)).toEqual([OrderFlows.PREPARE, OrderFlows.CANCEL])
+    expect(live(OrderStatus.PREPARING)).toEqual([OrderFlows.CANCEL])
+    expect(live(OrderStatus.SHIPPED)).toEqual([OrderFlows.RETURN])
+    // Without a live guide nothing changes
+    expect(
+      offeredFlows(order(OrderStatus.CONFIRMED), everything, 'u1', false).map(o => o.flow)
+    ).toEqual([OrderFlows.PREPARE, OrderFlows.SHIP, OrderFlows.CANCEL])
+  })
+
   it('offers confirm, cancel and nothing that skips a state to a pending order', () => {
     expect(flowsOf(order(OrderStatus.PENDING_CONFIRMATION), everything)).toEqual([
       OrderFlows.CONFIRM,
@@ -85,7 +98,7 @@ describe('offeredFlows', () => {
 
   it('draws confirm, prepare and ship disabled while a price waits for approval, never deliver or cancel', () => {
     const waiting = order(OrderStatus.CONFIRMED, PriceApprovalStatus.PENDING)
-    const offers = offeredFlows(waiting, everything, 'u1')
+    const offers = offeredFlows(waiting, everything, 'u1', false)
     const byFlow = Object.fromEntries(offers.map(offer => [offer.flow, offer]))
     expect(byFlow[OrderFlows.PREPARE]).toMatchObject({
       disabled: true,
@@ -96,7 +109,8 @@ describe('offeredFlows', () => {
     const pending = offeredFlows(
       order(OrderStatus.PENDING_CONFIRMATION, PriceApprovalStatus.PENDING),
       everything,
-      'u1'
+      'u1',
+      false
     )
     expect(pending.find(offer => offer.flow === OrderFlows.CONFIRM)).toMatchObject({
       disabled: true
@@ -107,7 +121,8 @@ describe('offeredFlows', () => {
     const offers = offeredFlows(
       order(OrderStatus.CONFIRMED, PriceApprovalStatus.REJECTED),
       everything,
-      'u1'
+      'u1',
+      false
     )
     expect(offers.find(offer => offer.flow === OrderFlows.SHIP)?.disabled).toBe(true)
     // Nothing to decide: the request was already answered

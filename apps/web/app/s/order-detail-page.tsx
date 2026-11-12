@@ -232,6 +232,10 @@ export function OrderDetailPage(): ReactElement {
   }
   const data = order.data
   const status = asOrderStatus(data.status)
+  // Fail closed while the guides are not known (loading or failed): a member who may not read them is left to the api
+  const hasActiveGuide = canSeeShipments
+    ? shipments.data === undefined || liveOutbound(shipments.data).length > 0
+    : false
   return (
     <div className="flex flex-col gap-5">
       <BackLink />
@@ -258,7 +262,7 @@ export function OrderDetailPage(): ReactElement {
         <div className="flex flex-wrap items-center gap-2">
           <OrderEditButton order={data} />
           <OrderCopyButton orderId={data.id} orderNumber={data.orderNumber} />
-          <OrderFlowButtons order={data} writes={writes} />
+          <OrderFlowButtons order={data} writes={writes} hasActiveGuide={hasActiveGuide} />
         </div>
         <OrderPrintButtons order={data} warehouseNames={warehouseNames} />
       </header>
@@ -310,16 +314,7 @@ export function OrderDetailPage(): ReactElement {
         <div className="flex flex-col gap-6">
           <CustomerBlock order={data} />
           <OrderPayment order={data} writes={writes} />
-          <OrderDelivery
-            order={data}
-            writes={writes}
-            hasActiveShipment={
-              // Fail closed while the guides are not known (loading or failed): a member who may not read them is left to the api
-              canSeeShipments
-                ? shipments.data === undefined || liveOutbound(shipments.data).length > 0
-                : false
-            }
-          />
+          <OrderDelivery order={data} writes={writes} hasActiveShipment={hasActiveGuide} />
           <OrderEvents order={data} />
         </div>
       </div>
