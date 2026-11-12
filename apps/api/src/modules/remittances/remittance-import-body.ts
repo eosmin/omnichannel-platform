@@ -42,21 +42,32 @@ export async function readImportBody(
       HttpStatusCodes.PAYLOAD_TOO_LARGE
     )
   }
+  // Read with events and not with `for await`, which destroys the request when it stops early: the client must still get its answer
   const chunks: Buffer[] = []
   let size = 0
-  for await (const chunk of request) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as string)
-    size += buffer.length
-    if (size > maxBytes) {
-      request.destroy()
-      throw refusal(
+  await new Promise<void>((resolve, reject) => {
+    const tooLarge = () =>
+      refusal(
         ErrorCodes.PAYLOAD_TOO_LARGE,
         'the file is larger than a settlement file may be',
         HttpStatusCodes.PAYLOAD_TOO_LARGE
       )
+    const onData = (chunk: Buffer | string) => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
+      size += buffer.length
+      if (size > maxBytes) {
+        request.off('data', onData)
+        // Nothing more is kept: what is left of the upload is read and thrown away, so the answer can go out
+        request.on('data', () => undefined)
+        reject(tooLarge())
+        return
+      }
+      chunks.push(buffer)
     }
-    chunks.push(buffer)
-  }
+    request.on('data', onData)
+    request.once('end', resolve)
+    request.once('error', reject)
+  })
   try {
     return new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks))
   } catch {

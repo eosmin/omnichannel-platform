@@ -196,7 +196,15 @@ describe('Importing the settlement file of a carrier (TDD_17 §4.15, Step 4.13 P
       const later = await asAdmin()
         .patch(ApiRoutes.remittances.importProfileById(id))
         .send({ hasHeader: false })
-      expect(later.status).toBe(CONFLICT)
+      expect(later.status).toBe(BAD_REQUEST)
+      const comma = await asAdmin()
+        .patch(ApiRoutes.remittances.importProfileById(id))
+        .send({ decimalSeparator: ',' })
+      expect(comma.status).toBe(BAD_REQUEST)
+      const same = await asAdmin()
+        .post(ApiRoutes.remittances.importProfiles)
+        .send(profileBody({ delimiter: ',', decimalSeparator: ',' }))
+      expect(same.status).toBe(BAD_REQUEST)
     })
 
     it('lets the remittances that it read keep their lines when it is deleted', async () => {
@@ -365,6 +373,15 @@ describe('Importing the settlement file of a carrier (TDD_17 §4.15, Step 4.13 P
       ])
       expect(await countsOf()).toEqual(before)
       expect(scans.jobs).toHaveLength(0)
+    })
+
+    it('refuses a row with an unquoted delimiter in a cell, which moved the columns', async () => {
+      const id = await profile()
+      const refused = await sendFile(id, 'Guia,Monto\nG-1,5.00\nG-2,12,50\n')
+      expect(refused.status).toBe(BAD_REQUEST)
+      expect((refused.body as ErrorBody).error.metadata?.errors).toEqual([
+        { row: 3, field: null, code: RemittanceImportErrors.ROW_TOO_WIDE, value: '3' }
+      ])
     })
 
     it('refuses a column that the file does not have, an empty file and a body that is not text', async () => {

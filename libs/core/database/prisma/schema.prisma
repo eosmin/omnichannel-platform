@@ -2038,6 +2038,7 @@ model CodRemittance {
 
   store         Store                    @relation(fields: [storeId], references: [id], onDelete: Restrict)
   connection    CarrierConnection        @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Restrict)
+  // The database forgets a deleted profile here (ON DELETE SET NULL (import_profile_id), raw SQL of the migration)
   importProfile RemittanceImportProfile? @relation(fields: [storeId, importProfileId], references: [storeId, id], onDelete: Restrict)
   lines         CodRemittanceLine[]
   shipments     Shipment[]               @relation("RemittedShipment")
@@ -2045,6 +2046,7 @@ model CodRemittance {
   // So that its lines and the shipments it settled can name their store and the database check that they go together
   @@unique([storeId, id])
   @@index([storeId, connectionId, status])
+  @@index([storeId, importProfileId])
   @@map("cod_remittances")
 }
 

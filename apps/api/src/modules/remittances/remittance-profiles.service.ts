@@ -10,7 +10,13 @@ import {
   type RemittanceImportMapping,
   type UpdateRemittanceImportProfileBody
 } from '@platform/core/domain'
-import { resourceConflict, resourceNotFound } from '@platform/core/errors'
+import {
+  ErrorCodes,
+  HttpStatusCodes,
+  PlatformException,
+  resourceConflict,
+  resourceNotFound
+} from '@platform/core/errors'
 
 export interface RemittanceImportProfileView {
   id: string
@@ -136,7 +142,20 @@ export class RemittanceProfilesService {
         const columns = body.columns ?? (current.columns as unknown as RemittanceImportMapping)
         // A file with no header can only be read by the position of its columns: the merged profile is checked, not the change
         if (!hasHeader && hasNamedColumn({ ...columns })) {
-          throw resourceConflict('a file with no header is mapped by column position')
+          throw new PlatformException(
+            ErrorCodes.VALIDATION_FAILED,
+            'a file with no header is mapped by column position',
+            HttpStatusCodes.BAD_REQUEST
+          )
+        }
+        const delimiter = body.delimiter ?? current.delimiter
+        const decimalSeparator = body.decimalSeparator ?? current.decimalSeparator
+        if (delimiter === decimalSeparator) {
+          throw new PlatformException(
+            ErrorCodes.VALIDATION_FAILED,
+            'the delimiter and the decimal separator must differ',
+            HttpStatusCodes.BAD_REQUEST
+          )
         }
         return tx.remittanceImportProfile.update({
           where: { id: profileId },
@@ -161,7 +180,7 @@ export class RemittanceProfilesService {
     }
   }
 
-  // The remittances that were read with it keep their lines and forget the profile
+  // The remittances that were read with it keep their lines and forget the profile (the database does it, in that column only)
   async remove(storeId: string, profileId: string): Promise<void> {
     await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
@@ -170,10 +189,6 @@ export class RemittanceProfilesService {
         select: { id: true }
       })
       if (found === null) throw resourceNotFound('import profile')
-      await tx.codRemittance.updateMany({
-        where: { storeId, importProfileId: profileId },
-        data: { importProfileId: null }
-      })
       await tx.remittanceImportProfile.delete({ where: { id: profileId } })
     })
   }

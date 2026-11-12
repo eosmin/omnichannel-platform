@@ -8,7 +8,8 @@ export const RemittanceImportLimits = {
   MAX_BYTES: 5 * 1024 * 1024,
   MAX_ROWS: RemittanceLimits.MAX_LINES,
   // The preview of the mapper reads a sample, not the file
-  PREVIEW_MAX_BYTES: 64 * 1024,
+  // The sample travels as JSON, whose body the app reads up to 100 KB, with the escapes of line breaks and quotes
+  PREVIEW_MAX_BYTES: 32 * 1024,
   PREVIEW_ROWS: 20,
   // The row errors an answer names (the count of all of them is always given)
   MAX_ERRORS_REPORTED: 100,
@@ -55,7 +56,9 @@ export const RemittanceImportErrors = {
   INVALID_TEXT: 'invalid_text',
   TOO_MANY_ROWS: 'too_many_rows',
   EMPTY_FILE: 'empty_file',
-  UNCLOSED_QUOTE: 'unclosed_quote'
+  UNCLOSED_QUOTE: 'unclosed_quote',
+  // A row has more cells than the header: an unquoted delimiter inside a cell moved the columns
+  ROW_TOO_WIDE: 'row_too_wide'
 } as const
 export type RemittanceImportError =
   (typeof RemittanceImportErrors)[keyof typeof RemittanceImportErrors]
@@ -117,13 +120,17 @@ export interface ParsedRemittanceFile {
 export function splitDelimited(
   text: string,
   delimiter: RemittanceDelimiter
-): { rows: string[][]; unclosedQuote: boolean } {
-  const source = text.startsWith('﻿') ? text.slice(1) : text
+): { rows: string[][]; lines: number[]; unclosedQuote: boolean } {
+  const source = text.startsWith('\uFEFF') ? text.slice(1) : text
   const rows: string[][] = []
+  // The line of the file where each row starts, as an editor counts them: a line break inside a quoted cell counts too
+  const lines: number[] = []
   let row: string[] = []
   let cell = ''
   let quoted = false
   let touched = false
+  let line = 1
+  let rowLine = 1
   const endCell = () => {
     row.push(cell)
     cell = ''
@@ -131,8 +138,10 @@ export function splitDelimited(
   const endRow = () => {
     endCell()
     rows.push(row)
+    lines.push(rowLine)
     row = []
     touched = false
+    rowLine = line
   }
   for (let index = 0; index < source.length; index += 1) {
     const char = source.charAt(index)
@@ -142,7 +151,10 @@ export function splitDelimited(
           cell += '"'
           index += 1
         } else quoted = false
-      } else cell += char
+      } else {
+        if (char === '\n' || (char === '\r' && source.charAt(index + 1) !== '\n')) line += 1
+        cell += char
+      }
       continue
     }
     if (char === '"' && cell === '') {
@@ -153,15 +165,16 @@ export function splitDelimited(
       touched = true
     } else if (char === '\n' || char === '\r') {
       if (char === '\r' && source.charAt(index + 1) === '\n') index += 1
+      line += 1
       endRow()
     } else {
       cell += char
       touched = true
     }
   }
-  if (quoted) return { rows, unclosedQuote: true }
+  if (quoted) return { rows, lines, unclosedQuote: true }
   if (touched || cell !== '') endRow()
-  return { rows, unclosedQuote: false }
+  return { rows, lines, unclosedQuote: false }
 }
 
 // Digits with at most one decimal separator and at most two decimals: "12", "12.5", "12.50" (or with the comma, when the profile
@@ -207,6 +220,8 @@ export function parseImportDay(cell: string, format: RemittanceDateFormat): stri
   const year = match[rule.order[0]] ?? ''
   const month = match[rule.order[1]] ?? ''
   const day = match[rule.order[2]] ?? ''
+  // A year a settlement can have: JS reads 0000 and Postgres refuses it, so the range is closed here
+  if (Number(year) < 1970 || Number(year) > 2100) return null
   const iso = `${year}-${month}-${day}`
   const parsed = new Date(`${iso}T00:00:00.000Z`)
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(iso) ? iso : null
@@ -273,31 +288,37 @@ export function parseRemittanceFile(
     reference: null,
     receivedOn: null
   }
-  const { rows, unclosedQuote } = splitDelimited(text, profile.delimiter)
+  const { rows, lines: startLines, unclosedQuote } = splitDelimited(text, profile.delimiter)
   if (unclosedQuote) {
-    fail(rows.length + 1, null, RemittanceImportErrors.UNCLOSED_QUOTE, null)
+    fail((startLines.at(-1) ?? 0) + 1, null, RemittanceImportErrors.UNCLOSED_QUOTE, null)
     return { ...empty, errorCount }
   }
-  const body = rows.filter(cells => cells.some(cell => cell.trim() !== ''))
+  // Each row with the line of the file where it starts (empty lines are counted and then skipped)
+  const body = rows
+    .map((cells, index) => ({ cells, line: startLines[index] ?? index + 1 }))
+    .filter(entry => entry.cells.some(cell => cell.trim() !== ''))
   if (body.length === 0) {
     fail(1, null, RemittanceImportErrors.EMPTY_FILE, null)
     return { ...empty, errorCount }
   }
-  const headerRow = profile.hasHeader ? (body[0] ?? []) : []
+  const headerRow = profile.hasHeader ? (body[0]?.cells ?? []) : []
   const data = profile.hasHeader ? body.slice(1) : body
   if (profile.hasHeader && body.length > 0 && data.length === 0) {
     fail(1, null, RemittanceImportErrors.EMPTY_FILE, null)
   }
   if (data.length > RemittanceImportLimits.MAX_ROWS) {
+    // Said at once: a file of millions of rows is not read any further
     fail(
-      RemittanceImportLimits.MAX_ROWS + 2,
+      data[RemittanceImportLimits.MAX_ROWS]?.line ?? 1,
       null,
       RemittanceImportErrors.TOO_MANY_ROWS,
       String(data.length)
     )
+    return { ...empty, headers: headerRow, errorCount }
   }
   // Where each value is. A row of the file is as wide as the widest one for the positions
-  const width = Math.max(headerRow.length, ...data.map(cells => cells.length), 0)
+  let width = headerRow.length
+  for (const entry of data) if (entry.cells.length > width) width = entry.cells.length
   const columns: Partial<Record<RemittanceImportField, number>> = {}
   const mapping: [RemittanceImportField, RemittanceColumnRef | undefined, boolean][] = [
     [RemittanceImportFields.GUIDE_NUMBER, profile.columns.guideNumber, true],
@@ -321,7 +342,6 @@ export function parseRemittanceFile(
   const lines: ImportedLine[] = []
   const references = new Set<string>()
   const days = new Set<string>()
-  const first = profile.hasHeader ? 2 : 1
   let rowCount = 0
   if (errorCount > 0 && (columns.guideNumber === undefined || columns.amount === undefined)) {
     return {
@@ -334,21 +354,19 @@ export function parseRemittanceFile(
       receivedOn: null
     }
   }
-  // The row number is the position among the rows of the file, empty lines counted, so that a person finds it in their editor
-  const numbers = new Map<string[], number>()
-  let position = 0
-  for (const cells of rows) {
-    position += 1
-    numbers.set(cells, position)
-  }
-  for (const cells of data.slice(0, maxRows)) {
-    const row = numbers.get(cells) ?? first
+  for (const { cells, line: row } of data.slice(0, maxRows)) {
     rowCount += 1
+    const before = errorCount
+    // A row with more cells than the header has is a cell with an unquoted delimiter in it: the columns after it moved, so no
+    // amount of this row can be trusted
+    if (profile.hasHeader && cells.length > headerRow.length) {
+      fail(row, null, RemittanceImportErrors.ROW_TOO_WIDE, String(cells.length))
+      continue
+    }
     const cell = (field: RemittanceImportField): string | undefined => {
       const index = columns[field]
       return index === undefined ? undefined : cells[index]
     }
-    const before = errorCount
     const guideCell = cell(RemittanceImportFields.GUIDE_NUMBER)
     const guide =
       guideCell === undefined

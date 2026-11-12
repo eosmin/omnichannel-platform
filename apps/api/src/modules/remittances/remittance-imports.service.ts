@@ -116,6 +116,8 @@ export class RemittanceImportsService {
     )
     const key = StorageKeys.remittanceFile(storeId, mediaId, filename)
     await this.storage.put(key, bytes, contentType)
+    // Once the draft exists the file is its evidence and is never removed, whatever fails after
+    let drafted = false
     try {
       await this.prisma.client.media.create({
         data: {
@@ -147,7 +149,9 @@ export class RemittanceImportsService {
         { type: 'user', id: actor.userId },
         { importProfileId: profile.id, sourceMediaId: mediaId }
       )
-      await this.queueScan(mediaId)
+      drafted = true
+      // A scan that was not queued waits for the hourly cleanup of pending files: it must not fail an import that was made
+      await this.queueScan(mediaId).catch(() => undefined)
       this.audit.log({
         action: AuditAction.REMITTANCE_IMPORTED,
         actor: { userId: actor.userId },
@@ -165,6 +169,7 @@ export class RemittanceImportsService {
       })
       return await this.remittances.get(storeId, created.id)
     } catch (error) {
+      if (drafted) throw error
       // Nothing was made of the file: it is removed, never left behind (a stray object is found by its prefix)
       await this.prisma.client.media
         .deleteMany({ where: { id: mediaId, storeId } })

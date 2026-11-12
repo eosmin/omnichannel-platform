@@ -112,6 +112,12 @@ function namesNeedAHeader(value: {
 }
 const HEADER_MESSAGE = { message: 'a file with no header is mapped by column position' }
 
+// A comma that separates the cells cannot also be the decimal comma: "12,50" would be two cells
+function separatorsDiffer(value: { delimiter: string; decimalSeparator: string }): boolean {
+  return value.delimiter !== value.decimalSeparator
+}
+const SEPARATOR_MESSAGE = { message: 'the delimiter and the decimal separator must differ' }
+
 export const remittanceImportProfileBodySchema = z.strictObject({
   delimiter: delimiterSchema.default(RemittanceDelimiters.COMMA),
   hasHeader: z.boolean().default(true),
@@ -132,6 +138,7 @@ export const createRemittanceImportProfileSchema = z
     columns: remittanceImportMappingSchema
   })
   .refine(namesNeedAHeader, HEADER_MESSAGE)
+  .refine(separatorsDiffer, SEPARATOR_MESSAGE)
 export type CreateRemittanceImportProfileBody = z.output<typeof createRemittanceImportProfileSchema>
 
 export const updateRemittanceImportProfileSchema = z
@@ -150,8 +157,19 @@ export type UpdateRemittanceImportProfileBody = z.output<typeof updateRemittance
 
 // The mapper's preview: a sample of the file and the mapping being tried, before anything is saved
 export const remittanceImportPreviewSchema = z.strictObject({
-  text: z.string().min(1).max(RemittanceImportLimits.PREVIEW_MAX_BYTES),
-  profile: remittanceImportProfileBodySchema.refine(namesNeedAHeader, HEADER_MESSAGE)
+  // In bytes, not characters: a sample of accents takes up to four bytes a character
+  text: z
+    .string()
+    .min(1)
+    .refine(
+      value => new TextEncoder().encode(value).length <= RemittanceImportLimits.PREVIEW_MAX_BYTES,
+      {
+        message: 'the sample is larger than a preview takes'
+      }
+    ),
+  profile: remittanceImportProfileBodySchema
+    .refine(namesNeedAHeader, HEADER_MESSAGE)
+    .refine(separatorsDiffer, SEPARATOR_MESSAGE)
 })
 export type RemittanceImportPreviewBody = z.output<typeof remittanceImportPreviewSchema>
 

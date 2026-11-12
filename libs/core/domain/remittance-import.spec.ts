@@ -190,6 +190,39 @@ describe('parseRemittanceFile', () => {
     ])
   })
 
+  it('numbers the rows by the line of the file where they start, also after a quoted cell with line breaks', () => {
+    const result = parseRemittanceFile(
+      'Guia,Monto,Nota\nG-1,5,"first\nsecond\r\nthird"\nG-2,abc,x\n',
+      profile({ columns: { guideNumber: 'Guia', amount: 'Monto' } })
+    )
+    expect(result.lines).toEqual([{ guideNumber: 'G-1', reportedCents: 500, row: 2 }])
+    expect(result.errors).toEqual([
+      { row: 5, field: 'amount', code: RemittanceImportErrors.INVALID_AMOUNT, value: 'abc' }
+    ])
+  })
+
+  it('refuses a row with more cells than the header has instead of reading shifted columns', () => {
+    const result = parseRemittanceFile('Guia,Monto\nG-1,5\nG,2,50\n', profile())
+    expect(result.lines.map(line => line.guideNumber)).toEqual(['G-1'])
+    expect(result.errors).toEqual([
+      { row: 3, field: null, code: RemittanceImportErrors.ROW_TOO_WIDE, value: '3' }
+    ])
+  })
+
+  it('refuses a day that Postgres cannot store', () => {
+    expect(parseImportDay('0000-01-01', RemittanceDateFormats.ISO)).toBeNull()
+    expect(parseImportDay('1969-12-31', RemittanceDateFormats.ISO)).toBeNull()
+    expect(parseImportDay('2101-01-01', RemittanceDateFormats.ISO)).toBeNull()
+    expect(parseImportDay('1970-01-01', RemittanceDateFormats.ISO)).toBe('1970-01-01')
+  })
+
+  it('answers too many rows at once for a file of very many rows, without running out of stack', () => {
+    const text = `Guia,Monto\n${'a,1\n'.repeat(300_000)}`
+    const result = parseRemittanceFile(text, profile())
+    expect(result.errors.map(error => error.code)).toEqual([RemittanceImportErrors.TOO_MANY_ROWS])
+    expect(result.lines).toEqual([])
+  })
+
   it('says a file is empty, has only a header or leaves a quote open', () => {
     expect(parseRemittanceFile('', profile()).errors[0]?.code).toBe(
       RemittanceImportErrors.EMPTY_FILE
