@@ -51,7 +51,7 @@ export const asShipmentStatus = (value: string): ShipmentStatus | null =>
   KNOWN_SHIPMENT_STATUSES.includes(value) ? (value as ShipmentStatus) : null
 
 // Whether a connection's carrier can cancel a guide: it is asked to (`CANCEL_SHIPMENT`) or the guide is the platform's own
-// (`INTERNAL_GUIDE`, a `local` courier: the api cancels it at once and nobody is asked), as the Shipments screen reads it
+// (`INTERNAL_GUIDE`: the api cancels it at once and nobody is asked), as the Shipments screen reads it
 export const carrierCancels = (capabilities: readonly string[]): boolean =>
   capabilities.includes(CarrierCapability.CANCEL_SHIPMENT) ||
   capabilities.includes(CarrierCapability.INTERNAL_GUIDE)
