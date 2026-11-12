@@ -1800,7 +1800,8 @@
       "exports": "Exportaciones",
       "settings": "Ajustes",
       "orders": "Pedidos",
-      "inventory": "Inventario"
+      "inventory": "Inventario",
+      "remittances": "Remesas"
     },
     "notifications": {
       "open": "Notificaciones",
@@ -4339,6 +4340,154 @@
     },
     "plugin": {
       "name": "Envíos"
+    }
+  },
+  "remittances": {
+    "status": {
+      "draft": "Borrador",
+      "confirmed": "Confirmada",
+      "voided": "Anulada"
+    },
+    "outcome": {
+      "matched": "Coincide",
+      "amount_differs": "Monto distinto",
+      "not_found": "Guía no encontrada",
+      "not_delivered": "Aún sin entregar",
+      "already_remitted": "Ya remesada",
+      "duplicate_in_file": "Repetida en el archivo"
+    },
+    "list": {
+      "pageTitle": "Remesas",
+      "description": "El efectivo que los transportistas cobran contra entrega, lo que aún deben y las liquidaciones que lo traen.",
+      "title": "Remesas",
+      "noReference": "Sin número de liquidación",
+      "openRemittance": "Abrir la remesa {name}",
+      "filters": {
+        "status": "Estado",
+        "anyStatus": "Cualquier estado",
+        "carrier": "Transportista",
+        "anyCarrier": "Cualquier transportista"
+      },
+      "empty": "Todavía no hay remesas.",
+      "emptyFiltered": "Ninguna remesa coincide con estos filtros.",
+      "caption": "Remesas de la tienda",
+      "columns": {
+        "reference": "Liquidación",
+        "carrier": "Transportista",
+        "status": "Estado",
+        "created": "Creada",
+        "lines": "Líneas",
+        "expected": "Esperado",
+        "reported": "Reportado",
+        "difference": "Diferencia"
+      },
+      "loadMore": "Cargar más"
+    },
+    "pending": {
+      "title": "Lo que aún deben los transportistas",
+      "empty": "Ningún transportista debe efectivo contra entrega por ahora.",
+      "total": "{amount} adeudados en {count, plural, one {# envío} other {# envíos}}",
+      "noShipments": "Ningún envío espera una remesa.",
+      "shipmentsCaption": "Envíos que {name} aún debe",
+      "columns": {
+        "guide": "Guía",
+        "order": "Pedido",
+        "expected": "Esperado",
+        "remitted": "Remesado",
+        "owed": "Adeudado",
+        "age": "En espera"
+      },
+      "noGuide": "Sin guía",
+      "days": "{count, plural, one {# día} other {# días}}",
+      "truncated": "Se muestran los {count} envíos más antiguos. El total cuenta todos.",
+      "shipmentCount": "{count, plural, one {# envío} other {# envíos}}",
+      "oldest": "el más antiguo espera hace {count, plural, one {# día} other {# días}}",
+      "overdue": "Atrasado: la tienda da {days, plural, one {# día} other {# días}} para recibir el efectivo.",
+      "owed": "Adeudado",
+      "showShipments": "Ver envíos",
+      "hideShipments": "Ocultar envíos",
+      "showShipmentsOf": "Ver los envíos que debe {name}",
+      "hideShipmentsOf": "Ocultar los envíos que debe {name}"
+    },
+    "lines": {
+      "empty": "Esta remesa no tiene líneas.",
+      "caption": "Líneas de la remesa y el resultado del cruce de cada una",
+      "columns": {
+        "guide": "Guía",
+        "order": "Pedido",
+        "outcome": "Resultado",
+        "expected": "Esperado",
+        "reported": "Reportado",
+        "fee": "Comisión",
+        "difference": "Diferencia",
+        "actions": "Acciones"
+      },
+      "leftOut": "Excluida",
+      "editLine": "Editar la línea {guide}",
+      "edit": {
+        "open": "Editar",
+        "label": "Editar la línea {guide}",
+        "reported": "Monto reportado",
+        "fee": "Comisión",
+        "note": "Nota",
+        "invalidAmount": "Escribe un monto como 15 o 15.50.",
+        "excluded": "Dejar esta línea fuera de la confirmación",
+        "save": "Guardar línea",
+        "cancel": "Cancelar"
+      }
+    },
+    "confirm": {
+      "title": "Confirmar la remesa",
+      "reference": "Número de liquidación",
+      "receivedOn": "Día en que llegó",
+      "note": "Nota",
+      "unsettled": "{count, plural, one {# línea no liquidará} other {# líneas no liquidarán}} nada: ningún envío coincide. Léelas arriba antes de confirmar.",
+      "nothingToSettle": "Nada de este borrador liquidaría un envío.",
+      "action": "Confirmar remesa",
+      "done": "Remesa confirmada",
+      "dialog": {
+        "title": "¿Confirmar esta remesa?",
+        "description": "Se marcará como remesado: {count, plural, one {# envío} other {# envíos}} de {carrier}, por {amount} reportados. Solo anular la remesa puede deshacerlo.",
+        "cancel": "Volver",
+        "confirm": "Confirmar"
+      }
+    },
+    "void": {
+      "title": "Anular la remesa",
+      "description": "Sus envíos vuelven a esperar una remesa. El motivo queda en el registro de auditoría.",
+      "reason": "Motivo (opcional)",
+      "action": "Anular remesa",
+      "done": "Remesa anulada",
+      "dialog": {
+        "title": "¿Anular la remesa {name}?",
+        "description": "Los envíos que liquidó vuelven a esperar una remesa y se olvidan los montos que registró.",
+        "confirm": "Anular remesa"
+      }
+    },
+    "discard": {
+      "action": "Descartar borrador",
+      "dialog": {
+        "title": "¿Descartar este borrador?",
+        "description": "Se eliminan el borrador y el archivo del que vino. No se liquida nada.",
+        "cancel": "Conservar borrador",
+        "confirm": "Descartar"
+      }
+    },
+    "detail": {
+      "back": "Volver a remesas",
+      "noReference": "Sin número de liquidación",
+      "receivedOn": "llegó el {date}",
+      "confirmedOn": "confirmada el {date}",
+      "voidedOn": "Anulada el {date}",
+      "openFile": "Abrir el archivo importado",
+      "fileGone": "El archivo ya no está disponible.",
+      "totals": {
+        "expected": "Esperado",
+        "reported": "Reportado",
+        "fee": "Comisiones",
+        "difference": "Diferencia"
+      },
+      "draftNote": "Este borrador no liquida nada hasta que se confirma. El resultado de cada línea se calcula de nuevo tras cada cambio."
     }
   }
 }
