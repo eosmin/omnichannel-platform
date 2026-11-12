@@ -68,7 +68,8 @@ export function MessageThread({ conversationId }: { conversationId: string }): R
       name: null,
       displayIdentity: '',
       username: null,
-      avatarUrl: null
+      avatarUrl: null,
+      isCaution: false
     },
     conversation.data?.anonymousCustomers ?? false
   )

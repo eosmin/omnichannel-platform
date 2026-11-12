@@ -164,12 +164,18 @@ export const createNoteSchema = z.strictObject({
 
 export const attachTagSchema = z.strictObject({ tagId: z.uuid() })
 
+// The reason is required: a flag nobody can explain is not acted on (TDD_17 §4.16)
+export const setCautionSchema = z.strictObject({
+  reason: singleLineText(CustomerLimits.CAUTION_REASON_MAX_LENGTH, 1)
+})
+
 export type ListTimelineQuery = z.output<typeof listTimelineQuerySchema>
 export type ListCustomerOrdersQuery = z.output<typeof listCustomerOrdersQuerySchema>
 export type MergePreviewQuery = z.output<typeof mergePreviewQuerySchema>
 export type ListMediaQuery = z.output<typeof listMediaQuerySchema>
 export type ListCustomersQuery = z.output<typeof listCustomersQuerySchema>
 export type CreateCustomerBody = z.output<typeof createCustomerSchema>
+export type SetCautionBody = z.output<typeof setCautionSchema>
 export type UpdateCustomerBody = z.output<typeof updateCustomerSchema>
 export type LinkIdentityBody = z.output<typeof linkIdentitySchema>
 export type MergeCustomersBody = z.output<typeof mergeCustomersSchema>
