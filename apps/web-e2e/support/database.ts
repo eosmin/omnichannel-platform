@@ -1434,6 +1434,11 @@ export async function addShippingScenario(storeId: string, run: string): Promise
       name: warehouseName,
       code: `SH-${run.toUpperCase()}`
     })
+    // The guide leaves from this warehouse: the api refuses a guide of a store whose origin has no address
+    await owner.warehouse.update({
+      where: { id: warehouse.id },
+      data: { address: { line1: 'Bodega 1', city: 'Soyapango', country: 'SV' } }
+    })
     await linkWarehouse(owner, { organizationId, storeId, warehouseId: warehouse.id })
     const connection = await createCarrierConnection(owner, {
       storeId,

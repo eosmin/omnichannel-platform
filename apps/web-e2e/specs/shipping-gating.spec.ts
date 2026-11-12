@@ -48,7 +48,7 @@ test.describe('shipping by permission', () => {
     await signIn(page, viewerEmail)
     await page.goto(AppPaths.store.shipments(storeId))
     await expect(page.getByRole('heading', { name: en.shipments.list.title })).toBeVisible()
-    await expect(page.getByRole('cell', { name: lists.waitingGuide })).toBeVisible()
+    await expect(page.getByRole('cell', { name: lists.waitingGuide, exact: true })).toBeVisible()
 
     await page.goto(AppPaths.store.pickups(storeId))
     await expect(page.getByRole('heading', { name: en.pickups.list.title })).toBeVisible()
