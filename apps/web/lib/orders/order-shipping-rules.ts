@@ -50,6 +50,12 @@ const KNOWN_SHIPMENT_STATUSES: readonly string[] = Object.values(ShipmentStatus)
 export const asShipmentStatus = (value: string): ShipmentStatus | null =>
   KNOWN_SHIPMENT_STATUSES.includes(value) ? (value as ShipmentStatus) : null
 
+// Whether a connection's carrier can cancel a guide: it is asked to (`CANCEL_SHIPMENT`) or the guide is the platform's own
+// (`INTERNAL_GUIDE`, a `local` courier: the api cancels it at once and nobody is asked), as the Shipments screen reads it
+export const carrierCancels = (capabilities: readonly string[]): boolean =>
+  capabilities.includes(CarrierCapability.CANCEL_SHIPMENT) ||
+  capabilities.includes(CarrierCapability.INTERNAL_GUIDE)
+
 // A guide that may still be cancelled: made and not picked up, or a cancel that failed (retried)
 const CANCELLABLE: readonly string[] = [LABEL_CREATED_STATUS, CANCEL_FAILED_STATUS]
 

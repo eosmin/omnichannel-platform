@@ -31,7 +31,7 @@ const ACTION = RETURNS.action
 const STATUS = en.orders.status
 
 // The journey of TDD_17 §9 through the screens, against a `local` courier of the store: make the guide of a confirmed order, print
-// its label, void it (this courier cannot cancel at a carrier, so the panel offers "Mark as voided", never "Cancel guide" or
+// its label, cancel it (a guide of the platform's own courier is cancelled at once, and the panel offers neither the manual void nor
 // "Request pickup"), and then a refund and an exchange of delivered orders, from the request to the stock and the replacement.
 test.describe('the shipping journey of an order', () => {
   test.describe.configure({ mode: 'serial' })
@@ -99,22 +99,23 @@ test.describe('the shipping journey of an order', () => {
     expect((await asked).ok()).toBe(true)
   })
 
-  test('offers what this courier can do: mark as voided, and neither a cancel at the carrier nor a pickup', async () => {
+  test('offers what this courier can do: cancel its own guide at once, and no manual void and no pickup', async () => {
     await open(guided)
     await expect(shipping().getByText(SHIPPING.status.label_created, { exact: true })).toBeVisible()
-    await expect(
-      shipping().getByRole('button', { name: SHIPPING.action.mark_voided })
-    ).toBeVisible()
-    await expect(shipping().getByRole('button', { name: SHIPPING.action.cancel })).toHaveCount(0)
+    await expect(shipping().getByRole('button', { name: SHIPPING.action.cancel })).toBeVisible()
+    await expect(shipping().getByRole('button', { name: SHIPPING.action.mark_voided })).toHaveCount(
+      0
+    )
     await expect(
       shipping().getByRole('button', { name: SHIPPING.action.request_pickup })
     ).toHaveCount(0)
 
-    await shipping().getByRole('button', { name: SHIPPING.action.mark_voided }).click()
-    await dialog(SHIPPING.move.mark_voided.title)
-      .getByRole('button', { name: SHIPPING.move.mark_voided.confirm, exact: true })
+    await shipping().getByRole('button', { name: SHIPPING.action.cancel }).click()
+    await dialog(SHIPPING.move.cancel.title)
+      .getByRole('button', { name: SHIPPING.move.cancel.confirm, exact: true })
       .click()
 
+    // A guide of the platform is cancelled at once: nobody is asked
     await expect(shipping().getByText(SHIPPING.status.cancelled, { exact: true })).toBeVisible()
     await expect(shipping().getByRole('button', { name: SHIPPING.action.print_label })).toHaveCount(
       0
