@@ -15,7 +15,9 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 
 const OK = 200
+const ACCEPTED = 202
 const BAD_REQUEST = 400
+const FORBIDDEN = 403
 const MAX_ORDERS = 100
 
 interface OrderRow {
@@ -30,6 +32,7 @@ describe('Orders by carrier and guide', () => {
   let owner: OwnerClient
   let ctx: TestContext
   let agent: ReturnType<typeof api>
+  let exporter: ReturnType<typeof api>
   let live = { orderId: '', connectionId: '' }
   let cancelled = { orderId: '', connectionId: '' }
   let elsewhere = { orderId: '' }
@@ -46,6 +49,14 @@ describe('Orders by carrier and guide', () => {
       permissions: [Permissions.ORDERS_VIEW, Permissions.SHIPPING_VIEW]
     })
     agent = api(app, member, ctx.storeA)
+    const exporting = await actorWithPermissions(owner, app, {
+      prefix,
+      name: `exporter${randomUUID().slice(0, 6)}`,
+      organizationId: ctx.orgA.id,
+      storeId: ctx.storeA.id,
+      permissions: [Permissions.ORDERS_VIEW, Permissions.ORDERS_EXPORT]
+    })
+    exporter = api(app, exporting, ctx.storeA)
     live = await createShipment(owner, { storeId: ctx.storeA.id })
     cancelled = await createShipment(owner, {
       storeId: ctx.storeA.id,
@@ -98,6 +109,23 @@ describe('Orders by carrier and guide', () => {
     expect(idsOf(response.body)).toEqual([])
   })
 
+  it('hands the same filters to the export, which keeps them in its row', async () => {
+    const query = `guide=${OrderGuideFilters.WITH}&carrierConnectionId=${live.connectionId}`
+    // Without the right to export, the filters change nothing: the same refusal as before
+    expect((await agent.get(`${ApiRoutes.orders.export}?${query}`)).status).toBe(FORBIDDEN)
+    const response = await exporter.get(`${ApiRoutes.orders.export}?${query}`)
+    expect(response.status).toBe(ACCEPTED)
+    const row = await owner.export.findFirstOrThrow({
+      where: { storeId: ctx.storeA.id },
+      orderBy: { createdAt: 'desc' },
+      select: { filters: true }
+    })
+    expect(row.filters).toMatchObject({
+      guide: OrderGuideFilters.WITH,
+      carrierConnectionId: live.connectionId
+    })
+  })
+
   it('refuses a guide filter that is not ours', async () => {
     const response = await agent.get(`${ApiRoutes.orders.list}?guide=maybe`)
     expect(response.status).toBe(BAD_REQUEST)
@@ -124,6 +152,7 @@ describe('Orders by carrier and guide', () => {
       'orderIds=',
       'orderIds=not-an-id',
       `orderIds=${tooMany}`,
+      `orderIds=${live.orderId},${live.orderId}`,
       `orderIds=${live.orderId}&orderId=${live.orderId}`
     ]) {
       const response = await agent.get(`${ApiRoutes.shipments.list}?${query}`)

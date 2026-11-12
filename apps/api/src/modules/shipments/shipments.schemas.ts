@@ -17,7 +17,13 @@ export const shipmentIdSchema = uuidSchema
 const idList = z
   .string()
   .transform(text => text.split(',').filter(part => part !== ''))
-  .pipe(z.array(uuidSchema).min(1).max(BulkLabelLimits.MAX_ORDERS))
+  .pipe(
+    z
+      .array(uuidSchema)
+      .min(1)
+      .max(BulkLabelLimits.MAX_ORDERS)
+      .refine(ids => new Set(ids).size === ids.length, { message: 'an order appears twice' })
+  )
 
 export const listShipmentsQuerySchema = z
   .strictObject({
