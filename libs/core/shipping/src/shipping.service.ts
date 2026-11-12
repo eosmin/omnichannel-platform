@@ -57,6 +57,7 @@ import { takeLocalGuideNumber } from './guide-numbering'
 import { LabelRenderError } from './label-fit'
 import { renderLabelPdf } from './label-pdf'
 import { labelTextsFor } from './label-texts'
+import { prepareReturnGuide, type ReturnShipmentRequest } from './return-guide-prepare'
 import { type StoredLabel, ShipmentLabels } from './shipment-labels'
 import {
   type PluginLookup,
@@ -67,7 +68,6 @@ import {
   shippingRefusal,
   type StoreFacts
 } from './shipment-prepare'
-import { prepareReturnGuide, type ReturnShipmentRequest } from './return-guide-prepare'
 import {
   CarrierCallOutcomes,
   classifyCarrierError,
