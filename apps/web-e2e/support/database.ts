@@ -38,6 +38,10 @@ import {
   createInventoryMovement,
   createProduct,
   createShipment,
+  createOrder,
+  createPickup,
+  createGuideOn,
+  createRemittance,
   createWarehouse as createWarehouseRow,
   linkWarehouse,
   createCustomerIdentity,
@@ -1399,4 +1403,258 @@ export function onHandOf(warehouseId: string, productName: string): Promise<numb
     })
     return level?.onHand ?? 0
   })
+}
+
+// What the shipping journey of Step 4.14 starts from, which no screen can put in the database: a warehouse linked to the store
+// and a `local` courier with its service and guide sequence. The names carry the run, so the cases find their own rows.
+export interface ShippingScenario {
+  warehouse: { id: string; name: string }
+  connection: { id: string; name: string }
+  // Takes out what the cases made on top of it (orders, guides, returns); the warehouse stays, because the stock ledger that a
+  // received return writes is append-only and keeps it referenced
+  remove: () => Promise<void>
+}
+
+const SHIPPING_ADDRESS = {
+  line1: 'Calle 1 #23',
+  city: 'San Salvador',
+  state: 'San Salvador',
+  country: 'SV'
+}
+
+export async function addShippingScenario(storeId: string, run: string): Promise<ShippingScenario> {
+  const made = await withOwner(async owner => {
+    const { organizationId } = await owner.store.findUniqueOrThrow({
+      where: { id: storeId },
+      select: { organizationId: true }
+    })
+    const warehouseName = `Ship origin ${run}`
+    const warehouse = await createWarehouseRow(owner, {
+      organizationId,
+      name: warehouseName,
+      code: `SH-${run.toUpperCase()}`
+    })
+    await linkWarehouse(owner, { organizationId, storeId, warehouseId: warehouse.id })
+    const connection = await createCarrierConnection(owner, {
+      storeId,
+      displayName: `Courier ${run}`,
+      prefix: `J${run
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '0')
+        .slice(0, 3)}`
+    })
+    return { warehouse: { id: warehouse.id, name: warehouseName }, connection }
+  })
+  const orderIds: string[] = []
+  scenarioOrders.set(made.warehouse.id, orderIds)
+  return {
+    warehouse: made.warehouse,
+    connection: { id: made.connection.id, name: made.connection.displayName },
+    remove: async () => {
+      await removeOrdersAndGuides(orderIds, made.connection.id)
+      scenarioOrders.delete(made.warehouse.id)
+    }
+  }
+}
+
+// The orders each scenario made, so that its `remove` takes them out
+const scenarioOrders = new Map<string, string[]>()
+
+export interface ShippableOrder {
+  id: string
+  orderNumber: string
+  customerName: string
+  productName: string
+}
+
+// An order of the scenario's store with one line allocated at its warehouse, the address and the phone a guide needs, and the
+// scenario's courier as its carrier
+export async function addShippableOrder(
+  storeId: string,
+  scenario: ShippingScenario,
+  status: 'CONFIRMED' | 'DELIVERED' = 'CONFIRMED'
+): Promise<ShippableOrder> {
+  const made = await withOwner(async owner => {
+    const created = await createOrder(owner, {
+      storeId,
+      status,
+      shippingAddress: SHIPPING_ADDRESS,
+      allocatedAt: scenario.warehouse.id,
+      carrierConnectionId: scenario.connection.id
+    })
+    return owner.order.findUniqueOrThrow({
+      where: { id: created.id },
+      select: {
+        id: true,
+        orderNumber: true,
+        customer: { select: { name: true } },
+        items: { select: { productName: true } }
+      }
+    })
+  })
+  scenarioOrders.get(scenario.warehouse.id)?.push(made.id)
+  return {
+    id: made.id,
+    orderNumber: made.orderNumber,
+    customerName: made.customer?.name ?? '',
+    productName: made.items[0]?.productName ?? ''
+  }
+}
+
+// A product the store sells with `units` on hand at the scenario's warehouse: what an exchange sends out instead
+export function addStockedProduct(
+  storeId: string,
+  scenario: ShippingScenario,
+  name: string,
+  units = 5
+): Promise<void> {
+  return withOwner(async owner => {
+    const product = await createProduct(owner, { storeId, name })
+    await createInventoryLevel(owner, {
+      storeId,
+      productId: product.id,
+      warehouseId: scenario.warehouse.id,
+      onHand: units
+    })
+    await createInventoryMovement(owner, {
+      storeId,
+      productId: product.id,
+      warehouseId: scenario.warehouse.id,
+      quantity: units
+    })
+  })
+}
+
+// The state the api left a guide of an order in
+export function shipmentStatusesOf(orderId: string): Promise<string[]> {
+  return withOwner(async owner => {
+    const rows = await owner.shipment.findMany({
+      where: { orderId },
+      select: { status: true },
+      orderBy: { createdAt: 'asc' }
+    })
+    return rows.map(row => row.status)
+  })
+}
+
+// Takes out the orders a case made and everything that hangs from them: the replacement orders of its exchanges, its returns, its
+// guides, its allocations and its customers. Best effort: a row that the stock ledger still holds stays, and must not fail the
+// case that already passed.
+async function removeOrdersAndGuides(orderIds: string[], connectionId: string): Promise<void> {
+  await withOwner(async owner => {
+    const returns = await owner.orderReturn.findMany({
+      where: { orderId: { in: orderIds } },
+      select: { id: true, replacementOrderId: true }
+    })
+    const all = [
+      ...orderIds,
+      ...returns.flatMap(row => (row.replacementOrderId === null ? [] : [row.replacementOrderId]))
+    ]
+    const customers = await owner.order.findMany({
+      where: { id: { in: all } },
+      select: { customerId: true }
+    })
+    const attempt = async (run: () => Promise<unknown>): Promise<void> => {
+      try {
+        await run()
+      } catch {
+        // Kept by a row that cannot go (the ledger): the next run uses its own names
+      }
+    }
+    await attempt(() =>
+      owner.orderReturnLine.deleteMany({ where: { returnId: { in: returns.map(row => row.id) } } })
+    )
+    await attempt(() => owner.orderReturn.deleteMany({ where: { orderId: { in: orderIds } } }))
+    await attempt(() =>
+      owner.shipmentEvent.deleteMany({ where: { shipment: { orderId: { in: all } } } })
+    )
+    await attempt(() => owner.shipment.deleteMany({ where: { orderId: { in: all } } }))
+    await attempt(() =>
+      owner.orderItemAllocation.deleteMany({ where: { orderItem: { orderId: { in: all } } } })
+    )
+    await attempt(() => owner.order.deleteMany({ where: { id: { in: all } } }))
+    await attempt(() =>
+      owner.customer.deleteMany({
+        where: {
+          id: { in: customers.flatMap(row => (row.customerId === null ? [] : [row.customerId])) }
+        }
+      })
+    )
+    await attempt(() => owner.carrierService.deleteMany({ where: { connectionId } }))
+    await attempt(() => owner.carrierConnection.deleteMany({ where: { id: connectionId } }))
+  })
+}
+
+// A person who sees shipping, the orders and the returns but may not make, cancel or print a guide, nor open a return
+export function addShippingReader(storeId: string, email: string): Promise<() => Promise<void>> {
+  return addUserWithPermissions(storeId, {
+    email,
+    userName: 'Shipping Viewer',
+    roleName: 'E2E shipping viewer',
+    permissions: [Permissions.ORDERS_VIEW, Permissions.SHIPPING_VIEW, Permissions.RETURNS_VIEW]
+  })
+}
+
+// A person who sees the orders but not shipping: the Shipping panel must not be drawn for them
+export function addOrdersViewerWithoutShipping(
+  storeId: string,
+  email: string
+): Promise<() => Promise<void>> {
+  return addUserWithPermissions(storeId, {
+    email,
+    userName: 'Orders Without Shipping',
+    roleName: 'E2E orders no shipping',
+    permissions: [Permissions.ORDERS_VIEW]
+  })
+}
+
+// Pickups, a guide waiting for one and a draft remittance of a `local` courier of the store, for the screens that list them
+export interface ShippingLists {
+  pickupId: string
+  waitingGuide: string
+  remittanceId: string
+  connectionName: string
+  remove: () => Promise<void>
+}
+
+export async function addShippingLists(storeId: string, run: string): Promise<ShippingLists> {
+  const made = await withOwner(async owner => {
+    const connection = await createCarrierConnection(owner, {
+      storeId,
+      displayName: `Lists courier ${run}`,
+      prefix: `L${run
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '0')
+        .slice(0, 3)}`
+    })
+    const pickup = await createPickup(owner, { storeId, connectionId: connection.id })
+    const guide = await createGuideOn(owner, {
+      storeId,
+      connectionId: connection.id,
+      serviceCode: connection.serviceCode
+    })
+    const remittance = await createRemittance(owner, {
+      storeId,
+      connectionId: connection.id,
+      withLine: true
+    })
+    return { connection, pickup, guide, remittance }
+  })
+  return {
+    pickupId: made.pickup.id,
+    waitingGuide: made.guide.guideNumber,
+    remittanceId: made.remittance.id,
+    connectionName: made.connection.displayName,
+    remove: () =>
+      withOwner(async owner => {
+        await owner.codRemittanceLine.deleteMany({ where: { remittanceId: made.remittance.id } })
+        await owner.codRemittance.deleteMany({ where: { id: made.remittance.id } })
+        await owner.shipmentEvent.deleteMany({ where: { shipmentId: made.guide.id } })
+        await owner.shipment.deleteMany({ where: { id: made.guide.id } })
+        await owner.order.deleteMany({ where: { id: made.guide.orderId } })
+        await owner.pickupRequest.deleteMany({ where: { id: made.pickup.id } })
+        await owner.carrierService.deleteMany({ where: { connectionId: made.connection.id } })
+        await owner.carrierConnection.deleteMany({ where: { id: made.connection.id } })
+      })
+  }
 }
