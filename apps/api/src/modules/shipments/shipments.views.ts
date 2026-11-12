@@ -14,6 +14,10 @@ export const SHIPMENT_SELECT = {
   shippingPayer: true,
   codAmountCents: true,
   codStatus: true,
+  codExpectedCents: true,
+  codRemittedCents: true,
+  codRemittanceId: true,
+  deliveredAt: true,
   currency: true,
   packageCount: true,
   failedAttempts: true,
@@ -45,6 +49,10 @@ export interface ShipmentRow {
   shippingPayer: string
   codAmountCents: number | null
   codStatus: string
+  codExpectedCents: number | null
+  codRemittedCents: number | null
+  codRemittanceId: string | null
+  deliveredAt: Date | null
   currency: string
   packageCount: number
   failedAttempts: number
@@ -79,6 +87,11 @@ export interface ShipmentView {
   shippingPayer: string
   codAmountCents: number | null
   codStatus: string
+  // What the carrier is to remit for it (written when it is delivered), what it remitted and the remittance that settled it (§4.15)
+  codExpectedCents: number | null
+  codRemittedCents: number | null
+  codRemittanceId: string | null
+  deliveredAt: string | null
   currency: string
   packageCount: number
   failedAttempts: number
@@ -114,6 +127,10 @@ export function shipmentViewOf(row: ShipmentRow): ShipmentView {
     shippingPayer: row.shippingPayer,
     codAmountCents: row.codAmountCents,
     codStatus: row.codStatus,
+    codExpectedCents: row.codExpectedCents,
+    codRemittedCents: row.codRemittedCents,
+    codRemittanceId: row.codRemittanceId,
+    deliveredAt: row.deliveredAt?.toISOString() ?? null,
     currency: row.currency,
     packageCount: row.packageCount,
     failedAttempts: row.failedAttempts,

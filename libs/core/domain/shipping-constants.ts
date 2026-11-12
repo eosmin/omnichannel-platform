@@ -290,6 +290,14 @@ export const CodStatusTransitions: Record<CodStatus, readonly CodStatus[]> = {
   [CodStatus.VOID]: []
 }
 
+// The statuses of a package that never brought its cash: a cash-on-delivery guide that reaches one without having been
+// delivered goes to VOID (TDD_17 §4.15)
+export const CodVoidingStatuses: readonly ShipmentStatus[] = [
+  ShipmentStatus.CANCELLED,
+  ShipmentStatus.RETURNING,
+  ShipmentStatus.RETURNED
+]
+
 export const RemittanceStatusTransitions: Record<RemittanceStatus, readonly RemittanceStatus[]> = {
   [RemittanceStatus.DRAFT]: [RemittanceStatus.CONFIRMED],
   [RemittanceStatus.CONFIRMED]: [RemittanceStatus.VOIDED],
@@ -577,6 +585,31 @@ export const PickupFailureNotes = {
   EMPTY: 'pickup_empty'
 } as const
 
+// How a sync job is queued, wherever it comes from (a request, the scheduler, its sweep): the same attempts and backoff
+export const pickupSyncJobOptions = (
+  jobId: string
+): { jobId: string; attempts: number; backoff: { type: 'exponential'; delay: number } } => ({
+  jobId,
+  attempts: PickupLimits.JOB_ATTEMPTS,
+  backoff: { type: 'exponential', delay: PickupLimits.BACKOFF_BASE_MS }
+})
+
+// How the scheduler and its sweep behave (TDD_17 §4.10)
+export const PickupSchedule = {
+  // A pickup still PENDING after this long was never queued (the queue was down) or its job was lost: the sweep queues it again
+  // (longer than the five attempts of a job with its backoff, so the sweep never doubles a job that is still asking again)
+  PENDING_STALE_MS: 15 * 60 * 1000,
+  // A pickup whose count the carrier has not acknowledged for this long is told again by the sweep, at most once per bucket
+  RESYNC_AFTER_MS: 15 * 60 * 1000,
+  SWEEP_BUCKET_MS: 30 * 60 * 1000,
+  // The most pickups the sweep queues in one minute: the rest wait for the next
+  SWEEP_BATCH: 100,
+  // How long what the scheduler did for a day is remembered (the day of the store ends well inside it)
+  MEMORY_TTL_SECONDS: 36 * 60 * 60,
+  // How long the claim of a minute is kept: longer than the ten minutes a late tick is still run
+  EVALUATION_MEMORY_SECONDS: 11 * 60
+} as const
+
 export const PickupResourceTypes = { PICKUP: 'pickup' } as const
 
 // The key a pickup is requested of the carrier with: the same pickup always makes the same key, so a carrier that keeps its
@@ -589,12 +622,20 @@ export const cancelShipmentKey = (guideKey: string): string => `cancel:${guideKe
 
 export const ReturnResourceTypes = {
   RETURN: 'return',
-  RECEPTION_BATCH: 'return_reception_batch'
+  RECEPTION_BATCH: 'return_reception_batch',
+  // The store-wide returns settings (Settings → Returns)
+  RETURN_SETTINGS: 'return_settings'
+} as const
+
+// The store-wide advisory lock of the returns settings, which are read and written back whole
+export const ReturnLockScopes = {
+  RETURN_SETTINGS: 'return_settings'
 } as const
 
 export const ShipmentResourceTypes = {
   SHIPMENT: 'shipment',
-  BULK_LABEL_JOB: 'bulk_label_job'
+  BULK_LABEL_JOB: 'bulk_label_job',
+  REMITTANCE: 'remittance'
 } as const
 
 // The statuses a carrier moves a package into (TDD_17 §4.9; `CarrierReportableStatuses` is what a plugin may map to). Every other status is the platform's to set: a carrier that

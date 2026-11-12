@@ -6,8 +6,10 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
+import { PaymentMethod } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 
+import { createCarrierConnection } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
@@ -160,10 +162,6 @@ describe('The returns of an order', () => {
       expect((await open(order.id, [])).status).toBe(BAD_REQUEST)
       expect(
         (await open(order.id, [{ orderItemId: itemId, quantity: 1 }], { storeId: 'x' })).status
-      ).toBe(BAD_REQUEST)
-      // An exchange waits for PR R1b
-      expect(
-        (await open(order.id, [{ orderItemId: itemId, quantity: 1 }], { type: 'exchange' })).status
       ).toBe(BAD_REQUEST)
     })
   })
@@ -428,6 +426,384 @@ describe('The returns of an order', () => {
         resourceId: ret.id
       })
       expect(entries[0]?.metadata).toMatchObject({ refundAmountCents: detail.totalCents })
+    })
+  })
+
+  // The replacement order of an exchange (PR R1b): made when the return is approved, already confirmed, with the value of what comes
+  // back as its discount, so its total is the price difference, and with its own stock reserved wherever the allocator finds it
+  describe('an exchange', () => {
+    const exchange = (orderId: string, lines: unknown[]) =>
+      open(orderId, lines, { type: 'exchange', reason: 'WRONG_ITEM' })
+
+    function replacementOf(productId: string, quantity: number, extra = {}) {
+      return {
+        replacement: {
+          items: [{ productId, quantity }],
+          paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
+          recipientPhones: ['71234567'],
+          ...extra
+        }
+      }
+    }
+
+    async function approvedExchange(options: {
+      returned: number
+      replacementPriceCents: number
+      replacementQuantity: number
+      replacementStock?: [number, number]
+      extra?: Record<string, unknown>
+    }) {
+      const { order, itemId, product } = await delivered(4)
+      const [first, second] = options.replacementStock ?? [10, 0]
+      const other = await kit.stocked(first, second, options.replacementPriceCents)
+      const ret = (await exchange(order.id, [{ orderItemId: itemId, quantity: options.returned }]))
+        .body as ReturnBody
+      const approved = await admin()
+        .post(ApiRoutes.returns.approve(ret.id))
+        .send(replacementOf(other.id, options.replacementQuantity, options.extra))
+      return { order, itemId, product, other, ret, approved }
+    }
+
+    it('makes a confirmed replacement whose total is the price difference, when the replacement costs more', async () => {
+      // 2 units of 1000 come back (credit 2000); 2 units of 2500 go out (5000): the customer pays 3000
+      const { ret, approved, other, order } = await approvedExchange({
+        returned: 2,
+        replacementPriceCents: 2500,
+        replacementQuantity: 2
+      })
+
+      expect(approved.status).toBe(OK)
+      const view = approved.body as ReturnBody & { replacementOrderId: string }
+      expect(view.status).toBe('approved')
+      expect(view.replacementOrderId).toEqual(expect.any(String))
+      const replacement = (await admin().get(ApiRoutes.orders.byId(view.replacementOrderId)))
+        .body as OrderBody
+      expect(replacement).toMatchObject({
+        status: 'CONFIRMED',
+        subtotalCents: 5000,
+        discountCents: 2000,
+        totalCents: 3000,
+        discountReason: `exchange_credit:${ret.id}`,
+        priceApprovalStatus: 'not_required',
+        customerId: ((await admin().get(ApiRoutes.orders.byId(order.id))).body as OrderBody)
+          .customerId
+      })
+      expect(
+        await owner.order.findFirst({
+          where: { id: view.replacementOrderId },
+          select: { exchangeOfOrderId: true, confirmedVia: true }
+        })
+      ).toEqual({ exchangeOfOrderId: order.id, confirmedVia: 'other' })
+      // Its stock is reserved like any order's
+      expect(await kit.level(other.id, ctx.warehouseA.id)).toMatchObject({
+        onHand: 10,
+        reserved: 2
+      })
+      const entries = await waitForAuditEntries(owner, {
+        action: AuditAction.RETURN_APPROVED,
+        resourceId: ret.id
+      })
+      expect(entries[0]?.metadata).toMatchObject({
+        replacementOrderId: view.replacementOrderId,
+        creditAppliedCents: 2000,
+        excessCents: 0
+      })
+    })
+
+    it('makes a replacement worth nothing to pay, and tells the owner what the credit left over, when it costs less', async () => {
+      // 4 units of 1000 come back (credit 4000); 1 unit of 1000 goes out: the total is 0 and 3000 is left to settle by hand
+      const { ret, approved } = await approvedExchange({
+        returned: 4,
+        replacementPriceCents: 1000,
+        replacementQuantity: 1
+      })
+
+      expect(approved.status).toBe(OK)
+      const replacement = (
+        await admin().get(
+          ApiRoutes.orders.byId(
+            (approved.body as { replacementOrderId: string }).replacementOrderId
+          )
+        )
+      ).body as OrderBody
+      expect(replacement).toMatchObject({ subtotalCents: 1000, discountCents: 1000, totalCents: 0 })
+      const entries = await waitForAuditEntries(owner, {
+        action: AuditAction.RETURN_APPROVED,
+        resourceId: ret.id
+      })
+      expect(entries[0]?.metadata).toMatchObject({ creditAppliedCents: 1000, excessCents: 3000 })
+    })
+
+    it('takes the replacement from another warehouse than the one the returned units go back to', async () => {
+      // The replacement is stocked only in the warehouse of priority 2; the returned units were sent from the one of priority 1
+      const { approved, other, product, ret, itemId } = await approvedExchange({
+        returned: 1,
+        replacementPriceCents: 1000,
+        replacementQuantity: 3,
+        replacementStock: [0, 5]
+      })
+      expect(approved.status).toBe(OK)
+      const replacement = (
+        await admin().get(
+          ApiRoutes.orders.byId(
+            (approved.body as { replacementOrderId: string }).replacementOrderId
+          )
+        )
+      ).body as OrderBody
+      expect(replacement.items[0]?.allocations).toEqual([
+        { warehouseId: ctx.warehouseASecond.id, quantity: 3 }
+      ])
+      expect(await kit.level(other.id, ctx.warehouseASecond.id)).toMatchObject({
+        onHand: 5,
+        reserved: 3
+      })
+
+      expect(
+        (
+          await admin()
+            .post(ApiRoutes.returns.receive(ret.id))
+            .send({ lines: [{ orderItemId: itemId, condition: 'resellable' }] })
+        ).status
+      ).toBe(OK)
+      // The returned unit is back where it left from, and the stock of the replacement did not move
+      expect(await kit.level(product.id, ctx.warehouseA.id)).toMatchObject({ onHand: 7 })
+      expect(await kit.level(other.id, ctx.warehouseASecond.id)).toMatchObject({
+        onHand: 5,
+        reserved: 3
+      })
+    })
+
+    it('does not apply the discount limit nor ask for an approval to a credit above it', async () => {
+      await owner.storeSettings.update({
+        where: { storeId: ctx.storeA.id },
+        data: { preferences: { orders: { discountLimitPercent: 5 } } }
+      })
+      try {
+        // 4000 of credit on a 4000 replacement is a discount of 100%, far above 5%
+        const { approved } = await approvedExchange({
+          returned: 4,
+          replacementPriceCents: 4000,
+          replacementQuantity: 1
+        })
+        expect(approved.status).toBe(OK)
+        const replacement = (
+          await admin().get(
+            ApiRoutes.orders.byId(
+              (approved.body as { replacementOrderId: string }).replacementOrderId
+            )
+          )
+        ).body as OrderBody
+        expect(replacement).toMatchObject({
+          status: 'CONFIRMED',
+          discountCents: 4000,
+          totalCents: 0,
+          priceApprovalStatus: 'not_required'
+        })
+      } finally {
+        await kit.resetSettings()
+      }
+    })
+
+    it('leaves the return requested and makes no order when the replacement cannot be made', async () => {
+      const before = await owner.order.count({ where: { storeId: ctx.storeA.id } })
+      // Two units asked, one on the shelf
+      const { approved, ret, order } = await approvedExchange({
+        returned: 1,
+        replacementPriceCents: 1000,
+        replacementQuantity: 2,
+        replacementStock: [1, 0]
+      })
+
+      expect(approved.status).toBe(CONFLICT)
+      expect(((await admin().get(ApiRoutes.returns.byId(ret.id))).body as ReturnBody).status).toBe(
+        'requested'
+      )
+      // The delivered order of the helper is the only one made since
+      expect(await owner.order.count({ where: { storeId: ctx.storeA.id } })).toBe(before + 1)
+      expect(
+        await owner.order.count({ where: { storeId: ctx.storeA.id, exchangeOfOrderId: order.id } })
+      ).toBe(0)
+    })
+
+    it('refuses an exchange without its replacement, a refund with one, and a body that names a discount', async () => {
+      const { order, itemId } = await delivered(2)
+      const other = await kit.stocked(5, 0, 1000)
+      const ex = (await exchange(order.id, [{ orderItemId: itemId, quantity: 1 }]))
+        .body as ReturnBody
+      expect((await admin().post(ApiRoutes.returns.approve(ex.id)).send()).status).toBe(BAD_REQUEST)
+      expect(
+        (
+          await admin()
+            .post(ApiRoutes.returns.approve(ex.id))
+            .send(replacementOf(other.id, 1, { discountCents: 500 }))
+        ).status
+      ).toBe(BAD_REQUEST)
+      const refund = await opened(order.id, itemId, 1)
+      expect(
+        (await admin().post(ApiRoutes.returns.approve(refund.id)).send(replacementOf(other.id, 1)))
+          .status
+      ).toBe(BAD_REQUEST)
+      // Nothing moved
+      for (const id of [ex.id, refund.id]) {
+        expect(((await admin().get(ApiRoutes.returns.byId(id))).body as ReturnBody).status).toBe(
+          'requested'
+        )
+      }
+    })
+
+    it('credits only what the customer paid when the returned order had a discount', async () => {
+      // 4 units of 1000 with a discount of 2000: 4000 of products, 2000 paid. Two units come back: they are worth 1000
+      const product = await kit.stocked(10)
+      const body = await kit.orderBody({
+        items: [{ productId: product.id, quantity: 4 }],
+        discountCents: 2000,
+        discountReason: 'loyal customer'
+      })
+      const created = await admin().post(ApiRoutes.orders.create).send(body)
+      expect(created.status).toBe(CREATED)
+      const order = (created.body as CreatedBody).order
+      for (const next of ['CONFIRMED', 'SHIPPED', 'DELIVERED']) {
+        expect((await orderStatus(order.id, { status: next })).status).toBe(OK)
+      }
+      const detail = (await admin().get(ApiRoutes.orders.byId(order.id))).body as OrderBody
+      const ex = (
+        await exchange(order.id, [{ orderItemId: detail.items[0]?.id ?? '', quantity: 2 }])
+      ).body as ReturnBody
+      const other = await kit.stocked(5, 0, 3000)
+
+      const approved = await admin()
+        .post(ApiRoutes.returns.approve(ex.id))
+        .send(replacementOf(other.id, 1))
+
+      expect(approved.status).toBe(OK)
+      const replacement = (
+        await admin().get(
+          ApiRoutes.orders.byId(
+            (approved.body as { replacementOrderId: string }).replacementOrderId
+          )
+        )
+      ).body as OrderBody
+      expect(replacement).toMatchObject({ discountCents: 1000, totalCents: 2000 })
+    })
+
+    it('records, by hand, the refund of what the credit left over, and no more', async () => {
+      // 4 units come back (credit 4000), a replacement of 1000: 3000 is left over. The order was paid on delivery
+      const { ret, order, itemId } = await approvedExchange({
+        returned: 4,
+        replacementPriceCents: 1000,
+        replacementQuantity: 1
+      })
+      expect(
+        (
+          await owner.order.update({
+            where: { id: order.id },
+            data: { paymentStatus: 'COMPLETED' }
+          })
+        ).paymentStatus
+      ).toBe('COMPLETED')
+      expect(
+        (
+          await admin()
+            .post(ApiRoutes.returns.receive(ret.id))
+            .send({ lines: [{ orderItemId: itemId, condition: 'resellable' }] })
+        ).status
+      ).toBe(OK)
+
+      const above = await admin()
+        .post(ApiRoutes.returns.complete(ret.id))
+        .send({ refundAmountCents: 3001 })
+      expect(above.status).toBe(CONFLICT)
+      expect(errorOf(above).code).toBe(ErrorCodes.RETURN_REFUND_EXCEEDS_PAID)
+      expect(errorOf(above).metadata).toMatchObject({ roomCents: 3000 })
+
+      const done = await admin()
+        .post(ApiRoutes.returns.complete(ret.id))
+        .send({ refundAmountCents: 3000 })
+      expect(done.status).toBe(OK)
+      expect((done.body as ReturnBody).refundAmountCents).toBe(3000)
+      // The returned order keeps its payment: the customer keeps the goods of the replacement
+      expect(
+        ((await admin().get(ApiRoutes.orders.byId(order.id))).body as OrderBody).paymentStatus
+      ).toBe('COMPLETED')
+    })
+
+    it('refuses a price of the agent in a line of the replacement, and a member who cannot create and confirm orders', async () => {
+      const { order, itemId } = await delivered(2)
+      const other = await kit.stocked(5, 0, 1000)
+      const ex = (await exchange(order.id, [{ orderItemId: itemId, quantity: 1 }]))
+        .body as ReturnBody
+      const priced = {
+        replacement: {
+          ...replacementOf(other.id, 1).replacement,
+          items: [{ productId: other.id, quantity: 1, unitPriceCents: 1, priceReason: 'x' }]
+        }
+      }
+      expect((await admin().post(ApiRoutes.returns.approve(ex.id)).send(priced)).status).toBe(
+        BAD_REQUEST
+      )
+
+      for (const permissions of [
+        [Permissions.RETURNS_MANAGE, Permissions.RETURNS_VIEW],
+        [Permissions.RETURNS_MANAGE, Permissions.RETURNS_VIEW, Permissions.ORDERS_CREATE]
+      ]) {
+        const member = await actorWithPermissions(owner, app, {
+          prefix,
+          name: `exchangeApprover${permissions.length}`,
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA.id,
+          permissions
+        })
+        const denied = await api(app, member, ctx.storeA)
+          .post(ApiRoutes.returns.approve(ex.id))
+          .send(replacementOf(other.id, 1))
+        expect(denied.status).toBe(FORBIDDEN)
+      }
+      expect(((await admin().get(ApiRoutes.returns.byId(ex.id))).body as ReturnBody).status).toBe(
+        'requested'
+      )
+    })
+
+    it('refuses a replacement whose shipping fee is out of the range of its carrier', async () => {
+      const { order, itemId } = await delivered(2)
+      const other = await kit.stocked(5, 0, 1000)
+      const connection = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
+      await owner.carrierConnection.update({
+        where: { id: connection.id },
+        data: { minShippingFeeCents: 500 }
+      })
+      const ex = (await exchange(order.id, [{ orderItemId: itemId, quantity: 1 }]))
+        .body as ReturnBody
+
+      const refused = await admin()
+        .post(ApiRoutes.returns.approve(ex.id))
+        .send(
+          replacementOf(other.id, 1, { carrierConnectionId: connection.id, shippingCents: 100 })
+        )
+
+      expect(refused.status).toBe(CONFLICT)
+      expect(errorOf(refused).code).toBe(ErrorCodes.SHIPPING_FEE_OUT_OF_RANGE)
+      expect(((await admin().get(ApiRoutes.returns.byId(ex.id))).body as ReturnBody).status).toBe(
+        'requested'
+      )
+    })
+
+    it('refuses a replacement of a product of another store, and approving it twice makes one order', async () => {
+      const { order, itemId } = await delivered(2)
+      const ex = (await exchange(order.id, [{ orderItemId: itemId, quantity: 1 }]))
+        .body as ReturnBody
+      const foreign = await admin()
+        .post(ApiRoutes.returns.approve(ex.id))
+        .send(replacementOf(randomUUID(), 1))
+      expect(foreign.status).toBe(NOT_FOUND)
+
+      const other = await kit.stocked(5, 0, 1000)
+      const body = replacementOf(other.id, 1)
+      expect((await admin().post(ApiRoutes.returns.approve(ex.id)).send(body)).status).toBe(OK)
+      const again = await admin().post(ApiRoutes.returns.approve(ex.id)).send(body)
+      expect(again.status).toBe(CONFLICT)
+      expect(
+        await owner.order.count({ where: { storeId: ctx.storeA.id, exchangeOfOrderId: order.id } })
+      ).toBe(1)
     })
   })
 

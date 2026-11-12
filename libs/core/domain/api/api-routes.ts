@@ -335,6 +335,8 @@ export const ApiRoutes = {
     preferences: '/settings/preferences', // GET, and PUT of the keys that change (the others keep their value)
     // Settings → Inventory (TDD_16 §4.10): GET, and PATCH of the switches that change
     inventory: '/settings/inventory',
+    // Settings → Returns (TDD_17 §4.14): GET, and PATCH of who pays the return leg by default
+    returns: '/settings/returns',
     members: '/settings/team/members',
     memberById: (id: string) => `/settings/team/members/${id}`,
     // POST: the member keeps the role and the history but cannot enter the store until reactivated

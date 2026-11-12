@@ -9,6 +9,7 @@ import {
   type PrismaTransaction
 } from '@platform/core/database'
 import {
+  type ApproveReturnBody,
   canMoveReturn,
   checkReturnableOrder,
   checkReturnLines,
@@ -16,6 +17,7 @@ import {
   type CompleteReturnBody,
   type CreateReturnBody,
   defaultRestockWarehouse,
+  exchangeCreditCents,
   InventoryReferenceType,
   OrderLockScopes,
   OrderReturnCondition,
@@ -52,7 +54,7 @@ import {
   warehouseNotLinked
 } from '@platform/core/inventory'
 
-import { ReturnOrderPort } from './return-order.port'
+import { type ReplacementOrderMade, ReturnOrderPort } from './return-order.port'
 import { isShipmentTransitionAllowed } from './shipment-rules'
 import { ShipmentWrites } from './shipment-writes'
 
@@ -136,10 +138,6 @@ export class ReturnsService {
   // ------------------------------------------------------------------------------------------ the life of a return
 
   async create(storeId: string, body: CreateReturnBody, actor: ReturnActor): Promise<string> {
-    // The replacement order of an exchange is the work of PR R1b (the plan of Step 4.12 owns it): until then only a refund is made
-    if (body.type !== OrderReturnType.REFUND) {
-      throw invalid('exchanges are not available yet', ErrorCodes.VALIDATION_INVALID_INPUT)
-    }
     const created = await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
       await this.orders.lockOrder(tx, storeId, body.orderId)
@@ -206,10 +204,69 @@ export class ReturnsService {
     return created.id
   }
 
-  async approve(storeId: string, returnId: string, actor: ReturnActor): Promise<string> {
-    const result = await this.move(storeId, returnId, OrderReturnStatus.APPROVED, actor, null)
+  // Approving a refund only moves the status. Approving an exchange also makes its replacement order (TDD_17 §4.11), in the same
+  // transaction: a replacement that cannot be made (no stock, a fee out of range) leaves the return as it was. The credit is the
+  // value of the returned lines at the price they were sold at; the replacement is what the agent picked, so its total is the price
+  // difference, and what the credit has left over is the refund the owner settles by hand.
+  async approve(
+    storeId: string,
+    returnId: string,
+    body: ApproveReturnBody,
+    actor: ReturnActor
+  ): Promise<string> {
+    const result = await this.prisma.transaction(async tx => {
+      const loaded = await this.lock(tx, storeId, returnId, true)
+      this.assertMove(loaded.status, OrderReturnStatus.APPROVED)
+      const isExchange = loaded.type === OrderReturnType.EXCHANGE
+      if (isExchange !== (body.replacement !== undefined)) {
+        throw invalid(
+          isExchange
+            ? 'an exchange is approved with its replacement'
+            : 'only an exchange has a replacement',
+          ErrorCodes.VALIDATION_INVALID_INPUT
+        )
+      }
+      let replacement: ReplacementOrderMade | null = null
+      if (body.replacement !== undefined) {
+        replacement = await this.orders.createReplacement(
+          tx,
+          storeId,
+          {
+            ofOrderId: loaded.orderId,
+            returnId,
+            creditCents: await this.exchangeCredit(tx, loaded),
+            replacement: body.replacement
+          },
+          actor
+        )
+      }
+      await tx.orderReturn.update({
+        where: { id: returnId },
+        data: {
+          status: OrderReturnStatus.APPROVED,
+          ...(replacement === null ? {} : { replacementOrderId: replacement.orderId })
+        }
+      })
+      this.events.publish(tx, Events.RETURN_APPROVED, {
+        storeId,
+        orderId: loaded.orderId,
+        orderNumber: loaded.orderNumber,
+        returnId,
+        actor: actorRef(actor)
+      })
+      return { orderNumber: loaded.orderNumber, replacement }
+    })
+    result.replacement?.afterCommit()
     this.record(AuditAction.RETURN_APPROVED, storeId, returnId, actor, {
-      orderNumber: result.orderNumber
+      orderNumber: result.orderNumber,
+      ...(result.replacement === null
+        ? {}
+        : {
+            replacementOrderId: result.replacement.orderId,
+            replacementOrderNumber: result.replacement.orderNumber,
+            creditAppliedCents: result.replacement.creditAppliedCents,
+            excessCents: result.replacement.excessCents
+          })
     })
     return returnId
   }
@@ -746,11 +803,19 @@ export class ReturnsService {
     refundCents: number | null
     paymentRefunded: boolean
   }> {
-    if (loaded.type !== OrderReturnType.REFUND && refundCents !== undefined) {
-      throw invalid('an exchange has no refund', ErrorCodes.VALIDATION_INVALID_INPUT)
-    }
     let paymentRefunded = false
-    if (refundCents !== undefined) {
+    if (loaded.type === OrderReturnType.EXCHANGE && refundCents !== undefined) {
+      // An exchange refunds only what its credit left over (a replacement that costs less than what came back), by hand, and
+      // never moves the payment of the returned order to REFUNDED: the customer keeps the goods of the replacement
+      const room = await this.exchangeRefundRoom(tx, storeId, loaded)
+      if (refundCents > room) {
+        throw conflict(
+          ErrorCodes.RETURN_REFUND_EXCEEDS_PAID,
+          'the refund is more than the credit left over',
+          { roomCents: room }
+        )
+      }
+    } else if (refundCents !== undefined) {
       const order = await tx.order.findFirstOrThrow({
         where: { id: loaded.orderId, storeId },
         select: { totalCents: true, paymentStatus: true }
@@ -802,6 +867,52 @@ export class ReturnsService {
       refundCents: refundCents ?? null,
       paymentRefunded
     }
+  }
+
+  // What the returned lines are worth to the customer (`exchangeCreditCents`): read from the order the return is of, which the caller
+  // holds locked. A line whose item is gone is a broken return, never a credit of zero.
+  private async exchangeCredit(tx: PrismaTransaction, loaded: LoadedReturn): Promise<number> {
+    const order = await tx.order.findFirstOrThrow({
+      where: { id: loaded.orderId },
+      select: {
+        subtotalCents: true,
+        discountCents: true,
+        items: { select: { id: true, unitPriceCents: true } }
+      }
+    })
+    const priceOf = new Map(order.items.map(item => [item.id, item.unitPriceCents]))
+    return exchangeCreditCents(
+      loaded.lines.map(line => {
+        const unitPriceCents = priceOf.get(line.orderItemId)
+        if (unitPriceCents === undefined) {
+          throw invalid(
+            'a line of the return names an item that the order does not have',
+            ErrorCodes.VALIDATION_INVALID_INPUT
+          )
+        }
+        return { unitPriceCents, quantity: line.quantity }
+      }),
+      order
+    )
+  }
+
+  // The credit of an exchange minus what its replacement took of it, less the refunds of the other returns of the order: what the
+  // owner may still settle by hand. Money that was never collected is not given back.
+  private async exchangeRefundRoom(
+    tx: PrismaTransaction,
+    storeId: string,
+    loaded: LoadedReturn
+  ): Promise<number> {
+    const row = await tx.orderReturn.findFirstOrThrow({
+      where: { id: loaded.id, storeId },
+      select: {
+        order: { select: { paymentStatus: true } },
+        replacementOrder: { select: { discountCents: true } }
+      }
+    })
+    if ((row.order.paymentStatus as PaymentStatus) !== PaymentStatus.COMPLETED) return 0
+    const credit = await this.exchangeCredit(tx, loaded)
+    return Math.max(0, credit - (row.replacementOrder?.discountCents ?? 0))
   }
 
   // A decision's note is added to the note of the request, never in place of it: what the agent saw stays with the return

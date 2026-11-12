@@ -593,6 +593,8 @@
     "REMITTANCE_ALREADY_CONFIRMED": "La remesa ya está confirmada",
     "REMITTANCE_IMPORT_INVALID": "El archivo de la remesa no es válido",
     "REMITTANCE_INVALID_STATUS_TRANSITION": "La remesa no puede pasar a ese estado",
+    "REMITTANCE_NOTHING_TO_SETTLE": "Esta remesa no tiene nada que liquidar",
+    "REMITTANCE_TOO_MANY_LINES": "Una remesa admite como máximo 5.000 líneas",
     "RESOURCE_ALREADY_EXISTS": "Ya hay un elemento con ese nombre.",
     "RESOURCE_CONFLICT": "Alguien lo cambió al mismo tiempo. Recarga e inténtalo de nuevo",
     "RESOURCE_NOT_FOUND": "No existe o no puedes abrirlo",

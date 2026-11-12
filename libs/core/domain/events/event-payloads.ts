@@ -145,6 +145,15 @@ export interface ShipmentEventPayload {
   actor: ActorRef
 }
 
+// A remittance of cash collected on delivery that was confirmed or voided (TDD_17 §4.15): the totals are in the remittance, the
+// event only says which one and who did it
+export interface RemittanceEventPayload {
+  storeId: string
+  remittanceId: string
+  connectionId: string
+  actor: ActorRef
+}
+
 export interface ShipmentStatusChangedPayload extends ShipmentEventPayload {
   from: ShipmentStatus
   to: ShipmentStatus
@@ -179,6 +188,16 @@ export interface PickupManualRequiredPayload {
   pickupDate: string
   packageCount: number
   reason: PickupManualReason
+}
+
+// The cutoff of a pickup day is near: ids, the day, how many guides wait and how long is left
+export interface PickupCutoffApproachingPayload {
+  storeId: string
+  connectionId: string
+  // 'YYYY-MM-DD' in the timezone of the store
+  pickupDate: string
+  waiting: number
+  minutesLeft: number
 }
 
 export interface BulkLabelsDonePayload {
@@ -467,10 +486,13 @@ export interface DomainEventPayloads {
   [Events.SHIPMENT_CANCELLED]: ShipmentEventPayload
   [Events.SHIPMENT_REQUIRES_REVIEW]: ShipmentEventPayload
   [Events.SHIPMENT_CANCEL_FAILED]: ShipmentEventPayload
+  [Events.REMITTANCE_CONFIRMED]: RemittanceEventPayload
+  [Events.REMITTANCE_VOIDED]: RemittanceEventPayload
   [Events.CARRIER_STATUS_UNMAPPED]: CarrierStatusUnmappedPayload
   [Events.BULK_LABELS_PROGRESS]: BulkLabelsProgressPayload
   [Events.BULK_LABELS_DONE]: BulkLabelsDonePayload
   [Events.PICKUP_MANUAL_REQUIRED]: PickupManualRequiredPayload
+  [Events.PICKUP_CUTOFF_APPROACHING]: PickupCutoffApproachingPayload
   [Events.INVENTORY_MOVED]: InventoryMovedPayload
   [Events.INVENTORY_LOW]: InventoryLowPayload
   [Events.COUNT_SUBMITTED]: CountSubmittedPayload

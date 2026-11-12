@@ -1,7 +1,8 @@
 import { z } from 'zod'
 
 import { CustomerLimits } from './customer-constants'
-import { ORDER_MAX_AMOUNT_CENTS } from './order-constants'
+import { ORDER_MAX_AMOUNT_CENTS, OrderLimits } from './order-constants'
+import { createOrderSchema } from './order-schemas'
 import { OrderReturnReasons } from './shipping-constants'
 import { OrderReturnCondition, OrderReturnType, ShippingPayer } from './status-enums'
 import { singleLineText, uuidSchema } from './validation'
@@ -45,6 +46,49 @@ export const createReturnSchema = z.strictObject({
   notes: notesSchema.optional()
 })
 export type CreateReturnBody = z.output<typeof createReturnSchema>
+
+// The replacement order of an exchange (TDD_17 §4.11): what the agent picks and how it is paid and sent. The customer is the one of the
+// returned order, the order is born CONFIRMED and its discount is the credit of the return, never a number the client sends
+// A line of the replacement names a product, a variant and a quantity, and nothing else: its price is the catalog's, and the
+// warehouses are the allocator's choice. A price of the agent's own is an override that the replacement does not take (the credit
+// is the system's, and the price control of the store stays with the orders).
+const replacementItemSchema = z.strictObject({
+  productId: uuidSchema,
+  variantId: uuidSchema.optional(),
+  quantity: z.number().int().min(1).max(OrderLimits.MAX_QUANTITY_PER_LINE)
+})
+
+export const replacementOrderSchema = createOrderSchema
+  .pick({
+    shippingCents: true,
+    carrierConnectionId: true,
+    paymentMethod: true,
+    shippingAddress: true,
+    recipientPhones: true,
+    customerNotes: true,
+    internalNotes: true,
+    packingNotes: true,
+    scheduledDeliveryDate: true
+  })
+  .extend({
+    items: z
+      .array(replacementItemSchema)
+      .min(1)
+      .max(OrderLimits.MAX_LINES)
+      .refine(
+        items =>
+          new Set(items.map(item => `${item.productId}:${item.variantId ?? ''}`.toLowerCase()))
+            .size === items.length,
+        { message: 'a product and variant appear twice' }
+      )
+  })
+export type ReplacementOrderBody = z.output<typeof replacementOrderSchema>
+
+// Approving an exchange names its replacement; approving a refund names nothing
+export const approveReturnSchema = z.strictObject({
+  replacement: replacementOrderSchema.optional()
+})
+export type ApproveReturnBody = z.output<typeof approveReturnSchema>
 
 // One line of a receipt: what came back, in which condition and where it goes (resellable units only)
 export const receiveReturnLineSchema = z.strictObject({
