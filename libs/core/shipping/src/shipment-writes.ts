@@ -3,10 +3,13 @@ import { Injectable } from '@nestjs/common'
 import type { PrismaTransaction } from '@platform/core/database'
 import {
   CodStatus,
+  CodVoidingStatuses,
+  expectedCodCents,
   PickupStatus,
   PickupStatusTransitions,
   ShipmentEventSource,
-  ShipmentStatus
+  ShipmentStatus,
+  ShippingPayer
 } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
@@ -109,17 +112,9 @@ export class ShipmentWrites {
       data: { ...data, status: to }
     })
     if (moved.count === 0) throw conflict('the shipment changed while this was happening')
-    // A cash-on-delivery package that arrived now holds money for the carrier to remit (TDD_17 §4.15); a prepaid one has none
-    if (to === ShipmentStatus.DELIVERED) {
-      await tx.shipment.updateMany({
-        where: {
-          id: identity.shipmentId,
-          storeId: identity.storeId,
-          codStatus: CodStatus.NOT_DELIVERED
-        },
-        data: { codStatus: CodStatus.PENDING_REMITTANCE }
-      })
-    }
+    if (to === ShipmentStatus.DELIVERED) await this.settleDelivery(tx, identity, meta.occurredAt)
+    // A package that is cancelled, or on its way back, never brings the cash that was due on delivery
+    if (CodVoidingStatuses.includes(to)) await this.voidUndeliveredCod(tx, identity)
     await tx.shipmentEvent.create({
       data: {
         storeId: identity.storeId,
@@ -134,6 +129,67 @@ export class ShipmentWrites {
       }
     })
     this.announce(tx, identity, from, to, meta.actor, meta.replay === true)
+  }
+
+  // A package that arrived: it keeps the day, and a cash-on-delivery one now holds money for the carrier to remit, which it
+  // is expected to bring net of the carrier's fee only when the rule of §4.15 says so; a prepaid one has none
+  private async settleDelivery(
+    tx: PrismaTransaction,
+    identity: ShipmentIdentity,
+    occurredAt: Date | undefined
+  ): Promise<void> {
+    const now = new Date()
+    const at = occurredAt !== undefined && occurredAt < now ? occurredAt : now
+    const row = await tx.shipment.findFirst({
+      where: { id: identity.shipmentId, storeId: identity.storeId },
+      select: {
+        codStatus: true,
+        codAmountCents: true,
+        carrierCostCents: true,
+        shippingPayer: true,
+        connection: { select: { remittanceDeductsFee: true } }
+      }
+    })
+    if (row === null) return
+    await tx.shipment.updateMany({
+      where: { id: identity.shipmentId, storeId: identity.storeId, deliveredAt: null },
+      data: { deliveredAt: at }
+    })
+    if (row.codStatus !== String(CodStatus.NOT_DELIVERED) || row.codAmountCents === null) return
+    await tx.shipment.updateMany({
+      where: {
+        id: identity.shipmentId,
+        storeId: identity.storeId,
+        codStatus: CodStatus.NOT_DELIVERED
+      },
+      data: {
+        codStatus: CodStatus.PENDING_REMITTANCE,
+        codExpectedCents: expectedCodCents({
+          codAmountCents: row.codAmountCents,
+          carrierCostCents: row.carrierCostCents,
+          shippingPayer: row.shippingPayer as ShippingPayer,
+          deductsFee: row.connection.remittanceDeductsFee
+        })
+      }
+    })
+  }
+
+  // Nothing was collected: a cash-on-delivery package that was never delivered has nothing to remit (§4.15). A delivered one
+  // keeps its status, because the cash was collected and any refund is settled by hand (§4.16). Returns whether it voided.
+  // The returns of Step 4.12 call this for a package that comes back; the moves above call it for the status of the carrier.
+  async voidUndeliveredCod(
+    tx: PrismaTransaction,
+    identity: Pick<ShipmentIdentity, 'shipmentId' | 'storeId'>
+  ): Promise<boolean> {
+    const voided = await tx.shipment.updateMany({
+      where: {
+        id: identity.shipmentId,
+        storeId: identity.storeId,
+        codStatus: CodStatus.NOT_DELIVERED
+      },
+      data: { codStatus: CodStatus.VOID }
+    })
+    return voided.count > 0
   }
 
   // A line of the history with no move: an event that arrived too late, or says what the platform does not take from a

@@ -20,6 +20,7 @@ import {
   OrderMessageRoutes,
   OrderMessageTriggers,
   PaymentMethod,
+  RemittanceStatus,
   RoutingActionTypes,
   ShipmentStatus,
   ShippingPlugin,
@@ -56,6 +57,7 @@ import {
   linkWarehouse,
   BUILT_SERVICE_CODE,
   createCarrierConnection,
+  createRemittance,
   createShipment,
   createChannelConnection,
   createInvitation,
@@ -181,6 +183,8 @@ async function createTemplateOfSuite(owner: OwnerClient, storeId: string): Promi
 
 // The shipment each history row of the cases belongs to: the history is changed through its shipment
 const shipmentOfEvent = new Map<string, string>()
+// The remittance each line of the cases belongs to: a line is changed through its remittance
+const remittanceOfLine = new Map<string, string>()
 // The order each record of a message about an order belongs to: it is reached through the route that sends one
 const orderOfDispatch = new Map<string, string>()
 // Counts the numbers of the sheets the suite writes: unique inside an organization with no luck involved
@@ -532,6 +536,43 @@ const resources: IsolationResource[] = [
         (await owner.bulkLabelJob.findUnique({ where: { id }, select: { storeId: true } }))
           ?.storeId ?? null
     }
+  },
+  // The settlements of the cash collected on delivery (Step 4.13): read by id and listed, confirmed by its route. A line has no
+  // route to read it: it is read inside its remittance and changed through it.
+  {
+    name: 'codRemittance',
+    create: async (owner, input) => {
+      const connection = await createCarrierConnection(owner, { storeId: input.storeId })
+      return createRemittance(owner, { storeId: input.storeId, connectionId: connection.id })
+    },
+    readPath: ApiRoutes.remittances.byId,
+    listPath: ApiRoutes.remittances.list,
+    modify: { path: ApiRoutes.remittances.confirm, method: 'post', body: {} },
+    untouched: async (owner, id) =>
+      (await owner.codRemittance.findUnique({ where: { id }, select: { status: true } }))
+        ?.status === RemittanceStatus.DRAFT
+  },
+  {
+    name: 'codRemittanceLine',
+    create: async (owner, input) => {
+      const connection = await createCarrierConnection(owner, { storeId: input.storeId })
+      const built = await createRemittance(owner, {
+        storeId: input.storeId,
+        connectionId: connection.id,
+        withLine: true
+      })
+      const lineId = built.lineId ?? ''
+      remittanceOfLine.set(lineId, built.id)
+      return { id: lineId }
+    },
+    modify: {
+      path: id => ApiRoutes.remittances.lineById(remittanceOfLine.get(id) ?? randomUUID(), id),
+      method: 'patch',
+      body: { excluded: true }
+    },
+    untouched: async (owner, id) =>
+      (await owner.codRemittanceLine.findUnique({ where: { id }, select: { excluded: true } }))
+        ?.excluded === false
   },
   // Uninstalling is the one change a user can make; the installation is reached by its id
   {
