@@ -52,7 +52,7 @@ test.describe('shipping by permission', () => {
 
     await page.goto(AppPaths.store.pickups(storeId))
     await expect(page.getByRole('heading', { name: en.pickups.list.title })).toBeVisible()
-    await expect(page.getByRole('cell', { name: lists.connectionName })).toBeVisible()
+    await expect(page.getByRole('cell', { name: lists.connectionName, exact: true })).toBeVisible()
     // Asking the carrier for a pickup needs `shipping:manage_pickups`
     await expect(page.getByRole('button', { name: en.pickups.list.request })).toHaveCount(0)
   })
