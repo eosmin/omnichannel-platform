@@ -12,6 +12,7 @@ import {
 import {
   type BulkLabelsMergeJob,
   type CancelShipmentJob,
+  type EvaluatePickupsJob,
   type FetchInboundMediaJob,
   type FetchOriginMediaJob,
   exactly,
@@ -31,6 +32,7 @@ import { InboundMediaFetcher } from '../media/inbound-media-fetcher.service'
 import { MediaPipeline } from '../media/media-pipeline.service'
 import { OriginMediaFetcher } from '../media/origin-media-fetcher.service'
 import { BulkLabelsRunner } from '../shipping/bulk-labels-runner.service'
+import { PickupEvaluator } from '../shipping/pickup-evaluator.service'
 import { PickupSyncer } from '../shipping/pickup-syncer.service'
 import { ShipmentCanceller } from '../shipping/shipment-canceller.service'
 import { ShipmentPoller } from '../shipping/shipment-poller.service'
@@ -49,6 +51,7 @@ type HeavyJob =
   | BulkLabelsMergeJob
   | CancelShipmentJob
   | SyncPickupJob
+  | EvaluatePickupsJob
 
 const bulkLabelsJobSchema = exactly<BulkLabelsMergeJob>()(
   z.object({
@@ -75,6 +78,9 @@ const syncPickupJobSchema = exactly<SyncPickupJob>()(
     requestedBy: z.uuid().nullable(),
     correlationId: z.string().optional()
   })
+)
+const evaluatePickupsJobSchema = exactly<EvaluatePickupsJob>()(
+  z.object({ minute: z.number().int().positive(), correlationId: z.string().optional() })
 )
 const originFetchJobSchema = exactly<FetchOriginMediaJob>()(
   z.object({
@@ -139,7 +145,8 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     private readonly carrierReplay: CarrierEventReplay,
     private readonly bulkLabels: BulkLabelsRunner,
     private readonly canceller: ShipmentCanceller,
-    private readonly pickupSyncer: PickupSyncer
+    private readonly pickupSyncer: PickupSyncer,
+    private readonly pickupEvaluator: PickupEvaluator
   ) {
     super(QueueNames.HEAVY_PROCESSING, support)
   }
@@ -183,6 +190,14 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       if (!cancel.success) throw new UnrecoverableError('the void job does not fit its schema')
       // Rejects while the carrier does not answer (the queue asks again); the last attempt closes the void as failed
       await this.canceller.run(cancel.data, isLastAttempt(job))
+      return
+    }
+    if (job.name === JobNames.EVALUATE_PICKUPS) {
+      const evaluate = evaluatePickupsJobSchema.safeParse(job.data)
+      if (!evaluate.success) {
+        throw new UnrecoverableError('the pickup evaluation job does not fit its schema')
+      }
+      await this.pickupEvaluator.run(evaluate.data)
       return
     }
     if (job.name === JobNames.SYNC_PICKUP) {

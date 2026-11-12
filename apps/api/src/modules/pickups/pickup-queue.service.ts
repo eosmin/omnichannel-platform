@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
-import { PickupLimits } from '@platform/core/domain'
+import { pickupSyncJobOptions } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import { JobNames, QueueNames, type SyncPickupJob, syncPickupJobId } from '@platform/core/queues'
 
@@ -29,11 +29,7 @@ export class PickupQueue {
       await this.queue.add(
         JobNames.SYNC_PICKUP,
         { storeId, pickupId, requestedBy },
-        {
-          jobId: syncPickupJobId(pickupId, revision),
-          attempts: PickupLimits.JOB_ATTEMPTS,
-          backoff: { type: 'exponential', delay: PickupLimits.BACKOFF_BASE_MS }
-        }
+        pickupSyncJobOptions(syncPickupJobId(pickupId, revision))
       )
     } catch (error) {
       this.logger.error(

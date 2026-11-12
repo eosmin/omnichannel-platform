@@ -171,6 +171,12 @@ export interface SyncPickupJob extends BaseJob {
   pickupId: string
   requestedBy: string | null
 }
+// The one job of the minute that looks at every connection with pickups (TDD_17 §4.10). It carries the minute it was made for, so the
+// evaluation is of that moment and a late start does not look at another.
+export interface EvaluatePickupsJob extends BaseJob {
+  // Minutes since the epoch
+  minute: number
+}
 export interface FetchInboundMediaJob extends BaseJob {
   messageId: string
   // Place of the file in the message: with the message it names the media, so a retry is one file

@@ -4,6 +4,7 @@ import { CryptoPlatformModule, QueuesPlatformModule } from '@platform/core/http'
 import {
   MergedLabels,
   PickupSync,
+  PickupsService,
   ShipmentCancellation,
   ShipmentLabels,
   ShipmentWrites,
@@ -15,6 +16,7 @@ import { CarriersWorkerModule } from '../carriers/carriers.module'
 
 import { BulkLabelsCleaner } from './bulk-labels-cleaner.service'
 import { BulkLabelsRunner } from './bulk-labels-runner.service'
+import { PickupEvaluator } from './pickup-evaluator.service'
 import { PickupSyncer } from './pickup-syncer.service'
 import { ShipmentCanceller } from './shipment-canceller.service'
 import { ShipmentPoller } from './shipment-poller.service'
@@ -41,8 +43,17 @@ import { ShipmentPoller } from './shipment-poller.service'
     ShipmentCancellation,
     ShipmentCanceller,
     PickupSync,
-    PickupSyncer
+    PickupSyncer,
+    PickupsService,
+    PickupEvaluator
   ],
-  exports: [ShipmentPoller, BulkLabelsRunner, BulkLabelsCleaner, ShipmentCanceller, PickupSyncer]
+  exports: [
+    ShipmentPoller,
+    BulkLabelsRunner,
+    BulkLabelsCleaner,
+    ShipmentCanceller,
+    PickupSyncer,
+    PickupEvaluator
+  ]
 })
 export class ShippingWorkerModule {}
