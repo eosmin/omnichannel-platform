@@ -9,7 +9,9 @@ import {
   type ApproveReturnBody,
   approveReturnSchema,
   type CreateReturnBody,
+  type CreateReturnShipmentBody,
   createReturnSchema,
+  createReturnShipmentSchema,
   type CursorPage,
   type ReceiveReturnBody,
   receiveReturnSchema,
@@ -22,6 +24,8 @@ import type { AuthenticatedRequest } from '@platform/core/logger'
 import { ReturnsService } from '@platform/core/shipping'
 
 import { permissionDenied } from '../orders/orders.support'
+import { ShipmentsService } from '../shipments/shipments.service'
+import type { ShipmentView } from '../shipments/shipments.views'
 import {
   actorOf,
   CurrentPermissions,
@@ -39,13 +43,14 @@ type Store = ResolvedTenant['store']
 const id = () => new ZodValidationPipe(returnIdSchema)
 
 // The returns of the store in X-Store-Id (TDD_17 §6). Reading them asks for returns:view; everything that changes one asks for
-// returns:manage. The store is the one TenantGuard resolved, never a value of the request. The return leg (a guide made for the
-// way back) is the work of PR R1b-2; the reception by scanner, of PR R2.
+// returns:manage. The store is the one TenantGuard resolved, never a value of the request. The return leg is a guide that may
+// cost money, so it also asks for shipping:manage; the reception by scanner is the work of PR R2.
 @Controller()
 export class ReturnsController {
   constructor(
     private readonly returns: ReturnsService,
-    private readonly queries: ReturnsQueries
+    private readonly queries: ReturnsQueries,
+    private readonly shipments: ShipmentsService
   ) {}
 
   @RequirePermissions(Permissions.RETURNS_VIEW)
@@ -171,5 +176,22 @@ export class ReturnsController {
     return this.returns
       .complete(store.id, returnId, body, actorOf(user, store, req))
       .then(returnId => this.queries.get(store.id, returnId))
+  }
+
+  // The guide of the way back of an approved return (TDD_17 §4.11), for a connection whose carrier declares RETURN_SHIPMENT
+  @RequirePermissions(Permissions.RETURNS_MANAGE)
+  @Post(ApiRoutes.returns.returnShipment(':id'))
+  @HttpCode(HttpStatusCodes.CREATED)
+  returnShipment(
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) returnId: string,
+    @Body(new ZodValidationPipe(createReturnShipmentSchema)) body: CreateReturnShipmentBody,
+    @CurrentPermissions() held: readonly Permission[],
+    @Req() req: AuthenticatedRequest
+  ): Promise<ShipmentView> {
+    // A guide is made at a carrier and may cost money: who makes it must be able to make guides of an order
+    if (!held.includes(Permissions.SHIPPING_MANAGE)) throw permissionDenied(Permissions.SHIPPING_MANAGE)
+    return this.shipments.createReturnLeg(store.id, returnId, body, actorOf(user, store, req))
   }
 }

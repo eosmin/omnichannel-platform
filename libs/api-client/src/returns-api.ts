@@ -5,6 +5,7 @@ import {
   type ApproveReturnBody,
   type CompleteReturnBody,
   type CreateReturnBody,
+  type CreateReturnShipmentBody,
   OrderReturnCondition,
   OrderReturnStatus,
   OrderReturnType,
@@ -153,6 +154,36 @@ export const cancelReturn = moveWith<ReturnDecisionBody>(ApiRoutes.returns.cance
 export const receiveReturn = moveWith<ReceiveReturnBody>(ApiRoutes.returns.receive)
 // Received → completed: a refund records the money given back by hand
 export const completeReturn = moveWith<CompleteReturnBody>(ApiRoutes.returns.complete)
+
+// The guide of the way back, as much of it as the return screen needs (the guide has its own screen and routes, Step 4.14)
+export const returnShipmentSchema = z.object({
+  id: z.string(),
+  orderId: z.string(),
+  returnId: z.string().nullable(),
+  connectionId: z.string(),
+  kind: z.string(),
+  status: z.string(),
+  guideNumber: z.string().nullable(),
+  trackingUrl: z.string().nullable(),
+  hasLabel: z.boolean()
+})
+export type ReturnShipmentView = z.output<typeof returnShipmentSchema>
+
+// Approved → the guide of the way back (customer to warehouse), for a connection whose carrier can make it. The payer is the one
+// of the return, and the guide is never cash on delivery
+export function createReturnShipment(
+  client: ApiClient,
+  storeId: string,
+  returnId: string,
+  body: CreateReturnShipmentBody
+): Promise<ReturnShipmentView> {
+  return client.request(ApiRoutes.returns.returnShipment(returnId), {
+    method: 'POST',
+    body,
+    schema: returnShipmentSchema,
+    storeId
+  })
+}
 
 // Settings → Returns (TDD_17 §4.11): who pays the return leg and the shipping of a replacement when a return does not say
 export const returnSettingsSchema = z.strictObject({ returnShippingPayer: z.enum(ShippingPayer) })

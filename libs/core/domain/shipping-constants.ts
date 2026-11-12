@@ -514,6 +514,12 @@ export function shipmentIdempotencyKey(
   return `shipment:${orderId}:${originWarehouseId ?? 'none'}:${attempt}`
 }
 
+// The key a return guide is asked for with: one per return and attempt, so a carrier that keeps its promise never makes a second
+// guide for the same way back (the order's outbound key has its warehouse; a return has its own id)
+export function returnShipmentIdempotencyKey(returnId: string, attempt: number): string {
+  return `return-shipment:${returnId}:${attempt}`
+}
+
 // What the history of a shipment says when the platform wrote the line itself: an i18n key, translated by the screen
 // What a pickup is left saying when a cancelled shipment left it and the carrier could not be told (`PickupRequest.lastError`,
 // TDD_17 §4.8): the agent settles it with the carrier

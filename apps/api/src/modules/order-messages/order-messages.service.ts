@@ -460,7 +460,7 @@ export class OrderMessagesService {
     values: OrderMessageValues
     source: OrderMessageSource
   }> {
-    const shipment = await this.shipmentOf(storeId, order.id, shipmentId)
+    const shipment = await this.shipmentOf(storeId, order.id, shipmentId, template.kind)
     const source = orderMessageSourceOf({
       orderNumber: order.orderNumber,
       totalCents: order.totalCents,
@@ -958,7 +958,8 @@ export class OrderMessagesService {
   private async shipmentOf(
     storeId: string,
     orderId: string,
-    shipmentId: string | undefined
+    shipmentId: string | undefined,
+    kind: OrderMessageKindType
   ): Promise<{
     carrierName: string
     guideNumber: string | null
@@ -973,7 +974,11 @@ export class OrderMessagesService {
           ? {
               storeId,
               orderId,
-              kind: ShipmentKind.OUTBOUND,
+              // The way back is told with the guide of the way back; everything else with the outbound one
+              kind:
+                kind === OrderMessageKind.RETURN_APPROVED
+                  ? ShipmentKind.RETURN
+                  : ShipmentKind.OUTBOUND,
               status: { notIn: [...ShipmentInactiveStatuses] }
             }
           : { id: shipmentId, storeId, orderId },

@@ -14,6 +14,7 @@ import {
   cancelReturn,
   completeReturn,
   createReturn,
+  createReturnShipment,
   fetchReturn,
   fetchReturnSettings,
   fetchReturns,
@@ -124,6 +125,28 @@ describe('returns api', () => {
       [ApiRoutes.returns.receive('r1'), 'POST'],
       [ApiRoutes.returns.complete('r1'), 'POST']
     ])
+  })
+
+  it('asks for the guide of the way back and reads it', async () => {
+    const guide = {
+      id: 'sh1',
+      orderId: 'o1',
+      returnId: 'r1',
+      connectionId: 'c1',
+      kind: 'return',
+      status: 'label_created',
+      guideNumber: 'FAKE-000001',
+      trackingUrl: null,
+      hasLabel: true
+    }
+    const { client, fetchImpl } = setup(json(201, guide))
+    await expect(createReturnShipment(client, 's1', 'r1', { connectionId: 'c1' })).resolves.toEqual(
+      guide
+    )
+    const [url, init] = fetchImpl.mock.calls[0] ?? ['', {}]
+    expect(String(url)).toBe(`https://api.example.com/api/v1${ApiRoutes.returns.returnShipment('r1')}`)
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(String(init.body))).toEqual({ connectionId: 'c1' })
   })
 
   it('raises the error of the api', async () => {
