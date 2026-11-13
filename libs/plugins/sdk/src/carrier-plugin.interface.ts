@@ -33,7 +33,7 @@ import type {
 } from './carrier-types'
 import type { PluginTypes } from './plugin-types'
 
-// How guides come into being ('internal' is the `local` carrier: the core makes the guide).
+// How guides come into being ('internal' is `CarrierCapability.INTERNAL_GUIDE`: the core makes the guide).
 export const ShipmentCreationModes = {
   STANDALONE: 'standalone',
   PICKUP_BOUND: 'pickup_bound',

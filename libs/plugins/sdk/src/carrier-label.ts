@@ -1,6 +1,6 @@
 import type { LabelFormatType } from '@platform/core/domain'
 
-// The label of a carrier that has no label of its own (the `local` carrier, TDD_17 §4.2), as plain data.
+// The label of a carrier that has no label of its own (a carrier with `CarrierCapability.INTERNAL_GUIDE`, TDD_17 §4.2), as plain data.
 // The plugin decides what the label says and where; the core draws it on a PDF page of the connection's format.
 // Everything here is already localized: the core passes the texts and the amount in the store's language, the
 // plugin only places them, so no carrier writes a user-facing string of its own.

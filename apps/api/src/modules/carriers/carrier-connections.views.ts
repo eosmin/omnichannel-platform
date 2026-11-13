@@ -29,9 +29,9 @@ export interface CarrierConnectionView {
   defaultServiceCode: string | null
   defaultShippingPayer: string
   labelFormat: string
-  // The settings the plugin gave back at connect: a `local` courier's phone and notes
+  // The settings the plugin gave back at connect: the phone and notes of a courier with `CarrierCapability.INTERNAL_GUIDE`
   contact: Record<string, unknown> | null
-  // `local` only: the prefix of its guides
+  // Only for `CarrierCapability.INTERNAL_GUIDE`: the prefix of its guides
   guidePrefix: string | null
   services: CarrierServiceView[]
   pickupEnabled: boolean

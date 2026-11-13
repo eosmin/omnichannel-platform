@@ -15,12 +15,12 @@ export interface ConnectionContextRow {
   id: string
   storeId: string
   credentials: Uint8Array | null
-  // Not secret: what the plugin gave back at connect (a `local` courier's phone and notes, a carrier's account settings)
+  // Not secret: what the plugin gave back at connect (the phone and notes of a courier with `CarrierCapability.INTERNAL_GUIDE`, a carrier's account settings)
   contact: unknown
 }
 
 // The context of one call to a carrier plugin (TDD_17 §4.1): the credentials are opened here, for this call only, and
-// are never kept. A row with no credentials (the `local` courier) gives an empty set. What the database holds is
+// are never kept. A row with no credentials (one with `CarrierCapability.INTERNAL_GUIDE`) gives an empty set. What the database holds is
 // checked to be an object again, as it is for a channel.
 export function buildCarrierContext(
   row: ConnectionContextRow,

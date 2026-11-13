@@ -155,7 +155,7 @@ function identityOf(row: Row): ShipmentIdentity {
   }
 }
 
-// Voiding a guide (TDD_17 §4.8): starting it (the shipment is CANCEL_PENDING, a `local` guide is cancelled at once, a carrier
+// Voiding a guide (TDD_17 §4.8): starting it (the shipment is CANCEL_PENDING, a guide with `CarrierCapability.INTERNAL_GUIDE` is cancelled at once, a carrier
 // that cannot void is left for the agent), settling it with the carrier (the job, with its retries), and "mark as voided" by
 // hand. A guide that is voided leaves its pickup. The status is moved only through `ShipmentWrites`.
 @Injectable()
@@ -260,7 +260,7 @@ export class ShipmentCancellation {
       meta
     )
     if (internal) {
-      // A `local` guide is ours: nobody has to be asked and nothing is refunded
+      // A guide with `CarrierCapability.INTERNAL_GUIDE` is ours: nobody has to be asked and nothing is refunded
       await this.writes.move(
         tx,
         identityOf(row),

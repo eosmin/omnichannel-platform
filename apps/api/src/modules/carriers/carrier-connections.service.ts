@@ -83,7 +83,7 @@ const NEW_CONNECTION_RULES: RulesSnapshot = {
   autoPickupTime: null
 }
 
-// What a connection keeps of what the plugin gave back, none of it secret: a `local` courier's phone and notes, or the
+// What a connection keeps of what the plugin gave back, none of it secret: the phone and notes of a courier with `CarrierCapability.INTERNAL_GUIDE`, or the
 // settings of a carrier's account. Nothing when there is nothing to keep.
 function contactOf(
   local: { contact: Record<string, string> } | null,
@@ -500,7 +500,7 @@ export class CarrierConnectionsService {
                 })
           }
         })
-        // The numbering of a `local` courier goes on from where it was: only the prefix of the new guides changes
+        // The numbering of a courier with `CarrierCapability.INTERNAL_GUIDE` goes on from where it was: only the prefix of the new guides changes
         if (local !== null) {
           await tx.guideSequence.updateMany({
             where: { storeId, connectionId },
@@ -832,7 +832,7 @@ export class CarrierConnectionsService {
       throw prefixTaken('that guide prefix is printed on guides of another courier')
   }
 
-  // What a carrier that makes no guide of its own (the `local` courier) gives back: the prefix of its guides, that must be
+  // What a carrier that makes no guide of its own (one with `CarrierCapability.INTERNAL_GUIDE`) gives back: the prefix of its guides, that must be
   // one the barcode and the sort can use, and the contact the owner reads. Throws what a bad answer throws.
   private localSettings(answer: ConnectAnswer): LocalSettings {
     const { phone, notes, prefix } = localMetadataSchema.parse(answer.metadata)
