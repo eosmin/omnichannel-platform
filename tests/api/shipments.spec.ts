@@ -6,6 +6,7 @@ import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
+  CarrierCapability,
   CarrierConnectionStatus,
   CarrierId,
   CodStatus,
@@ -1034,6 +1035,19 @@ describe('Shipments: the engine that makes guides (TDD_17 §4.5, §4.8)', () => 
       expect(codeOf(response.body)).toBe(ErrorCodes.SHIPPING_CARRIER_REQUIRED)
     })
 
+    it('answers 404 for an order that does not exist or is of another store, before it asks for a carrier', async () => {
+      const missing = await asAdmin()
+        .post(ApiRoutes.shipments.forOrder('00000000-0000-4000-8000-000000000000'))
+        .send({})
+      expect(missing.status).toBe(NOT_FOUND)
+      // Also when the request names a carrier, even one that is not active
+      const named = await ship('00000000-0000-4000-8000-000000000000', localId)
+      expect(named.status).toBe(NOT_FOUND)
+      const foreign = await createOrder(owner, { storeId: ctx.storeB.id })
+      const other = await asAdmin().post(ApiRoutes.shipments.forOrder(foreign.id)).send({})
+      expect(other.status).toBe(NOT_FOUND)
+    })
+
     it('uses the planned carrier of the order, then the default of the store', async () => {
       const planned = await confirmed({ carrierConnectionId: forzaId })
       const viaPlanned = await asAdmin().post(ApiRoutes.shipments.forOrder(planned.id)).send({})
@@ -1062,6 +1076,24 @@ describe('Shipments: the engine that makes guides (TDD_17 §4.5, §4.8)', () => 
       const response = await ship(order.id, localId, { serviceCode: 'express' })
       expect(response.status).toBe(BAD_REQUEST)
       expect(codeOf(response.body)).toBe(ErrorCodes.SHIPPING_SERVICE_INVALID)
+    })
+
+    it('makes a guide of a cash-on-delivery order with nothing to pay for a carrier that cannot collect, and collects nothing', async () => {
+      const free = await confirmed({ paymentMethod: PaymentMethod.CASH_ON_DELIVERY })
+      await owner.order.update({
+        where: { id: free.id },
+        data: { totalCents: 0 }
+      })
+      const cod = standalone.plugin.capabilities
+      const without = cod.filter(capability => capability !== CarrierCapability.COD)
+      Object.assign(standalone.plugin, { capabilities: without })
+      try {
+        const response = await ship(free.id, forzaId)
+        expect(response.status).toBe(CREATED)
+        expect((response.body as ShipmentBody).codAmountCents).toBeNull()
+      } finally {
+        Object.assign(standalone.plugin, { capabilities: cod })
+      }
     })
 
     it('refuses cash on delivery with a carrier that cannot collect it', async () => {
@@ -1329,7 +1361,13 @@ describe('Shipments: the engine that makes guides (TDD_17 §4.5, §4.8)', () => 
       // Two origins and no origin named: the engine does not guess
       const unclear = await ship(customerOrder.id, localId)
       expect(unclear.status).toBe(BAD_REQUEST)
-      expect(codeOf(unclear.body)).toBe(ErrorCodes.SHIPPING_ORIGIN_MISSING)
+      expect(codeOf(unclear.body)).toBe(ErrorCodes.SHIPPING_ORIGIN_AMBIGUOUS)
+      // A warehouse the lines do not leave from is not the same refusal
+      const elsewhere = await ship(customerOrder.id, localId, {
+        originWarehouseId: '00000000-0000-4000-8000-000000000000'
+      })
+      expect(elsewhere.status).toBe(BAD_REQUEST)
+      expect(codeOf(elsewhere.body)).toBe(ErrorCodes.SHIPPING_ORIGIN_MISSING)
       const first = (
         await ship(customerOrder.id, localId, { originWarehouseId: ctx.warehouseA.id })
       ).body as ShipmentBody

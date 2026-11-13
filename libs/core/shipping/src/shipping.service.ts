@@ -215,6 +215,11 @@ export class ShippingService {
     for (const [index, request] of requests.entries()) {
       const resolved = connectionOf.get(request.orderId)
       const connectionId = request.connectionId ?? resolved
+      // `connectionsOf` leaves out an order the store does not have: it is not found, whatever carrier was asked for or left out
+      if (resolved === undefined) {
+        outcomes[index] = this.refused(request.orderId, resourceNotFound('order'))
+        continue
+      }
       if (connectionId === undefined || connectionId === null) {
         outcomes[index] = this.refused(
           request.orderId,
@@ -1532,20 +1537,23 @@ export class ShippingService {
     }
   }
 
-  // The planned carrier of each order, or the default connection of the store (TDD_17 §4.13)
+  // The planned carrier of each order, or the default connection of the store (TDD_17 §4.13). An order the store does not have is
+  // not in the answer: the caller judges it not found before any decision about its carrier.
   private async connectionsOf(
     storeId: string,
     requests: readonly ShipmentRequest[]
   ): Promise<Map<string, string | null>> {
-    const wanted = requests.filter(request => request.connectionId === undefined)
     const result = new Map<string, string | null>()
-    if (wanted.length === 0) return result
-    const settings = await this.prisma.client.storeSettings.findUnique({
-      where: { storeId },
-      select: { defaultCarrierConnectionId: true }
-    })
+    if (requests.length === 0) return result
+    // The default of the store is read only when some request leaves the carrier to it
+    const settings = requests.some(request => request.connectionId === undefined)
+      ? await this.prisma.client.storeSettings.findUnique({
+          where: { storeId },
+          select: { defaultCarrierConnectionId: true }
+        })
+      : null
     const orders = await this.prisma.client.order.findMany({
-      where: { storeId, id: { in: wanted.map(request => request.orderId) } },
+      where: { storeId, id: { in: requests.map(request => request.orderId) } },
       select: { id: true, carrierConnectionId: true }
     })
     for (const order of orders) {

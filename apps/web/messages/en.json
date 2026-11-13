@@ -642,6 +642,8 @@
     "SHIPPING_ADDRESS_MISSING": "The order has no shipping address",
     "SHIPPING_CARRIER_REQUIRED": "Choose a carrier for the shipment",
     "SHIPPING_CHECK_NOT_SUPPORTED": "This carrier cannot be asked about the shipment. Check with the carrier outside the platform",
+    "SHIPPING_ORIGIN_AMBIGUOUS": "This order leaves from more than one warehouse: choose which one makes the guide",
+    "SHIPPING_GUIDE_PREFIX_TAKEN": "That guide prefix is already used by another courier of the store, or printed on its guides",
     "SHIPPING_GUIDE_NUMBER_TAKEN": "That guide number is already used by another shipment",
     "SHIPPING_LABEL_NOT_AVAILABLE": "The label is not available",
     "SHIPPING_LABEL_UNDRAWABLE": "The label cannot be printed: a name or an address has characters it cannot draw or does not fit",
