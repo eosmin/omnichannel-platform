@@ -737,15 +737,11 @@ jobs:
       DIRECT_DATABASE_URL: postgresql://platform:ci_password@localhost:5432/platform_ci
       DB_APP_PASSWORD: ci_app_password
       DB_WORKER_PASSWORD: ci_worker_password
-      CHUNK_MAPS: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/web-stack
       - name: Lighthouse budgets
         run: pnpm exec nx run web-e2e:lighthouse --skip-nx-cache
-      - name: Chunk composition (throwaway)
-        if: always()
-        run: node scripts/chunk-composition.cjs
       - name: Lighthouse report
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

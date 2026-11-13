@@ -14,7 +14,6 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname, '../..'),
   // Next.js would answer every dynamic page with `X-Powered-By: Next.js`, naming the framework
   poweredByHeader: false,
-  productionBrowserSourceMaps: process.env.CHUNK_MAPS === '1',
   // The Content-Security-Policy is set per request in proxy.ts, because it carries a nonce
   headers: () => Promise.resolve([{ source: '/(.*)', headers: [...STATIC_SECURITY_HEADERS] }])
 }
