@@ -7,7 +7,13 @@ import {
   CarrierUnavailableError
 } from '@platform/plugins/sdk'
 
-import { C807Api, C807Token } from './c807-constants'
+import {
+  C807_BASE_URLS,
+  C807Api,
+  type C807Environment,
+  C807Environments,
+  C807Token
+} from './c807-constants'
 import type { C807Credentials } from './c807-credentials'
 
 // Who a call is made for: the token is kept per connection. A call made before the connection exists (the test of the
@@ -15,7 +21,12 @@ import type { C807Credentials } from './c807-credentials'
 export interface C807Scope {
   storeId: string
   connectionId?: string
+  // Left out, production
+  environment?: C807Environment
 }
+
+const baseUrlOf = (scope: C807Scope): string =>
+  C807_BASE_URLS[scope.environment ?? C807Environments.PRODUCTION]
 
 export interface C807Request {
   method: 'GET' | 'POST'
@@ -28,12 +39,23 @@ const MESSAGE_MAX_LENGTH = 200
 
 // What C807 says when it refuses, short and with no control characters, for a person to read
 function safeMessage(body: unknown, fallback: string): string {
+  const record = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {}
+  // C807 answers a refusal as `{"errores": [{"codigo": 5, "mensaje": "..."}]}` (sandbox, 2026-11-14)
+  const listed = Array.isArray(record['errores'])
+    ? (record['errores'] as unknown[])
+        .map(item =>
+          typeof item === 'object' && item !== null
+            ? (item as Record<string, unknown>)['mensaje']
+            : undefined
+        )
+        .filter((value): value is string => typeof value === 'string')
+        .join('; ') || undefined
+    : undefined
   const raw =
-    typeof body === 'object' && body !== null
-      ? (['mensaje', 'message', 'error'] as const)
-          .map(key => (body as Record<string, unknown>)[key])
-          .find((value): value is string => typeof value === 'string')
-      : undefined
+    listed ??
+    (['mensaje', 'message', 'error'] as const)
+      .map(key => record[key])
+      .find((value): value is string => typeof value === 'string')
   // eslint-disable-next-line no-control-regex -- control characters are what is removed
   const text = (raw ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim()
   return text === '' ? fallback : text.slice(0, MESSAGE_MAX_LENGTH)
@@ -53,9 +75,11 @@ async function readJson(response: Response): Promise<unknown> {
 // credentials is `CarrierAuthError`.
 // The token is kept with a digest of the user and password that earned it, so that a connection whose credentials were edited
 // never goes on with the token of the old account
-function fingerprint(credentials: C807Credentials): string {
+function fingerprint(scope: C807Scope, credentials: C807Credentials): string {
   return createHash('sha256')
-    .update(`${credentials.username}\n${credentials.password}`)
+    .update(
+      `${scope.environment ?? C807Environments.PRODUCTION}\n${credentials.username}\n${credentials.password}`
+    )
     .digest('hex')
     .slice(0, 16)
 }
@@ -77,7 +101,7 @@ export class C807Client {
   async token(scope: C807Scope, credentials: C807Credentials): Promise<string> {
     if (scope.connectionId !== undefined) {
       const cached = await this.cache.get(scope.storeId, scope.connectionId)
-      const prefix = `${fingerprint(credentials)}.`
+      const prefix = `${fingerprint(scope, credentials)}.`
       if (cached !== null && cached.startsWith(prefix)) return cached.slice(prefix.length)
     }
     return this.login(scope, credentials)
@@ -97,8 +121,9 @@ export class C807Client {
 
   private async requestToken(scope: C807Scope, credentials: C807Credentials): Promise<string> {
     const basic = Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64')
-    const response = await this.send(`${C807Api.BASE_URL}${C807Api.TOKEN_PATH}`, {
-      method: 'GET',
+    // The documentation does not name the method: the carrier answers 405 to a GET and takes a POST
+    const response = await this.send(`${baseUrlOf(scope)}${C807Api.TOKEN_PATH}`, {
+      method: 'POST',
       headers: { authorization: `Basic ${basic}`, accept: 'application/json' }
     })
     if (response.status === 401 || response.status === 403) {
@@ -117,7 +142,7 @@ export class C807Client {
       await this.cache.set(
         scope.storeId,
         scope.connectionId,
-        `${fingerprint(credentials)}.${token}`,
+        `${fingerprint(scope, credentials)}.${token}`,
         C807Token.TTL_SECONDS
       )
     }
@@ -132,7 +157,7 @@ export class C807Client {
   ): Promise<void> {
     if (scope.connectionId === undefined) return
     const cached = await this.cache.get(scope.storeId, scope.connectionId)
-    if (cached === `${fingerprint(credentials)}.${stale}`) {
+    if (cached === `${fingerprint(scope, credentials)}.${stale}`) {
       await this.cache.delete(scope.storeId, scope.connectionId)
     }
   }
@@ -145,7 +170,7 @@ export class C807Client {
   ): Promise<unknown> {
     let token = await this.token(scope, credentials)
     for (let attempt = 0; ; attempt += 1) {
-      const response = await this.send(this.url(request), {
+      const response = await this.send(this.url(scope, request), {
         method: request.method,
         headers: {
           authorization: `Bearer ${token}`,
@@ -166,9 +191,9 @@ export class C807Client {
     }
   }
 
-  private url(request: C807Request): string {
+  private url(scope: C807Scope, request: C807Request): string {
     const query = new URLSearchParams(request.query).toString()
-    return `${C807Api.BASE_URL}${request.path}${query === '' ? '' : `?${query}`}`
+    return `${baseUrlOf(scope)}${request.path}${query === '' ? '' : `?${query}`}`
   }
 
   // A failure before any answer leaves the outcome unknown

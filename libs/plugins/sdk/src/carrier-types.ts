@@ -81,6 +81,8 @@ export interface CreateShipmentParams {
     name: string
     // National digits only, no country code; the first is the main one
     phones: readonly string[]
+    // The customer's e-mail when the store has one; a carrier that requires it refuses the guide without it
+    email?: string
     address: CarrierAddress
     // Present when the plugin declares REQUIRES_LOCATION_IDS
     locationIds?: CarrierLocationIds

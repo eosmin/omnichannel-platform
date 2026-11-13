@@ -2,7 +2,6 @@ import { ShipmentStatus } from '@platform/core/domain'
 
 // What C807 Express documents (Google Sites "Xpress"); nothing here is a guess except what its comment says.
 export const C807Api = {
-  BASE_URL: 'https://app.c807.com',
   TOKEN_PATH: '/admin.php/sesion/get_token',
   DEPARTMENTS_PATH: '/guia.php/catalogo/departamento',
   MUNICIPALITIES_PATH: '/guia.php/catalogo/municipio',
@@ -14,6 +13,15 @@ export const C807Api = {
   // A call that takes longer is an unknown outcome, never a slow success
   TIMEOUT_MS: 20_000
 } as const
+
+// Where each environment of C807 answers. The owner picks the environment of a connection; the address is never typed, so a
+// connection cannot be aimed at a host that is not one of these.
+export const C807Environments = { PRODUCTION: 'production', SANDBOX: 'sandbox' } as const
+export type C807Environment = (typeof C807Environments)[keyof typeof C807Environments]
+export const C807_BASE_URLS: Record<C807Environment, string> = {
+  [C807Environments.PRODUCTION]: 'https://app.c807.com',
+  [C807Environments.SANDBOX]: 'https://qaapp.c807.com'
+}
 
 // The token lives 24 hours; it is kept a little less so that a call never leaves with one that expires on the way
 export const C807Token = { TTL_SECONDS: 23 * 60 * 60 } as const
@@ -28,6 +36,12 @@ export const C807ConnectFieldKeys = {
   PASSWORD: 'settings.carriers.connect.fields.c807.password',
   DELIVERY_TYPE: 'settings.carriers.connect.fields.c807.deliveryType',
   SITE: 'settings.carriers.connect.fields.c807.site',
+  FALLBACK_EMAIL: 'settings.carriers.connect.fields.c807.fallbackEmail',
+  FALLBACK_EMAIL_HELP: 'settings.carriers.connect.fields.c807.fallbackEmailHelp',
+  WEIGHT_UNIT: 'settings.carriers.connect.fields.c807.weightUnit',
+  WEIGHT_UNIT_HELP: 'settings.carriers.connect.fields.c807.weightUnitHelp',
+  ENVIRONMENT: 'settings.carriers.connect.fields.c807.environment',
+  ENVIRONMENT_HELP: 'settings.carriers.connect.fields.c807.environmentHelp',
   DELIVERY_TYPE_HELP: 'settings.carriers.connect.fields.c807.deliveryTypeHelp',
   SITE_HELP: 'settings.carriers.connect.fields.c807.siteHelp'
 } as const
@@ -40,6 +54,7 @@ export const C807Limits = {
   // `orden`, the reference of the order the carrier echoes back
   REFERENCE_MAX_LENGTH: 25,
   ADDRESS_MAX_LENGTH: 250,
+  EMAIL_MAX_LENGTH: 75,
   NAME_MAX_LENGTH: 75,
   NOTES_MAX_LENGTH: 500,
   CONTENT_MAX_LENGTH: 500,
@@ -49,11 +64,19 @@ export const C807Limits = {
   LABEL_CONCURRENCY: 5
 } as const
 
-// `peso` is required and a parcel may have none recorded: a package that weighs one kilogram is the smallest honest guess
+// `peso` is required and its unit is "enabled by the negotiation": the sandbox refused KG and the documentation shows LB, so
+// a connection weighs in pounds unless the owner says otherwise. A parcel with no weight recorded is one unit, the smallest
+// honest guess.
+export const C807WeightUnits = { POUND: 'LB', KILOGRAM: 'KG' } as const
+export type C807WeightUnit = (typeof C807WeightUnits)[keyof typeof C807WeightUnits]
+export const C807_GRAMS_PER_UNIT: Record<C807WeightUnit, number> = {
+  [C807WeightUnits.POUND]: 453.592,
+  [C807WeightUnits.KILOGRAM]: 1000
+}
 export const C807Parcel = {
-  WEIGHT_UNIT: 'KG',
-  DEFAULT_WEIGHT_KG: 1,
-  GRAMS_PER_KG: 1000,
+  DEFAULT_WEIGHT_UNIT: C807WeightUnits.POUND,
+  DEFAULT_WEIGHT: 1,
+  MIN_WEIGHT: 0.001,
   CONTENT_PREFIX: 'Pedido'
 } as const
 
@@ -68,6 +91,8 @@ export const C807_WEBHOOK_SECRET_HEADER = 'x-webhook-secret'
 // The status codes of C807 and what each is assumed to mean. `null` is a code the plugin does not dare to assume: it waits in the
 // unmapped list for the owner. A code with a reason is the composite `code:reason` the owner can map alone (TDD_17 §4.17).
 export const C807StatusCodes = {
+  // Seen in the sandbox on a guide just made ("Creado en sistema"); not in the list C807 sent
+  CREATED: '1',
   ENTERED: '10',
   ASSIGNED_TO_VEHICLE: '11',
   PICKED_UP: '13',
@@ -127,6 +152,11 @@ const PROBLEM_REASONS: readonly (readonly [string, string, ShipmentStatus | null
 ]
 
 export const C807_STATUS_CATALOG: readonly C807StatusEntry[] = [
+  {
+    code: C807StatusCodes.CREATED,
+    label: 'Created in the system',
+    defaultStatus: ShipmentStatus.LABEL_CREATED
+  },
   {
     code: C807StatusCodes.ENTERED,
     label: 'Entered into the system',

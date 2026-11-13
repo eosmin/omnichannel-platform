@@ -3524,7 +3524,13 @@
             "deliveryType": "Type of delivery",
             "site": "Site (optional)",
             "deliveryTypeHelp": "The delivery code enabled in your contract, for example NRML or PLUS.",
-            "siteHelp": "The code of the site the pickup leaves from. Leave it empty to use the one of your user."
+            "siteHelp": "The code of the site the pickup leaves from. Leave it empty to use the one of your user.",
+            "environment": "Environment (optional)",
+            "environmentHelp": "Write sandbox to test against qaapp.c807.com. Leave it empty for production.",
+            "fallbackEmail": "Fallback e-mail (optional)",
+            "fallbackEmailHelp": "C807 requires an e-mail on every guide. It is used for a customer who has none.",
+            "weightUnit": "Weight unit (optional)",
+            "weightUnitHelp": "The unit C807 enabled on your account: LB or KG. Empty is LB."
           },
           "forza": {
             "codApp": "Application code (CodApp)",

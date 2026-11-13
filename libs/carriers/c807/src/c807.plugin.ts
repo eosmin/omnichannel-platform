@@ -73,14 +73,16 @@ const createdSchema = z.object({
 
 const labelSchema = z.object({ pdf: z.string().min(1) })
 
-const reportSchema = z.array(
-  z.object({
-    guia: z.string().min(1),
-    orden: z.string().nullable().optional(),
-    solicitud: z.string().nullable().optional(),
-    seguimiento: z.string().nullable().optional()
-  })
-)
+const reportRowSchema = z.object({
+  guia: z.string().min(1),
+  orden: z.string().nullable().optional(),
+  solicitud: z.string().nullable().optional(),
+  seguimiento: z.string().nullable().optional()
+})
+// The report answers `{"lista": [...]}` (sandbox, 2026-11-14); the documentation shows a bare array, which is read too
+const reportSchema = z
+  .union([z.array(reportRowSchema), z.object({ lista: z.array(reportRowSchema) })])
+  .transform(value => (Array.isArray(value) ? value : value.lista))
 
 const historySchema = z.array(
   z.object({
@@ -140,6 +142,30 @@ export const C807_CONNECT_FIELDS: readonly ConnectField[] = [
     helpKey: C807ConnectFieldKeys.DELIVERY_TYPE_HELP,
     secret: false,
     required: true,
+    multiple: false
+  },
+  {
+    key: 'fallbackEmail',
+    labelKey: C807ConnectFieldKeys.FALLBACK_EMAIL,
+    helpKey: C807ConnectFieldKeys.FALLBACK_EMAIL_HELP,
+    secret: false,
+    required: false,
+    multiple: false
+  },
+  {
+    key: 'weightUnit',
+    labelKey: C807ConnectFieldKeys.WEIGHT_UNIT,
+    helpKey: C807ConnectFieldKeys.WEIGHT_UNIT_HELP,
+    secret: false,
+    required: false,
+    multiple: false
+  },
+  {
+    key: 'environment',
+    labelKey: C807ConnectFieldKeys.ENVIRONMENT,
+    helpKey: C807ConnectFieldKeys.ENVIRONMENT_HELP,
+    secret: false,
+    required: false,
     multiple: false
   },
   {
@@ -213,13 +239,21 @@ export class C807Plugin implements CarrierPlugin {
   async connect(input: CarrierConnectInput): Promise<CarrierConnectResult> {
     const parsed = c807ConnectionSchema.safeParse(input.credentials)
     if (!parsed.success) throw new CarrierRejectedError('The C807 data is not valid')
-    const { username, password, deliveryType, site } = parsed.data
-    // The credentials are proved before the connection exists; no token is kept for a connection that has no id yet
-    await this.client.login({ storeId: input.storeId }, { username, password })
+    const { username, password, deliveryType, site, environment, fallbackEmail, weightUnit } =
+      parsed.data
+    // The credentials are proved before the connection exists, in the environment the owner chose; no token is kept for a
+    // connection that has no id yet
+    await this.client.login({ storeId: input.storeId, environment }, { username, password })
     return {
       displayName: C807_DISPLAY_NAME,
       credentials: { username, password },
-      metadata: { deliveryType, ...(site === undefined ? {} : { site }) }
+      metadata: {
+        deliveryType,
+        environment,
+        weightUnit,
+        ...(site === undefined ? {} : { site }),
+        ...(fallbackEmail === undefined ? {} : { fallbackEmail })
+      }
     }
   }
 
@@ -260,7 +294,7 @@ export class C807Plugin implements CarrierPlugin {
           throw new CarrierRejectedError('The order number is repeated in the batch')
         }
         seen.add(reference)
-        sent.push({ index, reference, guide: toC807Guide(shipment) })
+        sent.push({ index, reference, guide: toC807Guide(shipment, metadata) })
       } catch (error) {
         if (!(error instanceof CarrierRejectedError)) throw error
         entries[index] = { outcome: PickupBatchOutcomes.REJECTED, message: error.message }
@@ -469,7 +503,17 @@ export class C807Plugin implements CarrierPlugin {
   }
 
   private scope(ctx: CarrierContext): C807Scope {
-    return { storeId: ctx.storeId, connectionId: ctx.connectionId }
+    // Only the environment is read here: a call that needs no type of delivery (the places, the health) must not ask for one. A
+    // connection that says an environment this plugin does not know is refused, never sent to production
+    const environment = c807MetadataSchema.pick({ environment: true }).safeParse(ctx.metadata)
+    if (!environment.success) {
+      throw new CarrierRejectedError('The C807 connection has an unknown environment')
+    }
+    return {
+      storeId: ctx.storeId,
+      connectionId: ctx.connectionId,
+      environment: environment.data.environment
+    }
   }
 
   private credentials(ctx: CarrierContext): C807Credentials {

@@ -7,6 +7,7 @@ export const C807_FAKE_WEBHOOK_SECRET = 'fake-webhook-secret-do-not-leak'
 
 export interface C807Call {
   method: string
+  host: string
   path: string
   query: Record<string, string>
   headers: Record<string, string>
@@ -57,6 +58,7 @@ export function fakeC807(): FakeC807 {
     const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined
     calls.push({
       method,
+      host: url.host,
       path: url.pathname,
       query: Object.fromEntries(url.searchParams),
       headers,
@@ -64,6 +66,8 @@ export function fakeC807(): FakeC807 {
     })
 
     if (url.pathname === '/admin.php/sesion/get_token') {
+      // As the carrier does: a GET is a 405
+      if (method !== 'POST') return Promise.resolve(new Response(null, { status: 405 }))
       const expected = `Basic ${Buffer.from(`${C807_FAKE_USERNAME}:${C807_FAKE_PASSWORD}`).toString('base64')}`
       if (headers['authorization'] !== expected)
         return Promise.resolve(new Response(null, { status: 401 }))
@@ -98,7 +102,24 @@ export function fakeC807(): FakeC807 {
           ])
         )
       case '/guia.php/api/set_registro': {
-        const request = body as { guias: { orden: string; detalle: unknown[] }[] }
+        const request = body as {
+          guias: { orden: string; correo?: string; detalle: { unidad_medida?: string }[] }[]
+        }
+        const problems = request.guias.flatMap((guide, index) => [
+          ...(guide.correo
+            ? []
+            : [`Guía ${index + 1}, complete los siguientes datos: Correo de destinatario.`]),
+          ...(guide.detalle.every(
+            item => item.unidad_medida === 'LB' || item.unidad_medida === 'KG'
+          )
+            ? []
+            : [`Guía ${index + 1}, detalle 1, unidad de medida inválida.`])
+        ])
+        if (problems.length > 0) {
+          return Promise.resolve(
+            json({ errores: problems.map(mensaje => ({ codigo: 5, mensaje })) }, 400)
+          )
+        }
         const solicitud = `RECOLECTA-${requests}`
         const made: FakeGuide[] = request.guias
           .filter(guide => !skip.has(guide.orden))
@@ -118,8 +139,8 @@ export function fakeC807(): FakeC807 {
             recolecta: solicitud,
             guias: made.map(guide => ({
               ...guide,
-              entrega_min: '2026-12-02 10:00:00',
-              entrega_max: '2026-12-02 11:00:00',
+              entrega_min: null,
+              entrega_max: null,
               seguimiento: `https://tracking.example.test/${guide.guia}`
             }))
           })
@@ -130,8 +151,8 @@ export function fakeC807(): FakeC807 {
       case '/guia.php/reporte/guias': {
         const { solicitud, orden, guia } = Object.fromEntries(url.searchParams)
         return Promise.resolve(
-          json(
-            guides
+          json({
+            lista: guides
               .filter(
                 g =>
                   (solicitud === undefined || g.solicitud === solicitud) &&
@@ -140,9 +161,12 @@ export function fakeC807(): FakeC807 {
               )
               .map(g => ({
                 ...g,
+                estatus_codigo: '1',
+                estatus: 'Creado en sistema',
+                devolucion: 'NO',
                 seguimiento: `https://tracking.example.test/${g.guia}`
               }))
-          )
+          })
         )
       }
       default:
@@ -150,10 +174,16 @@ export function fakeC807(): FakeC807 {
           return Promise.resolve(
             json([
               {
+                estatus: 'Creado en sistema',
+                codigo: '1',
+                observaciones: null,
+                fecha: '2026-12-01 09:00:00'
+              },
+              {
                 estatus: 'Ingresado al sistema',
                 codigo: '10',
                 observaciones: null,
-                fecha: '2026-12-01 09:00:00'
+                fecha: '2026-12-01 09:30:00'
               },
               {
                 estatus: 'Recogido en origen',

@@ -36,6 +36,7 @@ testCarrierPluginContract(() => new C807Plugin(), {
     recipient: {
       name: 'Ana Recipient',
       phones: ['71234567'],
+      email: 'ana@example.com',
       address: { line1: '5 Customer St', city: 'Santa Tecla', country: 'SV' },
       locationIds: { departmentId: '2', municipalityId: '4' }
     }
