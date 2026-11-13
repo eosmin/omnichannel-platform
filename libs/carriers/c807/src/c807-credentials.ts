@@ -38,8 +38,9 @@ export const c807ConnectionSchema = z.object({
   ),
   // C807 requires an e-mail for every guide: this one goes out for a customer who has none
   fallbackEmail: z.preprocess(
-    value => (value === '' || value === null ? undefined : value),
-    z.string().trim().email().max(75).optional()
+    value =>
+      value === '' || value === null ? undefined : typeof value === 'string' ? value.trim() : value,
+    z.email().max(75).optional()
   ),
   // A blank optional field of the form is no site, not a site 0
   site: z.preprocess(
@@ -62,7 +63,7 @@ export const c807MetadataSchema = z.object({
   environment: z
     .enum([C807Environments.PRODUCTION, C807Environments.SANDBOX])
     .default(C807Environments.PRODUCTION),
-  fallbackEmail: z.string().email().max(75).optional(),
+  fallbackEmail: z.email().max(75).optional(),
   // A connection made before the unit was a setting weighs in pounds
   weightUnit: z
     .enum([C807WeightUnits.POUND, C807WeightUnits.KILOGRAM])
