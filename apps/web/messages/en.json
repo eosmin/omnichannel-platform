@@ -3525,6 +3525,28 @@
             "site": "Site (optional)",
             "deliveryTypeHelp": "The delivery code enabled in your contract, for example NRML or PLUS.",
             "siteHelp": "The code of the site the pickup leaves from. Leave it empty to use the one of your user."
+          },
+          "forza": {
+            "codApp": "Application code (CodApp)",
+            "secretKey": "Secret key",
+            "idClient": "Client id",
+            "country": "Country",
+            "baseUrl": "Endpoint",
+            "codeOfReference": "Visit point code",
+            "originHeaderCodeTownship": "Municipality code of the warehouse",
+            "bankId": "Bank id (cash on delivery)",
+            "bankAccountName": "Account holder (cash on delivery)",
+            "bankAccountType": "Account type (cash on delivery)",
+            "bankAccountId": "Account number (cash on delivery)",
+            "defaultWeightLbs": "Weight of a package without one (lb)",
+            "pickupVehicleTypeId": "Pickup vehicle",
+            "countryHelp": "GT, HN or SV.",
+            "baseUrlHelp": "The address of the Forza API, which Forza gives you with your credentials (https).",
+            "codeOfReferenceHelp": "The code of the visit point the guides and pickups leave from, which Forza gives you.",
+            "originHeaderCodeTownshipHelp": "The code of the municipality where the warehouse is, from the Forza catalog.",
+            "bankHelp": "Where Forza deposits what it collects. Fill the four bank fields or none; without them a guide with cash on delivery is refused.",
+            "defaultWeightLbsHelp": "Forza needs a weight for each package. Empty means 1 lb.",
+            "pickupVehicleTypeIdHelp": "1 motorcycle, 2 van, 3 truck. Empty means a motorcycle."
           }
         }
       },

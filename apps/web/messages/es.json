@@ -3525,6 +3525,28 @@
             "site": "Sede (opcional)",
             "deliveryTypeHelp": "El código de entrega que te habilitaron en tu contrato, por ejemplo NRML o PLUS.",
             "siteHelp": "El código de la sede desde la que sale la recolecta. Déjalo vacío para usar la de tu usuario."
+          },
+          "forza": {
+            "codApp": "Código de aplicación (CodApp)",
+            "secretKey": "Llave secreta",
+            "idClient": "Id de cliente",
+            "country": "País",
+            "baseUrl": "Endpoint",
+            "codeOfReference": "Código del punto de visita",
+            "originHeaderCodeTownship": "Código del municipio de la bodega",
+            "bankId": "Id del banco (contra entrega)",
+            "bankAccountName": "Titular de la cuenta (contra entrega)",
+            "bankAccountType": "Tipo de cuenta (contra entrega)",
+            "bankAccountId": "Número de cuenta (contra entrega)",
+            "defaultWeightLbs": "Peso de un paquete sin peso (lb)",
+            "pickupVehicleTypeId": "Vehículo de la recolecta",
+            "countryHelp": "GT, HN o SV.",
+            "baseUrlHelp": "La dirección de la API de Forza, que te dan junto con las credenciales (https).",
+            "codeOfReferenceHelp": "El código del punto de visita desde el que salen las guías y las recolectas, que te da Forza.",
+            "originHeaderCodeTownshipHelp": "El código del municipio donde está la bodega, del catálogo de Forza.",
+            "bankHelp": "Donde Forza deposita lo que cobra. Llena los cuatro datos del banco o ninguno; sin ellos se rechaza una guía contra entrega.",
+            "defaultWeightLbsHelp": "Forza pide un peso por paquete. Vacío significa 1 lb.",
+            "pickupVehicleTypeIdHelp": "1 motocicleta, 2 panel, 3 camión. Vacío significa motocicleta."
           }
         }
       },
