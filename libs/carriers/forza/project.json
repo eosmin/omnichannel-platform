@@ -1,0 +1,12 @@
+{
+  "name": "carriers-forza",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/carriers/forza/src",
+  "projectType": "library",
+  "tags": ["scope:carriers", "type:lib"],
+  "targets": {
+    "lint": {},
+    "type-check": {},
+    "test": {}
+  }
+}
