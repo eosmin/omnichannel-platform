@@ -29,9 +29,9 @@ for (const f of files.filter(f => f.endsWith('.js'))) {
   if (gz < 6000) continue
   let acc = []
   try {
-    const mf = [f + '.map', f.replace(/\.js$/, '.map'), f.replace(/\.js$/, '.js.map')].find(n =>
-      fs.existsSync(path.join(dir, n))
-    )
+    const code = fs.readFileSync(path.join(dir, f), 'utf8')
+    const m = /sourceMappingURL=([^\s]+)\s*$/.exec(code)
+    const mf = decodeURIComponent(m[1]).split('/').pop()
     collect(JSON.parse(fs.readFileSync(path.join(dir, mf), 'utf8')), acc)
   } catch (e) {
     console.log('NOMAP', f, String(e).slice(0, 80))
