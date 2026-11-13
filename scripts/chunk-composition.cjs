@@ -1,3 +1,4 @@
+/* eslint-disable */
 // throwaway: which source files make each client chunk (needs CHUNK_MAPS=1 at build)
 const fs = require('node:fs')
 const path = require('node:path')
