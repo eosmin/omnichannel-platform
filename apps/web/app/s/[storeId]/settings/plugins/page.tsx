@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 
 import { pageTitle } from '../../page-title'
-import { StorePluginsPage } from '../pages'
+import { StorePluginsPage } from '../plugins-page'
 
 export const generateMetadata = pageTitle('settingsPlugins')
 

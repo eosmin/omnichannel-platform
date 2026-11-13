@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 
 import { pageTitle } from '../../page-title'
-import { StoreInboxPage } from '../pages'
+import { StoreInboxPage } from '../inbox-page'
 
 export const generateMetadata = pageTitle('settingsInbox')
 

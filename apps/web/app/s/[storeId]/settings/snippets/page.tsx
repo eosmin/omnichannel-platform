@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 
 import { pageTitle } from '../../page-title'
-import { StoreSnippetsPage } from '../pages'
+import { StoreSnippetsPage } from '../snippets-page'
 
 export const generateMetadata = pageTitle('settingsSnippets')
 

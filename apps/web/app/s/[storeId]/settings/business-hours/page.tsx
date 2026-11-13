@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 
 import { pageTitle } from '../../page-title'
-import { StoreBusinessHoursPage } from '../pages'
+import { StoreBusinessHoursPage } from '../business-hours-page'
 
 export const generateMetadata = pageTitle('settingsBusinessHours')
 
