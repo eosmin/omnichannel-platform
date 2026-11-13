@@ -73,6 +73,7 @@ const REFUSAL_STATUS: Partial<Record<ErrorCode, number>> = {
   [ErrorCodes.SHIPPING_CARRIER_CAPABILITY_MISSING]: HttpStatusCodes.CONFLICT,
   [ErrorCodes.SHIPPING_FEE_OUT_OF_RANGE]: HttpStatusCodes.CONFLICT,
   [ErrorCodes.SHIPPING_ORIGIN_MISSING]: HttpStatusCodes.BAD_REQUEST,
+  [ErrorCodes.SHIPPING_ORIGIN_AMBIGUOUS]: HttpStatusCodes.BAD_REQUEST,
   [ErrorCodes.SHIPPING_LOCATION_REQUIRED]: HttpStatusCodes.BAD_REQUEST,
   [ErrorCodes.SHIPPING_ADDRESS_MISSING]: HttpStatusCodes.BAD_REQUEST,
   [ErrorCodes.SHIPPING_RECIPIENT_PHONE_MISSING]: HttpStatusCodes.BAD_REQUEST,
@@ -260,9 +261,11 @@ export async function prepareGuide(
     throw shippingRefusal(ErrorCodes.SHIPPING_ADDRESS_MISSING, 'the order has no shipping address')
   }
 
+  // An order with nothing to pay (a credit covered all of it) collects nothing, whatever its method and the state of its payment
   const collects =
     order.paymentMethod === String(PaymentMethod.CASH_ON_DELIVERY) &&
-    order.paymentStatus !== String(PaymentStatus.COMPLETED)
+    order.paymentStatus !== String(PaymentStatus.COMPLETED) &&
+    order.totalCents > 0
   if (collects && !plugin.capabilities.includes(CarrierCapability.COD)) {
     throw shippingRefusal(
       ErrorCodes.SHIPPING_CARRIER_CAPABILITY_MISSING,
@@ -342,8 +345,17 @@ export async function prepareGuide(
   }
   const chosen =
     request.originWarehouseId ?? (origins.length === 1 ? origins[0]?.warehouseId : undefined)
-  if (chosen === undefined || !origins.some(origin => origin.warehouseId === chosen)) {
-    throw shippingRefusal(ErrorCodes.SHIPPING_ORIGIN_MISSING, 'the origin warehouse is not clear')
+  if (chosen === undefined) {
+    throw shippingRefusal(
+      ErrorCodes.SHIPPING_ORIGIN_AMBIGUOUS,
+      'the lines leave from more than one warehouse: say which one makes the guide'
+    )
+  }
+  if (!origins.some(origin => origin.warehouseId === chosen)) {
+    throw shippingRefusal(
+      ErrorCodes.SHIPPING_ORIGIN_MISSING,
+      'the warehouse asked for is not one the lines of the order leave from'
+    )
   }
   const warehouse = await tx.warehouse.findFirst({
     where: {

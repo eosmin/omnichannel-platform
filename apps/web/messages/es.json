@@ -642,6 +642,8 @@
     "SHIPPING_ADDRESS_MISSING": "El pedido no tiene dirección de envío",
     "SHIPPING_CARRIER_REQUIRED": "Elige un transportista para el envío",
     "SHIPPING_CHECK_NOT_SUPPORTED": "Este transportista no se puede consultar. Revisa con el transportista fuera de la plataforma",
+    "SHIPPING_ORIGIN_AMBIGUOUS": "Este pedido sale de más de una bodega: elige cuál hace la guía",
+    "SHIPPING_GUIDE_PREFIX_TAKEN": "Ese prefijo de guías ya lo usa otro transportista de la tienda, o está impreso en sus guías",
     "SHIPPING_GUIDE_NUMBER_TAKEN": "Ese número de guía ya lo usa otro envío",
     "SHIPPING_LABEL_NOT_AVAILABLE": "La etiqueta no está disponible",
     "SHIPPING_LABEL_UNDRAWABLE": "La etiqueta no se puede imprimir: un nombre o una dirección tiene caracteres que no se pueden dibujar o no cabe",

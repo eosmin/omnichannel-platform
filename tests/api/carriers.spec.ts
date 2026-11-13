@@ -323,7 +323,7 @@ describe('Settings → Carriers: the connections of a store', () => {
       const first = made(await local({}, { prefix: 'UQ' }))
       const clash = await local({}, { prefix: 'UQ' })
       expect(clash.status).toBe(CONFLICT)
-      expect(codeOf(clash.body)).toBe(ErrorCodes.RESOURCE_CONFLICT)
+      expect(codeOf(clash.body)).toBe(ErrorCodes.SHIPPING_GUIDE_PREFIX_TAKEN)
       const other = made(await local({}, { prefix: 'UR' }))
       const change = await asAdmin()
         .patch(ApiRoutes.carriers.byId(other.id))
@@ -409,6 +409,7 @@ describe('Settings → Carriers: the connections of a store', () => {
       })
       const clash = await local({}, { prefix: 'PS' })
       expect(clash.status).toBe(CONFLICT)
+      expect(codeOf(clash.body)).toBe(ErrorCodes.SHIPPING_GUIDE_PREFIX_TAKEN)
       const back = await asAdmin()
         .patch(ApiRoutes.carriers.byId(first.id))
         .send({ credentials: { name: 'x', phone: '1', prefix: 'PS' } })
@@ -466,6 +467,64 @@ describe('Settings → Carriers: the connections of a store', () => {
         .post(ApiRoutes.carriers.create)
         .send({ carrierId: CarrierId.C807, credentials: {}, displayName: name() })
       expect(missing.status).toBe(NOT_FOUND)
+    })
+
+    it('makes the first connection of a store its default, and leaves the next ones alone', async () => {
+      // The suite shares the store: put its live connections aside, as a store with none, and give them back
+      const before = await owner.carrierConnection.findMany({
+        where: { storeId: ctx.storeA.id, status: { not: CarrierConnectionStatus.DISABLED } },
+        select: { id: true, status: true }
+      })
+      const defaultBefore = (
+        await owner.storeSettings.findUniqueOrThrow({ where: { storeId: ctx.storeA.id } })
+      ).defaultCarrierConnectionId
+      const clear = () =>
+        owner.storeSettings.update({
+          where: { storeId: ctx.storeA.id },
+          data: { defaultCarrierConnectionId: null }
+        })
+      const createdIds: string[] = []
+      const make = async (over: Record<string, unknown> = {}) => {
+        const body = made(await local(over))
+        createdIds.push(body.id)
+        return body
+      }
+      await owner.carrierConnection.updateMany({
+        where: { id: { in: before.map(row => row.id) } },
+        data: { status: CarrierConnectionStatus.DISABLED }
+      })
+      try {
+        await clear()
+        const first = await make()
+        expect(first.isDefault).toBe(true)
+        expect((await make()).isDefault).toBe(false)
+        expect((await read(first.id)).isDefault).toBe(true)
+        // A store that let its default go while another connection is live keeps choosing: the next one is not the default
+        await clear()
+        expect((await make()).isDefault).toBe(false)
+        // A first connection that says it is not the default is not one
+        await owner.carrierConnection.updateMany({
+          where: { id: { in: createdIds } },
+          data: { status: CarrierConnectionStatus.DISABLED }
+        })
+        await clear()
+        expect((await make({ isDefault: false })).isDefault).toBe(false)
+      } finally {
+        await owner.carrierConnection.updateMany({
+          where: { id: { in: createdIds } },
+          data: { status: CarrierConnectionStatus.DISABLED }
+        })
+        for (const row of before) {
+          await owner.carrierConnection.update({
+            where: { id: row.id },
+            data: { status: row.status }
+          })
+        }
+        await owner.storeSettings.update({
+          where: { storeId: ctx.storeA.id },
+          data: { defaultCarrierConnectionId: defaultBefore }
+        })
+      }
     })
 
     it('makes it the default of the store when asked, and only one at a time', async () => {

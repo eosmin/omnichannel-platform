@@ -135,6 +135,8 @@ export const ErrorCodes = {
   SHIPPING_CANNOT_CANCEL_AFTER_PICKUP: 'SHIPPING_CANNOT_CANCEL_AFTER_PICKUP',
   SHIPPING_FEE_OUT_OF_RANGE: 'SHIPPING_FEE_OUT_OF_RANGE',
   SHIPPING_ORIGIN_MISSING: 'SHIPPING_ORIGIN_MISSING',
+  // The lines of the order leave from more than one warehouse and the request did not say which one makes the guide
+  SHIPPING_ORIGIN_AMBIGUOUS: 'SHIPPING_ORIGIN_AMBIGUOUS',
   // The guide engine (TDD_17 §4.5, §4.6): what an order lacks to be shipped, and what a shipment cannot do
   SHIPPING_RECIPIENT_PHONE_MISSING: 'SHIPPING_RECIPIENT_PHONE_MISSING',
   SHIPPING_ADDRESS_MISSING: 'SHIPPING_ADDRESS_MISSING',
@@ -144,6 +146,8 @@ export const ErrorCodes = {
   SHIPPING_LABEL_NOT_AVAILABLE: 'SHIPPING_LABEL_NOT_AVAILABLE',
   SHIPPING_CHECK_NOT_SUPPORTED: 'SHIPPING_CHECK_NOT_SUPPORTED',
   SHIPPING_GUIDE_NUMBER_TAKEN: 'SHIPPING_GUIDE_NUMBER_TAKEN',
+  // The numbering prefix of a courier that numbers its own guides is in use by another courier of the store, or printed on its guides
+  SHIPPING_GUIDE_PREFIX_TAKEN: 'SHIPPING_GUIDE_PREFIX_TAKEN',
   PICKUP_CUTOFF_PASSED: 'PICKUP_CUTOFF_PASSED',
   // The pickup rules of the connection say no pickups (TDD_17 §4.10), or the carrier makes its pickup with its guides
   PICKUP_NOT_ENABLED: 'PICKUP_NOT_ENABLED',

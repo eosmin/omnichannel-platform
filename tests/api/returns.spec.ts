@@ -485,6 +485,7 @@ describe('The returns of an order', () => {
         totalCents: 3000,
         discountReason: `exchange_credit:${ret.id}`,
         priceApprovalStatus: 'not_required',
+        paymentStatus: 'PENDING',
         customerId: ((await admin().get(ApiRoutes.orders.byId(order.id))).body as OrderBody)
           .customerId
       })
@@ -527,6 +528,8 @@ describe('The returns of an order', () => {
         )
       ).body as OrderBody
       expect(replacement).toMatchObject({ subtotalCents: 1000, discountCents: 1000, totalCents: 0 })
+      // The payment is the agent's to record (or the carrier's cash, on delivery): the order is not born paid
+      expect(replacement.paymentStatus).toBe('PENDING')
       const entries = await waitForAuditEntries(owner, {
         action: AuditAction.RETURN_APPROVED,
         resourceId: ret.id

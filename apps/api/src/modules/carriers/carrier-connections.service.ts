@@ -101,6 +101,15 @@ function invalidInput(message: string): PlatformException {
   )
 }
 
+// The guide prefix of a courier that numbers its own guides is taken: the code says why, so the screen can tell the owner what to change
+function prefixTaken(message: string): PlatformException {
+  return new PlatformException(
+    ErrorCodes.SHIPPING_GUIDE_PREFIX_TAKEN,
+    message,
+    HttpStatusCodes.CONFLICT
+  )
+}
+
 function notActive(): PlatformException {
   return new PlatformException(
     ErrorCodes.SHIPPING_CARRIER_NOT_ACTIVE,
@@ -238,7 +247,7 @@ export class CarrierConnectionsService {
       await this.forget(plugin, storeId, connectionId, answer)
       throw invalidInput('the credentials cannot be stored')
     }
-    let created: { id: string; view: CarrierConnectionView }
+    let created: { id: string; becameDefault: boolean; view: CarrierConnectionView }
     try {
       // Sealed here and not in the transaction: what cannot be written as JSON, or is too large, is the plugin's bad answer
       created = await this.prisma.transaction(async tx => {
@@ -292,24 +301,40 @@ export class CarrierConnectionsService {
             data: { storeId, connectionId: row.id, prefix: local.prefix }
           })
         }
-        if (body.isDefault === true) {
+        // The first connection of a store is its default (a store with one carrier never has to say so); an explicit
+        // `isDefault: false` is honoured, and a later connection never takes the place of the one that is there
+        const current = await tx.storeSettings.findUnique({
+          where: { storeId },
+          select: { defaultCarrierConnectionId: true }
+        })
+        let defaultId = current?.defaultCarrierConnectionId ?? null
+        // Only a store whose one connection this is: a store that let its default go while others are live keeps choosing
+        const others =
+          body.isDefault === undefined && current !== null && defaultId === null
+            ? await tx.carrierConnection.count({
+                where: {
+                  storeId,
+                  id: { not: row.id },
+                  status: { not: CarrierConnectionStatus.DISABLED }
+                }
+              })
+            : 1
+        const becomesDefault =
+          body.isDefault === true ||
+          (others === 0 && body.isDefault === undefined && current !== null && defaultId === null)
+        if (becomesDefault) {
           await tx.storeSettings.update({
             where: { storeId },
             data: { defaultCarrierConnectionId: row.id }
           })
+          defaultId = row.id
         }
         // The view is read inside the transaction: the secret is shown once, and a read that fails after the commit would lose it
         const made = await this.rowOf(tx, storeId, row.id)
-        const settings = await tx.storeSettings.findUnique({
-          where: { storeId },
-          select: { defaultCarrierConnectionId: true }
-        })
         return {
           id: row.id,
-          view: this.viewOf(made, {
-            defaultId: settings?.defaultCarrierConnectionId ?? null,
-            locale
-          })
+          becameDefault: becomesDefault,
+          view: this.viewOf(made, { defaultId, locale })
         }
       })
     } catch (error) {
@@ -331,7 +356,8 @@ export class CarrierConnectionsService {
 
     this.record(AuditAction.CARRIER_CONNECTED, storeId, created.id, actor, {
       carrierId: plugin.id,
-      displayName
+      displayName,
+      isDefault: created.becameDefault
     })
     // The one time the secret leaves the platform: the owner pastes it into the carrier's panel
     return { ...created.view, webhookSecret: secret }
@@ -791,8 +817,7 @@ export class CarrierConnectionsService {
       },
       select: { connectionId: true }
     })
-    if (taken !== null)
-      throw resourceConflict('another courier of the store uses that guide prefix')
+    if (taken !== null) throw prefixTaken('another courier of the store uses that guide prefix')
     // A prefix that another courier changed away from still prints on its guides: taking it would number two packages of
     // the store with the same guide (no table forbids it across connections, because two carriers may share a number)
     const printed = await tx.shipment.findFirst({
@@ -804,7 +829,7 @@ export class CarrierConnectionsService {
       select: { id: true }
     })
     if (printed !== null)
-      throw resourceConflict('that guide prefix is printed on guides of another courier')
+      throw prefixTaken('that guide prefix is printed on guides of another courier')
   }
 
   // What a carrier that makes no guide of its own (the `local` courier) gives back: the prefix of its guides, that must be
