@@ -100,6 +100,7 @@
             "description": "Close the return. A refund records the money given back by hand: the platform does not move any money.",
             "amountLabel": "Money given back (optional)",
             "amountHint": "Write an amount like 12.50.",
+            "amountInvalid": "That amount is not valid. Write an amount like 12.50.",
             "confirm": "Complete return",
             "done": "The return is completed."
           },

@@ -1,5 +1,7 @@
-import type { RemittanceImportProfileView } from '@platform/api-client'
+import type { CarrierConnectionView, RemittanceImportProfileView } from '@platform/api-client'
 import {
+  CarrierCapability,
+  CarrierConnectionStatus,
   RemittanceDateFormats,
   RemittanceDecimalSeparators,
   RemittanceDelimiters,
@@ -16,11 +18,26 @@ import {
   guessDelimiter,
   headerSuggestions,
   ImportEncodings,
+  importableConnections,
   importErrorsOf,
   mappingOf,
   sameAsProfile,
   sampleOf
 } from './import-mapper'
+
+describe('importableConnections', () => {
+  const connection = (id: string, status: string, capabilities: string[]) =>
+    ({ id, status, capabilities }) as unknown as CarrierConnectionView
+  it('keeps the connected ones that collect cash, and leaves out the disconnected', () => {
+    const list = [
+      connection('live', CarrierConnectionStatus.ACTIVE, [CarrierCapability.COD]),
+      connection('gone', CarrierConnectionStatus.DISABLED, [CarrierCapability.COD]),
+      connection('broken', CarrierConnectionStatus.ERROR, [CarrierCapability.COD]),
+      connection('prepaid', CarrierConnectionStatus.ACTIVE, [])
+    ]
+    expect(importableConnections(list).map(entry => entry.id)).toEqual(['live', 'broken'])
+  })
+})
 
 const buffer = (bytes: number[]): ArrayBuffer => new Uint8Array(bytes).buffer
 
