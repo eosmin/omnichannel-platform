@@ -140,7 +140,7 @@ function refineSettings(
 export const connectCarrierSchema = z
   .strictObject({
     carrierId: z.enum(Object.values(CarrierId) as [string, ...string[]]),
-    // Whatever the plugin needs: an API key, or the name, phone and prefix of a `local` courier
+    // Whatever the plugin needs: an API key, or the name, phone and prefix of a courier with `CarrierCapability.INTERNAL_GUIDE`
     credentials: boundedRecord,
     // The name in the list; the one the plugin gives the account when this is absent
     displayName: singleLineText(CarrierConnectionLimits.DISPLAY_NAME_MAX_LENGTH, 1).optional(),

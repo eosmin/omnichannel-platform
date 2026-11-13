@@ -236,7 +236,7 @@ export class ShipmentsService {
     return shipmentViewOf(await this.rowOf(storeId, shipmentId))
   }
 
-  // The guide is voided (TDD_17 §4.8): a `local` one at once, one a carrier can void by a job that asks it and is asked again a
+  // The guide is voided (TDD_17 §4.8): one of a courier with `CarrierCapability.INTERNAL_GUIDE` at once, one a carrier can void by a job that asks it and is asked again a
   // few times, one it cannot by the agent. The answer is the shipment as it is when the request ends, which is CANCEL_PENDING
   // while the worker has not asked the carrier yet.
   async cancel(storeId: string, shipmentId: string, actor: Actor): Promise<ShipmentView> {

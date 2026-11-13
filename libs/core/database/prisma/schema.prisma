@@ -1646,19 +1646,19 @@ model RetentionSettings {
 // plain column until its foreign key in Step 4.8 PR C1.
 // ============================================================
 
-// A store's account with a carrier (or the 'local' courier). Credentials and webhook secret are ciphertext.
+// A store's account with a carrier (or a courier with CarrierCapability.INTERNAL_GUIDE). Credentials and webhook secret are ciphertext.
 model CarrierConnection {
   id                      String    @id @default(uuid())
   storeId                 String    @map("store_id")
-  carrierId               String    @map("carrier_id") // CarrierId: 'forza' | 'c807' | 'local' | a private plugin's id
+  carrierId               String    @map("carrier_id") // CarrierId: the id of an official or private carrier plugin
   displayName             String    @map("display_name")
   status                  String    @default("active") // CarrierConnectionStatus
-  credentials             Bytes? // Ciphertext; null for 'local'
+  credentials             Bytes? // Ciphertext; null for CarrierCapability.INTERNAL_GUIDE
   webhookSecret           Bytes?    @map("webhook_secret") // Ciphertext; the secret of this connection's inbound webhook
   defaultServiceCode      String?   @map("default_service_code") // A CarrierService.code of this connection
   defaultShippingPayer    String    @default("sender") @map("default_shipping_payer") // ShippingPayer
   labelFormat             String    @default("pdf_100x150") @map("label_format") // LabelFormat
-  contact                 Json? // 'local' only: { phone, notes }
+  contact                 Json? // CarrierCapability.INTERNAL_GUIDE only: { phone, notes }
   pickupEnabled           Boolean   @default(false) @map("pickup_enabled")
   pickupDays              Int[]     @default([1, 2, 3, 4, 5]) @map("pickup_days") // ISO weekdays, 1 = Monday
   pickupCutoffTime        String?   @map("pickup_cutoff_time") // 'HH:mm' in the store timezone
@@ -1712,7 +1712,7 @@ model CarrierService {
   @@map("carrier_services")
 }
 
-// Guide numbers of the 'local' carrier. One row per connection, advanced with
+// Guide numbers of a carrier with CarrierCapability.INTERNAL_GUIDE. One row per connection, advanced with
 // UPDATE ... SET next_value = next_value + 1 RETURNING in the same transaction as the Shipment.
 model GuideSequence {
   connectionId String @id @map("connection_id")
@@ -1752,7 +1752,7 @@ model Shipment {
   packageCount       Int       @default(1) @map("package_count")
   failedAttempts     Int       @default(0) @map("failed_attempts") // Delivery attempts that failed (§4.9)
   weightGrams        Int?      @map("weight_grams")
-  guideNumber        String?   @map("guide_number") // The carrier's guide, or ours for 'local'
+  guideNumber        String?   @map("guide_number") // The carrier's guide, or ours for CarrierCapability.INTERNAL_GUIDE
   providerShipmentId String?   @map("provider_shipment_id") // The carrier's internal id, when it has one
   trackingUrl        String?   @map("tracking_url")
   labelMediaId       String?   @map("label_media_id") // Media purpose SHIPPING_LABEL; plain column like the other media ids

@@ -34,7 +34,7 @@ export class OrderGuides {
   private readonly plugins = (carrierId: string) => this.registry.find(carrierId)
 
   // A guide whose outcome is unknown, or whose package has left, refuses (the shipment's own rule): the order is not changed. One
-  // that is already being voided (or failed to be) is left as it is. A `local` guide is voided at once.
+  // that is already being voided (or failed to be) is left as it is. A guide of a courier with `CarrierCapability.INTERNAL_GUIDE` is voided at once.
   async voidLive(
     tx: PrismaTransaction,
     storeId: string,

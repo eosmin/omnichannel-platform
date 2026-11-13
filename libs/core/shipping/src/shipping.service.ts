@@ -161,7 +161,7 @@ function isRejectedEntry(
   )
 }
 
-// The label of a `local` guide is drawn and put in the bucket inside the transaction that gives the number (it must come
+// The label of a guide with `CarrierCapability.INTERNAL_GUIDE` is drawn and put in the bucket inside the transaction that gives the number (it must come
 // back with it), so the transaction gets more room than the default (TDD_17 §4.2)
 const LOCAL_GUIDE_TRANSACTION = { timeout: 20_000 } as const
 // A pickup batch judges and writes up to fifty orders in one transaction, and the wait for the lock of each counts
@@ -1473,7 +1473,7 @@ export class ShippingService {
     })
   }
 
-  // Draws the label of a `local` guide: the plugin places, the core draws (TDD_17 §4.2). The file is put in the bucket before
+  // Draws the label of a guide with `CarrierCapability.INTERNAL_GUIDE`: the plugin places, the core draws (TDD_17 §4.2). The file is put in the bucket before
   // the row is written; a failure after that removes it.
   private async drawLocalLabel(
     store: StoreFacts,

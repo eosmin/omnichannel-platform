@@ -33,7 +33,7 @@ export const connectAnswerSchema = z.object({
 })
 export type ConnectAnswer = z.output<typeof connectAnswerSchema>
 
-// The one thing a `local` courier needs besides its name: the prefix of its guides, which the sequence holds
+// The one thing a courier with `CarrierCapability.INTERNAL_GUIDE` needs besides its name: the prefix of its guides, which the sequence holds
 export const localMetadataSchema = z.object({
   phone: z.string().max(CarrierConnectionLimits.CONTACT_PHONE_MAX_LENGTH),
   notes: z.string().max(CarrierConnectionLimits.CONTACT_NOTES_MAX_LENGTH).optional(),

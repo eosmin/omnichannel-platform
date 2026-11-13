@@ -143,7 +143,7 @@ export type OrderCancellationReason =
   (typeof OrderCancellationReasons)[keyof typeof OrderCancellationReasons]
 
 // Order.recipientPhones (TDD_02 §13): the numbers the carriers receive, as national digits with no country code.
-// A carrier adapter and the `local` label join them with LIST_SEPARATOR through formatPhoneList.
+// A carrier adapter and the label of `CarrierCapability.INTERNAL_GUIDE` join them with LIST_SEPARATOR through formatPhoneList.
 export const RecipientPhones = {
   MAX_COUNT: 3,
   // The shortest number a person can dial anywhere the stores sell: fewer digits is a typo, not a phone

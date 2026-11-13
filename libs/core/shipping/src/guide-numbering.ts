@@ -1,7 +1,7 @@
 import type { PrismaTransaction } from '@platform/core/database'
 import { formatLocalGuideNumber } from '@platform/core/domain'
 
-// The next guide number of a `local` connection (TDD_17 §4.2): `{prefix}-{sequence}`, unique per connection. It is taken
+// The next guide number of a connection whose carrier has `CarrierCapability.INTERNAL_GUIDE` (TDD_17 §4.2): `{prefix}-{sequence}`, unique per connection. It is taken
 // inside the transaction that inserts the Shipment, with one UPDATE on the row of the sequence: the row stays locked
 // until that transaction ends, so two guides never get the same number and a rollback gives the number back. A
 // connection with no sequence (any other carrier) is not one this is called for, and the caller's bug is loud.
