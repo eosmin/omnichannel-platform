@@ -19,9 +19,10 @@ describe('the status of C807', () => {
     }
   })
 
-  it('lists the nine codes and the 33 reasons C807 sent', () => {
+  it('lists the ten codes and the 33 reasons C807 sent', () => {
     const plain = C807_STATUS_CATALOG.filter(entry => !entry.code.includes(':'))
     expect(plain.map(entry => entry.code).sort()).toEqual([
+      '1',
       '10',
       '11',
       '13',
@@ -39,6 +40,7 @@ describe('the status of C807', () => {
   })
 
   it.each([
+    ['1', undefined, ShipmentStatus.LABEL_CREATED],
     ['10', undefined, ShipmentStatus.LABEL_CREATED],
     ['13', undefined, ShipmentStatus.PICKED_UP],
     ['19', undefined, ShipmentStatus.IN_TRANSIT],

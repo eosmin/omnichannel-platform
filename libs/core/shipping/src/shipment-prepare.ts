@@ -243,7 +243,7 @@ export async function prepareGuide(
       paymentMethod: true,
       paymentStatus: true,
       currency: true,
-      customer: { select: { name: true } },
+      customer: { select: { name: true, email: true } },
       items: {
         select: {
           unitPriceCents: true,
@@ -434,6 +434,9 @@ export async function prepareGuide(
   const contact = asRecord(connection.contact)
   const senderPhone = typeof contact?.['phone'] === 'string' ? contact['phone'] : undefined
   const recipientName = order.customer.name?.trim() || order.orderNumber
+  // Only an address that is one goes to the carrier: what the store keeps there may be a placeholder of an import
+  const isEmail = (value: string | null): value is string =>
+    value !== null && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())
   const labelFormat = connection.labelFormat as LabelFormatType
 
   const params: CreateShipmentParams = {
@@ -443,6 +446,7 @@ export async function prepareGuide(
     recipient: {
       name: recipientName,
       phones: order.recipientPhones,
+      ...(isEmail(order.customer.email) ? { email: order.customer.email.trim() } : {}),
       address: recipientAddress,
       ...(request.locationIds === undefined ? {} : { locationIds: request.locationIds })
     },

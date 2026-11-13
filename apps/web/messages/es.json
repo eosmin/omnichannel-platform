@@ -3524,7 +3524,13 @@
             "deliveryType": "Tipo de entrega",
             "site": "Sede (opcional)",
             "deliveryTypeHelp": "El código de entrega que te habilitaron en tu contrato, por ejemplo NRML o PLUS.",
-            "siteHelp": "El código de la sede desde la que sale la recolecta. Déjalo vacío para usar la de tu usuario."
+            "siteHelp": "El código de la sede desde la que sale la recolecta. Déjalo vacío para usar la de tu usuario.",
+            "environment": "Ambiente (opcional)",
+            "environmentHelp": "Escribe sandbox para las pruebas con qaapp.c807.com. Déjalo vacío para producción.",
+            "fallbackEmail": "Correo de respaldo (opcional)",
+            "fallbackEmailHelp": "C807 exige un correo para cada guía. Se usa el de un cliente que no tiene.",
+            "weightUnit": "Unidad de peso (opcional)",
+            "weightUnitHelp": "La unidad que C807 habilitó en tu cuenta: LB o KG. Vacío es LB."
           }
         }
       },

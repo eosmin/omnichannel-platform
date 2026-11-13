@@ -6,21 +6,17 @@ capability, never code written from a guess (`TDD_17 §14`). Status of each ques
 
 ## C807 Express
 
-Subject: **Integración API Xpress: consultas pendientes**
+Only one question is left (the others were answered on 2026-11-14: `SEC` is charged and kept by C807, and a COD guide goes with
+the total to collect, C807 deducting its commission).
+
+Subject: **Integración API Xpress: una consulta pendiente**
 
 > Hola [nombre],
 >
-> Gracias por la documentación y por el listado de estados. Estamos terminando la integración y nos faltan tres datos
-> sobre los tipos de servicio:
+> ¿Las filas de `get_historia` incluyen el campo `devolucion` cuando un paquete regresa al remitente? Lo vemos en el
+> webhook, pero no en la documentación del historial.
 >
-> 1. En una guía con `tipo_servicio` `SEC` (el envío lo paga el destinatario y el producto ya está pagado), ¿cobran
->    ustedes su tarifa al destinatario directamente, o hay que enviar un monto? No vemos un campo de monto para `SEC`.
-> 2. Si el producto es contra entrega (`CCE`) y además el envío lo paga el destinatario, ¿cómo se crea la guía?
->    ¿`CCE` con `monto_cce` igual a producto más envío, o esa combinación no se soporta?
-> 3. En `SEC`, el dinero del envío que cobran al destinatario, ¿es para ustedes o se nos remite? Lo necesitamos para
->    la conciliación de remesas.
->
-> Quedamos atentos. Saludos.
+> Saludos.
 
 ## Forza Delivery Express
 

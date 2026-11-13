@@ -25,6 +25,7 @@ const shipment = (overrides: Parameters<typeof buildCreateShipmentParams>[0] = {
     recipient: {
       name: 'Ana Recipient',
       phones: ['71234567', '72345678'],
+      email: 'ana@example.com',
       address: { line1: '5 Customer St', city: 'Santa Tecla', country: 'SV' },
       locationIds: { departmentId: '2', municipalityId: '4' }
     },
@@ -90,9 +91,54 @@ describe('C807: connecting', () => {
       username: C807_FAKE_USERNAME,
       password: C807_FAKE_PASSWORD
     })
-    expect(connected.metadata).toEqual({ deliveryType: 'NRML', site: 3 })
+    expect(connected.metadata).toEqual({
+      deliveryType: 'NRML',
+      environment: 'production',
+      weightUnit: 'LB',
+      site: 3
+    })
     // There is no connection yet, so no token is kept for one
     expect(await cache.get('store-1', 'connection-1')).toBeNull()
+  })
+
+  it('talks to the production host by default and to the sandbox host when the connection says so', async () => {
+    await plugin.lookupLocations(context, {})
+    expect(carrier.calls.every(call => call.host === 'app.c807.com')).toBe(true)
+    const sandbox = buildCarrierContext({
+      ...context,
+      connectionId: 'connection-sandbox',
+      metadata: { deliveryType: 'NRML', environment: 'sandbox' }
+    })
+    await plugin.lookupLocations(sandbox, {})
+    expect(carrier.calls.at(-1)?.host).toBe('qaapp.c807.com')
+    expect(
+      carrier.calls.filter(call => call.path.endsWith('get_token')).map(call => call.host)
+    ).toEqual(['app.c807.com', 'qaapp.c807.com'])
+  })
+
+  it('connects in the sandbox, and refuses an environment it does not know', async () => {
+    const connected = await plugin.connect({
+      storeId: 'store-1',
+      credentials: {
+        username: C807_FAKE_USERNAME,
+        password: C807_FAKE_PASSWORD,
+        deliveryType: 'NRML',
+        environment: 'sandbox'
+      }
+    })
+    expect(connected.metadata).toMatchObject({ environment: 'sandbox' })
+    expect(carrier.calls[0]?.host).toBe('qaapp.c807.com')
+    await expect(
+      plugin.connect({
+        storeId: 'store-1',
+        credentials: {
+          username: C807_FAKE_USERNAME,
+          password: C807_FAKE_PASSWORD,
+          deliveryType: 'NRML',
+          environment: 'https://evil.example'
+        }
+      })
+    ).rejects.toBeInstanceOf(CarrierRejectedError)
   })
 
   it('takes a blank site of the form as no site', async () => {
@@ -105,7 +151,11 @@ describe('C807: connecting', () => {
         site: ''
       }
     })
-    expect(connected.metadata).toEqual({ deliveryType: 'NRML' })
+    expect(connected.metadata).toEqual({
+      deliveryType: 'NRML',
+      environment: 'production',
+      weightUnit: 'LB'
+    })
   })
 
   it('refuses a wrong password as an authentication failure', async () => {
@@ -307,6 +357,84 @@ describe('C807: creating guides', () => {
     ])
   })
 
+  it('refuses a connection whose environment it does not know, instead of sending it to production', async () => {
+    const odd = buildCarrierContext({
+      ...context,
+      metadata: { deliveryType: 'NRML', environment: 'staging' }
+    })
+    await expect(plugin.lookupLocations(odd, {})).rejects.toBeInstanceOf(CarrierRejectedError)
+    expect(carrier.calls).toHaveLength(0)
+  })
+
+  it('reads the environment however the owner typed it', async () => {
+    const connected = await plugin.connect({
+      storeId: 'store-1',
+      credentials: {
+        username: C807_FAKE_USERNAME,
+        password: C807_FAKE_PASSWORD,
+        deliveryType: 'NRML',
+        environment: ' Sandbox '
+      }
+    })
+    expect(connected.metadata).toMatchObject({ environment: 'sandbox' })
+  })
+
+  it('does not reuse the token of one environment in the other', async () => {
+    await plugin.lookupLocations(context, {})
+    const sandbox = buildCarrierContext({
+      ...context,
+      metadata: { deliveryType: 'NRML', environment: 'sandbox' }
+    })
+    await plugin.lookupLocations(sandbox, {})
+    expect(carrier.tokens.issued).toBe(2)
+  })
+
+  it('refuses an order with no e-mail alone, and uses the fallback of the connection when it has one', async () => {
+    const noEmail = shipment({ reference: 'N-1' })
+    noEmail.recipient = { ...noEmail.recipient, email: undefined }
+    const refused = await plugin.createShipmentsWithPickup(
+      context,
+      batch([shipment({ reference: 'N-0' }), noEmail])
+    )
+    expect(refused.shipments.map(entry => entry.outcome)).toEqual([
+      PickupBatchOutcomes.CREATED,
+      PickupBatchOutcomes.REJECTED
+    ])
+    const withFallback = buildCarrierContext({
+      ...context,
+      metadata: { deliveryType: 'NRML', fallbackEmail: 'tienda@example.com' }
+    })
+    const made = await plugin.createShipmentsWithPickup(withFallback, batch([noEmail]))
+    expect(made.shipments[0]?.outcome).toBe(PickupBatchOutcomes.CREATED)
+    const create = carrier.calls.filter(call => call.path.endsWith('set_registro')).at(-1)
+    expect((create?.body as { guias: { correo: string }[] }).guias[0]?.correo).toBe(
+      'tienda@example.com'
+    )
+  })
+
+  it('shows what C807 says when it refuses a whole request, the way its errors come', async () => {
+    const answer = carrier.fetch
+    jest.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      return url.endsWith('set_registro')
+        ? Promise.resolve(
+            new Response(
+              JSON.stringify({
+                errores: [
+                  { codigo: 5, mensaje: 'Guía 1, complete los datos.' },
+                  { codigo: 5, mensaje: 'Guía 2, unidad inválida.' }
+                ]
+              }),
+              { status: 400 }
+            )
+          )
+        : answer(input, init)
+    })
+    await expect(plugin.createShipmentsWithPickup(context, batch())).rejects.toThrow(
+      'Guía 1, complete los datos.; Guía 2, unidad inválida.'
+    )
+  })
+
   it('refuses the batch before it calls when C807 would refuse every shipment', async () => {
     await expect(
       plugin.createShipmentsWithPickup(context, batch([shipment({ reference: 'X'.repeat(30) })]))
@@ -413,8 +541,8 @@ describe('C807: status', () => {
     const events = await plugin.fetchStatus(context, [
       { reference: 'A-1', guideNumber: 'fake-1-A-1' }
     ])
-    expect(events.map(event => event.rawStatus)).toEqual(['10', '13'])
-    expect(events[1]).toMatchObject({
+    expect(events.map(event => event.rawStatus)).toEqual(['1', '10', '13'])
+    expect(events[2]).toMatchObject({
       status: ShipmentStatus.PICKED_UP,
       occurredAt: '2026-12-01T14:30:00-06:00',
       guideNumber: 'fake-1-A-1'
@@ -424,7 +552,7 @@ describe('C807: status', () => {
   it('finds the guide by the order when the core has none', async () => {
     await plugin.createShipmentsWithPickup(context, batch([shipment({ reference: 'A-1' })]))
     const events = await plugin.fetchStatus(context, [{ reference: 'A-1' }])
-    expect(events).toHaveLength(2)
+    expect(events).toHaveLength(3)
     expect(events[0]?.guideNumber).toBe('fake-1-A-1')
   })
 
