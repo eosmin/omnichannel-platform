@@ -49,6 +49,8 @@ test.describe('Settings → Carriers', () => {
     // Connect: a courier the platform makes the guides for asks for its name, phone and prefix, and refuses an empty form
     await page.getByRole('button', { name: carriers.add }).click()
     const dialog = page.getByRole('dialog', { name: carriers.connect.title })
+    // The registry holds more than one carrier, so the owner picks the courier the platform makes the guides for
+    await dialog.getByLabel(carriers.connect.carrier).selectOption({ label: 'Local courier' })
     await dialog.getByRole('button', { name: carriers.connect.submit }).click()
     await expect(dialog.getByRole('alert').first()).toBeVisible()
     await dialog.getByLabel(carriers.connect.courierName).fill('Juan Messenger')
