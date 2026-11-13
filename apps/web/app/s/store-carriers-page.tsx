@@ -8,8 +8,8 @@ import { ClientPermissions } from '@platform/core/auth'
 import { useStore } from '../../components/providers/store-context'
 import { PageLoading, PermissionDenied } from '../../components/settings/states'
 
-// The page is downloaded when it is opened: the settings pages share one barrel (`settings/pages.ts`), and a static import
-// here would put the screens of the carriers in the script budget of every other settings page
+// The panel is downloaded when the page is opened: it is the heaviest screen of the settings area (kept lazy as in
+// PR fix/web-common-chunk; not re-measured without the barrel)
 const CarriersPanel = dynamic(
   () => import('../../components/settings/carriers-panel').then(module => module.CarriersPanel),
   { ssr: false, loading: () => <PageLoading /> }

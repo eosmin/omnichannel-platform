@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 
 import { pageTitle } from '../../page-title'
-import { StoreRoutingPage } from '../pages'
+import { StoreRoutingPage } from '../routing-page'
 
 export const generateMetadata = pageTitle('settingsRouting')
 
