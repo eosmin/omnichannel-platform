@@ -56,6 +56,19 @@ export type CarrierConnectionView = z.output<typeof connectionSchema>
 const connectedSchema = connectionSchema.extend({ webhookSecret: z.string().nullable() })
 export type ConnectedCarrierView = z.output<typeof connectedSchema>
 
+// One field of the connect form a carrier declares (the registry's copy): the form is drawn from the list, and `credentials[key]` is sent
+// back. The label is a message key of the app or the plugin's own text in each language; `secret` fields are drawn masked
+const connectFieldSchema = z.object({
+  key: z.string(),
+  labelKey: z.string().nullable(),
+  label: z.object({ es: z.string(), en: z.string() }).nullable(),
+  helpKey: z.string().nullable(),
+  secret: z.boolean(),
+  required: z.boolean(),
+  multiple: z.boolean()
+})
+export type CarrierConnectFieldView = z.output<typeof connectFieldSchema>
+
 const registryEntrySchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -64,9 +77,30 @@ const registryEntrySchema = z.object({
   shipmentCreation: z.string(),
   maxBatchSize: z.number().int().nullable(),
   hasCredentials: z.boolean(),
-  services: z.array(z.object({ code: z.string(), label: z.string() }))
+  services: z.array(z.object({ code: z.string(), label: z.string() })),
+  // Empty: the carrier draws no form of its own and its credentials are the free JSON it reads
+  connectFields: z.array(connectFieldSchema)
 })
 export type CarrierRegistryEntryView = z.output<typeof registryEntrySchema>
+
+// A place a carrier lists for the address of a guide
+const locationSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  parentId: z.string().nullable()
+})
+export type CarrierLocationView = z.output<typeof locationSchema>
+
+// A code of the carrier's status catalog and the row the connection holds for it (`hasMapping` false: none yet, and a put makes it)
+const statusCatalogEntrySchema = z.object({
+  providerCode: z.string(),
+  label: z.string(),
+  defaultStatus: z.string().nullable(),
+  hasMapping: z.boolean(),
+  mappedStatus: z.string().nullable(),
+  source: z.string().nullable()
+})
+export type CarrierStatusCatalogEntryView = z.output<typeof statusCatalogEntrySchema>
 
 const testResultSchema = z.object({
   healthy: z.boolean(),
@@ -299,5 +333,39 @@ export function removeStatusMapping(
     method: 'DELETE',
     schema: z.undefined(),
     storeId
+  })
+}
+
+// The places under one parent (none: the top level), optionally narrowed by a part of the name. The api keeps the list of a parent
+// for a day, so asking again while someone types is cheap. Needs shipping:view; a carrier that lists no places answers 409.
+export function fetchCarrierLocations(
+  client: ApiClient,
+  storeId: string,
+  id: string,
+  query: { parentId?: string; search?: string } = {},
+  signal?: AbortSignal
+): Promise<CarrierLocationView[]> {
+  const params = new URLSearchParams()
+  if (query.parentId !== undefined) params.set('parentId', query.parentId)
+  if (query.search !== undefined && query.search.trim() !== '') params.set('search', query.search)
+  const suffix = params.size === 0 ? '' : `?${params.toString()}`
+  return client.request(`${ApiRoutes.carriers.locations(enc(id))}${suffix}`, {
+    schema: z.array(locationSchema),
+    storeId,
+    signal
+  })
+}
+
+// Every code the carrier's plugin knows, with the row the connection holds for it: what the mapping table offers to add
+export function fetchCarrierStatusCatalog(
+  client: ApiClient,
+  storeId: string,
+  id: string,
+  signal?: AbortSignal
+): Promise<CarrierStatusCatalogEntryView[]> {
+  return client.request(ApiRoutes.carriers.statusCatalog(enc(id)), {
+    schema: z.array(statusCatalogEntrySchema),
+    storeId,
+    signal
   })
 }

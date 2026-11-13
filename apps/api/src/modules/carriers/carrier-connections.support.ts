@@ -3,6 +3,7 @@ import { z } from 'zod'
 import {
   CarrierConnectionLimits,
   CarrierHealthReasons,
+  CarrierLocationLimits,
   type CarrierHealthReason,
   CarrierReportableStatuses,
   CarrierStatusMappingSource,
@@ -12,6 +13,7 @@ import {
   type ShipmentStatus
 } from '@platform/core/domain'
 import { CarrierCredentialsUnreadableError } from '@platform/core/shipping'
+import type { ConnectFieldSnapshot } from '@platform/plugins/runtime'
 import {
   CarrierAuthError,
   CarrierRejectedError,
@@ -148,4 +150,74 @@ export function settingsProblem(
 ): string | null {
   const merged = { ...current, ...change }
   return shippingFeeRangeProblem(merged) ?? pickupRulesProblem(merged)
+}
+
+// What a carrier with declared connect fields takes as its credentials (TDD_17 §6): only its keys, every required one given, each
+// a text (a number is let through: the plugin's own check in connect() reads it) or, for a list, texts only. What a field means is still the plugin's to check in connect(). A
+// carrier that declares nothing keeps its free JSON. The problem names the field and never a value: it may be a secret.
+export function connectFieldsProblem(
+  fields: readonly ConnectFieldSnapshot[],
+  credentials: Record<string, unknown>
+): string | null {
+  if (fields.length === 0) return null
+  const known = new Set(fields.map(field => field.key))
+  if (Object.keys(credentials).some(key => !known.has(key))) {
+    return 'the credentials hold a field the carrier does not ask for'
+  }
+  const isText = (value: unknown): boolean =>
+    typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value))
+  const isBlank = (value: unknown): boolean =>
+    value === undefined || value === null || (typeof value === 'string' && value.trim() === '')
+  for (const field of fields) {
+    const value = Object.hasOwn(credentials, field.key) ? credentials[field.key] : undefined
+    if (field.multiple) {
+      const list = value === undefined || value === null ? [] : value
+      if (!Array.isArray(list) || list.some(entry => typeof entry !== 'string' || isBlank(entry))) {
+        return 'a field has a value it cannot take'
+      }
+      if (list.length === 0 && field.required) return `the field ${field.key} is required`
+      continue
+    }
+    if (isBlank(value)) {
+      if (field.required) return `the field ${field.key} is required`
+      continue
+    }
+    if (!isText(value)) return 'a field has a value it cannot take'
+  }
+  return null
+}
+
+// What lookupLocations answers: a bounded list of places, each with the carrier's own id and a name. It is checked before it is kept
+// in the cache or shown.
+export const locationsAnswerSchema = z
+  .array(
+    z.object({
+      id: z
+        .string()
+        .min(1)
+        .max(CarrierLocationLimits.ID_MAX_LENGTH)
+        .regex(CarrierLocationLimits.ID_PATTERN),
+      name: z.string().min(1).max(CarrierLocationLimits.NAME_MAX_LENGTH),
+      parentId: z
+        .string()
+        .min(1)
+        .max(CarrierLocationLimits.ID_MAX_LENGTH)
+        .regex(CarrierLocationLimits.ID_PATTERN)
+        .optional()
+    })
+  )
+  .max(CarrierLocationLimits.MAX_PLACES)
+export type LocationsAnswer = z.output<typeof locationsAnswerSchema>
+
+const foldText = (value: string): string =>
+  value.normalize('NFD').replaceAll(/\p{M}/gu, '').toLowerCase().trim()
+
+// The places whose name holds the search, without caring for case or accents; no search keeps them all
+export function filterLocations(
+  places: LocationsAnswer,
+  search: string | undefined
+): LocationsAnswer {
+  const wanted = search === undefined ? '' : foldText(search)
+  if (wanted === '') return places
+  return places.filter(place => foldText(place.name).includes(wanted))
 }

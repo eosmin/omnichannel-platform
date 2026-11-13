@@ -159,6 +159,80 @@ describe('Settings → Carriers → Status mapping', () => {
     })
   })
 
+  describe('the catalog of the plugin', () => {
+    interface CatalogEntry {
+      providerCode: string
+      label: string
+      defaultStatus: string | null
+      hasMapping: boolean
+      mappedStatus: string | null
+      source: string | null
+    }
+    const catalog = async (id: string): Promise<CatalogEntry[]> => {
+      const response = await asAdmin().get(ApiRoutes.carriers.statusCatalog(id))
+      expect(response.status).toBe(OK)
+      return response.body as CatalogEntry[]
+    }
+
+    it('lists every code the plugin knows, with the row each has, and the code with no safe default has none', async () => {
+      const id = await forza()
+      const entries = await catalog(id)
+      expect(entries.map(entry => entry.providerCode).sort()).toEqual(
+        fakeCarrierStatuses.map(entry => entry.code).sort()
+      )
+      const delivered = entries.find(entry => entry.providerCode === 'delivered')
+      expect(delivered).toMatchObject({
+        hasMapping: true,
+        mappedStatus: ShipmentStatus.DELIVERED,
+        source: CarrierStatusMappingSource.DEFAULT
+      })
+      expect(entries.find(entry => entry.providerCode === 'info')).toMatchObject({
+        defaultStatus: null,
+        hasMapping: false,
+        mappedStatus: null,
+        source: null
+      })
+    })
+
+    it('shows a code the connection lacks (one added after it was made) as not mapped, and a put gives it its row', async () => {
+      const id = await forza()
+      await owner.carrierStatusMapping.deleteMany({
+        where: { connectionId: id, providerCode: 'delivered' }
+      })
+      expect((await catalog(id)).find(entry => entry.providerCode === 'delivered')).toMatchObject({
+        hasMapping: false,
+        mappedStatus: null
+      })
+      expect((await put(id, 'delivered', { status: ShipmentStatus.DELIVERED })).status).toBe(OK)
+      expect((await catalog(id)).find(entry => entry.providerCode === 'delivered')).toMatchObject({
+        hasMapping: true,
+        mappedStatus: ShipmentStatus.DELIVERED,
+        source: CarrierStatusMappingSource.CUSTOM
+      })
+    })
+
+    it('needs shipping:view and is the same 404 in another store as for a connection that does not exist', async () => {
+      const id = await forza()
+      const manager = await actorWithPermissions(owner, app, {
+        prefix,
+        name: 'catalog-manager',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions: [Permissions.SETTINGS_MANAGE_CARRIERS]
+      })
+      expect(
+        (await api(app, manager, ctx.storeA).get(ApiRoutes.carriers.statusCatalog(id))).status
+      ).toBe(FORBIDDEN)
+      const other = await asAdminB().get(ApiRoutes.carriers.statusCatalog(id))
+      const unknown = await asAdminB().get(ApiRoutes.carriers.statusCatalog(randomUUID()))
+      expect(other.status).toBe(NOT_FOUND)
+      expect((other.body as ErrorBody).error).toEqual((unknown.body as ErrorBody).error)
+      expect((await asAdmin().get(ApiRoutes.carriers.statusCatalog('not-an-id'))).status).toBe(
+        BAD_REQUEST
+      )
+    })
+  })
+
   describe('changing a row', () => {
     it('maps a code under whatever spelling the carrier uses, marks it custom and audits both statuses', async () => {
       const id = await forza()

@@ -44,6 +44,17 @@ export interface StatusMappingView {
   updatedAt: string
 }
 
+// One code of the status catalog of a carrier, with the mapping the connection holds for it. `hasMapping` false: the connection has no
+// row for the code (it was connected before the code existed), and putting one creates it
+export interface CarrierStatusCatalogEntry {
+  providerCode: string
+  label: string
+  defaultStatus: string | null
+  hasMapping: boolean
+  mappedStatus: string | null
+  source: string | null
+}
+
 export interface UnmappedStatusView {
   providerCode: string
   sampleRawStatus: string
@@ -134,6 +145,38 @@ export class CarrierStatusMappingsService {
       nextCursor: hasMore && last !== undefined ? encodeMappingCursor(last.providerCode) : null,
       hasMore
     }
+  }
+
+  // Every code the plugin knows, each with the row the connection holds for it (none for a connection made before the code was
+  // added): what the table of the mapping offers to add. Codes only the connection knows (the owner's own) are in `list`.
+  async catalog(storeId: string, connectionId: string): Promise<CarrierStatusCatalogEntry[]> {
+    const connection = await this.connectionOf(storeId, connectionId)
+    const plugin = this.registry.find(connection.carrierId)
+    if (plugin === undefined) return []
+    const rows = await this.prisma.client.carrierStatusMapping.findMany({
+      where: { storeId, connectionId },
+      select: MAPPING_SELECT,
+      orderBy: { providerCode: 'asc' },
+      take: CarrierStatusLimits.MAX_MAPPINGS_PER_CONNECTION
+    })
+    const held = new Map(rows.map(row => [row.providerCode, row]))
+    const seen = new Set<string>()
+    const entries: CarrierStatusCatalogEntry[] = []
+    for (const entry of plugin.statusCatalog()) {
+      const providerCode = normalizeProviderStatusCode(entry.code)
+      if (providerCode === '' || seen.has(providerCode)) continue
+      seen.add(providerCode)
+      const row = held.get(providerCode)
+      entries.push({
+        providerCode,
+        label: entry.label,
+        defaultStatus: entry.defaultStatus,
+        hasMapping: row !== undefined,
+        mappedStatus: row?.status ?? null,
+        source: row?.source ?? null
+      })
+    }
+    return entries
   }
 
   async listUnmapped(

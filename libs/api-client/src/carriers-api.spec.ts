@@ -2,6 +2,9 @@ import { createApiClient } from './api-client'
 import {
   connectCarrier,
   fetchAllCarrierConnections,
+  fetchCarrierLocations,
+  fetchCarrierRegistry,
+  fetchCarrierStatusCatalog,
   fetchStatusMappings,
   putStatusMapping,
   removeStatusMapping,
@@ -156,5 +159,72 @@ describe('carriers api', () => {
     await fetchStatusMappings(client, 's1', 'c1', 'abc')
     expect(callOf(fetchImpl).url).toContain('/carriers/c1/status-mappings?')
     expect(callOf(fetchImpl).url).toContain('cursor=abc')
+  })
+
+  it("reads the connect fields of the registry, with a label as a key or as the plugin's own text", async () => {
+    const entry = {
+      id: 'c807',
+      name: 'Carrier',
+      version: '1.0.0',
+      capabilities: [],
+      shipmentCreation: 'pickup_bound',
+      maxBatchSize: 3,
+      hasCredentials: true,
+      services: [],
+      connectFields: [
+        {
+          key: 'password',
+          labelKey: 'fields.password',
+          label: null,
+          helpKey: null,
+          secret: true,
+          required: true,
+          multiple: false
+        },
+        {
+          key: 'site',
+          labelKey: null,
+          label: { es: 'Sede', en: 'Site' },
+          helpKey: 'fields.site_help',
+          secret: false,
+          required: false,
+          multiple: false
+        }
+      ]
+    }
+    const { client } = setup(json(200, [entry]))
+    const [read] = await fetchCarrierRegistry(client, 's1')
+    expect(read?.connectFields.map(field => field.key)).toEqual(['password', 'site'])
+    expect(read?.connectFields[0]?.secret).toBe(true)
+  })
+
+  it('asks for the places under a parent, with a search, through the store of the request', async () => {
+    const place = { id: '21', name: 'Soyapango', parentId: '2' }
+    const { client, fetchImpl } = setup(json(200, [place]), json(200, []))
+
+    expect(
+      await fetchCarrierLocations(client, 's1', 'c/1', { parentId: '2', search: 'soya' })
+    ).toEqual([place])
+    await fetchCarrierLocations(client, 's1', 'c1')
+
+    expect(callOf(fetchImpl).url).toBe(
+      'https://api.example.com/api/v1/carriers/c%2F1/locations?parentId=2&search=soya'
+    )
+    expect(callOf(fetchImpl).headers.get('x-store-id')).toBe('s1')
+    expect(callOf(fetchImpl, 1).url).toBe('https://api.example.com/api/v1/carriers/c1/locations')
+  })
+
+  it('reads the status catalog of a connection', async () => {
+    const entry = {
+      providerCode: 'delivered',
+      label: 'Delivered',
+      defaultStatus: 'delivered',
+      hasMapping: false,
+      mappedStatus: null,
+      source: null
+    }
+    const { client, fetchImpl } = setup(json(200, [entry]))
+    expect(await fetchCarrierStatusCatalog(client, 's1', 'c1')).toEqual([entry])
+    expect(callOf(fetchImpl).url).toBe('https://api.example.com/api/v1/carriers/c1/status-catalog')
   })
 })

@@ -335,6 +335,18 @@ describe('Settings → Carriers: the connections of a store', () => {
         .patch(ApiRoutes.carriers.byId(first.id))
         .send({ credentials: { name: 'x', phone: '2', prefix: 'UQ' } })
       expect(same.status).toBe(OK)
+      // That one call is the route that edits the contact and prefix of a courier (Step 4.15 PR 2a (c)): no route of its own is missing
+      const edited = await read(first.id)
+      expect(edited.contact).toEqual({ phone: '2' })
+      expect(edited.guidePrefix).toBe('UQ')
+      const renumbered = await asAdmin()
+        .patch(ApiRoutes.carriers.byId(first.id))
+        .send({ credentials: { name: 'x', phone: '2', prefix: 'UW', notes: 'Back door' } })
+      expect(renumbered.status).toBe(OK)
+      expect(await read(first.id)).toMatchObject({
+        guidePrefix: 'UW',
+        contact: { phone: '2', notes: 'Back door' }
+      })
     })
 
     it('asks the carrier nothing when the store has no room or the name is taken, and keeps the answer out of any cache', async () => {

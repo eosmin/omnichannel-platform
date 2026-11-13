@@ -19,6 +19,8 @@ import {
   CarrierUnavailableError,
   type CarrierContext,
   type CarrierEvent,
+  type CarrierLocation,
+  type ConnectField,
   type CarrierPlugin,
   type CarrierStatusDescriptor,
   type CreateShipmentParams,
@@ -68,6 +70,10 @@ export interface FakeCarrierOptions {
   // Declares RETURN_SHIPMENT: the carrier makes the guide of the way back (customer to warehouse) with the same createShipment, told
   // apart by `params.kind`. Only the standalone mode can (the registry refuses the rest). The core never reads the carrier's name for this
   returnShipment?: boolean
+  // What its connect form asks for (the registry keeps a copy and the api validates a connection against it)
+  connectFields?: readonly ConnectField[]
+  // Declares REQUIRES_LOCATION_IDS and answers lookupLocations with these, by parent id ('' is the top level)
+  locations?: Readonly<Record<string, readonly CarrierLocation[]>>
   maxBatchSize?: number
   // standalone: the most guides the platform may ask for at the same time (the plugin's own declaration)
   maxConcurrency?: number
@@ -98,6 +104,8 @@ export interface FakeCarrierState {
   cancel: FakeCarrierBehavior
   // What requestPickup and modifyPickup do (a timeout is a CarrierUnavailableError, a refusal a CarrierRejectedError)
   pickup: FakeCarrierBehavior
+  // What lookupLocations does (OK, or a CarrierUnavailableError for TIMEOUT_BEFORE)
+  lookup: FakeCarrierBehavior
   // The references the carrier refuses inside a batch while accepting the rest
   rejectReferences: Set<string>
   // Creates under way now, and the most there were at once since the last reset
@@ -221,6 +229,7 @@ export function buildFakeCarrier(options: FakeCarrierOptions = {}): FakeCarrier 
     create: FakeCarrierBehaviors.OK,
     cancel: FakeCarrierBehaviors.OK,
     pickup: FakeCarrierBehaviors.OK,
+    lookup: FakeCarrierBehaviors.OK,
     rejectReferences: new Set(),
     inFlight: 0,
     peakInFlight: 0,
@@ -313,6 +322,7 @@ export function buildFakeCarrier(options: FakeCarrierOptions = {}): FakeCarrier 
   declare(options.pickupCancel === true, CarrierCapability.PICKUP_CANCEL)
   declare(withCod, CarrierCapability.COD)
   declare(options.returnShipment === true, CarrierCapability.RETURN_SHIPMENT)
+  declare(options.locations !== undefined, CarrierCapability.REQUIRES_LOCATION_IDS)
 
   const plugin: CarrierPlugin = {
     id,
@@ -321,6 +331,7 @@ export function buildFakeCarrier(options: FakeCarrierOptions = {}): FakeCarrier 
     author: 'suite',
     type: PluginTypes.CARRIER,
     capabilities,
+    ...(options.connectFields === undefined ? {} : { connectFields: options.connectFields }),
     ...(options.sharedSecret === true ? { webhookTrust: CarrierWebhookTrust.SHARED_SECRET } : {}),
     serviceCatalog: () => [
       { code: 'standard', label: 'Standard', defaultForNextDay: false },
@@ -341,6 +352,20 @@ export function buildFakeCarrier(options: FakeCarrierOptions = {}): FakeCarrier 
       return Promise.resolve()
     },
     healthCheck: () => Promise.resolve({ healthy: true, checkedAt: new Date().toISOString() }),
+    ...(options.locations === undefined
+      ? {}
+      : {
+          lookupLocations: (
+            _ctx: CarrierContext,
+            query: { parentId?: string; search?: string }
+          ) => {
+            record('lookupLocations', query)
+            if (state.lookup === FakeCarrierBehaviors.TIMEOUT_BEFORE) {
+              return Promise.reject(new CarrierUnavailableError('The fake carrier does not answer'))
+            }
+            return Promise.resolve([...(options.locations?.[query.parentId ?? ''] ?? [])])
+          }
+        }),
 
     shipmentCreation: mode,
     ...(mode === ShipmentCreationModes.PICKUP_BOUND ? { maxBatchSize } : {}),

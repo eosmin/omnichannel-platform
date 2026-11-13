@@ -118,7 +118,14 @@ export const CacheKeys = {
   // data: the key carries the store, and the value is a secret that expires with the carrier's own token
   carrier: {
     accessToken: (storeId: string, connectionId: string) =>
-      `store:${storeId}:carrier:${connectionId}:access_token`
+      `store:${storeId}:carrier:${connectionId}:access_token`,
+    // The places the carrier lists under one parent (`null`: the top level), kept a day. The parent id of the request is limited to
+    // the characters of `carrierLocationParentIdSchema` before it reaches here
+    locations: (storeId: string, connectionId: string, parentId: string | null) =>
+      `store:${storeId}:carrier:${connectionId}:locations:${parentId === null ? 'top' : `parent:${parentId}`}`,
+    // Every list of places of the connection: dropped together when its credentials change
+    locationsScope: (storeId: string, connectionId: string) =>
+      `carrier-locations:${storeId}:${connectionId}`
   },
 
   // What the pickup scheduler has done for a connection on a day of the store (TDD_17 §4.10): the cutoff reminder is raised once, and

@@ -7,6 +7,7 @@ import { withTimeout } from '@platform/channels/connections'
 import { API_PREFIX, ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
+import { CacheKeys, CacheTTL } from '@platform/core/cache'
 import { CredentialCipher, generateToken } from '@platform/core/crypto'
 import {
   DatabaseNull,
@@ -42,6 +43,7 @@ import {
 } from '@platform/core/errors'
 import { PublicApiConfig } from '@platform/core/http'
 import { DEFAULT_LOCALE, type Locale, SUPPORTED_LOCALES } from '@platform/core/i18n'
+import { CacheService } from '@platform/core/redis'
 import { buildCarrierContext, carrierNameOf, carrierServiceLabelOf } from '@platform/core/shipping'
 import { CarrierRegistry } from '@platform/plugins/runtime'
 import type { CarrierPlugin } from '@platform/plugins/sdk'
@@ -49,13 +51,16 @@ import type { CarrierPlugin } from '@platform/plugins/sdk'
 import { encodeCursor } from '../customers/list-cursor'
 import type { Actor } from '../tenancy'
 
-import type { ListCarriersQuery } from './carrier-connections.schemas'
+import type { ListCarriersQuery, ListLocationsQuery } from './carrier-connections.schemas'
 import {
   type ConnectAnswer,
   connectAnswerSchema,
+  connectFieldsProblem,
   defaultServiceCodeOf,
+  filterLocations,
   healthReasonOf,
   localMetadataSchema,
+  locationsAnswerSchema,
   type RulesSnapshot,
   seedServices,
   seedStatusMappings,
@@ -63,12 +68,15 @@ import {
 } from './carrier-connections.support'
 import {
   type CarrierConnectionView,
+  type CarrierLocationView,
   type CarrierRegistryEntry,
   type CarrierTestResult,
   CONNECTION_SELECT,
   type ConnectedCarrierView,
   type ConnectionRow
 } from './carrier-connections.views'
+
+const LOCATIONS_CACHE_NAMESPACE = 'carrier-locations'
 
 const CONNECTION_ORDER = [{ createdAt: 'asc' }, { id: 'asc' }] as const
 
@@ -135,7 +143,8 @@ export class CarrierConnectionsService {
     private readonly cipher: CredentialCipher,
     private readonly publicApi: PublicApiConfig,
     private readonly audit: AuditService,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly cache: CacheService
   ) {
     this.logger.setContext(CarrierConnectionsService.name)
   }
@@ -154,7 +163,9 @@ export class CarrierConnectionsService {
       services: plugin.serviceCatalog().map(service => ({
         code: service.code,
         label: carrierServiceLabelOf(plugin.id, service, locale)
-      }))
+      })),
+      // The copy the registry made when the plugin registered, never the live declaration of the plugin
+      connectFields: this.registry.connectFieldsOf(plugin.id)
     }))
   }
 
@@ -221,6 +232,12 @@ export class CarrierConnectionsService {
     }
     const problem = settingsProblem(NEW_CONNECTION_RULES, body)
     if (problem !== null) throw invalidInput(problem)
+    // A carrier that declares its connect fields takes those and no other credentials
+    const fieldsProblem = connectFieldsProblem(
+      this.registry.connectFieldsOf(plugin.id),
+      body.credentials
+    )
+    if (fieldsProblem !== null) throw invalidInput(fieldsProblem)
     // A plugin whose catalog is not valid is the plugin's bug, and answers before anything is written
     const mappings = seedStatusMappings(plugin)
 
@@ -386,6 +403,14 @@ export class CarrierConnectionsService {
       plugin !== undefined &&
       this.registry.hasCapability(plugin.id, CarrierCapability.INTERNAL_GUIDE)
 
+    if (body.credentials !== undefined && plugin !== undefined) {
+      const fieldsProblem = connectFieldsProblem(
+        this.registry.connectFieldsOf(plugin.id),
+        body.credentials
+      )
+      if (fieldsProblem !== null) throw invalidInput(fieldsProblem)
+    }
+
     // New credentials are checked with the carrier first, and only then replace the old ones
     const asked =
       body.credentials === undefined || plugin === undefined
@@ -540,7 +565,109 @@ export class CarrierConnectionsService {
         ...(replaced === undefined ? [] : ['credentials'])
       ].sort()
     })
+    await this.dropLocations(storeId, connectionId)
     return this.get(storeId, connectionId)
+  }
+
+  // What the carrier listed with the old credentials or settings is not served again. The change is already committed and audited:
+  // a Redis that is down must not turn it into an error, so a failure is logged and the list ends by its day at the latest
+  private async dropLocations(storeId: string, connectionId: string): Promise<void> {
+    try {
+      await this.cache.invalidateScope(CacheKeys.carrier.locationsScope(storeId, connectionId))
+    } catch (error) {
+      this.logger.warn(
+        { storeId, connectionId, errorName: errorName(error) },
+        'the places of a carrier could not be dropped from the cache'
+      )
+    }
+  }
+
+  // The places the carrier lists for the address of a guide (TDD_17 §4.1, REQUIRES_LOCATION_IDS), under one parent or at the top. The
+  // list of a parent is kept a day per connection and dropped when the connection is edited; a search is made here over that list, so
+  // typing never reaches the carrier. A failure is never kept, and the carrier's words are never handed on.
+  async locations(
+    storeId: string,
+    connectionId: string,
+    query: ListLocationsQuery
+  ): Promise<CarrierLocationView[]> {
+    const row = await this.rowOf(this.prisma.client, storeId, connectionId)
+    if (row.status === String(CarrierConnectionStatus.DISABLED)) throw notActive()
+    await this.assertInstalled(this.prisma.client, storeId)
+    const plugin = this.registry.find(row.carrierId)
+    if (plugin === undefined) throw notActive()
+    if (
+      plugin.lookupLocations === undefined ||
+      !this.registry.hasCapability(plugin.id, CarrierCapability.REQUIRES_LOCATION_IDS)
+    ) {
+      throw new PlatformException(
+        ErrorCodes.SHIPPING_CARRIER_CAPABILITY_MISSING,
+        'the carrier lists no places',
+        HttpStatusCodes.CONFLICT
+      )
+    }
+    const lookup = plugin.lookupLocations.bind(plugin)
+    const parentId = query.parentId ?? null
+    const places = await this.cache.getOrSet({
+      namespace: LOCATIONS_CACHE_NAMESPACE,
+      key: CacheKeys.carrier.locations(storeId, connectionId, parentId),
+      ttlSeconds: CacheTTL.VERY_LONG,
+      schema: locationsAnswerSchema,
+      scopes: [CacheKeys.carrier.locationsScope(storeId, connectionId)],
+      load: async () => {
+        try {
+          // The connection is read again here, once the generation of the scope is known: credentials changed after the first read
+          // are the ones used, so a list made with the old account is never kept under the new generation
+          const current = await this.rowOf(this.prisma.client, storeId, connectionId)
+          if (current.status === String(CarrierConnectionStatus.DISABLED)) throw notActive()
+          const answer = await withTimeout(
+            lookup(
+              buildCarrierContext({ ...current, storeId }, this.cipher),
+              parentId === null ? {} : { parentId }
+            ),
+            CarrierConnectionLimits.PROVIDER_TIMEOUT_MS
+          )
+          return locationsAnswerSchema.parse(answer)
+        } catch (error) {
+          const reason = healthReasonOf(error)
+          this.logger.warn(
+            {
+              carrierId: row.carrierId,
+              storeId,
+              connectionId,
+              reason,
+              errorName: errorName(error)
+            },
+            'carrier locations failed'
+          )
+          if (reason === CarrierHealthReasons.UNAVAILABLE) {
+            throw new PlatformException(
+              ErrorCodes.SHIPPING_CARRIER_UNAVAILABLE,
+              'the carrier could not be reached',
+              HttpStatusCodes.SERVICE_UNAVAILABLE
+            )
+          }
+          if (
+            reason === CarrierHealthReasons.AUTH ||
+            reason === CarrierHealthReasons.REJECTED ||
+            reason === CarrierHealthReasons.CREDENTIALS_UNREADABLE
+          ) {
+            throw new PlatformException(
+              ErrorCodes.SHIPPING_CARRIER_CREDENTIALS_INVALID,
+              'the carrier did not accept the connection',
+              HttpStatusCodes.CONFLICT,
+              { reason }
+            )
+          }
+          // eslint-disable-next-line preserve-caught-error -- the cause is left out on purpose: it may hold the account's secret
+          throw new Error(`the carrier plugin failed to list places (${reason})`)
+        }
+      }
+    })
+    return filterLocations(places, query.search).map(place => ({
+      id: place.id,
+      name: place.name,
+      parentId: place.parentId ?? parentId
+    }))
   }
 
   // Asks the carrier whether the connection works. A failure is told as a name of a closed list, never in the carrier's
@@ -616,6 +743,7 @@ export class CarrierConnectionsService {
         })
         return updated.count === 1
       })
+      await this.dropLocations(storeId, connectionId)
       if (changed) {
         this.record(AuditAction.CARRIER_DISCONNECTED, storeId, connectionId, actor, {
           carrierId: row.carrierId,

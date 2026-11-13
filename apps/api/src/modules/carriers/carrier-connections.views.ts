@@ -4,6 +4,7 @@ import {
   PickupStatus,
   ShipmentStatus
 } from '@platform/core/domain'
+import type { ConnectFieldSnapshot } from '@platform/plugins/runtime'
 
 // What a client reads of a connection (TDD_17 §6). Nothing secret is in it: the credentials and the webhook secret are
 // ciphertext in the database and only `hasCredentials` and `hasWebhookSecret` say they exist.
@@ -77,6 +78,16 @@ export interface CarrierRegistryEntry {
   // Whether the carrier needs credentials of an account (false for a courier the platform makes the guide for)
   hasCredentials: boolean
   services: { code: string; label: string }[]
+  // What the connect form asks for, as the registry copied it when the plugin registered: empty when the carrier draws no form of its
+  // own (a courier of the platform), and then the credentials are the free JSON the carrier reads
+  connectFields: readonly ConnectFieldSnapshot[]
+}
+
+// One place a carrier lists for an address (a department, a municipality, a zone)
+export interface CarrierLocationView {
+  id: string
+  name: string
+  parentId: string | null
 }
 
 // Shipments the carrier still has to deliver or answer for, and the pickups still waiting: the same on the view of a

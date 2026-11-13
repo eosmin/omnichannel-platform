@@ -172,7 +172,12 @@ export const QueryKeys = {
     statusMappings: (storeId: string, connectionId: string) =>
       ['carriers', storeId, connectionId, 'status-mappings'] as const,
     unmappedStatuses: (storeId: string, connectionId: string) =>
-      ['carriers', storeId, connectionId, 'unmapped-statuses'] as const
+      ['carriers', storeId, connectionId, 'unmapped-statuses'] as const,
+    // The places a carrier lists (the api keeps them a day) and the codes its plugin knows
+    locations: (storeId: string, connectionId: string, parentId: string | null, search: string) =>
+      ['carriers', storeId, connectionId, 'locations', parentId, search] as const,
+    statusCatalog: (storeId: string, connectionId: string) =>
+      ['carriers', storeId, connectionId, 'status-catalog'] as const
   },
   pickups: {
     all: (storeId: string) => ['pickups', storeId] as const,

@@ -19,11 +19,14 @@ import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '
 import {
   connectionIdSchema,
   type ListCarriersQuery,
-  listCarriersQuerySchema
+  listCarriersQuerySchema,
+  type ListLocationsQuery,
+  listLocationsQuerySchema
 } from './carrier-connections.schemas'
 import { CarrierConnectionsService } from './carrier-connections.service'
 import type {
   CarrierConnectionView,
+  CarrierLocationView,
   CarrierRegistryEntry,
   CarrierTestResult,
   ConnectedCarrierView
@@ -54,6 +57,18 @@ export class CarrierConnectionsController {
     @Query(new ZodValidationPipe(listCarriersQuerySchema)) query: ListCarriersQuery
   ): Promise<CursorPage<CarrierConnectionView>> {
     return this.connections.list(store.id, query)
+  }
+
+  // The places the carrier lists for the address of a guide, under one parent or at the top (the dialog of a guide of a carrier that
+  // needs ids of places). Reading them needs SHIPPING_VIEW, like the connection they belong to
+  @RequirePermissions(Permissions.SHIPPING_VIEW)
+  @Get(ApiRoutes.carriers.locations(':id'))
+  locations(
+    @CurrentStore() store: Store,
+    @Param('id', id()) connectionId: string,
+    @Query(new ZodValidationPipe(listLocationsQuerySchema)) query: ListLocationsQuery
+  ): Promise<CarrierLocationView[]> {
+    return this.connections.locations(store.id, connectionId, query)
   }
 
   @RequirePermissions(Permissions.SHIPPING_VIEW)

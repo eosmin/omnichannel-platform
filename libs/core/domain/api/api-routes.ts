@@ -163,7 +163,8 @@ export const ApiRoutes = {
     test: (id: string) => `/carriers/${id}/test`,
     disconnect: (id: string) => `/carriers/${id}/disconnect`,
     webhookSecret: (id: string) => `/carriers/${id}/webhook-secret`, // POST makes a new secret, shown once
-    locations: (id: string) => `/carriers/${id}/locations`,
+    locations: (id: string) => `/carriers/${id}/locations`, // ?parentId=&search=
+    statusCatalog: (id: string) => `/carriers/${id}/status-catalog`, // What the plugin knows of its codes, with the row each has
     statusMappings: (id: string) => `/carriers/${id}/status-mappings`,
     statusMappingByCode: (id: string, code: string) => `/carriers/${id}/status-mappings/${code}`, // PUT maps it, DELETE restores the plugin default
     unmappedStatuses: (id: string) => `/carriers/${id}/unmapped-statuses`

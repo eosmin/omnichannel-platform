@@ -21,6 +21,7 @@ import {
   putStatusMappingSchema
 } from './carrier-status-mappings.schemas'
 import {
+  type CarrierStatusCatalogEntry,
   CarrierStatusMappingsService,
   type StatusMappingView,
   type UnmappedStatusView
@@ -45,6 +46,16 @@ export class CarrierStatusMappingsController {
     @Query(new ZodValidationPipe(listStatusMappingsQuerySchema)) query: ListStatusMappingsQuery
   ): Promise<CursorPage<StatusMappingView>> {
     return this.mappings.list(store.id, connectionId, query)
+  }
+
+  // The codes the plugin knows, with the row the connection holds for each (the table offers the ones it lacks)
+  @RequirePermissions(Permissions.SHIPPING_VIEW)
+  @Get(ApiRoutes.carriers.statusCatalog(':id'))
+  catalog(
+    @CurrentStore() store: Store,
+    @Param('id', id()) connectionId: string
+  ): Promise<CarrierStatusCatalogEntry[]> {
+    return this.mappings.catalog(store.id, connectionId)
   }
 
   @RequirePermissions(Permissions.SHIPPING_VIEW)

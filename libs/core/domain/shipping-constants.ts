@@ -70,6 +70,18 @@ export const CarrierConnectionLimits = {
   PROVIDER_TIMEOUT_MS: 15_000
 } as const
 
+// The places a carrier lists for the address of a guide (departments, municipalities, zones). The list of one parent is kept a day and
+// searched here, so a typed search never reaches the carrier.
+export const CarrierLocationLimits = {
+  MAX_PLACES: 5000,
+  ID_MAX_LENGTH: 100,
+  // What an id of a place is made of: it is a parameter of the next request and ends in a cache key, so a place the carrier lists
+  // with another character cannot be offered (the answer is refused as the plugin's bad answer)
+  ID_PATTERN: /^[A-Za-z0-9_.-]+$/,
+  NAME_MAX_LENGTH: 200,
+  SEARCH_MAX_LENGTH: 100
+} as const
+
 // One writer at a time per store for what reads and writes the connections as a whole (the count of a store, its default)
 export const CarrierLockScopes = { CONNECTIONS: 'carrier_connections' } as const
 
