@@ -47,6 +47,7 @@
       "@platform/api-client": ["libs/api-client/src/index.ts"],
       "@platform/core/i18n": ["libs/core/domain/i18n/index.ts"],
       "@platform/carriers/c807": ["libs/carriers/c807/src/index.ts"],
+      "@platform/carriers/forza": ["libs/carriers/forza/src/index.ts"],
       "@platform/carriers/local": ["libs/carriers/local/src/index.ts"],
       "@platform/channels/connections": ["libs/channels/connections/src/index.ts"],
       "@platform/channels/instagram": ["libs/channels/instagram/src/index.ts"],
