@@ -40,6 +40,18 @@ import {
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { ChannelCapability } from '@platform/plugins/sdk'
 
+// What the accounts of a store say about a template that is linked to without any conversation: unknown when nobody could be asked
+export const TemplateLinkVerdicts = {
+  APPROVED: 'approved',
+  NOT_APPROVED: 'not_approved',
+  MISSING: 'missing',
+  UNKNOWN: 'unknown'
+} as const
+export type TemplateLinkVerdict = (typeof TemplateLinkVerdicts)[keyof typeof TemplateLinkVerdicts]
+
+// More accounts than this of one channel in a store are not asked: the answer would be slow, and the send judges it anyway
+const LINK_CHECK_MAX_ACCOUNTS = 5
+
 export interface TemplateView {
   name: string
   language: string
@@ -83,6 +95,46 @@ export class ChannelTemplatesService {
     })
     if (row === null) throw resourceNotFound('channel connection')
     return this.listOf(row)
+  }
+
+  // Whether a template that a message template of the store links to exists and is approved, asked of the live accounts the store
+  // has of the channel (the same listing the composer uses). APPROVED when any account approved it; MISSING or NOT_APPROVED only
+  // when every account answered and none did; UNKNOWN when there is no account, or one could not be asked and none approved it:
+  // the link is then saved and judged when the message goes. The provider is asked here, so never inside a transaction.
+  async checkLink(
+    storeId: string,
+    pluginId: string,
+    wanted: { name: string; language: string }
+  ): Promise<TemplateLinkVerdict> {
+    const rows = await this.prisma.client.channelConnection.findMany({
+      where: {
+        storeId,
+        pluginId,
+        status: { not: ChannelConnectionStatus.DISCONNECTED },
+        ...OfActiveInstallation
+      },
+      select: CONNECTION_ROW_SELECT,
+      orderBy: { createdAt: 'asc' },
+      take: LINK_CHECK_MAX_ACCOUNTS
+    })
+    if (rows.length === 0) return TemplateLinkVerdicts.UNKNOWN
+    const answers = await Promise.all(
+      rows.map(row =>
+        this.listOf(row).then(
+          list => list,
+          () => null
+        )
+      )
+    )
+    const lists = answers.filter((list): list is TemplateView[] => list !== null)
+    const named = lists
+      .flat()
+      .filter(item => item.name === wanted.name && item.language === wanted.language)
+    if (named.some(item => item.status === TemplateStatuses.APPROVED)) {
+      return TemplateLinkVerdicts.APPROVED
+    }
+    if (lists.length < answers.length) return TemplateLinkVerdicts.UNKNOWN
+    return named.length > 0 ? TemplateLinkVerdicts.NOT_APPROVED : TemplateLinkVerdicts.MISSING
   }
 
   // The template the agent chose, if it exists and the provider approved it, with its body filled in

@@ -3,12 +3,15 @@ import type { INestApplication } from '@nestjs/common'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
+import { CredentialCipher } from '@platform/core/crypto'
 import { type OwnerClient } from '@platform/core/database-testing'
 import {
   DeliveryStatus,
   OrderMessageKind,
   OrderMessageVariables,
-  OrderMessageWarnings
+  OrderMessageWarnings,
+  type TemplateStatus,
+  TemplateStatuses
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { Locales } from '@platform/core/i18n'
@@ -16,7 +19,11 @@ import { PluginRegistry } from '@platform/plugins/runtime'
 import { ChannelCapability } from '@platform/plugins/sdk'
 
 import { OrderTemplatesService } from '../../apps/api/src/modules/order-messages/order-templates.service'
-import { buildChannelPlugin, createOrderMessageTemplate } from '../builders'
+import {
+  buildChannelPlugin,
+  createChannelConnection,
+  createOrderMessageTemplate
+} from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
@@ -58,6 +65,9 @@ describe('Settings → Order messages', () => {
   let owner: OwnerClient
   let ctx: TestContext
   let reader: Awaited<ReturnType<typeof actorWithPermissions>>
+  // What the channels answer when asked for their approved templates
+  let listed: { name: string; language: string; status: TemplateStatus; body: string }[] = []
+  let listingFails = false
 
   beforeAll(async () => {
     owner = ownerClient()
@@ -73,7 +83,8 @@ describe('Settings → Order messages', () => {
           status: DeliveryStatus.SENT,
           sentAt: new Date().toISOString()
         }),
-      listTemplates: () => Promise.resolve([])
+      listTemplates: () =>
+        listingFails ? Promise.reject(new Error('timeout')) : Promise.resolve(listed)
     }
     registry.register(
       buildChannelPlugin({
@@ -321,6 +332,122 @@ describe('Settings → Order messages', () => {
           }
         })
       ).toBe(0)
+    })
+
+    describe('when the store has an account of the channel', () => {
+      const approved = {
+        name: 'order_update',
+        language: 'es',
+        status: TemplateStatuses.APPROVED,
+        body: 'Hola'
+      }
+      const save = () =>
+        put(OrderMessageKind.ORDER_SHIPPED, Locales.EN, {
+          body: 'Shipped',
+          channelTemplate: link(WINDOWED)
+        })
+      const stored = () =>
+        owner.orderMessageTemplate.count({
+          where: {
+            storeId: ctx.storeA.id,
+            channelTemplate: { path: ['pluginId'], equals: WINDOWED }
+          }
+        })
+      const connect = async () => {
+        const row = await createChannelConnection(owner, {
+          storeId: ctx.storeA.id,
+          channelType: WINDOWED
+        })
+        // The channel is asked with the credentials of the connection: they must open, as a real one's do
+        await owner.channelConnection.update({
+          where: { id: row.id },
+          data: {
+            credentials: app.get(CredentialCipher, { strict: false }).seal({ token: 'test' })
+          }
+        })
+      }
+      beforeEach(async () => {
+        listed = []
+        listingFails = false
+        await owner.orderMessageTemplate.deleteMany({ where: { storeId: ctx.storeA.id } })
+        await connect()
+      })
+      afterEach(async () => {
+        listingFails = false
+        await owner.channelConnection.deleteMany({
+          where: { storeId: ctx.storeA.id, pluginId: WINDOWED }
+        })
+      })
+
+      it('saves a link to a template the channel approved', async () => {
+        listed = [approved]
+        expect((await save()).status).toBe(OK)
+      })
+
+      it('refuses a template the channel does not list, with its own code, and writes nothing', async () => {
+        listed = [{ ...approved, name: 'another_one' }]
+        const response = await save()
+        expect(response.status).toBe(BAD_REQUEST)
+        expect(codeOf(response.body)).toBe(ErrorCodes.ORDER_TEMPLATE_CHANNEL_TEMPLATE_MISSING)
+        expect(await stored()).toBe(0)
+      })
+
+      it('refuses the right name in another language', async () => {
+        listed = [{ ...approved, language: 'en' }]
+        expect(codeOf((await save()).body)).toBe(ErrorCodes.ORDER_TEMPLATE_CHANNEL_TEMPLATE_MISSING)
+      })
+
+      it('refuses a template that is listed but not approved', async () => {
+        listed = [{ ...approved, status: TemplateStatuses.PENDING }]
+        const response = await save()
+        expect(response.status).toBe(BAD_REQUEST)
+        expect(codeOf(response.body)).toBe(ErrorCodes.ORDER_TEMPLATE_CHANNEL_TEMPLATE_NOT_APPROVED)
+        expect(await stored()).toBe(0)
+      })
+
+      it('saves anyway when the channel does not answer: it is judged when the message goes', async () => {
+        listingFails = true
+        expect((await save()).status).toBe(OK)
+      })
+
+      it('does not ask again for a link that is already stored, so the text can still be edited', async () => {
+        listed = [approved]
+        expect((await save()).status).toBe(OK)
+        // The channel has since lost the template: the same link still saves with a new body
+        listed = []
+        const edited = await put(OrderMessageKind.ORDER_SHIPPED, Locales.EN, {
+          body: 'Shipped, new text',
+          channelTemplate: link(WINDOWED)
+        })
+        expect(edited.status).toBe(OK)
+        // A different template is asked
+        const other = await put(OrderMessageKind.ORDER_SHIPPED, Locales.EN, {
+          body: 'Shipped',
+          channelTemplate: { ...link(WINDOWED), name: 'another_one' }
+        })
+        expect(codeOf(other.body)).toBe(ErrorCodes.ORDER_TEMPLATE_CHANNEL_TEMPLATE_MISSING)
+      })
+
+      it('does not ask the accounts of another store', async () => {
+        await owner.channelConnection.deleteMany({
+          where: { storeId: ctx.storeA.id, pluginId: WINDOWED }
+        })
+        const other = await createChannelConnection(owner, {
+          storeId: ctx.storeB.id,
+          channelType: WINDOWED
+        })
+        await owner.channelConnection.update({
+          where: { id: other.id },
+          data: { credentials: app.get(CredentialCipher, { strict: false }).seal({ token: 'x' }) }
+        })
+        listed = []
+        try {
+          // Store A has no account of its own: nothing to compare with, so the link is saved
+          expect((await save()).status).toBe(OK)
+        } finally {
+          await owner.channelConnection.deleteMany({ where: { id: other.id } })
+        }
+      })
     })
 
     it('refuses a variable of the link that is not in the allowlist, or more variables than a template can take', async () => {

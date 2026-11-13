@@ -13,6 +13,8 @@ import {
   isItemEditable,
   itemChanges,
   itemDraftOf,
+  decidesFlag,
+  draftAfterReasonChange,
   itemStateOf,
   openBatchOf,
   ReceptionItemStates
@@ -158,6 +160,95 @@ describe('itemChanges', () => {
     expect(
       itemChanges(flagged, { ...itemDraftOf(flagged), flagCustomer: false, flagReason: 'x' })
     ).toEqual({ flagCustomer: false })
+  })
+})
+
+describe('the flag a refusal preselects', () => {
+  const ticked = { preselects: true, mayFlag: true }
+
+  it('ticks the box when the reason becomes a refusal and the server will preselect it', () => {
+    const current = item()
+    const next = draftAfterReasonChange(
+      current,
+      itemDraftOf(current),
+      ReceptionReasons.REFUSED,
+      ticked
+    )
+    expect(next.reason).toBe(ReceptionReasons.REFUSED)
+    expect(next.flagCustomer).toBe(true)
+  })
+
+  it('leaves the box alone when the store does not ask, the reader may not flag, or the package was already a refusal', () => {
+    const current = item()
+    const draft = itemDraftOf(current)
+    for (const options of [
+      { preselects: false, mayFlag: true },
+      { preselects: true, mayFlag: false }
+    ]) {
+      expect(
+        draftAfterReasonChange(current, draft, ReceptionReasons.REFUSED, options).flagCustomer
+      ).toBe(false)
+    }
+    const refused = item({ reason: ReceptionReasons.REFUSED })
+    expect(
+      draftAfterReasonChange(refused, itemDraftOf(refused), ReceptionReasons.REFUSED, ticked)
+        .flagCustomer
+    ).toBe(false)
+  })
+
+  it('goes back to the saved flag when the agent leaves the refusal again', () => {
+    const current = item()
+    const refused = draftAfterReasonChange(
+      current,
+      itemDraftOf(current),
+      ReceptionReasons.REFUSED,
+      ticked
+    )
+    const back = draftAfterReasonChange(current, refused, ReceptionReasons.DEFAULT, ticked)
+    expect(back.flagCustomer).toBe(false)
+    expect(back.reason).toBe(ReceptionReasons.DEFAULT)
+  })
+
+  it('sends the choice when the agent unticks it, because a silent body would be preselected by the server', () => {
+    const current = item()
+    const refused = draftAfterReasonChange(
+      current,
+      itemDraftOf(current),
+      ReceptionReasons.REFUSED,
+      ticked
+    )
+    // Left ticked: said too (it differs from the saved one), which is what the server would have done itself
+    expect(itemChanges(current, refused, true)).toEqual({
+      reason: ReceptionReasons.REFUSED,
+      flagCustomer: true
+    })
+    // Unticked: said out loud, or the server would tick it
+    expect(itemChanges(current, { ...refused, flagCustomer: false }, true)).toEqual({
+      reason: ReceptionReasons.REFUSED,
+      flagCustomer: false
+    })
+    // Without the preselection the unticked box is simply no change
+    expect(itemChanges(current, { ...refused, flagCustomer: false }, false)).toEqual({
+      reason: ReceptionReasons.REFUSED
+    })
+  })
+})
+
+describe('decidesFlag', () => {
+  it('does not count the flag a refusal ticked by itself, so the package can be saved with nothing to say', () => {
+    const current = item()
+    const refused = draftAfterReasonChange(
+      current,
+      itemDraftOf(current),
+      ReceptionReasons.REFUSED,
+      { preselects: true, mayFlag: true }
+    )
+    expect(decidesFlag(current, refused, true)).toBe(false)
+    // The same tick without the preselection is the agent's own decision
+    expect(decidesFlag(current, refused, false)).toBe(true)
+    // Typing a line, or ticking by hand on another reason, is a decision
+    expect(decidesFlag(current, { ...refused, flagReason: 'rude' }, true)).toBe(true)
+    expect(decidesFlag(current, { ...itemDraftOf(current), flagCustomer: true }, true)).toBe(true)
   })
 })
 

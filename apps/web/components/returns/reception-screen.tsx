@@ -249,6 +249,7 @@ function OpenBatch({ batchId }: { batchId: string }): ReactElement {
             <ReceptionItemCard
               key={item.id}
               item={item}
+              cautionPreselected={data.cautionPreselected}
               locked={!open}
               saving={writes.update.isPending}
               removing={writes.remove.isPending}

@@ -77,6 +77,8 @@ const receptionBatchSummarySchema = z.object({
 export type ReceptionBatchSummaryView = z.output<typeof receptionBatchSummarySchema>
 
 const receptionBatchSchema = receptionBatchSummarySchema.extend({
+  // A refusal ticks the flag by itself for this reader: the editor shows it ticked, as the api will apply it
+  cautionPreselected: z.boolean(),
   items: z.array(receptionItemSchema)
 })
 export type ReceptionBatchView = z.output<typeof receptionBatchSchema>

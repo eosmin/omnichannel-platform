@@ -63,6 +63,7 @@ const batch = {
   createdBy: 'u1',
   createdAt: '2026-11-12T10:00:00.000Z',
   completedAt: null,
+  cautionPreselected: true,
   counts: { total: 1, received: 0, failed: 0, pending: 1 },
   items: [item]
 }

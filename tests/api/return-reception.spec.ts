@@ -56,6 +56,7 @@ interface BatchBody {
   id: string
   status: string
   completedAt: string | null
+  cautionPreselected: boolean
   counts: { total: number; received: number; failed: number; pending: number }
   items: ItemBody[]
 }
@@ -553,6 +554,31 @@ describe('Return reception by scanner', () => {
           flagCustomer: false
         })
         expect((explicit.body as ItemBody).flagCustomer).toBe(false)
+      } finally {
+        await owner.storeSettings.update({
+          where: { storeId: ctx.storeA.id },
+          data: { preferences: {} }
+        })
+      }
+    })
+
+    it('tells the editor whether a refusal preselects the flag, as the server will apply it', async () => {
+      const readAs = async (actor: Actor, batchId: string) =>
+        (await as(actor).get(ApiRoutes.returns.reception.batchById(batchId))).body as BatchBody
+      const batchId = await newBatch()
+      // Preference off: nobody is told to preselect
+      expect((await readAs(managerAndFlagger, batchId)).cautionPreselected).toBe(false)
+      await owner.storeSettings.update({
+        where: { storeId: ctx.storeA.id },
+        data: { preferences: { returns: { preselectCautionOnRefusal: true } } }
+      })
+      try {
+        expect((await readAs(managerAndFlagger, batchId)).cautionPreselected).toBe(true)
+        // Who may not flag is never preselected for, so the editor must not show the box ticked
+        expect((await readAs(manager, batchId)).cautionPreselected).toBe(false)
+        // A batch just created answers the same
+        const created = await as(managerAndFlagger).post(ApiRoutes.returns.reception.batches)
+        expect((created.body as BatchBody).cautionPreselected).toBe(true)
       } finally {
         await owner.storeSettings.update({
           where: { storeId: ctx.storeA.id },
