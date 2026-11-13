@@ -3516,6 +3516,16 @@
           "courierPhone": "Escribe el teléfono del mensajero (hasta 30 caracteres).",
           "courierPrefix": "El prefijo son de 1 a 6 letras mayúsculas o dígitos.",
           "courierNotes": "Las notas son demasiado largas."
+        },
+        "fields": {
+          "c807": {
+            "username": "Usuario",
+            "password": "Contraseña",
+            "deliveryType": "Tipo de entrega",
+            "site": "Sede (opcional)",
+            "deliveryTypeHelp": "El código de entrega que te habilitaron en tu contrato, por ejemplo NRML o PLUS.",
+            "siteHelp": "El código de la sede desde la que sale la recolecta. Déjalo vacío para usar la de tu usuario."
+          }
         }
       },
       "rules": {

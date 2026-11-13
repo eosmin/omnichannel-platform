@@ -1,12 +1,17 @@
 import type { Type } from '@nestjs/common'
 
+import { C807Plugin } from '@platform/carriers/c807'
 import { localCarrierPlugin } from '@platform/carriers/local'
 import { InstagramPlugin } from '@platform/channels/instagram'
 import { MessengerPlugin } from '@platform/channels/messenger'
 import { MetaPlatformModule } from '@platform/channels/meta'
 import { WebWidgetPlatformModule, WebWidgetPlugin } from '@platform/channels/web-widget'
 import { WhatsAppPlugin } from '@platform/channels/whatsapp'
-import { declaredRedactedKeys } from '@platform/core/domain'
+import {
+  CARRIER_TOKEN_CACHE,
+  type CarrierTokenCache,
+  declaredRedactedKeys
+} from '@platform/core/domain'
 import type { CarrierPlugin, ChannelPlugin } from '@platform/plugins/sdk'
 
 // The plugins that ship with the platform. Each channel or carrier library adds its class here
@@ -23,10 +28,22 @@ export const OFFICIAL_PLUGIN_IMPORTS: readonly Type<unknown>[] = [
   MetaPlatformModule,
   WebWidgetPlatformModule
 ]
-// A carrier plugin is a class the container builds (it injects what it needs) or an object that has no dependencies, such as
-// the `local` courier, which is a plain constant (TDD_17 §4.2). Forza and C807 join in Step 4.15.
-export type CarrierPluginSource = Type<CarrierPlugin> | CarrierPlugin
-export const OFFICIAL_CARRIER_PLUGINS: readonly CarrierPluginSource[] = [localCarrierPlugin]
+// A carrier plugin is a class the container builds (it injects what it needs), an object that has no dependencies, such as
+// the `local` courier, which is a plain constant (TDD_17 §4.2), or a factory for a plugin that needs something from the
+// container but keeps its library free of decorators (C807: the cache its token is shared through). Forza joins in Step 4.15.
+export interface CarrierPluginFactory {
+  // What the factory takes, as a Nest provider does; `optional` lets the process go on without it
+  readonly inject: readonly { token: symbol; optional: boolean }[]
+  readonly useFactory: (...dependencies: never[]) => CarrierPlugin
+}
+export type CarrierPluginSource = Type<CarrierPlugin> | CarrierPlugin | CarrierPluginFactory
+export const OFFICIAL_CARRIER_PLUGINS: readonly CarrierPluginSource[] = [
+  localCarrierPlugin,
+  {
+    inject: [{ token: CARRIER_TOKEN_CACHE, optional: true }],
+    useFactory: (cache?: CarrierTokenCache) => new C807Plugin(cache)
+  }
+]
 
 // The names of secret fields that plugin classes declare (`static redactedKeys`), each list checked and the
 // lists joined without repeats. A class that declares none adds none; a bad declaration throws, so the boot fails.

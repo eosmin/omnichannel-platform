@@ -32,6 +32,13 @@ function carrierProviderOf(source: CarrierPluginSource): {
   provider: Provider
 } {
   if (typeof source === 'function') return { token: source, provider: source }
+  if ('useFactory' in source) {
+    const token = Symbol('carrier:factory')
+    return {
+      token,
+      provider: { provide: token, inject: [...source.inject], useFactory: source.useFactory }
+    }
+  }
   const token = Symbol(`carrier:${source.id}`)
   return { token, provider: { provide: token, useValue: source } }
 }

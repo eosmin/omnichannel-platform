@@ -114,6 +114,13 @@ export const CacheKeys = {
   rateLimit: (subject: string, endpoint: string) => `rl:${subject}:${endpoint}`,
   lock: (name: string) => `lock:${name}`,
 
+  // The access token of a carrier connection whose API hands out tokens (Step 4.15), shared by the api and the worker. Tenant
+  // data: the key carries the store, and the value is a secret that expires with the carrier's own token
+  carrier: {
+    accessToken: (storeId: string, connectionId: string) =>
+      `store:${storeId}:carrier:${connectionId}:access_token`
+  },
+
   // What the pickup scheduler has done for a connection on a day of the store (TDD_17 §4.10): the cutoff reminder is raised once, and
   // the guides of an `autoPickup` run are asked for once, however many times the minute job looks again
   pickup: {
