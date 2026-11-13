@@ -579,6 +579,8 @@
     "ORDER_FIELD_NOT_EDITABLE": "That field cannot be edited at this stage",
     "ORDER_INVALID_STATUS_TRANSITION": "The order cannot change to that status",
     "ORDER_MESSAGE_VARIABLE_UNKNOWN": "The message uses a variable that does not exist",
+    "ORDER_TEMPLATE_CHANNEL_TEMPLATE_MISSING": "The channel has no template with that name and language. Check how it is written in the channel.",
+    "ORDER_TEMPLATE_CHANNEL_TEMPLATE_NOT_APPROVED": "The channel has not approved that template yet.",
     "ORDER_PAYMENT_INVALID_STATUS_TRANSITION": "The payment cannot change to that status",
     "ORDER_PAYMENT_NOT_ALLOWED": "This order cannot take that payment right now",
     "ORDER_PRICE_APPROVAL_NOT_PENDING": "No price change is waiting for approval",

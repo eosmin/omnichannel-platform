@@ -32,6 +32,10 @@ import {
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { ChannelCapability } from '@platform/plugins/sdk'
 
+import {
+  ChannelTemplatesService,
+  TemplateLinkVerdicts
+} from '../channels/channel-templates.service'
 import type { Actor } from '../tenancy'
 
 import type {
@@ -95,7 +99,8 @@ export class OrderTemplatesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly registry: PluginRegistry
+    private readonly registry: PluginRegistry,
+    private readonly channelTemplates: ChannelTemplatesService
   ) {}
 
   async list(storeId: string): Promise<OrderTemplateView[]> {
@@ -160,7 +165,17 @@ export class OrderTemplatesService {
     if (!orderMessageAutoSendSchema.safeParse({ kind, autoSend }).success) {
       throw invalidInput('this kind follows a store preference, not autoSend')
     }
-    if (body.channelTemplate !== null) this.assertLinkable(storeId, body.channelTemplate)
+    if (body.channelTemplate !== null) {
+      this.assertLinkable(storeId, body.channelTemplate)
+      // A link that is already stored is not asked again: editing the text of a template must not fail because the channel
+      // has since paused or removed the one it points to (the send judges it)
+      const stored = await this.storedLink(storeId, kind, locale)
+      const same =
+        stored?.pluginId === body.channelTemplate.pluginId &&
+        stored.name === body.channelTemplate.name &&
+        stored.language === body.channelTemplate.language
+      if (!same) await this.assertListed(storeId, body.channelTemplate)
+    }
     const data = {
       body: body.body,
       autoSend,
@@ -243,6 +258,39 @@ export class OrderTemplatesService {
         ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED,
         'the channel does not take approved templates',
         HttpStatusCodes.CONFLICT
+      )
+    }
+  }
+
+  private async storedLink(
+    storeId: string,
+    kind: OrderMessageKindType,
+    locale: Locale
+  ): Promise<ReturnType<typeof readChannelTemplate>> {
+    const row = await this.prisma.client.orderMessageTemplate.findFirst({
+      where: { storeId, kind, locale },
+      select: { channelTemplate: true }
+    })
+    return readChannelTemplate(row?.channelTemplate ?? null)
+  }
+
+  // The template the owner typed must be one the channel lists as approved, so a typo does not wait for the first customer to be
+  // found. Only a clear answer refuses: with no account, or an account that does not answer, the link is kept and the send judges
+  // it (it falls back to the email when the template is not there, TDD_17 §4.7).
+  private async assertListed(storeId: string, link: ChannelTemplateLink): Promise<void> {
+    const verdict = await this.channelTemplates.checkLink(storeId, link.pluginId, link)
+    if (verdict === TemplateLinkVerdicts.MISSING) {
+      throw new PlatformException(
+        ErrorCodes.ORDER_TEMPLATE_CHANNEL_TEMPLATE_MISSING,
+        'the channel does not list a template with that name and language',
+        HttpStatusCodes.BAD_REQUEST
+      )
+    }
+    if (verdict === TemplateLinkVerdicts.NOT_APPROVED) {
+      throw new PlatformException(
+        ErrorCodes.ORDER_TEMPLATE_CHANNEL_TEMPLATE_NOT_APPROVED,
+        'the channel has not approved that template',
+        HttpStatusCodes.BAD_REQUEST
       )
     }
   }

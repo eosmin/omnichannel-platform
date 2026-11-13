@@ -3,6 +3,7 @@ import {
   type OrderReturnCondition,
   ReceptionBatchStatus,
   ReceptionItemOutcome,
+  ReceptionReasons,
   type UpdateReceptionItemBody
 } from '@platform/core/domain'
 
@@ -88,10 +89,48 @@ export function flagIsMissingReason(draft: ReceptionItemDraft): boolean {
   return draft.flagCustomer && draft.flagReason.trim() === '' && draft.note.trim() === ''
 }
 
-// Only what the agent changed (null is nothing to send). A key never touched must not overwrite what a refusal preselected.
+// Choosing a refusal ticks the flag in the editor exactly when the api will: the batch says the store asks for it and the reader may
+// flag (`cautionPreselected`), and the package was not a refusal yet (the api preselects only on the change). Leaving the refusal
+// again restores the saved flag. A flag the agent ticked by hand before the change is not remembered: it is ticked again by the
+// refusal and restored by leaving it.
+export function draftAfterReasonChange(
+  item: ReceptionItemView,
+  draft: ReceptionItemDraft,
+  reason: string,
+  options: { preselects: boolean; mayFlag: boolean }
+): ReceptionItemDraft {
+  const next = { ...draft, reason }
+  if (!options.preselects || !options.mayFlag || item.reason === ReceptionReasons.REFUSED) {
+    return next
+  }
+  if (reason === ReceptionReasons.REFUSED) return { ...next, flagCustomer: true }
+  if (draft.reason === ReceptionReasons.REFUSED) return { ...next, flagCustomer: item.flagCustomer }
+  return next
+}
+
+// Whether the agent is deciding the flag now, so that it needs its line: a flag ticked by the refusal itself (the api would tick it too)
+// may wait for the completion's check, as when the api preselects it alone
+export function decidesFlag(
+  item: ReceptionItemView,
+  draft: ReceptionItemDraft,
+  preselects: boolean
+): boolean {
+  if (draft.flagReason.trim() !== (item.flagReason ?? '')) return true
+  if (draft.flagCustomer === item.flagCustomer) return false
+  const preselected =
+    preselects &&
+    draft.flagCustomer &&
+    draft.reason === ReceptionReasons.REFUSED &&
+    item.reason !== ReceptionReasons.REFUSED
+  return !preselected
+}
+
+// Only what the agent changed (null is nothing to send). A key never touched must not overwrite what a refusal preselected, except
+// that when the api will preselect (`preselects`) an unticked box is said out loud: a body without the key would be ticked by it.
 export function itemChanges(
   item: ReceptionItemView,
-  draft: ReceptionItemDraft
+  draft: ReceptionItemDraft,
+  preselects = false
 ): UpdateReceptionItemBody | null {
   const body: UpdateReceptionItemBody = {}
   // A reason the screen does not know (a newer api) is never sent back
@@ -101,6 +140,14 @@ export function itemChanges(
   const note = draft.note.trim()
   if (note !== (item.note ?? '')) body.note = note === '' ? null : note
   if (draft.flagCustomer !== item.flagCustomer) body.flagCustomer = draft.flagCustomer
+  else if (
+    preselects &&
+    body.reason === ReceptionReasons.REFUSED &&
+    item.reason !== ReceptionReasons.REFUSED &&
+    !draft.flagCustomer
+  ) {
+    body.flagCustomer = false
+  }
   const flagReason = draft.flagReason.trim()
   if (draft.flagCustomer && flagReason !== (item.flagReason ?? '')) {
     body.flagReason = flagReason === '' ? null : flagReason

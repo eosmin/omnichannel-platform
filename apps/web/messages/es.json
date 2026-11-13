@@ -579,6 +579,8 @@
     "ORDER_FIELD_NOT_EDITABLE": "Ese campo no se puede editar en esta etapa",
     "ORDER_INVALID_STATUS_TRANSITION": "El pedido no puede pasar a ese estado",
     "ORDER_MESSAGE_VARIABLE_UNKNOWN": "El mensaje usa una variable que no existe",
+    "ORDER_TEMPLATE_CHANNEL_TEMPLATE_MISSING": "El canal no tiene una plantilla con ese nombre e idioma. Revisa cómo está escrita en el canal.",
+    "ORDER_TEMPLATE_CHANNEL_TEMPLATE_NOT_APPROVED": "El canal aún no ha aprobado esa plantilla.",
     "ORDER_PAYMENT_INVALID_STATUS_TRANSITION": "El pago no puede pasar a ese estado",
     "ORDER_PAYMENT_NOT_ALLOWED": "Este pedido no puede recibir ese pago por ahora",
     "ORDER_PRICE_APPROVAL_NOT_PENDING": "No hay un cambio de precio esperando aprobación",

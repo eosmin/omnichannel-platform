@@ -117,12 +117,16 @@ export class ReturnReceptionService {
     this.logger.setContext(ReturnReceptionService.name)
   }
 
-  async createBatch(storeId: string, actor: Actor): Promise<ReceptionBatchView> {
+  async createBatch(
+    storeId: string,
+    actor: Actor,
+    held: readonly Permission[]
+  ): Promise<ReceptionBatchView> {
     const batch = await this.prisma.client.returnReceptionBatch.create({
       data: { storeId, createdBy: actor.userId },
       select: { id: true }
     })
-    return this.getBatch(storeId, batch.id, [])
+    return this.getBatch(storeId, batch.id, held)
   }
 
   async listBatches(
@@ -175,6 +179,8 @@ export class ReturnReceptionService {
       createdBy: row.createdBy,
       createdAt: row.createdAt.toISOString(),
       completedAt: row.completedAt?.toISOString() ?? null,
+      // The same condition `updateItem` applies a refusal's preselection under, so the editor shows what the server will do
+      cautionPreselected: mayFlag(held) && (await this.preselectsCaution(storeId)),
       counts: receptionCounts(row.items),
       items: row.items.map(item => receptionItemView(item, held))
     }

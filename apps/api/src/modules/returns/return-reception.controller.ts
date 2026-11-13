@@ -71,9 +71,10 @@ export class ReturnReceptionController {
   create(
     @CurrentStore() store: Store,
     @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() held: readonly Permission[],
     @Req() req: AuthenticatedRequest
   ): Promise<ReceptionBatchView> {
-    return this.reception.createBatch(store.id, actorOf(user, store, req))
+    return this.reception.createBatch(store.id, actorOf(user, store, req), held)
   }
 
   @RequirePermissions(Permissions.RETURNS_VIEW)

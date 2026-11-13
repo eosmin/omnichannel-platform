@@ -113,11 +113,13 @@ export interface ReceptionBatchView {
   createdBy: string
   createdAt: string
   completedAt: string | null
+  // A refusal ticks the flag by itself for this reader (the store asks for it and the reader may flag): the editor shows it ticked
+  cautionPreselected: boolean
   counts: ReceptionCounts
   items: ReceptionItemView[]
 }
 
-export type ReceptionBatchSummaryView = Omit<ReceptionBatchView, 'items'>
+export type ReceptionBatchSummaryView = Omit<ReceptionBatchView, 'items' | 'cautionPreselected'>
 
 // A code that more than one shipment answers to: the agent picks one and scans again naming it
 export interface ReceptionCandidateView {

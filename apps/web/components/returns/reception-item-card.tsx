@@ -16,6 +16,8 @@ import {
 
 import { asReturnReasonKey } from '../../lib/orders/order-returns-rules'
 import {
+  decidesFlag,
+  draftAfterReasonChange,
   flagIsMissingReason,
   isItemEditable,
   itemChanges,
@@ -39,6 +41,7 @@ const CONDITIONS = Object.values(OrderReturnCondition)
 // can undo a flag a refusal preselected for someone else (the api refuses it too).
 export function ReceptionItemCard({
   item,
+  cautionPreselected,
   locked,
   saving,
   removing,
@@ -46,6 +49,8 @@ export function ReceptionItemCard({
   onRemove
 }: {
   item: ReceptionItemView
+  // The api ticks the flag by itself when a package becomes a refusal (store preference, reader may flag)
+  cautionPreselected: boolean
   // The batch is being processed: nothing changes
   locked: boolean
   saving: boolean
@@ -117,6 +122,7 @@ export function ReceptionItemCard({
       {editing && editable ? (
         <ItemEditor
           item={item}
+          cautionPreselected={cautionPreselected}
           saving={saving}
           onCancel={() => setEditing(false)}
           onSave={async body => {
@@ -162,11 +168,13 @@ function StateText({ state }: { state: ReceptionItemState }): ReactElement {
 
 function ItemEditor({
   item,
+  cautionPreselected,
   saving,
   onCancel,
   onSave
 }: {
   item: ReceptionItemView
+  cautionPreselected: boolean
   saving: boolean
   onCancel: () => void
   onSave: (body: UpdateReceptionItemBody) => Promise<void>
@@ -179,11 +187,10 @@ function ItemEditor({
   const [showProblem, setShowProblem] = useState(false)
   // A customer who is already flagged has nothing more to flag
   const mayFlag = can(ClientPermissions.CUSTOMERS_FLAG_CAUTION) && !item.customerIsCaution
-  const changes = itemChanges(item, draft)
+  const changes = itemChanges(item, draft, cautionPreselected)
   // Only a flag the agent is deciding now needs its line: one a refusal preselected may wait for the completion's check
-  const decidesFlag =
-    draft.flagCustomer !== item.flagCustomer || draft.flagReason.trim() !== (item.flagReason ?? '')
-  const missingReason = mayFlag && decidesFlag && flagIsMissingReason(draft)
+  const missingReason =
+    mayFlag && decidesFlag(item, draft, cautionPreselected) && flagIsMissingReason(draft)
 
   const submit = (event: FormEvent): void => {
     event.preventDefault()
@@ -208,7 +215,14 @@ function ItemEditor({
           id={`${id}-reason`}
           className={SELECT_CLASS}
           value={draft.reason}
-          onChange={event => setDraft({ ...draft, reason: event.target.value })}
+          onChange={event =>
+            setDraft(
+              draftAfterReasonChange(item, draft, event.target.value, {
+                preselects: cautionPreselected,
+                mayFlag
+              })
+            )
+          }
         >
           {OrderReturnReasonKeys.map(key => (
             <option key={key} value={key}>
