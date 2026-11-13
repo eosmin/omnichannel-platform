@@ -28,7 +28,7 @@ export const forzaConnectInputSchema = z.object({
   codApp: z.string().trim().min(1).max(64),
   secretKey: z.string().trim().min(16).max(128),
   idClient: positiveInt,
-  country: z.nativeEnum(ForzaCountries),
+  country: z.enum(ForzaCountries),
   // https only: the signed request goes there
   baseUrl: z
     .string()
@@ -50,7 +50,7 @@ export const forzaConnectInputSchema = z.object({
   ),
   pickupVehicleTypeId: z.preprocess(
     blankAsUndefined,
-    z.coerce.number().pipe(z.nativeEnum(ForzaVehicleTypes)).optional()
+    z.coerce.number().pipe(z.enum(ForzaVehicleTypes)).optional()
   )
 })
 export type ForzaConnectInput = z.infer<typeof forzaConnectInputSchema>
