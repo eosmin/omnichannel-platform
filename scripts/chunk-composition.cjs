@@ -6,7 +6,13 @@ const zlib = require('node:zlib')
 const dir = 'apps/web/.next/static/chunks'
 const files = fs.readdirSync(dir)
 const maps = files.filter(f => f.endsWith('.map'))
-console.log('MAPFILES', maps.length, 'JS', files.filter(f => f.endsWith('.js')).length)
+console.log(
+  'MAPFILES',
+  maps.slice(0, 3).join(','),
+  maps.length,
+  'JS',
+  files.filter(f => f.endsWith('.js')).length
+)
 function collect(map, acc) {
   if (map.sections) for (const s of map.sections) collect(s.map, acc)
   else (map.sources || []).forEach((s, i) => acc.push([s, (map.sourcesContent?.[i] || '').length]))
@@ -23,7 +29,10 @@ for (const f of files.filter(f => f.endsWith('.js'))) {
   if (gz < 6000) continue
   let acc = []
   try {
-    collect(JSON.parse(fs.readFileSync(path.join(dir, f + '.map'), 'utf8')), acc)
+    const mf = [f + '.map', f.replace(/\.js$/, '.map'), f.replace(/\.js$/, '.js.map')].find(n =>
+      fs.existsSync(path.join(dir, n))
+    )
+    collect(JSON.parse(fs.readFileSync(path.join(dir, mf), 'utf8')), acc)
   } catch (e) {
     console.log('NOMAP', f, String(e).slice(0, 80))
   }
