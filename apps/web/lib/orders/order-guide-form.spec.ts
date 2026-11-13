@@ -112,6 +112,9 @@ describe('codPreview', () => {
   it('collects the total of an unpaid cash-on-delivery order', () => {
     expect(codPreview(order)).toEqual({ collects: true, amountCents: 2500 })
   })
+  it('collects nothing when there is nothing to pay, whatever the method and the payment', () => {
+    expect(codPreview({ ...order, totalCents: 0 })).toEqual({ collects: false, amountCents: 0 })
+  })
   it('collects nothing once paid or when prepaid', () => {
     expect(codPreview({ ...order, paymentStatus: PaymentStatus.COMPLETED }).collects).toBe(false)
     expect(codPreview({ ...order, paymentMethod: PaymentMethod.CARD }).amountCents).toBe(0)

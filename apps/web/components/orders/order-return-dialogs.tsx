@@ -480,9 +480,23 @@ export function ReturnActionDialog({
                   inputMode="decimal"
                   value={amount}
                   aria-invalid={complete === null}
-                  onChange={event => setAmount(event.target.value)}
+                  aria-describedby={`${id}-amount-help`}
+                  onChange={event => {
+                    setAmount(event.target.value)
+                    // What the api said about the last amount is not about this one (never while the request is on its way:
+                    // resetting then would drop its answer)
+                    if (writes.complete.isError) writes.complete.reset()
+                  }}
                 />
-                <p className="text-muted-foreground text-xs">{t('complete.amountHint')}</p>
+                {complete === null ? (
+                  <p id={`${id}-amount-help`} className="text-destructive text-xs">
+                    {t('complete.amountInvalid')}
+                  </p>
+                ) : (
+                  <p id={`${id}-amount-help`} className="text-muted-foreground text-xs">
+                    {t('complete.amountHint')}
+                  </p>
+                )}
               </div>
             ) : null}
             <div className="flex flex-col gap-1.5">

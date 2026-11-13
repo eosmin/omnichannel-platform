@@ -98,13 +98,15 @@ export const needsPickup = (connection: GuideConnection): boolean =>
   has(connection, CarrierCapability.PICKUP_BOUND_GUIDES)
 
 // What the carrier collects, for the screen (it is read-only: the amount is the order's and the api writes it). A prepaid order, or
-// one paid by cash on delivery that is already paid, collects nothing.
+// one paid by cash on delivery that is already paid, or one with nothing to pay (a credit covered all of it), collects nothing (the
+// same rule as the api).
 export function codPreview(order: {
   paymentMethod: string
   paymentStatus: string
   totalCents: number
 }): { collects: boolean; amountCents: number } {
-  const collects = order.paymentMethod === CASH_ON_DELIVERY && order.paymentStatus !== PAID
+  const collects =
+    order.paymentMethod === CASH_ON_DELIVERY && order.paymentStatus !== PAID && order.totalCents > 0
   return { collects, amountCents: collects ? order.totalCents : 0 }
 }
 

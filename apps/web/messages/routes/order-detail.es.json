@@ -100,6 +100,7 @@
             "description": "Cierra la devolución. Un reembolso registra el dinero devuelto a mano: la plataforma no mueve dinero.",
             "amountLabel": "Dinero devuelto (opcional)",
             "amountHint": "Escribe un monto como 12.50.",
+            "amountInvalid": "Ese monto no es válido. Escribe un monto como 12.50.",
             "confirm": "Completar devolución",
             "done": "La devolución está completada."
           },

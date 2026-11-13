@@ -1,5 +1,11 @@
-import type { ImportRowErrorView, RemittanceImportProfileView } from '@platform/api-client'
+import type {
+  CarrierConnectionView,
+  ImportRowErrorView,
+  RemittanceImportProfileView
+} from '@platform/api-client'
 import {
+  CarrierCapability,
+  CarrierConnectionStatus,
   RemittanceDateFormats,
   RemittanceDecimalSeparators,
   RemittanceDelimiters,
@@ -13,6 +19,19 @@ import { ClientErrorCodes } from '@platform/core/errors'
 // The pure part of the import mapper (TDD_17 §4.15): how a settlement file is decoded and sampled, how the form becomes the
 // mapping the api reads the file with, and how the answers of the api are read back. Nothing here guesses a locale or an
 // amount: the parsing of the file is the api's, and this only prepares what is sent and shows what comes back.
+
+const DISABLED: string = CarrierConnectionStatus.DISABLED
+
+// The connections a settlement file can be imported for: the ones that collect cash, and that are still connected (one that was
+// let go owes nothing new, and must not be the one the screen picks first)
+export function importableConnections(
+  connections: readonly CarrierConnectionView[]
+): CarrierConnectionView[] {
+  return connections.filter(
+    connection =>
+      connection.status !== DISABLED && connection.capabilities.includes(CarrierCapability.COD)
+  )
+}
 
 export const ImportEncodings = { UTF8: 'utf-8', WINDOWS_1252: 'windows-1252' } as const
 export type ImportEncoding = (typeof ImportEncodings)[keyof typeof ImportEncodings]

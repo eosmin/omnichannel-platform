@@ -6,7 +6,6 @@ import { type ChangeEvent, type ReactElement, useEffect, useMemo, useRef, useSta
 
 import { AppPaths, type ImportRowErrorView } from '@platform/api-client'
 import {
-  CarrierCapability,
   RemittanceDateFormats,
   RemittanceDecimalSeparators,
   RemittanceDelimiters,
@@ -26,6 +25,7 @@ import {
   headerSuggestions,
   ImportEncodings,
   type ImportEncoding,
+  importableConnections,
   importErrorsOf,
   type MapperForm,
   mappingOf,
@@ -248,15 +248,13 @@ export default function ImportMapperPanel(): ReactElement {
   const router = useRouter()
   const { storeId } = useStore()
   const connections = useRemittanceConnections(storeId, true)
-  const eligible = useMemo(
-    () =>
-      (connections.data ?? []).filter(connection =>
-        connection.capabilities.includes(CarrierCapability.COD)
-      ),
-    [connections.data]
-  )
+  const eligible = useMemo(() => importableConnections(connections.data ?? []), [connections.data])
   const [connectionId, setConnectionId] = useState<string | null>(null)
-  const chosenConnection = connectionId ?? eligible[0]?.id ?? null
+  // A choice that is no longer on the list (the carrier was let go meanwhile) gives way to the first one that is
+  const chosenConnection =
+    connectionId !== null && eligible.some(entry => entry.id === connectionId)
+      ? connectionId
+      : (eligible[0]?.id ?? null)
   const profiles = useImportProfiles(storeId, chosenConnection, true)
   const [profileId, setProfileId] = useState(NEW_PROFILE)
   const profile = (profiles.data ?? []).find(entry => entry.id === profileId)
