@@ -2,10 +2,13 @@ import { getQueueToken } from '@nestjs/bullmq'
 import type { INestApplication, Type } from '@nestjs/common'
 import type { NestExpressApplication } from '@nestjs/platform-express'
 import { Test, type TestingModuleBuilder } from '@nestjs/testing'
+import { PinoLogger } from 'nestjs-pino'
 
+import { localCarrierPlugin } from '@platform/carriers/local'
 import { EventsBridge } from '@platform/core/event-bus'
 import { configureHttpApp } from '@platform/core/http'
 import { QueueNames } from '@platform/core/queues'
+import { CarrierRegistry } from '@platform/plugins/runtime'
 
 import { AppModule } from '../../apps/api/src/app.module'
 import { useRealtime } from '../../apps/api/src/modules/realtime/use-realtime'
@@ -42,6 +45,17 @@ export async function createTestApp(
     // The events a carrier pushed are queued for the worker; the suite reads them, and nothing is left in a development queue
     .overrideProvider(getQueueToken(QueueNames.WEBHOOKS))
     .useValue(new CapturedQueue())
+    // The carriers of a suite are the fake ones it registers: a fake borrows the id of a carrier (there are only three), so the
+    // official carriers must not hold them. The `local` courier stays, as it has no API to be replaced by.
+    .overrideProvider(CarrierRegistry)
+    .useFactory({
+      inject: [PinoLogger],
+      factory: (logger: PinoLogger): CarrierRegistry => {
+        const registry = new CarrierRegistry(logger)
+        registry.register(localCarrierPlugin)
+        return registry
+      }
+    })
   const moduleRef = await override(builder).compile()
   const app = moduleRef.createNestApplication<NestExpressApplication>({
     bufferLogs: true,

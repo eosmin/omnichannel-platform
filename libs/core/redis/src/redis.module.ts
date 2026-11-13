@@ -10,10 +10,12 @@ import {
 import type { Counter } from '@prometheus-io/client'
 import { Redis } from 'ioredis'
 
+import { CARRIER_TOKEN_CACHE } from '@platform/core/domain'
 import { MetricNames } from '@platform/core/metrics'
 import { getMetricToken } from '@platform/core/metrics-module'
 
 import { CacheService } from './cache.service'
+import { RedisCarrierTokenCache } from './redis-carrier-token-cache'
 
 export const REDIS_CLIENT = Symbol('REDIS_CLIENT')
 
@@ -78,9 +80,15 @@ export class RedisModule {
               onMiss: namespace => misses?.inc({ namespace })
             })
         },
+        // What the carrier plugins inject to share a token between processes (Step 4.15)
+        {
+          provide: CARRIER_TOKEN_CACHE,
+          inject: [REDIS_CLIENT],
+          useFactory: (client: Redis): RedisCarrierTokenCache => new RedisCarrierTokenCache(client)
+        },
         RedisShutdown
       ],
-      exports: [REDIS_CLIENT, CacheService]
+      exports: [REDIS_CLIENT, CacheService, CARRIER_TOKEN_CACHE]
     }
   }
 }

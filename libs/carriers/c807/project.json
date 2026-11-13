@@ -1,0 +1,12 @@
+{
+  "name": "carriers-c807",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/carriers/c807/src",
+  "projectType": "library",
+  "tags": ["scope:carriers", "type:lib"],
+  "targets": {
+    "lint": {},
+    "type-check": {},
+    "test": {}
+  }
+}

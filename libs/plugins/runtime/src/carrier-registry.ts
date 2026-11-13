@@ -15,6 +15,7 @@ import {
   type ShipmentCreationMode
 } from '@platform/plugins/sdk'
 
+import { type ConnectFieldSnapshot, snapshotConnectFields } from './connect-manifest'
 import {
   assertMethodsForCapabilities,
   contractViolation,
@@ -76,7 +77,12 @@ export class CarrierRegistry {
   // The capabilities are a copy taken when the carrier passed its contract
   private readonly plugins = new Map<
     CarrierIdType,
-    { plugin: CarrierPlugin; capabilities: ReadonlySet<CarrierCapabilityType> }
+    {
+      plugin: CarrierPlugin
+      capabilities: ReadonlySet<CarrierCapabilityType>
+      // The form of the connection as it was when the carrier passed its contract: what a page draws, never the live object
+      connectFields: readonly ConnectFieldSnapshot[]
+    }
   >()
 
   constructor(private readonly logger: PinoLogger) {
@@ -88,9 +94,9 @@ export class CarrierRegistry {
     // Read once, as the channel registry does
     const id = plugin.id
     const capabilities = snapshotCapabilities(plugin.capabilities)
-    this.validateContract(plugin, id, capabilities)
+    const connectFields = this.validateContract(plugin, id, capabilities)
     if (this.plugins.has(id)) throw pluginAlreadyRegistered('Carrier', id)
-    this.plugins.set(id, { plugin, capabilities: new Set(capabilities) })
+    this.plugins.set(id, { plugin, capabilities: new Set(capabilities), connectFields })
     this.logger.info({ pluginId: id, version: plugin.version }, 'carrier registered')
   }
 
@@ -104,6 +110,13 @@ export class CarrierRegistry {
     return CARRIER_IDS.has(carrierId)
       ? this.plugins.get(carrierId as CarrierIdType)?.plugin
       : undefined
+  }
+
+  // The connect fields the carrier declared, copied when it registered; none for a carrier that declares none
+  connectFieldsOf(carrierId: string): readonly ConnectFieldSnapshot[] {
+    return CARRIER_IDS.has(carrierId)
+      ? (this.plugins.get(carrierId as CarrierIdType)?.connectFields ?? [])
+      : []
   }
 
   list(): CarrierPlugin[] {
@@ -120,7 +133,7 @@ export class CarrierRegistry {
     plugin: CarrierPlugin,
     id: string,
     capabilities: readonly CarrierCapabilityType[]
-  ): void {
+  ): readonly ConnectFieldSnapshot[] {
     if (plugin.type !== PluginTypes.CARRIER) {
       throw contractViolation(`Carrier ${printable(id)} is not a carrier plugin`)
     }
@@ -133,6 +146,11 @@ export class CarrierRegistry {
       throw contractViolation(`Carrier id ${printable(id)} is not a known CarrierId`)
     }
     assertMethodsForCapabilities(id, capabilities, plugin, METHODS_BY_CAPABILITY)
+    // The form of the connection is drawn from this declaration, so it is held to the same shape as a channel's
+    const connectFields =
+      plugin.connectFields === undefined
+        ? []
+        : snapshotConnectFields(plugin.connectFields, id, 'declares invalid connect fields')
     // A shared secret proves less than a signature: the worker confirms DELIVERED and RETURNED with the carrier before it applies
     // them (TDD_17 §4.9), so a plugin that declares one must be able to be asked
     if (plugin.webhookTrust !== undefined) {
@@ -197,5 +215,6 @@ export class CarrierRegistry {
         )
       }
     }
+    return connectFields
   }
 }

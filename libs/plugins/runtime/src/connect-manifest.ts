@@ -34,21 +34,17 @@ function messageKey(value: unknown): value is string {
   )
 }
 
-// The page draws a form from this declaration and a third party writes it, so it is held to a shape:
-// a field is copied property by property (an accessor or a prototype cannot answer differently
-// later), keys are unique, and the label is a message key and never text. A plugin that declares
-// nothing valid is refused at boot, like one that lacks a method.
-export function snapshotConnectManifest(
-  plugin: ChannelPlugin,
+// The fields of a connect form, copied and checked, as the channels and the carriers declare them
+export function snapshotConnectFields(
+  declared: unknown,
   id: string,
-  capabilities: readonly string[]
-): ConnectManifest {
-  const declared: unknown = plugin.connectFields
+  missing: string
+): readonly ConnectFieldSnapshot[] {
   if (!Array.isArray(declared) || declared.length > ChannelConnectFieldLimits.MAX_FIELDS) {
-    throw contractViolation(`Plugin ${printable(id)} does not declare its connect fields`)
+    throw contractViolation(`Plugin ${printable(id)} ${missing}`)
   }
   const seen = new Set<string>()
-  const connectFields = declared.map((raw: unknown): ConnectFieldSnapshot => {
+  return declared.map((raw: unknown): ConnectFieldSnapshot => {
     const field = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>
     const { key, labelKey, label: rawLabel, helpKey, secret, required, multiple } = field
     const label = rawLabel === undefined ? null : readLocalizedText(rawLabel)
@@ -80,6 +76,22 @@ export function snapshotConnectManifest(
       multiple
     })
   })
+}
+
+// The page draws a form from this declaration and a third party writes it, so it is held to a shape:
+// a field is copied property by property (an accessor or a prototype cannot answer differently
+// later), keys are unique, and the label is a message key and never text. A plugin that declares
+// nothing valid is refused at boot, like one that lacks a method.
+export function snapshotConnectManifest(
+  plugin: ChannelPlugin,
+  id: string,
+  capabilities: readonly string[]
+): ConnectManifest {
+  const connectFields = snapshotConnectFields(
+    plugin.connectFields,
+    id,
+    'does not declare its connect fields'
+  )
   const webhooks: unknown = plugin.receivesProviderWebhooks
   if (typeof webhooks !== 'boolean') {
     throw contractViolation(`Plugin ${printable(id)} does not say whether it receives webhooks`)

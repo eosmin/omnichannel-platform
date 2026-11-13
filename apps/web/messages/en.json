@@ -3516,6 +3516,16 @@
           "courierPhone": "Write the phone of the courier (up to 30 characters).",
           "courierPrefix": "The prefix is 1 to 6 capital letters or digits.",
           "courierNotes": "The notes are too long."
+        },
+        "fields": {
+          "c807": {
+            "username": "User",
+            "password": "Password",
+            "deliveryType": "Type of delivery",
+            "site": "Site (optional)",
+            "deliveryTypeHelp": "The delivery code enabled in your contract, for example NRML or PLUS.",
+            "siteHelp": "The code of the site the pickup leaves from. Leave it empty to use the one of your user."
+          }
         }
       },
       "rules": {

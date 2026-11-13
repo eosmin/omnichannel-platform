@@ -31,6 +31,7 @@ import type {
   PickupResult,
   ShipmentRef
 } from './carrier-types'
+import type { ConnectField } from './channel-types'
 import type { PluginTypes } from './plugin-types'
 
 // How guides come into being ('internal' is `CarrierCapability.INTERNAL_GUIDE`: the core makes the guide).
@@ -49,6 +50,9 @@ export interface CarrierPlugin {
   readonly author: string
   readonly type: typeof PluginTypes.CARRIER
   readonly capabilities: readonly CarrierCapabilityType[]
+  // What the connect form asks for, the declaration the channel plugins have (checked by the registry when it is present). A
+  // carrier that asks for nothing, because the core draws its form, leaves it out
+  readonly connectFields?: readonly ConnectField[]
 
   serviceCatalog(): readonly CarrierServiceDescriptor[]
   statusCatalog(): readonly CarrierStatusDescriptor[]

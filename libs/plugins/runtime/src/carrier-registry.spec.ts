@@ -314,4 +314,58 @@ describe('CarrierRegistry', () => {
     const plugin = { ...carrier(), type: 'channel' } as unknown as CarrierPlugin
     expect(codeOf(() => build().register(plugin))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
   })
+  describe('the connect fields', () => {
+    const field = {
+      key: 'username',
+      labelKey: 'settings.carriers.connect.fields.test.username',
+      secret: false,
+      required: true,
+      multiple: false
+    }
+
+    it('registers a carrier whose form is well declared, and one that declares none', () => {
+      const registry = build()
+      registry.register(carrier({ connectFields: [field] }))
+      expect(registry.get('forza').connectFields).toEqual([field])
+      expect(() => build().register(carrier())).not.toThrow()
+    })
+
+    it.each([
+      ['a field with no label', { ...field, labelKey: undefined }],
+      ['a key the form cannot hold', { ...field, key: 'toString' }],
+      ['a secret that is not a boolean', { ...field, secret: 'yes' }],
+      [
+        'a label that is a message key and a text',
+        { ...field, label: { en: 'User', es: 'Usuario' } }
+      ]
+    ])('refuses %s', (_name, bad) => {
+      const plugin = carrier({ connectFields: [bad as never] })
+      expect(codeOf(() => build().register(plugin))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
+    })
+
+    it('refuses two fields with the same key', () => {
+      const plugin = carrier({ connectFields: [field, field] })
+      expect(codeOf(() => build().register(plugin))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
+    })
+
+    it('keeps the form as it was when the carrier registered, whatever the plugin answers later', () => {
+      let calls = 0
+      const plugin = carrier({
+        get connectFields() {
+          calls += 1
+          return calls === 1 ? [field] : [{ ...field, key: 'toString' }]
+        }
+      })
+      const registry = build()
+      registry.register(plugin)
+      expect(registry.connectFieldsOf('forza').map(item => item.key)).toEqual(['username'])
+      expect(registry.connectFieldsOf('forza').map(item => item.key)).toEqual(['username'])
+      expect(registry.connectFieldsOf('whatsapp')).toEqual([])
+    })
+
+    it('refuses a form that is not a list', () => {
+      const plugin = carrier({ connectFields: 'nope' as never })
+      expect(codeOf(() => build().register(plugin))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
+    })
+  })
 })

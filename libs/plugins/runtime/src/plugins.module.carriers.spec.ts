@@ -3,7 +3,12 @@ import { Test } from '@nestjs/testing'
 import { PinoLogger } from 'nestjs-pino'
 
 import { localCarrierPlugin } from '@platform/carriers/local'
-import { CarrierId } from '@platform/core/domain'
+import {
+  CARRIER_TOKEN_CACHE,
+  type CarrierTokenCache,
+  MemoryCarrierTokenCache,
+  CarrierId
+} from '@platform/core/domain'
 import type {
   CarrierConnectInput,
   CarrierContext,
@@ -61,6 +66,42 @@ describe('PluginsModule carriers', () => {
     await moduleRef.init()
     expect(moduleRef.get(CarrierRegistry).get(CarrierId.LOCAL)).toBeInstanceOf(ClassCarrier)
     await moduleRef.close()
+  })
+
+  it('registers a carrier that a factory builds, with the token cache when the process has one and without it when not', async () => {
+    const seen: unknown[] = []
+    const factory = {
+      inject: [{ token: CARRIER_TOKEN_CACHE, optional: true }],
+      useFactory: (cache?: CarrierTokenCache) => {
+        seen.push(cache)
+        return { ...localCarrierPlugin }
+      }
+    }
+    const without = await compile([factory])
+    await without.init()
+    expect(without.get(CarrierRegistry).get(CarrierId.LOCAL).id).toBe(CarrierId.LOCAL)
+    expect(seen).toEqual([undefined])
+    await without.close()
+
+    const cache = new MemoryCarrierTokenCache()
+    const withCache = await Test.createTestingModule({
+      imports: [
+        {
+          module: class CacheModule {},
+          global: true,
+          providers: [{ provide: CARRIER_TOKEN_CACHE, useValue: cache }],
+          exports: [CARRIER_TOKEN_CACHE]
+        },
+        PluginsModule.forRoot({ channels: [], carriers: [factory] })
+      ]
+    })
+      .useMocker(token =>
+        token === PinoLogger ? { setContext: jest.fn(), info: jest.fn() } : undefined
+      )
+      .compile()
+    await withCache.init()
+    expect(seen[1]).toBe(cache)
+    await withCache.close()
   })
 
   it('refuses two carriers with the same id, so that the boot fails', async () => {
