@@ -28,7 +28,12 @@ function createClient({ databaseUrl, replicaUrl, poolSize = 20 }: PrismaServiceO
 }
 
 type ExtendedClient = ReturnType<typeof createClient>
+// What $primary() and $replica() answer with: the client of one database, with no routing of its own
 type ReplicaClient = Omit<ExtendedClient, '$primary' | '$replica'>
+type PrimaryClient = ReplicaClient
+// What a read needs: raw SQL on the primary, a transaction or the replica. foldInDatabase and readMetricBuckets take this, so
+// the caller picks the source and the helper stays the same.
+export type SqlReader = Pick<ReplicaClient, '$queryRaw'>
 export type PrismaTransaction = Parameters<Parameters<ExtendedClient['$transaction']>[0]>[0]
 
 interface TransactionOptions {
@@ -55,20 +60,28 @@ const TENANT_TRANSACTION: Required<TransactionOptions> = { maxWait: 5_000, timeo
 @Injectable()
 export class PrismaService implements OnModuleInit, OnModuleDestroy {
   private readonly base: ExtendedClient
+  // The extension sends every read of `base` to the replica when there is one (not only what asks for $replica()), so
+  // nothing outside this class touches `base` for a query: `client` is this, which is the primary for reads and writes alike.
+  // One object for the whole life of the service, because afterCommit tells the base client apart by identity.
+  private readonly primary: PrimaryClient
   private readonly units = new WeakMap<object, UnitOfWork>()
   private readonly logger = new Logger(PrismaService.name)
 
   constructor(options: PrismaServiceOptions) {
     this.base = createClient(options)
+    this.primary = this.base.$primary()
   }
 
-  // What services use: the current tenant transaction when there is one, the base client otherwise.
+  // What services use: the current tenant transaction when there is one, the primary otherwise.
   // Composition, not inheritance: $extends returns a new type.
-  get client(): ExtendedClient | PrismaTransaction {
-    return tenantScope.getStore()?.tx ?? this.base
+  get client(): PrimaryClient | PrismaTransaction {
+    return tenantScope.getStore()?.tx ?? this.primary
   }
 
-  // Reads that tolerate replication lag. In the MVP there is no replica and this is the primary.
+  // Reads that tolerate replication lag. Without DATABASE_REPLICA_URL this is the primary. It sits outside the tenant
+  // transaction, so a read here never sees a row the request wrote in it: never call it in a path that writes (or that reads
+  // what it is about to write, or what the person just changed), and never from a guard. The same rule is enforced by
+  // `pnpm validate:replica` (scripts/check-replica-routing.ts), which lists the only files that may call it.
   replica(): ReplicaClient {
     return this.base.$replica()
   }
@@ -91,7 +104,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   // client) there is nothing to wait for and the hook runs at once; a transaction this service did
   // not open is refused, because the hook could not be held until its commit.
   afterCommit(db: PrismaService['client'], hook: () => void): void {
-    if (db === this.base) {
+    if (db === this.primary) {
       this.runHook(hook)
       return
     }

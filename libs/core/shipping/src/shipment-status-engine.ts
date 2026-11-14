@@ -4,8 +4,7 @@ import {
   isUniqueViolation,
   lockStoreForWrite,
   lockStoreScope,
-  PrismaService,
-  type PrismaTransaction
+  PrismaService
 } from '@platform/core/database'
 import {
   CarrierConnectionStatus,
@@ -133,7 +132,7 @@ export class ShipmentStatusEngine {
     storeId: string,
     shipmentId: string,
     event: CarrierStatusEvent,
-    tx: PrismaTransaction = this.prisma.client
+    tx: PrismaService['client'] = this.prisma.client
   ): Promise<boolean> {
     const twin = await tx.shipmentEvent.findFirst({
       where:

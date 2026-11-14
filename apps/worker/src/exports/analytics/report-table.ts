@@ -66,7 +66,7 @@ export async function readReportTable(
       async metric =>
         [
           metric,
-          await readMetricBuckets(prisma, storeId, {
+          await readMetricBuckets(prisma.client, storeId, {
             metric,
             granularity: TimeGranularity.DAY,
             dimension: MetricDimensions.NONE,

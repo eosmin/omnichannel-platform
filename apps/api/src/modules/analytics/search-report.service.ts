@@ -43,8 +43,9 @@ export class SearchReportService {
   constructor(private readonly prisma: PrismaService) {}
 
   async report(storeId: string, days: number): Promise<SearchReport> {
-    // One after the other: the two statements share the connection of the request, so running them together only queues one
-    const scopeRows = await this.prisma.client.$queryRaw<unknown[]>`
+    const db = this.prisma.replica()
+    // From the replica, both statements from the one reader (the same replica, not the same snapshot: a count and a list can differ by what replicated between them, and the events of the person's own last searches may not be there yet; accepted, see Step 5.3 in the plan): a report of past searches, no row of it is written by this request. One after the other: the two statements share the connection of the request, so running them together only queues one
+    const scopeRows = await db.$queryRaw<unknown[]>`
         SELECT data->>'scope' AS scope,
                COUNT(*) FILTER (WHERE event = ${AnalyticsEventNames.SEARCH_PERFORMED})::int AS searches,
                COUNT(*) FILTER (
@@ -58,7 +59,7 @@ export class SearchReportService {
         GROUP BY data->>'scope'
       `
     // One row for each text as the hash folds it (case, accents and spacing), under the spelling asked most recently
-    const zeroRows = await this.prisma.client.$queryRaw<unknown[]>`
+    const zeroRows = await db.$queryRaw<unknown[]>`
         SELECT (ARRAY_AGG(data->>'query' ORDER BY timestamp DESC))[1] AS query, COUNT(*)::int AS occurrences
         FROM analytics_events
         WHERE store_id = ${storeId}
