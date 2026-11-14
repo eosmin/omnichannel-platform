@@ -25,6 +25,7 @@ import {
   CarrierConnectionStatus,
   CarrierHealthReasons,
   CarrierLockScopes,
+  feeSettingsProblem,
   singleLineText,
   type ConnectCarrierBody,
   type CursorPage,
@@ -57,9 +58,12 @@ import {
   connectAnswerSchema,
   connectFieldsProblem,
   defaultServiceCodeOf,
+  commissionToKeep,
+  feesChangeOf,
   filterLocations,
   healthReasonOf,
   localMetadataSchema,
+  ratesViewOf,
   locationsAnswerSchema,
   type RulesSnapshot,
   seedServices,
@@ -165,7 +169,8 @@ export class CarrierConnectionsService {
         label: carrierServiceLabelOf(plugin.id, service, locale)
       })),
       // The copy the registry made when the plugin registered, never the live declaration of the plugin
-      connectFields: this.registry.connectFieldsOf(plugin.id)
+      connectFields: this.registry.connectFieldsOf(plugin.id),
+      feeSettings: this.registry.feeSettingsOf(plugin.id)
     }))
   }
 
@@ -232,6 +237,8 @@ export class CarrierConnectionsService {
     }
     const problem = settingsProblem(NEW_CONNECTION_RULES, body)
     if (problem !== null) throw invalidInput(problem)
+    const feesProblem = feeSettingsProblem(this.registry.feeSettingsOf(plugin.id), body)
+    if (feesProblem !== null) throw invalidInput(feesProblem)
     // A carrier that declares its connect fields takes those and no other credentials
     const fieldsProblem = connectFieldsProblem(
       this.registry.connectFieldsOf(plugin.id),
@@ -299,6 +306,13 @@ export class CarrierConnectionsService {
             minShippingFeeCents: body.minShippingFeeCents,
             maxShippingFeeCents: body.maxShippingFeeCents,
             remittanceDeductsFee: body.remittanceDeductsFee,
+            commissionBps: commissionToKeep(
+              this.registry.feeSettingsOf(plugin.id),
+              body.commissionBps
+            ),
+            ...(body.serviceRatesCents == null || Object.keys(body.serviceRatesCents).length === 0
+              ? {}
+              : { serviceRatesCents: body.serviceRatesCents }),
             contact: contactOf(local, answer)
           },
           select: { id: true }
@@ -376,6 +390,15 @@ export class CarrierConnectionsService {
       displayName,
       isDefault: created.becameDefault
     })
+    const agreed = feesChangeOf(
+      { commissionBps: null, serviceRatesCents: {} },
+      {
+        commissionBps: commissionToKeep(this.registry.feeSettingsOf(plugin.id), body.commissionBps),
+        serviceRatesCents: body.serviceRatesCents
+      }
+    )
+    if (agreed !== null)
+      this.record(AuditAction.CARRIER_FEES_CHANGED, storeId, created.id, actor, agreed)
     // The one time the secret leaves the platform: the owner pastes it into the carrier's panel
     return { ...created.view, webhookSecret: secret }
   }
@@ -411,6 +434,15 @@ export class CarrierConnectionsService {
       if (fieldsProblem !== null) throw invalidInput(fieldsProblem)
     }
 
+    // A carrier that is not registered declares nothing to hold a commission or a rate to
+    if (plugin === undefined && (body.commissionBps != null || body.serviceRatesCents != null)) {
+      throw notActive()
+    }
+    if (plugin !== undefined) {
+      const feesProblem = feeSettingsProblem(this.registry.feeSettingsOf(plugin.id), body)
+      if (feesProblem !== null) throw invalidInput(feesProblem)
+    }
+
     // New credentials are checked with the carrier first, and only then replace the old ones
     const asked =
       body.credentials === undefined || plugin === undefined
@@ -425,12 +457,21 @@ export class CarrierConnectionsService {
     }
     const local = asked === null ? null : asked.local
 
+    // What the commission and the rates were under the lock, for the audit trail
+    let feesBefore: { commissionBps: number | null; serviceRatesCents: Record<string, number> } = {
+      commissionBps: null,
+      serviceRatesCents: {}
+    }
     try {
       await this.prisma.transaction(async tx => {
         await lockStoreForWrite(tx, storeId)
         await lockStoreScope(tx, storeId, CarrierLockScopes.CONNECTIONS)
         // The row again, with the locks held: what is validated is what is written over
         const row = await this.rowOf(tx, storeId, connectionId)
+        feesBefore = {
+          commissionBps: row.commissionBps,
+          serviceRatesCents: ratesViewOf(row.serviceRatesCents)
+        }
         if (row.status === String(CarrierConnectionStatus.DISABLED) && !onlyRename) {
           throw notActive()
         }
@@ -513,6 +554,19 @@ export class CarrierConnectionsService {
             minShippingFeeCents: body.minShippingFeeCents,
             maxShippingFeeCents: body.maxShippingFeeCents,
             remittanceDeductsFee: body.remittanceDeductsFee,
+            commissionBps: commissionToKeep(
+              this.registry.feeSettingsOf(row.carrierId),
+              body.commissionBps
+            ),
+            ...(body.serviceRatesCents === undefined
+              ? {}
+              : {
+                  serviceRatesCents:
+                    body.serviceRatesCents === null ||
+                    Object.keys(body.serviceRatesCents).length === 0
+                      ? DatabaseNull
+                      : body.serviceRatesCents
+                }),
             ...(answer === null ? {} : { contact: contactOf(local, answer) ?? DatabaseNull }),
             // New credentials that the carrier accepted clear what the last failure said
             ...(answer === null
@@ -565,6 +619,16 @@ export class CarrierConnectionsService {
         ...(replaced === undefined ? [] : ['credentials'])
       ].sort()
     })
+    const changedFees = feesChangeOf(feesBefore, {
+      commissionBps:
+        plugin === undefined
+          ? body.commissionBps
+          : commissionToKeep(this.registry.feeSettingsOf(plugin.id), body.commissionBps),
+      serviceRatesCents: body.serviceRatesCents
+    })
+    if (changedFees !== null) {
+      this.record(AuditAction.CARRIER_FEES_CHANGED, storeId, connectionId, actor, changedFees)
+    }
     await this.dropLocations(storeId, connectionId)
     return this.get(storeId, connectionId)
   }
@@ -1079,6 +1143,11 @@ export class CarrierConnectionsService {
       minShippingFeeCents: row.minShippingFeeCents,
       maxShippingFeeCents: row.maxShippingFeeCents,
       remittanceDeductsFee: row.remittanceDeductsFee,
+      commissionBps: row.commissionBps,
+      serviceRatesCents: ratesViewOf(
+        row.serviceRatesCents,
+        this.registry.feeSettingsOf(row.carrierId).rateServices.map(service => service.code)
+      ),
       openShipments: row._count.shipments,
       openPickups: row._count.pickups,
       lastHealthyAt: row.lastHealthyAt?.toISOString() ?? null,
@@ -1092,6 +1161,7 @@ export class CarrierConnectionsService {
     action:
       | typeof AuditAction.CARRIER_CONNECTED
       | typeof AuditAction.CARRIER_UPDATED
+      | typeof AuditAction.CARRIER_FEES_CHANGED
       | typeof AuditAction.CARRIER_DISCONNECTED
       | typeof AuditAction.CARRIER_WEBHOOK_SECRET_ROTATED,
     storeId: string,

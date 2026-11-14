@@ -4,7 +4,7 @@ import {
   PickupStatus,
   ShipmentStatus
 } from '@platform/core/domain'
-import type { ConnectFieldSnapshot } from '@platform/plugins/runtime'
+import type { ConnectFieldSnapshot, FeeSettingsSnapshot } from '@platform/plugins/runtime'
 
 // What a client reads of a connection (TDD_17 §6). Nothing secret is in it: the credentials and the webhook secret are
 // ciphertext in the database and only `hasCredentials` and `hasWebhookSecret` say they exist.
@@ -47,6 +47,10 @@ export interface CarrierConnectionView {
   minShippingFeeCents: number | null
   maxShippingFeeCents: number | null
   remittanceDeductsFee: boolean
+  // What the owner agreed with the carrier (§4.15): its commission over the cash it collects in basis points, and the cost of a guide in
+  // cents by rate service. Empty when none was agreed
+  commissionBps: number | null
+  serviceRatesCents: Record<string, number>
   // Shipments in flight and pickups waiting: what a disconnect leaves without a carrier to ask
   openShipments: number
   openPickups: number
@@ -81,6 +85,8 @@ export interface CarrierRegistryEntry {
   // What the connect form asks for, as the registry copied it when the plugin registered: empty when the carrier draws no form of its
   // own (a courier of the platform), and then the credentials are the free JSON the carrier reads
   connectFields: readonly ConnectFieldSnapshot[]
+  // The commission and the services with a rate the carrier declared, to draw their fields from (nothing for a carrier that takes neither)
+  feeSettings: FeeSettingsSnapshot
 }
 
 // One place a carrier lists for an address (a department, a municipality, a zone)
@@ -137,6 +143,8 @@ export const CONNECTION_SELECT = {
   minShippingFeeCents: true,
   maxShippingFeeCents: true,
   remittanceDeductsFee: true,
+  commissionBps: true,
+  serviceRatesCents: true,
   lastHealthyAt: true,
   lastError: true,
   createdAt: true,
@@ -175,6 +183,8 @@ export interface ConnectionRow {
   minShippingFeeCents: number | null
   maxShippingFeeCents: number | null
   remittanceDeductsFee: boolean
+  commissionBps: number | null
+  serviceRatesCents: unknown
   lastHealthyAt: Date | null
   lastError: string | null
   createdAt: Date

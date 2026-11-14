@@ -4,7 +4,8 @@ import {
   PriceApprovalStatus,
   ShipmentLimits,
   ShipmentStatus,
-  ShipmentStatusTransitions
+  ShipmentStatusTransitions,
+  ShippingPayer
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
@@ -28,6 +29,7 @@ import {
   mayRetryVoid,
   nextPickupDate,
   orderBlockOf,
+  rateServiceOf,
   wallClockOf
 } from './shipment-rules'
 
@@ -321,5 +323,49 @@ describe('the day a carrier comes', () => {
 
   it('has no day when the connection lists none', () => {
     expect(nextPickupDate(tuesdayNoon, zone, { pickupDays: [], pickupCutoffTime: null })).toBeNull()
+  })
+})
+
+describe('rateServiceOf', () => {
+  const guide = { shippingPayer: ShippingPayer.SENDER, cod: true, serviceCode: 'standard' }
+  const withRate = (rateServiceOf: () => unknown) => ({
+    feeSettings: { commission: true, rateServices: [], rateServiceOf: rateServiceOf as never }
+  })
+  it('is what the plugin says', () => {
+    expect(
+      rateServiceOf(
+        withRate(() => 'CCE'),
+        guide
+      )
+    ).toBe('CCE')
+  })
+  it('is null when the plugin declares no fee settings, throws, or answers with what is not a code', () => {
+    expect(rateServiceOf({}, guide)).toBeNull()
+    expect(
+      rateServiceOf(
+        withRate(() => {
+          throw new Error('boom')
+        }),
+        guide
+      )
+    ).toBeNull()
+    expect(
+      rateServiceOf(
+        withRate(() => 42),
+        guide
+      )
+    ).toBeNull()
+    expect(
+      rateServiceOf(
+        withRate(() => 'a b'),
+        guide
+      )
+    ).toBeNull()
+    expect(
+      rateServiceOf(
+        withRate(() => null),
+        guide
+      )
+    ).toBeNull()
   })
 })

@@ -68,3 +68,32 @@ describe('updateCarrierSchema and the fee rule', () => {
     )
   })
 })
+
+describe('commission and rates of a connection', () => {
+  it('takes the commission as whole basis points and the rates as whole cents per service code', () => {
+    const ok = connectCarrierSchema.safeParse({
+      ...base,
+      commissionBps: 450,
+      serviceRatesCents: { CCE: 300, SEC: 0 }
+    })
+    expect(ok.success).toBe(true)
+    expect(
+      updateCarrierSchema.safeParse({ commissionBps: null, serviceRatesCents: null }).success
+    ).toBe(true)
+  })
+  it('refuses a fraction, a negative, an amount over the limit and a code that is not one', () => {
+    const bad = (body: Record<string, unknown>) => updateCarrierSchema.safeParse(body).success
+    expect(bad({ commissionBps: 4.5 })).toBe(false)
+    expect(bad({ commissionBps: -1 })).toBe(false)
+    expect(bad({ commissionBps: 5001 })).toBe(false)
+    expect(bad({ serviceRatesCents: { CCE: 1.5 } })).toBe(false)
+    expect(bad({ serviceRatesCents: { CCE: -1 } })).toBe(false)
+    expect(bad({ serviceRatesCents: { CCE: 100_000_001 } })).toBe(false)
+    expect(bad({ serviceRatesCents: { 'not a code': 1 } })).toBe(false)
+    expect(bad({ serviceRatesCents: { '': 1 } })).toBe(false)
+  })
+  it('bounds how many rates a body can carry', () => {
+    const many = Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`S${i}`, 1]))
+    expect(updateCarrierSchema.safeParse({ serviceRatesCents: many }).success).toBe(false)
+  })
+})

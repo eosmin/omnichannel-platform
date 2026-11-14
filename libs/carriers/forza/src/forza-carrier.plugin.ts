@@ -36,6 +36,7 @@ import {
 import {
   FORZA_CARRIER_VERSION,
   FORZA_HOME_SERVICE_CODE,
+  ForzaRateServices,
   FORZA_STATUS_CATALOG,
   ForzaConnectFieldKeys as Keys,
   ForzaMethods
@@ -132,6 +133,12 @@ export function createForzaCarrierPlugin(options: ForzaPluginOptions = {}): Carr
     author: 'platform',
     type: PluginTypes.CARRIER,
     connectFields: FORZA_CONNECT_FIELDS,
+    // Forza keeps a commission out of the cash it collects, and has one service to price (owner, 2026-11-14)
+    feeSettings: {
+      commission: true,
+      rateServices: ForzaRateServices,
+      rateServiceOf: () => FORZA_HOME_SERVICE_CODE
+    },
     capabilities: [
       CarrierCapability.CREATE_SHIPMENT,
       CarrierCapability.CANCEL_SHIPMENT,

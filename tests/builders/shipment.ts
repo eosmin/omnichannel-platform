@@ -23,6 +23,9 @@ export interface ShipmentInput {
   codExpectedCents?: number
   codRemittedCents?: number
   carrierCostCents?: number
+  // What the connection agreed when the guide was made (TDD_17 §4.15): the rate of its service and the commission in basis points
+  carrierRateCents?: number
+  commissionBps?: number
   shippingPayer?: ShippingPayer
   deliveredAt?: Date
 }
@@ -64,6 +67,8 @@ export async function createShipment(
       ...(input.codExpectedCents === undefined ? {} : { codExpectedCents: input.codExpectedCents }),
       ...(input.codRemittedCents === undefined ? {} : { codRemittedCents: input.codRemittedCents }),
       ...(input.carrierCostCents === undefined ? {} : { carrierCostCents: input.carrierCostCents }),
+      ...(input.carrierRateCents === undefined ? {} : { carrierRateCents: input.carrierRateCents }),
+      ...(input.commissionBps === undefined ? {} : { commissionBps: input.commissionBps }),
       ...(input.deliveredAt === undefined ? {} : { deliveredAt: input.deliveredAt }),
       currency: 'USD',
       status: input.status ?? ShipmentStatus.LABEL_CREATED,

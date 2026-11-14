@@ -1,6 +1,7 @@
 import {
   CarrierCapability,
   type CarrierCapabilityType,
+  CarrierFeeLimits,
   OrderStatus,
   PriceApprovalStatus,
   ShipmentFailureReasons,
@@ -13,6 +14,8 @@ import {
   CarrierAuthError,
   CarrierRejectedError,
   CarrierUnavailableError,
+  type CarrierPlugin,
+  type CarrierRateGuide,
   type ShipmentCreationMode,
   ShipmentCreationModes
 } from '@platform/plugins/sdk'
@@ -272,4 +275,22 @@ export function nextPickupDate(now: Date, timeZone: string, rules: PickupRules):
     if (rules.pickupDays.includes(candidate.weekday)) return candidate.date
   }
   return null
+}
+
+// ---------------------------------------------------------------- the rate of a guide (TDD_17 §4.15)
+
+// The rate service the carrier says a guide falls under, or null: a plugin that declares none, throws, or answers with something
+// that is not a code is a guide with no rate, never a refused one. The plugin is third-party code and the guide is made anyway.
+export function rateServiceOf(
+  plugin: Pick<CarrierPlugin, 'feeSettings'>,
+  guide: CarrierRateGuide
+): string | null {
+  try {
+    const settings = plugin.feeSettings
+    if (settings === undefined) return null
+    const code: unknown = settings.rateServiceOf(guide)
+    return typeof code === 'string' && CarrierFeeLimits.RATE_CODE_PATTERN.test(code) ? code : null
+  } catch {
+    return null
+  }
 }

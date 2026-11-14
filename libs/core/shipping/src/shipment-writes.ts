@@ -146,6 +146,8 @@ export class ShipmentWrites {
         codStatus: true,
         codAmountCents: true,
         carrierCostCents: true,
+        carrierRateCents: true,
+        commissionBps: true,
         shippingPayer: true,
         connection: { select: { remittanceDeductsFee: true } }
       }
@@ -167,6 +169,8 @@ export class ShipmentWrites {
         codExpectedCents: expectedCodCents({
           codAmountCents: row.codAmountCents,
           carrierCostCents: row.carrierCostCents,
+          carrierRateCents: row.carrierRateCents,
+          commissionBps: row.commissionBps,
           shippingPayer: row.shippingPayer as ShippingPayer,
           deductsFee: row.connection.remittanceDeductsFee
         })

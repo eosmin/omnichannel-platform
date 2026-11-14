@@ -456,10 +456,13 @@ export class RemittancesService {
         cod_amount_cents: number | null
         cod_expected_cents: number | null
         carrier_cost_cents: number | null
+        carrier_rate_cents: number | null
+        commission_bps: number | null
         shipping_payer: string
       }[]
     >`
-      SELECT id, guide_number, cod_status, cod_amount_cents, cod_expected_cents, carrier_cost_cents, shipping_payer
+      SELECT id, guide_number, cod_status, cod_amount_cents, cod_expected_cents, carrier_cost_cents,
+             carrier_rate_cents, commission_bps, shipping_payer
       FROM shipments
       WHERE store_id = ${storeId} AND connection_id = ${draft.connectionId} AND kind = ${ShipmentKind.OUTBOUND}
         AND guide_number IS NOT NULL AND lower(regexp_replace(guide_number, '^\\s+|\\s+$', '', 'g')) = ANY(${keys}::text[])`
@@ -491,6 +494,8 @@ export class RemittancesService {
               codAmountCents: found.cod_amount_cents,
               codExpectedCents: found.cod_expected_cents,
               carrierCostCents: found.carrier_cost_cents,
+              carrierRateCents: found.carrier_rate_cents,
+              commissionBps: found.commission_bps,
               shippingPayer: found.shipping_payer as ShippingPayer
             }
       const result = classifyLine(

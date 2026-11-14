@@ -5,6 +5,7 @@ import {
   DEFAULT_PHONE_REGION,
   type CreateShipmentBody,
   isShippingFeeWithinRange,
+  rateCentsOf,
   CodStatus,
   PaymentMethod,
   PaymentStatus,
@@ -36,7 +37,8 @@ import {
   codAmountFor,
   creationCapabilityOf,
   isFeeAcceptedForGuide,
-  orderBlockOf
+  orderBlockOf,
+  rateServiceOf
 } from './shipment-rules'
 import type { ShipmentIdentity } from './shipment-writes'
 
@@ -115,6 +117,9 @@ export interface PreparedGuide {
     codStatus: CodStatus
     currency: string
     packageCount: number
+    // What the connection agreed with the carrier when the guide was made (§4.15): the rate of the service and the commission
+    carrierRateCents: number | null
+    commissionBps: number | null
     idempotencyKey: string
     createdBy: string
   }
@@ -190,7 +195,9 @@ export async function prepareGuide(
       defaultServiceCode: true,
       defaultShippingPayer: true,
       minShippingFeeCents: true,
-      maxShippingFeeCents: true
+      maxShippingFeeCents: true,
+      commissionBps: true,
+      serviceRatesCents: true
     }
   })
   if (connection === null) throw resourceNotFound('carrier')
@@ -478,6 +485,15 @@ export async function prepareGuide(
       codStatus: codAmountCents === null ? CodStatus.NOT_APPLICABLE : CodStatus.NOT_DELIVERED,
       currency: order.currency,
       packageCount: 1,
+      carrierRateCents: rateCentsOf(
+        connection.serviceRatesCents,
+        rateServiceOf(plugin, {
+          shippingPayer,
+          cod: codAmountCents !== null,
+          serviceCode: service.code
+        })
+      ),
+      commissionBps: connection.commissionBps,
       idempotencyKey,
       createdBy: caller.actor.id ?? 'system'
     },

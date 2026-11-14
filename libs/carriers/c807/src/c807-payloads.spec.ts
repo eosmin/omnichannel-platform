@@ -42,24 +42,26 @@ describe('the type of service of a guide', () => {
   it('collects the product with CCE when the order is cash on delivery', () => {
     expect(
       c807ServiceTypeOf({
-        cod: { amountCents: 1000, currency: 'USD' },
+        collects: true,
         shippingPayer: ShippingPayer.SENDER
       })
     ).toBe('CCE')
   })
 
   it('makes the recipient pay the carrier with SEC when the product is already paid', () => {
-    expect(c807ServiceTypeOf({ cod: null, shippingPayer: ShippingPayer.RECIPIENT })).toBe('SEC')
+    expect(c807ServiceTypeOf({ collects: false, shippingPayer: ShippingPayer.RECIPIENT })).toBe(
+      'SEC'
+    )
   })
 
   it('sends an order paid in full, with nothing to collect, as SER', () => {
-    expect(c807ServiceTypeOf({ cod: null, shippingPayer: ShippingPayer.SENDER })).toBe('SER')
+    expect(c807ServiceTypeOf({ collects: false, shippingPayer: ShippingPayer.SENDER })).toBe('SER')
   })
 
   it('collects the product with CCE whoever pays the carrier: C807 takes its fee out of what it collects', () => {
     expect(
       c807ServiceTypeOf({
-        cod: { amountCents: 1300, currency: 'USD' },
+        collects: true,
         shippingPayer: ShippingPayer.RECIPIENT
       })
     ).toBe('CCE')

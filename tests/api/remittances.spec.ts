@@ -304,6 +304,30 @@ describe('COD remittances (TDD_17 §4.15)', () => {
       expect(lineOf(body, 'COST-LATE').outcome).toBe(RemittanceLineOutcome.MATCHED)
     })
 
+    it('holds a line against the rate and the commission the guide kept when the connection started to deduct after the delivery', async () => {
+      await owner.carrierConnection.update({
+        where: { id: connectionId },
+        data: { remittanceDeductsFee: true }
+      })
+      // 4.5 % of 10,000 is 450, and the rate of its service is 300: 9,250 is what it should bring
+      await pendingShipment('RATE-LATE', 10_000, {
+        codExpectedCents: 10_000,
+        carrierRateCents: 300,
+        commissionBps: 450
+      })
+      let body: RemittanceBody
+      try {
+        body = await draftWith([{ guideNumber: 'RATE-LATE', reportedCents: 9250 }])
+      } finally {
+        await owner.carrierConnection.update({
+          where: { id: connectionId },
+          data: { remittanceDeductsFee: false }
+        })
+      }
+      expect(lineOf(body, 'RATE-LATE').outcome).toBe(RemittanceLineOutcome.MATCHED)
+      expect(lineOf(body, 'RATE-LATE').expectedCents).toBe(9250)
+    })
+
     it('lets the second line of a guide count when the first one is left out', async () => {
       await pendingShipment('DUP-EXCL', 500)
       const draft = await draftWith([

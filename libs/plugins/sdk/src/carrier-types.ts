@@ -103,6 +103,32 @@ export interface CarrierLabel {
   data: Uint8Array
 }
 
+// A service of the carrier that has its own rate for the cost of a guide: the owner types a price for each (TDD_17 §4.15). Its code is the
+// plugin's own, and its label is a message key the web app translates.
+export interface CarrierRateService {
+  code: string
+  labelKey: string
+}
+
+// What the guide looks like to the plugin when it says which rate applies: what the order decided, never a secret
+export interface CarrierRateGuide {
+  shippingPayer: ShippingPayer
+  cod: boolean
+  serviceCode: string
+}
+
+// What a carrier lets the owner agree with it and keep on the connection: a commission over the cash it collects, and the cost of a
+// guide by service when the carrier does not report that cost. The platform draws the fields from this declaration and applies the
+// figures to the amount a remittance should bring (TDD_17 §4.15); it never names a carrier.
+export interface CarrierFeeSettings {
+  // The carrier keeps a percent of the cash it collects: the connection asks for it
+  readonly commission: boolean
+  // The services with a rate of their own
+  readonly rateServices: readonly CarrierRateService[]
+  // Which rate service a guide falls under, or null when none does. Pure: the same guide gives the same answer
+  rateServiceOf(guide: CarrierRateGuide): string | null
+}
+
 export interface CarrierCost {
   amountCents: number
   currency: string

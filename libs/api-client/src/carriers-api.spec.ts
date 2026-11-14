@@ -59,6 +59,8 @@ const connection = {
   minShippingFeeCents: null,
   maxShippingFeeCents: null,
   remittanceDeductsFee: false,
+  commissionBps: null,
+  serviceRatesCents: {},
   openShipments: 0,
   openPickups: 0,
   lastHealthyAt: null,
@@ -171,6 +173,7 @@ describe('carriers api', () => {
       maxBatchSize: 3,
       hasCredentials: true,
       services: [],
+      feeSettings: { commission: false, rateServices: [] },
       connectFields: [
         {
           key: 'password',
@@ -196,6 +199,40 @@ describe('carriers api', () => {
     const [read] = await fetchCarrierRegistry(client, 's1')
     expect(read?.connectFields.map(field => field.key)).toEqual(['password', 'site'])
     expect(read?.connectFields[0]?.secret).toBe(true)
+  })
+
+  it('reads the commission and the rate services a carrier declares, and what a connection agreed', async () => {
+    const entry = {
+      id: 'c807',
+      name: 'Carrier',
+      version: '1.0.0',
+      capabilities: [],
+      shipmentCreation: 'pickup_bound',
+      maxBatchSize: 3,
+      hasCredentials: true,
+      services: [],
+      connectFields: [],
+      feeSettings: {
+        commission: true,
+        rateServices: [{ code: 'CCE', labelKey: 'settings.carriers.rates.c807.cce' }]
+      }
+    }
+    const { client } = setup(json(200, [entry]))
+    const [read] = await fetchCarrierRegistry(client, 's1')
+    expect(read?.feeSettings.commission).toBe(true)
+    expect(read?.feeSettings.rateServices[0]?.code).toBe('CCE')
+    const agreed = { ...connection, commissionBps: 450, serviceRatesCents: { CCE: 300 } }
+    const next = setup(json(200, agreed))
+    const updated = await updateCarrier(next.client, 's1', 'c1', {
+      commissionBps: 450,
+      serviceRatesCents: { CCE: 300 }
+    })
+    expect(updated.commissionBps).toBe(450)
+    expect(updated.serviceRatesCents).toEqual({ CCE: 300 })
+    expect(bodyOf(callOf(next.fetchImpl).init)).toEqual({
+      commissionBps: 450,
+      serviceRatesCents: { CCE: 300 }
+    })
   })
 
   it('asks for the places under a parent, with a search, through the store of the request', async () => {

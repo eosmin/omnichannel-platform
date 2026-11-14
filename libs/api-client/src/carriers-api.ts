@@ -42,6 +42,10 @@ const connectionSchema = z.object({
   minShippingFeeCents: z.number().int().nullable(),
   maxShippingFeeCents: z.number().int().nullable(),
   remittanceDeductsFee: z.boolean(),
+  // What was agreed with the carrier (TDD_17 §4.15): its commission over the cash it collects in basis points (450 = 4.5 %) and the cost
+  // of a guide in cents by rate service of the carrier
+  commissionBps: z.number().int().nullable(),
+  serviceRatesCents: z.record(z.string(), z.number().int()),
   // What a disconnect leaves without a carrier to ask
   openShipments: z.number().int(),
   openPickups: z.number().int(),
@@ -79,9 +83,15 @@ const registryEntrySchema = z.object({
   hasCredentials: z.boolean(),
   services: z.array(z.object({ code: z.string(), label: z.string() })),
   // Empty: the carrier draws no form of its own and its credentials are the free JSON it reads
-  connectFields: z.array(connectFieldSchema)
+  connectFields: z.array(connectFieldSchema),
+  // The commission and the services with a rate the carrier declares: the fields are drawn from it, and a carrier that takes neither has none
+  feeSettings: z.object({
+    commission: z.boolean(),
+    rateServices: z.array(z.object({ code: z.string(), labelKey: z.string() }))
+  })
 })
 export type CarrierRegistryEntryView = z.output<typeof registryEntrySchema>
+export type CarrierFeeSettingsView = CarrierRegistryEntryView['feeSettings']
 
 // A place a carrier lists for the address of a guide
 const locationSchema = z.object({
@@ -156,6 +166,9 @@ export interface CarrierSettingsInput {
   minShippingFeeCents?: number | null
   maxShippingFeeCents?: number | null
   remittanceDeductsFee?: boolean
+  // Null clears it; absent leaves it as it is
+  commissionBps?: number | null
+  serviceRatesCents?: Record<string, number> | null
   isDefault?: boolean
 }
 

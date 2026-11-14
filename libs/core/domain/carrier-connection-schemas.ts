@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { CarrierFeeLimits } from './carrier-fee-rules'
 import { CLOCK_TIME_PATTERN } from './settings-constants'
 import { CarrierConnectionLimits, CarrierId, LabelFormat } from './shipping-constants'
 import { ShippingPayer } from './status-enums'
@@ -38,6 +39,16 @@ const boundedRecord = z
   )
 
 const feeCents = z.number().int().min(0).max(CarrierConnectionLimits.MAX_FEE_CENTS)
+// The commission of the carrier as basis points, and its rate per service as cents: whole numbers, so no fraction of a cent is ever kept
+const commissionBps = z.number().int().min(0).max(CarrierFeeLimits.MAX_COMMISSION_BPS)
+const serviceRatesCents = z
+  .record(
+    z.string().regex(CarrierFeeLimits.RATE_CODE_PATTERN),
+    z.number().int().min(0).max(CarrierFeeLimits.MAX_RATE_CENTS)
+  )
+  .refine(rates => Object.keys(rates).length <= CarrierFeeLimits.MAX_RATE_SERVICES, {
+    message: 'too many services'
+  })
 const clockTime = z.string().regex(CLOCK_TIME_PATTERN)
 
 // The settings both calls take. Every one is optional: a connection made without them keeps the column defaults.
@@ -78,6 +89,9 @@ const settings = {
   minShippingFeeCents: feeCents.nullable().optional(),
   maxShippingFeeCents: feeCents.nullable().optional(),
   remittanceDeductsFee: z.boolean().optional(),
+  // What the carrier keeps of the cash it collects (TDD_17 §4.15). Null clears it. Which of them a carrier takes is the plugin's declaration
+  commissionBps: commissionBps.nullable().optional(),
+  serviceRatesCents: serviceRatesCents.nullable().optional(),
   // The default connection of the store, the one the create-guide dialog and the order drawer preselect
   isDefault: z.boolean().optional()
 }

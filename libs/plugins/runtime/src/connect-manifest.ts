@@ -26,7 +26,7 @@ export interface ConnectManifest {
   profileSetupKey: string | null
 }
 
-function messageKey(value: unknown): value is string {
+export function messageKey(value: unknown): value is string {
   return (
     typeof value === 'string' &&
     value.length <= ChannelConnectFieldLimits.MESSAGE_KEY_MAX_LENGTH &&
