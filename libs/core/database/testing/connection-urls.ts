@@ -7,6 +7,13 @@
 //   2. In CI (CI=true; see isCiRun) DIRECT_DATABASE_URL is used as it is: the job has its own.
 //   3. Anywhere else, DIRECT_DATABASE_URL with its database replaced by TEST_DATABASE_NAME, which
 //      `pnpm db:test:prepare` creates and migrates beside the development one.
+//
+// WHICH SERVER THE APP TALKS TO. The owner always connects straight to Postgres (it sets data up and
+// is what migrations use). The api and the worker run as platform_app and platform_worker through
+// PgBouncer in production, so TEST_POOLER_URL (for example postgresql://localhost:6432) sends their
+// two URLs through it: the same suites then prove that the transaction-local settings, the row locks
+// and the advisory locks hold in transaction pooling (TDD_08 section 2.6). Without it they connect
+// directly, as before.
 export const TEST_DATABASE_NAME = 'platform_test'
 // The database docker-compose.yml creates and `.env.example` points at: the one a person works in
 export const DEVELOPMENT_DATABASE_NAME = 'platform_dev'
@@ -27,6 +34,43 @@ function asRole(url: string, role: string, password: string): string {
   parsed.username = role
   parsed.password = password
   return parsed.toString()
+}
+
+// The admin console of PgBouncer is a database of its own, and the monitoring role reads SHOW POOLS there
+export const PoolerAdmin = { DATABASE: 'pgbouncer', USER: 'pgbouncer' } as const
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]'])
+
+// The pooler the suites go through, or undefined for a direct connection. Only a local one: the
+// suites write rows, and a variable left in a shell must not send them to a shared server
+export function poolerUrl(): URL | undefined {
+  const value = process.env['TEST_POOLER_URL']
+  if (value === undefined || value === '') return undefined
+  const parsed = new URL(value)
+  if (!LOCAL_HOSTS.has(parsed.hostname)) {
+    throw new Error(`TEST_POOLER_URL must be a local PgBouncer, not ${parsed.hostname}`)
+  }
+  return parsed
+}
+
+function throughPooler(url: string): string {
+  const pooler = poolerUrl()
+  if (pooler === undefined) return url
+  const parsed = new URL(url)
+  parsed.hostname = pooler.hostname
+  parsed.port = pooler.port
+  return parsed.toString()
+}
+
+// The admin console, for a test that reads SHOW POOLS. The password is the one of the auth_user that
+// docker-compose.yml and .env.example name
+export function poolerAdminUrl(): string {
+  const pooler = poolerUrl()
+  if (pooler === undefined) throw new Error('TEST_POOLER_URL is required to read the pooler')
+  const admin = new URL(pooler.toString())
+  admin.username = PoolerAdmin.USER
+  admin.password = required('PGBOUNCER_AUTH_PASSWORD')
+  admin.pathname = `/${PoolerAdmin.DATABASE}`
+  return admin.toString()
 }
 
 function inTestDatabase(url: string): string {
@@ -66,7 +110,7 @@ export function connectionUrls(): { owner: string; app: string; worker: string }
   const owner = testOwnerUrl()
   return {
     owner,
-    app: asRole(owner, DatabaseRoles.APP, required('DB_APP_PASSWORD')),
-    worker: asRole(owner, DatabaseRoles.WORKER, required('DB_WORKER_PASSWORD'))
+    app: throughPooler(asRole(owner, DatabaseRoles.APP, required('DB_APP_PASSWORD'))),
+    worker: throughPooler(asRole(owner, DatabaseRoles.WORKER, required('DB_WORKER_PASSWORD')))
   }
 }

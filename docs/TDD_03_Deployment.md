@@ -239,11 +239,13 @@ services:
   postgres:
     image: postgres:18.6-alpine
     ports: ["5432:5432"]
+    # PgBouncer may hold max_db_connections (100) backends and the migrations connect beside it
+    command: ["postgres", "-c", "max_connections=200"]
     environment:
       POSTGRES_USER: platform
       POSTGRES_PASSWORD: dev_password
       POSTGRES_DB: platform_dev
-      PGBOUNCER_AUTH_PASSWORD: dev_pgbouncer_password
+      PGBOUNCER_AUTH_PASSWORD: ${PGBOUNCER_AUTH_PASSWORD:-dev_pgbouncer_password}
     volumes:
       # Postgres 18 keeps its data in a versioned subdirectory, so the volume is mounted one level up
       - postgres_data:/var/lib/postgresql
@@ -259,16 +261,24 @@ services:
     image: edoburu/pgbouncer:v1.25.2-p0
     ports: ["6432:6432"]
     environment:
-      # Only names the database and the auth_user password. Every other role (platform_app,
-      # platform_worker, the owner) is looked up with auth_query, so no fixed DB_USER
-      DATABASE_URL: postgres://pgbouncer:dev_pgbouncer_password@postgres:5432/platform_dev
+      # No database in the URL, so the image writes the wildcard entry (`* = host=postgres`): the test
+      # database goes through the pooler too. The URL only names the host and the auth_user; every other role
+      # (platform_app, platform_worker, the owner) is looked up with auth_query, so no fixed DB_USER
+      DATABASE_URL: postgres://pgbouncer:${PGBOUNCER_AUTH_PASSWORD:-dev_pgbouncer_password}@postgres:5432
       LISTEN_PORT: 6432
       AUTH_TYPE: scram-sha-256
       AUTH_USER: pgbouncer
       AUTH_QUERY: SELECT uname, phash FROM pgbouncer.user_lookup($1)
+      AUTH_DBNAME: platform_dev
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 1000
       DEFAULT_POOL_SIZE: 25
+      RESERVE_POOL_SIZE: 5
+      RESERVE_POOL_TIMEOUT: 3
+      SERVER_IDLE_TIMEOUT: 600
+      MAX_DB_CONNECTIONS: 100
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits
+      STATS_USERS: pgbouncer
     depends_on:
       postgres: { condition: service_healthy }
     healthcheck:

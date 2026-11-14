@@ -1,4 +1,4 @@
-import { connectionUrls, TEST_DATABASE_NAME } from './connection-urls'
+import { connectionUrls, poolerAdminUrl, PoolerAdmin, TEST_DATABASE_NAME } from './connection-urls'
 
 const DEV_URL = 'postgresql://platform:dev_password@localhost:5432/platform_dev'
 const NAMES = [
@@ -6,7 +6,9 @@ const NAMES = [
   'TEST_DATABASE_URL',
   'DIRECT_DATABASE_URL',
   'DB_APP_PASSWORD',
-  'DB_WORKER_PASSWORD'
+  'DB_WORKER_PASSWORD',
+  'TEST_POOLER_URL',
+  'PGBOUNCER_AUTH_PASSWORD'
 ] as const
 
 describe('connectionUrls', () => {
@@ -98,5 +100,51 @@ describe('connectionUrls', () => {
   it('still requires DIRECT_DATABASE_URL when nothing else names a database', () => {
     delete process.env['DIRECT_DATABASE_URL']
     expect(() => connectionUrls()).toThrow('DIRECT_DATABASE_URL is required')
+  })
+
+  describe('through PgBouncer', () => {
+    beforeEach(() => {
+      process.env['TEST_POOLER_URL'] = 'postgresql://localhost:6432'
+    })
+
+    it('sends the api and the worker to the pooler and keeps the owner on Postgres', () => {
+      const urls = connectionUrls()
+      expect(new URL(urls.owner).port).toBe('5432')
+      for (const url of [urls.app, urls.worker]) {
+        const parsed = new URL(url)
+        expect(parsed.host).toBe('localhost:6432')
+        expect(parsed.pathname).toBe(`/${TEST_DATABASE_NAME}`)
+      }
+      expect(new URL(urls.app).username).toBe('platform_app')
+      expect(new URL(urls.worker).username).toBe('platform_worker')
+    })
+
+    it('takes an empty TEST_POOLER_URL for none', () => {
+      process.env['TEST_POOLER_URL'] = ''
+      expect(new URL(connectionUrls().app).port).toBe('5432')
+    })
+
+    it('refuses a pooler that is not on this machine', () => {
+      process.env['TEST_POOLER_URL'] = 'postgresql://pooler.example.com:6432'
+      expect(() => connectionUrls()).toThrow('must be a local PgBouncer')
+    })
+
+    it('opens the admin console as the monitoring role, with its password from the environment', () => {
+      process.env['PGBOUNCER_AUTH_PASSWORD'] = 'pooler_password_1'
+      const admin = new URL(poolerAdminUrl())
+      expect(admin.host).toBe('localhost:6432')
+      expect(admin.pathname).toBe(`/${PoolerAdmin.DATABASE}`)
+      expect(admin.username).toBe(PoolerAdmin.USER)
+      expect(admin.password).toBe('pooler_password_1')
+    })
+
+    it('does not guess the admin password', () => {
+      expect(() => poolerAdminUrl()).toThrow('PGBOUNCER_AUTH_PASSWORD is required')
+    })
+
+    it('has no admin console without a pooler', () => {
+      delete process.env['TEST_POOLER_URL']
+      expect(() => poolerAdminUrl()).toThrow('TEST_POOLER_URL is required')
+    })
   })
 })

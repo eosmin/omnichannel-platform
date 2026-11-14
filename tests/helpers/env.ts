@@ -13,7 +13,8 @@ config({ path: resolve(__dirname, '../..'), pattern: '.env.local', silent: true 
 config({ path: resolve(__dirname, '../..'), pattern: '.env.example', silent: true })
 
 // The app under test connects as platform_app, the role the api runs with, and directly to
-// Postgres (no PgBouncer). It must not be able to do more than the real api can.
+// Postgres, unless TEST_POOLER_URL sends it through PgBouncer (`pnpm test:pooler`, jest.pooler.config.cts).
+// It must not be able to do more than the real api can.
 process.env['NODE_ENV'] = 'test'
 process.env['DATABASE_URL'] = connectionUrls().app
 delete process.env['DATABASE_REPLICA_URL']
