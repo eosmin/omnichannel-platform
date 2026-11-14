@@ -65,7 +65,9 @@ test.describe('analytics', () => {
       await expect(range).toHaveValue('last_7_days')
       // The new reads are done (no card says Loading) and none failed
       await expect(page.getByText(analytics.analytics.kpi.loading, { exact: true })).toHaveCount(0)
-      await expect(page.getByRole('alert')).toHaveCount(0)
+      // (The route announcer of Next is an alert too: the failures are looked for by their words)
+      await expect(page.getByText(analytics.analytics.kpi.failed)).toHaveCount(0)
+      await expect(page.getByText(analytics.analytics.panel.failed)).toHaveCount(0)
 
       const navigation = page.getByRole('navigation', { name: en.shell.nav.label })
       await expect(navigation.getByRole('link', { name: en.shell.nav.analytics })).toHaveAttribute(
