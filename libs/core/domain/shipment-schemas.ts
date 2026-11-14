@@ -93,16 +93,29 @@ export const bulkLocationIdsSchema = z.strictObject({
   departmentId: locationIdText,
   municipalityId: locationIdText
 })
+// A run that follows each order's planned carrier gives the places of each carrier that asks for them, by the id of its connection:
+// the run applies a pair to the orders that carrier makes the guide of, and to no other. The way a run pinned to one carrier gives its
+// pair (`connectionId` + `locationIds`) and this one are never used together.
+export const bulkLocationsByConnectionSchema = z
+  .record(uuidSchema, bulkLocationIdsSchema)
+  .refine(value => Object.keys(value).length <= BulkLabelLimits.MAX_PLACE_CARRIERS, {
+    message: 'too many carriers'
+  })
 export const bulkLabelsSchema = z
   .strictObject({
     orderIds: uniqueIds,
     connectionId: uuidSchema.optional(),
     locationIds: bulkLocationIdsSchema.optional(),
+    locationsByConnection: bulkLocationsByConnectionSchema.optional(),
     pickup: shipmentPickupSchema.optional()
   })
   .refine(value => value.locationIds === undefined || value.connectionId !== undefined, {
     message: 'places need the carrier they belong to',
     path: ['connectionId']
+  })
+  .refine(value => value.locationsByConnection === undefined || value.connectionId === undefined, {
+    message: 'a run pinned to a carrier gives its places with `locationIds`',
+    path: ['locationsByConnection']
   })
 export type BulkLabelsBody = z.output<typeof bulkLabelsSchema>
 

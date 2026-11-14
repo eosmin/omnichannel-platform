@@ -186,4 +186,79 @@ test.describe('the bulk actions of the orders page', () => {
       await places.remove()
     }
   })
+
+  // The default of the panel is each order's planned carrier, and the only real carrier asks for places: the selectors must be there
+  // without choosing it (QA FUNC-H8). The case never reaches the carrier, as the one above.
+  test('asks the places of the planned carrier in the default mode, and nothing for a batch that needs none', async () => {
+    const run = randomUUID().slice(0, 6)
+    const places: AskingCarrier = await addPlacesCarrier(storeId, run)
+    const name = `${customerName} planned`
+    const made = await addOrdersTo(storeId, name, [
+      { status: 'CONFIRMED', carrierConnectionId: places.connection.id },
+      { status: 'CONFIRMED', carrierConnectionId: places.connection.id }
+    ])
+    const plain = await addOrdersTo(storeId, `${name} plain`, [{ status: 'CONFIRMED' }])
+    const lists = (route: Route): Promise<void> => {
+      const parent = new URL(route.request().url()).searchParams.get('parentId')
+      return route.fulfill({
+        json:
+          parent === null
+            ? [{ id: '7', name: 'Baja', parentId: null }]
+            : [{ id: `${parent}2`, name: `Baja Dos ${parent}`, parentId: parent }]
+      })
+    }
+    let sent: unknown = null
+    const started = (route: Route): Promise<void> => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      sent = route.request().postDataJSON()
+      return route.fulfill({ status: 500, json: { code: 'INTERNAL_ERROR' } })
+    }
+    await page.route('**/carriers/*/locations*', lists)
+    await page.route('**/shipments/bulk', started)
+    try {
+      // A batch whose orders are planned for no carrier that asks for places shows no selectors and no wait
+      await page.goto(`${AppPaths.store.orders(storeId)}?q=${encodeURIComponent(`${name} plain`)}`)
+      for (const order of plain.orders) await expect(row(order)).toBeVisible()
+      await page.getByLabel(ORDERS.selectAll).check()
+      const bar = page.getByRole('region', { name: BULK.label })
+      await expect(bar.getByRole('button', { name: BULK.labels })).toBeEnabled()
+      await expect(bar.getByText(PLACES.legend, { exact: true })).toHaveCount(0)
+
+      await page.goto(`${AppPaths.store.orders(storeId)}?q=${encodeURIComponent(name)}`)
+      for (const order of made.orders) await expect(row(order)).toBeVisible()
+      await page.getByLabel(ORDERS.selectAll).check()
+      const labels = page.getByRole('region', { name: BULK.label }).getByRole('button', {
+        name: BULK.labels
+      })
+      const barOf = page.getByRole('region', { name: BULK.label })
+      // Nothing was chosen: the default is the planned carrier, and it asks for the places
+      await expect(barOf.getByLabel(BULK.carrierLabel)).toHaveValue('')
+      await expect(barOf.getByText(PLACES.legend, { exact: true })).toBeVisible()
+      await expect(labels).toBeDisabled()
+      await barOf.getByLabel(PLACES.department).selectOption({ label: 'Baja' })
+      await expect(labels).toBeDisabled()
+      await barOf.getByLabel(PLACES.municipality).selectOption({ label: 'Baja Dos 7' })
+      await expect(labels).toBeEnabled()
+      await labels.click()
+
+      await expect.poll(() => sent).not.toBeNull()
+      expect(sent).toMatchObject({
+        orderIds: expect.arrayContaining(made.orders.map(order => order.id)),
+        locationsByConnection: {
+          [places.connection.id]: { departmentId: '7', municipalityId: '72' }
+        }
+      })
+      expect(sent).not.toHaveProperty('connectionId')
+      const failed = page.getByRole('dialog', { name: BULK.report.failedTitle })
+      await expect(failed).toBeVisible()
+      await failed.getByRole('button', { name: BULK.report.close, exact: true }).click()
+      await expect(failed).toBeHidden()
+    } finally {
+      await page.unroute('**/carriers/*/locations*', lists)
+      await page.unroute('**/shipments/bulk', started)
+      await plain.remove()
+      await made.remove()
+      await places.remove()
+    }
+  })
 })

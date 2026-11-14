@@ -132,6 +132,15 @@ export class BulkLabelsService {
       if (connection === null) throw resourceNotFound('carrier')
       await this.assertPlaces(storeId, connection, body.locationIds)
     }
+    // The places of each planned carrier: each connection must be this store's and take them, and each pair must be in its list
+    for (const [connectionId, places] of Object.entries(body.locationsByConnection ?? {})) {
+      const connection = await this.prisma.client.carrierConnection.findFirst({
+        where: { id: connectionId, storeId },
+        select: { id: true, carrierId: true }
+      })
+      if (connection === null) throw resourceNotFound('carrier')
+      await this.assertPlaces(storeId, connection, places)
+    }
     // Runs that have not ended hold the queue of the heavy jobs, which also scans every file: a store has only so many at once. The
     // count and the write take turns, so that requests made together cannot all pass the count; a run older than the time the
     // cleanup gives it was lost, and does not count.
@@ -171,6 +180,9 @@ export class BulkLabelsService {
           jobId: row.id,
           ...(body.connectionId === undefined ? {} : { connectionId: body.connectionId }),
           ...(body.locationIds === undefined ? {} : { locationIds: body.locationIds }),
+          ...(body.locationsByConnection === undefined
+            ? {}
+            : { locationsByConnection: body.locationsByConnection }),
           ...(body.pickup === undefined ? {} : { pickup: body.pickup }),
           canOverridePrice: held.includes(Permissions.ORDERS_OVERRIDE_PRICE)
         },

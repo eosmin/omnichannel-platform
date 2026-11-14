@@ -43,6 +43,7 @@ export function OrderBulkPanel({
         availability={availabilityOf(input)}
         selectedCount={selectedIds.length}
         connections={connections}
+        input={input}
         onClear={onClear}
       />
       {bulk.report !== null || bulk.failure !== null ? (

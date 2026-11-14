@@ -22,7 +22,7 @@ import {
   BulkActionKinds,
   type BulkActionKind,
   type BulkInput,
-  type BulkLocationIds,
+  type BulkLabelsOptions,
   type BulkReport,
   confirmReport,
   jobProgress,
@@ -64,7 +64,7 @@ export interface OrderBulk {
   dismiss: () => void
   confirm: (via: string) => Promise<void>
   summary: () => Promise<void>
-  labels: (connectionId?: string, locationIds?: BulkLocationIds) => Promise<void>
+  labels: (options?: BulkLabelsOptions) => Promise<void>
   print: () => Promise<void>
   pickup: () => Promise<void>
 }
@@ -177,14 +177,17 @@ export function useOrderBulk(storeId: string, input: BulkInput): OrderBulk {
   )
 
   const labels = useCallback(
-    (connectionId?: string, locationIds?: BulkLocationIds) =>
+    ({ connectionId, locationIds, locationsByConnection }: BulkLabelsOptions = {}) =>
       execute(BulkActionKinds.LABELS, async () => {
         const ids = [...latest.current.selectedIds]
         let job: BulkLabelJobView = await startBulkLabels(apiClient, storeId, {
           orderIds: ids,
           ...(connectionId === undefined ? {} : { connectionId }),
           // Places only travel with the carrier they were chosen for
-          ...(connectionId === undefined || locationIds === undefined ? {} : { locationIds })
+          ...(connectionId === undefined || locationIds === undefined ? {} : { locationIds }),
+          ...(connectionId !== undefined || locationsByConnection === undefined
+            ? {}
+            : { locationsByConnection })
         })
         const startedAt = Date.now()
         while (RUNNING.has(job.status) && Date.now() - startedAt < POLL_LIMIT_MS) {

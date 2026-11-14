@@ -67,9 +67,11 @@ describe('Bulk labels with the places of the carrier', () => {
   let ctx: TestContext
   let prisma: PrismaService
   let located: FakeCarrier
+  let plainFake: FakeCarrier
   let runner: BulkLabelsRunner
   let heavy: CapturedQueue
   let locatedId = ''
+  let plainId = ''
   let localId = ''
 
   beforeAll(async () => {
@@ -95,6 +97,9 @@ describe('Bulk labels with the places of the carrier', () => {
       }
     })
     registry.register(located.plugin)
+    // A second carrier that asks for no places: a batch planned for both must give places to the first and to no guide of the second
+    plainFake = buildFakeCarrier({ id: CarrierId.C807, mode: 'pickup_bound', maxBatchSize: 2 })
+    registry.register(plainFake.plugin)
     heavy = queueOf(app, QueueNames.HEAVY_PROCESSING)
     runner = new BulkLabelsRunner(
       prisma,
@@ -116,6 +121,9 @@ describe('Bulk labels with the places of the carrier', () => {
     locatedId = (
       await createCarrierConnection(owner, { storeId: ctx.storeA.id, carrierId: CarrierId.FORZA })
     ).id
+    plainId = (
+      await createCarrierConnection(owner, { storeId: ctx.storeA.id, carrierId: CarrierId.C807 })
+    ).id
   })
   afterAll(async () => {
     await cleanUp(owner, prefix)
@@ -125,6 +133,8 @@ describe('Bulk labels with the places of the carrier', () => {
   beforeEach(() => {
     located.state.guides.clear()
     located.state.calls.length = 0
+    plainFake.state.guides.clear()
+    plainFake.state.calls.length = 0
     located.state.create = FakeCarrierBehaviors.OK
   })
   afterEach(async () => {
@@ -140,13 +150,13 @@ describe('Bulk labels with the places of the carrier', () => {
   const asAdmin = () => api(app, ctx.adminA, ctx.storeA)
   const asAdminB = () => api(app, ctx.adminB, ctx.storeB)
   const codeOf = (body: unknown) => (body as ErrorBody).error.code
-  const confirmed = () =>
+  const confirmed = (carrierConnectionId = locatedId) =>
     createOrder(owner, {
       storeId: ctx.storeA.id,
       status: 'CONFIRMED',
       shippingAddress: ADDRESS,
       allocatedAt: ctx.warehouseA.id,
-      carrierConnectionId: locatedId
+      carrierConnectionId
     })
   const start = (orderIds: string[], body: Record<string, unknown>) =>
     asAdmin()
@@ -264,5 +274,78 @@ describe('Bulk labels with the places of the carrier', () => {
       .post(ApiRoutes.shipments.bulk)
       .send({ orderIds: [order.id], connectionId: locatedId, locationIds: PLACES })
     expect(foreign.status).toBe(NOT_FOUND)
+  })
+
+  describe('a run that follows the planned carrier of each order (QA FUNC-H8)', () => {
+    it('gives the places of a carrier to its guides and to no guide of another carrier', async () => {
+      const [first, second, other] = await Promise.all([
+        confirmed(),
+        confirmed(),
+        confirmed(plainId)
+      ])
+      const response = await start([first.id, other.id, second.id], {
+        locationsByConnection: { [locatedId]: PLACES }
+      })
+      expect(response.status).toBe(ACCEPTED)
+      const accepted = response.body as JobBody
+      expect(queuedJob(accepted.id).locationsByConnection).toEqual({ [locatedId]: PLACES })
+
+      await withScan(() =>
+        runner.run(queuedJob(accepted.id), false, { scanWaitMs: 3000, scanPollMs: 25 })
+      )
+
+      const sent = located.callsTo('createShipment')
+      expect(sent).toHaveLength(2)
+      for (const call of sent) {
+        expect(
+          (call.args as { recipient: { locationIds?: unknown } }).recipient.locationIds
+        ).toEqual(PLACES)
+      }
+      // The other carrier asked for none, so none were sent to it
+      const asked = plainFake.state.calls
+      expect(asked.length).toBeGreaterThan(0)
+      expect(JSON.stringify(asked)).not.toContain('municipalityId')
+      const job = (await asAdmin().get(ApiRoutes.shipments.bulkJob(accepted.id))).body as JobBody
+      expect(job.succeeded).toBe(3)
+    })
+
+    it('refuses, with no run, places that are not in the list of their carrier', async () => {
+      const order = await confirmed()
+      const before = await runsOfStore()
+      const response = await start([order.id], {
+        locationsByConnection: { [locatedId]: { departmentId: '2', municipalityId: '11' } }
+      })
+      expect(response.status).toBe(BAD_REQUEST)
+      expect(codeOf(response.body)).toBe(ErrorCodes.SHIPPING_LOCATION_REQUIRED)
+      expect(await runsOfStore()).toBe(before)
+    })
+
+    it("refuses the places of a carrier that asks for none, and of a connection that is not the store's", async () => {
+      const order = await confirmed()
+      const before = await runsOfStore()
+      const notAsked = await start([order.id], { locationsByConnection: { [plainId]: PLACES } })
+      expect(notAsked.status).toBe(CONFLICT)
+      expect(codeOf(notAsked.body)).toBe(ErrorCodes.SHIPPING_CARRIER_CAPABILITY_MISSING)
+      const stranger = await asAdminB()
+        .post(ApiRoutes.shipments.bulk)
+        .send({
+          orderIds: [
+            (await createOrder(owner, { storeId: ctx.storeB.id, status: 'CONFIRMED' })).id
+          ],
+          locationsByConnection: { [locatedId]: PLACES }
+        })
+      expect(stranger.status).toBe(NOT_FOUND)
+      expect(await runsOfStore()).toBe(before)
+    })
+
+    it('does not take them together with a carrier the run is pinned to', async () => {
+      const order = await confirmed()
+      const response = await start([order.id], {
+        connectionId: locatedId,
+        locationIds: PLACES,
+        locationsByConnection: { [locatedId]: PLACES }
+      })
+      expect(response.status).toBe(BAD_REQUEST)
+    })
   })
 })

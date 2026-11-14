@@ -4,6 +4,7 @@ import { z } from 'zod'
 
 import {
   bulkLocationIdsSchema,
+  bulkLocationsByConnectionSchema,
   CarrierStatusLimits,
   channelIdSchema,
   OriginMediaSlots,
@@ -60,6 +61,7 @@ const bulkLabelsJobSchema = exactly<BulkLabelsMergeJob>()(
     jobId: z.uuid(),
     connectionId: z.uuid().optional(),
     locationIds: bulkLocationIdsSchema.optional(),
+    locationsByConnection: bulkLocationsByConnectionSchema.optional(),
     pickup: shipmentPickupSchema.optional(),
     canOverridePrice: z.boolean(),
     correlationId: z.string().optional()

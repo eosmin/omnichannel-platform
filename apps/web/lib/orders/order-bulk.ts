@@ -14,6 +14,7 @@ import {
   BulkLabelLimits,
   BulkOrderOutcomes,
   CarrierCapability,
+  CarrierConnectionStatus,
   OrderLimits,
   OrderMessageOutcomeStatus,
   OrderStatus,
@@ -27,16 +28,34 @@ import {
 export { liveGuidesByOrder } from './order-guides'
 
 // What this page reads of a connection of the store
-export type BulkConnection = Pick<CarrierConnectionView, 'id' | 'displayName' | 'capabilities'>
+export type BulkConnection = Pick<
+  CarrierConnectionView,
+  'id' | 'displayName' | 'status' | 'capabilities'
+> & {
+  // The carrier an order with none planned goes to (absent where a screen does not know it)
+  isDefault?: boolean
+}
 
-// The department and municipality of the carrier's own list that a run of labels sends for every order
+// What a run of labels is asked with: the carrier it is pinned to and its places, or the places of each planned carrier
+export interface BulkLabelsOptions {
+  connectionId?: string
+  locationIds?: BulkLocationIds
+  locationsByConnection?: Record<string, BulkLocationIds>
+}
+
+// The department and municipality of the carrier's own list that a run of labels sends for every order it makes a guide of
 export interface BulkLocationIds {
   departmentId: string
   municipalityId: string
 }
 
-// A connection that can make a guide by a request of its own or by the platform: the ones a run of labels can be pinned to
+// Compared with the text the api answers: a state is text on the wire, not one of our enums
+const ACTIVE_CONNECTION: string = CarrierConnectionStatus.ACTIVE
+
+// A connection that can make a guide by a request of its own or by the platform: the ones a run of labels can be pinned to. A
+// disconnected one "no longer creates guides" (Settings → Carriers): it stays in the history, not in this list
 export function canMakeGuides(connection: BulkConnection): boolean {
+  if (connection.status !== ACTIVE_CONNECTION) return false
   return (
     connection.capabilities.includes(CarrierCapability.CREATE_SHIPMENT) ||
     connection.capabilities.includes(CarrierCapability.INTERNAL_GUIDE) ||
@@ -55,6 +74,36 @@ export function placesConnectionOf(
   return target?.capabilities.includes(CarrierCapability.REQUIRES_LOCATION_IDS) === true
     ? target
     : null
+}
+
+// The connections whose places a run that follows each order's planned carrier must give: the carrier each selected order is planned for (the default one of the store when it has none), when it makes guides and declares that it needs places, once
+// each and in the order they first appear. An order that already has a guide counts too: the run reuses a printable one, but a part of
+// a split order or a guide that cannot be printed yet may still be asked of the carrier, and an extra selector costs less than a refusal. Decided by the declaration of the carrier, never by its name. A run pinned to a carrier
+// gives its places through `placesConnectionOf` and this is empty.
+export function plannedPlacesConnections(
+  input: Pick<BulkInput, 'selectedIds' | 'rows' | 'connections'>,
+  chosenId: string
+): BulkConnection[] {
+  if (chosenId !== '') return []
+  const rows = new Map(input.rows.map(row => [row.id, row]))
+  const fallback = input.connections.find(connection => connection.isDefault === true)
+  const needed = new Map<string, BulkConnection>()
+  for (const id of input.selectedIds) {
+    const row = rows.get(id)
+    if (row === undefined) continue
+    const planned =
+      row.carrierConnectionId === null
+        ? fallback
+        : input.connections.find(connection => connection.id === row.carrierConnectionId)
+    if (
+      planned !== undefined &&
+      canMakeGuides(planned) &&
+      planned.capabilities.includes(CarrierCapability.REQUIRES_LOCATION_IDS)
+    ) {
+      needed.set(planned.id, planned)
+    }
+  }
+  return [...needed.values()]
 }
 
 // The selector that pins a run to a carrier shows when there is a choice to make, or when the only carrier needs places (and the
