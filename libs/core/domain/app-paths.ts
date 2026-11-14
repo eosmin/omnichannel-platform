@@ -54,6 +54,7 @@ export const AppPaths = {
       `/s/${storeId}/remittances/${remittanceId}`,
     remittanceImport: (storeId: string) => `/s/${storeId}/remittances/import`,
     analytics: (storeId: string) => `/s/${storeId}/analytics`,
+    analyticsReports: (storeId: string) => `/s/${storeId}/analytics/reports`,
     settings: (storeId: string, section: StoreSettingsSection = StoreSettingsSections.GENERAL) =>
       `/s/${storeId}/settings/${section}`,
     exports: (storeId: string) => `/s/${storeId}/exports`,

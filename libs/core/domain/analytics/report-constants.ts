@@ -49,7 +49,9 @@ export const ReportLimits = {
   EMAIL_MAX_LENGTH: 254,
   // The days a file may span: a column for each metric and a row for each day
   MAX_DAYS: MetricQueryLimits.MAX_DAILY_RANGE_DAYS,
-  DEFAULT_SEND_AT_HOUR: 8
+  DEFAULT_SEND_AT_HOUR: 8,
+  // The zone a form starts from when the browser names none the api knows
+  FALLBACK_TIME_ZONE: 'UTC'
 } as const
 
 // The kinds of file a report or an export of the analytics may be, in the order a form offers them
