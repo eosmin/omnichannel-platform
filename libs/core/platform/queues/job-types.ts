@@ -160,6 +160,8 @@ export interface BulkLabelsMergeJob extends BaseJob {
   connectionId?: string
   // The places the request chose once for every order (only with `connectionId`, for a carrier that asks for them)
   locationIds?: { departmentId: string; municipalityId: string }
+  // The same for a run that follows each order's planned carrier: the pair of each connection that asks for places
+  locationsByConnection?: Record<string, { departmentId: string; municipalityId: string }>
   pickup?: { date: string; from: string; to: string }
   canOverridePrice: boolean
 }

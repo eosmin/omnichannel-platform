@@ -210,6 +210,9 @@ describe('HeavyProcessingProcessor', () => {
         jobId: JOB_ID,
         connectionId: '0a4bb3b1-3b6c-4a4f-8b53-6dd1b5a5c2f0',
         locationIds: { departmentId: '2', municipalityId: '21' },
+        locationsByConnection: {
+          '0a4bb3b1-3b6c-4a4f-8b53-6dd1b5a5c2f0': { departmentId: '2', municipalityId: '21' }
+        },
         pickup,
         canOverridePrice: true,
         extra: 'dropped'
@@ -221,6 +224,9 @@ describe('HeavyProcessingProcessor', () => {
           jobId: JOB_ID,
           connectionId: '0a4bb3b1-3b6c-4a4f-8b53-6dd1b5a5c2f0',
           locationIds: { departmentId: '2', municipalityId: '21' },
+          locationsByConnection: {
+            '0a4bb3b1-3b6c-4a4f-8b53-6dd1b5a5c2f0': { departmentId: '2', municipalityId: '21' }
+          },
           pickup,
           canOverridePrice: true
         },

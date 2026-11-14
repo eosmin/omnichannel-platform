@@ -461,6 +461,8 @@ export type GuideAffectingField = (typeof GuideAffectingFields)[keyof typeof Gui
 export const BulkLabelLimits = {
   // Orders of one run, and shipments of one merge
   MAX_ORDERS: ShipmentLimits.MAX_REQUESTS,
+  // Carriers whose places one run may give (a run that follows each order's planned carrier), far above the carriers a store has
+  MAX_PLACE_CARRIERS: 10,
   // Guides asked of one standalone connection at the same time when its plugin does not say; a plugin may ask for fewer or more
   // but never beyond the ceiling
   DEFAULT_CONCURRENCY: 3,

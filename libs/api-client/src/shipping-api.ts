@@ -93,6 +93,8 @@ export function startBulkLabels(
     orderIds: readonly string[]
     connectionId?: string
     locationIds?: { departmentId: string; municipalityId: string }
+    // A run that follows each order's planned carrier: the places of each connection that asks for them, by its id
+    locationsByConnection?: Record<string, { departmentId: string; municipalityId: string }>
   }
 ): Promise<BulkLabelJobView> {
   return client.request(ApiRoutes.shipments.bulk, {

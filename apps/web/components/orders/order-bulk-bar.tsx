@@ -12,9 +12,12 @@ import {
   BulkActionKinds,
   type BulkAvailability,
   type BulkConnection,
+  type BulkInput,
+  type BulkLocationIds,
   canMakeGuides,
   offersCarrierChoice,
-  placesConnectionOf
+  placesConnectionOf,
+  plannedPlacesConnections
 } from '../../lib/orders/order-bulk'
 import type { OrderBulk } from '../../lib/orders/use-order-bulk'
 import { Button } from '../ui/button'
@@ -94,6 +97,7 @@ export function OrderBulkBar({
   availability,
   selectedCount,
   connections,
+  input,
   onClear
 }: {
   storeId: string
@@ -101,14 +105,41 @@ export function OrderBulkBar({
   availability: BulkAvailability
   selectedCount: number
   connections: readonly BulkConnection[]
+  // The selection and what is known of it: which carriers its orders are planned for
+  input: BulkInput
   onClear: () => void
 }): ReactElement {
   const t = useTranslations('orders.bulk')
   const [confirming, setConfirming] = useState(false)
   const [connectionId, setConnectionId] = useState('')
-  const [places, setPlaces] = useState({ departmentId: '', municipalityId: '' })
-  // The places are asked once for the whole run, when the carrier it goes to declares that it needs them
+  const [placesBy, setPlacesBy] = useState<Record<string, BulkLocationIds>>({})
+  // The places are asked once for the whole run, for each carrier it goes to that declares that it needs them: the one the run is
+  // pinned to, or every planned carrier of the selected orders that does
   const placesConnection = placesConnectionOf(connections, connectionId)
+  const needed =
+    placesConnection === null ? plannedPlacesConnections(input, connectionId) : [placesConnection]
+  const chosen = (id: string): BulkLocationIds | undefined => {
+    const pair = placesBy[id]
+    return pair !== undefined && pair.municipalityId !== '' ? pair : undefined
+  }
+  const incomplete = needed.some(connection => chosen(connection.id) === undefined)
+  const startLabels = (): void => {
+    const pairs: Record<string, BulkLocationIds> = {}
+    for (const connection of needed) {
+      const pair = chosen(connection.id)
+      if (pair !== undefined) pairs[connection.id] = pair
+    }
+    if (placesConnection !== null) {
+      void bulk.labels({
+        connectionId: placesConnection.id,
+        locationIds: pairs[placesConnection.id]
+      })
+    } else if (needed.length > 0) {
+      void bulk.labels({ locationsByConnection: pairs })
+    } else {
+      void bulk.labels(connectionId === '' ? {} : { connectionId })
+    }
+  }
   const pinnable = connections.filter(canMakeGuides)
   const isBusy = bulk.busy !== null
   const running = (kind: BulkActionKind): boolean => bulk.busy === kind
@@ -153,7 +184,7 @@ export function OrderBulkBar({
                 disabled={isBusy}
                 onChange={event => {
                   setConnectionId(event.target.value)
-                  setPlaces({ departmentId: '', municipalityId: '' })
+                  setPlacesBy({})
                 }}
               >
                 <option value="">{t('plannedCarrier')}</option>
@@ -165,30 +196,28 @@ export function OrderBulkBar({
               </select>
             </>
           ) : null}
-          {placesConnection === null ? null : (
-            <div className="w-full">
+          {needed.map(connection => (
+            <div key={connection.id} className="w-full">
+              {placesConnection === null ? (
+                <p className="text-sm font-medium">{connection.displayName}</p>
+              ) : null}
               <GuideLocationSelects
                 namespace="orders.bulk.places"
-                key={placesConnection.id}
-                id="orders-bulk-places"
+                id={`orders-bulk-places-${connection.id}`}
                 storeId={storeId}
-                connectionId={placesConnection.id}
-                departmentId={places.departmentId}
-                municipalityId={places.municipalityId}
-                onChange={setPlaces}
+                connectionId={connection.id}
+                departmentId={placesBy[connection.id]?.departmentId ?? ''}
+                municipalityId={placesBy[connection.id]?.municipalityId ?? ''}
+                onChange={next => setPlacesBy(current => ({ ...current, [connection.id]: next }))}
               />
             </div>
-          )}
+          ))}
           <Button
             size="sm"
             variant="outline"
-            disabled={isBusy || (placesConnection !== null && places.municipalityId === '')}
+            disabled={isBusy || incomplete}
             busy={running(BulkActionKinds.LABELS)}
-            onClick={() =>
-              void (placesConnection === null
-                ? bulk.labels(connectionId === '' ? undefined : connectionId)
-                : bulk.labels(placesConnection.id, places))
-            }
+            onClick={startLabels}
           >
             <Tag aria-hidden />
             {t('labels')}

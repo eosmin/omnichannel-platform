@@ -172,6 +172,44 @@ describe('the body of a bulk run of labels', () => {
     }
   })
 
+  it('takes the places of each planned carrier by connection, and not together with a pinned carrier', () => {
+    const places = { departmentId: '2', municipalityId: '21' }
+    expect(
+      bulkLabelsSchema.safeParse({ orderIds: [ID], locationsByConnection: { [ID]: places } })
+        .success
+    ).toBe(true)
+    for (const locationsByConnection of [
+      { [ID]: { departmentId: '2' } },
+      { 'not-an-id': places },
+      { [ID]: { ...places, settlementId: '7' } }
+    ]) {
+      expect(bulkLabelsSchema.safeParse({ orderIds: [ID], locationsByConnection }).success).toBe(
+        false
+      )
+    }
+    expect(
+      bulkLabelsSchema.safeParse({
+        orderIds: [ID],
+        connectionId: ID,
+        locationsByConnection: { [ID]: places }
+      }).success
+    ).toBe(false)
+  })
+
+  it('takes the places of at most ten carriers', () => {
+    const places = { departmentId: '2', municipalityId: '21' }
+    const by = (count: number) =>
+      Object.fromEntries(
+        Array.from({ length: count }, (_, index) => [
+          `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+          places
+        ])
+      )
+    const body = (count: number) => ({ orderIds: [ID], locationsByConnection: by(count) })
+    expect(bulkLabelsSchema.safeParse(body(10)).success).toBe(true)
+    expect(bulkLabelsSchema.safeParse(body(11)).success).toBe(false)
+  })
+
   it('takes a hundred orders and not a hundred and one', () => {
     const ids = (count: number) =>
       Array.from(

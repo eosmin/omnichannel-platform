@@ -265,6 +265,16 @@ export class BulkLabelsRunner {
       canOverridePrice: data.canOverridePrice
     }
     const routes = await this.shipping.routesOf(storeId, requests, this.plugins)
+    // A run that follows each order's planned carrier gives the places by connection: a request gets the pair of the connection its
+    // guide will be asked of, which is known only now, and no other request gets one
+    if (data.locationsByConnection !== undefined) {
+      for (const request of requests) {
+        const route = routes.get(request.orderId)
+        const places =
+          route === undefined ? undefined : data.locationsByConnection[route.connectionId]
+        if (request.locationIds === undefined && places !== undefined) request.locationIds = places
+      }
+    }
     const make = async (batch: ShipmentRequest[]): Promise<void> => {
       const outcomes: ShipmentOutcome[] = await this.shipping.createShipments(
         storeId,

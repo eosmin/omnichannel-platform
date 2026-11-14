@@ -3,6 +3,7 @@ import { ClientPermissions } from '@platform/core/auth'
 import {
   BulkOrderOutcomes,
   CarrierCapability,
+  CarrierConnectionStatus,
   OrderMessageOutcomeStatus,
   OrderStatus,
   ShipmentKind,
@@ -11,6 +12,7 @@ import {
 
 import {
   availabilityOf,
+  canMakeGuides,
   type BulkConnection,
   BulkActionKinds,
   type BulkInput,
@@ -26,6 +28,7 @@ import {
   pickupTargets,
   offersCarrierChoice,
   placesConnectionOf,
+  plannedPlacesConnections,
   printReport,
   printTargets,
   reportCounts,
@@ -58,7 +61,7 @@ function guide(
 }
 
 function connection(capabilities: string[]): BulkConnection {
-  return { id: 'c1', displayName: 'X', capabilities }
+  return { id: 'c1', displayName: 'X', status: CarrierConnectionStatus.ACTIVE, capabilities }
 }
 
 const everything = (): boolean => true
@@ -397,6 +400,7 @@ describe('the connection whose places a run of labels asks for', () => {
   const connection = (id: string, capabilities: string[]): BulkConnection => ({
     id,
     displayName: id,
+    status: CarrierConnectionStatus.ACTIVE,
     capabilities
   })
   const located = connection('located', [
@@ -430,5 +434,106 @@ describe('the connection whose places a run of labels asks for', () => {
     const lookupOnly = connection('lookup', [CarrierCapability.REQUIRES_LOCATION_IDS])
     expect(placesConnectionOf([lookupOnly], 'lookup')).toBeNull()
     expect(placesConnectionOf([lookupOnly, plain], 'lookup')).toBeNull()
+  })
+})
+
+describe('the places a run that follows the planned carriers must give (QA FUNC-H8)', () => {
+  const connection = (id: string, capabilities: string[], isDefault = false): BulkConnection => ({
+    id,
+    displayName: id,
+    status: CarrierConnectionStatus.ACTIVE,
+    capabilities,
+    isDefault
+  })
+  const located = connection('located', [
+    CarrierCapability.CREATE_SHIPMENT,
+    CarrierCapability.REQUIRES_LOCATION_IDS
+  ])
+  const otherLocated = connection('other-located', [
+    CarrierCapability.PICKUP_BOUND_GUIDES,
+    CarrierCapability.REQUIRES_LOCATION_IDS
+  ])
+  const plain = connection('plain', [CarrierCapability.CREATE_SHIPMENT], true)
+  const planned = (id: string, carrierConnectionId: string | null): OrderSummaryView =>
+    ({ id, status: OrderStatus.CONFIRMED, carrierConnectionId }) as OrderSummaryView
+  const run = (
+    rows: OrderSummaryView[],
+    connections: BulkConnection[],
+    _guides: ReadonlyMap<string, ShipmentSummaryView[]> = new Map(),
+    chosenId = ''
+  ) =>
+    plannedPlacesConnections(
+      { selectedIds: rows.map(row => row.id), rows, connections },
+      chosenId
+    ).map(found => found.id)
+
+  it('names the carrier that asks for places, once, when the orders are planned for it', () => {
+    const rows = [planned('o1', 'located'), planned('o2', 'located'), planned('o3', 'plain')]
+    expect(run(rows, [located, plain])).toEqual(['located'])
+  })
+
+  it('names every planned carrier that asks, in the order they first appear', () => {
+    const rows = [planned('o1', 'other-located'), planned('o2', 'located')]
+    expect(run(rows, [located, otherLocated, plain])).toEqual(['other-located', 'located'])
+  })
+
+  it('names nothing for a batch whose carriers ask for no places', () => {
+    const rows = [planned('o1', 'plain'), planned('o2', 'plain')]
+    expect(run(rows, [located, plain])).toEqual([])
+  })
+
+  it('follows the default carrier of the store for an order with none planned', () => {
+    const asking = connection(
+      'asking',
+      [CarrierCapability.CREATE_SHIPMENT, CarrierCapability.REQUIRES_LOCATION_IDS],
+      true
+    )
+    expect(run([planned('o1', null)], [asking, plain])).toEqual(['asking'])
+    expect(run([planned('o1', null)], [located, plain])).toEqual([])
+  })
+
+  it('counts an order that already has a guide, which a split order or an unprinted guide may still ask of the carrier', () => {
+    const guides = new Map([['o1', [guide('g1', 'o1')]]])
+    expect(run([planned('o1', 'located')], [located, plain], guides)).toEqual(['located'])
+  })
+
+  it('asks nothing when the run is pinned to a carrier: that carrier gives its own places', () => {
+    expect(run([planned('o1', 'located')], [located, plain], new Map(), 'plain')).toEqual([])
+  })
+
+  it('ignores a carrier that is not among the connections that make guides', () => {
+    const lookupOnly = connection('lookup', [CarrierCapability.REQUIRES_LOCATION_IDS])
+    expect(run([planned('o1', 'lookup')], [lookupOnly, plain])).toEqual([])
+  })
+})
+
+describe('the connections a run of labels may be pinned to (QA TXT-1)', () => {
+  const live = (id: string): BulkConnection => ({
+    id,
+    displayName: id,
+    status: CarrierConnectionStatus.ACTIVE,
+    capabilities: [CarrierCapability.CREATE_SHIPMENT, CarrierCapability.REQUIRES_LOCATION_IDS]
+  })
+  const gone = (id: string): BulkConnection => ({
+    ...live(id),
+    status: CarrierConnectionStatus.DISABLED
+  })
+
+  it('leaves out a connection that was disconnected: it no longer makes guides', () => {
+    expect(canMakeGuides(live('a'))).toBe(true)
+    expect(canMakeGuides(gone('b'))).toBe(false)
+  })
+
+  it('never pins a run to one, asks its places, or offers the selector for it alone', () => {
+    expect(placesConnectionOf([live('a'), gone('b')], 'b')).toBeNull()
+    expect(offersCarrierChoice([gone('b')])).toBe(false)
+    expect(offersCarrierChoice([live('a'), gone('b')])).toBe(true)
+    const rows = [{ id: 'o1', carrierConnectionId: 'b' } as OrderSummaryView]
+    expect(
+      plannedPlacesConnections(
+        { selectedIds: ['o1'], rows, connections: [live('a'), gone('b')] },
+        ''
+      )
+    ).toEqual([])
   })
 })
