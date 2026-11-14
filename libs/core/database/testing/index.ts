@@ -2,6 +2,7 @@
 // ships imports it.
 export * from './connection-urls'
 export * from './owner-client'
+export * from './replica-database'
 export {
   ensureDefaultWarehouse,
   ensureMembership,

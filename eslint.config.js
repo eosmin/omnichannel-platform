@@ -361,6 +361,7 @@ export default defineConfig([
       'scripts/bucket-env.ts',
       'scripts/queue-env.ts',
       'libs/core/database/testing/connection-urls.ts',
+      'libs/core/database/testing/replica-database.ts',
       // Its spec sets and restores the variables the function reads
       'libs/core/database/testing/connection-urls.spec.ts',
       // Tooling that starts a process with the env of the shell (`pnpm dev`) or points the tests at a
