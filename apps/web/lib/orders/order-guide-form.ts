@@ -37,26 +37,19 @@ const MAKES_GUIDES: readonly string[] = [
 const has = (connection: GuideConnection, capability: string): boolean =>
   connection.capabilities.includes(capability)
 
-// The connections that can make an outbound guide from this screen: live, able to create one, and not one that asks for the
-// carrier's own ids of the places (the selectors for those come with the location lookup of the carrier adapters, Step 4.15)
+// The connections that can make an outbound guide from this screen: live and able to create one. A carrier that asks for its own ids
+// of the places (REQUIRES_LOCATION_IDS) is offered too: the dialog draws the selectors for it (`needsLocations`).
 export function guideConnections(connections: readonly GuideConnection[]): GuideConnection[] {
   return connections.filter(
     connection =>
       connection.status === ACTIVE &&
-      connection.capabilities.some(capability => MAKES_GUIDES.includes(capability)) &&
-      !has(connection, CarrierCapability.REQUIRES_LOCATION_IDS)
+      connection.capabilities.some(capability => MAKES_GUIDES.includes(capability))
   )
 }
 
-// How many live connections can make a guide but need the ids of the places: the dialog says they are not offered
-export function connectionsNeedingLocations(connections: readonly GuideConnection[]): number {
-  return connections.filter(
-    connection =>
-      connection.status === ACTIVE &&
-      connection.capabilities.some(capability => MAKES_GUIDES.includes(capability)) &&
-      has(connection, CarrierCapability.REQUIRES_LOCATION_IDS)
-  ).length
-}
+// A carrier that takes the ids of the department and municipality of the address instead of reading the text of it
+export const needsLocations = (connection: GuideConnection): boolean =>
+  has(connection, CarrierCapability.REQUIRES_LOCATION_IDS)
 
 // The connections that can make the guide of the way back
 export function returnGuideConnections(connections: readonly GuideConnection[]): GuideConnection[] {
@@ -118,6 +111,9 @@ export interface GuideDraft {
   pickupDate: string
   pickupFrom: string
   pickupTo: string
+  // The carrier's own ids of the places, for a carrier that asks for them; empty until chosen
+  departmentId: string
+  municipalityId: string
 }
 
 export function initialDraft(
@@ -136,7 +132,9 @@ export function initialDraft(
     notes: '',
     pickupDate: '',
     pickupFrom: '',
-    pickupTo: ''
+    pickupTo: '',
+    departmentId: '',
+    municipalityId: ''
   }
 }
 
@@ -158,7 +156,7 @@ export function pickupOf(
 }
 
 // The body of the guide, or null while the form is not ready. The service is sent only when one was chosen; the payer is always sent
-// (what the screen showed is what is made); the pickup only for a carrier that takes one.
+// (what the screen showed is what is made); the pickup only for a carrier that takes one; the places only for a carrier that asks for them.
 export function guideBody(
   draft: GuideDraft,
   connection: GuideConnection | undefined,
@@ -167,9 +165,15 @@ export function guideBody(
   if (connection === undefined) return null
   const pickup = needsPickup(connection) ? pickupOf(draft) : undefined
   if (pickup === null) return null
+  // A carrier that asks for the places is given none by default: the guide waits for both ids (the api refuses it without them)
+  const places = needsLocations(connection)
+  if (places && (draft.departmentId === '' || draft.municipalityId === '')) return null
   const notes = draft.notes.trim()
   return {
     connectionId: connection.id,
+    ...(places
+      ? { locationIds: { departmentId: draft.departmentId, municipalityId: draft.municipalityId } }
+      : {}),
     ...(draft.serviceCode === '' ? {} : { serviceCode: draft.serviceCode }),
     // A free-shipping order is paid by the sender whatever the draft holds
     shippingPayer: freeShipping ? ShippingPayer.SENDER : draft.payer,

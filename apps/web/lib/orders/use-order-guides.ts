@@ -10,9 +10,11 @@ import {
 
 import {
   type CarrierConnectionView,
+  type CarrierLocationView,
   cancelOrderShipment,
   createOrderShipment,
   fetchAllCarrierConnections,
+  fetchCarrierLocations,
   fetchOrderShipments,
   fetchShipmentLabelLink,
   markOrderShipmentVoided,
@@ -24,6 +26,8 @@ import type { CreateShipmentBody } from '@platform/core/domain'
 
 import { apiClient } from '../api'
 
+const LOCATIONS_STALE_MS = 60 * 60 * 1000
+
 // The connections of the store, for the dialogs that make a guide: the cache is the one of Settings → Carriers, so a connection
 // edited there is read again here. Reading them asks for shipping:view.
 export function useGuideConnections(
@@ -34,6 +38,29 @@ export function useGuideConnections(
     queryKey: QueryKeys.carriers.list(storeId),
     queryFn: ({ signal }) => fetchAllCarrierConnections(apiClient, storeId, signal),
     enabled
+  })
+}
+
+// The places a carrier lists under one parent (none: the departments), for the selectors of a carrier that asks for its own ids.
+// The api keeps each list a day, so a list is not asked again while the dialog is open. Reading them asks for shipping:view.
+export function useCarrierLocations(
+  storeId: string,
+  connectionId: string,
+  parentId: string | null,
+  enabled: boolean
+): UseQueryResult<CarrierLocationView[]> {
+  return useQuery({
+    queryKey: QueryKeys.carriers.locations(storeId, connectionId, parentId, ''),
+    queryFn: ({ signal }) =>
+      fetchCarrierLocations(
+        apiClient,
+        storeId,
+        connectionId,
+        parentId === null ? {} : { parentId },
+        signal
+      ),
+    enabled,
+    staleTime: LOCATIONS_STALE_MS
   })
 }
 

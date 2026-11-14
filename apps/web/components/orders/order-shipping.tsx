@@ -70,11 +70,14 @@ function printLabel(ask: (onLink: (url: string) => void, onFail: () => void) => 
 function ConfirmMove({
   action,
   shipment,
+  carrierCanCancel,
   writes,
   onClose
 }: {
   action: typeof ShipmentActions.CANCEL | typeof ShipmentActions.MARK_VOIDED
   shipment: OrderShipmentView
+  // False for a carrier that cannot be asked: the cancel only parks the guide until it is voided by hand
+  carrierCanCancel: boolean | null
   writes: ShipmentWrites
   onClose: () => void
 }): ReactElement {
@@ -87,7 +90,12 @@ function ConfirmMove({
         <DialogHeader>
           <DialogTitle>{t(`${action}.title`)}</DialogTitle>
           <DialogDescription>
-            {t(`${action}.description`, { guide: shipment.guideNumber ?? shipment.id })}
+            {t(
+              action === ShipmentActions.CANCEL && carrierCanCancel === false
+                ? 'cancel.descriptionManual'
+                : `${action}.description`,
+              { guide: shipment.guideNumber ?? shipment.id }
+            )}
           </DialogDescription>
         </DialogHeader>
         <MutationError error={mutation.error} />
@@ -316,6 +324,7 @@ export function OrderShipping({
         <ConfirmMove
           action={moving.action}
           shipment={target}
+          carrierCanCancel={carrierCanCancel(target.connectionId)}
           writes={writes}
           onClose={() => setMoving(null)}
         />
