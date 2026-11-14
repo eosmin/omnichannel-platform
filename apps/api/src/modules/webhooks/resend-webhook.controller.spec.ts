@@ -85,7 +85,9 @@ describe('ResendWebhookController', () => {
       expect.objectContaining({
         event: 'email.engagement',
         storeId: STORE_ID,
-        data: { type: 'email.opened', template: 'order-confirmation', messageId: 'e1' }
+        data: { type: 'email.opened', template: 'order-confirmation', messageId: 'e1' },
+        // The same id keys the row, so that a job delivered twice by a stalled worker writes once
+        eventKey: 'msg_1'
       }),
       { jobId: 'msg_1' } // The id of the delivery, so that a retried transaction cannot queue it twice
     )

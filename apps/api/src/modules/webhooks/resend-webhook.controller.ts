@@ -106,7 +106,8 @@ export class ResendWebhookController {
         event: AnalyticsEventNames.EMAIL_ENGAGEMENT,
         storeId,
         data: { type, template: event.tags?.['template'], messageId: event.email_id },
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        eventKey: eventId
       },
       // The event id as job id: if the transaction fails after the add, the retry cannot queue it twice
       { jobId: eventId }

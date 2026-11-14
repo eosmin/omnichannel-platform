@@ -20,8 +20,6 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
   AuditLog: { step: '7.2', reason: 'Read through the audit log viewer of the organization' },
   ConsentRecord: { step: '7.2', reason: 'Written by the compliance flows' },
   DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' },
-  MetricDaily: { step: '5.2', reason: 'Read only through the analytics queries' },
-  MetricHourly: { step: '5.2', reason: 'Read only through the analytics queries' },
   RetentionSettings: { step: '5.4', reason: 'Read and changed from the data retention settings' },
   ScheduledReport: { step: '5.2', reason: 'Managed from the analytics reports' },
   Webhook: { step: '5.4', reason: 'Managed from Settings' }

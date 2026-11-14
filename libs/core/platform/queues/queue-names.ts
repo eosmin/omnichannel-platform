@@ -93,6 +93,22 @@ export const originMediaJobId = (originId: string, slot: string): string =>
 export const checkRemittancesJobId = (storeId: string, day: string): string =>
   `${JobNames.CHECK_REMITTANCES}-${storeId}-${day}`
 
+// One rollup job per store, period and run: the run is the start of the hour or day that queued it, so the same run asked twice by
+// two replicas is one job while the run after recomputes the period again (a late webhook). Dashes, no colon.
+export const rollupJobId = (
+  jobName: typeof JobNames.ROLLUP_HOURLY | typeof JobNames.ROLLUP_DAILY,
+  storeId: string,
+  periodStart: Date,
+  runStart: Date
+): string => `${jobName}-${storeId}-${periodStart.getTime()}-${runStart.getTime()}`
+
+// The advisory lock of one rollup (a store and a period): two runs of the same one never write at the same time
+export const rollupLockKey = (
+  jobName: typeof JobNames.ROLLUP_HOURLY | typeof JobNames.ROLLUP_DAILY,
+  storeId: string,
+  periodStart: Date
+): string => `${jobName}-${storeId}-${periodStart.getTime()}`
+
 export const reconcileInventoryJobId = (storeId: string, day: string): string =>
   `${JobNames.RECONCILE_INVENTORY}-${storeId}-${day}`
 

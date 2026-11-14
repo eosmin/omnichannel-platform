@@ -1,9 +1,10 @@
 import { type Job, UnrecoverableError } from 'bullmq'
 
 import { AnalyticsEventNames } from '@platform/core/analytics'
-import { JobNames, type TrackAnalyticsJob } from '@platform/core/queues'
+import { JobNames, type RollupJob, type TrackAnalyticsJob } from '@platform/core/queues'
 
 import type { AnalyticsEventWriter } from '../analytics/analytics-event.writer'
+import type { AnalyticsRollupService } from '../analytics/analytics-rollup.service'
 
 import { AnalyticsProcessor } from './analytics.processor'
 import type { ProcessorSupport } from './processor-support'
@@ -11,19 +12,19 @@ import type { ProcessorSupport } from './processor-support'
 const STORE = '11111111-1111-4111-8111-111111111111'
 
 describe('AnalyticsProcessor', () => {
-  const write = jest.fn<Promise<void>, [TrackAnalyticsJob]>()
+  const write = jest.fn<Promise<boolean>, [TrackAnalyticsJob]>()
+  const rollup = jest.fn()
   // The inherited support (logs, metrics, dead letter) is not what is under test: it runs the job
   const support = {
     run: (_queue: string, job: Job, run: (job: Job) => Promise<void>) => run(job)
   }
   const processor = new AnalyticsProcessor(
     support as unknown as ProcessorSupport,
-    {
-      write
-    } as unknown as AnalyticsEventWriter
+    { write } as unknown as AnalyticsEventWriter,
+    { rollup } as unknown as AnalyticsRollupService
   )
-  const job = (name: string, data: unknown): Job<TrackAnalyticsJob> =>
-    ({ name, data }) as unknown as Job<TrackAnalyticsJob>
+  const job = (name: string, data: unknown): Job<TrackAnalyticsJob | RollupJob> =>
+    ({ name, data }) as unknown as Job<TrackAnalyticsJob | RollupJob>
   const event: TrackAnalyticsJob = {
     event: AnalyticsEventNames.EMAIL_ENGAGEMENT,
     storeId: STORE,
@@ -31,7 +32,10 @@ describe('AnalyticsProcessor', () => {
     timestamp: '2026-11-03T09:55:00.000Z'
   }
 
-  beforeEach(() => write.mockReset().mockResolvedValue(undefined))
+  beforeEach(() => {
+    write.mockReset().mockResolvedValue(true)
+    rollup.mockReset().mockResolvedValue([])
+  })
 
   it('writes the event of a track-event job', async () => {
     await processor.process(job(JobNames.TRACK_EVENT, event))
@@ -76,5 +80,94 @@ describe('AnalyticsProcessor', () => {
       UnrecoverableError
     )
     expect(write).not.toHaveBeenCalled()
+  })
+
+  it('hands over the event key of a track-event job, so that a redelivery writes nothing twice', async () => {
+    await processor.process(job(JobNames.TRACK_EVENT, { ...event, eventKey: 'msg_2abc' }))
+    expect(write).toHaveBeenCalledWith({ ...event, eventKey: 'msg_2abc' })
+  })
+
+  it('refuses for good an empty event key', async () => {
+    await expect(
+      processor.process(job(JobNames.TRACK_EVENT, { ...event, eventKey: '' }))
+    ).rejects.toBeInstanceOf(UnrecoverableError)
+  })
+
+  describe('rollups', () => {
+    const hour: RollupJob = {
+      storeId: STORE,
+      periodStart: '2026-11-10T09:00:00.000Z',
+      periodEnd: '2026-11-10T10:00:00.000Z'
+    }
+    const day: RollupJob = {
+      storeId: STORE,
+      periodStart: '2026-11-09T00:00:00.000Z',
+      periodEnd: '2026-11-10T00:00:00.000Z'
+    }
+
+    it('rolls up the hour of an hourly job for the store of the job', async () => {
+      await processor.process(job(JobNames.ROLLUP_HOURLY, hour))
+      expect(rollup).toHaveBeenCalledWith('hourly', STORE, {
+        start: new Date(hour.periodStart),
+        end: new Date(hour.periodEnd)
+      })
+    })
+
+    it('rolls up the day of a daily job', async () => {
+      await processor.process(job(JobNames.ROLLUP_DAILY, day))
+      expect(rollup).toHaveBeenCalledWith('daily', STORE, {
+        start: new Date(day.periodStart),
+        end: new Date(day.periodEnd)
+      })
+    })
+
+    it.each([
+      ['a day under an hourly name', JobNames.ROLLUP_HOURLY, day],
+      ['an hour under a daily name', JobNames.ROLLUP_DAILY, hour],
+      [
+        'an hour that does not start on the hour',
+        JobNames.ROLLUP_HOURLY,
+        { ...hour, periodStart: '2026-11-10T09:30:00.000Z', periodEnd: '2026-11-10T10:30:00.000Z' }
+      ],
+      ['a store id that is not a UUID', JobNames.ROLLUP_HOURLY, { ...hour, storeId: 'nope' }],
+      ['a period that is not a date', JobNames.ROLLUP_HOURLY, { ...hour, periodStart: 'now' }]
+    ])('refuses for good %s, and rolls nothing up', async (_label, name, data) => {
+      await expect(processor.process(job(name, data))).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(rollup).not.toHaveBeenCalled()
+    })
+
+    describe('with the clock at 10:00:00.000', () => {
+      beforeEach(() => {
+        jest.useFakeTimers({ now: new Date('2026-11-10T10:00:00.000Z') })
+      })
+      afterEach(() => jest.useRealTimers())
+
+      it('refuses for good the hour that is running, and rolls nothing up', async () => {
+        const running = {
+          storeId: STORE,
+          periodStart: '2026-11-10T10:00:00.000Z',
+          periodEnd: '2026-11-10T11:00:00.000Z'
+        }
+        await expect(
+          processor.process(job(JobNames.ROLLUP_HOURLY, running))
+        ).rejects.toBeInstanceOf(UnrecoverableError)
+        expect(rollup).not.toHaveBeenCalled()
+      })
+
+      it('takes the hour that closes at this very moment', async () => {
+        await processor.process(job(JobNames.ROLLUP_HOURLY, hour))
+        expect(rollup).toHaveBeenCalledTimes(1)
+      })
+    })
+
+    it('lets a failed rollup fail the job as it is', async () => {
+      const failure = new Error('connection lost')
+      rollup.mockRejectedValue(failure)
+      const error = await processor
+        .process(job(JobNames.ROLLUP_HOURLY, hour))
+        .catch((e: unknown) => e)
+      expect(error).toBe(failure)
+      expect(error).not.toBeInstanceOf(UnrecoverableError)
+    })
   })
 })
