@@ -3,7 +3,11 @@
 import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useId, useState } from 'react'
 
-import type { CarrierConnectFieldView, CarrierConnectionView } from '@platform/api-client'
+import type {
+  CarrierConnectFieldView,
+  CarrierConnectionView,
+  CarrierFeeSettingsView
+} from '@platform/api-client'
 import {
   CarrierConnectionLimits,
   CarrierConnectionStatus,
@@ -42,6 +46,7 @@ import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 import { Textarea } from '../ui/textarea'
 
+import { CarrierFeeInputs } from './carrier-fee-inputs'
 import { CarrierFieldInputs } from './carrier-field-inputs'
 
 // Edit a connection: its name, whether it is the default, the pickup rules (days, cutoff, automatic request, reminder),
@@ -50,11 +55,14 @@ import { CarrierFieldInputs } from './carrier-field-inputs'
 export function CarrierRulesDialog({
   connection,
   connectFields,
+  feeSettings,
   onClose
 }: {
   connection: CarrierConnectionView
   // What the registry says its carrier asks for; none (or not loaded yet): the free JSON box
   connectFields: readonly CarrierConnectFieldView[]
+  // What the registry says the carrier lets the owner agree (its commission and the rates of its services); none when it declares neither
+  feeSettings: CarrierFeeSettingsView
   onClose: () => void
 }): ReactElement {
   const t = useTranslations('settings.carriers.rules')
@@ -64,9 +72,9 @@ export function CarrierRulesDialog({
   const guard = useSubmitGuard()
   const id = useId()
   const [openedAs] = useState(connection.displayName)
-  const shape = credentialShapeOf(connection, connectFields)
+  const shape = credentialShapeOf(connection, connectFields, feeSettings)
   const [draft, setDraft] = useState<CarrierRulesDraft>(() =>
-    carrierRulesDraftOf(connection, shape.fields)
+    carrierRulesDraftOf(connection, shape.fields, shape.fees)
   )
   const [showProblems, setShowProblems] = useState(false)
   const disconnected = connection.status === String(CarrierConnectionStatus.DISABLED)
@@ -339,6 +347,15 @@ export function CarrierRulesDialog({
                   </label>
                 ) : null}
               </fieldset>
+              <CarrierFeeInputs
+                fees={shape.fees}
+                commission={draft.commission}
+                rates={draft.rates}
+                onChange={change => set(change)}
+                disabled={pending}
+                commissionInvalid={has('commission')}
+                ratesInvalid={has('rates')}
+              />
               {draft.services.length === 0 ? null : (
                 <fieldset className="flex flex-col gap-3 rounded-lg border p-4">
                   <legend className="px-1 text-sm font-medium">{t('services.legend')}</legend>

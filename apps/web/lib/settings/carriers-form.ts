@@ -1,12 +1,16 @@
 import type {
   CarrierConnectFieldView,
   CarrierConnectionView,
+  CarrierFeeSettingsView,
   ConnectCarrierInput,
   UpdateCarrierInput
 } from '@platform/api-client'
 import {
   CarrierCapability,
   CarrierConnectionLimits,
+  CarrierFeeLimits,
+  formatBpsAsPercent,
+  parsePercentToBps,
   CLOCK_TIME_PATTERN,
   LocalGuide,
   shippingFeeRangeProblem
@@ -41,7 +45,9 @@ export const CarrierRulesProblems = {
   FEE: 'fee',
   FEE_RANGE: 'feeRange',
   ATTEMPTS: 'attempts',
-  POLL: 'poll'
+  POLL: 'poll',
+  COMMISSION: 'commission',
+  RATES: 'rates'
 } as const
 export type CarrierRulesProblem = (typeof CarrierRulesProblems)[keyof typeof CarrierRulesProblems]
 
@@ -70,6 +76,9 @@ export interface CarrierRulesDraft {
   minFee: string
   maxFee: string
   remittanceDeductsFee: boolean
+  // The commission as a percent as typed ("4.5"; empty is none) and the cost of a guide in dollars by rate service of the carrier
+  commission: string
+  rates: Record<string, string>
   // Digits as typed
   maxDeliveryAttempts: string
   // Digits as typed; empty is "the platform's own interval"
@@ -100,9 +109,17 @@ export function courierDraftOf(
   }
 }
 
+// What a carrier declares it can be agreed with: none for one that declares nothing
+export const NO_FEE_SETTINGS: CarrierFeeSettingsView = { commission: false, rateServices: [] }
+
+// The text of a rate box: dollars, empty for a service with no rate
+const rateInput = (cents: number | undefined): string =>
+  cents === undefined ? '' : centsToInput(cents)
+
 export function carrierRulesDraftOf(
   view: CarrierConnectionView,
-  fields: readonly CarrierConnectFieldView[] = []
+  fields: readonly CarrierConnectFieldView[] = [],
+  fees: CarrierFeeSettingsView = NO_FEE_SETTINGS
 ): CarrierRulesDraft {
   return {
     displayName: view.displayName,
@@ -123,6 +140,13 @@ export function carrierRulesDraftOf(
     minFee: feeInput(view.minShippingFeeCents),
     maxFee: feeInput(view.maxShippingFeeCents),
     remittanceDeductsFee: view.remittanceDeductsFee,
+    commission: view.commissionBps === null ? '' : formatBpsAsPercent(view.commissionBps),
+    rates: Object.fromEntries(
+      fees.rateServices.map(service => [
+        service.code,
+        rateInput(view.serviceRatesCents[service.code])
+      ])
+    ),
     maxDeliveryAttempts: String(view.maxDeliveryAttempts),
     pollIntervalMinutes: view.pollIntervalMinutes === null ? '' : String(view.pollIntervalMinutes),
     services: view.services.map(service => ({ ...service }))
@@ -144,6 +168,40 @@ function wholeOf(text: string, min: number, max: number): number | undefined {
   if (!/^\d+$/.test(trimmed)) return undefined
   const value = Number(trimmed)
   return value >= min && value <= max ? value : undefined
+}
+
+// The commission: empty is none (null), otherwise a percent with up to two decimals inside the limit, as basis points. Undefined is a
+// text that is not one.
+function commissionOf(text: string): number | null | undefined {
+  if (text.trim() === '') return null
+  const bps = parsePercentToBps(text)
+  return bps !== null && bps <= CarrierFeeLimits.MAX_COMMISSION_BPS ? bps : undefined
+}
+
+// Whether the text of one rate box is a price or empty: the form marks the boxes that are not
+export const isRateText = (text: string): boolean => rateOf(text) !== undefined
+
+// A rate: empty is none (null), otherwise dollars as cents inside the limit. Undefined is a text that is not one.
+function rateOf(text: string): number | null | undefined {
+  if (text.trim() === '') return null
+  const cents = parseCents(text)
+  return cents !== null && cents <= CarrierFeeLimits.MAX_RATE_CENTS ? cents : undefined
+}
+
+// The table the boxes make: only the services with a price, each in cents; undefined when a box is not a price
+function ratesOf(rates: Record<string, string>): Record<string, number> | undefined {
+  const table: Record<string, number> = {}
+  for (const [code, text] of Object.entries(rates)) {
+    const cents = rateOf(text)
+    if (cents === undefined) return undefined
+    if (cents !== null) table[code] = cents
+  }
+  return table
+}
+
+const sameRates = (a: Record<string, number>, b: Record<string, number>): boolean => {
+  const keys = Object.keys(a)
+  return keys.length === Object.keys(b).length && keys.every(key => a[key] === b[key])
 }
 
 // Empty is none (null); a time is HH:MM. Undefined is a text that is neither.
@@ -180,21 +238,28 @@ export interface CredentialShape {
   fields: readonly CarrierConnectFieldView[]
   // The contact the courier has now: a change of it is what the edit sends
   savedCourier: CourierDraft | null
+  // The commission and the rates the carrier lets the owner agree: the boxes drawn, and the only ones an edit may send
+  fees: CarrierFeeSettingsView
 }
 
-export const FREE_JSON_SHAPE: CredentialShape = { fields: [], savedCourier: null }
+export const FREE_JSON_SHAPE: CredentialShape = {
+  fields: [],
+  savedCourier: null,
+  fees: NO_FEE_SETTINGS
+}
 
 export function credentialShapeOf(
   connection: Pick<
     CarrierConnectionView,
     'capabilities' | 'contact' | 'guidePrefix' | 'displayName'
   >,
-  declared: readonly CarrierConnectFieldView[]
+  declared: readonly CarrierConnectFieldView[],
+  fees: CarrierFeeSettingsView = NO_FEE_SETTINGS
 ): CredentialShape {
   if (hasInternalGuide(connection.capabilities)) {
-    return { fields: [], savedCourier: courierDraftOf(connection) }
+    return { fields: [], savedCourier: courierDraftOf(connection), fees }
   }
-  return { fields: declared, savedCourier: null }
+  return { fields: declared, savedCourier: null, fees }
 }
 
 const sameCourier = (a: CourierDraft, b: CourierDraft): boolean =>
@@ -307,6 +372,12 @@ export function carrierRulesProblems(
   ) {
     problems.push(CarrierRulesProblems.FEE_RANGE)
   }
+  if (shape.fees.commission && commissionOf(draft.commission) === undefined) {
+    problems.push(CarrierRulesProblems.COMMISSION)
+  }
+  if (ratesOf(ratesOfServices(shape.fees, draft.rates)) === undefined) {
+    problems.push(CarrierRulesProblems.RATES)
+  }
   if (
     wholeOf(draft.maxDeliveryAttempts, 1, CarrierConnectionLimits.MAX_DELIVERY_ATTEMPTS) ===
     undefined
@@ -320,6 +391,18 @@ export function carrierRulesProblems(
     problems.push(CarrierRulesProblems.POLL)
   }
   return problems
+}
+
+// The boxes of the services the carrier declares, and no other: a box left over from another carrier is not a rate
+function ratesOfServices(
+  fees: CarrierFeeSettingsView,
+  rates: Record<string, string>
+): Record<string, string> {
+  return Object.fromEntries(
+    fees.rateServices.flatMap(service =>
+      Object.hasOwn(rates, service.code) ? [[service.code, rates[service.code] ?? '']] : []
+    )
+  )
 }
 
 const sameDays = (a: readonly number[], b: readonly number[]): boolean =>
@@ -388,6 +471,25 @@ export function carrierRulesChanges(
   if (draft.remittanceDeductsFee !== saved.remittanceDeductsFee) {
     changes.remittanceDeductsFee = draft.remittanceDeductsFee
   }
+  if (shape.fees.commission) {
+    const commission = commissionOf(draft.commission)
+    if (commission !== undefined && commission !== saved.commissionBps) {
+      changes.commissionBps = commission
+    }
+  }
+  if (shape.fees.rateServices.length > 0) {
+    const typed = ratesOf(ratesOfServices(shape.fees, draft.rates))
+    if (typed !== undefined) {
+      // A rate the draft has no box for stays as it was: a service the carrier no longer declares, or one whose box was never drawn
+      // (the registry arrived after the dialog opened). Only a box the person emptied clears a rate.
+      const drawn = ratesOfServices(shape.fees, draft.rates)
+      const kept = Object.fromEntries(
+        Object.entries(saved.serviceRatesCents).filter(([code]) => !Object.hasOwn(drawn, code))
+      )
+      const table = { ...kept, ...typed }
+      if (!sameRates(table, saved.serviceRatesCents)) changes.serviceRatesCents = table
+    }
+  }
   const attempts = wholeOf(
     draft.maxDeliveryAttempts,
     1,
@@ -443,7 +545,9 @@ export const ConnectProblems = {
   COURIER_NAME: 'courierName',
   COURIER_PHONE: 'courierPhone',
   COURIER_PREFIX: 'courierPrefix',
-  COURIER_NOTES: 'courierNotes'
+  COURIER_NOTES: 'courierNotes',
+  COMMISSION: 'commission',
+  RATES: 'rates'
 } as const
 export type ConnectProblem = (typeof ConnectProblems)[keyof typeof ConnectProblems]
 
@@ -459,6 +563,9 @@ export interface ConnectDraft {
   courierPhone: string
   courierNotes: string
   courierPrefix: string
+  // What was agreed with the carrier, as typed: a percent ("4.5") and dollars by rate service; empty is none
+  commission: string
+  rates: Record<string, string>
   isDefault: boolean
 }
 
@@ -471,6 +578,8 @@ export const EMPTY_CONNECT_DRAFT: ConnectDraft = {
   courierPhone: '',
   courierNotes: '',
   courierPrefix: '',
+  commission: '',
+  rates: {},
   isDefault: false
 }
 
@@ -479,6 +588,8 @@ export interface ConnectTarget {
   hasCredentials: boolean
   // What the registry says the carrier asks for; none: the free JSON
   connectFields: readonly CarrierConnectFieldView[]
+  // What the registry says it lets the owner agree: the commission and the services with a rate
+  feeSettings: CarrierFeeSettingsView
 }
 
 // The form of a carrier that declares fields: its own, and never the JSON box
@@ -522,16 +633,26 @@ export function connectProblems(
       problems.push(ConnectProblems.CREDENTIALS)
     }
   }
+  if (target.feeSettings.commission && commissionOf(draft.commission) === undefined) {
+    problems.push(ConnectProblems.COMMISSION)
+  }
+  if (ratesOf(ratesOfServices(target.feeSettings, draft.rates)) === undefined) {
+    problems.push(ConnectProblems.RATES)
+  }
   return problems
 }
 
 // The body of the connect call. Call it with no problems.
 export function connectBody(draft: ConnectDraft, target: ConnectTarget): ConnectCarrierInput {
   const name = draft.displayName.trim()
+  const commission = target.feeSettings.commission ? commissionOf(draft.commission) : null
+  const rates = ratesOf(ratesOfServices(target.feeSettings, draft.rates)) ?? {}
   const base = {
     carrierId: draft.carrierId,
     ...(name === '' ? {} : { displayName: name }),
-    ...(draft.isDefault ? { isDefault: true } : {})
+    ...(draft.isDefault ? { isDefault: true } : {}),
+    ...(commission === null || commission === undefined ? {} : { commissionBps: commission }),
+    ...(Object.keys(rates).length === 0 ? {} : { serviceRatesCents: rates })
   }
   if (hasInternalGuide(target.capabilities)) {
     return {

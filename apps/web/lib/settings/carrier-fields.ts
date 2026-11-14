@@ -16,3 +16,18 @@ export const carrierFieldHelpOf = (
   field: Pick<CarrierConnectFieldView, 'helpKey'>,
   message: (key: string) => string | null
 ): string | null => fieldHelpOf(field, message, CarrierMessagePrefix)
+
+// A rate service names itself the same way, by a message key of the rates section of this page
+export const CarrierRateMessagePrefix = 'settings.carriers.rates.'
+
+// The name of a service with a rate of its own: the message the plugin aims at, or else the code of the service
+export function carrierRateLabelOf(
+  service: { code: string; labelKey: string },
+  message: (key: string) => string | null
+): string {
+  if (service.labelKey.startsWith(CarrierRateMessagePrefix)) {
+    const text = message(service.labelKey)
+    if (text !== null) return text
+  }
+  return service.code
+}

@@ -3526,7 +3526,9 @@
           "courierPhone": "Write the phone of the courier (up to 30 characters).",
           "courierPrefix": "The prefix is 1 to 6 capital letters or digits.",
           "courierNotes": "The notes are too long.",
-          "fields": "Fill in every field that is not marked optional."
+          "fields": "Fill in every field that is not marked optional.",
+          "commission": "The commission is a percentage like 4.5, from 0 to 50, or empty.",
+          "rates": "A rate is an amount like 3.50, or empty."
         },
         "fields": {
           "c807": {
@@ -3619,7 +3621,9 @@
           "courierName": "Write the name of the courier (up to 80 characters).",
           "courierPhone": "Write the phone of the courier (up to 30 characters).",
           "courierPrefix": "The prefix is 1 to 6 capital letters or digits.",
-          "courierNotes": "The notes are too long."
+          "courierNotes": "The notes are too long.",
+          "commission": "The commission is a percentage like 4.5, from 0 to 50, or empty.",
+          "rates": "A rate is an amount like 3.50, or empty."
         },
         "save": "Save",
         "saving": "Saving…",
@@ -3722,6 +3726,24 @@
       },
       "webhook": {
         "headerLabel": "Header name"
+      },
+      "fees": {
+        "legend": "Commission and rates",
+        "hint": "What you agreed with the carrier. It is used to work out how much it should remit for each cash-on-delivery guide, if you turned on that it deducts its fee from the cash.",
+        "commission": "Carrier commission (%)",
+        "commissionHint": "A percentage of the cash it collects, for example 4.5. Empty means no commission.",
+        "rates": "Shipping rate by service (US$)",
+        "ratesHint": "What the carrier charges for each guide of that service. Empty means no rate."
+      },
+      "rates": {
+        "c807": {
+          "cce": "Cash on delivery (CCE)",
+          "sec": "Recipient pays shipping (SEC)",
+          "ser": "Order already paid (SER)"
+        },
+        "forza": {
+          "home": "Home delivery"
+        }
       }
     },
     "returns": {

@@ -34,6 +34,7 @@ import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 import { Textarea } from '../ui/textarea'
 
+import { CarrierFeeInputs } from './carrier-fee-inputs'
 import { CarrierFieldInputs } from './carrier-field-inputs'
 
 // Connect a carrier (TDD_17 §6). What the form asks for comes from what the registry says of the carrier: a courier the
@@ -195,6 +196,15 @@ export function CarrierConnectDialog({
                   <p className="text-muted-foreground text-xs">{t('credentialsHint')}</p>
                 </div>
               ) : null}
+              <CarrierFeeInputs
+                fees={target.feeSettings}
+                commission={draft.commission}
+                rates={draft.rates}
+                onChange={change => set(change)}
+                disabled={pending}
+                commissionInvalid={has('commission')}
+                ratesInvalid={has('rates')}
+              />
               <Field
                 id={`${id}-name`}
                 label={t('displayName')}
