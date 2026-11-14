@@ -55,6 +55,7 @@ const TITLE_OF_PAGE: Record<string, string> = {
   's/[storeId]/remittances/[remittanceId]/page.tsx': 'remittances',
   's/[storeId]/remittances/import/page.tsx': 'remittanceImport',
   's/[storeId]/products/page.tsx': 'products',
+  's/[storeId]/analytics/page.tsx': 'analytics',
   's/[storeId]/exports/page.tsx': 'exports',
   's/[storeId]/settings/page.tsx': 'settings',
   's/[storeId]/settings/general/page.tsx': 'settingsGeneral',

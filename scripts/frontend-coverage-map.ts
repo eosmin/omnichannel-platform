@@ -197,6 +197,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'notifications.pushSubscription': { step: '3.5' },
   'notifications.pushSubscriptionRemove': { step: '3.5' },
   'analytics.metrics': { step: '5.2' },
+  'analytics.myPerformance': { step: '5.2' },
   'analytics.dashboard': { step: '5.2' },
   'analytics.reports': { step: '5.2' },
   'analytics.reportById': { step: '5.2' },

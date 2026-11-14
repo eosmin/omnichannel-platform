@@ -1,0 +1,54 @@
+{
+  "analytics": {
+    "title": "Analytics",
+    "intro": "How the team and the store are doing, from the figures the platform keeps hour by hour.",
+    "utcNote": "Figures are of whole days in UTC that are already over, up to yesterday. Today is in the My performance box of the inbox.",
+    "range": {
+      "label": "Period",
+      "last_7_days": "Last 7 days",
+      "last_30_days": "Last 30 days",
+      "last_90_days": "Last 90 days",
+      "last_month": "Last month"
+    },
+    "kpi": {
+      "loading": "Loading",
+      "failed": "This figure could not be loaded.",
+      "noData": "No data",
+      "noComparison": "Nothing to compare with",
+      "vsPrevious": "vs the period before",
+      "conversations": { "title": "New conversations" },
+      "firstResponse": { "title": "First response time" },
+      "resolution": { "title": "Resolution time" },
+      "revenue": { "title": "Revenue" }
+    },
+    "chart": {
+      "label": "{caption}. The numbers are in the table that follows.",
+      "day": "Day"
+    },
+    "panel": {
+      "loading": "Loading",
+      "failed": "This could not be loaded."
+    },
+    "volume": {
+      "title": "Conversation volume",
+      "caption": "Conversations that came in and conversations resolved, each day",
+      "created": "New",
+      "resolved": "Resolved"
+    },
+    "channels": {
+      "title": "Conversations by channel",
+      "empty": "No conversations in this period."
+    },
+    "agents": {
+      "title": "Team performance",
+      "caption": "Conversations resolved and first response time of each person",
+      "agent": "Person",
+      "resolved": "Resolved",
+      "firstResponse": "First response",
+      "noTime": "No answers",
+      "formerMember": "Former team member",
+      "unknownMember": "Team member",
+      "empty": "Nobody resolved a conversation in this period."
+    }
+  }
+}

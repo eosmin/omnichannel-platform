@@ -23,6 +23,7 @@ describe('parseSidebarLayout', () => {
     expect(parseSidebarLayout(stored)).toEqual([
       { id: SidebarWidgets.TEAM_STATUS, isHidden: true },
       { id: SidebarWidgets.UNASSIGNED_QUEUE, isHidden: false },
+      { id: SidebarWidgets.MY_PERFORMANCE, isHidden: false },
       { id: SidebarWidgets.QUICK_ACTIONS, isHidden: false }
     ])
   })
@@ -38,6 +39,7 @@ describe('parseSidebarLayout', () => {
 
     expect(parseSidebarLayout(stored)).toEqual([
       { id: SidebarWidgets.TEAM_STATUS, isHidden: true },
+      { id: SidebarWidgets.MY_PERFORMANCE, isHidden: false },
       { id: SidebarWidgets.QUICK_ACTIONS, isHidden: false },
       { id: SidebarWidgets.UNASSIGNED_QUEUE, isHidden: false }
     ])
@@ -49,6 +51,7 @@ describe('moveWidget', () => {
     const moved = moveWidget(DEFAULT_SIDEBAR_LAYOUT, SidebarWidgets.TEAM_STATUS, -1)
 
     expect(moved.map(entry => entry.id)).toEqual([
+      SidebarWidgets.MY_PERFORMANCE,
       SidebarWidgets.QUICK_ACTIONS,
       SidebarWidgets.TEAM_STATUS,
       SidebarWidgets.UNASSIGNED_QUEUE
@@ -56,7 +59,7 @@ describe('moveWidget', () => {
   })
 
   it('leaves the layout as it is at either end', () => {
-    expect(moveWidget(DEFAULT_SIDEBAR_LAYOUT, SidebarWidgets.QUICK_ACTIONS, -1)).toBe(
+    expect(moveWidget(DEFAULT_SIDEBAR_LAYOUT, SidebarWidgets.MY_PERFORMANCE, -1)).toBe(
       DEFAULT_SIDEBAR_LAYOUT
     )
     expect(moveWidget(DEFAULT_SIDEBAR_LAYOUT, SidebarWidgets.TEAM_STATUS, 1)).toBe(
