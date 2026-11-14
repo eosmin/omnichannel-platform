@@ -464,6 +464,22 @@ describe('The API keys of a store', () => {
       expect(JSON.stringify(entry?.metadata)).not.toContain(made.key)
     })
 
+    it('never holds more than its maker holds now: a demotion lowers the keys at once', async () => {
+      const { membershipId, made } = await maker()
+      await call(`${PROBE}/customers`, made.key).expect(OK)
+      const lowered = await owner.role.create({
+        data: {
+          storeId: ctx.storeA.id,
+          name: `${prefix}-no-customers`,
+          permissions: { create: [{ name: Permissions.ORDERS_VIEW }] }
+        }
+      })
+
+      await owner.membership.update({ where: { id: membershipId }, data: { roleId: lowered.id } })
+
+      await call(`${PROBE}/customers`, made.key).expect(FORBIDDEN)
+    })
+
     it('does not touch the keys of the same person in another store', async () => {
       const { membershipId, made } = await maker()
       const sibling = await owner.apiKey.create({

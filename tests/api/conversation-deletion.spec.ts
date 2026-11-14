@@ -14,6 +14,7 @@ import {
   MessageType
 } from '@platform/core/domain'
 import { Events } from '@platform/core/events'
+import { StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
 import { createConversation, createConversationOf, createMessage, createOrder } from '../builders'
@@ -99,10 +100,10 @@ describe('Deleting a conversation by hand', () => {
       }
     })
     const keys = {
-      plain: `${prefix}/${randomUUID()}/plain.pdf`,
-      full: `${prefix}/${randomUUID()}/full.webp`,
-      medium: `${prefix}/${randomUUID()}/medium.webp`,
-      thumb: `${prefix}/${randomUUID()}/thumb.webp`
+      plain: StorageKeys.message(storeId, message.id, 'plain.pdf'),
+      full: StorageKeys.message(storeId, message.id, 'picture.webp'),
+      medium: StorageKeys.messageVariant(storeId, message.id, 'medium'),
+      thumb: StorageKeys.messageVariant(storeId, message.id, 'thumb')
     }
     const file = (key: string, variants?: object) =>
       owner.media.create({
@@ -188,6 +189,44 @@ describe('Deleting a conversation by hand', () => {
       customerId: conversation.customerId
     })
     expect(JSON.stringify(event?.payload)).not.toContain('where is my parcel')
+  })
+
+  it('never deletes a key outside the store, which a damaged variants column could name', async () => {
+    const { conversation, message, keys } = await fullConversation()
+    const foreign = StorageKeys.message(ctx.storeB.id, randomUUID(), 'theirs.png')
+    await owner.media.create({
+      data: {
+        storeId: ctx.storeA.id,
+        purpose: 'message',
+        messageId: message.id,
+        customerId: conversation.customerId,
+        key: `${keys.plain}.copy`,
+        filename: 'f',
+        contentType: 'image/png',
+        fileSize: 10,
+        status: 'clean',
+        variants: { full: foreign, thumb: foreign }
+      }
+    })
+
+    await asAdmin().delete(ApiRoutes.conversations.byId(conversation.id)).expect(NO_CONTENT)
+
+    const named = deleted.mock.calls.map(([key]) => key)
+    expect(named).not.toContain(foreign)
+    expect(named).toContain(`${keys.plain}.copy`)
+  })
+
+  it('does not move the updated_at of an order that loses its conversation', async () => {
+    const { conversation } = await fullConversation()
+    const order = await createOrder(owner, { storeId: ctx.storeA.id })
+    const old = new Date('2026-01-01T00:00:00Z')
+    await owner.$executeRaw`UPDATE orders SET conversation_id = ${conversation.id}, updated_at = ${old} WHERE id = ${order.id}`
+
+    await asAdmin().delete(ApiRoutes.conversations.byId(conversation.id)).expect(NO_CONTENT)
+
+    const kept = await owner.order.findUniqueOrThrow({ where: { id: order.id } })
+    expect(kept.conversationId).toBeNull()
+    expect(kept.updatedAt).toEqual(old)
   })
 
   it('audits who deleted what and how much, never the text', async () => {

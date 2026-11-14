@@ -102,16 +102,19 @@ export class ApiKeyGuard implements CanActivate {
     }
 
     // A key acts for the person who made it: while that person is not an active member of the store (suspended, or
-    // removed) the key does not work. Suspending is reversible and so is this; removing also revokes the key for good
-    // (MembersService.remove), so a person who is invited again does not bring their old keys back.
+    // removed) the key does not work, and it never holds more than their role holds now (a demotion lowers their keys
+    // at once). Suspending is reversible and so is this; removing also revokes the key for good (MembersService.remove),
+    // so a person who is invited again does not bring their old keys back.
     const maker = await this.prisma.client.membership.findFirst({
       where: { userId: key.createdBy, storeId: key.storeId, status: MembershipStatus.ACTIVE },
-      select: { id: true }
+      select: { role: { select: { permissions: { select: { name: true } } } } }
     })
     if (maker === null) throw invalidKey()
+    const held = new Set(maker.role.permissions.map(permission => permission.name))
 
-    // Only what a key may hold counts: a row written some other way cannot give it more
-    const scopes = key.scopes.filter(isApiKeyScope)
+    // Only what a key may hold counts: a row written some other way cannot give it more, nor can it hold what its maker
+    // no longer does
+    const scopes = key.scopes.filter(isApiKeyScope).filter(scope => held.has(scope))
     const required = this.reflector.getAllAndOverride<Permission[] | undefined>(
       API_KEY_SCOPES_KEY,
       [context.getHandler(), context.getClass()]

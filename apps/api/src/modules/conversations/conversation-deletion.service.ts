@@ -1,24 +1,18 @@
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
-import { z } from 'zod'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
+import { RetentionRun } from '@platform/core/compliance'
 import { PrismaService } from '@platform/core/database'
 import { CONVERSATION_RESOURCE_TYPE } from '@platform/core/domain'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { isHiddenStatus, lockConversationForWrite } from '@platform/core/messaging'
+import { objectKeysOf } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
 import type { Actor } from '../tenancy'
-
-// What the worker wrote under `Media.variants`: the keys of the sizes of a picture
-const variantsSchema = z.object({
-  full: z.string().optional(),
-  medium: z.string().optional(),
-  thumb: z.string().optional()
-})
 
 // What a manual deletion removed, in numbers only
 export interface ConversationDeletion {
@@ -48,58 +42,53 @@ export class ConversationDeletionService {
     conversationId: string,
     actor: Actor
   ): Promise<ConversationDeletion> {
-    const outcome = await this.prisma.transaction(async tx => {
-      // No viewer: the permission to delete reaches every conversation of the store. One of another store is one
-      // that does not exist.
-      const locked = await lockConversationForWrite(tx, storeId, conversationId)
-      const conversation = await tx.conversation.findUniqueOrThrow({
-        where: { id: conversationId, storeId },
-        select: { customerId: true, channelType: true }
-      })
-      const messages = await tx.message.findMany({
-        where: { conversationId, storeId },
-        select: { id: true }
-      })
-      const origins = await tx.conversationOrigin.findMany({
-        where: { conversationId, storeId },
-        select: { id: true }
-      })
-      const messageIds = messages.map(message => message.id)
-      const originIds = origins.map(origin => origin.id)
-      // The files are rows of their own that point at the message with no cascade (a file may outlive its message
-      // in the gallery of other places), so they are found and deleted here, and so are the pictures of the ads
-      const files = await tx.media.findMany({
-        where: {
+    const outcome = await this.prisma.transaction(
+      async tx => {
+        // No viewer: the permission to delete reaches every conversation of the store. One of another store is one
+        // that does not exist.
+        const locked = await lockConversationForWrite(tx, storeId, conversationId)
+        const conversation = await tx.conversation.findUniqueOrThrow({
+          where: { id: conversationId, storeId },
+          select: { customerId: true, channelType: true }
+        })
+        const messageCount = await tx.message.count({ where: { conversationId, storeId } })
+        // The files are rows of their own that point at the message with no cascade (a file may outlive its message
+        // in the gallery of other places), so they are found and deleted here, and so are the pictures of the ads.
+        // Found through the conversation, never through a list of ids: a conversation of any length is one query.
+        const filesOfConversation = {
           storeId,
-          OR: [{ messageId: { in: messageIds } }, { originId: { in: originIds } }]
-        },
-        select: { id: true, key: true, variants: true }
-      })
-      await tx.media.deleteMany({ where: { id: { in: files.map(file => file.id) } } })
-      // An order keeps its place in the customer's history and forgets only the conversation it came from
-      await tx.order.updateMany({
-        where: { storeId, conversationId },
-        data: { conversationId: null }
-      })
-      // Messages, reactions, revisions, origins and the links of the tags go with it (onDelete: Cascade)
-      await tx.conversation.delete({ where: { id: conversationId, storeId } })
-      this.events.publish(tx, Events.CONVERSATION_DELETED, {
-        storeId,
-        conversationId,
-        customerId: conversation.customerId,
-        visibility: { hidden: isHiddenStatus(locked.status), assignedTo: locked.assignedTo }
-      })
-      return {
-        counts: { messages: messageIds.length, files: files.length },
-        keys: files.flatMap(file => keysOf(file.key, file.variants)),
-        channelType: conversation.channelType,
-        customerId: conversation.customerId
-      }
-    })
-
-    // After the commit and never waited on for its result: a key that is not deleted here is a stray object, and the
-    // orphan cleanup of the worker removes it. The rows are gone either way, so nothing can be served from them.
-    await this.deleteObjects(outcome.keys)
+          OR: [{ message: { conversationId } }, { origin: { conversationId } }]
+        }
+        const files = await tx.media.findMany({
+          where: filesOfConversation,
+          select: { key: true, variants: true }
+        })
+        await tx.media.deleteMany({ where: filesOfConversation })
+        // An order keeps its place in the customer's history and forgets only the conversation it came from
+        // (written raw so that the link going away is not a change of the order: its `updated_at` stays)
+        await tx.$executeRaw`
+        UPDATE orders SET conversation_id = NULL WHERE store_id = ${storeId} AND conversation_id = ${conversationId}`
+        // Messages, reactions, revisions, origins and the links of the tags go with it (onDelete: Cascade)
+        await tx.conversation.delete({ where: { id: conversationId, storeId } })
+        this.events.publish(tx, Events.CONVERSATION_DELETED, {
+          storeId,
+          conversationId,
+          customerId: conversation.customerId,
+          visibility: { hidden: isHiddenStatus(locked.status), assignedTo: locked.assignedTo }
+        })
+        // Only keys under the store's own prefix are deleted: a damaged `variants` column cannot name the files of
+        // another store or of a person
+        const named = files.map(file => objectKeysOf(storeId, file))
+        return {
+          counts: { messages: messageCount, files: files.length },
+          keys: named.flatMap(item => item.keys),
+          foreign: named.reduce((total, item) => total + item.foreign.length, 0),
+          channelType: conversation.channelType,
+          customerId: conversation.customerId
+        }
+      },
+      { timeout: RetentionRun.TRANSACTION_TIMEOUT_MS }
+    )
 
     this.audit.log({
       action: AuditAction.CONVERSATION_DELETED,
@@ -117,12 +106,27 @@ export class ConversationDeletionService {
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
+    // The entry is written before the objects are touched: the deletion is done and has to be on record even if the
+    // bucket is slow or the process stops here
+    if (outcome.foreign > 0) {
+      this.logger.warn(
+        { storeId, count: outcome.foreign },
+        'a file of a deleted conversation has a key outside the store and was left in the bucket'
+      )
+    }
+    // Chunked, like the retention run: a conversation can hold thousands of files. A key that is not deleted is a
+    // stray object, and the orphan cleanup of the worker removes it; the rows are gone either way.
+    await this.deleteObjects(outcome.keys)
     return outcome.counts
   }
 
   private async deleteObjects(keys: readonly string[]): Promise<void> {
-    const results = await Promise.allSettled(keys.map(key => this.storage.delete(key)))
-    const failed = results.filter(result => result.status === 'rejected').length
+    let failed = 0
+    for (let at = 0; at < keys.length; at += RetentionRun.FILE_DELETE_CONCURRENCY) {
+      const chunk = keys.slice(at, at + RetentionRun.FILE_DELETE_CONCURRENCY)
+      const results = await Promise.allSettled(chunk.map(key => this.storage.delete(key)))
+      failed += results.filter(result => result.status === 'rejected').length
+    }
     if (failed > 0) {
       this.logger.warn(
         { failed, total: keys.length },
@@ -130,10 +134,4 @@ export class ConversationDeletionService {
       )
     }
   }
-}
-
-function keysOf(key: string, variants: unknown): string[] {
-  const parsed = variantsSchema.safeParse(variants)
-  const sizes = parsed.success ? Object.values(parsed.data) : []
-  return [...new Set([key, ...sizes.filter((size): size is string => typeof size === 'string')])]
 }
