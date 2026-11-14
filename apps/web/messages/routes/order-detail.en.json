@@ -163,6 +163,7 @@
           "cancel": {
             "title": "Cancel the guide",
             "description": "The carrier is asked to cancel guide {guide}. It stays \"cancelling\" until the carrier answers.",
+            "descriptionManual": "The carrier of guide {guide} cannot be asked to cancel it. The guide waits as \"Cancelling\" and then as \"Cancel failed\"; once you have told the carrier yourself, mark it as voided.",
             "confirm": "Cancel guide",
             "done": "The cancellation was requested."
           },
@@ -205,7 +206,15 @@
         "confirm": "Make guide",
         "done": "The guide was requested.",
         "noConnection": "No connection of the store can make a guide. Connect a carrier in Settings.",
-        "onlyWithLocations": "{count, plural, one {The connection that can make guides asks} other {The # connections that can make guides ask}} for the carrier's own ids of the places, which this screen cannot take yet.",
+        "locations": {
+          "legend": "Destination",
+          "hint": "This carrier asks for its own list of places. Choose the department and the municipality of the delivery address.",
+          "department": "Department",
+          "municipality": "Municipality",
+          "choose": "Choose",
+          "loading": "Loading",
+          "failed": "The carrier could not list its places. Try again in a moment."
+        },
         "returnTitle": "Make the guide of the way back",
         "returnDescription": "A guide from the customer to the warehouse, for a carrier that can make it. It is never cash on delivery.",
         "warehouseLabel": "Warehouse the goods go to",

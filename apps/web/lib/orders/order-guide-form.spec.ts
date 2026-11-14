@@ -7,7 +7,6 @@ import {
 
 import {
   codPreview,
-  connectionsNeedingLocations,
   defaultConnection,
   type GuideConnection,
   guideBody,
@@ -15,6 +14,7 @@ import {
   initialDraft,
   initialPayer,
   initialService,
+  needsLocations,
   needsPickup,
   pickupOf,
   returnGuideBody,
@@ -51,13 +51,14 @@ describe('which connections make a guide', () => {
     expect(guideConnections(list).map(c => c.id)).toEqual(['a', 'd', 'e'])
   })
 
-  it('leaves out, and counts, the ones that ask for the ids of the places', () => {
+  it('offers the ones that ask for the ids of the places, and says which they are', () => {
     const needs = connection({
       id: 'n',
       capabilities: [CarrierCapability.CREATE_SHIPMENT, CarrierCapability.REQUIRES_LOCATION_IDS]
     })
-    expect(guideConnections([needs])).toEqual([])
-    expect(connectionsNeedingLocations([needs, connection()])).toBe(1)
+    expect(guideConnections([needs, connection()]).map(c => c.id)).toEqual(['n', 'c1'])
+    expect(needsLocations(needs)).toBe(true)
+    expect(needsLocations(connection())).toBe(false)
   })
 
   it('offers the way back only to a connection that declares it', () => {
@@ -184,6 +185,32 @@ describe('guideBody', () => {
 
   it('is not ready without a connection', () => {
     expect(guideBody(draft, undefined, false)).toBeNull()
+  })
+
+  describe('a carrier that asks for the ids of the places', () => {
+    const places = connection({
+      capabilities: [CarrierCapability.CREATE_SHIPMENT, CarrierCapability.REQUIRES_LOCATION_IDS]
+    })
+    const started = initialDraft(places, false)
+
+    it('starts with none chosen and waits for both', () => {
+      expect(started).toMatchObject({ departmentId: '', municipalityId: '' })
+      expect(guideBody(started, places, false)).toBeNull()
+      expect(guideBody({ ...started, departmentId: '5' }, places, false)).toBeNull()
+      expect(guideBody({ ...started, municipalityId: '9' }, places, false)).toBeNull()
+    })
+
+    it('sends both ids once chosen', () => {
+      expect(
+        guideBody({ ...started, departmentId: '5', municipalityId: '9' }, places, false)
+      ).toMatchObject({ locationIds: { departmentId: '5', municipalityId: '9' } })
+    })
+
+    it('sends no ids to a carrier that does not ask for them, whatever the draft holds', () => {
+      expect(
+        guideBody({ ...draft, departmentId: '5', municipalityId: '9' }, connection(), false)
+      ).not.toHaveProperty('locationIds')
+    })
   })
 })
 

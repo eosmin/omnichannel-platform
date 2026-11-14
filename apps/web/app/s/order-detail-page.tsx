@@ -304,6 +304,7 @@ export function OrderDetailPage(): ReactElement {
           />
           {guideOpen && connections.data !== undefined ? (
             <CreateGuideDialog
+              storeId={storeId}
               order={data}
               connections={connections.data}
               writes={shipmentWrites}

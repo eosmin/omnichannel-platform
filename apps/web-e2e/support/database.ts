@@ -14,6 +14,7 @@ import {
 import {
   AuthorType,
   type CaptionState,
+  CarrierId,
   ChannelConnectionStatus,
   ChannelIds,
   type DeliveryStatus,
@@ -1320,6 +1321,66 @@ export async function addGuidedOrdersTo(
         await owner.order.deleteMany({ where: { id: { in: ids } } })
         await owner.carrierService.deleteMany({ where: { connectionId: made.connection.id } })
         await owner.carrierConnection.deleteMany({ where: { id: made.connection.id } })
+      })
+  }
+}
+
+export interface AskingCarrier {
+  connection: { id: string; name: string }
+  // Two orders with a guide at the connection: one just made and one whose cancel failed
+  made: { id: string; orderNumber: string }
+  cancelFailed: { id: string; orderNumber: string }
+  remove: () => Promise<void>
+}
+
+// A live connection of the carrier that asks for the ids of the places and cannot be asked to cancel (the official one the registry
+// holds with those capabilities), with a guide of each state a hand has to settle. No credentials: the case never reaches the carrier.
+export async function addPlacesCarrier(storeId: string, run: string): Promise<AskingCarrier> {
+  const made = await withOwner(async owner => {
+    const connection = await createCarrierConnection(owner, {
+      storeId,
+      carrierId: CarrierId.C807,
+      displayName: `Places ${run}`
+    })
+    const first = await createShipment(owner, { storeId, connectionId: connection.id })
+    const second = await createShipment(owner, {
+      storeId,
+      connectionId: connection.id,
+      status: ShipmentStatus.CANCEL_FAILED
+    })
+    const named = await owner.order.findMany({
+      where: { id: { in: [first.orderId, second.orderId] } },
+      select: { id: true, orderNumber: true }
+    })
+    const number = (id: string): { id: string; orderNumber: string } =>
+      named.find(order => order.id === id) ?? { id, orderNumber: '' }
+    return { connection, first: number(first.orderId), second: number(second.orderId) }
+  })
+  return {
+    connection: { id: made.connection.id, name: made.connection.displayName },
+    made: made.first,
+    cancelFailed: made.second,
+    remove: () =>
+      withOwner(async owner => {
+        const ids = [made.first.id, made.second.id]
+        const attempt = async (step: () => Promise<unknown>): Promise<void> => {
+          try {
+            await step()
+          } catch {
+            // Kept by a row that cannot go (an event of the order): the next run uses its own names
+          }
+        }
+        await attempt(() =>
+          owner.shipmentEvent.deleteMany({ where: { shipment: { orderId: { in: ids } } } })
+        )
+        await attempt(() => owner.shipment.deleteMany({ where: { orderId: { in: ids } } }))
+        await attempt(() => owner.order.deleteMany({ where: { id: { in: ids } } }))
+        await attempt(() =>
+          owner.carrierService.deleteMany({ where: { connectionId: made.connection.id } })
+        )
+        await attempt(() =>
+          owner.carrierConnection.deleteMany({ where: { id: made.connection.id } })
+        )
       })
   }
 }
