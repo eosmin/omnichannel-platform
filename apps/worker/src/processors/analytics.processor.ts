@@ -3,6 +3,7 @@ import { type Job, UnrecoverableError } from 'bullmq'
 import { z } from 'zod'
 
 import { AnalyticsEventNames } from '@platform/core/analytics'
+import { searchEventDataSchema } from '@platform/core/domain'
 import { JobNames, QueueNames, type TrackAnalyticsJob } from '@platform/core/queues'
 
 import { AnalyticsEventWriter } from '../analytics/analytics-event.writer'
@@ -11,7 +12,7 @@ import { BaseProcessor } from './base.processor'
 import { ProcessorSupport } from './processor-support'
 
 // Checked against the job type of the queue: a field added there and not here fails to compile
-const trackEventSchema: z.ZodType<TrackAnalyticsJob, unknown> = z.object({
+const rawEventSchema = z.object({
   event: z.enum(AnalyticsEventNames),
   storeId: z.uuid(),
   data: z.record(z.string(), z.unknown()),
@@ -20,8 +21,22 @@ const trackEventSchema: z.ZodType<TrackAnalyticsJob, unknown> = z.object({
   correlationId: z.string().optional()
 })
 
-// The raw events of analytics (TDD_11 §7.1). The rollups and the search event are Phase 2: nothing
-// queues them in the MVP, and the queue refuses a job it does not know instead of keeping it.
+// The search event has its own job and its own data check: through this one it would be written with any data
+const trackEventSchema: z.ZodType<TrackAnalyticsJob, unknown> = rawEventSchema.refine(
+  job => job.event !== AnalyticsEventNames.SEARCH_PERFORMED,
+  { message: 'a search event is queued as a search job' }
+)
+
+// The search event is a TRACK_SEARCH job: the same shape as a raw event, but only ever `search.performed`, with the
+// data the search route queues (`searchEventDataSchema`)
+const trackSearchSchema: z.ZodType<TrackAnalyticsJob, unknown> = rawEventSchema.extend({
+  event: z.literal(AnalyticsEventNames.SEARCH_PERFORMED),
+  // What is written is what this check returns, not what was queued
+  data: searchEventDataSchema
+})
+
+// The raw events of analytics (TDD_11 §7.1) and the search event. The rollups are Step 5.2's, and the queue refuses a
+// job it does not know instead of keeping it.
 @Processor(QueueNames.ANALYTICS, { concurrency: 5 })
 export class AnalyticsProcessor extends BaseProcessor<TrackAnalyticsJob> {
   constructor(
@@ -33,11 +48,15 @@ export class AnalyticsProcessor extends BaseProcessor<TrackAnalyticsJob> {
 
   protected async handle(job: Job<TrackAnalyticsJob>): Promise<void> {
     // The job crossed Redis: what does not fit now will not fit when it is tried again
-    if (job.name !== JobNames.TRACK_EVENT) {
-      throw new UnrecoverableError('the analytics queue does not know this job')
-    }
-    const parsed = trackEventSchema.safeParse(job.data)
-    if (!parsed.success) throw new UnrecoverableError('the track-event job does not fit its schema')
+    const schema = this.schemaOf(job.name)
+    const parsed = schema.safeParse(job.data)
+    if (!parsed.success) throw new UnrecoverableError(`the ${job.name} job does not fit its schema`)
     await this.events.write(parsed.data)
+  }
+
+  private schemaOf(name: string): z.ZodType<TrackAnalyticsJob, unknown> {
+    if (name === JobNames.TRACK_EVENT) return trackEventSchema
+    if (name === JobNames.TRACK_SEARCH) return trackSearchSchema
+    throw new UnrecoverableError('the analytics queue does not know this job')
   }
 }

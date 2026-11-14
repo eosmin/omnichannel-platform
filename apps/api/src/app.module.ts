@@ -28,6 +28,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module'
 import { RemittancesModule } from './modules/remittances/remittances.module'
 import { ReturnsModule } from './modules/returns/returns.module'
 import { RoutingModule } from './modules/routing/routing.module'
+import { SearchModule } from './modules/search/search.module'
 import { SettingsModule } from './modules/settings/settings.module'
 import { ShipmentsModule } from './modules/shipments/shipments.module'
 import { TeamModule } from './modules/team/team.module'
@@ -67,6 +68,7 @@ import { WidgetModule } from './modules/widget/widget.module'
     OrdersModule,
     ReturnsModule,
     ProductsModule,
+    SearchModule,
     TransfersModule,
     WarehousesModule,
     SettingsModule,

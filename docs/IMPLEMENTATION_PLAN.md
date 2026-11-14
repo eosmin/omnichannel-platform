@@ -1211,7 +1211,7 @@ ships with the `local` carrier and the fake carrier.
   - (a) The Playwright case was written under low memory and **not run locally** (the machine was swapping); its first run is the CI one.
   - (b) Native inputs and one group of boxes as the rest of the screen: the layout of the group on a phone is part of **Step 7.7**.
 
-- [ ] **Left by QA round 3 of 4.15 (rule 12)** (reports `qa-ronda-3-A.md` and `qa-ronda-3-B.md` of 2026-11-14; no code changes in the PR that wrote this): (1) [A] after a create, the label of a guide answers 409 for about 8 seconds and then 200 (carrier lag): the label fetch needs a retry or a poll, **Step 4.15 or a Step 4.14 follow-up**; (2) [A, product question for the owner] a carrier that refuses the credentials on a guide create leaves the shipment `failed` with no notification and the connection is not marked broken: TDD_17 asks for neither, so the owner decides whether the connection health should show it, **Step 7.4**; (3) [A] the audit entry of a webhook secret rotation cannot be read through any route: **Step 7.1**; (4) [B, P2] in Shipments at 390 px the overflow of the table makes the shipment panel 664 px wide and it is cut on the right (measured with one tool: confirm with a second one first): **Step 7.7**; (5) [B, P3, all **Step 7.7**] B-1 no Retry button on the places error, B-2 no `aria-busy` or announcement while the places load, B-3 the 409 of the places says "Try again" (misleading: it is the credentials), B-4 the error of the guide POST sits below the fold and is not cleared when the department changes, B-6 controls are 40 px (under 44) and checkboxes 20x20 on touch.
+- [ ] **Left by QA round 3 of 4.15 (rule 12)** (reports `qa-ronda-3-A.md` and `qa-ronda-3-B.md` of 2026-11-14; no code changes in the PR that wrote this): (1) [A] after a create, the label of a guide answers 409 for about 8 seconds and then 200 (carrier lag): the label fetch needs a retry or a poll, **Step 4.15** (Step 4.14 is closed, so it has no follow-up to own this); (2) [A, product question for the owner] a carrier that refuses the credentials on a guide create leaves the shipment `failed` with no notification and the connection is not marked broken: TDD_17 asks for neither, so the owner decides whether the connection health should show it, **Step 7.4**; (3) [A] the audit entry of a webhook secret rotation cannot be read through any route: **Step 7.1**; (4) [B, P2] in Shipments at 390 px the overflow of the table makes the shipment panel 664 px wide and it is cut on the right (measured with one tool: confirm with a second one first): **Step 7.7**; (5) [B, P3, all **Step 7.7**] B-1 no Retry button on the places error, B-2 no `aria-busy` or announcement while the places load, B-3 the 409 of the places says "Try again" (misleading: it is the credentials), B-4 the error of the guide POST sits below the fold and is not cleared when the department changes, B-6 controls are 40 px (under 44) and checkboxes 20x20 on touch.
 
 - [ ] **Left by the texts/UX QA of 4.15 (rule 12), all owned by Step 7.7** (report of 2026-11-14; TXT-1 was fixed in PR 5: the carrier selector of the bulk labels offers only connected connections, `canMakeGuides` checks the status):
   - TXT-2 (P2): the connect form with empty required fields shows one error at the bottom, out of view, the focus stays on the carrier selector and the invalid inputs have `aria-invalid` with no `aria-describedby`: move the focus and the description to the first invalid field.
@@ -1239,44 +1239,183 @@ sandbox.
 
 ---
 
-## Milestone 4B — Finance (owner request of 2026-11-10; design first)
+## Milestone 4B — Finance (owner request of 2026-11-10, design settled 2026-11-14)
 
 The owner asked for purchase orders, several accounts, balances, incomes and expenses, and formal accounting, all connected
-and automatic (requirements: `~/qa-reportes-2026-11-10/requisitos-finanzas.md`, approved; design pending). It starts after
-Step 4.15 and before Milestone 5, because it reads stock, orders, returns and COD remittances, which must exist first.
-Decisions already taken: USD only; accounts shared by the whole organization in the MVP and per store in Phase 2 (the model is
-born with organization scope and leaves the way to `storeId` with no data migration); complete and formal accounting (double
-entry, chart of accounts, journal and ledger, income statement, balance sheet, VAT); weighted-average costing in the MVP and
-FIFO after; granular permissions, administrators only at first; monthly closes that lock what is closed.
+and automatic. The design is `TDD_18_Finance.md` (requirements: `~/qa-reportes-2026-11-10/requisitos-finanzas.md`). It starts
+after Step 4.15 and before Milestone 5, because it reads stock, orders, returns and COD remittances. Steps 4B.2 to 4B.5 do not wait
+for the real C807 remittance of Step 4.15; 4B.6 is tested against it when it exists.
+Decisions taken (owner): El Salvador first and Colombia later (country by configuration: template and provider are data and
+adapters); USD only; one organization; accounts per organization in the MVP and per store in Phase 2 with no data migration;
+complete and formal accounting (double entry, chart of accounts, journal and ledger, income statement, balance sheet, VAT 13 %
+with an exempt flag and a configurable rate, prices with VAT included by default and configurable per store); weighted-average
+costing and FIFO after; granular permissions, administrators only at first, assignable to custom roles; monthly closes that lock;
+external audit (user and time on every entry, immutable, a hash chain, CSV export of the journal and the ledger); fiscal documents
+(DTE) in the MVP behind an exchangeable provider; everything configurable where possible.
 
 ### Step 4B.1 — Finance design (no code)
-- [ ] Write `TDD_18_Finance.md`: chart of accounts, entry types, the automatic entries of each event (order paid, COD remittance
-      confirmed with the carrier's fee as an expense, purchase received, return), periods and closes, permissions, isolation, and
-      what each later step builds. Add it to `docs/INDEX.md` and to `MVP_TRIM_CHECKLIST.md`.
-- [ ] Settle the open questions with the owner: country and tax rules (El Salvador? VAT, electronic invoicing is a separate
-      integration), who gives the initial chart of accounts (the owner's accountant), how many organizations, external audit.
-- [ ] Write Steps 4B.2 onward in this plan with their files, TDD sections and "Done when", for the owner's approval.
+- [x] Write `TDD_18_Finance.md`: chart of accounts, entry types, the automatic entries of each event (order paid, sale, COD
+      remittance with the carrier's fee, purchase received, return, stock adjustments), periods and closes, permissions, isolation, the
+      fiscal document port, and what each later step builds. Added to `docs/INDEX.md` and to `MVP_TRIM_CHECKLIST.md` §11.
+- [x] Settle the open questions with the owner (2026-11-14): El Salvador first, VAT 13 %, prices with VAT included by default,
+      DTE in the MVP, a standard commerce chart the accountant adjusts, one organization, external audit yes.
+- [x] Write Steps 4B.2 onward in this plan with their files, TDD sections and "Done when".
+- [ ] **Owner approves `TDD_18`.** Nothing of 4B.2 starts before this box is checked.
+- [ ] **Debts with the owner and the accountant, tracked here (rule 12), all listed in `TDD_18 §13`:** (a) the initial chart of
+      accounts and the opening balances (accountant; before the first real entry); (b) VAT rules, retentions and perceptions, the
+      legal books and the VAT return layout (accountant; Steps 4B.3, 4B.6, 4B.8); (c) **what blocks the real DTE: the owner's
+      registration as an issuer with the tax authority, the signing certificate and the credentials for the test and the real
+      environments, and the accountant's confirmation of the document types and the format.** The step is built against a simulator
+      meanwhile (Step 4B.7); only the real provider package waits; (d) the moment a sale is recognized and its document issued.
+- [ ] **Proposal for the owner (not applied: it edits `CLAUDE.md`):** extend rule 13 with a `validate:fiscal-agnostic` ratchet (no
+      core file names a country's document or provider), like the channel and carrier ones. Owner: Step 4B.7 asks.
 **TDD:** `TDD_18` (new), `TDD_16` (stock and costs), `TDD_17 §4.15` (remittances)
-**Done when:** the owner approves `TDD_18` and the plan lists the build steps. Delivered with the first code PR that follows
-(or by an exception the owner gives in writing).
+**Done when:** the owner approves `TDD_18` and the plan lists the build steps. Delivered inside the first code PR that follows
+(never as a docs-only PR, unless the owner gives an exception in writing).
 
-### Steps 4B.2 to 4B.7 — to be written by Step 4B.1
-Sketch for the design to confirm or change, not a commitment: 4B.2 ledger core (accounts, immutable double-entry journal,
-balances, periods); 4B.3 expenses, incomes, transfers and CSV reconciliation; 4B.4 suppliers and purchase orders (receiving
-raises stock and sets the cost, payments from the chosen account); 4B.5 automatic entries from orders, COD remittances (a
-carrier's commission, see `remittanceDeductsFee`), returns and the C807 fee deduction; 4B.6 reports and monthly close; 4B.7 UI.
+### Step 4B.2 — Ledger core (api)
+- [ ] Migration with its rollback: `FinanceSettings`, `LedgerAccount`, `AccountRoleMapping`, `PaymentMethodAccount`, `FiscalPeriod`,
+      `JournalEntry`, `JournalLine`, `AccountPeriodBalance`, `FinancePostingFailure`; raw SQL: append-only triggers, the deferred
+      balanced-entry constraint, the postable-and-open-period trigger, the `CHECK`s (one side per line, currency `USD`, `store_id` null
+      on accounts), the gapless number and the hash chain (`TDD_18 §2`)
+- [ ] Constants of `TDD_18 §3` (enums in `libs/core/domain/finance-constants.ts`, permissions, events, error codes, audit actions,
+      metric names, routes, query keys); the finance permissions in `PermissionsOfUnbuiltAreas` until read; labels of the permission matrix
+      (`es`, `en`); `RolePresets` unchanged (only Admin holds them)
+- [ ] `libs/core/finance` (pure): the entry builder and validator, the hash, the period rules; the posting service is the only writer
+      of the ledger (lint rule of the `TDD_16 §8` kind)
+- [ ] Finance templates (`libs/core/finance/templates/sv.ts`): the starter chart, the role map and the tax seeds, seeded once at setup;
+      `POST /finance/setup` (country, start date, template) and the setup state
+- [ ] `apps/api/src/modules/finance`: settings, accounts (create, rename, deactivate, re-parent; type locked once used), role
+      mappings, payment method accounts, periods (list, open on demand), entries (list, one, manual with HIGH-tier confirmation, reverse),
+      balances, `finance/postings` (failed list, post again); audit rows for every mutation
+- [ ] Tests: unbalanced entry refused, closed period refused (service and trigger), no update or delete of an entry (the trigger),
+      idempotency key repeat, reversal, the gapless number under concurrent posts, the hash chain; a custom role with only `FINANCE_VIEW`
+      reads balances and cannot read the journal or post; `tests/security/tenant-isolation.spec.ts` cases (cross-organization by id, the lines by store) and
+      `check-isolation-coverage`; `frontend-coverage-map` and `plugin-api-coverage-map` entries
+**TDD:** `TDD_18 §2`, `§3`, `§4.1`, `§5`, `§9`, `TDD_02 §5`, `TDD_01 §4`
+**Done when:** the accountant's chart can be seeded and edited, a manual entry posts and is reversed, a period can be listed, every rule
+above is a failing test that passes, and no code outside `libs/core/finance` writes the ledger (lint).
+
+### Step 4B.3 — VAT and the tax snapshot (api)
+- [ ] `TaxRate` (basis points) with its output and input accounts and the default; `Product.taxTreatment` and `taxRateId`; the store
+      preference `finance.pricesIncludeTax` (default true); migration with its rollback for `products`, `orders`, `order_items`
+- [ ] The tax math as pure functions (included and not included, per line, half up, the order tax is the sum of its lines, a stray cent
+      to `ROUNDING`); `OrdersService` snapshots `taxCents`, `pricesIncludeTax` and the item rates at creation, so a later rate change never
+      rewrites a posted sale; the order total includes the tax when the store's prices exclude it
+- [ ] The tax fields on the order and product routes (`libs/api-client` types); old orders keep `null` and are taxed at posting
+- [ ] The VAT report data (output, input, balance by period and rate) as an endpoint and a CSV; the legal books layout waits for the
+      accountant (debt (b) of 4B.1)
+- [ ] Tests: the rounding table (13 % included and not included, several lines, a discount, shipping), exempt and not-subject products,
+      the order total in both modes, the snapshot is stable after a rate change
+**TDD:** `TDD_18 §7`, `TDD_17 §4.13`, `TDD_16`
+**Done when:** an order computes and stores its tax exactly to the cent in both pricing modes and the VAT report adds up to the
+orders of a period.
+
+### Step 4B.4 — Expenses, incomes, transfers and bank reconciliation (api)
+- [ ] `FinanceTransaction` (expense, income, transfer) posting E12; void = reversal in the same request; receipts as `finance_document`
+      media (upload purpose with the parent check, scanned); permissions `FINANCE_MANAGE_TRANSACTIONS` and `FINANCE_MOVE_MONEY`
+- [ ] Bank import: `BankImportProfile`, `BankStatementImport`, `BankStatementLine`, `ReconciliationMatch`; deterministic matching,
+      strict parsing, no formula evaluation, the file kept as media; suggestions, confirm one or all the exact; "register it" from an
+      unmatched line; the balance-versus-statement difference
+- [ ] Tests: each kind posts the right entry, a transfer needs two distinct cash-kind accounts, voiding, the closed period, matching
+      rules and every parser error, isolation cases
+**TDD:** `TDD_18 §4.3`, `§4.4`, `TDD_07 §6.3`
+**Done when:** a person registers an expense paid from a chosen account with its VAT and a receipt, moves money between accounts, imports
+a statement and reconciles it, and every balance follows.
+
+### Step 4B.5 — Suppliers and purchase orders (api)
+- [ ] `Supplier`, `PurchaseOrder`, `PurchaseOrderLine`, `PurchaseReceipt` (+ lines), `SupplierPayment`; the transition table;
+      the purchase number counter; permission `FINANCE_MANAGE_PURCHASES` and `FINANCE_MOVE_MONEY` for payments
+- [ ] Receiving (partial or total) calls `InventoryService.receive` per line with the unit cost before tax (the average moves) and posts
+      E10; the supplier's document number is kept; a receipt above the ordered quantity is refused; payments (partial or total) post E11
+      from the account the person chooses and cannot exceed the open balance; the open balance per supplier (party dimension)
+- [ ] Tests: receipt raises stock and cost and posts one entry, partial receipts and payments, closing a short purchase, cancellation
+      rules, isolation (the lines by store)
+- [ ] Debts written here (rule 12): returns to suppliers and debit notes, and the allocation of a purchase's freight into the unit cost
+      (landed cost): after the MVP, owner decides when
+**TDD:** `TDD_18 §2.7`, `§4.2` E10 and E11, `TDD_16 §4`
+**Done when:** a purchase order is received into a warehouse (stock and weighted-average cost move), the amount owed appears for the
+supplier and is paid in parts from the chosen account, and the ledger agrees with the stock value.
+
+### Step 4B.6 — The automatic entries (api and worker)
+- [ ] The listener and `POST_FINANCE_EVENT`; the pure entry builders for E1 to E9 (payment, goods in transit, sale, carrier charges,
+      remittance confirmed and voided, a discrepancy written off, returns, stock adjustments and counts); the idempotency keys; the late-post
+      rule; `accountingStartDate` skipping
+- [ ] The destination account on the remittance confirm (a field added to `TDD_17 §4.15`'s confirm route, default `BANK_DEFAULT`) and the
+      "write off the difference" action
+- [ ] `RECONCILE_FINANCE` (daily and before a close): the sweep of unposted sources, balance recomputation, inventory and carrier-receivable
+      comparisons; the metrics and the `FINANCE_POSTING_FAILED` notification
+- [ ] **`FINANCE_VIEW_CARRIER_FEES`** gates the commission and the rates of a carrier connection (closes (c3)(i) of Step 4.15: `shipping:view`
+      stops showing them; the web of Settings → Carriers shows the boxes only with it)
+- [ ] Tests: one case per event with exact amounts (a COD sale with a commission and a freight, a remittance that matches, one that
+      differs, one voided; a prepaid sale; a return before and after delivery; each adjustment), a lost event recovered by the sweep, a
+      missing mapping fails visibly and blocks the close, the same events twice produce one entry
+- [ ] Debt (rule 12): the cent of a carrier that rounds otherwise (4.15 (c2)(i)) and the real fee column (4.15 (c2)(iii)) are decided by the
+      real C807 file; the entries follow what the remittance confirm recorded
+**TDD:** `TDD_18 §4.2`, `§6`, `§11`, `TDD_17 §4.15`, `TDD_16 §4`, `TDD_07`
+**Done when:** a delivered COD order, its remittance with the carrier's fee, a return and a stock count each leave the right balanced
+entries with no human step, and the ledger's inventory and carrier receivables agree with the operational tables.
+
+### Step 4B.7 — Fiscal documents (DTE), against a simulator first
+- [ ] `libs/fiscal/sdk` (the provider port, manifest, contract suite), `libs/fiscal/simulator` (development and test only); the
+      migration with its rollback for `FiscalIssuer` (credentials encrypted like the carrier's) and `FiscalDocument`; the transition table
+- [ ] The lifecycle: a document queued on the sale event, `SUBMIT_FISCAL_DOCUMENT` with retries and backoff, accepted (immutable),
+      rejected (a person fixes and retries, notification), voided (HIGH-tier), a credit note for a return linked to the original; the document
+      and the evidence kept as media; the daily document-versus-entry check
+- [ ] The `FISCAL_VIEW` and `FISCAL_MANAGE` routes; the issuer settings; customer fiscal data on the order and the customer, with the redaction
+      list and encryption of `TDD_18 §9.2`
+- [ ] Tests: the provider contract suite against the simulator (accept, reject, timeout, contingency, void), immutability, a return makes a
+      credit note, credentials never returned or logged
+- [ ] **Waits for the owner and the accountant (debt (c) of 4B.1):** the real provider package (`libs/fiscal/sv`) and the real environments.
+      The step is `done` when the port and the simulator pass; it stays open as "real provider pending" until a document is accepted in the
+      authority's test environment
+**TDD:** `TDD_18 §8`, `§13`, `TDD_17 §4.1` (credentials), `TDD_10`
+**Done when:** every sale produces a fiscal document through the provider port against the simulator, the whole lifecycle is tested, and
+swapping in the real provider needs no change outside `libs/fiscal/sv`.
+
+### Step 4B.8 — Reports, monthly close and the auditor's export
+- [ ] The reports of `TDD_18 §10` (balances, trial balance, ledger, journal, income statement and balance sheet by store, cash flow,
+      payables and receivables with age, VAT, margin by product reconciled with the ledger) and the CSV exports through `GENERATE_EXPORT`
+      (`FINANCE_JOURNAL`, `FINANCE_LEDGER`, `FINANCE_TRIAL_BALANCE`, `FINANCE_VAT`)
+- [ ] Close and reopen (`TDD_18 §5`): the preconditions, the lock, the frozen hash head, "late postings" in the period view; `VERIFY_LEDGER_CHAIN`
+- [ ] The legal books and the VAT return data in the layout the accountant confirms (debt (b)); the fiscal year if not the calendar one
+- [ ] Tests: statements balance against the trial balance, a closed month does not move when a late posting arrives, the close refuses with
+      pending postings, the chain detects a tampered row (a test that edits the table with the owner role), the export has no formula injection
+**TDD:** `TDD_18 §5`, `§10`, `§11`, `TDD_07 §6.6`
+**Done when:** a month is closed and locked, the statements and the VAT report add up, and the auditor's CSVs verify against the chain.
+
+### Step 4B.9 — Finance interface (web)
+- [ ] Delivered in PRs: **A** setup wizard, accounts, settings, role mappings, taxes; **B** journal, expenses and incomes, transfers, bank
+      reconciliation; **C** suppliers, purchase orders and the receive screen; **D** reports, the close checklist, fiscal documents on the order and
+      the issuer settings; the permission labels and the gating of every control by permission
+- [ ] Every route of 4B.2 to 4B.8 drawn (`frontend-coverage-map`), i18n keys in `es` and `en`, Lucide icons only, no emoji, the mobile layout of the
+      common actions (register an expense, receive a purchase), the e2e of the month (register, receive, sell, remit, close)
+**TDD:** `TDD_18 §12`, `TDD_09`
+**Done when:** the owner runs a month of the business end to end from the screens (a purchase received and paid, orders sold and remitted, an
+expense and a transfer, the statements checked, the month closed).
+
+**QA checkpoint: yes (after 4B.9):** the money cases through the screens, with the accountant's reading of the statements and the VAT report.
 
 ---
 
 ## Milestone 5 — Operations
 
 ### Step 5.1 — Search
-- [ ] Search service over PostgreSQL FTS (`regconfig` literal, normalized phone, escaped LIKE)
+- [x] Search service over PostgreSQL FTS (`regconfig` literal, normalized phone, escaped LIKE) (PR A)
 - [ ] Command palette with Cmd+K (**until it exists, `Mod+K` is bound to the search of customers**: from the inbox it opens the customers page, which focuses its box; on that page it focuses the box; it is in the help sheet as `COMMAND_PALETTE`, "Search customers"; this step moves the binding to the palette and renames the label), and the search box of the top bar with the `/` shortcut (Step 3.2 does not wire them: there was nothing to focus or open; register `Shortcuts.list.FOCUS_SEARCH` and `Shortcuts.global.COMMAND_PALETTE` with `useShortcut` and add them to `AvailableShortcuts`), the search results page and the search of messages, which filters `deleted_at IS NULL`
-- [ ] Search analytics
-- [ ] **From the QA fix PRs (QA backlog, rule 12), search ignores accents (customers):** a search for "jose" does not find "José". Make the search of customers (and the inbox search that shares the service) accent-insensitive, with a test for names with accents next to the `%` and cross-tenant cases
-- [ ] **From the QA fix PRs (QA backlog, rule 12), the search event of the `analytics` queue (left by Q4, (c)):** `apps/worker/src/processors/analytics.processor.ts` writes only `TRACK_EVENT` and refuses a job it does not know. The "Search analytics" task of this step queues `TRACK_SEARCH`, so it also teaches the processor that job, with its spec (the unique key on events is Step 5.2's)
+- [x] Search analytics: the server side (PR A queues `TRACK_SEARCH` from every route); the click on a result is PR B, with the palette
+- [x] **From the QA fix PRs (QA backlog, rule 12), search ignores accents (customers):** a search for "jose" does not find "José". Make the search of customers (and the inbox search that shares the service) accent-insensitive, with a test for names with accents next to the `%` and cross-tenant cases
+- [x] **From the QA fix PRs (QA backlog, rule 12), the search event of the `analytics` queue (left by Q4, (c)):** `apps/worker/src/processors/analytics.processor.ts` writes only `TRACK_EVENT` and refuses a job it does not know. The "Search analytics" task of this step queues `TRACK_SEARCH`, so it also teaches the processor that job, with its spec (the unique key on events is Step 5.2's)
 - [ ] **From Step 4.1 (PR B), a fuzzier product search:** the autocomplete of `GET /products/search` is not ranked by similarity or tolerant to typos (`pg_trgm` `similarity`, `SearchConfig.SIMILARITY_THRESHOLD` of `TDD_08 §5.2`) and does not search the description (the `search_vector` column is there for it): add both here, with the global search that also reads `search.products`, if the owner asks for a fuzzier result.
+
+- [x] **Built in PR A (the server: `GET /search`, `/search/messages`, `/search/customers`, `/search/orders`, `/search/products`; rule 12 decisions and debts with their owners).** Each route has `AuthGuard` + `TenantGuard` and its permission (`customers:view`, `orders:view`, `products:view`, and for the messages both `conversations:view` and `messages:view`); the global one asks for any of them and answers only the groups the member may search (`searchableBy`). Every statement filters by the store of `TenantGuard`, binds the text, escapes `%`, `_` and `\`, and splices only the `regconfig` literal (`SEARCH_LANGUAGE_SQL`). **Messages** follow the visibility of the inbox in the statement itself: `deleted_at IS NULL`, internal notes only with `messages:internal_note`, conversations assigned to someone else only with `conversations:view_all`, spam and archived only with `conversations:archive`. **Accents:** migration `search_unaccent` adds `unaccent`, the `immutable_unaccent` wrapper, the generated column `customers.name_search` (name in lower case with no accents), trigram indexes on it, on the email, the phone digits and the order number, and a GIN index on the messages folded on both sides; `customerSearchWhere` (the customers list and its export) reads the same column, so "jose" finds "José" there too. Rollback script included. **Tracking:** `TRACK_SEARCH` carries `search.performed` with the hash of the folded text, the scope, the count and the duration, and the text only when a **product** search found nothing (what was asked about people, conversations, orders or the global search is only a hash, and so is any email or phone: analytics rows are tied to no customer, so an erasure could not reach them; the hash is an HMAC keyed with the env secret, never a plain SHA-256 of a phone number) (`searchEventDataSchema`, one definition for the api and the worker); the analytics processor accepts it with its spec and refuses `search.performed` as a plain `TRACK_EVENT`; a queue failure costs an event, never an answer. Isolation cases in `tenant-isolation.spec` (every route, a forged `storeId`, another store's header, a conversation id of another store). **Decisions:** (1) customers are matched by folded substring plus the `%` trigram operator, not by `search_vector`, because the Spanish stemmer folds accents unevenly ("María" and "maria" do not match, "Sebastián" and "sebastian" neither) and a substring is what people type in a name box; the rejected alternative was to rebuild the generated `search_vector` columns with `unaccent`, a rewrite of the whole `messages` table; (2) the customers' own trigram index on `name` is dropped (nothing reads it any more) and the messages keep their own `search_vector` and add the folded GIN index next to it, so a message insert maintains two GIN indexes until the old one is dropped (debt (a)); (3) `/search/products` reuses the autocomplete of Step 4.1 (same ranking, 20 at most), and the global search takes its first five; (4) the global search runs its kinds one after the other, because they share the connection of the request.
+  - (a) **Drop `messages.search_vector` and `idx_messages_search`** (the column of `20261024182905_raw_sql`, unused since this PR, one more index to maintain on every message write), with its rollback: **Step 7.3** (database tuning), after the Step 5.2 session confirms it reads neither.
+  - (b) **The fuzzier product search** (pg_trgm similarity and the description, the last task above) is not done: it does not fit this PR without a second index migration on `products`, and the autocomplete of 4.1 already ranks by prefix and variant. Owner: **PR C of this step** if the owner asks for typo tolerance in products, otherwise **Step 7.7**.
+  - (c) **The click on a result** (`clicked` of TDD_08 §5.6) needs a route the palette calls: PR B of this step adds it with the palette.
+  - (c3) **Which searches count for analytics:** every request leaves one event, so the palette's as-you-type calls would count prefixes ("cam", "camis") in the zero-result report. PR B decides what the palette sends (a flag on the route for the searches that do not count, or one event when the person opens a result); **PR B of this step**. Also open for it: whether the zero-result text of the **global** search may be kept (today it is a hash only, because a name is as likely as a product there), which needs a retention rule for `analytics_events`: owner **Step 5.2**.
+  - (c2) **Anonymous customers in the hits:** the conversation views carry the `anonymous` mark that a channel declares (`withAnonymousCustomers`), so the web draws a placeholder instead of a name; the message and order hits of this PR carry the stored name only. PR B of this step reads the mark for the hits it draws (or the api adds it to them), before the palette shows a hit of an anonymous customer.
+  - (d) **The customers list and the export use the folded column but not the trigram typo match** (`customerSearchWhere` is a Prisma `where`, which has no `%` operator): they find substrings with no accents, not typos. Owner: **Step 7.7**.
+  - (e) **Migrations that create the indexes take a write lock** on `messages` and `customers` while they build (Prisma runs a migration in a transaction, so `CREATE INDEX CONCURRENTLY` is not possible); fine for the MVP's volumes, a deploy on a large `messages` table needs a maintenance window. Owner: **Step 7.3**.
 
 **TDD:** `TDD_08 §5`
 **Done when:** global search returns results under 300ms and leaks nothing across tenants.
@@ -1981,9 +2120,17 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4.14 | Shipping UI | done | PR F1 #452, #455 (orders page, bulk actions); F2 #451 (drawer, caution flag); F3a #456, F3b #460, #462 (order detail panels, messages, pickup); F4 #450, F4b #453 (Settings → Carriers); F5 #454 (order messages, returns, preferences); F6 #457 (shipments and pickups); F7a #458, #461, #466 (returns screens and scanner reception); F7b #459, #463 (remittances and import); F8 #465 (journey and gating); F8b (reception, bulk labels and import in the browser) | |
 | 4.15 | Forza and C807 adapters | in progress | PR 1 (C807 adapter, token cache port, `connectFields`); Forza adapter; PR 2a (api of the connection, #477); PR 2c (web of the guide, #478); PR 2b (web of the connection, #479); PR 3 (places of a bulk run); PR 5 (places in the default mode of bulk labels); PR 4 (QA fix FUNC-H1, a guide that cannot be cancelled at the carrier is marked as voided from `cancel_pending`); PR 6a (api of the commission and the rate per service, FUNC-H4, #483); PR 6b (web of the commission and the rates); the real webhook and one real status change (owner, see the step) | 2026-11-14 |
 | **Milestone 4B: Finance** | | | | |
-| 4B.1 | Finance design (TDD_18, no code) | todo | | |
+| 4B.1 | Finance design (TDD_18, no code) | in progress | written and delivered with the first code PR that follows; owner approval of `TDD_18` pending | |
+| 4B.2 | Ledger core (accounts, immutable journal, periods, permissions) | todo | | |
+| 4B.3 | VAT and the tax snapshot | todo | | |
+| 4B.4 | Expenses, incomes, transfers and bank reconciliation | todo | | |
+| 4B.5 | Suppliers and purchase orders | todo | | |
+| 4B.6 | The automatic entries (sales, remittances, returns, stock) | todo | | |
+| 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | todo | | |
+| 4B.8 | Reports, monthly close and the auditor's export | todo | | |
+| 4B.9 | Finance interface (web) | todo | | |
 | **Milestone 5: Operations** | | | | |
-| 5.1 | Search | todo | | |
+| 5.1 | Search | in progress | A | 2026-11-14 |
 | 5.2 | Analytics | todo | | |
 | 5.3 | Caching and performance | todo | | |
 | 5.4 | Settings | todo | | |
