@@ -3466,7 +3466,8 @@
         "webhook": {
           "secretSet": "El secreto de los avisos está configurado.",
           "secretMissing": "Todavía no hay secreto de los avisos.",
-          "url": "dirección de los avisos"
+          "url": "dirección de los avisos",
+          "howTo": "En el panel del transportista, en la sección de avisos, pega la dirección, el nombre del encabezado y el secreto. El secreto se muestra solo al crearlo: crea uno nuevo si lo perdiste."
         },
         "edit": "Editar",
         "rename": "Cambiar nombre",
@@ -3515,7 +3516,8 @@
           "courierName": "Escribe el nombre del mensajero (hasta 80 caracteres).",
           "courierPhone": "Escribe el teléfono del mensajero (hasta 30 caracteres).",
           "courierPrefix": "El prefijo son de 1 a 6 letras mayúsculas o dígitos.",
-          "courierNotes": "Las notas son demasiado largas."
+          "courierNotes": "Las notas son demasiado largas.",
+          "fields": "Completa todos los campos que no estén marcados como opcionales."
         },
         "fields": {
           "c807": {
@@ -3554,7 +3556,8 @@
             "defaultWeightLbsHelp": "Forza pide un peso por paquete. Vacío significa 1 lb.",
             "pickupVehicleTypeIdHelp": "1 motocicleta, 2 panel, 3 camión. Vacío significa motocicleta."
           }
-        }
+        },
+        "secretHint": "Se guarda cifrado y no se vuelve a mostrar."
       },
       "rules": {
         "title": "Editar {name}",
@@ -3602,7 +3605,12 @@
           "feeRange": "La tarifa mínima no puede ser mayor que la habitual, ni la habitual mayor que la máxima.",
           "attempts": "Los intentos de entrega son un número entero de 1 a 10.",
           "poll": "El intervalo de consulta es un número entero de minutos de 1 a 1440, o vacío.",
-          "defaultService": "El servicio predeterminado debe seguir activo: elige antes otro predeterminado."
+          "defaultService": "El servicio predeterminado debe seguir activo: elige antes otro predeterminado.",
+          "fields": "Para cambiar las credenciales, completa todos los campos que no estén marcados como opcionales.",
+          "courierName": "Escribe el nombre del mensajero (hasta 80 caracteres).",
+          "courierPhone": "Escribe el teléfono del mensajero (hasta 30 caracteres).",
+          "courierPrefix": "El prefijo son de 1 a 6 letras mayúsculas o dígitos.",
+          "courierNotes": "Las notas son demasiado largas."
         },
         "save": "Guardar",
         "saving": "Guardando…",
@@ -3640,6 +3648,15 @@
           "label": "Nombre del servicio {code}",
           "active": "Activo",
           "activeOf": "El servicio {code} está activo"
+        },
+        "fieldsHint": "Deja todos los campos vacíos para conservar las credenciales guardadas. Para cambiarlas, completa todos los campos: se reemplazan juntas y el transportista las comprueba primero.",
+        "courier": {
+          "legend": "Mensajero",
+          "name": "Nombre del mensajero",
+          "phone": "Teléfono del mensajero",
+          "prefix": "Prefijo de las guías",
+          "prefixHint": "Hasta 6 letras mayúsculas o dígitos. Las guías ya hechas conservan su número; las siguientes parten del prefijo nuevo.",
+          "notes": "Notas (opcional)"
         }
       },
       "secret": {
@@ -3685,7 +3702,18 @@
           "statusOf": "Estado para {code}",
           "restore": "Restaurar el predeterminado",
           "ignored": "Ignorado"
+        },
+        "catalog": {
+          "title": "Códigos que el transportista puede enviar, sin decisión todavía",
+          "description": "Elige qué significa cada uno antes de que el transportista lo envíe. Un código sin decisión espera con sus envíos.",
+          "noDefault": "Sin sugerencia: tú decides.",
+          "suggested": "Sugerido: {status}",
+          "mapTo": "Estado para {code}",
+          "mapped": "{code} quedó asignado."
         }
+      },
+      "webhook": {
+        "headerLabel": "Nombre del encabezado"
       }
     },
     "returns": {

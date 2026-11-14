@@ -3,13 +3,18 @@
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, useId, useState } from 'react'
 
-import type { CarrierConnectionView, StatusMappingView } from '@platform/api-client'
+import type {
+  CarrierConnectionView,
+  CarrierStatusCatalogEntryView,
+  StatusMappingView
+} from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
 import { CarrierReportableStatuses, CarrierStatusMappingSource } from '@platform/core/domain'
 
 import {
   usePutStatusMapping,
   useRemoveStatusMapping,
+  useStatusCatalog,
   useStatusMappings,
   useUnmappedStatuses
 } from '../../lib/settings/use-carriers'
@@ -36,6 +41,7 @@ export function CarrierStatusMapping({
     <div className="flex flex-col gap-6">
       <p className="text-muted-foreground text-sm">{t('description')}</p>
       <WaitingCodes connection={connection} />
+      <CatalogCodes connection={connection} />
       <MappingTable connection={connection} />
     </div>
   )
@@ -113,6 +119,108 @@ function WaitingCodes({ connection }: { connection: CarrierConnectionView }): Re
         </div>
       ) : null}
     </section>
+  )
+}
+
+// The codes the carrier's plugin knows and this connection holds no row for (a connection made before a code existed, or a code
+// the plugin left without a default on purpose): the owner decides them before the carrier ever sends one
+function CatalogCodes({ connection }: { connection: CarrierConnectionView }): ReactElement | null {
+  const t = useTranslations('settings.carriers.mapping.catalog')
+  const { storeId } = useStore()
+  const catalog = useStatusCatalog(storeId, connection.id)
+  if (catalog.isError) {
+    return <LoadFailed error={catalog.error} onRetry={() => void catalog.refetch()} />
+  }
+  if (catalog.data === undefined) return <PageLoading />
+  const rows = catalog.data.filter(entry => !entry.hasMapping)
+  if (rows.length === 0) return null
+  return (
+    <section aria-labelledby={`${connection.id}-catalog`} className="flex flex-col gap-2">
+      <h3 id={`${connection.id}-catalog`} className="text-base font-semibold">
+        {t('title')}
+      </h3>
+      <p className="text-muted-foreground text-sm">{t('description')}</p>
+      <ul className="flex flex-col gap-2">
+        {rows.map(row => (
+          <CatalogRow key={row.providerCode} connection={connection} row={row} />
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function CatalogRow({
+  connection,
+  row
+}: {
+  connection: CarrierConnectionView
+  row: CarrierStatusCatalogEntryView
+}): ReactElement {
+  const t = useTranslations('settings.carriers.mapping.catalog')
+  const tMapping = useTranslations('settings.carriers.mapping')
+  const errorText = useErrorText()
+  const { storeId, can } = useStore()
+  const put = usePutStatusMapping(storeId, connection.id)
+  const id = useId()
+  const [target, setTarget] = useState('')
+  const canManage = can(ClientPermissions.SETTINGS_MANAGE_CARRIERS)
+
+  const apply = (): void => {
+    if (target === '') return
+    put.mutate(
+      { providerCode: row.providerCode, status: target === IGNORE ? null : target },
+      {
+        onSuccess: () => toast.success(t('mapped', { code: row.label })),
+        onError: error => toast.error(errorText(error))
+      }
+    )
+  }
+
+  return (
+    <li
+      data-testid="catalog-status"
+      className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3"
+    >
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-sm break-words">{row.label}</span>
+        <span className="text-muted-foreground font-mono text-xs break-all">
+          {row.providerCode}
+        </span>
+        <span className="text-muted-foreground text-xs">
+          {row.defaultStatus === null
+            ? t('noDefault')
+            : t('suggested', {
+                status: tMapping.has(`statuses.${row.defaultStatus}` as 'statuses.delivered')
+                  ? tMapping(`statuses.${row.defaultStatus}` as 'statuses.delivered')
+                  : row.defaultStatus
+              })}
+        </span>
+      </div>
+      {canManage ? (
+        <div className="flex items-center gap-2">
+          <label htmlFor={id} className="sr-only">
+            {t('mapTo', { code: row.label })}
+          </label>
+          <StatusSelect
+            id={id}
+            value={target}
+            onChange={setTarget}
+            disabled={put.isPending}
+            placeholder={tMapping('waiting.mapPlaceholder')}
+          />
+          <Button
+            type="button"
+            size="sm"
+            disabled={target === '' || put.isPending}
+            busy={put.isPending}
+            onClick={apply}
+          >
+            {tMapping('waiting.apply')}
+            <span className="sr-only"> {row.label}</span>
+          </Button>
+        </div>
+      ) : null}
+    </li>
   )
 }
 

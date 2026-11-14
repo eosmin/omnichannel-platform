@@ -171,8 +171,15 @@ export function CarriersPanel(): ReactElement {
           onClose={() => setConnecting(false)}
         />
       ) : null}
-      {toEdit === undefined ? null : (
-        <CarrierRulesDialog connection={toEdit} onClose={() => setEditing(null)} />
+      {toEdit === undefined || registry.isPending ? null : (
+        <CarrierRulesDialog
+          connection={toEdit}
+          // A registry that cannot be read leaves the free JSON box: the connection can still be edited
+          connectFields={
+            registry.data?.find(entry => entry.id === toEdit.carrierId)?.connectFields ?? []
+          }
+          onClose={() => setEditing(null)}
+        />
       )}
       {secret === null ? null : (
         <CarrierSecretDialog

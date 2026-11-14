@@ -3466,7 +3466,8 @@
         "webhook": {
           "secretSet": "The secret for status notices is set.",
           "secretMissing": "No secret for status notices yet.",
-          "url": "notice address"
+          "url": "notice address",
+          "howTo": "In the panel of the carrier, section for notices, paste the address, the header name and the secret. The secret is shown only when it is made: make a new one if you lost it."
         },
         "edit": "Edit",
         "rename": "Rename",
@@ -3515,7 +3516,8 @@
           "courierName": "Write the name of the courier (up to 80 characters).",
           "courierPhone": "Write the phone of the courier (up to 30 characters).",
           "courierPrefix": "The prefix is 1 to 6 capital letters or digits.",
-          "courierNotes": "The notes are too long."
+          "courierNotes": "The notes are too long.",
+          "fields": "Fill in every field that is not marked optional."
         },
         "fields": {
           "c807": {
@@ -3554,7 +3556,8 @@
             "defaultWeightLbsHelp": "Forza needs a weight for each package. Empty means 1 lb.",
             "pickupVehicleTypeIdHelp": "1 motorcycle, 2 van, 3 truck. Empty means a motorcycle."
           }
-        }
+        },
+        "secretHint": "Saved encrypted and not shown again."
       },
       "rules": {
         "title": "Edit {name}",
@@ -3602,7 +3605,12 @@
           "feeRange": "The lowest fee must not be above the usual one, nor the usual one above the highest.",
           "attempts": "Delivery attempts are a whole number from 1 to 10.",
           "poll": "The check interval is a whole number of minutes from 1 to 1440, or empty.",
-          "defaultService": "The default service must stay active: choose another default first."
+          "defaultService": "The default service must stay active: choose another default first.",
+          "fields": "To change the credentials, fill in every field that is not marked optional.",
+          "courierName": "Write the name of the courier (up to 80 characters).",
+          "courierPhone": "Write the phone of the courier (up to 30 characters).",
+          "courierPrefix": "The prefix is 1 to 6 capital letters or digits.",
+          "courierNotes": "The notes are too long."
         },
         "save": "Save",
         "saving": "Saving…",
@@ -3640,6 +3648,15 @@
           "label": "Name of the service {code}",
           "active": "Active",
           "activeOf": "Service {code} is active"
+        },
+        "fieldsHint": "Leave every field empty to keep the saved credentials. To change them, fill in all the fields: they are replaced together and the carrier checks them first.",
+        "courier": {
+          "legend": "Courier",
+          "name": "Name of the courier",
+          "phone": "Phone of the courier",
+          "prefix": "Prefix of the guides",
+          "prefixHint": "Up to 6 capital letters or digits. Guides already made keep their number; the next ones start from the new prefix.",
+          "notes": "Notes (optional)"
         }
       },
       "secret": {
@@ -3685,7 +3702,18 @@
           "statusOf": "Status for {code}",
           "restore": "Restore default",
           "ignored": "Ignored"
+        },
+        "catalog": {
+          "title": "Codes the carrier can send, with no decision yet",
+          "description": "Choose what each one means before the carrier sends it. A code with no decision waits with its shipments.",
+          "noDefault": "No suggestion: you decide.",
+          "suggested": "Suggested: {status}",
+          "mapTo": "Status for {code}",
+          "mapped": "{code} is mapped."
         }
+      },
+      "webhook": {
+        "headerLabel": "Header name"
       }
     },
     "returns": {

@@ -14,9 +14,10 @@ export const ChannelMessagePrefix = 'settings.channels.'
 export function fieldLabelOf(
   field: Pick<ConnectFieldView, 'key' | 'labelKey' | 'label'>,
   locale: string,
-  message: (key: string) => string | null
+  message: (key: string) => string | null,
+  prefix: string = ChannelMessagePrefix
 ): string {
-  if (field.labelKey?.startsWith(ChannelMessagePrefix) === true) {
+  if (field.labelKey?.startsWith(prefix) === true) {
     const text = message(field.labelKey)
     if (text !== null) return text
   }
@@ -24,6 +25,15 @@ export function fieldLabelOf(
     return locale.toLowerCase().startsWith('es') ? field.label.es : field.label.en
   }
   return field.key
+}
+
+// The line of help of a field: only a key of the page's own section is looked up, and a plugin that names none draws none
+export function fieldHelpOf(
+  field: Pick<ConnectFieldView, 'helpKey'>,
+  message: (key: string) => string | null,
+  prefix: string = ChannelMessagePrefix
+): string | null {
+  return field.helpKey?.startsWith(prefix) === true ? message(field.helpKey) : null
 }
 
 export type ConnectValues = Record<string, string>

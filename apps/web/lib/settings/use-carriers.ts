@@ -14,12 +14,14 @@ import {
 import {
   type CarrierConnectionView,
   type CarrierRegistryEntryView,
+  type CarrierStatusCatalogEntryView,
   type CarrierTestResultView,
   type ConnectCarrierInput,
   type ConnectedCarrierView,
   connectCarrier,
   disconnectCarrier,
   fetchAllCarrierConnections,
+  fetchCarrierStatusCatalog,
   fetchCarrierRegistry,
   fetchStatusMappings,
   fetchUnmappedStatuses,
@@ -147,6 +149,17 @@ export function useUnmappedStatuses(
     queryFn: ({ pageParam, signal }) =>
       fetchUnmappedStatuses(apiClient, storeId, connectionId, pageParam, signal),
     getNextPageParam: last => (last.hasMore ? last.nextCursor : undefined)
+  })
+}
+
+// Every code the plugin knows with the row the connection holds for it: the table offers the ones with no row yet
+export function useStatusCatalog(
+  storeId: string,
+  connectionId: string
+): UseQueryResult<CarrierStatusCatalogEntryView[]> {
+  return useQuery({
+    queryKey: QueryKeys.carriers.statusCatalog(storeId, connectionId),
+    queryFn: ({ signal }) => fetchCarrierStatusCatalog(apiClient, storeId, connectionId, signal)
   })
 }
 

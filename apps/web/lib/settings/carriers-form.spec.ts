@@ -1,4 +1,4 @@
-import type { CarrierConnectionView } from '@platform/api-client'
+import type { CarrierConnectFieldView, CarrierConnectionView } from '@platform/api-client'
 
 import {
   acceptsCashOnDelivery,
@@ -6,7 +6,9 @@ import {
   carrierRulesChanges,
   carrierRulesDraftOf,
   carrierRulesProblems,
+  credentialShapeOf,
   connectBody,
+  declaresFields,
   connectProblems,
   EMPTY_CONNECT_DRAFT,
   hasInternalGuide,
@@ -214,8 +216,8 @@ describe('parseCredentials', () => {
 })
 
 describe('connect form', () => {
-  const external = { capabilities: [], hasCredentials: true }
-  const internal = { capabilities: ['internal_guide'], hasCredentials: false }
+  const external = { capabilities: [], hasCredentials: true, connectFields: [] }
+  const internal = { capabilities: ['internal_guide'], hasCredentials: false, connectFields: [] }
 
   it('needs a carrier', () => {
     expect(connectProblems(EMPTY_CONNECT_DRAFT, undefined)).toEqual(['carrier'])
@@ -255,5 +257,143 @@ describe('connect form', () => {
       credentials: { name: 'Juan', phone: '555', prefix: 'JM' }
     })
     expect(connectProblems({ ...ready, courierPrefix: 'jm' }, internal)).toEqual(['courierPrefix'])
+  })
+})
+
+const field = (
+  key: string,
+  patch: Partial<CarrierConnectFieldView> = {}
+): CarrierConnectFieldView => ({
+  key,
+  labelKey: `settings.carriers.connect.fields.x.${key}`,
+  label: null,
+  helpKey: null,
+  secret: false,
+  required: true,
+  multiple: false,
+  ...patch
+})
+const declared = [
+  field('username'),
+  field('password', { secret: true }),
+  field('site', { required: false })
+]
+
+describe('a carrier that declares its fields', () => {
+  const target = { capabilities: [], hasCredentials: true, connectFields: declared }
+
+  it('draws its own form and never the JSON box', () => {
+    expect(declaresFields(target)).toBe(true)
+    expect(declaresFields({ ...target, connectFields: [] })).toBe(false)
+    // A courier the platform makes the guides for keeps its own form even if a field were declared
+    expect(declaresFields({ ...target, capabilities: ['internal_guide'] })).toBe(false)
+  })
+
+  it('asks for every required field, and sends only what was typed', () => {
+    const draft = { ...EMPTY_CONNECT_DRAFT, carrierId: 'x', credentials: '{"ignored":1}' }
+    expect(connectProblems(draft, target)).toEqual(['fields'])
+    const partial = { ...draft, fieldValues: { username: 'ana', password: '  ' } }
+    expect(connectProblems(partial, target)).toEqual(['fields'])
+    const ready = { ...draft, fieldValues: { username: ' ana ', password: 's3', site: '' } }
+    expect(connectProblems(ready, target)).toEqual([])
+    expect(connectBody(ready, target)).toEqual({
+      carrierId: 'x',
+      credentials: { username: 'ana', password: 's3' }
+    })
+  })
+
+  it('sends a field that holds a list as its lines', () => {
+    const lists = { ...target, connectFields: [field('hosts', { multiple: true })] }
+    const draft = { ...EMPTY_CONNECT_DRAFT, carrierId: 'x', fieldValues: { hosts: 'a\n\nb\na' } }
+    expect(connectBody(draft, lists).credentials).toEqual({ hosts: ['a', 'b'] })
+  })
+})
+
+describe('editing the credentials', () => {
+  const shape = credentialShapeOf(view, declared)
+
+  it('keeps the saved credentials when nothing was typed', () => {
+    const draft = carrierRulesDraftOf(view, shape.fields)
+    expect(carrierRulesProblems(draft, shape)).toEqual([])
+    expect(carrierRulesChanges(view, draft, shape)).toEqual({})
+  })
+
+  it('refuses a replacement that leaves a required field empty', () => {
+    const draft = carrierRulesDraftOf(view, shape.fields)
+    const typed = { ...draft, fieldValues: { ...draft.fieldValues, username: 'ana' } }
+    expect(carrierRulesProblems(typed, shape)).toEqual(['fields'])
+  })
+
+  it('sends the whole set when every required field is typed', () => {
+    const draft = carrierRulesDraftOf(view, shape.fields)
+    const typed = { ...draft, fieldValues: { username: 'ana', password: 'p', site: '' } }
+    expect(carrierRulesProblems(typed, shape)).toEqual([])
+    expect(carrierRulesChanges(view, typed, shape)).toEqual({
+      credentials: { username: 'ana', password: 'p' }
+    })
+  })
+
+  it('ignores the JSON box when the carrier declares fields', () => {
+    const draft = { ...carrierRulesDraftOf(view, shape.fields), credentials: '{' }
+    expect(carrierRulesProblems(draft, shape)).toEqual([])
+  })
+})
+
+describe('editing the contact and prefix of a courier', () => {
+  const courier: CarrierConnectionView = {
+    ...view,
+    capabilities: ['internal_guide'],
+    contact: { name: 'Juan', phone: '555', notes: 'rear door' },
+    guidePrefix: 'JM'
+  }
+  const shape = credentialShapeOf(courier, [])
+
+  it('starts from what the connection holds and changes nothing', () => {
+    const draft = carrierRulesDraftOf(courier, shape.fields)
+    expect(draft.courier).toEqual({ name: 'Juan', phone: '555', notes: 'rear door', prefix: 'JM' })
+    expect(carrierRulesProblems(draft, shape)).toEqual([])
+    expect(carrierRulesChanges(courier, draft, shape)).toEqual({})
+  })
+
+  it('sends the complete contact when one part changes', () => {
+    const draft = carrierRulesDraftOf(courier, shape.fields)
+    const changed = { ...draft, courier: { ...draft.courier, phone: ' 777 ', prefix: 'AB' } }
+    expect(carrierRulesProblems(changed, shape)).toEqual([])
+    expect(carrierRulesChanges(courier, changed, shape)).toEqual({
+      credentials: { name: 'Juan', phone: '777', notes: 'rear door', prefix: 'AB' }
+    })
+  })
+
+  it('does not send a change that is only spaces', () => {
+    const draft = carrierRulesDraftOf(courier, shape.fields)
+    const spaced = { ...draft, courier: { ...draft.courier, name: ' Juan ', notes: 'rear door ' } }
+    expect(carrierRulesChanges(courier, spaced, shape)).toEqual({})
+  })
+
+  it('names every limit of the contact', () => {
+    const draft = carrierRulesDraftOf(courier, shape.fields)
+    const long = {
+      ...draft,
+      courier: { name: 'n'.repeat(500), phone: ' ', notes: 'x'.repeat(5000), prefix: 'TOOLONG1' }
+    }
+    expect(carrierRulesProblems(long, shape)).toEqual([
+      'courierName',
+      'courierPhone',
+      'courierPrefix',
+      'courierNotes'
+    ])
+  })
+
+  it('names what is wrong with the contact', () => {
+    const draft = carrierRulesDraftOf(courier, shape.fields)
+    const bad = { ...draft, courier: { ...draft.courier, name: ' ', prefix: 'ab' } }
+    expect(carrierRulesProblems(bad, shape)).toEqual(['courierName', 'courierPrefix'])
+  })
+
+  it('does not ask a disconnected courier with no contact for one it is not editing', () => {
+    const bare: CarrierConnectionView = { ...courier, contact: null, guidePrefix: null }
+    const bareShape = credentialShapeOf(bare, [])
+    const draft = carrierRulesDraftOf(bare, bareShape.fields)
+    expect(carrierRulesProblems(draft, bareShape)).toEqual([])
   })
 })

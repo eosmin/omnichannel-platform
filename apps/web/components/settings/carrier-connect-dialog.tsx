@@ -11,9 +11,11 @@ import {
   type ConnectDraft,
   type ConnectProblem,
   connectProblems,
+  declaresFields,
   EMPTY_CONNECT_DRAFT,
   hasInternalGuide
 } from '../../lib/settings/carriers-form'
+import { missingFields } from '../../lib/settings/connect-form'
 import { useConnectCarrier } from '../../lib/settings/use-carriers'
 import { useSubmitGuard } from '../../lib/submit-guard'
 import { toast } from '../../lib/toast'
@@ -31,6 +33,8 @@ import {
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 import { Textarea } from '../ui/textarea'
+
+import { CarrierFieldInputs } from './carrier-field-inputs'
 
 // Connect a carrier (TDD_17 §6). What the form asks for comes from what the registry says of the carrier: a courier the
 // platform makes the guides for asks for its name, phone and the prefix of its guides, a carrier with an account asks for
@@ -95,7 +99,15 @@ export function CarrierConnectDialog({
               <select
                 id={`${id}-carrier`}
                 value={draft.carrierId}
-                onChange={event => set({ carrierId: event.target.value })}
+                onChange={event =>
+                  set({
+                    // What was typed for another carrier does not follow the choice
+                    ...EMPTY_CONNECT_DRAFT,
+                    displayName: draft.displayName,
+                    isDefault: draft.isDefault,
+                    carrierId: event.target.value
+                  })
+                }
                 disabled={pending}
                 aria-invalid={has('carrier')}
                 className="border-input bg-background h-9 rounded-md border px-3 text-sm"
@@ -153,6 +165,19 @@ export function CarrierConnectDialog({
                     />
                   </div>
                 </>
+              ) : declaresFields(target) ? (
+                <CarrierFieldInputs
+                  fields={target.connectFields}
+                  values={draft.fieldValues}
+                  onChange={fieldValues => set({ fieldValues })}
+                  disabled={pending}
+                  invalid={field =>
+                    has('fields') &&
+                    missingFields(target.connectFields, draft.fieldValues).some(
+                      item => item.key === field.key
+                    )
+                  }
+                />
               ) : target.hasCredentials ? (
                 <div className="grid gap-1.5">
                   <Label htmlFor={`${id}-credentials`}>{t('credentials')}</Label>
