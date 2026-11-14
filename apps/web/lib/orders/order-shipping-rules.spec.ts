@@ -60,8 +60,16 @@ describe('offeredShipmentActions', () => {
     ])
   })
 
-  it('offers the manual void, not the cancel, when the carrier cannot cancel', () => {
+  it('offers the cancel, not the manual void, on a made guide of a carrier that cannot cancel', () => {
+    // The api has no move from label_created to cancelled by hand: the cancel parks the guide as cancel_failed first
     expect(offer(ShipmentStatus.LABEL_CREATED, { carrierCanCancel: false })).toEqual([
+      ShipmentActions.PRINT_LABEL,
+      ShipmentActions.CANCEL
+    ])
+  })
+
+  it('offers only the manual void of a cancel that failed at a carrier that cannot cancel', () => {
+    expect(offer(ShipmentStatus.CANCEL_FAILED, { carrierCanCancel: false })).toEqual([
       ShipmentActions.PRINT_LABEL,
       ShipmentActions.MARK_VOIDED
     ])

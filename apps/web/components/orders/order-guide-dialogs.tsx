@@ -9,12 +9,12 @@ import { ShipmentLimits, ShippingPayer } from '@platform/core/domain'
 import {
   activeServices,
   codPreview,
-  connectionsNeedingLocations,
   defaultConnection,
   guideBody,
   type GuideConnection,
   guideConnections,
   initialDraft,
+  needsLocations,
   needsPickup,
   pickupOf,
   returnGuideBody,
@@ -39,6 +39,7 @@ import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 import { Textarea } from '../ui/textarea'
 
+import { GuideLocationSelects } from './order-guide-locations'
 import type { WarehouseOption } from './order-return-dialogs'
 
 function ConnectionSelect({
@@ -105,13 +106,13 @@ function ServiceSelect({
   )
 }
 
-function NoConnection({ hidden, onClose }: { hidden: number; onClose: () => void }): ReactElement {
+function NoConnection({ onClose }: { onClose: () => void }): ReactElement {
   const t = useTranslations('orders.detail.guide')
   const tAll = useTranslations()
   return (
     <>
       <p role="status" className="text-sm">
-        {hidden > 0 ? t('onlyWithLocations', { count: hidden }) : t('noConnection')}
+        {t('noConnection')}
       </p>
       <DialogFooter>
         <Button type="button" variant="outline" onClick={onClose}>
@@ -125,13 +126,16 @@ function NoConnection({ hidden, onClose }: { hidden: number; onClose: () => void
 // Makes the guide of an order (`POST /orders/:id/shipments`): the connection (the store's default to start), its service and the
 // payer (the sender for a free-shipping order), the amount the carrier collects (read-only: it is the order's, and the api writes it)
 // and, for a carrier whose guides live in a pickup, the day and window of that pickup. What it offers is read from the capabilities
-// of the connections; a carrier that asks for the ids of the places is not offered until the lookup of its adapter exists.
+// of the connections; a carrier that asks for the ids of the places gets the selectors of department and municipality, fed by its own
+// lookup, and the guide waits until both are chosen.
 export function CreateGuideDialog({
+  storeId,
   order,
   connections,
   writes,
   onClose
 }: {
+  storeId: string
   order: OrderDetailView
   connections: readonly CarrierConnectionView[]
   writes: ShipmentWrites
@@ -142,7 +146,6 @@ export function CreateGuideDialog({
   const format = useFormatter()
   const id = useId()
   const usable = guideConnections(connections)
-  const hidden = connectionsNeedingLocations(connections)
   const [draft, setDraft] = useState(() =>
     initialDraft(defaultConnection(usable), order.freeShipping)
   )
@@ -159,7 +162,7 @@ export function CreateGuideDialog({
           <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
         {connection === undefined ? (
-          <NoConnection hidden={hidden} onClose={onClose} />
+          <NoConnection onClose={onClose} />
         ) : (
           <>
             <div className="flex flex-col gap-3">
@@ -213,6 +216,17 @@ export function CreateGuideDialog({
                   {cod.collects ? t('codReasonCollects') : t('codReasonPrepaid')}
                 </p>
               </div>
+              {needsLocations(connection) ? (
+                <GuideLocationSelects
+                  key={connection.id}
+                  id={`${id}-places`}
+                  storeId={storeId}
+                  connectionId={connection.id}
+                  departmentId={draft.departmentId}
+                  municipalityId={draft.municipalityId}
+                  onChange={places => setDraft({ ...draft, ...places })}
+                />
+              ) : null}
               {needsPickup(connection) ? (
                 <fieldset className="flex flex-col gap-2">
                   <legend className="text-sm font-medium">{t('pickupLegend')}</legend>
@@ -340,7 +354,7 @@ export function ReturnGuideDialog({
           <DialogDescription>{t('returnDescription')}</DialogDescription>
         </DialogHeader>
         {connection === undefined ? (
-          <NoConnection hidden={0} onClose={onClose} />
+          <NoConnection onClose={onClose} />
         ) : (
           <>
             <div className="flex flex-col gap-3">
