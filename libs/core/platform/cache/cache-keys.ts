@@ -3,6 +3,8 @@
 export const CacheKeys = {
   store: {
     settings: (storeId: string) => `store:${storeId}:settings`,
+    // What the store chose in Settings -> Preferences (StoreSettings.preferences), already read with its defaults
+    preferences: (storeId: string) => `store:${storeId}:preferences`,
     agents: (storeId: string) => `store:${storeId}:agents`,
     products: (storeId: string) => `store:${storeId}:products`,
     tags: (storeId: string) => `store:${storeId}:tags`,
@@ -144,6 +146,26 @@ export const CacheKeys = {
     conversationAll: (storeId: string) => `store:${storeId}:conv:*`,
     productSearchAll: (storeId: string) => `store:${storeId}:products:search:*`
   }
+} as const
+
+// What a group of entries is dropped by (CacheService.invalidateScope): the generation of a scope moves and every entry
+// that names it becomes a miss, and a read that was loading when it moved is not stored as current. Every scope of a
+// tenant carries the storeId, so a change in one store can never drop what another store cached.
+export const CacheScopes = {
+  storeTags: (storeId: string) => `scope:store:${storeId}:tags`,
+  storeSnippets: (storeId: string) => `scope:store:${storeId}:snippets`,
+  storePreferences: (storeId: string) => `scope:store:${storeId}:preferences`,
+  // What a user may do in a store (TenantContextService): everybody in the store, and one member
+  tenantStore: (storeId: string) => `tenant:${storeId}`,
+  tenantMember: (userId: string, storeId: string) => `tenant:${storeId}:${userId}`
+} as const
+
+// The label of the hit and miss counters: one short fixed name per kind of cached read, never a key or an id
+export const CacheNamespaces = {
+  TENANT_CONTEXT: 'tenant-context',
+  STORE_TAGS: 'store-tags',
+  STORE_SNIPPETS: 'store-snippets',
+  STORE_PREFERENCES: 'store-preferences'
 } as const
 
 // Search queries are hashed (sha1(query.toLowerCase().trim())) before becoming part of a key:

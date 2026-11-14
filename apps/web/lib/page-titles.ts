@@ -25,6 +25,7 @@ export const PageTitles = {
   exports: ['shell.nav.exports'],
   search: ['search.page.title'],
   analytics: ['shell.nav.analytics'],
+  analyticsReports: ['shell.nav.analyticsReports', 'shell.nav.analytics'],
   settings: ['shell.nav.settings'],
   settingsGeneral: ['settings.nav.store.general', 'shell.nav.settings'],
   settingsChannels: ['settings.nav.store.channels', 'shell.nav.settings'],

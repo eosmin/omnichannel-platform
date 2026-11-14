@@ -91,7 +91,8 @@ import {
   createTag,
   resetStoreSettings,
   customerOfIdentity,
-  survivorOfMerge
+  survivorOfMerge,
+  dropCachedSettings
 } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
@@ -1213,6 +1214,7 @@ const resources: IsolationResource[] = [
             }
           }
         })
+        await dropCachedSettings(storeId, 'preferences') // Written behind the api's back: see the builder
       },
       markerIn: body => {
         const orders = (

@@ -26,6 +26,7 @@ describe('export state', () => {
   it('opens the center for who may make any one kind of export', () => {
     expect(mayOpenExports(permission => permission === 'media:download_all')).toBe(true)
     expect(mayOpenExports(permission => permission === 'orders:export')).toBe(true)
+    expect(mayOpenExports(permission => permission === 'analytics:export')).toBe(true)
     expect(mayOpenExports(() => false)).toBe(false)
   })
 })

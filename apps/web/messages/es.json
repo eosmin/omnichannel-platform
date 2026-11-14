@@ -1848,7 +1848,8 @@
       "remittances": "Remesas",
       "shipments": "Envíos",
       "pickups": "Recolecciones",
-      "analytics": "Analítica"
+      "analytics": "Analítica",
+      "analyticsReports": "Reportes programados"
     },
     "notifications": {
       "open": "Notificaciones",
