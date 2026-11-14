@@ -1,4 +1,5 @@
 import { ApiError, createApiClient } from '@platform/api-client'
+import { WebhookStatus } from '@platform/core/domain'
 
 import { createApiKey, fetchApiKeys, revokeApiKey } from './api-keys-requests'
 import { fetchRetention, saveRetention } from './retention-requests'
@@ -91,7 +92,7 @@ describe('webhook requests', () => {
 
   it('patches only what it is given', async () => {
     const { client, call } = setup({ ...webhook, status: 'paused' })
-    await updateWebhook(client, 's-1', 'w1', { status: 'paused' })
+    await updateWebhook(client, 's-1', 'w1', { status: WebhookStatus.PAUSED })
     expect(call().url).toBe('https://api.example.com/api/v1/settings/webhooks/w1')
     expect(call().init.method).toBe('PATCH')
     expect(bodyOf(call().init)).toEqual({ status: 'paused' })
