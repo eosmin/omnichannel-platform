@@ -168,6 +168,7 @@ export function OrderBulkBar({
           {placesConnection === null ? null : (
             <div className="w-full">
               <GuideLocationSelects
+                namespace="orders.bulk.places"
                 key={placesConnection.id}
                 id="orders-bulk-places"
                 storeId={storeId}

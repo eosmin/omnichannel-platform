@@ -5,7 +5,6 @@ import { type BrowserContext, type Page, type Route } from '@playwright/test'
 import { AppPaths } from '@platform/api-client'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
-import routes from '../../web/messages/routes/order-detail.en.json' with { type: 'json' }
 import {
   addGuidedOrdersTo,
   addOrdersTo,
@@ -22,7 +21,7 @@ const FIRST_STORE = 'Main Store'
 const ADMIN = 'multi-store@test.com'
 const ORDERS = en.orders.list
 const BULK = en.orders.bulk
-const PLACES = routes.orders.detail.guide.locations
+const PLACES = BULK.places
 
 // The actions over the ticked rows of the orders page and the guide columns and filters (Step 4.14), against the rows a
 // `local` courier holds

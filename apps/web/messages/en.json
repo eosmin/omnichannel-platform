@@ -1539,6 +1539,15 @@
           "unknown": "The server gave a reason this page does not know.",
           "still_running": "The run is still going: look at the orders again in a moment."
         }
+      },
+      "places": {
+        "legend": "Destination",
+        "hint": "This carrier asks for its own list of places. Choose the department and the municipality of the delivery address.",
+        "department": "Department",
+        "municipality": "Municipality",
+        "choose": "Choose",
+        "loading": "Loading",
+        "failed": "The carrier could not list its places. Try again in a moment."
       }
     },
     "copy": {

@@ -11,6 +11,7 @@ import { Label } from '../ui/label'
 // and the list under the department chosen). What the carrier lists is drawn as it comes; nothing here names a carrier. Changing the
 // department clears the municipality, which belongs to it.
 export function GuideLocationSelects({
+  namespace = 'orders.detail.guide.locations',
   id,
   storeId,
   connectionId,
@@ -18,6 +19,8 @@ export function GuideLocationSelects({
   municipalityId,
   onChange
 }: {
+  // Where the words are: the order detail loads its own (route messages), the orders list keeps its copy with the bulk bar
+  namespace?: 'orders.detail.guide.locations' | 'orders.bulk.places'
   id: string
   storeId: string
   connectionId: string
@@ -25,7 +28,7 @@ export function GuideLocationSelects({
   municipalityId: string
   onChange: (next: { departmentId: string; municipalityId: string }) => void
 }): ReactElement {
-  const t = useTranslations('orders.detail.guide.locations')
+  const t = useTranslations(namespace)
   const departments = useCarrierLocations(storeId, connectionId, null, true)
   const municipalities = useCarrierLocations(
     storeId,
