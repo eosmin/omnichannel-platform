@@ -23,6 +23,7 @@ import { Button } from '../ui/button'
 import { ConversationActions } from './conversation-actions'
 import { CustomerAvatar } from './customer-avatar'
 import { InboxState } from './inbox-state'
+import { DeleteConversationButton } from './lazy-dialogs'
 
 // The top of the conversation: who it is with and through which channel. The thread and the composer
 // go under it (Step 3.2, PR B2 and B3).
@@ -159,6 +160,9 @@ function LoadedHeader({
           </Button>
         ) : null}
         <ConversationActions conversationId={conversationId} status={status} />
+        {can(ClientPermissions.CONVERSATIONS_DELETE) ? (
+          <DeleteConversationButton conversationId={conversationId} name={name} />
+        ) : null}
       </div>
     </header>
   )

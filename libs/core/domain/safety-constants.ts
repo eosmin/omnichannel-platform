@@ -1,3 +1,5 @@
+import { RoleNames } from './auth/permissions'
+
 // How much friction a destructive action gets (TDD_09 §11.1). CRITICAL always asks for a typed
 // confirmation phrase; HIGH is configurable per store and on by default; MODERATE is configurable
 // per user; LOW only offers an undo toast. Deleting an organization is not an action in the MVP:
@@ -55,3 +57,30 @@ export const DestructiveActionTiers = {
   CHANGE_CONVERSATION_STATUS: LOW
 } as const satisfies Record<string, DestructiveActionTier>
 export type DestructiveAction = keyof typeof DestructiveActionTiers
+
+// How a store asks before a destructive action of the HIGH and MODERATE tiers (TDD_09 §11.2). CRITICAL
+// actions always ask for a typed phrase and LOW ones always offer an undo toast: neither is a setting.
+// Here and not in `safety-settings.ts`, which holds the zod schema: the browser reads these two lists on every
+// screen and must not load a schema for them.
+export const ModerateRiskModes = {
+  DIALOG: 'dialog',
+  UNDO: 'undo',
+  NONE: 'none'
+} as const
+export type ModerateRiskMode = (typeof ModerateRiskModes)[keyof typeof ModerateRiskModes]
+
+// The system roles a confirmation can be limited to. A custom role is never listed and so always asks: the
+// switches can only take the dialog away from the roles of the preset. (A custom role cannot be named like a
+// system one: the api refuses the name, whatever its case.)
+export const SafetyRoleNames = [RoleNames.AGENT, RoleNames.SUPERVISOR, RoleNames.ADMIN] as const
+export type SafetyRoleName = (typeof SafetyRoleNames)[number]
+
+// The HIGH actions that a store can stop asking about, with the key of `StoreSettings.safety` that holds the
+// switch. Every other HIGH action always asks (a guide voided, a stock count applied, a secret rotated): the page
+// has no switch for it.
+export const SafetySwitchedActions = {
+  DELETE_CUSTOMER: 'confirmDeleteCustomer',
+  DISCONNECT_CHANNEL: 'confirmDisconnectChannel',
+  REMOVE_TEAM_MEMBER: 'confirmRemoveMember'
+} as const satisfies Partial<Record<keyof typeof DestructiveActionTiers, string>>
+export type SafetySwitch = (typeof SafetySwitchedActions)[keyof typeof SafetySwitchedActions]
