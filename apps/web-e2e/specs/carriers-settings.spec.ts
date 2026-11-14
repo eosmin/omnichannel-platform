@@ -290,7 +290,9 @@ test.describe('Settings → Carriers', () => {
       await expect(firstRate).toBeVisible()
       // Nothing is agreed yet
       await expect(commission).toHaveValue('')
-      // What is not a percent or a price is refused before any request
+      // What is not a percent or a price is refused before any request. Save is only on when something valid changed, so another
+      // setting is changed first, as the case of the fee range does
+      await rules.getByLabel(carriers.rules.shipping.attempts).fill('5')
       await commission.fill('abc')
       await rules.getByRole('button', { name: carriers.rules.save }).click()
       await expect(
