@@ -3,6 +3,8 @@ import { type Job, UnrecoverableError } from 'bullmq'
 import { z } from 'zod'
 
 import {
+  exactly,
+  type ExportAuditLogsJob,
   type GenerateExportJob,
   type GenerateScheduledReportJob,
   JobNames,
@@ -11,27 +13,41 @@ import {
 
 import { ScheduledReportRunner } from '../exports/analytics/scheduled-report.runner'
 import { ExportGenerator } from '../exports/export-generator.service'
+import { AuditColdExporter } from '../retention/audit-cold-exporter.service'
 
 import { BaseProcessor, isLastAttempt } from './base.processor'
 import { ProcessorSupport } from './processor-support'
 
 const exportJobSchema = z.object({ exportId: z.uuid() })
 const reportJobSchema = z.object({ reportId: z.uuid(), day: z.iso.date() })
+const auditExportJobSchema = exactly<ExportAuditLogsJob>()(
+  z.object({ before: z.iso.datetime(), correlationId: z.string().optional() })
+)
 
 // One at a time: an export reads a whole table and the worker holds little memory
 @Processor(QueueNames.EXPORTS, { concurrency: 1 })
 export class ExportsProcessor extends BaseProcessor<
-  GenerateExportJob | GenerateScheduledReportJob
+  GenerateExportJob | GenerateScheduledReportJob | ExportAuditLogsJob
 > {
   constructor(
     support: ProcessorSupport,
     private readonly generator: ExportGenerator,
-    private readonly reports: ScheduledReportRunner
+    private readonly reports: ScheduledReportRunner,
+    private readonly auditExport: AuditColdExporter
   ) {
     super(QueueNames.EXPORTS, support)
   }
 
-  protected async handle(job: Job<GenerateExportJob | GenerateScheduledReportJob>): Promise<void> {
+  protected async handle(
+    job: Job<GenerateExportJob | GenerateScheduledReportJob | ExportAuditLogsJob>
+  ): Promise<void> {
+    if (job.name === JobNames.EXPORT_AUDIT_LOGS_TO_COLD_STORAGE) {
+      const parsed = auditExportJobSchema.safeParse(job.data)
+      if (!parsed.success)
+        throw new UnrecoverableError('the audit export job does not fit its schema')
+      await this.auditExport.run(new Date(parsed.data.before))
+      return
+    }
     if (job.name === JobNames.GENERATE_SCHEDULED_REPORT) {
       const parsed = reportJobSchema.safeParse(job.data)
       if (!parsed.success) throw new UnrecoverableError('the report job does not fit its schema')

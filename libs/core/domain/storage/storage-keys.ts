@@ -101,7 +101,9 @@ export const StorageKeys = {
   // Everything that belongs to one user: a key outside it is another user's, whatever the store
   userPrefix: (userId: string) => `${USERS_ROOT}${userId}/`,
   dsrExport: (requestId: string) => `compliance/dsr/${requestId}/export.zip`,
-  auditArchive: (year: number, month: number) =>
-    `audit/${year}/${String(month).padStart(2, '0')}/audit-logs.jsonl.gz`,
+  // The cold copy of one month of the audit log (TDD_05 §9.3). Part 1 is `audit-logs.jsonl.gz`; a run that finds the
+  // month already archived but with rows still in the database writes the next part and never overwrites one
+  auditArchive: (year: number, month: number, part = 1) =>
+    `audit/${year}/${String(month).padStart(2, '0')}/audit-logs${part === 1 ? '' : `-part-${part}`}.jsonl.gz`,
   storePrefix: (storeId: string) => `stores/${storeId}/`
 } as const
