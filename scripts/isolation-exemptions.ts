@@ -14,6 +14,5 @@ import type { IsolationExemption } from './lib/isolation'
 export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> = {
   AuditLog: { step: '7.2', reason: 'Read through the audit log viewer of the organization' },
   ConsentRecord: { step: '7.2', reason: 'Written by the compliance flows' },
-  DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' },
-  RetentionSettings: { step: '5.4', reason: 'Read and changed from the data retention settings' }
+  DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' }
 }

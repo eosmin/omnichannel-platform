@@ -1,5 +1,7 @@
 import type { OwnerClient } from '@platform/core/database-testing'
 
+import { dropCachedSettings } from './cache'
+
 export const BUSINESS_HOURS_TIMEZONE = 'America/El_Salvador'
 
 const OPEN_DAY = [{ from: '09:00', to: '18:00' }]
@@ -38,5 +40,6 @@ export async function resetStoreSettings(
 ): Promise<{ id: string }> {
   await owner.storeSettings.deleteMany({ where: { storeId: input.storeId } })
   await owner.storeSettings.create({ data: { storeId: input.storeId } })
+  await dropCachedSettings(input.storeId, 'preferences')
   return { id: input.storeId }
 }

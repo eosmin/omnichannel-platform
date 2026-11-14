@@ -116,6 +116,15 @@ export const scheduledReportJobId = (reportId: string, day: string): string =>
 export const reconcileInventoryJobId = (storeId: string, day: string): string =>
   `${JobNames.RECONCILE_INVENTORY}-${storeId}-${day}`
 
+// One retention run per store and local day: the hourly scheduler run twice in the same hour (or the store's hour of
+// 03:00 seen twice around a change of the clock) asks for the same job (dashes, no colon)
+export const enforceRetentionJobId = (storeId: string, localDay: string): string =>
+  `${JobNames.ENFORCE_RETENTION}-${storeId}-${localDay}`
+
+// One cold export per month of the run: the monthly scheduler run twice is one job (dashes, no colon)
+export const exportAuditLogsJobId = (month: string): string =>
+  `${JobNames.EXPORT_AUDIT_LOGS_TO_COLD_STORAGE}-${month}`
+
 // One poll per connection and interval bucket: the scheduler run twice in a bucket asks for the same job (dashes, no colon)
 export const pollShipmentStatusJobId = (connectionId: string, bucket: number): string =>
   `${JobNames.POLL_SHIPMENT_STATUS}-${connectionId}-${bucket}`

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 
 import { TenantAccessStatuses } from '@platform/core/auth'
-import { CacheKeys, CacheTTL } from '@platform/core/cache'
+import { CacheKeys, CacheNamespaces, CacheScopes, CacheTTL } from '@platform/core/cache'
 import { PrismaService } from '@platform/core/database'
 import { isSuspended, MembershipStatus } from '@platform/core/domain'
 import { CacheService } from '@platform/core/redis'
@@ -13,12 +13,11 @@ import {
   tenantAccessSchema
 } from './tenant-context'
 
-const NAMESPACE = 'tenant-context'
 // Two scopes per entry: the store (a role was edited, everybody in it) and the member (one user was
 // added, removed or moved). A scope also protects a read that is loading when the change is made;
 // deleting the key would not.
-const storeScope = (storeId: string): string => `tenant:${storeId}`
-const memberScope = (userId: string, storeId: string): string => `tenant:${storeId}:${userId}`
+const storeScope = CacheScopes.tenantStore
+const memberScope = CacheScopes.tenantMember
 
 // What a user may do in a store. The answer is cached for CacheTTL.VERY_SHORT (30 s), so the cost of
 // a request is a Redis read and not four joins. Two things keep it honest:
@@ -46,7 +45,7 @@ export class TenantContextService {
   // requests and the sockets use to say why. The cached entry holds one or the other, never both.
   async access(userId: string, storeId: string): Promise<TenantAccess> {
     const found = await this.cache.getOrSet({
-      namespace: NAMESPACE,
+      namespace: CacheNamespaces.TENANT_CONTEXT,
       key: CacheKeys.agent.permissions(userId, storeId),
       ttlSeconds: CacheTTL.VERY_SHORT,
       schema: tenantAccessSchema,

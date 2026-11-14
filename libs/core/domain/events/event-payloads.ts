@@ -441,6 +441,22 @@ export interface MemberJoinedPayload {
   invitedBy: string
 }
 
+// Ids only: a listener that needs the row reads it by id
+export interface TagChangedPayload {
+  storeId: string
+  tagId: string
+}
+
+export interface SnippetChangedPayload {
+  storeId: string
+  snippetId: string
+}
+
+// Emitted by PreferencesService only (Settings -> Preferences); the other writers of StoreSettings emit nothing yet
+export interface StoreSettingsUpdatedPayload {
+  storeId: string
+}
+
 // The domain events that are emitted, with the payload of each: DomainEvents.publish takes the name
 // and checks the payload against this map
 
@@ -523,6 +539,13 @@ export interface DomainEventPayloads {
   [Events.PRODUCT_CREATED]: ProductChangedPayload
   [Events.PRODUCT_UPDATED]: ProductChangedPayload
   [Events.PRODUCT_DELETED]: ProductChangedPayload
+  [Events.TAG_CREATED]: TagChangedPayload
+  [Events.TAG_UPDATED]: TagChangedPayload
+  [Events.TAG_DELETED]: TagChangedPayload
+  [Events.SNIPPET_CREATED]: SnippetChangedPayload
+  [Events.SNIPPET_UPDATED]: SnippetChangedPayload
+  [Events.SNIPPET_DELETED]: SnippetChangedPayload
+  [Events.STORE_SETTINGS_UPDATED]: StoreSettingsUpdatedPayload
 }
 
 // What crosses the bridge from the worker to the api instances: the same payloads with the text taken

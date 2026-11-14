@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { RetentionBounds } from '@platform/core/compliance'
 import {
   ProductLimits,
   ShippingPayer,
@@ -137,3 +138,17 @@ export const updateReturnSettingsSchema = z
   .refine(changesSomething, nothingToChange)
 
 export type UpdateReturnSettingsBody = z.infer<typeof updateReturnSettingsSchema>
+
+const retentionDays = (field: keyof typeof RetentionBounds) =>
+  z.number().int().min(RetentionBounds[field].min).max(RetentionBounds[field].max)
+
+// Settings → Data retention (TDD_05 §10.4): the four windows, all of them, because the page shows all four and sends
+// what it shows (a PUT, not a patch). The limits are the ones of the table's CHECK constraints.
+export const putRetentionSettingsSchema = z.strictObject({
+  conversationDays: retentionDays('conversationDays'),
+  mediaDays: retentionDays('mediaDays'),
+  analyticsDays: retentionDays('analyticsDays'),
+  notificationDays: retentionDays('notificationDays')
+})
+
+export type PutRetentionSettingsBody = z.infer<typeof putRetentionSettingsSchema>

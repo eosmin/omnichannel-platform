@@ -33,6 +33,7 @@ import {
 } from './inbox-settings.service'
 import { type InventorySettingsView, InventorySettingsService } from './inventory-settings.service'
 import { PreferencesService } from './preferences.service'
+import { type RetentionSettingsView, RetentionSettingsService } from './retention-settings.service'
 import { type ReturnSettingsView, ReturnSettingsService } from './return-settings.service'
 import {
   type CreateSnippetBody,
@@ -42,6 +43,8 @@ import {
   idSchema,
   type PutBusinessHoursBody,
   putBusinessHoursSchema,
+  type PutRetentionSettingsBody,
+  putRetentionSettingsSchema,
   type UpdateInboxSettingsBody,
   updateInboxSettingsSchema,
   type UpdateInventorySettingsBody,
@@ -72,6 +75,7 @@ export class SettingsController {
     private readonly inbox: InboxSettingsService,
     private readonly inventory: InventorySettingsService,
     private readonly returnSettings: ReturnSettingsService,
+    private readonly retention: RetentionSettingsService,
     private readonly preferences: PreferencesService
   ) {}
 
@@ -246,6 +250,24 @@ export class SettingsController {
     @Req() req: AuthenticatedRequest
   ): Promise<InventorySettingsView> {
     return this.inventory.update(store.id, body, actorOf(user, store, req))
+  }
+
+  // The windows the nightly run deletes by: shortening one deletes data, so even reading them is for whoever manages them
+  @RequirePermissions(Permissions.SETTINGS_MANAGE_RETENTION)
+  @Get(ApiRoutes.settings.retention)
+  getRetention(@CurrentStore() store: Store): Promise<RetentionSettingsView> {
+    return this.retention.get(store.id)
+  }
+
+  @RequirePermissions(Permissions.SETTINGS_MANAGE_RETENTION)
+  @Put(ApiRoutes.settings.retention)
+  putRetention(
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(putRetentionSettingsSchema)) body: PutRetentionSettingsBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<RetentionSettingsView> {
+    return this.retention.put(store.id, body, actorOf(user, store, req))
   }
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)
