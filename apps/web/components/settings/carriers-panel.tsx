@@ -8,6 +8,7 @@ import type { CarrierConnectionView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
 import { CarrierConnectionStatus } from '@platform/core/domain'
 
+import { NO_FEE_SETTINGS } from '../../lib/settings/carriers-form'
 import { useCarrierConnections, useCarrierRegistry } from '../../lib/settings/use-carriers'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
@@ -177,6 +178,10 @@ export function CarriersPanel(): ReactElement {
           // A registry that cannot be read leaves the free JSON box: the connection can still be edited
           connectFields={
             registry.data?.find(entry => entry.id === toEdit.carrierId)?.connectFields ?? []
+          }
+          feeSettings={
+            registry.data?.find(entry => entry.id === toEdit.carrierId)?.feeSettings ??
+            NO_FEE_SETTINGS
           }
           onClose={() => setEditing(null)}
         />

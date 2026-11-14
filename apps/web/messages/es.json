@@ -3526,7 +3526,9 @@
           "courierPhone": "Escribe el teléfono del mensajero (hasta 30 caracteres).",
           "courierPrefix": "El prefijo son de 1 a 6 letras mayúsculas o dígitos.",
           "courierNotes": "Las notas son demasiado largas.",
-          "fields": "Completa todos los campos que no estén marcados como opcionales."
+          "fields": "Completa todos los campos que no estén marcados como opcionales.",
+          "commission": "La comisión es un porcentaje como 4.5, de 0 a 50, o vacío.",
+          "rates": "Una tarifa es un monto como 3.50, o vacío."
         },
         "fields": {
           "c807": {
@@ -3619,7 +3621,9 @@
           "courierName": "Escribe el nombre del mensajero (hasta 80 caracteres).",
           "courierPhone": "Escribe el teléfono del mensajero (hasta 30 caracteres).",
           "courierPrefix": "El prefijo son de 1 a 6 letras mayúsculas o dígitos.",
-          "courierNotes": "Las notas son demasiado largas."
+          "courierNotes": "Las notas son demasiado largas.",
+          "commission": "La comisión es un porcentaje como 4.5, de 0 a 50, o vacío.",
+          "rates": "Una tarifa es un monto como 3.50, o vacío."
         },
         "save": "Guardar",
         "saving": "Guardando…",
@@ -3722,6 +3726,24 @@
       },
       "webhook": {
         "headerLabel": "Nombre del encabezado"
+      },
+      "fees": {
+        "legend": "Comisión y tarifas",
+        "hint": "Lo que pactaste con el transportista. Con esto se calcula cuánto debe remitirte por cada guía de cobro contra entrega, si activaste que descuenta su tarifa del efectivo.",
+        "commission": "Comisión del transportista (%)",
+        "commissionHint": "Un porcentaje del efectivo que cobra, por ejemplo 4.5. Vacío significa sin comisión.",
+        "rates": "Tarifa del envío por servicio (US$)",
+        "ratesHint": "Lo que cobra el transportista por cada guía de ese servicio. Vacío significa sin tarifa."
+      },
+      "rates": {
+        "c807": {
+          "cce": "Cobro contra entrega (CCE)",
+          "sec": "El cliente paga el envío (SEC)",
+          "ser": "Pedido ya pagado (SER)"
+        },
+        "forza": {
+          "home": "Entrega a domicilio"
+        }
       }
     },
     "returns": {

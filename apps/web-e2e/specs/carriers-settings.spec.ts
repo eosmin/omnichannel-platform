@@ -273,6 +273,55 @@ test.describe('Settings → Carriers', () => {
       ).toBeVisible()
     })
 
+    test('the owner agrees a commission and a rate per service, drawn from what the carrier declares', async ({
+      page
+    }) => {
+      await signIn(page, ownerEmail)
+      await page.waitForURL(/\/s\/[^/]+\//)
+      await page.goto(settingsPath())
+      const card = page.getByTestId('carrier-card').filter({ hasText: `Pushing ${run}` })
+      await card.getByRole('button', { name: carriers.card.edit }).click()
+      const rules = page.getByRole('dialog', { name: new RegExp(`Pushing ${run}`) })
+      const group = rules.getByRole('group', { name: carriers.fees.legend })
+      const commission = group.getByLabel(carriers.fees.commission)
+      // The first box of the group is the commission, the others are one price per service the carrier declares
+      const firstRate = group.getByRole('textbox').nth(1)
+      await expect(commission).toBeVisible()
+      await expect(firstRate).toBeVisible()
+      // Nothing is agreed yet
+      await expect(commission).toHaveValue('')
+      // What is not a percent or a price is refused before any request
+      await commission.fill('abc')
+      await rules.getByRole('button', { name: carriers.rules.save }).click()
+      await expect(
+        rules.getByRole('alert').getByText(carriers.rules.problems.commission)
+      ).toBeVisible()
+      await commission.fill('4,5')
+      await firstRate.fill('x')
+      await rules.getByRole('button', { name: carriers.rules.save }).click()
+      await expect(rules.getByRole('alert').getByText(carriers.rules.problems.rates)).toBeVisible()
+      await firstRate.fill('3.5')
+      // The units that travel: basis points and cents
+      const sent = page.waitForRequest(
+        request => request.method() === 'PATCH' && request.url().includes('/carriers/')
+      )
+      await rules.getByRole('button', { name: carriers.rules.save }).click()
+      const body = (await sent).postDataJSON() as {
+        commissionBps: number
+        serviceRatesCents: Record<string, number>
+      }
+      expect(body.commissionBps).toBe(450)
+      expect(Object.values(body.serviceRatesCents)).toEqual([350])
+      await expect(rules).toHaveCount(0)
+
+      // What was agreed comes back as a percent with a point and a price in dollars
+      await card.getByRole('button', { name: carriers.card.edit }).click()
+      const reopened = page.getByRole('dialog', { name: new RegExp(`Pushing ${run}`) })
+      const again = reopened.getByRole('group', { name: carriers.fees.legend })
+      await expect(again.getByLabel(carriers.fees.commission)).toHaveValue('4.5')
+      await expect(again.getByRole('textbox').nth(1)).toHaveValue('3.50')
+    })
+
     test('a person who may only look sees the notice address and the codes, with no control to change them', async ({
       page
     }) => {

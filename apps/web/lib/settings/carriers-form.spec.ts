@@ -1,4 +1,8 @@
-import type { CarrierConnectFieldView, CarrierConnectionView } from '@platform/api-client'
+import type {
+  CarrierConnectFieldView,
+  CarrierConnectionView,
+  CarrierFeeSettingsView
+} from '@platform/api-client'
 
 import {
   acceptsCashOnDelivery,
@@ -12,6 +16,7 @@ import {
   connectProblems,
   EMPTY_CONNECT_DRAFT,
   hasInternalGuide,
+  isRateText,
   parseCredentials
 } from './carriers-form'
 
@@ -218,8 +223,14 @@ describe('parseCredentials', () => {
 })
 
 describe('connect form', () => {
-  const external = { capabilities: [], hasCredentials: true, connectFields: [] }
-  const internal = { capabilities: ['internal_guide'], hasCredentials: false, connectFields: [] }
+  const none = { commission: false, rateServices: [] }
+  const external = { capabilities: [], hasCredentials: true, connectFields: [], feeSettings: none }
+  const internal = {
+    capabilities: ['internal_guide'],
+    hasCredentials: false,
+    connectFields: [],
+    feeSettings: none
+  }
 
   it('needs a carrier', () => {
     expect(connectProblems(EMPTY_CONNECT_DRAFT, undefined)).toEqual(['carrier'])
@@ -282,7 +293,12 @@ const declared = [
 ]
 
 describe('a carrier that declares its fields', () => {
-  const target = { capabilities: [], hasCredentials: true, connectFields: declared }
+  const target = {
+    capabilities: [],
+    hasCredentials: true,
+    connectFields: declared,
+    feeSettings: { commission: false, rateServices: [] }
+  }
 
   it('draws its own form and never the JSON box', () => {
     expect(declaresFields(target)).toBe(true)
@@ -397,5 +413,132 @@ describe('editing the contact and prefix of a courier', () => {
     const bareShape = credentialShapeOf(bare, [])
     const draft = carrierRulesDraftOf(bare, bareShape.fields)
     expect(carrierRulesProblems(draft, bareShape)).toEqual([])
+  })
+})
+
+// The commission and the rate per service of a carrier that declares them (TDD_17 §4.15; owner, 2026-11-14)
+describe('commission and rates', () => {
+  const fees: CarrierFeeSettingsView = {
+    commission: true,
+    rateServices: [
+      { code: 'CCE', labelKey: 'settings.carriers.rates.c807.cce' },
+      { code: 'SEC', labelKey: 'settings.carriers.rates.c807.sec' }
+    ]
+  }
+  const shape = { ...credentialShapeOf(view, []), fees }
+  const agreed: CarrierConnectionView = {
+    ...view,
+    commissionBps: 450,
+    serviceRatesCents: { CCE: 300 }
+  }
+
+  it('shows what was agreed as a percent and as dollars, and an empty box for a service with no rate', () => {
+    const draft = carrierRulesDraftOf(agreed, [], fees)
+    expect(draft.commission).toBe('4.5')
+    expect(draft.rates).toEqual({ CCE: '3.00', SEC: '' })
+    expect(carrierRulesProblems(draft, shape)).toEqual([])
+    expect(carrierRulesChanges(agreed, draft, shape)).toEqual({})
+  })
+
+  it('has nothing to draw for a carrier that declares neither', () => {
+    const draft = carrierRulesDraftOf(view)
+    expect(draft.commission).toBe('')
+    expect(draft.rates).toEqual({})
+  })
+
+  it('sends the commission as basis points and only when it changed, a comma included', () => {
+    const draft = { ...carrierRulesDraftOf(agreed, [], fees), commission: '5,25' }
+    expect(carrierRulesChanges(agreed, draft, shape)).toEqual({ commissionBps: 525 })
+    expect(carrierRulesChanges(agreed, { ...draft, commission: '' }, shape)).toEqual({
+      commissionBps: null
+    })
+  })
+
+  it('sends the whole table of rates in cents when one changed, leaving out the empty ones', () => {
+    const draft = carrierRulesDraftOf(agreed, [], fees)
+    expect(
+      carrierRulesChanges(agreed, { ...draft, rates: { CCE: '3.50', SEC: '1.2' } }, shape)
+    ).toEqual({ serviceRatesCents: { CCE: 350, SEC: 120 } })
+    expect(carrierRulesChanges(agreed, { ...draft, rates: { CCE: '', SEC: '' } }, shape)).toEqual({
+      serviceRatesCents: {}
+    })
+  })
+
+  it('refuses a percent or a price that is not one, or is over the limit', () => {
+    const draft = carrierRulesDraftOf(agreed, [], fees)
+    for (const commission of ['abc', '-1', '4.555', '51', '4%']) {
+      expect(carrierRulesProblems({ ...draft, commission }, shape)).toContain('commission')
+    }
+    expect(carrierRulesProblems({ ...draft, commission: '50' }, shape)).toEqual([])
+    for (const rate of ['abc', '-1', '1.234', '1000001']) {
+      expect(carrierRulesProblems({ ...draft, rates: { CCE: rate, SEC: '' } }, shape)).toContain(
+        'rates'
+      )
+    }
+  })
+
+  it('keeps a saved rate the draft has no box for: a service no longer declared, or a registry that arrived late', () => {
+    const stale: CarrierConnectionView = {
+      ...view,
+      commissionBps: 450,
+      serviceRatesCents: { CCE: 300, OLD: 50 }
+    }
+    // The dialog opened before the registry answered: the draft has no boxes, the shape declares two services
+    const early = carrierRulesDraftOf(stale)
+    expect(carrierRulesChanges(stale, early, shape)).toEqual({})
+    // A person who typed a price for one box changes only that one
+    const draft = { ...carrierRulesDraftOf(stale, [], fees), rates: { CCE: '4', SEC: '' } }
+    expect(carrierRulesChanges(stale, draft, shape)).toEqual({
+      serviceRatesCents: { OLD: 50, CCE: 400 }
+    })
+    // A box the person emptied clears that rate
+    expect(carrierRulesChanges(stale, { ...draft, rates: { CCE: '', SEC: '' } }, shape)).toEqual({
+      serviceRatesCents: { OLD: 50 }
+    })
+  })
+
+  it('reads a commission of 0 and a price of 0 as values, and marks a box that is not a price', () => {
+    const draft = carrierRulesDraftOf({ ...view, commissionBps: 0 }, [], fees)
+    expect(draft.commission).toBe('0')
+    expect(
+      carrierRulesChanges(view, { ...carrierRulesDraftOf(view, [], fees), commission: '0' }, shape)
+    ).toEqual({ commissionBps: 0 })
+    expect(isRateText('0.00')).toBe(true)
+    expect(isRateText('')).toBe(true)
+    expect(isRateText('x')).toBe(false)
+  })
+
+  it('never sends a commission or a rate for a carrier that declares none', () => {
+    const draft = { ...carrierRulesDraftOf(view), commission: '4', rates: { CCE: '3' } }
+    expect(carrierRulesChanges(view, draft)).toEqual({})
+  })
+
+  it('asks for them when connecting, optional, and sends them with the credentials', () => {
+    const target = {
+      capabilities: [],
+      hasCredentials: true,
+      connectFields: [],
+      feeSettings: fees
+    }
+    const draft = {
+      ...EMPTY_CONNECT_DRAFT,
+      carrierId: 'x',
+      credentials: '{"a":1}',
+      commission: '4.5',
+      rates: { CCE: '3', SEC: '' }
+    }
+    expect(connectProblems(draft, target)).toEqual([])
+    expect(connectBody(draft, target)).toEqual({
+      carrierId: 'x',
+      credentials: { a: 1 },
+      commissionBps: 450,
+      serviceRatesCents: { CCE: 300 }
+    })
+    expect(connectProblems({ ...draft, commission: '60' }, target)).toContain('commission')
+    expect(connectProblems({ ...draft, rates: { CCE: 'x', SEC: '' } }, target)).toContain('rates')
+    // Nothing typed, nothing sent
+    expect(
+      connectBody({ ...EMPTY_CONNECT_DRAFT, carrierId: 'x', credentials: '{"a":1}' }, target)
+    ).toEqual({ carrierId: 'x', credentials: { a: 1 } })
   })
 })
