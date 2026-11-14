@@ -23,6 +23,7 @@ import {
 import { GalleryLimits, StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
+import { AnalyticsExportWriter } from '../../apps/worker/src/exports/analytics/analytics-export.writer'
 import { CsvExportWriter } from '../../apps/worker/src/exports/csv-export-writer'
 import { ExportGenerator } from '../../apps/worker/src/exports/export-generator.service'
 import { ZipExportWriter } from '../../apps/worker/src/exports/zip-export-writer'
@@ -96,10 +97,12 @@ describe('Media gallery', () => {
     storage = app.get(StorageService, { strict: false })
     warn = jest.fn()
     const logger = { setContext: jest.fn(), error: jest.fn(), warn } as unknown as PinoLogger
+    const prisma = app.get(PrismaService, { strict: false })
     generator = new ExportGenerator(
-      app.get(PrismaService, { strict: false }),
+      prisma,
       new CsvExportWriter(storage),
       new ZipExportWriter(storage, logger),
+      new AnalyticsExportWriter(prisma, storage, new CsvExportWriter(storage)),
       storage,
       app.get(AuditService, { strict: false }),
       app.get(DomainEvents, { strict: false }),

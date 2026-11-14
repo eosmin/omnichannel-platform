@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { INestApplication } from '@nestjs/common'
 
 import { ChannelOAuthConfig } from '@platform/channels/connections'
-import { AnalyticsMetrics, MetricDimensions } from '@platform/core/analytics'
+import { AnalyticsMetrics, MetricDimensions, ReportFrequency } from '@platform/core/analytics'
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions, RoleNames, TenantHeaders } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
@@ -568,6 +568,47 @@ const resources: IsolationResource[] = [
       markerIn: metricMarkerIn
     },
     untouched: async (owner, id) => (await owner.metricDaily.count({ where: { storeId: id } })) > 0
+  },
+  // The scheduled reports of a store (Step 5.2 PR C). A report of another store is a 404 to change or delete, the list of the other
+  // store never holds it, and a creation that names another store in the body is refused. The export of the analytics reads
+  // the rollups of the store of the request: that is the case of the metrics above, and tests/api/analytics-reports.spec.ts reads a
+  // file of a store with the rows of another next to it.
+  {
+    name: 'scheduledReport',
+    create: async (owner, input) =>
+      owner.scheduledReport.create({
+        data: {
+          storeId: input.storeId,
+          name: 'isolation-original',
+          metrics: [AnalyticsMetrics.ORDERS_CREATED],
+          frequency: ReportFrequency.WEEKLY,
+          format: 'csv',
+          recipients: ['isolation@example.com'],
+          createdBy: randomUUID()
+        },
+        select: { id: true }
+      }),
+    listPath: ApiRoutes.analytics.reports,
+    modify: { path: ApiRoutes.analytics.reportById, body: { name: 'hacked' } },
+    untouched: async (owner, id) =>
+      (await owner.scheduledReport.findUnique({ where: { id }, select: { name: true } }))?.name ===
+      'isolation-original',
+    creation: {
+      path: ApiRoutes.analytics.reports,
+      body: name => ({
+        name,
+        metrics: [AnalyticsMetrics.ORDERS_CREATED],
+        frequency: ReportFrequency.WEEKLY,
+        format: 'csv',
+        recipients: ['isolation@example.com'],
+        timezone: 'America/El_Salvador'
+      }),
+      strict: true,
+      countIn: (owner, storeId) => owner.scheduledReport.count({ where: { storeId } }),
+      storeOf: async (owner, id) =>
+        (await owner.scheduledReport.findUnique({ where: { id }, select: { storeId: true } }))
+          ?.storeId ?? null
+    }
   },
   {
     name: 'orderMessageDispatch',

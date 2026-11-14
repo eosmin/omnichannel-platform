@@ -5,6 +5,8 @@ import { QueuesPlatformModule } from '@platform/core/http'
 import { ExportsProcessor } from '../processors/exports.processor'
 import { ProcessorSupport } from '../processors/processor-support'
 
+import { AnalyticsExportWriter } from './analytics/analytics-export.writer'
+import { ScheduledReportRunner } from './analytics/scheduled-report.runner'
 import { CsvExportWriter } from './csv-export-writer'
 import { ExpiredExportsCleaner } from './expired-exports-cleaner.service'
 import { ExportGenerator } from './export-generator.service'
@@ -18,6 +20,8 @@ import { ZipExportWriter } from './zip-export-writer'
     ProcessorSupport,
     CsvExportWriter,
     ZipExportWriter,
+    AnalyticsExportWriter,
+    ScheduledReportRunner,
     ExportGenerator,
     ExpiredExportsCleaner,
     ExportsProcessor

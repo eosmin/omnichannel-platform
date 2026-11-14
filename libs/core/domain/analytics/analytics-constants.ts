@@ -66,6 +66,7 @@ export const DateRangePresets = {
 
 // Scheduled reports (TDD_11 §7.4)
 export const ReportFrequency = { DAILY: 'daily', WEEKLY: 'weekly', MONTHLY: 'monthly' } as const
+export type ReportFrequencyType = (typeof ReportFrequency)[keyof typeof ReportFrequency]
 export const ReportFormats = { PDF: 'pdf', CSV: 'csv', EXCEL: 'excel' } as const
 
 // How the points of a metric are put together when a query asks for a coarser period than the rollup keeps

@@ -39,6 +39,7 @@ import {
 
 export const ExportListPermissions: [Permission, ...Permission[]] = [
   Permissions.CONVERSATIONS_EXPORT,
+  Permissions.ANALYTICS_EXPORT,
   Permissions.CUSTOMERS_EXPORT,
   Permissions.MEDIA_DOWNLOAD_ALL,
   Permissions.ORDERS_EXPORT

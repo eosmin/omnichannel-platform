@@ -505,6 +505,34 @@
         "deliveryDate": "Fecha de entrega",
         "codAmount": "Por cobrar en la entrega"
       }
+    },
+    "scheduledReport": {
+      "subject": "Reporte {name} de {store}",
+      "heading": "{name}",
+      "period": "Resumen de {store} del {from} al {to} (sin incluir este último día). Los días se cuentan en UTC.",
+      "attached": "El detalle día por día va en el archivo adjunto.",
+      "footer": "Recibes este reporte porque {store} lo programó para tu correo.",
+      "defaultTitle": "Analítica",
+      "dayHeader": "Día",
+      "totalLabel": "Total del periodo",
+      "unitSeconds": "segundos",
+      "unitCents": "USD",
+      "periodLine": "Del {from} al {to} (sin incluir este último día), días en UTC",
+      "metrics": {
+        "conversations_created": "Conversaciones nuevas",
+        "conversations_resolved": "Conversaciones resueltas",
+        "messages_received": "Mensajes recibidos",
+        "messages_sent": "Mensajes enviados",
+        "response_first_time": "Tiempo de primera respuesta",
+        "response_first_automated_time": "Primera respuesta automática",
+        "resolution_time": "Tiempo de resolución",
+        "conversations_waiting_person": "Esperando a una persona",
+        "conversations_answered_automation": "Respondidas por automatización",
+        "conversations_resolved_automation": "Resueltas por automatización",
+        "orders_created": "Pedidos",
+        "orders_revenue": "Ingresos"
+      },
+      "notAttached": "El archivo con el detalle no cabe en un correo: está en el centro de exportaciones de la tienda."
     }
   },
   "errorPage": {
@@ -539,6 +567,7 @@
     "DSR_ALREADY_COMPLETED": "La solicitud de datos ya está completada",
     "DSR_VERIFICATION_INVALID": "La verificación de la solicitud de datos no es válida",
     "EXPORT_EMPTY": "No hay archivos para descargar",
+    "REPORT_LIMIT_REACHED": "Esta tienda ya tiene el máximo de reportes programados",
     "EXPORT_EXPIRED": "La exportación expiró. Créala de nuevo",
     "EXPORT_FAILED": "No se pudo crear la exportación. Inténtalo de nuevo",
     "EXPORT_NOT_READY": "La exportación aún se está preparando",

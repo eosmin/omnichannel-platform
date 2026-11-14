@@ -13,14 +13,14 @@ import type { IsolationExemption } from './lib/isolation'
 // stores, even of the same organization). The plan lists which PR removes which line (Step 4.8, "Left by PR B1").
 export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> = {
   AnalyticsEvent: {
-    step: '5.2',
-    reason: 'Written by the pipelines and read only through the analytics queries'
+    step: '5.4',
+    reason:
+      'Written by the pipelines; nothing reads it yet. The reports read the rollups, not the events. Its case goes with its first reader (the zero-result search report) or with its retention purge, whichever the step builds first'
   },
   ApiKey: { step: '5.4', reason: 'Created and revoked from Settings' },
   AuditLog: { step: '7.2', reason: 'Read through the audit log viewer of the organization' },
   ConsentRecord: { step: '7.2', reason: 'Written by the compliance flows' },
   DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' },
   RetentionSettings: { step: '5.4', reason: 'Read and changed from the data retention settings' },
-  ScheduledReport: { step: '5.2', reason: 'Managed from the analytics reports' },
   Webhook: { step: '5.4', reason: 'Managed from Settings' }
 }

@@ -40,6 +40,11 @@ export const AuditAction = {
   ORDER_EXPORTED: 'order.exported',
   ANALYTICS_EXPORTED: 'analytics.exported',
   MEDIA_BULK_DOWNLOADED: 'media.bulk_downloaded',
+  // Scheduled analytics reports: the figures of a store leave by email to the addresses the report names
+  REPORT_CREATED: 'report.created',
+  REPORT_UPDATED: 'report.updated',
+  REPORT_DELETED: 'report.deleted',
+  REPORT_SENT: 'report.sent',
   MEDIA_INFECTED: 'media.infected',
   MEDIA_UNSCANNABLE: 'media.unscannable',
   AUDIT_LOG_VIEWED: 'audit_log.viewed',

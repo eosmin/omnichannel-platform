@@ -505,6 +505,34 @@
         "deliveryDate": "Delivery date",
         "codAmount": "To collect on delivery"
       }
+    },
+    "scheduledReport": {
+      "subject": "Report {name} of {store}",
+      "heading": "{name}",
+      "period": "Summary of {store} from {from} to {to} (the last day not included). Days are counted in UTC.",
+      "attached": "The day-by-day detail is in the attached file.",
+      "footer": "You receive this report because {store} scheduled it for your address.",
+      "defaultTitle": "Analytics",
+      "dayHeader": "Day",
+      "totalLabel": "Total of the period",
+      "unitSeconds": "seconds",
+      "unitCents": "USD",
+      "periodLine": "From {from} to {to} (the last day not included), days in UTC",
+      "metrics": {
+        "conversations_created": "New conversations",
+        "conversations_resolved": "Resolved conversations",
+        "messages_received": "Messages received",
+        "messages_sent": "Messages sent",
+        "response_first_time": "First response time",
+        "response_first_automated_time": "First automated response",
+        "resolution_time": "Resolution time",
+        "conversations_waiting_person": "Waiting for a person",
+        "conversations_answered_automation": "Answered by automation",
+        "conversations_resolved_automation": "Resolved by automation",
+        "orders_created": "Orders",
+        "orders_revenue": "Revenue"
+      },
+      "notAttached": "The file with the detail is too big for an email: it is in the exports center of the store."
     }
   },
   "errorPage": {
@@ -539,6 +567,7 @@
     "DSR_ALREADY_COMPLETED": "The data request is already completed",
     "DSR_VERIFICATION_INVALID": "The verification of the data request is not valid",
     "EXPORT_EMPTY": "There are no files to download",
+    "REPORT_LIMIT_REACHED": "This store already has the maximum number of scheduled reports",
     "EXPORT_EXPIRED": "The export has expired. Create it again",
     "EXPORT_FAILED": "The export could not be created. Try again",
     "EXPORT_NOT_READY": "The export is still being prepared",

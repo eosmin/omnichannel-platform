@@ -104,8 +104,11 @@ export const ExportAuditActions: Record<ExportType, AuditActionType> = {
 export interface GenerateExportJob extends BaseJob {
   exportId: string // Everything else is on the Export row
 }
+// `day` is the calendar day of the zone of the report that the dispatcher queued it for: a job that waits or is retried reports
+// the period of that day, never the one of the moment it runs
 export interface GenerateScheduledReportJob extends BaseJob {
   reportId: string
+  day: string
 }
 export interface DsrExportJob extends BaseJob {
   requestId: string

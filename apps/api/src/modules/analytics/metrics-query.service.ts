@@ -8,9 +8,13 @@ import {
   type TimeGranularityType
 } from '@platform/core/analytics'
 import { PrismaService } from '@platform/core/database'
+import {
+  buildSeries,
+  dayRangeOf,
+  type MetricSeries,
+  readMetricBuckets
+} from '@platform/core/messaging'
 
-import { type BucketRow, buildSeries, type MetricSeries } from './metrics-aggregation'
-import { dayRangeOf } from './metrics-range'
 import type { MetricsQuery } from './metrics.schemas'
 
 export interface MetricsResult {
@@ -32,10 +36,7 @@ export class MetricsQueryService {
   constructor(private readonly prisma: PrismaService) {}
 
   async query(storeId: string, query: MetricsQuery): Promise<MetricsResult> {
-    const rows =
-      query.granularity === TimeGranularity.HOUR
-        ? await this.hourly(storeId, query)
-        : await this.daily(storeId, query)
+    const rows = await readMetricBuckets(this.prisma, storeId, query)
     const aggregation = RolledUpMetrics[query.metric]
     const effective =
       query.granularity === TimeGranularity.HOUR
@@ -56,33 +57,5 @@ export class MetricsQueryService {
   private daysOf(query: MetricsQuery): { from: string; to: string } {
     const { from, to } = dayRangeOf(query.granularity, query.from, query.to)
     return { from: `${from}T00:00:00.000Z`, to: `${to}T00:00:00.000Z` }
-  }
-
-  private hourly(storeId: string, query: MetricsQuery): Promise<BucketRow[]> {
-    return this.prisma.client.$queryRaw<BucketRow[]>`
-      SELECT dimension_id AS "dimensionId", hour AS bucket,
-             SUM(value)::float8 AS total, SUM(value * count)::float8 AS weighted, SUM(count)::int AS count,
-             (ARRAY_AGG(value ORDER BY hour DESC))[1]::float8 AS last,
-             (ARRAY_AGG(count ORDER BY hour DESC))[1]::int AS "lastCount"
-      FROM metrics_hourly
-      WHERE store_id = ${storeId} AND metric = ${query.metric} AND dimension = ${query.dimension}
-        AND hour >= ${query.from.toISOString()}::timestamp AND hour < ${query.to.toISOString()}::timestamp
-      GROUP BY dimension_id, hour
-      ORDER BY hour ASC`
-  }
-
-  private daily(storeId: string, query: MetricsQuery): Promise<BucketRow[]> {
-    const { from, to } = dayRangeOf(query.granularity, query.from, query.to)
-    // The unit of the bucket comes from the closed set of granularities, passed as a value, never joined into the text
-    return this.prisma.client.$queryRaw<BucketRow[]>`
-      SELECT dimension_id AS "dimensionId", DATE_TRUNC(${query.granularity}::text, date::timestamp) AS bucket,
-             SUM(value)::float8 AS total, SUM(value * count)::float8 AS weighted, SUM(count)::int AS count,
-             (ARRAY_AGG(value ORDER BY date DESC))[1]::float8 AS last,
-             (ARRAY_AGG(count ORDER BY date DESC))[1]::int AS "lastCount"
-      FROM metrics_daily
-      WHERE store_id = ${storeId} AND metric = ${query.metric} AND dimension = ${query.dimension}
-        AND date >= ${from}::date AND date < ${to}::date
-      GROUP BY dimension_id, bucket
-      ORDER BY bucket ASC`
   }
 }
