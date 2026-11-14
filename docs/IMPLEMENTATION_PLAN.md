@@ -2145,8 +2145,8 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.8 | Reports, monthly close and the auditor's export | todo | | |
 | 4B.9 | Finance interface (web) | todo | | |
 | **Milestone 5: Operations** | | | | |
-| 5.1 | Search | done | #486 (PR A: the server), #488 (PR B: the web), #495 (the click, in Step 5.2 PR C3) | 2026-11-15 |
-| 5.2 | Analytics | done | #485 (PR A: rollups, answer semantics, metrics route), PR B #487 (dashboard, My performance, View analytics), PR C1 #491 (reports and export, server), PR C2 #494 (reports and export, web); PR C3 #495 (search click, passive flag and report) | 2026-11-15 |
+| 5.1 | Search | done | #486 (PR A: the server), #488 (PR B: the web), #496 (the click, in Step 5.2 PR C3) | 2026-11-15 |
+| 5.2 | Analytics | done | #485 (PR A: rollups, answer semantics, metrics route), PR B #487 (dashboard, My performance, View analytics), PR C1 #491 (reports and export, server), PR C2 #494 (reports and export, web); PR C3 #496 (search click, passive flag and report) | 2026-11-15 |
 | 5.3 | Caching and performance | in progress | PR A (cache invalidation listener, cached tags, snippets and preferences); PR B (read replica routing); PR C (PgBouncer, counts and the other cached reads) | 2026-11-14 |
 | 5.4 | Settings | in progress | PR A (server: webhooks, API keys), PR B (server: retention, cleanup, cold export) | |
 | 5.5 | Onboarding | deferred (Phase 2) | | |
