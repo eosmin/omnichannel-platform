@@ -43,8 +43,9 @@ describe('GET /analytics/my-performance', () => {
     await owner.$disconnect()
   })
 
-  // A zone where it is about noon now: "today" of the case started ~12 hours ago whatever the hour the suite runs, so the
-  // times of the case (minutes ago) never cross a midnight. It is not UTC, so the day of the store's own zone is what is checked.
+  // A zone where it is between noon and 13:00 at `now`: "today" of the case started 12 hours and some minutes ago
+  // whatever the hour the suite runs, so the times of the case (minutes ago) never cross a midnight. It is not UTC (but
+  // at 12:xx UTC), so the day of the store's own zone is what is checked.
   function zoneAtNoon(now: Date): string {
     const offset = ((12 - now.getUTCHours() + 36) % 24) - 12
     if (offset === 0) return 'UTC'
@@ -52,11 +53,11 @@ describe('GET /analytics/my-performance', () => {
   }
 
   // A store of its own where agent A and admin A work, in the zone above
-  async function aStore() {
+  async function aStore(now: Date) {
     const store = await ensureStore(owner, ctx.orgA.id, `${prefix}-${randomUUID().slice(0, 8)}`)
     await owner.store.update({
       where: { id: store.id },
-      data: { timezone: zoneAtNoon(new Date()) }
+      data: { timezone: zoneAtNoon(now) }
     })
     for (const [actor, role] of [
       [ctx.agentA, RoleNames.AGENT],
@@ -114,75 +115,102 @@ describe('GET /analytics/my-performance', () => {
       ...(type === undefined ? {} : { type })
     })
 
-  it('counts what the person resolved today, what they have open and how fast they answered first', async () => {
-    const { id: storeId } = await aStore()
-    const now = Date.now()
-    const earlier = new Date(now - 10 * MINUTE)
-    // Mine, answered by me in 2 minutes and resolved now
-    const mine = await conversation(storeId, {
-      createdAt: new Date(earlier.getTime() - 2 * MINUTE),
-      firstResponseAt: earlier,
-      resolvedAt: new Date(now - MINUTE),
-      assignedTo: ctx.agentA.id,
-      status: ConversationStatus.RESOLVED
-    })
-    await reply(storeId, mine.id, ctx.agentA.id, earlier)
-    // Mine too, but the first reply was another agent's: it is not my response time
-    const taken = await conversation(storeId, {
-      createdAt: new Date(earlier.getTime() - 8 * MINUTE),
-      firstResponseAt: earlier,
-      assignedTo: ctx.agentA.id,
-      status: ConversationStatus.OPEN
-    })
-    await reply(storeId, taken.id, ctx.adminA.id, earlier)
-    await reply(storeId, taken.id, ctx.agentA.id, new Date(earlier.getTime() + MINUTE))
-    // An internal note of mine before the reply of someone else is not a reply
-    const note = await conversation(storeId, {
-      createdAt: new Date(earlier.getTime() - 4 * MINUTE),
-      firstResponseAt: earlier,
-      assignedTo: ctx.agentA.id,
-      status: ConversationStatus.PENDING
-    })
-    await reply(
-      storeId,
-      note.id,
-      ctx.agentA.id,
-      new Date(earlier.getTime() - MINUTE),
-      MessageType.INTERNAL_NOTE
-    )
-    await reply(storeId, note.id, ctx.adminA.id, earlier)
-    // Another person's resolved today, and mine resolved long ago
-    await conversation(storeId, {
-      createdAt: new Date(now - 3 * HOUR),
-      resolvedAt: new Date(now - MINUTE),
-      assignedTo: ctx.adminA.id,
-      status: ConversationStatus.RESOLVED
-    })
-    await conversation(storeId, {
-      createdAt: new Date(now - 72 * HOUR),
-      resolvedAt: new Date(now - 48 * HOUR),
-      assignedTo: ctx.agentA.id,
-      status: ConversationStatus.RESOLVED
-    })
+  // The case runs at several hours of the clock (only `Date` is faked, the timers of the database driver are real): what
+  // it expects of the day of the store must hold at any minute of the hour, not only in the first half of it
+  afterEach(() => jest.useRealTimers())
+  // The instant of the clock and the local midnight of the store at it, written out: the zone is the one where it is
+  // between 12:00 and 13:00 (so the midnight is 12 hours before the start of the UTC hour), never the UTC midnight
+  const CASES: [at: string, dayStart: string][] = [
+    ['2026-03-10T00:05:00Z', '2026-03-09T12:00:00.000Z'],
+    ['2026-03-10T06:31:00Z', '2026-03-09T18:00:00.000Z'],
+    ['2026-03-10T15:32:00Z', '2026-03-10T03:00:00.000Z'],
+    ['2026-03-10T23:59:30Z', '2026-03-10T11:00:00.000Z']
+  ]
+  it.each(CASES)(
+    'counts what the person resolved today, what they have open and how fast they answered first (at %s)',
+    async (at, dayStart) => {
+      jest.useFakeTimers({
+        now: new Date(at),
+        doNotFake: [
+          'nextTick',
+          'setImmediate',
+          'clearImmediate',
+          'setInterval',
+          'clearInterval',
+          'setTimeout',
+          'clearTimeout',
+          'queueMicrotask',
+          'performance',
+          'hrtime'
+        ]
+      })
+      const now = Date.now()
+      const { id: storeId } = await aStore(new Date(now))
+      const earlier = new Date(now - 10 * MINUTE)
+      // Mine, answered by me in 2 minutes and resolved now
+      const mine = await conversation(storeId, {
+        createdAt: new Date(earlier.getTime() - 2 * MINUTE),
+        firstResponseAt: earlier,
+        resolvedAt: new Date(now - MINUTE),
+        assignedTo: ctx.agentA.id,
+        status: ConversationStatus.RESOLVED
+      })
+      await reply(storeId, mine.id, ctx.agentA.id, earlier)
+      // Mine too, but the first reply was another agent's: it is not my response time
+      const taken = await conversation(storeId, {
+        createdAt: new Date(earlier.getTime() - 8 * MINUTE),
+        firstResponseAt: earlier,
+        assignedTo: ctx.agentA.id,
+        status: ConversationStatus.OPEN
+      })
+      await reply(storeId, taken.id, ctx.adminA.id, earlier)
+      await reply(storeId, taken.id, ctx.agentA.id, new Date(earlier.getTime() + MINUTE))
+      // An internal note of mine before the reply of someone else is not a reply
+      const note = await conversation(storeId, {
+        createdAt: new Date(earlier.getTime() - 4 * MINUTE),
+        firstResponseAt: earlier,
+        assignedTo: ctx.agentA.id,
+        status: ConversationStatus.PENDING
+      })
+      await reply(
+        storeId,
+        note.id,
+        ctx.agentA.id,
+        new Date(earlier.getTime() - MINUTE),
+        MessageType.INTERNAL_NOTE
+      )
+      await reply(storeId, note.id, ctx.adminA.id, earlier)
+      // Another person's resolved today, and mine resolved long ago
+      await conversation(storeId, {
+        createdAt: new Date(now - 3 * HOUR),
+        resolvedAt: new Date(now - MINUTE),
+        assignedTo: ctx.adminA.id,
+        status: ConversationStatus.RESOLVED
+      })
+      await conversation(storeId, {
+        createdAt: new Date(now - 72 * HOUR),
+        resolvedAt: new Date(now - 48 * HOUR),
+        assignedTo: ctx.agentA.id,
+        status: ConversationStatus.RESOLVED
+      })
 
-    const response = await api(app, ctx.agentA, { id: storeId }).get(
-      ApiRoutes.analytics.myPerformance
-    )
+      const response = await api(app, ctx.agentA, { id: storeId }).get(
+        ApiRoutes.analytics.myPerformance
+      )
 
-    expect(response.status).toBe(200)
-    const body = response.body as Body
-    expect(body.resolved).toBe(1)
-    expect(body.open).toBe(2) // the open one and the pending one
-    expect(body.answered).toBe(1)
-    expect(body.medianFirstResponseSeconds).toBeCloseTo(120, 0)
-    // The day of the store started at its local midnight, about 12 hours ago (not the UTC one)
-    const sinceDayStart = now - new Date(body.dayStart).getTime()
-    expect(sinceDayStart).toBeGreaterThan(11.5 * HOUR)
-    expect(sinceDayStart).toBeLessThan(12.5 * HOUR)
-  })
+      expect(response.status).toBe(200)
+      const body = response.body as Body
+      expect(body.resolved).toBe(1)
+      expect(body.open).toBe(2) // the open one and the pending one
+      expect(body.answered).toBe(1)
+      expect(body.medianFirstResponseSeconds).toBeCloseTo(120, 0)
+      expect(body.dayStart).toBe(dayStart)
+    },
+    30_000
+  )
 
   it('has no response time before the person has answered anyone today', async () => {
-    const { id: storeId } = await aStore()
+    const { id: storeId } = await aStore(new Date())
 
     const response = await api(app, ctx.agentA, { id: storeId }).get(
       ApiRoutes.analytics.myPerformance
