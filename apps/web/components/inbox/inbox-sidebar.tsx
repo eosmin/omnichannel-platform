@@ -14,11 +14,13 @@ import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 
 import { CustomerPanel } from './customer-panel'
+import { MyPerformanceWidget } from './my-performance-widget'
 import { QuickActionsWidget } from './quick-actions-widget'
 import { TeamStatusWidget } from './team-status-widget'
 import { UnassignedQueueWidget } from './unassigned-queue-widget'
 
 const BODIES: Record<SidebarWidgetId, () => ReactElement> = {
+  [SidebarWidgets.MY_PERFORMANCE]: MyPerformanceWidget,
   [SidebarWidgets.QUICK_ACTIONS]: QuickActionsWidget,
   [SidebarWidgets.TEAM_STATUS]: TeamStatusWidget,
   [SidebarWidgets.UNASSIGNED_QUEUE]: UnassignedQueueWidget
@@ -33,7 +35,7 @@ export function InboxSidebar(): ReactElement | null {
   const { layout, move, setHidden } = useSidebarLayout()
   const hasRoom = useHasRoomForSidebar()
   const { conversationId } = useParams<{ conversationId?: string }>()
-  // Both widgets read what CONVERSATIONS_VIEW opens
+  // The widgets read what CONVERSATIONS_VIEW opens (My performance reads only the person's own figures)
   // Under the width the column is not drawn, and its widgets do not read anything
   if (!hasRoom || !can(ClientPermissions.CONVERSATIONS_VIEW)) return null
   const shown = layout.filter(entry => !entry.isHidden)

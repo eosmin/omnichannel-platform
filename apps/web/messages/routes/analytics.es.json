@@ -1,0 +1,54 @@
+{
+  "analytics": {
+    "title": "Analítica",
+    "intro": "Cómo van el equipo y la tienda, a partir de las cifras que la plataforma guarda hora por hora.",
+    "utcNote": "Las cifras son de días completos en UTC que ya terminaron, hasta ayer. El día de hoy está en el cuadro Mi desempeño de la bandeja.",
+    "range": {
+      "label": "Periodo",
+      "last_7_days": "Últimos 7 días",
+      "last_30_days": "Últimos 30 días",
+      "last_90_days": "Últimos 90 días",
+      "last_month": "Mes pasado"
+    },
+    "kpi": {
+      "loading": "Cargando",
+      "failed": "No se pudo cargar esta cifra.",
+      "noData": "Sin datos",
+      "noComparison": "Nada con qué comparar",
+      "vsPrevious": "frente al periodo anterior",
+      "conversations": { "title": "Conversaciones nuevas" },
+      "firstResponse": { "title": "Tiempo de primera respuesta" },
+      "resolution": { "title": "Tiempo de resolución" },
+      "revenue": { "title": "Ingresos" }
+    },
+    "chart": {
+      "label": "{caption}. Los números están en la tabla que sigue.",
+      "day": "Día"
+    },
+    "panel": {
+      "loading": "Cargando",
+      "failed": "No se pudo cargar."
+    },
+    "volume": {
+      "title": "Volumen de conversaciones",
+      "caption": "Conversaciones que entraron y conversaciones resueltas, cada día",
+      "created": "Nuevas",
+      "resolved": "Resueltas"
+    },
+    "channels": {
+      "title": "Conversaciones por canal",
+      "empty": "No hubo conversaciones en este periodo."
+    },
+    "agents": {
+      "title": "Desempeño del equipo",
+      "caption": "Conversaciones resueltas y tiempo de primera respuesta de cada persona",
+      "agent": "Persona",
+      "resolved": "Resueltas",
+      "firstResponse": "Primera respuesta",
+      "noTime": "Sin respuestas",
+      "formerMember": "Antiguo miembro del equipo",
+      "unknownMember": "Miembro del equipo",
+      "empty": "Nadie resolvió una conversación en este periodo."
+    }
+  }
+}

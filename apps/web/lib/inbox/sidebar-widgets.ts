@@ -4,6 +4,7 @@
 import { StorageKeys } from '@platform/api-client'
 
 export const SidebarWidgets = {
+  MY_PERFORMANCE: 'myPerformance',
   QUICK_ACTIONS: 'quickActions',
   TEAM_STATUS: 'teamStatus',
   UNASSIGNED_QUEUE: 'unassignedQueue'
@@ -24,6 +25,7 @@ export function sidebarLayoutKey(userId: string, storeId: string): string {
 const KNOWN: readonly SidebarWidgetId[] = Object.values(SidebarWidgets)
 
 export const DEFAULT_SIDEBAR_LAYOUT: SidebarLayout = [
+  { id: SidebarWidgets.MY_PERFORMANCE, isHidden: false },
   { id: SidebarWidgets.QUICK_ACTIONS, isHidden: false },
   { id: SidebarWidgets.UNASSIGNED_QUEUE, isHidden: false },
   { id: SidebarWidgets.TEAM_STATUS, isHidden: false }

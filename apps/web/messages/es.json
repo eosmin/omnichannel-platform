@@ -1817,7 +1817,8 @@
       "returns": "Devoluciones",
       "remittances": "Remesas",
       "shipments": "Envíos",
-      "pickups": "Recolecciones"
+      "pickups": "Recolecciones",
+      "analytics": "Analítica"
     },
     "notifications": {
       "open": "Notificaciones",
@@ -2472,6 +2473,7 @@
       "moveUp": "Subir {widget}",
       "moveDown": "Bajar {widget}",
       "widgets": {
+        "myPerformance": "Mi desempeño",
         "quickActions": "Acciones rápidas",
         "teamStatus": "Estado del equipo",
         "unassignedQueue": "Cola sin asignar"
@@ -2496,10 +2498,19 @@
         "takeFor": "Tomar la conversación con {name}",
         "seeAll": "Ver todas"
       },
+      "performance": {
+        "loading": "Cargando tu día",
+        "failed": "No se pudieron cargar tus cifras.",
+        "resolved": "Resueltas hoy",
+        "open": "Abiertas ahora",
+        "average": "Primera respuesta hoy",
+        "noAverage": "Aún sin primeras respuestas"
+      },
       "quick": {
         "findCustomer": "Buscar cliente",
         "none": "No hay acciones disponibles.",
-        "createOrder": "Crear pedido"
+        "createOrder": "Crear pedido",
+        "viewAnalytics": "Ver analítica"
       }
     },
     "anonymousCustomer": "Visitante ····{digits}",

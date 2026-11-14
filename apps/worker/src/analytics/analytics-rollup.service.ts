@@ -109,6 +109,7 @@ export class AnalyticsRollupService {
       end,
       'first_automated_response_at'
     )
+    const firstResponseByAgent = await this.firstResponseByAgent(tx, storeId, start, end)
     const resolution = await this.resolutionTime(tx, storeId, start, end)
     const received = await this.countMessages(tx, storeId, start, end, AuthorType.CUSTOMER)
     const sent = await this.countMessages(tx, storeId, start, end, AuthorType.AGENT)
@@ -137,6 +138,16 @@ export class AnalyticsRollupService {
     addTime(AnalyticsMetrics.FIRST_RESPONSE_TIME, firstResponse)
     addTime(AnalyticsMetrics.FIRST_AUTOMATED_RESPONSE_TIME, firstAutomated)
     addTime(AnalyticsMetrics.RESOLUTION_TIME, resolution)
+    for (const row of firstResponseByAgent) {
+      if (row.median === null) continue
+      add(
+        AnalyticsMetrics.AGENT_FIRST_RESPONSE_TIME,
+        row.median,
+        row.count,
+        MetricDimensions.AGENT,
+        row.key
+      )
+    }
     for (const row of createdByChannel) {
       add(AnalyticsMetrics.CHANNEL_VOLUME, row.count, row.count, MetricDimensions.CHANNEL, row.key)
     }
@@ -193,6 +204,26 @@ export class AnalyticsRollupService {
       SELECT COUNT(*)::int AS n FROM conversations
       WHERE store_id = ${storeId} AND resolved_at >= ${start.toISOString()}::timestamp AND resolved_at < ${end.toISOString()}::timestamp`
     return row?.n ?? 0
+  }
+
+  // The median first response of each agent: a conversation is theirs when the first reply of a person that is not a note was
+  // written by them, whoever it is assigned to now. A reply with no author (a person who was removed) is left out.
+  private firstResponseByAgent(tx: PrismaTransaction, storeId: string, start: Date, end: Date) {
+    return tx.$queryRaw<(TimeStats & { key: string })[]>`
+      SELECT first.author_id AS key,
+             PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (c.first_response_at - c.created_at)))::float8 AS median,
+             COUNT(*)::int AS count
+      FROM conversations c
+      JOIN LATERAL (
+        SELECT m.author_id FROM messages m
+        WHERE m.conversation_id = c.id AND m.store_id = ${storeId}
+          AND m.author_type = ${AuthorType.AGENT} AND m.type <> ${MessageType.INTERNAL_NOTE}
+        ORDER BY m.created_at ASC LIMIT 1
+      ) first ON TRUE
+      WHERE c.store_id = ${storeId}
+        AND c.first_response_at >= ${start.toISOString()}::timestamp AND c.first_response_at < ${end.toISOString()}::timestamp
+        AND first.author_id IS NOT NULL
+      GROUP BY first.author_id`
   }
 
   // Resolved by whoever the conversation was assigned to when it was resolved: the resolve does not keep its own author column

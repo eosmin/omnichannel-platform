@@ -612,6 +612,7 @@ test.describe.serial('the inbox list', () => {
     const titles = () => sidebar.getByRole('heading', { level: 2 }).allTextContents()
     const before = await titles()
     expect(before).toEqual([
+      en.inbox.sidebar.widgets.myPerformance,
       en.inbox.sidebar.widgets.quickActions,
       en.inbox.sidebar.widgets.unassignedQueue,
       en.inbox.sidebar.widgets.teamStatus
@@ -623,8 +624,8 @@ test.describe.serial('the inbox list', () => {
       })
       .click()
     await page.reload()
-    // Team status moved above the queue; the quick actions stay first
-    await expect.poll(titles).toEqual([before[0], before[2], before[1]])
+    // Team status moved above the queue; the two widgets on top stay first
+    await expect.poll(titles).toEqual([before[0], before[1], before[3], before[2]])
 
     // Put back for the other cases
     await sidebar

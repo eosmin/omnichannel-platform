@@ -190,6 +190,58 @@ describe('The rollups of analytics', () => {
       })
     })
 
+    it('keeps the first response of each agent: the author of the first reply of a person, never a note or a later reply', async () => {
+      const { id: storeId } = await aStoreWithAMember()
+      const reply = (
+        conversationId: string,
+        authorId: string,
+        minutes: number,
+        type?: MessageType
+      ) =>
+        createMessage(owner, {
+          storeId,
+          conversationId,
+          authorType: AuthorType.AGENT,
+          authorId,
+          createdAt: at(minutes),
+          ...(type === undefined ? {} : { type })
+        })
+      // 2 minutes by the admin, 6 by the agent; the second one has a note of the admin before and a reply of the admin after
+      const first = await conversation(storeId, { createdAt: at(10), firstResponseAt: at(12) })
+      await reply(first.id, ctx.adminA.id, 12)
+      const second = await conversation(storeId, { createdAt: at(20), firstResponseAt: at(26) })
+      await reply(second.id, ctx.adminA.id, 22, MessageType.INTERNAL_NOTE)
+      await reply(second.id, ctx.agentA.id, 26)
+      await reply(second.id, ctx.adminA.id, 30)
+      // The first reply was automatic or has no author: nobody's
+      const unowned = await conversation(storeId, { createdAt: at(30), firstResponseAt: at(31) })
+      await createMessage(owner, {
+        storeId,
+        conversationId: unowned.id,
+        authorType: AuthorType.AGENT,
+        createdAt: at(31)
+      })
+
+      await rollups.rollup(RollupGranularities.HOURLY, storeId, HOUR)
+
+      expect(
+        await hourlyValue(
+          storeId,
+          AnalyticsMetrics.AGENT_FIRST_RESPONSE_TIME,
+          MetricDimensions.AGENT,
+          ctx.adminA.id
+        )
+      ).toEqual({ value: 2 * 60, count: 1 })
+      expect(
+        await hourlyValue(
+          storeId,
+          AnalyticsMetrics.AGENT_FIRST_RESPONSE_TIME,
+          MetricDimensions.AGENT,
+          ctx.agentA.id
+        )
+      ).toEqual({ value: 6 * 60, count: 1 })
+    })
+
     it('counts the orders that are not cancelled, with their revenue in dollars', async () => {
       const { id: storeId } = await aStoreWithAMember()
       const kept = await createOrder(owner, { storeId })

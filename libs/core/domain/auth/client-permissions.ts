@@ -4,6 +4,7 @@
 // reads these, and a spec checks that each one is a permission the api knows, spelled the same
 // (`client-permissions.spec.ts`). The roles screen reads the full table through `permission-groups.ts`.
 export const ClientPermissions = {
+  ANALYTICS_VIEW: 'analytics:view',
   CONVERSATIONS_ARCHIVE: 'conversations:archive',
   CONVERSATIONS_ASSIGN: 'conversations:assign',
   CONVERSATIONS_EXPORT: 'conversations:export',

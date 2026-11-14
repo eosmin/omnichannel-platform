@@ -48,6 +48,8 @@ const CHANNEL_ADMIN =
   'The connection of a channel account (tokens, labels, OAuth): owner only; a channel plugin registers its own through plugin-api/channel (Step 5.6)'
 const SETTINGS_ADMIN =
   'A setting of how the store works (routing, hours, snippets, inbox behaviour): the owner decides it, a plugin reads the effect'
+const OWN_PERFORMANCE =
+  'The figures of one person for their inbox widget: the id comes from the token; a plugin reads the metrics of the store'
 const BELL_AND_SEARCH =
   'Search over what the person sees in the app bar; a plugin lists with the filters of each resource'
 
@@ -300,6 +302,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'search.orders': { scope: 'orders:read' },
   'search.products': { scope: 'products:read' },
   'analytics.metrics': { scope: 'analytics:read' },
+  'analytics.myPerformance': { none: OWN_PERFORMANCE },
   'analytics.dashboard': { scope: 'analytics:read' },
   'analytics.reports': { scope: 'analytics:read' },
   'analytics.reportById': { scope: 'analytics:read' },

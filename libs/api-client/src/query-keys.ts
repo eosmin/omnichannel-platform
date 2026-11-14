@@ -10,6 +10,14 @@ export interface ConversationFilters {
   tagId?: string
 }
 
+export interface AnalyticsRequestKey {
+  metric: string
+  granularity: string
+  from: string
+  to: string
+  dimension?: string
+}
+
 // TanStack Query keys are constants, built the same way as CacheKeys. Realtime invalidation
 // (TDD_06 §3) and mutations import them; nobody writes ['conversations', storeId] inline.
 // Store-scoped keys carry the storeId; the organization-scoped ones (warehouses, transfers, counts) are
@@ -21,6 +29,13 @@ export const QueryKeys = {
       ['conversations', storeId, 'list', filters] as const,
     byId: (storeId: string, id: string) => ['conversations', storeId, id] as const,
     counts: (storeId: string) => ['conversations', storeId, 'counts'] as const
+  },
+  analytics: {
+    all: (storeId: string) => ['analytics', storeId] as const,
+    // One series: the request is part of the key, so two periods (the one asked and the one before) are two entries
+    metrics: (storeId: string, request: AnalyticsRequestKey) =>
+      ['analytics', storeId, 'metrics', request] as const,
+    myPerformance: (storeId: string) => ['analytics', storeId, 'my-performance'] as const
   },
   messages: {
     all: (storeId: string) => ['messages', storeId] as const,

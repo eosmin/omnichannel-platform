@@ -116,6 +116,8 @@ export async function createMessage(
     conversationId: string
     content?: string
     authorType?: AuthorType
+    // The agent who wrote it (an AGENT message)
+    authorId?: string
     type?: MessageType
     createdAt?: Date
     metadata?: Record<string, MetadataValue>
@@ -131,6 +133,7 @@ export async function createMessage(
       authorType:
         input.authorType ??
         (input.type === MessageType.INTERNAL_NOTE ? AuthorType.AGENT : AuthorType.CUSTOMER),
+      ...(input.authorId === undefined ? {} : { authorId: input.authorId }),
       ...(input.createdAt === undefined ? {} : { createdAt: input.createdAt }),
       ...(input.metadata === undefined ? {} : { metadata: input.metadata })
     },
