@@ -1,9 +1,14 @@
 import { Injectable } from '@nestjs/common'
+import { z } from 'zod'
 
 import { AuditService } from '@platform/core/audit-module'
+import { CacheKeys, CacheNamespaces, CacheScopes, CacheTTL } from '@platform/core/cache'
 import { lockStoreForWrite, PrismaService } from '@platform/core/database'
 import { SettingsLimits } from '@platform/core/domain'
 import { resourceConflict, resourceNotFound } from '@platform/core/errors'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
+import { CacheService } from '@platform/core/redis'
 
 import type { Actor } from '../tenancy'
 
@@ -16,13 +21,18 @@ import {
   uniqueTransaction
 } from './settings.support'
 
-export interface SnippetView {
-  id: string
-  shortcut: string
-  title: string
-  content: string
-  updatedAt: Date
-}
+// updatedAt travels through Redis as text and comes back as the date it was
+const snippetSchema = z.object({
+  id: z.string(),
+  shortcut: z.string(),
+  title: z.string(),
+  content: z.string(),
+  updatedAt: z.coerce.date()
+})
+
+export type SnippetView = z.output<typeof snippetSchema>
+
+const snippetListSchema = z.array(snippetSchema)
 
 const SNIPPET_SELECT = {
   id: true,
@@ -37,14 +47,26 @@ const SNIPPET_SELECT = {
 export class SnippetsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly events: DomainEvents,
+    private readonly cache: CacheService
   ) {}
 
+  // Read whenever the composer opens, changed rarely: cached for CacheTTL.MEDIUM and dropped by the cache
+  // invalidation listener when a snippet is created, changed or deleted
   list(storeId: string): Promise<SnippetView[]> {
-    return this.prisma.client.snippet.findMany({
-      where: { storeId },
-      select: SNIPPET_SELECT,
-      orderBy: [{ shortcut: 'asc' }, { id: 'asc' }]
+    return this.cache.getOrSet({
+      namespace: CacheNamespaces.STORE_SNIPPETS,
+      key: CacheKeys.store.snippets(storeId),
+      ttlSeconds: CacheTTL.MEDIUM,
+      schema: snippetListSchema,
+      scopes: [CacheScopes.storeSnippets(storeId)],
+      load: () =>
+        this.prisma.client.snippet.findMany({
+          where: { storeId },
+          select: SNIPPET_SELECT,
+          orderBy: [{ shortcut: 'asc' }, { id: 'asc' }]
+        })
     })
   }
 
@@ -64,10 +86,12 @@ export class SnippetsService {
       async tx => {
         await lockStoreForWrite(tx, storeId)
         await requireRoom(tx, storeId, 'snippet', SettingsLimits.MAX_SNIPPETS_PER_STORE)
-        return tx.snippet.create({
+        const created = await tx.snippet.create({
           data: { storeId, ...body, createdBy: actor.userId },
           select: SNIPPET_SELECT
         })
+        this.events.publish(tx, Events.SNIPPET_CREATED, { storeId, snippetId: created.id })
+        return created
       }
     )
     auditSettingsChange(this.audit, storeId, actor, 'snippet', snippet.id, {
@@ -89,7 +113,13 @@ export class SnippetsService {
       async tx => {
         await lockStoreForWrite(tx, storeId)
         await lockSnippet(tx, storeId, snippetId, 'write')
-        return tx.snippet.update({ where: { id: snippetId }, data: body, select: SNIPPET_SELECT })
+        const updated = await tx.snippet.update({
+          where: { id: snippetId },
+          data: body,
+          select: SNIPPET_SELECT
+        })
+        this.events.publish(tx, Events.SNIPPET_UPDATED, { storeId, snippetId })
+        return updated
       }
     )
     auditSettingsChange(this.audit, storeId, actor, 'snippet', snippetId, {
@@ -123,6 +153,7 @@ export class SnippetsService {
         })
       }
       await tx.snippet.delete({ where: { id: snippetId } })
+      this.events.publish(tx, Events.SNIPPET_DELETED, { storeId, snippetId })
       return snippet.shortcut
     })
     auditSettingsChange(this.audit, storeId, actor, 'snippet', snippetId, {

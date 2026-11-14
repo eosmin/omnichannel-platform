@@ -1,8 +1,13 @@
 import { Injectable } from '@nestjs/common'
+import { z } from 'zod'
 
 import { AuditService } from '@platform/core/audit-module'
+import { CacheKeys, CacheNamespaces, CacheScopes, CacheTTL } from '@platform/core/cache'
 import { lockStoreForWrite, lockStoreScope, PrismaService } from '@platform/core/database'
 import { resourceNotFound } from '@platform/core/errors'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
+import { CacheService } from '@platform/core/redis'
 import {
   readStorePreferences,
   type StorePreferences,
@@ -13,6 +18,11 @@ import type { Actor } from '../tenancy'
 
 import { auditSettingsChange } from './settings.support'
 
+// What is cached is the column as the store wrote it, and the defaults are applied on every read: the schema of the
+// preferences repairs a bad value with a default (`catch`), so used as the check of the cache it would pass a damaged
+// entry off as a hit
+const storedPreferencesSchema = z.record(z.string(), z.unknown())
+
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
 type JsonObject = { [key: string]: JsonValue }
 
@@ -22,16 +32,30 @@ type JsonObject = { [key: string]: JsonValue }
 export class PreferencesService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly events: DomainEvents,
+    private readonly cache: CacheService
   ) {}
 
+  // Cached for CacheTTL.MEDIUM and dropped by the cache invalidation listener when a store changes them. A store with no
+  // settings row is a failure of the loader, which is never cached
   async get(storeId: string): Promise<StorePreferences> {
-    const row = await this.prisma.client.storeSettings.findUnique({
-      where: { storeId },
-      select: { preferences: true }
+    const stored = await this.cache.getOrSet({
+      namespace: CacheNamespaces.STORE_PREFERENCES,
+      key: CacheKeys.store.preferences(storeId),
+      ttlSeconds: CacheTTL.MEDIUM,
+      schema: storedPreferencesSchema,
+      scopes: [CacheScopes.storePreferences(storeId)],
+      load: async () => {
+        const row = await this.prisma.client.storeSettings.findUnique({
+          where: { storeId },
+          select: { preferences: true }
+        })
+        if (row === null) throw resourceNotFound('store settings')
+        return asRecord(row.preferences)
+      }
     })
-    if (row === null) throw resourceNotFound('store settings')
-    return readStorePreferences(row.preferences)
+    return readStorePreferences(stored)
   }
 
   async update(
@@ -81,6 +105,7 @@ export class PreferencesService {
         select: { preferences: true }
       })
       const after = readStorePreferences(row.preferences)
+      this.events.publish(tx, Events.STORE_SETTINGS_UPDATED, { storeId })
       // Which keys really changed, from what to what (switches and the reason list, not personal data); the
       // keys of the `orders` block are named `orders.<key>`
       const diff: Record<string, { from: unknown; to: unknown }> = {}

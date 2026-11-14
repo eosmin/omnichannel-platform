@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common'
+import { z } from 'zod'
 
 import { AuditService } from '@platform/core/audit-module'
+import { CacheKeys, CacheNamespaces, CacheScopes, CacheTTL } from '@platform/core/cache'
 import {
   lockStoreForWrite,
   lockStoreScope,
@@ -9,6 +11,9 @@ import {
 } from '@platform/core/database'
 import { DEFAULT_TAG_COLOR, SettingsLimits } from '@platform/core/domain'
 import { resourceConflict, resourceNotFound } from '@platform/core/errors'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
+import { CacheService } from '@platform/core/redis'
 
 import type { Actor } from '../tenancy'
 
@@ -21,12 +26,16 @@ import {
   uniqueTransaction
 } from './settings.support'
 
-export interface TagView {
-  id: string
-  name: string
-  color: string
-  description: string | null
-}
+const tagSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  color: z.string(),
+  description: z.string().nullable()
+})
+
+export type TagView = z.output<typeof tagSchema>
+
+const tagListSchema = z.array(tagSchema)
 
 const TAG_SELECT = { id: true, name: true, color: true, description: true } as const
 
@@ -36,14 +45,26 @@ const TAG_SELECT = { id: true, name: true, color: true, description: true } as c
 export class TagsService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly events: DomainEvents,
+    private readonly cache: CacheService
   ) {}
 
+  // Read on every screen that offers tags, and changed rarely: cached for CacheTTL.MEDIUM and dropped by
+  // the cache invalidation listener when a tag is created, renamed or deleted
   list(storeId: string): Promise<TagView[]> {
-    return this.prisma.client.tag.findMany({
-      where: { storeId },
-      select: TAG_SELECT,
-      orderBy: [{ name: 'asc' }, { id: 'asc' }]
+    return this.cache.getOrSet({
+      namespace: CacheNamespaces.STORE_TAGS,
+      key: CacheKeys.store.tags(storeId),
+      ttlSeconds: CacheTTL.MEDIUM,
+      schema: tagListSchema,
+      scopes: [CacheScopes.storeTags(storeId)],
+      load: () =>
+        this.prisma.client.tag.findMany({
+          where: { storeId },
+          select: TAG_SELECT,
+          orderBy: [{ name: 'asc' }, { id: 'asc' }]
+        })
     })
   }
 
@@ -62,7 +83,7 @@ export class TagsService {
       await lockStoreScope(tx, storeId, 'tag')
       await this.requireFreeName(tx, storeId, body.name)
       await requireRoom(tx, storeId, 'tag', SettingsLimits.MAX_TAGS_PER_STORE)
-      return tx.tag.create({
+      const created = await tx.tag.create({
         data: {
           storeId,
           name: body.name,
@@ -71,6 +92,8 @@ export class TagsService {
         },
         select: TAG_SELECT
       })
+      this.events.publish(tx, Events.TAG_CREATED, { storeId, tagId: created.id })
+      return created
     })
     auditSettingsChange(this.audit, storeId, actor, 'tag', tag.id, {
       change: 'created',
@@ -89,7 +112,7 @@ export class TagsService {
       await lockStoreForWrite(tx, storeId)
       await lockTag(tx, storeId, tagId, 'change')
       if (body.name !== undefined) await this.requireFreeName(tx, storeId, body.name, tagId)
-      return tx.tag.update({
+      const updated = await tx.tag.update({
         where: { id: tagId },
         data: {
           ...(body.name === undefined ? {} : { name: body.name }),
@@ -98,6 +121,8 @@ export class TagsService {
         },
         select: TAG_SELECT
       })
+      this.events.publish(tx, Events.TAG_UPDATED, { storeId, tagId })
+      return updated
     })
     auditSettingsChange(this.audit, storeId, actor, 'tag', tagId, {
       change: 'updated',
@@ -112,6 +137,7 @@ export class TagsService {
       await lockTag(tx, storeId, tagId, 'delete')
       await this.requireNoRoutingRule(tx, storeId, tagId)
       const tag = await tx.tag.delete({ where: { id: tagId }, select: { name: true } })
+      this.events.publish(tx, Events.TAG_DELETED, { storeId, tagId })
       return tag.name
     })
     auditSettingsChange(this.audit, storeId, actor, 'tag', tagId, { change: 'deleted', name })
