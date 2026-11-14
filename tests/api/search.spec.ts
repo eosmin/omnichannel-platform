@@ -721,6 +721,123 @@ describe('The search of the store', () => {
       await customersFor('a')
       expect(searchJobs()).toHaveLength(before)
     })
+
+    it('answers a passive global search like any other and queues nothing for it', async () => {
+      await createCustomer(owner, { storeId: ctx.storeA.id, name: `Passive ${tag}x` })
+      const before = searchJobs().length
+      const response = await asAdmin(ApiRoutes.search.global, {
+        q: `passive ${tag}x`,
+        passive: true
+      })
+      expect(response.status).toBe(OK)
+      expect((response.body as GlobalBody).groups).toHaveLength(1)
+      expect(searchJobs()).toHaveLength(before)
+      // The same search, finished, counts
+      await asAdmin(ApiRoutes.search.global, { q: `passive ${tag}x`, passive: false })
+      expect(searchJobs()).toHaveLength(before + 1)
+    })
+
+    it('refuses a passive flag that is not a boolean', async () => {
+      const response = await asAdmin(ApiRoutes.search.global, {
+        q: `passive ${tag}x`,
+        passive: 'si'
+      })
+      expect(response.status).toBe(BAD_REQUEST)
+    })
+  })
+
+  describe('the click on a result', () => {
+    const searchJobs = () => analytics.jobs.filter(job => job.name === JobNames.TRACK_SEARCH)
+    const click = (actor: Actor, body: Record<string, unknown>, store = ctx.storeA) =>
+      api(app, actor, store).post(ApiRoutes.search.clicks).send(body)
+
+    it('queues a click event with the hash the search left, and no text and no result', async () => {
+      await createCustomer(owner, { storeId: ctx.storeA.id, name: `Clicked ${tag}y` })
+      await asAdmin(ApiRoutes.search.global, { q: `clicked ${tag}y` })
+      const searched = (searchJobs().at(-1)?.data as { data: { queryHash: string } }).data.queryHash
+      const before = searchJobs().length
+      const response = await click(ctx.adminA, {
+        q: `Clicked  ${tag}y`,
+        scope: 'global',
+        entity: 'customers',
+        position: 0
+      })
+      expect(response.status).toBe(204)
+      expect(searchJobs()).toHaveLength(before + 1)
+      const job = searchJobs().at(-1)?.data as { event: string; storeId: string; data: object }
+      expect(job.event).toBe('search.clicked')
+      expect(job.storeId).toBe(ctx.storeA.id)
+      expect(job.data).toEqual({
+        queryHash: searched,
+        scope: 'global',
+        entity: 'customers',
+        position: 0
+      })
+    })
+
+    it("refuses a store in the body: the store is the header's alone", async () => {
+      const before = searchJobs().length
+      const response = await click(ctx.adminA, {
+        q: `forged ${tag}z`,
+        scope: 'global',
+        entity: 'customers',
+        position: 0,
+        storeId: ctx.storeB.id
+      })
+      expect(response.status).toBe(BAD_REQUEST)
+      expect(searchJobs()).toHaveLength(before)
+    })
+
+    it('refuses a kind of result the member may not search, and queues nothing', async () => {
+      const viewer = await viewerOf(`click-customers`, [Permissions.CUSTOMERS_VIEW])
+      const before = searchJobs().length
+      const allowed = await click(viewer, {
+        q: `ana ${tag}`,
+        scope: 'global',
+        entity: 'customers',
+        position: 1
+      })
+      expect(allowed.status).toBe(204)
+      const refused = await click(viewer, {
+        q: `ana ${tag}`,
+        scope: 'global',
+        entity: 'orders',
+        position: 1
+      })
+      expect(refused.status).toBe(FORBIDDEN)
+      expect(searchJobs()).toHaveLength(before + 1)
+    })
+
+    it('refuses a member with no permission to search anything', async () => {
+      const nobody = await viewerOf(`click-nobody`, [])
+      const before = searchJobs().length
+      const response = await click(nobody, {
+        q: `ana ${tag}`,
+        scope: 'global',
+        entity: 'customers',
+        position: 0
+      })
+      expect(response.status).toBe(FORBIDDEN)
+      expect(searchJobs()).toHaveLength(before)
+    })
+
+    it.each([
+      ['a text that is too short', { q: 'a', scope: 'global', entity: 'customers', position: 0 }],
+      ['a kind it does not know', { q: 'ana', scope: 'global', entity: 'invoices', position: 0 }],
+      [
+        'a kind the search could not have shown',
+        { q: 'ana', scope: 'orders', entity: 'customers', position: 0 }
+      ],
+      [
+        'a position past the page',
+        { q: 'ana', scope: 'global', entity: 'customers', position: 100 }
+      ],
+      ['a body with nothing', {}]
+    ])('answers 400 to %s', async (_label, body) => {
+      const before = searchJobs().length
+      expect((await click(ctx.adminA, body)).status).toBe(BAD_REQUEST)
+      expect(searchJobs()).toHaveLength(before)
+    })
   })
 
   describe('the speed', () => {

@@ -1,6 +1,15 @@
 import { z } from 'zod'
 
-import { foldForSearch, plainName, SearchConfig, uuidSchema } from '@platform/core/domain'
+import {
+  CLICK_SCOPE_MESSAGE,
+  foldForSearch,
+  isConsistentClick,
+  plainName,
+  SearchApiParams,
+  SearchConfig,
+  searchClickFields,
+  uuidSchema
+} from '@platform/core/domain'
 
 // The text of a search, read as the names it is compared with were stored: NFC, every kind of space one space. A
 // text shorter than the minimum (in characters, after trimming) or longer than the maximum is a 400: the palette does
@@ -27,8 +36,12 @@ const limit = z.coerce
   .max(SearchConfig.MAX_LIMIT)
   .default(SearchConfig.DEFAULT_LIMIT)
 
-// The global search asks for the text only: how many of each group is the platform's call
-export const globalSearchQuerySchema = z.strictObject({ q: queryText })
+// The global search asks for the text: how many of each group is the platform's call. `passive` marks the palette's
+// as-you-type search, which is not counted (SearchApiParams).
+export const globalSearchQuerySchema = z.strictObject({
+  q: queryText,
+  [SearchApiParams.PASSIVE]: z.stringbool().default(false)
+})
 export type GlobalSearchQuery = z.infer<typeof globalSearchQuerySchema>
 
 export const searchQuerySchema = z.strictObject({ q: queryText, limit })
@@ -41,3 +54,10 @@ export const searchMessagesQuerySchema = z.strictObject({
   conversationId: uuidSchema.optional()
 })
 export type SearchMessagesQuery = z.infer<typeof searchMessagesQuerySchema>
+
+// The result a person opened: the text they searched (hashed here, never stored), what the search was asked of, the
+// kind of thing they opened and its place in the list
+export const searchClickBodySchema = z
+  .strictObject({ q: queryText, ...searchClickFields })
+  .refine(isConsistentClick, { message: CLICK_SCOPE_MESSAGE })
+export type SearchClickBody = z.infer<typeof searchClickBodySchema>

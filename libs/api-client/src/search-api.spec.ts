@@ -2,6 +2,7 @@ import { SearchEntities } from '@platform/core/domain'
 
 import { createApiClient } from './api-client'
 import {
+  recordSearchClick,
   searchCatalog,
   searchCustomers,
   searchGlobal,
@@ -81,5 +82,43 @@ describe('search api', () => {
   it('refuses an answer that is not the shape of the contract', async () => {
     const { client } = setup({ query: 'x', groups: [{ entity: 'nothing', hits: [] }] })
     await expect(searchGlobal(client, 's', 'xx')).rejects.toBeDefined()
+  })
+
+  it("marks the palette's search as passive, and leaves the flag out otherwise", async () => {
+    const { client, fetchImpl } = setup({ query: 'ab', groups: [] })
+    await searchGlobal(client, 's', 'ab', undefined, { passive: true })
+    await searchGlobal(client, 's', 'ab', undefined, { passive: false })
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe(
+      'https://api.example.com/api/v1/search?q=ab&passive=true'
+    )
+    expect(fetchImpl.mock.calls[1]?.[0]).toBe('https://api.example.com/api/v1/search?q=ab')
+  })
+
+  it('posts the result a person opened, in the store of the header', async () => {
+    const fetchImpl = jest
+      .fn<Promise<Response>, [string, RequestInit]>()
+      .mockImplementation(() => Promise.resolve(new Response(null, { status: 204 })))
+    const client = createApiClient({
+      baseUrl: 'https://api.example.com',
+      getAccessToken: () => 'token',
+      refreshAccessToken: () => Promise.resolve('token'),
+      fetchImpl: fetchImpl as unknown as typeof fetch
+    })
+    await recordSearchClick(client, 'store-1', {
+      q: 'jose',
+      scope: 'global',
+      entity: SearchEntities.CUSTOMERS,
+      position: 2
+    })
+    const [url, init] = fetchImpl.mock.calls[0] ?? []
+    expect(url).toBe('https://api.example.com/api/v1/search/clicks')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(init?.body as string)).toEqual({
+      q: 'jose',
+      scope: 'global',
+      entity: 'customers',
+      position: 2
+    })
+    expect(new Headers(init?.headers).get('X-Store-Id')).toBe('store-1')
   })
 })

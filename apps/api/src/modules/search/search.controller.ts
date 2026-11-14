@@ -1,8 +1,9 @@
-import { Controller, Get, Query } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, Post, Query } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
+import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 
 import type { ProductSuggestions } from '../products/products.views'
@@ -18,6 +19,8 @@ import { SearchRunner } from './search-runner.service'
 import {
   type GlobalSearchQuery,
   globalSearchQuerySchema,
+  type SearchClickBody,
+  searchClickBodySchema,
   type SearchMessagesQuery,
   searchMessagesQuerySchema,
   type SearchQuery,
@@ -46,7 +49,20 @@ export class SearchController {
     @CurrentPermissions() held: readonly Permission[],
     @Query(new ZodValidationPipe(globalSearchQuerySchema)) query: GlobalSearchQuery
   ): Promise<GlobalSearchResult> {
-    return this.runner.global(store.id, { userId: user.id, held }, query.q)
+    return this.runner.global(store.id, { userId: user.id, held }, query.q, query.passive)
+  }
+
+  // The result a person opened, for the report of what was searched. The answer is empty: the event is queued and the
+  // click is never worth a wait. The runner checks the kind of result against what the member may search.
+  @RequireAnyPermission(...GlobalSearchPermissions)
+  @Post(ApiRoutes.search.clicks)
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
+  click(
+    @CurrentStore() store: { id: string },
+    @CurrentPermissions() held: readonly Permission[],
+    @Body(new ZodValidationPipe(searchClickBodySchema)) body: SearchClickBody
+  ): void {
+    this.runner.recordClick(store.id, held, body)
   }
 
   @RequirePermissions(...MessageSearchPermissions)

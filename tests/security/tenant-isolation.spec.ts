@@ -1,9 +1,14 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
 
 import { ChannelOAuthConfig } from '@platform/channels/connections'
-import { AnalyticsMetrics, MetricDimensions, ReportFrequency } from '@platform/core/analytics'
+import {
+  AnalyticsEventNames,
+  AnalyticsMetrics,
+  MetricDimensions,
+  ReportFrequency
+} from '@platform/core/analytics'
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions, RoleNames, TenantHeaders } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
@@ -298,6 +303,36 @@ function metricMarkerIn(body: unknown): string | null {
   return series.length === 1 ? (series[0]?.dimensionId ?? null) : null
 }
 
+// The events of the search (`analytics_events`): the report of what was searched reads the zero-result texts of the catalog, and a
+// text of another store must never reach it. The marker is the text of the only event the store holds.
+async function writeSearchMarker(
+  owner: OwnerClient,
+  storeId: string,
+  marker: string
+): Promise<void> {
+  await owner.analyticsEvent.deleteMany({ where: { storeId } })
+  await owner.analyticsEvent.create({
+    data: {
+      storeId,
+      event: AnalyticsEventNames.SEARCH_PERFORMED,
+      data: {
+        queryHash: createHash('sha256').update(marker).digest('hex').slice(0, 16),
+        scope: 'products',
+        resultCount: 0,
+        durationMs: 1,
+        query: marker
+      },
+      date: new Date(),
+      eventKey: randomUUID()
+    }
+  })
+}
+
+function searchMarkerIn(body: unknown): string | null {
+  const queries = (body as { zeroResultQueries?: { query: string }[] }).zeroResultQueries ?? []
+  return queries.length === 1 ? (queries[0]?.query ?? null) : null
+}
+
 const resources: IsolationResource[] = [
   {
     name: 'customer',
@@ -571,6 +606,20 @@ const resources: IsolationResource[] = [
       markerIn: metricMarkerIn
     },
     untouched: async (owner, id) => (await owner.metricDaily.count({ where: { storeId: id } })) > 0
+  },
+  {
+    name: 'analyticsEvent',
+    create: async (owner, input) => {
+      await writeSearchMarker(owner, input.storeId, 'unset')
+      return { id: input.storeId }
+    },
+    readPath: () => ApiRoutes.analytics.search,
+    own: {
+      set: (owner, storeId, marker) => writeSearchMarker(owner, storeId, marker),
+      markerIn: searchMarkerIn
+    },
+    untouched: async (owner, id) =>
+      (await owner.analyticsEvent.count({ where: { storeId: id } })) > 0
   },
   // The scheduled reports of a store (Step 5.2 PR C). A report of another store is a 404 to change or delete, the list of the other
   // store never holds it, and a creation that names another store in the body is refused. The export of the analytics reads
@@ -2126,6 +2175,58 @@ describe('Tenant isolation', () => {
   // The search reads customers, messages, orders and products with raw SQL, so the store filter is written by hand in
   // each statement: a word that only another store holds is never found, on any route, nor by the global one, and
   // the store comes from the header only (a `storeId` in the query string is a 400, not an override)
+  // The events the search leaves (`analytics_events`) have two readers: the report of what was searched, and the writer of the
+  // worker. The report filters by the store of the header in each statement; the click route queues for that store only.
+  describe('search analytics', () => {
+    const word = `srca${randomUUID().slice(0, 6)}`
+    const hashOfB = 'b'.repeat(16)
+
+    afterEach(async () => {
+      await owner.analyticsEvent.deleteMany({ where: { storeId: ctx.storeB.id } })
+    })
+
+    it('reports only the events of the store of the header, never those of another store', async () => {
+      await owner.analyticsEvent.create({
+        data: {
+          storeId: ctx.storeB.id,
+          event: AnalyticsEventNames.SEARCH_PERFORMED,
+          data: {
+            queryHash: hashOfB,
+            scope: 'products',
+            resultCount: 0,
+            durationMs: 3,
+            query: `${word} gap`
+          },
+          date: new Date(),
+          eventKey: randomUUID()
+        }
+      })
+      const foreign = await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.analytics.search)
+      expect(foreign.status).toBe(200)
+      const bodyA = foreign.body as { zeroResultQueries: { query: string }[] }
+      expect(bodyA.zeroResultQueries.map(row => row.query)).not.toContain(`${word} gap`)
+      // The owner of the data does read it, so the answer above is not an empty table
+      const own = await api(app, ctx.adminB, ctx.storeB).get(ApiRoutes.analytics.search)
+      expect((own.body as typeof bodyA).zeroResultQueries.map(row => row.query)).toContain(
+        `${word} gap`
+      )
+    })
+
+    it('does not take the store from the query string or from the store of another member', async () => {
+      const forged = await api(app, ctx.adminA, ctx.storeA)
+        .get(ApiRoutes.analytics.search)
+        .query({ storeId: ctx.storeB.id })
+      expect(forged.status).toBe(400)
+      // The header of a store the member does not belong to is refused before the report runs
+      const other = await api(app, ctx.adminA, ctx.storeB).get(ApiRoutes.analytics.search)
+      expect(other.status).toBe(403)
+      const click = await api(app, ctx.adminA, ctx.storeB)
+        .post(ApiRoutes.search.clicks)
+        .send({ q: `${word} click`, scope: 'global', entity: 'customers', position: 0 })
+      expect(click.status).toBe(403)
+    })
+  })
+
   describe('search', () => {
     const word = `srch${randomUUID().slice(0, 6)}`
     const routes = [

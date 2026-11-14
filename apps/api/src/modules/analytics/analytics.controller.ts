@@ -32,6 +32,8 @@ import { type MetricsQuery, metricsQuerySchema } from './metrics.schemas'
 import { type MyPerformance, MyPerformanceService } from './my-performance.service'
 import { type AnalyticsExportQuery, analyticsExportQuerySchema } from './reports.schemas'
 import { ReportsService, type ReportView } from './reports.service'
+import { type SearchReportQuery, searchReportQuerySchema } from './search-report.schemas'
+import { type SearchReport, SearchReportService } from './search-report.service'
 
 // The analytics of the store in X-Store-Id (TDD_11 §7). The store is the one TenantGuard resolved, never a value of the request.
 @Controller()
@@ -40,7 +42,8 @@ export class AnalyticsController {
     private readonly metrics: MetricsQueryService,
     private readonly myPerformance: MyPerformanceService,
     private readonly reports: ReportsService,
-    private readonly exports: ExportsService
+    private readonly exports: ExportsService,
+    private readonly searches: SearchReportService
   ) {}
 
   @RequirePermissions(Permissions.ANALYTICS_VIEW)
@@ -50,6 +53,16 @@ export class AnalyticsController {
     @Query(new ZodValidationPipe(metricsQuerySchema)) query: MetricsQuery
   ): Promise<MetricsResult> {
     return this.metrics.query(store.id, query)
+  }
+
+  // What was searched in the store: volume, searches that found nothing, clicks, and the texts of the catalog nobody found
+  @RequirePermissions(Permissions.ANALYTICS_VIEW)
+  @Get(ApiRoutes.analytics.search)
+  searchReport(
+    @CurrentStore() store: ResolvedTenant['store'],
+    @Query(new ZodValidationPipe(searchReportQuerySchema)) query: SearchReportQuery
+  ): Promise<SearchReport> {
+    return this.searches.report(store.id, query.days)
   }
 
   // The figures of the person who asks, for the widget of the inbox: an agent has no analytics:view, and sees only their own

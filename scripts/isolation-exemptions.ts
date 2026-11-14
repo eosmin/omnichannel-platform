@@ -12,11 +12,6 @@ import type { IsolationExemption } from './lib/isolation'
 // isolation is proved by tests/security/shipping-schema.spec.ts (the database refuses a link across
 // stores, even of the same organization). The plan lists which PR removes which line (Step 4.8, "Left by PR B1").
 export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> = {
-  AnalyticsEvent: {
-    step: '5.4',
-    reason:
-      'Written by the pipelines; no route reads it yet (the suite needs a route to aim at). The one code that deletes it, the nightly retention of a store, is proved not to reach another store by tests/api/retention-run.spec.ts; its case in this suite goes with its first reader (the zero-result search report)'
-  },
   AuditLog: { step: '7.2', reason: 'Read through the audit log viewer of the organization' },
   ConsentRecord: { step: '7.2', reason: 'Written by the compliance flows' },
   DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' }

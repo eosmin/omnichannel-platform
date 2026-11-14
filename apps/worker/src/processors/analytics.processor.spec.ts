@@ -226,4 +226,55 @@ describe('AnalyticsProcessor', () => {
       expect(write).not.toHaveBeenCalled()
     })
   })
+
+  describe('the search click event', () => {
+    const click: TrackAnalyticsJob = {
+      event: AnalyticsEventNames.SEARCH_CLICKED,
+      storeId: STORE,
+      data: { queryHash: '0123456789abcdef', scope: 'global', entity: 'orders', position: 3 },
+      timestamp: '2026-11-14T09:55:00.000Z'
+    }
+
+    it('writes the event of a track-search job', async () => {
+      await processor.process(job(JobNames.TRACK_SEARCH, click))
+      expect(write).toHaveBeenCalledWith(click)
+    })
+
+    it('refuses for good a click that comes as a track-event job: it would skip the check of its data', async () => {
+      await expect(processor.process(job(JobNames.TRACK_EVENT, click))).rejects.toBeInstanceOf(
+        UnrecoverableError
+      )
+      expect(write).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['the text of the search', { ...click, data: { ...click.data, query: 'maria lopez' } }],
+      ['a result id', { ...click, data: { ...click.data, resultId: 'abc' } }],
+      ['a kind it does not know', { ...click, data: { ...click.data, entity: 'invoices' } }],
+      ['a position below the first', { ...click, data: { ...click.data, position: -1 } }],
+      ['a position past the largest page', { ...click, data: { ...click.data, position: 100 } }],
+      [
+        'a kind the search of another kind could not show',
+        { ...click, data: { ...click.data, scope: 'customers', entity: 'orders' } }
+      ],
+      [
+        'the data of a search',
+        {
+          ...click,
+          data: { queryHash: '0123456789abcdef', scope: 'customers', resultCount: 3, durationMs: 1 }
+        }
+      ]
+    ])('refuses for good a click with %s, and writes nothing', async (_label, data) => {
+      await expect(processor.process(job(JobNames.TRACK_SEARCH, data))).rejects.toBeInstanceOf(
+        UnrecoverableError
+      )
+      expect(write).not.toHaveBeenCalled()
+    })
+
+    it('accepts a click of the search of the same kind', async () => {
+      const same = { ...click, data: { ...click.data, scope: 'orders', entity: 'orders' } }
+      await processor.process(job(JobNames.TRACK_SEARCH, same))
+      expect(write).toHaveBeenCalledWith(same)
+    })
+  })
 })

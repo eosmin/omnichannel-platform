@@ -11,7 +11,9 @@ import {
   SearchEntities,
   type SearchEntity,
   SearchPageParams,
-  SearchPageScopes
+  SearchPageScopes,
+  type SearchTrackedScope,
+  SearchTrackedScopes
 } from '@platform/core/domain'
 
 import { useCustomerDrawer } from '../../components/customers/customer-drawer-context'
@@ -20,6 +22,7 @@ import { HitContent } from '../../components/search/hit-content'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { type SearchHit, flattenGroups, hitKey, pathOfHit } from '../../lib/search/hits'
+import { recordClick } from '../../lib/search/record-click'
 import { readScope, searchAddress } from '../../lib/search/search-page-state'
 import { searchableKinds } from '../../lib/search/search-target'
 import { readySearchText } from '../../lib/search/search-text'
@@ -123,6 +126,8 @@ function AllResults({ storeId, text }: { storeId: string; text: string }): React
       {KIND_ORDER.map(kind => {
         const ofKind = hits.filter(item => item.entity === kind)
         if (ofKind.length === 0) return null
+        // The place of a hit is its place in the whole list, as the groups are drawn
+        const offset = hits.indexOf(ofKind[0] as SearchHit)
         return (
           <section key={kind} aria-labelledby={`group-${kind}`} className="flex flex-col gap-1">
             <div className="flex items-center justify-between">
@@ -138,7 +143,13 @@ function AllResults({ storeId, text }: { storeId: string; text: string }): React
                 </Link>
               ) : null}
             </div>
-            <HitList storeId={storeId} hits={ofKind} />
+            <HitList
+              storeId={storeId}
+              hits={ofKind}
+              scope={SearchTrackedScopes.GLOBAL}
+              text={text}
+              offset={offset}
+            />
           </section>
         )
       })}
@@ -172,28 +183,51 @@ function ScopeResults({
   const hasMore = result.scope === SearchEntities.PRODUCTS ? false : result.page.hasMore
   return (
     <div className="flex flex-col gap-2">
-      <HitList storeId={storeId} hits={hits} />
+      <HitList storeId={storeId} hits={hits} scope={scope} text={text} offset={0} />
       {hasMore ? <p className="text-muted-foreground text-sm">{t('hasMore')}</p> : null}
     </div>
   )
 }
 
-function HitList({ storeId, hits }: { storeId: string; hits: SearchHit[] }): ReactElement {
+// `scope` and `text` are what the search was asked of; `offset` is where the first of these hits stands in the list the
+// person sees. Opening a hit tells the report of what was searched which kind and which place it was.
+function HitList({
+  storeId,
+  hits,
+  scope,
+  text,
+  offset
+}: {
+  storeId: string
+  hits: SearchHit[]
+  scope: SearchTrackedScope
+  text: string
+  offset: number
+}): ReactElement {
   const { openCustomer } = useCustomerDrawer()
   return (
     <ul className="flex flex-col divide-y rounded-md border">
-      {hits.map(item => {
+      {hits.map((item, index) => {
         const path = pathOfHit(storeId, item)
+        const opened = (): void =>
+          recordClick(storeId, { q: text, scope, entity: item.entity, position: offset + index })
         const className = 'hover:bg-accent/50 block w-full px-3 py-2.5 text-left'
         return (
           <li key={hitKey(item)}>
             {path === null ? (
               // A customer has no page of their own: the profile is the drawer of the store
-              <button type="button" className={className} onClick={() => openCustomer(item.hit.id)}>
+              <button
+                type="button"
+                className={className}
+                onClick={() => {
+                  opened()
+                  openCustomer(item.hit.id)
+                }}
+              >
                 <HitContent item={item} />
               </button>
             ) : (
-              <Link href={path} className={className}>
+              <Link href={path} className={className} onClick={opened} onAuxClick={opened}>
                 <HitContent item={item} />
               </Link>
             )}

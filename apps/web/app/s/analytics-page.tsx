@@ -6,11 +6,14 @@ import { useTranslations } from 'next-intl'
 import { type ReactElement, useId, useMemo, useState } from 'react'
 
 import { AppPaths } from '@platform/api-client'
+import { DateRangePresets } from '@platform/core/analytics'
 import { ClientPermissions } from '@platform/core/auth'
+import { SearchReportConfig } from '@platform/core/domain'
 
 import { AgentPanel, ChannelPanel, VolumePanel } from '../../components/analytics/dashboard-panels'
 import { ExportDialog } from '../../components/analytics/export-dialog'
 import { KpiCard } from '../../components/analytics/kpi-card'
+import { SearchPanel } from '../../components/analytics/search-panel'
 import { useStore } from '../../components/providers/store-context'
 import { PermissionDenied } from '../../components/settings/states'
 import { Button } from '../../components/ui/button'
@@ -104,6 +107,10 @@ export function AnalyticsPage(): ReactElement {
         <AgentPanel range={ranges.current} />
         <ChannelPanel range={ranges.current} />
       </div>
+      {/* The report looks back from now: it cannot show a calendar month that is over, so it stays out of that range */}
+      {choice === DateRangePresets.LAST_MONTH ? null : (
+        <SearchPanel days={Math.min(ranges.days.length, SearchReportConfig.MAX_DAYS)} />
+      )}
       <p className="text-muted-foreground text-xs">{t('utcNote')}</p>
       {can(ClientPermissions.ANALYTICS_EXPORT) ? (
         <ExportDialog
