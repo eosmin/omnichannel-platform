@@ -5,6 +5,7 @@ import {
   ShipmentStatus
 } from '@platform/core/domain'
 import { CarrierCredentialsUnreadableError } from '@platform/core/shipping'
+import type { ConnectFieldSnapshot } from '@platform/plugins/runtime'
 import {
   CarrierAuthError,
   type CarrierPlugin,
@@ -14,8 +15,11 @@ import {
 
 import {
   connectAnswerSchema,
+  connectFieldsProblem,
   defaultServiceCodeOf,
+  filterLocations,
   healthReasonOf,
+  locationsAnswerSchema,
   localMetadataSchema,
   seedServices,
   seedStatusMappings,
@@ -213,5 +217,110 @@ describe('what a plugin answers to connect', () => {
 
   it('does not depend on the capability list of the plugin', () => {
     expect(CarrierCapability.INTERNAL_GUIDE).toBe('internal_guide')
+  })
+})
+
+const field = (over: Partial<ConnectFieldSnapshot> & { key: string }): ConnectFieldSnapshot => ({
+  labelKey: `fields.${over.key}`,
+  label: null,
+  helpKey: null,
+  secret: false,
+  required: false,
+  multiple: false,
+  ...over
+})
+
+describe('connectFieldsProblem', () => {
+  const fields = [
+    field({ key: 'username', required: true }),
+    field({ key: 'password', required: true, secret: true }),
+    field({ key: 'site' }),
+    field({ key: 'origins', multiple: true })
+  ]
+
+  it('accepts what holds every required field, with the optional ones absent, blank or null', () => {
+    expect(connectFieldsProblem(fields, { username: 'u', password: 'p' })).toBeNull()
+    expect(
+      connectFieldsProblem(fields, { username: 'u', password: 'p', site: '', origins: [] })
+    ).toBeNull()
+    expect(connectFieldsProblem(fields, { username: 'u', password: 'p', site: null })).toBeNull()
+    expect(connectFieldsProblem(fields, { username: 'u', password: 'p', site: 795 })).toBeNull()
+    expect(
+      connectFieldsProblem(fields, { username: 'u', password: 'p', origins: ['a', 'b'] })
+    ).toBeNull()
+  })
+
+  it('refuses a required field that is missing, blank or null, naming the field and never a value', () => {
+    for (const credentials of [
+      { password: 'p' },
+      { username: '   ', password: 'p' },
+      { username: null, password: 'p' }
+    ]) {
+      expect(connectFieldsProblem(fields, credentials)).toBe('the field username is required')
+    }
+    expect(connectFieldsProblem(fields, { username: 'u' })).toBe('the field password is required')
+  })
+
+  it('refuses a key the carrier does not ask for, so nothing unchecked is kept sealed', () => {
+    expect(connectFieldsProblem(fields, { username: 'u', password: 'p', extra: 'x' })).toBe(
+      'the credentials hold a field the carrier does not ask for'
+    )
+    expect(
+      connectFieldsProblem(
+        fields,
+        JSON.parse('{"username":"u","password":"p","__proto__":{}}') as Record<string, unknown>
+      )
+    ).toBe('the credentials hold a field the carrier does not ask for')
+  })
+
+  it('refuses a value of the wrong shape: an object, a boolean, a list for a single field or text for a list', () => {
+    for (const bad of [
+      { username: { a: 1 }, password: 'p' },
+      { username: true, password: 'p' },
+      { username: ['u'], password: 'p' },
+      { username: 'u', password: 'p', origins: 'a' },
+      { username: 'u', password: 'p', origins: [1] },
+      { username: 'u', password: 'p', origins: [''] },
+      { username: 'u', password: 'p', site: Number.NaN }
+    ]) {
+      expect(connectFieldsProblem(fields, bad)).toBe('a field has a value it cannot take')
+    }
+  })
+
+  it('leaves a carrier that declares nothing free: its own JSON is valid', () => {
+    expect(connectFieldsProblem([], { anything: { goes: [1] } })).toBeNull()
+  })
+})
+
+describe('locationsAnswerSchema and filterLocations', () => {
+  it('reads what a plugin answers and drops what it adds', () => {
+    const parsed = locationsAnswerSchema.parse([{ id: '7', name: 'San Salvador', extra: 1 }])
+    expect(parsed).toEqual([{ id: '7', name: 'San Salvador' }])
+  })
+
+  it('refuses an answer that is not a list of places with an id and a name, or is too long', () => {
+    expect(locationsAnswerSchema.safeParse([{ id: '', name: 'x' }]).success).toBe(false)
+    expect(locationsAnswerSchema.safeParse([{ id: '1' }]).success).toBe(false)
+    // An id the next request could not carry back (it is a parameter of it and ends in a cache key)
+    expect(locationsAnswerSchema.safeParse([{ id: 'SAN SALVADOR', name: 'x' }]).success).toBe(false)
+    expect(locationsAnswerSchema.safeParse({ id: '1', name: 'x' }).success).toBe(false)
+    expect(
+      locationsAnswerSchema.safeParse(
+        Array.from({ length: 5001 }, (_, i) => ({ id: `${i}`, name: 'x' }))
+      ).success
+    ).toBe(false)
+  })
+
+  it('searches by name without caring for case or accents, and a blank search keeps everything', () => {
+    const places = [
+      { id: '1', name: 'Santa Ana' },
+      { id: '2', name: 'San Salvador' },
+      { id: '3', name: 'Ahuachapán' }
+    ]
+    expect(filterLocations(places, 'SAN')).toEqual(places.slice(0, 2))
+    expect(filterLocations(places, 'ahuachapan')).toEqual([places[2]])
+    expect(filterLocations(places, '  ')).toEqual(places)
+    expect(filterLocations(places, undefined)).toEqual(places)
+    expect(filterLocations(places, 'zzz')).toEqual([])
   })
 })

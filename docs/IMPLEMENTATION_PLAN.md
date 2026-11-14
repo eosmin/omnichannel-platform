@@ -1167,6 +1167,12 @@ ships with the `local` carrier and the fake carrier.
   - (h) Left on purpose by the review of this PR: `fetchStatus` stops at the first guide whose history fails (a bad guide holds the status of the batch; the core decides what a failed poll means, to be settled when the poll of §4.9 meets a real carrier); a Redis that is down makes every call log in again (the carrier's rate limit on the token is unknown; it is the same Redis the rest of the platform needs).
   - (f) Accepted: the token is a secret held in Redis in plain text for 23 hours (the plan asks for the cache); `get_historia` has no event id, so the dedupe of §4.9 is `(shipment, status, occurredAt)`.
 
+- [x] **Built in PR 2a (api of the connection; rule 12 decisions and debts with their owners).** `GET /carriers/registry` answers `connectFields` per carrier (the registry's copy, `[]` for a carrier that declares none); `GET /carriers/:id/locations?parentId=&search=` (`SHIPPING_VIEW`, store from `TenantGuard`; `CarrierConnectionsService.locations`) keeps the list of one parent per connection for 24 hours (`CacheKeys.carrier.locations`, scope `CacheKeys.carrier.locationsScope`, dropped by every `PATCH` and by a disconnect); **the search is made here over that list and never sent to the carrier** (the alternative, one cache entry per search, would let a typed text fill Redis), so a plugin must answer a whole parent without a search, and the parent id is held to `[A-Za-z0-9_.-]{1,100}` because it ends in a key; a carrier without `REQUIRES_LOCATION_IDS` is a 409 `SHIPPING_CARRIER_CAPABILITY_MISSING`, an unreachable one a 503, a carrier that refuses the credentials a 409 `SHIPPING_CARRIER_CREDENTIALS_INVALID` with the reason, and no failure is kept. `GET /carriers/:id/status-catalog` (`SHIPPING_VIEW`) lists every code of the plugin's `statusCatalog()` with the row the connection holds (`hasMapping`, `mappedStatus`, `source`): a connection made before a code existed (C807's code `1`) shows it as not mapped and the existing `PUT` creates the row, so no new write route was needed and nothing is back-filled behind the owner's back. A connection of a carrier that declares `connectFields` takes exactly those keys (every required one, texts or lists of texts, an optional one may be blank), checked on connect and on a credentials edit before the carrier is asked, never echoing a value; a carrier that declares none keeps its free JSON. **(c) of "From Step 4.14" is closed with no new route:** `PATCH /carriers/:id` with the complete `credentials` already edits the contact and the prefix of a courier (`askToConnect`, `contactOf`, `guideSequence.updateMany`); a test now says so. `libs/api-client` has `fetchCarrierLocations`, `fetchCarrierStatusCatalog`, the `connectFields` of `fetchCarrierRegistry` and the query keys `carriers.locations` and `carriers.statusCatalog`; `carriers.locations` and `carriers.statusCatalog` are mapped to Step 4.15 in `scripts/frontend-coverage-map.ts`. What is left, each with its owner:
+  - (a) **Step 4.15 PR 2b (web):** the connect form drawn from `connectFields` (secret fields masked, optional ones, helps) in place of the JSON box for a carrier that has them, and the documentation of the webhook registration (URL and `x-webhook-secret`) in Settings → Carriers; the location selectors of the create-guide dialog and the removal of the `guideConnections` filter; `offeredShipmentActions`; the table of the mapping offering the codes of `GET /carriers/:id/status-catalog` that have no row; the Playwright cases (d) of "From Step 4.14"; `apps/web-e2e/specs/carriers-settings.spec.ts` chooses the courier by id and must keep doing so.
+  - (b) The cache of the places is per connection, so two connections of one account ask the carrier twice; a shared key by account would need the plugin to say which credentials make the list the same (Step 7.7 if it ever costs).
+  - (b2) Accepted, found by the review (rule 12): any member with `shipping:view` can make the api ask the carrier for the places under any parent id of the allowed characters, one cache entry (a day) per parent id and connection, which could eat into the carrier's rate limit; a limit per user on the route (and a check of the parent against the ids the carrier listed) goes with the hardening of outgoing calls of Step 7.3. A `statusCatalog()` that throws is the plugin's bug and answers 500.
+  - (c) The permission cases of F2-e are the ones of `tests/api/carrier-connect-fields.spec.ts` and `carrier-status-mappings.spec.ts` (viewer reads, manager without `shipping:view` is refused, another store gets the same 404); no row with a `store_id` was added, so `tests/security/tenant-isolation.spec.ts` has nothing new to cover.
+
 - [x] **Built in PR (Forza adapter, `libs/carriers/forza`; rule 12 decisions and debts with their owners).** Standalone, with `CREATE_SHIPMENT`, `CANCEL_SHIPMENT`, `FETCH_STATUS`, `REQUIRES_LOCATION_IDS`, `PICKUP_REQUEST` and `COD`; **not declared because the documentation does not confirm them:** `WEBHOOK_STATUS` (it does not say whether a notification is signed), `PICKUP_MODIFY`, `PICKUP_CANCEL`, `RETURN_SHIPMENT` and `IDEMPOTENT_CREATE`. Every call is a POST whose `LauValue` header is the base64 HMAC-SHA256 of the JSON `{Method, Params}` with the connection's secret key (checked against an example of the documentation); the label is not in the answer of the create, only a link to a PDF, so `fetchLabel` reprints the guide and follows that link when it is on the host of the connection. The connection takes the application code, the key, the client id, the country (GT, HN, SV), the endpoint (https), the visit point code, the municipality code of the warehouse and, for cash on delivery, the four bank data. A guide with cash on delivery without them is refused before any call. The status catalog holds only the ids the documentation explains (`2` picked up, `4` en route as in transit, `5` delivered, `14` returned, `21` received at an Express Center as in transit, `45` incident as a failed attempt; `1`, `22` and `25` with no effect); every other id waits in the unmapped list for the owner. What is left, each with its owner:
   - (a) **Waiting for the advisor of Forza** (`docs/CARRIER_ADVISOR_QUESTIONS.md`): the complete list of `GuideStatusId` with its meaning; whether the webhook is signed and how (until then no `WEBHOOK_STATUS`, and the status comes from `fetchStatus`); whether a pickup can be changed or cancelled and whether a return guide exists by API; whether a repeated `CodeOfReference` is refused; whether a COD amount of 0 is accepted; how a guide is made when the product is paid and the recipient pays the shipping. Delete each line from that file when answered.
   - (b) **Needs the sandbox credentials of the owner:** recorded provider fixtures for the contract suite (today a fake Forza that answers like the documentation and checks the signature), a real guide, its label, its status changes, its cancellation and a pickup. The "Done when" of the step is not met until then.
@@ -1178,6 +1184,35 @@ ships with the `local` carrier and the fake carrier.
 **Done when:** each adapter passes the carrier contract suite against its fixtures, and a real guide, its status
 changes and (where the documentation allows) its cancellation and pickup work against the carrier's
 sandbox.
+
+---
+
+## Milestone 4B — Finance (owner request of 2026-11-10; design first)
+
+The owner asked for purchase orders, several accounts, balances, incomes and expenses, and formal accounting, all connected
+and automatic (requirements: `~/qa-reportes-2026-11-10/requisitos-finanzas.md`, approved; design pending). It starts after
+Step 4.15 and before Milestone 5, because it reads stock, orders, returns and COD remittances, which must exist first.
+Decisions already taken: USD only; accounts shared by the whole organization in the MVP and per store in Phase 2 (the model is
+born with organization scope and leaves the way to `storeId` with no data migration); complete and formal accounting (double
+entry, chart of accounts, journal and ledger, income statement, balance sheet, VAT); weighted-average costing in the MVP and
+FIFO after; granular permissions, administrators only at first; monthly closes that lock what is closed.
+
+### Step 4B.1 — Finance design (no code)
+- [ ] Write `TDD_18_Finance.md`: chart of accounts, entry types, the automatic entries of each event (order paid, COD remittance
+      confirmed with the carrier's fee as an expense, purchase received, return), periods and closes, permissions, isolation, and
+      what each later step builds. Add it to `docs/INDEX.md` and to `MVP_TRIM_CHECKLIST.md`.
+- [ ] Settle the open questions with the owner: country and tax rules (El Salvador? VAT, electronic invoicing is a separate
+      integration), who gives the initial chart of accounts (the owner's accountant), how many organizations, external audit.
+- [ ] Write Steps 4B.2 onward in this plan with their files, TDD sections and "Done when", for the owner's approval.
+**TDD:** `TDD_18` (new), `TDD_16` (stock and costs), `TDD_17 §4.15` (remittances)
+**Done when:** the owner approves `TDD_18` and the plan lists the build steps. Delivered with the first code PR that follows
+(or by an exception the owner gives in writing).
+
+### Steps 4B.2 to 4B.7 — to be written by Step 4B.1
+Sketch for the design to confirm or change, not a commitment: 4B.2 ledger core (accounts, immutable double-entry journal,
+balances, periods); 4B.3 expenses, incomes, transfers and CSV reconciliation; 4B.4 suppliers and purchase orders (receiving
+raises stock and sets the cost, payments from the chosen account); 4B.5 automatic entries from orders, COD remittances (a
+carrier's commission, see `remittanceDeductsFee`), returns and the C807 fee deduction; 4B.6 reports and monthly close; 4B.7 UI.
 
 ---
 
@@ -1886,7 +1921,9 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4.12 | Returns, exchanges and reception | done | PR 4.12-R3 #437 (customer caution flag); PR R1 #440 (returns core); PR R1b-1 #442 (exchange, `/settings/returns`); PR R2 #446 (reception batches by scanner); PR R1b-2 #447 (return leg, manual messages, scan by `returnId`, delivered guide confirmation). The screens are Step 4.14 | |
 | 4.13 | COD remittances | done | PR A #441 (shipment COD lifecycle, `RemittancesService`, routes); PR B #444 (daily check, `remittance.overdue`, preference); PR C (import: profiles, parser, file kept as media) | |
 | 4.14 | Shipping UI | done | PR F1 #452, #455 (orders page, bulk actions); F2 #451 (drawer, caution flag); F3a #456, F3b #460, #462 (order detail panels, messages, pickup); F4 #450, F4b #453 (Settings → Carriers); F5 #454 (order messages, returns, preferences); F6 #457 (shipments and pickups); F7a #458, #461, #466 (returns screens and scanner reception); F7b #459, #463 (remittances and import); F8 #465 (journey and gating); F8b (reception, bulk labels and import in the browser) | |
-| 4.15 | Forza and C807 adapters | in progress | PR 1 (C807 adapter, token cache port, `connectFields`); Forza adapter; PR 2 (api and web of the connection) and the sandbox runs are open (see the step) | 2026-11-13 |
+| 4.15 | Forza and C807 adapters | in progress | PR 1 (C807 adapter, token cache port, `connectFields`); Forza adapter; PR 2a (api of the connection); PR 2b (web of the connection) and the sandbox runs are open (see the step) | 2026-11-14 |
+| **Milestone 4B: Finance** | | | | |
+| 4B.1 | Finance design (TDD_18, no code) | todo | | |
 | **Milestone 5: Operations** | | | | |
 | 5.1 | Search | todo | | |
 | 5.2 | Analytics | todo | | |

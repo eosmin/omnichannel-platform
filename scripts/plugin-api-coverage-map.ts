@@ -237,6 +237,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'carriers.disconnect': { none: CARRIER_ADMIN },
   'carriers.webhookSecret': { none: CARRIER_ADMIN },
   'carriers.locations': { proposed: 'carriers:read', step: STEP },
+  'carriers.statusCatalog': { proposed: 'carriers:read', step: STEP },
   'carriers.statusMappings': { none: CARRIER_ADMIN },
   'carriers.statusMappingByCode': { none: CARRIER_ADMIN },
   'carriers.unmappedStatuses': { proposed: 'carriers:read', step: STEP },

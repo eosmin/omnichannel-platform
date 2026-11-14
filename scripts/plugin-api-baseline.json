@@ -9,6 +9,7 @@
     "carriers.list",
     "carriers.locations",
     "carriers.registry",
+    "carriers.statusCatalog",
     "carriers.unmappedStatuses",
     "channels.directory",
     "channels.templates",
