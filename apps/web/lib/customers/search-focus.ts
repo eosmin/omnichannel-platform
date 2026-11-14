@@ -1,5 +1,5 @@
 // Who goes to the page of customers and wants the cursor in its search box says so before the jump
-// (`Mod+K`, the Find customer action of the inbox); the page takes the request once, when it opens. A jump
+// (the Find customer action of the inbox); the page takes the request once, when it opens. A jump
 // that does not ask (`g c`, the navigation link) leaves the focus where the page puts it: with the cursor
 // in a text field the shortcuts are off, so a person who uses only the keyboard could not leave with `g i`.
 // A request that the page does not take soon (the jump was cancelled, a link opened in another tab) expires,

@@ -23,6 +23,7 @@ export const PageTitles = {
   remittances: ['shell.nav.remittances'],
   remittanceImport: ['remittances.import.title', 'shell.nav.remittances'],
   exports: ['shell.nav.exports'],
+  search: ['search.page.title'],
   settings: ['shell.nav.settings'],
   settingsGeneral: ['settings.nav.store.general', 'shell.nav.settings'],
   settingsChannels: ['settings.nav.store.channels', 'shell.nav.settings'],

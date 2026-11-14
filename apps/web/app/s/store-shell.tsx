@@ -11,6 +11,8 @@ import { OrderDrawerProvider } from '../../components/orders/order-drawer-contex
 import { RealtimeProvider } from '../../components/providers/realtime-provider'
 import { StoreProvider } from '../../components/providers/store-context'
 import { StoreTimeZone } from '../../components/providers/time-zone-provider'
+import { SearchBox } from '../../components/search/search-box'
+import { SearchProvider } from '../../components/search/search-context'
 import { AppFrame } from '../../components/shell/app-frame'
 import { LoadingScreen, SessionGate } from '../../components/shell/session-gate'
 import { StoreNav } from '../../components/shell/store-nav'
@@ -53,9 +55,16 @@ export function StoreShell({
               {/* The order drawer is outside: the profile of a customer, drawn by the customer provider, opens "Copy order" */}
               <OrderDrawerProvider>
                 <CustomerDrawerProvider>
-                  <AppFrame profile={profile} currentStoreId={storeId} nav={<StoreNav />}>
-                    {children}
-                  </AppFrame>
+                  <SearchProvider>
+                    <AppFrame
+                      profile={profile}
+                      currentStoreId={storeId}
+                      nav={<StoreNav />}
+                      search={<SearchBox />}
+                    >
+                      {children}
+                    </AppFrame>
+                  </SearchProvider>
                 </CustomerDrawerProvider>
               </OrderDrawerProvider>
             </RealtimeProvider>

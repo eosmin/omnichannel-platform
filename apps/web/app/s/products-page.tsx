@@ -2,8 +2,9 @@
 
 import { Plus, Search, TriangleAlert } from 'lucide-react'
 import dynamic from 'next/dynamic'
+import { useSearchParams } from 'next/navigation'
 import { useFormatter, useTranslations } from 'next-intl'
-import { type ReactElement, useMemo, useState } from 'react'
+import { type ReactElement, useEffect, useMemo, useState } from 'react'
 
 import type {
   ProductListItemView,
@@ -11,6 +12,7 @@ import type {
   StockSummaryView
 } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
+import { SearchPageParams } from '@platform/core/domain'
 
 import type { ProductTarget } from '../../components/products/product-sheet'
 import { useStore } from '../../components/providers/store-context'
@@ -137,8 +139,13 @@ export function ProductsPage(): ReactElement {
   const t = useTranslations('products')
   const tAll = useTranslations()
   const { storeId, can } = useStore()
+  const params = useSearchParams()
   const [filter, setFilter] = useState<ProductFilter>(ProductFilters.ALL)
-  const [text, setText] = useState('')
+  // The page a product hit of the search opens: the catalog with the name already in the box
+  const addressText = params.get(SearchPageParams.QUERY) ?? ''
+  const [text, setText] = useState(addressText)
+  // A product hit chosen while the catalog is already open changes the address, not the page: the box follows it
+  useEffect(() => setText(addressText), [addressText])
   const [target, setTarget] = useState<ProductTarget | null>(null)
   // The panel is downloaded when it is first asked for and stays mounted, so that it can close with its animation
   const isSheetLoaded = useMountedOnce(target !== null)
