@@ -209,6 +209,7 @@ describe('HeavyProcessingProcessor', () => {
         storeId: STORE_ID,
         jobId: JOB_ID,
         connectionId: '0a4bb3b1-3b6c-4a4f-8b53-6dd1b5a5c2f0',
+        locationIds: { departmentId: '2', municipalityId: '21' },
         pickup,
         canOverridePrice: true,
         extra: 'dropped'
@@ -219,6 +220,7 @@ describe('HeavyProcessingProcessor', () => {
           storeId: STORE_ID,
           jobId: JOB_ID,
           connectionId: '0a4bb3b1-3b6c-4a4f-8b53-6dd1b5a5c2f0',
+          locationIds: { departmentId: '2', municipalityId: '21' },
           pickup,
           canOverridePrice: true
         },
@@ -248,6 +250,15 @@ describe('HeavyProcessingProcessor', () => {
           jobId: JOB_ID,
           canOverridePrice: false,
           pickup: { date: '2026-12-01', from: '12:00', to: '09:00' }
+        }
+      ],
+      [
+        'a place without its municipality',
+        {
+          storeId: STORE_ID,
+          jobId: JOB_ID,
+          canOverridePrice: false,
+          locationIds: { departmentId: '2' }
         }
       ]
     ])('refuses for good a job with %s, and runs nothing', async (_name, data) => {

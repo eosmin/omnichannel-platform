@@ -29,6 +29,46 @@ export { liveGuidesByOrder } from './order-guides'
 // What this page reads of a connection of the store
 export type BulkConnection = Pick<CarrierConnectionView, 'id' | 'displayName' | 'capabilities'>
 
+// The department and municipality of the carrier's own list that a run of labels sends for every order
+export interface BulkLocationIds {
+  departmentId: string
+  municipalityId: string
+}
+
+// A connection that can make a guide by a request of its own or by the platform: the ones a run of labels can be pinned to
+export function canMakeGuides(connection: BulkConnection): boolean {
+  return (
+    connection.capabilities.includes(CarrierCapability.CREATE_SHIPMENT) ||
+    connection.capabilities.includes(CarrierCapability.INTERNAL_GUIDE) ||
+    connection.capabilities.includes(CarrierCapability.PICKUP_BOUND_GUIDES)
+  )
+}
+
+// The connection whose places the run of labels must ask for, decided by what the carrier declares and never by its name: only the one
+// the person pinned, and only when it declares that it needs them. With nothing pinned each order follows its own planned carrier, and
+// pinning one for the person would move orders planned elsewhere; so `null`, and the selector is offered whenever a carrier needs places.
+export function placesConnectionOf(
+  connections: readonly BulkConnection[],
+  chosenId: string
+): BulkConnection | null {
+  const target = connections.filter(canMakeGuides).find(connection => connection.id === chosenId)
+  return target?.capabilities.includes(CarrierCapability.REQUIRES_LOCATION_IDS) === true
+    ? target
+    : null
+}
+
+// The selector that pins a run to a carrier shows when there is a choice to make, or when the only carrier needs places (and the
+// person has no other way to give them)
+export function offersCarrierChoice(connections: readonly BulkConnection[]): boolean {
+  const pinnable = connections.filter(canMakeGuides)
+  return (
+    pinnable.length > 1 ||
+    pinnable.some(connection =>
+      connection.capabilities.includes(CarrierCapability.REQUIRES_LOCATION_IDS)
+    )
+  )
+}
+
 export const BulkActionKinds = {
   CONFIRM: 'confirm',
   SUMMARY: 'summary',

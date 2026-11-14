@@ -24,6 +24,8 @@ import {
   pendingConfirmationIds,
   pickupReport,
   pickupTargets,
+  offersCarrierChoice,
+  placesConnectionOf,
   printReport,
   printTargets,
   reportCounts,
@@ -388,5 +390,45 @@ describe('jobProgress', () => {
     expect(jobProgress({ total: 4, succeeded: 1, failed: 1 })).toBe(0.5)
     expect(jobProgress({ total: 0, succeeded: 0, failed: 0 })).toBe(0)
     expect(jobProgress({ total: 2, succeeded: 3, failed: 0 })).toBe(1)
+  })
+})
+
+describe('the connection whose places a run of labels asks for', () => {
+  const connection = (id: string, capabilities: string[]): BulkConnection => ({
+    id,
+    displayName: id,
+    capabilities
+  })
+  const located = connection('located', [
+    CarrierCapability.CREATE_SHIPMENT,
+    CarrierCapability.REQUIRES_LOCATION_IDS
+  ])
+  const plain = connection('plain', [CarrierCapability.CREATE_SHIPMENT])
+
+  it('is the one pinned, when it declares that it needs places', () => {
+    expect(placesConnectionOf([located, plain], 'located')).toBe(located)
+    expect(placesConnectionOf([located, plain], 'plain')).toBeNull()
+  })
+
+  it('is none when nothing is pinned, even for a store with one carrier: pinning it would move orders planned elsewhere', () => {
+    expect(placesConnectionOf([located], '')).toBeNull()
+    expect(placesConnectionOf([plain], '')).toBeNull()
+  })
+
+  it('offers the carrier selector for several carriers, or for the only one when it needs places', () => {
+    expect(offersCarrierChoice([located, plain])).toBe(true)
+    expect(offersCarrierChoice([located])).toBe(true)
+    expect(offersCarrierChoice([plain])).toBe(false)
+  })
+
+  it('is none when the orders follow their planned carriers, or the pinned one is unknown', () => {
+    expect(placesConnectionOf([located, plain], '')).toBeNull()
+    expect(placesConnectionOf([located, plain], 'other')).toBeNull()
+  })
+
+  it('ignores a connection that makes no guides, whatever else it declares', () => {
+    const lookupOnly = connection('lookup', [CarrierCapability.REQUIRES_LOCATION_IDS])
+    expect(placesConnectionOf([lookupOnly], 'lookup')).toBeNull()
+    expect(placesConnectionOf([lookupOnly, plain], 'lookup')).toBeNull()
   })
 })

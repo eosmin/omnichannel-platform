@@ -9,6 +9,7 @@ import { type Permission, Permissions, RETRY_AFTER_METADATA_KEY } from '@platfor
 import { lockStoreScope, PrismaService } from '@platform/core/database'
 import {
   type BulkLabelsBody,
+  CarrierCapability,
   BulkLabelJobStatus,
   BulkLabelLimits,
   type MergeLabelsBody,
@@ -28,7 +29,9 @@ import {
   QueueNames
 } from '@platform/core/queues'
 import { type BulkResultEntry, MergedLabels } from '@platform/core/shipping'
+import { CarrierRegistry } from '@platform/plugins/runtime'
 
+import { CarrierConnectionsService } from '../carriers/carrier-connections.service'
 import type { Actor } from '../tenancy'
 
 import type { BulkJobRow, BulkJobView, FileLinkView, LabelMergeView } from './bulk-labels.views'
@@ -60,9 +63,55 @@ export class BulkLabelsService {
     private readonly merged: MergedLabels,
     private readonly audit: AuditService,
     private readonly logger: PinoLogger,
+    private readonly registry: CarrierRegistry,
+    private readonly carriers: CarrierConnectionsService,
     @InjectQueue(QueueNames.HEAVY_PROCESSING) private readonly queue: Queue<BulkLabelsMergeJob>
   ) {
     this.logger.setContext(BulkLabelsService.name)
+  }
+
+  // The places of a run, by the capability of the carrier and never by its name: a carrier that asks for them (REQUIRES_LOCATION_IDS)
+  // gets both, each one of the list that carrier gives for its parent (the same cached list the selectors read, so the check
+  // costs no call to the carrier in the common case); a carrier that does not ask for them takes none, because the places of
+  // another carrier would travel in every guide.
+  private async assertPlaces(
+    storeId: string,
+    connection: { id: string; carrierId: string },
+    locationIds: BulkLabelsBody['locationIds']
+  ): Promise<void> {
+    const asks = this.registry.hasCapability(
+      connection.carrierId,
+      CarrierCapability.REQUIRES_LOCATION_IDS
+    )
+    if (!asks) {
+      if (locationIds === undefined) return
+      throw new PlatformException(
+        ErrorCodes.SHIPPING_CARRIER_CAPABILITY_MISSING,
+        'the carrier takes no places',
+        HttpStatusCodes.CONFLICT
+      )
+    }
+    if (locationIds === undefined) {
+      throw new PlatformException(
+        ErrorCodes.SHIPPING_LOCATION_REQUIRED,
+        'the carrier needs location ids',
+        HttpStatusCodes.BAD_REQUEST
+      )
+    }
+    const departments = await this.carriers.locations(storeId, connection.id, {})
+    const department = departments.some(place => place.id === locationIds.departmentId)
+    const municipalities = department
+      ? await this.carriers.locations(storeId, connection.id, {
+          parentId: locationIds.departmentId
+        })
+      : []
+    if (!municipalities.some(place => place.id === locationIds.municipalityId)) {
+      throw new PlatformException(
+        ErrorCodes.SHIPPING_LOCATION_REQUIRED,
+        'the places are not in the list of the carrier',
+        HttpStatusCodes.BAD_REQUEST
+      )
+    }
   }
 
   // POST /shipments/bulk: writes the run down and queues it; the worker does the rest and says how it went as it goes. An order
@@ -73,13 +122,15 @@ export class BulkLabelsService {
     actor: Actor,
     held: readonly Permission[]
   ): Promise<BulkJobView> {
-    // A carrier of another store is a 404 now, not a skip of every order later
+    // A carrier of another store is a 404 now, not a skip of every order later; places a carrier needs (or does not take) are
+    // judged now too, once, so that the run does not refuse every order of the batch one by one
     if (body.connectionId !== undefined) {
       const connection = await this.prisma.client.carrierConnection.findFirst({
         where: { id: body.connectionId, storeId },
-        select: { id: true }
+        select: { id: true, carrierId: true }
       })
       if (connection === null) throw resourceNotFound('carrier')
+      await this.assertPlaces(storeId, connection, body.locationIds)
     }
     // Runs that have not ended hold the queue of the heavy jobs, which also scans every file: a store has only so many at once. The
     // count and the write take turns, so that requests made together cannot all pass the count; a run older than the time the
@@ -119,6 +170,7 @@ export class BulkLabelsService {
           storeId,
           jobId: row.id,
           ...(body.connectionId === undefined ? {} : { connectionId: body.connectionId }),
+          ...(body.locationIds === undefined ? {} : { locationIds: body.locationIds }),
           ...(body.pickup === undefined ? {} : { pickup: body.pickup }),
           canOverridePrice: held.includes(Permissions.ORDERS_OVERRIDE_PRICE)
         },

@@ -86,11 +86,24 @@ const uniqueIds = z
 
 // Bulk generation (TDD_17 §4.6): the orders in the order the agent selected them, which is the order of the pages. The carrier
 // and the pickup are optional and apply to every order of the run; without them each order follows its planned carrier.
-export const bulkLabelsSchema = z.strictObject({
-  orderIds: uniqueIds,
-  connectionId: uuidSchema.optional(),
-  pickup: shipmentPickupSchema.optional()
+// The places of a carrier that asks for them (REQUIRES_LOCATION_IDS) are chosen once for the whole run, so they only make sense
+// with the carrier the run is made for: without `connectionId` each order follows its own planned carrier and no single pair of
+// places could be right for all. Two levels, the ones a plugin lists (no settlement).
+export const bulkLocationIdsSchema = z.strictObject({
+  departmentId: locationIdText,
+  municipalityId: locationIdText
 })
+export const bulkLabelsSchema = z
+  .strictObject({
+    orderIds: uniqueIds,
+    connectionId: uuidSchema.optional(),
+    locationIds: bulkLocationIdsSchema.optional(),
+    pickup: shipmentPickupSchema.optional()
+  })
+  .refine(value => value.locationIds === undefined || value.connectionId !== undefined, {
+    message: 'places need the carrier they belong to',
+    path: ['connectionId']
+  })
 export type BulkLabelsBody = z.output<typeof bulkLabelsSchema>
 
 // "Print labels" of guides that already exist: the shipments in the order of the pages

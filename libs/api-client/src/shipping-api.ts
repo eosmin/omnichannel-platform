@@ -84,11 +84,16 @@ const bulkJobSchema = z.object({
 export type BulkLabelJobView = z.output<typeof bulkJobSchema>
 
 // The run is queued and answers 202: its state is read with `fetchBulkLabelJob`. `connectionId` makes every order of the run
-// use that connection; left out, each order follows its planned carrier.
+// use that connection; left out, each order follows its planned carrier. `locationIds` are the places a carrier that asks for them
+// needs, chosen once for the whole run, and only go with a `connectionId`.
 export function startBulkLabels(
   client: ApiClient,
   storeId: string,
-  input: { orderIds: readonly string[]; connectionId?: string }
+  input: {
+    orderIds: readonly string[]
+    connectionId?: string
+    locationIds?: { departmentId: string; municipalityId: string }
+  }
 ): Promise<BulkLabelJobView> {
   return client.request(ApiRoutes.shipments.bulk, {
     method: 'POST',

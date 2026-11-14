@@ -1539,6 +1539,15 @@
           "unknown": "El servidor dio una razón que esta pantalla no conoce.",
           "still_running": "La corrida sigue en marcha: revisa los pedidos otra vez en un momento."
         }
+      },
+      "places": {
+        "legend": "Destino",
+        "hint": "Este transportista pide su propia lista de lugares. Elige el departamento y el municipio de la dirección de entrega.",
+        "department": "Departamento",
+        "municipality": "Municipio",
+        "choose": "Elegir",
+        "loading": "Cargando",
+        "failed": "El transportista no pudo listar sus lugares. Inténtalo de nuevo en un momento."
       }
     },
     "copy": {

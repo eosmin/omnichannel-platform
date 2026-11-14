@@ -4,14 +4,17 @@ import { Loader2, Printer, Send, Truck, Check, X, Tag } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 
-import { CarrierCapability, OrderConfirmationChannel } from '@platform/core/domain'
+import { OrderConfirmationChannel } from '@platform/core/domain'
 
 import { SELECT_CLASS } from '../../components/ui/field-classes'
 import {
   type BulkActionKind,
   BulkActionKinds,
   type BulkAvailability,
-  type BulkConnection
+  type BulkConnection,
+  canMakeGuides,
+  offersCarrierChoice,
+  placesConnectionOf
 } from '../../lib/orders/order-bulk'
 import type { OrderBulk } from '../../lib/orders/use-order-bulk'
 import { Button } from '../ui/button'
@@ -25,19 +28,12 @@ import {
 } from '../ui/dialog'
 import { Label } from '../ui/label'
 
+import { GuideLocationSelects } from './order-guide-locations'
+
 // The ways to confirm that a person can pick: the creation is not one of them
 const CONFIRM_CHANNELS = Object.values(OrderConfirmationChannel).filter(
   channel => channel !== OrderConfirmationChannel.AT_CREATION
 )
-
-// A connection that can make a guide by a request of its own or by the platform: the ones a run of labels can be pinned to
-function canMakeGuides(connection: BulkConnection): boolean {
-  return (
-    connection.capabilities.includes(CarrierCapability.CREATE_SHIPMENT) ||
-    connection.capabilities.includes(CarrierCapability.INTERNAL_GUIDE) ||
-    connection.capabilities.includes(CarrierCapability.PICKUP_BOUND_GUIDES)
-  )
-}
 
 function ConfirmDialog({
   count,
@@ -93,12 +89,14 @@ function ConfirmDialog({
 // The actions over the rows ticked on the orders page (Step 4.14): each shows only when the member holds its permission and
 // there is something to act on, and the server judges every order. What it did is the report beside it.
 export function OrderBulkBar({
+  storeId,
   bulk,
   availability,
   selectedCount,
   connections,
   onClear
 }: {
+  storeId: string
   bulk: OrderBulk
   availability: BulkAvailability
   selectedCount: number
@@ -108,6 +106,9 @@ export function OrderBulkBar({
   const t = useTranslations('orders.bulk')
   const [confirming, setConfirming] = useState(false)
   const [connectionId, setConnectionId] = useState('')
+  const [places, setPlaces] = useState({ departmentId: '', municipalityId: '' })
+  // The places are asked once for the whole run, when the carrier it goes to declares that it needs them
+  const placesConnection = placesConnectionOf(connections, connectionId)
   const pinnable = connections.filter(canMakeGuides)
   const isBusy = bulk.busy !== null
   const running = (kind: BulkActionKind): boolean => bulk.busy === kind
@@ -140,7 +141,7 @@ export function OrderBulkBar({
       ) : null}
       {availability.labels ? (
         <>
-          {pinnable.length > 1 ? (
+          {offersCarrierChoice(connections) ? (
             <>
               <Label htmlFor="orders-bulk-carrier" className="sr-only">
                 {t('carrierLabel')}
@@ -150,7 +151,10 @@ export function OrderBulkBar({
                 className={SELECT_CLASS}
                 value={connectionId}
                 disabled={isBusy}
-                onChange={event => setConnectionId(event.target.value)}
+                onChange={event => {
+                  setConnectionId(event.target.value)
+                  setPlaces({ departmentId: '', municipalityId: '' })
+                }}
               >
                 <option value="">{t('plannedCarrier')}</option>
                 {pinnable.map(connection => (
@@ -161,12 +165,30 @@ export function OrderBulkBar({
               </select>
             </>
           ) : null}
+          {placesConnection === null ? null : (
+            <div className="w-full">
+              <GuideLocationSelects
+                namespace="orders.bulk.places"
+                key={placesConnection.id}
+                id="orders-bulk-places"
+                storeId={storeId}
+                connectionId={placesConnection.id}
+                departmentId={places.departmentId}
+                municipalityId={places.municipalityId}
+                onChange={setPlaces}
+              />
+            </div>
+          )}
           <Button
             size="sm"
             variant="outline"
-            disabled={isBusy}
+            disabled={isBusy || (placesConnection !== null && places.municipalityId === '')}
             busy={running(BulkActionKinds.LABELS)}
-            onClick={() => void bulk.labels(connectionId === '' ? undefined : connectionId)}
+            onClick={() =>
+              void (placesConnection === null
+                ? bulk.labels(connectionId === '' ? undefined : connectionId)
+                : bulk.labels(placesConnection.id, places))
+            }
           >
             <Tag aria-hidden />
             {t('labels')}
