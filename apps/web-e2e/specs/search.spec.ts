@@ -81,7 +81,11 @@ test.describe('the search of the store', () => {
     await box.press('Enter')
 
     await expect(page).toHaveURL(new RegExp(`${AppPaths.store.search(storeId)}\\?q=`))
-    await expect(page.getByRole('link', { name: en.search.page.scopes.customers })).toBeVisible()
+    await expect(
+      page
+        .getByRole('navigation', { name: en.search.page.scopes.label })
+        .getByRole('link', { name: en.search.page.scopes.customers })
+    ).toBeVisible()
     await expect(page.getByRole('button', { name: new RegExp(name) })).toBeVisible()
   })
 
@@ -90,10 +94,11 @@ test.describe('the search of the store', () => {
     await newCustomerIn(storeId, { name })
     await page.goto(`${AppPaths.store.search(storeId, name)}&scope=customers`)
 
-    await expect(page.getByRole('link', { name: en.search.page.scopes.customers })).toHaveAttribute(
-      'aria-current',
-      'page'
-    )
+    await expect(
+      page
+        .getByRole('navigation', { name: en.search.page.scopes.label })
+        .getByRole('link', { name: en.search.page.scopes.customers })
+    ).toHaveAttribute('aria-current', 'page')
     await expect(page.getByRole('button', { name: new RegExp(name) })).toBeVisible()
     await expect(
       page.getByRole('searchbox', { name: en.search.page.label, exact: true })
