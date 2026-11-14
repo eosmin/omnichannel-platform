@@ -5,6 +5,7 @@ import { BullBoardPlatformModule, HttpPlatformModule } from '@platform/core/http
 import { officialRedactedKeys } from '@platform/plugins/runtime'
 
 import { AnalyticsModule } from './modules/analytics/analytics.module'
+import { ApiKeysModule } from './modules/api-keys'
 import { AuthModule } from './modules/auth/auth.module'
 import { CarriersModule } from './modules/carriers/carriers.module'
 import { ChannelRegistryModule } from './modules/channel-registry'
@@ -34,6 +35,7 @@ import { SettingsModule } from './modules/settings/settings.module'
 import { ShipmentsModule } from './modules/shipments/shipments.module'
 import { TeamModule } from './modules/team/team.module'
 import { TenancyModule } from './modules/tenancy'
+import { TenantWebhooksModule } from './modules/tenant-webhooks/tenant-webhooks.module'
 import { TransfersModule } from './modules/transfers/transfers.module'
 import { WarehousesModule } from './modules/warehouses/warehouses.module'
 import { WebhooksModule } from './modules/webhooks/webhooks.module'
@@ -73,6 +75,8 @@ import { WidgetModule } from './modules/widget/widget.module'
     TransfersModule,
     WarehousesModule,
     SettingsModule,
+    TenantWebhooksModule,
+    ApiKeysModule,
     RemittancesModule,
     ShipmentsModule,
     PickupsModule,

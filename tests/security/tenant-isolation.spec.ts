@@ -86,6 +86,8 @@ import {
   ensurePluginInstallation,
   createOrderMessageTemplate,
   createSnippet,
+  createApiKey,
+  createWebhook,
   createTag,
   resetStoreSettings,
   customerOfIdentity,
@@ -1024,6 +1026,47 @@ const resources: IsolationResource[] = [
       countIn: (owner, storeId) => owner.snippet.count({ where: { storeId } }),
       storeOf: async (owner, id) =>
         (await owner.snippet.findUnique({ where: { id }, select: { storeId: true } }))?.storeId ??
+        null
+    }
+  },
+  // Step 5.4 PR A: the outbound webhooks of a store (their delivery log has no store of its own and is read through
+  // the webhook, under the store of the request: the cases of tests/api/tenant-webhooks.spec.ts prove it)
+  {
+    name: 'webhook',
+    create: createWebhook,
+    readPath: ApiRoutes.settings.webhookById,
+    listPath: ApiRoutes.settings.webhooks,
+    modify: { path: ApiRoutes.settings.webhookById, body: { status: 'paused' } },
+    untouched: async (owner, id) =>
+      (await owner.webhook.findUnique({ where: { id }, select: { status: true } }))?.status ===
+      'active',
+    creation: {
+      path: ApiRoutes.settings.webhooks,
+      body: () => ({ url: 'https://8.8.8.8/hook', events: ['order.created'] }),
+      strict: true,
+      countIn: (owner, storeId) => owner.webhook.count({ where: { storeId } }),
+      storeOf: async (owner, id) =>
+        (await owner.webhook.findUnique({ where: { id }, select: { storeId: true } }))?.storeId ??
+        null
+    }
+  },
+  // Step 5.4 PR A: the API keys of a store. No route reads one by its id (the list is the read); the route that
+  // revokes one is the one a stranger would try, and the key must stay active.
+  {
+    name: 'apiKey',
+    create: createApiKey,
+    listPath: ApiRoutes.settings.apiKeys,
+    modify: { path: ApiRoutes.settings.apiKeyById, method: 'delete', body: {} },
+    untouched: async (owner, id) =>
+      (await owner.apiKey.findUnique({ where: { id }, select: { status: true } }))?.status ===
+      'active',
+    creation: {
+      path: ApiRoutes.settings.apiKeys,
+      body: name => ({ name, scopes: ['customers:view'] }),
+      strict: true,
+      countIn: (owner, storeId) => owner.apiKey.count({ where: { storeId } }),
+      storeOf: async (owner, id) =>
+        (await owner.apiKey.findUnique({ where: { id }, select: { storeId: true } }))?.storeId ??
         null
     }
   },

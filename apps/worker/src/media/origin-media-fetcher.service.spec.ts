@@ -13,11 +13,11 @@ jest.mock('./pinned-https-get', () => ({
 import { MediaStatus, OriginMediaSlots } from '@platform/core/domain'
 import { JobNames } from '@platform/core/queues'
 import { MediaPurpose } from '@platform/core/storage'
+import { UnsafeUrlError } from '@platform/core/url-safety'
 
 import { originMediaId } from './inbound-media-id'
 import { OriginMediaFetcher } from './origin-media-fetcher.service'
 import { PinnedFetchFailed } from './pinned-https-get'
-import { UnsafeUrlError } from './public-url'
 
 const STORE = '11111111-1111-4111-8111-111111111111'
 const ORIGIN = '33333333-3333-4333-8333-333333333333'

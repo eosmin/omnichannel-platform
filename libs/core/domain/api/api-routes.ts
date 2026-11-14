@@ -363,6 +363,7 @@ export const ApiRoutes = {
     webhooks: '/settings/webhooks',
     webhookById: (id: string) => `/settings/webhooks/${id}`,
     webhookDeliveries: (id: string) => `/settings/webhooks/${id}/deliveries`,
+    webhookSecret: (id: string) => `/settings/webhooks/${id}/secret`, // POST makes a new secret, shown once
     apiKeys: '/settings/api-keys',
     apiKeyById: (id: string) => `/settings/api-keys/${id}`,
     retention: '/settings/retention'

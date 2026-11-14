@@ -27,11 +27,11 @@ import {
   UploadLimits
 } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
+import { UnsafeUrlError } from '@platform/core/url-safety'
 
 import { bareType, FileRefused, GENERIC_TYPES, readLimited, sniffImageType } from './fetch-helpers'
 import { originMediaId } from './inbound-media-id'
 import { PinnedFetchFailed, pinnedHttpsGet } from './pinned-https-get'
-import { UnsafeUrlError } from './public-url'
 
 const IMAGE_TYPES: ReadonlySet<string> = new Set(AllowedContentTypes.IMAGE)
 

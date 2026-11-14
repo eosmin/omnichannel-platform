@@ -17,10 +17,8 @@ export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> 
     reason:
       'Written by the pipelines; nothing reads it yet. The reports read the rollups, not the events. Its case goes with its first reader (the zero-result search report) or with its retention purge, whichever the step builds first'
   },
-  ApiKey: { step: '5.4', reason: 'Created and revoked from Settings' },
   AuditLog: { step: '7.2', reason: 'Read through the audit log viewer of the organization' },
   ConsentRecord: { step: '7.2', reason: 'Written by the compliance flows' },
   DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' },
-  RetentionSettings: { step: '5.4', reason: 'Read and changed from the data retention settings' },
-  Webhook: { step: '5.4', reason: 'Managed from Settings' }
+  RetentionSettings: { step: '5.4', reason: 'Read and changed from the data retention settings' }
 }

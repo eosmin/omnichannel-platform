@@ -135,8 +135,6 @@ export const PermissionsOfUnbuiltAreas: readonly string[] = [
   'remittances:',
   'analytics:',
   'org:',
-  'settings:manage_webhooks',
-  'settings:manage_api_keys',
   'settings:manage_retention'
 ]
 

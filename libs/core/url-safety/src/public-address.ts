@@ -27,12 +27,16 @@ for (const [network, prefix] of [
   ['::', 96], // the unspecified address, the loopback and the IPv4-compatible form
   ['::ffff:0:0:0', 96], // SIIT: an IPv4 address inside
   ['64:ff9b::', 96], // NAT64: carries an IPv4 address that is not checked here
+  ['64:ff9b:1::', 48], // The local-use NAT64 prefix (RFC 8215): the same
   ['100::', 64],
   ['2001::', 32], // Teredo: an IPv4 address inside
   ['2002::', 16], // 6to4: an IPv4 address inside
   ['2001:db8::', 32],
   ['fc00::', 7],
   ['fe80::', 10],
+  ['fec0::', 10], // Site-local, deprecated but still routed in some networks
+  ['5f00::', 16], // Segment routing SIDs
+  ['3fff::', 20], // Documentation
   ['ff00::', 8]
 ] as const) {
   blocked.addSubnet(network, prefix, 'ipv6')

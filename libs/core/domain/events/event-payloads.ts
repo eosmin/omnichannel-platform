@@ -166,6 +166,13 @@ export interface RemittanceOverduePayload {
   totalOwedCents: number
 }
 
+// A webhook the platform turned off after too many failures in a row (TDD_07 §2): ids and the count, never its address
+export interface WebhookAutoDisabledPayload {
+  storeId: string
+  webhookId: string
+  consecutiveFailures: number
+}
+
 export interface ShipmentStatusChangedPayload extends ShipmentEventPayload {
   from: ShipmentStatus
   to: ShipmentStatus
@@ -501,6 +508,7 @@ export interface DomainEventPayloads {
   [Events.REMITTANCE_CONFIRMED]: RemittanceEventPayload
   [Events.REMITTANCE_VOIDED]: RemittanceEventPayload
   [Events.REMITTANCE_OVERDUE]: RemittanceOverduePayload
+  [Events.WEBHOOK_AUTO_DISABLED]: WebhookAutoDisabledPayload
   [Events.CARRIER_STATUS_UNMAPPED]: CarrierStatusUnmappedPayload
   [Events.BULK_LABELS_PROGRESS]: BulkLabelsProgressPayload
   [Events.BULK_LABELS_DONE]: BulkLabelsDonePayload

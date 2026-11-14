@@ -39,6 +39,7 @@ import {
   maxBytesFor
 } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
+import { assertPublicHttpsUrl, UnsafeUrlError } from '@platform/core/url-safety'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { ChannelCapability, UnsafeMediaLinkError } from '@platform/plugins/sdk'
 
@@ -53,7 +54,6 @@ import {
   readLimited
 } from './fetch-helpers'
 import { inboundMediaId } from './inbound-media-id'
-import { assertPublicHttpsUrl, UnsafeUrlError } from './public-url'
 import { UnavailableFileMarker } from './unavailable-file-marker.service'
 
 // What the retry sees of a failed attempt: the code and the name of the error, never its text (the

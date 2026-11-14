@@ -115,12 +115,8 @@ describe('isDailyDigestHour', () => {
 })
 
 describe('NotificationTypesWithoutEmitter', () => {
-  it('holds the commerce types, the webhook and the plugin ones, and none the inbox raises', () => {
-    for (const type of [
-      NotificationTypes.ORDER_PAYMENT_FAILED,
-      NotificationTypes.WEBHOOK_AUTO_DISABLED,
-      NotificationTypes.PLUGIN_ERROR
-    ]) {
+  it('holds the commerce types and the plugin ones, and none the inbox raises', () => {
+    for (const type of [NotificationTypes.ORDER_PAYMENT_FAILED, NotificationTypes.PLUGIN_ERROR]) {
       expect(NotificationTypesWithoutEmitter.has(type)).toBe(true)
     }
     // The message about an order that did not go is raised since Step 4.9 PR C2a, so its switch is shown
@@ -168,7 +164,9 @@ describe('NotificationTypesWithoutEmitter', () => {
       NotificationTypes.ORDER_PRICE_OVERRIDDEN,
       NotificationTypes.ORDER_PACKING_NOTE_CHANGED,
       // Raised by the transfers service since Step 4.5
-      NotificationTypes.TRANSFER_DISPATCHED
+      NotificationTypes.TRANSFER_DISPATCHED,
+      // Raised by the webhook delivery since Step 5.4 PR A (a webhook turned off after repeated failures)
+      NotificationTypes.WEBHOOK_AUTO_DISABLED
     ]) {
       expect(NotificationTypesWithoutEmitter.has(type)).toBe(false)
     }

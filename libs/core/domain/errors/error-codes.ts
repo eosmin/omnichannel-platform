@@ -68,6 +68,8 @@ export const ErrorCodes = {
   PLUGIN_CONTRACT_VIOLATION: 'PLUGIN_CONTRACT_VIOLATION',
   PLUGIN_SCOPE_DENIED: 'PLUGIN_SCOPE_DENIED',
   PLUGIN_API_KEY_INVALID: 'PLUGIN_API_KEY_INVALID',
+  // The key of a store that calls the public API is missing, unknown, revoked or expired (one answer for all four)
+  API_KEY_INVALID: 'API_KEY_INVALID',
 
   // Business logic
   ORDER_CANNOT_BE_CANCELLED: 'ORDER_CANNOT_BE_CANCELLED',
