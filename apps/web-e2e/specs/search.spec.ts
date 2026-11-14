@@ -15,6 +15,12 @@ const FIRST_STORE = 'Main Store'
 const ADMIN = 'multi-store@test.com'
 
 // A name no other run has used: the database keeps what a case writes, and the case finds the customer by it
+// The store page is drawn after the session is read: a key pressed before the top bar is there goes to nobody
+async function openStorePage(page: Page, path: string): Promise<void> {
+  await page.goto(path)
+  await expect(page.getByRole('searchbox', { name: en.search.box.label })).toBeVisible()
+}
+
 const uniqueName = (label: string): string => `${label} ${randomUUID().slice(0, 8)}`
 
 test.describe('the search of the store', () => {
@@ -39,7 +45,7 @@ test.describe('the search of the store', () => {
   test('the palette finds a customer by a name typed without accents and opens their profile', async () => {
     const accented = uniqueName('Josefína')
     await newCustomerIn(storeId, { name: accented })
-    await page.goto(AppPaths.store.orders(storeId))
+    await openStorePage(page, AppPaths.store.orders(storeId))
 
     await page.keyboard.press('Control+k')
     const palette = page.getByRole('dialog', { name: en.search.palette.title })
@@ -51,7 +57,7 @@ test.describe('the search of the store', () => {
   })
 
   test('waits for the minimum length before it asks, and says so', async () => {
-    await page.goto(AppPaths.store.orders(storeId))
+    await openStorePage(page, AppPaths.store.orders(storeId))
     await page.keyboard.press('Control+k')
     const palette = page.getByRole('dialog', { name: en.search.palette.title })
     await palette.getByRole('combobox').fill('x')
@@ -62,7 +68,7 @@ test.describe('the search of the store', () => {
   test('the slash puts the cursor in the box of the top bar and the box opens the results page', async () => {
     const name = uniqueName('Resultado')
     await newCustomerIn(storeId, { name })
-    await page.goto(AppPaths.store.orders(storeId))
+    await openStorePage(page, AppPaths.store.orders(storeId))
 
     await page.keyboard.press('/')
     const box = page.getByRole('searchbox', { name: en.search.box.label })
