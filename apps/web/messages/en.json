@@ -3652,7 +3652,6 @@
         "fieldsHint": "Leave every field empty to keep the saved credentials. To change them, fill in all the fields: they are replaced together and the carrier checks them first.",
         "courier": {
           "legend": "Courier",
-          "name": "Name of the courier",
           "phone": "Phone of the courier",
           "prefix": "Prefix of the guides",
           "prefixHint": "Up to 6 capital letters or digits. Guides already made keep their number; the next ones start from the new prefix.",

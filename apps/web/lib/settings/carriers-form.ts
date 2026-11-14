@@ -86,11 +86,14 @@ export interface CourierDraft {
 
 const textOf = (value: unknown): string => (typeof value === 'string' ? value : '')
 
+// The connection keeps the phone and the notes of a courier and its prefix; the name the owner typed when connecting only
+// gave the default name of the connection and is not kept. An edit sends the name of the connection in its place, so it
+// is not asked for again.
 export function courierDraftOf(
-  view: Pick<CarrierConnectionView, 'contact' | 'guidePrefix'>
+  view: Pick<CarrierConnectionView, 'contact' | 'guidePrefix' | 'displayName'>
 ): CourierDraft {
   return {
-    name: textOf(view.contact?.['name']),
+    name: view.displayName,
     phone: textOf(view.contact?.['phone']),
     notes: textOf(view.contact?.['notes']),
     prefix: view.guidePrefix ?? ''
@@ -182,10 +185,10 @@ export interface CredentialShape {
 export const FREE_JSON_SHAPE: CredentialShape = { fields: [], savedCourier: null }
 
 export function credentialShapeOf(
-  connection: Pick<CarrierConnectionView, 'capabilities'> & {
-    contact: CarrierConnectionView['contact']
-    guidePrefix: string | null
-  },
+  connection: Pick<
+    CarrierConnectionView,
+    'capabilities' | 'contact' | 'guidePrefix' | 'displayName'
+  >,
   declared: readonly CarrierConnectFieldView[]
 ): CredentialShape {
   if (hasInternalGuide(connection.capabilities)) {

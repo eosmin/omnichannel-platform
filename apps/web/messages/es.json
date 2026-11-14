@@ -3652,7 +3652,6 @@
         "fieldsHint": "Deja todos los campos vacíos para conservar las credenciales guardadas. Para cambiarlas, completa todos los campos: se reemplazan juntas y el transportista las comprueba primero.",
         "courier": {
           "legend": "Mensajero",
-          "name": "Nombre del mensajero",
           "phone": "Teléfono del mensajero",
           "prefix": "Prefijo de las guías",
           "prefixHint": "Hasta 6 letras mayúsculas o dígitos. Las guías ya hechas conservan su número; las siguientes parten del prefijo nuevo.",

@@ -113,7 +113,7 @@ test.describe('Settings → Carriers', () => {
     await expect(reopened.getByLabel(carriers.rules.shipping.fees.max)).toHaveValue('12.00')
     await expect(reopened.getByLabel(carriers.rules.shipping.attempts)).toHaveValue('5')
     // The contact and the prefix of a courier the platform makes the guides for are edited here, and only what changed is sent
-    await expect(reopened.getByLabel(carriers.rules.courier.name)).toHaveValue('Juan Messenger')
+    await expect(reopened.getByLabel(carriers.rules.courier.phone)).toHaveValue('5551234567')
     await expect(reopened.getByLabel(carriers.rules.courier.prefix)).toHaveValue('JM')
     await reopened.getByLabel(carriers.rules.courier.phone).fill('5557654321')
     await reopened.getByLabel(carriers.rules.courier.prefix).fill('ab')

@@ -343,14 +343,15 @@ describe('editing the contact and prefix of a courier', () => {
   const courier: CarrierConnectionView = {
     ...view,
     capabilities: ['internal_guide'],
-    contact: { name: 'Juan', phone: '555', notes: 'rear door' },
+    contact: { phone: '555', notes: 'rear door' },
     guidePrefix: 'JM'
   }
   const shape = credentialShapeOf(courier, [])
 
   it('starts from what the connection holds and changes nothing', () => {
     const draft = carrierRulesDraftOf(courier, shape.fields)
-    expect(draft.courier).toEqual({ name: 'Juan', phone: '555', notes: 'rear door', prefix: 'JM' })
+    // The name is the one of the connection: the contact does not keep the name typed when connecting
+    expect(draft.courier).toEqual({ name: 'Main', phone: '555', notes: 'rear door', prefix: 'JM' })
     expect(carrierRulesProblems(draft, shape)).toEqual([])
     expect(carrierRulesChanges(courier, draft, shape)).toEqual({})
   })
@@ -360,24 +361,23 @@ describe('editing the contact and prefix of a courier', () => {
     const changed = { ...draft, courier: { ...draft.courier, phone: ' 777 ', prefix: 'AB' } }
     expect(carrierRulesProblems(changed, shape)).toEqual([])
     expect(carrierRulesChanges(courier, changed, shape)).toEqual({
-      credentials: { name: 'Juan', phone: '777', notes: 'rear door', prefix: 'AB' }
+      credentials: { name: 'Main', phone: '777', notes: 'rear door', prefix: 'AB' }
     })
   })
 
   it('does not send a change that is only spaces', () => {
     const draft = carrierRulesDraftOf(courier, shape.fields)
-    const spaced = { ...draft, courier: { ...draft.courier, name: ' Juan ', notes: 'rear door ' } }
+    const spaced = { ...draft, courier: { ...draft.courier, name: ' Main ', notes: 'rear door ' } }
     expect(carrierRulesChanges(courier, spaced, shape)).toEqual({})
   })
 
-  it('names every limit of the contact', () => {
+  it('names every limit of the contact that can be edited', () => {
     const draft = carrierRulesDraftOf(courier, shape.fields)
     const long = {
       ...draft,
-      courier: { name: 'n'.repeat(500), phone: ' ', notes: 'x'.repeat(5000), prefix: 'TOOLONG1' }
+      courier: { ...draft.courier, phone: ' ', notes: 'x'.repeat(5000), prefix: 'TOOLONG1' }
     }
     expect(carrierRulesProblems(long, shape)).toEqual([
-      'courierName',
       'courierPhone',
       'courierPrefix',
       'courierNotes'
@@ -386,8 +386,8 @@ describe('editing the contact and prefix of a courier', () => {
 
   it('names what is wrong with the contact', () => {
     const draft = carrierRulesDraftOf(courier, shape.fields)
-    const bad = { ...draft, courier: { ...draft.courier, name: ' ', prefix: 'ab' } }
-    expect(carrierRulesProblems(bad, shape)).toEqual(['courierName', 'courierPrefix'])
+    const bad = { ...draft, courier: { ...draft.courier, phone: ' ', prefix: 'ab' } }
+    expect(carrierRulesProblems(bad, shape)).toEqual(['courierPhone', 'courierPrefix'])
   })
 
   it('does not ask a disconnected courier with no contact for one it is not editing', () => {

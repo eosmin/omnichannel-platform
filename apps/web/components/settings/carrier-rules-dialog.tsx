@@ -409,19 +409,6 @@ export function CarrierRulesDialog({
                 <fieldset className="grid gap-3" disabled={pending}>
                   <legend className="text-sm font-medium">{t('courier.legend')}</legend>
                   <div className="grid gap-1.5">
-                    <Label htmlFor={`${id}-courier-name`}>{t('courier.name')}</Label>
-                    <Input
-                      id={`${id}-courier-name`}
-                      value={draft.courier.name}
-                      onChange={event =>
-                        set({ courier: { ...draft.courier, name: event.target.value } })
-                      }
-                      maxLength={CarrierConnectionLimits.DISPLAY_NAME_MAX_LENGTH}
-                      autoComplete="off"
-                      aria-invalid={has('courierName')}
-                    />
-                  </div>
-                  <div className="grid gap-1.5">
                     <Label htmlFor={`${id}-courier-phone`}>{t('courier.phone')}</Label>
                     <Input
                       id={`${id}-courier-phone`}
