@@ -6,6 +6,7 @@ import { BusinessHoursService } from './business-hours.service'
 import { InboxSettingsService } from './inbox-settings.service'
 import { InventorySettingsService } from './inventory-settings.service'
 import { PreferencesService } from './preferences.service'
+import { RetentionSettingsService } from './retention-settings.service'
 import { ReturnSettingsService } from './return-settings.service'
 import { SafetySettingsService } from './safety-settings.service'
 import { SettingsController } from './settings.controller'
@@ -24,6 +25,7 @@ import { TagsService } from './tags.service'
     InventorySettingsService,
     ReturnSettingsService,
     SafetySettingsService,
+    RetentionSettingsService,
     PreferencesService
   ]
 })

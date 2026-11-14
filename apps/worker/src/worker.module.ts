@@ -38,7 +38,9 @@ import { CarrierEventsProcessor } from './processors/carrier-events.processor'
 import { EmailProcessor } from './processors/email.processor'
 import { OutboundProcessor } from './processors/outbound.processor'
 import { ProcessorSupport } from './processors/processor-support'
+import { RetentionWorkerModule } from './retention/retention.module'
 import { AnalyticsRollupScheduler } from './schedulers/analytics-rollup.scheduler'
+import { AuditColdExportScheduler } from './schedulers/audit-cold-export.scheduler'
 import { AutoArchiveScheduler } from './schedulers/auto-archive.scheduler'
 import { BulkLabelsScheduler } from './schedulers/bulk-labels.scheduler'
 import { ChannelHealthScheduler } from './schedulers/channel-health.scheduler'
@@ -50,8 +52,10 @@ import { LeaderLockService } from './schedulers/leader-lock.service'
 import { OrphanMediaScheduler } from './schedulers/orphan-media.scheduler'
 import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.scheduler'
 import { PickupEvaluateScheduler } from './schedulers/pickup-evaluate.scheduler'
+import { PlatformCleanupScheduler } from './schedulers/platform-cleanup.scheduler'
 import { RemittanceCheckScheduler } from './schedulers/remittance-check.scheduler'
 import { ReportDispatchScheduler } from './schedulers/report-dispatch.scheduler'
+import { RetentionScheduler } from './schedulers/retention.scheduler'
 import { ShipmentPollScheduler } from './schedulers/shipment-poll.scheduler'
 import { SnoozeWakeScheduler } from './schedulers/snooze-wake.scheduler'
 import { TokenExpiryScheduler } from './schedulers/token-expiry.scheduler'
@@ -78,7 +82,9 @@ import { WebhooksWorkerModule } from './webhooks/webhooks.module'
     CarriersWorkerModule,
     WebhooksWorkerModule,
     // The cleanup of the bulk labels is run by the scheduler below
-    ShippingWorkerModule
+    ShippingWorkerModule,
+    // The platform cleanup is run by its scheduler below; the processors of the heavy and exports queues run the rest
+    RetentionWorkerModule
   ],
   providers: [
     ProcessorSupport,
@@ -121,7 +127,10 @@ import { WebhooksWorkerModule } from './webhooks/webhooks.module'
     ShipmentPollScheduler,
     RemittanceCheckScheduler,
     PickupEvaluateScheduler,
-    BulkLabelsScheduler
+    BulkLabelsScheduler,
+    RetentionScheduler,
+    PlatformCleanupScheduler,
+    AuditColdExportScheduler
   ]
 })
 export class WorkerModule {}

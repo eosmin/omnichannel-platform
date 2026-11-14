@@ -65,6 +65,7 @@ describe('uploads and storage keys', () => {
       expect(key.startsWith(prefix)).toBe(true)
     }
     expect(StorageKeys.auditArchive(2026, 3)).toBe('audit/2026/03/audit-logs.jsonl.gz')
+    expect(StorageKeys.auditArchive(2026, 3, 2)).toBe('audit/2026/03/audit-logs-part-2.jsonl.gz')
   })
 })
 

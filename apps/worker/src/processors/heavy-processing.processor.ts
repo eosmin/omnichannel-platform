@@ -14,6 +14,7 @@ import {
 import {
   type BulkLabelsMergeJob,
   type CancelShipmentJob,
+  type EnforceRetentionJob,
   type EvaluatePickupsJob,
   type FetchInboundMediaJob,
   type FetchOriginMediaJob,
@@ -33,6 +34,7 @@ import { InventoryReconciler } from '../inventory/inventory-reconciler.service'
 import { InboundMediaFetcher } from '../media/inbound-media-fetcher.service'
 import { MediaPipeline } from '../media/media-pipeline.service'
 import { OriginMediaFetcher } from '../media/origin-media-fetcher.service'
+import { StoreRetentionEnforcer } from '../retention/store-retention-enforcer.service'
 import { BulkLabelsRunner } from '../shipping/bulk-labels-runner.service'
 import { PickupEvaluator } from '../shipping/pickup-evaluator.service'
 import { PickupSyncer } from '../shipping/pickup-syncer.service'
@@ -54,6 +56,7 @@ type HeavyJob =
   | CancelShipmentJob
   | SyncPickupJob
   | EvaluatePickupsJob
+  | EnforceRetentionJob
 
 const bulkLabelsJobSchema = exactly<BulkLabelsMergeJob>()(
   z.object({
@@ -95,6 +98,9 @@ const originFetchJobSchema = exactly<FetchOriginMediaJob>()(
   })
 )
 const reconcileJobSchema = exactly<ReconcileInventoryJob>()(
+  z.object({ storeId: z.uuid(), correlationId: z.string().optional() })
+)
+const retentionJobSchema = exactly<EnforceRetentionJob>()(
   z.object({ storeId: z.uuid(), correlationId: z.string().optional() })
 )
 const pollJobSchema = exactly<PollShipmentStatusJob>()(
@@ -150,7 +156,8 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     private readonly bulkLabels: BulkLabelsRunner,
     private readonly canceller: ShipmentCanceller,
     private readonly pickupSyncer: PickupSyncer,
-    private readonly pickupEvaluator: PickupEvaluator
+    private readonly pickupEvaluator: PickupEvaluator,
+    private readonly retention: StoreRetentionEnforcer
   ) {
     super(QueueNames.HEAVY_PROCESSING, support)
   }
@@ -172,6 +179,14 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       if (!reconcile.success)
         throw new UnrecoverableError('the reconcile job does not fit its schema')
       await this.reconciler.reconcileStore(reconcile.data.storeId)
+      return
+    }
+    if (job.name === JobNames.ENFORCE_RETENTION) {
+      const enforce = retentionJobSchema.safeParse(job.data)
+      if (!enforce.success)
+        throw new UnrecoverableError('the retention job does not fit its schema')
+      // Rejects when a category failed (after the others ran): the queue asks again and finds what is left
+      await this.retention.enforce(enforce.data.storeId)
       return
     }
     if (job.name === JobNames.POLL_SHIPMENT_STATUS) {

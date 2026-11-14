@@ -18,6 +18,7 @@ describe('HeavyProcessingProcessor', () => {
   const runVoid = jest.fn().mockResolvedValue('cancelled')
   const runPickup = jest.fn().mockResolvedValue(undefined)
   const evaluatePickups = jest.fn().mockResolvedValue(null)
+  const enforceRetention = jest.fn().mockResolvedValue(undefined)
   const support = {
     run: (_queue: string, current: ProcessorJob, work: (job: ProcessorJob) => Promise<void>) =>
       work(current)
@@ -33,7 +34,8 @@ describe('HeavyProcessingProcessor', () => {
     { run: runBulk } as never, // the bulk labels: what it is handed is what is tested
     { run: runVoid } as never, // the void of a guide: what it is handed is what is tested
     { run: runPickup } as never, // the pickup sync: what it is handed is what is tested
-    { run: evaluatePickups } as never // the pickup evaluation: what it is handed is what is tested
+    { run: evaluatePickups } as never, // the pickup evaluation: what it is handed is what is tested
+    { enforce: enforceRetention } as never // the nightly retention of a store: what it is handed is what is tested
   )
 
   const base = {
@@ -64,6 +66,7 @@ describe('HeavyProcessingProcessor', () => {
     runVoid.mockClear()
     runPickup.mockClear()
     evaluatePickups.mockClear()
+    enforceRetention.mockClear()
   })
 
   it('hands the inbound media job to the fetcher with the id the widget chose for the file', async () => {
@@ -161,6 +164,38 @@ describe('HeavyProcessingProcessor', () => {
     ])('refuses for good a job with %s, and reconciles nothing', async (_name, data) => {
       await expect(reconcile(data)).rejects.toBeInstanceOf(UnrecoverableError)
       expect(reconcileStore).not.toHaveBeenCalled()
+    })
+  })
+  describe('the nightly retention of a store (TDD_05 §10.4)', () => {
+    const STORE_ID = '3c9d1e5a-7b2f-4d86-a0c4-5e6f70819203'
+    const retention = (data: unknown): Promise<void> =>
+      processor.process({
+        name: JobNames.ENFORCE_RETENTION,
+        data: JSON.parse(JSON.stringify(data)) as unknown,
+        attemptsMade: 0,
+        opts: { attempts: 3 }
+      } as unknown as ProcessorJob)
+
+    it('runs the retention of the store the job names, and nothing else', async () => {
+      await retention({ storeId: STORE_ID, correlationId: 'c' })
+
+      expect(enforceRetention).toHaveBeenCalledWith(STORE_ID)
+      expect(reconcileStore).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['no store', {}],
+      ['a store that is not an id', { storeId: 'all' }],
+      ['a store that is not text', { storeId: 7 }]
+    ])('refuses for good a job with %s, and deletes nothing', async (_name, data) => {
+      await expect(retention(data)).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(enforceRetention).not.toHaveBeenCalled()
+    })
+
+    it('lets a failed run reject, so the queue tries the store again', async () => {
+      enforceRetention.mockRejectedValueOnce(new Error('a category failed'))
+
+      await expect(retention({ storeId: STORE_ID })).rejects.toThrow('a category failed')
     })
   })
   describe('the poll of a carrier (TDD_17 §4.9)', () => {

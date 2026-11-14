@@ -24,7 +24,74 @@ export const DataRetentionPolicies = {
   NOTIFICATIONS: { defaultDays: 90, configurable: true },
   WEBHOOK_DELIVERIES: { defaultDays: 30, configurable: false },
   EXPORTS: { defaultDays: 7, configurable: false },
-  CUSTOMER_MERGES: { defaultDays: 30, configurable: false }
+  CUSTOMER_MERGES: { defaultDays: 30, configurable: false },
+  // The rollup by the hour is a fine view of the recent past; the daily rollup (and its 800-day range) is what
+  // answers the long questions, so the hours go after three months
+  METRICS_HOURLY: { defaultDays: 90, configurable: false }
+} as const
+
+// What a store may choose for each window of RetentionSettings (days, both ends included). The floors keep a
+// slip of the hand (a 1 for a 100) from erasing the history of a store in one night; the ceilings are the
+// seven years of the tax records. The same numbers are checked by the CHECK constraints of retention_settings.
+export const RetentionBounds = {
+  conversationDays: { min: 30, max: 3650 },
+  mediaDays: { min: 30, max: 3650 },
+  analyticsDays: { min: 90, max: 1095 },
+  notificationDays: { min: 7, max: 365 }
+} as const
+
+export type RetentionField = keyof typeof RetentionBounds
+
+// The resource of the audit entry of a change to the windows
+export const RetentionResourceTypes = { RETENTION_SETTINGS: 'retention_settings' } as const
+
+// The windows of a store that has no RetentionSettings row yet (a row is made with the store, so this is the
+// guard against a store made by hand): the factory defaults of the table
+export const RetentionDefaults = {
+  conversationDays: DataRetentionPolicies.CONVERSATIONS.defaultDays,
+  mediaDays: DataRetentionPolicies.MEDIA.defaultDays,
+  analyticsDays: DataRetentionPolicies.ANALYTICS_EVENTS.defaultDays,
+  notificationDays: DataRetentionPolicies.NOTIFICATIONS.defaultDays
+} as const satisfies Record<RetentionField, number>
+
+// The retention run of a store (TDD_05 §10.4): the hourly scheduler picks the stores whose local clock reads
+// LOCAL_HOUR, and each category takes batches of BATCH_SIZE rows up to MAX_BATCHES of them, oldest first. A
+// category that stops on a full batch says so in the log, and the next night takes the rest.
+export const RetentionRun = {
+  LOCAL_HOUR: 3,
+  BATCH_SIZE: 500,
+  MAX_BATCHES: 40,
+  // A conversation takes its messages, revisions, reactions and files with it, so it goes in smaller batches (and a
+  // batch the database refuses is retried one by one): the transaction must end inside TRANSACTION_TIMEOUT_MS
+  CONVERSATION_BATCH_SIZE: 100,
+  CONVERSATION_MAX_BATCHES: 100,
+  TRANSACTION_TIMEOUT_MS: 60_000,
+  // A batch of at least this many conversations that the database refuses all, one by one, is the database and not the rows
+  SYSTEMIC_REFUSALS: 10,
+  // Objects of the bucket deleted at the same time
+  FILE_DELETE_CONCURRENCY: 10,
+  // The stores read to make the jobs of an hour, a page at a time
+  STORES_PAGE_SIZE: 500
+} as const
+
+// The platform cleanup of every day (TDD_05 §10.4): batches of BATCH_SIZE rows for each category, up to MAX_BATCHES
+export const PlatformCleanup = {
+  BATCH_SIZE: 500,
+  MAX_BATCHES: 100,
+  // A verification token that was used is useless, and is deleted this long after it was used (an expired one, at once):
+  // the day lets a person who opens a link twice, or a support check, still read what happened
+  USED_TOKEN_GRACE_DAYS: 1
+} as const
+
+// The cold export of the audit log (TDD_05 §9.3): whole calendar months that are entirely past the hot window, the
+// oldest first, at most MAX_MONTHS_PER_RUN a run. A month is one object, so it is never written twice with
+// different rows.
+export const AuditColdExport = {
+  HOT_DAYS: DataRetentionPolicies.AUDIT_LOGS_HOT.defaultDays,
+  READ_BATCH: 1000,
+  DELETE_BATCH: 500,
+  MAX_MONTHS_PER_RUN: 3,
+  CONTENT_TYPE: 'application/gzip'
 } as const
 
 export const LegalBases = {

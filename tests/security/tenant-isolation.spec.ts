@@ -1126,6 +1126,46 @@ const resources: IsolationResource[] = [
         })
       )?.reopenWindowDays !== 99
   },
+  // Step 5.4 PR B: the windows of the data retention of a store. One row per store, read and written through the store of
+  // the request. The nightly run that deletes by them is proved in tests/api/retention-run.spec.ts: a run of one store
+  // leaves the conversations, files, events and notifications of another.
+  {
+    name: 'retentionSettings',
+    create: async (owner, { storeId }) => {
+      await owner.retentionSettings.upsert({
+        where: { storeId },
+        create: { storeId },
+        update: {}
+      })
+      return { id: storeId }
+    },
+    own: {
+      set: async (owner, storeId, marker) => {
+        await owner.retentionSettings.upsert({
+          where: { storeId },
+          create: { storeId, conversationDays: marker === 'A' ? 111 : 222 },
+          update: { conversationDays: marker === 'A' ? 111 : 222 }
+        })
+      },
+      markerIn: body => {
+        const days = (body as { conversationDays?: number }).conversationDays
+        return days === 111 ? 'A' : days === 222 ? 'B' : null
+      }
+    },
+    readPath: () => ApiRoutes.settings.retention,
+    modify: {
+      path: () => ApiRoutes.settings.retention,
+      method: 'put',
+      body: { conversationDays: 333, mediaDays: 333, analyticsDays: 333, notificationDays: 33 }
+    },
+    untouched: async (owner, id) =>
+      (
+        await owner.retentionSettings.findUnique({
+          where: { storeId: id },
+          select: { conversationDays: true }
+        })
+      )?.conversationDays !== 333
+  },
   {
     // The same row as above, read and changed through its preferences (one key of the Json column)
     name: 'storePreferences',
