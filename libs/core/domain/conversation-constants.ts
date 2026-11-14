@@ -297,6 +297,9 @@ export const ConversationConflictReasons = {
   NO_LONGER_DUE: 'no_longer_due'
 } as const
 
+// The `resourceType` of the audit entries about a conversation
+export const CONVERSATION_RESOURCE_TYPE = 'conversation'
+
 export const ConversationLimits = {
   RESOLUTION_REASON_MAX_LENGTH: 500,
   MAX_SNOOZE_DAYS: 365,

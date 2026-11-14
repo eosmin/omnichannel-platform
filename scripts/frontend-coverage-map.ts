@@ -299,6 +299,7 @@ export const REALTIME_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   CONVERSATION_READ: { step: '3.2' },
   CONVERSATION_ATTENTION_CHANGED: { step: '3.2' },
   CONVERSATION_UNREAD: { step: '3.2' },
+  CONVERSATION_DELETED: { step: '5.4' },
   MESSAGE_RECEIVED: { step: '3.2' },
   MESSAGE_QUEUED: { step: '3.2' },
   MESSAGE_SENT: { step: '3.2' },

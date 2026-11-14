@@ -8,6 +8,7 @@ import {
   type BulkLabelsProgressPayload,
   type ConversationAssignedPayload,
   type ConversationAttentionChangedPayload,
+  type ConversationDeletedPayload,
   type ConversationReadPayload,
   type CustomerTypingPayload,
   type ConversationStatusChangedPayload,
@@ -157,6 +158,21 @@ export class RealtimeEventsListener {
       conversationId: payload.conversationId,
       userId: payload.userId
     })
+  }
+
+  // A conversation was deleted by hand: who could see it hears that it is gone, and every socket in its room is
+  // taken out (nothing is left to join)
+  @OnEvent(Events.CONVERSATION_DELETED)
+  async onDeleted(payload: ConversationDeletedPayload): Promise<void> {
+    await together(
+      this.realtime.toStoreWhere(
+        payload.storeId,
+        RealtimeEvents.CONVERSATION_DELETED,
+        { conversationId: payload.conversationId, customerId: payload.customerId },
+        socket => mayAny(socket, [payload.visibility])
+      ),
+      this.realtime.evictFromConversation(payload.conversationId, () => false)
+    )
   }
 
   // An export is the requester's alone: their tabs of this store re-read the center, nobody else's.

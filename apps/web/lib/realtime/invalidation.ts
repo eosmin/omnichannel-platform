@@ -28,6 +28,14 @@ const scopesByEvent: Readonly<Partial<Record<RealtimeEvent, readonly Scope[]>>> 
   // The mark that raises a row (a snooze that ended) was put or taken off: the list and the open one are read again
   [RealtimeEvents.CONVERSATION_ATTENTION_CHANGED]: [Scopes.CONVERSATIONS],
   [RealtimeEvents.CONVERSATION_UNREAD]: [Scopes.CONVERSATIONS],
+  // The conversation, its thread and the activity of its customer are gone: the lists and the open panel are read again
+  [RealtimeEvents.CONVERSATION_DELETED]: [
+    Scopes.CONVERSATIONS,
+    Scopes.THREAD,
+    Scopes.CUSTOMERS,
+    Scopes.ORDERS,
+    Scopes.MEDIA
+  ],
   [RealtimeEvents.MESSAGE_RECEIVED]: [Scopes.CONVERSATIONS, Scopes.THREAD],
   // A reply from another tab or device moves the conversation in the list and changes its preview
   [RealtimeEvents.MESSAGE_QUEUED]: [Scopes.CONVERSATIONS, Scopes.THREAD],
