@@ -18,7 +18,9 @@ const ADMIN = 'multi-store@test.com'
 // The store page is drawn after the session is read: a key pressed before the top bar is there goes to nobody
 async function openStorePage(page: Page, path: string): Promise<void> {
   await page.goto(path)
-  await expect(page.getByRole('searchbox', { name: en.search.box.label })).toBeVisible()
+  await expect(
+    page.getByRole('searchbox', { name: en.search.box.label, exact: true })
+  ).toBeVisible()
 }
 
 const uniqueName = (label: string): string => `${label} ${randomUUID().slice(0, 8)}`
@@ -71,7 +73,7 @@ test.describe('the search of the store', () => {
     await openStorePage(page, AppPaths.store.orders(storeId))
 
     await page.keyboard.press('/')
-    const box = page.getByRole('searchbox', { name: en.search.box.label })
+    const box = page.getByRole('searchbox', { name: en.search.box.label, exact: true })
     await expect(box).toBeFocused()
     // The slash itself is not typed into the box
     await expect(box).toHaveValue('')
@@ -93,6 +95,8 @@ test.describe('the search of the store', () => {
       'page'
     )
     await expect(page.getByRole('button', { name: new RegExp(name) })).toBeVisible()
-    await expect(page.getByRole('searchbox', { name: en.search.page.label })).toHaveValue(name)
+    await expect(
+      page.getByRole('searchbox', { name: en.search.page.label, exact: true })
+    ).toHaveValue(name)
   })
 })
