@@ -392,3 +392,27 @@ ones with a step to that step; the rest go with the SaaS phase (§6).
 The suppression list for customers' addresses (global table, written by the Resend webhook, read before
 every send) is item 7 of "Email build details (Step 1.0)" in §3 and is also a SaaS prerequisite.
 
+
+## 11. Added after the finance design (Milestone 4B, `TDD_18_Finance.md`)
+
+Owner's request of 2026-11-10, settled on 2026-11-14. It is in the MVP and **overrides** every earlier line of
+this file and of `TDD_16 §12` ("purchase orders and suppliers", "costing") and `TDD_17` that says finance is out.
+
+**Finance (`TDD_18_Finance.md`)**
+- Schema: add the `TDD_18 §2` models and raw SQL (append-only and balanced-entry triggers, with the rollback script of every
+  migration, rule 4); additive columns `Product.taxTreatment` and `taxRateId`, and `Order.taxCents`, `Order.pricesIncludeTax`,
+  `OrderItem.taxRateBps` and `OrderItem.taxCents` (Step 4B.3); `Shipment` keeps its existing fee columns, which Step 4B.6 reads.
+- Constants: everything in `TDD_18 §3` (enums in the new `libs/core/domain/finance-constants.ts`, permissions, events,
+  notification types, audit actions, error codes, jobs and schedules, metrics, routes, paths, query keys, the upload purpose
+  `finance_document`, destructive tiers). Permissions are in `PermissionsOfUnbuiltAreas` (`finance:`, `fiscal:`) until each step reads them.
+- Isolation: the new organization-scoped resources join the isolation suite and `check-isolation-coverage` (`TDD_18 §9.2`);
+  only `libs/core/finance` writes the ledger (lint rule and database triggers).
+- Scope kept out of the MVP (`TDD_18 §14`): several currencies, accounts per store, FIFO and lots, bank connections, payroll,
+  fixed assets, budgets, credit sales to customers, returns to suppliers, landed costs, the point of sale (Phase 2).
+- Country by configuration: the template (`SV` now) and the fiscal provider are data and adapters; no core file names a country's
+  document or provider. Whatever depends on Salvadoran law is marked **[ACCOUNTANT]** in `TDD_18` and listed in its §13; the platform
+  invents no legal figure or format.
+- Roles: the finance permissions are held by the Admin preset only and are assignable to custom roles through the existing editor
+  (`TDD_18 §9.1`).
+- Debts owned elsewhere that this milestone closes: the commission and the rates of a carrier are readable by `shipping:view`
+  (plan 4.15, 6a (c3)(i)) until `FINANCE_VIEW_CARRIER_FEES` (Step 4B.6).

@@ -75,6 +75,7 @@ import {
   createConversationOf,
   createConversationOriginOf,
   createDiscardableReplyOf,
+  createMessage,
   createMessageOf,
   createMessageReactionOf,
   createMessageRevisionOf,
@@ -1993,6 +1994,86 @@ describe('Tenant isolation', () => {
         .get(ApiRoutes.products.search)
         .query({ q: 'anything' })
       expect(refused.status).toBe(403)
+    })
+  })
+
+  // The search reads customers, messages, orders and products with raw SQL, so the store filter is written by hand in
+  // each statement: a word that only another store holds is never found, on any route, nor by the global one, and
+  // the store comes from the header only (a `storeId` in the query string is a 400, not an override)
+  describe('search', () => {
+    const word = `srch${randomUUID().slice(0, 6)}`
+    const routes = [
+      ApiRoutes.search.global,
+      ApiRoutes.search.messages,
+      ApiRoutes.search.customers,
+      ApiRoutes.search.orders,
+      ApiRoutes.search.products
+    ]
+
+    it('never finds what another store holds, on any route', async () => {
+      const customer = await createCustomer(owner, {
+        storeId: ctx.storeB.id,
+        name: `${word} Ñandú`
+      })
+      const conversation = await createConversationOf(owner, { storeId: ctx.storeB.id })
+      await createMessage(owner, {
+        storeId: ctx.storeB.id,
+        conversationId: conversation.id,
+        content: `texto ${word} de la otra tienda`
+      })
+      const order = await createOrder(owner, { storeId: ctx.storeB.id })
+      await owner.order.update({ where: { id: order.id }, data: { orderNumber: `${word}-9001` } })
+      await createProduct(owner, {
+        storeId: ctx.storeB.id,
+        name: `${word} producto`,
+        sku: `${word}-SKU`
+      })
+
+      for (const route of routes) {
+        for (const q of [word, `${word} nandu`, `${word}-9001`, `${word}-SKU`]) {
+          const found = await api(app, ctx.adminA, ctx.storeA).get(route).query({ q })
+          expect(found.status).toBe(200)
+          const body = found.body as { hits?: unknown[]; data?: unknown[]; groups?: unknown[] }
+          expect(body.hits ?? body.data ?? body.groups).toEqual([])
+        }
+      }
+      // The owner of the data does find it, so the empty answers above are not an empty database
+      const own = await api(app, ctx.adminB, ctx.storeB)
+        .get(ApiRoutes.search.customers)
+        .query({ q: word })
+      expect((own.body as { hits: { id: string }[] }).hits.map(hit => hit.id)).toEqual([
+        customer.id
+      ])
+    })
+
+    it('does not take the store from the query string', async () => {
+      for (const route of routes) {
+        const forged = await api(app, ctx.adminA, ctx.storeA)
+          .get(route)
+          .query({ q: word, storeId: ctx.storeB.id })
+        expect(forged.status).toBe(400)
+      }
+    })
+
+    it('is refused in a store the user does not belong to', async () => {
+      for (const route of routes) {
+        const refused = await api(app, ctx.adminA, ctx.storeB).get(route).query({ q: 'anything' })
+        expect(refused.status).toBe(403)
+      }
+    })
+
+    it('never shows the messages of another store in a conversation named by id', async () => {
+      const conversation = await createConversationOf(owner, { storeId: ctx.storeB.id })
+      await createMessage(owner, {
+        storeId: ctx.storeB.id,
+        conversationId: conversation.id,
+        content: `hilo ${word}`
+      })
+      const found = await api(app, ctx.adminA, ctx.storeA)
+        .get(ApiRoutes.search.messages)
+        .query({ q: word, conversationId: conversation.id })
+      expect(found.status).toBe(200)
+      expect((found.body as { hits: unknown[] }).hits).toEqual([])
     })
   })
 

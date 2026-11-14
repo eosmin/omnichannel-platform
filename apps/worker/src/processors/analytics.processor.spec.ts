@@ -170,4 +170,60 @@ describe('AnalyticsProcessor', () => {
       expect(error).not.toBeInstanceOf(UnrecoverableError)
     })
   })
+
+  it('refuses for good a search event that comes as a track-event job: it would skip the check of its data', async () => {
+    const search = {
+      event: AnalyticsEventNames.SEARCH_PERFORMED,
+      storeId: STORE,
+      data: { query: 'maria lopez' },
+      timestamp: '2026-11-14T09:55:00.000Z'
+    }
+    await expect(processor.process(job(JobNames.TRACK_EVENT, search))).rejects.toBeInstanceOf(
+      UnrecoverableError
+    )
+    expect(write).not.toHaveBeenCalled()
+  })
+
+  describe('the search event', () => {
+    const search: TrackAnalyticsJob = {
+      event: AnalyticsEventNames.SEARCH_PERFORMED,
+      storeId: STORE,
+      data: { queryHash: '0123456789abcdef', scope: 'customers', resultCount: 3, durationMs: 12 },
+      timestamp: '2026-11-14T09:55:00.000Z'
+    }
+
+    it('writes the event of a track-search job', async () => {
+      await processor.process(job(JobNames.TRACK_SEARCH, search))
+      expect(write).toHaveBeenCalledWith(search)
+    })
+
+    it('keeps the text of a product search that found nothing', async () => {
+      const none: TrackAnalyticsJob = {
+        ...search,
+        data: { ...search.data, scope: 'products', resultCount: 0, query: 'zapato rojo' }
+      }
+      await processor.process(job(JobNames.TRACK_SEARCH, none))
+      expect(write).toHaveBeenCalledWith(none)
+    })
+
+    it.each([
+      ['another event name', { ...search, event: AnalyticsEventNames.ORDER_CREATED }],
+      [
+        'a hash that is not the one it makes',
+        { ...search, data: { ...search.data, queryHash: 'x' } }
+      ],
+      ['a scope it does not know', { ...search, data: { ...search.data, scope: 'invoices' } }],
+      ['a negative count', { ...search, data: { ...search.data, resultCount: -1 } }],
+      ['a field it does not carry', { ...search, data: { ...search.data, userId: 'someone' } }],
+      [
+        'a text longer than the cap',
+        { ...search, data: { ...search.data, query: 'a'.repeat(201) } }
+      ]
+    ])('refuses for good a track-search job with %s, and writes nothing', async (_label, data) => {
+      await expect(processor.process(job(JobNames.TRACK_SEARCH, data))).rejects.toBeInstanceOf(
+        UnrecoverableError
+      )
+      expect(write).not.toHaveBeenCalled()
+    })
+  })
 })
