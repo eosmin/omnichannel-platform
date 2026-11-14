@@ -3,6 +3,7 @@ import { type Job, UnrecoverableError } from 'bullmq'
 import { z } from 'zod'
 
 import { AnalyticsEventNames } from '@platform/core/analytics'
+import { searchEventDataSchema } from '@platform/core/domain'
 import { JobNames, QueueNames, type RollupJob, type TrackAnalyticsJob } from '@platform/core/queues'
 
 import { AnalyticsEventWriter } from '../analytics/analytics-event.writer'
@@ -13,7 +14,7 @@ import { BaseProcessor } from './base.processor'
 import { ProcessorSupport } from './processor-support'
 
 // Checked against the job type of the queue: a field added there and not here fails to compile
-const trackEventSchema: z.ZodType<TrackAnalyticsJob, unknown> = z.object({
+const rawEventSchema = z.object({
   event: z.enum(AnalyticsEventNames),
   storeId: z.uuid(),
   data: z.record(z.string(), z.unknown()),
@@ -30,13 +31,27 @@ const rollupSchema: z.ZodType<RollupJob, unknown> = z.object({
   correlationId: z.string().optional()
 })
 
+// The search event has its own job and its own data check: through this one it would be written with any data
+const trackEventSchema: z.ZodType<TrackAnalyticsJob, unknown> = rawEventSchema.refine(
+  job => job.event !== AnalyticsEventNames.SEARCH_PERFORMED,
+  { message: 'a search event is queued as a search job' }
+)
+
+// The search event is a TRACK_SEARCH job: the same shape as a raw event, but only ever `search.performed`, with the
+// data the search route queues (`searchEventDataSchema`)
+const trackSearchSchema: z.ZodType<TrackAnalyticsJob, unknown> = rawEventSchema.extend({
+  event: z.literal(AnalyticsEventNames.SEARCH_PERFORMED),
+  // What is written is what this check returns, not what was queued
+  data: searchEventDataSchema
+})
+
 const RollupGranularityOf: Record<string, RollupGranularity | undefined> = {
   [JobNames.ROLLUP_HOURLY]: RollupGranularities.HOURLY,
   [JobNames.ROLLUP_DAILY]: RollupGranularities.DAILY
 }
 
-// The raw events of analytics (TDD_11 §7.1) and the rollups of the metrics tables (§7.2). The search event is Step 5.1's: the
-// queue refuses a job it does not know instead of keeping it.
+// The raw events of analytics (TDD_11 §7.1), the search event (TDD_08 §5.6) and the rollups of the metrics tables (§7.2):
+// the queue refuses a job it does not know instead of keeping it.
 @Processor(QueueNames.ANALYTICS, { concurrency: 5 })
 export class AnalyticsProcessor extends BaseProcessor<TrackAnalyticsJob | RollupJob> {
   constructor(
@@ -49,10 +64,12 @@ export class AnalyticsProcessor extends BaseProcessor<TrackAnalyticsJob | Rollup
 
   protected async handle(job: Job<TrackAnalyticsJob | RollupJob>): Promise<void> {
     // The job crossed Redis: what does not fit now will not fit when it is tried again
-    if (job.name === JobNames.TRACK_EVENT) {
-      const parsed = trackEventSchema.safeParse(job.data)
-      if (!parsed.success)
-        throw new UnrecoverableError('the track-event job does not fit its schema')
+    const trackSchema = this.trackSchemaOf(job.name)
+    if (trackSchema !== undefined) {
+      const parsed = trackSchema.safeParse(job.data)
+      if (!parsed.success) {
+        throw new UnrecoverableError(`the ${job.name} job does not fit its schema`)
+      }
       await this.events.write(parsed.data)
       return
     }
@@ -72,5 +89,11 @@ export class AnalyticsProcessor extends BaseProcessor<TrackAnalyticsJob | Rollup
     // latest closed ones
     if (end > new Date()) throw new UnrecoverableError('the rollup period has not closed')
     await this.rollups.rollup(granularity, parsed.data.storeId, { start, end })
+  }
+
+  private trackSchemaOf(name: string): z.ZodType<TrackAnalyticsJob, unknown> | undefined {
+    if (name === JobNames.TRACK_EVENT) return trackEventSchema
+    if (name === JobNames.TRACK_SEARCH) return trackSearchSchema
+    return undefined
   }
 }

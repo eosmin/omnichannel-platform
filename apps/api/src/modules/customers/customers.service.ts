@@ -13,7 +13,7 @@ import {
 } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
-import { customerSearchWhere, lockCustomerForWrite } from '@platform/core/messaging'
+import { customerSearchWhere, foldInDatabase, lockCustomerForWrite } from '@platform/core/messaging'
 
 import type { Actor } from '../tenancy'
 
@@ -48,10 +48,11 @@ export class CustomersService {
 
   async list(storeId: string, query: ListCustomersQuery): Promise<CustomerPage> {
     const { cursor } = query
+    const folded = query.q === undefined ? '' : await foldInDatabase(this.prisma.client, query.q)
     const rows = await this.prisma.client.customer.findMany({
       where: {
         AND: [
-          customerSearchWhere(storeId, query.q),
+          customerSearchWhere(storeId, query.q, folded),
           // After the last row of the previous page in (createdAt, id) order, wherever that row is now
           cursor === undefined
             ? {}

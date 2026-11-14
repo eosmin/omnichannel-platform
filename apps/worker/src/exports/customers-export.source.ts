@@ -1,7 +1,11 @@
 import type { PrismaService } from '@platform/core/database'
 import { CustomerFigureOrderStatuses, customerOrderFigures } from '@platform/core/domain'
 import { ExportLimits } from '@platform/core/exports'
-import { customerSearchWhere, type CustomersExportFilters } from '@platform/core/messaging'
+import {
+  customerSearchWhere,
+  type CustomersExportFilters,
+  foldInDatabase
+} from '@platform/core/messaging'
 
 import type { CsvSource } from './csv-export-writer'
 
@@ -44,16 +48,24 @@ export function customersExportSource(
   storeId: string,
   filters: CustomersExportFilters
 ): CsvSource {
+  // The text is folded once, by the database, as the names it is compared with are
+  let folded: Promise<string> | undefined
+  const foldedText = (): Promise<string> =>
+    (folded ??=
+      filters.q === undefined ? Promise.resolve('') : foldInDatabase(prisma.client, filters.q))
   return {
     columns: CUSTOMER_COLUMNS,
-    count: () => prisma.client.customer.count({ where: customerSearchWhere(storeId, filters.q) }),
+    count: async () =>
+      prisma.client.customer.count({
+        where: customerSearchWhere(storeId, filters.q, await foldedText())
+      }),
     rows: async function* () {
       let after: string | undefined
       for (;;) {
         const customers = await prisma.client.customer.findMany({
           // Keyset: a row deleted meanwhile cannot end the file early, as a cursor on it would
           where: {
-            ...customerSearchWhere(storeId, filters.q),
+            ...customerSearchWhere(storeId, filters.q, await foldedText()),
             ...(after === undefined ? {} : { id: { gt: after } })
           },
           orderBy: { id: 'asc' },
