@@ -464,33 +464,34 @@ model CustomerMerge {
 // ============================================================
 
 model Conversation {
-  id                  String    @id @default(uuid())
-  storeId             String    @map("store_id")
-  customerId          String    @map("customer_id")
-  customerIdentityId  String    @map("customer_identity_id") // Which handle the customer used
-  channelConnectionId String    @map("channel_connection_id") // Which of our accounts received it → outbound route
-  channelType         String    @map("channel_type") // ChannelType, denormalized for filters
-  status              String    @default("OPEN") // ConversationStatus
-  assignedTo          String?   @map("assigned_to")
-  unreadCount         Int       @default(0) @map("unread_count") // Inbound messages not yet read by an agent
-  lastReadAt          DateTime? @map("last_read_at")
-  lastReadBy          String?   @map("last_read_by")
-  lastMessageAt       DateTime? @map("last_message_at")
-  lastInboundAt       DateTime? @map("last_inbound_at")
-  lastOutboundAt      DateTime? @map("last_outbound_at")
-  firstResponseAt     DateTime? @map("first_response_at") // First agent reply, for analytics
-  resolvedAt          DateTime? @map("resolved_at")
-  resolutionReason    String?   @map("resolution_reason")
-  csatScore           Int?      @map("csat_score") // 1-5
-  csatComment         String?   @map("csat_comment")
-  archivedAt          DateTime? @map("archived_at")
-  snoozedUntil        DateTime? @map("snoozed_until")
-  snoozeNote          String?   @map("snooze_note") // What the agent said it waits for; AttentionReasons use it on waking
-  attentionReason     String?   @map("attention_reason") // AttentionReason: a mark that raises the row in the list until it is opened
-  attentionAt         DateTime? @map("attention_at")
-  attentionNote       String?   @map("attention_note")
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
+  id                       String    @id @default(uuid())
+  storeId                  String    @map("store_id")
+  customerId               String    @map("customer_id")
+  customerIdentityId       String    @map("customer_identity_id") // Which handle the customer used
+  channelConnectionId      String    @map("channel_connection_id") // Which of our accounts received it → outbound route
+  channelType              String    @map("channel_type") // ChannelType, denormalized for filters
+  status                   String    @default("OPEN") // ConversationStatus
+  assignedTo               String?   @map("assigned_to")
+  unreadCount              Int       @default(0) @map("unread_count") // Inbound messages not yet read by an agent
+  lastReadAt               DateTime? @map("last_read_at")
+  lastReadBy               String?   @map("last_read_by")
+  lastMessageAt            DateTime? @map("last_message_at")
+  lastInboundAt            DateTime? @map("last_inbound_at")
+  lastOutboundAt           DateTime? @map("last_outbound_at")
+  firstResponseAt          DateTime? @map("first_response_at") // First reply of a person (an agent), for the first response time (TDD_11 §7.2)
+  firstAutomatedResponseAt DateTime? @map("first_automated_response_at") // First reply of an automation (a plugin as system), reported apart: it never stands for a person's answer
+  resolvedAt               DateTime? @map("resolved_at")
+  resolutionReason         String?   @map("resolution_reason")
+  csatScore                Int?      @map("csat_score") // 1-5
+  csatComment              String?   @map("csat_comment")
+  archivedAt               DateTime? @map("archived_at")
+  snoozedUntil             DateTime? @map("snoozed_until")
+  snoozeNote               String?   @map("snooze_note") // What the agent said it waits for; AttentionReasons use it on waking
+  attentionReason          String?   @map("attention_reason") // AttentionReason: a mark that raises the row in the list until it is opened
+  attentionAt              DateTime? @map("attention_at")
+  attentionNote            String?   @map("attention_note")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
 
   store             Store                @relation(fields: [storeId], references: [id], onDelete: Cascade)
   customer          Customer             @relation(fields: [customerId], references: [id])
@@ -507,6 +508,9 @@ model Conversation {
   @@index([customerIdentityId])
   @@index([snoozedUntil])
   @@index([status, resolvedAt]) // Auto-archive scheduler
+  @@index([storeId, createdAt]) // The rollups of analytics (TDD_11 §7.2) read a period of the store
+  @@index([storeId, resolvedAt])
+  @@index([storeId, firstResponseAt])
   @@map("conversations")
 }
 
@@ -778,6 +782,7 @@ model Order {
   @@index([storeId, carrierConnectionId])
   @@index([storeId, customerId])
   @@index([storeId, scheduledDeliveryDate])
+  @@index([storeId, createdAt]) // The rollups of analytics
   @@index([conversationId])
   @@map("orders")
 }
@@ -1433,9 +1438,11 @@ model AnalyticsEvent {
   data      Json
   date      DateTime @db.Date
   timestamp DateTime @default(now())
+  eventKey  String?  @map("event_key") // What the producer says identifies the event (the Svix id of a webhook): a job delivered twice writes one row
 
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
+  @@unique([storeId, eventKey])
   @@index([storeId, event, date])
   @@index([date])
   @@map("analytics_events")

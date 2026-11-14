@@ -152,8 +152,12 @@ export class SearchService {
     params: { q: string; limit: number }
   ): Promise<SearchResult<CustomerSearchHit>> {
     const folded = await foldInDatabase(this.prisma.client, params.q)
+    // The database may fold to nothing a text that looks like one here: an empty LIKE would match every customer
+    if (folded === '') return pageOf(params.q, [], params.limit)
     const contains = `%${escapeLike(folded)}%`
     const startsWith = `${escapeLike(folded)}%`
+    // The email is compared as typed (the list of customers does the same): it is not a name, and it has no accents to fold
+    const typed = `%${escapeLike(params.q)}%`
     const digits = phoneDigitsOf(params.q)
     const byPhone = digits !== ''
     const rows = await this.prisma.client.$queryRaw<unknown[]>`
@@ -164,7 +168,7 @@ export class SearchService {
         AND c.merged_into_id IS NULL
         AND (
           c.name_search LIKE ${contains} ESCAPE '\\'
-          OR c.email ILIKE ${contains} ESCAPE '\\'
+          OR c.email ILIKE ${typed} ESCAPE '\\'
           -- The % operator can use the index and reads pg_trgm.similarity_threshold, whose default is the constant
           -- (the integration spec checks it); the second test keeps a lower setting from widening the match
           OR (c.name_search % ${folded} AND similarity(c.name_search, ${folded}) > ${SearchConfig.SIMILARITY_THRESHOLD})
@@ -191,6 +195,7 @@ export class SearchService {
     params: { q: string; limit: number }
   ): Promise<SearchResult<OrderSearchHit>> {
     const folded = await foldInDatabase(this.prisma.client, params.q)
+    if (folded === '') return pageOf(params.q, [], params.limit)
     const escaped = escapeLike(folded)
     const contains = `%${escaped}%`
     const digits = phoneDigitsOf(params.q)
@@ -206,7 +211,7 @@ export class SearchService {
         AND (
           o.order_number ILIKE ${contains} ESCAPE '\\'
           OR (cust.erased_at IS NULL AND cust.name_search LIKE ${contains} ESCAPE '\\')
-          OR (${byPhone}::boolean AND cust.phone_normalized LIKE ${`%${digits}%`} ESCAPE '\\')
+          OR (${byPhone}::boolean AND cust.erased_at IS NULL AND cust.phone_normalized LIKE ${`%${digits}%`} ESCAPE '\\')
         )
       ORDER BY
         CASE

@@ -155,6 +155,20 @@ describe('The search of the store', () => {
       )
     })
 
+    it('finds an email written as typed, as the list of customers does', async () => {
+      const customer = await createCustomer(owner, { storeId: ctx.storeA.id, name: `Mail ${tag}` })
+      await owner.customer.update({
+        where: { id: customer.id },
+        data: { email: `Ñandú.${tag}@Example.com` }
+      })
+      const q = `ñandú.${tag}@example`
+      expect((await customersFor(q)).body.hits.map(hit => hit.id)).toContain(customer.id)
+      const list = await asAdmin(ApiRoutes.customers.list, { q })
+      expect((list.body as { data: { id: string }[] }).data.map(row => row.id)).toContain(
+        customer.id
+      )
+    })
+
     it('compares with the text folded by the database, so the letters unaccent rewrites match too', async () => {
       const thor = await createCustomer(owner, { storeId: ctx.storeA.id, name: `Þór Ŋoma ${tag}` })
       for (const q of [`Þór ${tag}`, `thor ${tag}`, `THOR NOMA ${tag}`]) {
@@ -534,6 +548,18 @@ describe('The search of the store', () => {
       await owner.order.update({ where: { id: first.id }, data: { orderNumber: `${tag}-5%7` } })
       await owner.order.update({ where: { id: second.id }, data: { orderNumber: `${tag}-5X7` } })
       expect((await ordersFor(`${tag}-5%7`)).body.hits.map(hit => hit.id)).toEqual([first.id])
+    })
+
+    it('does not find the orders of an erased customer by their old phone', async () => {
+      const order = await createOrder(owner, { storeId: ctx.storeA.id })
+      const row = await owner.order.findUniqueOrThrow({ where: { id: order.id } })
+      await owner.order.update({ where: { id: order.id }, data: { orderNumber: `${tag}-GONE` } })
+      await nameOf(row.customerId, `Gone ${tag}`, {
+        phone: '+503 6111-9999',
+        phoneNormalized: '50361119999',
+        erasedAt: new Date()
+      })
+      expect((await ordersFor('6111-9999')).body.hits.map(hit => hit.id)).not.toContain(order.id)
     })
 
     it('hides the name of a customer who was erased', async () => {

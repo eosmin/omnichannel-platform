@@ -4,6 +4,7 @@ import { AuditModule } from '@platform/core/audit-module'
 import { BullBoardPlatformModule, HttpPlatformModule } from '@platform/core/http'
 import { officialRedactedKeys } from '@platform/plugins/runtime'
 
+import { AnalyticsModule } from './modules/analytics/analytics.module'
 import { AuthModule } from './modules/auth/auth.module'
 import { CarriersModule } from './modules/carriers/carriers.module'
 import { ChannelRegistryModule } from './modules/channel-registry'
@@ -75,6 +76,7 @@ import { WidgetModule } from './modules/widget/widget.module'
     RemittancesModule,
     ShipmentsModule,
     PickupsModule,
+    AnalyticsModule,
     InvitationsModule,
     WebhooksModule,
     WidgetModule

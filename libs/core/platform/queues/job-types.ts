@@ -69,6 +69,9 @@ export interface TrackAnalyticsJob extends BaseJob {
   storeId: string
   data: Record<string, unknown>
   timestamp: string
+  // What identifies the event for its producer (the Svix id of a webhook): a job redelivered after a stalled worker carries the
+  // same key and writes no second row
+  eventKey?: string
 }
 export interface RollupJob extends BaseJob {
   storeId: string

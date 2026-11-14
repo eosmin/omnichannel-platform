@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { INestApplication } from '@nestjs/common'
 
 import { ChannelOAuthConfig } from '@platform/channels/connections'
+import { AnalyticsMetrics, MetricDimensions } from '@platform/core/analytics'
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions, RoleNames, TenantHeaders } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
@@ -255,6 +256,45 @@ const setPreferencePush = async (
   })
 }
 
+// The series of a metric of each granularity, over a range that holds the rows below
+const METRIC_RANGE = 'from=2026-01-01T00:00:00.000Z&to=2026-01-02T00:00:00.000Z'
+const METRIC_QUERY = {
+  hourly: `metric=${AnalyticsMetrics.CHANNEL_VOLUME}&dimension=${MetricDimensions.CHANNEL}&granularity=hour&${METRIC_RANGE}`,
+  daily: `metric=${AnalyticsMetrics.CHANNEL_VOLUME}&dimension=${MetricDimensions.CHANNEL}&granularity=day&${METRIC_RANGE}`
+}
+
+// One row of the metric in the store, with the marker as its dimension id: the rows of the store are replaced, so a store
+// holds one marker at a time
+async function writeMetricMarker(
+  owner: OwnerClient,
+  table: 'hourly' | 'daily',
+  storeId: string,
+  marker: string
+): Promise<void> {
+  const row = {
+    storeId,
+    metric: AnalyticsMetrics.CHANNEL_VOLUME,
+    dimension: MetricDimensions.CHANNEL,
+    dimensionId: marker,
+    value: 1,
+    count: 1
+  }
+  if (table === 'hourly') {
+    await owner.metricHourly.deleteMany({ where: { storeId } })
+    await owner.metricHourly.create({
+      data: { ...row, hour: new Date('2026-01-01T00:00:00.000Z') }
+    })
+    return
+  }
+  await owner.metricDaily.deleteMany({ where: { storeId } })
+  await owner.metricDaily.create({ data: { ...row, date: new Date('2026-01-01') } })
+}
+
+function metricMarkerIn(body: unknown): string | null {
+  const series = (body as { series?: { dimensionId: string }[] }).series ?? []
+  return series.length === 1 ? (series[0]?.dimensionId ?? null) : null
+}
+
 const resources: IsolationResource[] = [
   {
     name: 'customer',
@@ -500,6 +540,34 @@ const resources: IsolationResource[] = [
     untouched: async (owner, id) =>
       (await owner.pickupRequest.findUnique({ where: { id }, select: { status: true } }))
         ?.status === PickupStatus.MANUAL_REQUIRED
+  },
+  // The metrics of a store (Step 5.2): rows that nobody reads by id, only the series of the store of the request. Each store has
+  // its own marker, in the dimension id of the row, and the request of a store gets the marker of that store and never another.
+  {
+    name: 'metricHourly',
+    create: async (owner, input) => {
+      await writeMetricMarker(owner, 'hourly', input.storeId, 'unset')
+      return { id: input.storeId }
+    },
+    readPath: () => `${ApiRoutes.analytics.metrics}?${METRIC_QUERY.hourly}`,
+    own: {
+      set: (owner, storeId, marker) => writeMetricMarker(owner, 'hourly', storeId, marker),
+      markerIn: metricMarkerIn
+    },
+    untouched: async (owner, id) => (await owner.metricHourly.count({ where: { storeId: id } })) > 0
+  },
+  {
+    name: 'metricDaily',
+    create: async (owner, input) => {
+      await writeMetricMarker(owner, 'daily', input.storeId, 'unset')
+      return { id: input.storeId }
+    },
+    readPath: () => `${ApiRoutes.analytics.metrics}?${METRIC_QUERY.daily}`,
+    own: {
+      set: (owner, storeId, marker) => writeMetricMarker(owner, 'daily', storeId, marker),
+      markerIn: metricMarkerIn
+    },
+    untouched: async (owner, id) => (await owner.metricDaily.count({ where: { storeId: id } })) > 0
   },
   {
     name: 'orderMessageDispatch',

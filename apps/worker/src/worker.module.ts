@@ -38,6 +38,7 @@ import { CarrierEventsProcessor } from './processors/carrier-events.processor'
 import { EmailProcessor } from './processors/email.processor'
 import { OutboundProcessor } from './processors/outbound.processor'
 import { ProcessorSupport } from './processors/processor-support'
+import { AnalyticsRollupScheduler } from './schedulers/analytics-rollup.scheduler'
 import { AutoArchiveScheduler } from './schedulers/auto-archive.scheduler'
 import { BulkLabelsScheduler } from './schedulers/bulk-labels.scheduler'
 import { ChannelHealthScheduler } from './schedulers/channel-health.scheduler'
@@ -112,6 +113,7 @@ import { ShippingWorkerModule } from './shipping/shipping.module'
     SnoozeWakeScheduler,
     AutoArchiveScheduler,
     InventoryReconcileScheduler,
+    AnalyticsRollupScheduler,
     ShipmentPollScheduler,
     RemittanceCheckScheduler,
     PickupEvaluateScheduler,

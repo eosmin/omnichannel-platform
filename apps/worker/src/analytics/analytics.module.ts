@@ -6,10 +6,11 @@ import { AnalyticsProcessor } from '../processors/analytics.processor'
 import { ProcessorSupport } from '../processors/processor-support'
 
 import { AnalyticsEventWriter } from './analytics-event.writer'
+import { AnalyticsRollupService } from './analytics-rollup.service'
 
 // The database and the logger come from the platform module of the worker
 @Module({
   imports: [QueuesPlatformModule],
-  providers: [ProcessorSupport, AnalyticsEventWriter, AnalyticsProcessor]
+  providers: [ProcessorSupport, AnalyticsEventWriter, AnalyticsRollupService, AnalyticsProcessor]
 })
 export class AnalyticsModule {}

@@ -579,12 +579,15 @@ export class ConversationsService {
   // What a reply of an agent leaves in the conversation: the newest message of the thread (for the
   // list), the last answer, and the first answer once (TDD_11 section 7.2 reads it for the response
   // time). The dates never move back: a message that arrives late from a channel is older than one
-  // written meanwhile.
+  // written meanwhile. The reply of an automation (a plugin writing as the system) is not the answer of
+  // a person: it sets firstAutomatedResponseAt and leaves firstResponseAt alone, so the response time
+  // of the team never looks instant because a bot answered.
   async recordReply(
     tx: PrismaTransaction,
     storeId: string,
     conversationId: string,
-    at: Date
+    at: Date,
+    options: { automated?: boolean } = {}
   ): Promise<void> {
     // Three conditional writes, each atomic by itself: the dates stay right even for a caller that
     // does not hold the row lock
@@ -594,6 +597,13 @@ export class ConversationsService {
       where: { ...where, OR: [{ lastOutboundAt: null }, { lastOutboundAt: { lt: at } }] },
       data: { lastOutboundAt: at }
     })
+    if (options.automated === true) {
+      await tx.conversation.updateMany({
+        where: { ...where, firstAutomatedResponseAt: null },
+        data: { firstAutomatedResponseAt: at }
+      })
+      return
+    }
     await tx.conversation.updateMany({
       where: { ...where, firstResponseAt: null },
       data: { firstResponseAt: at }

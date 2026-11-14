@@ -1,4 +1,4 @@
-import { createHmac } from 'node:crypto'
+import { createHmac, randomUUID } from 'node:crypto'
 
 import { InjectQueue } from '@nestjs/bullmq'
 import { Inject, Injectable } from '@nestjs/common'
@@ -48,7 +48,7 @@ export class SearchTracker {
       durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
       ...(resultCount === 0 && mayKeepText(scope, query) ? { query: capUnits(query) } : {})
     }
-    if (this.inFlight >= SearchTracking.MAX_IN_FLIGHT) return this.logQueueFailure('backlog', scope)
+    if (this.inFlight >= SearchTracking.MAX_IN_FLIGHT) return this.logBacklog(scope)
     this.inFlight++
     try {
       void this.queue
@@ -56,7 +56,9 @@ export class SearchTracker {
           event: AnalyticsEventNames.SEARCH_PERFORMED,
           storeId,
           data,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          // A job delivered again after a stalled worker carries the same key and writes no second row
+          eventKey: randomUUID()
         })
         .catch((error: unknown) => this.logQueueFailure(error, scope))
         .finally(() => {
@@ -69,6 +71,10 @@ export class SearchTracker {
     }
   }
 
+  private logBacklog(scope: SearchTrackedScope): void {
+    this.logger.debug({ scope }, 'a search event was dropped: the analytics queue is backed up')
+  }
+
   private logQueueFailure(error: unknown, scope: SearchTrackedScope): void {
     this.logger.warn({ err: error, scope }, 'a search event could not be queued')
   }
@@ -79,13 +85,19 @@ export class SearchTracker {
 // orders or the global search (where a name is as likely as a product) is only a hash, and so is any text that is an
 // email address or a phone number: analytics rows are tied to no customer, so an erasure could not reach a name, an
 // email or a phone left in them.
-// Seven digits in a row, a space, a dash or a dot between them allowed: a phone number, a document, an account
-const PHONE_RUN = new RegExp(`(?:\\d[\\s().+-]?){${SearchTracking.PERSONAL_DIGITS},}`)
+// A stretch of the text with no letter in it that holds seven digits or more, whatever separates them (spaces, dashes,
+// commas, slashes): a phone number, a document or an account. "ana 71234567" and "7123 - 4567" are personal, "talla 42
+// modelo 2026" is not.
+function hasPersonalDigits(query: string): boolean {
+  return query
+    .split(/\p{L}/u)
+    .some(stretch => stretch.replace(/\D/g, '').length >= SearchTracking.PERSONAL_DIGITS)
+}
 
 export function mayKeepText(scope: SearchTrackedScope, query: string): boolean {
   if (scope !== SearchTrackedScopes.PRODUCTS) return false
   // A run of digits anywhere is a phone number, a document or an account: "ana 71234567" is as personal as "71234567"
-  return !query.includes('@') && !PHONE_RUN.test(query)
+  return !query.includes('@') && !hasPersonalDigits(query)
 }
 
 // At most QUERY_MAX_LENGTH UTF-16 units (what the worker's schema counts), never cutting a character in two: a lone

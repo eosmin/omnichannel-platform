@@ -52,6 +52,10 @@ describe('the text kept of a search', () => {
     // A name or a word with a phone number in it is as personal as the number alone
     expect(mayKeepText(SearchTrackedScopes.PRODUCTS, 'ana 71234567')).toBe(false)
     expect(mayKeepText(SearchTrackedScopes.PRODUCTS, 'tel 7123-4567 urgente')).toBe(false)
+    // However the digits are separated
+    expect(mayKeepText(SearchTrackedScopes.PRODUCTS, '7123 - 4567')).toBe(false)
+    expect(mayKeepText(SearchTrackedScopes.PRODUCTS, '503, 7123, 4567')).toBe(false)
+    expect(mayKeepText(SearchTrackedScopes.PRODUCTS, '503 / 7123 4567')).toBe(false)
     // A size or a year is not
     expect(mayKeepText(SearchTrackedScopes.PRODUCTS, 'talla 42 modelo 2026')).toBe(true)
   })
@@ -69,14 +73,17 @@ describe('the text kept of a search', () => {
 describe('the search tracker', () => {
   const add = jest.fn<Promise<unknown>, [string, TrackAnalyticsJob]>()
   const warn = jest.fn()
+  const debug = jest.fn()
   const tracker = new SearchTracker({ add } as unknown as Queue<TrackAnalyticsJob>, KEY, {
     setContext: jest.fn(),
-    warn
+    warn,
+    debug
   } as unknown as PinoLogger)
 
   beforeEach(() => {
     add.mockReset().mockResolvedValue(undefined)
     warn.mockReset()
+    debug.mockReset()
   })
 
   it('queues a track-search job whose data fits the schema the worker checks', () => {
@@ -112,6 +119,8 @@ describe('the search tracker', () => {
       tracker.track(STORE, SearchTrackedScopes.CUSTOMERS, 'ab', 1, performance.now())
     }
     expect(add).toHaveBeenCalledTimes(SearchTracking.MAX_IN_FLIGHT)
+    expect(debug).toHaveBeenCalledTimes(5)
+    expect(warn).not.toHaveBeenCalled()
     waiting.forEach(resolve => resolve())
     await new Promise(resolve => setImmediate(resolve))
     tracker.track(STORE, SearchTrackedScopes.CUSTOMERS, 'ab', 1, performance.now())
