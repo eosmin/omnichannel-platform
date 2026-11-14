@@ -6,13 +6,14 @@ import supertest from 'supertest'
 
 import { API_PREFIX, ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
-import { Permissions } from '@platform/core/auth'
+import { Permissions, RoleNames } from '@platform/core/auth'
 import { Public } from '@platform/core/auth-module'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   API_KEY_RESOURCE_TYPE,
   API_KEY_TOKEN_PREFIX,
   ApiKeyLimits,
+  ApiKeyRevokeReasons,
   ApiKeyStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -26,7 +27,7 @@ import {
 import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
-import { seedTestContext, type TestContext } from '../helpers/context'
+import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 
@@ -36,6 +37,7 @@ const BAD_REQUEST = 400
 const UNAUTHORIZED = 401
 const FORBIDDEN = 403
 const NOT_FOUND = 404
+const NO_CONTENT = 204
 const CONFLICT = 409
 const PROBE = '/probe/api-key'
 
@@ -154,6 +156,8 @@ describe('The API keys of a store', () => {
         Permissions.SETTINGS_MANAGE_WEBHOOKS,
         Permissions.TEAM_INVITE,
         Permissions.ORG_MANAGE_STORES,
+        // Under an allowed prefix, but it destroys data for good: a key never holds it
+        Permissions.CONVERSATIONS_DELETE,
         'customers:everything'
       ]) {
         await post({ name: 'x', scopes: [scope] }).expect(BAD_REQUEST)
@@ -396,6 +400,108 @@ describe('The API keys of a store', () => {
       await asAdmin().delete(ApiRoutes.settings.apiKeyById(made.id)).expect(OK)
 
       await call(`${PROBE}/customers`, made.key).expect(UNAUTHORIZED)
+    })
+  })
+  // A key acts for the person who made it (Step 5.4 PR C): it works only while that person is an active member of the store
+  describe('the person who made it', () => {
+    let serial = 0
+    // A second Admin of store A: they make the key, and the Admin of the context manages them
+    const maker = async () => {
+      serial += 1
+      const actor = await createActor(owner, app, {
+        prefix,
+        name: `maker${serial}`,
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        roleId: ctx.roleIds[RoleNames.ADMIN]
+      })
+      const membership = await owner.membership.findFirstOrThrow({
+        where: { userId: actor.id, storeId: ctx.storeA.id }
+      })
+      const made = (
+        await api(app, actor, ctx.storeA)
+          .post(ApiRoutes.settings.apiKeys)
+          .send({ name: 'ERP', scopes: [Permissions.CUSTOMERS_VIEW] })
+          .expect(CREATED)
+      ).body as Made
+      return { membershipId: membership.id, made }
+    }
+
+    it('stops the key while the person is suspended and brings it back when they are reactivated', async () => {
+      const { membershipId, made } = await maker()
+      await call(`${PROBE}/customers`, made.key).expect(OK)
+
+      await asAdmin().post(ApiRoutes.settings.memberSuspend(membershipId)).expect(OK)
+      await call(`${PROBE}/customers`, made.key).expect(UNAUTHORIZED)
+
+      await asAdmin().post(ApiRoutes.settings.memberReactivate(membershipId)).expect(OK)
+      await call(`${PROBE}/customers`, made.key).expect(OK)
+    })
+
+    it('revokes the keys of a person who is removed for good, and they stay revoked if the person comes back', async () => {
+      const { membershipId, made } = await maker()
+      const other = await make()
+
+      await asAdmin().delete(ApiRoutes.settings.memberById(membershipId)).expect(NO_CONTENT)
+
+      await call(`${PROBE}/customers`, made.key).expect(UNAUTHORIZED)
+      const row = await owner.apiKey.findUniqueOrThrow({ where: { id: made.id } })
+      expect(row.status).toBe(ApiKeyStatus.REVOKED)
+      expect(row.revokedAt).not.toBeNull()
+      // The key of somebody else is left alone
+      await call(`${PROBE}/customers`, other.key).expect(OK)
+
+      // The same membership row comes back (an invitation accepted again): the key does not
+      await owner.membership.update({
+        where: { id: membershipId },
+        data: { status: 'ACTIVE', revokedAt: null }
+      })
+      await call(`${PROBE}/customers`, made.key).expect(UNAUTHORIZED)
+
+      const [entry] = await waitForAuditEntries(owner, {
+        action: AuditAction.API_KEY_REVOKED,
+        resourceId: made.id
+      })
+      expect(entry?.metadata).toMatchObject({ reason: ApiKeyRevokeReasons.MAKER_REMOVED })
+      expect(JSON.stringify(entry?.metadata)).not.toContain(made.key)
+    })
+
+    it('never holds more than its maker holds now: a demotion lowers the keys at once', async () => {
+      const { membershipId, made } = await maker()
+      await call(`${PROBE}/customers`, made.key).expect(OK)
+      const lowered = await owner.role.create({
+        data: {
+          storeId: ctx.storeA.id,
+          name: `${prefix}-no-customers`,
+          permissions: { create: [{ name: Permissions.ORDERS_VIEW }] }
+        }
+      })
+
+      await owner.membership.update({ where: { id: membershipId }, data: { roleId: lowered.id } })
+
+      await call(`${PROBE}/customers`, made.key).expect(FORBIDDEN)
+    })
+
+    it('does not touch the keys of the same person in another store', async () => {
+      const { membershipId, made } = await maker()
+      const sibling = await owner.apiKey.create({
+        data: {
+          storeId: ctx.storeA2.id,
+          name: 'sibling',
+          keyPrefix: 'pk_live_sib',
+          keyHash: `${prefix}-sibling-hash`,
+          scopes: [Permissions.CUSTOMERS_VIEW],
+          createdBy: (await owner.membership.findUniqueOrThrow({ where: { id: membershipId } }))
+            .userId
+        }
+      })
+
+      await asAdmin().delete(ApiRoutes.settings.memberById(membershipId)).expect(NO_CONTENT)
+
+      expect((await owner.apiKey.findUniqueOrThrow({ where: { id: sibling.id } })).status).toBe(
+        ApiKeyStatus.ACTIVE
+      )
+      expect(made.id).not.toBe(sibling.id)
     })
   })
 })

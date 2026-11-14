@@ -19,6 +19,7 @@ export const RealtimeEvents = {
   // The mark that asks for attention in the list changed: the client reads the row again
   CONVERSATION_ATTENTION_CHANGED: 'conversation.attention_changed',
   CONVERSATION_UNREAD: 'conversation.unread',
+  CONVERSATION_DELETED: 'conversation.deleted',
 
   MESSAGE_RECEIVED: 'message.received',
   // An agent's reply is stored and waits for its channel
@@ -93,6 +94,7 @@ export interface RealtimeEventMap {
     reason: AttentionReason | null
   }
   [RealtimeEvents.CONVERSATION_UNREAD]: { conversationId: string; userId: string }
+  [RealtimeEvents.CONVERSATION_DELETED]: { conversationId: string; customerId: string }
 
   [RealtimeEvents.MESSAGE_RECEIVED]: {
     conversationId: string

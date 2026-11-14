@@ -73,6 +73,7 @@ import { WidgetReadNotifier } from '../widget/widget-read-notifier.service'
 
 import { type BulkResult, ConversationBulkService } from './conversation-bulk.service'
 import { ConversationCountsService } from './conversation-counts.service'
+import { ConversationDeletionService } from './conversation-deletion.service'
 import { ConversationOriginsService, type OriginView } from './conversation-origins.service'
 import { type ConversationTag, ConversationTagsService } from './conversation-tags.service'
 
@@ -92,6 +93,7 @@ export class ConversationsController {
     private readonly counts: ConversationCountsService,
     private readonly tags: ConversationTagsService,
     private readonly origins: ConversationOriginsService,
+    private readonly deletion: ConversationDeletionService,
     private readonly readReceipts: ReadReceipts,
     private readonly widgetRead: WidgetReadNotifier,
     private readonly exports: ExportsService,
@@ -173,6 +175,21 @@ export class ConversationsController {
     return this.conversations
       .get(store.id, conversationId, viewerOf(user.id, held))
       .then(detail => this.marked(detail))
+  }
+
+  // The manual deletion (TDD_05 §10.4): the conversation, its messages and its files are gone for good. The
+  // interface asks for the typed phrase first (DestructiveActionTiers.DELETE_CONVERSATION); the permission is
+  // what the server keeps. It reaches every conversation of the store, not only the ones the caller may see.
+  @RequirePermissions(Permissions.CONVERSATIONS_DELETE)
+  @Delete(ApiRoutes.conversations.byId(':id'))
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
+  async deleteConversation(
+    @CurrentStore() store: { id: string },
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) conversationId: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<void> {
+    await this.deletion.delete(store.id, conversationId, actorOf(user, store, req))
   }
 
   // The ads and posts the customer came from, for the card on top of the thread
