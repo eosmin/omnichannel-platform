@@ -34,6 +34,7 @@ import {
 import { StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
+import { AnalyticsExportWriter } from '../../apps/worker/src/exports/analytics/analytics-export.writer'
 import { CsvExportWriter } from '../../apps/worker/src/exports/csv-export-writer'
 import { ExpiredExportsCleaner } from '../../apps/worker/src/exports/expired-exports-cleaner.service'
 import { ExportGenerator } from '../../apps/worker/src/exports/export-generator.service'
@@ -111,6 +112,7 @@ describe('Exports', () => {
       prisma,
       new CsvExportWriter(storage),
       new ZipExportWriter(storage, logger),
+      new AnalyticsExportWriter(prisma, storage, new CsvExportWriter(storage)),
       storage,
       app.get(AuditService, { strict: false }),
       events,

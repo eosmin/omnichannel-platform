@@ -51,6 +51,7 @@ import { OrphanMediaScheduler } from './schedulers/orphan-media.scheduler'
 import { OutboundRequeueScheduler } from './schedulers/outbound-requeue.scheduler'
 import { PickupEvaluateScheduler } from './schedulers/pickup-evaluate.scheduler'
 import { RemittanceCheckScheduler } from './schedulers/remittance-check.scheduler'
+import { ReportDispatchScheduler } from './schedulers/report-dispatch.scheduler'
 import { ShipmentPollScheduler } from './schedulers/shipment-poll.scheduler'
 import { SnoozeWakeScheduler } from './schedulers/snooze-wake.scheduler'
 import { TokenExpiryScheduler } from './schedulers/token-expiry.scheduler'
@@ -112,6 +113,7 @@ import { WebhooksWorkerModule } from './webhooks/webhooks.module'
     OrphanMediaScheduler,
     ExpiredExportsScheduler,
     EmailDigestScheduler,
+    ReportDispatchScheduler,
     SnoozeWakeScheduler,
     AutoArchiveScheduler,
     InventoryReconcileScheduler,

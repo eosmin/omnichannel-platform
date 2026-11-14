@@ -9,6 +9,7 @@ import { Invitation, invitationSchema } from './invitation'
 import { MagicLink, magicLinkSchema } from './magic-link'
 import { NotificationDigest, notificationDigestSchema } from './notification-digest'
 import { OrderMessage, orderMessageSchema } from './order-message'
+import { ScheduledReport, scheduledReportSchema } from './scheduled-report'
 
 // What the renderer needs from a template: its data schema (the job payload is data from outside the
 // type system), the namespace of its messages (which holds the subject) and its component.
@@ -75,5 +76,11 @@ export const templateRegistry: Record<EmailTemplate, RegisteredTemplate> = {
       store: inSubject(props.storeName)
     }),
     element: (props, locale, t) => OrderMessage({ ...props, locale, t })
+  }),
+  [EmailTemplates.SCHEDULED_REPORT]: define({
+    namespace: 'email.scheduledReport',
+    schema: scheduledReportSchema,
+    subjectParams: props => ({ name: inSubject(props.name), store: inSubject(props.storeName) }),
+    element: (props, locale, t) => ScheduledReport({ ...props, locale, t })
   })
 }

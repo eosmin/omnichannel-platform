@@ -109,6 +109,10 @@ export const rollupLockKey = (
   periodStart: Date
 ): string => `${jobName}-${storeId}-${periodStart.getTime()}`
 
+// One scheduled report per report and day of its own zone: the dispatcher run twice in an hour asks for the same job (dashes, no colon)
+export const scheduledReportJobId = (reportId: string, day: string): string =>
+  `${JobNames.GENERATE_SCHEDULED_REPORT}-${reportId}-${day}`
+
 export const reconcileInventoryJobId = (storeId: string, day: string): string =>
   `${JobNames.RECONCILE_INVENTORY}-${storeId}-${day}`
 

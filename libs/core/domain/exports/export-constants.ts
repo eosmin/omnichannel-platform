@@ -15,7 +15,9 @@ export const ExportLimits = {
 // What the download tells the browser the bytes are
 export const ExportContentTypes = {
   CSV: 'text/csv; charset=utf-8',
-  ZIP: 'application/zip'
+  ZIP: 'application/zip',
+  EXCEL: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  PDF: 'application/pdf'
 } as const
 
 // The entry a media ZIP carries when files of the gallery were no longer in the bucket: one name per
@@ -23,7 +25,7 @@ export const ExportContentTypes = {
 export const MEDIA_ZIP_MISSING_ENTRY = 'missing.txt'
 
 // The extension of the file of each format
-export const ExportFileExtensions = { CSV: 'csv', ZIP: 'zip' } as const
+export const ExportFileExtensions = { CSV: 'csv', ZIP: 'zip', EXCEL: 'xlsx', PDF: 'pdf' } as const
 
 // A spreadsheet reads UTF-8 with accents only when the file starts with this mark
 export const CSV_BOM = '﻿'

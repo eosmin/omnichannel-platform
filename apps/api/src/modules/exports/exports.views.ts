@@ -64,7 +64,10 @@ export type JsonValue =
 export type JsonObject = { [key: string]: JsonValue }
 
 export function exportContentType(format: string): string {
-  return format === ExportFormats.ZIP ? ExportContentTypes.ZIP : ExportContentTypes.CSV
+  if (format === ExportFormats.ZIP) return ExportContentTypes.ZIP
+  if (format === ExportFormats.EXCEL) return ExportContentTypes.EXCEL
+  if (format === ExportFormats.PDF) return ExportContentTypes.PDF
+  return ExportContentTypes.CSV
 }
 
 export function exportView(row: ExportRow, now: Date = new Date()): ExportView {

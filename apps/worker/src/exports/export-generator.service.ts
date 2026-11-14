@@ -3,6 +3,11 @@ import { UnrecoverableError } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
 import { errorName } from '@platform/channels/connections'
+import {
+  type AnalyticsFileFormat,
+  analyticsExportFiltersSchema,
+  ReportFormatExtensions
+} from '@platform/core/analytics'
 import { AuditService } from '@platform/core/audit-module'
 import { PrismaService } from '@platform/core/database'
 import { ErrorCodes } from '@platform/core/errors'
@@ -24,6 +29,7 @@ import {
 import { StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
+import { AnalyticsExportWriter } from './analytics/analytics-export.writer'
 import { conversationsExportSource } from './conversations-export.source'
 import { CsvExportWriter } from './csv-export-writer'
 import { customersExportSource } from './customers-export.source'
@@ -51,6 +57,7 @@ export class ExportGenerator {
     private readonly prisma: PrismaService,
     private readonly writer: CsvExportWriter,
     private readonly zipWriter: ZipExportWriter,
+    private readonly analyticsWriter: AnalyticsExportWriter,
     private readonly storage: StorageService,
     private readonly audit: AuditService,
     private readonly events: DomainEvents,
@@ -64,7 +71,7 @@ export class ExportGenerator {
     // Gone with its store, or already settled: a job that arrives twice makes the file once
     if (row === null || row.status !== ExportStatus.PENDING) return
 
-    const plan = this.planOf(row.type, row.storeId, row.filters)
+    const plan = this.planOf(row)
     if (plan === null) {
       await this.fail(row)
       throw new UnrecoverableError('the export row does not fit its kind')
@@ -130,7 +137,8 @@ export class ExportGenerator {
   }
 
   // null when the row holds a kind this step does not make, or filters that do not fit their schema
-  private planOf(type: string, storeId: string, filters: unknown): ExportPlan | null {
+  private planOf(row: ExportRow): ExportPlan | null {
+    const { type, storeId, filters } = row
     if (type === ExportTypes.CUSTOMERS) {
       const parsed = customersExportFiltersSchema.safeParse(filters ?? {})
       if (!parsed.success) return null
@@ -159,6 +167,24 @@ export class ExportGenerator {
         extension: ExportFileExtensions.CSV,
         count: source.count,
         write: (key, onProgress) => this.writer.write(key, source, onProgress)
+      }
+    }
+    if (type === ExportTypes.ANALYTICS) {
+      const parsed = analyticsExportFiltersSchema.safeParse(filters)
+      const format = ReportFormatExtensions[row.format as keyof typeof ReportFormatExtensions]
+      if (!parsed.success || format === undefined) return null
+      const analytics = parsed.data
+      return {
+        extension: format,
+        count: () => Promise.resolve(this.analyticsWriter.rowCount(analytics)),
+        write: (key, onProgress) =>
+          this.analyticsWriter.write(
+            key,
+            row,
+            row.format as AnalyticsFileFormat,
+            analytics,
+            onProgress
+          )
       }
     }
     if (type === ExportTypes.MEDIA_ZIP) {

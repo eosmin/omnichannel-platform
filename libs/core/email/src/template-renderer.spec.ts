@@ -365,3 +365,46 @@ describe('TemplateRenderer: order message', () => {
     ).rejects.toThrow()
   })
 })
+
+describe('TemplateRenderer: scheduled report', () => {
+  const report = {
+    name: 'Weekly summary',
+    storeName: 'Shop',
+    from: '2026-11-02',
+    to: '2026-11-09',
+    totals: [
+      { label: 'Orders', value: '12' },
+      { label: 'Revenue (USD)', value: '1250.00' }
+    ]
+  }
+
+  it('says the period, the totals and that the file is attached', async () => {
+    const email = await renderer.render(EmailTemplates.SCHEDULED_REPORT, Locales.EN, report)
+    expect(email.subject).toBe('Report Weekly summary of Shop')
+    expect(email.text).toContain('2026-11-02')
+    expect(email.text).toContain('Revenue (USD)')
+    expect(email.text).toContain('1250.00')
+    expect(email.text).toContain('attached file')
+  })
+
+  it('renders it in Spanish', async () => {
+    const email = await renderer.render(EmailTemplates.SCHEDULED_REPORT, Locales.ES, report)
+    expect(email.subject).toBe('Reporte Weekly summary de Shop')
+    expect(email.text).toContain('archivo adjunto')
+  })
+
+  it('writes a name that someone typed as text and keeps it out of the subject line break', async () => {
+    const email = await renderer.render(EmailTemplates.SCHEDULED_REPORT, Locales.EN, {
+      ...report,
+      name: 'A <b>x</b>\r\nBcc: someone@example.com'
+    })
+    expect(email.html).not.toContain('<b>x</b>')
+    expect(email.subject).not.toMatch(/[\r\n]/)
+  })
+
+  it('refuses a period that is not a calendar day', async () => {
+    await expect(
+      renderer.render(EmailTemplates.SCHEDULED_REPORT, Locales.EN, { ...report, from: 'yesterday' })
+    ).rejects.toThrow()
+  })
+})
