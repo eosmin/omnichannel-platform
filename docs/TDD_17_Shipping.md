@@ -468,6 +468,7 @@ Changes to existing models:
   (written when the shipment is delivered, §4.15), `codRemittedCents Int?` and `codRemittanceId String?`.
 - `CarrierConnection`: add `defaultShippingFeeCents Int?`, `minShippingFeeCents Int?` and `maxShippingFeeCents Int?` (the shipping fee charged to the customer: the preset and the accepted range for this carrier, in the store currency, `min <= default <= max` when set, §4.13), and `remittanceDeductsFee Boolean @default(false)` (the carrier subtracts its fee from
   what it remits when the sender pays, §4.15).
+  Also `commissionBps Int?` (the carrier's commission over the cash it collects, in basis points: 450 is 4.5 %, 0 to 5000, §4.15) and `serviceRatesCents Json?` (the cost of a guide in cents by *rate service* of the carrier, `{ "CCE": 300 }`, §4.15). `Shipment` keeps `carrierRateCents Int?` and `commissionBps Int?`, the rate of its service and the commission the connection had when the guide was made.
 - `OrderItem` (`TDD_01 §4`): add `originalUnitPriceCents Int?` (null unless the price was overridden),
   `priceOverrideReason String?`, `priceOverriddenBy String?`, and `freeShipping Boolean @default(false)` (a snapshot of
   `Product.freeShipping` at the time of the order, so a later catalog change never rewrites history).
@@ -1400,12 +1401,26 @@ tracks what each delivered COD guide should bring and reconciles it against the 
   is on its way; `PENDING_REMITTANCE` when it reaches `DELIVERED`; `REMITTED` when a confirmed
   remittance matched it; `DISCREPANCY` when the remitted amount differed; `VOID` when the shipment
   is cancelled or returned (nothing was collected).
-- **Expected amount**, written to `codExpectedCents` at `DELIVERED`: `codAmountCents`, minus the
-  shipment's `carrierCostCents` **only when** the connection has `remittanceDeductsFee` on **and**
-  `shippingPayer = SENDER` **and** the cost is known (reported when the guide was created, or by the
-  fee column of the file). When the recipient pays the carrier, nothing is deducted; when the carrier
-  does not report a fee, the expected amount is gross. Whether a carrier deducts its fee from what it
-  remits is a fact to confirm with each carrier (§14); the connection flag is how the answer is recorded.
+- **Expected amount**, written to `codExpectedCents` at `DELIVERED`: `codAmountCents`, minus what the
+  carrier keeps, **only when** the connection has `remittanceDeductsFee` on. What it keeps is (1) the
+  **commission**, `commissionBps` of the amount collected, rounded to whole cents half up, whoever pays the
+  guide (it is the carrier's charge for collecting the cash: C807, 2026-11-14, "for a collected guide the amount
+  is the total to collect and the commission is taken out of it"), plus (2) the **cost of the guide**, only when
+  `shippingPayer = SENDER`: the `carrierCostCents` the carrier reported or, when it reports none, the connection's
+  rate for the service of the guide (`serviceRatesCents`, kept on the shipment as `carrierRateCents` when the
+  guide was made, so a later edit of the rates never rewrites a guide). When the recipient pays the carrier the
+  cost is not deducted; when nothing is known (no commission, no rate, no reported cost) the expected amount is
+  gross; it is never below zero. The fee column of a settlement file is the carrier's own figure for what it
+  kept: for a sender-paid guide it replaces the estimate (cost and commission) of that line. Whether a carrier
+  deducts its fee from what it remits is a fact to confirm with each carrier (§14); the connection flag is how
+  the answer is recorded, and the commission and the rates are how much (owner, 2026-11-14).
+- **Commission and rates are declared by the plugin** (`CarrierPlugin.feeSettings`: whether it takes a commission,
+  the *rate services* it prices with a message key each, and a pure `rateServiceOf(guide)` that says which one a
+  guide falls under; the registry keeps a copy and `GET /carriers/registry` answers it). The connect and edit forms
+  draw their boxes from it and the api refuses a commission for a carrier that declares none and a rate for a
+  service it did not declare. Changing them needs `SETTINGS_MANAGE_CARRIERS` and is audited (`carrier.fees_changed`,
+  with the old and the new value of each). C807 prices its three types of guide (`CCE`, `SEC`, `SER`); Forza its
+  home delivery.
 - **Import is deterministic, with no AI.** Input: a CSV or TSV file (at most 5 MB and 5,000 rows) or a
   table pasted as text. A `RemittanceImportProfile` saved per connection stores the delimiter,
   header row, decimal separator, date format and the column mapping (guide, amount, optional fee,

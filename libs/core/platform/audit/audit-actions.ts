@@ -116,6 +116,8 @@ export const AuditAction = {
   // Shipping, returns and remittances (TDD_17 §3)
   CARRIER_CONNECTED: 'carrier.connected',
   CARRIER_UPDATED: 'carrier.updated',
+  // The commission or the rates of a carrier connection changed: money the owner agreed with the carrier, kept with its old and new values
+  CARRIER_FEES_CHANGED: 'carrier.fees_changed',
   CARRIER_DISCONNECTED: 'carrier.disconnected',
   CARRIER_STATUS_MAPPING_CHANGED: 'carrier.status_mapping_changed',
   CARRIER_WEBHOOK_SECRET_ROTATED: 'carrier.webhook_secret_rotated',

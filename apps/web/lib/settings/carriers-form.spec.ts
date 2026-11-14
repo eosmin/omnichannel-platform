@@ -44,6 +44,8 @@ const view: CarrierConnectionView = {
   minShippingFeeCents: null,
   maxShippingFeeCents: null,
   remittanceDeductsFee: false,
+  commissionBps: null,
+  serviceRatesCents: {},
   openShipments: 0,
   openPickups: 0,
   lastHealthyAt: null,

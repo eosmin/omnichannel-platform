@@ -9,6 +9,7 @@ import {
   CarrierStatusMappingSource,
   normalizeProviderStatusCode,
   pickupRulesProblem,
+  rateCentsOf,
   shippingFeeRangeProblem,
   type ShipmentStatus
 } from '@platform/core/domain'
@@ -220,4 +221,55 @@ export function filterLocations(
   const wanted = search === undefined ? '' : foldText(search)
   if (wanted === '') return places
   return places.filter(place => foldText(place.name).includes(wanted))
+}
+
+// The rates of a connection as a client reads them: the table the row keeps, read as the database gave it (so nothing is trusted),
+// only the services with a valid price and, when the services the carrier declares are given, only those: a service a plugin dropped
+// is not shown, so an edit that sends the table back is never refused for it
+export function ratesViewOf(stored: unknown, declared?: readonly string[]): Record<string, number> {
+  if (typeof stored !== 'object' || stored === null || Array.isArray(stored)) return {}
+  const rates: Record<string, number> = {}
+  for (const code of Object.keys(stored)) {
+    if (declared !== undefined && !declared.includes(code)) continue
+    const cents = rateCentsOf(stored, code)
+    if (cents !== null) rates[code] = cents
+  }
+  return rates
+}
+
+// A commission of 0 is "none": for a carrier that takes no commission it is kept as null, so that "nothing agreed" is one state
+export function commissionToKeep(
+  declared: { commission: boolean },
+  commissionBps: number | null | undefined
+): number | null | undefined {
+  return commissionBps === 0 && !declared.commission ? null : commissionBps
+}
+
+export interface FeesSnapshot {
+  commissionBps: number | null
+  serviceRatesCents: Record<string, number>
+}
+
+// What an edit changes of the commission and the rates, by name and with the old and the new value (they are agreed prices, not
+// secrets), for the audit trail; null when it changes nothing. A field the edit does not send is not a change
+export function feesChangeOf(
+  before: FeesSnapshot,
+  change: { commissionBps?: number | null; serviceRatesCents?: Record<string, number> | null }
+): Record<string, unknown> | null {
+  const changes: Record<string, unknown> = {}
+  if (change.commissionBps !== undefined && change.commissionBps !== before.commissionBps) {
+    changes['commissionBps'] = { from: before.commissionBps, to: change.commissionBps }
+  }
+  if (change.serviceRatesCents !== undefined) {
+    const after = change.serviceRatesCents ?? {}
+    const codes = new Set([...Object.keys(before.serviceRatesCents), ...Object.keys(after)])
+    const rates: Record<string, { from: number | null; to: number | null }> = {}
+    for (const code of [...codes].sort()) {
+      const from = rateCentsOf(before.serviceRatesCents, code)
+      const to = rateCentsOf(after, code)
+      if (from !== to) rates[code] = { from, to }
+    }
+    if (Object.keys(rates).length > 0) changes['serviceRatesCents'] = rates
+  }
+  return Object.keys(changes).length === 0 ? null : changes
 }

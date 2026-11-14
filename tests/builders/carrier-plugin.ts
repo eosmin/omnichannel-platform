@@ -19,6 +19,7 @@ import {
   CarrierUnavailableError,
   type CarrierContext,
   type CarrierEvent,
+  type CarrierFeeSettings,
   type CarrierLocation,
   type ConnectField,
   type CarrierPlugin,
@@ -72,6 +73,11 @@ export interface FakeCarrierOptions {
   returnShipment?: boolean
   // What its connect form asks for (the registry keeps a copy and the api validates a connection against it)
   connectFields?: readonly ConnectField[]
+  // Whether the guide's answer carries the cost of the guide (350 cents). The default is that it does; a carrier that does not is the
+  // one whose cost comes from the rates of the connection
+  reportsCost?: boolean
+  // The commission and the rates per service it lets the owner agree (the registry keeps a copy; the api validates a connection against it)
+  feeSettings?: CarrierFeeSettings
   // Declares REQUIRES_LOCATION_IDS and answers lookupLocations with these, by parent id ('' is the top level)
   locations?: Readonly<Record<string, readonly CarrierLocation[]>>
   maxBatchSize?: number
@@ -276,7 +282,7 @@ export function buildFakeCarrier(options: FakeCarrierOptions = {}): FakeCarrier 
         guideNumber: guide.guideNumber,
         providerShipmentId: guide.providerShipmentId,
         trackingUrl: `https://tracking.fake.invalid/${guide.guideNumber}`,
-        cost: { amountCents: 350, currency: 'USD' },
+        ...(options.reportsCost === false ? {} : { cost: { amountCents: 350, currency: 'USD' } }),
         label: labelFor(guide.guideNumber, params.labelFormat)
       }
     }
@@ -332,6 +338,7 @@ export function buildFakeCarrier(options: FakeCarrierOptions = {}): FakeCarrier 
     type: PluginTypes.CARRIER,
     capabilities,
     ...(options.connectFields === undefined ? {} : { connectFields: options.connectFields }),
+    ...(options.feeSettings === undefined ? {} : { feeSettings: options.feeSettings }),
     ...(options.sharedSecret === true ? { webhookTrust: CarrierWebhookTrust.SHARED_SECRET } : {}),
     serviceCatalog: () => [
       { code: 'standard', label: 'Standard', defaultForNextDay: false },

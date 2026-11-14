@@ -368,4 +368,60 @@ describe('CarrierRegistry', () => {
       expect(codeOf(() => build().register(plugin))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
     })
   })
+
+  describe('fee settings', () => {
+    const fees = {
+      commission: true,
+      rateServices: [
+        { code: 'CCE', labelKey: 'settings.carriers.rates.cce' },
+        { code: 'SEC', labelKey: 'settings.carriers.rates.sec' }
+      ],
+      rateServiceOf: () => 'CCE'
+    }
+
+    it('keeps what the carrier declared, and nothing for a carrier that declares none', () => {
+      const registry = build()
+      registry.register(carrier({ feeSettings: fees }))
+      expect(registry.feeSettingsOf('forza')).toEqual({
+        commission: true,
+        rateServices: fees.rateServices
+      })
+      expect(registry.feeSettingsOf('whatsapp')).toEqual({ commission: false, rateServices: [] })
+      const plain = build()
+      plain.register(carrier())
+      expect(plain.feeSettingsOf('forza')).toEqual({ commission: false, rateServices: [] })
+    })
+
+    it.each([
+      ['a commission that is not a boolean', { ...fees, commission: 'yes' }],
+      ['a list of services that is not a list', { ...fees, rateServices: 'CCE' }],
+      [
+        'a service code the table cannot hold',
+        { ...fees, rateServices: [{ code: 'a b', labelKey: 'a.b' }] }
+      ],
+      ['a service with no label key', { ...fees, rateServices: [{ code: 'CCE' }] }],
+      [
+        'a service listed twice',
+        { ...fees, rateServices: [fees.rateServices[0], fees.rateServices[0]] }
+      ],
+      ['no way to say which rate applies', { ...fees, rateServiceOf: undefined }]
+    ])('refuses %s', (_name, bad) => {
+      const plugin = carrier({ feeSettings: bad as never })
+      expect(codeOf(() => build().register(plugin))).toBe(ErrorCodes.PLUGIN_CONTRACT_VIOLATION)
+    })
+
+    it('keeps the declaration as it was when the carrier registered', () => {
+      let calls = 0
+      const plugin = carrier({
+        get feeSettings() {
+          calls += 1
+          return calls === 1 ? fees : { ...fees, commission: false }
+        }
+      })
+      const registry = build()
+      registry.register(plugin)
+      expect(registry.feeSettingsOf('forza').commission).toBe(true)
+      expect(registry.feeSettingsOf('forza').commission).toBe(true)
+    })
+  })
 })

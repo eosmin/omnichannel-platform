@@ -20,6 +20,7 @@ import {
   type CarrierLabel,
   type CarrierLocation,
   type CarrierPlugin,
+  type CarrierRateGuide,
   CarrierRejectedError,
   CarrierUnavailableError,
   type ConnectField,
@@ -40,6 +41,7 @@ import {
 import { C807Client, type C807Scope } from './c807-client'
 import {
   C807_DEFAULT_SERVICE_CODE,
+  C807RateServices,
   C807ConnectFieldKeys,
   C807_STATUS_CATALOG,
   C807_WEBHOOK_SECRET_HEADER,
@@ -53,7 +55,7 @@ import {
   type C807Metadata,
   c807MetadataSchema
 } from './c807-credentials'
-import { toC807Guide, toC807Request } from './c807-payloads'
+import { c807ServiceTypeOf, toC807Guide, toC807Request } from './c807-payloads'
 import { toCarrierEvent } from './c807-status'
 
 export const C807_VERSION = '1.0.0'
@@ -216,6 +218,13 @@ export class C807Plugin implements CarrierPlugin {
     CarrierCapability.REQUIRES_LOCATION_IDS
   ] as const
   readonly connectFields = C807_CONNECT_FIELDS
+  // C807 keeps a commission out of the cash it collects, and charges the guide by type of service (owner, 2026-11-14)
+  readonly feeSettings = {
+    commission: true,
+    rateServices: C807RateServices,
+    rateServiceOf: (guide: CarrierRateGuide): string =>
+      c807ServiceTypeOf({ collects: guide.cod, shippingPayer: guide.shippingPayer })
+  }
   readonly shipmentCreation = ShipmentCreationModes.PICKUP_BOUND
   readonly maxBatchSize = C807Limits.MAX_BATCH_SIZE
   // The secret is a header and not a signature: an event that closes money or the order is confirmed by asking (TDD_17 §4.9)

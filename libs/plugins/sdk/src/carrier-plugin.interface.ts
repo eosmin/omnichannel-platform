@@ -12,6 +12,7 @@ import type {
   CarrierConnectInput,
   CarrierConnectResult,
   CarrierContext,
+  CarrierFeeSettings,
   CarrierEvent,
   CarrierHealth,
   CarrierLabel,
@@ -53,6 +54,9 @@ export interface CarrierPlugin {
   // What the connect form asks for, the declaration the channel plugins have (checked by the registry when it is present). A
   // carrier that asks for nothing, because the core draws its form, leaves it out
   readonly connectFields?: readonly ConnectField[]
+  // The commission and the rates per service the owner can agree with the carrier (checked by the registry when present). A carrier
+  // that takes neither leaves it out and its remittances are held to the cost the carrier reports, if any
+  readonly feeSettings?: CarrierFeeSettings
 
   serviceCatalog(): readonly CarrierServiceDescriptor[]
   statusCatalog(): readonly CarrierStatusDescriptor[]

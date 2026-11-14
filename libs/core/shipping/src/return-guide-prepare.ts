@@ -275,6 +275,9 @@ export async function prepareReturnGuide(
       codStatus: CodStatus.NOT_APPLICABLE,
       currency: order.currency,
       packageCount: 1,
+      // A return collects nothing: no commission and no rate (§4.15)
+      carrierRateCents: null,
+      commissionBps: null,
       idempotencyKey,
       createdBy: caller.actor.id ?? 'system'
     },

@@ -1,3 +1,4 @@
+import { remittanceDeductionCents } from './carrier-fee-rules'
 import { CodStatus, RemittanceLineOutcome, ShippingPayer } from './status-enums'
 
 // The money rules of the cash-on-delivery remittances (TDD_17 §4.15) as pure functions: the service reads and writes, this
@@ -20,23 +21,32 @@ export const RemittanceLimits = {
 // (TDD_17 §4.15), so two overlapping confirmations of the same draft end with one
 export const RemittanceLockScopes = { CONNECTION: 'cod_remittance' } as const
 
-// What a shipment that was just delivered should bring (§4.15): the amount collected, minus the carrier's cost only when
-// the connection deducts its fee AND the sender is the one who pays AND the cost is known. When the recipient pays the
-// carrier nothing is deducted, and when no fee is known the amount is gross. Never below zero: a fee above the amount
-// leaves nothing owed, not a debt of the owner to the carrier.
+// What a shipment that was just delivered should bring (§4.15): the amount collected, minus what the carrier keeps, and only when the
+// connection deducts its fee. What it keeps is the commission, a percent of the amount collected, plus the cost of the guide when
+// the sender is the one who pays it (the cost the carrier reported, or else the rate of the connection for the service). The
+// commission does not depend on who pays the guide: it is the carrier's charge for collecting the cash (a carrier answered, 2026-11-14,
+// that for a collected guide the amount is the total to collect and it takes its commission out of it). When the recipient pays the
+// carrier no cost is deducted, and when nothing is known the amount is gross. Never below zero: a deduction above the amount leaves
+// nothing owed, not a debt of the owner to the carrier.
 export interface ExpectedAmountInput {
   codAmountCents: number
   carrierCostCents: number | null
+  carrierRateCents: number | null
+  commissionBps: number | null
   shippingPayer: ShippingPayer
   deductsFee: boolean
 }
 
 export function expectedCodCents(input: ExpectedAmountInput): number {
-  const { codAmountCents, carrierCostCents, shippingPayer, deductsFee } = input
-  if (!deductsFee || shippingPayer !== ShippingPayer.SENDER || carrierCostCents === null) {
-    return codAmountCents
-  }
-  return Math.max(0, codAmountCents - carrierCostCents)
+  const { codAmountCents, shippingPayer, deductsFee } = input
+  if (!deductsFee) return codAmountCents
+  const pays = shippingPayer === ShippingPayer.SENDER
+  const deduction = remittanceDeductionCents(codAmountCents, {
+    carrierCostCents: pays ? input.carrierCostCents : null,
+    carrierRateCents: pays ? input.carrierRateCents : null,
+    commissionBps: input.commissionBps
+  })
+  return deduction === null ? codAmountCents : Math.max(0, codAmountCents - deduction)
 }
 
 // What the shipment of a line looks like to the matching: only what the outcome depends on
@@ -45,24 +55,32 @@ export interface MatchShipment {
   codAmountCents: number | null
   codExpectedCents: number | null
   carrierCostCents: number | null
+  carrierRateCents: number | null
+  commissionBps: number | null
   shippingPayer: ShippingPayer
 }
 
-// The amount a line is held against. The expected amount written at delivery wins, except in two cases where the fee is known
-// better now: the carrier's cost arrived after the delivery (the amount written was gross and the cost is known now, so it is
-// worked out again), or the fee came only in the settlement file (the line's own fee). Both need a connection that deducts the
-// fee and a sender who pays; never below zero.
+// The amount a line is held against. The expected amount written at delivery wins, except where the deduction is known better now:
+// the carrier's cost arrived after the delivery (worked out again with the cost and the commission), the settlement file brought the
+// fee of the line when the sender pays (the carrier's own figure for what it kept: it replaces the estimate), or the connection
+// started to deduct after the delivery wrote the gross amount (worked out from the rate and the commission the shipment kept). All
+// of them need a connection that deducts the fee; never below zero.
 export function lineExpectedCents(
   shipment: MatchShipment,
   reportedFeeCents: number | null,
   deductsFee: boolean
 ): number | null {
-  if (shipment.codAmountCents === null) return null
-  if (deductsFee && shipment.shippingPayer === ShippingPayer.SENDER) {
-    const fee = shipment.carrierCostCents ?? reportedFeeCents
-    if (fee !== null) return Math.max(0, shipment.codAmountCents - fee)
+  const { codAmountCents } = shipment
+  if (codAmountCents === null) return null
+  if (deductsFee) {
+    const worked = (): number => expectedCodCents({ ...shipment, codAmountCents, deductsFee })
+    if (shipment.carrierCostCents !== null) return worked()
+    if (reportedFeeCents !== null && shipment.shippingPayer === ShippingPayer.SENDER) {
+      return Math.max(0, codAmountCents - reportedFeeCents)
+    }
+    if (shipment.carrierRateCents !== null || shipment.commissionBps !== null) return worked()
   }
-  return shipment.codExpectedCents ?? shipment.codAmountCents
+  return shipment.codExpectedCents ?? codAmountCents
 }
 
 // A shipment is open to a remittance while it is waiting for one, or when an earlier one differed

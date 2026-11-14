@@ -14,6 +14,8 @@ const shipment = (over: Partial<MatchShipment> = {}): MatchShipment => ({
   codAmountCents: 1000,
   codExpectedCents: 1000,
   carrierCostCents: null,
+  carrierRateCents: null,
+  commissionBps: null,
   shippingPayer: ShippingPayer.SENDER,
   ...over
 })
@@ -22,6 +24,8 @@ describe('expectedCodCents (TDD_17 §4.15)', () => {
   const base = {
     codAmountCents: 1000,
     carrierCostCents: 300,
+    carrierRateCents: null,
+    commissionBps: null,
     shippingPayer: ShippingPayer.SENDER,
     deductsFee: true
   }
@@ -33,6 +37,56 @@ describe('expectedCodCents (TDD_17 §4.15)', () => {
   })
   it('never goes below zero', () => {
     expect(expectedCodCents({ ...base, carrierCostCents: 5000 })).toBe(0)
+    expect(
+      expectedCodCents({
+        ...base,
+        carrierCostCents: null,
+        commissionBps: 5000,
+        codAmountCents: 100,
+        carrierRateCents: 60
+      })
+    ).toBe(0)
+  })
+  it('takes the commission over the amount collected when the connection has one (FUNC-H4)', () => {
+    const open = { ...base, carrierCostCents: null }
+    // 4.5 % of 17,900 is 805.5: 806
+    expect(expectedCodCents({ ...open, codAmountCents: 17_900, commissionBps: 450 })).toBe(17_094)
+    // The rate of the service stands in for the cost the carrier did not report
+    expect(
+      expectedCodCents({
+        ...open,
+        codAmountCents: 10_000,
+        carrierRateCents: 300,
+        commissionBps: 450
+      })
+    ).toBe(9_250)
+    // The cost the carrier reported wins over the rate
+    expect(
+      expectedCodCents({
+        ...base,
+        codAmountCents: 10_000,
+        carrierRateCents: 999,
+        commissionBps: 450
+      })
+    ).toBe(9_250)
+    expect(expectedCodCents({ ...open, codAmountCents: 10_000, carrierRateCents: 300 })).toBe(9_700)
+  })
+  it('deducts nothing without the switch, and nothing from a total of 0', () => {
+    const priced = { ...base, carrierRateCents: 300, commissionBps: 450, codAmountCents: 10_000 }
+    expect(expectedCodCents({ ...priced, deductsFee: false })).toBe(10_000)
+    expect(expectedCodCents({ ...priced, codAmountCents: 0 })).toBe(0)
+  })
+  it('takes the commission but not the cost when the recipient pays the carrier', () => {
+    const priced = {
+      ...base,
+      carrierRateCents: 300,
+      commissionBps: 450,
+      codAmountCents: 10_000,
+      shippingPayer: ShippingPayer.RECIPIENT
+    }
+    expect(expectedCodCents(priced)).toBe(9_550)
+    expect(expectedCodCents({ ...priced, commissionBps: null })).toBe(10_000)
+    expect(expectedCodCents({ ...priced, deductsFee: false })).toBe(10_000)
   })
 })
 
@@ -60,6 +114,19 @@ describe('lineExpectedCents', () => {
     expect(
       lineExpectedCents(shipment({ carrierCostCents: 300, codExpectedCents: 1000 }), null, false)
     ).toBe(1000)
+  })
+  it('works the amount out again from the rate and the commission the shipment kept', () => {
+    const priced = shipment({ carrierRateCents: 300, commissionBps: 450, codExpectedCents: 1000 })
+    expect(lineExpectedCents(priced, null, true)).toBe(655)
+    expect(lineExpectedCents(priced, null, false)).toBe(1000)
+    // The carrier's own figure for what it kept replaces the estimate
+    expect(lineExpectedCents(priced, 120, true)).toBe(880)
+    // ...but only when the sender pays the guide: the recipient's guide keeps only the commission
+    expect(
+      lineExpectedCents({ ...priced, shippingPayer: ShippingPayer.RECIPIENT }, 120, true)
+    ).toBe(955)
+    // A cost the carrier reported keeps the commission
+    expect(lineExpectedCents({ ...priced, carrierCostCents: 100 }, null, true)).toBe(855)
   })
   it('has no amount for a prepaid shipment', () => {
     expect(lineExpectedCents(shipment({ codAmountCents: null }), null, true)).toBeNull()

@@ -721,3 +721,18 @@ describe('forza carrier plugin', () => {
     })
   })
 })
+
+describe('the fee settings of Forza', () => {
+  const { feeSettings } = createForzaCarrierPlugin()
+  it('takes a commission and prices its one service', () => {
+    expect(feeSettings?.commission).toBe(true)
+    expect(feeSettings?.rateServices.map(service => service.code)).toEqual(['home'])
+    expect(
+      feeSettings?.rateServiceOf({
+        cod: true,
+        serviceCode: 'home',
+        shippingPayer: ShippingPayer.SENDER
+      })
+    ).toBe('home')
+  })
+})

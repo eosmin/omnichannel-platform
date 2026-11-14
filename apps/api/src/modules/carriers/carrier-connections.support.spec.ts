@@ -16,11 +16,14 @@ import {
 import {
   connectAnswerSchema,
   connectFieldsProblem,
+  commissionToKeep,
   defaultServiceCodeOf,
+  feesChangeOf,
   filterLocations,
   healthReasonOf,
   locationsAnswerSchema,
   localMetadataSchema,
+  ratesViewOf,
   seedServices,
   seedStatusMappings,
   settingsProblem
@@ -322,5 +325,74 @@ describe('locationsAnswerSchema and filterLocations', () => {
     expect(filterLocations(places, '  ')).toEqual(places)
     expect(filterLocations(places, undefined)).toEqual(places)
     expect(filterLocations(places, 'zzz')).toEqual([])
+  })
+})
+
+describe('ratesViewOf', () => {
+  it('shows the prices that are whole cents in range and nothing else', () => {
+    expect(ratesViewOf({ CCE: 300, SEC: 0 })).toEqual({ CCE: 300, SEC: 0 })
+    expect(ratesViewOf({ CCE: 300, SER: 'x', SEC: -1, OTHER: 1.5 })).toEqual({ CCE: 300 })
+  })
+  it('is empty for a connection with no table, or one that is not an object', () => {
+    expect(ratesViewOf(null)).toEqual({})
+    expect(ratesViewOf([300])).toEqual({})
+    expect(ratesViewOf('x')).toEqual({})
+  })
+})
+
+describe('ratesViewOf with the declared services', () => {
+  it('leaves out a service the plugin no longer declares', () => {
+    expect(ratesViewOf({ CCE: 300, OLD: 50 }, ['CCE', 'SEC'])).toEqual({ CCE: 300 })
+    expect(ratesViewOf({ CCE: 300, OLD: 50 })).toEqual({ CCE: 300, OLD: 50 })
+  })
+})
+
+describe('commissionToKeep', () => {
+  it('keeps 0 as null for a carrier that takes no commission, and as 0 for one that does', () => {
+    expect(commissionToKeep({ commission: false }, 0)).toBeNull()
+    expect(commissionToKeep({ commission: true }, 0)).toBe(0)
+    expect(commissionToKeep({ commission: false }, null)).toBeNull()
+    expect(commissionToKeep({ commission: true }, 450)).toBe(450)
+    expect(commissionToKeep({ commission: true }, undefined)).toBeUndefined()
+  })
+})
+
+describe('feesChangeOf', () => {
+  const before = { commissionBps: 450, serviceRatesCents: { CCE: 300, SEC: 0 } }
+  it('is null when nothing the edit sends differs, and a field it does not send is not a change', () => {
+    expect(feesChangeOf(before, {})).toBeNull()
+    expect(
+      feesChangeOf(before, { commissionBps: 450, serviceRatesCents: { CCE: 300, SEC: 0 } })
+    ).toBeNull()
+  })
+  it('names the commission with its old and new value', () => {
+    expect(feesChangeOf(before, { commissionBps: 500 })).toEqual({
+      commissionBps: { from: 450, to: 500 }
+    })
+    expect(feesChangeOf(before, { commissionBps: null })).toEqual({
+      commissionBps: { from: 450, to: null }
+    })
+  })
+  it('names each rate that was added, changed or removed', () => {
+    expect(feesChangeOf(before, { serviceRatesCents: { CCE: 350, SER: 200 } })).toEqual({
+      serviceRatesCents: {
+        CCE: { from: 300, to: 350 },
+        SEC: { from: 0, to: null },
+        SER: { from: null, to: 200 }
+      }
+    })
+    expect(feesChangeOf(before, { serviceRatesCents: null })).toEqual({
+      serviceRatesCents: { CCE: { from: 300, to: null }, SEC: { from: 0, to: null } }
+    })
+  })
+  it('does not read the prototype for a service named like one of its members', () => {
+    expect(
+      feesChangeOf(
+        { commissionBps: null, serviceRatesCents: {} },
+        { serviceRatesCents: { toString: 5 } }
+      )
+    ).toEqual({
+      serviceRatesCents: { toString: { from: null, to: 5 } }
+    })
   })
 })

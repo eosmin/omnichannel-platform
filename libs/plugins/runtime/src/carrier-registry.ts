@@ -24,6 +24,7 @@ import {
   printable,
   snapshotCapabilities
 } from './contract-rules'
+import { type FeeSettingsSnapshot, NO_FEE_SETTINGS, snapshotFeeSettings } from './fee-manifest'
 
 const METHODS_BY_CAPABILITY = [
   [CarrierCapability.INTERNAL_GUIDE, 'buildLabelLayout'],
@@ -82,6 +83,8 @@ export class CarrierRegistry {
       capabilities: ReadonlySet<CarrierCapabilityType>
       // The form of the connection as it was when the carrier passed its contract: what a page draws, never the live object
       connectFields: readonly ConnectFieldSnapshot[]
+      // The commission and the rates per service it declared, as they were then
+      feeSettings: FeeSettingsSnapshot
     }
   >()
 
@@ -94,9 +97,14 @@ export class CarrierRegistry {
     // Read once, as the channel registry does
     const id = plugin.id
     const capabilities = snapshotCapabilities(plugin.capabilities)
-    const connectFields = this.validateContract(plugin, id, capabilities)
+    const { connectFields, feeSettings } = this.validateContract(plugin, id, capabilities)
     if (this.plugins.has(id)) throw pluginAlreadyRegistered('Carrier', id)
-    this.plugins.set(id, { plugin, capabilities: new Set(capabilities), connectFields })
+    this.plugins.set(id, {
+      plugin,
+      capabilities: new Set(capabilities),
+      connectFields,
+      feeSettings
+    })
     this.logger.info({ pluginId: id, version: plugin.version }, 'carrier registered')
   }
 
@@ -119,6 +127,13 @@ export class CarrierRegistry {
       : []
   }
 
+  // The commission and the rates per service the carrier declared, copied when it registered; nothing for a carrier that declares none
+  feeSettingsOf(carrierId: string): FeeSettingsSnapshot {
+    return CARRIER_IDS.has(carrierId)
+      ? (this.plugins.get(carrierId as CarrierIdType)?.feeSettings ?? NO_FEE_SETTINGS)
+      : NO_FEE_SETTINGS
+  }
+
   list(): CarrierPlugin[] {
     return [...this.plugins.values()].map(entry => entry.plugin)
   }
@@ -133,7 +148,7 @@ export class CarrierRegistry {
     plugin: CarrierPlugin,
     id: string,
     capabilities: readonly CarrierCapabilityType[]
-  ): readonly ConnectFieldSnapshot[] {
+  ): { connectFields: readonly ConnectFieldSnapshot[]; feeSettings: FeeSettingsSnapshot } {
     if (plugin.type !== PluginTypes.CARRIER) {
       throw contractViolation(`Carrier ${printable(id)} is not a carrier plugin`)
     }
@@ -151,6 +166,10 @@ export class CarrierRegistry {
       plugin.connectFields === undefined
         ? []
         : snapshotConnectFields(plugin.connectFields, id, 'declares invalid connect fields')
+    const feeSettings =
+      plugin.feeSettings === undefined
+        ? NO_FEE_SETTINGS
+        : snapshotFeeSettings(plugin.feeSettings, id)
     // A shared secret proves less than a signature: the worker confirms DELIVERED and RETURNED with the carrier before it applies
     // them (TDD_17 §4.9), so a plugin that declares one must be able to be asked
     if (plugin.webhookTrust !== undefined) {
@@ -215,6 +234,6 @@ export class CarrierRegistry {
         )
       }
     }
-    return connectFields
+    return { connectFields, feeSettings }
   }
 }

@@ -1671,6 +1671,8 @@ model CarrierConnection {
   minShippingFeeCents     Int?      @map("min_shipping_fee_cents")
   maxShippingFeeCents     Int?      @map("max_shipping_fee_cents")
   remittanceDeductsFee    Boolean   @default(false) @map("remittance_deducts_fee") // The carrier subtracts its fee from what it remits when the sender pays (§4.15)
+  commissionBps           Int?      @map("commission_bps") // The carrier's commission over the cash it collects, in basis points (450 = 4.5 %): agreed with the carrier, null = none (§4.15)
+  serviceRatesCents       Json?     @map("service_rates_cents") // The cost of a guide by rate service of the carrier ({ "CCE": 300 }), for a carrier that does not report it (§4.15)
   lastHealthyAt           DateTime? @map("last_healthy_at")
   lastError               String?   @map("last_error")
   createdAt               DateTime  @default(now()) @map("created_at")
@@ -1757,6 +1759,8 @@ model Shipment {
   trackingUrl        String?   @map("tracking_url")
   labelMediaId       String?   @map("label_media_id") // Media purpose SHIPPING_LABEL; plain column like the other media ids
   carrierCostCents   Int?      @map("carrier_cost_cents") // When the carrier reports it
+  carrierRateCents   Int?      @map("carrier_rate_cents") // The connection's rate for the service of the guide, kept when the guide was made (§4.15)
+  commissionBps      Int?      @map("commission_bps") // The connection's commission when the guide was made, in basis points (§4.15)
   refundStatus       String    @default("not_applicable") @map("refund_status") // GuideRefundStatus
   idempotencyKey     String    @map("idempotency_key") // Unique per store (@@unique below)
   pickupId           String?   @map("pickup_id")

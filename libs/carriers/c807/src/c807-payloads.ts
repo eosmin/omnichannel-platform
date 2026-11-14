@@ -17,10 +17,12 @@ export type C807ServiceType = (typeof C807ServiceTypes)[keyof typeof C807Service
 //                                                          fee out of what it collects, whoever is said to pay the shipping
 //   product already paid, carrier paid by the recipient  -> SEC (C807 recognizes its own rate and keeps it)
 //   nothing to collect, carrier paid by the sender       -> SER (an order paid in full, an exchange of total 0)
-export function c807ServiceTypeOf(
-  params: Pick<CreateShipmentParams, 'cod' | 'shippingPayer'>
-): C807ServiceType {
-  if (params.cod !== null) return C807ServiceTypes.COD
+export function c807ServiceTypeOf(params: {
+  // Whether the guide collects the product: the one question the type of service asks of the amount
+  collects: boolean
+  shippingPayer: ShippingPayer
+}): C807ServiceType {
+  if (params.collects) return C807ServiceTypes.COD
   return params.shippingPayer === ShippingPayer.RECIPIENT
     ? C807ServiceTypes.RECIPIENT_PAYS
     : C807ServiceTypes.STANDARD
@@ -55,7 +57,10 @@ export function toC807Guide(
   const { recipient } = params
   if (!recipient.locationIds)
     throw new CarrierRejectedError('The delivery place of C807 is missing')
-  const type = c807ServiceTypeOf(params)
+  const type = c807ServiceTypeOf({
+    collects: params.cod !== null,
+    shippingPayer: params.shippingPayer
+  })
   // C807 refuses a guide with no e-mail for the recipient (sandbox, 2026-11-14)
   // An e-mail longer than C807 takes is no e-mail of the customer: the fallback of the connection goes in its place
   const own =

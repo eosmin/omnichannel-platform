@@ -46,6 +46,14 @@ export const C807ConnectFieldKeys = {
   SITE_HELP: 'settings.carriers.connect.fields.c807.siteHelp'
 } as const
 
+// The services with a rate of their own: the type of the guide (`tipo_servicio`) is what C807 charges by. The labels are message keys the
+// web app translates (`settings.carriers.rates.c807.*`)
+export const C807RateServices = [
+  { code: C807ServiceTypes.COD, labelKey: 'settings.carriers.rates.c807.cce' },
+  { code: C807ServiceTypes.RECIPIENT_PAYS, labelKey: 'settings.carriers.rates.c807.sec' },
+  { code: C807ServiceTypes.STANDARD, labelKey: 'settings.carriers.rates.c807.ser' }
+] as const
+
 // The single service of the catalog: the type of the guide follows the order, and `tipo_entrega` is a setting of the connection
 export const C807_DEFAULT_SERVICE_CODE = 'standard'
 

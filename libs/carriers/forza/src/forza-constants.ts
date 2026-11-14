@@ -85,6 +85,10 @@ export const FORZA_GUIDE_PATTERN = /^([A-Za-z]{1,4})(\d{1,12})$/
 // The single service the documentation describes: home delivery (`idDeliveryOption` 1, "DOMICILIO"). Whether it
 // is a cash-on-delivery service is decided by the COD object of the request, not by a code.
 export const FORZA_HOME_SERVICE_CODE = 'home'
+// Its rate is the one of the service; the label is a message key the web app translates
+export const ForzaRateServices = [
+  { code: FORZA_HOME_SERVICE_CODE, labelKey: 'settings.carriers.rates.forza.home' }
+] as const
 export const ForzaDelivery = { OPTION_ID: '1', DESCRIPTION: 'DOMICILIO' } as const
 
 // Pickup vehicles (`TypeVehicleId`): motorcycle, van, truck
