@@ -7,6 +7,10 @@ export function mayOpenStoreSettings(can: (permission: Permission) => boolean): 
   return (
     can(ClientPermissions.ORG_MANAGE_STORES) ||
     can(ClientPermissions.SETTINGS_VIEW) ||
-    can(ClientPermissions.TEAM_VIEW)
+    can(ClientPermissions.TEAM_VIEW) ||
+    // A role that only manages one of these (an integrator with API keys) still has a page to open
+    can(ClientPermissions.SETTINGS_MANAGE_WEBHOOKS) ||
+    can(ClientPermissions.SETTINGS_MANAGE_API_KEYS) ||
+    can(ClientPermissions.SETTINGS_MANAGE_RETENTION)
   )
 }

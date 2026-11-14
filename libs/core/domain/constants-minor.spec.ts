@@ -137,7 +137,9 @@ describe('DestructiveActionTiers', () => {
       'DISCONNECT_CARRIER_WITH_OPEN_SHIPMENTS',
       'MARK_GUIDE_VOIDED_BY_HAND',
       'ROTATE_CARRIER_WEBHOOK_SECRET',
-      'VOID_CONFIRMED_REMITTANCE'
+      'VOID_CONFIRMED_REMITTANCE',
+      'DELETE_WEBHOOK',
+      'ROTATE_WEBHOOK_SECRET'
     ]) {
       expect(tierOf[action]).toBe(DestructiveActionTierLevels.HIGH)
     }

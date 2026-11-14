@@ -116,6 +116,20 @@ describe('settings entries', () => {
     ])
   })
 
+  it('shows Webhooks, API keys and Data retention each to who holds its own permission, and to nobody else', () => {
+    const entries = storeSettingsEntries('s-1')
+    const hrefsOf = (...held: string[]): string[] =>
+      visibleEntries(entries, holding(...held)).map(entry => entry.href)
+    expect(hrefsOf(Permissions.SETTINGS_MANAGE_WEBHOOKS)).toEqual(['/s/s-1/settings/webhooks'])
+    expect(hrefsOf(Permissions.SETTINGS_MANAGE_API_KEYS)).toEqual(['/s/s-1/settings/api-keys'])
+    expect(hrefsOf(Permissions.SETTINGS_MANAGE_RETENTION)).toEqual(['/s/s-1/settings/retention'])
+    // settings:view opens none of the three: they act on credentials and on deleting data
+    const viewer = hrefsOf(Permissions.SETTINGS_VIEW)
+    expect(viewer).not.toContain('/s/s-1/settings/webhooks')
+    expect(viewer).not.toContain('/s/s-1/settings/api-keys')
+    expect(viewer).not.toContain('/s/s-1/settings/retention')
+  })
+
   it('hides Order messages from who may see settings but not orders', () => {
     const hrefs = visibleEntries(
       storeSettingsEntries('s-1'),
