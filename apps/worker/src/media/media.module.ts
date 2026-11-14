@@ -13,6 +13,7 @@ import { CarriersWorkerModule } from '../carriers/carriers.module'
 import { InventoryReconcileModule } from '../inventory/inventory.module'
 import { HeavyProcessingProcessor } from '../processors/heavy-processing.processor'
 import { ProcessorSupport } from '../processors/processor-support'
+import { RetentionWorkerModule } from '../retention/retention.module'
 import { ShippingWorkerModule } from '../shipping/shipping.module'
 
 import { ClamavClient } from './clamav.client'
@@ -33,6 +34,8 @@ import { UnavailableFileMarker } from './unavailable-file-marker.service'
     PluginsModule.forRoot(),
     // The processor of the heavy queue also runs the reconciliation job of the stock
     InventoryReconcileModule,
+    // ... and the nightly retention of a store
+    RetentionWorkerModule,
     ShippingWorkerModule,
     // The processor of the heavy queue also replays the carrier events kept under a code the owner mapped
     CarriersWorkerModule

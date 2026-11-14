@@ -4,6 +4,7 @@ import { QueuesPlatformModule } from '@platform/core/http'
 
 import { ExportsProcessor } from '../processors/exports.processor'
 import { ProcessorSupport } from '../processors/processor-support'
+import { RetentionWorkerModule } from '../retention/retention.module'
 
 import { AnalyticsExportWriter } from './analytics/analytics-export.writer'
 import { ScheduledReportRunner } from './analytics/scheduled-report.runner'
@@ -15,7 +16,7 @@ import { ZipExportWriter } from './zip-export-writer'
 // The storage, the database and the logger come from the platform module of the worker, the audit
 // service from the AuditModule of the worker module. Exports the cleaner: the scheduler runs it.
 @Module({
-  imports: [QueuesPlatformModule],
+  imports: [QueuesPlatformModule, RetentionWorkerModule],
   providers: [
     ProcessorSupport,
     CsvExportWriter,
