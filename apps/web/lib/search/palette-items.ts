@@ -93,3 +93,11 @@ export function moveActive(current: number, step: 1 | -1, length: number): numbe
   if (current < 0) return step === 1 ? 0 : length - 1
   return (current + step + length) % length
 }
+
+// The place of a hit among the hits the person was shown (the pages and the closing row do not count): what the report of
+// what was searched keeps of a click. Null for a row that is not a hit.
+export function hitPosition(items: readonly PaletteItem[], item: PaletteItem): number | null {
+  if (item.kind !== 'hit') return null
+  const position = items.filter(other => other.kind === 'hit').indexOf(item)
+  return position < 0 ? null : position
+}

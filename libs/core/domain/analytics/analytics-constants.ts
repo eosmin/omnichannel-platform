@@ -43,6 +43,8 @@ export type AnalyticsMetric = (typeof AnalyticsMetrics)[keyof typeof AnalyticsMe
 // Raw events written to analytics_events by TRACK_EVENT jobs
 export const AnalyticsEventNames = {
   SEARCH_PERFORMED: 'search.performed',
+  // A person opened a result of a search (TDD_08 §5.6): which kind and which position, never which result
+  SEARCH_CLICKED: 'search.clicked',
   EMAIL_ENGAGEMENT: 'email.engagement',
   ORDER_CREATED: 'order.created'
 } as const

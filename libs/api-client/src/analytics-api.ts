@@ -7,6 +7,7 @@ import {
   type TimeGranularityType
 } from '@platform/core/analytics'
 import { ApiRoutes } from '@platform/core/api'
+import { SearchTrackedScopes } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
 
@@ -62,6 +63,34 @@ export function fetchMetrics(
   }
   return client.request(`${ApiRoutes.analytics.metrics}?${params.toString()}`, {
     schema: metricsResultSchema,
+    storeId,
+    signal
+  })
+}
+
+// GET /analytics/search: what was searched in the store (Step 5.2 PR C3, TDD_08 §5.6)
+export const searchReportSchema = z.object({
+  days: z.number(),
+  scopes: z.array(
+    z.object({
+      scope: z.enum(Object.values(SearchTrackedScopes)),
+      searches: z.number(),
+      zeroResults: z.number(),
+      clicks: z.number()
+    })
+  ),
+  zeroResultQueries: z.array(z.object({ query: z.string(), occurrences: z.number() }))
+})
+export type SearchReportView = z.output<typeof searchReportSchema>
+
+export function fetchSearchReport(
+  client: ApiClient,
+  storeId: string,
+  days: number,
+  signal?: AbortSignal
+): Promise<SearchReportView> {
+  return client.request(`${ApiRoutes.analytics.search}?days=${days}`, {
+    schema: searchReportSchema,
     storeId,
     signal
   })

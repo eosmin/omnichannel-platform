@@ -36,7 +36,8 @@ export const QueryKeys = {
     metrics: (storeId: string, request: AnalyticsRequestKey) =>
       ['analytics', storeId, 'metrics', request] as const,
     myPerformance: (storeId: string) => ['analytics', storeId, 'my-performance'] as const,
-    reports: (storeId: string) => ['analytics', storeId, 'reports'] as const
+    reports: (storeId: string) => ['analytics', storeId, 'reports'] as const,
+    search: (storeId: string, days: number) => ['analytics', storeId, 'search', days] as const
   },
   messages: {
     all: (storeId: string) => ['messages', storeId] as const,
@@ -92,7 +93,9 @@ export const QueryKeys = {
   // The search (Step 5.1): the palette and the results page, by text and, on the page, by kind of thing
   search: {
     all: (storeId: string) => ['search', storeId] as const,
-    global: (storeId: string, q: string) => ['search', storeId, 'global', q] as const,
+    // A passive search (the palette's) is not the same request as the page's: it is not counted, so the page asks again
+    global: (storeId: string, q: string, passive = false) =>
+      ['search', storeId, 'global', q, passive] as const,
     scoped: (storeId: string, scope: string, q: string) =>
       ['search', storeId, 'scoped', scope, q] as const
   },

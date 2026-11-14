@@ -50,6 +50,10 @@ const SETTINGS_ADMIN =
   'A setting of how the store works (routing, hours, snippets, inbox behaviour): the owner decides it, a plugin reads the effect'
 const OWN_PERFORMANCE =
   'The figures of one person for their inbox widget: the id comes from the token; a plugin reads the metrics of the store'
+const SEARCH_CLICK =
+  'The record that a person opened a search result, written from the screen the person is using: a plugin has no palette or results page to click on'
+const SEARCH_REPORT =
+  'The report of what people searched in the store, for the dashboard: a plugin has no screen for it and reads the metrics of the store'
 const BELL_AND_SEARCH =
   'Search over what the person sees in the app bar; a plugin lists with the filters of each resource'
 
@@ -302,11 +306,13 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'search.customers': { scope: 'customers:read' },
   'search.orders': { scope: 'orders:read' },
   'search.products': { scope: 'products:read' },
+  'search.clicks': { none: SEARCH_CLICK },
   'analytics.metrics': { scope: 'analytics:read' },
   'analytics.myPerformance': { none: OWN_PERFORMANCE },
   'analytics.dashboard': { scope: 'analytics:read' },
   'analytics.reports': { scope: 'analytics:read' },
   'analytics.reportById': { scope: 'analytics:read' },
+  'analytics.search': { none: SEARCH_REPORT },
   'analytics.export': { proposed: ['analytics:read', 'exports:write'], step: STEP },
 
   // Channels and settings

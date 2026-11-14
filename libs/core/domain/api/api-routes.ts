@@ -253,7 +253,9 @@ export const ApiRoutes = {
     messages: '/search/messages',
     customers: '/search/customers',
     orders: '/search/orders',
-    products: '/search/products'
+    products: '/search/products',
+    // The result a person opened (POST)
+    clicks: '/search/clicks'
   },
 
   notifications: {
@@ -273,7 +275,9 @@ export const ApiRoutes = {
     dashboard: '/analytics/dashboard',
     reports: '/analytics/reports',
     reportById: (id: string) => `/analytics/reports/${id}`,
-    export: '/analytics/export'
+    export: '/analytics/export',
+    // What was searched: volume, zero results, clicks and the texts nobody found (GET)
+    search: '/analytics/search'
   },
 
   plugins: {

@@ -167,6 +167,30 @@
         "confirm": "Delete report",
         "done": "The report was deleted."
       }
+    },
+    "searches": {
+      "title": "Searches",
+      "note": "What was searched in the last {days} days, today included. The box that opens as you type counts only the results you open.",
+      "loading": "Loading",
+      "failed": "This could not be loaded.",
+      "empty": "Nobody has searched in this period.",
+      "caption": "Searches, searches that found nothing and results opened, for each kind of search",
+      "scope": "Searched in",
+      "searches": "Searches",
+      "zeroResults": "Found nothing",
+      "clicks": "Opened",
+      "scopes": {
+        "global": "Everything (search box)",
+        "customers": "Customers",
+        "messages": "Messages",
+        "orders": "Orders",
+        "products": "Products"
+      },
+      "gaps": {
+        "title": "Products people looked for and did not find",
+        "empty": "Every search of the catalog found something.",
+        "times": "{count, plural, one {# time} other {# times}}"
+      }
     }
   }
 }

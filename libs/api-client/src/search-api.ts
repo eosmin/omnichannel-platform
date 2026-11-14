@@ -1,7 +1,12 @@
 import { z } from 'zod'
 
 import { ApiRoutes } from '@platform/core/api'
-import { SearchEntities } from '@platform/core/domain'
+import {
+  SearchApiParams,
+  SearchEntities,
+  type SearchEntity,
+  type SearchTrackedScope
+} from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
 
@@ -92,14 +97,17 @@ function queryString(params: Record<string, string | number | undefined>): strin
   return `?${query.toString()}`
 }
 
-// A few hits of each kind the member may search (the palette and the "all" tab of the results page)
+// A few hits of each kind the member may search (the palette and the "all" tab of the results page). `passive` is the
+// palette's as-you-type search: answered like any other, and not counted in the report of what was searched.
 export function searchGlobal(
   client: ApiClient,
   storeId: string,
   q: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  options: { passive?: boolean } = {}
 ): Promise<GlobalSearchView> {
-  return client.request(`${ApiRoutes.search.global}${queryString({ q })}`, {
+  const params = { q, [SearchApiParams.PASSIVE]: options.passive === true ? 'true' : undefined }
+  return client.request(`${ApiRoutes.search.global}${queryString(params)}`, {
     schema: globalResultSchema,
     storeId,
     signal
@@ -155,5 +163,30 @@ export function searchCatalog(
     schema: productsPageSchema,
     storeId,
     signal
+  })
+}
+
+// The result a person opened, for the report of what was searched. It is never worth a wait or an error on the screen:
+// whoever calls it does not await it, and a failure is a click that was not counted.
+export interface SearchClick {
+  // The text that was searched; the api hashes it and keeps nothing of it
+  q: string
+  // What the search was asked of, and the kind of thing that was opened
+  scope: SearchTrackedScope
+  entity: SearchEntity
+  // The place of the result in the list the person saw (0 is the first)
+  position: number
+}
+
+export function recordSearchClick(
+  client: ApiClient,
+  storeId: string,
+  click: SearchClick
+): Promise<undefined> {
+  return client.request(ApiRoutes.search.clicks, {
+    method: 'POST',
+    body: click,
+    schema: z.undefined(),
+    storeId
   })
 }

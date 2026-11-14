@@ -6,16 +6,18 @@ import { useTranslations } from 'next-intl'
 import { type KeyboardEvent, type ReactElement, useEffect, useId, useMemo, useState } from 'react'
 
 import { AppPaths } from '@platform/api-client'
-import { SearchConfig, type SearchEntity } from '@platform/core/domain'
+import { SearchConfig, type SearchEntity, SearchTrackedScopes } from '@platform/core/domain'
 
 import { flattenGroups, hitKey } from '../../lib/search/hits'
 import {
   hitItems,
+  hitPosition,
   matchingPages,
   moveActive,
   type PaletteItem,
   pageCommands
 } from '../../lib/search/palette-items'
+import { recordClick } from '../../lib/search/record-click'
 import { readySearchText } from '../../lib/search/search-text'
 import { useGlobalSearch } from '../../lib/search/use-search'
 import { useDebouncedValue } from '../../lib/use-debounced-value'
@@ -46,7 +48,8 @@ export function CommandPalette({
   const [active, setActive] = useState(-1)
   const ready = readySearchText(useDebouncedValue(text, SearchConfig.DEBOUNCE_MS))
   const isTypingMore = ready !== readySearchText(text)
-  const search = useGlobalSearch(storeId, ready)
+  // As-you-type: not counted as a search; the result the person opens, or the page of results they go to, is
+  const search = useGlobalSearch(storeId, ready, true)
 
   // A closed palette starts empty the next time: yesterday's text is not what the person comes to look for
   useEffect(() => {
@@ -80,6 +83,16 @@ export function CommandPalette({
   function go(item: PaletteItem | undefined): void {
     if (item === undefined) return
     onOpenChange(false)
+    const position = hitPosition(items, item)
+    // The list of an earlier text can still be on the screen while the new one loads: its hits are not results of `ready`
+    if (item.kind === 'hit' && position !== null && ready !== null && !search.isPlaceholderData) {
+      recordClick(storeId, {
+        q: ready,
+        scope: SearchTrackedScopes.GLOBAL,
+        entity: item.item.entity,
+        position
+      })
+    }
     // A customer has no page: the profile opens as the drawer every other screen of the store opens
     if (item.kind === 'hit' && item.href === null) openCustomer(item.item.hit.id)
     else if (item.href !== null) router.push(item.href)

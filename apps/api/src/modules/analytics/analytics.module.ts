@@ -7,11 +7,12 @@ import { AnalyticsController } from './analytics.controller'
 import { MetricsQueryService } from './metrics-query.service'
 import { MyPerformanceService } from './my-performance.service'
 import { ReportsService } from './reports.service'
+import { SearchReportService } from './search-report.service'
 
 // The metrics of the dashboard (TDD_11 §7.3). The database is the app's module.
 @Module({
   imports: [ExportsModule, TenancyModule],
   controllers: [AnalyticsController],
-  providers: [MetricsQueryService, MyPerformanceService, ReportsService]
+  providers: [MetricsQueryService, MyPerformanceService, ReportsService, SearchReportService]
 })
 export class AnalyticsModule {}

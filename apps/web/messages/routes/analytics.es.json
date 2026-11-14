@@ -167,6 +167,30 @@
         "confirm": "Eliminar reporte",
         "done": "Se eliminó el reporte."
       }
+    },
+    "searches": {
+      "title": "Búsquedas",
+      "note": "Lo que se buscó en los últimos {days} días, hoy incluido. La caja que se abre al escribir cuenta solo los resultados que abres.",
+      "loading": "Cargando",
+      "failed": "No se pudo cargar.",
+      "empty": "Nadie ha buscado en este periodo.",
+      "caption": "Búsquedas, búsquedas sin resultados y resultados abiertos, para cada tipo de búsqueda",
+      "scope": "Se buscó en",
+      "searches": "Búsquedas",
+      "zeroResults": "Sin resultados",
+      "clicks": "Abiertos",
+      "scopes": {
+        "global": "Todo (caja de búsqueda)",
+        "customers": "Clientes",
+        "messages": "Mensajes",
+        "orders": "Órdenes",
+        "products": "Productos"
+      },
+      "gaps": {
+        "title": "Productos que se buscaron y no se encontraron",
+        "empty": "Toda búsqueda del catálogo encontró algo.",
+        "times": "{count, plural, one {# vez} other {# veces}}"
+      }
     }
   }
 }

@@ -9,6 +9,8 @@ import { AnalyticsEventNames } from '@platform/core/analytics'
 import {
   foldForSearch,
   SEARCH_HASH_KEY,
+  type SearchClickData,
+  type SearchEntity,
   type SearchEventData,
   type SearchTrackedScope,
   SearchTrackedScopes,
@@ -33,6 +35,9 @@ export class SearchTracker {
   // Events not yet taken by the queue. A queue whose connection is down keeps its promises pending, so the count is
   // capped: past it an event is dropped, which costs a row of a report and never memory or an answer.
   private inFlight = 0
+  // Clicks have a budget of their own: a flood of them (they come from a button anyone with a search permission can press
+  // in a loop) must not use up the room of the searches of every other store of the process
+  private clicksInFlight = 0
 
   track(
     storeId: string,
@@ -48,12 +53,46 @@ export class SearchTracker {
       durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
       ...(resultCount === 0 && mayKeepText(scope, query) ? { query: capUnits(query) } : {})
     }
-    if (this.inFlight >= SearchTracking.MAX_IN_FLIGHT) return this.logBacklog(scope)
-    this.inFlight++
+    this.enqueue(storeId, scope, AnalyticsEventNames.SEARCH_PERFORMED, data)
+  }
+
+  // The result a person opened leaves `search.clicked`: the hash of the text they searched (the same one the search
+  // left, so the two group), what the search was asked of, the kind of thing opened and its place in the list. Never
+  // the text and never the result.
+  trackClick(
+    storeId: string,
+    click: { scope: SearchTrackedScope; entity: SearchEntity; position: number },
+    query: string
+  ): void {
+    const data: SearchClickData = {
+      queryHash: queryHashOf(this.hashKey, storeId, query),
+      scope: click.scope,
+      entity: click.entity,
+      position: click.position
+    }
+    this.enqueue(storeId, click.scope, AnalyticsEventNames.SEARCH_CLICKED, data)
+  }
+
+  private enqueue(
+    storeId: string,
+    scope: SearchTrackedScope,
+    event: typeof AnalyticsEventNames.SEARCH_PERFORMED | typeof AnalyticsEventNames.SEARCH_CLICKED,
+    data: SearchEventData | SearchClickData
+  ): void {
+    const isClick = event === AnalyticsEventNames.SEARCH_CLICKED
+    if ((isClick ? this.clicksInFlight : this.inFlight) >= SearchTracking.MAX_IN_FLIGHT) {
+      return this.logBacklog(scope)
+    }
+    const release = (): void => {
+      if (isClick) this.clicksInFlight--
+      else this.inFlight--
+    }
+    if (isClick) this.clicksInFlight++
+    else this.inFlight++
     try {
       void this.queue
         .add(JobNames.TRACK_SEARCH, {
-          event: AnalyticsEventNames.SEARCH_PERFORMED,
+          event,
           storeId,
           data,
           timestamp: new Date().toISOString(),
@@ -61,11 +100,9 @@ export class SearchTracker {
           eventKey: randomUUID()
         })
         .catch((error: unknown) => this.logQueueFailure(error, scope))
-        .finally(() => {
-          this.inFlight--
-        })
+        .finally(release)
     } catch (error) {
-      this.inFlight--
+      release()
       // A queue that throws at once (closed, not connected) is the same: the search was answered
       this.logQueueFailure(error, scope)
     }
@@ -88,16 +125,19 @@ export class SearchTracker {
 // A stretch of the text with no letter in it that holds seven digits or more, whatever separates them (spaces, dashes,
 // commas, slashes): a phone number, a document or an account. "ana 71234567" and "7123 - 4567" are personal, "talla 42
 // modelo 2026" is not.
+// The text is read in compatibility form first, so a fullwidth or Arabic-Indic digit counts as a digit and a fullwidth `＠`
+// is an `@`: a number written another way is as personal as one written with ASCII digits.
 function hasPersonalDigits(query: string): boolean {
   return query
+    .normalize('NFKC')
     .split(/\p{L}/u)
-    .some(stretch => stretch.replace(/\D/g, '').length >= SearchTracking.PERSONAL_DIGITS)
+    .some(stretch => stretch.replace(/\P{Nd}/gu, '').length >= SearchTracking.PERSONAL_DIGITS)
 }
 
 export function mayKeepText(scope: SearchTrackedScope, query: string): boolean {
   if (scope !== SearchTrackedScopes.PRODUCTS) return false
   // A run of digits anywhere is a phone number, a document or an account: "ana 71234567" is as personal as "71234567"
-  return !query.includes('@') && !hasPersonalDigits(query)
+  return !query.normalize('NFKC').includes('@') && !hasPersonalDigits(query)
 }
 
 // At most QUERY_MAX_LENGTH UTF-16 units (what the worker's schema counts), never cutting a character in two: a lone

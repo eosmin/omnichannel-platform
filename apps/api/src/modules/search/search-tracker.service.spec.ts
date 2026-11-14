@@ -3,7 +3,13 @@ import { createHash } from 'node:crypto'
 import type { Queue } from 'bullmq'
 import type { PinoLogger } from 'nestjs-pino'
 
-import { SearchTrackedScopes, searchEventDataSchema, SearchTracking } from '@platform/core/domain'
+import {
+  SearchEntities,
+  searchClickDataSchema,
+  SearchTrackedScopes,
+  searchEventDataSchema,
+  SearchTracking
+} from '@platform/core/domain'
 import { JobNames, type TrackAnalyticsJob } from '@platform/core/queues'
 
 import { capUnits, mayKeepText, queryHashOf, SearchTracker } from './search-tracker.service'
@@ -56,6 +62,14 @@ describe('the text kept of a search', () => {
     expect(mayKeepText(SearchTrackedScopes.PRODUCTS, '7123 - 4567')).toBe(false)
     expect(mayKeepText(SearchTrackedScopes.PRODUCTS, '503, 7123, 4567')).toBe(false)
     expect(mayKeepText(SearchTrackedScopes.PRODUCTS, '503 / 7123 4567')).toBe(false)
+    // Digits and `@` of another script or width are the same number and the same address
+    expect(
+      mayKeepText(SearchTrackedScopes.PRODUCTS, '\uFF17\uFF11\uFF12\uFF13\uFF14\uFF15\uFF16\uFF17')
+    ).toBe(false)
+    expect(
+      mayKeepText(SearchTrackedScopes.PRODUCTS, '\u0667\u0661\u0662\u0663\u0664\u0665\u0666\u0667')
+    ).toBe(false)
+    expect(mayKeepText(SearchTrackedScopes.PRODUCTS, 'ana\uFF20example.com')).toBe(false)
     // A size or a year is not
     expect(mayKeepText(SearchTrackedScopes.PRODUCTS, 'talla 42 modelo 2026')).toBe(true)
   })
@@ -144,5 +158,74 @@ describe('the search tracker', () => {
     ).not.toThrow()
     await new Promise(resolve => setImmediate(resolve))
     expect(warn).toHaveBeenCalledTimes(1)
+  })
+
+  describe('the click on a result', () => {
+    it('queues a track-search job whose data fits the schema the worker checks, with the hash the search left', () => {
+      tracker.track(STORE, SearchTrackedScopes.GLOBAL, 'José Pérez', 2, performance.now())
+      tracker.trackClick(
+        STORE,
+        { scope: SearchTrackedScopes.GLOBAL, entity: SearchEntities.CUSTOMERS, position: 1 },
+        'jose  perez'
+      )
+      const [, searched] = add.mock.calls[0] ?? []
+      const [name, clicked] = add.mock.calls[1] ?? []
+      expect(name).toBe(JobNames.TRACK_SEARCH)
+      expect(clicked?.event).toBe('search.clicked')
+      const data = searchClickDataSchema.parse(clicked?.data)
+      expect(data).toMatchObject({ scope: 'global', entity: 'customers', position: 1 })
+      // The click groups with the search of the same text
+      expect(data.queryHash).toBe(searchEventDataSchema.parse(searched?.data).queryHash)
+      // The two events are two rows: the key of one is not the key of the other
+      expect(clicked?.eventKey).toBeDefined()
+      expect(clicked?.eventKey).not.toBe(searched?.eventKey)
+    })
+
+    it('keeps neither the text nor anything of the result', () => {
+      tracker.trackClick(
+        STORE,
+        { scope: SearchTrackedScopes.PRODUCTS, entity: SearchEntities.PRODUCTS, position: 0 },
+        'zapato rojo 71234567'
+      )
+      const data = add.mock.calls[0]?.[1].data ?? {}
+      expect(Object.keys(data).sort()).toEqual(['entity', 'position', 'queryHash', 'scope'])
+      expect(JSON.stringify(data)).not.toContain('71234567')
+    })
+
+    it('has a budget of its own: a flood of clicks takes no room from the searches', async () => {
+      const waiting: (() => void)[] = []
+      add.mockImplementation(
+        () =>
+          new Promise<void>(resolve => {
+            waiting.push(resolve)
+          })
+      )
+      const click = {
+        scope: SearchTrackedScopes.ORDERS,
+        entity: SearchEntities.ORDERS,
+        position: 0
+      }
+      for (let n = 0; n < SearchTracking.MAX_IN_FLIGHT + 5; n++)
+        tracker.trackClick(STORE, click, 'pedido')
+      expect(add).toHaveBeenCalledTimes(SearchTracking.MAX_IN_FLIGHT)
+      tracker.track(STORE, SearchTrackedScopes.ORDERS, 'pedido', 1, performance.now())
+      expect(add).toHaveBeenCalledTimes(SearchTracking.MAX_IN_FLIGHT + 1)
+      // The shared tracker is left with no event waiting for the cases that follow
+      waiting.forEach(resolve => resolve())
+      await new Promise(resolve => setImmediate(resolve))
+    })
+
+    it('never fails the click when the queue does', async () => {
+      add.mockRejectedValue(new Error('redis down'))
+      expect(() =>
+        tracker.trackClick(
+          STORE,
+          { scope: SearchTrackedScopes.ORDERS, entity: SearchEntities.ORDERS, position: 0 },
+          'pedido 10'
+        )
+      ).not.toThrow()
+      await new Promise(resolve => setImmediate(resolve))
+      expect(warn).toHaveBeenCalledTimes(1)
+    })
   })
 })

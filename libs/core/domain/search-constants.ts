@@ -57,8 +57,20 @@ export const SearchTracking = {
   // A run of this many digits in a text is a phone number, a document or an account: such a text is never kept
   PERSONAL_DIGITS: 7,
   // Events that may wait for the queue at once; past it they are dropped
-  MAX_IN_FLIGHT: 200
+  MAX_IN_FLIGHT: 200,
+  // The place of the result a person opened in the list they were shown (0 is the first): a page of a kind holds at
+  // most SearchConfig.MAX_LIMIT hits
+  MAX_POSITION: SearchConfig.MAX_LIMIT - 1
 } as const
+
+// The parameters of the search routes that are not the text. `passive` marks a search that is not an answer to a
+// question but a step on the way to one (the palette asks as the person types): it is answered like any other and
+// leaves no `search.performed` event, so "cam" and "camis" do not count as two searches in the report. The search the
+// person finishes counts through the results page they open or the result they click.
+export const SearchApiParams = { PASSIVE: 'passive' } as const
+
+// The report of what was searched (`GET /analytics/search`, TDD_08 §5.6): how far back it may look, and how many texts it lists
+export const SearchReportConfig = { DEFAULT_DAYS: 30, MAX_DAYS: 90, ZERO_RESULT_LIMIT: 50 } as const
 
 // The injection token of the secret that keys the hash of a search text (what a search leaves in analytics): a hash with
 // no key could be rebuilt from a guessed phone number or email, and analytics rows outlive any erasure. The value is
