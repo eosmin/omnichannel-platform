@@ -1,9 +1,12 @@
-import { CacheKeys, CacheTTL } from './cache-keys'
+import { CacheKeys, CacheScopes, CacheTTL } from './cache-keys'
 
 describe('CacheKeys', () => {
   it('puts the storeId in every tenant key', () => {
     const keys = [
       CacheKeys.store.settings('s1'),
+      CacheKeys.store.preferences('s1'),
+      CacheKeys.store.tags('s1'),
+      CacheKeys.store.snippets('s1'),
       CacheKeys.store.agents('s1'),
       CacheKeys.conversation.byId('s1', 'c1'),
       CacheKeys.conversation.counts('s1'),
@@ -45,6 +48,22 @@ describe('CacheKeys', () => {
     }
     // The state and the session never share a key, even for the same digest
     expect(CacheKeys.channel.oauthState(digest)).not.toBe(CacheKeys.channel.oauthSession(digest))
+  })
+
+  it('puts the storeId in every scope, so that one store never drops what another cached', () => {
+    for (const scope of [
+      CacheScopes.storeTags('s1'),
+      CacheScopes.storeSnippets('s1'),
+      CacheScopes.storePreferences('s1'),
+      CacheScopes.tenantStore('s1'),
+      CacheScopes.tenantMember('u1', 's1')
+    ]) {
+      expect(scope).toContain('s1')
+      expect(scope).not.toBe(CacheScopes.storeTags('s2'))
+    }
+    expect(CacheScopes.tenantMember('u1', 's1')).not.toBe(CacheScopes.tenantMember('u1', 's2'))
+    expect(CacheScopes.storeTags('s1')).not.toBe(CacheScopes.storeSnippets('s1'))
+    expect(CacheScopes.storeTags('s1')).not.toBe(CacheScopes.storeTags('s2'))
   })
 
   it('has no billing, AI or platform groups', () => {
