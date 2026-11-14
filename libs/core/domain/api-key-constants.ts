@@ -11,6 +11,12 @@ export const ApiKeyLimits = {
   LAST_USED_WRITE_INTERVAL_MS: 60_000
 } as const
 
+// Why a key was revoked by the system rather than by a person, kept in the audit entry of the revocation
+export const ApiKeyRevokeReasons = {
+  // The person who made it was removed from the store: a key does not outlive its maker's place on the team
+  MAKER_REMOVED: 'maker_removed'
+} as const
+
 // A tenant key starts with this, so a leaked one is found by a secret scanner and told from a plugin key
 export const API_KEY_TOKEN_PREFIX = 'pk_live_'
 

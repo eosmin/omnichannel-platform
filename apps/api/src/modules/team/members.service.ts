@@ -4,7 +4,14 @@ import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { AssigneePermissions, type Permission, RoleNames } from '@platform/core/auth'
 import { lockStoreForWrite, PrismaService, type PrismaTransaction } from '@platform/core/database'
-import { ConversationStatus, isSuspended, MembershipStatus } from '@platform/core/domain'
+import {
+  API_KEY_RESOURCE_TYPE,
+  ApiKeyRevokeReasons,
+  ApiKeyStatus,
+  ConversationStatus,
+  isSuspended,
+  MembershipStatus
+} from '@platform/core/domain'
 import {
   ErrorCodes,
   HttpStatusCodes,
@@ -218,10 +225,38 @@ export class MembersService {
         where: { storeId, assignedTo: found.userId },
         data: { assignedTo: null }
       })
-      return found
+      // The keys they made stop working for good: the guard already refuses them while the membership is not
+      // active, but a person who is invited again gets the same membership row back and must not get these back
+      const keys = await tx.apiKey.findMany({
+        where: { storeId, createdBy: found.userId, status: ApiKeyStatus.ACTIVE },
+        select: { id: true, name: true, keyPrefix: true }
+      })
+      if (keys.length > 0) {
+        await tx.apiKey.updateMany({
+          where: { storeId, id: { in: keys.map(key => key.id) } },
+          data: { status: ApiKeyStatus.REVOKED, revokedAt: new Date() }
+        })
+      }
+      return { ...found, revokedKeys: keys }
     })
     await this.tenants.invalidateUser(member.userId, storeId)
     this.realtime.closeStoreUser(storeId, member.userId, ErrorCodes.TENANT_ACCESS_DENIED)
+    for (const key of member.revokedKeys) {
+      this.audit.log({
+        action: AuditAction.API_KEY_REVOKED,
+        actor: { userId: actor.userId },
+        storeId,
+        resourceType: API_KEY_RESOURCE_TYPE,
+        resourceId: key.id,
+        metadata: {
+          name: key.name,
+          keyPrefix: key.keyPrefix,
+          reason: ApiKeyRevokeReasons.MAKER_REMOVED
+        },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent
+      })
+    }
     this.log(AuditAction.MEMBER_REMOVED, storeId, membershipId, actor, {
       userId: member.userId,
       role: member.role.name

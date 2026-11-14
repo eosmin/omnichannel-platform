@@ -119,9 +119,7 @@ export const AssigneePermissions: readonly Permission[] = [
 // are covered by `PermissionsOfUnbuiltAreas`.
 export const ReservedPermissions: Readonly<Record<string, string>> = {
   [Permissions.CONVERSATIONS_CREATE]:
-    'Step 5.6: POST /plugin-api/conversations (scope conversations:write) is the first route that starts a conversation',
-  [Permissions.CONVERSATIONS_DELETE]:
-    'Step 5.4: the manual deletion of a conversation, next to the data retention settings'
+    'Step 5.6: POST /plugin-api/conversations (scope conversations:write) is the first route that starts a conversation'
 }
 
 // The prefixes of the resources whose milestone is not built (Milestones 4 and 5): their permissions

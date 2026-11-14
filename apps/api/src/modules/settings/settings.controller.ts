@@ -14,6 +14,11 @@ import {
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
+import {
+  type SafetySettings,
+  updateSafetySettingsSchema,
+  type UpdateSafetySettingsBody
+} from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
@@ -34,6 +39,7 @@ import {
 import { type InventorySettingsView, InventorySettingsService } from './inventory-settings.service'
 import { PreferencesService } from './preferences.service'
 import { type ReturnSettingsView, ReturnSettingsService } from './return-settings.service'
+import { SafetySettingsService } from './safety-settings.service'
 import {
   type CreateSnippetBody,
   createSnippetSchema,
@@ -71,6 +77,7 @@ export class SettingsController {
     private readonly businessHours: BusinessHoursService,
     private readonly inbox: InboxSettingsService,
     private readonly inventory: InventorySettingsService,
+    private readonly safety: SafetySettingsService,
     private readonly returnSettings: ReturnSettingsService,
     private readonly preferences: PreferencesService
   ) {}
@@ -212,6 +219,24 @@ export class SettingsController {
     @Req() req: AuthenticatedRequest
   ): Promise<InboxSettingsView> {
     return this.inbox.update(store.id, body, actorOf(user, store, req))
+  }
+
+  // Read by whoever works the inbox: the screens ask (or do not) before a destructive action by what it says
+  @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @Get(ApiRoutes.settings.safety)
+  getSafety(@CurrentStore() store: Store): Promise<SafetySettings> {
+    return this.safety.get(store.id)
+  }
+
+  @RequirePermissions(Permissions.SETTINGS_EDIT)
+  @Put(ApiRoutes.settings.safety)
+  putSafety(
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(updateSafetySettingsSchema)) body: UpdateSafetySettingsBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<SafetySettings> {
+    return this.safety.update(store.id, body, actorOf(user, store, req))
   }
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)

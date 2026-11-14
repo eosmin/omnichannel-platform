@@ -17,6 +17,7 @@ import { WidgetDeliveryModule } from '../widget/widget-delivery.module'
 
 import { ConversationBulkService } from './conversation-bulk.service'
 import { ConversationCountsService } from './conversation-counts.service'
+import { ConversationDeletionService } from './conversation-deletion.service'
 import { ConversationOriginsService } from './conversation-origins.service'
 import { ConversationTagsService } from './conversation-tags.service'
 import { ConversationsController } from './conversations.controller'
@@ -40,6 +41,7 @@ import { ConversationsController } from './conversations.controller'
     ConversationCountsService,
     ConversationTagsService,
     ConversationOriginsService,
+    ConversationDeletionService,
     OutboundQueue,
     ReadReceipts,
     RoutingService
