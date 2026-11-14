@@ -19,18 +19,28 @@ import { SearchEntities, type SearchEntity } from '@platform/core/domain'
 
 import { apiClient } from '../api'
 
+const COUNTED_SEARCH = {
+  staleTime: Infinity,
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: false
+} as const
+
 // The palette and the "all" tab: a few hits of each kind. `text` is already the debounced, ready text (or null: nothing
-// to ask yet); the previous answer stays on the screen while the next one loads, so the list does not blink.
+// to ask yet); the previous answer stays on the screen while the next one loads, so the list does not blink. The palette
+// asks `passive`: it searches as the person types, which the report of what was searched does not count.
 export function useGlobalSearch(
   storeId: string,
-  text: string | null
+  text: string | null,
+  passive = false
 ): UseQueryResult<GlobalSearchView> {
   return useQuery({
-    queryKey: QueryKeys.search.global(storeId, text ?? ''),
-    queryFn: ({ signal }) => searchGlobal(apiClient, storeId, text ?? '', signal),
+    queryKey: QueryKeys.search.global(storeId, text ?? '', passive),
+    queryFn: ({ signal }) => searchGlobal(apiClient, storeId, text ?? '', signal, { passive }),
     enabled: text !== null,
     placeholderData: keepPreviousData,
-    staleTime: 0
+    // A search that counts is made once for each text: a refocused window, a reconnect or a return to the tab must not
+    // make it again, or the report would count one search many times. The palette's passive one may refresh freely.
+    ...(passive ? { staleTime: 0 } : COUNTED_SEARCH)
   })
 }
 
@@ -62,6 +72,7 @@ export function useScopedSearch(
       }
     },
     enabled: text !== null,
+    ...COUNTED_SEARCH,
     // The previous answer stays while the next loads, but only for the same kind: the hits of another tab under this
     // one would be the wrong kind of result
     placeholderData: previous => (previous?.scope === scope ? previous : undefined)

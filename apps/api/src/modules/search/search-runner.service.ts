@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 
+import type { Permission } from '@platform/core/auth'
 import {
   ProductSearchConfig,
   SearchConfig,
@@ -7,12 +8,14 @@ import {
   type SearchTrackedScope,
   SearchTrackedScopes
 } from '@platform/core/domain'
+import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 
 import { ProductSearchService } from '../products/product-search.service'
 import type { ProductSuggestions } from '../products/products.views'
 
 import { searchableBy } from './search-access'
 import { SearchTracker } from './search-tracker.service'
+import type { SearchClickBody } from './search.schemas'
 import { SearchService, type SearchViewer } from './search.service'
 import type {
   CustomerSearchHit,
@@ -39,7 +42,7 @@ export class SearchRunner {
     viewer: SearchViewer,
     params: { q: string; limit: number; conversationId?: string }
   ): Promise<SearchResult<MessageSearchHit>> {
-    return this.tracked(storeId, SearchTrackedScopes.MESSAGES, params.q, () =>
+    return this.tracked(storeId, SearchTrackedScopes.MESSAGES, params.q, false, () =>
       this.search.searchMessages(storeId, viewer, params)
     )
   }
@@ -48,7 +51,7 @@ export class SearchRunner {
     storeId: string,
     params: { q: string; limit: number }
   ): Promise<SearchResult<CustomerSearchHit>> {
-    return this.tracked(storeId, SearchTrackedScopes.CUSTOMERS, params.q, () =>
+    return this.tracked(storeId, SearchTrackedScopes.CUSTOMERS, params.q, false, () =>
       this.search.searchCustomers(storeId, params)
     )
   }
@@ -57,7 +60,7 @@ export class SearchRunner {
     storeId: string,
     params: { q: string; limit: number }
   ): Promise<SearchResult<OrderSearchHit>> {
-    return this.tracked(storeId, SearchTrackedScopes.ORDERS, params.q, () =>
+    return this.tracked(storeId, SearchTrackedScopes.ORDERS, params.q, false, () =>
       this.search.searchOrders(storeId, params)
     )
   }
@@ -67,15 +70,21 @@ export class SearchRunner {
     storeId: string,
     params: { q: string; limit: number }
   ): Promise<ProductSuggestions> {
-    return this.tracked(storeId, SearchTrackedScopes.PRODUCTS, params.q, () =>
+    return this.tracked(storeId, SearchTrackedScopes.PRODUCTS, params.q, false, () =>
       this.productsOf(storeId, params)
     )
   }
 
   // A few hits of each kind the member may search, only the groups with hits. The kinds are read one after the other:
   // they share the connection of the request, so running them together would only queue them.
-  async global(storeId: string, viewer: SearchViewer, q: string): Promise<GlobalSearchResult> {
-    return this.tracked(storeId, SearchTrackedScopes.GLOBAL, q, async () => {
+  // `passive` is the palette's as-you-type search: answered like any other and not counted (SearchApiParams)
+  async global(
+    storeId: string,
+    viewer: SearchViewer,
+    q: string,
+    passive = false
+  ): Promise<GlobalSearchResult> {
+    return this.tracked(storeId, SearchTrackedScopes.GLOBAL, q, passive, async () => {
       const kinds = searchableBy(viewer.held)
       const params = { q, limit: SearchConfig.GLOBAL_SEARCH_PER_GROUP }
       const groups: GlobalSearchGroup[] = []
@@ -99,11 +108,31 @@ export class SearchRunner {
     })
   }
 
+  // The result a person opened. They may record only the kinds they may search: a click on what they could not have been
+  // shown is a forged one, and it would write to the analytics of the store a thing that never happened.
+  recordClick(storeId: string, held: readonly Permission[], body: SearchClickBody): void {
+    if (!searchableBy(held).has(body.entity)) {
+      throw new PlatformException(
+        ErrorCodes.PERMISSION_DENIED,
+        'this kind of result is not one the member may search',
+        HttpStatusCodes.FORBIDDEN
+      )
+    }
+    this.tracker.trackClick(storeId, body, body.q)
+  }
+
   private async tracked<
     T extends { hits?: unknown[]; data?: unknown[]; groups?: { hits: unknown[] }[] }
-  >(storeId: string, scope: SearchTrackedScope, q: string, run: () => Promise<T>): Promise<T> {
+  >(
+    storeId: string,
+    scope: SearchTrackedScope,
+    q: string,
+    passive: boolean,
+    run: () => Promise<T>
+  ): Promise<T> {
     const startedAt = performance.now()
     const result = await run()
+    if (passive) return result
     const count =
       result.groups?.reduce((sum, group) => sum + group.hits.length, 0) ??
       (result.hits ?? result.data ?? []).length

@@ -3,7 +3,7 @@ import { type Job, UnrecoverableError } from 'bullmq'
 import { z } from 'zod'
 
 import { AnalyticsEventNames } from '@platform/core/analytics'
-import { searchEventDataSchema } from '@platform/core/domain'
+import { searchClickDataSchema, searchEventDataSchema } from '@platform/core/domain'
 import { JobNames, QueueNames, type RollupJob, type TrackAnalyticsJob } from '@platform/core/queues'
 
 import { AnalyticsEventWriter } from '../analytics/analytics-event.writer'
@@ -31,19 +31,29 @@ const rollupSchema: z.ZodType<RollupJob, unknown> = z.object({
   correlationId: z.string().optional()
 })
 
-// The search event has its own job and its own data check: through this one it would be written with any data
+// The search events have their own job and their own data checks: through this one they would be written with any data
+const SEARCH_EVENTS: readonly string[] = [
+  AnalyticsEventNames.SEARCH_PERFORMED,
+  AnalyticsEventNames.SEARCH_CLICKED
+]
 const trackEventSchema: z.ZodType<TrackAnalyticsJob, unknown> = rawEventSchema.refine(
-  job => job.event !== AnalyticsEventNames.SEARCH_PERFORMED,
+  job => !SEARCH_EVENTS.includes(job.event),
   { message: 'a search event is queued as a search job' }
 )
 
-// The search event is a TRACK_SEARCH job: the same shape as a raw event, but only ever `search.performed`, with the
-// data the search route queues (`searchEventDataSchema`)
-const trackSearchSchema: z.ZodType<TrackAnalyticsJob, unknown> = rawEventSchema.extend({
-  event: z.literal(AnalyticsEventNames.SEARCH_PERFORMED),
-  // What is written is what this check returns, not what was queued
-  data: searchEventDataSchema
-})
+// The search event is a TRACK_SEARCH job: the same shape as a raw event, but only ever `search.performed` or
+// `search.clicked`, each with the data the search route queues (`searchEventDataSchema`, `searchClickDataSchema`)
+const trackSearchSchema: z.ZodType<TrackAnalyticsJob, unknown> = z.union([
+  rawEventSchema.extend({
+    event: z.literal(AnalyticsEventNames.SEARCH_PERFORMED),
+    // What is written is what this check returns, not what was queued
+    data: searchEventDataSchema
+  }),
+  rawEventSchema.extend({
+    event: z.literal(AnalyticsEventNames.SEARCH_CLICKED),
+    data: searchClickDataSchema
+  })
+])
 
 const RollupGranularityOf: Record<string, RollupGranularity | undefined> = {
   [JobNames.ROLLUP_HOURLY]: RollupGranularities.HOURLY,

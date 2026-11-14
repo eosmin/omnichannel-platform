@@ -1,6 +1,13 @@
 import { ClientPermissions, type Permission } from '@platform/core/auth'
+import { SearchEntities } from '@platform/core/domain'
 
-import { matchingPages, moveActive, pageCommands } from './palette-items'
+import {
+  hitPosition,
+  matchingPages,
+  moveActive,
+  type PaletteItem,
+  pageCommands
+} from './palette-items'
 
 const canWith =
   (...held: Permission[]) =>
@@ -58,5 +65,41 @@ describe('moveActive', () => {
 
   it('has no active row in an empty list', () => {
     expect(moveActive(0, 1, 0)).toBe(-1)
+  })
+})
+
+describe('hitPosition', () => {
+  const page: PaletteItem = {
+    kind: 'page',
+    key: 'page:orders',
+    label: 'Orders',
+    href: '/s/s1/orders'
+  }
+  const hit = (id: string): PaletteItem => ({
+    kind: 'hit',
+    key: `customers:${id}`,
+    href: null,
+    item: {
+      entity: SearchEntities.CUSTOMERS,
+      hit: { id, name: id, email: null, phone: null }
+    }
+  })
+  const all: PaletteItem = { kind: 'all', key: 'all', href: '/s/s1/search?q=ab' }
+  const first = hit('a')
+  const second = hit('b')
+  const items = [page, first, second, all]
+
+  it('counts only the hits: the pages above them and the closing row do not move a position', () => {
+    expect(hitPosition(items, first)).toBe(0)
+    expect(hitPosition(items, second)).toBe(1)
+  })
+
+  it('is null for a row that is not a hit', () => {
+    expect(hitPosition(items, page)).toBeNull()
+    expect(hitPosition(items, all)).toBeNull()
+  })
+
+  it('is null for a hit that is not in the list', () => {
+    expect(hitPosition(items, hit('z'))).toBeNull()
   })
 })
