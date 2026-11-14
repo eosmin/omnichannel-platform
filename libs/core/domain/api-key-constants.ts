@@ -36,8 +36,16 @@ export const ApiKeyScopePrefixes = [
   'media:'
 ] as const
 
+// Permissions under an allowed prefix that a key still never holds: they destroy data for good, and a leaked integration
+// key must not be able to. A person does them from the interface, behind a typed phrase.
+export const ApiKeyDeniedScopes: readonly Permission[] = [Permissions.CONVERSATIONS_DELETE]
+
+// The lock that serializes the making of a key with the revoking of a person's keys (the store lock is a shared one)
+export const API_KEY_LOCK_SCOPE = 'api-key'
+
 export function isApiKeyScope(permission: string): permission is Permission {
   return (
+    !(ApiKeyDeniedScopes as readonly string[]).includes(permission) &&
     (Object.values(Permissions) as string[]).includes(permission) &&
     ApiKeyScopePrefixes.some(prefix => permission.startsWith(prefix))
   )

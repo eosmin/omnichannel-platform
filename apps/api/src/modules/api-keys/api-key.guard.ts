@@ -106,7 +106,12 @@ export class ApiKeyGuard implements CanActivate {
     // at once). Suspending is reversible and so is this; removing also revokes the key for good (MembersService.remove),
     // so a person who is invited again does not bring their old keys back.
     const maker = await this.prisma.client.membership.findFirst({
-      where: { userId: key.createdBy, storeId: key.storeId, status: MembershipStatus.ACTIVE },
+      where: {
+        userId: key.createdBy,
+        storeId: key.storeId,
+        status: MembershipStatus.ACTIVE,
+        revokedAt: null
+      },
       select: { role: { select: { permissions: { select: { name: true } } } } }
     })
     if (maker === null) throw invalidKey()

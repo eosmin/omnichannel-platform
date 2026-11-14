@@ -17,6 +17,16 @@ describe('objectKeysOf', () => {
     expect(objectKeysOf(storeId, { key, variants: { full: key } }).keys).toEqual([key])
   })
 
+  it('leaves out a key that walks out of the store folder with a dot step', () => {
+    const own = StorageKeys.message(storeId, 'm1', 'a.png')
+    const walking = `stores/${storeId}/messages/../exports/e1/data.zip`
+
+    expect(objectKeysOf(storeId, { key: own, variants: { thumb: walking } })).toEqual({
+      keys: [own],
+      foreign: [walking]
+    })
+  })
+
   it('leaves out a key of another store, which a damaged column could name', () => {
     const own = StorageKeys.message(storeId, 'm1', 'a.png')
     const foreign = StorageKeys.message('store-b', 'm2', 'b.png')

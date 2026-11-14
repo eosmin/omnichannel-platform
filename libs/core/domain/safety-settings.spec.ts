@@ -46,6 +46,22 @@ describe('safetySettingsSchema', () => {
     })
   })
 
+  it('drops one role it does not know and keeps the others, and reads a value that is not a list as the default', () => {
+    expect(
+      readSafetySettings({ applyToRoles: ['Agent', 'Auditor', 'Admin', 'Agent'] }).applyToRoles
+    ).toEqual([RoleNames.AGENT, RoleNames.ADMIN])
+    // Nobody we know: the default. Empty on purpose: nobody
+    expect(readSafetySettings({ applyToRoles: ['Auditor'] }).applyToRoles).toEqual([
+      RoleNames.AGENT,
+      RoleNames.SUPERVISOR
+    ])
+    expect(readSafetySettings({ applyToRoles: [] }).applyToRoles).toEqual([])
+    expect(readSafetySettings({ applyToRoles: 'Agent' }).applyToRoles).toEqual([
+      RoleNames.AGENT,
+      RoleNames.SUPERVISOR
+    ])
+  })
+
   it('reads anything that is not an object as the defaults', () => {
     for (const raw of [null, undefined, 'x', 4, []]) {
       expect(readSafetySettings(raw)).toEqual(safetySettingsSchema.parse({}))

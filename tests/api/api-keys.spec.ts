@@ -156,6 +156,8 @@ describe('The API keys of a store', () => {
         Permissions.SETTINGS_MANAGE_WEBHOOKS,
         Permissions.TEAM_INVITE,
         Permissions.ORG_MANAGE_STORES,
+        // Under an allowed prefix, but it destroys data for good: a key never holds it
+        Permissions.CONVERSATIONS_DELETE,
         'customers:everything'
       ]) {
         await post({ name: 'x', scopes: [scope] }).expect(BAD_REQUEST)

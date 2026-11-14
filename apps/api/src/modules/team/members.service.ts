@@ -3,8 +3,14 @@ import { Injectable } from '@nestjs/common'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { AssigneePermissions, type Permission, RoleNames } from '@platform/core/auth'
-import { lockStoreForWrite, PrismaService, type PrismaTransaction } from '@platform/core/database'
 import {
+  lockStoreForWrite,
+  lockStoreScope,
+  PrismaService,
+  type PrismaTransaction
+} from '@platform/core/database'
+import {
+  API_KEY_LOCK_SCOPE,
   API_KEY_RESOURCE_TYPE,
   ApiKeyRevokeReasons,
   ApiKeyStatus,
@@ -227,6 +233,8 @@ export class MembersService {
       })
       // The keys they made stop working for good: the guard already refuses them while the membership is not
       // active, but a person who is invited again gets the same membership row back and must not get these back
+      // Taking turns with the making of a key: one made while this runs would not be seen here
+      await lockStoreScope(tx, storeId, API_KEY_LOCK_SCOPE)
       const keys = await tx.apiKey.findMany({
         where: { storeId, createdBy: found.userId, status: ApiKeyStatus.ACTIVE },
         select: { id: true, name: true, keyPrefix: true }

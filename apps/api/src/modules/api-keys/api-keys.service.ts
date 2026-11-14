@@ -6,6 +6,7 @@ import type { Permission } from '@platform/core/auth'
 import { generateToken, hashToken } from '@platform/core/crypto'
 import { lockStoreForWrite, lockStoreScope, PrismaService } from '@platform/core/database'
 import {
+  API_KEY_LOCK_SCOPE,
   API_KEY_RESOURCE_TYPE,
   API_KEY_TOKEN_PREFIX,
   ApiKeyLimits,
@@ -29,7 +30,7 @@ import {
   type ApiKeyWithTokenView
 } from './api-keys.views'
 
-const SCOPE = 'api-key'
+const SCOPE = API_KEY_LOCK_SCOPE
 // The status column is text: compared with the value of the enum as text
 const REVOKED: string = ApiKeyStatus.REVOKED
 

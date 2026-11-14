@@ -191,6 +191,31 @@ describe('Deleting a conversation by hand', () => {
     expect(JSON.stringify(event?.payload)).not.toContain('where is my parcel')
   })
 
+  it('keeps the documents of an order that were sent into the conversation', async () => {
+    const { conversation, message } = await fullConversation()
+    const order = await createOrder(owner, { storeId: ctx.storeA.id })
+    const document = await owner.media.create({
+      data: {
+        storeId: ctx.storeA.id,
+        purpose: 'order',
+        orderId: order.id,
+        messageId: message.id,
+        key: StorageKeys.message(ctx.storeA.id, message.id, 'summary.pdf'),
+        filename: 'summary.pdf',
+        contentType: 'application/pdf',
+        fileSize: 10,
+        status: 'clean'
+      },
+      select: { id: true, key: true }
+    })
+
+    await asAdmin().delete(ApiRoutes.conversations.byId(conversation.id)).expect(NO_CONTENT)
+
+    const kept = await owner.media.findUniqueOrThrow({ where: { id: document.id } })
+    expect(kept.messageId).toBeNull()
+    expect(deleted.mock.calls.map(([key]) => key)).not.toContain(document.key)
+  })
+
   it('never deletes a key outside the store, which a damaged variants column could name', async () => {
     const { conversation, message, keys } = await fullConversation()
     const foreign = StorageKeys.message(ctx.storeB.id, randomUUID(), 'theirs.png')

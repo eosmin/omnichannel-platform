@@ -16,6 +16,11 @@ export function objectKeysOf(
   }
   const keys: string[] = []
   const foreign: string[] = []
-  for (const key of all) (key.startsWith(prefix) ? keys : foreign).push(key)
+  // Under the store's prefix and with no `.` or `..` step, which would walk out of the folder the prefix names
+  for (const key of all) {
+    const safe =
+      key.startsWith(prefix) && !key.split('/').some(step => step === '.' || step === '..')
+    ;(safe ? keys : foreign).push(key)
+  }
   return { keys, foreign }
 }
