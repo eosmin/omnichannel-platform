@@ -170,6 +170,12 @@ test.describe('the bulk actions of the orders page', () => {
         locationIds: { departmentId: '7', municipalityId: '72' }
       })
 
+      // The refused request opens the report of an action that could not run, which holds the page until it is closed
+      const failed = page.getByRole('dialog', { name: BULK.report.failedTitle })
+      await expect(failed).toBeVisible()
+      await failed.getByRole('button', { name: BULK.report.close, exact: true }).click()
+      await expect(failed).toBeHidden()
+
       // Going back to the planned carriers takes the selectors away
       await bar.getByLabel(BULK.carrierLabel).selectOption({ label: BULK.plannedCarrier })
       await expect(bar.getByText(PLACES.legend, { exact: true })).toHaveCount(0)

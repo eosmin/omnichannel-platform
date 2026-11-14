@@ -149,6 +149,7 @@ function ShipmentRow({
     status: shipment.status,
     kind: shipment.kind,
     hasLabel: shipment.hasLabel,
+    refundStatus: shipment.refundStatus,
     mayManage: can(ClientPermissions.SHIPPING_MANAGE),
     pickupId: shipment.pickupId,
     mayRequestPickup: can(ClientPermissions.SHIPPING_MANAGE_PICKUPS),

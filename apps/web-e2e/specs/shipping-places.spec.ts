@@ -139,7 +139,7 @@ test.describe('a carrier that asks for the places and cannot cancel', () => {
     await page.unroute('**/orders/*/shipments', made)
   })
 
-  test('offers the cancel, and not the manual void, on a made guide, and says what follows', async () => {
+  test('offers the cancel, and not the manual void, on a made guide, says what follows and then offers the void', async () => {
     await open(carrier.made)
     await expect(shipping().getByText(SHIPPING.status.label_created, { exact: true })).toBeVisible()
     await expect(shipping().getByRole('button', { name: SHIPPING.action.mark_voided })).toHaveCount(
@@ -152,10 +152,21 @@ test.describe('a carrier that asks for the places and cannot cancel', () => {
     await expect(move.getByText(afterGuide.slice(0, 40))).toBeVisible()
     await move.getByRole('button', { name: SHIPPING.move.cancel.confirm, exact: true }).click()
 
-    // The api accepts it: the guide leaves "made" and waits for a hand (the manual void), it is not refused
+    // The api accepts it: nobody can be asked, so the guide waits for a hand as "cancelling" (TDD_17 §4.10), it is not refused
     await expect
       .poll(async () => (await shipmentStatusesOf(carrier.made.id))[0])
-      .not.toBe(ShipmentStatus.LABEL_CREATED)
+      .toBe(ShipmentStatus.CANCEL_PENDING)
+    // ...and the panel offers the manual void right there, with no retry (nobody would be asked), as the dialog said it would
+    await expect(
+      shipping().getByText(SHIPPING.status.cancel_pending, { exact: true })
+    ).toBeVisible()
+    await expect(shipping().getByRole('button', { name: SHIPPING.action.cancel })).toHaveCount(0)
+    await shipping().getByRole('button', { name: SHIPPING.action.mark_voided }).click()
+    await dialog(SHIPPING.move.mark_voided.title)
+      .getByRole('button', { name: SHIPPING.move.mark_voided.confirm, exact: true })
+      .click()
+    await expect(shipping().getByText(SHIPPING.status.cancelled, { exact: true })).toBeVisible()
+    expect(await shipmentStatusesOf(carrier.made.id)).toEqual([ShipmentStatus.CANCELLED])
   })
 
   test('offers only the manual void of a cancel that failed here, and the api accepts it', async () => {

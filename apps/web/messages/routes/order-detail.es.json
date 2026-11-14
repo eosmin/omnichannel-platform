@@ -163,7 +163,7 @@
           "cancel": {
             "title": "Cancelar la guía",
             "description": "Se le pide al transportista cancelar la guía {guide}. Queda \"cancelándose\" hasta que responda.",
-            "descriptionManual": "No se le puede pedir al transportista que cancele la guía {guide}. La guía queda \"Cancelándose\" y luego \"Falló la cancelación\"; cuando se lo hayas dicho tú al transportista, márcala como anulada.",
+            "descriptionManual": "No se le puede pedir al transportista que cancele la guía {guide}. La guía queda \"Cancelándose\" hasta que se lo digas tú al transportista; entonces márcala como anulada.",
             "confirm": "Cancelar guía",
             "done": "Se pidió la cancelación."
           },

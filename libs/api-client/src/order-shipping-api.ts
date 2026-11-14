@@ -22,6 +22,8 @@ const orderShipmentSchema = z.object({
   trackingUrl: z.string().nullable(),
   hasLabel: z.boolean(),
   pickupId: z.string().nullable(),
+  // `not_supported` on a guide that waits to be voided: nobody is asking the carrier and nobody will
+  refundStatus: z.string(),
   failedAttempts: z.number().int(),
   // A name of a closed list, or one line the carrier said when it refused
   lastError: z.string().nullable(),
