@@ -88,6 +88,13 @@ export const QueryKeys = {
     search: (storeId: string, q: string, includeArchived: boolean) =>
       ['products', storeId, 'search', q, includeArchived] as const
   },
+  // The search (Step 5.1): the palette and the results page, by text and, on the page, by kind of thing
+  search: {
+    all: (storeId: string) => ['search', storeId] as const,
+    global: (storeId: string, q: string) => ['search', storeId, 'global', q] as const,
+    scoped: (storeId: string, scope: string, q: string) =>
+      ['search', storeId, 'scoped', scope, q] as const
+  },
   orders: {
     all: (storeId: string) => ['orders', storeId] as const,
     // A page of the list, by its filters and its sort (the cursor is the page param of the query)
@@ -101,9 +108,6 @@ export const QueryKeys = {
     // The draft of "Copy order": read fresh every time it is opened, and outside `orders.all` so that an event of the
     // orders never rebuilds a draft the agent is editing
     copy: (storeId: string, orderId: string) => ['order-copy', storeId, orderId] as const
-  },
-  search: {
-    global: (storeId: string, q: string) => ['search', storeId, q] as const
   },
   notifications: {
     list: (storeId: string) => ['notifications', storeId] as const,

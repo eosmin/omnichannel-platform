@@ -56,7 +56,13 @@ export const AppPaths = {
     analytics: (storeId: string) => `/s/${storeId}/analytics`,
     settings: (storeId: string, section: StoreSettingsSection = StoreSettingsSections.GENERAL) =>
       `/s/${storeId}/settings/${section}`,
-    exports: (storeId: string) => `/s/${storeId}/exports`
+    exports: (storeId: string) => `/s/${storeId}/exports`,
+    // The results of a search (Step 5.1). The text and the kind of thing travel in the address, so a result
+    // page can be shared, bookmarked and reached with Back
+    search: (storeId: string, text?: string) =>
+      text === undefined || text === ''
+        ? `/s/${storeId}/search`
+        : `/s/${storeId}/search?q=${encodeURIComponent(text)}`
   },
   org: {
     profile: '/org/profile',

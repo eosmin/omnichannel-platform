@@ -69,11 +69,12 @@ export const ListKeyAliases = {
   PREVIOUS_CONVERSATION: 'ArrowUp'
 } as const
 
-// The bindings the screen handles today. The help sheet lists only these: the search of conversations
-// waits for Step 5.1, and until then `Mod+K` goes to the search of customers (the palette of Step 5.1
-// takes the binding over).
+// The bindings the screen handles today. The help sheet lists only these. `FOCUS_SEARCH` and `COMMAND_PALETTE`
+// belong to the search of Step 5.1 and work on every page of a store (the top bar and the palette), not only in
+// the inbox.
 export const AvailableShortcuts = {
   list: [
+    'FOCUS_SEARCH',
     'NEXT_CONVERSATION',
     'PREVIOUS_CONVERSATION',
     'OPEN_CONVERSATION',

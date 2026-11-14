@@ -38,6 +38,12 @@ export const SearchLanguage = 'spanish' as const
 // of the snippet: the text of a message is the customer's, never markup.
 export const SearchSnippetMarks = { START: '<mark>', STOP: '</mark>' } as const
 
+// The results page (Step 5.1): the parameters of its address, and what it can be narrowed to. `all` is the global
+// search; the others are the route of one kind of thing, which asks for more hits of it.
+export const SearchPageParams = { QUERY: 'q', SCOPE: 'scope' } as const
+export const SearchPageScopes = { ALL: 'all', ...SearchEntities } as const
+export type SearchPageScope = (typeof SearchPageScopes)[keyof typeof SearchPageScopes]
+
 // What a tracked search was asked of: one kind of thing, or all of them at once (the global search)
 export const SearchTrackedScopes = { ...SearchEntities, GLOBAL: 'global' } as const
 export type SearchTrackedScope = (typeof SearchTrackedScopes)[keyof typeof SearchTrackedScopes]

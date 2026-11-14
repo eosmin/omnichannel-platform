@@ -105,7 +105,7 @@ function Page(): ReactElement {
   const tAll = useTranslations()
   const { storeId, can } = useStore()
   const searchRef = useRef<HTMLInputElement>(null)
-  useGoToShortcuts('', () => searchRef.current?.focus())
+  useGoToShortcuts()
   const [text, setText] = useState('')
   const q = useDebouncedValue(text.trim(), SEARCH_DELAY_MS)
   const customers = useCustomerList(storeId, q, can(ClientPermissions.CUSTOMERS_VIEW))
