@@ -158,6 +158,19 @@ describe('The cached reads of the settings of a store', () => {
       expect((await read()).map(s => s.shortcut)).toEqual(
         expect.arrayContaining([`${prefix}-a`, `${prefix}-hidden`, `${prefix}-b`])
       )
+
+      // A change and a deletion through the api show at once too
+      const createdId = (created.body as SnippetBody).id
+      const changed = await inA()
+        .patch(ApiRoutes.settings.snippetById(createdId))
+        .send({ shortcut: `${prefix}-c` })
+      expect(changed.status).toBe(OK)
+      const afterChange = (await read()).map(s => s.shortcut)
+      expect(afterChange).toContain(`${prefix}-c`)
+      expect(afterChange).not.toContain(`${prefix}-b`)
+      const removed = await inA().delete(ApiRoutes.settings.snippetById(createdId))
+      expect(removed.status).toBe(204)
+      expect((await read()).map(s => s.shortcut)).not.toContain(`${prefix}-c`)
     })
   })
 
