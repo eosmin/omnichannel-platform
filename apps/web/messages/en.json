@@ -1817,7 +1817,8 @@
       "returns": "Returns",
       "remittances": "Remittances",
       "shipments": "Shipments",
-      "pickups": "Pickups"
+      "pickups": "Pickups",
+      "analytics": "Analytics"
     },
     "notifications": {
       "open": "Notifications",
@@ -2472,6 +2473,7 @@
       "moveUp": "Move {widget} up",
       "moveDown": "Move {widget} down",
       "widgets": {
+        "myPerformance": "My performance",
         "quickActions": "Quick actions",
         "teamStatus": "Team status",
         "unassignedQueue": "Unassigned queue"
@@ -2496,10 +2498,19 @@
         "takeFor": "Take the conversation with {name}",
         "seeAll": "See all"
       },
+      "performance": {
+        "loading": "Loading your day",
+        "failed": "Your figures could not be loaded.",
+        "resolved": "Resolved today",
+        "open": "Open now",
+        "average": "First response today",
+        "noAverage": "No first answers yet"
+      },
       "quick": {
         "findCustomer": "Find customer",
         "none": "No actions available.",
-        "createOrder": "Create order"
+        "createOrder": "Create order",
+        "viewAnalytics": "View analytics"
       }
     },
     "anonymousCustomer": "Visitor ····{digits}",

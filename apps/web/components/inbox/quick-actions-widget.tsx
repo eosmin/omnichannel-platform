@@ -1,6 +1,6 @@
 'use client'
 
-import { Search, ShoppingBag } from 'lucide-react'
+import { ChartColumn, Search, ShoppingBag } from 'lucide-react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -52,15 +52,15 @@ function CreateOrderForConversation({ conversationId }: { conversationId: string
   )
 }
 
-// The actions an agent reaches for from the inbox (TDD_09 §8). View analytics joins with Step 5.2, which builds the
-// page it opens. Each action is offered to who may use it.
+// The actions an agent reaches for from the inbox (TDD_09 §8). Each action is offered to who may use it.
 export function QuickActionsWidget(): ReactElement {
   const t = useTranslations('inbox.sidebar.quick')
   const { storeId, can } = useStore()
   const { conversationId } = useParams<{ conversationId?: string }>()
   const mayFind = can(ClientPermissions.CUSTOMERS_VIEW)
   const mayCreateOrder = can(ClientPermissions.ORDERS_CREATE)
-  if (!mayFind && !mayCreateOrder) {
+  const mayViewAnalytics = can(ClientPermissions.ANALYTICS_VIEW)
+  if (!mayFind && !mayCreateOrder && !mayViewAnalytics) {
     return <p className="text-muted-foreground text-sm">{t('none')}</p>
   }
   return (
@@ -78,6 +78,14 @@ export function QuickActionsWidget(): ReactElement {
           <Link href={AppPaths.store.customers(storeId)} onClick={askSearchFocus}>
             <Search />
             {t('findCustomer')}
+          </Link>
+        </Button>
+      ) : null}
+      {mayViewAnalytics ? (
+        <Button asChild size="sm" variant="outline">
+          <Link href={AppPaths.store.analytics(storeId)}>
+            <ChartColumn />
+            {t('viewAnalytics')}
           </Link>
         </Button>
       ) : null}

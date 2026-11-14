@@ -12,6 +12,8 @@ export const AnalyticsMetrics = {
   AVERAGE_RESPONSE_TIME: 'response.average_time',
   RESOLUTION_TIME: 'resolution.time',
   CONVERSATIONS_PER_AGENT: 'agent.conversations',
+  // The first response of each agent: the conversations whose first reply was theirs (the author of the first reply of a person)
+  AGENT_FIRST_RESPONSE_TIME: 'agent.first_response_time',
 
   // The three states of a conversation for the reports (owner, 2026-10-29). A conversation is judged by who answered it:
   // an automation that answers does not take it out of the pending queue or stop a response SLA, only an explicit resolve does.
@@ -88,6 +90,7 @@ export const RolledUpMetrics = {
   [AnalyticsMetrics.FIRST_AUTOMATED_RESPONSE_TIME]: MetricAggregations.WEIGHTED_MEAN,
   [AnalyticsMetrics.RESOLUTION_TIME]: MetricAggregations.WEIGHTED_MEAN,
   [AnalyticsMetrics.CONVERSATIONS_PER_AGENT]: MetricAggregations.SUM,
+  [AnalyticsMetrics.AGENT_FIRST_RESPONSE_TIME]: MetricAggregations.WEIGHTED_MEAN,
   [AnalyticsMetrics.CONVERSATIONS_WAITING_PERSON]: MetricAggregations.LAST,
   [AnalyticsMetrics.CONVERSATIONS_ANSWERED_AUTOMATION]: MetricAggregations.SUM,
   [AnalyticsMetrics.CONVERSATIONS_RESOLVED_AUTOMATION]: MetricAggregations.SUM,
@@ -100,6 +103,7 @@ export type RolledUpMetric = keyof typeof RolledUpMetrics
 // Which dimension a metric is written with besides the whole-store row (MetricDimensions.NONE)
 export const MetricDimensionsOf = {
   [AnalyticsMetrics.CONVERSATIONS_PER_AGENT]: MetricDimensions.AGENT,
+  [AnalyticsMetrics.AGENT_FIRST_RESPONSE_TIME]: MetricDimensions.AGENT,
   [AnalyticsMetrics.CHANNEL_VOLUME]: MetricDimensions.CHANNEL
 } as const satisfies Partial<Record<AnalyticsMetric, string>>
 
@@ -109,7 +113,7 @@ export const RollupLimits = {
   STORES_PAGE_SIZE: 200,
   // Conversations created longer ago than this are not counted as waiting for a person
   WAITING_LOOKBACK_DAYS: 90,
-  // The thirteen queries of a period run in one transaction, apart from the 5 s that Prisma allows by default
+  // The queries of a period run in one transaction, apart from the 5 s that Prisma allows by default
   TRANSACTION_MAX_WAIT_MS: 10_000,
   TRANSACTION_TIMEOUT_MS: 60_000
 } as const
