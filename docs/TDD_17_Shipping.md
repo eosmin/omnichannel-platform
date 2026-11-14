@@ -671,6 +671,10 @@ export interface CarrierPlugin {
   readonly maxBatchSize?: number                              // pickup_bound: the most shipments one call accepts
   createShipment?(ctx: CarrierContext, params: CreateShipmentParams): Promise<CreateShipmentResult>   // standalone: CREATE_SHIPMENT
   createShipmentsWithPickup?(ctx: CarrierContext, params: CreatePickupBatchParams): Promise<PickupBatchResult>   // pickup_bound: PICKUP_BOUND_GUIDES; one call, an array of shipments
+  buildLabelLayout?(input: LabelInput): LabelLayout   // internal (INTERNAL_GUIDE): the core makes the guide and asks the plugin where each thing goes; pure
+  readonly feeSettings?: CarrierFeeSettings            // the commission and the rates per service the owner can agree with the carrier; absent when it takes neither (remittances are then held to the cost the carrier reports, if any)
+  readonly maxConcurrency?: number                     // standalone: the most guides asked for at once on one connection in a bulk run; default 3, never above 10 whatever is declared
+  readonly connectFields?: readonly ConnectField[]    // what the connect form asks for, as a channel plugin declares it; absent when the core draws the form
   fetchPickup?(ctx: CarrierContext, ref: PickupRef): Promise<PickupDetails>                           // pickup_bound: recovers the guides of a pickup after an unknown outcome
   cancelShipment?(ctx: CarrierContext, params: CancelShipmentParams): Promise<CancelShipmentResult>   // CANCEL_SHIPMENT
   fetchLabel?(ctx: CarrierContext, params: FetchLabelParams): Promise<CarrierLabel>                   // when createShipment does not return one
