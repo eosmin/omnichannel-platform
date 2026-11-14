@@ -2140,7 +2140,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.9 | Finance interface (web) | todo | | |
 | **Milestone 5: Operations** | | | | |
 | 5.1 | Search | in progress | #486 (PR A: the server), PR B (the web) | 2026-11-14 |
-| 5.2 | Analytics | in progress | #485 (PR A: rollups, answer semantics, metrics route), PR B #487 (dashboard, My performance, View analytics), PR C1 #491 (reports and export, server), PR C2 (reports and export, web); PR C3 (search click, flag and report) pending | |
+| 5.2 | Analytics | in progress | #485 (PR A: rollups, answer semantics, metrics route), PR B #487 (dashboard, My performance, View analytics), PR C1 #491 (reports and export, server), PR C2 #494 (reports and export, web); PR C3 (search click, flag and report) pending | |
 | 5.3 | Caching and performance | todo | | |
 | 5.4 | Settings | in progress | PR A (server: webhooks, API keys) | |
 | 5.5 | Onboarding | deferred (Phase 2) | | |
