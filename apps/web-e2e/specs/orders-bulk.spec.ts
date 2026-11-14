@@ -1,11 +1,19 @@
 import { randomUUID } from 'node:crypto'
 
-import { type BrowserContext, type Page } from '@playwright/test'
+import { type BrowserContext, type Page, type Route } from '@playwright/test'
 
 import { AppPaths } from '@platform/api-client'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
-import { addGuidedOrdersTo, addOrdersTo, type SeededOrder, storeIdNamed } from '../support/database'
+import routes from '../../web/messages/routes/order-detail.en.json' with { type: 'json' }
+import {
+  addGuidedOrdersTo,
+  addOrdersTo,
+  addPlacesCarrier,
+  type AskingCarrier,
+  type SeededOrder,
+  storeIdNamed
+} from '../support/database'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
@@ -14,6 +22,7 @@ const FIRST_STORE = 'Main Store'
 const ADMIN = 'multi-store@test.com'
 const ORDERS = en.orders.list
 const BULK = en.orders.bulk
+const PLACES = routes.orders.detail.guide.locations
 
 // The actions over the ticked rows of the orders page and the guide columns and filters (Step 4.14), against the rows a
 // `local` courier holds
@@ -103,5 +112,73 @@ test.describe('the bulk actions of the orders page', () => {
     const left = report.getByRole('row').filter({ hasText: (seeded[2] as SeededOrder).orderNumber })
     await expect(left.getByText(BULK.report.outcome.skipped)).toBeVisible()
     await expect(left.getByText(BULK.shipmentStatus.label_created)).toBeVisible()
+  })
+
+  // A carrier that declares that it needs the places (the official one the registry holds with that capability; the case never
+  // reaches it: the browser answers its lists and the run request is read and refused, so no guide is made)
+  test('asks the places once for the batch when the carrier needs them, and sends them in the one request', async () => {
+    const run = randomUUID().slice(0, 6)
+    const places: AskingCarrier = await addPlacesCarrier(storeId, run)
+    const made = await addOrdersTo(storeId, `${customerName} places`, [
+      { status: 'CONFIRMED' },
+      { status: 'CONFIRMED' }
+    ])
+    const lists = (route: Route): Promise<void> => {
+      const parent = new URL(route.request().url()).searchParams.get('parentId')
+      return route.fulfill({
+        json:
+          parent === null
+            ? [
+                { id: '5', name: 'Alta', parentId: null },
+                { id: '7', name: 'Baja', parentId: null }
+              ]
+            : [{ id: `${parent}2`, name: `Baja Dos ${parent}`, parentId: parent }]
+      })
+    }
+    let sent: unknown = null
+    const started = (route: Route): Promise<void> => {
+      if (route.request().method() !== 'POST') return route.fallback()
+      sent = route.request().postDataJSON()
+      return route.fulfill({ status: 500, json: { code: 'INTERNAL_ERROR' } })
+    }
+    await page.route('**/carriers/*/locations*', lists)
+    await page.route('**/shipments/bulk', started)
+    try {
+      await page.goto(
+        `${AppPaths.store.orders(storeId)}?q=${encodeURIComponent(`${customerName} places`)}`
+      )
+      for (const order of made.orders) await expect(row(order)).toBeVisible()
+      await page.getByLabel(ORDERS.selectAll).check()
+      const bar = page.getByRole('region', { name: BULK.label })
+      const labels = bar.getByRole('button', { name: BULK.labels })
+
+      // Each order follows its planned carrier: no places can be right for all of them
+      await expect(bar.getByText(PLACES.legend, { exact: true })).toHaveCount(0)
+      await bar.getByLabel(BULK.carrierLabel).selectOption({ label: places.connection.name })
+      await expect(bar.getByText(PLACES.legend, { exact: true })).toBeVisible()
+      await expect(labels).toBeDisabled()
+
+      await bar.getByLabel(PLACES.department).selectOption({ label: 'Baja' })
+      await expect(labels).toBeDisabled()
+      await bar.getByLabel(PLACES.municipality).selectOption({ label: 'Baja Dos 7' })
+      await expect(labels).toBeEnabled()
+      await labels.click()
+
+      await expect.poll(() => sent).not.toBeNull()
+      expect(sent).toMatchObject({
+        orderIds: expect.arrayContaining(made.orders.map(order => order.id)),
+        connectionId: places.connection.id,
+        locationIds: { departmentId: '7', municipalityId: '72' }
+      })
+
+      // Going back to the planned carriers takes the selectors away
+      await bar.getByLabel(BULK.carrierLabel).selectOption({ label: BULK.plannedCarrier })
+      await expect(bar.getByText(PLACES.legend, { exact: true })).toHaveCount(0)
+    } finally {
+      await page.unroute('**/carriers/*/locations*', lists)
+      await page.unroute('**/shipments/bulk', started)
+      await made.remove()
+      await places.remove()
+    }
   })
 })

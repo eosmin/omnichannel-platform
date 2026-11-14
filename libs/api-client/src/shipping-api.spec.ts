@@ -102,6 +102,17 @@ describe('shipping api', () => {
     expect(JSON.parse(init.body as string)).toEqual({ orderIds: ['o2', 'o1'], connectionId: 'c1' })
   })
 
+  it('sends the places of the batch with the carrier they belong to', async () => {
+    const { client, fetchImpl } = setup(json(202, job))
+    const locationIds = { departmentId: '2', municipalityId: '21' }
+    await startBulkLabels(client, 's1', { orderIds: ['o1'], connectionId: 'c1', locationIds })
+    expect(JSON.parse(callOf(fetchImpl).init.body as string)).toEqual({
+      orderIds: ['o1'],
+      connectionId: 'c1',
+      locationIds
+    })
+  })
+
   it('reads a run by its id', async () => {
     const { client, fetchImpl } = setup(json(200, job))
     expect((await fetchBulkLabelJob(client, 's1', 'j1')).status).toBe('running')

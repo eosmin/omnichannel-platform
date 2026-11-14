@@ -9,6 +9,7 @@ import {
   ShippingService
 } from '@platform/core/shipping'
 
+import { CarriersModule } from '../carriers/carriers.module'
 import { ChannelRegistryModule } from '../channel-registry'
 import { TenancyModule } from '../tenancy'
 
@@ -21,7 +22,13 @@ import { ShipmentsService } from './shipments.service'
 // from the crypto module and the queue of the scan of a label from the queues one; the database, the audit and the event
 // modules are the app's.
 @Module({
-  imports: [ChannelRegistryModule, CryptoPlatformModule, QueuesPlatformModule, TenancyModule],
+  imports: [
+    CarriersModule,
+    ChannelRegistryModule,
+    CryptoPlatformModule,
+    QueuesPlatformModule,
+    TenancyModule
+  ],
   controllers: [ShipmentsController],
   providers: [
     ShippingService,

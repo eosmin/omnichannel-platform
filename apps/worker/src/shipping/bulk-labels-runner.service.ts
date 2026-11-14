@@ -248,6 +248,7 @@ export class BulkLabelsRunner {
         const request: ShipmentRequest = {
           orderId,
           ...(data.connectionId === undefined ? {} : { connectionId: data.connectionId }),
+          ...(data.locationIds === undefined ? {} : { locationIds: data.locationIds }),
           ...(data.pickup === undefined ? {} : { pickup: data.pickup }),
           // The warehouse the run judged is the one asked for: the engine refuses it if the order no longer ships from there
           ...(part.originWarehouseId === null ? {} : { originWarehouseId: part.originWarehouseId })

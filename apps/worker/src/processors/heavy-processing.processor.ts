@@ -3,6 +3,7 @@ import { type Job, UnrecoverableError } from 'bullmq'
 import { z } from 'zod'
 
 import {
+  bulkLocationIdsSchema,
   CarrierStatusLimits,
   channelIdSchema,
   OriginMediaSlots,
@@ -58,6 +59,7 @@ const bulkLabelsJobSchema = exactly<BulkLabelsMergeJob>()(
     storeId: z.uuid(),
     jobId: z.uuid(),
     connectionId: z.uuid().optional(),
+    locationIds: bulkLocationIdsSchema.optional(),
     pickup: shipmentPickupSchema.optional(),
     canOverridePrice: z.boolean(),
     correlationId: z.string().optional()

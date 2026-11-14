@@ -153,6 +153,25 @@ describe('the body of a bulk run of labels', () => {
     expect(bulkLabelsSchema.safeParse(body).success).toBe(false)
   })
 
+  it('takes the two places of a carrier, but only together with that carrier', () => {
+    const places = { departmentId: '2', municipalityId: '21' }
+    expect(
+      bulkLabelsSchema.safeParse({ orderIds: [ID], connectionId: ID, locationIds: places }).success
+    ).toBe(true)
+    // Each order would follow its own planned carrier: no pair of places could be right for all of them
+    expect(bulkLabelsSchema.safeParse({ orderIds: [ID], locationIds: places }).success).toBe(false)
+    for (const locationIds of [
+      { departmentId: '2' },
+      { municipalityId: '21' },
+      { ...places, settlementId: '7' },
+      { departmentId: '', municipalityId: '21' }
+    ]) {
+      expect(
+        bulkLabelsSchema.safeParse({ orderIds: [ID], connectionId: ID, locationIds }).success
+      ).toBe(false)
+    }
+  })
+
   it('takes a hundred orders and not a hundred and one', () => {
     const ids = (count: number) =>
       Array.from(

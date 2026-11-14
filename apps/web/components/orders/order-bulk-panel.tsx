@@ -38,6 +38,7 @@ export function OrderBulkPanel({
   return (
     <>
       <OrderBulkBar
+        storeId={storeId}
         bulk={bulk}
         availability={availabilityOf(input)}
         selectedCount={selectedIds.length}
