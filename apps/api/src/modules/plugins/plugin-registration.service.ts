@@ -1,0 +1,220 @@
+import { Injectable } from '@nestjs/common'
+import { isDeepStrictEqual } from 'node:util'
+
+import { z } from 'zod'
+
+import { AuditAction } from '@platform/core/audit'
+import { AuditService } from '@platform/core/audit-module'
+import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import {
+  isOfficialChannelId,
+  PluginCatalogTypes,
+  PluginPricingModels,
+  PluginRegistrationLimits,
+  PluginStatus,
+  ShippingPlugin
+} from '@platform/core/domain'
+import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
+import {
+  CarrierRegistry,
+  isNewerVersion,
+  type PluginManifest,
+  PluginRegistry
+} from '@platform/plugins/runtime'
+
+import type { Actor } from '../tenancy'
+
+import type { PluginStoreRef } from './plugin-installations.service'
+
+// What the owner gets back from registering a manifest. The manifest itself is not repeated: they just sent it.
+export interface RegisteredPlugin {
+  id: string
+  name: string
+  version: string
+  status: string
+  // How the id stood: new, replaced by a higher version of the organization's own plugin, or sent again exactly as stored
+  outcome: RegistrationOutcome
+}
+
+export const RegistrationOutcomes = {
+  CREATED: 'created',
+  UPDATED: 'updated',
+  UNCHANGED: 'unchanged'
+} as const
+export type RegistrationOutcome = (typeof RegistrationOutcomes)[keyof typeof RegistrationOutcomes]
+
+interface WriteResult {
+  outcome: RegistrationOutcome
+  previousVersion: string | null
+  status: string
+}
+
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
+
+// What the column keeps: the manifest the schema produced, as plain JSON (a key left undefined is not stored)
+function storedManifest(manifest: PluginManifest): { [key: string]: JsonValue } {
+  return JSON.parse(JSON.stringify(manifest)) as { [key: string]: JsonValue }
+}
+
+const storedVersionSchema = z.object({ version: z.string() })
+
+function alreadyRegistered(message: string): PlatformException {
+  return new PlatformException(
+    ErrorCodes.PLUGIN_ALREADY_REGISTERED,
+    message,
+    HttpStatusCodes.CONFLICT
+  )
+}
+
+// Private registration (D10): the owner pastes the manifest of an integration plugin and it becomes a row of the
+// catalog that belongs to their organization. No marketplace: the row is approved, free and not official. What it
+// cannot do: take an id the platform or another organization holds, or change what an installation was granted
+// (the installations keep the scopes they were installed with; a newer manifest that asks for more waits for the
+// consent of Step 5.6, PR P2).
+@Injectable()
+export class PluginRegistrationService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly registry: PluginRegistry,
+    private readonly carriers: CarrierRegistry,
+    private readonly audit: AuditService
+  ) {}
+
+  async register(
+    store: PluginStoreRef,
+    manifest: PluginManifest,
+    actor: Actor
+  ): Promise<RegisteredPlugin> {
+    // The ids the platform's own code answers for: the official channels, the shipping entry, the ids it defines for a
+    // carrier (loaded or not: a route of a webhook names the id) and whatever the registry runs
+    if (
+      isOfficialChannelId(manifest.id) ||
+      manifest.id === ShippingPlugin.ID ||
+      this.carriers.knows(manifest.id) ||
+      this.registry.has(manifest.id)
+    ) {
+      throw alreadyRegistered('that plugin id belongs to the platform')
+    }
+
+    const write = () => this.write(store, manifest)
+    let result: WriteResult
+    try {
+      result = await write()
+    } catch (error) {
+      // Two registrations of the same id at once: the second one finds the first one's row and decides again
+      if (!isUniqueViolation(error)) throw error
+      result = await write()
+    }
+
+    // Sent again as it is stored (a retry whose answer was lost): the same answer, and nothing written or audited
+    if (result.outcome === RegistrationOutcomes.UNCHANGED) {
+      return {
+        id: manifest.id,
+        name: manifest.name,
+        version: manifest.version,
+        status: result.status,
+        outcome: result.outcome
+      }
+    }
+    this.audit.log({
+      action:
+        result.outcome === RegistrationOutcomes.UPDATED
+          ? AuditAction.PLUGIN_MANIFEST_UPDATED
+          : AuditAction.PLUGIN_REGISTERED,
+      actor: { userId: actor.userId },
+      storeId: store.id,
+      resourceType: 'plugin',
+      resourceId: manifest.id,
+      // What was asked for, so that a version that asks for more than the last one can be seen in the log
+      metadata: {
+        pluginId: manifest.id,
+        version: manifest.version,
+        previousVersion: result.previousVersion,
+        scopes: manifest.scopes
+      },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
+    return {
+      id: manifest.id,
+      name: manifest.name,
+      version: manifest.version,
+      status: result.status,
+      outcome: result.outcome
+    }
+  }
+
+  private write(store: PluginStoreRef, manifest: PluginManifest): Promise<WriteResult> {
+    return this.prisma.transaction(async tx => {
+      // One registration at a time per organization, so that the limit below holds when two stores of it register together
+      await tx.$queryRaw`SELECT id FROM organizations WHERE id = ${store.organizationId} FOR UPDATE`
+      const existing = await tx.plugin.findUnique({
+        where: { id: manifest.id },
+        select: { organizationId: true, isOfficial: true, type: true, status: true, manifest: true }
+      })
+      const data = {
+        name: manifest.name,
+        authorName: manifest.author.name,
+        authorEmail: manifest.author.email,
+        manifest: storedManifest(manifest)
+      }
+
+      if (existing === null) {
+        const count = await tx.plugin.count({ where: { organizationId: store.organizationId } })
+        if (count >= PluginRegistrationLimits.MAX_PER_ORGANIZATION) {
+          throw new PlatformException(
+            ErrorCodes.PLUGIN_LIMIT_REACHED,
+            'the organization has registered as many plugins as it may',
+            HttpStatusCodes.CONFLICT
+          )
+        }
+        await tx.plugin.create({
+          data: {
+            id: manifest.id,
+            ...data,
+            type: PluginCatalogTypes.INTEGRATION,
+            isOfficial: false,
+            pricingModel: PluginPricingModels.FREE,
+            status: PluginStatus.APPROVED,
+            organizationId: store.organizationId
+          }
+        })
+        return {
+          outcome: RegistrationOutcomes.CREATED,
+          previousVersion: null,
+          status: String(PluginStatus.APPROVED)
+        }
+      }
+
+      // The id is somebody's: another organization's, or the platform's. The answer is the same for both.
+      if (
+        existing.organizationId !== store.organizationId ||
+        existing.isOfficial ||
+        existing.type !== String(PluginCatalogTypes.INTEGRATION)
+      ) {
+        throw alreadyRegistered('that plugin id is taken')
+      }
+      const stored = storedVersionSchema.safeParse(existing.manifest)
+      // A row whose manifest has no version is not one this code wrote: it is not replaced, whatever comes
+      if (!stored.success)
+        throw alreadyRegistered('the registered manifest of that plugin cannot be read')
+      const previousVersion = stored.data.version
+      const incoming = storedManifest(manifest)
+      if (isDeepStrictEqual(incoming, existing.manifest)) {
+        return { outcome: RegistrationOutcomes.UNCHANGED, previousVersion, status: existing.status }
+      }
+      // A suspended plugin is not edited: what its manifest says is what it was suspended with
+      if (existing.status !== String(PluginStatus.APPROVED)) {
+        throw alreadyRegistered('that plugin is not active and cannot be changed')
+      }
+      if (!isNewerVersion(manifest.version, previousVersion)) {
+        throw alreadyRegistered(
+          'a manifest of this plugin with that version or a newer one is already registered'
+        )
+      }
+      // The pricing, the owner organization and the installations are not touched
+      await tx.plugin.update({ where: { id: manifest.id }, data })
+      return { outcome: RegistrationOutcomes.UPDATED, previousVersion, status: existing.status }
+    })
+  }
+}

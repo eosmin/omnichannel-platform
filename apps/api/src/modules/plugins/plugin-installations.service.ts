@@ -73,6 +73,13 @@ export interface ChannelConnectManifest {
   oauth: ChannelOAuthDescriptor | null
 }
 
+// The store of the request: the catalog it sees depends on its organization (a plugin the owner registered is the
+// organization's, not every store's)
+export interface PluginStoreRef {
+  id: string
+  organizationId: string
+}
+
 const CATALOG_SELECT = {
   id: true,
   name: true,
@@ -97,10 +104,15 @@ export class PluginInstallationsService {
 
   // The approved plugins this store may see: the official ones and the private ones the registry
   // holds for it. A row the registry does not know is shown to nobody.
-  async catalog(storeId: string): Promise<PluginCatalogEntry[]> {
+  async catalog(store: PluginStoreRef): Promise<PluginCatalogEntry[]> {
+    const storeId = store.id
     const [plugins, installations, live, shipping] = await Promise.all([
       this.prisma.client.plugin.findMany({
-        where: { status: PluginStatus.APPROVED },
+        // The ones every store sees (the platform's) and the ones this organization registered, never another's
+        where: {
+          status: PluginStatus.APPROVED,
+          OR: [{ organizationId: null }, { organizationId: store.organizationId }]
+        },
         select: CATALOG_SELECT,
         orderBy: [{ isOfficial: 'desc' }, { name: 'asc' }, { id: 'asc' }]
       }),
@@ -121,11 +133,12 @@ export class PluginInstallationsService {
     const installationOf = new Map(installations.map(row => [row.pluginId, row]))
     const activeOf = new Map(live.map(row => [row.installationId, row._count._all]))
     return plugins
-      .filter(plugin =>
-        plugin.id === ShippingPlugin.ID
-          ? this.carriers.list().length > 0
-          : this.registry.isVisibleTo(plugin.id, storeId)
-      )
+      .filter(plugin => {
+        if (plugin.id === ShippingPlugin.ID) return this.carriers.list().length > 0
+        // An integration plugin runs outside the platform: no registry holds it, the row and its organization say who sees it
+        if (plugin.type === String(PluginCatalogTypes.INTEGRATION)) return true
+        return this.registry.isVisibleTo(plugin.id, storeId)
+      })
       .map(plugin => {
         const installation = installationOf.get(plugin.id)
         const installed =
@@ -150,14 +163,21 @@ export class PluginInstallationsService {
 
   // Installing a channel makes it connectable. A plugin that was uninstalled is installed again on
   // the same row: the pair (store, plugin) has one.
-  async install(storeId: string, pluginId: string, actor: Actor): Promise<PluginCatalogEntry> {
+  async install(
+    store: PluginStoreRef,
+    pluginId: string,
+    actor: Actor
+  ): Promise<PluginCatalogEntry> {
+    const storeId = store.id
     const plugin = await this.prisma.client.plugin.findUnique({
       where: { id: pluginId },
-      select: { type: true, status: true }
+      select: { type: true, status: true, organizationId: true }
     })
     if (
       plugin === null ||
       plugin.status !== String(PluginStatus.APPROVED) ||
+      // A plugin another organization registered does not exist for this one
+      (plugin.organizationId !== null && plugin.organizationId !== store.organizationId) ||
       (this.registry.has(pluginId) && !this.registry.isVisibleTo(pluginId, storeId))
     ) {
       throw resourceNotFound('plugin')
@@ -228,7 +248,7 @@ export class PluginInstallationsService {
       if (!isUniqueViolation(error)) throw error
       await write()
     }
-    const entry = await this.entryOf(storeId, pluginId)
+    const entry = await this.entryOf(store, pluginId)
     this.record(
       AuditAction.PLUGIN_INSTALLED,
       storeId,
@@ -244,10 +264,11 @@ export class PluginInstallationsService {
   // conversations, messages and customers stay, because they are the business's history. Run again
   // it finishes what a failed run left.
   async uninstall(
-    storeId: string,
+    store: PluginStoreRef,
     installationId: string,
     actor: Actor
   ): Promise<PluginCatalogEntry> {
+    const storeId = store.id
     const installation = await this.prisma.client.pluginInstallation.findFirst({
       where: { id: installationId, storeId },
       select: { id: true, pluginId: true }
@@ -266,7 +287,7 @@ export class PluginInstallationsService {
     // Audited right after the revoke, before the disconnects: a failure of those must not leave the revocation unrecorded
     if (revoked) this.record(AuditAction.PLUGIN_REVOKED, storeId, installation.id, pluginId, actor)
     await this.disconnectOpen(storeId, installation.id, pluginId, actor)
-    return this.entryOf(storeId, pluginId)
+    return this.entryOf(store, pluginId)
   }
 
   private async disconnectOpen(
@@ -332,8 +353,8 @@ export class PluginInstallationsService {
     return `${this.publicApi.apiUrl.replace(/\/$/, '')}${API_PREFIX}${ApiRoutes.webhooks.channel(pluginId)}`
   }
 
-  private async entryOf(storeId: string, pluginId: string): Promise<PluginCatalogEntry> {
-    const entry = (await this.catalog(storeId)).find(candidate => candidate.id === pluginId)
+  private async entryOf(store: PluginStoreRef, pluginId: string): Promise<PluginCatalogEntry> {
+    const entry = (await this.catalog(store)).find(candidate => candidate.id === pluginId)
     if (entry === undefined) throw resourceNotFound('plugin')
     return entry
   }

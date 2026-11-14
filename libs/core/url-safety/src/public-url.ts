@@ -56,3 +56,44 @@ export async function assertPublicHttpsUrl(
 ): Promise<URL> {
   return (await resolvePublicHttpsUrl(raw, resolve)).url
 }
+
+// The shape of a public https address, without asking the network: https, the default port, no credentials, a host
+// with a dot (or a public ip literal). It is what a document that only stores an address (a manifest) can check;
+// whoever calls the address checks it again with `resolvePublicHttpsUrl`, because a name can lead anywhere later.
+export function isWellFormedPublicHttpsUrl(raw: string): boolean {
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    return false
+  }
+  if (url.protocol !== 'https:' || url.username !== '' || url.password !== '') return false
+  if (url.port !== '' && url.port !== '443') return false
+  const host = url.hostname.replace(/^\[|\]$/g, '')
+  return isIP(host) === 0 ? isPublicDomainName(host) : isPublicAddress(host)
+}
+
+// The last label of a name that leads to a private network and never to the internet (an address of the owner's own
+// network is not a place for a plugin to send an iframe or a request)
+const PRIVATE_SUFFIXES: ReadonlySet<string> = new Set([
+  'local',
+  'localhost',
+  'localdomain',
+  'internal',
+  'intranet',
+  'private',
+  'corp',
+  'home',
+  'lan',
+  'arpa',
+  'test',
+  'invalid'
+])
+const DOMAIN_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i
+
+function isPublicDomainName(host: string): boolean {
+  const labels = host.split('.')
+  if (labels.length < 2 || !labels.every(label => DOMAIN_LABEL.test(label))) return false
+  const suffix = (labels[labels.length - 1] ?? '').toLowerCase()
+  return /^[a-z]{2,}$/.test(suffix) && !PRIVATE_SUFFIXES.has(suffix)
+}
