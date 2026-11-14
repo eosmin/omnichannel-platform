@@ -19,11 +19,13 @@ export function AppFrame({
   profile,
   currentStoreId,
   nav,
+  search,
   children
 }: {
   profile: AccountProfile
   currentStoreId: string | null
   nav?: ReactNode
+  search?: ReactNode
   children: ReactNode
 }): ReactElement {
   const t = useTranslations('app')
@@ -37,7 +39,13 @@ export function AppFrame({
         isInbox ? 'h-dvh overflow-clip' : 'min-h-dvh'
       )}
     >
-      <TopBar profile={profile} currentStoreId={currentStoreId} appTitle={t('title')} nav={nav} />
+      <TopBar
+        profile={profile}
+        currentStoreId={currentStoreId}
+        appTitle={t('title')}
+        nav={nav}
+        search={search}
+      />
       <LocaleSync savedLocale={profile.locale} />
       <DensitySync density={profile.density} />
       <ConnectionIndicator />

@@ -224,22 +224,21 @@ test.describe.serial('the inbox list', () => {
   })
 
   // The browser of the suite reports Windows to the app, so `Mod` is Ctrl here
-  test('shortcuts: Cmd/Ctrl+K goes to the search of customers and puts the cursor in it', async () => {
+  test('shortcuts: Cmd/Ctrl+K opens the palette, which jumps to a page, and Escape closes it', async () => {
     await page.goto(AppPaths.store.inbox(storeId))
     await expect(page.getByRole('list', { name: en.inbox.listLabel })).toBeVisible()
 
     await page.keyboard.press('Control+k')
-    await expect(page).toHaveURL(new RegExp(`${AppPaths.store.customers(storeId)}$`))
-    const search = page.getByRole('searchbox', { name: en.customers.list.searchLabel })
-    await expect(search).toBeFocused()
+    const palette = page.getByRole('dialog', { name: en.search.palette.title })
+    await expect(palette).toBeVisible()
+    await expect(palette.getByRole('combobox', { name: en.search.palette.label })).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(palette).toBeHidden()
 
-    // On that page the same keys bring the cursor back to the box, and a letter typed in it stays text
-    await page.getByRole('heading', { name: en.customers.list.title }).click()
-    await expect(search).not.toBeFocused()
     await page.keyboard.press('Control+k')
-    await expect(search).toBeFocused()
-    await page.keyboard.type('k')
-    await expect(search).toHaveValue('k')
+    await palette.getByRole('combobox').fill(en.shell.nav.customers)
+    await palette.getByRole('option', { name: en.shell.nav.customers }).click()
+    await expect(page).toHaveURL(new RegExp(`${AppPaths.store.customers(storeId)}$`))
   })
 
   test('shortcuts: moves through the rows with j and k, ticks with x and resolves with e', async () => {

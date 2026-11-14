@@ -2462,6 +2462,7 @@
       },
       "labels": {
         "list": {
+          "FOCUS_SEARCH": "Search the store",
           "NEXT_CONVERSATION": "Next conversation",
           "PREVIOUS_CONVERSATION": "Previous conversation",
           "OPEN_CONVERSATION": "Open the conversation in focus",
@@ -2487,7 +2488,7 @@
           "CREATE_ORDER": "Create an order for the customer"
         },
         "global": {
-          "COMMAND_PALETTE": "Search customers",
+          "COMMAND_PALETTE": "Search or go to a page",
           "SEND_MESSAGE": "Send the message",
           "GO_TO_INBOX": "Go to the inbox",
           "GO_TO_ORDERS": "Go to orders",
@@ -4962,6 +4963,60 @@
       "cancel": "Cancel",
       "done": "Pickup requested.",
       "doneSomeWait": "Pickup requested: some guides wait for the next one."
+    }
+  },
+  "search": {
+    "palette": {
+      "title": "Search",
+      "description": "Search customers, orders, products and messages, or go to a page. Use the arrow keys and Enter.",
+      "label": "Search the store",
+      "placeholder": "Search or go to a page",
+      "results": "Results",
+      "goTo": "Go to",
+      "tooShort": "{count, plural, one {Type at least # character} other {Type at least # characters}} to search.",
+      "searching": "Searching",
+      "failed": "The search could not be done. Try again.",
+      "empty": "Nothing found for “{query}”.",
+      "resultsCount": "{count, plural, =0 {No results} one {# result} other {# results}}",
+      "seeAll": "See all results for “{query}”"
+    },
+    "box": {
+      "label": "Search",
+      "placeholder": "Search",
+      "open": "Open the search"
+    },
+    "groups": {
+      "customers": "Customers",
+      "orders": "Orders",
+      "products": "Products",
+      "messages": "Messages"
+    },
+    "hit": {
+      "unnamedCustomer": "Unnamed customer",
+      "order": "Order {number}",
+      "archived": "Archived"
+    },
+    "page": {
+      "title": "Search",
+      "noAccess": "You do not have access to search this store.",
+      "label": "Search the store",
+      "placeholder": "Customer, order, product or message",
+      "submit": "Search",
+      "start": "Type a name, an order number, a product or a phrase of a conversation.",
+      "tooShort": "{count, plural, one {Type at least # character} other {Type at least # characters}} to search.",
+      "loading": "Searching",
+      "empty": "Nothing found for “{query}”.",
+      "failed": "The search could not be done.",
+      "seeMore": "See only these",
+      "hasMore": "There may be more results: narrow the text to find the one you need.",
+      "scopes": {
+        "label": "Kind of result",
+        "all": "All",
+        "customers": "Customers",
+        "orders": "Orders",
+        "products": "Products",
+        "messages": "Messages"
+      }
     }
   }
 }

@@ -2462,6 +2462,7 @@
       },
       "labels": {
         "list": {
+          "FOCUS_SEARCH": "Buscar en la tienda",
           "NEXT_CONVERSATION": "Conversación siguiente",
           "PREVIOUS_CONVERSATION": "Conversación anterior",
           "OPEN_CONVERSATION": "Abrir la conversación enfocada",
@@ -2487,7 +2488,7 @@
           "CREATE_ORDER": "Crear un pedido para el cliente"
         },
         "global": {
-          "COMMAND_PALETTE": "Buscar clientes",
+          "COMMAND_PALETTE": "Buscar o ir a una página",
           "SEND_MESSAGE": "Enviar el mensaje",
           "GO_TO_INBOX": "Ir a la bandeja",
           "GO_TO_ORDERS": "Ir a pedidos",
@@ -4962,6 +4963,60 @@
       "cancel": "Cancelar",
       "done": "Recolección solicitada.",
       "doneSomeWait": "Recolección solicitada: algunas guías esperan a la siguiente."
+    }
+  },
+  "search": {
+    "palette": {
+      "title": "Buscar",
+      "description": "Busca clientes, pedidos, productos y mensajes, o ve a una página. Usa las flechas y Enter.",
+      "label": "Buscar en la tienda",
+      "placeholder": "Busca o ve a una página",
+      "results": "Resultados",
+      "goTo": "Ir a",
+      "tooShort": "{count, plural, one {Escribe al menos # carácter} other {Escribe al menos # caracteres}} para buscar.",
+      "searching": "Buscando",
+      "failed": "No se pudo hacer la búsqueda. Inténtalo de nuevo.",
+      "empty": "No se encontró nada para «{query}».",
+      "resultsCount": "{count, plural, =0 {Sin resultados} one {# resultado} other {# resultados}}",
+      "seeAll": "Ver todos los resultados de «{query}»"
+    },
+    "box": {
+      "label": "Buscar",
+      "placeholder": "Buscar",
+      "open": "Abrir la búsqueda"
+    },
+    "groups": {
+      "customers": "Clientes",
+      "orders": "Pedidos",
+      "products": "Productos",
+      "messages": "Mensajes"
+    },
+    "hit": {
+      "unnamedCustomer": "Cliente sin nombre",
+      "order": "Pedido {number}",
+      "archived": "Archivado"
+    },
+    "page": {
+      "title": "Búsqueda",
+      "noAccess": "No tienes acceso para buscar en esta tienda.",
+      "label": "Buscar en la tienda",
+      "placeholder": "Cliente, pedido, producto o mensaje",
+      "submit": "Buscar",
+      "start": "Escribe un nombre, un número de pedido, un producto o una frase de una conversación.",
+      "tooShort": "{count, plural, one {Escribe al menos # carácter} other {Escribe al menos # caracteres}} para buscar.",
+      "loading": "Buscando",
+      "empty": "No se encontró nada para «{query}».",
+      "failed": "No se pudo hacer la búsqueda.",
+      "seeMore": "Ver solo estos",
+      "hasMore": "Puede haber más resultados: afina el texto para encontrar el que necesitas.",
+      "scopes": {
+        "label": "Tipo de resultado",
+        "all": "Todo",
+        "customers": "Clientes",
+        "orders": "Pedidos",
+        "products": "Productos",
+        "messages": "Mensajes"
+      }
     }
   }
 }

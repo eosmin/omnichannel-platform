@@ -14,13 +14,16 @@ export function TopBar({
   profile,
   currentStoreId,
   appTitle,
-  nav
+  nav,
+  search
 }: {
   profile: AccountProfile
   currentStoreId: string | null
   appTitle: string
   // The links to the pages of the area, when it has them
   nav?: ReactNode
+  // The search box of a store (Step 5.1); the pages outside a store have none
+  search?: ReactNode
 }): ReactElement {
   return (
     // What does not fit gives way from the left: the title shortens, the store name shortens. On a phone the
@@ -47,6 +50,7 @@ export function TopBar({
       <div className="min-w-0 max-md:order-last max-md:basis-full">{nav}</div>
       <div className="flex-1" />
       <div className="flex shrink-0 items-center gap-1">
+        {search}
         {currentStoreId !== null && <NotificationCenter storeId={currentStoreId} />}
         <UserMenu name={profile.name} email={profile.email} />
       </div>
