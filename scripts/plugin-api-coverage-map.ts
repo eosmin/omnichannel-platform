@@ -94,6 +94,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'settings.webhooks': { none: SECURITY_SETTINGS },
   'settings.webhookById': { none: SECURITY_SETTINGS },
   'settings.webhookDeliveries': { none: SECURITY_SETTINGS },
+  'settings.webhookSecret': { none: SECURITY_SETTINGS },
   'settings.apiKeys': { none: SECURITY_SETTINGS },
   'settings.apiKeyById': { none: SECURITY_SETTINGS },
   'settings.retention': { none: SECURITY_SETTINGS },

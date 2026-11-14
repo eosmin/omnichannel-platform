@@ -165,6 +165,9 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     // The move replays an event kept under a code the owner has just mapped: nobody outside the team hears of it
     replay: z.boolean().optional()
   }),
+  [Events.CUSTOMER_CREATED]: z.object({ storeId: id, customerId: id }),
+  [Events.SHIPMENT_CREATED]: shipmentEvent,
+  [Events.SHIPMENT_CANCELLED]: shipmentEvent,
   [Events.SHIPMENT_REQUIRES_REVIEW]: shipmentEvent,
   [Events.SHIPMENT_CANCEL_FAILED]: shipmentEvent,
   // The ids of the connection and the carrier's code, normalized and bounded: no description, no customer data
@@ -181,6 +184,12 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     overdueAfterDays: z.number().int().min(1),
     oldestAgeDays: z.number().int().min(0),
     totalOwedCents: z.number().int().min(0)
+  }),
+  // A webhook turned off: its id and the count of failures, never its address or the response that failed
+  [Events.WEBHOOK_AUTO_DISABLED]: z.object({
+    storeId: id,
+    webhookId: id,
+    consecutiveFailures: z.number().int().min(1)
   }),
   // A bulk run of labels: ids and counts, never what was made of each order
   [Events.BULK_LABELS_PROGRESS]: z.object({

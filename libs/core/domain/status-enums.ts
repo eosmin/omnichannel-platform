@@ -177,7 +177,9 @@ export enum PluginStatus {
 
 export enum ApiKeyStatus {
   ACTIVE = 'active',
-  REVOKED = 'revoked'
+  REVOKED = 'revoked',
+  // Never stored: what the list shows for an active key whose date has passed
+  EXPIRED = 'expired'
 }
 
 export enum DsrType {

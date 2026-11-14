@@ -150,6 +150,23 @@ describe('bridgedPayload', () => {
       to: ShipmentStatus.DELIVERED,
       replay: true
     },
+    [Events.CUSTOMER_CREATED]: { storeId: randomUUID(), customerId: randomUUID() },
+    [Events.SHIPMENT_CREATED]: {
+      storeId: randomUUID(),
+      shipmentId: randomUUID(),
+      orderId: randomUUID(),
+      orderNumber: 'ORD-1',
+      connectionId: randomUUID(),
+      actor: { type: 'system', id: null }
+    },
+    [Events.SHIPMENT_CANCELLED]: {
+      storeId: randomUUID(),
+      shipmentId: randomUUID(),
+      orderId: randomUUID(),
+      orderNumber: 'ORD-1',
+      connectionId: randomUUID(),
+      actor: { type: 'system', id: null }
+    },
     [Events.SHIPMENT_REQUIRES_REVIEW]: {
       storeId: randomUUID(),
       shipmentId: randomUUID(),
@@ -193,6 +210,11 @@ describe('bridgedPayload', () => {
       overdueAfterDays: 7,
       oldestAgeDays: 12,
       totalOwedCents: 45_000
+    },
+    [Events.WEBHOOK_AUTO_DISABLED]: {
+      storeId: randomUUID(),
+      webhookId: randomUUID(),
+      consecutiveFailures: 20
     },
     [Events.BULK_LABELS_PROGRESS]: {
       storeId: randomUUID(),

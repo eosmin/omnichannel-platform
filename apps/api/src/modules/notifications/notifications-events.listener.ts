@@ -23,7 +23,8 @@ import {
   ShipmentResourceTypes,
   ShipmentStatus,
   StoreSettingsSections,
-  TransferResourceTypes
+  TransferResourceTypes,
+  WEBHOOK_RESOURCE_TYPE
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import {
@@ -33,6 +34,7 @@ import {
   type ConversationSnoozeExpiredPayload,
   type CarrierStatusUnmappedPayload,
   type RemittanceOverduePayload,
+  type WebhookAutoDisabledPayload,
   type CountSubmittedPayload,
   type ExportSettledPayload,
   Events,
@@ -355,6 +357,35 @@ export class NotificationsEventsListener {
       this.logger.error(
         { connectionId, err: String(error) },
         'an overdue remittance could not be notified'
+      )
+    }
+  }
+
+  // A webhook failed too many times in a row and the worker turned it off (TDD_07 §2). The worker says it once, when it makes
+  // the change; the people who manage webhooks are told, and only while they still hold the permission. The webhook is read under
+  // the store of the event: an id of another store tells nobody.
+  @OnEvent(Events.WEBHOOK_AUTO_DISABLED)
+  async onWebhookAutoDisabled(payload: WebhookAutoDisabledPayload): Promise<void> {
+    const { storeId, webhookId } = payload
+    try {
+      const webhook = await this.prisma.client.webhook.findFirst({
+        where: { id: webhookId, storeId },
+        select: { id: true }
+      })
+      if (webhook === null) return
+      await this.notifications.sendToStore({
+        storeId,
+        type: NotificationTypes.WEBHOOK_AUTO_DISABLED,
+        params: {},
+        resourceType: WEBHOOK_RESOURCE_TYPE,
+        resourceId: webhookId,
+        actionPath: AppPaths.store.settings(storeId, StoreSettingsSections.WEBHOOKS),
+        requiredPermission: Permissions.SETTINGS_MANAGE_WEBHOOKS
+      })
+    } catch (error) {
+      this.logger.error(
+        { webhookId, err: String(error) },
+        'a disabled webhook could not be notified'
       )
     }
   }

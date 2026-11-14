@@ -260,6 +260,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'settings.webhooks': { step: '5.4' },
   'settings.webhookById': { step: '5.4' },
   'settings.webhookDeliveries': { step: '5.4' },
+  'settings.webhookSecret': { step: '5.4' },
   'settings.apiKeys': { step: '5.4' },
   'settings.apiKeyById': { step: '5.4' },
   'settings.retention': { step: '5.4' },
