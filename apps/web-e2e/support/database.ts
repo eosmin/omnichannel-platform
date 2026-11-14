@@ -15,6 +15,7 @@ import {
   AuthorType,
   type CaptionState,
   CarrierId,
+  type CarrierIdType,
   ChannelConnectionStatus,
   ChannelIds,
   type DeliveryStatus,
@@ -907,6 +908,26 @@ export async function addReadOnlySettingsUser(
       await owner.membership.deleteMany({ where: { userId } })
       await owner.user.deleteMany({ where: { id: userId } })
       await owner.role.deleteMany({ where: { id: roleId } })
+    })
+}
+
+// A connection of a carrier the registry offers (the id comes from the registry the page read, so no carrier is named here), as
+// the owner of the database writes it: active, with its one service and no credentials, which is all the settings screens read.
+// The cases that need a carrier that pushes statuses use it; nothing here calls the carrier. Returns what removes it again.
+export async function addCarrierConnectionTo(
+  storeId: string,
+  carrierId: string,
+  displayName: string
+): Promise<() => Promise<void>> {
+  const made = await withOwner(owner =>
+    createCarrierConnection(owner, { storeId, carrierId: carrierId as CarrierIdType, displayName })
+  )
+  return () =>
+    withOwner(async owner => {
+      await owner.carrierStatusMapping.deleteMany({ where: { connectionId: made.id } })
+      await owner.carrierUnmappedStatus.deleteMany({ where: { connectionId: made.id } })
+      await owner.carrierService.deleteMany({ where: { connectionId: made.id } })
+      await owner.carrierConnection.deleteMany({ where: { id: made.id } })
     })
 }
 

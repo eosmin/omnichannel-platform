@@ -1,4 +1,4 @@
-import { ShipmentStatus } from '@platform/core/domain'
+import { CARRIER_WEBHOOK_SECRET_HEADER, ShipmentStatus } from '@platform/core/domain'
 
 // What C807 Express documents (Google Sites "Xpress"); nothing here is a guess except what its comment says.
 export const C807Api = {
@@ -86,7 +86,7 @@ export const C807Time = { OFFSET: '-06:00' } as const
 
 // The header the owner pastes in the portal of C807 (section Webhook, "Encabezado") with the secret of the connection.
 // The carrier signs nothing, so this header is all that says the call is ours (TDD_17 §4.9)
-export const C807_WEBHOOK_SECRET_HEADER = 'x-webhook-secret'
+export const C807_WEBHOOK_SECRET_HEADER = CARRIER_WEBHOOK_SECRET_HEADER
 
 // The status codes of C807 and what each is assumed to mean. `null` is a code the plugin does not dare to assume: it waits in the
 // unmapped list for the owner. A code with a reason is the composite `code:reason` the owner can map alone (TDD_17 §4.17).

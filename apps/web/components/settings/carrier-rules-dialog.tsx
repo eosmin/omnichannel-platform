@@ -3,11 +3,12 @@
 import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useId, useState } from 'react'
 
-import { type CarrierConnectionView } from '@platform/api-client'
+import type { CarrierConnectFieldView, CarrierConnectionView } from '@platform/api-client'
 import {
   CarrierConnectionLimits,
   CarrierConnectionStatus,
   LabelFormat,
+  LocalGuide,
   ShippingPayer
 } from '@platform/core/domain'
 
@@ -18,9 +19,11 @@ import {
   acceptsCashOnDelivery,
   canPoll,
   carrierRulesProblems,
+  credentialShapeOf,
   hasInternalGuide,
   PICKUP_WEEKDAYS
 } from '../../lib/settings/carriers-form'
+import { missingFields } from '../../lib/settings/connect-form'
 import { useUpdateCarrier } from '../../lib/settings/use-carriers'
 import { useSubmitGuard } from '../../lib/submit-guard'
 import { toast } from '../../lib/toast'
@@ -39,14 +42,19 @@ import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 import { Textarea } from '../ui/textarea'
 
+import { CarrierFieldInputs } from './carrier-field-inputs'
+
 // Edit a connection: its name, whether it is the default, the pickup rules (days, cutoff, automatic request, reminder),
 // and new credentials for a carrier with an account. A connection that was let go takes only a new name, to free the
 // old one (the api refuses the rest). Only what changed is sent.
 export function CarrierRulesDialog({
   connection,
+  connectFields,
   onClose
 }: {
   connection: CarrierConnectionView
+  // What the registry says its carrier asks for; none (or not loaded yet): the free JSON box
+  connectFields: readonly CarrierConnectFieldView[]
   onClose: () => void
 }): ReactElement {
   const t = useTranslations('settings.carriers.rules')
@@ -56,11 +64,14 @@ export function CarrierRulesDialog({
   const guard = useSubmitGuard()
   const id = useId()
   const [openedAs] = useState(connection.displayName)
-  const [draft, setDraft] = useState<CarrierRulesDraft>(() => carrierRulesDraftOf(connection))
+  const shape = credentialShapeOf(connection, connectFields)
+  const [draft, setDraft] = useState<CarrierRulesDraft>(() =>
+    carrierRulesDraftOf(connection, shape.fields)
+  )
   const [showProblems, setShowProblems] = useState(false)
   const disconnected = connection.status === String(CarrierConnectionStatus.DISABLED)
-  const problems = carrierRulesProblems(draft)
-  const changes = carrierRulesChanges(connection, draft)
+  const problems = carrierRulesProblems(draft, shape)
+  const changes = carrierRulesChanges(connection, draft, shape)
   const changed = Object.keys(changes).length > 0
   const pending = update.isPending
   const set = (patch: Partial<CarrierRulesDraft>): void =>
@@ -394,7 +405,72 @@ export function CarrierRulesDialog({
                   </ul>
                 </fieldset>
               )}
-              {connection.hasCredentials && !hasInternalGuide(connection.capabilities) ? (
+              {shape.savedCourier !== null ? (
+                <fieldset className="grid gap-3" disabled={pending}>
+                  <legend className="text-sm font-medium">{t('courier.legend')}</legend>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor={`${id}-courier-phone`}>{t('courier.phone')}</Label>
+                    <Input
+                      id={`${id}-courier-phone`}
+                      value={draft.courier.phone}
+                      onChange={event =>
+                        set({ courier: { ...draft.courier, phone: event.target.value } })
+                      }
+                      maxLength={CarrierConnectionLimits.CONTACT_PHONE_MAX_LENGTH}
+                      autoComplete="off"
+                      aria-invalid={has('courierPhone')}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor={`${id}-courier-prefix`}>{t('courier.prefix')}</Label>
+                    <Input
+                      id={`${id}-courier-prefix`}
+                      value={draft.courier.prefix}
+                      onChange={event =>
+                        set({
+                          courier: { ...draft.courier, prefix: event.target.value.toUpperCase() }
+                        })
+                      }
+                      maxLength={LocalGuide.PREFIX_MAX_LENGTH}
+                      autoComplete="off"
+                      aria-invalid={has('courierPrefix')}
+                      aria-describedby={`${id}-courier-prefix-hint`}
+                    />
+                    <p id={`${id}-courier-prefix-hint`} className="text-muted-foreground text-xs">
+                      {t('courier.prefixHint')}
+                    </p>
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor={`${id}-courier-notes`}>{t('courier.notes')}</Label>
+                    <Textarea
+                      id={`${id}-courier-notes`}
+                      value={draft.courier.notes}
+                      onChange={event =>
+                        set({ courier: { ...draft.courier, notes: event.target.value } })
+                      }
+                      maxLength={CarrierConnectionLimits.CONTACT_NOTES_MAX_LENGTH}
+                      aria-invalid={has('courierNotes')}
+                    />
+                  </div>
+                </fieldset>
+              ) : shape.fields.length > 0 ? (
+                <fieldset className="grid gap-3" disabled={pending}>
+                  <legend className="text-sm font-medium">{t('credentials')}</legend>
+                  <p className="text-muted-foreground text-xs">{t('fieldsHint')}</p>
+                  <CarrierFieldInputs
+                    fields={shape.fields}
+                    values={draft.fieldValues}
+                    onChange={fieldValues => set({ fieldValues })}
+                    disabled={pending}
+                    invalid={field =>
+                      has('fields') &&
+                      missingFields(shape.fields, draft.fieldValues).some(
+                        item => item.key === field.key
+                      )
+                    }
+                  />
+                </fieldset>
+              ) : connection.hasCredentials && !hasInternalGuide(connection.capabilities) ? (
                 <div className="grid gap-1.5">
                   <Label htmlFor={`${id}-credentials`}>{t('credentials')}</Label>
                   <Textarea

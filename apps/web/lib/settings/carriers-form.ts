@@ -1,4 +1,5 @@
 import type {
+  CarrierConnectFieldView,
   CarrierConnectionView,
   ConnectCarrierInput,
   UpdateCarrierInput
@@ -12,6 +13,8 @@ import {
 } from '@platform/core/domain'
 
 import { centsToInput, parseCents } from '../products/money'
+
+import { type ConnectValues, credentialsOf, emptyValues, missingFields } from './connect-form'
 
 // The forms of Settings → Carriers as plain values, and the checks done before the request. The api checks the same and
 // decides. Nothing here knows a carrier: what a form asks for comes from the capabilities the connection or the registry
@@ -28,6 +31,11 @@ export const CarrierRulesProblems = {
   AUTO_TIME: 'autoTime',
   REMINDER: 'reminder',
   CREDENTIALS: 'credentials',
+  FIELDS: 'fields',
+  COURIER_NAME: 'courierName',
+  COURIER_PHONE: 'courierPhone',
+  COURIER_PREFIX: 'courierPrefix',
+  COURIER_NOTES: 'courierNotes',
   SERVICE_LABEL: 'serviceLabel',
   DEFAULT_SERVICE: 'defaultService',
   FEE: 'fee',
@@ -48,8 +56,12 @@ export interface CarrierRulesDraft {
   autoPickupTime: string
   // Digits as typed
   pickupReminderMinutes: string
-  // New credentials, as a JSON object; empty keeps the ones the connection has
+  // New credentials, as a JSON object (a carrier that declares no fields); empty keeps the ones the connection has
   credentials: string
+  // New credentials, field by field (a carrier that declares them): all empty keeps the ones the connection has
+  fieldValues: ConnectValues
+  // The contact and the prefix of a courier the platform makes the guides for, as the connection holds them
+  courier: CourierDraft
   defaultServiceCode: string
   defaultShippingPayer: string
   labelFormat: string
@@ -65,7 +77,33 @@ export interface CarrierRulesDraft {
   services: { code: string; label: string; active: boolean }[]
 }
 
-export function carrierRulesDraftOf(view: CarrierConnectionView): CarrierRulesDraft {
+export interface CourierDraft {
+  name: string
+  phone: string
+  notes: string
+  prefix: string
+}
+
+const textOf = (value: unknown): string => (typeof value === 'string' ? value : '')
+
+// The connection keeps the phone and the notes of a courier and its prefix; the name the owner typed when connecting only
+// gave the default name of the connection and is not kept. An edit sends the name of the connection in its place, so it
+// is not asked for again.
+export function courierDraftOf(
+  view: Pick<CarrierConnectionView, 'contact' | 'guidePrefix' | 'displayName'>
+): CourierDraft {
+  return {
+    name: view.displayName,
+    phone: textOf(view.contact?.['phone']),
+    notes: textOf(view.contact?.['notes']),
+    prefix: view.guidePrefix ?? ''
+  }
+}
+
+export function carrierRulesDraftOf(
+  view: CarrierConnectionView,
+  fields: readonly CarrierConnectFieldView[] = []
+): CarrierRulesDraft {
   return {
     displayName: view.displayName,
     isDefault: view.isDefault,
@@ -76,6 +114,8 @@ export function carrierRulesDraftOf(view: CarrierConnectionView): CarrierRulesDr
     autoPickupTime: view.autoPickupTime ?? '',
     pickupReminderMinutes: String(view.pickupReminderMinutes),
     credentials: '',
+    fieldValues: emptyValues(fields),
+    courier: courierDraftOf(view),
     defaultServiceCode: view.defaultServiceCode ?? '',
     defaultShippingPayer: view.defaultShippingPayer,
     labelFormat: view.labelFormat,
@@ -134,7 +174,71 @@ export function parseCredentials(text: string): Record<string, unknown> | null |
   }
 }
 
-export function carrierRulesProblems(draft: CarrierRulesDraft): CarrierRulesProblem[] {
+// What the credentials of a connection are made of, which the form of its edit draws: the fields its carrier declares, the
+// contact of a courier the platform makes the guides for, or (neither) a free JSON object
+export interface CredentialShape {
+  fields: readonly CarrierConnectFieldView[]
+  // The contact the courier has now: a change of it is what the edit sends
+  savedCourier: CourierDraft | null
+}
+
+export const FREE_JSON_SHAPE: CredentialShape = { fields: [], savedCourier: null }
+
+export function credentialShapeOf(
+  connection: Pick<
+    CarrierConnectionView,
+    'capabilities' | 'contact' | 'guidePrefix' | 'displayName'
+  >,
+  declared: readonly CarrierConnectFieldView[]
+): CredentialShape {
+  if (hasInternalGuide(connection.capabilities)) {
+    return { fields: [], savedCourier: courierDraftOf(connection) }
+  }
+  return { fields: declared, savedCourier: null }
+}
+
+const sameCourier = (a: CourierDraft, b: CourierDraft): boolean =>
+  a.name.trim() === b.name.trim() &&
+  a.phone.trim() === b.phone.trim() &&
+  a.notes.trim() === b.notes.trim() &&
+  a.prefix.trim() === b.prefix.trim()
+
+// What a courier's contact and prefix must be, named by the problem of the form that asks for them
+function courierProblems<P extends string>(
+  courier: CourierDraft,
+  names: { name: P; phone: P; prefix: P; notes: P }
+): P[] {
+  const problems: P[] = []
+  const name = courier.name.trim()
+  if (name === '' || name.length > CarrierConnectionLimits.DISPLAY_NAME_MAX_LENGTH) {
+    problems.push(names.name)
+  }
+  const phone = courier.phone.trim()
+  if (phone === '' || phone.length > CarrierConnectionLimits.CONTACT_PHONE_MAX_LENGTH) {
+    problems.push(names.phone)
+  }
+  if (!LocalGuide.PREFIX_PATTERN.test(courier.prefix.trim())) problems.push(names.prefix)
+  if (courier.notes.trim().length > CarrierConnectionLimits.CONTACT_NOTES_MAX_LENGTH) {
+    problems.push(names.notes)
+  }
+  return problems
+}
+
+// The `credentials` of a courier: its contact and the prefix of its guides
+function courierCredentials(courier: CourierDraft): Record<string, string> {
+  const notes = courier.notes.trim()
+  return {
+    name: courier.name.trim(),
+    phone: courier.phone.trim(),
+    ...(notes === '' ? {} : { notes }),
+    prefix: courier.prefix.trim()
+  }
+}
+
+export function carrierRulesProblems(
+  draft: CarrierRulesDraft,
+  shape: CredentialShape = FREE_JSON_SHAPE
+): CarrierRulesProblem[] {
   const problems: CarrierRulesProblem[] = []
   const name = draft.displayName.trim()
   if (name === '' || name.length > CarrierConnectionLimits.DISPLAY_NAME_MAX_LENGTH) {
@@ -154,8 +258,26 @@ export function carrierRulesProblems(draft: CarrierRulesDraft): CarrierRulesProb
   if (reminderOf(draft.pickupReminderMinutes) === undefined) {
     problems.push(CarrierRulesProblems.REMINDER)
   }
-  if (parseCredentials(draft.credentials) === undefined) {
+  if (shape.fields.length === 0 && parseCredentials(draft.credentials) === undefined) {
     problems.push(CarrierRulesProblems.CREDENTIALS)
+  }
+  // The credentials of a carrier with fields are replaced whole: some typed and a required one missing is a problem, none typed
+  // keeps the saved ones
+  if (
+    Object.keys(credentialsOf(shape.fields, draft.fieldValues)).length > 0 &&
+    missingFields(shape.fields, draft.fieldValues).length > 0
+  ) {
+    problems.push(CarrierRulesProblems.FIELDS)
+  }
+  if (shape.savedCourier !== null && !sameCourier(draft.courier, shape.savedCourier)) {
+    problems.push(
+      ...courierProblems(draft.courier, {
+        name: CarrierRulesProblems.COURIER_NAME,
+        phone: CarrierRulesProblems.COURIER_PHONE,
+        prefix: CarrierRulesProblems.COURIER_PREFIX,
+        notes: CarrierRulesProblems.COURIER_NOTES
+      })
+    )
   }
   if (
     draft.services.some(
@@ -207,7 +329,8 @@ const sameDays = (a: readonly number[], b: readonly number[]): boolean =>
 // no problems; a field that cannot be read is left out.
 export function carrierRulesChanges(
   saved: CarrierConnectionView,
-  draft: CarrierRulesDraft
+  draft: CarrierRulesDraft,
+  shape: CredentialShape = FREE_JSON_SHAPE
 ): UpdateCarrierInput {
   const changes: UpdateCarrierInput = {}
   const name = draft.displayName.trim()
@@ -232,8 +355,17 @@ export function carrierRulesChanges(
   if (reminder !== undefined && reminder !== saved.pickupReminderMinutes) {
     changes.pickupReminderMinutes = reminder
   }
-  const credentials = parseCredentials(draft.credentials)
-  if (credentials !== null && credentials !== undefined) changes.credentials = credentials
+  if (shape.fields.length > 0) {
+    const typed = credentialsOf(shape.fields, draft.fieldValues)
+    if (Object.keys(typed).length > 0) changes.credentials = typed
+  } else if (shape.savedCourier !== null) {
+    if (!sameCourier(draft.courier, shape.savedCourier)) {
+      changes.credentials = courierCredentials(draft.courier)
+    }
+  } else {
+    const credentials = parseCredentials(draft.credentials)
+    if (credentials !== null && credentials !== undefined) changes.credentials = credentials
+  }
   if (draft.defaultServiceCode !== '' && draft.defaultServiceCode !== saved.defaultServiceCode) {
     changes.defaultServiceCode = draft.defaultServiceCode
   }
@@ -307,6 +439,7 @@ export const ConnectProblems = {
   CARRIER: 'carrier',
   NAME: 'name',
   CREDENTIALS: 'credentials',
+  FIELDS: 'fields',
   COURIER_NAME: 'courierName',
   COURIER_PHONE: 'courierPhone',
   COURIER_PREFIX: 'courierPrefix',
@@ -317,8 +450,10 @@ export type ConnectProblem = (typeof ConnectProblems)[keyof typeof ConnectProble
 export interface ConnectDraft {
   carrierId: string
   displayName: string
-  // A carrier with an account: its credentials as a JSON object, until the plugin declares the fields (Step 4.15)
+  // A carrier with an account that declares no fields: its credentials as a JSON object
   credentials: string
+  // A carrier that declares fields: what was typed in each, by key
+  fieldValues: ConnectValues
   // A courier the platform makes the guides for: what its guides and its label carry
   courierName: string
   courierPhone: string
@@ -331,6 +466,7 @@ export const EMPTY_CONNECT_DRAFT: ConnectDraft = {
   carrierId: '',
   displayName: '',
   credentials: '',
+  fieldValues: {},
   courierName: '',
   courierPhone: '',
   courierNotes: '',
@@ -341,6 +477,13 @@ export const EMPTY_CONNECT_DRAFT: ConnectDraft = {
 export interface ConnectTarget {
   capabilities: readonly string[]
   hasCredentials: boolean
+  // What the registry says the carrier asks for; none: the free JSON
+  connectFields: readonly CarrierConnectFieldView[]
+}
+
+// The form of a carrier that declares fields: its own, and never the JSON box
+export function declaresFields(target: ConnectTarget): boolean {
+  return !hasInternalGuide(target.capabilities) && target.connectFields.length > 0
 }
 
 export function connectProblems(
@@ -353,18 +496,25 @@ export function connectProblems(
     problems.push(ConnectProblems.NAME)
   }
   if (hasInternalGuide(target.capabilities)) {
-    const courier = draft.courierName.trim()
-    if (courier === '' || courier.length > CarrierConnectionLimits.DISPLAY_NAME_MAX_LENGTH) {
-      problems.push(ConnectProblems.COURIER_NAME)
-    }
-    const phone = draft.courierPhone.trim()
-    if (phone === '' || phone.length > CarrierConnectionLimits.CONTACT_PHONE_MAX_LENGTH) {
-      problems.push(ConnectProblems.COURIER_PHONE)
-    }
-    const prefix = draft.courierPrefix.trim()
-    if (!LocalGuide.PREFIX_PATTERN.test(prefix)) problems.push(ConnectProblems.COURIER_PREFIX)
-    if (draft.courierNotes.trim().length > CarrierConnectionLimits.CONTACT_NOTES_MAX_LENGTH) {
-      problems.push(ConnectProblems.COURIER_NOTES)
+    problems.push(
+      ...courierProblems(
+        {
+          name: draft.courierName,
+          phone: draft.courierPhone,
+          notes: draft.courierNotes,
+          prefix: draft.courierPrefix
+        },
+        {
+          name: ConnectProblems.COURIER_NAME,
+          phone: ConnectProblems.COURIER_PHONE,
+          prefix: ConnectProblems.COURIER_PREFIX,
+          notes: ConnectProblems.COURIER_NOTES
+        }
+      )
+    )
+  } else if (declaresFields(target)) {
+    if (missingFields(target.connectFields, draft.fieldValues).length > 0) {
+      problems.push(ConnectProblems.FIELDS)
     }
   } else if (target.hasCredentials) {
     const credentials = parseCredentials(draft.credentials)
@@ -384,16 +534,18 @@ export function connectBody(draft: ConnectDraft, target: ConnectTarget): Connect
     ...(draft.isDefault ? { isDefault: true } : {})
   }
   if (hasInternalGuide(target.capabilities)) {
-    const notes = draft.courierNotes.trim()
     return {
       ...base,
-      credentials: {
-        name: draft.courierName.trim(),
-        phone: draft.courierPhone.trim(),
-        ...(notes === '' ? {} : { notes }),
-        prefix: draft.courierPrefix.trim()
-      }
+      credentials: courierCredentials({
+        name: draft.courierName,
+        phone: draft.courierPhone,
+        notes: draft.courierNotes,
+        prefix: draft.courierPrefix
+      })
     }
+  }
+  if (declaresFields(target)) {
+    return { ...base, credentials: credentialsOf(target.connectFields, draft.fieldValues) }
   }
   return { ...base, credentials: parseCredentials(draft.credentials) ?? {} }
 }

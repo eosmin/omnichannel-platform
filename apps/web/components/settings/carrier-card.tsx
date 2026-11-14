@@ -24,6 +24,7 @@ import { useStore } from '../providers/store-context'
 import { useDestructiveAction } from '../shared/destructive-action'
 import { Button } from '../ui/button'
 
+import { CarrierWebhookHeader } from './carrier-webhook-header'
 import { CopyButton } from './copy-button'
 
 const DISCONNECT_ACTION: DestructiveAction = 'DISCONNECT_CARRIER_WITH_OPEN_SHIPMENTS'
@@ -175,6 +176,8 @@ export function CarrierCard({
                   <CopyButton text={connection.webhookUrl} label={t('webhook.url')} />
                 </div>
               )}
+              <CarrierWebhookHeader small />
+              <p className="text-muted-foreground text-xs">{t('webhook.howTo')}</p>
             </div>
           ) : null}
         </>

@@ -99,6 +99,10 @@ export type CarrierHealthReason = (typeof CarrierHealthReasons)[keyof typeof Car
 // The size of a webhook secret the platform makes for a connection (bytes of randomness, shown once as base64url)
 export const CARRIER_WEBHOOK_SECRET_BYTES = 32
 
+// The header a carrier that signs nothing sends the secret of the connection in: the owner pastes its name and the secret in
+// the portal of the carrier (Settings → Carriers draws it, the plugin checks it)
+export const CARRIER_WEBHOOK_SECRET_HEADER = 'x-webhook-secret'
+
 // What the public carrier webhook accepts and keeps (TDD_17 §4.9, §4.12). The body is the carrier's, signed by it, but the
 // route is open to the internet, so every size is bounded before anything is parsed or stored.
 export const CarrierWebhookLimits = {

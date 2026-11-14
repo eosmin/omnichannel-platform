@@ -14,6 +14,7 @@ import {
   DialogTitle
 } from '../ui/dialog'
 
+import { CarrierWebhookHeader } from './carrier-webhook-header'
 import { CopyButton } from './copy-button'
 
 // The secret of a carrier's webhook, once (TDD_17 §4.12): the api made it, keeps it sealed and never answers it again.
@@ -72,6 +73,7 @@ export function CarrierSecretDialog({
             </div>
           </div>
         )}
+        <CarrierWebhookHeader />
         <DialogFooter>
           <Button type="button" onClick={onClose}>
             {tAll('common.close')}
