@@ -8,6 +8,8 @@ import {
   ShipmentUnknownOutcomeStatuses
 } from '@platform/core/domain'
 
+import { waitsForHand } from '../shipping/shipping-rules'
+
 import { readAddress } from './order-fields'
 
 // What the Shipping panel of the order detail offers. The api decides every move; this draws what a guide accepts in its status and
@@ -60,13 +62,15 @@ export const carrierCancels = (capabilities: readonly string[]): boolean =>
 const CANCELLABLE: readonly string[] = [LABEL_CREATED_STATUS, CANCEL_FAILED_STATUS]
 
 // The moves of a guide. The label is read by whoever manages shipping while the guide exists. A guide made at a carrier that cannot
-// cancel is cancelled the same way and waits for the hand ("mark as voided": whoever made it tells the carrier), which only a cancel
-// that failed offers; at a carrier that can be asked it offers both.
+// cancel is cancelled the same way and waits for the hand ("mark as voided": whoever made it tells the carrier), which a cancel that failed
+// offers, and so does one that waits with the refund `not_supported` (nobody can be asked, TDD_17 §4.10); at a carrier that can be asked it offers both.
 export function offeredShipmentActions(input: {
   status: string
   // A guide of the way back is picked up by the customer's side, never asked of the carrier from here
   kind: string
   hasLabel: boolean
+  // The refund status the api left on the guide
+  refundStatus: string
   mayManage: boolean
   // The guide is not in a pickup yet, and the member holds shipping:manage_pickups
   pickupId: string | null
@@ -93,13 +97,15 @@ export function offeredShipmentActions(input: {
   const live = !INACTIVE.includes(input.status) && input.status !== FAILED
   if (input.hasLabel && live) actions.push(ShipmentActions.PRINT_LABEL)
   // The cancel is always offered on a guide that may still be cancelled. A carrier that cannot be asked is not left out: the api parks the
-  // guide as `cancel_failed` (refund `not_supported`) and the agent then voids it by hand, because the api has no move from
+  // guide as `cancel_pending` (refund `not_supported`) and the agent then voids it by hand, because the api has no move from
   // `label_created` to `cancelled` by hand. A guide whose cancel failed at such a carrier is not retried: nobody would be asked.
   const canRetry = input.carrierCanCancel !== false
   if (CANCELLABLE.includes(input.status) && (input.status === LABEL_CREATED_STATUS || canRetry)) {
     actions.push(ShipmentActions.CANCEL)
   }
-  if (input.status === CANCEL_FAILED_STATUS) actions.push(ShipmentActions.MARK_VOIDED)
+  if (input.status === CANCEL_FAILED_STATUS || waitsForHand(input.status, input.refundStatus)) {
+    actions.push(ShipmentActions.MARK_VOIDED)
+  }
   return actions
 }
 
