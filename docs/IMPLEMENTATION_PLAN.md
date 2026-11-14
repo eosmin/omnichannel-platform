@@ -1985,7 +1985,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.1 | Finance design (TDD_18, no code) | todo | | |
 | **Milestone 5: Operations** | | | | |
 | 5.1 | Search | todo | | |
-| 5.2 | Analytics | in progress | PR A (rollups, answer semantics, metrics route) | |
+| 5.2 | Analytics | in progress | #485 (PR A: rollups, answer semantics, metrics route) | |
 | 5.3 | Caching and performance | todo | | |
 | 5.4 | Settings | todo | | |
 | 5.5 | Onboarding | deferred (Phase 2) | | |
