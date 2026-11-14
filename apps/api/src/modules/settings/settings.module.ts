@@ -8,6 +8,7 @@ import { InventorySettingsService } from './inventory-settings.service'
 import { PreferencesService } from './preferences.service'
 import { RetentionSettingsService } from './retention-settings.service'
 import { ReturnSettingsService } from './return-settings.service'
+import { SafetySettingsService } from './safety-settings.service'
 import { SettingsController } from './settings.controller'
 import { SnippetsService } from './snippets.service'
 import { TagsService } from './tags.service'
@@ -23,6 +24,7 @@ import { TagsService } from './tags.service'
     InboxSettingsService,
     InventorySettingsService,
     ReturnSettingsService,
+    SafetySettingsService,
     RetentionSettingsService,
     PreferencesService
   ]

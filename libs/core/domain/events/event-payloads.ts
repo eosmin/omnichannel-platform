@@ -289,6 +289,15 @@ export interface ConversationAttentionChangedPayload {
   visibility: ConversationVisibility
 }
 
+// A conversation was deleted by hand (Q6): ids only, nothing of what it held. `visibility` is the state it had, so that
+// only who could see it hears that it left.
+export interface ConversationDeletedPayload {
+  storeId: string
+  conversationId: string
+  customerId: string
+  visibility: ConversationVisibility
+}
+
 export interface ConversationReadPayload {
   storeId: string
   conversationId: string
@@ -476,6 +485,7 @@ export interface DomainEventPayloads {
   [Events.CONVERSATION_READ]: ConversationReadPayload
   [Events.CONVERSATION_ATTENTION_CHANGED]: ConversationAttentionChangedPayload
   [Events.CONVERSATION_UNREAD]: ConversationReadPayload
+  [Events.CONVERSATION_DELETED]: ConversationDeletedPayload
   [Events.MESSAGE_QUEUED]: MessageQueuedPayload
   [Events.MESSAGE_SENT]: MessageStatusPayload
   [Events.MESSAGE_DELIVERED]: MessageStatusPayload

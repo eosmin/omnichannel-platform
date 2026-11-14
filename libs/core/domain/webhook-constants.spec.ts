@@ -1,4 +1,4 @@
-import { ApiKeyScopePrefixes, isApiKeyScope } from './api-key-constants'
+import { ApiKeyDeniedScopes, ApiKeyScopePrefixes, isApiKeyScope } from './api-key-constants'
 import { Permissions } from './auth/permissions'
 import { Events } from './events/event-names'
 import { isWebhookEvent, WebhookEvents, WebhookLimits } from './webhook-constants'
@@ -33,9 +33,16 @@ describe('the scopes of an API key', () => {
     expect(isApiKeyScope(Permissions.CUSTOMERS_VIEW)).toBe(true)
     expect(isApiKeyScope(Permissions.ORDERS_VIEW)).toBe(true)
     for (const permission of Object.values(Permissions)) {
-      const allowed = ApiKeyScopePrefixes.some(prefix => permission.startsWith(prefix))
+      // An allowed prefix makes a permission a scope, except the ones that destroy data for good (the deny list)
+      const allowed =
+        ApiKeyScopePrefixes.some(prefix => permission.startsWith(prefix)) &&
+        !ApiKeyDeniedScopes.some(denied => denied === permission)
       expect(isApiKeyScope(permission)).toBe(allowed)
     }
+    // A leaked integration key must not be able to delete a conversation, which the interface asks a typed phrase for
+    expect(ApiKeyDeniedScopes).toEqual([Permissions.CONVERSATIONS_DELETE])
+    expect(isApiKeyScope(Permissions.CONVERSATIONS_DELETE)).toBe(false)
+    expect(isApiKeyScope(Permissions.CONVERSATIONS_VIEW)).toBe(true)
     expect(isApiKeyScope(Permissions.SETTINGS_MANAGE_API_KEYS)).toBe(false)
     expect(isApiKeyScope(Permissions.TEAM_MANAGE_ROLES)).toBe(false)
     expect(isApiKeyScope(Permissions.ORG_MANAGE_STORES)).toBe(false)

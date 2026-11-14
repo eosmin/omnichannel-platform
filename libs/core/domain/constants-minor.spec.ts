@@ -124,6 +124,10 @@ describe('DestructiveActionTiers', () => {
     expect(Object.keys(DestructiveActionTiers)).not.toContain('DELETE_ORGANIZATION')
   })
 
+  it('asks for a typed phrase before a conversation is deleted by hand', () => {
+    expect(tierOf.DELETE_CONVERSATION).toBe(DestructiveActionTierLevels.CRITICAL)
+  })
+
   it('treats irreversible inventory, shipping and money actions as high', () => {
     for (const action of [
       'CANCEL_IN_TRANSIT_TRANSFER',

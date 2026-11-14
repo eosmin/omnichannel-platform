@@ -18,6 +18,7 @@ export const DestructiveActionTiers = {
   DELETE_STORE: CRITICAL,
   REVOKE_ALL_PLUGIN_ACCESS: CRITICAL,
   REVOKE_API_KEY: CRITICAL,
+  DELETE_CONVERSATION: CRITICAL, // The conversation, its messages and its files are gone for good (TDD_05 §10.4)
 
   // High
   DELETE_CUSTOMER: HIGH,
