@@ -599,6 +599,7 @@
     "PLUGIN_ALREADY_INSTALLED": "The plugin is already installed",
     "PLUGIN_ALREADY_REGISTERED": "The plugin is already registered",
     "PLUGIN_API_KEY_INVALID": "The plugin key is not valid",
+    "API_KEY_INVALID": "The API key is not valid",
     "PLUGIN_CONTRACT_VIOLATION": "The plugin did not follow its contract",
     "PLUGIN_INSTALLATION_FAILED": "The plugin could not be installed",
     "PLUGIN_NOT_FOUND": "The plugin does not exist",

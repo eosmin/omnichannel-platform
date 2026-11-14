@@ -61,6 +61,7 @@
       "@platform/channels/whatsapp-constants": ["libs/channels/whatsapp/src/whatsapp-constants.ts"],
       "@platform/channels/meta-oauth-constants": ["libs/channels/meta/src/meta-oauth-constants.ts"],
       "@platform/core/crypto": ["libs/core/crypto/src/index.ts"],
+      "@platform/core/url-safety": ["libs/core/url-safety/src/index.ts"],
       "@platform/core/database": ["libs/core/database/src/index.ts"],
       "@platform/core/event-bus": ["libs/core/event-bus/src/index.ts"],
       "@platform/core/inventory": ["libs/core/inventory/src/index.ts"],

@@ -55,6 +55,7 @@ import { ShipmentPollScheduler } from './schedulers/shipment-poll.scheduler'
 import { SnoozeWakeScheduler } from './schedulers/snooze-wake.scheduler'
 import { TokenExpiryScheduler } from './schedulers/token-expiry.scheduler'
 import { ShippingWorkerModule } from './shipping/shipping.module'
+import { WebhooksWorkerModule } from './webhooks/webhooks.module'
 
 // ScheduleModule is imported only here: the api never runs crons
 @Module({
@@ -74,6 +75,7 @@ import { ShippingWorkerModule } from './shipping/shipping.module'
     NotificationsModule,
     AnalyticsModule,
     CarriersWorkerModule,
+    WebhooksWorkerModule,
     // The cleanup of the bulk labels is run by the scheduler below
     ShippingWorkerModule
   ],

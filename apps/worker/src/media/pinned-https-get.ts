@@ -1,13 +1,16 @@
-import { Agent, request as httpsRequest, type RequestOptions } from 'node:https'
+import { Agent, request as httpsRequest } from 'node:https'
 import { isIP } from 'node:net'
 import type { Readable } from 'node:stream'
 
 import {
+  errorCodeOf,
   type HostResolver,
+  PERMANENT_NETWORK_CODES,
+  pinnedLookup,
   type PublicTarget,
   resolvePublicHttpsUrl,
   UnsafeUrlError
-} from './public-url'
+} from '@platform/core/url-safety'
 
 // The answer was not a file we can keep. `retryable` says whether asking again may help: a server error
 // or a slow answer may pass, a 404 or a redirect will not.
@@ -26,48 +29,10 @@ const HTTPS_PORT = 443
 // The body is read as it is; a compressed one would be read past its limit once unpacked
 const NO_ENCODING = 'identity'
 
-// Failures that asking again does not change: the certificate of the host does not fit its name or
-// does not chain to a root we trust, or the name does not exist. A refused or reset connection, a
-// timeout and a DNS server that did not answer may pass.
-const PERMANENT_CODES: ReadonlySet<string> = new Set([
-  'ERR_TLS_CERT_ALTNAME_INVALID',
-  'CERT_HAS_EXPIRED',
-  'CERT_NOT_YET_VALID',
-  'DEPTH_ZERO_SELF_SIGNED_CERT',
-  'SELF_SIGNED_CERT_IN_CHAIN',
-  'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
-  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
-  'ENOTFOUND',
-  'ENODATA'
-])
-
-const codeOf = (error: unknown): string =>
-  typeof (error as { code?: unknown } | null)?.code === 'string'
-    ? (error as { code: string }).code
-    : 'unknown'
-
 export interface PinnedResponse {
   stream: Readable
   contentType: string
   contentLength: number | null
-}
-
-type Lookup = NonNullable<RequestOptions['lookup']>
-
-// The address the check read, not a new answer of the resolver: whatever name the request is made to,
-// the socket is opened to one of these. `all` is honored because the net module asks for it when it
-// tries every family.
-export function pinnedLookup(addresses: readonly string[]): Lookup {
-  const entries = addresses.map(address => ({ address, family: isIP(address) === 6 ? 6 : 4 }))
-  return ((_host: string, options: { all?: boolean }, callback: (...args: unknown[]) => void) => {
-    const first = entries[0]
-    if (first === undefined) {
-      callback(new Error('no address to connect to'))
-      return
-    }
-    if (options.all === true) callback(null, entries)
-    else callback(null, first.address, first.family)
-  }) as unknown as Lookup
 }
 
 export type HttpsRequester = typeof httpsRequest
@@ -94,8 +59,11 @@ export async function pinnedHttpsGet(
   } catch (error) {
     if (error instanceof UnsafeUrlError) throw error
     // The resolver itself failed: a name that does not exist is final, a server that did not answer is not
-    const code = codeOf(error)
-    throw new PinnedFetchFailed(`the host did not resolve (${code})`, !PERMANENT_CODES.has(code))
+    const code = errorCodeOf(error)
+    throw new PinnedFetchFailed(
+      `the host did not resolve (${code})`,
+      !PERMANENT_NETWORK_CODES.has(code)
+    )
   }
   const { url, addresses } = target
   const send = options.request ?? httpsRequest
@@ -124,8 +92,8 @@ export async function pinnedHttpsGet(
         reject(error)
         return
       }
-      const code = codeOf(error)
-      reject(new PinnedFetchFailed(`no answer (${code})`, !PERMANENT_CODES.has(code)))
+      const code = errorCodeOf(error)
+      reject(new PinnedFetchFailed(`no answer (${code})`, !PERMANENT_NETWORK_CODES.has(code)))
     })
     req.on('response', response => {
       const status = response.statusCode ?? 0

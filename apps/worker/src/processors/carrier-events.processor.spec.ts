@@ -4,6 +4,7 @@ import { ShipmentEventSource, ShipmentStatus } from '@platform/core/domain'
 import { JobNames } from '@platform/core/queues'
 
 import type { CarrierEventApplier } from '../carriers/carrier-event-applier.service'
+import type { TenantWebhookDeliverer } from '../webhooks/tenant-webhook-deliverer.service'
 
 import { CarrierEventsProcessor } from './carrier-events.processor'
 import type { ProcessorSupport } from './processor-support'
@@ -22,13 +23,15 @@ const good = {
 
 function build() {
   const resolver = { apply: jest.fn((): Promise<string> => Promise.resolve('ignored')) }
+  const webhooks = { deliver: jest.fn((): Promise<string> => Promise.resolve('delivered')) }
   const processor = new CarrierEventsProcessor(
     {} as ProcessorSupport,
-    resolver as unknown as CarrierEventApplier
+    resolver as unknown as CarrierEventApplier,
+    webhooks as unknown as TenantWebhookDeliverer
   )
   const handle = (job: unknown) =>
     (processor as unknown as { handle(job: unknown): Promise<void> }).handle(job)
-  return { resolver, handle }
+  return { resolver, webhooks, handle }
 }
 
 describe('CarrierEventsProcessor', () => {
@@ -91,7 +94,7 @@ describe('CarrierEventsProcessor', () => {
   it('refuses a job of the queue that it has no name for', async () => {
     const { resolver, handle } = build()
 
-    await expect(handle({ name: JobNames.TRIGGER_WEBHOOK, data: good })).rejects.toThrow(
+    await expect(handle({ name: JobNames.TRIGGER_PLUGIN_WEBHOOK, data: good })).rejects.toThrow(
       UnrecoverableError
     )
     expect(resolver.apply).not.toHaveBeenCalled()
@@ -109,4 +112,63 @@ describe('CarrierEventsProcessor', () => {
       await expect(attempt).rejects.not.toBeInstanceOf(UnrecoverableError)
     }
   )
+
+  describe('the webhooks of the stores', () => {
+    const webhookJob = {
+      webhookId: '5b1f0c9e-2f0a-4f6e-9a3e-1d2c3b4a5f60',
+      storeId: good.storeId,
+      deliveryId: '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d',
+      event: 'order.created',
+      payload: { storeId: good.storeId, orderId: 'o-1' }
+    }
+
+    it('hands a good job to the deliverer with the number of the attempt', async () => {
+      const { webhooks, resolver, handle } = build()
+
+      await handle({
+        name: JobNames.TRIGGER_WEBHOOK,
+        data: webhookJob,
+        attemptsMade: 2,
+        opts: { attempts: 5 }
+      })
+
+      expect(webhooks.deliver).toHaveBeenCalledWith(webhookJob, 3, { maxAttempts: 5 })
+      expect(resolver.apply).not.toHaveBeenCalled()
+    })
+
+    it('refuses for good a job that does not fit: a store that is not an id, an event nobody can follow, no delivery id', async () => {
+      const { webhooks, handle } = build()
+      const bad = [
+        { ...webhookJob, storeId: 'not-a-uuid' },
+        { ...webhookJob, event: 'channel.disconnected' },
+        { ...webhookJob, deliveryId: undefined },
+        { ...webhookJob, payload: 'text' },
+        // It travels as a header: a line break in it would make the post fail on every try
+        { ...webhookJob, correlationId: 'a\r\nx-evil: 1' },
+        {}
+      ]
+
+      for (const data of bad) {
+        await expect(handle({ name: JobNames.TRIGGER_WEBHOOK, data })).rejects.toThrow(
+          UnrecoverableError
+        )
+      }
+      expect(webhooks.deliver).not.toHaveBeenCalled()
+    })
+
+    it('lets a failure of the delivery reach BullMQ, which asks again', async () => {
+      const { webhooks, handle } = build()
+      webhooks.deliver.mockRejectedValueOnce(new Error('no answer'))
+
+      const attempt = handle({
+        name: JobNames.TRIGGER_WEBHOOK,
+        data: webhookJob,
+        attemptsMade: 0,
+        opts: {}
+      })
+
+      await expect(attempt).rejects.toThrow('no answer')
+      await expect(attempt).rejects.not.toBeInstanceOf(UnrecoverableError)
+    })
+  })
 })

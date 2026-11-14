@@ -37,8 +37,10 @@ describe('groupPreferences', () => {
       row(NotificationTypes.CHANNEL_DISCONNECTED)
     ])
     expect(groups.map(entry => entry.group)).toEqual(['conversations', 'system'])
+    // The webhook notice has an emitter since Step 5.4 PR A, so its switch shows next to the channel one
     expect(groups[1]?.rows.map(entry => entry.type)).toEqual([
-      NotificationTypes.CHANNEL_DISCONNECTED
+      NotificationTypes.CHANNEL_DISCONNECTED,
+      NotificationTypes.WEBHOOK_AUTO_DISABLED
     ])
   })
 

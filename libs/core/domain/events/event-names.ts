@@ -234,7 +234,13 @@ export const BridgedEvents = [
   Events.BULK_LABELS_DONE,
   // The worker asks the carriers for pickups: the team is told in the api when a pickup needs a person
   Events.PICKUP_MANUAL_REQUIRED,
-  Events.PICKUP_CUTOFF_APPROACHING
+  Events.PICKUP_CUTOFF_APPROACHING,
+  // The worker creates customers (a first inbound message) and shipments (bulk labels): the webhooks of the stores are queued in the api
+  Events.CUSTOMER_CREATED,
+  Events.SHIPMENT_CREATED,
+  Events.SHIPMENT_CANCELLED,
+  // The worker delivers the webhooks and turns one off after too many failures: the admins are told in the api
+  Events.WEBHOOK_AUTO_DISABLED
 ] as const satisfies readonly EventName[]
 
 export type BridgedEvent = (typeof BridgedEvents)[number]

@@ -38,6 +38,7 @@ export interface RequestMagicLinkJob extends BaseJob {
 export interface TriggerWebhookJob extends BaseJob {
   webhookId: string // Tenant Webhook row
   storeId: string
+  deliveryId: string // Made when the event is queued and kept by every retry: the receiver dedupes on it
   event: EventName
   payload: Record<string, unknown>
 }
