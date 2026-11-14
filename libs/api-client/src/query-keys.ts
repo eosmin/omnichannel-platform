@@ -35,7 +35,8 @@ export const QueryKeys = {
     // One series: the request is part of the key, so two periods (the one asked and the one before) are two entries
     metrics: (storeId: string, request: AnalyticsRequestKey) =>
       ['analytics', storeId, 'metrics', request] as const,
-    myPerformance: (storeId: string) => ['analytics', storeId, 'my-performance'] as const
+    myPerformance: (storeId: string) => ['analytics', storeId, 'my-performance'] as const,
+    reports: (storeId: string) => ['analytics', storeId, 'reports'] as const
   },
   messages: {
     all: (storeId: string) => ['messages', storeId] as const,

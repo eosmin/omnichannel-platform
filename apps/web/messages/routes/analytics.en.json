@@ -16,10 +16,18 @@
       "noData": "No data",
       "noComparison": "Nothing to compare with",
       "vsPrevious": "vs the period before",
-      "conversations": { "title": "New conversations" },
-      "firstResponse": { "title": "First response time" },
-      "resolution": { "title": "Resolution time" },
-      "revenue": { "title": "Revenue" }
+      "conversations": {
+        "title": "New conversations"
+      },
+      "firstResponse": {
+        "title": "First response time"
+      },
+      "resolution": {
+        "title": "Resolution time"
+      },
+      "revenue": {
+        "title": "Revenue"
+      }
     },
     "chart": {
       "label": "{caption}. The numbers are in the table that follows.",
@@ -49,6 +57,116 @@
       "formerMember": "Former team member",
       "unknownMember": "Team member",
       "empty": "Nobody resolved a conversation in this period."
+    },
+    "pageActions": {
+      "export": "Export",
+      "reports": "Scheduled reports"
+    },
+    "picker": {
+      "legend": "Figures to include",
+      "all": "Select all",
+      "none": "Select none"
+    },
+    "metrics": {
+      "conversations_created": "New conversations",
+      "conversations_resolved": "Resolved conversations",
+      "messages_received": "Messages received",
+      "messages_sent": "Messages sent",
+      "response_first_time": "First response time",
+      "response_first_automated_time": "First automated response",
+      "resolution_time": "Resolution time",
+      "conversations_waiting_person": "Waiting for a person",
+      "conversations_answered_automation": "Answered by automation",
+      "conversations_resolved_automation": "Resolved by automation",
+      "orders_created": "Orders",
+      "orders_revenue": "Revenue"
+    },
+    "export": {
+      "title": "Export the figures",
+      "description": "A day-by-day file of the period on the screen: from {from} to {to} (the last day not included), days in UTC.",
+      "formLabel": "Export the figures",
+      "format": "File type",
+      "formats": {
+        "csv": "CSV",
+        "excel": "Excel",
+        "pdf": "PDF"
+      },
+      "noMetrics": "Choose at least one figure.",
+      "submit": "Prepare the file",
+      "queued": "The file is being prepared. It will be ready in the exports center in a moment.",
+      "goToExports": "Open the exports center",
+      "close": "Close"
+    },
+    "reports": {
+      "title": "Scheduled reports",
+      "back": "Back to analytics",
+      "intro": "Each report emails a file of the figures on its own schedule, for the period that just ended.",
+      "readOnly": "You can see the reports. To make, change or pause one you also need permission to export analytics.",
+      "create": "New report",
+      "empty": "There are no scheduled reports yet.",
+      "utcNote": "A report covers whole days in UTC. The hour is in the time zone chosen for the report.",
+      "columns": {
+        "name": "Report",
+        "schedule": "Schedule",
+        "recipients": "Sent to",
+        "lastSent": "Last sent",
+        "state": "State",
+        "actions": "Actions"
+      },
+      "frequency": {
+        "daily": "Every day",
+        "weekly": "Every Monday",
+        "monthly": "On the 1st of each month"
+      },
+      "scheduleLine": "{frequency} at {hour} ({timezone})",
+      "metricCount": "{count, plural, one {# figure} other {# figures}}",
+      "recipientCount": "{count, plural, one {# address} other {# addresses}}",
+      "neverSent": "Not sent yet",
+      "state": {
+        "on": "Active",
+        "off": "Paused"
+      },
+      "actions": {
+        "edit": "Edit {name}",
+        "pause": "Pause {name}",
+        "resume": "Resume {name}",
+        "delete": "Delete {name}"
+      },
+      "paused": "{name} is paused.",
+      "resumed": "{name} is active again.",
+      "form": {
+        "createTitle": "New scheduled report",
+        "editTitle": "Edit scheduled report",
+        "description": "The report sends a file of the figures by email. Whoever saves it answers for what it sends.",
+        "formLabel": "Scheduled report",
+        "name": "Name",
+        "frequency": "How often",
+        "format": "File type",
+        "timezone": "Time zone",
+        "hour": "Hour it is sent",
+        "scheduleHint": "A weekly report goes out on Mondays and a monthly one on the 1st, from the chosen hour on.",
+        "recipients": "Email addresses",
+        "recipientsHint": "One per line, or separated by commas. Up to {max}. They do not see each other.",
+        "create": "Create report",
+        "save": "Save changes",
+        "created": "The report was created.",
+        "saved": "The report was saved.",
+        "problems": {
+          "name": "Write a name for the report.",
+          "metrics": "Choose at least one figure.",
+          "recipients": "Write between one and {max} valid addresses, each one once.",
+          "timezone": "Choose a time zone from the list.",
+          "frequency": "Choose how often the report is sent.",
+          "format": "Choose a file type from the list."
+        }
+      },
+      "delete": {
+        "title": "Delete this report?",
+        "body": "{name} will stop being sent. The files already sent are not affected.",
+        "cancel": "Keep it",
+        "confirm": "Delete report",
+        "done": "The report was deleted."
+      }
     }
   }
 }

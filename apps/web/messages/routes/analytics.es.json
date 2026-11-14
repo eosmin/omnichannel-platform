@@ -16,10 +16,18 @@
       "noData": "Sin datos",
       "noComparison": "Nada con qué comparar",
       "vsPrevious": "frente al periodo anterior",
-      "conversations": { "title": "Conversaciones nuevas" },
-      "firstResponse": { "title": "Tiempo de primera respuesta" },
-      "resolution": { "title": "Tiempo de resolución" },
-      "revenue": { "title": "Ingresos" }
+      "conversations": {
+        "title": "Conversaciones nuevas"
+      },
+      "firstResponse": {
+        "title": "Tiempo de primera respuesta"
+      },
+      "resolution": {
+        "title": "Tiempo de resolución"
+      },
+      "revenue": {
+        "title": "Ingresos"
+      }
     },
     "chart": {
       "label": "{caption}. Los números están en la tabla que sigue.",
@@ -49,6 +57,116 @@
       "formerMember": "Antiguo miembro del equipo",
       "unknownMember": "Miembro del equipo",
       "empty": "Nadie resolvió una conversación en este periodo."
+    },
+    "pageActions": {
+      "export": "Exportar",
+      "reports": "Reportes programados"
+    },
+    "picker": {
+      "legend": "Cifras que se incluyen",
+      "all": "Seleccionar todas",
+      "none": "Quitar todas"
+    },
+    "metrics": {
+      "conversations_created": "Conversaciones nuevas",
+      "conversations_resolved": "Conversaciones resueltas",
+      "messages_received": "Mensajes recibidos",
+      "messages_sent": "Mensajes enviados",
+      "response_first_time": "Tiempo de primera respuesta",
+      "response_first_automated_time": "Primera respuesta automática",
+      "resolution_time": "Tiempo de resolución",
+      "conversations_waiting_person": "Esperando a una persona",
+      "conversations_answered_automation": "Respondidas por automatización",
+      "conversations_resolved_automation": "Resueltas por automatización",
+      "orders_created": "Pedidos",
+      "orders_revenue": "Ingresos"
+    },
+    "export": {
+      "title": "Exportar las cifras",
+      "description": "Un archivo día por día del periodo en pantalla: del {from} al {to} (sin contar el último día), días en UTC.",
+      "formLabel": "Exportar las cifras",
+      "format": "Tipo de archivo",
+      "formats": {
+        "csv": "CSV",
+        "excel": "Excel",
+        "pdf": "PDF"
+      },
+      "noMetrics": "Elige al menos una cifra.",
+      "submit": "Preparar el archivo",
+      "queued": "El archivo se está preparando. En un momento estará listo en el centro de exportaciones.",
+      "goToExports": "Abrir el centro de exportaciones",
+      "close": "Cerrar"
+    },
+    "reports": {
+      "title": "Reportes programados",
+      "back": "Volver a la analítica",
+      "intro": "Cada reporte envía por correo un archivo con las cifras, con su propio horario, del periodo que acaba de terminar.",
+      "readOnly": "Puedes ver los reportes. Para crear, cambiar o pausar uno también necesitas el permiso de exportar la analítica.",
+      "create": "Nuevo reporte",
+      "empty": "Todavía no hay reportes programados.",
+      "utcNote": "Un reporte cubre días completos en UTC. La hora es la de la zona horaria elegida para el reporte.",
+      "columns": {
+        "name": "Reporte",
+        "schedule": "Horario",
+        "recipients": "Enviado a",
+        "lastSent": "Último envío",
+        "state": "Estado",
+        "actions": "Acciones"
+      },
+      "frequency": {
+        "daily": "Todos los días",
+        "weekly": "Cada lunes",
+        "monthly": "El día 1 de cada mes"
+      },
+      "scheduleLine": "{frequency} a las {hour} ({timezone})",
+      "metricCount": "{count, plural, one {# cifra} other {# cifras}}",
+      "recipientCount": "{count, plural, one {# dirección} other {# direcciones}}",
+      "neverSent": "Aún no se ha enviado",
+      "state": {
+        "on": "Activo",
+        "off": "En pausa"
+      },
+      "actions": {
+        "edit": "Editar {name}",
+        "pause": "Pausar {name}",
+        "resume": "Reanudar {name}",
+        "delete": "Eliminar {name}"
+      },
+      "paused": "{name} está en pausa.",
+      "resumed": "{name} está activo de nuevo.",
+      "form": {
+        "createTitle": "Nuevo reporte programado",
+        "editTitle": "Editar reporte programado",
+        "description": "El reporte envía por correo un archivo con las cifras. Quien lo guarda responde por lo que envía.",
+        "formLabel": "Reporte programado",
+        "name": "Nombre",
+        "frequency": "Cada cuánto",
+        "format": "Tipo de archivo",
+        "timezone": "Zona horaria",
+        "hour": "Hora de envío",
+        "scheduleHint": "Un reporte semanal sale los lunes y uno mensual el día 1, a partir de la hora elegida.",
+        "recipients": "Direcciones de correo",
+        "recipientsHint": "Una por línea, o separadas por comas. Hasta {max}. No se ven entre ellas.",
+        "create": "Crear reporte",
+        "save": "Guardar cambios",
+        "created": "Se creó el reporte.",
+        "saved": "Se guardó el reporte.",
+        "problems": {
+          "name": "Escribe un nombre para el reporte.",
+          "metrics": "Elige al menos una cifra.",
+          "recipients": "Escribe entre una y {max} direcciones válidas, cada una una sola vez.",
+          "timezone": "Elige una zona horaria de la lista.",
+          "frequency": "Elige cada cuánto se envía el reporte.",
+          "format": "Elige un tipo de archivo de la lista."
+        }
+      },
+      "delete": {
+        "title": "¿Eliminar este reporte?",
+        "body": "{name} dejará de enviarse. Los archivos ya enviados no cambian.",
+        "cancel": "Conservarlo",
+        "confirm": "Eliminar reporte",
+        "done": "Se eliminó el reporte."
+      }
     }
   }
 }

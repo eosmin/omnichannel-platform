@@ -1,5 +1,6 @@
 export { API_PREFIX } from '@platform/core/api'
 export * from './analytics-api'
+export * from './analytics-reports-api'
 export * from './api-client'
 export * from './account-api'
 export * from './api-error'
