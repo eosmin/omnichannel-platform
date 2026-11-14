@@ -16,17 +16,24 @@ function startOfUtcDay(moment: Date): Date {
 export class AnalyticsEventWriter {
   constructor(private readonly prisma: PrismaService) {}
 
-  async write(job: TrackAnalyticsJob): Promise<void> {
+  // An event with a key is written once: the same job delivered again (a stalled worker's) conflicts with the row of the
+  // first delivery and writes nothing. Returns whether a row was written.
+  async write(job: TrackAnalyticsJob): Promise<boolean> {
     const timestamp = new Date(job.timestamp)
-    await this.prisma.client.analyticsEvent.create({
-      data: {
-        storeId: job.storeId,
-        event: job.event,
-        data: job.data as object,
-        // The day the event belongs to, in UTC: the rollups group by it
-        date: startOfUtcDay(timestamp),
-        timestamp
-      }
+    const { count } = await this.prisma.client.analyticsEvent.createMany({
+      data: [
+        {
+          storeId: job.storeId,
+          event: job.event,
+          data: job.data as object,
+          // The day the event belongs to, in UTC: the rollups group by it
+          date: startOfUtcDay(timestamp),
+          timestamp,
+          eventKey: job.eventKey ?? null
+        }
+      ],
+      skipDuplicates: true
     })
+    return count === 1
   }
 }

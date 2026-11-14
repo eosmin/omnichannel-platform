@@ -1,4 +1,10 @@
-import { AnalyticsEventNames, AnalyticsMetrics } from './analytics-constants'
+import {
+  AnalyticsEventNames,
+  AnalyticsMetrics,
+  MetricDimensions,
+  MetricDimensionsOf,
+  RolledUpMetrics
+} from './analytics-constants'
 
 describe('analytics constants', () => {
   it('uses unique metric and event names', () => {
@@ -14,5 +20,16 @@ describe('analytics constants', () => {
       ...Object.values(AnalyticsEventNames)
     ]
     expect(names.filter(name => /(^ai\.|sla)/.test(name))).toEqual([])
+  })
+
+  it('rolls up only metrics of the catalog, and breaks down only by a dimension that exists', () => {
+    const catalog: string[] = Object.values(AnalyticsMetrics)
+    expect(Object.keys(RolledUpMetrics).filter(metric => !catalog.includes(metric))).toEqual([])
+    const dimensions: string[] = Object.values(MetricDimensions)
+    expect(
+      Object.entries(MetricDimensionsOf).filter(
+        ([metric, dimension]) => !(metric in RolledUpMetrics) || !dimensions.includes(dimension)
+      )
+    ).toEqual([])
   })
 })
