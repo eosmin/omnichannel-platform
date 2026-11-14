@@ -3,11 +3,15 @@ import { CarrierCapability, PickupStatus, ShipmentStatus } from '@platform/core/
 import { guideActions, isEligibleForPickup, pickupActions } from './shipping-rules'
 
 const can = { canManage: true, canManagePickups: true, capabilities: [] as string[] }
-const guide = (status: string, over: Partial<{ kind: string; hasLabel: boolean }> = {}) => ({
+const guide = (
+  status: string,
+  over: Partial<{ kind: string; hasLabel: boolean; refundStatus: string }> = {}
+) => ({
   status,
   kind: 'outbound',
   hasLabel: true,
   guideNumber: 'G-1',
+  refundStatus: 'not_applicable',
   ...over
 })
 
@@ -51,9 +55,35 @@ describe('guideActions', () => {
     expect(guideActions(guide(ShipmentStatus.CANCELLED), can).cancel).toBe(false)
   })
 
-  it('offers "mark as voided" only after a cancel the carrier did not take', () => {
+  it('offers "mark as voided" after a cancel the carrier did not take, and not while it is being asked', () => {
     expect(guideActions(guide(ShipmentStatus.CANCEL_FAILED), can).markVoided).toBe(true)
     expect(guideActions(guide(ShipmentStatus.CANCEL_PENDING), can).markVoided).toBe(false)
+    expect(
+      guideActions(guide(ShipmentStatus.CANCEL_PENDING, { refundStatus: 'pending' }), can)
+        .markVoided
+    ).toBe(false)
+  })
+
+  it('offers "mark as voided" on a cancel that waits for the hand (nobody can be asking the carrier)', () => {
+    const waiting = guide(ShipmentStatus.CANCEL_PENDING, { refundStatus: 'not_supported' })
+    expect(guideActions(waiting, can).markVoided).toBe(true)
+    expect(guideActions(waiting, { ...can, canManage: false }).markVoided).toBe(false)
+    for (const status of [
+      ShipmentStatus.LABEL_CREATED,
+      ShipmentStatus.CANCELLED,
+      ShipmentStatus.IN_TRANSIT
+    ]) {
+      expect(guideActions(guide(status, { refundStatus: 'not_supported' }), can).markVoided).toBe(
+        false
+      )
+    }
+    const confirmed = guide(ShipmentStatus.CANCEL_PENDING, { refundStatus: 'confirmed' })
+    expect(guideActions(confirmed, can).markVoided).toBe(false)
+    const back = guide(ShipmentStatus.CANCEL_PENDING, {
+      kind: 'return',
+      refundStatus: 'not_supported'
+    })
+    expect(guideActions(back, can).markVoided).toBe(true)
   })
 
   it('settles a guide of unknown outcome, and asks the carrier only for an outbound one', () => {

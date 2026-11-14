@@ -20,6 +20,7 @@ const offer = (
     status,
     kind: ShipmentKind.OUTBOUND,
     hasLabel: true,
+    refundStatus: 'not_applicable',
     mayManage: true,
     pickupId: null,
     mayRequestPickup: false,
@@ -75,8 +76,33 @@ describe('offeredShipmentActions', () => {
     ])
   })
 
-  it('offers neither while a cancel is pending', () => {
+  it('offers neither while a cancel is pending and the carrier is being asked', () => {
     expect(offer(ShipmentStatus.CANCEL_PENDING)).toEqual([ShipmentActions.PRINT_LABEL])
+    expect(offer(ShipmentStatus.CANCEL_PENDING, { refundStatus: 'pending' })).toEqual([
+      ShipmentActions.PRINT_LABEL
+    ])
+  })
+
+  it('offers the manual void of a cancel that waits for the hand, where nobody is asking the carrier', () => {
+    expect(
+      offer(ShipmentStatus.CANCEL_PENDING, {
+        refundStatus: 'not_supported',
+        carrierCanCancel: false
+      })
+    ).toEqual([ShipmentActions.PRINT_LABEL, ShipmentActions.MARK_VOIDED])
+    // Also when the capabilities are not read yet or its connection is gone: the refund status is what the api left
+    expect(
+      offer(ShipmentStatus.CANCEL_PENDING, {
+        refundStatus: 'not_supported',
+        carrierCanCancel: null
+      })
+    ).toEqual([ShipmentActions.PRINT_LABEL, ShipmentActions.MARK_VOIDED])
+  })
+
+  it('offers no manual void without shipping:manage', () => {
+    expect(
+      offer(ShipmentStatus.CANCEL_PENDING, { refundStatus: 'not_supported', mayManage: false })
+    ).toEqual([])
   })
 })
 
@@ -94,6 +120,7 @@ describe('carrierCancels', () => {
       status: ShipmentStatus.LABEL_CREATED,
       kind: ShipmentKind.OUTBOUND,
       hasLabel: true,
+      refundStatus: 'not_applicable',
       mayManage: true,
       pickupId: null,
       mayRequestPickup: false,

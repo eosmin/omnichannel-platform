@@ -1,5 +1,6 @@
 import {
   CarrierCapability,
+  GuideRefundStatus,
   PickupStatus,
   ShipmentKind,
   ShipmentPrintableStatuses,
@@ -26,6 +27,8 @@ export interface GuideFacts {
   kind: string
   hasLabel: boolean
   guideNumber: string | null
+  // `not_supported` marks a cancel nobody is asking the carrier for (it cannot void the guide, or its connection is gone)
+  refundStatus: string
 }
 
 export interface GuideActions {
@@ -49,6 +52,12 @@ const NONE: GuideActions = {
   settle: false
 }
 
+// A cancel that waits for the hand: nobody is asking the carrier and nobody will (TDD_17 §4.10), read from the refund status the api
+// left. One rule for the Shipments screen and the order panel.
+export const waitsForHand = (status: string, refundStatus: string): boolean =>
+  status === String(ShipmentStatus.CANCEL_PENDING) &&
+  refundStatus === String(GuideRefundStatus.NOT_SUPPORTED)
+
 export function guideActions(guide: GuideFacts, ability: ShippingAbility): GuideActions {
   if (!ability.canManage || !isKnown(ShipmentStatus, guide.status)) return NONE
   const status = guide.status
@@ -62,7 +71,9 @@ export function guideActions(guide: GuideFacts, ability: ShippingAbility): Guide
     label: guide.hasLabel && ShipmentPrintableStatuses.includes(status),
     cancel: hasCancelStep,
     cancelIsLocalOnly: hasCancelStep && !carrierCanVoid,
-    markVoided: status === ShipmentStatus.CANCEL_FAILED,
+    // A cancel the carrier did not take, or one that waits for the agent because nobody can be asking (TDD_17 §4.10): read from the
+    // refund status the api left, not from a carrier
+    markVoided: status === ShipmentStatus.CANCEL_FAILED || waitsForHand(status, guide.refundStatus),
     // A return guide is asked by a reference that could find the outbound one: the api refuses it, so it is not offered
     check: unknown && guide.kind === String(ShipmentKind.OUTBOUND),
     settle: unknown

@@ -163,7 +163,7 @@
           "cancel": {
             "title": "Cancel the guide",
             "description": "The carrier is asked to cancel guide {guide}. It stays \"cancelling\" until the carrier answers.",
-            "descriptionManual": "The carrier of guide {guide} cannot be asked to cancel it. The guide waits as \"Cancelling\" and then as \"Cancel failed\"; once you have told the carrier yourself, mark it as voided.",
+            "descriptionManual": "The carrier of guide {guide} cannot be asked to cancel it. The guide waits as \"Cancelling\" until you tell the carrier yourself; then mark it as voided.",
             "confirm": "Cancel guide",
             "done": "The cancellation was requested."
           },
