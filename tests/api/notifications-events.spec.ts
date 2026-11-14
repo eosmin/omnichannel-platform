@@ -665,7 +665,7 @@ describe('Notifications raised by events', () => {
       await events.emitAsync(Events.EXPORT_READY, settled(lost))
       await events.emitAsync(Events.EXPORT_READY, {
         ...settled(ready),
-        exportType: ExportTypes.ANALYTICS
+        exportType: ExportTypes.AUDIT_LOG
       })
 
       expect(await rowsOf(NotificationTypes.EXPORT_READY)).toHaveLength(0)
