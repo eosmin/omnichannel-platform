@@ -11,6 +11,8 @@ export interface StoreContextValue {
   role: string
   // What the interface may show. The server still decides every request.
   can: (permission: Permission) => boolean
+  // All the permissions of the person in this store, for the screens that offer a subset of them (the scopes of an API key)
+  permissions: readonly string[]
 }
 
 const StoreContext = createContext<StoreContextValue | null>(null)
@@ -27,7 +29,8 @@ export function StoreProvider({
       storeId: membership.storeId,
       storeName: membership.storeName,
       role: membership.role,
-      can: permission => membership.permissions.includes(permission)
+      can: permission => membership.permissions.includes(permission),
+      permissions: membership.permissions
     }),
     [membership]
   )

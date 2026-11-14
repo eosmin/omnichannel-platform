@@ -110,6 +110,25 @@ export function storeSettingsEntries(storeId: string): SettingsEntry[] {
       href: AppPaths.store.settings(storeId, StoreSettingsSections.CARRIERS),
       // The api reads the connections with shipping:view; the page's controls ask settings:manage_carriers
       permission: ClientPermissions.SHIPPING_VIEW
+    },
+    {
+      id: StoreSettingsSections.WEBHOOKS,
+      labelKey: 'webhooks',
+      href: AppPaths.store.settings(storeId, StoreSettingsSections.WEBHOOKS),
+      // The api asks this for every call of the page, the list included
+      permission: ClientPermissions.SETTINGS_MANAGE_WEBHOOKS
+    },
+    {
+      id: StoreSettingsSections.API_KEYS,
+      labelKey: 'apiKeys',
+      href: AppPaths.store.settings(storeId, StoreSettingsSections.API_KEYS),
+      permission: ClientPermissions.SETTINGS_MANAGE_API_KEYS
+    },
+    {
+      id: StoreSettingsSections.RETENTION,
+      labelKey: 'retention',
+      href: AppPaths.store.settings(storeId, StoreSettingsSections.RETENTION),
+      permission: ClientPermissions.SETTINGS_MANAGE_RETENTION
     }
   ]
 }

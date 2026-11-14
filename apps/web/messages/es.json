@@ -2826,7 +2826,10 @@
         "carriers": "Transportistas",
         "orderMessages": "Mensajes de pedido",
         "returns": "Devoluciones",
-        "preferences": "Preferencias"
+        "preferences": "Preferencias",
+        "webhooks": "Integraciones salientes",
+        "apiKeys": "Claves de API",
+        "retention": "Retención de datos"
       },
       "org": {
         "label": "Organización",
@@ -4037,6 +4040,274 @@
         "confirm": "Eliminar"
       },
       "previewUnavailable": "La vista previa solo está disponible para quien puede editar estos textos."
+    },
+    "secretOnce": {
+      "once": "Solo se muestra esta vez. Cópiala ahora y guárdala en un lugar seguro: si la pierdes, tendrás que crear una nueva."
+    },
+    "webhooks": {
+      "title": "Integraciones salientes",
+      "description": "Direcciones que reciben los eventos de esta tienda en cuanto ocurren: pedidos, clientes, conversaciones, envíos, devoluciones y productos. Cada entrega va firmada con el secreto de la integración.",
+      "create": "Nueva integración",
+      "edit": "Editar",
+      "log": "Registro de entregas",
+      "pause": "Pausar",
+      "resume": "Reanudar",
+      "turnOn": "Activar",
+      "listLabel": "Integraciones salientes",
+      "limit": "La tienda llegó al límite de {count} integraciones salientes. Elimina una para agregar otra.",
+      "eventCount": "{count, plural, one {# evento} other {# eventos}}",
+      "status": {
+        "active": "Activo",
+        "paused": "En pausa",
+        "disabled": "Apagado por fallos"
+      },
+      "paused": "Integración en pausa",
+      "resumed": "Integración activada",
+      "disabledNotice": "Esta integración se apagó tras {count} entregas fallidas seguidas. Arregla el receptor y vuelve a activarla.",
+      "failing": "{count} de {limit} entregas fallidas seguidas. La última fue {when}.",
+      "failingNoDate": "{count} de {limit} entregas fallidas seguidas.",
+      "empty": {
+        "title": "Aún no hay integraciones salientes",
+        "body": "Agrega una dirección https y elige los eventos que debe recibir."
+      },
+      "delete": {
+        "action": "Eliminar",
+        "title": "¿Eliminar esta integración?",
+        "description": "{url} dejará de recibir eventos y su registro de entregas se elimina. No se puede deshacer.",
+        "confirm": "Eliminar integración",
+        "done": "Integración eliminada"
+      },
+      "rotate": {
+        "action": "Nuevo secreto",
+        "title": "¿Crear un secreto nuevo?",
+        "description": "El secreto actual de {url} deja de funcionar al instante. Actualiza el receptor enseguida o rechazará todas las entregas.",
+        "confirm": "Crear secreto nuevo"
+      },
+      "secret": {
+        "title": "Secreto de la integración",
+        "description": "Úsalo en {url} para comprobar que una entrega viene de esta tienda.",
+        "label": "Secreto",
+        "verify": "Cada entrega lleva el encabezado {header}, con sha256= seguido del HMAC-SHA256 del cuerpo de la petición calculado con este secreto."
+      },
+      "dialog": {
+        "createTitle": "Nueva integración",
+        "editTitle": "Editar integración",
+        "description": "Las entregas llegan a esta dirección con un POST del evento en JSON.",
+        "url": "Dirección",
+        "urlPlaceholder": "https://ejemplo.com/hooks/tienda",
+        "urlHint": "Debe empezar con https:// y llevar a un servidor público. Solo se usa el puerto estándar.",
+        "events": "Eventos",
+        "eventsHint": "Elige al menos uno. El contenido lleva identificadores y valores, nunca el texto de un mensaje.",
+        "save": "Guardar",
+        "saving": "Guardando…",
+        "created": "Integración creada",
+        "saved": "Integración guardada",
+        "problems": {
+          "urlRequired": "Escribe la dirección.",
+          "urlTooLong": "La dirección es demasiado larga.",
+          "urlNotHttps": "La dirección debe empezar con https:// y no llevar usuario ni contraseña.",
+          "urlFragment": "Quita lo que va después del signo #: nunca llega al servidor.",
+          "urlPort": "Solo se permite el puerto estándar de https: quita el puerto de la dirección.",
+          "noEvents": "Elige al menos un evento."
+        }
+      },
+      "groups": {
+        "order": "Pedidos",
+        "customer": "Clientes",
+        "conversation": "Conversaciones",
+        "message": "Mensajes",
+        "shipment": "Envíos",
+        "return": "Devoluciones",
+        "product": "Productos"
+      },
+      "events": {
+        "order": {
+          "created": "Pedido creado",
+          "updated": "Pedido actualizado",
+          "confirmed": "Pedido confirmado",
+          "status_changed": "Cambió el estado del pedido",
+          "shipped": "Pedido enviado",
+          "delivered": "Pedido entregado",
+          "cancelled": "Pedido cancelado",
+          "payment_recorded": "Pago registrado",
+          "payment_status_changed": "Cambió el estado del pago"
+        },
+        "customer": {
+          "created": "Cliente creado",
+          "updated": "Cliente actualizado",
+          "merged": "Clientes combinados"
+        },
+        "conversation": {
+          "created": "Conversación creada",
+          "status_changed": "Cambió el estado de la conversación",
+          "assigned": "Conversación asignada"
+        },
+        "message": {
+          "received": "Mensaje recibido",
+          "sent": "Mensaje enviado"
+        },
+        "shipment": {
+          "created": "Envío creado",
+          "status_changed": "Cambió el estado del envío",
+          "cancelled": "Envío cancelado"
+        },
+        "return": {
+          "requested": "Devolución solicitada",
+          "approved": "Devolución aprobada",
+          "in_transit": "Devolución en tránsito",
+          "received": "Devolución recibida"
+        },
+        "product": {
+          "created": "Producto creado",
+          "updated": "Producto actualizado",
+          "deleted": "Producto eliminado"
+        }
+      },
+      "deliveries": {
+        "title": "Registro de entregas",
+        "description": "Intentos de entrega a {url}, del más reciente al más antiguo. Se guardan los últimos 30 días.",
+        "filterLabel": "Filtrar por resultado",
+        "filter": {
+          "all": "Todas",
+          "failed": "Fallidas",
+          "succeeded": "Entregadas"
+        },
+        "caption": "Intentos de entrega de la integración",
+        "empty": "No hay entregas que mostrar.",
+        "loadMore": "Cargar más",
+        "columns": {
+          "when": "Cuándo",
+          "event": "Evento",
+          "result": "Resultado",
+          "status": "Estado",
+          "duration": "Tiempo"
+        },
+        "succeeded": "Entregada",
+        "failed": "Fallida",
+        "attempt": "Intento {number}",
+        "noStatus": "Sin respuesta",
+        "milliseconds": "{count} ms",
+        "errorWithDetail": "{reason} ({detail})",
+        "errors": {
+          "address_not_allowed": "La dirección ya no lleva a internet público.",
+          "not_resolved": "No se encontró el nombre del servidor.",
+          "no_answer": "La conexión falló o fue rechazada.",
+          "too_slow": "El receptor tardó demasiado en responder.",
+          "bad_status": "El receptor respondió con un estado de error.",
+          "request_refused": "No se pudo armar la petición.",
+          "secret_unreadable": "No se pudo leer el secreto. Crea uno nuevo.",
+          "unexpected": "Algo salió mal."
+        }
+      }
+    },
+    "apiKeys": {
+      "title": "Claves de API",
+      "description": "Credenciales para las integraciones de esta tienda. Una clave tiene solo los permisos que le das y nunca más de los que tú tienes.",
+      "create": "Nueva clave",
+      "listLabel": "Claves de API",
+      "limit": "La tienda llegó al límite de {count} claves activas. Revoca una para crear otra.",
+      "empty": {
+        "title": "Aún no hay claves de API",
+        "body": "Crea una clave por integración, así puedes revocar una sin tocar las demás."
+      },
+      "status": {
+        "active": "Activa",
+        "revoked": "Revocada",
+        "expired": "Expirada"
+      },
+      "created": "Creada",
+      "lastUsed": "Último uso",
+      "neverUsed": "Nunca",
+      "expires": "Expira",
+      "noExpiry": "Sin fecha de fin",
+      "revokedOn": "Revocada",
+      "scopes": "Permisos",
+      "revoke": {
+        "action": "Revocar",
+        "title": "¿Revocar la clave {name}?",
+        "description": "Toda integración que use la clave {prefix}… deja de funcionar al instante. No se puede deshacer.",
+        "confirm": "Revocar clave",
+        "done": "Clave {name} revocada"
+      },
+      "resources": {
+        "conversations": "Conversaciones",
+        "messages": "Mensajes",
+        "customers": "Clientes",
+        "orders": "Pedidos",
+        "products": "Productos",
+        "inventory": "Inventario",
+        "shipping": "Envíos",
+        "returns": "Devoluciones",
+        "remittances": "Remesas",
+        "media": "Archivos"
+      },
+      "secret": {
+        "title": "Clave {name}",
+        "description": "Entrega esta clave a la integración. Solo se muestra esta vez.",
+        "label": "Clave de API",
+        "use": "Envíala en cada petición así: Authorization: Bearer seguido de la clave."
+      },
+      "dialog": {
+        "title": "Nueva clave de API",
+        "description": "Elige un nombre que diga para qué sirve la clave y solo los permisos que necesita.",
+        "name": "Nombre",
+        "nameHint": "Por ejemplo: App de bodega.",
+        "expires": "Último día (opcional)",
+        "expiresHint": "Hoy es {today}. Si lo dejas vacío, la clave dura hasta que la revoques.",
+        "scopes": "Permisos",
+        "scopesHint": "Solo aparecen los permisos que tú tienes.",
+        "noScopesHeld": "No tienes ningún permiso que una clave pueda tener.",
+        "save": "Crear clave",
+        "saving": "Creando…",
+        "created": "Clave creada",
+        "problems": {
+          "nameRequired": "Escribe un nombre.",
+          "nameTooLong": "El nombre es demasiado largo (80 caracteres como máximo).",
+          "noScopes": "Elige al menos un permiso.",
+          "expiryPast": "El último día debe ser posterior a hoy.",
+          "expiryInvalid": "Ese día no es válido."
+        }
+      }
+    },
+    "retention": {
+      "title": "Retención de datos",
+      "intro": "Cada noche la plataforma elimina lo que supera estos plazos. Un plazo más corto elimina datos la noche siguiente a guardarlo y no se pueden recuperar. Los pedidos y el registro de auditoría nunca se eliminan por estos plazos.",
+      "days": "días",
+      "range": "Entre {min} y {max} días.",
+      "fields": {
+        "conversationDays": {
+          "label": "Conversaciones",
+          "name": "conversaciones",
+          "hint": "Las conversaciones resueltas o archivadas sin mensajes nuevos durante este tiempo se eliminan con sus mensajes y archivos."
+        },
+        "mediaDays": {
+          "label": "Archivos de mensajes",
+          "name": "archivos",
+          "hint": "Los archivos recibidos o enviados en un mensaje se eliminan pasado este tiempo. El mensaje se queda, sin el archivo."
+        },
+        "analyticsDays": {
+          "label": "Eventos de analítica",
+          "name": "eventos de analítica",
+          "hint": "El detalle detrás de la analítica (búsquedas, clics). Los totales diarios se guardan más tiempo."
+        },
+        "notificationDays": {
+          "label": "Notificaciones leídas",
+          "name": "notificaciones leídas",
+          "hint": "Las notificaciones ya leídas se eliminan pasado este tiempo."
+        }
+      },
+      "shortenWarning": "Estás acortando el plazo de: {fields}. La noche siguiente a guardar, los datos más antiguos que el nuevo plazo se eliminan para siempre.",
+      "acknowledge": "Entiendo que los datos más antiguos que los nuevos plazos se eliminan para siempre y no se pueden recuperar.",
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "discard": "Descartar cambios",
+      "saved": "Retención guardada",
+      "problems": {
+        "required": "Escribe un número de días.",
+        "whole": "Usa solo números enteros.",
+        "tooLow": "Mínimo {min} días.",
+        "tooHigh": "Máximo {max} días."
+      }
     }
   },
   "emptyStates": {

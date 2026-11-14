@@ -29,14 +29,15 @@ export interface MetricsResult {
   series: MetricSeries[]
 }
 
-// The metrics of a store for the dashboard (TDD_08 §6): it reads only the rollup tables, never a raw one. An hour comes from
+// The metrics of a store for the dashboard (TDD_08 §6): it reads only the rollup tables, never a raw one, from the replica (a
+// rollup is rewritten by the worker, never by the request, so lag only delays a figure that was already a few minutes old). An hour comes from
 // metrics_hourly; a day, a week and a month come from metrics_daily. The store is the one TenantGuard resolved.
 @Injectable()
 export class MetricsQueryService {
   constructor(private readonly prisma: PrismaService) {}
 
   async query(storeId: string, query: MetricsQuery): Promise<MetricsResult> {
-    const rows = await readMetricBuckets(this.prisma, storeId, query)
+    const rows = await readMetricBuckets(this.prisma.replica(), storeId, query)
     const aggregation = RolledUpMetrics[query.metric]
     const effective =
       query.granularity === TimeGranularity.HOUR

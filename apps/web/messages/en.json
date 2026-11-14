@@ -2826,7 +2826,10 @@
         "carriers": "Carriers",
         "orderMessages": "Order messages",
         "returns": "Returns",
-        "preferences": "Preferences"
+        "preferences": "Preferences",
+        "webhooks": "Outgoing integrations",
+        "apiKeys": "API keys",
+        "retention": "Data retention"
       },
       "org": {
         "label": "Organization",
@@ -4037,6 +4040,274 @@
         "confirm": "Delete"
       },
       "previewUnavailable": "The preview is only available to who may edit these texts."
+    },
+    "secretOnce": {
+      "once": "This is the only time it is shown. Copy it now and keep it somewhere safe: if you lose it, you will have to make a new one."
+    },
+    "webhooks": {
+      "title": "Outgoing integrations",
+      "description": "Addresses that receive the events of this store as they happen: orders, customers, conversations, shipments, returns and products. Each delivery is signed with the secret of the integration.",
+      "create": "New integration",
+      "edit": "Edit",
+      "log": "Delivery log",
+      "pause": "Pause",
+      "resume": "Resume",
+      "turnOn": "Turn on",
+      "listLabel": "Outgoing integrations",
+      "limit": "The store has reached the limit of {count} outgoing integrations. Delete one to add another.",
+      "eventCount": "{count, plural, one {# event} other {# events}}",
+      "status": {
+        "active": "Active",
+        "paused": "Paused",
+        "disabled": "Turned off after failures"
+      },
+      "paused": "Integration paused",
+      "resumed": "Integration turned on",
+      "disabledNotice": "This integration was turned off after {count} failed deliveries in a row. Fix the receiver, then turn it on again.",
+      "failing": "{count} of {limit} failed deliveries in a row. The last one was {when}.",
+      "failingNoDate": "{count} of {limit} failed deliveries in a row.",
+      "empty": {
+        "title": "No outgoing integrations yet",
+        "body": "Add an https address and choose the events it should receive."
+      },
+      "delete": {
+        "action": "Delete",
+        "title": "Delete this integration?",
+        "description": "{url} will stop receiving events and its delivery log is deleted. This cannot be undone.",
+        "confirm": "Delete integration",
+        "done": "Integration deleted"
+      },
+      "rotate": {
+        "action": "New secret",
+        "title": "Make a new secret?",
+        "description": "The current secret of {url} stops working at once. Update the receiver right after, or it will reject every delivery.",
+        "confirm": "Make new secret"
+      },
+      "secret": {
+        "title": "Secret of the integration",
+        "description": "Use it at {url} to check that a delivery comes from this store.",
+        "label": "Secret",
+        "verify": "Each delivery carries the header {header}, with sha256= followed by the HMAC-SHA256 of the request body made with this secret."
+      },
+      "dialog": {
+        "createTitle": "New integration",
+        "editTitle": "Edit integration",
+        "description": "Deliveries go to this address with a POST of the event as JSON.",
+        "url": "Address",
+        "urlPlaceholder": "https://example.com/hooks/store",
+        "urlHint": "It must start with https:// and lead to a public server. Only the standard port is used.",
+        "events": "Events",
+        "eventsHint": "Choose at least one. The payload carries identifiers and values, never the text of a message.",
+        "save": "Save",
+        "saving": "Saving…",
+        "created": "Integration created",
+        "saved": "Integration saved",
+        "problems": {
+          "urlRequired": "Write the address.",
+          "urlTooLong": "The address is too long.",
+          "urlNotHttps": "The address must start with https:// and carry no user or password.",
+          "urlFragment": "Take out the part after the # sign: it never reaches the server.",
+          "urlPort": "Only the standard https port is allowed: take the port out of the address.",
+          "noEvents": "Choose at least one event."
+        }
+      },
+      "groups": {
+        "order": "Orders",
+        "customer": "Customers",
+        "conversation": "Conversations",
+        "message": "Messages",
+        "shipment": "Shipments",
+        "return": "Returns",
+        "product": "Products"
+      },
+      "events": {
+        "order": {
+          "created": "Order created",
+          "updated": "Order updated",
+          "confirmed": "Order confirmed",
+          "status_changed": "Order status changed",
+          "shipped": "Order shipped",
+          "delivered": "Order delivered",
+          "cancelled": "Order cancelled",
+          "payment_recorded": "Payment recorded",
+          "payment_status_changed": "Payment status changed"
+        },
+        "customer": {
+          "created": "Customer created",
+          "updated": "Customer updated",
+          "merged": "Customers merged"
+        },
+        "conversation": {
+          "created": "Conversation created",
+          "status_changed": "Conversation status changed",
+          "assigned": "Conversation assigned"
+        },
+        "message": {
+          "received": "Message received",
+          "sent": "Message sent"
+        },
+        "shipment": {
+          "created": "Shipment created",
+          "status_changed": "Shipment status changed",
+          "cancelled": "Shipment cancelled"
+        },
+        "return": {
+          "requested": "Return requested",
+          "approved": "Return approved",
+          "in_transit": "Return in transit",
+          "received": "Return received"
+        },
+        "product": {
+          "created": "Product created",
+          "updated": "Product updated",
+          "deleted": "Product deleted"
+        }
+      },
+      "deliveries": {
+        "title": "Delivery log",
+        "description": "Attempts to deliver to {url}, newest first. The last 30 days are kept.",
+        "filterLabel": "Filter by result",
+        "filter": {
+          "all": "All",
+          "failed": "Failed",
+          "succeeded": "Delivered"
+        },
+        "caption": "Delivery attempts of the integration",
+        "empty": "There are no deliveries to show.",
+        "loadMore": "Load more",
+        "columns": {
+          "when": "When",
+          "event": "Event",
+          "result": "Result",
+          "status": "Status",
+          "duration": "Time"
+        },
+        "succeeded": "Delivered",
+        "failed": "Failed",
+        "attempt": "Attempt {number}",
+        "noStatus": "No answer",
+        "milliseconds": "{count} ms",
+        "errorWithDetail": "{reason} ({detail})",
+        "errors": {
+          "address_not_allowed": "The address no longer leads to the public internet.",
+          "not_resolved": "The name of the server could not be found.",
+          "no_answer": "The connection failed or was refused.",
+          "too_slow": "The receiver took too long to answer.",
+          "bad_status": "The receiver answered with an error status.",
+          "request_refused": "The request could not be built.",
+          "secret_unreadable": "The secret could not be read. Make a new one.",
+          "unexpected": "Something went wrong."
+        }
+      }
+    },
+    "apiKeys": {
+      "title": "API keys",
+      "description": "Credentials for the integrations of this store. A key holds only the permissions you give it, and it never holds more than you do.",
+      "create": "New key",
+      "listLabel": "API keys",
+      "limit": "The store has reached the limit of {count} active keys. Revoke one to make another.",
+      "empty": {
+        "title": "No API keys yet",
+        "body": "Make a key for each integration, so you can revoke one without touching the others."
+      },
+      "status": {
+        "active": "Active",
+        "revoked": "Revoked",
+        "expired": "Expired"
+      },
+      "created": "Created",
+      "lastUsed": "Last used",
+      "neverUsed": "Never",
+      "expires": "Expires",
+      "noExpiry": "No end date",
+      "revokedOn": "Revoked",
+      "scopes": "Permissions",
+      "revoke": {
+        "action": "Revoke",
+        "title": "Revoke the key {name}?",
+        "description": "Every integration that uses the key {prefix}… stops working at once. This cannot be undone.",
+        "confirm": "Revoke key",
+        "done": "Key {name} revoked"
+      },
+      "resources": {
+        "conversations": "Conversations",
+        "messages": "Messages",
+        "customers": "Customers",
+        "orders": "Orders",
+        "products": "Products",
+        "inventory": "Inventory",
+        "shipping": "Shipping",
+        "returns": "Returns",
+        "remittances": "Remittances",
+        "media": "Files"
+      },
+      "secret": {
+        "title": "Key {name}",
+        "description": "Give this key to the integration. It is the only time it is shown.",
+        "label": "API key",
+        "use": "Send it in every request as: Authorization: Bearer followed by the key."
+      },
+      "dialog": {
+        "title": "New API key",
+        "description": "Choose a name that says what the key is for, and only the permissions it needs.",
+        "name": "Name",
+        "nameHint": "For example: Warehouse app.",
+        "expires": "Last day (optional)",
+        "expiresHint": "Today is {today}. Left empty, the key lasts until you revoke it.",
+        "scopes": "Permissions",
+        "scopesHint": "Only the permissions you hold are listed.",
+        "noScopesHeld": "You hold no permission that a key can have.",
+        "save": "Make key",
+        "saving": "Making…",
+        "created": "Key made",
+        "problems": {
+          "nameRequired": "Write a name.",
+          "nameTooLong": "The name is too long (80 characters at most).",
+          "noScopes": "Choose at least one permission.",
+          "expiryPast": "The last day must be after today.",
+          "expiryInvalid": "That is not a valid day."
+        }
+      }
+    },
+    "retention": {
+      "title": "Data retention",
+      "intro": "Every night the platform deletes what is older than these windows. A shorter window deletes data the night after you save it, and it cannot be recovered. Orders and the audit log are never deleted by these windows.",
+      "days": "days",
+      "range": "Between {min} and {max} days.",
+      "fields": {
+        "conversationDays": {
+          "label": "Conversations",
+          "name": "conversations",
+          "hint": "Resolved or archived conversations with no new message for this long are deleted with their messages and files."
+        },
+        "mediaDays": {
+          "label": "Files of messages",
+          "name": "files",
+          "hint": "Files received or sent in a message are deleted after this long. The message stays, without the file."
+        },
+        "analyticsDays": {
+          "label": "Analytics events",
+          "name": "analytics events",
+          "hint": "The detail behind the analytics (searches, clicks). The daily totals are kept longer."
+        },
+        "notificationDays": {
+          "label": "Read notifications",
+          "name": "read notifications",
+          "hint": "Notifications already read are deleted after this long."
+        }
+      },
+      "shortenWarning": "You are shortening the window of: {fields}. The night after you save, the data older than the new window is deleted for good.",
+      "acknowledge": "I understand that the data older than the new windows is deleted for good and cannot be recovered.",
+      "save": "Save",
+      "saving": "Saving…",
+      "discard": "Discard changes",
+      "saved": "Retention saved",
+      "problems": {
+        "required": "Write a number of days.",
+        "whole": "Use whole numbers only.",
+        "tooLow": "At least {min} days.",
+        "tooHigh": "At most {max} days."
+      }
     }
   },
   "emptyStates": {

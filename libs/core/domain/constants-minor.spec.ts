@@ -124,6 +124,10 @@ describe('DestructiveActionTiers', () => {
     expect(Object.keys(DestructiveActionTiers)).not.toContain('DELETE_ORGANIZATION')
   })
 
+  it('asks for a typed phrase before a conversation is deleted by hand', () => {
+    expect(tierOf.DELETE_CONVERSATION).toBe(DestructiveActionTierLevels.CRITICAL)
+  })
+
   it('treats irreversible inventory, shipping and money actions as high', () => {
     for (const action of [
       'CANCEL_IN_TRANSIT_TRANSFER',
@@ -133,7 +137,9 @@ describe('DestructiveActionTiers', () => {
       'DISCONNECT_CARRIER_WITH_OPEN_SHIPMENTS',
       'MARK_GUIDE_VOIDED_BY_HAND',
       'ROTATE_CARRIER_WEBHOOK_SECRET',
-      'VOID_CONFIRMED_REMITTANCE'
+      'VOID_CONFIRMED_REMITTANCE',
+      'DELETE_WEBHOOK',
+      'ROTATE_WEBHOOK_SECRET'
     ]) {
       expect(tierOf[action]).toBe(DestructiveActionTierLevels.HIGH)
     }

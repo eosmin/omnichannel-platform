@@ -18,6 +18,7 @@ export const DestructiveActionTiers = {
   DELETE_STORE: CRITICAL,
   REVOKE_ALL_PLUGIN_ACCESS: CRITICAL,
   REVOKE_API_KEY: CRITICAL,
+  DELETE_CONVERSATION: CRITICAL, // The conversation, its messages and its files are gone for good (TDD_05 §10.4)
 
   // High
   DELETE_CUSTOMER: HIGH,
@@ -35,6 +36,8 @@ export const DestructiveActionTiers = {
   MARK_GUIDE_VOIDED_BY_HAND: HIGH, // TDD_17
   ROTATE_CARRIER_WEBHOOK_SECRET: HIGH, // Settings → Carriers; the old secret stops working at once, so the carrier's panel must be updated right after
   VOID_CONFIRMED_REMITTANCE: HIGH, // TDD_17
+  DELETE_WEBHOOK: HIGH, // Settings → Webhooks; the endpoint stops receiving events and its delivery log goes with it
+  ROTATE_WEBHOOK_SECRET: HIGH, // Settings → Webhooks; the old secret stops working at once, so the receiver must be updated right after
 
   // Moderate
   ARCHIVE_CONVERSATION: MODERATE,

@@ -1,4 +1,4 @@
-import type { PrismaService } from '@platform/core/database'
+import type { SqlReader } from '@platform/core/database'
 import { SearchConfig } from '@platform/core/domain'
 
 import { escapeLike } from '../customers/customers.support'
@@ -25,7 +25,7 @@ export function phoneDigitsOf(q: string): string {
 
 // The text as the database folds the stored names (`lower(immutable_unaccent(...))`, the rules of `unaccent`): asking the
 // database is the only way to fold both sides the same way for every character. The empty string when the fold is empty.
-export async function foldInDatabase(db: PrismaService['client'], q: string): Promise<string> {
+export async function foldInDatabase(db: SqlReader, q: string): Promise<string> {
   const rows = await db.$queryRaw<
     { folded: string }[]
   >`SELECT lower(immutable_unaccent(${q})) AS folded`
