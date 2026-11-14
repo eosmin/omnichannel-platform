@@ -55,11 +55,13 @@ export default function DeleteConversationButton({
         toast.success(t('done'))
         // Out of the thread first: reading it again would answer not found for a conversation that is gone
         router.replace(`${AppPaths.store.inbox(storeId)}${search}`)
-        queryClient.removeQueries({
-          queryKey: QueryKeys.conversations.byId(storeId, conversationId)
+        // The lists and counts only: the thread still on screen while the navigation lands must not read the
+        // conversation again (the realtime event of the deletion reaches this client too, and the header answers
+        // not found for it)
+        void queryClient.invalidateQueries({
+          queryKey: QueryKeys.conversations.all(storeId),
+          predicate: query => query.queryKey[2] !== conversationId
         })
-        queryClient.removeQueries({ queryKey: QueryKeys.messages.thread(storeId, conversationId) })
-        void queryClient.invalidateQueries({ queryKey: QueryKeys.conversations.all(storeId) })
       }
     })
   }

@@ -47,7 +47,7 @@ export function confirmationStyleFor(
     }
     return base
   }
-  if (tier === DestructiveActionTierLevels.HIGH && action in SafetySwitchedActions) {
+  if (tier === DestructiveActionTierLevels.HIGH && Object.hasOwn(SafetySwitchedActions, action)) {
     const key = SafetySwitchedActions[action as keyof typeof SafetySwitchedActions]
     // A role that is not one of the preset (a custom role) is never in the list and always asks
     const isPresetRole = (SafetyRoleNames as readonly string[]).includes(policy.role)

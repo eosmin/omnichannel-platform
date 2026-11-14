@@ -109,6 +109,8 @@ export function DestructiveActionProvider({ children }: { children: ReactNode })
       }
       // The store chose not to be asked: no dialog and no undo toast (the person was told on the settings page)
       if (style === ConfirmationStyles.NONE) {
+        // A dialog that is open already asks something: no action runs under it, as the dialog styles do not either
+        if (openRef.current) return
         void runAtOnce({ ...request, onUndo: undefined })
         return
       }

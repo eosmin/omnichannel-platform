@@ -15,7 +15,9 @@ import { useStore } from '../providers/store-context'
 export default function SafetyPolicySync(): null {
   const { storeId, role, can } = useStore()
   const settings = useSafety(storeId, can(ClientPermissions.CONVERSATIONS_VIEW))
-  const data = settings.data
+  // A refetch that fails keeps the last answer in `data`: that answer may be looser than what the store has now, so it is
+  // not used, and the confirmations ask as the tier table says until a read succeeds
+  const data = settings.isError ? undefined : settings.data
   useEffect(() => {
     if (data === undefined) return undefined
     setSafetyPolicy({
