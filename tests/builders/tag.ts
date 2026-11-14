@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto'
 
 import type { OwnerClient } from '@platform/core/database-testing'
 
+import { dropCachedSettings } from './cache'
+
 export interface TagInput {
   storeId: string
   name?: string
@@ -13,7 +15,7 @@ export async function createTag(
   owner: OwnerClient,
   input: TagInput
 ): Promise<{ id: string; name: string }> {
-  return owner.tag.create({
+  const created = await owner.tag.create({
     data: {
       storeId: input.storeId,
       name: input.name ?? `tag-${randomUUID().slice(0, 8)}`,
@@ -21,4 +23,6 @@ export async function createTag(
     },
     select: { id: true, name: true }
   })
+  await dropCachedSettings(input.storeId, 'tags')
+  return created
 }

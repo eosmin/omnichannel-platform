@@ -6,7 +6,6 @@ import { ApiRoutes } from '@platform/core/api'
 import type { OwnerClient } from '@platform/core/database-testing'
 
 import { SnippetsService } from '../../apps/api/src/modules/settings/snippets.service'
-import { createSnippet, createTag } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
@@ -49,6 +48,19 @@ describe('The cached reads of the settings of a store', () => {
     await owner.$disconnect()
   })
 
+  // Rows written as the owner, with no domain event and without the builders (which drop the cache, as the listener
+  // would): this is the "behind the api's back" the cases below stand on
+  const rawTag = (storeId: string, name: string) =>
+    owner.tag.create({
+      data: { storeId, name, color: '#8b5cf6' },
+      select: { id: true, name: true }
+    })
+  const rawSnippet = (storeId: string, shortcut: string) =>
+    owner.snippet.create({
+      data: { storeId, shortcut, title: 'Greeting', content: 'Hello!', createdBy: 'a-user' },
+      select: { id: true, shortcut: true }
+    })
+
   const inA = () => api(app, ctx.adminA, ctx.storeA)
   const inB = () => api(app, ctx.adminB, ctx.storeB)
 
@@ -60,11 +72,11 @@ describe('The cached reads of the settings of a store', () => {
 
   describe('tags', () => {
     it('serves the second read from the cache, and a change through the api shows at once', async () => {
-      const first = await createTag(owner, { storeId: ctx.storeA.id, name: `${prefix}-one` })
+      const first = await rawTag(ctx.storeA.id, `${prefix}-one`)
       expect(await namesOf(inA())).toContain(first.name)
 
       // Behind the api's back: no event, so the cache still holds the old list
-      const second = await createTag(owner, { storeId: ctx.storeA.id, name: `${prefix}-two` })
+      const second = await rawTag(ctx.storeA.id, `${prefix}-two`)
       expect(await namesOf(inA())).not.toContain(second.name)
 
       // Through the api: TAG_CREATED drops the cache, and the next read sees both
@@ -98,13 +110,13 @@ describe('The cached reads of the settings of a store', () => {
     })
 
     it('never serves the tags of one store to another, nor drops them when another changes', async () => {
-      const tagOfB = await createTag(owner, { storeId: ctx.storeB.id, name: `${prefix}-only-b` })
+      const tagOfB = await rawTag(ctx.storeB.id, `${prefix}-only-b`)
       const listB = await namesOf(inB())
       expect(listB).toContain(tagOfB.name)
       expect(await namesOf(inA())).not.toContain(tagOfB.name)
 
       // The cache of B holds the list; a row added to B behind the api's back stays unseen...
-      const hidden = await createTag(owner, { storeId: ctx.storeB.id, name: `${prefix}-hidden-b` })
+      const hidden = await rawTag(ctx.storeB.id, `${prefix}-hidden-b`)
       // ...and a change of A through the api must not drop it (the scope carries the storeId)
       const created = await inA()
         .post(ApiRoutes.settings.tags)
@@ -118,7 +130,7 @@ describe('The cached reads of the settings of a store', () => {
 
   describe('snippets', () => {
     it('keeps its date a date through the cache, and shows a change at once', async () => {
-      const seeded = await createSnippet(owner, { storeId: ctx.storeA.id, shortcut: `${prefix}-a` })
+      const seeded = await rawSnippet(ctx.storeA.id, `${prefix}-a`)
       const read = async (): Promise<SnippetBody[]> => {
         const response = await inA().get(ApiRoutes.settings.snippets)
         expect(response.status).toBe(OK)
@@ -136,7 +148,7 @@ describe('The cached reads of the settings of a store', () => {
         expect(types.isDate(snippet.updatedAt)).toBe(true) // not instanceof: structuredClone makes it in another realm under Jest
       }
 
-      await createSnippet(owner, { storeId: ctx.storeA.id, shortcut: `${prefix}-hidden` })
+      await rawSnippet(ctx.storeA.id, `${prefix}-hidden`)
       expect((await read()).map(s => s.shortcut)).not.toContain(`${prefix}-hidden`)
 
       const created = await inA()
