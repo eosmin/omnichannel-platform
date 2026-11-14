@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { randomInt, randomUUID } from 'node:crypto'
 
 import { getQueueToken } from '@nestjs/bullmq'
 import type { INestApplication } from '@nestjs/common'
@@ -63,6 +63,8 @@ const FORBIDDEN = 403
 // Twice the goal of the step (300 ms, measured in the PR): the guard is for a regression, not for a slow runner
 const SLOW_MS = 600
 
+const TAG_LETTERS = 'abcdefghijklmnopqrstuvwxyz'
+
 describe('The search of the store', () => {
   const prefix = newRunPrefix()
   let app: INestApplication
@@ -75,7 +77,9 @@ describe('The search of the store', () => {
   let storeAUser: string
 
   beforeEach(() => {
-    tag = `zq${randomUUID().slice(0, 8)}`
+    // Letters only after the prefix: the tracker never keeps a text with a run of seven digits (a phone number), and eight
+    // hex characters of a UUID sometimes make one, which is exactly what the zero-result case expects to be kept
+    tag = `zq${Array.from({ length: 8 }, () => TAG_LETTERS[randomInt(TAG_LETTERS.length)]).join('')}`
   })
   beforeAll(async () => {
     owner = ownerClient()
