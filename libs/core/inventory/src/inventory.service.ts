@@ -301,7 +301,8 @@ export class InventoryService {
         unitCostCents: plan.unitCostCents,
         onHandAfter: plan.next.onHand,
         reservedAfter: plan.next.reserved,
-        createdBy: input.createdBy ?? null
+        createdBy: input.createdBy ?? null,
+        createdByPluginId: input.createdByPluginId ?? null
       }
     })
 

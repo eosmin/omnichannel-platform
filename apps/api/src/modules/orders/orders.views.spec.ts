@@ -1,4 +1,12 @@
-import { type OrderDetailView, pluginDetailView, pluginPageView } from './orders.views'
+import { type OrderCopyDraft, PaymentMethod } from '@platform/core/domain'
+
+import {
+  type OrderDetailView,
+  pluginCopyView,
+  pluginCreatedView,
+  pluginDetailView,
+  pluginPageView
+} from './orders.views'
 
 const NOW = new Date('2026-11-15T12:00:00.000Z')
 
@@ -42,19 +50,24 @@ function detail(): OrderDetailView {
     trackingNumber: null,
     cancellationReason: null,
     cancelledBy: null,
+    cancelledByPluginId: null,
     cancelledAt: null,
     proofOfDeliveryMediaId: null,
     confirmedAt: null,
     confirmedBy: null,
+    confirmedByPluginId: null,
     confirmedVia: null,
     copiedFromOrderId: null,
     discountReason: null,
     priceApprovalRequestedBy: null,
+    priceApprovalRequestedByPluginId: null,
     priceApprovedBy: null,
+    priceApprovedByPluginId: null,
     priceApprovedAt: null,
     priceApprovedDiscountCents: null,
     priceApprovedShippingCents: null,
     createdBy: 'user-1',
+    createdByPluginId: null,
     shippedAt: null,
     deliveredAt: null,
     items: [],
@@ -74,6 +87,7 @@ const ALLOWED_DETAIL = [
   'orderNumber',
   'paymentMethod',
   'paymentStatus',
+  'priceApprovalStatus',
   'scheduledDeliveryDate',
   'shippingCents',
   'status',
@@ -101,6 +115,9 @@ describe('the order as a plugin reads it', () => {
       pluginDetailView({
         ...detail(),
         confirmedBy: 'user-2',
+        createdBy: null,
+        createdByPluginId: 'plugin-9',
+        confirmedByPluginId: 'plugin-8',
         items: [
           {
             id: 'item-1',
@@ -132,6 +149,8 @@ describe('the order as a plugin reads it', () => {
       'user-1',
       'user-2',
       'user-3',
+      'plugin-9',
+      'plugin-8',
       'product-1',
       'variant-1',
       'a favour',
@@ -163,5 +182,51 @@ describe('the order as a plugin reads it', () => {
     expect(text).not.toContain('carrier-1')
     expect(text).not.toContain('customer-1')
     expect(page.data[0]?.orderNumber).toBe('T-1')
+  })
+})
+
+describe('the answer of a creation and the draft of a copy for a plugin', () => {
+  it('answers the allowlisted order and the notices, nothing of the person or the plugin that made it', () => {
+    const created = pluginCreatedView({
+      order: { ...detail(), createdBy: null, createdByPluginId: 'plugin-9' },
+      notices: ['confirmation_skipped_price_approval']
+    })
+
+    expect(Object.keys(created.order).sort()).toEqual(ALLOWED_DETAIL)
+    expect(created.notices).toEqual(['confirmation_skipped_price_approval'])
+    expect(JSON.stringify(created)).not.toContain('plugin-9')
+  })
+
+  it('leaves out the internal and packing notes and the note of the customer from the draft', () => {
+    const draft: OrderCopyDraft = {
+      draft: {
+        customerId: 'customer-1',
+        items: [{ productId: 'product-1', quantity: 1 }],
+        shippingCents: 0,
+        paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
+        recipientPhones: ['71234567'],
+        customerNotes: 'leave it at the door',
+        internalNotes: 'the internal note',
+        packingNotes: 'the packing note',
+        copiedFromOrderId: 'order-1'
+      },
+      lines: [],
+      warnings: []
+    }
+
+    const view = pluginCopyView(draft)
+
+    expect(Object.keys(view.draft).sort()).toEqual([
+      'customerId',
+      'items',
+      'paymentMethod',
+      'recipientPhones',
+      'shippingAddress',
+      'shippingCents'
+    ])
+    const text = JSON.stringify(view)
+    for (const secret of ['the internal note', 'the packing note', 'leave it at the door']) {
+      expect(text).not.toContain(secret)
+    }
   })
 })
