@@ -1463,8 +1463,8 @@ built once, by 4B.4b-1.
 - [x] **4B.4b-1:** receipts as `finance_document` media (upload purpose with the parent check on the transaction, scanned, `documentMediaId`
       on the transaction, a column added by its migration, set once by `POST finance/transactions/:id/document`, signed links by the GET of
       the same path)
-- [ ] **4B.4b-2:** permission `FINANCE_RECONCILE` (already in `Permissions`, held by the Admin preset) on the routes of the reconciliation
-- [ ] **4B.4b-2:** bank import: `BankImportProfile`, `BankStatementImport`, `BankStatementLine`, `ReconciliationMatch`; deterministic matching,
+- [x] **4B.4b-2:** permission `FINANCE_RECONCILE` (already in `Permissions`, held by the Admin preset) on the routes of the reconciliation
+- [x] **4B.4b-2:** bank import: `BankImportProfile`, `BankStatementImport`, `BankStatementLine`, `ReconciliationMatch`; deterministic matching,
       strict parsing, no formula evaluation, the file kept as media; suggestions, confirm one or all the exact; "register it" from an
       unmatched line (a prefilled transaction of 4B.4a); the balance-versus-statement difference
 - [x] **4B.4a tests:** each kind posts the right entry, a transfer needs two distinct cash-kind accounts, voiding, changing, the closed
@@ -1472,7 +1472,7 @@ built once, by 4B.4b-1.
 - [x] **4B.4b-1 tests:** the upload of a receipt (permissions, parent of another organization, type and size), attaching it (once, replay,
       kind narrowing, voided, a file of another organization or purpose), the signed links (clean, pending, other store, other
       organization), the trigger whoever writes, and the isolation of the receipt (no new table: `validate:isolation` keys its cases by model, so the proof is in `tests/api/finance-transaction-documents.spec.ts`: a file of another organization is never attached, a transaction of another organization is a 404 to attach to or to read the receipt of)
-- [ ] **4B.4b-2 tests:** matching rules and every parser error, isolation cases of the new tables
+- [x] **4B.4b-2 tests:** matching rules and every parser error, isolation cases of the new tables
 **TDD:** `TDD_18 §4.3`, `§4.4`, `TDD_07 §6.3`
 **Done when:** a person registers an expense paid from a chosen account with its VAT and a receipt, moves money between accounts, imports
 a statement and reconciles it, and every balance follows.
@@ -1550,6 +1550,47 @@ store (`TDD_18 §9.1`: the ledger is the organization's), without checking that 
 the books are the organization's and a receipt is read with the journal's permission; a per-store read of finance documents is a decision
 with the stores of Phase 2.
 (d) The web part (an upload button on the transaction) is 4B.9; `QueryKeys` for the receipt come with it.
+
+**Decisions of PR 4B.4b-2 (rule 12):** (1) A decision is a row of `reconciliation_matches` (`confirmed`, `rejected`, or `undone` once taken back) and the
+journal is never touched, so the immutable lines carry no flag; the database holds one confirmed match per statement line and per journal line (partial
+unique indexes), that the two lines are of the same organization and account, and that a confirmed pair is the same movement (debit minus credit equals the
+statement's signed amount) on an entry that nothing reversed and that is no reversal. Rejected: a `matched` column on the statement line (it would be a mutable
+flag that a bug can set without a decision) and a link table with no history (a mistaken confirmation could not be explained). (2) Suggestions are computed
+when the lines are read, never stored: rejected, a table of suggestions (stale the moment the books change). A suggestion is the same amount to the cent in the
+same direction (a debit of the cash account is money in), within the days window of the profile that read the file (0 to 31, default 3), minus the pairs a
+person rejected; the order is the reference first, then the nearest day, then the id. (3) "Exact" means the same day, or a reference of the bank that can be a document number (4 characters or more and a digit: "Pago" is in every memo) inside what the books say (the supplier's document number, the memo of the entry, the memo of the transaction) or the reverse. The bulk
+confirmation confirms only a line with ONE suggestion that is exact and that no other line also wants; everything with two possibilities stays for a person.
+Rejected: confirming the best-scored suggestion (a score is a guess, and a wrong reconciliation of money is worse than an open line). (4) A person's confirmation
+is checked by the server against the same rules whatever the screen sent (a pair outside the window or of another amount is `409 bank_pair_not_allowed`),
+and a line of another account or organization does not exist for the request (404). (5) The reading is strict and the whole file is refused with the rows that
+failed (a statement is never imported half): amounts are signed cents (one column, or one column of debits and one of credits that must fill exactly one),
+no currency symbol, exponent or parentheses, a zero amount is an error, a thousands separator only when the profile names it and then only in groups of
+three; dates in the format of the profile and a real day; text with no control, invisible or look-alike character; a cell that starts with `=`, `+`, `-` or
+`@` is TEXT and is never evaluated (the file is read as text, nothing is exported in this PR; whatever exports it later neutralizes the cell as the VAT CSV
+does). A bank is data: delimiter, header, decimal and thousands separators, date format, columns (by header text or position), encoding (UTF-8 or
+Windows-1252, named by the profile and never guessed) and window are the profile's; no bank and no fiscal fact is built in or invented. (6) The idempotency of a
+line is the sha256 of the account, the day, the amount, the reference, the description and which of the equal lines it is in its file: a statement that overlaps
+the last one brings only what is new, a file whose lines are all known is `409 bank_import_nothing_new`, and two identical lines of one statement are two
+movements. Imports into one account take turns (an advisory lock) and the unique index of the hash holds when two requests race. (7) The file is kept as the
+evidence: a `Media` of purpose `finance_document` with no parent, in the store of the request, scanned like any file from outside, and the import, its lines
+and the file are append-only (triggers that hold the owner of the table too, and no UPDATE or DELETE for the application roles). (8) The closing balance of the
+statement is typed by the person at the import (`closingBalanceCents` with `closingOn`, both or neither): rejected, a balance column in the profile (banks print
+it in different places and orders, and a wrong one would make the difference look right). The difference is the balance of the books of the account up to that
+day against it, with what the unmatched lines of each side explain and what no line explains. (9) Every route asks for `FINANCE_RECONCILE`, reading
+included (a statement shows the movements of the accounts and the journal's permission is not it); the organization is the guard's. (10) "Register it" returns the
+transaction of 4B.4a an unmatched line would be, prefilled, and posts nothing: the person completes it (category, tax) and registers it with the permission of its
+kind. (11) A transaction voided and its reversal are never candidates (neither reached the bank); matching is allowed in a closed period because it edits nothing. (12) An entry that a confirmed match names is NOT reversed: `LedgerService.reverse` answers `409 FINANCE_ENTRY_RECONCILED` (so voiding or replacing its transaction, reversing it by hand and the reversal of a remittance entry all wait until the match is taken back), and a trigger on `journal_entries` holds the same rule under an advisory lock that the confirmation also takes (a confirmation and a reversal at the same moment take turns). Rejected: letting the void through and showing the reversal as an open book line (the reconciliation would then say a line is matched to a dead entry). A rejection is refused for a line that is matched, and a repeated rejection writes no audit row; choosing a pair that was rejected retires the rejection, a description over 300 characters is cut (information, not a reason to refuse the file), a reference counts as agreeing only as a whole token that can be a document number, the difference at a day counts an entry reversed after it as still on the books then; the audit row of a bulk confirmation lists each pair and the id of its decision; the doubt of a bulk confirmation is judged among the open lines of EVERY statement of the account that can reach the same line of the books.
+**Debts of PR 4B.4b-2:** (a) The web part (upload, mapper, the list of suggestions with confirm, reject and undo, the draft of "register it", the status by account and month,
+the difference) and `QueryKeys` / api-client functions are 4B.9. (b) Voiding a reconciled transaction is refused with `FINANCE_ENTRY_RECONCILED` (decision 12): the screen of 4B.9 offers "take the reconciliation back" before it, and shows the code's text; owner 4B.9. (c) One
+statement line pairs with one journal line: a bank charge that settles several entries or an entry paid in two deposits is not modelled (the person registers the
+difference by hand); a many-to-one pairing is a decision for the accountant ([ACCOUNTANT], §13) before it is built. (d) The draft of "register it" offers an income or an expense
+only: a transfer between two of the organization's own accounts is a line on each side, and the screen of 4B.9 offers the transfer. (e) Two genuinely different movements with the same account, day, amount, reference and description in two files that do not overlap (a bank that exports one file per batch of the same day) are the same line to the hash, and a file whose only lines are such is `409 bank_import_nothing_new`: the bank gives no id of a movement, so the import takes whole days (a statement that covers each day it names) and the person registers the missing one by hand; a bank that does give one maps it as the reference. The same hash depends on the text as the profile reads it: after the mapping of the description or the reference is changed, or the bank rewords a memo, an overlapping statement brings the lines as new (a profile is changed for a new statement, not an old one; the rows are append-only and the person sees the new lines). A file's lines that repeat an earlier statement in
+a different count (three equal lines now, two before) bring the extra one as new: the hash tells equal lines apart by their order, so a statement that was
+corrected by the bank by hand needs a person's eye; the list shows the new lines. (f) The state by account is by calendar month, like the periods (a fiscal year that is not the
+calendar one is a template setting, §2.4). (g) The page of lines reads the whole import in memory (the file holds 5000 rows at most) to give the suggestions: a larger import would page
+in the database; the limit is `BankStatementLimits.MAX_ROWS`. (h) The audit row of an import or a decision is written after the commit, as every audit of the platform
+is (4B.4a (p)). (i) The CSV export of unmatched lines for the accountant, with the formula guard, comes with the reports of 4B.8. (k) The body reader of the import (`readImportBody`) still lives in the remittances module and the bank import takes it with an options bag (code and encoding); moving it to a shared module with the content types as a parameter is a refactor of both imports, owner Step 7.7 (hardening). (j) A statement in a currency other than USD is not read
+(TDD_18 §2.8); the amount of a line is whole USD cents.
 
 Review of 4B.4a (rule 12): the generic `POST finance/entries/:id/reverse` now refuses the entry of a transaction
 (`FinanceConflicts.ENTRY_OWNED_BY_TRANSACTION`), because it would leave the transaction looking live and skip its kind's permission and audit row.
@@ -2471,7 +2512,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.1 | Finance design (TDD_18, no code) | in progress | written and delivered with the first code PR that follows; owner approval of `TDD_18` pending | |
 | 4B.2 | Ledger core (accounts, immutable journal, periods, permissions) | done | PR a (schema, constants, pure rules, database tests, #509); PR b (posting service, routes, isolation, maps, #513) | 2026-11-15 |
 | 4B.3 | VAT and the tax snapshot | done | #520 (4B.3a), 4B.3b (this PR) | 2026-11-15 |
-| 4B.4 | Expenses, incomes, transfers and bank reconciliation | in progress | 4B.4a transactions (#527); 4B.4b-1 receipts (this PR); 4B.4b-2 bank reconciliation todo | |
+| 4B.4 | Expenses, incomes, transfers and bank reconciliation | done | 4B.4a transactions (#527); 4B.4b-1 receipts (#531); 4B.4b-2 bank reconciliation (branch `feat/finance-reconciliation`: its PR number is the one of the squash commit `feat(finance): reconcile a bank statement csv`) | |
 | 4B.5 | Suppliers and purchase orders | todo | | |
 | 4B.6 | The automatic entries (sales, remittances, returns, stock) | todo | | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | todo | | |

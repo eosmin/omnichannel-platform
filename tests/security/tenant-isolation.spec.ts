@@ -165,6 +165,60 @@ function booksOf(owner: OwnerClient, organizationId: string): Promise<FinanceFix
 async function booksOfStore(owner: OwnerClient, storeId: string): Promise<FinanceFixture> {
   return booksOf(owner, await organizationOfStore(owner, storeId))
 }
+// A statement of the cash account of an organization with one line, as the import writes it: the file is a finance file of the store
+// and the line carries its hash (TDD_18 §4.4)
+async function bankStatementOf(
+  owner: OwnerClient,
+  storeId: string,
+  cents = -700
+): Promise<{ organizationId: string; accountId: string; importId: string; lineId: string }> {
+  const books = await booksOfStore(owner, storeId)
+  const mediaId = randomUUID()
+  await owner.media.create({
+    data: {
+      id: mediaId,
+      storeId,
+      purpose: 'finance_document',
+      key: `${prefix}/bank-statement/${mediaId}`,
+      filename: 'statement.csv',
+      contentType: 'text/csv',
+      fileSize: 10,
+      status: 'clean'
+    }
+  })
+  const imported = await owner.bankStatementImport.create({
+    data: {
+      organizationId: books.organizationId,
+      accountId: books.accounts.cash,
+      mediaId,
+      lineCount: 1,
+      newLineCount: 1,
+      firstDay: day(FINANCE_ENTRY_DATE),
+      lastDay: day(FINANCE_ENTRY_DATE),
+      createdBy: 'isolation-suite'
+    },
+    select: { id: true }
+  })
+  const line = await owner.bankStatementLine.create({
+    data: {
+      organizationId: books.organizationId,
+      importId: imported.id,
+      accountId: books.accounts.cash,
+      lineNo: 2,
+      postedOn: day(FINANCE_ENTRY_DATE),
+      amountCents: cents,
+      lineHash: randomUUID().replaceAll('-', '').padEnd(64, '0')
+    },
+    select: { id: true }
+  })
+  return {
+    organizationId: books.organizationId,
+    accountId: books.accounts.cash,
+    importId: imported.id,
+    lineId: line.id
+  }
+}
+
 // Each call asks for a period of a year no other has taken, so that every row is one more
 let periodYear = 2100
 const nextPeriodYear = (): number => (periodYear += 1)
@@ -1434,6 +1488,114 @@ const resources: IsolationResource[] = [
       )?.voidedByEntryId === null
     // No `creation` check: the body may name a store of the organization (the dimension of the lines), so a store of ANOTHER organization
     // is a 404 and not the 400 of a strict body; tests/api/finance-transactions.spec.ts proves that and that nothing is written
+  },
+  // The reading profile of a bank's CSV is the organization's: listed and changed by id, never read by it
+  {
+    name: 'bankImportProfile',
+    create: async (owner, { storeId }) => {
+      const books = await booksOfStore(owner, storeId)
+      return {
+        id: (
+          await owner.bankImportProfile.create({
+            data: {
+              organizationId: books.organizationId,
+              accountId: books.accounts.cash,
+              name: `Isolation ${randomUUID().slice(0, 8)}`,
+              columns: { date: 'Date', amount: 'Amount' },
+              createdBy: 'isolation-suite'
+            },
+            select: { id: true }
+          })
+        ).id
+      }
+    },
+    scope: 'organization',
+    listPath: ApiRoutes.finance.bank.profiles,
+    modify: {
+      path: ApiRoutes.finance.bank.profileById,
+      method: 'patch',
+      body: { name: 'hacked' }
+    },
+    untouched: async (owner, id) =>
+      (await owner.bankImportProfile.findUnique({ where: { id }, select: { name: true } }))
+        ?.name !== 'hacked',
+    creation: {
+      path: ApiRoutes.finance.bank.profiles,
+      body: name => {
+        const books = financeBooksA
+        if (books === null) throw new Error('the books of organization A are not set up')
+        return { accountId: books.accounts.cash, name, columns: { date: 'Date', amount: 'Amount' } }
+      },
+      strict: true,
+      countIn: async (owner, storeId) =>
+        owner.bankImportProfile.count({
+          where: { organizationId: await organizationOfStore(owner, storeId) }
+        }),
+      storeOf: async (owner, id) =>
+        (
+          await owner.bankImportProfile.findUnique({
+            where: { id },
+            select: { organizationId: true }
+          })
+        )?.organizationId ?? null
+    }
+  },
+  // An imported statement is the organization's and no route changes it: it is read by id and listed
+  {
+    name: 'bankStatementImport',
+    create: async (owner, { storeId }) => ({
+      id: (await bankStatementOf(owner, storeId)).importId
+    }),
+    scope: 'organization',
+    readPath: ApiRoutes.finance.bank.importById,
+    listPath: ApiRoutes.finance.bank.imports,
+    untouched: () => Promise.resolve(true)
+  },
+  // With an entry on the cash account the line has an exact suggestion: a request that reached these lines would confirm it.
+  // The lines belong to their import: they are read with it, and the one change a route can try is to confirm what the books suggest,
+  // which must never reach another organization's lines
+  {
+    name: 'bankStatementLine',
+    create: async (owner, { storeId }) => {
+      const statement = await bankStatementOf(owner, storeId, -700)
+      await postTestEntry(owner, simpleEntry(await booksOfStore(owner, storeId), 700))
+      return { id: statement.importId }
+    },
+    scope: 'organization',
+    readPath: ApiRoutes.finance.bank.importLines,
+    modify: { path: ApiRoutes.finance.bank.confirmExact, method: 'post', body: {} },
+    untouched: async (owner, id) =>
+      (await owner.reconciliationMatch.count({ where: { statementLine: { importId: id } } })) === 0
+  },
+  // A decision of a person: no route reads one; the change a stranger could try is to take it back
+  {
+    name: 'reconciliationMatch',
+    create: async (owner, { storeId }) => {
+      const statement = await bankStatementOf(owner, storeId, -700)
+      const books = await booksOfStore(owner, storeId)
+      const entry = await postTestEntry(owner, simpleEntry(books, 700))
+      const book = entry.lines.find(line => line.accountId === statement.accountId)
+      if (book === undefined) throw new Error('the entry has no line of the cash account')
+      return {
+        id: (
+          await owner.reconciliationMatch.create({
+            data: {
+              organizationId: statement.organizationId,
+              statementLineId: statement.lineId,
+              journalLineId: book.id,
+              status: 'confirmed',
+              decidedBy: 'isolation-suite'
+            },
+            select: { id: true }
+          })
+        ).id
+      }
+    },
+    scope: 'organization',
+    modify: { path: ApiRoutes.finance.bank.matchUndo, method: 'post', body: {} },
+    untouched: async (owner, id) =>
+      (await owner.reconciliationMatch.findUnique({ where: { id }, select: { status: true } }))
+        ?.status === 'confirmed'
   },
   // The lines belong to their entry: they are read with it, and the store of a line is a dimension and not a scope
   {

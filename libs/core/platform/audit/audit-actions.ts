@@ -203,6 +203,10 @@ export const AuditAction = {
   FINANCE_TRANSACTION_RECORDED: 'finance.transaction_recorded',
   FINANCE_TRANSACTION_VOIDED: 'finance.transaction_voided',
   FINANCE_TRANSACTION_DOCUMENT_ATTACHED: 'finance.transaction_document_attached',
+  FINANCE_BANK_STATEMENT_IMPORTED: 'finance.bank_statement_imported',
+  FINANCE_RECONCILIATION_CONFIRMED: 'finance.reconciliation_confirmed',
+  FINANCE_RECONCILIATION_REJECTED: 'finance.reconciliation_rejected',
+  FINANCE_RECONCILIATION_UNDONE: 'finance.reconciliation_undone',
 
   // Compliance
   DSR_CREATED: 'dsr.created',

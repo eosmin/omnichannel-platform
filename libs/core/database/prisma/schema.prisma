@@ -22,25 +22,29 @@ model Organization {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  stores              Store[]
-  memberships         Membership[]
-  invitations         Invitation[]
-  dataSubjectRequests DataSubjectRequest[]
-  warehouses          Warehouse[]
-  stockCounts         StockCount[]
-  stockTransfers      StockTransfer[]
-  financeSettings     FinanceSettings?
-  ledgerAccounts      LedgerAccount[]
-  taxRates            TaxRate[]
-  accountRoles        AccountRoleMapping[]
-  paymentAccounts     PaymentMethodAccount[]
-  fiscalPeriods       FiscalPeriod[]
-  journalEntries      JournalEntry[]
-  journalLines        JournalLine[]
-  periodBalances      AccountPeriodBalance[]
-  postingFailures     FinancePostingFailure[]
-  financeTransactions FinanceTransaction[]
-  plugins             Plugin[]
+  stores                Store[]
+  memberships           Membership[]
+  invitations           Invitation[]
+  dataSubjectRequests   DataSubjectRequest[]
+  warehouses            Warehouse[]
+  stockCounts           StockCount[]
+  stockTransfers        StockTransfer[]
+  financeSettings       FinanceSettings?
+  ledgerAccounts        LedgerAccount[]
+  taxRates              TaxRate[]
+  accountRoles          AccountRoleMapping[]
+  paymentAccounts       PaymentMethodAccount[]
+  fiscalPeriods         FiscalPeriod[]
+  journalEntries        JournalEntry[]
+  journalLines          JournalLine[]
+  periodBalances        AccountPeriodBalance[]
+  postingFailures       FinancePostingFailure[]
+  bankProfiles          BankImportProfile[]
+  bankImports           BankStatementImport[]
+  bankLines             BankStatementLine[]
+  reconciliationMatches ReconciliationMatch[]
+  financeTransactions   FinanceTransaction[]
+  plugins               Plugin[]
 
   @@map("organizations")
 }
@@ -1205,14 +1209,15 @@ model Media {
   // of the message was the one of the first). How the text of the message went is on the message.
   caption              String?   @map("caption")
 
-  store              Store?              @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  message            Message?            @relation(fields: [messageId], references: [id], onDelete: SetNull)
-  origin             ConversationOrigin? @relation(fields: [originId], references: [id], onDelete: Cascade)
-  customer           Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  product            Product?            @relation(fields: [productId], references: [id], onDelete: SetNull)
-  order              Order?              @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  financeTransaction FinanceTransaction? @relation("TransactionDocuments", fields: [financeTransactionId], references: [id], onDelete: Restrict)
-  documentOf         FinanceTransaction? @relation("TransactionDocument")
+  store              Store?               @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  message            Message?             @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  origin             ConversationOrigin?  @relation(fields: [originId], references: [id], onDelete: Cascade)
+  customer           Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  product            Product?             @relation(fields: [productId], references: [id], onDelete: SetNull)
+  order              Order?               @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  financeTransaction FinanceTransaction?  @relation("TransactionDocuments", fields: [financeTransactionId], references: [id], onDelete: Restrict)
+  documentOf         FinanceTransaction?  @relation("TransactionDocument")
+  bankImport         BankStatementImport? @relation("BankImportFile")
   reactions          MessageReaction[]
 
   @@index([storeId, createdAt])
@@ -2400,6 +2405,9 @@ model LedgerAccount {
   transactionsFrom     FinanceTransaction[]   @relation("TransactionFromAccount")
   transactionsTo       FinanceTransaction[]   @relation("TransactionToAccount")
   transactionsCategory FinanceTransaction[]   @relation("TransactionCategoryAccount")
+  bankProfiles         BankImportProfile[]
+  bankImports          BankStatementImport[]
+  bankLines            BankStatementLine[]
 
   @@unique([organizationId, code])
   // So that every table that names an account can name its organization with it
@@ -2549,11 +2557,12 @@ model JournalLine {
   memo           String?
   lineNo         Int     @map("line_no")
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  entry        JournalEntry  @relation(fields: [organizationId, entryId], references: [organizationId, id], onDelete: Restrict)
-  account      LedgerAccount @relation(fields: [organizationId, accountId], references: [organizationId, id], onDelete: Restrict)
-  store        Store?        @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Restrict)
-  taxRate      TaxRate?      @relation(fields: [organizationId, taxRateId], references: [organizationId, id], onDelete: Restrict)
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  entry        JournalEntry          @relation(fields: [organizationId, entryId], references: [organizationId, id], onDelete: Restrict)
+  account      LedgerAccount         @relation(fields: [organizationId, accountId], references: [organizationId, id], onDelete: Restrict)
+  store        Store?                @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Restrict)
+  taxRate      TaxRate?              @relation(fields: [organizationId, taxRateId], references: [organizationId, id], onDelete: Restrict)
+  matches      ReconciliationMatch[]
 
   @@unique([entryId, lineNo])
   @@index([organizationId, accountId])
@@ -2656,4 +2665,113 @@ model FinancePostingFailure {
   @@unique([organizationId, sourceType, sourceId, eventKind])
   @@index([organizationId, resolvedAt])
   @@map("finance_posting_failures")
+}
+
+// ============================================================================================================
+// Bank reconciliation by CSV (TDD_18 §2.7, §4.4), Step 4B.4b-2. No connection to a bank: a person imports the CSV the bank gives, read with
+// a saved profile; the lines are suggested against the journal lines of the cash account and a PERSON confirms or rejects each. The
+// journal is never touched: a match is a row here, so the immutable lines carry no flag.
+// ============================================================================================================
+
+// How the CSV of one cash, bank or wallet account is read (every bank is data, none is built in)
+model BankImportProfile {
+  id                 String   @id @default(uuid())
+  organizationId     String   @map("organization_id")
+  accountId          String   @map("account_id") // a cash-kind account of the organization
+  name               String
+  delimiter          String   @default(",")
+  hasHeader          Boolean  @default(true) @map("has_header")
+  decimalSeparator   String   @default(".") @map("decimal_separator")
+  thousandsSeparator String   @default("none") @map("thousands_separator") // BankThousandsSeparator
+  dateFormat         String   @default("yyyy-MM-dd") @map("date_format")
+  encoding           String   @default("utf-8") // BankStatementEncoding
+  dateWindowDays     Int      @default(3) @map("date_window_days") // how far apart a statement line and a book line may be and still be suggested
+  columns            Json // { date, description?, reference?, amount | debit + credit } -> header text or column position
+  createdBy          String   @map("created_by")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  account      LedgerAccount @relation(fields: [organizationId, accountId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, accountId, name])
+  @@unique([organizationId, id])
+  @@map("bank_import_profiles")
+}
+
+// One file of a statement that was read and accepted: append-only, the evidence of what was imported (the file is kept as a Media)
+model BankStatementImport {
+  id                  String    @id @default(uuid())
+  organizationId      String    @map("organization_id")
+  accountId           String    @map("account_id")
+  profileId           String?   @map("profile_id") // a plain column: the evidence of how it was read, which outlives the profile
+  mediaId             String    @unique @map("media_id") // the file as it was sent, kept as a finance_document
+  lineCount           Int       @map("line_count") // the lines of the file
+  newLineCount        Int       @map("new_line_count") // the ones that were not in the books of the bank before (the rest were imported already)
+  firstDay            DateTime  @map("first_day") @db.Date
+  lastDay             DateTime  @map("last_day") @db.Date
+  closingBalanceCents Int?      @map("closing_balance_cents") // the balance the statement ends with, said by the person who imported it
+  closingOn           DateTime? @map("closing_on") @db.Date
+  createdBy           String    @map("created_by")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  account      LedgerAccount       @relation(fields: [organizationId, accountId], references: [organizationId, id], onDelete: Restrict)
+  media        Media               @relation("BankImportFile", fields: [mediaId], references: [id], onDelete: Restrict)
+  lines        BankStatementLine[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId, accountId, createdAt])
+  @@map("bank_statement_imports")
+}
+
+// A line of a statement: append-only. `lineHash` makes a line that was imported before the same line (a statement that overlaps the
+// last one never doubles what it repeats).
+model BankStatementLine {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  importId       String   @map("import_id") // the import that brought it first
+  accountId      String   @map("account_id")
+  lineNo         Int      @map("line_no") // the line of the file where its row starts
+  postedOn       DateTime @map("posted_on") @db.Date
+  amountCents    Int      @map("amount_cents") // signed: money in is positive, money out is negative; never 0
+  description    String?
+  reference      String?
+  lineHash       String   @map("line_hash") // sha256 of account, day, amount, reference, description and which of the equal ones it is
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  account      LedgerAccount         @relation(fields: [organizationId, accountId], references: [organizationId, id], onDelete: Restrict)
+  import       BankStatementImport   @relation(fields: [organizationId, importId], references: [organizationId, id], onDelete: Restrict)
+  matches      ReconciliationMatch[]
+
+  @@unique([organizationId, accountId, lineHash])
+  @@unique([organizationId, id])
+  @@index([importId, lineNo])
+  @@index([organizationId, accountId, postedOn])
+  @@map("bank_statement_lines")
+}
+
+// What a person decided about a statement line and a journal line of the same cash account: confirmed (they are the same movement),
+// rejected (never suggest this pair again) or undone (either decision taken back: kept as history). The only row that moves is the
+// status of a decision, once, to `undone`; there is at most one confirmed match per statement line and per journal line (partial
+// unique indexes of the migration).
+model ReconciliationMatch {
+  id              String    @id @default(uuid())
+  organizationId  String    @map("organization_id")
+  statementLineId String    @map("statement_line_id")
+  journalLineId   String    @map("journal_line_id")
+  status          String // ReconciliationMatchStatus
+  decidedBy       String    @map("decided_by")
+  decidedAt       DateTime  @default(now()) @map("decided_at")
+  undoneBy        String?   @map("undone_by")
+  undoneAt        DateTime? @map("undone_at")
+
+  organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  statementLine BankStatementLine @relation(fields: [organizationId, statementLineId], references: [organizationId, id], onDelete: Restrict)
+  journalLine   JournalLine       @relation(fields: [journalLineId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, statementLineId])
+  @@index([journalLineId])
+  @@map("reconciliation_matches")
 }

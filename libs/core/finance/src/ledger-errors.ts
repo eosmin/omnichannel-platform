@@ -11,6 +11,7 @@ type Refusal =
   | typeof ErrorCodes.FINANCE_ACCOUNT_NOT_POSTABLE
   | typeof ErrorCodes.FINANCE_ACCOUNT_INACTIVE
   | typeof ErrorCodes.FINANCE_ENTRY_ALREADY_REVERSED
+  | typeof ErrorCodes.FINANCE_ENTRY_RECONCILED
   | typeof ErrorCodes.FINANCE_SETUP_REQUIRED
 
 const MESSAGES: Record<Refusal, string> = {
@@ -19,6 +20,8 @@ const MESSAGES: Record<Refusal, string> = {
   [ErrorCodes.FINANCE_ACCOUNT_NOT_POSTABLE]: 'the account takes no entries',
   [ErrorCodes.FINANCE_ACCOUNT_INACTIVE]: 'the account is inactive',
   [ErrorCodes.FINANCE_ENTRY_ALREADY_REVERSED]: 'the entry was reversed already',
+  [ErrorCodes.FINANCE_ENTRY_RECONCILED]:
+    'the entry is reconciled with a bank statement: take the match back first',
   [ErrorCodes.FINANCE_SETUP_REQUIRED]: 'the organization has no finance settings yet'
 }
 
@@ -48,6 +51,7 @@ const TRIGGER_REFUSALS: readonly Refusal[] = [
   ErrorCodes.FINANCE_BEFORE_START_DATE,
   ErrorCodes.FINANCE_ACCOUNT_NOT_POSTABLE,
   ErrorCodes.FINANCE_ACCOUNT_INACTIVE,
+  ErrorCodes.FINANCE_ENTRY_RECONCILED,
   ErrorCodes.FINANCE_SETUP_REQUIRED
 ]
 const TRIGGER_PREFIX = /\b(FINANCE_[A-Z_]+):/g
