@@ -113,25 +113,36 @@ export class OutboundRequeueScheduler {
   ): Promise<{ requeued: number; gaveUp: number }> {
     const stale = await this.prisma.client.messageReaction.findMany({
       where: {
-        authorType: AuthorType.AGENT,
+        // A person's reaction, or a plugin's (the system's, with the plugin's id)
+        OR: [
+          { authorType: AuthorType.AGENT, userId: { not: null } },
+          { authorType: AuthorType.SYSTEM, pluginId: { not: null } }
+        ],
         deliveryStatus: DeliveryStatus.QUEUED,
-        userId: { not: null },
         updatedAt: { lt: new Date(now.getTime() - OutboundLimits.REQUEUE_AFTER_MS) }
       },
-      select: { storeId: true, messageId: true, userId: true, mediaId: true, updatedAt: true },
+      select: {
+        storeId: true,
+        messageId: true,
+        userId: true,
+        pluginId: true,
+        mediaId: true,
+        updatedAt: true
+      },
       orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }],
       take: OutboundLimits.REQUEUE_BATCH
     })
     const giveUpBefore = now.getTime() - OutboundLimits.GIVE_UP_AFTER_MS
     const done = { requeued: 0, gaveUp: 0 }
-    for (const { storeId, messageId, userId, mediaId, updatedAt } of stale) {
-      if (userId === null) continue
+    for (const { storeId, messageId, userId, pluginId, mediaId, updatedAt } of stale) {
+      if (userId === null && pluginId === null) continue
+      const by = pluginId === null ? { userId } : { userId: null, pluginId }
       try {
         if (updatedAt.getTime() < giveUpBefore) {
           await this.reactionStatus.settle({
             storeId,
             messageId,
-            userId,
+            ...by,
             mediaId,
             errorCode: ErrorCodes.CHANNEL_MESSAGE_FAILED,
             expectedVersion: updatedAt
@@ -141,7 +152,7 @@ export class OutboundRequeueScheduler {
           await this.outbound.requeueReaction({
             storeId,
             messageId,
-            userId,
+            ...by,
             version: updatedAt.getTime(),
             ...(mediaId === null ? {} : { mediaId })
           })

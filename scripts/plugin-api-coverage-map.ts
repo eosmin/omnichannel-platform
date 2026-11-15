@@ -193,11 +193,20 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
     scope: ['conversations:read', 'messages:write'],
     exposed: '/plugin-api/messages'
   },
-  // To build (the PR that gives the core an actor that is not a person): they write the id of the person who edited, discarded,
-  // sent again or reacted, and DELETE needs MESSAGES_DELETE, which no scope grants (a scope of its own, never a wider one)
-  'messages.byId': { scope: ['conversations:read', 'messages:write'] },
-  'messages.resend': { scope: ['conversations:read', 'messages:write'] },
-  'messages.discard': { scope: ['conversations:read', 'messages:write'] },
+  // PR M1c: the core takes an actor that is not a person (`ActorIdentity`), so a plugin edits, deletes, sends again, discards and reacts.
+  // PATCH/DELETE of an id are one key; deleting needs MESSAGES_DELETE, which only the scope `messages:delete` grants
+  'messages.byId': {
+    scope: ['conversations:read', 'messages:write', 'messages:delete'],
+    exposed: '/plugin-api/messages/:id'
+  },
+  'messages.resend': {
+    scope: ['conversations:read', 'messages:write'],
+    exposed: '/plugin-api/messages/:id/resend'
+  },
+  'messages.discard': {
+    scope: ['conversations:read', 'messages:write', 'messages:delete'],
+    exposed: '/plugin-api/messages/:id/discard'
+  },
   'messages.resendCaption': {
     scope: ['conversations:read', 'messages:write'],
     exposed: '/plugin-api/messages/:id/resend-caption'
@@ -206,7 +215,10 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
     scope: ['conversations:read', 'messages:write'],
     exposed: '/plugin-api/messages/:id/files/:index/refetch'
   },
-  'messages.reaction': { scope: ['conversations:read', 'messages:write'] },
+  'messages.reaction': {
+    scope: ['conversations:read', 'messages:write'],
+    exposed: '/plugin-api/messages/:id/reaction'
+  },
   'messages.deletedContent': {
     scope: ['conversations:read', 'messages:read-deleted'],
     exposed: '/plugin-api/messages/:id/deleted-content'

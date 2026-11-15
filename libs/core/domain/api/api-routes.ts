@@ -570,6 +570,11 @@ export const PluginApiRoutes = {
   // Messages (Step 5.6 PR M1b): a plugin writes a reply or a note, and reads the edits and the kept text of a deleted message
   messages: {
     create: '/plugin-api/messages',
+    // PATCH (edit its own message or note) and DELETE (delete its own)
+    byId: (id: string) => `/plugin-api/messages/${id}`,
+    resend: (id: string) => `/plugin-api/messages/${id}/resend`,
+    discard: (id: string) => `/plugin-api/messages/${id}/discard`,
+    reaction: (id: string) => `/plugin-api/messages/${id}/reaction`,
     resendCaption: (id: string) => `/plugin-api/messages/${id}/resend-caption`,
     refetchFile: (id: string, index: number | string) =>
       `/plugin-api/messages/${id}/files/${index}/refetch`,

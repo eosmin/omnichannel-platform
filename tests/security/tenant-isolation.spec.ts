@@ -4018,11 +4018,14 @@ describe('Tenant isolation', () => {
       'conversations:read',
       'messages:read',
       'messages:write',
+      'messages:delete',
       'messages:read-deleted'
     ]
     const keyOfB = `${PLUGIN_API_KEY_TOKEN_PREFIX}${prefix}msgb${'y'.repeat(40)}`
     let conversationA = ''
     let messageA = ''
+    // A live message of store A that carries THIS plugin's id as its author: the id alone is no reach into another store
+    let liveA = ''
 
     beforeAll(async () => {
       await owner.plugin.create({
@@ -4062,13 +4065,28 @@ describe('Tenant isolation', () => {
           }
         })
       ).id
+      liveA = (
+        await owner.message.create({
+          data: {
+            storeId: ctx.storeA.id,
+            conversationId: conversationA,
+            type: 'text',
+            authorType: 'system',
+            authorPluginId: pluginId,
+            content: 'live of store A',
+            channelMessageId: `wamid-${randomUUID()}`,
+            deliveryStatus: 'failed',
+            failureDefinitive: true
+          }
+        })
+      ).id
     })
     afterAll(async () => {
       await owner.pluginInstallation.deleteMany({ where: { pluginId } })
       await owner.plugin.deleteMany({ where: { id: pluginId } })
     })
 
-    const asB = (method: 'get' | 'post', path: string) =>
+    const asB = (method: 'get' | 'post' | 'patch' | 'delete' | 'put', path: string) =>
       supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
         [method](`${API_PREFIX}${path}`)
         .set('authorization', `Bearer ${keyOfB}`)
@@ -4111,6 +4129,35 @@ describe('Tenant isolation', () => {
       expect(edits.status).toBe(404)
       expect(kept.status).toBe(404)
       expect(JSON.stringify([edits.body, kept.body])).not.toContain('of store A')
+    })
+
+    // Step 5.6, M1c: the changes a plugin makes (edit, delete, send again, discard, react) answer 404 for a message of another store,
+    // and change nothing there, though the message names this very plugin as its author
+    it('does not edit, delete, send again, discard or react to a message of another store', async () => {
+      const edit = await asB('patch', PluginApiRoutes.messages.byId(liveA)).send({
+        content: 'taken over'
+      })
+      const remove = await asB('delete', PluginApiRoutes.messages.byId(liveA))
+      const resend = await asB('post', PluginApiRoutes.messages.resend(liveA)).send({})
+      const discard = await asB('post', PluginApiRoutes.messages.discard(liveA)).send({})
+      const react = await asB('put', PluginApiRoutes.messages.reaction(liveA)).send({
+        emoji: '👍'
+      })
+
+      for (const response of [edit, remove, resend, discard, react]) {
+        expect(response.status).toBe(404)
+      }
+      expect(await owner.message.findUniqueOrThrow({ where: { id: liveA } })).toMatchObject({
+        content: 'live of store A',
+        deliveryStatus: 'failed',
+        deletedAt: null,
+        discardedAt: null,
+        deleteStatus: null,
+        pendingContent: null,
+        editedByPluginId: null,
+        deletedByPluginId: null
+      })
+      expect(await owner.messageReaction.count({ where: { messageId: liveA } })).toBe(0)
     })
   })
 

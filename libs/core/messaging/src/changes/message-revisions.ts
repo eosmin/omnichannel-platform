@@ -13,6 +13,8 @@ export async function addRevision(
     content: string | null
     editedByType: AuthorType
     editedById: string | null
+    // The plugin that edited, instead of a person (`editedById` is null then)
+    editedByPluginId?: string | null
   }
 ): Promise<void> {
   const last = await tx.messageRevision.findFirst({
