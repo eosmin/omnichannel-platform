@@ -1,4 +1,4 @@
-import { CredentialCipher, generateToken } from '@platform/core/crypto'
+import { type CredentialCipher, generateToken } from '@platform/core/crypto'
 import { RemoteChannelLimits } from '@platform/core/domain'
 
 // What the platform keeps of the secret that signs the commands of a remote channel (TDD_10 §6.7.3): the secret as text, sealed as

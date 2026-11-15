@@ -242,12 +242,6 @@ export class PluginIntegrationInstallService {
             webhookDisabledAt: null,
             webhookConsecutiveFailures: 0,
             webhookLastFailureAt: null,
-            // Nothing of the earlier incarnation is kept: the secret it was given is not this plugin's to sign with, and its
-            // failures are not this install's
-            webhookSecret: null,
-            webhookDisabledAt: null,
-            webhookConsecutiveFailures: 0,
-            webhookLastFailureAt: null,
             revokedAt: null,
             installedBy: actor.userId
           }

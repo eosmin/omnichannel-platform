@@ -25,7 +25,7 @@ import {
   type RemoteChannelSendType,
   RemoteTypingStates
 } from '@platform/core/domain'
-import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
+import { ErrorCodes, resourceConflict } from '@platform/core/errors'
 import { UploadLimits } from '@platform/core/storage'
 import {
   type PinnedExchangeOptions,
@@ -105,7 +105,7 @@ const refusalAnswer = z.object({
   })
 })
 
-const LIMITS: ChannelLimits = { textMaxLength: RemoteChannelLimits.TEXT_MAX_LENGTH, caption: null }
+const LIMITS: ChannelLimits = { textMaxLength: RemoteChannelLimits.TEXT_MAX_LENGTH }
 
 const SEND_TYPE_OF_KIND: Readonly<Record<ChannelMediaKind, RemoteChannelSendType>> = {
   [ChannelMediaKinds.IMAGE]: RemoteChannelSendTypes.IMAGE,
@@ -218,12 +218,9 @@ export class RemoteChannelPlugin implements ChannelPlugin {
   // (§6.7.5). The platform never sees what was entered there, so there is nothing to connect from here.
   connect(_input: ConnectInput): Promise<ConnectResult> {
     return Promise.reject(
-      new PlatformException(
-        ErrorCodes.RESOURCE_CONFLICT,
-        'this channel is connected in its own settings page',
-        HttpStatusCodes.CONFLICT,
-        { settingsUrl: this.settingsUrl }
-      )
+      resourceConflict('this channel is connected in its own settings page', {
+        settingsUrl: this.settingsUrl
+      })
     )
   }
 

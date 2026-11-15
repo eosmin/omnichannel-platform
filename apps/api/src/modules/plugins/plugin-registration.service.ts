@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
-import { RemoteChannelSync } from '@platform/channels/connections'
+import { RemoteChannelSync } from '@platform/channels/remote'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { isUniqueViolation, PrismaService } from '@platform/core/database'

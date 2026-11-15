@@ -1,11 +1,11 @@
 import type { PinoLogger } from 'nestjs-pino'
 
+import type { ChannelHealthService, CheckedHealth } from '@platform/channels/connection-health'
 import { CacheKeys } from '@platform/core/cache'
 import type { PrismaService } from '@platform/core/database'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import type { ChannelPlugin } from '@platform/plugins/sdk'
 
-import type { ChannelHealthService, CheckedHealth } from './channel-health.service'
 import { RemoteChannelHealthService } from './remote-channel-health.service'
 
 const logger = {
@@ -32,7 +32,7 @@ function setup(rows: ReturnType<typeof row>[], verdicts: Record<string, CheckedH
       counts.set(key, (counts.get(key) ?? 0) + 1)
       return Promise.resolve(counts.get(key))
     }),
-    expire: jest.fn(() => Promise.resolve(1)),
+    expire: jest.fn<Promise<number>, [string, number]>(() => Promise.resolve(1)),
     multi: jest.fn(() => {
       const steps: (() => Promise<unknown>)[] = []
       const chain = {
@@ -70,11 +70,12 @@ function setup(rows: ReturnType<typeof row>[], verdicts: Record<string, CheckedH
     }
   } as unknown as PrismaService
   const recorded: { id: string; healthy: boolean }[] = []
+  const check = jest.fn((r: { id: string }) => {
+    const next = verdicts[r.id]?.shift()
+    return Promise.resolve(next ?? { healthy: true })
+  })
   const health = {
-    check: jest.fn((r: { id: string }) => {
-      const next = verdicts[r.id]?.shift()
-      return Promise.resolve(next ?? { healthy: true })
-    }),
+    check,
     record: jest.fn((r: { id: string }, h: CheckedHealth) => {
       recorded.push({ id: r.id, healthy: h.healthy })
       return Promise.resolve()
@@ -92,7 +93,7 @@ function setup(rows: ReturnType<typeof row>[], verdicts: Record<string, CheckedH
     redis as unknown as ConstructorParameters<typeof RemoteChannelHealthService>[3],
     logger
   )
-  return { service, redis, recorded, counts, health }
+  return { service, redis, recorded, counts, check }
 }
 
 const bad: CheckedHealth = { healthy: false, error: 'session expired' }
@@ -140,9 +141,9 @@ describe('RemoteChannelHealthService', () => {
   })
 
   it('leaves the connections of the official plugins to their own round', async () => {
-    const { service, health } = setup([row('c1', 'official_chat')], {})
+    const { service, check } = setup([row('c1', 'official_chat')], {})
     await expect(service.checkAll()).resolves.toEqual({ checked: 0, unhealthy: 0 })
-    expect(health.check).not.toHaveBeenCalled()
+    expect(check).not.toHaveBeenCalled()
   })
 
   it('changes nothing when Redis is down, and goes on with the next connection', async () => {
@@ -157,8 +158,8 @@ describe('RemoteChannelHealthService', () => {
   })
 
   it('stops starting checks when the budget is spent', async () => {
-    const { service, health } = setup([row('c1'), row('c2')], {})
+    const { service, check } = setup([row('c1'), row('c2')], {})
     await service.checkAll(-1)
-    expect(health.check).not.toHaveBeenCalled()
+    expect(check).not.toHaveBeenCalled()
   })
 })

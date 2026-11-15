@@ -1,16 +1,16 @@
 import { ChannelCapability, RemoteChannelLimits } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { PinnedExchangeFailed, UnsafeUrlError } from '@platform/core/url-safety'
-import { PluginError } from '@platform/plugins/sdk'
+import { type ChannelPlugin, PluginError } from '@platform/plugins/sdk'
 
+import { pluginManifestSchema } from './plugin-manifest'
+import { PluginRegistry } from './plugin-registry'
 import {
   type RemoteCommandSecrets,
   RemoteChannelPlugin,
   type RemoteExchange,
   type RemoteSecretSource
 } from './remote-channel-plugin'
-import { pluginManifestSchema } from './plugin-manifest'
-import { PluginRegistry } from './plugin-registry'
 import { verifyRemoteCommand } from './remote-command-signature'
 
 const NOW_MS = 1_800_000_000_000
@@ -110,6 +110,16 @@ async function failureOf(work: Promise<unknown>): Promise<PluginError> {
   throw new Error('expected a PluginError')
 }
 
+// What the adapter put on the wire, read back as data
+function sent(
+  raw: string
+): { command: string; data: Record<string, unknown> } & Record<string, unknown> {
+  return JSON.parse(raw) as { command: string; data: Record<string, unknown> } & Record<
+    string,
+    unknown
+  >
+}
+
 describe('RemoteChannelPlugin: what it declares', () => {
   const { plugin } = harness(() => ok({}))
 
@@ -117,8 +127,10 @@ describe('RemoteChannelPlugin: what it declares', () => {
     expect(plugin.id).toBe('acme_chat')
     expect(plugin.type).toBe('channel')
     expect(plugin.receivesProviderWebhooks).toBe(false)
-    expect(plugin.validateWebhookSignature('{}', {})).toBe(false)
-    await expect(plugin.handleWebhook({})).resolves.toEqual([])
+    // Through the interface: a remote plugin takes no arguments here, and the core calls it with them
+    const asChannel: ChannelPlugin = plugin
+    expect(asChannel.validateWebhookSignature('{}', {})).toBe(false)
+    await expect(asChannel.handleWebhook({})).resolves.toEqual([])
     await expect(plugin.connect({ storeId: 'store-1', credentials: {} })).rejects.toMatchObject({
       statusCode: 409,
       metadata: { settingsUrl: 'https://acme.com/settings' }
@@ -129,8 +141,8 @@ describe('RemoteChannelPlugin: what it declares', () => {
     expect(plugin.capabilities).toEqual(manifest.capabilities)
     expect(plugin.messagingWindow).toEqual({ hours: 24, requiresTemplateWhenClosed: false })
     expect(plugin.media?.kinds).toEqual({
-      image: { types: null, maxBytes: expect.any(Number) },
-      document: { types: null, maxBytes: expect.any(Number) }
+      image: { types: null, maxBytes: expect.any(Number) as number },
+      document: { types: null, maxBytes: expect.any(Number) as number }
     })
     expect(plugin.limits.textMaxLength).toBeGreaterThan(0)
   })
@@ -179,7 +191,7 @@ describe('RemoteChannelPlugin: the signed request', () => {
     expect(asked).toEqual(['store-1/acme_chat'])
     const [call] = calls
     expect(call?.url).toBe(COMMANDS_URL)
-    expect(JSON.parse(call?.body ?? '')).toEqual({
+    expect(sent(call?.body ?? '')).toEqual({
       command: 'message.send',
       storeId: 'store-1',
       connectionId: 'acct-9',
@@ -434,7 +446,7 @@ describe('RemoteChannelPlugin: files', () => {
     const sign = jest.fn((ttl: number) => Promise.resolve(`https://files.example/o?ttl=${ttl}`))
     await plugin.sendMedia(ctx, { ...file, signedUrl: sign })
     expect(sign).toHaveBeenCalledWith(RemoteChannelLimits.MEDIA_URL_TTL_SECONDS)
-    expect(JSON.parse(calls[0]?.body ?? '').data).toEqual({
+    expect(sent(calls[0]?.body ?? '').data).toEqual({
       messageId: 'msg-1-0',
       channelIdentity: 'cust-1',
       type: 'image',
@@ -462,7 +474,7 @@ describe('RemoteChannelPlugin: files', () => {
         contentType,
         signedUrl: () => Promise.resolve('https://f.example/x')
       })
-      expect(JSON.parse(calls[0]?.body ?? '').data.type).toBe(type)
+      expect(sent(calls[0]?.body ?? '').data['type']).toBe(type)
     }
   })
 
@@ -482,7 +494,7 @@ describe('RemoteChannelPlugin: health, disconnect, typing and read', () => {
       healthy: true,
       checkedAt: new Date(NOW_MS).toISOString()
     })
-    expect(JSON.parse(good.calls[0]?.body ?? '')).toMatchObject({
+    expect(sent(good.calls[0]?.body ?? '')).toMatchObject({
       command: 'connection.health',
       data: {}
     })
@@ -512,7 +524,7 @@ describe('RemoteChannelPlugin: health, disconnect, typing and read', () => {
     expect(down.calls).toHaveLength(1)
     // Signed with the secrets of teardown, so it still goes out when the installation was just revoked
     expect(down.asked).toEqual(['teardown:store-1/acme_chat'])
-    expect(JSON.parse(down.calls[0]?.body ?? '').command).toBe('connection.disconnect')
+    expect(sent(down.calls[0]?.body ?? '').command).toBe('connection.disconnect')
     const none = harness(() => ok({}), null)
     await expect(none.plugin.disconnect(ctx)).resolves.toBeUndefined()
     expect(none.calls).toHaveLength(0)
@@ -527,7 +539,7 @@ describe('RemoteChannelPlugin: health, disconnect, typing and read', () => {
     })
     await plugin.sendTypingIndicator?.(ctx, { channelIdentity: 'cust-1', active: false })
     await plugin.markAsRead?.(ctx, { channelIdentity: 'cust-1', externalId: 'ext-5' })
-    expect(calls.map(call => JSON.parse(call.body))).toEqual([
+    expect(calls.map(call => sent(call.body))).toEqual([
       {
         command: 'typing.send',
         storeId: 'store-1',

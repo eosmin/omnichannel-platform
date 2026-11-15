@@ -574,12 +574,9 @@ export class ChannelConnectionsService {
   // connection through the plugin API: the platform has nothing to connect, and says where to go (TDD_10 §6.7.4)
   private refuseIfRemote(pluginId: string, plugin: ChannelPlugin): void {
     if (!this.registry.isRemote(pluginId)) return
-    throw new PlatformException(
-      ErrorCodes.RESOURCE_CONFLICT,
-      'this channel is connected in its own settings page',
-      HttpStatusCodes.CONFLICT,
-      { settingsUrl: plugin instanceof RemoteChannelPlugin ? plugin.settingsUrl : null }
-    )
+    throw resourceConflict('this channel is connected in its own settings page', {
+      settingsUrl: plugin instanceof RemoteChannelPlugin ? plugin.settingsUrl : null
+    })
   }
 
   private providerRefusal(

@@ -1,10 +1,6 @@
 import { Injectable } from '@nestjs/common'
 
-import {
-  newCommandSecret,
-  RemoteChannelSync,
-  sealCommandSecret
-} from '@platform/channels/connections'
+import { newCommandSecret, RemoteChannelSync, sealCommandSecret } from '@platform/channels/remote'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { CredentialCipher } from '@platform/core/crypto'
@@ -15,12 +11,7 @@ import {
   PluginStatus,
   RemoteChannelLimits
 } from '@platform/core/domain'
-import {
-  ErrorCodes,
-  HttpStatusCodes,
-  PlatformException,
-  resourceNotFound
-} from '@platform/core/errors'
+import { resourceConflict, resourceNotFound } from '@platform/core/errors'
 
 import type { Actor } from '../tenancy'
 
@@ -74,10 +65,8 @@ export class PluginCommandSecretService {
         installation.commandSecretRotatedAt !== null &&
         now.getTime() - installation.commandSecretRotatedAt.getTime() <= graceMs
       ) {
-        throw new PlatformException(
-          ErrorCodes.RESOURCE_CONFLICT,
-          'the secret was rotated a moment ago: wait until the previous one stops working',
-          HttpStatusCodes.CONFLICT
+        throw resourceConflict(
+          'the secret was rotated a moment ago: wait until the previous one stops working'
         )
       }
       await tx.pluginInstallation.update({

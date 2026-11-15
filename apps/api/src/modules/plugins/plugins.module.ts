@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 
 import { ChannelConnectionsLibModule } from '@platform/channels/connections'
+import { RemoteChannelsLibModule } from '@platform/channels/remote'
 import {
   CryptoPlatformModule,
   PublicApiPlatformModule,
@@ -36,6 +37,7 @@ import { PluginsController } from './plugins.controller'
     CryptoPlatformModule,
     PublicApiPlatformModule,
     QueuesPlatformModule,
+    RemoteChannelsLibModule,
     TenancyModule
   ],
   controllers: [PluginsController, PluginApiController],

@@ -2,7 +2,8 @@ import { Injectable } from '@nestjs/common'
 import { Cron } from '@nestjs/schedule'
 import { PinoLogger } from 'nestjs-pino'
 
-import { ChannelHealthService, RemoteChannelHealthService } from '@platform/channels/connections'
+import { ChannelHealthService } from '@platform/channels/connections'
+import { RemoteChannelHealthService } from '@platform/channels/remote'
 import { LockNames, Schedules } from '@platform/core/queues'
 import { PluginRegistry } from '@platform/plugins/runtime'
 

@@ -274,7 +274,7 @@ describe('RemoteChannelSync: the registry of remote plugins', () => {
     await sync.secretsForDisconnect('s1', 'acme_chat')
     const prisma = (sync as unknown as { prisma: PrismaService }).prisma
     const findFirst = prisma.client.pluginInstallation.findFirst as jest.Mock
-    expect(findFirst.mock.calls[0]?.[0]).toMatchObject({
+    expect((findFirst.mock.calls[0] as unknown[])[0]).toMatchObject({
       where: { status: { in: ['active', 'revoked'] } }
     })
   })
@@ -340,7 +340,7 @@ describe('RemoteChannelSync: the secrets of the commands', () => {
     await sync.secretsOf('store-A', 'acme_chat')
     const prisma = (sync as unknown as { prisma: PrismaService }).prisma
     const findFirst = prisma.client.pluginInstallation.findFirst as jest.Mock
-    expect(findFirst.mock.calls[0]?.[0]).toMatchObject({
+    expect((findFirst.mock.calls[0] as unknown[])[0]).toMatchObject({
       where: {
         storeId: 'store-A',
         pluginId: 'acme_chat',

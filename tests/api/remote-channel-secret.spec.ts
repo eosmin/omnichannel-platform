@@ -3,7 +3,7 @@ import { randomInt } from 'node:crypto'
 import type { INestApplication } from '@nestjs/common'
 import supertest from 'supertest'
 
-import { RemoteChannelSync } from '@platform/channels/connections'
+import { RemoteChannelSync } from '@platform/channels/remote'
 import { API_PREFIX, ApiRoutes, PluginApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import type { OwnerClient } from '@platform/core/database-testing'

@@ -1,10 +1,6 @@
 import { Injectable } from '@nestjs/common'
 
-import {
-  newCommandSecret,
-  RemoteChannelSync,
-  sealCommandSecret
-} from '@platform/channels/connections'
+import { newCommandSecret, RemoteChannelSync, sealCommandSecret } from '@platform/channels/remote'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { CredentialCipher, generateToken, hashToken } from '@platform/core/crypto'

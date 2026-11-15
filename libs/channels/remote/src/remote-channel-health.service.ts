@@ -2,6 +2,11 @@ import { Inject, Injectable } from '@nestjs/common'
 import type { Redis } from 'ioredis'
 import { PinoLogger } from 'nestjs-pino'
 
+import {
+  CONNECTION_ROW_SELECT,
+  ChannelHealthService,
+  errorName
+} from '@platform/channels/connection-health'
 import { CacheKeys } from '@platform/core/cache'
 import { PrismaService } from '@platform/core/database'
 import {
@@ -12,10 +17,6 @@ import {
 } from '@platform/core/domain'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import { PluginRegistry } from '@platform/plugins/runtime'
-
-import { CONNECTION_ROW_SELECT } from './channel-context.factory'
-import { ChannelHealthService } from './channel-health.service'
-import { errorName } from './timeout'
 
 // The health round of the connections of the plugins that run outside the platform (TDD_10 §6.7.7). One check for each
 // connection, ten at a time, so a plugin that is slow delays its own checks and not the others'. A failed check does not put the
