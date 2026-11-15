@@ -229,7 +229,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
     exposed: '/plugin-api/customers/:id/identities'
   },
   'customers.identityById': {
-    scope: 'customers:write',
+    scope: ['customers:read', 'customers:write'],
     exposed: '/plugin-api/customers/:id/identities/:identityId'
   },
   'customers.merge': { none: CUSTOMER_MERGE },
@@ -262,7 +262,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
     exposed: '/plugin-api/customers/:id/tags'
   },
   'customers.tagById': {
-    scope: 'customers:write',
+    scope: ['customers:read', 'customers:write'],
     exposed: '/plugin-api/customers/:id/tags/:tagId'
   },
   'customers.media': { proposed: ['customers:read', 'media:read'], step: STEP },
@@ -271,7 +271,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
     exposed: '/plugin-api/customers/:id/timeline'
   },
   'customers.caution': {
-    scope: 'customers:flag-caution',
+    scope: ['customers:read', 'customers:flag-caution'],
     exposed: '/plugin-api/customers/:id/caution'
   },
   'customers.export': { proposed: ['customers:read', 'exports:write'], step: STEP },

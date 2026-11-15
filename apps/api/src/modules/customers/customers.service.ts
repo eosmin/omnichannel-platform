@@ -228,7 +228,7 @@ export class CustomersService {
       storeId,
       resourceType: 'customer',
       resourceId: customerId,
-      metadata: auditViaOf(actor),
+      ...(actor.pluginInstallationId === undefined ? {} : { metadata: auditViaOf(actor) }),
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })

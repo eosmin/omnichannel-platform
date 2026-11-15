@@ -65,6 +65,7 @@ describe('Customers through the plugin API', () => {
   let readOnly: { key: string; installationId: string }
   let writeOnly: { key: string; installationId: string }
   let readWrite: { key: string; installationId: string }
+  let deleteOnly: { key: string; installationId: string }
 
   beforeAll(async () => {
     owner = ownerClient()
@@ -95,6 +96,12 @@ describe('Customers through the plugin API', () => {
       storeId: ctx.storeA.id,
       pluginId: `${prefix}-rw`,
       scopes: [PluginScopes.CUSTOMERS_READ, PluginScopes.CUSTOMERS_WRITE]
+    })
+    // Holds the delete scope and not the read one: it must not learn from the answer what it was not given
+    deleteOnly = await createPluginKey(owner, {
+      storeId: ctx.storeA.id,
+      pluginId: `${prefix}-del`,
+      scopes: [PluginScopes.CUSTOMERS_DELETE, PluginScopes.CUSTOMERS_FLAG_CAUTION]
     })
   })
   afterAll(async () => {
@@ -327,6 +334,28 @@ describe('Customers through the plugin API', () => {
       expect(after.isCaution).toBe(false)
     })
 
+    it('does not tell a key that lacks customers:read whether a customer exists or what keeps it from going', async () => {
+      const busy = (
+        await owner.conversation.findUniqueOrThrow({
+          where: { id: (await createConversationOf(owner, { storeId: ctx.storeA.id })).id }
+        })
+      ).customerId
+
+      const remove = await call('delete', PluginApiRoutes.customers.byId(busy), deleteOnly.key)
+      const missing = await call(
+        'delete',
+        PluginApiRoutes.customers.byId(randomUUID()),
+        deleteOnly.key
+      )
+      const clear = await call('delete', PluginApiRoutes.customers.caution(busy), deleteOnly.key)
+
+      for (const response of [remove, missing, clear]) {
+        expect(response.status).toBe(FORBIDDEN)
+        expect(codeOf(response.body)).toBe(ErrorCodes.PLUGIN_SCOPE_DENIED)
+      }
+      expect(JSON.stringify(remove.body)).not.toContain('conversations')
+    })
+
     it('needs orders:read for the orders and conversations:read for the conversations of a customer', async () => {
       const mine = await mkA()
 
@@ -430,7 +459,7 @@ describe('Customers through the plugin API', () => {
       expect(await tagCount(mine.id)).toBe(0)
     })
 
-    it('reads the notes a person wrote', async () => {
+    it('reads the notes a person wrote, without who wrote them', async () => {
       const mine = await mkA()
       await owner.customerNote.create({
         data: { customerId: mine.id, authorId: ctx.agentA.id, content: 'called back' }
@@ -441,6 +470,8 @@ describe('Customers through the plugin API', () => {
       expect((notes.body as { content: string }[]).map(note => note.content)).toEqual([
         'called back'
       ])
+      expect(JSON.stringify(notes.body)).not.toContain(ctx.agentA.id)
+      expect(JSON.stringify(notes.body)).not.toContain('authorId')
     })
 
     it('lists the orders and the conversations of a customer, and only its own', async () => {
@@ -471,25 +502,50 @@ describe('Customers through the plugin API', () => {
       expect((ofConversation.body as PageBody).data.map(item => item.id)).toEqual([conversation.id])
     })
 
-    it('shows the conversations and orders in the timeline only to a key that holds their scopes', async () => {
+    it('has the notes and merges in the timeline without the team members, and no conversation or order with customers:read alone', async () => {
       const conversation = await createConversationOf(owner, { storeId: ctx.storeA.id })
       const customerId = (
         await owner.conversation.findUniqueOrThrow({ where: { id: conversation.id } })
       ).customerId
+      await owner.customerNote.create({
+        data: { customerId, authorId: ctx.agentA.id, content: 'in the timeline' }
+      })
 
-      const full = await asA('get', PluginApiRoutes.customers.timeline(customerId)).expect(OK)
-      const reading = await call(
-        'get',
-        PluginApiRoutes.customers.timeline(customerId),
-        readOnly.key
-      ).expect(OK)
+      const timeline = await asA('get', PluginApiRoutes.customers.timeline(customerId)).expect(OK)
 
-      // `customers:read` stands for CUSTOMERS_VIEW alone: the same page of a person without CONVERSATIONS_VIEW
-      expect((reading.body as TimelineBody).data.map(entry => entry.type)).not.toContain(
-        'conversation'
-      )
-      expect((full.body as TimelineBody).data.length).toBeGreaterThanOrEqual(
-        (reading.body as TimelineBody).data.length
+      const entries = (timeline.body as TimelineBody).data
+      // The viewer of the route holds what customers:read grants (CUSTOMERS_VIEW): the thread is not shown, as to a person without it
+      expect(entries.map(entry => entry.type)).toEqual(['note'])
+      expect(JSON.stringify(timeline.body)).not.toContain(ctx.agentA.id)
+      expect(JSON.stringify(timeline.body)).not.toContain('authorName')
+    })
+
+    it('answers the conversations of a customer as pages only', async () => {
+      const mine = await mkA()
+
+      const counts = await asA('get', PluginApiRoutes.customers.conversations(mine.id)).query({
+        countsOnly: 'true'
+      })
+
+      expect(counts.status).toBe(400)
+    })
+
+    it('is a 404 to change an address that belongs to another customer of the same store', async () => {
+      const one = await mkA()
+      const two = await mkA()
+      const address = await asA('post', PluginApiRoutes.customers.addresses(one.id))
+        .send({ line1: 'Calle 1', city: 'San Salvador', country: 'sv' })
+        .expect(CREATED)
+      const addressId = (address.body as { id: string }).id
+
+      const changed = await asA(
+        'patch',
+        PluginApiRoutes.customers.addressById(two.id, addressId)
+      ).send({ city: 'Santa Ana' })
+
+      expect(changed.status).toBe(NOT_FOUND)
+      expect((await owner.address.findUniqueOrThrow({ where: { id: addressId } })).city).toBe(
+        'San Salvador'
       )
     })
   })

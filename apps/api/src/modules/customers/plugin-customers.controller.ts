@@ -84,7 +84,13 @@ import type {
   TagView
 } from './customers.views'
 import { IdentitiesService } from './identities.service'
-import { type NoteView, NotesService } from './notes.service'
+import { NotesService } from './notes.service'
+import {
+  type PluginNoteView,
+  pluginNote,
+  pluginTimeline,
+  type PluginTimelineEntry
+} from './plugin-customers.views'
 
 const id = () => new ZodValidationPipe(idSchema)
 
@@ -94,12 +100,13 @@ type Store = { id: string }
 const READ = PluginScopes.CUSTOMERS_READ
 const WRITE = PluginScopes.CUSTOMERS_WRITE
 
-// The customers of the store of the key (Step 5.6 PR E2), over the same services as the profile of the interface. Contact data
-// (names, e-mail addresses, phones) is what these routes carry: it is only ever answered, never written to a log. Reads take
-// `customers:read`; every route that changes something and answers with the customer takes `customers:write` AND `customers:read`,
-// and the ones that answer nothing (204) take the write scope only. A permission each method asks for is the one the same route
-// of the interface asks for, and lies inside the scopes of THE ROUTE (the guard checks it): deleting a customer and flagging it
-// have scopes of their own, because no other scope grants those permissions.
+// The customers of the store of the key (Step 5.6 PR E2), over the same services as the profile of the interface. Every route holds
+// `customers:read`, even the ones that answer nothing: a key must not learn that a customer exists, or what keeps it from being
+// deleted (the 404 and the 409 with its counts), through a scope it was not given. Contact data (names, e-mail addresses, phones)
+// is what these routes carry. A write takes `customers:write` besides, and a permission each method asks for is the one the same
+// route of the interface asks for, inside the scopes of THE ROUTE (the guard checks it): deleting a customer and flagging it
+// have scopes of their own, because no other scope grants those permissions. The team members who wrote a note or merged are
+// never answered (`plugin-customers.views.ts`).
 //
 // Not here, on purpose (the map says why): the notes (POST and DELETE: the author of a note is a person, and the profile shows
 // them by name), the merge, its undo and its preview (`mergedById` is a person too), the gallery of the customer (scope
@@ -169,8 +176,8 @@ export class PluginCustomersController {
   }
 
   // Only a customer with no conversations and no orders can go (the service refuses the rest with a 409)
-  @PluginApi(PluginScopes.CUSTOMERS_DELETE)
-  @RequirePermissions(Permissions.CUSTOMERS_DELETE)
+  @PluginApi(READ, PluginScopes.CUSTOMERS_DELETE)
+  @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CUSTOMERS_DELETE)
   @Delete(PluginApiRoutes.customers.byId(':id'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async remove(
@@ -184,8 +191,8 @@ export class PluginCustomersController {
 
   // The caution flag informs and never blocks (TDD_17 §4.16). The setter that is kept is `plugin:<installation id>`: nothing
   // shows it or joins it to `users` (see the plan, "Left by PR E2").
-  @PluginApi(PluginScopes.CUSTOMERS_FLAG_CAUTION)
-  @RequirePermissions(Permissions.CUSTOMERS_FLAG_CAUTION)
+  @PluginApi(READ, PluginScopes.CUSTOMERS_FLAG_CAUTION)
+  @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CUSTOMERS_FLAG_CAUTION)
   @Put(PluginApiRoutes.customers.caution(':id'))
   setCaution(
     @CurrentStore() store: Store,
@@ -197,8 +204,8 @@ export class PluginCustomersController {
     return this.caution.set(store.id, customerId, body, pluginActorOf(installation, store, req))
   }
 
-  @PluginApi(PluginScopes.CUSTOMERS_FLAG_CAUTION)
-  @RequirePermissions(Permissions.CUSTOMERS_FLAG_CAUTION)
+  @PluginApi(READ, PluginScopes.CUSTOMERS_FLAG_CAUTION)
+  @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CUSTOMERS_FLAG_CAUTION)
   @Delete(PluginApiRoutes.customers.caution(':id'))
   clearCaution(
     @CurrentStore() store: Store,
@@ -225,8 +232,8 @@ export class PluginCustomersController {
     return withAnonymousCustomers(this.anonymity, identity)
   }
 
-  @PluginApi(WRITE)
-  @RequirePermissions(Permissions.CUSTOMERS_EDIT)
+  @PluginApi(READ, WRITE)
+  @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CUSTOMERS_EDIT)
   @Delete(PluginApiRoutes.customers.identityById(':id', ':identityId'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async unlinkIdentity(
@@ -247,8 +254,8 @@ export class PluginCustomersController {
     @CurrentPluginViewer() viewer: Viewer,
     @Param('id', id()) customerId: string,
     @Query(new ZodValidationPipe(listTimelineQuerySchema)) query: ListTimelineQuery
-  ): Promise<TimelinePage> {
-    return this.timeline.list(store.id, customerId, query, viewer)
+  ): Promise<Omit<TimelinePage, 'data'> & { data: PluginTimelineEntry[] }> {
+    return this.timeline.list(store.id, customerId, query, viewer).then(pluginTimeline)
   }
 
   @PluginApi(READ, PluginScopes.ORDERS_READ)
@@ -288,8 +295,8 @@ export class PluginCustomersController {
   listNotes(
     @CurrentStore() store: Store,
     @Param('id', id()) customerId: string
-  ): Promise<NoteView[]> {
-    return this.notes.list(store.id, customerId)
+  ): Promise<PluginNoteView[]> {
+    return this.notes.list(store.id, customerId).then(notes => notes.map(pluginNote))
   }
 
   @PluginApi(READ, WRITE)
@@ -316,8 +323,8 @@ export class PluginCustomersController {
     return this.addresses.update(store.id, customerId, addressId, body)
   }
 
-  @PluginApi(WRITE)
-  @RequirePermissions(Permissions.CUSTOMERS_EDIT)
+  @PluginApi(READ, WRITE)
+  @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CUSTOMERS_EDIT)
   @Delete(PluginApiRoutes.customers.addressById(':id', ':addressId'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async removeAddress(
@@ -340,8 +347,8 @@ export class PluginCustomersController {
     return this.tags.attach(store.id, customerId, body.tagId)
   }
 
-  @PluginApi(WRITE)
-  @RequirePermissions(Permissions.CUSTOMERS_EDIT)
+  @PluginApi(READ, WRITE)
+  @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CUSTOMERS_EDIT)
   @Delete(PluginApiRoutes.customers.tagById(':id', ':tagId'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async detachTag(
