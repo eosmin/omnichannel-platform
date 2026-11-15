@@ -2274,7 +2274,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4.15 | Forza and C807 adapters | in progress | PR 1 (C807 adapter, token cache port, `connectFields`); Forza adapter; PR 2a (api of the connection, #477); PR 2c (web of the guide, #478); PR 2b (web of the connection, #479); PR 3 (places of a bulk run); PR 5 (places in the default mode of bulk labels); PR 4 (QA fix FUNC-H1, a guide that cannot be cancelled at the carrier is marked as voided from `cancel_pending`); PR 6a (api of the commission and the rate per service, FUNC-H4, #483); PR 6b (web of the commission and the rates); the real webhook and one real status change (owner, see the step) | 2026-11-14 |
 | **Milestone 4B: Finance** | | | | |
 | 4B.1 | Finance design (TDD_18, no code) | in progress | written and delivered with the first code PR that follows; owner approval of `TDD_18` pending | |
-| 4B.2 | Ledger core (accounts, immutable journal, periods, permissions) | done | PR a (schema, constants, pure rules, database tests, #509); PR b (posting service, routes, isolation, maps, PR_NUMBER) | 2026-11-15 |
+| 4B.2 | Ledger core (accounts, immutable journal, periods, permissions) | done | PR a (schema, constants, pure rules, database tests, #509); PR b (posting service, routes, isolation, maps, #513) | 2026-11-15 |
 | 4B.3 | VAT and the tax snapshot | todo | | |
 | 4B.4 | Expenses, incomes, transfers and bank reconciliation | todo | | |
 | 4B.5 | Suppliers and purchase orders | todo | | |
