@@ -10,6 +10,7 @@ import {
   useQueryClient,
   type UseQueryResult
 } from '@tanstack/react-query'
+import { useLocale } from 'next-intl'
 import { useCallback } from 'react'
 
 import { QueryKeys } from '@platform/api-client'
@@ -65,13 +66,23 @@ export function useConnections(
 
 export function usePluginCatalog(storeId: string): UseQueryResult<PluginCatalogEntryView[]> {
   const label = usePluginLabel()
+  const locale = useLocale()
   return useQuery({
     queryKey: ChannelKeys.plugins(storeId),
     queryFn: ({ signal }) => fetchPluginCatalog(apiClient, storeId, signal),
     select: useCallback(
       (entries: PluginCatalogEntryView[]) =>
-        entries.map(entry => ({ ...entry, name: label(entry.channel?.descriptor, entry.name) })),
-      [label]
+        entries.map(entry => ({
+          ...entry,
+          // The name the plugin gave in the language of the reader (a registered plugin may), else its descriptor's, else its plain one
+          name:
+            entry.names === null
+              ? label(entry.channel?.descriptor, entry.name)
+              : locale.toLowerCase().startsWith('es')
+                ? entry.names.es
+                : entry.names.en
+        })),
+      [label, locale]
     )
   })
 }
@@ -82,7 +93,7 @@ function useRefreshChannels(storeId: string): () => void {
   const queryClient = useQueryClient()
   return () => {
     void queryClient.invalidateQueries({ queryKey: ChannelKeys.root(storeId) })
-    void queryClient.invalidateQueries({ queryKey: ChannelKeys.plugins(storeId) })
+    void queryClient.invalidateQueries({ queryKey: ChannelKeys.pluginsRoot(storeId) })
     // An install or an uninstall adds or removes the widgets the plugin draws
     void queryClient.invalidateQueries({ queryKey: QueryKeys.pluginWidgets.list(storeId) })
     void queryClient.invalidateQueries({ queryKey: QueryKeys.pluginWidgets.settings(storeId) })
@@ -192,14 +203,21 @@ export function useInstallPlugin(
   })
 }
 
+export interface UninstallRequest {
+  installationId: string
+  // The word typed to revoke an integration plugin
+  confirmation?: string
+}
+
 // Uninstalling disconnects what hangs from the plugin, so the connections are read again too. Also on
 // failure: the run that failed half way is finished by running it again, and the list must show where it is.
 export function useUninstallPlugin(
   storeId: string
-): UseMutationResult<PluginCatalogEntryView, Error, string> {
+): UseMutationResult<PluginCatalogEntryView, Error, UninstallRequest> {
   const refresh = useRefreshChannels(storeId)
   return useMutation({
-    mutationFn: (installationId: string) => uninstallPlugin(apiClient, storeId, installationId),
+    mutationFn: ({ installationId, confirmation }: UninstallRequest) =>
+      uninstallPlugin(apiClient, storeId, installationId, confirmation),
     onSettled: refresh
   })
 }

@@ -257,6 +257,131 @@ describe('Installing an integration plugin and calling the plugin API', () => {
     })
   })
 
+  describe('the detail of a plugin', () => {
+    type Detail = {
+      id: string
+      version: string | null
+      description: string | null
+      requestedScopes: string[]
+      webhookEvents: string[]
+      installationStatus: string | null
+      installation: Record<string, unknown> | null
+    }
+    const detailOf = (id: string, agent = asAdmin) => agent().get(ApiRoutes.plugins.byId(id))
+    const entryOf = async (id: string, agent = asAdmin) =>
+      ((await agent().get(ApiRoutes.plugins.available).expect(OK)).body as Detail[]).find(
+        entry => entry.id === id
+      )
+
+    it('says what the manifest asks for and that the store holds nothing of it yet', async () => {
+      const id = await register()
+
+      const response = await detailOf(id).expect(OK)
+
+      const body = response.body as Detail
+      expect(body).toMatchObject({
+        id,
+        version: '1.0.0',
+        requestedScopes: [PluginScopes.ORDERS_READ],
+        webhookEvents: ['message.received'],
+        installationStatus: null,
+        installation: null
+      })
+    })
+
+    it('shows the installation: waiting for its plugin, then active with the prefix of the key and never the key', async () => {
+      const id = await register()
+      await install(id, [PluginScopes.ORDERS_READ]).expect(CREATED)
+
+      const pending = (await detailOf(id).expect(OK)).body as Detail
+      expect(pending.installationStatus).toBe(PluginInstallationStatus.PENDING_SETUP)
+      expect(pending.installation).toMatchObject({
+        status: PluginInstallationStatus.PENDING_SETUP,
+        scopes: [PluginScopes.ORDERS_READ],
+        apiKeyPrefix: null,
+        webhookEndpoint: 'https://hooks.acme.com/platform',
+        webhookDisabledAt: null
+      })
+
+      const { key } = await setUpExisting(id)
+      const active = await detailOf(id).expect(OK)
+      const body = active.body as Detail
+      expect(body.installation).toMatchObject({ status: PluginInstallationStatus.ACTIVE })
+      expect(body.installation?.['apiKeyPrefix']).toBe(key.slice(0, 12))
+      // Nothing of the key beyond its prefix, and nothing of the secret that signs the deliveries
+      expect(JSON.stringify(active.body)).not.toContain(key)
+      expect(JSON.stringify(active.body)).not.toContain('webhookSecret')
+      expect(JSON.stringify(active.body)).not.toContain('apiKeyHash')
+    })
+
+    it('shows the state of a plugin whose webhooks the failures turned off, in the catalog and in the detail', async () => {
+      const { id } = await setUp()
+      await owner.pluginInstallation.updateMany({
+        where: { pluginId: id, storeId: ctx.storeA.id },
+        data: { webhookDisabledAt: new Date('2026-11-01T10:00:00.000Z'), webhookConsecutiveFailures: 20 }
+      })
+
+      expect(await entryOf(id)).toMatchObject({
+        installationStatus: PluginInstallationStatus.ACTIVE,
+        webhooksDisabledAt: '2026-11-01T10:00:00.000Z'
+      })
+      const body = (await detailOf(id).expect(OK)).body as Detail
+      expect(body.installation).toMatchObject({
+        webhookDisabledAt: '2026-11-01T10:00:00.000Z',
+        webhookConsecutiveFailures: 20
+      })
+    })
+
+    it('says nothing of the webhooks of an installation that was revoked, and answers 404 to an id that cannot be a plugin', async () => {
+      const { id } = await setUp()
+      const installation = await owner.pluginInstallation.findFirstOrThrow({
+        where: { pluginId: id, storeId: ctx.storeA.id }
+      })
+      await owner.pluginInstallation.update({
+        where: { id: installation.id },
+        data: { webhookDisabledAt: new Date('2026-11-01T10:00:00.000Z') }
+      })
+      await asAdmin()
+        .post(ApiRoutes.plugins.revoke(installation.id))
+        .send({ confirmation: PLUGIN_REVOKE_CONFIRMATION })
+        .expect(OK)
+
+      expect(await entryOf(id)).toMatchObject({ webhooksDisabledAt: null })
+      const body = (await detailOf(id).expect(OK)).body as Detail
+      expect(body.installation).toMatchObject({ status: 'revoked', webhookDisabledAt: null })
+      expect((await detailOf('00000000-0000-4000-8000-000000000000')).status).toBe(NOT_FOUND)
+    })
+
+    it('draws the name the plugin gave in each language, and none when it gave none', async () => {
+      const named = await register(newId(), { names: { es: 'Mi plugin', en: 'My plugin' } })
+      const plain = await register()
+
+      expect(await entryOf(named)).toMatchObject({ names: { es: 'Mi plugin', en: 'My plugin' } })
+      expect(await entryOf(plain)).toMatchObject({ names: null })
+    })
+
+    it('holds what is of the store of the request: a sibling store of the organization sees the plugin with no installation', async () => {
+      const { id } = await setUp()
+
+      const sibling = (await detailOf(id, asAdminSibling).expect(OK)).body as Detail
+
+      expect(sibling.id).toBe(id)
+      expect(sibling.installation).toBeNull()
+      expect(sibling.installationStatus).toBeNull()
+    })
+
+    it('needs the permission to manage plugins, and does not exist for another organization nor for an id that is no plugin', async () => {
+      const id = await register()
+
+      await detailOf(id, asAgent).expect(FORBIDDEN)
+      const other = await detailOf(id, asAdminB)
+      const missing = await detailOf(`${prefix}-nothing`)
+
+      expect(other.status).toBe(NOT_FOUND)
+      expect(missing.status).toBe(NOT_FOUND)
+    })
+  })
+
   describe('installing', () => {
     it('refuses scopes that are not the ones the manifest asks for, and writes nothing', async () => {
       const id = await register(newId(), { scopes: [PluginScopes.ORDERS_READ] })

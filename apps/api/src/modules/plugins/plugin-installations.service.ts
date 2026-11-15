@@ -15,10 +15,13 @@ import {
   ChannelConnectionStatus,
   type ChannelOAuthDescriptor,
   PLUGIN_INSTALLATION_RESOURCE_TYPE,
+  type LocalizedText,
   PLUGIN_REVOKE_CONFIRMATION,
   PluginCatalogTypes,
   PluginInstallationStatus,
+  PluginManifestLimits,
   PluginStatus,
+  readLocalizedText,
   ShippingPlugin
 } from '@platform/core/domain'
 import {
@@ -38,6 +41,7 @@ import {
 import {
   CarrierRegistry,
   type ConnectFieldSnapshot,
+  manifestWebhookOf,
   PluginRegistry
 } from '@platform/plugins/runtime'
 
@@ -47,6 +51,7 @@ import { ChannelConnectionsService } from '../channels/channel-connections.servi
 import { type PublicChannelDescriptor, publicDescriptorOf } from '../channels/public-descriptor'
 import type { Actor } from '../tenancy'
 
+import { isPluginScope } from './plugin-install-rules'
 import {
   type PluginConsent,
   PluginIntegrationInstallService,
@@ -61,6 +66,14 @@ export interface PluginCatalogEntry {
   type: string
   isOfficial: boolean
   installed: boolean
+  // Where the installation of this store stands (`PluginInstallationStatus`): `pending_setup` is an integration plugin that has
+  // not traded its setup code for its key yet, which `installed` (true only when active) does not say. Null: never installed.
+  installationStatus: string | null
+  // When the failures of the deliveries turned the webhooks of an installation off (the plugin is installed and hears nothing
+  // until it is revoked and installed again); null while they are on
+  webhooksDisabledAt: string | null
+  // The name the plugin gave in each language (a registered plugin may), for the interface; null: the plain `name` is the only one
+  names: LocalizedText | null
   // What uninstalling names: null only while the plugin was never installed in the store. A revoked
   // installation keeps its id, so an uninstall that failed half way can be run again.
   installationId: string | null
@@ -96,6 +109,55 @@ export interface ChannelConnectManifest {
 
 // What installing answers: where the plugin stands in the store now and, for an integration plugin that is waiting to be set up,
 // the one-time code to give it (shown once, here and in a new code of `POST /plugins/:id/setup-code`)
+// What the detail screen draws of a plugin: the entry of the catalog, what its manifest says about itself and the installation of this
+// store. Never a secret: of the key only the prefix, of the webhook the address and the state.
+export type PluginDetail = PluginCatalogEntry & {
+  version: string | null
+  description: string | null
+  // The scopes the manifest asks for now (an installation holds the ones authorized on the consent screen)
+  requestedScopes: string[]
+  webhookEvents: string[]
+  installation: {
+    id: string
+    status: string
+    scopes: string[]
+    apiKeyPrefix: string | null
+    rateLimitPerMinute: number
+    webhookEndpoint: string | null
+    webhookConsecutiveFailures: number
+    webhookLastFailureAt: string | null
+    webhookDisabledAt: string | null
+    installedAt: string
+    revokedAt: string | null
+  } | null
+}
+
+// What a stored manifest says about itself, read defensively: a row is data, and an official plugin has an empty one
+function manifestSummaryOf(manifest: unknown): {
+  version: string | null
+  description: string | null
+  requestedScopes: string[]
+} {
+  const block =
+    typeof manifest === 'object' && manifest !== null ? (manifest as Record<string, unknown>) : {}
+  const scopes = Array.isArray(block['scopes'])
+    ? block['scopes'].filter((scope): scope is string => typeof scope === 'string' && isPluginScope(scope))
+    : []
+  return {
+    version: typeof block['version'] === 'string' ? block['version'] : null,
+    description: typeof block['description'] === 'string' ? block['description'] : null,
+    requestedScopes: scopes
+  }
+}
+
+function namesOf(manifest: unknown): LocalizedText | null {
+  if (typeof manifest !== 'object' || manifest === null) return null
+  const names = (manifest as { names?: unknown }).names
+  return names === undefined
+    ? null
+    : readLocalizedText(names, PluginManifestLimits.NAME_MAX_LENGTH)
+}
+
 export type PluginInstallResult = PluginCatalogEntry & { setup: PluginSetupOffer | null }
 
 // The store of the request: the catalog it sees depends on its organization (a plugin the owner registered is the
@@ -111,6 +173,8 @@ const CATALOG_SELECT = {
   authorName: true,
   type: true,
   isOfficial: true,
+  // Read for the names of the plugin in each language, and for nothing else of the manifest
+  manifest: true,
   // Whose it is: read to decide who sees it, never sent to the page
   organizationId: true
 } as const
@@ -153,7 +217,7 @@ export class PluginInstallationsService {
       }),
       this.prisma.client.pluginInstallation.findMany({
         where: { storeId },
-        select: { id: true, pluginId: true, status: true }
+        select: { id: true, pluginId: true, status: true, webhookDisabledAt: true }
       }),
       this.prisma.client.channelConnection.groupBy({
         by: ['installationId'],
@@ -175,14 +239,21 @@ export class PluginInstallationsService {
         if (plugin.organizationId !== null) return true
         return this.registry.isVisibleTo(plugin.id, storeId)
       })
-      .map(({ organizationId: _owner, ...plugin }) => {
+      .map(({ organizationId: _owner, manifest, ...plugin }) => {
         const installation = installationOf.get(plugin.id)
+        const live =
+          installation !== undefined &&
+          installation.status !== String(PluginInstallationStatus.REVOKED)
         const installed =
           installation !== undefined &&
           installation.status === String(PluginInstallationStatus.ACTIVE)
         return {
           ...plugin,
           installed,
+          installationStatus: installation?.status ?? null,
+          // A revoked installation hears nothing and says nothing of its webhooks (the revocation keeps the column until a new install)
+          webhooksDisabledAt: live ? (installation.webhookDisabledAt?.toISOString() ?? null) : null,
+          names: namesOf(manifest),
           installationId: installation?.id ?? null,
           activeConnections:
             plugin.id === ShippingPlugin.ID
@@ -195,6 +266,59 @@ export class PluginInstallationsService {
           channel: this.manifestOf(plugin.id)
         }
       })
+  }
+
+  // One plugin of the catalog with what this store holds of it, for its detail screen. The plugin is looked for in the catalog of the
+  // store (the ones every store sees and the ones its organization registered), so a plugin another organization registered answers
+  // as one that does not exist, as the catalog, the consent and the install do.
+  async detail(store: PluginStoreRef, pluginId: string): Promise<PluginDetail> {
+    const entry = await this.entryOf(store, pluginId)
+    const [row, installation] = await Promise.all([
+      this.prisma.client.plugin.findUnique({ where: { id: pluginId }, select: { manifest: true } }),
+      this.prisma.client.pluginInstallation.findUnique({
+        where: { storeId_pluginId: { storeId: store.id, pluginId } },
+        select: {
+          id: true,
+          status: true,
+          scopes: true,
+          apiKeyPrefix: true,
+          rateLimitPerMinute: true,
+          webhookEndpoint: true,
+          webhookConsecutiveFailures: true,
+          webhookLastFailureAt: true,
+          webhookDisabledAt: true,
+          createdAt: true,
+          revokedAt: true
+        }
+      })
+    ])
+    // Gone between the two reads: the same answer as a plugin that was never there
+    if (row === null) throw resourceNotFound('plugin')
+    const webhook = manifestWebhookOf(row.manifest)
+    return {
+      ...entry,
+      ...manifestSummaryOf(row.manifest),
+      webhookEvents: webhook === null ? [] : [...webhook.events],
+      installation:
+        installation === null
+          ? null
+          : {
+              id: installation.id,
+              status: installation.status,
+              scopes: installation.scopes,
+              apiKeyPrefix: installation.apiKeyPrefix,
+              rateLimitPerMinute: installation.rateLimitPerMinute,
+              webhookEndpoint: installation.webhookEndpoint,
+              webhookConsecutiveFailures: installation.webhookConsecutiveFailures,
+              webhookLastFailureAt: installation.webhookLastFailureAt?.toISOString() ?? null,
+              webhookDisabledAt:
+                installation.status === String(PluginInstallationStatus.REVOKED)
+                  ? null
+                  : (installation.webhookDisabledAt?.toISOString() ?? null),
+              installedAt: installation.createdAt.toISOString(),
+              revokedAt: installation.revokedAt?.toISOString() ?? null
+            }
+    }
   }
 
   // What installing an integration plugin would grant, to be read before authorizing it
