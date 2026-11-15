@@ -101,12 +101,13 @@ test.describe('Plugin widgets in the agent sidebar', () => {
     // No token in its url and no key of the plugin in its window
     await expect(frame().locator('#state')).toContainText('url token: false')
     await expect(frame().locator('#state')).toContainText('api key: undefined')
-    // Both things it asked through the port were answered, with the minimum fields only
+    // Both things it asked through the port were answered, with the minimum fields only. The two answers cross the port
+    // in no promised order, so each is found by its id instead of by position
     await expect(frame().locator('.answer')).toHaveCount(2)
-    await expect(frame().locator('.answer').first()).toContainText(
+    await expect(frame().locator('.answer').filter({ hasText: /^r1:/ })).toHaveText(
       'r1:true:channelType,createdAt,id,lastInboundAt,status,tags'
     )
-    await expect(frame().locator('.answer').nth(1)).toContainText(
+    await expect(frame().locator('.answer').filter({ hasText: /^r2:/ })).toHaveText(
       'r2:true:email,id,locale,name,phone'
     )
   })
@@ -114,8 +115,13 @@ test.describe('Plugin widgets in the agent sidebar', () => {
   test('is allowed by the policy of this store only: another store reads none of it', async () => {
     const response = await page.goto(AppPaths.store.conversation(storeId, conversationId))
     expect(response?.headers()['content-security-policy']).toContain(`frame-src ${ORIGIN}`)
-    const other = await page.goto('/account/profile')
+    // Every full load rotates the refresh token, and the answer that carries the new one arrives after the load event.
+    // Leaving a page before it settles loses that answer; three such leaves in a row spend the grace window of the token
+    // and the login is revoked. So each page is waited for, signed in, before the next goto.
+    await expect(page.getByRole('complementary')).toBeVisible()
+    const other = await page.goto(AppPaths.account.profile)
     expect(other?.headers()['content-security-policy']).toContain("frame-src 'none'")
+    await expect(page.getByTestId('avatar-input')).toBeAttached()
   })
 
   test('can be hidden in Settings, and the panel leaves the sidebar', async () => {
