@@ -7,6 +7,8 @@ export const ClientPermissions = {
   ANALYTICS_EXPORT: 'analytics:export',
   ANALYTICS_MANAGE_REPORTS: 'analytics:manage_reports',
   ANALYTICS_VIEW: 'analytics:view',
+  CARRIERS_MANAGE_GUIDE_BALANCE: 'carriers:manage_guide_balance',
+  CARRIERS_VIEW_GUIDE_BALANCE: 'carriers:view_guide_balance',
   CONVERSATIONS_ARCHIVE: 'conversations:archive',
   CONVERSATIONS_ASSIGN: 'conversations:assign',
   CONVERSATIONS_DELETE: 'conversations:delete',
