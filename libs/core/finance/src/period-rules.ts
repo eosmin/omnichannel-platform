@@ -68,10 +68,11 @@ export type EntryDateProblem =
 // Whether an entry dated `date` may be written: not before the day the books start, and not in a closed period. The
 // lock is a date because closes are in order (TDD_18 §5.1): everything up to `lockedThrough` is closed, nothing after.
 export function entryDateProblem(date: string, calendar: LedgerCalendar): EntryDateProblem | null {
-  if (date < calendar.accountingStartDate) return ErrorCodes.FINANCE_BEFORE_START_DATE
+  // The order of the database trigger: the lock first, then the start of the books
   if (calendar.lockedThrough !== null && date <= calendar.lockedThrough) {
     return ErrorCodes.FINANCE_PERIOD_CLOSED
   }
+  if (date < calendar.accountingStartDate) return ErrorCodes.FINANCE_BEFORE_START_DATE
   return null
 }
 
@@ -90,7 +91,7 @@ export function automaticEntryDate(sourceDate: string, calendar: LedgerCalendar)
 }
 
 // A reversal is dated like the original, in the open period when the original's is closed (TDD_18 §2.5). A date the
-// person chose wins when it is allowed.
+// person chose is returned as it is: the service checks it with `entryDateProblem` like any other entry date.
 export function reversalDate(
   originalDate: string,
   chosenDate: string | null,

@@ -7,6 +7,7 @@ BEGIN;
 
 DELETE FROM "permissions" WHERE "name" LIKE 'finance:%' OR "name" LIKE 'fiscal:%';
 
+DROP TRIGGER IF EXISTS trg_fiscal_periods_guard ON fiscal_periods;
 DROP TRIGGER IF EXISTS trg_ledger_accounts_guard ON ledger_accounts;
 DROP TRIGGER IF EXISTS trg_finance_settings_head ON finance_settings;
 DROP TRIGGER IF EXISTS trg_journal_lines_balanced ON journal_lines;
@@ -18,6 +19,7 @@ DROP TRIGGER IF EXISTS trg_journal_lines_no_truncate ON journal_lines;
 DROP TRIGGER IF EXISTS trg_journal_lines_append_only ON journal_lines;
 DROP TRIGGER IF EXISTS trg_journal_entries_no_truncate ON journal_entries;
 DROP TRIGGER IF EXISTS trg_journal_entries_append_only ON journal_entries;
+DROP FUNCTION IF EXISTS guard_fiscal_period_change();
 DROP FUNCTION IF EXISTS guard_ledger_account_change();
 DROP FUNCTION IF EXISTS guard_finance_head();
 DROP FUNCTION IF EXISTS check_journal_entry_balanced();

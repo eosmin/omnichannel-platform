@@ -10,6 +10,9 @@ describe('the template of El Salvador', () => {
   it('is the one chosen by its country, and is the only one that ships', () => {
     expect(financeTemplateFor('SV')).toBe(SvTemplate)
     expect(financeTemplateFor('CO')).toBeNull()
+    // An inherited key of a plain object is not a country
+    expect(financeTemplateFor('constructor')).toBeNull()
+    expect(financeTemplateFor('toString')).toBeNull()
     expect(financeTemplateCountries()).toEqual(['SV'])
   })
 

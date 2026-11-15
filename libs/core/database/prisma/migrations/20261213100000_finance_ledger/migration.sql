@@ -437,6 +437,7 @@ CREATE TRIGGER trg_journal_entries_insert BEFORE INSERT ON journal_entries
 -- else: they cannot drift from the journal whatever the application does
 CREATE FUNCTION advance_finance_head() RETURNS trigger
 LANGUAGE plpgsql
+SECURITY DEFINER
 SET search_path = public, pg_temp AS $$
 BEGIN
   UPDATE finance_settings SET next_entry_number = NEW.number + 1, last_entry_hash = NEW.hash WHERE organization_id = NEW.organization_id;
@@ -454,6 +455,14 @@ BEGIN
   IF (NEW.next_entry_number IS DISTINCT FROM OLD.next_entry_number OR NEW.last_entry_hash IS DISTINCT FROM OLD.last_entry_hash)
      AND pg_trigger_depth() < 2 THEN
     RAISE EXCEPTION 'FINANCE_ENTRY_NUMBER: the counter and the head of the chain move only with an entry';
+  END IF;
+  -- The lock of the books is the end of the last closed period, or nothing when none is closed (TDD_18 §5.2): the service
+  -- closes or reopens the period first and moves the lock after it
+  IF NEW.locked_through IS DISTINCT FROM OLD.locked_through
+     AND NEW.locked_through IS DISTINCT FROM (
+       SELECT max(p.ends_on) FROM fiscal_periods p WHERE p.organization_id = NEW.organization_id AND p.status = 'closed'
+     ) THEN
+    RAISE EXCEPTION 'FINANCE_PERIOD_CLOSED: the lock of the books is the end of the last closed period';
   END IF;
   RETURN NEW;
 END $$;
@@ -564,3 +573,70 @@ CROSS JOIN (VALUES
 ) AS p(name)
 WHERE r."is_system" AND r."name" = 'Admin'
 ON CONFLICT ("role_id", "name") DO NOTHING;
+
+-- ============================================================================================================
+-- Only an entry moves the counter and the head of the chain, for the application roles too: they hold UPDATE on the other
+-- columns of the settings and on none of these two (advance_finance_head runs as the owner of the function). A column added
+-- to finance_settings later has to be granted to them in its own migration: the default is closed.
+-- ============================================================================================================
+REVOKE UPDATE ON TABLE finance_settings FROM platform_app, platform_worker;
+GRANT UPDATE (country_code, base_currency, accounting_start_date, locked_through, recognize_sale_on, rounding_account_id, updated_at)
+  ON TABLE finance_settings TO platform_app, platform_worker;
+
+-- ============================================================================================================
+-- A period keeps its place in the calendar, and a closed one is frozen (the time it closed, who closed it and the head of the
+-- chain it froze) until the reopen action, which says who, when and why (TDD_18 §5)
+-- ============================================================================================================
+CREATE FUNCTION guard_fiscal_period_change() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.status = 'closed' THEN
+      RAISE EXCEPTION 'FINANCE_PERIOD_CLOSED: a closed period is not deleted';
+    END IF;
+    RETURN OLD;
+  END IF;
+  IF NEW.organization_id <> OLD.organization_id OR NEW.year <> OLD.year OR NEW.month <> OLD.month
+     OR NEW.starts_on <> OLD.starts_on OR NEW.ends_on <> OLD.ends_on THEN
+    RAISE EXCEPTION 'a period keeps its place in the calendar';
+  END IF;
+  IF OLD.status = 'closed' THEN
+    IF NEW.status = 'closed' THEN
+      IF NEW.closing_hash IS DISTINCT FROM OLD.closing_hash OR NEW.closed_at IS DISTINCT FROM OLD.closed_at
+         OR NEW.closed_by IS DISTINCT FROM OLD.closed_by THEN
+        RAISE EXCEPTION 'FINANCE_PERIOD_CLOSED: a closed period is frozen';
+      END IF;
+    ELSIF NEW.reopened_at IS NULL OR NEW.reopened_by IS NULL OR NEW.reopen_reason IS NULL OR btrim(NEW.reopen_reason) = '' THEN
+      RAISE EXCEPTION 'FINANCE_REOPEN_NOT_LATEST: reopening a period says who, when and why';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER trg_fiscal_periods_guard BEFORE UPDATE OR DELETE ON fiscal_periods
+  FOR EACH ROW EXECUTE FUNCTION guard_fiscal_period_change();
+
+-- ============================================================================================================
+-- The sets of values that are hashed and frozen with an entry: a mistyped one cannot be corrected afterwards, so the database
+-- holds the same list as finance-constants.ts (finance-schema.spec.ts compares them)
+-- ============================================================================================================
+ALTER TABLE journal_entries
+  ADD CONSTRAINT chk_journal_entries_type CHECK (type IN (
+    'manual', 'opening_balance', 'expense', 'income', 'transfer', 'sale', 'sale_shipment', 'sale_return', 'cod_remittance',
+    'cod_write_off', 'purchase_receipt', 'supplier_payment', 'inventory_adjustment', 'reversal'
+  )),
+  ADD CONSTRAINT chk_journal_entries_source_type CHECK (source_type IS NULL OR source_type IN (
+    'order', 'shipment', 'remittance', 'return', 'inventory_movement', 'purchase_receipt', 'supplier_payment',
+    'finance_transaction', 'manual'
+  )),
+  ADD CONSTRAINT chk_journal_entries_memo CHECK (memo IS NULL OR char_length(memo) <= 500);
+ALTER TABLE journal_lines
+  ADD CONSTRAINT chk_journal_lines_memo CHECK (memo IS NULL OR char_length(memo) <= 500);
+ALTER TABLE account_role_mappings
+  ADD CONSTRAINT chk_account_role_mappings_role CHECK (role IN (
+    'cash_default', 'bank_default', 'inventory', 'inventory_in_transit', 'receivable_carriers', 'customer_advances',
+    'payable_suppliers', 'payable_carriers', 'vat_output', 'vat_input', 'sales_revenue', 'shipping_revenue', 'sales_discounts',
+    'sales_returns', 'cost_of_goods_sold', 'inventory_loss', 'inventory_gain', 'carrier_freight_expense',
+    'carrier_commission_expense', 'cod_differences', 'opening_equity', 'rounding', 'uncategorized_expense'
+  ));

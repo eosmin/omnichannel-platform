@@ -1,9 +1,11 @@
 import { Permissions, RoleNames, RolePresets } from '@platform/core/auth'
 import { ensureStore, type OwnerClient } from '@platform/core/database-testing'
 import {
+  AccountRole,
   AccountType,
   CashKind,
   EntryOrigin,
+  FinanceSourceType,
   JournalEntryType,
   NormalSide,
   PeriodStatus
@@ -281,23 +283,96 @@ describe('The tables of the ledger', () => {
       )
     })
 
-    it('must be after the lock of the books, whatever the status of the period says', async () => {
-      const period = await createPeriod(owner, orgB.id, 2026, 8)
+    it('must be after the lock of the books, even an open period before the last closed one', async () => {
+      const july = await createPeriod(owner, orgB.id, 2026, 7)
+      const august = await createPeriod(owner, orgB.id, 2026, 8, PeriodStatus.CLOSED)
       await owner.financeSettings.update({
         where: { organizationId: orgB.id },
         data: { lockedThrough: day('2026-08-31') }
       })
       try {
         await refused(
-          postTestEntry(owner, simpleEntry(b, 5, { periodId: period, entryDate: '2026-08-20' })),
+          postTestEntry(owner, simpleEntry(b, 5, { periodId: july, entryDate: '2026-07-20' })),
           'FINANCE_PERIOD_CLOSED'
         )
       } finally {
+        await owner.fiscalPeriod.update({
+          where: { id: august },
+          data: {
+            status: PeriodStatus.OPEN,
+            reopenedAt: new Date(),
+            reopenedBy: 'test-user',
+            reopenReason: 'test'
+          }
+        })
         await owner.financeSettings.update({
           where: { organizationId: orgB.id },
           data: { lockedThrough: null }
         })
       }
+    })
+
+    it('moves the lock only to the end of the last closed period', async () => {
+      const change = (lockedThrough: Date | null) =>
+        owner.financeSettings.update({
+          where: { organizationId: orgB.id },
+          data: { lockedThrough }
+        })
+      await refused(change(day('2026-11-30')), 'FINANCE_PERIOD_CLOSED')
+      await refused(change(day('2026-01-31')), 'FINANCE_PERIOD_CLOSED')
+    })
+
+    it('keeps its place in the calendar, and a closed one is frozen until it is reopened with who, when and why', async () => {
+      const closed = await createPeriod(owner, orgA.id, 2026, 6, PeriodStatus.CLOSED)
+      const open = await createPeriod(owner, orgA.id, 2026, 5)
+      await refused(
+        owner.fiscalPeriod.update({
+          where: { id: open },
+          data: { year: 2027, startsOn: day('2027-05-01'), endsOn: day('2027-05-31') }
+        }),
+        'a period keeps its place in the calendar'
+      )
+      await refused(
+        owner.fiscalPeriod.update({ where: { id: closed }, data: { closingHash: 'f'.repeat(64) } }),
+        'a closed period is frozen'
+      )
+      await refused(
+        owner.fiscalPeriod.update({ where: { id: closed }, data: { closedBy: 'someone-else' } }),
+        'a closed period is frozen'
+      )
+      await refused(
+        owner.fiscalPeriod.delete({ where: { id: closed } }),
+        'a closed period is not deleted'
+      )
+      await refused(
+        owner.fiscalPeriod.update({ where: { id: closed }, data: { status: PeriodStatus.OPEN } }),
+        'says who, when and why'
+      )
+      await refused(
+        owner.fiscalPeriod.update({
+          where: { id: closed },
+          data: {
+            status: PeriodStatus.OPEN,
+            reopenedAt: new Date(),
+            reopenedBy: 'u',
+            reopenReason: '  '
+          }
+        }),
+        'says who, when and why'
+      )
+      await expect(
+        owner.fiscalPeriod.update({
+          where: { id: closed },
+          data: {
+            status: PeriodStatus.OPEN,
+            reopenedAt: new Date(),
+            reopenedBy: 'u',
+            reopenReason: 'a missing invoice'
+          }
+        })
+      ).resolves.toMatchObject({ status: PeriodStatus.OPEN })
+      // An open period with nothing in it may be deleted
+      await expect(owner.fiscalPeriod.delete({ where: { id: open } })).resolves.toBeDefined()
     })
 
     it('must contain the date of the entry', async () => {
@@ -429,6 +504,28 @@ describe('The tables of the ledger', () => {
     })
   })
 
+  describe('the counter and the head of the chain', () => {
+    it('are not updatable by the roles of the application, which hold the other settings columns', async () => {
+      const can = async (role: string, column: string): Promise<boolean> => {
+        const rows = await owner.$queryRaw<{ allowed: boolean }[]>`
+          SELECT has_column_privilege(${role}, 'finance_settings', ${column}, 'UPDATE') AS allowed`
+        return rows[0]?.allowed === true
+      }
+      for (const role of ['platform_app', 'platform_worker']) {
+        expect(await can(role, 'next_entry_number')).toBe(false)
+        expect(await can(role, 'last_entry_hash')).toBe(false)
+        for (const column of [
+          'locked_through',
+          'recognize_sale_on',
+          'country_code',
+          'rounding_account_id'
+        ]) {
+          expect(await can(role, column)).toBe(true)
+        }
+      }
+    })
+  })
+
   describe('the number and the chain', () => {
     it('refuse a number that skips, repeats or goes back', async () => {
       const head = await headOf(orgA.id)
@@ -519,6 +616,7 @@ describe('The tables of the ledger', () => {
         type: row.type,
         sourceType: row.sourceType,
         sourceId: row.sourceId,
+        sourceDate: row.sourceDate === null ? null : row.sourceDate.toISOString().slice(0, 10),
         reversesEntryId: row.reversesEntryId,
         idempotencyKey: row.idempotencyKey,
         memo: row.memo,
@@ -855,7 +953,10 @@ describe('The tables of the ledger', () => {
     it.each([
       ['chk_ledger_accounts_type', AccountType],
       ['chk_fiscal_periods_status', PeriodStatus],
-      ['chk_journal_entries_origin', EntryOrigin]
+      ['chk_journal_entries_origin', EntryOrigin],
+      ['chk_journal_entries_type', JournalEntryType],
+      ['chk_journal_entries_source_type', FinanceSourceType],
+      ['chk_account_role_mappings_role', AccountRole]
     ])('hold exactly the values of the enum in %s', async (constraint, values) => {
       expect(await listedIn(constraint)).toEqual(Object.values(values).sort())
     })

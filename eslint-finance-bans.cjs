@@ -8,7 +8,7 @@ const FINANCE_TABLES = '(journalEntry|journalLine|accountPeriodBalance)'
 const FINANCE_WRITES =
   '(create|createMany|createManyAndReturn|update|updateMany|updateManyAndReturn|upsert|delete|deleteMany)'
 const FINANCE_SQL =
-  '/\\b(INSERT\\s+INTO|UPDATE|DELETE\\s+FROM|TRUNCATE(\\s+TABLE)?)\\s+"?(public"?\\.)?"?(journal_entries|journal_lines|account_period_balances)\\b/i'
+  '/\\b(INSERT\\s+INTO|UPDATE|DELETE\\s+FROM|TRUNCATE(\\s+TABLE)?|COPY)\\s+(ONLY\\s+)?"?(public"?\\.)?"?(journal_entries|journal_lines|account_period_balances)\\b/i'
 const financeWriteBans = [
   {
     selector: `CallExpression[callee.property.name=/^${FINANCE_WRITES}$/]:matches([callee.object.property.name=/^${FINANCE_TABLES}$/], [callee.object.name=/^${FINANCE_TABLES}$/])`,

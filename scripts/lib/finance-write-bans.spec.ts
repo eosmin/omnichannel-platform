@@ -42,6 +42,11 @@ describe('the ban on writing the ledger outside the posting service', () => {
       'await tx.$queryRaw`update public.account_period_balances set debit_cents = 0`'
     ],
     ['a quoted table in a string', 'await tx.$queryRawUnsafe(\'DELETE FROM "journal_lines"\')'],
+    [
+      'an INSERT INTO ONLY',
+      'await tx.$executeRaw`INSERT INTO ONLY journal_entries (id) VALUES (1)`'
+    ],
+    ['a COPY', "await tx.$executeRawUnsafe('COPY journal_lines FROM STDIN')"],
     ['a TRUNCATE', "await tx.$executeRawUnsafe('TRUNCATE TABLE journal_entries')"]
   ])('refuses %s', (_label, statement) => {
     expect(linesFlagged(statement)).toEqual([1])

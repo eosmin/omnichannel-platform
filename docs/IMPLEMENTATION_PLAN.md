@@ -1322,7 +1322,13 @@ moved by a trigger of the entry (and guarded against any direct change), not by 
 (rejected: the service updates them; the service still takes the lock to serialize the posts); (3) the triggers refuse the owner of the
 table too, and the test cleanup disables them inside one transaction (rejected: an owner exception, which would leave nothing for the
 trigger to prove); (4) an entry is reversed at most once, by a unique index (`FINANCE_ENTRY_ALREADY_REVERSED` is mapped by the
-service); (5) accounts, role maps and settings restrict the deletion of their organization (the books are never lost by a cascade).
+service); (5) accounts, role maps and settings restrict the deletion of their organization (the books are never lost by a cascade). (6) the counter and the head of the chain are not updatable by the application roles (column privileges; the default for a column added to
+`finance_settings` later is closed, its migration grants it), and the lock of the books can only be the end of the last closed period, so
+the service of 4B.8 changes the period first and the lock after it; a closed period is frozen and reopens only with who, when and why.
+**Accepted trade-offs of PR 4B.2a (rule 12, tracked here):** the lint rule does not see a nested relation write (`fiscalPeriod.update({
+data: { entries: { create } } })`), which the database triggers refuse to take outside the rules anyway; 4B.2b adds the posting service
+as the single writer and its spec proves no other module imports a path to the tables. The balanced-entry constraint re-sums the entry
+once per line (at most 200 lines): measured as acceptable at this volume, revisit in 4B.8 if a bulk posting is slow.
 **TDD:** `TDD_18 §2`, `§3`, `§4.1`, `§5`, `§9`, `TDD_02 §5`, `TDD_01 §4`
 **Done when:** the accountant's chart can be seeded and edited, a manual entry posts and is reversed, a period can be listed, every rule
 above is a failing test that passes, and no code outside `libs/core/finance` writes the ledger (lint).

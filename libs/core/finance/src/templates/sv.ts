@@ -1,4 +1,10 @@
-import { AccountRole, AccountType, CashKind, PaymentMethod } from '@platform/core/domain'
+import {
+  AccountRole,
+  AccountType,
+  CashKind,
+  FinanceCountryCodes,
+  PaymentMethod
+} from '@platform/core/domain'
 
 import type { FinanceTemplate, TemplateAccount } from './types'
 
@@ -32,7 +38,7 @@ const posting = (
 const { ASSET, LIABILITY, EQUITY, INCOME, COST_OF_SALES, EXPENSE } = AccountType
 
 export const SvTemplate: FinanceTemplate = {
-  countryCode: 'SV',
+  countryCode: FinanceCountryCodes.EL_SALVADOR,
   accounts: [
     header('1', 'Activo', ASSET, null),
     header('11', 'Efectivo y equivalentes', ASSET, '1'),

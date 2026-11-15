@@ -134,6 +134,18 @@ describe('validateDraftEntry', () => {
     )
   })
 
+  it('refuses a source or a party that is only half there, and a line memo that is too long', () => {
+    expect(rules(entry({ sourceType: 'order' as never }))).toContain('source_pair')
+    expect(rules(entry({ sourceId: 'x' }))).toContain('source_pair')
+    const half: DraftLine = { ...debit('a', 1000), partyType: 'supplier' as never }
+    expect(rules(entry({ lines: [half, credit('b', 1000)] }))).toContain('party_pair')
+    const long: DraftLine = {
+      ...debit('a', 1000),
+      memo: 'x'.repeat(FinanceLimits.MEMO_MAX_LENGTH + 1)
+    }
+    expect(rules(entry({ lines: [long, credit('b', 1000)] }))).toContain('line_memo_length')
+  })
+
   it('refuses a total of zero', () => {
     // Both sides positive per line is the rule above; an entry of only zero lines never reaches the total
     expect(rules(entry({ lines: [debit('a', 0), credit('b', 0)] }))).toContain('one_side_per_line')

@@ -55,6 +55,14 @@ describe('entryDateProblem', () => {
     expect(entryDateProblem('2026-11-01', closedOctober)).toBeNull()
     expect(entryDateProblem('2026-10-01', open)).toBeNull()
   })
+  it('says the lock before the start of the books, as the trigger does', () => {
+    expect(
+      entryDateProblem('2026-09-30', {
+        accountingStartDate: '2026-10-01',
+        lockedThrough: '2026-10-31'
+      })
+    ).toBe(ErrorCodes.FINANCE_PERIOD_CLOSED)
+  })
   it('refuses a day before the books start, and a day in a closed period', () => {
     expect(entryDateProblem('2026-09-30', open)).toBe(ErrorCodes.FINANCE_BEFORE_START_DATE)
     expect(entryDateProblem('2026-10-31', closedOctober)).toBe(ErrorCodes.FINANCE_PERIOD_CLOSED)

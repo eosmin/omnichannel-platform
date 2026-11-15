@@ -107,11 +107,19 @@ export function validateDraftEntry(entry: DraftEntry): EntryProblem[] {
     invalid('manual_by_user')
   }
 
+  if (((entry.sourceType ?? null) === null) !== ((entry.sourceId ?? null) === null)) {
+    invalid('source_pair')
+  }
+
   if (entry.lines.length < 2) unbalanced('at_least_two_lines')
   if (entry.lines.length > FinanceLimits.MAX_LINES_PER_ENTRY) invalid('too_many_lines')
 
   let wholeCents = true
   for (const line of entry.lines) {
+    if (((line.partyType ?? null) === null) !== ((line.partyId ?? null) === null)) {
+      invalid('party_pair')
+    }
+    if ((line.memo?.length ?? 0) > FinanceLimits.MEMO_MAX_LENGTH) invalid('line_memo_length')
     if (!isWholeCents(line.debitCents) || !isWholeCents(line.creditCents)) {
       wholeCents = false
       unbalanced('whole_cents')

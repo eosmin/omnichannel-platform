@@ -17,6 +17,8 @@ export interface HashableLine {
   storeId: string | null
   partyType: string | null
   partyId: string | null
+  taxRateId: string | null
+  memo: string | null
 }
 
 export interface HashableEntry {
@@ -26,9 +28,11 @@ export interface HashableEntry {
   type: string
   sourceType: string | null
   sourceId: string | null
+  // 'YYYY-MM-DD' or null: when the source event really happened
+  sourceDate: string | null
   reversesEntryId: string | null
-  // Covered too, so a memo or an attribution edited behind the application is detected, which TDD_18 §11 does not
-  // ask for and costs nothing (decision of Step 4B.2)
+  // Covered too, with the memos, the tax rate of a line and the source date: a figure or an attribution edited behind the
+  // application is detected, which TDD_18 §11 does not ask for and costs nothing (decision of Step 4B.2)
   idempotencyKey: string
   memo: string | null
   origin: string
@@ -51,7 +55,9 @@ export function canonicalEntry(entry: HashableEntry): string {
       line.storeId,
       // A party is its type and its id, kept as two fields
       line.partyType,
-      line.partyId
+      line.partyId,
+      line.taxRateId,
+      line.memo
     ]
       .map(escaped)
       .join(',')
@@ -65,6 +71,7 @@ export function canonicalEntry(entry: HashableEntry): string {
       entry.type,
       entry.sourceType,
       entry.sourceId,
+      entry.sourceDate,
       entry.reversesEntryId,
       entry.idempotencyKey,
       entry.memo,

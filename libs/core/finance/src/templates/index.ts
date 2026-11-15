@@ -12,6 +12,6 @@ const TEMPLATES: Readonly<Record<string, FinanceTemplate>> = {
 }
 
 export const financeTemplateFor = (countryCode: string): FinanceTemplate | null =>
-  TEMPLATES[countryCode] ?? null
+  Object.hasOwn(TEMPLATES, countryCode) ? (TEMPLATES[countryCode] ?? null) : null
 
 export const financeTemplateCountries = (): string[] => Object.keys(TEMPLATES)

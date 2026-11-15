@@ -144,6 +144,8 @@ export async function postTestEntry(owner: OwnerClient, entry: TestEntry): Promi
     storeId: line.storeId ?? null,
     partyType: line.partyType ?? null,
     partyId: line.partyId ?? null,
+    taxRateId: null,
+    memo: null,
     lineNo: index + 1
   }))
   const idempotencyKey = entry.idempotencyKey ?? `test:${randomUUID()}`
@@ -164,6 +166,7 @@ export async function postTestEntry(owner: OwnerClient, entry: TestEntry): Promi
           type,
           sourceType: entry.sourceType ?? null,
           sourceId: entry.sourceId ?? null,
+          sourceDate: null,
           reversesEntryId: entry.reversesEntryId ?? null,
           idempotencyKey,
           memo: entry.memo ?? null,
@@ -232,25 +235,23 @@ export { NormalSide }
 // triggers are switched off inside one transaction, the rows go, and they are switched on again before it commits.
 export async function purgeFinance(owner: OwnerClient, organizationIds: string[]): Promise<void> {
   if (organizationIds.length === 0) return
-  const found = await owner.financeSettings.count({
-    where: { organizationId: { in: organizationIds } }
-  })
+  const where = { organizationId: { in: organizationIds } }
+  // Only a run that wrote books pays for the switch of the triggers: any of the tables below says it did
   const touched =
-    found +
-    (await owner.ledgerAccount.count({ where: { organizationId: { in: organizationIds } } }))
+    (await owner.financeSettings.count({ where })) +
+    (await owner.ledgerAccount.count({ where })) +
+    (await owner.fiscalPeriod.count({ where })) +
+    (await owner.paymentMethodAccount.count({ where }))
   if (touched === 0) return
   // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
   await owner.$transaction(async tx => {
-    await tx.$executeRawUnsafe('ALTER TABLE journal_lines DISABLE TRIGGER USER')
-    await tx.$executeRawUnsafe('ALTER TABLE journal_entries DISABLE TRIGGER USER')
-    try {
-      await tx.journalLine.deleteMany({ where: { organizationId: { in: organizationIds } } })
-      await tx.journalEntry.deleteMany({ where: { organizationId: { in: organizationIds } } })
-    } finally {
-      await tx.$executeRawUnsafe('ALTER TABLE journal_entries ENABLE TRIGGER USER')
-      await tx.$executeRawUnsafe('ALTER TABLE journal_lines ENABLE TRIGGER USER')
-    }
-    const where = { organizationId: { in: organizationIds } }
+    // The triggers of the three tables that refuse a delete are off for the length of this transaction, and on again before it
+    // commits (an error rolls the whole transaction back, the switch included)
+    const guarded = ['journal_lines', 'journal_entries', 'fiscal_periods']
+    for (const table of guarded)
+      await tx.$executeRawUnsafe(`ALTER TABLE ${table} DISABLE TRIGGER USER`)
+    await tx.journalLine.deleteMany({ where })
+    await tx.journalEntry.deleteMany({ where })
     await tx.accountPeriodBalance.deleteMany({ where })
     await tx.financePostingFailure.deleteMany({ where })
     await tx.accountRoleMapping.deleteMany({ where })
@@ -261,5 +262,7 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     await tx.ledgerAccount.updateMany({ where, data: { parentId: null, isSystem: false } })
     await tx.ledgerAccount.deleteMany({ where })
     await tx.fiscalPeriod.deleteMany({ where })
+    for (const table of guarded)
+      await tx.$executeRawUnsafe(`ALTER TABLE ${table} ENABLE TRIGGER USER`)
   })
 }

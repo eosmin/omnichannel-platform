@@ -12,6 +12,7 @@ const base = (number: bigint, prevHash: string | null): HashableEntry => ({
   type: 'expense',
   sourceType: null,
   sourceId: null,
+  sourceDate: null,
   reversesEntryId: null,
   idempotencyKey: `k${number}`,
   memo: null,
@@ -25,7 +26,9 @@ const base = (number: bigint, prevHash: string | null): HashableEntry => ({
       creditCents: 0,
       storeId: null,
       partyType: null,
-      partyId: null
+      partyId: null,
+      taxRateId: null,
+      memo: null
     },
     {
       accountId: 'b',
@@ -33,7 +36,9 @@ const base = (number: bigint, prevHash: string | null): HashableEntry => ({
       creditCents: 100,
       storeId: 's',
       partyType: 'supplier',
-      partyId: 'p'
+      partyId: 'p',
+      taxRateId: null,
+      memo: null
     }
   ]
 })
@@ -63,10 +68,10 @@ describe('hashEntry', () => {
   it('is pinned: the canonical form and the digest never change under an existing chain', () => {
     // If this fails the canonical form changed: every chain already written would break. Bump LEDGER_HASH_VERSION instead.
     expect(canonicalEntry(base(1n, null))).toBe(
-      'v1||1|2026-11-15|expense||||k1||user|u1|a,100,0,,,|b,0,100,s,supplier,p'
+      'v1||1|2026-11-15|expense|||||k1||user|u1|a,100,0,,,,,|b,0,100,s,supplier,p,,'
     )
     expect(hashEntry(base(1n, null))).toBe(
-      '59dd61ec58bc88fcc69781c67e623ecd91257cadf9b6e87da73446084c54ce0e'
+      '80d75eb5a4e4ad051e1b83c5e7b378bb9a87a21c6fafd9eef353b3948b1da5eb'
     )
   })
 
@@ -78,6 +83,7 @@ describe('hashEntry', () => {
       { ...base(1n, null), type: 'income' },
       { ...base(1n, null), sourceType: 'order' },
       { ...base(1n, null), sourceId: 'x' },
+      { ...base(1n, null), sourceDate: '2026-11-01' },
       { ...base(1n, null), reversesEntryId: 'x' },
       { ...base(1n, null), idempotencyKey: 'other' },
       { ...base(1n, null), memo: 'edited' },
@@ -100,6 +106,14 @@ describe('hashEntry', () => {
       {
         ...base(1n, null),
         lines: base(1n, null).lines.map(line => ({ ...line, partyId: 'other' }))
+      },
+      {
+        ...base(1n, null),
+        lines: base(1n, null).lines.map(line => ({ ...line, taxRateId: 'iva-exempt' }))
+      },
+      {
+        ...base(1n, null),
+        lines: base(1n, null).lines.map(line => ({ ...line, memo: 'edited' }))
       }
     ]
     for (const variant of variants) expect(hashEntry(variant)).not.toBe(original)
