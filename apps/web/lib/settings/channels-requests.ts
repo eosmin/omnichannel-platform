@@ -91,13 +91,20 @@ const connectFieldSchema = z
   .refine(field => field.labelKey !== null || field.label !== null)
 export type ConnectFieldView = z.output<typeof connectFieldSchema>
 
-const catalogEntrySchema = z.object({
+export const catalogEntrySchema = z.object({
   id: z.string(),
   name: z.string(),
   authorName: z.string(),
   type: z.string(),
   isOfficial: z.boolean(),
   installed: z.boolean(),
+  // Where the installation stands: `pending_setup` is an integration plugin that has not set itself up yet. A server that does not
+  // say is taken as never installed.
+  installationStatus: z.string().nullable().catch(null),
+  // When the failures of its deliveries turned the webhooks of the plugin off (it is installed and hears nothing)
+  webhooksDisabledAt: z.string().nullable().catch(null),
+  // The name the plugin gave in each language (a registered plugin may)
+  names: z.object({ es: z.string(), en: z.string() }).nullable().catch(null),
   installationId: z.string().nullable(),
   activeConnections: z.number().int(),
   // What uninstalling the shipping entry leaves without a carrier to ask (0 for any other entry, and for a server that
@@ -290,10 +297,13 @@ export function installPlugin(
 export function uninstallPlugin(
   client: ApiClient,
   storeId: string,
-  installationId: string
+  installationId: string,
+  // The word the owner typed: an integration plugin is revoked only with it (the api checks it again)
+  confirmation?: string
 ): Promise<PluginCatalogEntryView> {
   return client.request(ApiRoutes.plugins.revoke(enc(installationId)), {
     method: 'POST',
+    ...(confirmation === undefined ? {} : { body: { confirmation } }),
     schema: catalogEntrySchema,
     storeId
   })

@@ -64,6 +64,13 @@ export interface LineRequest {
   allocations?: readonly { warehouseId: string; quantity: number }[] | undefined
 }
 
+// Who an overridden price is written under. Only a person holds the permission to override one: a plugin that names a price other
+// than the catalog's is refused as a person without the permission is (403), and is never recorded under somebody else's name
+function overrider(who: { userId: string | null }): string {
+  if (who.userId === null) throw orderRefusal(ErrorCodes.ORDER_PRICE_OVERRIDE_FORBIDDEN)
+  return who.userId
+}
+
 // The lines of a request, read from the catalog of the store. A product or variant of another store is one that does not
 // exist; one that is switched off is not for sale; a product with variants is sold by variant.
 export async function resolveLines(
@@ -71,7 +78,8 @@ export async function resolveLines(
   storeId: string,
   requests: readonly LineRequest[],
   who: {
-    userId: string
+    // The person who sets the price; null for a plugin, which never holds the permission to override one (PR E3b)
+    userId: string | null
     canOverridePrice: boolean
     // The lines the order has now, on an edit: a line that names no price (or names the one it has) and is already there
     // keeps the price it was made at (what the customer was told, an override included), not today's catalog price
@@ -163,7 +171,7 @@ export async function resolveLines(
       unitPriceCents: overridden ? (request.unitPriceCents as number) : catalogCents,
       originalUnitPriceCents: overridden ? catalogCents : null,
       priceOverrideReason: overridden ? reason : null,
-      priceOverriddenBy: overridden ? who.userId : null,
+      priceOverriddenBy: overridden ? overrider(who) : null,
       freeShipping: product.freeShipping,
       trackInventory: product.trackInventory,
       // A line of the order that exists keeps the treatment and rate it was made at, even when this edit changes its price; a new one
@@ -277,6 +285,7 @@ export function priceOrder(input: PricingInput): Pricing {
 
 export const approvalColumnsCleared = {
   priceApprovedBy: null,
+  priceApprovedByPluginId: null,
   priceApprovedAt: null,
   priceApprovedDiscountCents: null,
   priceApprovedShippingCents: null

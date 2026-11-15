@@ -19,9 +19,8 @@ import {
   resourceNotFound,
   type ErrorCode
 } from '@platform/core/errors'
-import type { ActorRef } from '@platform/core/events'
 
-import type { Actor } from '../tenancy'
+import { type Actor, auditActorOf, auditViaOf } from '../tenancy'
 
 // The pure rules of an order answer with a code (libs/core/domain/order-rules.ts); this gives each one its HTTP status.
 // A code that is not listed is a conflict with the state of the order, the usual case.
@@ -182,9 +181,6 @@ export async function takeOrderNumber(tx: PrismaTransaction, storeId: string): P
   return formatOrderNumber(taken)
 }
 
-// Who the events of an order say did it
-export const actorRef = (actor: Actor): ActorRef => ({ type: 'user', id: actor.userId })
-
 // One entry of the audit log about an order: who, from where, what changed
 export function recordOrderAudit(
   audit: AuditService,
@@ -194,11 +190,11 @@ export function recordOrderAudit(
 ): void {
   audit.log({
     action,
-    actor: { userId: trail.actor.userId },
+    actor: auditActorOf(trail.actor),
     storeId: trail.storeId,
     resourceType: OrderResourceTypes.ORDER,
     resourceId: trail.orderId,
-    metadata,
+    metadata: { ...metadata, ...auditViaOf(trail.actor) },
     ipAddress: trail.actor.ipAddress,
     userAgent: trail.actor.userAgent
   })

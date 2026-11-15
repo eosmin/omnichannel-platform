@@ -4,7 +4,6 @@ import { Events } from '@platform/core/events'
 import { type PluginScope, PluginScopes } from './plugin-scopes'
 
 // The scope an installation needs to be told of an event (TDD_10 §6.5). An event that is not here is never sent to a plugin: the
-// returns have no scope of their own yet (the PR that exposes their routes adds `returns:read` and these three lines), and the
 // events nobody may follow (the webhook catalog is the only list a plugin chooses from) have no listener at all.
 export const PluginEventScopes: Readonly<Record<string, PluginScope>> = {
   [Events.ORDER_CREATED]: PluginScopes.ORDERS_READ,
@@ -29,7 +28,11 @@ export const PluginEventScopes: Readonly<Record<string, PluginScope>> = {
   [Events.SHIPMENT_CANCELLED]: PluginScopes.SHIPMENTS_READ,
   [Events.PRODUCT_CREATED]: PluginScopes.PRODUCTS_READ,
   [Events.PRODUCT_UPDATED]: PluginScopes.PRODUCTS_READ,
-  [Events.PRODUCT_DELETED]: PluginScopes.PRODUCTS_READ
+  [Events.PRODUCT_DELETED]: PluginScopes.PRODUCTS_READ,
+  [Events.RETURN_REQUESTED]: PluginScopes.RETURNS_READ,
+  [Events.RETURN_APPROVED]: PluginScopes.RETURNS_READ,
+  [Events.RETURN_IN_TRANSIT]: PluginScopes.RETURNS_READ,
+  [Events.RETURN_RECEIVED]: PluginScopes.RETURNS_READ
 }
 
 // What an installation is told of an event, field by field. A field is sent only when it is named here: a key a payload gains
@@ -55,9 +58,9 @@ const FIELD_SCOPES: Readonly<Record<string, readonly PluginScope[] | null>> = {
   customerId: [PluginScopes.CUSTOMERS_READ],
   survivorId: [PluginScopes.CUSTOMERS_READ],
   absorbedId: [PluginScopes.CUSTOMERS_READ],
-  orderId: [PluginScopes.ORDERS_READ, PluginScopes.SHIPMENTS_READ],
-  orderNumber: [PluginScopes.ORDERS_READ, PluginScopes.SHIPMENTS_READ],
-  returnId: [PluginScopes.ORDERS_READ],
+  orderId: [PluginScopes.ORDERS_READ, PluginScopes.SHIPMENTS_READ, PluginScopes.RETURNS_READ],
+  orderNumber: [PluginScopes.ORDERS_READ, PluginScopes.SHIPMENTS_READ, PluginScopes.RETURNS_READ],
+  returnId: [PluginScopes.RETURNS_READ],
   shipmentId: [PluginScopes.SHIPMENTS_READ],
   connectionId: [PluginScopes.SHIPMENTS_READ],
   productId: [PluginScopes.PRODUCTS_READ]

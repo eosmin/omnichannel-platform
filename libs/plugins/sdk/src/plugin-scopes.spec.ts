@@ -90,6 +90,38 @@ describe('PluginScopes', () => {
     }
   })
 
+  it('keeps confirming, cancelling, editing, deciding a price, sending and the templates of an order in scopes of their own', () => {
+    const own: [string, string][] = [
+      [PluginScopes.ORDERS_EDIT, Permissions.ORDERS_EDIT],
+      [PluginScopes.ORDERS_CONFIRM, Permissions.ORDERS_CONFIRM],
+      [PluginScopes.ORDERS_CANCEL, Permissions.ORDERS_CANCEL],
+      [PluginScopes.ORDERS_APPROVE_PRICE, Permissions.ORDERS_APPROVE_PRICE],
+      [PluginScopes.ORDER_MESSAGES_WRITE, Permissions.ORDERS_SEND_MESSAGES],
+      [PluginScopes.ORDER_TEMPLATES_WRITE, Permissions.SETTINGS_MANAGE_ORDER_TEMPLATES]
+    ]
+    for (const [scope, permission] of own) {
+      expect(PluginScopePermissions[scope as keyof typeof PluginScopePermissions]).toEqual([
+        permission
+      ])
+      for (const [other, granted] of Object.entries(PluginScopePermissions)) {
+        if (other !== scope) expect(granted).not.toContain(permission)
+      }
+    }
+  })
+
+  it('grants no scope the override of a price: a plugin sells at the price of the catalog', () => {
+    for (const granted of Object.values(PluginScopePermissions)) {
+      expect(granted).not.toContain(Permissions.ORDERS_OVERRIDE_PRICE)
+    }
+  })
+
+  it('does not let a scope that creates an order confirm it, cancel it or touch its stock', () => {
+    expect(PluginScopePermissions[PluginScopes.ORDERS_WRITE]).toEqual([
+      Permissions.ORDERS_CREATE,
+      Permissions.ORDERS_CHANGE_STATUS
+    ])
+  })
+
   it('lets the webhooks scope grant no human permission', () => {
     expect(PluginScopePermissions[PluginScopes.WEBHOOKS_WRITE]).toEqual([])
   })

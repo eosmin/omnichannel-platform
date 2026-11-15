@@ -257,6 +257,118 @@ describe('Installing an integration plugin and calling the plugin API', () => {
     })
   })
 
+  describe('the detail of a plugin', () => {
+    type Detail = {
+      id: string
+      version: string | null
+      description: string | null
+      requestedScopes: string[]
+      webhookEvents: string[]
+      installationStatus: string | null
+      installation: Record<string, unknown> | null
+    }
+    const detailOf = (id: string, agent = asAdmin) => agent().get(ApiRoutes.plugins.byId(id))
+    const entryOf = async (id: string, agent = asAdmin) =>
+      ((await agent().get(ApiRoutes.plugins.available).expect(OK)).body as Detail[]).find(
+        entry => entry.id === id
+      )
+    // One plugin for the whole block, which walks it through its life in order: an organization registers at most 50, and this suite
+    // is close to it
+    let shared = ''
+    let key = ''
+
+    it('says what the manifest asks for and that the store holds nothing of it yet', async () => {
+      shared = await register(newId(), { names: { es: 'Mi plugin', en: 'My plugin' } })
+
+      const response = await detailOf(shared).expect(OK)
+
+      expect(response.body).toMatchObject({
+        id: shared,
+        version: '1.0.0',
+        requestedScopes: [PluginScopes.ORDERS_READ],
+        webhookEvents: ['message.received'],
+        installationStatus: null,
+        installation: null
+      })
+      // The name it gave in each language
+      expect(await entryOf(shared)).toMatchObject({ names: { es: 'Mi plugin', en: 'My plugin' } })
+    })
+
+    it('shows the installation: waiting for its plugin, then active with the prefix of the key and never the key', async () => {
+      await install(shared, [PluginScopes.ORDERS_READ]).expect(CREATED)
+
+      const pending = (await detailOf(shared).expect(OK)).body as Detail
+      expect(pending.installationStatus).toBe(PluginInstallationStatus.PENDING_SETUP)
+      expect(pending.installation).toMatchObject({
+        status: PluginInstallationStatus.PENDING_SETUP,
+        scopes: [PluginScopes.ORDERS_READ],
+        apiKeyPrefix: null,
+        webhookEndpoint: 'https://hooks.acme.com/platform',
+        webhookDisabledAt: null
+      })
+
+      key = (await setUpExisting(shared)).key
+      const active = await detailOf(shared).expect(OK)
+      const body = active.body as Detail
+      expect(body.installation).toMatchObject({ status: PluginInstallationStatus.ACTIVE })
+      expect(body.installation?.['apiKeyPrefix']).toBe(key.slice(0, 12))
+      // Nothing of the key beyond its prefix, and nothing of the secret that signs the deliveries
+      expect(JSON.stringify(active.body)).not.toContain(key)
+      expect(JSON.stringify(active.body)).not.toContain('webhookSecret')
+      expect(JSON.stringify(active.body)).not.toContain('apiKeyHash')
+    })
+
+    it('holds what is of the store of the request: a sibling store of the organization sees the plugin with no installation', async () => {
+      const sibling = (await detailOf(shared, asAdminSibling).expect(OK)).body as Detail
+
+      expect(sibling.id).toBe(shared)
+      expect(sibling.installation).toBeNull()
+      expect(sibling.installationStatus).toBeNull()
+    })
+
+    it('needs the permission to manage plugins, and does not exist for another organization nor for an id that cannot be a plugin', async () => {
+      await detailOf(shared, asAgent).expect(FORBIDDEN)
+
+      expect((await detailOf(shared, asAdminB)).status).toBe(NOT_FOUND)
+      expect((await detailOf(`${prefix}-nothing`)).status).toBe(NOT_FOUND)
+      expect((await detailOf('00000000-0000-4000-8000-000000000000')).status).toBe(NOT_FOUND)
+    })
+
+    it('shows when the failures turned the webhooks off, and says nothing of them once the installation is revoked', async () => {
+      const installation = await owner.pluginInstallation.findFirstOrThrow({
+        where: { pluginId: shared, storeId: ctx.storeA.id }
+      })
+      await owner.pluginInstallation.update({
+        where: { id: installation.id },
+        data: {
+          webhookDisabledAt: new Date('2026-11-01T10:00:00.000Z'),
+          webhookConsecutiveFailures: 20
+        }
+      })
+
+      expect(await entryOf(shared)).toMatchObject({
+        installationStatus: PluginInstallationStatus.ACTIVE,
+        webhooksDisabledAt: '2026-11-01T10:00:00.000Z'
+      })
+      expect(((await detailOf(shared).expect(OK)).body as Detail).installation).toMatchObject({
+        webhookDisabledAt: '2026-11-01T10:00:00.000Z',
+        webhookConsecutiveFailures: 20
+      })
+
+      await asAdmin()
+        .post(ApiRoutes.plugins.revoke(installation.id))
+        .send({ confirmation: PLUGIN_REVOKE_CONFIRMATION })
+        .expect(OK)
+
+      expect(await entryOf(shared)).toMatchObject({ webhooksDisabledAt: null })
+      expect(((await detailOf(shared).expect(OK)).body as Detail).installation).toMatchObject({
+        status: PluginInstallationStatus.REVOKED,
+        webhookDisabledAt: null,
+        apiKeyPrefix: null
+      })
+    })
+  })
+
   describe('installing', () => {
     it('refuses scopes that are not the ones the manifest asks for, and writes nothing', async () => {
       const id = await register(newId(), { scopes: [PluginScopes.ORDERS_READ] })
