@@ -272,6 +272,9 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     // The triggers of the four tables that refuse a delete are off for the length of this transaction, and on again before it
     // commits (an error rolls the whole transaction back, the switch included)
     const guarded = [
+      'reconciliation_matches',
+      'bank_statement_lines',
+      'bank_statement_imports',
       'finance_transactions',
       'journal_lines',
       'journal_entries',
@@ -280,6 +283,11 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     ]
     for (const table of guarded)
       await tx.$executeRawUnsafe(`ALTER TABLE ${table} DISABLE TRIGGER USER`)
+    // The reconciliation names journal lines and accounts: its decisions go first, then the lines, the imports and the profiles
+    await tx.reconciliationMatch.deleteMany({ where })
+    await tx.bankStatementLine.deleteMany({ where })
+    await tx.bankStatementImport.deleteMany({ where })
+    await tx.bankImportProfile.deleteMany({ where })
     // A transaction names its entry and the one it replaced: the links are cut first, then the rows go before the journal
     await tx.financeTransaction.updateMany({
       where,

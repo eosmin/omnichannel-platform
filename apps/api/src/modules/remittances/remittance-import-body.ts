@@ -12,12 +12,21 @@ const ACCEPTED: readonly string[] = [
   RemittanceImportFiles.PLAIN.contentType
 ]
 
-function refusal(
-  code: typeof ErrorCodes.REMITTANCE_IMPORT_INVALID | typeof ErrorCodes.PAYLOAD_TOO_LARGE,
-  message: string,
-  status: number
-): PlatformException {
+type RefusalCode =
+  | typeof ErrorCodes.REMITTANCE_IMPORT_INVALID
+  | typeof ErrorCodes.BANK_STATEMENT_INVALID
+  | typeof ErrorCodes.PAYLOAD_TOO_LARGE
+
+function refusal(code: RefusalCode, message: string, status: number): PlatformException {
   return new PlatformException(code, message, status)
+}
+
+// What another kind of file changes in the read: the code its refusals carry and the text encoding its bytes are read as (a bank may
+// send Latin-1, and its profile says so; nothing is guessed)
+export interface ImportBodyOptions {
+  invalidCode?:
+    typeof ErrorCodes.REMITTANCE_IMPORT_INVALID | typeof ErrorCodes.BANK_STATEMENT_INVALID
+  encoding?: string
 }
 
 // The media type without its parameters ('text/csv; charset=utf-8' is 'text/csv')
@@ -40,13 +49,15 @@ const DRAIN_EXTRA_BYTES = 1024 * 1024
 
 export async function readImportBody(
   request: Readable & { headers: Record<string, string | string[] | undefined> },
-  maxBytes: number
+  maxBytes: number,
+  options: ImportBodyOptions = {}
 ): Promise<ImportBody> {
+  const invalidCode = options.invalidCode ?? ErrorCodes.REMITTANCE_IMPORT_INVALID
   const length = Number(request.headers['content-length'])
   if (Number.isFinite(length) && length > maxBytes) {
     throw refusal(
       ErrorCodes.PAYLOAD_TOO_LARGE,
-      'the file is larger than a settlement file may be',
+      'the file is larger than an import file may be',
       HttpStatusCodes.PAYLOAD_TOO_LARGE
     )
   }
@@ -57,7 +68,7 @@ export async function readImportBody(
     const tooLarge = () =>
       refusal(
         ErrorCodes.PAYLOAD_TOO_LARGE,
-        'the file is larger than a settlement file may be',
+        'the file is larger than an import file may be',
         HttpStatusCodes.PAYLOAD_TOO_LARGE
       )
     const onData = (chunk: Buffer | string) => {
@@ -82,24 +93,21 @@ export async function readImportBody(
     // A client that drops the connection mid-upload closes the request without an end: the read must not wait for ever
     request.once('close', () => {
       if (!request.readableEnded) {
-        reject(
-          refusal(
-            ErrorCodes.REMITTANCE_IMPORT_INVALID,
-            'the upload was interrupted',
-            HttpStatusCodes.BAD_REQUEST
-          )
-        )
+        reject(refusal(invalidCode, 'the upload was interrupted', HttpStatusCodes.BAD_REQUEST))
       }
     })
   })
   const bytes = Buffer.concat(chunks)
   try {
     // The BOM stays in the bytes that are kept, and is not part of the text that is read
-    return { text: new TextDecoder('utf-8', { fatal: true }).decode(bytes), bytes }
+    return {
+      text: new TextDecoder(options.encoding ?? 'utf-8', { fatal: true }).decode(bytes),
+      bytes
+    }
   } catch {
     throw refusal(
-      ErrorCodes.REMITTANCE_IMPORT_INVALID,
-      'the file is not UTF-8 text',
+      invalidCode,
+      `the file is not ${options.encoding ?? 'utf-8'} text`,
       HttpStatusCodes.BAD_REQUEST
     )
   }

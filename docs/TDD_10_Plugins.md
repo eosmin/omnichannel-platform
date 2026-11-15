@@ -902,7 +902,11 @@ export const PluginScopes = {
   CUSTOMERS_DELETE: 'customers:delete',                 // delete a customer with no history (Step 5.6 E2); CUSTOMERS_DELETE is in no other scope
   CUSTOMERS_FLAG_CAUTION: 'customers:flag-caution',     // set and clear the caution flag (Step 5.6 E2); who edits a customer does not flag it by that
   ORDERS_READ: 'orders:read',
-  ORDERS_WRITE: 'orders:write',
+  ORDERS_WRITE: 'orders:write',                 // create an order and change its status (Step 5.6 E3b); never confirm, cancel, edit or decide a price by it
+  ORDERS_EDIT: 'orders:edit',                   // edit an order and record a payment by hand (Step 5.6 E3b)
+  ORDERS_CONFIRM: 'orders:confirm',             // confirm one order or a selection (Step 5.6 E3b)
+  ORDERS_CANCEL: 'orders:cancel',               // cancel an order (Step 5.6 E3b)
+  ORDERS_APPROVE_PRICE: 'orders:approve-price', // approve or reject a price that waits for it, never the request the plugin made itself (Step 5.6 E3b)
   PRODUCTS_READ: 'products:read',
   PRODUCTS_WRITE: 'products:write',             // create and change a product or a variant (Step 5.6 E4a); never its cost, and its tax is read, not written
   PRODUCTS_DELETE: 'products:delete',           // delete a product or a variant (Step 5.6 E4a); PRODUCTS_DELETE is in no other scope
@@ -911,10 +915,14 @@ export const PluginScopes = {
   COUNTS_READ: 'counts:read',                   // the physical counts, read only; the lines of the key's store only (Step 5.6 E4b)
   RETURNS_READ: 'returns:read',                 // the returns and the batches of the scanner that receives them, read only; no id of a person, no flag on a customer (Step 5.6 E6)
   REMITTANCES_READ: 'remittances:read',         // the remittances of cash collected on delivery and the saved import profiles, read only; no id of a person, no imported file (Step 5.6 E6)
+  CARRIERS_READ: 'carriers:read',               // the carrier connections of the store, read only; never a credential, a secret or an agreed amount (Step 5.6 E5)
+  PICKUPS_READ: 'pickups:read',                 // the pickups of the store and, with customers:read and shipments:read, their manifest; read only (Step 5.6 E5)
   WEBHOOKS_WRITE: 'webhooks:write',
   ANALYTICS_READ: 'analytics:read',
   CHANNELS_READ: 'channels:read',               // the directory of channel accounts and their templates (Step 5.6 E1); no connection details
   ORDER_MESSAGES_READ: 'order-messages:read',   // the history of messages about an order and the order templates (Step 5.6 E3a)
+  ORDER_MESSAGES_WRITE: 'order-messages:write', // send the message of a kind about an order (Step 5.6 E3b)
+  ORDER_TEMPLATES_WRITE: 'order-templates:write', // write, delete and preview an order template (Step 5.6 E3b)
   SETTINGS_READ: 'settings:read',               // the store preferences and the return rules, read only (Step 5.6 E3a)
   CHANNEL_CONNECTIONS: 'channel:connections',   // §6.7: register and remove the connections of a channel plugin
   CHANNEL_EVENTS: 'channel:events',             // §6.7: report what customers write and what happened to what was sent
@@ -937,6 +945,12 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.CUSTOMERS_FLAG_CAUTION]: [Permissions.CUSTOMERS_FLAG_CAUTION],
   [PluginScopes.ORDERS_READ]:         [Permissions.ORDERS_VIEW],
   [PluginScopes.ORDERS_WRITE]:        [Permissions.ORDERS_CREATE, Permissions.ORDERS_CHANGE_STATUS],
+  [PluginScopes.ORDERS_EDIT]:         [Permissions.ORDERS_EDIT],
+  [PluginScopes.ORDERS_CONFIRM]:      [Permissions.ORDERS_CONFIRM],
+  [PluginScopes.ORDERS_CANCEL]:       [Permissions.ORDERS_CANCEL],
+  [PluginScopes.ORDERS_APPROVE_PRICE]: [Permissions.ORDERS_APPROVE_PRICE],   // never ORDERS_OVERRIDE_PRICE: no scope sets a price outside the catalog
+  [PluginScopes.ORDER_MESSAGES_WRITE]: [Permissions.ORDERS_SEND_MESSAGES],
+  [PluginScopes.ORDER_TEMPLATES_WRITE]: [Permissions.SETTINGS_MANAGE_ORDER_TEMPLATES],
   [PluginScopes.PRODUCTS_READ]:       [Permissions.PRODUCTS_VIEW],
   [PluginScopes.WEBHOOKS_WRITE]:      [],
   [PluginScopes.ANALYTICS_READ]:      [Permissions.ANALYTICS_VIEW],

@@ -251,6 +251,10 @@ export const ErrorCodes = {
   FINANCE_SETUP_REQUIRED: 'FINANCE_SETUP_REQUIRED',
   // A taxed product has no tax rate of its own and the organization has no default one: an order never guesses a rate (TDD_18 §7)
   FINANCE_TAX_RATE_NOT_CONFIGURED: 'FINANCE_TAX_RATE_NOT_CONFIGURED',
+  // An entry that a bank statement was reconciled with is not reversed (or its transaction voided) until the match is taken back
+  FINANCE_ENTRY_RECONCILED: 'FINANCE_ENTRY_RECONCILED',
+  // A bank statement file that cannot be read, or whose body is not what an import takes (the rows that failed travel in the metadata)
+  BANK_STATEMENT_INVALID: 'BANK_STATEMENT_INVALID',
 
   // Compliance
   DSR_VERIFICATION_INVALID: 'DSR_VERIFICATION_INVALID',

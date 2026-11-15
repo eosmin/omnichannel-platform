@@ -9,7 +9,8 @@ import {
   FinanceLimits,
   JournalEntryType,
   PartyType,
-  PeriodStatus
+  PeriodStatus,
+  ReconciliationMatchStatus
 } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -173,6 +174,19 @@ export class LedgerService {
       })
       if (reversed !== null) {
         throw financeRefusal(ErrorCodes.FINANCE_ENTRY_ALREADY_REVERSED, { entryId: original.id })
+      }
+      // A line that a bank statement was reconciled with is evidence that the money moved: the match is taken back first (the database
+      // holds the same rule under a lock, for a confirmation and a reversal that run at the same moment)
+      const reconciled = await inner.reconciliationMatch.findFirst({
+        where: {
+          organizationId: input.organizationId,
+          status: ReconciliationMatchStatus.CONFIRMED,
+          journalLine: { entryId: original.id }
+        },
+        select: { id: true }
+      })
+      if (reconciled !== null) {
+        throw financeRefusal(ErrorCodes.FINANCE_ENTRY_RECONCILED, { entryId: original.id })
       }
       const entryDate = reversalDate(isoDay(original.entryDate), input.entryDate, settings.calendar)
       // Never before the entry it reverses, and always with a reason
