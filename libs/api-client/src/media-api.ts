@@ -45,6 +45,7 @@ export type UploadTarget =
   | { purpose: typeof MediaPurpose.MESSAGE }
   | { purpose: typeof MediaPurpose.PRODUCT; parentId: string }
   | { purpose: typeof MediaPurpose.ORDER; parentId: string }
+  | { purpose: typeof MediaPurpose.FINANCE_DOCUMENT; parentId: string }
 
 const MESSAGE_TARGET: UploadTarget = { purpose: MediaPurpose.MESSAGE }
 

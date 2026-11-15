@@ -3,6 +3,7 @@ import {
   AllAllowedContentTypes,
   AllowedContentTypes,
   AvatarUpload,
+  FinanceDocumentUpload,
   OrderFileUpload,
   ProductImageUpload,
   UploadLimits
@@ -23,6 +24,7 @@ export type UploadRulePurpose =
   | typeof MediaPurpose.AVATAR
   | typeof MediaPurpose.PRODUCT
   | typeof MediaPurpose.ORDER
+  | typeof MediaPurpose.FINANCE_DOCUMENT
 
 // The purposes with rules of their own: a few still image types and a smaller limit. Any other is a
 // message file.
@@ -34,6 +36,7 @@ function imageRulesOf(purpose: UploadRulePurpose): ImageRules | null {
   if (purpose === MediaPurpose.AVATAR) return AvatarUpload
   if (purpose === MediaPurpose.PRODUCT) return ProductImageUpload
   if (purpose === MediaPurpose.ORDER) return OrderFileUpload
+  if (purpose === MediaPurpose.FINANCE_DOCUMENT) return FinanceDocumentUpload
   return null
 }
 
