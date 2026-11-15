@@ -216,6 +216,12 @@ describe('bridgedPayload', () => {
       webhookId: randomUUID(),
       consecutiveFailures: 20
     },
+    [Events.PLUGIN_ERROR]: {
+      storeId: randomUUID(),
+      installationId: randomUUID(),
+      pluginId: 'acme-pos',
+      consecutiveFailures: 20
+    },
     [Events.BULK_LABELS_PROGRESS]: {
       storeId: randomUUID(),
       jobId: randomUUID(),

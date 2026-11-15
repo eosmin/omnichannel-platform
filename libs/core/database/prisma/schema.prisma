@@ -1272,34 +1272,44 @@ model Plugin {
 }
 
 model PluginInstallation {
-  id                     String    @id @default(uuid())
-  storeId                String    @map("store_id")
-  pluginId               String    @map("plugin_id")
-  scopes                 String[] // PluginScope[]
-  status                 String    @default("pending_setup") // PluginInstallationStatus
+  id                         String    @id @default(uuid())
+  storeId                    String    @map("store_id")
+  pluginId                   String    @map("plugin_id")
+  scopes                     String[] // PluginScope[]
+  status                     String    @default("pending_setup") // PluginInstallationStatus
   // The scoped key of a plugin that calls the platform: null for an official channel, which runs
   // inside it and has none
-  apiKeyPrefix           String?   @map("api_key_prefix") // First 12 chars, shown in UI
-  apiKeyHash             String?   @unique @map("api_key_hash") // sha256 of the full key
-  rateLimitPerMinute     Int       @default(60) @map("rate_limit_per_minute") // From manifest.limits
+  apiKeyPrefix               String?   @map("api_key_prefix") // First 12 chars, shown in UI
+  apiKeyHash                 String?   @unique @map("api_key_hash") // sha256 of the full key
+  rateLimitPerMinute         Int       @default(60) @map("rate_limit_per_minute") // From manifest.limits
   // The webhook endpoint that answered the install challenge: the only address a delivery goes to, whatever a newer version of
   // the manifest says. Null for a plugin with no webhooks and for the plugins that run inside the platform.
-  webhookEndpoint        String?   @map("webhook_endpoint")
-  config                 Json?
+  webhookEndpoint            String?   @map("webhook_endpoint")
+  // The secret that signs each delivery to that endpoint (sealed, as the secret of a tenant webhook): made at the setup exchange and
+  // shown to the plugin once with its key. Removed after the last delivery of a revoked installation.
+  webhookSecret              Bytes?    @map("webhook_secret")
+  // The deliveries that failed for good one after the other; 20 turn the webhooks of the installation off (`webhookDisabledAt`),
+  // as for a tenant webhook. Zero after a delivery that went through.
+  webhookConsecutiveFailures Int       @default(0) @map("webhook_consecutive_failures")
+  webhookLastFailureAt       DateTime? @map("webhook_last_failure_at")
+  // Set when the failures turned the webhooks off: nothing is queued for the installation while it is set
+  webhookDisabledAt          DateTime? @map("webhook_disabled_at")
+  config                     Json?
   // The secret that signs the commands the platform sends to a remote channel plugin (TDD_10 §6.7.3), encrypted as
   // `Webhook.secret` is; null for an installation that is not of a remote channel. The previous one stays valid for 10 minutes
   // after a rotation. The install flow and the rotation arrive with Step 5.6 PR P2 and PR C2.
-  commandSecret          Bytes?    @map("command_secret")
-  commandSecretPrevious  Bytes?    @map("command_secret_previous")
-  commandSecretRotatedAt DateTime? @map("command_secret_rotated_at")
-  installedBy            String    @map("installed_by")
-  createdAt              DateTime  @default(now()) @map("created_at")
-  updatedAt              DateTime  @updatedAt @map("updated_at")
-  revokedAt              DateTime? @map("revoked_at")
+  commandSecret              Bytes?    @map("command_secret")
+  commandSecretPrevious      Bytes?    @map("command_secret_previous")
+  commandSecretRotatedAt     DateTime? @map("command_secret_rotated_at")
+  installedBy                String    @map("installed_by")
+  createdAt                  DateTime  @default(now()) @map("created_at")
+  updatedAt                  DateTime  @updatedAt @map("updated_at")
+  revokedAt                  DateTime? @map("revoked_at")
 
   store              Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
   plugin             Plugin              @relation(fields: [pluginId], references: [id], onDelete: Restrict)
   channelConnections ChannelConnection[]
+  webhookDeliveries  WebhookDelivery[]
 
   @@unique([storeId, pluginId])
   @@index([storeId, status])
@@ -1327,20 +1337,25 @@ model Webhook {
   @@map("webhooks")
 }
 
+// One try of a delivery: of a webhook of a store (`webhookId`) or of the webhook of a plugin installation
+// (`pluginInstallationId`); a CHECK of the database says exactly one of them is set
 model WebhookDelivery {
-  id         String   @id @default(uuid())
-  webhookId  String   @map("webhook_id")
-  event      String
-  statusCode Int?     @map("status_code")
-  durationMs Int      @map("duration_ms")
-  success    Boolean
-  error      String?
-  attempt    Int      @default(1)
-  createdAt  DateTime @default(now()) @map("created_at")
+  id                   String   @id @default(uuid())
+  webhookId            String?  @map("webhook_id")
+  pluginInstallationId String?  @map("plugin_installation_id")
+  event                String
+  statusCode           Int?     @map("status_code")
+  durationMs           Int      @map("duration_ms")
+  success              Boolean
+  error                String?
+  attempt              Int      @default(1)
+  createdAt            DateTime @default(now()) @map("created_at")
 
-  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  webhook            Webhook?            @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  pluginInstallation PluginInstallation? @relation(fields: [pluginInstallationId], references: [id], onDelete: Cascade)
 
   @@index([webhookId, createdAt(sort: Desc)])
+  @@index([pluginInstallationId, createdAt(sort: Desc)])
   @@index([createdAt]) // 30-day cleanup
   @@map("webhook_deliveries")
 }

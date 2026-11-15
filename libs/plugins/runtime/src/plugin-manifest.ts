@@ -13,11 +13,12 @@ import {
   PluginPricingModels,
   readLocalizedText,
   ManifestChannelCapabilities,
-  RESERVED_CONNECT_FIELD_KEYS
+  RESERVED_CONNECT_FIELD_KEYS,
+  WebhookHeaders
 } from '@platform/core/domain'
 import { type EventName, Events } from '@platform/core/events'
 import { isWellFormedPublicHttpsUrl } from '@platform/core/url-safety'
-import { type PluginScope, PluginScopes } from '@platform/plugins/sdk'
+import { PluginEventScopes, type PluginScope, PluginScopes } from '@platform/plugins/sdk'
 
 // The manifest of an integration plugin, as the owner pastes it (TDD_10 §6.1, `MVP_TRIM_CHECKLIST.md` §7, D10). Nothing in
 // it is trusted: every key is named (a key that is not here is refused, so a document cannot carry what no code reads),
@@ -58,7 +59,11 @@ const RESERVED_HEADERS: ReadonlySet<string> = new Set([
   'date',
   'forwarded',
   'origin',
-  'referer'
+  'referer',
+  // The headers the platform sets on every delivery: one of them as the signature header would be overwritten by the event or
+  // the delivery id, or would overwrite them
+  WebhookHeaders.EVENT,
+  WebhookHeaders.DELIVERY
 ])
 const isReservedHeader = (name: string): boolean => {
   const lower = name.toLowerCase()
@@ -106,6 +111,11 @@ const webhooks = z.strictObject({
       z
         .string()
         .refine((name): name is EventName => EVENT_NAMES.has(name), { message: 'unknown event' })
+        // Only what can be sent: an event with no scope (the returns, until they have one) or that a store cannot follow would
+        // be a subscription that never fires, with no word of why
+        .refine(name => Object.hasOwn(PluginEventScopes, name), {
+          message: 'an event a plugin is not sent'
+        })
     )
     .min(1)
     .max(PluginManifestLimits.MAX_WEBHOOK_EVENTS)
@@ -314,4 +324,32 @@ export function isNewerVersion(next: string, current: string): boolean {
     if (x !== y) return x > y
   }
   return false
+}
+
+// What a stored manifest says about its webhooks: the events it follows and the header that carries the signature. Read from the
+// row that was validated on registration, but read again defensively (a row is data, and a bad one must deliver nothing rather
+// than throw in the middle of an event). The address is not here on purpose: a delivery goes to the one that passed the install
+// challenge (`PluginInstallation.webhookEndpoint`), whatever a newer manifest says.
+export interface ManifestWebhook {
+  events: readonly string[]
+  signatureHeader: string
+}
+
+export function manifestWebhookOf(manifest: unknown): ManifestWebhook | null {
+  if (typeof manifest !== 'object' || manifest === null) return null
+  const block = (manifest as { webhooks?: unknown }).webhooks
+  if (typeof block !== 'object' || block === null) return null
+  const { events, signatureHeader } = block as { events?: unknown; signatureHeader?: unknown }
+  if (!Array.isArray(events) || typeof signatureHeader !== 'string') return null
+  if (
+    signatureHeader.length > PluginManifestLimits.HEADER_MAX_LENGTH ||
+    !HEADER_NAME.test(signatureHeader) ||
+    isReservedHeader(signatureHeader)
+  ) {
+    return null
+  }
+  return {
+    events: events.filter((event): event is string => typeof event === 'string'),
+    signatureHeader
+  }
 }
