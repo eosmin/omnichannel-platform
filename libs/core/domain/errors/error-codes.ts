@@ -251,6 +251,11 @@ export const ErrorCodes = {
   FINANCE_SETUP_REQUIRED: 'FINANCE_SETUP_REQUIRED',
   // A taxed product has no tax rate of its own and the organization has no default one: an order never guesses a rate (TDD_18 §7)
   FINANCE_TAX_RATE_NOT_CONFIGURED: 'FINANCE_TAX_RATE_NOT_CONFIGURED',
+  // Purchases (TDD_18 §3, §2.7): a purchase order moves along its table only, a receipt never takes more than was ordered, and a
+  // supplier with bills or payments keeps its payable account
+  PURCHASE_ORDER_INVALID_STATUS_TRANSITION: 'PURCHASE_ORDER_INVALID_STATUS_TRANSITION',
+  PURCHASE_RECEIPT_EXCEEDS_ORDER: 'PURCHASE_RECEIPT_EXCEEDS_ORDER',
+  SUPPLIER_HAS_HISTORY: 'SUPPLIER_HAS_HISTORY',
   // An entry that a bank statement was reconciled with is not reversed (or its transaction voided) until the match is taken back
   FINANCE_ENTRY_RECONCILED: 'FINANCE_ENTRY_RECONCILED',
   // A bank statement file that cannot be read, or whose body is not what an import takes (the rows that failed travel in the metadata)

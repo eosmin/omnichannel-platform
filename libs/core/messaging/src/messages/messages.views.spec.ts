@@ -32,12 +32,14 @@ const row = (metadata: unknown): Parameters<typeof messageView>[0] => ({
   editedAt: null,
   editedByType: null,
   editedById: null,
+  editedByPluginId: null,
   pendingContent: null,
   editStatus: null,
   editError: null,
   deletedAt: null,
   deletedByType: null,
   deletedById: null,
+  deletedByPluginId: null,
   deleteStatus: null,
   deleteError: null,
   reactions: [],
@@ -497,11 +499,25 @@ describe('messageView unsupportedType', () => {
   })
 })
 
+describe('messageView plugin deleter (W2)', () => {
+  it('names the plugin that deleted the message', () => {
+    const view = messageView({
+      ...row(null),
+      deletedAt: new Date('2026-10-30T10:10:00Z'),
+      deletedByType: AuthorType.SYSTEM,
+      deletedByPluginId: 'acme-bot'
+    })
+    expect(view.deletedByPluginId).toBe('acme-bot')
+    expect(view.deletedById).toBeNull()
+  })
+})
+
 describe('messageView edited and then deleted (W3a)', () => {
   const edited = {
     editedAt: new Date('2026-10-30T10:05:00Z'),
     editedByType: AuthorType.CUSTOMER,
     editedById: 'u1',
+    editedByPluginId: 'acme-bot',
     pendingContent: 'hola otra vez',
     editStatus: 'failed',
     editError: 'CHANNEL_MESSAGE_FAILED',
@@ -511,6 +527,7 @@ describe('messageView edited and then deleted (W3a)', () => {
   it('says it was edited while it was only edited', () => {
     const view = messageView({ ...row(null), ...edited })
     expect(view.editedAt).toEqual(edited.editedAt)
+    expect(view.editedByPluginId).toBe('acme-bot')
     expect(view.content).toBe('hola')
   })
 
@@ -523,6 +540,7 @@ describe('messageView edited and then deleted (W3a)', () => {
     expect(view.editedAt).toBeNull()
     expect(view.editedByType).toBeNull()
     expect(view.editedById).toBeNull()
+    expect(view.editedByPluginId).toBeNull()
     expect(view.pendingEdit).toBe(false)
     expect(view.editStatus).toBeNull()
     expect(view.editError).toBeNull()

@@ -9,6 +9,7 @@ import {
   OrderGuideFilters,
   OrderStatus,
   PaymentStatus,
+  PLUGIN_ACTOR_ID_PATTERN,
   PriceApprovalStatus
 } from '@platform/core/domain'
 import { downloadAllBodySchema } from '@platform/core/storage'
@@ -36,8 +37,9 @@ export function viewPermissionsOf(held: readonly Permission[]): Permission[] {
   return VIEW_PERMISSIONS.filter(permission => held.includes(permission))
 }
 
+// The requester is a person or a plugin (`plugin:<installation id>`), which holds the permissions of its scopes
 const viewerSchema = z.strictObject({
-  userId: z.uuid(),
+  userId: z.union([z.uuid(), z.string().regex(PLUGIN_ACTOR_ID_PATTERN)]),
   held: z.array(z.enum(VIEW_PERMISSIONS as [Permission, ...Permission[]]))
 })
 

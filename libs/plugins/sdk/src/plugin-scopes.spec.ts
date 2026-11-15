@@ -73,6 +73,23 @@ describe('PluginScopes', () => {
     }
   })
 
+  it('gives the exports and the files their permissions and keeps the right to take data out in one scope', () => {
+    expect(PluginScopePermissions[PluginScopes.EXPORTS_READ]).toEqual([])
+    expect(PluginScopePermissions[PluginScopes.EXPORTS_WRITE]).toEqual([
+      Permissions.ANALYTICS_EXPORT,
+      Permissions.MEDIA_DOWNLOAD_ALL
+    ])
+    expect(PluginScopePermissions[PluginScopes.MEDIA_READ]).toEqual([Permissions.MEDIA_VIEW])
+    // Uploading is MEDIA_UPLOAD alone: the permissions of the purposes of an upload (editing a product, the proofs of an order) are not lent by it
+    expect(PluginScopePermissions[PluginScopes.MEDIA_WRITE]).toEqual([Permissions.MEDIA_UPLOAD])
+    for (const [scope, granted] of Object.entries(PluginScopePermissions)) {
+      if (scope !== PluginScopes.EXPORTS_WRITE) {
+        expect(granted).not.toContain(Permissions.ANALYTICS_EXPORT)
+        expect(granted).not.toContain(Permissions.MEDIA_DOWNLOAD_ALL)
+      }
+    }
+  })
+
   it('keeps confirming, cancelling, editing, deciding a price, sending and the templates of an order in scopes of their own', () => {
     const own: [string, string][] = [
       [PluginScopes.ORDERS_EDIT, Permissions.ORDERS_EDIT],

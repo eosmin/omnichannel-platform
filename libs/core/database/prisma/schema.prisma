@@ -44,6 +44,10 @@ model Organization {
   bankLines             BankStatementLine[]
   reconciliationMatches ReconciliationMatch[]
   financeTransactions   FinanceTransaction[]
+  suppliers             Supplier[]
+  purchaseOrders        PurchaseOrder[]
+  purchaseReceipts      PurchaseReceipt[]
+  supplierPayments      SupplierPayment[]
   plugins               Plugin[]
 
   @@map("organizations")
@@ -87,6 +91,8 @@ model Store {
   periodBalances           AccountPeriodBalance[]
   paymentAccounts          PaymentMethodAccount[]
   financeTransactions      FinanceTransaction[]
+  purchaseOrderLines       PurchaseOrderLine[]
+  purchaseReceiptLines     PurchaseReceiptLine[]
   tags                     Tag[]
   snippets                 Snippet[]
   media                    Media[]
@@ -888,6 +894,7 @@ model Product {
   inventoryLevels InventoryLevel[]
   stockCountLines StockCountLine[]
   transferLines   StockTransferLine[]
+  purchaseLines   PurchaseOrderLine[]
   orderItems      OrderItem[]
   media           Media[]
 
@@ -916,6 +923,7 @@ model ProductVariant {
   inventoryLevels InventoryLevel[]
   stockCountLines StockCountLine[]
   transferLines   StockTransferLine[]
+  purchaseLines   PurchaseOrderLine[]
   orderItems      OrderItem[]
 
   @@unique([productId, name])
@@ -993,6 +1001,7 @@ model Warehouse {
   transfersIn  StockTransfer[]       @relation("TransferTo")
   shipments    Shipment[]
   returnLines  OrderReturnLine[]
+  purchases    PurchaseOrder[]
 
   @@unique([organizationId, code])
   // So that a link can name its organization and the database check that they go together (StoreWarehouse)
@@ -2373,6 +2382,7 @@ model FinanceSettings {
   roundingAccountId   String?   @map("rounding_account_id")
   taxRounding         String    @default("half_up") @map("tax_rounding") // TaxRounding (TDD_18 §7): how a fraction of a cent of tax is placed
   shippingTaxed       Boolean   @default(true) @map("shipping_taxed") // Whether the shipping fee carries VAT [ACCOUNTANT] (TDD_18 §7, §13 row 2)
+  nextPurchaseNumber  BigInt    @default(1) @map("next_purchase_number") // the counter of the purchase numbers (TDD_18 §2.7), taken under the row lock of the update
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
@@ -2412,6 +2422,8 @@ model LedgerAccount {
   transactionsFrom     FinanceTransaction[]   @relation("TransactionFromAccount")
   transactionsTo       FinanceTransaction[]   @relation("TransactionToAccount")
   transactionsCategory FinanceTransaction[]   @relation("TransactionCategoryAccount")
+  suppliersPayable     Supplier[]
+  supplierPaymentsFrom SupplierPayment[]
   bankProfiles         BankImportProfile[]
   bankImports          BankStatementImport[]
   bankLines            BankStatementLine[]
@@ -2446,6 +2458,7 @@ model TaxRate {
   products      Product[]
   lines         JournalLine[]
   transactions  FinanceTransaction[]
+  purchaseLines PurchaseOrderLine[]
 
   @@unique([organizationId, code])
   // So that a product and a line can name the organization with the rate
@@ -2539,6 +2552,9 @@ model JournalEntry {
   lines             JournalLine[]
   transaction       FinanceTransaction? @relation("TransactionEntry")
   voidedTransaction FinanceTransaction? @relation("TransactionVoidEntry")
+  purchaseReceipt   PurchaseReceipt?    @relation("ReceiptEntry")
+  supplierPayment   SupplierPayment?    @relation("PaymentEntry")
+  voidedPayment     SupplierPayment?    @relation("PaymentVoidEntry")
 
   @@unique([organizationId, number])
   @@unique([organizationId, idempotencyKey])
@@ -2651,6 +2667,190 @@ model FinanceTransaction {
   // The list: the newest first, by page
   @@index([organizationId, createdAt, id])
   @@map("finance_transactions")
+}
+
+// ============================================================
+// SUPPLIERS AND PURCHASES (TDD_18 §2.7, Step 4B.5): organization-scoped like the books they post to. Whole USD cents.
+// ============================================================
+
+// Who the organization buys from. Never deleted: a supplier with bills or payments is switched off, and its payable account is
+// fixed once it has a bill (its payments would otherwise post to another account than its bills).
+model Supplier {
+  id                      String   @id @default(uuid())
+  organizationId          String   @map("organization_id")
+  name                    String
+  taxId                   String?  @map("tax_id")
+  contactName             String?  @map("contact_name")
+  email                   String?
+  phone                   String?
+  paymentTermsDays        Int      @default(0) @map("payment_terms_days") // the bill of a receipt falls due this many days after it
+  defaultPayableAccountId String?  @map("default_payable_account_id") // null = the account of the PAYABLE_SUPPLIERS role
+  active                  Boolean  @default(true)
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  organization          Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  defaultPayableAccount LedgerAccount?    @relation(fields: [organizationId, defaultPayableAccountId], references: [organizationId, id], onDelete: Restrict)
+  orders                PurchaseOrder[]
+  receipts              PurchaseReceipt[]
+  payments              SupplierPayment[]
+
+  // So that every table that names a supplier can name its organization with it. The name is unique ignoring case: a raw index of the migration
+  @@unique([organizationId, id])
+  @@index([organizationId, active])
+  @@map("suppliers")
+}
+
+// What was ordered from a supplier, to be received into ONE warehouse. The number is the organization's sequence
+// (`FinanceSettings.nextPurchaseNumber`); the status moves along `PurchaseOrderStatusTransitions` only.
+model PurchaseOrder {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  number         String
+  supplierId     String    @map("supplier_id")
+  warehouseId    String    @map("warehouse_id")
+  status         String // PurchaseOrderStatus
+  orderedOn      DateTime? @map("ordered_on") @db.Date
+  expectedOn     DateTime? @map("expected_on") @db.Date
+  notes          String?
+  clientKey      String    @map("client_key") // the screen's key: a retry of the create is the same order
+  createdBy      String    @map("created_by")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  supplier     Supplier            @relation(fields: [organizationId, supplierId], references: [organizationId, id], onDelete: Restrict)
+  warehouse    Warehouse           @relation(fields: [organizationId, warehouseId], references: [organizationId, id], onDelete: Restrict)
+  lines        PurchaseOrderLine[]
+  receipts     PurchaseReceipt[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, number])
+  @@unique([organizationId, clientKey])
+  @@index([organizationId, status])
+  @@index([organizationId, supplierId])
+  // The list: the newest first, by page
+  @@index([organizationId, createdAt, id])
+  @@map("purchase_orders")
+}
+
+// One item of an order, at the cost before tax of ONE unit. It carries the store of the product (the stock it raises is that store's), so a
+// member of one store reads only the lines of its own.
+model PurchaseOrderLine {
+  id               String  @id @default(uuid())
+  organizationId   String  @map("organization_id")
+  storeId          String  @map("store_id")
+  purchaseOrderId  String  @map("purchase_order_id")
+  lineNo           Int     @map("line_no")
+  productId        String  @map("product_id")
+  variantId        String? @map("variant_id")
+  quantity         Int
+  receivedQuantity Int     @default(0) @map("received_quantity")
+  unitCostCents    Int     @map("unit_cost_cents") // before tax
+  taxRateId        String? @map("tax_rate_id")
+
+  order        PurchaseOrder         @relation(fields: [organizationId, purchaseOrderId], references: [organizationId, id], onDelete: Cascade)
+  store        Store                 @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Restrict)
+  product      Product               @relation(fields: [storeId, productId], references: [storeId, id], onDelete: Restrict)
+  variant      ProductVariant?       @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  taxRate      TaxRate?              @relation(fields: [organizationId, taxRateId], references: [organizationId, id], onDelete: Restrict)
+  receiptLines PurchaseReceiptLine[]
+
+  @@unique([organizationId, id])
+  @@unique([purchaseOrderId, lineNo])
+  @@index([storeId])
+  @@index([productId, variantId])
+  @@map("purchase_order_lines")
+}
+
+// One receiving event, and the supplier's bill (E10): what is owed, when it falls due, and the entry that posted it. Never edited
+// and never deleted; the goods it brought in are taken back by a return to the supplier (after the MVP), not by undoing it.
+model PurchaseReceipt {
+  id                     String   @id @default(uuid())
+  organizationId         String   @map("organization_id")
+  purchaseOrderId        String   @map("purchase_order_id")
+  supplierId             String   @map("supplier_id")
+  receivedOn             DateTime @map("received_on") @db.Date
+  dueOn                  DateTime @map("due_on") @db.Date
+  supplierDocumentNumber String?  @map("supplier_document_number")
+  taxCreditable          Boolean  @map("tax_creditable") // the tax is input VAT only against a supplier document [ACCOUNTANT]
+  subtotalCents          Int      @map("subtotal_cents")
+  taxCents               Int      @map("tax_cents")
+  totalCents             Int      @map("total_cents") // what is owed to the supplier
+  clientKey              String   @map("client_key")
+  entryId                String   @map("entry_id")
+  createdBy              String   @map("created_by")
+  createdAt              DateTime @default(now()) @map("created_at")
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  order        PurchaseOrder         @relation(fields: [organizationId, purchaseOrderId], references: [organizationId, id], onDelete: Restrict)
+  supplier     Supplier              @relation(fields: [organizationId, supplierId], references: [organizationId, id], onDelete: Restrict)
+  entry        JournalEntry          @relation("ReceiptEntry", fields: [organizationId, entryId], references: [organizationId, id], onDelete: Restrict)
+  lines        PurchaseReceiptLine[]
+  payments     SupplierPayment[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, clientKey])
+  @@unique([organizationId, entryId])
+  @@index([organizationId, supplierId, dueOn])
+  @@index([purchaseOrderId])
+  @@map("purchase_receipts")
+}
+
+// What one line of a receipt took in: the units, the cost of one before tax and the stock movement that raised the level.
+model PurchaseReceiptLine {
+  id             String @id @default(uuid())
+  organizationId String @map("organization_id")
+  storeId        String @map("store_id")
+  receiptId      String @map("receipt_id")
+  orderLineId    String @map("order_line_id")
+  quantity       Int
+  unitCostCents  Int    @map("unit_cost_cents")
+  subtotalCents  Int    @map("subtotal_cents")
+  taxCents       Int    @map("tax_cents")
+  movementId     String @map("movement_id") // the inventory movement this line made (the ledger of stock is append-only)
+
+  receipt   PurchaseReceipt   @relation(fields: [organizationId, receiptId], references: [organizationId, id], onDelete: Restrict)
+  store     Store             @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Restrict)
+  orderLine PurchaseOrderLine @relation(fields: [organizationId, orderLineId], references: [organizationId, id], onDelete: Restrict)
+
+  @@index([receiptId])
+  @@index([storeId])
+  @@index([orderLineId])
+  @@map("purchase_receipt_lines")
+}
+
+// A payment to a supplier (E11), from the cash, bank or wallet account the person chose, against one bill or against what is owed in all. It is
+// never edited: voiding it writes the reversing entry and points at it, once.
+model SupplierPayment {
+  id                String   @id @default(uuid())
+  organizationId    String   @map("organization_id")
+  supplierId        String   @map("supplier_id")
+  purchaseReceiptId String?  @map("purchase_receipt_id")
+  paidFromAccountId String   @map("paid_from_account_id")
+  amountCents       Int      @map("amount_cents")
+  paidOn            DateTime @map("paid_on") @db.Date
+  reference         String?
+  clientKey         String   @map("client_key")
+  entryId           String   @map("entry_id")
+  voidedByEntryId   String?  @map("voided_by_entry_id")
+  createdBy         String   @map("created_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  supplier      Supplier         @relation(fields: [organizationId, supplierId], references: [organizationId, id], onDelete: Restrict)
+  receipt       PurchaseReceipt? @relation(fields: [organizationId, purchaseReceiptId], references: [organizationId, id], onDelete: Restrict)
+  paidFrom      LedgerAccount    @relation(fields: [organizationId, paidFromAccountId], references: [organizationId, id], onDelete: Restrict)
+  entry         JournalEntry     @relation("PaymentEntry", fields: [organizationId, entryId], references: [organizationId, id], onDelete: Restrict)
+  voidedByEntry JournalEntry?    @relation("PaymentVoidEntry", fields: [organizationId, voidedByEntryId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, clientKey])
+  @@unique([organizationId, entryId])
+  @@unique([organizationId, voidedByEntryId])
+  @@index([organizationId, supplierId, paidOn])
+  @@index([purchaseReceiptId])
+  @@map("supplier_payments")
 }
 
 // A source whose automatic entry could not be posted (TDD_18 §6.1): visible, never silent, and a period will not close

@@ -34,6 +34,7 @@ import { conversationsExportSource } from './conversations-export.source'
 import { CsvExportWriter } from './csv-export-writer'
 import { customersExportSource } from './customers-export.source'
 import { ExportProgress } from './export-progress'
+import { auditActorOfRequester, auditViaOfRequester } from './export-requester'
 import { publishExportSettled } from './export-settled'
 import { mediaZipSource, ZipEmptyError, ZipTooLargeError } from './media-zip-export.source'
 import { ordersExportSource } from './orders-export.source'
@@ -111,11 +112,17 @@ export class ExportGenerator {
       }
       this.audit.log({
         action: ExportAuditActions[row.type as ExportType],
-        actor: { userId: row.requestedBy },
+        actor: auditActorOfRequester(row.requestedBy),
         storeId: row.storeId,
         resourceType: 'export',
         resourceId: row.id,
-        metadata: { type: row.type, format: row.format, rowCount, filters: row.filters ?? {} }
+        metadata: {
+          type: row.type,
+          format: row.format,
+          rowCount,
+          filters: row.filters ?? {},
+          ...auditViaOfRequester(row.requestedBy)
+        }
       })
       await this.announce(Events.EXPORT_READY, row)
     } catch (error) {

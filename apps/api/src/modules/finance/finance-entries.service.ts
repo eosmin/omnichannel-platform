@@ -7,7 +7,8 @@ import {
   EntryOrigin,
   FinanceConflicts,
   FinanceIdempotencyKey,
-  FinanceResourceTypes
+  FinanceResourceTypes,
+  PurchaseConflicts
 } from '@platform/core/domain'
 import { resourceConflict, resourceNotFound } from '@platform/core/errors'
 import { LedgerService } from '@platform/core/finance-ledger'
@@ -151,6 +152,17 @@ export class FinanceEntriesService {
     if (owned > 0) {
       throw resourceConflict('the entry belongs to a transaction: void the transaction', {
         conflict: FinanceConflicts.ENTRY_OWNED_BY_TRANSACTION
+      })
+    }
+    // The entry of a purchase receipt or a supplier payment is the same: the receipt moved stock and the payment is voided through its own
+    // route (permission, audit row and the pointer that makes the bill owed again), so a reversal made here would leave them out of step
+    const [receipts, payments] = await Promise.all([
+      this.prisma.client.purchaseReceipt.count({ where: { organizationId, entryId } }),
+      this.prisma.client.supplierPayment.count({ where: { organizationId, entryId } })
+    ])
+    if (receipts + payments > 0) {
+      throw resourceConflict('the entry belongs to a purchase: use the purchase', {
+        conflict: PurchaseConflicts.ENTRY_OWNED_BY_PURCHASE
       })
     }
     const posted = await this.ledger.reverse({
