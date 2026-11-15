@@ -419,6 +419,10 @@ export const messageSchema = z.object({
   content: z.string().nullable(),
   authorType: z.string(),
   authorId: z.string().nullable(),
+  // The plugin that wrote the message and the name it chose to write as the system (Step 5.6): null when no plugin wrote it;
+  // optional so that an answer from before they existed still parses. The thread draws them in Step 5.6 W2.
+  authorPluginId: z.string().nullable().optional(),
+  authorNickname: z.string().nullable().optional(),
   replyToMessageId: z.string().nullable(),
   // The file of an album that the reply quotes; null: the message (a server that does not send it yet)
   replyToMediaId: z.string().nullable().default(null),

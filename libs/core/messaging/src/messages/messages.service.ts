@@ -14,6 +14,7 @@ import {
   ConversationStatusReasons,
   type CursorPage,
   DeliveryStatus,
+  MembershipStatus,
   MessageType,
   ResendableCaptionStates
 } from '@platform/core/domain'
@@ -72,6 +73,7 @@ import {
   quotedView,
   type MessageView
 } from './messages.views'
+import { cleanNickname, type PluginMessageOrigin } from './plugin-message-origin'
 import { isDistinctFile } from './provider-message-match'
 import {
   type RenderedTemplate,
@@ -148,6 +150,9 @@ export class MessagesService {
   // A template is the one reply a closed messaging window allows. The api checks it with the channel
   // and fills its body before this runs (`rendered`), because the provider is not asked inside a
   // transaction.
+  //
+  // `plugin` is set only by the route of the plugin API (`pluginViewerOf` is its viewer): the message is the plugin's, as
+  // `system` or as a person of the store, and may be `quiet` (see `PluginMessageOrigin`). No route of a person sets it.
   async create(
     storeId: string,
     body: CreateMessageBody,
@@ -155,7 +160,8 @@ export class MessagesService {
     rendered?: RenderedTemplate,
     supports?: ChannelSupportsFile,
     limitsOf?: ChannelFileLimitsOf,
-    textLimitsOf?: ChannelTextLimitsOf
+    textLimitsOf?: ChannelTextLimitsOf,
+    plugin?: PluginMessageOrigin
   ): Promise<CreatedMessage> {
     const stored = await this.store(
       storeId,
@@ -164,7 +170,8 @@ export class MessagesService {
       rendered,
       supports,
       limitsOf,
-      textLimitsOf
+      textLimitsOf,
+      plugin
     )
     return { ...stored, message: await this.withQuote(storeId, stored.message, viewer) }
   }
@@ -176,25 +183,49 @@ export class MessagesService {
     rendered?: RenderedTemplate,
     supports?: ChannelSupportsFile,
     limitsOf?: ChannelFileLimitsOf,
-    textLimitsOf?: ChannelTextLimitsOf
+    textLimitsOf?: ChannelTextLimitsOf,
+    plugin?: PluginMessageOrigin
   ): Promise<CreatedMessage> {
     const isNote = body.type === MessageType.INTERNAL_NOTE
     const isTemplate = body.type === MessageType.TEMPLATE
     if (isTemplate && rendered === undefined) {
       throw invalidInput('a template message needs its template checked first')
     }
+    // A plugin sends text and notes; a template is the provider's and a file needs a person's upload (a route for the files of a
+    // plugin is a step of its own), so neither is taken from it here
+    if (
+      plugin !== undefined &&
+      body.type !== MessageType.TEXT &&
+      body.type !== MessageType.INTERNAL_NOTE
+    ) {
+      throw invalidInput('a plugin sends text and notes only')
+    }
     requireAnyPermission(viewer.held, [permissionToWrite(body)])
+    // The person a plugin writes for (the author of its `agent` messages) and the id the message and its events carry
+    const authorId =
+      plugin === undefined
+        ? viewer.userId
+        : plugin.author === AuthorType.AGENT
+          ? plugin.userId
+          : null
+    // The reply of a plugin that is `quiet` changes nothing in the conversation; a note never does
+    const quiet = plugin?.quiet === true
     return this.prisma.transaction(async tx => {
+      // The membership of the person comes first, as `assigneeCanWork` does: a suspension waits for this transaction
+      if (plugin?.author === AuthorType.AGENT) {
+        await this.requireAgentToWriteAs(tx, storeId, plugin.userId, permissionToWrite(body))
+      }
       // Before the lock of the conversation, the order of `assign` and of removing a member: an agent
       // who may assign is checked to still be an active member who can work what they would take
       const mayTake =
+        plugin === undefined &&
         !isNote &&
         viewer.held.includes(Permissions.CONVERSATIONS_ASSIGN) &&
         (await this.conversations.assigneeCanWork(tx, storeId, viewer.userId))
       // The row lock makes two requests with one key take turns: the second finds the first
       const current = await lockConversationForWrite(tx, storeId, body.conversationId, viewer)
 
-      const replayed = await this.findReplay(tx, storeId, body, viewer)
+      const replayed = await this.findReplay(tx, storeId, body, authorId, plugin?.pluginId ?? null)
       if (replayed !== null) {
         // The first request may have committed and failed to queue the reply (Redis was down): the
         // retry it provoked is the moment to try again, and the job id makes a second one harmless
@@ -244,6 +275,10 @@ export class MessagesService {
         )
       }
       const mentions = body.type === MessageType.INTERNAL_NOTE ? body.mentions : []
+      // A mention is a notification from a person to a person, and nothing in it says a plugin wrote it: a plugin mentions nobody
+      if (plugin !== undefined && mentions.length > 0) {
+        throw invalidInput('a note of a plugin mentions nobody')
+      }
       if (mentions.length > 0) await this.requireMentionable(tx, storeId, mentions, current)
       // Checked under the lock and after the replay: a retry finds its files already linked
       const files = isMediaBody(body)
@@ -266,8 +301,12 @@ export class MessagesService {
                 : (files.captions[0] ?? null)
               : (body.content ?? null),
           textApart: files?.textApart ?? false,
-          authorType: AuthorType.AGENT,
-          authorId: viewer.userId,
+          authorType: plugin?.author ?? AuthorType.AGENT,
+          authorId,
+          authorPluginId: plugin?.pluginId ?? null,
+          // Cleaned here too, so that no caller can store a nickname that reorders text or is too long
+          authorNickname:
+            plugin?.author === AuthorType.SYSTEM ? cleanNickname(plugin.nickname) : null,
           idempotencyKey: body.idempotencyKey ?? null,
           replyToMessageId: replyToMessageId ?? null,
           replyToMediaId,
@@ -288,8 +327,12 @@ export class MessagesService {
           orderBy: MESSAGE_SELECT.media.orderBy
         })
       }
-      if (!isNote) {
-        await this.conversations.recordReply(tx, storeId, body.conversationId, now)
+      // A quiet reply leaves the conversation as it was: the order of the list, its status, the last answer and the first ones
+      if (!isNote && !quiet) {
+        // What a plugin writes as the system is an automation, not a person's answer (it never fixes `firstResponseAt`)
+        await this.conversations.recordReply(tx, storeId, body.conversationId, now, {
+          automated: plugin?.author === AuthorType.SYSTEM
+        })
         if (ConversationReopenedByReply.some(status => status === from)) {
           // The permission to reply is the one that was checked: reopening is part of replying
           await this.conversations.applyStatus(
@@ -299,7 +342,7 @@ export class MessagesService {
             ConversationStatus.OPEN,
             {
               actor: 'system',
-              causedBy: viewer.userId,
+              ...(authorId === null ? {} : { causedBy: authorId }),
               reason: ConversationStatusReasons.AGENT_REPLIED
             }
           )
@@ -316,10 +359,33 @@ export class MessagesService {
         hidden: isNote && isHiddenStatus(current.status),
         assignedTo: takes ? viewer.userId : current.assignedTo
       }
-      this.announce(tx, storeId, viewer, row.id, now, body, mentions, visibility)
+      this.announce(tx, storeId, authorId, row.id, now, body, mentions, visibility)
       if (!isNote) this.queueForChannel(tx, storeId, row.id)
       return { message: messageView({ ...row, media }), created: true }
     })
+  }
+
+  // The person a plugin writes as: an active member of THIS store (another store's member and one that was removed or suspended
+  // are one answer) whose role holds the permission the message needs, so that a plugin never writes as someone for something they
+  // could not do. The membership is held `FOR SHARE` until the end of the transaction, as `assigneeCanWork` does: a suspension
+  // waits for the message.
+  private async requireAgentToWriteAs(
+    tx: PrismaTransaction,
+    storeId: string,
+    userId: string,
+    permission: Permission
+  ): Promise<void> {
+    const rows = await tx.$queryRaw<{ role_id: string }[]>`
+      SELECT role_id FROM memberships
+      WHERE store_id = ${storeId} AND user_id = ${userId}
+        AND status = ${MembershipStatus.ACTIVE} AND revoked_at IS NULL
+      FOR SHARE`
+    const roleId = rows[0]?.role_id
+    const holds =
+      roleId !== undefined &&
+      (await tx.permission.count({ where: { roleId, name: permission } })) === 1
+    if (!holds)
+      throw invalidInput('the person is not an active member of the store who may write this')
   }
 
   // Under the lock of the conversation, in the transaction of the reply: the same atomic update as taking
@@ -556,7 +622,7 @@ export class MessagesService {
     if (conversation === null || !canSee(viewer, conversation)) {
       throw resourceNotFound('conversation')
     }
-    const replayed = await this.findReplay(this.prisma.client, storeId, body, viewer)
+    const replayed = await this.findReplay(this.prisma.client, storeId, body, viewer.userId, null)
     if (replayed === null) return null
     // As `create` does for a retry: the first request may have committed without queuing the reply
     if (replayed.deliveryStatus === DeliveryStatus.QUEUED) {
@@ -595,7 +661,8 @@ export class MessagesService {
     db: PrismaService['client'],
     storeId: string,
     body: CreateMessageBody,
-    viewer: Viewer
+    authorId: string | null,
+    pluginId: string | null
   ): Promise<MessageView | null> {
     if (body.idempotencyKey === undefined) return null
     const existing = await db.message.findFirst({
@@ -609,8 +676,10 @@ export class MessagesService {
       throw resourceConflict('this reply was discarded')
     }
     const message = messageView(existing)
+    // The key is the author's: another person, or another plugin, using it is not a retry
     if (
-      message.authorId !== viewer.userId ||
+      message.authorId !== authorId ||
+      message.authorPluginId !== pluginId ||
       message.type !== body.type ||
       (body.type === MessageType.TEMPLATE && !sameTemplate(existing.metadata, body)) ||
       (isMediaBody(body) && !(await this.sameFiles(db, storeId, existing, body)))
@@ -780,7 +849,7 @@ export class MessagesService {
   private announce(
     tx: PrismaTransaction,
     storeId: string,
-    viewer: Viewer,
+    authorId: string | null,
     messageId: string,
     createdAt: Date,
     body: CreateMessageBody,
@@ -791,7 +860,7 @@ export class MessagesService {
       storeId,
       conversationId: body.conversationId,
       messageId,
-      authorId: viewer.userId
+      authorId
     }
     if (body.type === MessageType.INTERNAL_NOTE) {
       this.events.publish(tx, Events.MESSAGE_NOTE_ADDED, {
@@ -800,9 +869,9 @@ export class MessagesService {
         visibility
       })
       for (const mentionedUserId of mentions) {
-        // Nobody is told of a mention of themselves
-        if (mentionedUserId === viewer.userId) continue
-        this.events.publish(tx, Events.MESSAGE_MENTION, { ...base, mentionedUserId })
+        // Nobody is told of a mention of themselves, and a note with no person behind it mentions nobody (refused earlier)
+        if (authorId === null || mentionedUserId === authorId) continue
+        this.events.publish(tx, Events.MESSAGE_MENTION, { ...base, authorId, mentionedUserId })
       }
       return
     }

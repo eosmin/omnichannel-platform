@@ -357,7 +357,8 @@ export interface MessageNoteAddedPayload {
   storeId: string
   conversationId: string
   messageId: string
-  authorId: string
+  // Null for a note a plugin wrote as the system
+  authorId: string | null
   createdAt: string
   visibility: ConversationVisibility
 }
