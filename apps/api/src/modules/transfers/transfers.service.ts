@@ -36,6 +36,7 @@ import {
 import { encodeCursor } from '../customers/list-cursor'
 import type { Actor } from '../tenancy'
 
+import { reachableTransfer, visibleStoreIds, visibleStoresOf } from './transfers.reach'
 import type {
   CloseTransferBody,
   CreateTransferBody,
@@ -51,9 +52,7 @@ import {
   type LockedTransfer,
   lockTransfer,
   nextTransferNumber,
-  reachableTransfer,
-  type TransferItem,
-  visibleStoreIds
+  type TransferItem
 } from './transfers.support'
 import {
   LINE_SELECT,
@@ -112,13 +111,13 @@ export class TransfersService {
     query: ListTransfersQuery
   ): Promise<TransferPage> {
     const { cursor } = query
-    const visible = await visibleStoreIds(this.prisma, organizationId, actor.userId)
+    const visible = await visibleStoresOf(this.prisma, organizationId, actor)
     const rows = await this.prisma.client.stockTransfer.findMany({
       where: {
         organizationId,
         ...(query.status === undefined ? {} : { status: query.status }),
         AND: [
-          reachableTransfer(actor.userId, visible),
+          reachableTransfer(actor, visible),
           ...(query.warehouseId === undefined
             ? []
             : [
@@ -160,8 +159,8 @@ export class TransfersService {
   }
 
   async get(organizationId: string, actor: Actor, transferId: string): Promise<TransferView> {
-    const visible = await visibleStoreIds(this.prisma, organizationId, actor.userId)
-    return this.read(this.prisma.client, organizationId, transferId, actor.userId, visible)
+    const visible = await visibleStoresOf(this.prisma, organizationId, actor)
+    return this.read(this.prisma.client, organizationId, transferId, actor, visible)
   }
 
   async create(
@@ -226,7 +225,7 @@ export class TransfersService {
       const locked = await lockTransfer(tx, organizationId, transferId)
       // A transfer made only of other stores' lines is not one the caller knows
       const reachable = await tx.stockTransfer.findFirst({
-        where: { id: transferId, ...reachableTransfer(actor.userId, visible) },
+        where: { id: transferId, ...reachableTransfer(actor, visible) },
         select: { id: true }
       })
       if (reachable === null) throw resourceNotFound('transfer')
@@ -647,11 +646,11 @@ export class TransfersService {
     db: PrismaService['client'],
     organizationId: string,
     transferId: string,
-    userId: string,
+    actor: Actor,
     visible: readonly string[]
   ): Promise<TransferView> {
     const header = await db.stockTransfer.findFirst({
-      where: { id: transferId, organizationId, ...reachableTransfer(userId, visible) },
+      where: { id: transferId, organizationId, ...reachableTransfer(actor, visible) },
       select: TRANSFER_SELECT
     })
     if (header === null) throw resourceNotFound('transfer')

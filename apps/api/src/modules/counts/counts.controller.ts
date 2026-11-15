@@ -53,20 +53,25 @@ export class CountsController {
   @Get(ApiRoutes.counts.list)
   list(
     @CurrentOrganization() organization: Organization,
-    @Query(new ZodValidationPipe(listCountsQuerySchema)) query: ListCountsQuery
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(listCountsQuerySchema)) query: ListCountsQuery,
+    @Req() req: AuthenticatedRequest
   ): Promise<CountPage> {
-    return this.counts.list(organization.id, query)
+    return this.counts.list(organization.id, query, actorOf(user, store, req))
   }
 
   @RequireAnyPermission(Permissions.INVENTORY_MANAGE_COUNTS, Permissions.INVENTORY_APPLY_COUNTS)
   @Get(ApiRoutes.counts.byId(':id'))
   get(
     @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', id()) countId: string,
-    @Query(new ZodValidationPipe(countLinesQuerySchema)) query: CountLinesQuery
+    @Query(new ZodValidationPipe(countLinesQuerySchema)) query: CountLinesQuery,
+    @Req() req: AuthenticatedRequest
   ): Promise<CountDetailView> {
-    return this.counts.get(organization.id, user.id, countId, query)
+    return this.counts.get(organization.id, actorOf(user, store, req), countId, query)
   }
 
   @RequirePermissions(Permissions.INVENTORY_MANAGE_COUNTS)
