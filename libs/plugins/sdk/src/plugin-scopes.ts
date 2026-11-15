@@ -21,6 +21,12 @@ export const PluginScopes = {
   SHIPMENTS_WRITE: 'shipments:write',
   // The directory of the channel accounts and their templates (Step 5.6 PR E1); the connection of an account stays human
   CHANNELS_READ: 'channels:read',
+  // What the store says to the customer about an order (the history of messages and the templates, Step 5.6 PR E3a); sending
+  // one is a scope of its own, with the routes that need a person's id
+  ORDER_MESSAGES_READ: 'order-messages:read',
+  // The preferences of the store (the factory defaults it overrode, the rules of returns): reading only, SETTINGS_EDIT and the
+  // security settings stay human
+  SETTINGS_READ: 'settings:read',
   // Of a channel plugin (TDD_10 §6.7): the routes arrive with Step 5.6 PR C3. They grant no human permission.
   CHANNEL_CONNECTIONS: 'channel:connections',
   CHANNEL_EVENTS: 'channel:events'
@@ -62,6 +68,9 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
     Permissions.CONVERSATIONS_VIEW,
     Permissions.MESSAGES_SEND_TEMPLATE
   ],
+  // The history of what was sent about an order and the templates are read by whoever reads orders, as for a person
+  [PluginScopes.ORDER_MESSAGES_READ]: [Permissions.ORDERS_VIEW],
+  [PluginScopes.SETTINGS_READ]: [Permissions.SETTINGS_VIEW],
   [PluginScopes.CHANNEL_CONNECTIONS]: [],
   [PluginScopes.CHANNEL_EVENTS]: []
 }

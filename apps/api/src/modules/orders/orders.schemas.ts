@@ -50,21 +50,39 @@ export const orderCursorSchema = z.string().transform((text, ctx): OrderCursor =
   return z.NEVER
 })
 
+const orderPageShape = {
+  cursor: orderCursorSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
+}
+
 export const listOrdersQuerySchema = z
   .strictObject({
-    cursor: orderCursorSchema.optional(),
-    limit: z.coerce
-      .number()
-      .int()
-      .min(1)
-      .max(PaginationLimits.MAX)
-      .default(PaginationLimits.DEFAULT),
+    ...orderPageShape,
     ...orderListFilterShape,
     ...orderSortShape
   })
   .refine(orderListFiltersAreConsistent, {
     message: 'give days or a shortcut, never both, and the first day not after the last'
   })
+
+// What a plugin may filter by: not the text search (it matches the name, email and phone of the customer), not the customer, and not
+// the guide or the carrier (shipping data). A name it is not given is a 400, as for any other the schema does not know.
+export const pluginListOrdersQuerySchema = z
+  .strictObject({
+    ...orderPageShape,
+    ...z.strictObject(orderListFilterShape).omit({
+      q: true,
+      customerId: true,
+      carrierConnectionId: true,
+      guide: true,
+      priceApprovalStatus: true
+    }).shape,
+    ...orderSortShape
+  })
+  .refine(orderListFiltersAreConsistent, {
+    message: 'give days or a shortcut, never both, and the first day not after the last'
+  })
+export type PluginListOrdersQuery = z.output<typeof pluginListOrdersQuerySchema>
 
 // The export takes the filters of the list and no page and no sort: the file is the whole result
 export const exportOrdersQuerySchema = z
