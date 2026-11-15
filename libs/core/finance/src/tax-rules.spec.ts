@@ -51,6 +51,34 @@ describe('roundedQuotient', () => {
     expect(roundedQuotient(2_147_483_647 * 10_000, 10_000, TaxRounding.HALF_UP)).toBe(2_147_483_647)
   })
 
+  it('agrees with a BigInt reference on amounts where a float quotient is off', () => {
+    const reference = (n: number, d: number, rounding: TaxRounding): number => {
+      const [bn, bd] = [BigInt(n), BigInt(d)]
+      const q = bn / bd
+      const r = bn % bd
+      if (r === 0n) return Number(q)
+      if (rounding === TaxRounding.DOWN) return Number(q)
+      if (rounding === TaxRounding.UP) return Number(q + 1n)
+      if (rounding === TaxRounding.HALF_UP) return Number(r * 2n >= bd ? q + 1n : q)
+      return Number(r * 2n > bd || (r * 2n === bd && q % 2n === 1n) ? q + 1n : q)
+    }
+    const numerators = [
+      9_007_199_254_740_991, 9_007_199_254_740_990, 8_999_999_999_999_999, 4_503_599_627_370_497
+    ]
+    for (const n of numerators) {
+      for (const d of [3, 7, 10_000, 11_300, 10_001, 20_000]) {
+        for (const rounding of Object.values(TaxRounding)) {
+          expect([n, d, rounding, roundedQuotient(n, d, rounding)]).toEqual([
+            n,
+            d,
+            rounding,
+            reference(n, d, rounding)
+          ])
+        }
+      }
+    }
+  })
+
   it('stays exact at the edge of the safe integers, where a float division would not', () => {
     expect(roundedQuotient(Number.MAX_SAFE_INTEGER, 2, TaxRounding.DOWN)).toBe(
       4_503_599_627_370_495
@@ -149,6 +177,8 @@ describe('allocateByWeight', () => {
   it('does not lose a cent where amount x weight passes 2^53', () => {
     const parts = allocateByWeight(2_000_000_000, [2_000_000_000, 1_999_999_999, 1])
     expect(parts.reduce((a, b) => a + b, 0)).toBe(2_000_000_000)
+    // The split itself, worked out in BigInt: the weights add up to 4e9, so the shares are 1e9, 999999999.5 and 0.5 of a cent, and the earlier of the two halves takes the spare cent
+    expect(parts).toEqual([1_000_000_000, 1_000_000_000, 0])
   })
 })
 
@@ -341,6 +371,52 @@ describe('computeOrderTax', () => {
         const grossTotal = result.lines.reduce((a, line) => a + line.grossCents, 0)
         expect(result.lines.reduce((a, line) => a + line.discountShareCents, 0)).toBe(123)
         expect(grossTotal).toBe(333 * 3 + 1999 + 7 * 11)
+      }
+    }
+  })
+
+  it('takes a discount equal to the subtotal and a rate of 100 %, and keeps net + tax = base in both modes and every rounding', () => {
+    for (const includesTax of [true, false]) {
+      for (const rounding of Object.values(TaxRounding)) {
+        const result = computeOrderTax({
+          lines: [
+            { unitPriceCents: 500, quantity: 2, treatment: TaxTreatment.TAXED, rateBps: 10_000 },
+            taxed(333)
+          ],
+          discountCents: 1333,
+          shippingCents: 777,
+          shippingRateBps: 10_000,
+          includesTax,
+          rounding
+        })
+        expect(result.lines.every(line => line.baseCents === 0 && line.taxCents === 0)).toBe(true)
+        expect(result.shippingTaxCents + result.shippingNetCents).toBe(
+          includesTax ? 777 : 777 + result.shippingTaxCents
+        )
+        const plain = computeOrderTax({
+          lines: [
+            { unitPriceCents: 999, quantity: 1, treatment: TaxTreatment.TAXED, rateBps: 10_000 }
+          ],
+          discountCents: 0,
+          shippingCents: 0,
+          shippingRateBps: null,
+          includesTax,
+          rounding
+        })
+        const line = plain.lines[0]
+        expect((line?.netCents ?? 0) + (includesTax ? (line?.taxCents ?? 0) : 0)).toBe(
+          line?.baseCents
+        )
+        // 100 % included: half of the price is tax, rounded as the books say; excluded: all of it again
+        expect(line?.taxCents).toBe(
+          includesTax
+            ? rounding === TaxRounding.DOWN
+              ? 499
+              : rounding === TaxRounding.HALF_EVEN
+                ? 500
+                : 500
+            : 999
+        )
       }
     }
   })

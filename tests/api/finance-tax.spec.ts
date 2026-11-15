@@ -75,6 +75,27 @@ describe('The tax rates, the tax of a product and the tax settings of a store (S
     await owner.$disconnect()
   })
 
+  // What the cases change on the shared books of A is put back after each one, whether it passed or not
+  afterEach(async () => {
+    const vat = await owner.taxRate.findFirst({
+      where: { organizationId: ctx.orgA.id, code: 'IVA' }
+    })
+    if (vat !== null) {
+      await owner.taxRate.updateMany({
+        where: { organizationId: ctx.orgA.id, isDefault: true },
+        data: { isDefault: false }
+      })
+      await owner.taxRate.update({ where: { id: vat.id }, data: { isDefault: true, active: true } })
+    }
+    await owner.financeSettings.update({
+      where: { organizationId: ctx.orgA.id },
+      data: { taxRounding: TaxRounding.HALF_UP, shippingTaxed: true }
+    })
+    for (const store of [ctx.storeA, ctx.storeB]) {
+      await owner.storeSettings.update({ where: { storeId: store.id }, data: { preferences: {} } })
+    }
+  })
+
   const asAdminA = () => api(app, ctx.adminA, ctx.storeA)
   const errorOf = (response: { body: unknown }) => (response.body as ErrorBody).error
   const code = (): string => `T${randomUUID().slice(0, 8)}`
@@ -359,6 +380,26 @@ describe('The tax rates, the tax of a product and the tax settings of a store (S
       )
     })
 
+    it('lets a role with exactly finance:manage_accounts manage rates, and with products:edit set the tax of a product', async () => {
+      const manager = await asRole('tax-manager', [
+        Permissions.FINANCE_VIEW,
+        Permissions.FINANCE_MANAGE_ACCOUNTS,
+        Permissions.PRODUCTS_VIEW,
+        Permissions.PRODUCTS_EDIT
+      ])
+      const created = await manager.post(ApiRoutes.finance.taxRates.create).send(newRate())
+      const rate = created.body as TaxRateBody
+      const renamed = await manager
+        .patch(ApiRoutes.finance.taxRates.byId(rate.id))
+        .send({ name: 'Mine' })
+      const product = await createProduct(owner, { storeId: ctx.storeA.id })
+      const taxed = await manager
+        .patch(ApiRoutes.products.byId(product.id))
+        .send({ taxTreatment: TaxTreatment.EXEMPT })
+
+      expect([created.status, renamed.status, taxed.status]).toEqual([CREATED, OK, OK])
+    })
+
     it('does not let a role without finance:view read the rates', async () => {
       const nobody = await asRole('tax-nobody', [Permissions.PRODUCTS_VIEW])
       expect((await nobody.get(ApiRoutes.finance.taxRates.list)).status).toBe(FORBIDDEN)
@@ -374,10 +415,19 @@ describe('The tax rates, the tax of a product and the tax settings of a store (S
       expect(changed.status).toBe(OK)
       expect(changed.body).toMatchObject({ taxRounding: 'half_even', shippingTaxed: false })
       expect(bad.status).toBe(BAD_REQUEST)
-      // Back to the defaults for the others
-      await asAdminA()
-        .patch(ApiRoutes.finance.settings)
-        .send({ taxRounding: TaxRounding.HALF_UP, shippingTaxed: true })
+      const found = await waitForAuditEntries(owner, {
+        organizationId: ctx.orgA.id,
+        action: AuditAction.FINANCE_SETTINGS_CHANGED,
+        resourceId: ctx.orgA.id
+      })
+      expect(found.map(row => row.metadata)).toContainEqual(
+        expect.objectContaining({
+          changes: {
+            taxRounding: { from: 'half_up', to: 'half_even' },
+            shippingTaxed: { from: true, to: false }
+          }
+        })
+      )
     })
   })
 
@@ -398,11 +448,19 @@ describe('The tax rates, the tax of a product and the tax settings of a store (S
 
       expect(exempt.status).toBe(OK)
       expect(exempt.body).toMatchObject({ taxTreatment: 'exempt', taxRateId: null })
-      const found = await waitForAuditEntries(owner, {
-        action: AuditAction.PRODUCT_TAX_CHANGED,
-        resourceId: product.id
-      })
-      expect(found.length).toBeGreaterThan(0)
+      const found = await waitForAuditEntries(
+        owner,
+        { action: AuditAction.PRODUCT_TAX_CHANGED, resourceId: product.id },
+        2
+      )
+      expect(found.map(row => row.metadata)).toContainEqual(
+        expect.objectContaining({
+          fromTreatment: 'taxed',
+          toTreatment: 'exempt',
+          fromTaxRateId: rate.id,
+          toTaxRateId: null
+        })
+      )
     })
 
     it('audits a product made exempt at creation, as it audits the change of one that exists', async () => {
@@ -496,10 +554,15 @@ describe('The tax rates, the tax of a product and the tax settings of a store (S
         pricesIncludeTax: false
       })
       const found = await waitForAuditEntries(owner, {
+        organizationId: ctx.orgA.id,
         action: AuditAction.FINANCE_SETTINGS_CHANGED,
         resourceId: ctx.storeA.id
       })
-      expect(found.length).toBeGreaterThan(0)
+      expect(found.map(row => row.metadata)).toContainEqual(
+        expect.objectContaining({
+          changes: { pricesIncludeTax: { from: true, to: false } }
+        })
+      )
     })
 
     it('are not written by the preferences route, which needs another permission', async () => {
@@ -580,7 +643,7 @@ describe('The tax rates, the tax of a product and the tax settings of a store (S
       ).rejects.toThrow(/FINANCE_TAX_RATE_FOREIGN/)
     })
 
-    it('refuses a rate for a product that is not taxed, and a half of the tax snapshot of an order', async () => {
+    it('refuses, in the database, a rate for a product that is not taxed and a treatment that is not one', async () => {
       const rate = await createRate()
       const product = await createProduct(owner, { storeId: ctx.storeA.id })
       await expect(
@@ -588,10 +651,10 @@ describe('The tax rates, the tax of a product and the tax settings of a store (S
           where: { id: product.id },
           data: { taxTreatment: 'exempt', taxRateId: rate.id }
         })
-      ).rejects.toThrow()
+      ).rejects.toThrow(/products_tax_rate_taxed_check/)
       await expect(
         owner.product.update({ where: { id: product.id }, data: { taxTreatment: 'other' } })
-      ).rejects.toThrow()
+      ).rejects.toThrow(/products_tax_treatment_check/)
     })
   })
 

@@ -1173,10 +1173,16 @@ const resources: IsolationResource[] = [
     },
     scope: 'organization',
     listPath: ApiRoutes.finance.taxRates.list,
-    modify: { path: ApiRoutes.finance.taxRates.byId, body: { name: 'hacked' } },
-    untouched: async (owner, id) =>
-      (await owner.taxRate.findUnique({ where: { id }, select: { name: true } }))?.name !==
-      'hacked',
+    // Switching it off is the change that does the most harm: the rate stops being taxed at, and the check also looks that the
+    // other routes of the rate (rename, make default, switch on) left it as it was
+    modify: { path: ApiRoutes.finance.taxRates.deactivate, method: 'post', body: {} },
+    untouched: async (owner, id) => {
+      const row = await owner.taxRate.findUnique({
+        where: { id },
+        select: { name: true, active: true, isDefault: true }
+      })
+      return row?.name !== 'hacked' && row?.active === true && row?.isDefault === false
+    },
     creation: {
       path: ApiRoutes.finance.taxRates.create,
       body: name => {
