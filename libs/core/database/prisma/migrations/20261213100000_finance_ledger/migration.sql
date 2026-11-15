@@ -540,12 +540,16 @@ SET search_path = public, pg_temp AS $$
 BEGIN
   IF TG_OP = 'DELETE' THEN
     IF OLD.is_system THEN
-      RAISE EXCEPTION 'FINANCE_ACCOUNT_HAS_ENTRIES: a system account cannot be deleted, only deactivated';
+      RAISE EXCEPTION 'a system account cannot be deleted, only deactivated';
     END IF;
     RETURN OLD;
   END IF;
   IF NEW.organization_id <> OLD.organization_id THEN
     RAISE EXCEPTION 'an account does not change organization';
+  END IF;
+  -- The flag that makes an account undeletable cannot be taken off
+  IF OLD.is_system AND NOT NEW.is_system THEN
+    RAISE EXCEPTION 'a system account stays a system account';
   END IF;
   IF NEW.type <> OLD.type AND EXISTS (SELECT 1 FROM journal_lines WHERE organization_id = OLD.organization_id AND account_id = OLD.id) THEN
     RAISE EXCEPTION 'FINANCE_ACCOUNT_TYPE_LOCKED: the type of an account with entries cannot change';
@@ -579,7 +583,8 @@ ON CONFLICT ("role_id", "name") DO NOTHING;
 -- columns of the settings and on none of these two (advance_finance_head runs as the owner of the function). A column added
 -- to finance_settings later has to be granted to them in its own migration: the default is closed.
 -- ============================================================================================================
-REVOKE UPDATE ON TABLE finance_settings FROM platform_app, platform_worker;
+-- The settings row is never deleted: a new one would start the counter, the head and the lock of the books again
+REVOKE UPDATE, DELETE ON TABLE finance_settings FROM platform_app, platform_worker;
 GRANT UPDATE (country_code, base_currency, accounting_start_date, locked_through, recognize_sale_on, rounding_account_id, updated_at)
   ON TABLE finance_settings TO platform_app, platform_worker;
 
@@ -607,7 +612,9 @@ BEGIN
          OR NEW.closed_by IS DISTINCT FROM OLD.closed_by THEN
         RAISE EXCEPTION 'FINANCE_PERIOD_CLOSED: a closed period is frozen';
       END IF;
-    ELSIF NEW.reopened_at IS NULL OR NEW.reopened_by IS NULL OR NEW.reopen_reason IS NULL OR btrim(NEW.reopen_reason) = '' THEN
+    -- A reopen is a new one: the time moves (the record of an earlier reopen does not do)
+    ELSIF NEW.reopened_at IS NULL OR NEW.reopened_at IS NOT DISTINCT FROM OLD.reopened_at OR NEW.reopened_by IS NULL
+          OR NEW.reopen_reason IS NULL OR btrim(NEW.reopen_reason) = '' THEN
       RAISE EXCEPTION 'FINANCE_REOPEN_NOT_LATEST: reopening a period says who, when and why';
     END IF;
   END IF;
@@ -640,3 +647,44 @@ ALTER TABLE account_role_mappings
     'sales_returns', 'cost_of_goods_sold', 'inventory_loss', 'inventory_gain', 'carrier_freight_expense',
     'carrier_commission_expense', 'cod_differences', 'opening_equity', 'rounding', 'uncategorized_expense'
   ));
+
+ALTER TABLE fiscal_periods
+  ADD CONSTRAINT chk_fiscal_periods_reopen_reason CHECK (reopen_reason IS NULL OR char_length(reopen_reason) <= 500);
+ALTER TABLE finance_posting_failures
+  ADD CONSTRAINT chk_finance_posting_failures_source_type CHECK (source_type IN (
+    'order', 'shipment', 'remittance', 'return', 'inventory_movement', 'purchase_receipt', 'supplier_payment',
+    'finance_transaction', 'manual'
+  )),
+  ADD CONSTRAINT chk_finance_posting_failures_event_kind CHECK (char_length(event_kind) BETWEEN 1 AND 100);
+
+-- ============================================================================================================
+-- The balances by period follow the journal by trigger, in the transaction of each line, and the application roles can only
+-- read them: they cannot drift from the immutable lines (the daily reconciliation compares them and raises, it never writes)
+-- ============================================================================================================
+CREATE FUNCTION apply_journal_line_to_balance() RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp AS $$
+DECLARE
+  v_period text;
+BEGIN
+  SELECT e.period_id INTO v_period FROM journal_entries e WHERE e.id = NEW.entry_id;
+  IF NEW.store_id IS NULL THEN
+    INSERT INTO account_period_balances (id, organization_id, account_id, store_id, period_id, debit_cents, credit_cents, updated_at)
+    VALUES (gen_random_uuid()::text, NEW.organization_id, NEW.account_id, NULL, v_period, NEW.debit_cents, NEW.credit_cents, now())
+    ON CONFLICT (organization_id, account_id, period_id) WHERE store_id IS NULL
+    DO UPDATE SET debit_cents = account_period_balances.debit_cents + EXCLUDED.debit_cents,
+                  credit_cents = account_period_balances.credit_cents + EXCLUDED.credit_cents, updated_at = now();
+  ELSE
+    INSERT INTO account_period_balances (id, organization_id, account_id, store_id, period_id, debit_cents, credit_cents, updated_at)
+    VALUES (gen_random_uuid()::text, NEW.organization_id, NEW.account_id, NEW.store_id, v_period, NEW.debit_cents, NEW.credit_cents, now())
+    ON CONFLICT (organization_id, account_id, period_id, store_id) WHERE store_id IS NOT NULL
+    DO UPDATE SET debit_cents = account_period_balances.debit_cents + EXCLUDED.debit_cents,
+                  credit_cents = account_period_balances.credit_cents + EXCLUDED.credit_cents, updated_at = now();
+  END IF;
+  RETURN NULL;
+END $$;
+
+CREATE TRIGGER trg_journal_lines_balance AFTER INSERT ON journal_lines
+  FOR EACH ROW EXECUTE FUNCTION apply_journal_line_to_balance();
+REVOKE INSERT, UPDATE, DELETE ON TABLE account_period_balances FROM platform_app, platform_worker;

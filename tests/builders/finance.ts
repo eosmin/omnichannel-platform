@@ -245,9 +245,9 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
   if (touched === 0) return
   // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
   await owner.$transaction(async tx => {
-    // The triggers of the three tables that refuse a delete are off for the length of this transaction, and on again before it
+    // The triggers of the four tables that refuse a delete are off for the length of this transaction, and on again before it
     // commits (an error rolls the whole transaction back, the switch included)
-    const guarded = ['journal_lines', 'journal_entries', 'fiscal_periods']
+    const guarded = ['journal_lines', 'journal_entries', 'fiscal_periods', 'ledger_accounts']
     for (const table of guarded)
       await tx.$executeRawUnsafe(`ALTER TABLE ${table} DISABLE TRIGGER USER`)
     await tx.journalLine.deleteMany({ where })
@@ -257,9 +257,9 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     await tx.accountRoleMapping.deleteMany({ where })
     await tx.paymentMethodAccount.deleteMany({ where })
     await tx.financeSettings.deleteMany({ where })
-    // The tree of accounts: a parent restricts its children, so the links are cut first. A system account is deleted by the
-    // owner in a run, which the guard allows only for the ones that are not system: they are made plain first
-    await tx.ledgerAccount.updateMany({ where, data: { parentId: null, isSystem: false } })
+    // The tree of accounts: a parent restricts its children, so the links are cut first (the guard of the chart is off, so the
+    // system accounts go too)
+    await tx.ledgerAccount.updateMany({ where, data: { parentId: null } })
     await tx.ledgerAccount.deleteMany({ where })
     await tx.fiscalPeriod.deleteMany({ where })
     for (const table of guarded)

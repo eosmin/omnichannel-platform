@@ -371,6 +371,15 @@ describe('The tables of the ledger', () => {
           }
         })
       ).resolves.toMatchObject({ status: PeriodStatus.OPEN })
+      // A reopen is a new one: the record of the earlier reopen does not stand for the next
+      await owner.fiscalPeriod.update({
+        where: { id: closed },
+        data: { status: PeriodStatus.CLOSED, closedAt: new Date(), closedBy: 'u' }
+      })
+      await refused(
+        owner.fiscalPeriod.update({ where: { id: closed }, data: { status: PeriodStatus.OPEN } }),
+        'says who, when and why'
+      )
       // An open period with nothing in it may be deleted
       await expect(owner.fiscalPeriod.delete({ where: { id: open } })).resolves.toBeDefined()
     })
@@ -506,6 +515,11 @@ describe('The tables of the ledger', () => {
 
   describe('the counter and the head of the chain', () => {
     it('are not updatable by the roles of the application, which hold the other settings columns', async () => {
+      const canTable = async (role: string, privilege: string): Promise<boolean> => {
+        const rows = await owner.$queryRaw<{ allowed: boolean }[]>`
+          SELECT has_table_privilege(${role}, 'finance_settings', ${privilege}) AS allowed`
+        return rows[0]?.allowed === true
+      }
       const can = async (role: string, column: string): Promise<boolean> => {
         const rows = await owner.$queryRaw<{ allowed: boolean }[]>`
           SELECT has_column_privilege(${role}, 'finance_settings', ${column}, 'UPDATE') AS allowed`
@@ -514,6 +528,8 @@ describe('The tables of the ledger', () => {
       for (const role of ['platform_app', 'platform_worker']) {
         expect(await can(role, 'next_entry_number')).toBe(false)
         expect(await can(role, 'last_entry_hash')).toBe(false)
+        // The row of the settings is never deleted: a new one would start the counter and the lock again
+        expect(await canTable(role, 'DELETE')).toBe(false)
         for (const column of [
           'locked_through',
           'recognize_sale_on',
@@ -780,7 +796,11 @@ describe('The tables of the ledger', () => {
       const system = await account(orgA.id, 'X141', { isSystem: true })
       await refused(
         owner.ledgerAccount.delete({ where: { id: system.id } }),
-        'FINANCE_ACCOUNT_HAS_ENTRIES'
+        'a system account cannot be deleted'
+      )
+      await refused(
+        owner.ledgerAccount.update({ where: { id: system.id }, data: { isSystem: false } }),
+        'a system account stays a system account'
       )
       const plain = await account(orgA.id, 'X142')
       await expect(owner.ledgerAccount.delete({ where: { id: plain.id } })).resolves.toBeDefined()
@@ -866,12 +886,70 @@ describe('The tables of the ledger', () => {
   })
 
   describe('the balances by period', () => {
-    it('are one row per account, period and store, a missing store being one, and of one organization', async () => {
+    const balance = (
+      organizationId: string,
+      accountId: string,
+      periodId: string,
+      storeId: string | null
+    ) =>
+      owner.accountPeriodBalance.findFirst({
+        where: { organizationId, accountId, periodId, storeId }
+      })
+
+    it('follow the lines by trigger, by account, period and store, a missing store being one', async () => {
+      const org = await owner.organization.create({
+        data: { name: `${prefix}-bal`, slug: `${prefix}-bal` }
+      })
+      const store = await ensureStore(owner, org.id, `${prefix}-store-bal`)
+      const f = await createFinanceFixture(owner, org.id)
+      await postTestEntry(owner, simpleEntry(f, 1000))
+      await postTestEntry(owner, simpleEntry(f, 250))
+      await postTestEntry(owner, {
+        ...simpleEntry(f),
+        lines: [
+          { accountId: f.accounts.expense, debitCents: 40, storeId: store.id },
+          { accountId: f.accounts.cash, creditCents: 40 }
+        ]
+      })
+      expect(await balance(org.id, f.accounts.expense, f.periodId, null)).toMatchObject({
+        debitCents: 1250n,
+        creditCents: 0n
+      })
+      expect(await balance(org.id, f.accounts.cash, f.periodId, null)).toMatchObject({
+        debitCents: 0n,
+        creditCents: 1290n
+      })
+      expect(await balance(org.id, f.accounts.expense, f.periodId, store.id)).toMatchObject({
+        debitCents: 40n
+      })
+      // The books balance: what was debited in all accounts is what was credited
+      const sums = await owner.accountPeriodBalance.aggregate({
+        where: { organizationId: org.id },
+        _sum: { debitCents: true, creditCents: true }
+      })
+      expect(sums._sum.debitCents).toBe(sums._sum.creditCents)
+    })
+
+    it('are the same as the sum of the lines, past 32 bits', async () => {
+      const org = await owner.organization.create({
+        data: { name: `${prefix}-big`, slug: `${prefix}-big` }
+      })
+      const f = await createFinanceFixture(owner, org.id)
+      const limit = 2_000_000_000
+      for (let index = 0; index < 3; index += 1) {
+        await postTestEntry(owner, simpleEntry(f, limit))
+      }
+      expect(await balance(org.id, f.accounts.expense, f.periodId, null)).toMatchObject({
+        debitCents: BigInt(limit) * 3n
+      })
+    })
+
+    it('are one row per account, period and store, and of one organization (the owner cannot break it either)', async () => {
       const row = (extra: Record<string, unknown> = {}) =>
         owner.accountPeriodBalance.create({
           data: {
             organizationId: orgA.id,
-            accountId: a.accounts.cash,
+            accountId: a.accounts.liability,
             periodId: a.periodId,
             ...extra
           }
@@ -881,7 +959,7 @@ describe('The tables of the ledger', () => {
       await row({ storeId: storeA.id })
       await refused(row({ storeId: storeA.id }), /uq_account_period_balances_store/)
       await refused(
-        row({ debitCents: -1n, accountId: a.accounts.bank }),
+        row({ debitCents: -1n, accountId: a.accounts.revenue }),
         'chk_account_period_balances_sums'
       )
       await refused(
@@ -892,18 +970,22 @@ describe('The tables of the ledger', () => {
       )
     })
 
-    it('keep sums past 32 bits', async () => {
-      const big = 9_000_000_000n
-      const row = await owner.accountPeriodBalance.create({
-        data: {
-          organizationId: orgA.id,
-          accountId: a.accounts.liability,
-          periodId: a.periodId,
-          debitCents: big,
-          creditCents: big
+    it('cannot be written by the roles of the application, which read them', async () => {
+      const has = async (role: string, privilege: string): Promise<boolean> => {
+        const rows = await owner.$queryRaw<{ allowed: boolean }[]>`
+          SELECT has_table_privilege(${role}, 'account_period_balances', ${privilege}) AS allowed`
+        return rows[0]?.allowed === true
+      }
+      for (const role of ['platform_app', 'platform_worker']) {
+        for (const privilege of ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) {
+          expect({ role, privilege, allowed: await has(role, privilege) }).toEqual({
+            role,
+            privilege,
+            allowed: false
+          })
         }
-      })
-      expect(row.debitCents).toBe(big)
+        expect(await has(role, 'SELECT')).toBe(true)
+      }
     })
   })
 

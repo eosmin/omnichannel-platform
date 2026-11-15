@@ -62,6 +62,9 @@ export function isIsoDate(value: string): boolean {
 const isWholeCents = (value: number): boolean =>
   Number.isSafeInteger(value) && value >= 0 && value <= FinanceLimits.MAX_LINE_CENTS
 
+// The length the database counts in a CHECK (char_length: code points, not UTF-16 units), of the text as it is stored
+const codePoints = (text: string | null | undefined): number => [...(text ?? '')].length
+
 export function totalsOf(lines: readonly DraftLine[]): { debitCents: number; creditCents: number } {
   let debitCents = 0
   let creditCents = 0
@@ -101,7 +104,7 @@ export function validateDraftEntry(entry: DraftEntry): EntryProblem[] {
   // A manual entry says why: it is the accountant's adjustment, and the auditor reads the memo (TDD_18 §4.2, E13)
   const memo = entry.memo?.trim() ?? ''
   if (entry.type === JournalEntryType.MANUAL && memo.length === 0) invalid('memo_required')
-  if (memo.length > FinanceLimits.MEMO_MAX_LENGTH) invalid('memo_length')
+  if (codePoints(entry.memo) > FinanceLimits.MEMO_MAX_LENGTH) invalid('memo_length')
   // The system has no user: it says so by origin, and a manual entry is always a person's
   if (entry.type === JournalEntryType.MANUAL && entry.origin !== EntryOrigin.USER) {
     invalid('manual_by_user')
@@ -114,21 +117,28 @@ export function validateDraftEntry(entry: DraftEntry): EntryProblem[] {
   if (entry.lines.length < 2) unbalanced('at_least_two_lines')
   if (entry.lines.length > FinanceLimits.MAX_LINES_PER_ENTRY) invalid('too_many_lines')
 
+  // Every line is looked at and each broken rule is reported once, however many lines break it
   let wholeCents = true
+  const seen = new Set<string>()
+  const once = (report: () => void, rule: string): void => {
+    if (!seen.has(rule)) {
+      seen.add(rule)
+      report()
+    }
+  }
   for (const line of entry.lines) {
     if (((line.partyType ?? null) === null) !== ((line.partyId ?? null) === null)) {
-      invalid('party_pair')
+      once(() => invalid('party_pair'), 'party_pair')
     }
-    if ((line.memo?.length ?? 0) > FinanceLimits.MEMO_MAX_LENGTH) invalid('line_memo_length')
+    if (codePoints(line.memo) > FinanceLimits.MEMO_MAX_LENGTH) {
+      once(() => invalid('line_memo_length'), 'line_memo_length')
+    }
     if (!isWholeCents(line.debitCents) || !isWholeCents(line.creditCents)) {
       wholeCents = false
-      unbalanced('whole_cents')
-      break
-    }
-    // One side per line, and it is positive: the CHECK of the table says the same
-    if (line.debitCents > 0 === line.creditCents > 0) {
-      unbalanced('one_side_per_line')
-      break
+      once(() => unbalanced('whole_cents'), 'whole_cents')
+    } else if (line.debitCents > 0 === line.creditCents > 0) {
+      // One side per line, and it is positive: the CHECK of the table says the same
+      once(() => unbalanced('one_side_per_line'), 'one_side_per_line')
     }
   }
   if (wholeCents) {

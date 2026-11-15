@@ -68,10 +68,10 @@ describe('hashEntry', () => {
   it('is pinned: the canonical form and the digest never change under an existing chain', () => {
     // If this fails the canonical form changed: every chain already written would break. Bump LEDGER_HASH_VERSION instead.
     expect(canonicalEntry(base(1n, null))).toBe(
-      'v1||1|2026-11-15|expense|||||k1||user|u1|a,100,0,,,,,|b,0,100,s,supplier,p,,'
+      '=v1||=1|=2026-11-15|=expense|||||=k1||=user|=u1|=a,=100,=0,,,,,|=b,=0,=100,=s,=supplier,=p,,'
     )
     expect(hashEntry(base(1n, null))).toBe(
-      '80d75eb5a4e4ad051e1b83c5e7b378bb9a87a21c6fafd9eef353b3948b1da5eb'
+      'b7cba0f08c050c9498bff0084f562582acebad8f10bb4cfcbef0a9b8f4c9e835'
     )
   })
 
@@ -117,6 +117,15 @@ describe('hashEntry', () => {
       }
     ]
     for (const variant of variants) expect(hashEntry(variant)).not.toBe(original)
+  })
+
+  it('tells a missing value from an empty one', () => {
+    const missing = base(1n, null)
+    expect(hashEntry({ ...missing, memo: '' })).not.toBe(hashEntry(missing))
+    expect(hashEntry({ ...missing, sourceId: '' })).not.toBe(hashEntry(missing))
+    expect(
+      hashEntry({ ...missing, lines: missing.lines.map(line => ({ ...line, partyId: '' })) })
+    ).not.toBe(hashEntry(missing))
   })
 
   it('does not let two different entries share a canonical string through a separator', () => {

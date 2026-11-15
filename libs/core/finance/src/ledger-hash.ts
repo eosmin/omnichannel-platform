@@ -43,8 +43,10 @@ export interface HashableEntry {
 
 // A field cannot contain a separator: `\`, `|` and `,` are escaped, so two different entries never share a canonical
 // string (`a|b` and `a`, `b` are not the same thing)
+// A missing value (NULL) and an empty one ('') are different rows and hash differently: a present value is written after a
+// `=`, a missing one as nothing at all
 const escaped = (value: string | number | bigint | null): string =>
-  (value === null ? '' : String(value)).replace(/[\\|,]/g, character => `\\${character}`)
+  value === null ? '' : `=${String(value).replace(/[\\|,]/g, character => `\\${character}`)}`
 
 export function canonicalEntry(entry: HashableEntry): string {
   const lines = entry.lines.map(line =>
@@ -65,7 +67,7 @@ export function canonicalEntry(entry: HashableEntry): string {
   return (
     [
       LEDGER_HASH_VERSION,
-      entry.prevHash ?? LedgerHash.GENESIS,
+      entry.prevHash,
       entry.number,
       entry.entryDate,
       entry.type,

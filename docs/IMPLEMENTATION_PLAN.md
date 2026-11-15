@@ -1297,7 +1297,7 @@ routes. Never stacked: 4B.2b starts from `main` after 4B.2a is merged.
 
 **PR 4B.2b (services, routes, isolation, frontend and plugin maps)**
 - [ ] The posting service in `libs/core/finance` (the only writer of the ledger: lock on `FinanceSettings`, next number and head, hash,
-      entry and lines with the organization named on each line, the balances by upsert, idempotency key, the reversal; emits
+      entry and lines with the organization named on each line (the balances by period follow by trigger, nothing to upsert), idempotency key, the reversal; emits
       `finance.entry_posted` and `finance.entry_reversed`), the module registered in the api and the worker
 - [ ] `POST /finance/setup` (country, start date, template) with the setup state; `apps/api/src/modules/finance`: settings, accounts
       (create, rename, deactivate, re-parent; type locked once used), role mappings, payment method accounts, periods (list, open on
@@ -1325,6 +1325,7 @@ trigger to prove); (4) an entry is reversed at most once, by a unique index (`FI
 service); (5) accounts, role maps and settings restrict the deletion of their organization (the books are never lost by a cascade). (6) the counter and the head of the chain are not updatable by the application roles (column privileges; the default for a column added to
 `finance_settings` later is closed, its migration grants it), and the lock of the books can only be the end of the last closed period, so
 the service of 4B.8 changes the period first and the lock after it; a closed period is frozen and reopens only with who, when and why.
+(7) the balances by period are kept by a trigger of the lines and the application roles only read them (rejected: the service upserts them, as `TDD_18 §2.5` says; a drift would then need only one bug); the seeded account names of the `SV` template are the owner's data, in Spanish, as `TDD_18 §3.1` says (rule 6 is for interface copy, and every label drawn around them is a key). The test cleanup switches the triggers of four tables off inside one transaction, which waits behind concurrent writers instead of exposing them (an `ALTER TABLE` lock).
 **Accepted trade-offs of PR 4B.2a (rule 12, tracked here):** the lint rule does not see a nested relation write (`fiscalPeriod.update({
 data: { entries: { create } } })`), which the database triggers refuse to take outside the rules anyway; 4B.2b adds the posting service
 as the single writer and its spec proves no other module imports a path to the tables. The balanced-entry constraint re-sums the entry

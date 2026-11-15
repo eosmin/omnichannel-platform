@@ -234,7 +234,5 @@ export const FinanceIdempotencyKey = {
 // every chain already written, so the version travels with the code and a spec pins the output.
 export const LedgerHash = {
   ALGORITHM: 'sha256',
-  SEPARATOR: '|',
-  // The previous hash of the first entry of an organization
-  GENESIS: ''
+  SEPARATOR: '|'
 } as const

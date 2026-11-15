@@ -134,6 +134,32 @@ describe('validateDraftEntry', () => {
     )
   })
 
+  it('counts a memo as the database does: in code points, as it is stored', () => {
+    expect(rules(entry({ memo: '😀'.repeat(FinanceLimits.MEMO_MAX_LENGTH) }))).toEqual([])
+    expect(rules(entry({ memo: '😀'.repeat(FinanceLimits.MEMO_MAX_LENGTH + 1) }))).toContain(
+      'memo_length'
+    )
+    expect(rules(entry({ memo: ' '.repeat(FinanceLimits.MEMO_MAX_LENGTH + 1) }))).toContain(
+      'memo_length'
+    )
+  })
+
+  it('looks at every line and reports each broken rule once', () => {
+    const lines: DraftLine[] = [
+      { ...debit('a', 1.5), partyType: 'supplier' as never },
+      { ...credit('b', 5), partyType: 'supplier' as never },
+      { ...credit('c', 5), memo: 'x'.repeat(FinanceLimits.MEMO_MAX_LENGTH + 1) },
+      { accountId: 'd', debitCents: 0, creditCents: 0 }
+    ]
+    const found = rules(entry({ lines }))
+    expect(found.sort()).toEqual([
+      'line_memo_length',
+      'one_side_per_line',
+      'party_pair',
+      'whole_cents'
+    ])
+  })
+
   it('refuses a source or a party that is only half there, and a line memo that is too long', () => {
     expect(rules(entry({ sourceType: 'order' as never }))).toContain('source_pair')
     expect(rules(entry({ sourceId: 'x' }))).toContain('source_pair')
