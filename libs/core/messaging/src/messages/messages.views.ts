@@ -53,7 +53,7 @@ export interface ReactionView {
 // of its text. A message that was deleted keeps no text here.
 // The order the agent gave the files; the files of the customer have no place and keep their arrival order
 // (a mutable array: Prisma does not take a readonly one)
-const MEDIA_ORDER: (
+export const MEDIA_ORDER: (
   { position: { sort: 'asc'; nulls: 'last' } } | { createdAt: 'asc' } | { id: 'asc' }
 )[] = [{ position: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }, { id: 'asc' }]
 
