@@ -8,6 +8,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module'
 import { ApiKeysModule } from './modules/api-keys'
 import { AuthModule } from './modules/auth/auth.module'
 import { CacheInvalidationModule } from './modules/cache'
+import { CarrierGuidesModule } from './modules/carrier-guides/carrier-guides.module'
 import { CarriersModule } from './modules/carriers/carriers.module'
 import { ChannelRegistryModule } from './modules/channel-registry'
 import { ChannelsModule } from './modules/channels/channels.module'
@@ -65,6 +66,7 @@ import { WidgetModule } from './modules/widget/widget.module'
     ChannelRegistryModule,
     ChannelsModule,
     CarriersModule,
+    CarrierGuidesModule,
     OrderMessagesModule,
     PluginsApiModule,
     PluginWidgetsApiModule,

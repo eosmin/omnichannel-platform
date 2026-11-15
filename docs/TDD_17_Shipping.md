@@ -1545,6 +1545,42 @@ our status (shown through its i18n key, in a selector with the reportable status
 the source; above it, the unmapped codes with how many times they arrived, the last time, a sample of
 the carrier's text and the number of shipments waiting, each with "Map to…".
 
+### 4.18 Prepaid guide balance and the refund benefit (Step 4.16, owner request of 2026-11-15)
+
+**What is known and what is not.** Everything below is the owner's report of what the carriers told them, and **is to be confirmed with each carrier; none of it is a legal fact**. One carrier sells prepaid guides in packages (a quantity, VAT included), sometimes with a promotion such as "buy 100, receive 10 free", so the cost per guide differs between purchases. The other quotes a rate with VAT included (prepaid or guide by guide: unknown). Both give a **benefit**: when the customer does not receive the product the guide is given back, while the shop's return rate in the period is **below 10 %**; above it the benefit is lost and comes back by itself in a period where the shop complies again. One carrier measures by periods of 15 days; the other's period and base are unknown. Unknown on both: **when** the guide is given back (at once or at the end of the period), the **exact formula** (what the percentage is taken over: guides created, dispatched or delivered; which statuses are a return), and whether what was lost can be recovered (questions C9 to C13 and F4 to F6 of the owner's private file). So **every rule is a setting of the connection**, every default that stands for a carrier's rule is marked `[CARRIER-CONFIRM]` in the code and in the screen, and the platform invents none.
+
+**Opt-in.** Nothing happens for a connection that has no policy row or whose switches are off: the balance is kept only when `balanceEnabled`, the benefit is judged only when `benefitEnabled`. A `local` connection never needs either.
+
+**Balance (a ledger of guides).** `carrier_guide_movements` is append-only (a trigger refuses `UPDATE` and `DELETE`, as the journal of Step 4B.2). A movement has a `kind`, a signed `guides_delta` and a signed `cost_cents_delta` (whole cents of USD, never a float):
+
+| kind | guides_delta | cost_cents_delta | written by |
+|---|---|---|---|
+| `purchase` | `paid + gift` | the total paid (VAT included) | a person with `carriers:manage_guide_balance` (`paid_quantity`, `gift_quantity`, `total_cost_cents`) |
+| `consume` | `-1` | 0 | the move of an outbound shipment to `label_created`, in the same transaction (`ShipmentWrites.move`); at most one per shipment (unique partial index) |
+| `refund` | `+1` | 0 | the benefit (below); at most one per shipment |
+| `adjustment` | any non-zero | 0 | a person, with a required reason, for what nobody can know (a guide the carrier gave back by hand, a lost one) |
+| `void` | the negative of the purchase | the negative of the purchase's cost | a person, to undo a purchase typed by mistake; once per purchase (unique) |
+
+The **balance** is the sum of `guides_delta`; the **average cost per guide** is the weighted mean `sum(cost_cents_delta of purchases and voids) / sum(guides_delta of purchases and voids)`, that is, what was paid divided by every guide received, gifts included, rounded half up to a cent (`null` with no purchase). A `consume` stores the average of that moment in `unit_cost_cents`, so that a later step can cost a shipment (Finance, 4B.5/4B.6, reads it; **this step posts nothing to the journal**). A guide made against a balance of 0 is **never refused**: the move goes on and the people with `carriers:view_guide_balance` are told once when the balance crosses to 0 (`warnOnEmptyBalance`), and once when it crosses the optional low-balance threshold (`lowBalanceThreshold`). A return guide (`kind = return`) consumes nothing (unknown whether the carrier charges it).
+
+**Benefit policy** (`carrier_guide_policies`, one row per connection, every column a setting):
+
+| setting | values | default |
+|---|---|---|
+| `periodKind` | `fixed_days` (every `periodDays` days from `periodAnchor`), `calendar_month`, `calendar_half_month` (1 to 15 and 16 to the end), in the store's timezone | `fixed_days`, 15 days `[CARRIER-CONFIRM]` |
+| `thresholdBps` | 1 to 10000; the benefit holds while the rate is **strictly below** it | 1000 (10 %) `[CARRIER-CONFIRM]` |
+| `warnAtBps` | the share of the threshold, in basis points, at which the team is warned | 8000 (80 % of the limit) |
+| `base` | `created` (guides that reached `label_created`), `dispatched` (first status from `picked_up` on), `delivered` | `delivered` `[CARRIER-CONFIRM]` |
+| `returnStatuses` | the normalized `ShipmentStatus` values that count as a return (`returning`, `returned`; a package counts once, at its earliest such event) | `returned` `[CARRIER-CONFIRM]` |
+| `refundRule` | `immediate` (when the return happens) or `at_period_close` | `at_period_close` `[CARRIER-CONFIRM]` |
+| `lossRule` | `from_crossing` (what is returned after the rate reached the threshold is not given back) or `from_close` (the whole period is judged by its final rate) | `from_crossing` `[CARRIER-CONFIRM]` |
+
+`immediate` with `from_close` is refused: the closing rate is not known when the return happens. The **rate** of a period is `returns / base`, both counted by the moment of their own event inside the period (a return counts in the period where it happened, not where its guide was made), in basis points with integer arithmetic (`returns * 10000 < thresholdBps * base`; a period with no base has rate 0). The **state** is `in_force` (rate under `warnAtBps` of the threshold), `at_risk` (from there up to the threshold) and `lost` (at or above it). Refunding: a returned guide is given back **when** the rule says (immediate: at its move; at close: by the daily job `CLOSE_BENEFIT_PERIODS`, which closes each ended period once, `carrier_benefit_periods` is its idempotency and its history) and **if** the loss rule says it was still in force: `from_crossing` refunds the returns whose running rate, taken at their own moment with the return included, is below the threshold; `from_close` refunds every return of the period only when the final rate is below the threshold. The refund is a `refund` movement (one per shipment). Nothing is taken back: a period that was refunded is never reopened, and a guide that was not given back is not recovered later unless a person writes an `adjustment`.
+
+**Warnings.** When a move makes the state of the current period worse (`in_force` to `at_risk`, or to `lost`) one event is raised in the same transaction (`carrier.benefit_alert`), and the api tells the people with `carriers:view_guide_balance` with a notification of its own type, in Spanish and English. The balance alerts are the event `carrier.guide_balance_alert` with `level = low | empty`.
+
+**Where it lives.** Pure rules: `libs/core/domain/carrier-guide-rules.ts`; the writes inside a move: `libs/core/shipping/src/guide-balance.ts`, called by `ShipmentWrites.move`; the routes: `apps/api/src/modules/carrier-guides`; the daily close: `apps/worker`. The core, the api and the worker name no carrier: what a carrier gives is data of its connection. Routes (all under `/carriers/:id/`): `GET guide-balance`, `GET guide-movements`, `POST guide-purchases`, `POST guide-adjustments`, `POST guide-purchases/:movementId/void`, `GET` and `PUT guide-policy`, `GET benefit`, `GET benefit-periods`; the reads ask `carriers:view_guide_balance`, the writes `carriers:manage_guide_balance` (Admin only: they show what the owner paid).
+
 ---
 
 ## 5. Cache and events

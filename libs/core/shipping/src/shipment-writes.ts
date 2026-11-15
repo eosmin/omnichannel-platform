@@ -15,6 +15,7 @@ import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/e
 import { DomainEvents } from '@platform/core/event-bus'
 import { type ActorRef, Events } from '@platform/core/events'
 
+import { applyGuideEffectsOfMove } from './guide-balance'
 import { isShipmentTransitionAllowed } from './shipment-rules'
 
 // The only writes of the status of a shipment and of a pickup (TDD_17 §3): a lint rule keeps every other file out of
@@ -115,12 +116,14 @@ export class ShipmentWrites {
     if (to === ShipmentStatus.DELIVERED) await this.settleDelivery(tx, identity, meta.occurredAt)
     // A package that is cancelled, or on its way back, never brings the cash that was due on delivery
     if (CodVoidingStatuses.includes(to)) await this.voidUndeliveredCod(tx, identity)
+    // One instant for the history row and for what follows the move: a period boundary must not fall between them
+    const at = meta.occurredAt ?? new Date()
     await tx.shipmentEvent.create({
       data: {
         storeId: identity.storeId,
         shipmentId: identity.shipmentId,
         status: to,
-        occurredAt: meta.occurredAt ?? new Date(),
+        occurredAt: at,
         source: meta.source,
         ...(meta.description === undefined ? {} : { description: meta.description }),
         ...(meta.providerEventId === undefined ? {} : { providerEventId: meta.providerEventId }),
@@ -128,6 +131,19 @@ export class ShipmentWrites {
         payload: { actorId: meta.actor.id, from, ...(meta.payload ?? {}) }
       }
     })
+    // The balance of prepaid guides and the refund benefit of the connection follow the move, in the same transaction; a
+    // connection with no policy is not touched (TDD_17 §4.18)
+    await applyGuideEffectsOfMove(
+      tx,
+      this.events,
+      {
+        shipmentId: identity.shipmentId,
+        storeId: identity.storeId,
+        connectionId: identity.connectionId
+      },
+      to,
+      at
+    )
     this.announce(tx, identity, from, to, meta.actor, meta.replay === true)
   }
 

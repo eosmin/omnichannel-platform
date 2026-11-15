@@ -232,7 +232,17 @@ export const ApiRoutes = {
     statusCatalog: (id: string) => `/carriers/${id}/status-catalog`, // What the plugin knows of its codes, with the row each has
     statusMappings: (id: string) => `/carriers/${id}/status-mappings`,
     statusMappingByCode: (id: string, code: string) => `/carriers/${id}/status-mappings/${code}`, // PUT maps it, DELETE restores the plugin default
-    unmappedStatuses: (id: string) => `/carriers/${id}/unmapped-statuses`
+    unmappedStatuses: (id: string) => `/carriers/${id}/unmapped-statuses`,
+    // The balance of prepaid guides and the refund benefit of a connection (TDD_17 §4.18)
+    guideBalance: (id: string) => `/carriers/${id}/guide-balance`,
+    guideMovements: (id: string) => `/carriers/${id}/guide-movements`,
+    guidePurchases: (id: string) => `/carriers/${id}/guide-purchases`, // POST records a purchase
+    guidePurchaseVoid: (id: string, movementId: string) =>
+      `/carriers/${id}/guide-purchases/${movementId}/void`,
+    guideAdjustments: (id: string) => `/carriers/${id}/guide-adjustments`,
+    guidePolicy: (id: string) => `/carriers/${id}/guide-policy`, // GET reads it, PUT replaces it
+    benefit: (id: string) => `/carriers/${id}/benefit`, // The rate and the state of the current period
+    benefitPeriods: (id: string) => `/carriers/${id}/benefit-periods` // The periods the daily close judged
   },
 
   shipments: {

@@ -1,3 +1,4 @@
+import type { BenefitAlertLevelType, GuideBalanceAlertLevelType } from '../carrier-guide-constants'
 import type { ErrorCode } from '../errors/error-codes'
 import type {
   AttentionReason,
@@ -196,6 +197,24 @@ export interface CarrierStatusUnmappedPayload {
   storeId: string
   connectionId: string
   providerCode: string
+}
+
+// The balance of prepaid guides of a connection reached its low-balance threshold or zero (TDD_17 §4.18): ids and numbers only
+export interface CarrierGuideBalanceAlertPayload {
+  storeId: string
+  connectionId: string
+  level: GuideBalanceAlertLevelType
+  // The guides left after the move (zero or below for `empty`)
+  balance: number
+}
+
+// The refund benefit of a connection got worse in the current period (TDD_17 §4.18): ids and numbers only
+export interface CarrierBenefitAlertPayload {
+  storeId: string
+  connectionId: string
+  level: BenefitAlertLevelType
+  rateBps: number
+  thresholdBps: number
 }
 
 // A bulk run of labels (TDD_17 §4.6): ids and counts. What was made of each order is read from the job, never from the event.
@@ -562,6 +581,8 @@ export interface DomainEventPayloads {
   [Events.WEBHOOK_AUTO_DISABLED]: WebhookAutoDisabledPayload
   [Events.PLUGIN_ERROR]: PluginErrorPayload
   [Events.CARRIER_STATUS_UNMAPPED]: CarrierStatusUnmappedPayload
+  [Events.CARRIER_GUIDE_BALANCE_ALERT]: CarrierGuideBalanceAlertPayload
+  [Events.CARRIER_BENEFIT_ALERT]: CarrierBenefitAlertPayload
   [Events.BULK_LABELS_PROGRESS]: BulkLabelsProgressPayload
   [Events.BULK_LABELS_DONE]: BulkLabelsDonePayload
   [Events.PICKUP_MANUAL_REQUIRED]: PickupManualRequiredPayload

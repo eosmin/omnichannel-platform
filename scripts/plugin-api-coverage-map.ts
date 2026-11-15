@@ -51,6 +51,8 @@ const ORDER_PRINT =
   'No server route that a plugin needs: the sheet is printed by the browser from the order a plugin already reads'
 const CARRIER_ADMIN =
   'The credentials, webhook secret and status mappings of a carrier connection: owner only, secrets never leave the store'
+const GUIDE_BALANCE =
+  'What the owner paid for prepaid guides and the refund terms agreed with a carrier: owner only (Admin preset), finance data that no plugin scope needs'
 const CHANNEL_ADMIN =
   'The connection of a channel account (tokens, labels, OAuth): owner only; a channel plugin registers its own through plugin-api/channel (Step 5.6)'
 const SETTINGS_ADMIN =
@@ -410,6 +412,14 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'carriers.statusMappings': { none: CARRIER_ADMIN },
   'carriers.statusMappingByCode': { none: CARRIER_ADMIN },
   'carriers.unmappedStatuses': { proposed: 'carriers:read', step: STEP },
+  'carriers.guideBalance': { none: GUIDE_BALANCE },
+  'carriers.guideMovements': { none: GUIDE_BALANCE },
+  'carriers.guidePurchases': { none: GUIDE_BALANCE },
+  'carriers.guidePurchaseVoid': { none: GUIDE_BALANCE },
+  'carriers.guideAdjustments': { none: GUIDE_BALANCE },
+  'carriers.guidePolicy': { none: GUIDE_BALANCE },
+  'carriers.benefit': { none: GUIDE_BALANCE },
+  'carriers.benefitPeriods': { none: GUIDE_BALANCE },
   'shipments.list': { scope: 'shipments:read' },
   'shipments.byId': { scope: 'shipments:read' },
   'shipments.forOrder': { scope: ['shipments:read', 'shipments:write'] },

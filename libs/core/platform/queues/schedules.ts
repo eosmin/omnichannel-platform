@@ -24,7 +24,8 @@ export const Schedules = {
   EVALUATE_PICKUPS: '* * * * *', // Every minute; the job decides which connections are due (TDD_17 §4.10)
   POLL_SHIPMENT_STATUS: '*/10 * * * *', // The job applies each connection's own interval
   CLEAN_BULK_LABELS: '30 3 * * *',
-  CHECK_REMITTANCES: '0 15 * * *' // Daily
+  CHECK_REMITTANCES: '0 15 * * *', // Daily
+  CLOSE_BENEFIT_PERIODS: '10 6 * * *' // Daily 06:10 UTC: the periods of the refund benefit that ended (TDD_17 §4.18)
 } as const
 
 // A run of the snooze and auto-archive sweeps takes batches of conversations, the oldest first (for the

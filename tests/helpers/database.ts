@@ -10,6 +10,7 @@ import {
 } from '@platform/core/database-testing'
 
 import { REDIS_URL } from '../../apps/api/src/testing/test-env'
+import { purgeCarrierGuides } from '../builders/carrier-guides'
 import { purgeFinance } from '../builders/finance'
 
 // Everything a run creates carries this prefix, and cleanUp removes exactly that. Nothing here
@@ -83,6 +84,8 @@ export async function cleanUp(owner: OwnerClient, prefix: string): Promise<void>
   await owner.orderReturnLine.deleteMany({ where: ofRun })
   // The lines of a remittance restrict their shipment, and the shipments they settled restrict the remittance
   await owner.codRemittanceLine.deleteMany({ where: ofRun })
+  // The ledger of guides restricts the shipment a consume or a refund is about, and is append-only even for the owner
+  await purgeCarrierGuides(owner, ofRun)
   await owner.shipment.deleteMany({ where: ofRun })
   await owner.codRemittance.deleteMany({ where: ofRun })
   // A profile is pointed at by the remittances an import made, so it goes after them

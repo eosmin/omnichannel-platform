@@ -200,7 +200,18 @@ export const QueryKeys = {
     locations: (storeId: string, connectionId: string, parentId: string | null, search: string) =>
       ['carriers', storeId, connectionId, 'locations', parentId, search] as const,
     statusCatalog: (storeId: string, connectionId: string) =>
-      ['carriers', storeId, connectionId, 'status-catalog'] as const
+      ['carriers', storeId, connectionId, 'status-catalog'] as const,
+    // The balance of prepaid guides and the refund benefit of a connection (TDD_17 §4.18)
+    guideBalance: (storeId: string, connectionId: string) =>
+      ['carriers', storeId, connectionId, 'guide-balance'] as const,
+    guideMovements: (storeId: string, connectionId: string) =>
+      ['carriers', storeId, connectionId, 'guide-movements'] as const,
+    guidePolicy: (storeId: string, connectionId: string) =>
+      ['carriers', storeId, connectionId, 'guide-policy'] as const,
+    benefit: (storeId: string, connectionId: string) =>
+      ['carriers', storeId, connectionId, 'benefit'] as const,
+    benefitPeriods: (storeId: string, connectionId: string) =>
+      ['carriers', storeId, connectionId, 'benefit-periods'] as const
   },
   pickups: {
     all: (storeId: string) => ['pickups', storeId] as const,

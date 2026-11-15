@@ -70,7 +70,11 @@
           "failed_attempt": "Intento de entrega fallido"
         },
         "carrier": {
-          "status_unmapped": "Estado del transportista no reconocido"
+          "status_unmapped": "Estado del transportista no reconocido",
+          "guide_balance_low": "Guías prepagadas por agotarse",
+          "guide_balance_empty": "Guías prepagadas agotadas",
+          "benefit_at_risk": "Beneficio de reintegro en riesgo",
+          "benefit_lost": "Beneficio de reintegro perdido"
         },
         "bulk_labels": {
           "ready": "Etiquetas listas"
@@ -781,6 +785,22 @@
       "status_unmapped": {
         "title": "Estado de transportista desconocido",
         "body": "{carrier} envió el estado \"{code}\", que la plataforma no conoce. Asígnalo en Ajustes, Transportistas, para que se apliquen sus actualizaciones de envío."
+      },
+      "guide_balance_low": {
+        "title": "Guías prepagadas por agotarse",
+        "body": "A {carrier} le quedan {balance, plural, one {# guía prepagada} other {# guías prepagadas}}."
+      },
+      "guide_balance_empty": {
+        "title": "Guías prepagadas agotadas",
+        "body": "Las guías prepagadas de {carrier} se agotaron. Se siguen haciendo guías, pero nadie las ha pagado todavía: registra la próxima compra."
+      },
+      "benefit_at_risk": {
+        "title": "Beneficio de reintegro en riesgo",
+        "body": "La tasa de devoluciones con {carrier} es {rate} % en este periodo y el límite es {limit} %. Por encima de él ya no se reintegran las guías de los paquetes no entregados."
+      },
+      "benefit_lost": {
+        "title": "Beneficio de reintegro perdido",
+        "body": "La tasa de devoluciones con {carrier} llegó a {rate} % en este periodo, igual o por encima del límite de {limit} %. Las guías de los paquetes no entregados no se reintegran mientras siga así."
       }
     },
     "channel": {
@@ -2981,7 +3001,8 @@
         "analytics": "Analítica",
         "org": "Organización",
         "finance": "Finanzas",
-        "fiscal": "Documentos fiscales"
+        "fiscal": "Documentos fiscales",
+        "carriers": "Transportistas"
       },
       "permissions": {
         "conversations": {
@@ -3102,6 +3123,10 @@
         "fiscal": {
           "view": "Ver documentos fiscales",
           "manage": "Gestionar documentos fiscales"
+        },
+        "carriers": {
+          "view_guide_balance": "Ver saldo de guías y beneficio de reintegro",
+          "manage_guide_balance": "Gestionar saldo de guías y beneficio de reintegro"
         }
       },
       "members": {
