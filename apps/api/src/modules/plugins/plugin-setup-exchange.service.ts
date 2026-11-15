@@ -2,13 +2,16 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { generateToken, hashToken } from '@platform/core/crypto'
+import { CredentialCipher, generateToken, hashToken } from '@platform/core/crypto'
 import { lockStoreForWrite, PrismaService } from '@platform/core/database'
 import {
   PLUGIN_API_KEY_TOKEN_PREFIX,
+  PLUGIN_INSTALLATION_RESOURCE_TYPE,
   PluginInstallationStatus,
   PluginInstallLimits,
-  PluginStatus
+  PluginStatus,
+  WEBHOOK_SECRET_PREFIX,
+  WebhookLimits
 } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 
@@ -18,6 +21,9 @@ import { PluginSetupCodeStore } from './plugin-setup-code.store'
 // What the plugin gets back, once: its key, and what the key is for. The key is never returned again, by this route or by any other.
 export interface PluginSetupResult {
   apiKey: string
+  // The secret that signs the deliveries to the plugin's webhook endpoint (`whsec_...`), shown here once like the key: the platform
+  // keeps it sealed and signs with it. Null for a plugin with no webhook endpoint.
+  webhookSecret: string | null
   installationId: string
   pluginId: string
   storeId: string
@@ -45,7 +51,8 @@ export class PluginSetupExchangeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly codes: PluginSetupCodeStore,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly cipher: CredentialCipher
   ) {}
 
   async exchange(
@@ -56,6 +63,7 @@ export class PluginSetupExchangeService {
     if (record === null) throw invalidCode()
 
     const key = `${PLUGIN_API_KEY_TOKEN_PREFIX}${generateToken(PluginInstallLimits.KEY_SECRET_BYTES)}`
+    const webhookSecret = `${WEBHOOK_SECRET_PREFIX}${generateToken(WebhookLimits.SECRET_BYTES)}`
     const result = await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, record.storeId)
       const installation = await tx.pluginInstallation.findFirst({
@@ -66,7 +74,13 @@ export class PluginSetupExchangeService {
           status: PluginInstallationStatus.PENDING_SETUP,
           plugin: { status: PluginStatus.APPROVED }
         },
-        select: { id: true, pluginId: true, scopes: true, rateLimitPerMinute: true }
+        select: {
+          id: true,
+          pluginId: true,
+          scopes: true,
+          rateLimitPerMinute: true,
+          webhookEndpoint: true
+        }
       })
       if (installation === null) return null
       const activated = await tx.pluginInstallation.updateMany({
@@ -78,19 +92,28 @@ export class PluginSetupExchangeService {
         data: {
           status: PluginInstallationStatus.ACTIVE,
           apiKeyPrefix: key.slice(0, PluginInstallLimits.KEY_DISPLAY_PREFIX_LENGTH),
-          apiKeyHash: hashToken(key)
+          apiKeyHash: hashToken(key),
+          // A plugin with a webhook endpoint gets the secret that signs what is sent to it, and starts with a clean count of
+          // failures (an installation that was revoked and installed again must not come back turned off)
+          webhookSecret:
+            installation.webhookEndpoint === null
+              ? null
+              : this.cipher.seal({ secret: webhookSecret }),
+          webhookConsecutiveFailures: 0,
+          webhookLastFailureAt: null,
+          webhookDisabledAt: null
         }
       })
       return activated.count === 1 ? installation : null
     })
     if (result === null) throw invalidCode()
 
-    // The key is not in the entry: only which installation was set up. The actor is the platform: nobody is signed in.
+    // Neither the key nor the secret is in the entry: only which installation was set up. The actor is the platform: nobody is signed in.
     this.audit.log({
       action: AuditAction.PLUGIN_SETUP_COMPLETED,
       actor: { system: true },
       storeId: record.storeId,
-      resourceType: 'plugin_installation',
+      resourceType: PLUGIN_INSTALLATION_RESOURCE_TYPE,
       resourceId: result.id,
       metadata: { pluginId: result.pluginId },
       ...(caller.ipAddress === undefined ? {} : { ipAddress: caller.ipAddress }),
@@ -98,6 +121,7 @@ export class PluginSetupExchangeService {
     })
     return {
       apiKey: key,
+      webhookSecret: result.webhookEndpoint === null ? null : webhookSecret,
       installationId: result.id,
       pluginId: result.pluginId,
       storeId: record.storeId,

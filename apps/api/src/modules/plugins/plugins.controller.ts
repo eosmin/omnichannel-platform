@@ -27,7 +27,9 @@ import {
   installPluginSchema,
   pluginIdSchema,
   type RegisterPluginBody,
-  registerPluginSchema
+  registerPluginSchema,
+  type RevokePluginBody,
+  revokePluginSchema
 } from './plugins.schemas'
 
 type Store = ResolvedTenant['store']
@@ -113,8 +115,15 @@ export class PluginsController {
     @CurrentStore() store: Store,
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', new ZodValidationPipe(uuidSchema)) installationId: string,
-    @Req() req: AuthenticatedRequest
+    @Req() req: AuthenticatedRequest,
+    // The word the owner typed: an integration plugin is revoked only with it (TDD_10 §6.6); a channel plugin takes no body
+    @Body(new ZodValidationPipe(revokePluginSchema)) body?: RevokePluginBody
   ): Promise<PluginCatalogEntry> {
-    return this.installations.uninstall(store, installationId, actorOf(user, store, req))
+    return this.installations.uninstall(
+      store,
+      installationId,
+      actorOf(user, store, req),
+      body?.confirmation
+    )
   }
 }

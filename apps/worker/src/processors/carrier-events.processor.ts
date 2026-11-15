@@ -3,11 +3,18 @@ import { type Job, UnrecoverableError } from 'bullmq'
 import { z } from 'zod'
 
 import { isWebhookEvent, ShipmentEventSource } from '@platform/core/domain'
-import type { EventName } from '@platform/core/events'
-import { exactly, JobNames, QueueNames, type TriggerWebhookJob } from '@platform/core/queues'
+import { type EventName, Events } from '@platform/core/events'
+import {
+  exactly,
+  JobNames,
+  QueueNames,
+  type TriggerPluginWebhookJob,
+  type TriggerWebhookJob
+} from '@platform/core/queues'
 import { carrierEventSchema, type ProcessCarrierEventJob } from '@platform/plugins/runtime'
 
 import { CarrierEventApplier, CarrierEventHandled } from '../carriers/carrier-event-applier.service'
+import { PluginWebhookDeliverer } from '../webhooks/plugin-webhook-deliverer.service'
 import { TenantWebhookDeliverer } from '../webhooks/tenant-webhook-deliverer.service'
 
 import { BaseProcessor } from './base.processor'
@@ -42,7 +49,28 @@ const webhookJobSchema = exactly<TriggerWebhookJob>()(
   })
 )
 
-type WebhooksQueueJob = ProcessCarrierEventJob | TriggerWebhookJob
+// The delivery of an event to the webhook of a plugin installation (TDD_10 §6.5): the api queued one job per installation that
+// follows the event, with the payload already redacted to its scopes, and one more when the installation was revoked. The job
+// crossed Redis, so what the deliverer reads is checked again.
+const pluginWebhookJobSchema = exactly<TriggerPluginWebhookJob>()(
+  z.object({
+    pluginInstallationId: z.uuid(),
+    storeId: z.uuid(),
+    deliveryId: z.uuid(),
+    event: z.custom<EventName>(
+      value =>
+        typeof value === 'string' && (isWebhookEvent(value) || value === Events.PLUGIN_REVOKED)
+    ),
+    payload: z.record(z.string(), z.unknown()),
+    final: z.boolean().optional(),
+    correlationId: z
+      .string()
+      .regex(/^[\w.:-]{1,128}$/)
+      .optional()
+  })
+)
+
+type WebhooksQueueJob = ProcessCarrierEventJob | TriggerWebhookJob | TriggerPluginWebhookJob
 
 // The worker half of TDD_17 §4.9: the api verified the signature of the carrier and queued one job per event; this reads
 // them. (The queue also carries the deliveries of the webhooks of the stores, which the processor hands to its deliverer.) Each one is resolved for its connection, finds its shipment and moves it through the status engine (dedupe, order of
@@ -52,7 +80,8 @@ export class CarrierEventsProcessor extends BaseProcessor<WebhooksQueueJob> {
   constructor(
     support: ProcessorSupport,
     private readonly applier: CarrierEventApplier,
-    private readonly webhooks: TenantWebhookDeliverer
+    private readonly webhooks: TenantWebhookDeliverer,
+    private readonly pluginWebhooks: PluginWebhookDeliverer
   ) {
     super(QueueNames.WEBHOOKS, support)
   }
@@ -66,6 +95,9 @@ export class CarrierEventsProcessor extends BaseProcessor<WebhooksQueueJob> {
       case JobNames.TRIGGER_WEBHOOK:
         await this.handleWebhook(job)
         return
+      case JobNames.TRIGGER_PLUGIN_WEBHOOK:
+        await this.handlePluginWebhook(job)
+        return
       default:
         throw new UnrecoverableError('this queue has no processor for that job yet')
     }
@@ -77,6 +109,16 @@ export class CarrierEventsProcessor extends BaseProcessor<WebhooksQueueJob> {
     if (!parsed.success) throw new UnrecoverableError('the webhook job does not fit its schema')
     // A failure that may pass throws and BullMQ asks again; every attempt is a row of the delivery log
     await this.webhooks.deliver(parsed.data, job.attemptsMade + 1, {
+      maxAttempts: job.opts.attempts ?? 1
+    })
+  }
+
+  private async handlePluginWebhook(job: Job<WebhooksQueueJob>): Promise<void> {
+    const parsed = pluginWebhookJobSchema.safeParse(job.data)
+    if (!parsed.success) {
+      throw new UnrecoverableError('the plugin webhook job does not fit its schema')
+    }
+    await this.pluginWebhooks.deliver(parsed.data, job.attemptsMade + 1, {
       maxAttempts: job.opts.attempts ?? 1
     })
   }
