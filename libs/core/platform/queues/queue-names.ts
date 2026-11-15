@@ -54,6 +54,8 @@ export const JobNames = {
   FETCH_ORIGIN_MEDIA: 'fetch-origin-media', // The picture or the thumbnail of an ad: one job each
   ENFORCE_RETENTION: 'enforce-retention',
   RECONCILE_INVENTORY: 'reconcile-inventory',
+  // The automatic entry of one event of one source (TDD_18 §6.1): the worker loads the current rows and posts it under its key
+  POST_FINANCE_EVENT: 'post-finance-event',
   CREATE_SHIPMENTS: 'create-shipments', // One batch
   BULK_LABELS_MERGE: 'bulk-labels-merge',
   CANCEL_SHIPMENT: 'cancel-shipment',

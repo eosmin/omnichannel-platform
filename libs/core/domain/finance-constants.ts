@@ -314,7 +314,26 @@ export enum FinancePostingFailureReason {
   MISSING_AMOUNT = 'missing_amount',
   UNBALANCED = 'unbalanced',
   PERIOD_UNAVAILABLE = 'period_unavailable',
-  UNEXPECTED = 'unexpected'
+  UNEXPECTED = 'unexpected',
+  // Added by the automatic entries (4B.6a)
+  // The payment method has no account that receives it
+  PAYMENT_ACCOUNT_MISSING = 'payment_account_missing',
+  // The movements of the order carry no cost for a line of it (a cost of zero would hide the gap)
+  COST_MISSING = 'cost_missing',
+  // The order has no tax recorded (made before the tax columns): its entry would be invented
+  TAX_MISSING = 'tax_missing',
+  // The figures of the order do not add up to its total: the entry would be forced, so it is refused
+  AMOUNTS_DISAGREE = 'amounts_disagree',
+  // A cash on delivery order with no carrier to owe it: the receivable needs a party
+  CARRIER_MISSING = 'carrier_missing',
+  // The source is not in the state the event says (a sale not yet paid, a prepaid sale whose advance is not posted)
+  SOURCE_NOT_READY = 'source_not_ready',
+  // The ledger refused the entry (the period, the dimensions): the cause is in the logs
+  LEDGER_REFUSED = 'ledger_refused',
+  // The event never reached the queue, or the queue ran out of attempts: a person, or the sweep of 4B.6b, posts it again
+  NOT_QUEUED = 'not_queued',
+  // The same key already holds an entry of another amount: a bug, never overwritten (TDD_18 §4.1 rule 4)
+  KEY_CONTENT_MISMATCH = 'key_content_mismatch'
 }
 
 // The prefix of the idempotency key of each kind of entry (TDD_18 §4.1): `<prefix>:<sourceId>:<event>`

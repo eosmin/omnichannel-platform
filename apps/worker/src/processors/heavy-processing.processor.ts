@@ -7,10 +7,13 @@ import {
   bulkLocationsByConnectionSchema,
   CarrierStatusLimits,
   channelIdSchema,
+  FinanceEventKind,
+  FinanceSourceType,
   OriginMediaSlots,
   type OriginMediaSlot,
   shipmentPickupSchema
 } from '@platform/core/domain'
+import { FinancePostingService } from '@platform/core/finance-ledger'
 import {
   type BulkLabelsMergeJob,
   type CancelShipmentJob,
@@ -18,6 +21,7 @@ import {
   type EvaluatePickupsJob,
   type FetchInboundMediaJob,
   type FetchOriginMediaJob,
+  type PostFinanceEventJob,
   exactly,
   JobNames,
   QueueNames,
@@ -57,6 +61,7 @@ type HeavyJob =
   | SyncPickupJob
   | EvaluatePickupsJob
   | EnforceRetentionJob
+  | PostFinanceEventJob
 
 const bulkLabelsJobSchema = exactly<BulkLabelsMergeJob>()(
   z.object({
@@ -99,6 +104,16 @@ const originFetchJobSchema = exactly<FetchOriginMediaJob>()(
 )
 const reconcileJobSchema = exactly<ReconcileInventoryJob>()(
   z.object({ storeId: z.uuid(), correlationId: z.string().optional() })
+)
+const postFinanceJobSchema = exactly<PostFinanceEventJob>()(
+  z.object({
+    organizationId: z.uuid(),
+    sourceType: z.enum(FinanceSourceType),
+    sourceId: z.uuid(),
+    kind: z.enum(FinanceEventKind),
+    occurredAt: z.iso.datetime().optional(),
+    correlationId: z.string().optional()
+  })
 )
 const retentionJobSchema = exactly<EnforceRetentionJob>()(
   z.object({ storeId: z.uuid(), correlationId: z.string().optional() })
@@ -157,7 +172,8 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     private readonly canceller: ShipmentCanceller,
     private readonly pickupSyncer: PickupSyncer,
     private readonly pickupEvaluator: PickupEvaluator,
-    private readonly retention: StoreRetentionEnforcer
+    private readonly retention: StoreRetentionEnforcer,
+    private readonly financePosting: FinancePostingService
   ) {
     super(QueueNames.HEAVY_PROCESSING, support)
   }
@@ -179,6 +195,22 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       if (!reconcile.success)
         throw new UnrecoverableError('the reconcile job does not fit its schema')
       await this.reconciler.reconcileStore(reconcile.data.storeId)
+      return
+    }
+    if (job.name === JobNames.POST_FINANCE_EVENT) {
+      const post = postFinanceJobSchema.safeParse(job.data)
+      if (!post.success) throw new UnrecoverableError('the posting job does not fit its schema')
+      // A failure of the books is recorded for a person and returns; only an error of the infrastructure rejects, and the queue asks again
+      try {
+        await this.financePosting.post(post.data)
+      } catch (error) {
+        // The last attempt of an error of the infrastructure: the source goes on the list of failures instead of the dead-letter queue
+        if (isLastAttempt(job)) {
+          // The same database may be what failed: the original error stays the one the queue sees
+          await this.financePosting.markUnposted(post.data).catch(() => undefined)
+        }
+        throw error
+      }
       return
     }
     if (job.name === JobNames.ENFORCE_RETENTION) {

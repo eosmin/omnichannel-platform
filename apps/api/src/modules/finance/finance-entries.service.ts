@@ -16,6 +16,7 @@ import { LedgerService } from '@platform/core/finance-ledger'
 import { encodeCursor } from '../customers/list-cursor'
 import type { Actor } from '../tenancy'
 
+import { FinancePostingQueue } from './finance-posting.queue'
 import type {
   BalancesQuery,
   ListEntriesQuery,
@@ -45,7 +46,8 @@ export class FinanceEntriesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledger: LedgerService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly postingQueue: FinancePostingQueue
   ) {}
 
   async list(organizationId: string, query: ListEntriesQuery): Promise<EntryPage> {
@@ -222,6 +224,40 @@ export class FinanceEntriesService {
         })
       )
     }
+  }
+
+  // "Post again" of a failed source (TDD_18 §6.1): the same job the event queued, so the worker runs the same service on the rows as they
+  // are and closes the failure when it posts: a retry can never post what the job would not. It is queued, not run in the request, because
+  // the request's transaction cannot be rolled back in part when the ledger refuses.
+  async retryPosting(
+    organizationId: string,
+    failureId: string,
+    actor: Actor
+  ): Promise<{ data: { queued: true } }> {
+    const failure = await this.prisma.client.financePostingFailure.findFirst({
+      where: { id: failureId, organizationId, resolvedAt: null },
+      select: { sourceType: true, sourceId: true, eventKind: true, createdAt: true }
+    })
+    if (failure === null) throw resourceNotFound(FinanceResourceTypes.POSTING)
+    await this.postingQueue.enqueue({
+      organizationId,
+      sourceType: failure.sourceType,
+      sourceId: failure.sourceId,
+      kind: failure.eventKind,
+      occurredAt: failure.createdAt.toISOString()
+    })
+    this.audit.log({
+      action: AuditAction.FINANCE_POSTING_RETRIED,
+      actor: { userId: actor.userId },
+      organizationId,
+      storeId: actor.storeId,
+      resourceType: FinanceResourceTypes.POSTING,
+      resourceId: failureId,
+      metadata: { sourceType: failure.sourceType, eventKind: failure.eventKind },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
+    return { data: { queued: true } }
   }
 
   // The sources whose automatic entry failed and wait for a person (TDD_18 §6.1), the oldest trouble last

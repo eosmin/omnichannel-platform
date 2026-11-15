@@ -12,6 +12,8 @@ import { FinanceBankProfilesService } from './finance-bank-profiles.service'
 import { FinanceBankController } from './finance-bank.controller'
 import { FinanceEntriesService } from './finance-entries.service'
 import { FinancePeriodsService } from './finance-periods.service'
+import { FinancePostingListener } from './finance-posting.listener'
+import { FinancePostingQueue } from './finance-posting.queue'
 import { FinanceReconciliationService } from './finance-reconciliation.service'
 import { FinanceSettingsService } from './finance-settings.service'
 import { FinanceSetupService } from './finance-setup.service'
@@ -41,7 +43,9 @@ import { FinanceController } from './finance.controller'
     FinanceVatReportService,
     FinanceBankProfilesService,
     FinanceBankImportsService,
-    FinanceReconciliationService
+    FinanceReconciliationService,
+    FinancePostingListener,
+    FinancePostingQueue
   ],
   exports: [LedgerModule]
 })
