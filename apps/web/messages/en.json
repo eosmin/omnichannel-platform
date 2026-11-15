@@ -651,6 +651,7 @@
     "PLUGIN_CHALLENGE_FAILED": "The plugin address did not answer the check",
     "PLUGIN_CONSENT_MISMATCH": "The plugin asks for different access than the one you reviewed",
     "PLUGIN_SETUP_CODE_INVALID": "The setup code is not valid",
+    "PLUGIN_REVOKE_NOT_CONFIRMED": "Type REVOKE exactly as shown to revoke this plugin",
     "PLUGIN_NOT_FOUND": "The plugin does not exist",
     "PLUGIN_NOT_INSTALLED": "The plugin is not installed",
     "PLUGIN_SCOPE_DENIED": "The plugin has no access to that",
@@ -946,7 +947,7 @@
     "plugin": {
       "error": {
         "title": "A plugin failed",
-        "body": "A plugin returned an error. Review its settings."
+        "body": "What is sent to {plugin} failed several times in a row and was turned off. Review it in Settings, Plugins."
       }
     },
     "remittance": {

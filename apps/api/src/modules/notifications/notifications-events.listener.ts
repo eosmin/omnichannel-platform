@@ -17,6 +17,7 @@ import {
   OrderResourceTypes,
   OrderStatus,
   PackingNoteNotice,
+  PLUGIN_INSTALLATION_RESOURCE_TYPE,
   PickupResourceTypes,
   ProductResourceTypes,
   ReturnResourceTypes,
@@ -48,6 +49,7 @@ import {
   type OrderStatusChangedPayload,
   type PickupCutoffApproachingPayload,
   type PickupManualRequiredPayload,
+  type PluginErrorPayload,
   type ReturnEventPayload,
   type ShipmentEventPayload,
   type ShipmentStatusChangedPayload,
@@ -386,6 +388,36 @@ export class NotificationsEventsListener {
       this.logger.error(
         { webhookId, err: String(error) },
         'a disabled webhook could not be notified'
+      )
+    }
+  }
+
+  // The webhooks of a plugin were turned off after too many failures in a row (TDD_10 §6.5). The worker says it once, when it makes
+  // the change; the people who manage plugins are told, and only while they still hold the permission. The installation is read under
+  // the store of the event: an id of another store tells nobody.
+  @OnEvent(Events.PLUGIN_ERROR)
+  async onPluginError(payload: PluginErrorPayload): Promise<void> {
+    const { storeId, installationId } = payload
+    try {
+      const installation = await this.prisma.client.pluginInstallation.findFirst({
+        where: { id: installationId, storeId },
+        select: { id: true, plugin: { select: { name: true } } }
+      })
+      if (installation === null) return
+      await this.notifications.sendToStore({
+        storeId,
+        type: NotificationTypes.PLUGIN_ERROR,
+        // The name the author gave it, drawn as plain text: two plugins that fail are two different notices
+        params: { plugin: installation.plugin.name },
+        resourceType: PLUGIN_INSTALLATION_RESOURCE_TYPE,
+        resourceId: installationId,
+        actionPath: AppPaths.store.settings(storeId, StoreSettingsSections.PLUGINS),
+        requiredPermission: Permissions.SETTINGS_MANAGE_PLUGINS
+      })
+    } catch (error) {
+      this.logger.error(
+        { installationId, err: String(error) },
+        'a plugin error could not be notified'
       )
     }
   }

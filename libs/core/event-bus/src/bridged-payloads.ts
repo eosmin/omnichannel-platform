@@ -191,6 +191,13 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     webhookId: id,
     consecutiveFailures: z.number().int().min(1)
   }),
+  // The webhooks of a plugin turned off: the installation, the plugin and the count, never the address or the response
+  [Events.PLUGIN_ERROR]: z.object({
+    storeId: id,
+    installationId: id,
+    pluginId: z.string().regex(CHANNEL_ID_PATTERN),
+    consecutiveFailures: z.number().int().min(1)
+  }),
   // A bulk run of labels: ids and counts, never what was made of each order
   [Events.BULK_LABELS_PROGRESS]: z.object({
     storeId: id,
@@ -227,7 +234,8 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     storeId: id,
     conversationId: id,
     messageId: id,
-    authorId: id,
+    // Null for a note a plugin wrote as the system
+    authorId: id.nullable(),
     createdAt: z.iso.datetime(),
     visibility
   })

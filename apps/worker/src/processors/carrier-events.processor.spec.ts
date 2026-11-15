@@ -4,6 +4,7 @@ import { ShipmentEventSource, ShipmentStatus } from '@platform/core/domain'
 import { JobNames } from '@platform/core/queues'
 
 import type { CarrierEventApplier } from '../carriers/carrier-event-applier.service'
+import type { PluginWebhookDeliverer } from '../webhooks/plugin-webhook-deliverer.service'
 import type { TenantWebhookDeliverer } from '../webhooks/tenant-webhook-deliverer.service'
 
 import { CarrierEventsProcessor } from './carrier-events.processor'
@@ -24,14 +25,18 @@ const good = {
 function build() {
   const resolver = { apply: jest.fn((): Promise<string> => Promise.resolve('ignored')) }
   const webhooks = { deliver: jest.fn((): Promise<string> => Promise.resolve('delivered')) }
+  const pluginWebhooks = {
+    deliver: jest.fn((): Promise<string> => Promise.resolve('delivered'))
+  }
   const processor = new CarrierEventsProcessor(
     {} as ProcessorSupport,
     resolver as unknown as CarrierEventApplier,
-    webhooks as unknown as TenantWebhookDeliverer
+    webhooks as unknown as TenantWebhookDeliverer,
+    pluginWebhooks as unknown as PluginWebhookDeliverer
   )
   const handle = (job: unknown) =>
     (processor as unknown as { handle(job: unknown): Promise<void> }).handle(job)
-  return { resolver, webhooks, handle }
+  return { resolver, webhooks, pluginWebhooks, handle }
 }
 
 describe('CarrierEventsProcessor', () => {
@@ -169,6 +174,56 @@ describe('CarrierEventsProcessor', () => {
 
       await expect(attempt).rejects.toThrow('no answer')
       await expect(attempt).rejects.not.toBeInstanceOf(UnrecoverableError)
+    })
+  })
+  describe('the webhooks of the plugins', () => {
+    const pluginJob = {
+      pluginInstallationId: '5b1f0c9e-2f0a-4f6e-9a3e-1d2c3b4a5f60',
+      storeId: good.storeId,
+      deliveryId: '9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d',
+      event: 'message.received',
+      payload: { storeId: good.storeId, messageId: 'm-1' }
+    }
+
+    it('hands a good job to the plugin deliverer, and the final one of a revocation too', async () => {
+      const { webhooks, pluginWebhooks, handle } = build()
+
+      await handle({
+        name: JobNames.TRIGGER_PLUGIN_WEBHOOK,
+        data: pluginJob,
+        attemptsMade: 1,
+        opts: { attempts: 4 }
+      })
+      const final = { ...pluginJob, event: 'plugin.revoked', final: true }
+      await handle({
+        name: JobNames.TRIGGER_PLUGIN_WEBHOOK,
+        data: final,
+        attemptsMade: 0,
+        opts: {}
+      })
+
+      expect(pluginWebhooks.deliver).toHaveBeenNthCalledWith(1, pluginJob, 2, { maxAttempts: 4 })
+      expect(pluginWebhooks.deliver).toHaveBeenNthCalledWith(2, final, 1, { maxAttempts: 1 })
+      expect(webhooks.deliver).not.toHaveBeenCalled()
+    })
+
+    it('refuses for good a job that does not fit: an event nobody follows, a store that is not an id, a final flag that is not one', async () => {
+      const { pluginWebhooks, handle } = build()
+      const bad = [
+        { ...pluginJob, storeId: 'not-a-uuid' },
+        { ...pluginJob, event: 'channel.disconnected' },
+        { ...pluginJob, pluginInstallationId: undefined },
+        { ...pluginJob, final: 'yes' },
+        { ...pluginJob, correlationId: 'a\r\nx-evil: 1' },
+        {}
+      ]
+
+      for (const data of bad) {
+        await expect(handle({ name: JobNames.TRIGGER_PLUGIN_WEBHOOK, data })).rejects.toThrow(
+          UnrecoverableError
+        )
+      }
+      expect(pluginWebhooks.deliver).not.toHaveBeenCalled()
     })
   })
 })

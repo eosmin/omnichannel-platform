@@ -1,40 +1,31 @@
-import { createHmac } from 'node:crypto'
-
 import { Injectable } from '@nestjs/common'
 import type { Counter } from '@prometheus-io/client'
 import { PinoLogger } from 'nestjs-pino'
 
 import { CredentialCipher } from '@platform/core/crypto'
 import { PrismaService } from '@platform/core/database'
-import {
-  WEBHOOK_USER_AGENT,
-  WebhookDeliveryErrors,
-  WebhookHeaders,
-  WebhookLimits,
-  WebhookStatus
-} from '@platform/core/domain'
+import { WebhookLimits, WebhookStatus } from '@platform/core/domain'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
-import { CORRELATION_ID_HEADER } from '@platform/core/logger'
 import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 import type { TriggerWebhookJob } from '@platform/core/queues'
-import { UnsafeUrlError } from '@platform/core/url-safety'
 
-import { pinnedHttpsPost, WebhookPostFailed } from './pinned-https-post'
+import { pinnedHttpsPost } from './pinned-https-post'
+import {
+  type DeliveryDeps,
+  failureOf,
+  type Failure,
+  isGone,
+  openSecret,
+  sendSigned,
+  WebhookOutcome
+} from './webhook-sending'
 
-export const WebhookOutcome = {
-  DELIVERED: 'delivered',
-  SKIPPED: 'skipped', // The webhook is gone, or is not active any more: nothing to send, nothing to log
-  FAILED_FOR_GOOD: 'failed_for_good' // This delivery will not be sent again; the next event is a new delivery
-} as const
-export type WebhookOutcome = (typeof WebhookOutcome)[keyof typeof WebhookOutcome]
+export { WebhookOutcome, type DeliveryDeps } from './webhook-sending'
 
 // The status column is text: compared with the value of the enum as text
 const ACTIVE: string = WebhookStatus.ACTIVE
-
-// Prisma's "record not found" and "foreign key failed": the webhook was deleted while its delivery was running
-const GONE_CODES: ReadonlySet<string> = new Set(['P2025', 'P2003'])
 
 // The delivery of one event to one webhook of a store (TDD_07 §2). The job holds the webhook by id and the store it was queued
 // for: the webhook is read under that store, so a job can never reach another store's endpoint or secret. The address is checked
@@ -74,20 +65,16 @@ export class TenantWebhookDeliverer {
     try {
       // Inside the try: a secret that cannot be opened (the key changed, a damaged column) is a failure that is written down and
       // counted, not a job that dies in BullMQ with nothing in the log of the webhook
-      const secret = this.openSecret(webhook.secret)
-      const body = JSON.stringify({ event, data: payload, timestamp: now(), deliveryId })
-      const signature = createHmac('sha256', secret).update(body).digest('hex')
-      statusCode = await post(webhook.url, {
-        body,
-        timeoutMs: WebhookLimits.DELIVERY_TIMEOUT_MS,
-        headers: {
-          'content-type': 'application/json',
-          'user-agent': WEBHOOK_USER_AGENT,
-          [WebhookHeaders.SIGNATURE]: `sha256=${signature}`,
-          [WebhookHeaders.EVENT]: event,
-          [WebhookHeaders.DELIVERY]: deliveryId,
-          ...(job.correlationId === undefined ? {} : { [CORRELATION_ID_HEADER]: job.correlationId })
-        }
+      const secret = openSecret(this.cipher, webhook.secret)
+      statusCode = await sendSigned({
+        url: webhook.url,
+        secret,
+        event,
+        deliveryId,
+        payload,
+        correlationId: job.correlationId,
+        post,
+        now
       })
     } catch (error) {
       const failure = failureOf(error)
@@ -110,18 +97,6 @@ export class TenantWebhookDeliverer {
       )
     }
     return WebhookOutcome.DELIVERED
-  }
-
-  private openSecret(sealed: Uint8Array): string {
-    let secret: unknown
-    try {
-      secret = this.cipher.open(sealed)['secret']
-    } catch {
-      // A wrong key, damaged bytes or JSON that is not what was sealed: all of them are a secret nobody can read
-      throw new UnreadableSecret()
-    }
-    if (typeof secret !== 'string' || secret === '') throw new UnreadableSecret()
-    return secret
   }
 
   private async recordSuccess(
@@ -203,50 +178,11 @@ export class TenantWebhookDeliverer {
     try {
       await work()
     } catch (error) {
-      const code = (error as { code?: unknown } | null)?.code
-      if (typeof code === 'string' && GONE_CODES.has(code)) {
+      if (isGone(error)) {
         this.logger.info({ webhookId }, 'a webhook was deleted while its delivery ran')
         return
       }
       throw error
     }
   }
-}
-
-export interface DeliveryDeps {
-  post?: typeof pinnedHttpsPost
-  // The tries BullMQ gives the job: the last failure is the one that counts
-  maxAttempts?: number
-  now?: () => number
-}
-
-// The sealed secret cannot be opened: no delivery of this webhook can be signed until somebody makes a new one
-class UnreadableSecret extends Error {
-  constructor() {
-    super('the webhook secret is unreadable')
-    this.name = 'UnreadableSecret'
-  }
-}
-
-interface Failure {
-  status: number | null
-  code: string
-  retryable: boolean
-}
-
-function failureOf(error: unknown): Failure {
-  if (error instanceof WebhookPostFailed) {
-    return { status: error.status, code: error.reason, retryable: error.retryable }
-  }
-  if (
-    error instanceof UnreadableSecret ||
-    (error instanceof Error && error.name === 'DecryptionError')
-  ) {
-    return { status: null, code: WebhookDeliveryErrors.SECRET_UNREADABLE, retryable: false }
-  }
-  // The address no longer leads to the public internet: sending it again will not change that
-  if (error instanceof UnsafeUrlError) {
-    return { status: null, code: WebhookDeliveryErrors.ADDRESS_NOT_ALLOWED, retryable: false }
-  }
-  return { status: null, code: WebhookDeliveryErrors.UNEXPECTED, retryable: true }
 }

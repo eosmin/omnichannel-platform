@@ -76,6 +76,8 @@ export const ErrorCodes = {
   PLUGIN_CONSENT_MISMATCH: 'PLUGIN_CONSENT_MISMATCH',
   // The setup code is unknown, expired or already used (one answer for the three)
   PLUGIN_SETUP_CODE_INVALID: 'PLUGIN_SETUP_CODE_INVALID',
+  // Revoking an integration plugin takes the word typed as written (TDD_10 §6.6)
+  PLUGIN_REVOKE_NOT_CONFIRMED: 'PLUGIN_REVOKE_NOT_CONFIRMED',
   // The session of a plugin widget is unknown, expired, another person's, or its installation was revoked (one answer for all)
   PLUGIN_WIDGET_SESSION_INVALID: 'PLUGIN_WIDGET_SESSION_INVALID',
   // The key of a store that calls the public API is missing, unknown, revoked or expired (one answer for all four)
