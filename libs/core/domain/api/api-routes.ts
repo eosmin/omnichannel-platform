@@ -501,6 +501,15 @@ export const PluginApiRoutes = {
   channels: {
     directory: '/plugin-api/channels/directory',
     templates: (pluginId: string) => `/plugin-api/channels/${pluginId}/templates`
+  },
+  // Messages (Step 5.6 PR M1b): a plugin writes a reply or a note, and reads the edits and the kept text of a deleted message
+  messages: {
+    create: '/plugin-api/messages',
+    resendCaption: (id: string) => `/plugin-api/messages/${id}/resend-caption`,
+    refetchFile: (id: string, index: number | string) =>
+      `/plugin-api/messages/${id}/files/${index}/refetch`,
+    deletedContent: (id: string) => `/plugin-api/messages/${id}/deleted-content`,
+    revisions: (id: string) => `/plugin-api/messages/${id}/revisions`
   }
 } as const
 

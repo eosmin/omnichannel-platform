@@ -6,6 +6,8 @@ export const PluginScopes = {
   CONVERSATIONS_WRITE: 'conversations:write',
   MESSAGES_READ: 'messages:read',
   MESSAGES_WRITE: 'messages:write',
+  // The text of a message the customer deleted, while it is kept: its own scope, because no other grants MESSAGES_VIEW_DELETED
+  MESSAGES_READ_DELETED: 'messages:read-deleted',
   CUSTOMERS_READ: 'customers:read',
   CUSTOMERS_WRITE: 'customers:write',
   ORDERS_READ: 'orders:read',
@@ -41,6 +43,7 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   ],
   [PluginScopes.MESSAGES_READ]: [Permissions.MESSAGES_VIEW],
   [PluginScopes.MESSAGES_WRITE]: [Permissions.MESSAGES_SEND, Permissions.MESSAGES_INTERNAL_NOTE],
+  [PluginScopes.MESSAGES_READ_DELETED]: [Permissions.MESSAGES_VIEW_DELETED],
   [PluginScopes.CUSTOMERS_READ]: [Permissions.CUSTOMERS_VIEW],
   [PluginScopes.CUSTOMERS_WRITE]: [Permissions.CUSTOMERS_CREATE, Permissions.CUSTOMERS_EDIT],
   [PluginScopes.ORDERS_READ]: [Permissions.ORDERS_VIEW],

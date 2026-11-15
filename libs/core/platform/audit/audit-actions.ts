@@ -76,6 +76,10 @@ export const AuditAction = {
   MESSAGE_DELETED: 'message.deleted',
   MESSAGE_DISCARDED: 'message.discarded',
   MESSAGE_DELETED_CONTENT_VIEWED: 'message.deleted_content_viewed',
+  // A message a plugin wrote through its key (the actor is the platform; the plugin and its installation are in the metadata)
+  MESSAGE_PLUGIN_SENT: 'message.plugin_sent',
+  // What a plugin did to a message of the team or of a customer that is not a new one (the operation is on the metadata)
+  MESSAGE_PLUGIN_CHANGED: 'message.plugin_changed',
   ORDER_MESSAGE_SENT: 'order.message_sent',
   ORDER_MESSAGE_NOT_SENT: 'order.message_not_sent',
   ORDER_TEMPLATE_UPDATED: 'order.template_updated',

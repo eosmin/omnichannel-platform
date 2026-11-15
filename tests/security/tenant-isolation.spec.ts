@@ -3899,6 +3899,110 @@ describe('Tenant isolation', () => {
     })
   })
 
+  // The messages a plugin reads and writes (Step 5.6, M1b): the key of one store reaches the conversations and messages of that store
+  // and of no other, whatever the call carries. The conversation and the message are the resources.
+  describe('the messages of the plugin API', () => {
+    const pluginId = `${prefix}-msgkey`
+    const scopes = [
+      'conversations:read',
+      'messages:read',
+      'messages:write',
+      'messages:read-deleted'
+    ]
+    const keyOfB = `${PLUGIN_API_KEY_TOKEN_PREFIX}${prefix}msgb${'y'.repeat(40)}`
+    let conversationA = ''
+    let messageA = ''
+
+    beforeAll(async () => {
+      await owner.plugin.create({
+        data: {
+          id: pluginId,
+          name: 'Message plugin',
+          authorName: 'suite',
+          authorEmail: 'suite@example.invalid',
+          type: PluginCatalogTypes.INTEGRATION,
+          manifest: {},
+          pricingModel: PluginPricingModels.FREE,
+          status: PluginStatus.APPROVED,
+          organizationId: ctx.orgA.id
+        }
+      })
+      await owner.pluginInstallation.create({
+        data: {
+          storeId: ctx.storeB.id,
+          pluginId,
+          scopes,
+          status: 'active',
+          apiKeyPrefix: keyOfB.slice(0, 12),
+          apiKeyHash: createHash('sha256').update(keyOfB).digest('hex'),
+          installedBy: 'suite'
+        }
+      })
+      conversationA = (await createConversationOf(owner, { storeId: ctx.storeA.id })).id
+      messageA = (
+        await owner.message.create({
+          data: {
+            storeId: ctx.storeA.id,
+            conversationId: conversationA,
+            type: 'text',
+            authorType: 'agent',
+            content: 'of store A',
+            deletedAt: new Date()
+          }
+        })
+      ).id
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId } })
+      await owner.plugin.deleteMany({ where: { id: pluginId } })
+    })
+
+    const asB = (method: 'get' | 'post', path: string) =>
+      supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+        [method](`${API_PREFIX}${path}`)
+        .set('authorization', `Bearer ${keyOfB}`)
+
+    it('works in its own store, so that the 404 of the others means "foreign"', async () => {
+      const own = (await createConversationOf(owner, { storeId: ctx.storeB.id })).id
+
+      const response = await asB('post', PluginApiRoutes.messages.create).send({
+        type: 'text',
+        conversationId: own,
+        content: 'from the own store',
+        idempotencyKey: randomUUID()
+      })
+
+      expect(response.status).toBe(201)
+    })
+
+    it('does not write into a conversation of another store, even with the id and the header of that store', async () => {
+      const response = await asB('post', PluginApiRoutes.messages.create)
+        .set('x-store-id', ctx.storeA.id)
+        .send({
+          type: 'text',
+          conversationId: conversationA,
+          content: 'from the other store',
+          idempotencyKey: randomUUID()
+        })
+
+      expect(response.status).toBe(404)
+      expect(
+        await owner.message.count({
+          where: { conversationId: conversationA, content: 'from the other store' }
+        })
+      ).toBe(0)
+    })
+
+    it('does not read the edits or the kept text of a message of another store', async () => {
+      const edits = await asB('get', PluginApiRoutes.messages.revisions(messageA))
+      const kept = await asB('get', PluginApiRoutes.messages.deletedContent(messageA))
+
+      expect(edits.status).toBe(404)
+      expect(kept.status).toBe(404)
+      expect(JSON.stringify([edits.body, kept.body])).not.toContain('of store A')
+    })
+  })
+
   // A plugin the owner registers by pasting its manifest belongs to the organization (Step 5.6, P1). The catalog and the
   // install of another organization never reach it; the generic matrix above cannot hold it, because a plugin has no
   // route to read it by id: the answer of the install is the one of a plugin that does not exist.

@@ -894,6 +894,7 @@ export const PluginScopes = {
   CONVERSATIONS_WRITE: 'conversations:write',
   MESSAGES_READ: 'messages:read',
   MESSAGES_WRITE: 'messages:write',
+  MESSAGES_READ_DELETED: 'messages:read-deleted', // the text of a message the customer deleted, while it is kept
   CUSTOMERS_READ: 'customers:read',
   CUSTOMERS_WRITE: 'customers:write',
   ORDERS_READ: 'orders:read',
@@ -915,6 +916,7 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.CONVERSATIONS_WRITE]: [Permissions.CONVERSATIONS_CREATE, Permissions.CONVERSATIONS_ASSIGN, Permissions.CONVERSATIONS_RESOLVE, Permissions.CONVERSATIONS_SNOOZE],
   [PluginScopes.MESSAGES_READ]:       [Permissions.MESSAGES_VIEW],
   [PluginScopes.MESSAGES_WRITE]:      [Permissions.MESSAGES_SEND, Permissions.MESSAGES_INTERNAL_NOTE],
+  [PluginScopes.MESSAGES_READ_DELETED]: [Permissions.MESSAGES_VIEW_DELETED],
   [PluginScopes.CUSTOMERS_READ]:      [Permissions.CUSTOMERS_VIEW],
   [PluginScopes.CUSTOMERS_WRITE]:     [Permissions.CUSTOMERS_CREATE, Permissions.CUSTOMERS_EDIT],
   [PluginScopes.ORDERS_READ]:         [Permissions.ORDERS_VIEW],
@@ -1003,6 +1005,8 @@ export class PluginApiKeyGuard implements CanActivate {
 **The plugin is bound to exactly one store.** It cannot enumerate other stores,
 cannot change `storeId`, and every service it reaches is scoped by the same
 `request.store` that `TenantGuard` would have set for a human.
+
+Messages (Step 5.6 PR M1b): `POST /plugin-api/messages` writes a reply (`type: text`) or an internal note (`type: note`) with `authorType` `system` (default) or `agent` (+ `userId`), `quiet` and `nickname`; `POST /plugin-api/messages/:id/resend-caption`, `POST /plugin-api/messages/:id/files/:index/refetch`, `GET /plugin-api/messages/:id/revisions` and `GET /plugin-api/messages/:id/deleted-content` (scope `messages:read-deleted`). Every one of them needs `conversations:read` as well as its own scope, because a plugin sees a conversation as a person with `conversations:view` does. A plugin's message is audited as `message.plugin_sent` (other changes: `message.plugin_changed`) with the platform as the actor and the plugin and installation on the metadata. Editing, sending again, discarding, reacting and deleting come with a plugin actor in a later PR (M1c).
 
 ### 6.5 Outbound webhooks to plugins
 
