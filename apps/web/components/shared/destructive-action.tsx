@@ -102,9 +102,16 @@ export function DestructiveActionProvider({ children }: { children: ReactNode })
 
   const run = useCallback<RunDestructiveAction>(
     (action, request) => {
-      const style = confirmationStyleFor(action)
+      const style = confirmationStyleFor(action, Boolean(request.onUndo && request.undoMessage))
       if (style === ConfirmationStyles.UNDO_TOAST) {
         void runAtOnce(request)
+        return
+      }
+      // The store chose not to be asked: no dialog and no undo toast (the person was told on the settings page)
+      if (style === ConfirmationStyles.NONE) {
+        // A dialog that is open already asks something: no action runs under it, as the dialog styles do not either
+        if (openRef.current) return
+        void runAtOnce({ ...request, onUndo: undefined })
         return
       }
       // A dialog already asks something: a second request must not replace it under the user's hand

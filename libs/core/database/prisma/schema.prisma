@@ -38,6 +38,7 @@ model Organization {
   journalLines        JournalLine[]
   periodBalances      AccountPeriodBalance[]
   postingFailures     FinancePostingFailure[]
+  plugins             Plugin[]
 
   @@map("organizations")
 }
@@ -1247,12 +1248,17 @@ model Plugin {
   platformRevenueSharePercent Int?     @default(20) @map("platform_revenue_share_percent")
   status                      String   @default("submitted") // PluginStatus
   reviewNotes                 String?  @map("review_notes")
+  // The organization that registered it (private registration, D10): only its stores see it and install it. Null for the
+  // plugins the platform ships and the ones its code registers, which every store sees. Never an official plugin.
+  organizationId              String?  @map("organization_id")
   createdAt                   DateTime @default(now()) @map("created_at")
   updatedAt                   DateTime @updatedAt @map("updated_at")
 
+  organization  Organization?        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   installations PluginInstallation[]
 
   @@index([status])
+  @@index([organizationId])
   @@map("plugins")
 }
 
@@ -2184,7 +2190,7 @@ model RemittanceImportProfile {
 // ============================================================
 // Every table is scoped by organization_id (TDD_18 §2.1), and every foreign key to another finance table or to a store
 // carries it, so the database itself refuses a link across organizations. Whatever the schema cannot say is raw SQL in
-// the migration (20261213100000_finance_ledger): the append-only triggers, the balanced-entry constraint, the open-period
+// the migration (20261213110000_finance_ledger): the append-only triggers, the balanced-entry constraint, the open-period
 // and postable-account checks, the gapless number and the hash chain head, and the CHECKs. Money is whole USD cents;
 // stored balances are BigInt because a sum of cents passes the 32-bit ceiling of one line.
 

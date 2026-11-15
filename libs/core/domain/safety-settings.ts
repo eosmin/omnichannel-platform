@@ -1,19 +1,7 @@
 import { z } from 'zod'
 
 import { RoleNames } from './auth/permissions'
-
-// How a store asks before a destructive action of the HIGH and MODERATE tiers (TDD_09 §11.2). CRITICAL
-// actions always ask for a typed phrase and LOW ones always offer an undo toast: neither is a setting.
-export const ModerateRiskModes = {
-  DIALOG: 'dialog',
-  UNDO: 'undo',
-  NONE: 'none'
-} as const
-export type ModerateRiskMode = (typeof ModerateRiskModes)[keyof typeof ModerateRiskModes]
-
-// The system roles a confirmation can be limited to. A custom role is never listed and so always asks: the
-// switch can only take the dialog away from the roles of the preset.
-export const SafetyRoleNames = [RoleNames.AGENT, RoleNames.SUPERVISOR, RoleNames.ADMIN] as const
+import { ModerateRiskModes, SafetyRoleNames } from './safety-constants'
 
 const roleList = z
   .array(z.enum(SafetyRoleNames))

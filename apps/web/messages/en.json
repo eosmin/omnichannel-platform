@@ -644,6 +644,7 @@
     "PLUGIN_API_KEY_INVALID": "The plugin key is not valid",
     "API_KEY_INVALID": "The API key is not valid",
     "PLUGIN_CONTRACT_VIOLATION": "The plugin did not follow its contract",
+    "PLUGIN_LIMIT_REACHED": "The organization has reached the limit of registered plugins",
     "PLUGIN_INSTALLATION_FAILED": "The plugin could not be installed",
     "PLUGIN_NOT_FOUND": "The plugin does not exist",
     "PLUGIN_NOT_INSTALLED": "The plugin is not installed",
@@ -2357,7 +2358,16 @@
       "wakeUp": "Wake up",
       "resolveRow": "Resolve the conversation with {name}",
       "resolveRowMore": "Resolution options for the conversation with {name}",
-      "snoozeRow": "Snooze the conversation with {name}"
+      "snoozeRow": "Snooze the conversation with {name}",
+      "delete": {
+        "action": "Delete conversation",
+        "title": "Delete this conversation?",
+        "description": "The conversation with {name}, all its messages and its files are deleted for good. This cannot be undone.",
+        "phraseLabel": "Type the phrase to confirm",
+        "phrase": "Delete",
+        "confirm": "Delete conversation",
+        "done": "Conversation deleted"
+      }
     },
     "bulk": {
       "label": "Bulk actions",
@@ -2842,7 +2852,8 @@
         "preferences": "Preferences",
         "webhooks": "Outgoing integrations",
         "apiKeys": "API keys",
-        "retention": "Data retention"
+        "retention": "Data retention",
+        "safety": "Safety and confirmations"
       },
       "org": {
         "label": "Organization",
@@ -4340,6 +4351,49 @@
         "tooLow": "At least {min} days.",
         "tooHigh": "At most {max} days."
       }
+    },
+    "safety": {
+      "title": "Safety and confirmations",
+      "intro": "Choose when the store asks before a destructive action. What you choose here applies to everyone in this store.",
+      "high": {
+        "title": "High-risk actions",
+        "hint": "These actions ask for a confirmation dialog unless you turn them off here.",
+        "switches": {
+          "confirmDeleteCustomer": "Confirm before deleting a customer",
+          "confirmDisconnectChannel": "Confirm before disconnecting a channel",
+          "confirmRemoveMember": "Confirm before removing a team member"
+        },
+        "rolesTitle": "Ask these roles",
+        "rolesHint": "A role that is not checked acts without being asked. People with a custom role are always asked. The other high-risk actions (voiding a guide, applying a stock count, deleting an outgoing integration and similar) always ask."
+      },
+      "moderate": {
+        "title": "Moderate-risk actions",
+        "hint": "Archiving a conversation, reassigning one that is already assigned, and editing the identity of a customer.",
+        "modes": {
+          "dialog": {
+            "label": "Show a confirmation dialog",
+            "hint": "Ask before the action runs."
+          },
+          "undo": {
+            "label": "Run it and offer Undo",
+            "hint": "The action runs at once and a message offers to take it back. An action that cannot be taken back still asks first."
+          },
+          "none": {
+            "label": "Do not ask",
+            "hint": "The action runs with no dialog and no way back from the message."
+          }
+        }
+      },
+      "critical": "Critical actions always ask you to type a phrase and cannot be turned off: deleting a conversation, revoking an API key, deleting a store and revoking all plugin access.",
+      "roles": {
+        "Agent": "Agent",
+        "Supervisor": "Supervisor",
+        "Admin": "Administrator"
+      },
+      "save": "Save",
+      "saving": "Saving…",
+      "discard": "Discard changes",
+      "saved": "Safety settings saved"
     }
   },
   "emptyStates": {

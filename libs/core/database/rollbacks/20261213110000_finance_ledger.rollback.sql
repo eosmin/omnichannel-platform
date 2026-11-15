@@ -1,4 +1,4 @@
--- Rolls back 20261213100000_finance_ledger. DESTRUCTIVE: the finance settings, the chart of accounts, the role maps, the
+-- Rolls back 20261213110000_finance_ledger. DESTRUCTIVE: the finance settings, the chart of accounts, the role maps, the
 -- fiscal periods, the whole journal with its lines, the period balances and the posting failures are DROPPED with their rows
 -- (the books are lost; take a copy of the tables or of the journal CSV first if their rows matter), and the finance:* and
 -- fiscal:* permissions are taken from the roles. The journal is append-only, so its triggers are dropped before its rows

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { Page } from '@playwright/test'
 
 import { AppPaths, StoreSettingsSections } from '@platform/api-client'
+import { ApiRoutes } from '@platform/core/api'
 import { ChannelIds } from '@platform/core/domain'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
@@ -108,7 +109,12 @@ test.describe('Settings → Channels and Plugins', () => {
       await card.getByRole('button', { name: channels.widget.origins.save }).click()
       await expect(page.getByText(channels.widget.originsSaved)).toBeVisible()
 
+      // The store's safety policy is read once the shell is up; the disconnect below depends on it
+      const policyRead = page.waitForResponse(
+        response => response.url().endsWith(ApiRoutes.settings.safety) && response.ok()
+      )
       await page.reload()
+      await policyRead
       const again = page
         .getByRole('listitem')
         .filter({ has: page.getByRole('heading', { name: host }) })
@@ -118,15 +124,15 @@ test.describe('Settings → Channels and Plugins', () => {
         `https://${host}\n${secondHost}`
       )
 
-      // Test the connection, then disconnect it: the confirmation names the account
+      // Test the connection, then disconnect it: an administrator is not asked by the factory policy
+      // (TDD_09 §11.2: only Agent and Supervisor are), so the channel goes at once
       await again.getByRole('button', { name: `${channels.test.action} ${host}` }).click()
       // The verdict is a line of text; the copy buttons have status regions of their own
       await expect(
         again.getByText(new RegExp(`^(${channels.test.healthy}|${channels.test.unhealthy})`))
       ).toBeVisible()
       await again.getByRole('button', { name: `${channels.disconnect.action} ${host}` }).click()
-      const confirm = page.getByRole('alertdialog')
-      await confirm.getByRole('button', { name: channels.disconnect.confirm }).click()
+      await expect(page.getByRole('alertdialog')).toHaveCount(0)
       await expect(page.getByText(channels.disconnect.done.replace('{name}', host))).toBeVisible()
       await expect(page.getByRole('heading', { name: channels.past.title })).toBeVisible()
       // The disconnected accounts are read when asked for
@@ -138,13 +144,15 @@ test.describe('Settings → Channels and Plugins', () => {
           .getByText(channels.disconnectedNote)
       ).toBeVisible()
 
-      // Uninstalling asks first, says it is done and gives the install button back
+      // Uninstalling is the same safety action as disconnecting: the factory policy does not ask an
+      // administrator, so it goes at once, says it is done and gives the install button back
+      const pluginsPolicyRead = page.waitForResponse(
+        response => response.url().endsWith(ApiRoutes.settings.safety) && response.ok()
+      )
       await page.goto(AppPaths.store.settings(storeId, StoreSettingsSections.PLUGINS))
+      await pluginsPolicyRead
       await row.getByRole('button', { name: `${plugins.uninstall.action} ${WIDGET_NAME}` }).click()
-      await page
-        .getByRole('alertdialog')
-        .getByRole('button', { name: plugins.uninstall.confirm })
-        .click()
+      await expect(page.getByRole('alertdialog')).toHaveCount(0)
       await expect(
         row.getByRole('button', { name: `${plugins.install.action} ${WIDGET_NAME}` })
       ).toBeVisible()

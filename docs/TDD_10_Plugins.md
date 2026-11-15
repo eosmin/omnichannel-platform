@@ -52,6 +52,7 @@ export const ChannelCapability = {
   AUDIO: 'audio',
   DOCUMENT: 'document',
   LOCATION: 'location',
+  CONTACTS: 'contacts',
   BUTTONS: 'buttons',
   LIST_PICKER: 'list_picker',
   TEMPLATES: 'templates',
@@ -59,9 +60,14 @@ export const ChannelCapability = {
   READ_RECEIPTS: 'read_receipts',
   DELIVERY_RECEIPTS: 'delivery_receipts',
   REACTIONS: 'reactions',
+  DELETE_MESSAGE: 'delete_message',          // requires deleteMessage()
+  EDIT_MESSAGE: 'edit_message',              // requires editMessage()
   REPLY_TO: 'reply_to',
   MESSAGING_WINDOW: 'messaging_window',
   CUSTOMER_TYPING: 'customer_typing',
+  CUSTOMER_PROFILE: 'customer_profile',      // requires fetchProfile() and, usually, profileSetupKey
+  CAPTION_PER_FILE: 'caption_per_file',      // a text under each file (SendMediaParams.caption); without it the worker sends the text as its own message
+  NAMES_INBOUND_FILES: 'names_inbound_files' // the channel gives the id of each file its customer sends (ids of one message must differ)
 } as const
 
 export type ChannelCapabilityType = typeof ChannelCapability[keyof typeof ChannelCapability]
@@ -77,6 +83,20 @@ export interface ChannelPlugin {
   readonly author: string
   readonly type: 'channel'                 // v1.2: the SDK also has type 'carrier' (CarrierPlugin, TDD_17 §4.1), held by its own CarrierRegistry
   readonly capabilities: readonly ChannelCapabilityType[]
+  readonly limits: ChannelLimits           // longest text, and what goes under a file; applied by the core and again by the worker
+  readonly identityKind: ChannelIdentityKind   // how a customer's handle is read: 'phone' (compared as digits) or 'opaque'
+  readonly receivesProviderWebhooks: boolean   // false for a channel reached by its own client (the web widget)
+  readonly connectFields: readonly ConnectField[]   // the connect form; declaring does not validate, `connect` still checks
+
+  // How the channel is named and drawn, with no channel named in the web (§6.7.2); all optional
+  readonly displayName?: LocalizedText
+  readonly iconKey?: ChannelIconKey
+  readonly anonymousCustomers?: boolean    // customers have no name or handle a person would know (a visitor)
+  readonly managementSurface?: ChannelManagementSurface   // a page of its own in the settings
+  readonly connectHelp?: readonly LocalizedText[]         // the steps the owner takes at the provider before the form
+  readonly imageHosts?: ChannelImageHosts  // where the browser may load the channel's pictures from; the CSP is built from these
+  readonly profileSetupKey?: string        // message key of a provider-side step needed to read a customer's profile (CUSTOMER_PROFILE only)
+  readonly oauth?: ChannelOAuth            // the provider's own login (§2.x); in-process plugins only
 
   // Declared messaging-window policy, applied by the CORE (§4) — the plugin has no database
   readonly messagingWindow: MessagingWindowPolicy | null
@@ -106,14 +126,25 @@ export interface ChannelPlugin {
   sendLocation?(ctx: ChannelContext, params: SendLocationParams): Promise<ChannelMessageResult>
   sendTypingIndicator?(ctx: ChannelContext, params: TypingParams): Promise<void>
   markAsRead?(ctx: ChannelContext, params: MarkReadParams): Promise<void>
+  sendReaction?(ctx: ChannelContext, params: SendReactionParams): Promise<void>   // REACTIONS
+  deleteMessage?(ctx: ChannelContext, params: DeleteMessageParams): Promise<void> // DELETE_MESSAGE
+  editMessage?(ctx: ChannelContext, params: EditMessageParams): Promise<void>     // EDIT_MESSAGE
+  // Read-only, optional: what the provider says about the connection's token; asked at connect and once a day
+  inspectToken?(ctx: ChannelContext): Promise<TokenInspection>
 
   // Inbound
   verifyWebhook?(query: Record<string, string>): string | null   // GET handshake (Meta hub.challenge); null = reject
   validateWebhookSignature(rawBody: string, headers: Record<string, string>): boolean
   handleWebhook(payload: unknown): Promise<ChannelEvent[]>       // Pure: normalizes, never fetches
   fetchMedia?(ctx: ChannelContext, mediaRef: string): Promise<FetchedMedia>   // Provider media needs the connection token
+  // Pure: would this plugin fetch this link? Asked BEFORE the core resolves the host, so a refused host is never looked up
+  acceptsMediaLink?(mediaRef: string): boolean
+  // Name, username and photo link of a customer (CUSTOMER_PROFILE); null is a final answer, a PluginError is a failure
+  fetchProfile?(ctx: ChannelContext, channelIdentity: string, signal?: AbortSignal): Promise<ChannelCustomerProfile | null>
 }
 ```
+
+**SDK alignment.** The SDK is the contract; the core reads declarations, never a plugin's name. Every capability, event type and `ChannelPlugin` member of the SDK appears in this section, and `libs/plugins/sdk/src/sdk-docs-alignment.spec.ts` fails when one is added without it, or when a capability-to-method pair the registry enforces is missing from the `validateContract` snippet of §3 (the carrier plugin is the same, against `TDD_17 §4.1`). The agnosticism of the core is held by `pnpm validate:channel-agnostic` and `validate:carrier-agnostic` (CI, pre-push), whose baselines only shrink. The behaviors that exist only for an in-process plugin are listed, not hidden: `oauth` ("Optional login" below, code, not a manifest) and `redactedKeys` (a static of the class, read before the registry exists; a remote plugin cannot declare them yet, tracked in `IMPLEMENTATION_PLAN.md` Step 5.6).
 
 **Supporting types:**
 
@@ -121,6 +152,10 @@ export interface ChannelPlugin {
 // libs/plugins/sdk/src/types.ts
 export const ChannelEventTypes = {
   MESSAGE_RECEIVED: 'message_received',
+  MESSAGE_ECHO: 'message_echo',              // written in the provider's own app, echoed to us
+  MESSAGE_REACTION: 'message_reaction',      // someone reacted, or took the reaction back
+  MESSAGE_EDITED: 'message_edited',          // edited at the provider
+  MESSAGE_DELETED: 'message_deleted',        // deleted at the provider
   MESSAGE_SENT: 'message_sent',
   MESSAGE_DELIVERED: 'message_delivered',
   MESSAGE_READ: 'message_read',
@@ -257,6 +292,10 @@ export class PluginRegistry {
       [ChannelCapability.LOCATION, 'sendLocation'],
       [ChannelCapability.TYPING_INDICATOR, 'sendTypingIndicator'],
       [ChannelCapability.READ_RECEIPTS, 'markAsRead'],
+      [ChannelCapability.REACTIONS, 'sendReaction'],
+      [ChannelCapability.DELETE_MESSAGE, 'deleteMessage'],
+      [ChannelCapability.EDIT_MESSAGE, 'editMessage'],
+      [ChannelCapability.CUSTOMER_PROFILE, 'fetchProfile'],
     ]
 
     for (const [capability, method] of required) {
@@ -835,6 +874,17 @@ styles/scripts (works under strict merchant CSPs). Every autonomous reply carrie
 
 `capabilities` values are `ChannelCapability` values (for a channel plugin, only those of §6.7.2; its `channel` block is §6.7.2 too); `webhooks.events` are `Events`
 values; the whole document is validated by `pluginManifestSchema` (Zod) on submission.
+
+**Private registration (MVP, D10).** There is no marketplace: the owner pastes the manifest in Settings → Plugins
+(`POST /plugins/register`, `SETTINGS_MANAGE_PLUGINS`). `pluginManifestSchema` (`libs/plugins/runtime`) refuses any key it does not
+name, bounds every text and list, checks every address for its shape (https, default port, no credentials, a host with a dot or a
+public address; the network is asked later, at the install challenge and at each delivery), accepts only the scopes that exist,
+`"type": "integration"` and `"pricing": { "model": "free" }`. A manifest may carry `names: { es, en }`, the plain-text name in each
+language, which the interface prefers to `name`. The row is stored `approved`, `isOfficial = false`, and belongs to the
+organization that registered it (`Plugin.organizationId`): only its stores see it in the catalog and install it. The id is never
+an official channel, the shipping plugin, one the registry runs, or one another organization holds. Registering a higher `version` of
+one's own plugin replaces the manifest; an installation keeps the scopes it was installed with until the owner approves the new
+ones in a consent screen (Step 5.6, install flow).
 
 ### 6.2 Scopes
 

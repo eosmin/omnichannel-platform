@@ -79,6 +79,14 @@ export function storeSettingsEntries(storeId: string): SettingsEntry[] {
       permission: ClientPermissions.SETTINGS_VIEW
     },
     {
+      id: StoreSettingsSections.SAFETY,
+      labelKey: 'safety',
+      href: AppPaths.store.settings(storeId, StoreSettingsSections.SAFETY),
+      permission: ClientPermissions.SETTINGS_VIEW,
+      // The api reads the settings for who may see conversations: every screen asks them
+      also: ClientPermissions.CONVERSATIONS_VIEW
+    },
+    {
       id: StoreSettingsSections.INVENTORY,
       labelKey: 'inventory',
       href: AppPaths.store.settings(storeId, StoreSettingsSections.INVENTORY),

@@ -1,6 +1,6 @@
 import { RoleNames } from './auth/permissions'
+import { ModerateRiskModes } from './safety-constants'
 import {
-  ModerateRiskModes,
   readSafetySettings,
   safetySettingsSchema,
   updateSafetySettingsSchema
@@ -93,6 +93,20 @@ describe('updateSafetySettingsSchema', () => {
       {}
     ]) {
       expect(updateSafetySettingsSchema.safeParse(body).success).toBe(false)
+    }
+  })
+})
+
+describe('SafetySwitchedActions', () => {
+  it('names a key of the stored settings for each action, and a HIGH action only', async () => {
+    const { DestructiveActionTierLevels, DestructiveActionTiers, SafetySwitchedActions } =
+      await import('./safety-constants')
+    const keys = Object.keys(safetySettingsSchema.parse({}))
+    for (const [action, key] of Object.entries(SafetySwitchedActions)) {
+      expect(keys).toContain(key)
+      expect(DestructiveActionTiers[action as keyof typeof DestructiveActionTiers]).toBe(
+        DestructiveActionTierLevels.HIGH
+      )
     }
   })
 })

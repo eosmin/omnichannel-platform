@@ -9,6 +9,7 @@ export const ClientPermissions = {
   ANALYTICS_VIEW: 'analytics:view',
   CONVERSATIONS_ARCHIVE: 'conversations:archive',
   CONVERSATIONS_ASSIGN: 'conversations:assign',
+  CONVERSATIONS_DELETE: 'conversations:delete',
   CONVERSATIONS_EXPORT: 'conversations:export',
   CONVERSATIONS_RESOLVE: 'conversations:resolve',
   CONVERSATIONS_SNOOZE: 'conversations:snooze',

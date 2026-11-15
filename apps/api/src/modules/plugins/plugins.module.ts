@@ -10,6 +10,7 @@ import { TenancyModule } from '../tenancy'
 
 import { PluginCatalogSync } from './plugin-catalog-sync.service'
 import { PluginInstallationsService } from './plugin-installations.service'
+import { PluginRegistrationService } from './plugin-registration.service'
 import { PluginsController } from './plugins.controller'
 
 // The catalog of plugins and the installation of each in a store (D19). The sync writes the
@@ -25,6 +26,6 @@ import { PluginsController } from './plugins.controller'
     TenancyModule
   ],
   controllers: [PluginsController],
-  providers: [PluginCatalogSync, PluginInstallationsService]
+  providers: [PluginCatalogSync, PluginInstallationsService, PluginRegistrationService]
 })
 export class PluginsApiModule {}
