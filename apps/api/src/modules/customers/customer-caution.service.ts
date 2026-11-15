@@ -5,7 +5,7 @@ import { AuditService } from '@platform/core/audit-module'
 import { PrismaService } from '@platform/core/database'
 import { lockCustomerForWrite } from '@platform/core/messaging'
 
-import type { Actor } from '../tenancy'
+import { type Actor, auditActorOf, auditViaOf } from '../tenancy'
 
 import type { SetCautionBody } from './customers.schemas'
 
@@ -55,12 +55,16 @@ export class CustomerCautionService {
     if (previous !== null) {
       this.audit.log({
         action: AuditAction.CUSTOMER_CAUTION_SET,
-        actor: { userId: actor.userId },
+        actor: auditActorOf(actor),
         storeId,
         resourceType: 'customer',
         resourceId: customerId,
         // Who flagged it before, when this replaces a reason: the reason itself is never copied
-        metadata: { replaced: previous.isCaution, previousSetBy: previous.cautionSetBy },
+        metadata: {
+          replaced: previous.isCaution,
+          previousSetBy: previous.cautionSetBy,
+          ...auditViaOf(actor)
+        },
         ipAddress: actor.ipAddress,
         userAgent: actor.userAgent
       })
@@ -86,10 +90,11 @@ export class CustomerCautionService {
     if (wasFlagged) {
       this.audit.log({
         action: AuditAction.CUSTOMER_CAUTION_CLEARED,
-        actor: { userId: actor.userId },
+        actor: auditActorOf(actor),
         storeId,
         resourceType: 'customer',
         resourceId: customerId,
+        metadata: auditViaOf(actor),
         ipAddress: actor.ipAddress,
         userAgent: actor.userAgent
       })
