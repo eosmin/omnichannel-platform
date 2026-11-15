@@ -144,13 +144,15 @@ test.describe('Settings → Channels and Plugins', () => {
           .getByText(channels.disconnectedNote)
       ).toBeVisible()
 
-      // Uninstalling asks first, says it is done and gives the install button back
+      // Uninstalling is the same safety action as disconnecting: the factory policy does not ask an
+      // administrator, so it goes at once, says it is done and gives the install button back
+      const pluginsPolicyRead = page.waitForResponse(
+        response => response.url().endsWith(ApiRoutes.settings.safety) && response.ok()
+      )
       await page.goto(AppPaths.store.settings(storeId, StoreSettingsSections.PLUGINS))
+      await pluginsPolicyRead
       await row.getByRole('button', { name: `${plugins.uninstall.action} ${WIDGET_NAME}` }).click()
-      await page
-        .getByRole('alertdialog')
-        .getByRole('button', { name: plugins.uninstall.confirm })
-        .click()
+      await expect(page.getByRole('alertdialog')).toHaveCount(0)
       await expect(
         row.getByRole('button', { name: `${plugins.install.action} ${WIDGET_NAME}` })
       ).toBeVisible()
