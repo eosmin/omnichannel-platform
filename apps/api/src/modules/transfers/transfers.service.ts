@@ -34,9 +34,10 @@ import {
 } from '@platform/core/inventory'
 
 import { encodeCursor } from '../customers/list-cursor'
-import type { Actor } from '../tenancy'
+import { actorIds } from '../orders/orders-actor'
+import { type Actor, auditActorOf, auditViaOf } from '../tenancy'
 
-import { reachableTransfer, visibleStoreIds, visibleStoresOf } from './transfers.reach'
+import { reachableTransfer, visibleStoresOf } from './transfers.reach'
 import type {
   CloseTransferBody,
   CreateTransferBody,
@@ -168,7 +169,11 @@ export class TransfersService {
     body: CreateTransferBody,
     actor: Actor
   ): Promise<TransferView> {
-    const visible = await visibleStoreIds(this.prisma, organizationId, actor.userId)
+    const visible = await visibleStoresOf(this.prisma, organizationId, actor)
+    // A plugin makes a transfer of the stores it reaches, which is its own: with no line it would belong to no store, and the
+    // plugin could not read the transfer it just made
+    this.assertPluginHasLines(actor, body.lines.length)
+    const ids = actorIds(actor)
     const id = await this.prisma.transaction(async tx => {
       await checkWarehouses(tx, organizationId, body.fromWarehouseId, body.toWarehouseId)
       const items = await this.resolveItems(tx, body.lines, visible)
@@ -181,7 +186,8 @@ export class TransfersService {
           fromWarehouseId: body.fromWarehouseId,
           toWarehouseId: body.toWarehouseId,
           note: body.note ?? null,
-          createdBy: actor.userId,
+          createdBy: ids.userId,
+          createdByPluginId: ids.pluginId,
           lines: {
             create: items.map(item => ({
               storeId: item.storeId,
@@ -197,12 +203,13 @@ export class TransfersService {
     })
     this.audit.log({
       action: AuditAction.TRANSFER_CREATED,
-      actor: { userId: actor.userId },
+      actor: auditActorOf(actor),
       organizationId,
       storeId: actor.storeId,
       resourceType: TransferResourceTypes.TRANSFER,
       resourceId: id.id,
       metadata: {
+        ...auditViaOf(actor),
         number: id.number,
         fromWarehouseId: body.fromWarehouseId,
         toWarehouseId: body.toWarehouseId,
@@ -220,7 +227,7 @@ export class TransfersService {
     body: UpdateTransferBody,
     actor: Actor
   ): Promise<TransferView> {
-    const visible = await visibleStoreIds(this.prisma, organizationId, actor.userId)
+    const visible = await visibleStoresOf(this.prisma, organizationId, actor)
     const changes = await this.prisma.transaction(async tx => {
       const locked = await lockTransfer(tx, organizationId, transferId)
       // A transfer made only of other stores' lines is not one the caller knows
@@ -238,11 +245,14 @@ export class TransfersService {
         where: { transferId },
         select: LINE_FIELDS
       })
+      // A plugin changes only a transfer whose every line is of its store (the stock of a sibling store is not its to move)
+      this.assertPluginOwnsEveryLine(actor, existing, visible)
       // The lines of the stores the caller does not belong to are not theirs to change: they stay as they are
       const kept = existing.filter(line => !visible.includes(line.storeId))
       const replacement =
         body.lines === undefined ? undefined : await this.resolveItems(tx, body.lines, visible)
       const lineCount = (replacement === undefined ? existing : [...kept, ...replacement]).length
+      this.assertPluginHasLines(actor, lineCount)
       // Moving the transfer to other warehouses re-targets EVERY line, so the caller must see every line of it
       if (fromWarehouseId !== locked.fromWarehouseId || toWarehouseId !== locked.toWarehouseId) {
         assertSeesEveryLine(existing, visible)
@@ -300,12 +310,12 @@ export class TransfersService {
     })
     this.audit.log({
       action: AuditAction.TRANSFER_UPDATED,
-      actor: { userId: actor.userId },
+      actor: auditActorOf(actor),
       organizationId,
       storeId: actor.storeId,
       resourceType: TransferResourceTypes.TRANSFER,
       resourceId: transferId,
-      metadata: { number: changes.number, fields: changes.fields },
+      metadata: { ...auditViaOf(actor), number: changes.number, fields: changes.fields },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
@@ -315,11 +325,14 @@ export class TransfersService {
   // DRAFT → IN_TRANSIT: every line leaves the source (TRANSFER_OUT needs real available stock, never reserved stock,
   // whatever the negative-stock setting says: a physical shipment cannot exceed what is on the shelf). All or nothing.
   async dispatch(organizationId: string, transferId: string, actor: Actor): Promise<TransferView> {
-    const visible = await visibleStoreIds(this.prisma, organizationId, actor.userId)
+    const visible = await visibleStoresOf(this.prisma, organizationId, actor)
+    const ids = actorIds(actor)
     const settled = await this.prisma.transaction(async tx => {
       const locked = await lockTransfer(tx, organizationId, transferId)
-      this.assertMove(locked, TransferStatus.IN_TRANSIT)
       const lines = await this.linesOf(tx, transferId)
+      // First of all for a plugin: a transfer it does not reach does not exist for it, and says nothing of its status
+      this.assertPluginOwnsEveryLine(actor, lines, visible)
+      this.assertMove(locked, TransferStatus.IN_TRANSIT)
       // The stock of every line leaves: the caller must belong to every store whose units travel
       assertSeesEveryLine(lines, visible)
       if (lines.length === 0) {
@@ -348,7 +361,8 @@ export class TransfersService {
         where: { id: transferId },
         data: {
           status: TransferStatus.IN_TRANSIT,
-          dispatchedBy: actor.userId,
+          dispatchedBy: ids.userId,
+          dispatchedByPluginId: ids.pluginId,
           dispatchedAt: new Date()
         }
       })
@@ -360,12 +374,12 @@ export class TransfersService {
     }, TRANSACTION)
     this.audit.log({
       action: AuditAction.TRANSFER_DISPATCHED,
-      actor: { userId: actor.userId },
+      actor: auditActorOf(actor),
       organizationId,
       storeId: actor.storeId,
       resourceType: TransferResourceTypes.TRANSFER,
       resourceId: transferId,
-      metadata: { number: settled.number, lineCount: settled.lineCount },
+      metadata: { ...auditViaOf(actor), number: settled.number, lineCount: settled.lineCount },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
@@ -382,10 +396,11 @@ export class TransfersService {
     body: ReceiveTransferBody,
     actor: Actor
   ): Promise<TransferView> {
-    const visible = await visibleStoreIds(this.prisma, organizationId, actor.userId)
+    const visible = await visibleStoresOf(this.prisma, organizationId, actor)
     const outcome = await this.prisma.transaction(async tx => {
       const locked = await lockTransfer(tx, organizationId, transferId)
       const lines = await this.linesOf(tx, transferId)
+      this.assertPluginOwnsEveryLine(actor, lines, visible)
       // What the caller does not see does not exist for them
       const seen = new Set(
         lines.filter(line => visible.includes(line.storeId)).map(line => line.id)
@@ -467,12 +482,13 @@ export class TransfersService {
     if (outcome !== null) {
       this.audit.log({
         action: AuditAction.TRANSFER_RECEIVED,
-        actor: { userId: actor.userId },
+        actor: auditActorOf(actor),
         organizationId,
         storeId: actor.storeId,
         resourceType: TransferResourceTypes.TRANSFER,
         resourceId: transferId,
         metadata: {
+          ...auditViaOf(actor),
           number: outcome.number,
           complete: outcome.completes,
           receiptKey: body.receiptKey,
@@ -495,11 +511,12 @@ export class TransfersService {
     body: CloseTransferBody,
     actor: Actor
   ): Promise<TransferView> {
-    const visible = await visibleStoreIds(this.prisma, organizationId, actor.userId)
+    const visible = await visibleStoresOf(this.prisma, organizationId, actor)
     const outcome = await this.prisma.transaction(async tx => {
       const locked = await lockTransfer(tx, organizationId, transferId)
-      this.assertMove(locked, TransferStatus.RECEIVED)
       const lines = await this.linesOf(tx, transferId)
+      this.assertPluginOwnsEveryLine(actor, lines, visible)
+      this.assertMove(locked, TransferStatus.RECEIVED)
       const seen = new Set(
         lines.filter(line => visible.includes(line.storeId)).map(line => line.id)
       )
@@ -569,12 +586,12 @@ export class TransfersService {
     }, TRANSACTION)
     this.audit.log({
       action: AuditAction.TRANSFER_CLOSED_WITH_SHORTAGE,
-      actor: { userId: actor.userId },
+      actor: auditActorOf(actor),
       organizationId,
       storeId: actor.storeId,
       resourceType: TransferResourceTypes.TRANSFER,
       resourceId: transferId,
-      metadata: { number: outcome.number, shortages: outcome.shortages },
+      metadata: { ...auditViaOf(actor), number: outcome.number, shortages: outcome.shortages },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
@@ -585,11 +602,12 @@ export class TransfersService {
   // source with TRANSFER_IN (all of the dispatched quantity when nothing was received; a part that was already
   // received stays where it arrived: returning it too would make stock out of nothing)
   async cancel(organizationId: string, transferId: string, actor: Actor): Promise<TransferView> {
-    const visible = await visibleStoreIds(this.prisma, organizationId, actor.userId)
+    const visible = await visibleStoresOf(this.prisma, organizationId, actor)
     const outcome = await this.prisma.transaction(async tx => {
       const locked = await lockTransfer(tx, organizationId, transferId)
-      this.assertMove(locked, TransferStatus.CANCELLED)
       const lines = await this.linesOf(tx, transferId)
+      this.assertPluginOwnsEveryLine(actor, lines, visible)
+      this.assertMove(locked, TransferStatus.CANCELLED)
       const wasInTransit = locked.status === TransferStatus.IN_TRANSIT
       if (wasInTransit) {
         // The units go back to stores' levels: the caller must belong to every store whose units travel
@@ -626,16 +644,40 @@ export class TransfersService {
     }, TRANSACTION)
     this.audit.log({
       action: AuditAction.TRANSFER_CANCELLED,
-      actor: { userId: actor.userId },
+      actor: auditActorOf(actor),
       organizationId,
       storeId: actor.storeId,
       resourceType: TransferResourceTypes.TRANSFER,
       resourceId: transferId,
-      metadata: outcome,
+      metadata: { ...auditViaOf(actor), ...outcome },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
     return this.get(organizationId, actor, transferId)
+  }
+
+  // What a plugin writes is a transfer whose every line is of the store of its key: dispatching and cancelling move the stock of
+  // every line, and a receipt or a closing decides for the units of every line. A person may write the lines of the stores they
+  // belong to; a plugin holds one store and no membership, so a transfer that spans a sibling store is read only to it
+  private assertPluginOwnsEveryLine(
+    actor: Actor,
+    lines: readonly { storeId: string }[],
+    visible: readonly string[]
+  ): void {
+    if (actor.pluginInstallationId === undefined) return
+    // A transfer with no line of the store of the key does not exist for a plugin (what it cannot read it cannot write)
+    if (!lines.some(line => visible.includes(line.storeId))) throw resourceNotFound('transfer')
+    assertSeesEveryLine(lines, visible)
+  }
+
+  private assertPluginHasLines(actor: Actor, count: number): void {
+    if (actor.pluginInstallationId !== undefined && count === 0) {
+      throw new PlatformException(
+        ErrorCodes.VALIDATION_FAILED,
+        'a transfer a plugin makes holds at least one line of the store of its key',
+        HttpStatusCodes.BAD_REQUEST
+      )
+    }
   }
 
   private assertMove(locked: LockedTransfer, to: TransferStatus): void {
@@ -736,6 +778,7 @@ export class TransfersService {
       actor: Actor
     }
   ): MovementInput {
+    const ids = actorIds(step.actor)
     return {
       storeId: line.storeId,
       productId: line.productId,
@@ -747,7 +790,8 @@ export class TransfersService {
       ...(step.cost === undefined || step.cost === null ? {} : { unitCostCents: step.cost }),
       note: locked.number,
       reference: { type: InventoryReferenceType.TRANSFER, id: locked.id },
-      createdBy: step.actor.userId
+      createdBy: ids.userId,
+      createdByPluginId: ids.pluginId
     }
   }
 

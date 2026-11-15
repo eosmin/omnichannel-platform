@@ -915,6 +915,10 @@ export const PluginScopes = {
   TAGS_WRITE: 'tags:write',                     // create, rename, recolor and delete a tag of the catalog (Step 5.6 E4a-2)
   TRANSFERS_READ: 'transfers:read',             // the transfers between warehouses, read only; the lines of the key's store only (Step 5.6 E4b)
   COUNTS_READ: 'counts:read',                   // the physical counts, read only; the lines of the key's store only (Step 5.6 E4b)
+  TRANSFERS_WRITE: 'transfers:write',           // make, change, dispatch and cancel a transfer; only one whose every line is of the key's store (Step 5.6 E4b-2)
+  TRANSFERS_RECEIVE: 'transfers:receive',       // receive a transfer and close it with a shortage; a scope of its own as who sends does not receive (Step 5.6 E4b-2)
+  COUNTS_WRITE: 'counts:write',                 // open, fill in, submit, reopen and cancel a count; never apply it (Step 5.6 E4b-2)
+  COUNTS_APPLY: 'counts:apply',                 // apply a count in review: the stock becomes what was counted, a scope of its own (Step 5.6 E4b-2)
   EXPORTS_READ: 'exports:read',                 // the exports this installation asked for, with the retention and signed link of a person's (Step 5.6 E7); grants no permission
   EXPORTS_WRITE: 'exports:write',               // take data out: ANALYTICS_EXPORT and MEDIA_DOWNLOAD_ALL, with the scope that reads what is exported (Step 5.6 E7)
   MEDIA_READ: 'media:read',                     // signed links of the files of the store (Step 5.6 E7)

@@ -672,15 +672,28 @@ export const PluginApiRoutes = {
     kardex: '/plugin-api/inventory/kardex',
     adjustments: '/plugin-api/inventory/adjustments'
   },
-  // Step 5.6 PR E4b: the reads of the transfers between warehouses and of the physical counts, over the same services as
-  // `ApiRoutes.transfers` and `.counts`. Their writes store the id of a person at every step and wait for PR E4b-2.
+  // Step 5.6 PR E4b and E4b-2: the transfers between warehouses and the physical counts, over the same services as
+  // `ApiRoutes.transfers` and `.counts`. The change of a draft transfer is the PATCH of `byId`, the lines of a count the PATCH of
+  // `lines`.
   transfers: {
     list: '/plugin-api/transfers',
-    byId: (id: string) => `/plugin-api/transfers/${id}`
+    create: '/plugin-api/transfers',
+    byId: (id: string) => `/plugin-api/transfers/${id}`,
+    dispatch: (id: string) => `/plugin-api/transfers/${id}/dispatch`,
+    receive: (id: string) => `/plugin-api/transfers/${id}/receive`,
+    close: (id: string) => `/plugin-api/transfers/${id}/close`,
+    cancel: (id: string) => `/plugin-api/transfers/${id}/cancel`
   },
   counts: {
     list: '/plugin-api/counts',
-    byId: (id: string) => `/plugin-api/counts/${id}`
+    create: '/plugin-api/counts',
+    byId: (id: string) => `/plugin-api/counts/${id}`,
+    start: (id: string) => `/plugin-api/counts/${id}/start`,
+    lines: (id: string) => `/plugin-api/counts/${id}/lines`,
+    submit: (id: string) => `/plugin-api/counts/${id}/submit`,
+    reopen: (id: string) => `/plugin-api/counts/${id}/reopen`,
+    apply: (id: string) => `/plugin-api/counts/${id}/apply`,
+    cancel: (id: string) => `/plugin-api/counts/${id}/cancel`
   },
   // Step 5.6 PR E6: the reads of the returns (and of the batches of the scanner that receives them) and of the remittances of
   // cash collected on delivery, over the same services as `ApiRoutes.returns` and `.remittances`. Their writes store the id of a
