@@ -3,7 +3,12 @@
 // /api/v1/plugin-api/* (Step 5.6), or says why a plugin never does. The check is on the mapping, not on
 // the controllers of the plugin API, which do not exist yet: the routes that are not exposed are frozen
 // in scripts/plugin-api-baseline.json, which can only shrink.
+import { normalizedPluginApiPath } from '@platform/core/api'
+
 import { DEFERRED_STATUS } from './frontend-coverage'
+
+// Read from the route constants of the plugin API, which the api's own test uses too
+export { normalizedPluginApiPath, pluginApiPaths } from '@platform/core/api'
 
 export type PluginApiCoverage =
   // The scope that PluginScopes already declares; a list when the route has methods of both kinds (the
@@ -47,7 +52,8 @@ export function mappedKeys(source: string): string[] {
 function isInvalid(
   entry: unknown,
   scopes: ReadonlySet<string>,
-  steps: ReadonlyMap<string, string>
+  steps: ReadonlyMap<string, string>,
+  paths: ReadonlySet<string> | undefined
 ): boolean {
   const record = (typeof entry === 'object' && entry !== null ? entry : {}) as Record<
     string,
@@ -64,6 +70,14 @@ function isInvalid(
         : ['none']
   if (Object.keys(record).some(key => !allowed.includes(key))) return true
   if (exposed !== undefined && (typeof exposed !== 'string' || !PLUGIN_API_PATH.test(exposed))) {
+    return true
+  }
+  // An `exposed` the code does not declare (a typo, or a route nobody built) would pass for a route a plugin can call
+  if (
+    paths !== undefined &&
+    typeof exposed === 'string' &&
+    !paths.has(normalizedPluginApiPath(exposed))
+  ) {
     return true
   }
   if (kinds[0] === 'none') return typeof none !== 'string' || none.trim() === ''
@@ -94,7 +108,9 @@ export function checkPluginApiCoverage(
   exposed: readonly string[],
   map: Readonly<Record<string, PluginApiCoverage>>,
   scopes: readonly string[],
-  steps: ReadonlyMap<string, string>
+  steps: ReadonlyMap<string, string>,
+  // The paths of `PluginApiRoutes` (see pluginApiPaths): when given, every `exposed` must be one of them
+  paths?: ReadonlySet<string>
 ): PluginApiReport {
   const known = new Set(exposed)
   const declared = new Set(scopes)
@@ -104,7 +120,7 @@ export function checkPluginApiCoverage(
       .filter(key => !known.has(key))
       .sort(),
     invalid: Object.entries(map)
-      .filter(([, entry]) => isInvalid(entry, declared, steps))
+      .filter(([, entry]) => isInvalid(entry, declared, steps, paths))
       .map(([key]) => key)
       .sort()
   }

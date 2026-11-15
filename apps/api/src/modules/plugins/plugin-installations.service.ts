@@ -32,6 +32,12 @@ import { ChannelConnectionsService } from '../channels/channel-connections.servi
 import { type PublicChannelDescriptor, publicDescriptorOf } from '../channels/public-descriptor'
 import type { Actor } from '../tenancy'
 
+import {
+  type PluginConsent,
+  PluginIntegrationInstallService,
+  type PluginSetupOffer
+} from './plugin-integration-install.service'
+
 // One plugin of the catalog and where it stands in the store of the request
 export interface PluginCatalogEntry {
   id: string
@@ -73,6 +79,10 @@ export interface ChannelConnectManifest {
   oauth: ChannelOAuthDescriptor | null
 }
 
+// What installing answers: where the plugin stands in the store now and, for an integration plugin that is waiting to be set up,
+// the one-time code to give it (shown once, here and in a new code of `POST /plugins/:id/setup-code`)
+export type PluginInstallResult = PluginCatalogEntry & { setup: PluginSetupOffer | null }
+
 // The store of the request: the catalog it sees depends on its organization (a plugin the owner registered is the
 // organization's, not every store's)
 export interface PluginStoreRef {
@@ -99,13 +109,13 @@ export class PluginInstallationsService {
     private readonly connections: ChannelConnectionsService,
     private readonly carrierConnections: CarrierConnectionsService,
     private readonly publicApi: PublicApiConfig,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly integrations: PluginIntegrationInstallService
   ) {}
 
   // The approved plugins this store may see: the ones the platform ships (a row the registry does not know is shown to
   // nobody) and the integration plugins its organization registered, which no registry holds: the row says whose it is. An
-  // integration plugin is listed here and installed by the install flow of Step 5.6 (PR P2); until then the install answers
-  // that it cannot be installed yet.
+  // integration plugin is listed here and installed by its own flow (consent, challenge and setup code: PluginIntegrationInstallService).
   async catalog(store: PluginStoreRef): Promise<PluginCatalogEntry[]> {
     const storeId = store.id
     const [plugins, installations, live, shipping] = await Promise.all([
@@ -163,13 +173,29 @@ export class PluginInstallationsService {
       })
   }
 
+  // What installing an integration plugin would grant, to be read before authorizing it
+  consent(store: PluginStoreRef, pluginId: string): Promise<PluginConsent> {
+    return this.integrations.consent(store, pluginId)
+  }
+
+  // A new code for an installation whose plugin has not set up yet (the first one expired or was lost)
+  reissueSetupCode(
+    store: PluginStoreRef,
+    installationId: string,
+    actor: Actor
+  ): Promise<PluginSetupOffer> {
+    return this.integrations.reissue(store, installationId, actor)
+  }
+
   // Installing a channel makes it connectable. A plugin that was uninstalled is installed again on
-  // the same row: the pair (store, plugin) has one.
+  // the same row: the pair (store, plugin) has one. An integration plugin is installed with the scopes the owner authorized and
+  // ends waiting for its plugin to set up (it is not `installed` until it has exchanged its code for its key).
   async install(
     store: PluginStoreRef,
     pluginId: string,
+    scopes: readonly string[] | undefined,
     actor: Actor
-  ): Promise<PluginCatalogEntry> {
+  ): Promise<PluginInstallResult> {
     const storeId = store.id
     const plugin = await this.prisma.client.plugin.findUnique({
       where: { id: pluginId },
@@ -184,8 +210,27 @@ export class PluginInstallationsService {
     ) {
       throw resourceNotFound('plugin')
     }
-    // The shipping plugin installs when the platform runs at least one carrier; a channel when the registry holds it. The
-    // integration plugins have a key and a consent screen, which Step 5.6 builds
+    if (plugin.type === String(PluginCatalogTypes.INTEGRATION)) {
+      if (scopes === undefined) {
+        throw new PlatformException(
+          ErrorCodes.VALIDATION_FAILED,
+          'an integration plugin is installed with the scopes the owner authorized',
+          HttpStatusCodes.BAD_REQUEST,
+          { field: 'scopes' }
+        )
+      }
+      const setup = await this.integrations.install(store, pluginId, scopes, actor)
+      return { ...(await this.entryOf(store, pluginId)), setup }
+    }
+    if (scopes !== undefined) {
+      throw new PlatformException(
+        ErrorCodes.VALIDATION_FAILED,
+        'this plugin takes no scopes',
+        HttpStatusCodes.BAD_REQUEST,
+        { field: 'scopes' }
+      )
+    }
+    // The shipping plugin installs when the platform runs at least one carrier; a channel when the registry holds it
     const installable =
       pluginId === ShippingPlugin.ID
         ? plugin.type === String(PluginCatalogTypes.CARRIER) && this.carriers.list().length > 0
@@ -258,7 +303,7 @@ export class PluginInstallationsService {
       pluginId,
       actor
     )
-    return entry
+    return { ...entry, setup: null }
   }
 
   // The installation is revoked first, so that nothing new connects; then every connection that
@@ -273,7 +318,7 @@ export class PluginInstallationsService {
     const storeId = store.id
     const installation = await this.prisma.client.pluginInstallation.findFirst({
       where: { id: installationId, storeId },
-      select: { id: true, pluginId: true }
+      select: { id: true, pluginId: true, plugin: { select: { type: true } } }
     })
     if (installation === null) throw resourceNotFound('plugin installation')
     const { pluginId } = installation
@@ -288,6 +333,10 @@ export class PluginInstallationsService {
 
     // Audited right after the revoke, before the disconnects: a failure of those must not leave the revocation unrecorded
     if (revoked) this.record(AuditAction.PLUGIN_REVOKED, storeId, installation.id, pluginId, actor)
+    // A code that was still waiting for the plugin to set up stops working with the installation
+    if (installation.plugin.type === String(PluginCatalogTypes.INTEGRATION)) {
+      await this.integrations.voidSetup(installation.id)
+    }
     await this.disconnectOpen(storeId, installation.id, pluginId, actor)
     return this.entryOf(store, pluginId)
   }

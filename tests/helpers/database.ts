@@ -10,6 +10,7 @@ import {
 } from '@platform/core/database-testing'
 
 import { REDIS_URL } from '../../apps/api/src/testing/test-env'
+import { purgeFinance } from '../builders/finance'
 
 // Everything a run creates carries this prefix, and cleanUp removes exactly that. Nothing here
 // truncates a table or touches a row it did not create, so the suites are safe to run against any
@@ -88,6 +89,15 @@ export async function cleanUp(owner: OwnerClient, prefix: string): Promise<void>
   await owner.remittanceImportProfile.deleteMany({ where: ofRun })
   await owner.orderReturn.deleteMany({ where: ofRun })
   await owner.pickupRequest.deleteMany({ where: ofRun })
+  // The books of an organization restrict its deletion, and the journal is append-only even for the owner
+  const organizations = await owner.organization.findMany({
+    where: { slug: { startsWith: prefix } },
+    select: { id: true }
+  })
+  await purgeFinance(
+    owner,
+    organizations.map(row => row.id)
+  )
   // An order is not deleted with its store (it is kept for the tax window), so the owner removes the
   // ones of the run first
   await owner.order.deleteMany({

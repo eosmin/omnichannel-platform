@@ -97,7 +97,24 @@ export const Permissions = {
   ORG_MANAGE_STORES: 'org:manage_stores',
   ORG_MANAGE_WAREHOUSES: 'org:manage_warehouses',
   ORG_VIEW_AUDIT_LOG: 'org:view_audit_log',
-  ORG_MANAGE_COMPLIANCE: 'org:manage_compliance'
+  ORG_MANAGE_COMPLIANCE: 'org:manage_compliance',
+
+  // Finance (TDD_18 §9.1). The ledger is organization-scoped: the permission is read per store membership like the
+  // inventory ones, and only the Admin preset holds them (RolePresets[ADMIN] is every permission). Custom roles may
+  // mix them, so a bookkeeper can register and not move money, and the one who pays suppliers need not close months.
+  FINANCE_VIEW: 'finance:view', // balances, reports, the periods: no entry detail
+  FINANCE_VIEW_JOURNAL: 'finance:view_journal', // the journal, the ledger of an account, one entry with its lines
+  FINANCE_MANAGE_TRANSACTIONS: 'finance:manage_transactions', // expenses and incomes
+  FINANCE_MOVE_MONEY: 'finance:move_money', // transfers, supplier payments, write-offs, the remittance destination
+  FINANCE_MANAGE_PURCHASES: 'finance:manage_purchases', // suppliers, purchase orders, receiving them
+  FINANCE_RECONCILE: 'finance:reconcile', // bank statement import and matches
+  FINANCE_MANAGE_ACCOUNTS: 'finance:manage_accounts', // chart, role maps, payment accounts, tax rates, settings
+  FINANCE_POST_MANUAL: 'finance:post_manual', // manual entries and reversals
+  FINANCE_CLOSE_PERIODS: 'finance:close_periods', // close and reopen
+  FINANCE_EXPORT: 'finance:export', // the CSV of the journal and the ledger
+  FINANCE_VIEW_CARRIER_FEES: 'finance:view_carrier_fees', // the commission and the rates of a carrier connection
+  FISCAL_VIEW: 'fiscal:view',
+  FISCAL_MANAGE: 'fiscal:manage' // issuer settings and credentials, retry, void
 } as const
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions]
@@ -132,7 +149,9 @@ export const PermissionsOfUnbuiltAreas: readonly string[] = [
   'returns:',
   'remittances:',
   'analytics:',
-  'org:'
+  'org:',
+  'finance:',
+  'fiscal:'
 ]
 
 export const RoleNames = {

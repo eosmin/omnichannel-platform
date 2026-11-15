@@ -33,6 +33,7 @@ const OK = 200
 const CREATED = 201
 const FORBIDDEN = 403
 const NOT_FOUND = 404
+const BAD_REQUEST = 400
 const CONFLICT = 409
 const SECRET = 'EAAB-secret-of-the-store'
 
@@ -461,7 +462,7 @@ describe('The plugin catalog and the installations of a store', () => {
       expect(await owner.pluginInstallation.count({ where: { pluginId: id } })).toBe(0)
     })
 
-    it('does not know a plugin that is not in the catalog, and cannot install one with no code', async () => {
+    it('does not know a plugin that is not in the catalog, and installs an integration one only through its own flow', async () => {
       const missing = await install(`${prefix}-none`)
       const integration = await publish()
       await owner.plugin.update({
@@ -469,11 +470,16 @@ describe('The plugin catalog and the installations of a store', () => {
         // An integration plugin always belongs to an organization (the database refuses one that does not)
         data: { type: PluginCatalogTypes.INTEGRATION, organizationId: ctx.orgA.id }
       })
-      const response = await install(integration)
+      // No scopes: the consent screen was not shown. With them, the manifest the row holds is not a valid one.
+      const unconsented = await install(integration)
+      const invalid = await asAdmin()
+        .post(ApiRoutes.plugins.install)
+        .send({ pluginId: integration, scopes: [] })
 
       expect(missing.status).toBe(NOT_FOUND)
-      expect(response.status).toBe(CONFLICT)
-      expect(codeOf(response.body)).toBe(ErrorCodes.PLUGIN_INSTALLATION_FAILED)
+      expect(unconsented.status).toBe(BAD_REQUEST)
+      expect(invalid.status).toBe(CONFLICT)
+      expect(codeOf(invalid.body)).toBe(ErrorCodes.PLUGIN_INSTALLATION_FAILED)
     })
   })
 

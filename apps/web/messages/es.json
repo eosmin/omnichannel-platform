@@ -584,6 +584,20 @@
     "FILE_UNAVAILABLE": "No se pudo enviar el archivo porque ya no está disponible",
     "FILE_UPLOAD_FAILED": "No se pudo subir el archivo",
     "INSUFFICIENT_INVENTORY": "No hay existencias suficientes",
+    "FINANCE_PERIOD_CLOSED": "El periodo está cerrado: no se puede fechar un asiento en él",
+    "FINANCE_ENTRY_UNBALANCED": "El asiento no cuadra: los débitos y los créditos deben ser iguales y positivos",
+    "FINANCE_ACCOUNT_NOT_POSTABLE": "Esta cuenta solo agrupa otras cuentas: elige una que acepte asientos",
+    "FINANCE_ACCOUNT_INACTIVE": "Esta cuenta está inactiva",
+    "FINANCE_ACCOUNT_TYPE_LOCKED": "El tipo de una cuenta con asientos no se puede cambiar",
+    "FINANCE_ACCOUNT_HAS_ENTRIES": "Una cuenta con asientos no se puede eliminar ni volver encabezado, solo desactivar",
+    "FINANCE_ROLE_NOT_MAPPED": "Falta una cuenta para este rol: asígnala en los ajustes de finanzas",
+    "FINANCE_BEFORE_START_DATE": "La fecha es anterior al inicio de la contabilidad",
+    "FINANCE_ENTRY_ALREADY_REVERSED": "Este asiento ya fue reversado",
+    "FINANCE_REOPEN_NOT_LATEST": "Solo se puede reabrir el último periodo cerrado",
+    "FINANCE_CLOSE_PENDING_POSTINGS": "Hay asientos pendientes o fallidos en este periodo: resuélvelos primero",
+    "FINANCE_CLOSE_PREVIOUS_OPEN": "El periodo anterior sigue abierto: cierra los periodos en orden",
+    "FINANCE_CURRENCY_UNSUPPORTED": "Solo se admite USD",
+    "FINANCE_SETUP_REQUIRED": "Las finanzas aún no se han configurado para esta organización",
     "INTERNAL_ERROR": "Algo salió mal. Inténtalo de nuevo",
     "NETWORK_UNAVAILABLE": "Sin conexión. Lo que escribiste sigue aquí: inténtalo de nuevo cuando vuelva",
     "INVENTORY_ADJUSTMENT_REASON_REQUIRED": "Indica por qué ajustas las existencias",
@@ -633,6 +647,9 @@
     "PLUGIN_CONTRACT_VIOLATION": "El plugin no cumplió su contrato",
     "PLUGIN_LIMIT_REACHED": "La organización alcanzó el límite de plugins registrados",
     "PLUGIN_INSTALLATION_FAILED": "No se pudo instalar el plugin",
+    "PLUGIN_CHALLENGE_FAILED": "La dirección del plugin no respondió la verificación",
+    "PLUGIN_CONSENT_MISMATCH": "El plugin pide un acceso distinto al que revisaste",
+    "PLUGIN_SETUP_CODE_INVALID": "El código de configuración no es válido",
     "PLUGIN_NOT_FOUND": "El plugin no existe",
     "PLUGIN_NOT_INSTALLED": "El plugin no está instalado",
     "PLUGIN_SCOPE_DENIED": "El plugin no tiene acceso a eso",
@@ -2958,7 +2975,9 @@
         "team": "Equipo",
         "settings": "Ajustes",
         "analytics": "Analítica",
-        "org": "Organización"
+        "org": "Organización",
+        "finance": "Finanzas",
+        "fiscal": "Documentos fiscales"
       },
       "permissions": {
         "conversations": {
@@ -3062,6 +3081,23 @@
           "manage_warehouses": "Gestionar almacenes",
           "view_audit_log": "Ver el registro de auditoría",
           "manage_compliance": "Gestionar el cumplimiento"
+        },
+        "finance": {
+          "view": "Ver saldos e informes",
+          "view_journal": "Ver el libro diario",
+          "manage_transactions": "Registrar gastos e ingresos",
+          "move_money": "Mover dinero",
+          "manage_purchases": "Gestionar proveedores y compras",
+          "reconcile": "Conciliar extractos bancarios",
+          "manage_accounts": "Gestionar el catálogo de cuentas y los ajustes",
+          "post_manual": "Registrar asientos manuales",
+          "close_periods": "Cerrar y reabrir periodos",
+          "export": "Exportar los libros",
+          "view_carrier_fees": "Ver las tarifas de transportistas"
+        },
+        "fiscal": {
+          "view": "Ver documentos fiscales",
+          "manage": "Gestionar documentos fiscales"
         }
       },
       "members": {

@@ -6,12 +6,17 @@ import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
 
-import { PluginInstallationsService, type PluginCatalogEntry } from './plugin-installations.service'
+import {
+  type PluginCatalogEntry,
+  PluginInstallationsService,
+  type PluginInstallResult
+} from './plugin-installations.service'
+import type { PluginConsent, PluginSetupOffer } from './plugin-integration-install.service'
 import {
   PluginRegistrationService,
   RegistrationOutcomes,
@@ -20,6 +25,7 @@ import {
 import {
   type InstallPluginBody,
   installPluginSchema,
+  pluginIdSchema,
   type RegisterPluginBody,
   registerPluginSchema
 } from './plugins.schemas'
@@ -42,6 +48,8 @@ export class PluginsController {
   }
 
   @RequirePermissions(Permissions.SETTINGS_MANAGE_PLUGINS)
+  // The answer of an integration plugin carries the one-time setup code: not stored by anything between the owner and the platform
+  @NoStore()
   @Post(ApiRoutes.plugins.install)
   @HttpCode(HttpStatusCodes.CREATED)
   install(
@@ -49,8 +57,33 @@ export class PluginsController {
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(installPluginSchema)) body: InstallPluginBody,
     @Req() req: AuthenticatedRequest
-  ): Promise<PluginCatalogEntry> {
-    return this.installations.install(store, body.pluginId, actorOf(user, store, req))
+  ): Promise<PluginInstallResult> {
+    return this.installations.install(store, body.pluginId, body.scopes, actorOf(user, store, req))
+  }
+
+  // What installing an integration plugin would grant: the consent screen reads it (the id is the plugin's)
+  @RequirePermissions(Permissions.SETTINGS_MANAGE_PLUGINS)
+  @Get(ApiRoutes.plugins.consent(':id'))
+  consent(
+    @CurrentStore() store: Store,
+    @Param('id', new ZodValidationPipe(pluginIdSchema)) pluginId: string
+  ): Promise<PluginConsent> {
+    return this.installations.consent(store, pluginId)
+  }
+
+  // A new one-time code for an installation that is waiting for its plugin (the id is the installation's); shown once, and the
+  // earlier code stops working. The answer carries a secret and is not stored.
+  @RequirePermissions(Permissions.SETTINGS_MANAGE_PLUGINS)
+  @NoStore()
+  @Post(ApiRoutes.plugins.setupCode(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  setupCode(
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', new ZodValidationPipe(uuidSchema)) installationId: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<PluginSetupOffer> {
+    return this.installations.reissueSetupCode(store, installationId, actorOf(user, store, req))
   }
 
   // The owner pastes the manifest of an integration plugin (D10): 201 when the id is new, 200 when a newer version of one of
