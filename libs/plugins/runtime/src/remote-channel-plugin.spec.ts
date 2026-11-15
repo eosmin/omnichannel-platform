@@ -138,6 +138,13 @@ describe('RemoteChannelPlugin: what it declares', () => {
     })
   })
 
+  it('passes only the shape of a public https address of a file on to the fetch', () => {
+    expect(plugin.acceptsMediaLink?.('https://cdn.acme.com/a.png')).toBe(true)
+    for (const ref of ['http://cdn.acme.com/a.png', 'https://10.0.0.1/a.png', 'nothing']) {
+      expect(plugin.acceptsMediaLink?.(ref)).toBe(false)
+    }
+  })
+
   it('takes the capabilities, window, limits and files from the manifest and never more', () => {
     expect(plugin.capabilities).toEqual(manifest.capabilities)
     expect(plugin.messagingWindow).toEqual({ hours: 24, requiresTemplateWhenClosed: false })
