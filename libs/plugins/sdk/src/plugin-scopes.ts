@@ -40,6 +40,11 @@ export const PluginScopes = {
   // exercised; the writes get scopes of their own (PR E4b-2). A plugin sees only the lines of its own store.
   TRANSFERS_READ: 'transfers:read',
   COUNTS_READ: 'counts:read',
+  // The returns, the batches of the scanner that receives them, and the remittances of cash collected on delivery, read only (Step
+  // 5.6 PR E6). Each scope grants the permission a person needs to see them (RETURNS_VIEW, REMITTANCES_VIEW) and only routes that
+  // read declare it; the writes store the id of a person and move stock and money, so they get scopes of their own in PR E6-2.
+  RETURNS_READ: 'returns:read',
+  REMITTANCES_READ: 'remittances:read',
   WEBHOOKS_WRITE: 'webhooks:write',
   ANALYTICS_READ: 'analytics:read',
   INVENTORY_READ: 'inventory:read',
@@ -113,6 +118,8 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
     Permissions.INVENTORY_MANAGE_COUNTS,
     Permissions.INVENTORY_APPLY_COUNTS
   ],
+  [PluginScopes.RETURNS_READ]: [Permissions.RETURNS_VIEW],
+  [PluginScopes.REMITTANCES_READ]: [Permissions.REMITTANCES_VIEW],
   [PluginScopes.WEBHOOKS_WRITE]: [],
   [PluginScopes.ANALYTICS_READ]: [Permissions.ANALYTICS_VIEW],
   [PluginScopes.INVENTORY_READ]: [Permissions.INVENTORY_VIEW],

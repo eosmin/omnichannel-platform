@@ -913,6 +913,8 @@ export const PluginScopes = {
   WAREHOUSES_READ: 'warehouses:read',           // the warehouses of the organization of the key's store (Step 5.6 E4a)
   TRANSFERS_READ: 'transfers:read',             // the transfers between warehouses, read only; the lines of the key's store only (Step 5.6 E4b)
   COUNTS_READ: 'counts:read',                   // the physical counts, read only; the lines of the key's store only (Step 5.6 E4b)
+  RETURNS_READ: 'returns:read',                 // the returns and the batches of the scanner that receives them, read only; no id of a person, no flag on a customer (Step 5.6 E6)
+  REMITTANCES_READ: 'remittances:read',         // the remittances of cash collected on delivery and the saved import profiles, read only; no id of a person, no imported file (Step 5.6 E6)
   CARRIERS_READ: 'carriers:read',               // the carrier connections of the store, read only; never a credential, a secret or an agreed amount (Step 5.6 E5)
   PICKUPS_READ: 'pickups:read',                 // the pickups of the store and, with customers:read and shipments:read, their manifest; read only (Step 5.6 E5)
   WEBHOOKS_WRITE: 'webhooks:write',
@@ -1062,10 +1064,9 @@ const installations = await this.prisma.client.pluginInstallation.findMany({
 **Which events, and what each carries** (`libs/plugins/sdk/src/plugin-events.ts`). Only the events a store can follow (the webhook
 catalog) are sent to a plugin, and only when the installation holds the scope of the event (`PluginEventScopes`: `order.*` needs
 `orders:read`, `customer.*` `customers:read`, `conversation.*` `conversations:read`, `message.*` `messages:read`, `shipment.*`
-`shipments:read`, `product.*` `products:read`; `return.*` has no scope yet and is not sent until the PR that exposes the returns adds
-one). What is in the payload is decided field by field: a field is sent only when it is listed, and the id of a resource only
+`shipments:read`, `product.*` `products:read`, `return.*` `returns:read`). What is in the payload is decided field by field: a field is sent only when it is listed, and the id of a resource only
 when the installation holds a scope that reads it (`customerId` needs `customers:read`, so a plugin with only `messages:read`
-never gets the customer; `orderId` needs `orders:read` or `shipments:read`). The text of a message, the ids of the people of the
+never gets the customer; `orderId` needs `orders:read`, `shipments:read` or `returns:read`). The text of a message, the ids of the people of the
 team (the team directory has no scope), the visibility and the flags that steer the platform are never sent, and neither is a
 value that is not a plain one. A key an event gains later is held back until someone decides which scope opens it.
 

@@ -111,7 +111,7 @@ const webhooks = z.strictObject({
       z
         .string()
         .refine((name): name is EventName => EVENT_NAMES.has(name), { message: 'unknown event' })
-        // Only what can be sent: an event with no scope (the returns, until they have one) or that a store cannot follow would
+        // Only what can be sent: an event with no scope or that a store cannot follow would
         // be a subscription that never fires, with no word of why
         .refine(name => Object.hasOwn(PluginEventScopes, name), {
           message: 'an event a plugin is not sent'

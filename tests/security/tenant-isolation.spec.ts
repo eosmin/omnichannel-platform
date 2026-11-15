@@ -5140,6 +5140,159 @@ describe('Tenant isolation', () => {
     })
   })
 
+  // What a plugin key reads of the returns, the reception batches and the remittances (Step 5.6, E6): all of them belong to ONE store
+  // and a key is bound to one store. The key of store A reads what store A holds; the key of its sibling store A2 and the key of
+  // organization B reach nothing of it, by id or by list; no answer carries the id of a person or the file a remittance came from;
+  // and no route that writes is there.
+  describe('the returns and the remittances with the key of a plugin', () => {
+    const pluginId = `${prefix}-returns-remittances`
+    const scopes = [PluginScopes.RETURNS_READ, PluginScopes.REMITTANCES_READ]
+    let keyOfA = ''
+    let keyOfA2 = ''
+    let keyOfB = ''
+    let readsNothing = ''
+    let returnA = ''
+    let batchA = ''
+    let remittanceA = ''
+    let profileA = ''
+    let authorOfA = ''
+
+    beforeAll(async () => {
+      for (const [slot, storeId] of [
+        ['a', ctx.storeA.id],
+        ['a2', ctx.storeA2.id],
+        ['b', ctx.storeB.id]
+      ] as const) {
+        const { key } = await createPluginKey(owner, {
+          storeId,
+          pluginId: `${pluginId}-${slot}`,
+          scopes
+        })
+        if (slot === 'a') keyOfA = key
+        else if (slot === 'a2') keyOfA2 = key
+        else keyOfB = key
+      }
+      ;({ key: readsNothing } = await createPluginKey(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${pluginId}-none`,
+        scopes: [PluginScopes.ORDERS_READ]
+      }))
+      authorOfA = await adminOf(owner, ctx.storeA.id)
+      returnA = (await createReturn(owner, { storeId: ctx.storeA.id })).id
+      batchA = (
+        await owner.returnReceptionBatch.create({
+          data: { storeId: ctx.storeA.id, createdBy: authorOfA },
+          select: { id: true }
+        })
+      ).id
+      const connection = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
+      remittanceA = (
+        await createRemittance(owner, {
+          storeId: ctx.storeA.id,
+          connectionId: connection.id,
+          withLine: true
+        })
+      ).id
+      profileA = (
+        await createRemittanceImportProfile(owner, {
+          storeId: ctx.storeA.id,
+          connectionId: connection.id
+        })
+      ).id
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId: { startsWith: pluginId } } })
+      await owner.plugin.deleteMany({ where: { id: { startsWith: pluginId } } })
+    })
+
+    const server = () => supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+    const as = (key: string, path: string) =>
+      server().get(`${API_PREFIX}${path}`).set('authorization', `Bearer ${key}`)
+    const reads = (): string[] => [
+      PluginApiRoutes.returns.byId(returnA),
+      PluginApiRoutes.returns.list,
+      PluginApiRoutes.returns.reception.batchById(batchA),
+      PluginApiRoutes.returns.reception.batches,
+      PluginApiRoutes.remittances.byId(remittanceA),
+      PluginApiRoutes.remittances.list,
+      PluginApiRoutes.remittances.pending,
+      PluginApiRoutes.remittances.importProfiles
+    ]
+
+    it('reads what its own store holds', async () => {
+      for (const path of reads()) expect((await as(keyOfA, path)).status).toBe(200)
+      expect(JSON.stringify((await as(keyOfA, PluginApiRoutes.returns.list)).body)).toContain(
+        returnA
+      )
+      expect(JSON.stringify((await as(keyOfA, PluginApiRoutes.remittances.list)).body)).toContain(
+        remittanceA
+      )
+      expect(
+        JSON.stringify((await as(keyOfA, PluginApiRoutes.remittances.importProfiles)).body)
+      ).toContain(profileA)
+    })
+
+    it.each([
+      ['a sibling store', () => keyOfA2],
+      ['another organization', () => keyOfB]
+    ])('does not read what %s holds, by id or by list', async (_name, key) => {
+      expect((await as(key(), PluginApiRoutes.returns.byId(returnA))).status).toBe(404)
+      expect((await as(key(), PluginApiRoutes.returns.reception.batchById(batchA))).status).toBe(
+        404
+      )
+      expect((await as(key(), PluginApiRoutes.remittances.byId(remittanceA))).status).toBe(404)
+      for (const [path, id] of [
+        [PluginApiRoutes.returns.list, returnA],
+        [PluginApiRoutes.returns.reception.batches, batchA],
+        [PluginApiRoutes.remittances.list, remittanceA],
+        [PluginApiRoutes.remittances.importProfiles, profileA]
+      ] as const) {
+        const response = await as(key(), path)
+        expect(response.status).toBe(200)
+        expect(JSON.stringify(response.body)).not.toContain(id)
+      }
+    })
+
+    it('does not answer the id of a person, nor the file a remittance came from', async () => {
+      for (const path of reads()) {
+        const response = await as(keyOfA, path)
+        const text = JSON.stringify(response.body)
+        expect(text).not.toMatch(
+          /createdBy|confirmedBy|voidedBy|sourceMediaId|flagReason|customerIsCaution/
+        )
+        expect(text).not.toContain(authorOfA)
+      }
+    })
+
+    it('needs the scope of the route', async () => {
+      for (const path of reads()) expect((await as(readsNothing, path)).status).toBe(403)
+    })
+
+    it('has no route that writes: a return, a batch or a remittance cannot be changed with a key', async () => {
+      const attempts = [
+        server().post(`${API_PREFIX}${PluginApiRoutes.returns.list}`).send({}),
+        server()
+          .post(`${API_PREFIX}${PluginApiRoutes.returns.byId(returnA)}/approve`)
+          .send({}),
+        server().post(`${API_PREFIX}${PluginApiRoutes.returns.reception.batches}`).send({}),
+        server().post(`${API_PREFIX}${PluginApiRoutes.remittances.list}`).send({}),
+        server()
+          .post(`${API_PREFIX}${PluginApiRoutes.remittances.byId(remittanceA)}/confirm`)
+          .send({}),
+        server().delete(`${API_PREFIX}${PluginApiRoutes.remittances.byId(remittanceA)}`)
+      ]
+      for (const attempt of attempts) {
+        expect((await attempt.set('authorization', `Bearer ${keyOfA}`)).status).toBe(404)
+      }
+      expect(
+        (await owner.codRemittance.findUniqueOrThrow({ where: { id: remittanceA } })).status
+      ).toBe(RemittanceStatus.DRAFT)
+      expect((await owner.orderReturn.findUniqueOrThrow({ where: { id: returnA } })).status).toBe(
+        'requested'
+      )
+    })
+  })
+
   // What a plugin key reads of the shipping (Step 5.6, E5): the shipments, the carrier connections and the pickups of the store of the key,
   // read only. The key of store B reaches the rows of store B; a shipment, a connection or a pickup of store A is a row that does not
   // exist for it (by id, by list, by the places a carrier lists and by its statuses). What a carrier is paid and the secrets of a

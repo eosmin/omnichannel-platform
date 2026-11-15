@@ -3097,6 +3097,8 @@
         "channel:events": "Report events of the channel it provides, such as incoming messages",
         "transfers:read": "Read stock transfers between warehouses",
         "counts:read": "Read stock counts and their results",
+        "returns:read": "Read returns and the batches that receive them",
+        "remittances:read": "Read cash-on-delivery remittances and import profiles",
         "carriers:read": "Read the carriers connected to the store (never their credentials or rates)",
         "pickups:read": "Read the pickups of the store (with customers and shipments, their manifest)",
         "orders:edit": "Edit the lines and details of orders",

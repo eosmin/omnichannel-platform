@@ -589,16 +589,26 @@ describe('the webhooks block of the manifest', () => {
     }
   })
 
-  it('refuses an event a plugin is never sent: a return, the revocation, a channel event', () => {
-    for (const event of [
-      Events.RETURN_REQUESTED,
-      Events.PLUGIN_REVOKED,
-      Events.CHANNEL_DISCONNECTED
-    ]) {
+  it('refuses an event a plugin is never sent: the revocation, a channel event', () => {
+    for (const event of [Events.PLUGIN_REVOKED, Events.CHANNEL_DISCONNECTED]) {
       const result = pluginManifestSchema.safeParse(
         base({ events: [event], signatureHeader: 'X-Sig' })
       )
       expect(result.success).toBe(false)
     }
+  })
+
+  it('accepts the events of a return, which a plugin follows through returns:read', () => {
+    const webhooks = {
+      endpoint: 'https://acme.com/webhooks/platform',
+      events: [Events.RETURN_REQUESTED],
+      signatureHeader: 'X-Platform-Signature'
+    }
+
+    expect(
+      pluginManifestSchema.safeParse(
+        manifest({ scopes: [PluginScopes.RETURNS_READ, PluginScopes.WEBHOOKS_WRITE], webhooks })
+      ).success
+    ).toBe(true)
   })
 })
