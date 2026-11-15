@@ -3094,7 +3094,13 @@
         "channel:connections": "Gestionar las cuentas del canal que ofrece",
         "channel:events": "Informar eventos del canal que ofrece, como los mensajes entrantes",
         "transfers:read": "Leer los traslados de existencias entre bodegas",
-        "counts:read": "Leer los conteos de existencias y sus resultados"
+        "counts:read": "Leer los conteos de existencias y sus resultados",
+        "orders:edit": "Editar las líneas y los datos de los pedidos",
+        "orders:confirm": "Confirmar pedidos",
+        "orders:cancel": "Cancelar pedidos",
+        "orders:approve-price": "Decidir sobre las solicitudes de precio de los pedidos",
+        "order-messages:write": "Enviar mensajes a los clientes sobre sus pedidos",
+        "order-templates:write": "Escribir, borrar y previsualizar las plantillas de los mensajes de pedidos"
       },
       "reenable": "Reactivar notificaciones"
     },

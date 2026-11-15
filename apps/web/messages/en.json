@@ -3094,7 +3094,13 @@
         "channel:connections": "Manage the accounts of the channel it provides",
         "channel:events": "Report events of the channel it provides, such as incoming messages",
         "transfers:read": "Read stock transfers between warehouses",
-        "counts:read": "Read stock counts and their results"
+        "counts:read": "Read stock counts and their results",
+        "orders:edit": "Edit the lines and details of orders",
+        "orders:confirm": "Confirm orders",
+        "orders:cancel": "Cancel orders",
+        "orders:approve-price": "Decide on price requests of orders",
+        "order-messages:write": "Send messages to customers about their orders",
+        "order-templates:write": "Write, delete and preview the templates of order messages"
       },
       "reenable": "Turn notifications on"
     },
