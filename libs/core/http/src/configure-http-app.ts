@@ -7,6 +7,7 @@ import { ErrorCodes, type ErrorResponse, HttpStatusCodes } from '@platform/core/
 import { type AuthenticatedRequest, correlationIdMiddleware } from '@platform/core/logger'
 import { useHttpMetrics } from '@platform/core/metrics-module'
 
+import { pluginEventsBodyParser } from './plugin-events-body-parser'
 import { apiSecurityHeaders } from './security-headers'
 import { webCors } from './web-cors.middleware'
 
@@ -27,6 +28,8 @@ export async function configureHttpApp(
   if (webOrigin !== undefined) app.use(webCors(webOrigin))
   app.use(correlationIdMiddleware)
   useHttpMetrics(app)
+  // Before the app initializes, so before Nest's 100 KB parser: it takes the one route of the plugins that needs more
+  app.use(pluginEventsBodyParser)
   // The leading slash matters: without it Nest 12 leaves its not-found handler out and an unknown
   // route answers with Express's HTML page instead of the error contract
   app.setGlobalPrefix(API_PREFIX, {

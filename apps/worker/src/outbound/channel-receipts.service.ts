@@ -94,6 +94,20 @@ export class ChannelReceipts {
         message = { id: file.messageId }
       }
     }
+    // A plugin that holds the id of the platform (`messageId`, the one it was given with the send) and whose provider id the
+    // platform does not have, or has differently: the message is found by that id, inside this connection and among the
+    // replies of the agents, so it still cannot reach a message of another account (TDD_10 §6.7.5)
+    if (message === null && event.messageId !== undefined) {
+      message = await this.prisma.client.message.findFirst({
+        where: {
+          id: event.messageId,
+          storeId: connection.storeId,
+          authorType: AuthorType.AGENT,
+          conversation: { channelConnectionId: connection.id }
+        },
+        select: { id: true }
+      })
+    }
     // A receipt for a message this platform did not send (it went out from the phone) or one it has
     // not finished writing: nothing to update
     if (message === null) {

@@ -24,6 +24,7 @@ import { ChannelEventTypes, PluginScopes } from '@platform/plugins/sdk'
 
 import { REDIS_URL } from '../../libs/core/redis/src/testing/test-env'
 import { createConversationOf, createMessage } from '../builders'
+import { referenceEvents } from '../contracts/remote-channel.contract'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
@@ -41,6 +42,7 @@ const FORBIDDEN = 403
 const NOT_FOUND = 404
 const CONFLICT = 409
 const TOO_MANY_REQUESTS = 429
+const PAYLOAD_TOO_LARGE = 413
 
 interface ErrorBody {
   error: { code: string }
@@ -444,6 +446,88 @@ describe('The channel routes of the plugin API', () => {
       expect(jobs().every(job => (job.data as { pluginId: string }).pluginId === a.pluginId)).toBe(
         true
       )
+    })
+
+    // The events of the reference plugin of the contract suite (`tests/contracts/remote-channel.contract.ts`), at the door
+    describe('what the reference plugin reports', () => {
+      it("queues an echo of the owner's own account: no capability is needed to say it", async () => {
+        const events = referenceEvents('acct-a')
+
+        const response = await report(a.key, [events['echo'] as object])
+
+        expect(response.status).toBe(ACCEPTED)
+        expect(response.body).toEqual({ accepted: 1 })
+        expect((jobs()[0]?.data as { event: { type: string } }).event.type).toBe(
+          ChannelEventTypes.MESSAGE_ECHO
+        )
+      })
+
+      it('drops a reaction, an edit and a deletion, and says it dropped them: a remote plugin cannot declare those capabilities', async () => {
+        const events = referenceEvents('acct-a')
+
+        const response = await report(a.key, [
+          events['reaction'] as object,
+          events['edited'] as object,
+          events['deleted'] as object
+        ])
+
+        expect(response.status).toBe(ACCEPTED)
+        expect(response.body).toEqual({ accepted: 0 })
+        expect(jobs()).toHaveLength(0)
+      })
+
+      it('drops the receipts and the typing of a channel that did not declare them', async () => {
+        const events = referenceEvents('acct-a')
+
+        const response = await report(a.key, [
+          events['delivered'] as object,
+          events['read'] as object,
+          events['typing'] as object
+        ])
+
+        expect(response.body).toEqual({ accepted: 0 })
+        expect(jobs()).toHaveLength(0)
+      })
+    })
+
+    it('takes a batch of fifty events past 100 KB, up to 1 MiB, from a caller with a key', async () => {
+      const long = (index: number): object =>
+        received('acct-a', {
+          channelIdentity: `customer-${index}`,
+          message: {
+            externalId: `m-${randomUUID()}`,
+            type: MessageType.TEXT,
+            content: 'x'.repeat(RemoteChannelApiLimits.MESSAGE_CONTENT_MAX_LENGTH),
+            timestamp: now()
+          }
+        })
+      const events = Array.from({ length: RemoteChannelApiLimits.MAX_EVENTS_PER_REQUEST }, (_, i) =>
+        long(i)
+      )
+      expect(JSON.stringify({ events }).length).toBeGreaterThan(100 * 1024)
+
+      const response = await report(a.key, events)
+
+      expect(response.status).toBe(ACCEPTED)
+      expect(response.body).toEqual({ accepted: events.length })
+      expect(jobs()).toHaveLength(events.length)
+    })
+
+    it('refuses a body past 1 MiB with 413, and a body past 100 KB from a caller with no key', async () => {
+      const padding = 'x'.repeat(RemoteChannelApiLimits.EVENTS_BODY_MAX_BYTES)
+      const tooBig = await call('post', PluginApiRoutes.channel.events, a.key).send({
+        events: [received('acct-a')],
+        padding
+      })
+      const noKey = await call('post', PluginApiRoutes.channel.events, undefined).send({
+        events: [received('acct-a')],
+        padding: padding.slice(0, 200 * 1024)
+      })
+
+      expect(tooBig.status).toBe(PAYLOAD_TOO_LARGE)
+      expect(codeOf(tooBig.body)).toBe(ErrorCodes.PAYLOAD_TOO_LARGE)
+      expect(noKey.status).toBe(PAYLOAD_TOO_LARGE)
+      expect(jobs()).toHaveLength(0)
     })
 
     it('refuses the WHOLE request with 404 when one event names a connection of another store, and queues none', async () => {
