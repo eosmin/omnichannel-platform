@@ -56,6 +56,8 @@ export const RemoteChannelLimits = {
   BEST_EFFORT_TIMEOUT_MS: 3_000,
   // The plugin refuses a `t` farther than this from its clock; the platform signs with its own
   SIGNATURE_TOLERANCE_SECONDS: 300,
+  // The GET of a file a customer sent (§6.7.6): how long the connection may go quiet; the worker's own limit on the whole fetch bounds the total
+  MEDIA_FETCH_TIMEOUT_MS: 30_000,
   // The signed GET of the file of an outbound message
   MEDIA_URL_TTL_SECONDS: 600,
   // What the platform offers a remote channel before the plugin says more: the text of a message (the cap of an inbound one, §6.7.5),
@@ -87,3 +89,41 @@ export const RemoteChannelHealthLimits = {
 // The scheme of the signature header: `t=<unix seconds>,v1=<hex>[,v1=<hex>]`
 export const REMOTE_SIGNATURE_TIME_KEY = 't'
 export const REMOTE_SIGNATURE_VERSION_KEY = 'v1'
+
+// What a remote channel plugin may send to `/plugin-api/channel/*` (TDD_10 §6.7.5)
+export const RemoteChannelApiLimits = {
+  // One installation holds at most this many connections that are not DISCONNECTED
+  MAX_ACTIVE_CONNECTIONS: 20,
+  CONNECTION_ID_MAX_LENGTH: 128,
+  DISPLAY_NAME_MAX_LENGTH: 100,
+  CONNECTION_METADATA_MAX_BYTES: 4096,
+  MAX_EVENTS_PER_REQUEST: 50,
+  // The ceiling of events a minute for the whole installation, on top of `rateLimitPerMinute` (requests)
+  MAX_EVENTS_PER_MINUTE: 3000,
+  EVENTS_WINDOW_SECONDS: 60,
+  // Per-event caps
+  CHANNEL_IDENTITY_MAX_LENGTH: 128,
+  PROFILE_NAME_MAX_LENGTH: 100,
+  MESSAGE_CONTENT_MAX_LENGTH: 4096,
+  MESSAGE_METADATA_MAX_BYTES: 4096,
+  // A timestamp older than this, or further ahead than the second, is refused
+  TIMESTAMP_MAX_AGE_DAYS: 30,
+  TIMESTAMP_MAX_AHEAD_MINUTES: 5,
+  // A customer typing is passed on at most once per conversation in this time
+  TYPING_GAP_MS: 2000
+} as const
+
+// `connectionId` is the plugin's own identifier of the account: letters, digits and . _ : + @ -
+export const REMOTE_CONNECTION_ID_PATTERN = /^[A-Za-z0-9._:+@-]+$/
+
+// Why an event of a remote plugin was dropped, the labels of PLUGIN_EVENT_REJECTED
+export const PluginEventRejectionReasons = {
+  // A status event whose `messageId` is not a message of a connection of this installation
+  FOREIGN_MESSAGE: 'foreign_message',
+  // An event type the channel did not declare the capability for
+  CAPABILITY_MISSING: 'capability_missing',
+  // The event for a connection the key does not own (the request is refused with 404)
+  UNKNOWN_CONNECTION: 'unknown_connection'
+} as const
+export type PluginEventRejectionReason =
+  (typeof PluginEventRejectionReasons)[keyof typeof PluginEventRejectionReasons]

@@ -110,6 +110,69 @@ describe('pinnedHttpsGet', () => {
   })
 })
 
+describe('pinnedHttpsGet extra headers', () => {
+  it('sends the headers it is given next to its own accept and identity encoding', async () => {
+    const { request, calls } = fakeRequest(200, { 'content-type': 'image/png' })
+    await pinnedHttpsGet('https://cdn.example.com/a.png', {
+      accept: '*/*',
+      timeoutMs: 1000,
+      resolve: resolvesTo('93.184.216.34'),
+      request,
+      headers: { 'x-platform-command-signature': 't=1,v1=ab' }
+    })
+    expect(calls[0]?.['headers']).toEqual({
+      'x-platform-command-signature': 't=1,v1=ab',
+      accept: '*/*',
+      'accept-encoding': 'identity'
+    })
+  })
+
+  it.each([
+    'Host',
+    'content-length',
+    'Transfer-Encoding',
+    'connection',
+    'upgrade',
+    'TE',
+    'accept',
+    'Accept-Encoding',
+    'Proxy-Authorization',
+    'Expect',
+    'Cookie',
+    'x_bad',
+    'x-'
+  ])('refuses to set %s, before any lookup or request', async name => {
+    const { request, calls } = fakeRequest(200)
+    const resolve = jest.fn(resolvesTo('93.184.216.34'))
+    await expect(
+      pinnedHttpsGet('https://cdn.example.com/a.png', {
+        accept: '*/*',
+        timeoutMs: 1000,
+        resolve,
+        request,
+        headers: { [name]: 'x' }
+      })
+    ).rejects.toThrow(TypeError)
+    expect(resolve).not.toHaveBeenCalled()
+    expect(calls).toHaveLength(0)
+  })
+})
+
+describe('pinnedHttpsGet header names', () => {
+  it('refuses two spellings of one name, as Node would keep only one of them', async () => {
+    const { request } = fakeRequest(200)
+    await expect(
+      pinnedHttpsGet('https://cdn.example.com/a.png', {
+        accept: '*/*',
+        timeoutMs: 1000,
+        resolve: resolvesTo('93.184.216.34'),
+        request,
+        headers: { 'X-A': '1', 'x-a': '2' }
+      })
+    ).rejects.toThrow(TypeError)
+  })
+})
+
 describe('pinnedHttpsGet failures of the connection', () => {
   const failing = (code: string): HttpsRequester =>
     (() => {

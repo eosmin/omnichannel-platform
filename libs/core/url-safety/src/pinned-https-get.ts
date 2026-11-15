@@ -35,9 +35,17 @@ export interface PinnedResponse {
   contentLength: number | null
 }
 
+// What a caller may add to the request: its own `x-` headers (a signature, an id). Nothing that says where the request goes, how its
+// body is framed or who is asking (`host`, `content-length`, `connection`, `proxy-authorization`, `expect`, `cookie`...), and a name
+// is judged lower-cased, so two spellings of one cannot both pass
+const ALLOWED_HEADER = /^x-[a-z0-9-]+$/
+
 export interface PinnedGetOptions {
   accept: string
   timeoutMs: number
+  // Extra headers of the request: only `x-` ones (`ALLOWED_HEADER`). The function connects to the address it checked and to no other,
+  // and reads the body as it is, so nothing that routes or frames the request can be set from outside
+  headers?: Readonly<Record<string, string>>
   resolve?: HostResolver
   // Replaceable so that a unit test needs no network
   request?: HttpsRequester
@@ -51,6 +59,14 @@ export async function pinnedHttpsGet(
   raw: string,
   options: PinnedGetOptions
 ): Promise<PinnedResponse> {
+  const extra = new Set<string>()
+  for (const name of Object.keys(options.headers ?? {})) {
+    const lower = name.toLowerCase()
+    if (!ALLOWED_HEADER.test(lower) || extra.has(lower)) {
+      throw new TypeError(`the header ${name} cannot be set on a pinned request`)
+    }
+    extra.add(lower)
+  }
   let target: PublicTarget
   try {
     target = await resolvePublicHttpsUrl(raw, options.resolve)
@@ -74,7 +90,7 @@ export async function pinnedHttpsGet(
       port: HTTPS_PORT,
       path: `${url.pathname}${url.search}`,
       method: 'GET',
-      headers: { accept: options.accept, 'accept-encoding': NO_ENCODING },
+      headers: { ...options.headers, accept: options.accept, 'accept-encoding': NO_ENCODING },
       // A socket of its own: a pooled one, opened for an earlier call, would not go through this lookup
       agent: new Agent({ keepAlive: false }),
       lookup: pinnedLookup(addresses),

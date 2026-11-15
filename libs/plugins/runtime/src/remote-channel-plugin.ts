@@ -31,7 +31,9 @@ import {
   type PinnedExchangeOptions,
   type PinnedExchangeResult,
   pinnedHttpsExchange,
+  pinnedHttpsGet,
   PinnedExchangeFailed,
+  PinnedFetchFailed,
   PERMANENT_NETWORK_CODES,
   PinnedExchangeReasons,
   UnsafeUrlError
@@ -45,6 +47,7 @@ import {
   type ConnectField,
   type ConnectInput,
   type ConnectResult,
+  type FetchedMedia,
   type MarkReadParams,
   type MessagingWindowPolicy,
   PluginError,
@@ -81,8 +84,12 @@ export type RemoteExchange = (
   options: PinnedExchangeOptions
 ) => Promise<PinnedExchangeResult>
 
+export type RemoteFileGet = typeof pinnedHttpsGet
+
 export interface RemoteChannelDeps {
   secrets: RemoteSecretSource
+  // The GET of a file the customer sent (§6.7.6); replaceable for the same reason
+  get?: RemoteFileGet
   // Replaceable so that a unit spec needs no network. The default resolves the address at every call, accepts only a public one
   // and connects to the address it checked (a host that changes its answer later is not followed).
   exchange?: RemoteExchange
@@ -157,6 +164,7 @@ export class RemoteChannelPlugin implements ChannelPlugin {
   readonly settingsUrl: string | null
   private readonly secrets: RemoteSecretSource
   private readonly exchange: RemoteExchange
+  private readonly get: RemoteFileGet
   private readonly now: () => number
   private readonly deliveryId: () => string
 
@@ -190,6 +198,7 @@ export class RemoteChannelPlugin implements ChannelPlugin {
     this.settingsUrl = manifest.ui?.settings ?? null
     this.secrets = deps.secrets
     this.exchange = deps.exchange ?? pinnedHttpsExchange
+    this.get = deps.get ?? pinnedHttpsGet
     this.now = deps.now ?? Date.now
     this.deliveryId = deps.deliveryId ?? randomUUID
 
@@ -348,6 +357,54 @@ export class RemoteChannelPlugin implements ChannelPlugin {
       externalId: parsed.data.externalId,
       status: DeliveryStatus.SENT,
       sentAt: parsed.data.sentAt ?? new Date(this.now()).toISOString()
+    }
+  }
+
+  // The file a customer sent a remote plugin (§6.7.6): the address is a public https one that the plugin put in its event, so it is
+  // judged again here, now: resolved, every address public, and the one connection made to the address that was checked. No redirect
+  // is followed (a 3xx is a failure) and the wait is 30 seconds. The caller keeps to the size and type limits of a message's media
+  // and scans what it stores. The signature of the commands (over an empty body) goes only to the host of `commandsUrl`, so a plugin
+  // can keep its own file addresses private and a third-party host never gets a valid signature.
+  async fetchMedia(ctx: ChannelContext, mediaRef: string): Promise<FetchedMedia> {
+    let sameHost = false
+    try {
+      sameHost = new URL(mediaRef).host === new URL(this.commandsUrl).host
+    } catch {
+      // Not an address: the fetch below refuses it as unsafe
+    }
+    const headers: Record<string, string> = {}
+    if (sameHost) {
+      const secrets = await this.secrets.secretsOf(ctx.storeId, this.id)
+      if (secrets === null) {
+        throw this.failure(ErrorCodes.CHANNEL_NOT_CONNECTED, { retryable: false, refused: true })
+      }
+      const nowMs = this.now()
+      headers[RemoteChannelHeaders.SIGNATURE] = signRemoteCommand(
+        '',
+        this.activeSecrets(secrets, nowMs),
+        Math.floor(nowMs / 1000)
+      )
+    }
+    try {
+      const file = await this.get(mediaRef, {
+        accept: '*/*',
+        timeoutMs: RemoteChannelLimits.MEDIA_FETCH_TIMEOUT_MS,
+        headers
+      })
+      return {
+        stream: file.stream,
+        contentType: file.contentType,
+        contentLength: file.contentLength
+      }
+    } catch (error) {
+      // The caller marks an unsafe address as such, and does not try it again
+      if (error instanceof UnsafeUrlError) throw error
+      // What the file server said is its own: only whether trying again may help. Anything else is ours (a bug, a store that
+      // failed) and goes up as what it is, not as a failure of a message
+      if (error instanceof PinnedFetchFailed) {
+        throw this.failure(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: error.retryable })
+      }
+      throw error
     }
   }
 

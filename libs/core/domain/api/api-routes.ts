@@ -557,6 +557,12 @@ export const PluginApiRoutes = {
     directory: '/plugin-api/channels/directory',
     templates: (pluginId: string) => `/plugin-api/channels/${pluginId}/templates`
   },
+  // Step 5.6 PR C3 (TDD_10 §6.7.5): what a remote CHANNEL plugin says to the platform, about its own accounts and about what
+  // its customers write. There is no human counterpart: a person links an account in the plugin's settings page
+  channel: {
+    connection: (connectionId: string) => `/plugin-api/channel/connections/${connectionId}`,
+    events: '/plugin-api/channel/events'
+  },
 
   // Step 5.6 PR E3a: the reading of orders, over the same services as `ApiRoutes.orders` and `ApiRoutes.orderTemplates`. Their
   // writes need the id of a person (who confirmed, who cancelled, who created) and wait for a plugin actor (PR E3b).

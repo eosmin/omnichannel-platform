@@ -176,6 +176,11 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
     help: 'Active channel connections',
     labels: ['channel_type']
   },
+  [MetricNames.PLUGIN_EVENT_REJECTED]: {
+    kind: 'counter',
+    help: 'Events of a remote channel plugin that the platform dropped',
+    labels: ['reason']
+  },
 
   [MetricNames.WEBHOOK_DELIVERIES]: {
     kind: 'counter',
