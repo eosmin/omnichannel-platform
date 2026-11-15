@@ -2,15 +2,23 @@ import {
   type DestructiveAction,
   type DestructiveActionTier,
   DestructiveActionTierLevels,
-  DestructiveActionTiers
+  DestructiveActionTiers,
+  ModerateRiskModes,
+  SafetyRoleNames,
+  SafetySwitchedActions
 } from '@platform/core/domain'
 
+import { currentSafetyPolicy, type SafetyPolicy } from './safety-policy'
+
 // How the interface asks before a destructive action (TDD_09 §11.1). The tier of each action is
-// fixed in DestructiveActionTiers; the page that lets a store or a user lower it is Step 5.4.
+// fixed in DestructiveActionTiers; what a store lowers on Settings → Safety and confirmations (§11.2) is read by
+// `confirmationStyleFor`.
 export const ConfirmationStyles = {
   TYPED_PHRASE: 'typed_phrase',
   DIALOG: 'dialog',
-  UNDO_TOAST: 'undo_toast'
+  UNDO_TOAST: 'undo_toast',
+  // The store chose not to be asked: the action runs, with no dialog and no undo
+  NONE: 'none'
 } as const
 export type ConfirmationStyle = (typeof ConfirmationStyles)[keyof typeof ConfirmationStyles]
 
@@ -21,8 +29,33 @@ const StyleByTier: Record<DestructiveActionTier, ConfirmationStyle> = {
   [DestructiveActionTierLevels.LOW]: ConfirmationStyles.UNDO_TOAST
 }
 
-export function confirmationStyleFor(action: DestructiveAction): ConfirmationStyle {
-  return StyleByTier[DestructiveActionTiers[action]]
+// `hasUndo`: the caller can take the action back. A moderate action that the store wants as an undo toast is asked with a
+// dialog when it cannot be undone, because an action with no way back must not lose its confirmation.
+export function confirmationStyleFor(
+  action: DestructiveAction,
+  hasUndo = false,
+  policy: SafetyPolicy | null = currentSafetyPolicy()
+): ConfirmationStyle {
+  const tier = DestructiveActionTiers[action]
+  const base = StyleByTier[tier]
+  // The critical tier is never a setting, the low one never asks, and with no policy the tier table is the rule
+  if (policy === null || base === ConfirmationStyles.TYPED_PHRASE) return base
+  if (tier === DestructiveActionTierLevels.MODERATE) {
+    if (policy.moderateRiskMode === ModerateRiskModes.NONE) return ConfirmationStyles.NONE
+    if (policy.moderateRiskMode === ModerateRiskModes.UNDO && hasUndo) {
+      return ConfirmationStyles.UNDO_TOAST
+    }
+    return base
+  }
+  if (tier === DestructiveActionTierLevels.HIGH && Object.hasOwn(SafetySwitchedActions, action)) {
+    const key = SafetySwitchedActions[action as keyof typeof SafetySwitchedActions]
+    // A role that is not one of the preset (a custom role) is never in the list and always asks
+    const isPresetRole = (SafetyRoleNames as readonly string[]).includes(policy.role)
+    const stops =
+      isPresetRole && (!policy.confirm[key] || !policy.applyToRoles.includes(policy.role))
+    return stops ? ConfirmationStyles.NONE : base
+  }
+  return base
 }
 
 // The confirm button of a critical or high action is red; any other tier gets a plain button

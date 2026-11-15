@@ -24,6 +24,12 @@ const Suspended = dynamic(() => import('./suspended-store').then(module => modul
   ssr: false
 })
 
+// What the store chose to be asked before a destructive action (Settings → Safety and confirmations): read after the page, so it
+// weighs nothing on the first load, and a confirmation asked before it arrives asks as the tier table says
+const SafetyPolicySync = dynamic(() => import('../../components/shell/safety-policy-sync'), {
+  ssr: false
+})
+
 // Everything under /s/[storeId]. The profile says which stores the person belongs to; one that is
 // not in the list (a removed member, a link from someone else) goes to the no-access screen. The api
 // refuses the requests anyway: this only spares the person a page full of errors.
@@ -51,6 +57,7 @@ export function StoreShell({
             <Remember storeId={storeId} />
             <StoreTimeZone />
             <PushSync storeId={storeId} />
+            <SafetyPolicySync />
             <RealtimeProvider storeId={storeId} userId={profile.id}>
               {/* The order drawer is outside: the profile of a customer, drawn by the customer provider, opens "Copy order" */}
               <OrderDrawerProvider>

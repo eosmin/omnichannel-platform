@@ -109,11 +109,23 @@ describe('settings entries', () => {
       '/s/s-1/settings/tags',
       '/s/s-1/settings/snippets',
       '/s/s-1/settings/inbox',
+      '/s/s-1/settings/safety',
       '/s/s-1/settings/inventory',
       '/s/s-1/settings/order-templates',
       '/s/s-1/settings/returns',
       '/s/s-1/settings/preferences'
     ])
+  })
+
+  it('shows Safety and confirmations to who holds settings:view and conversations:view, and to nobody with only one', () => {
+    const entries = storeSettingsEntries('s-1')
+    const hrefsOf = (...held: string[]): string[] =>
+      visibleEntries(entries, holding(...held)).map(entry => entry.href)
+    expect(hrefsOf(Permissions.SETTINGS_VIEW, Permissions.CONVERSATIONS_VIEW)).toContain(
+      '/s/s-1/settings/safety'
+    )
+    expect(hrefsOf(Permissions.SETTINGS_VIEW)).not.toContain('/s/s-1/settings/safety')
+    expect(hrefsOf(Permissions.CONVERSATIONS_VIEW)).not.toContain('/s/s-1/settings/safety')
   })
 
   it('shows Webhooks, API keys and Data retention each to who holds its own permission, and to nobody else', () => {
