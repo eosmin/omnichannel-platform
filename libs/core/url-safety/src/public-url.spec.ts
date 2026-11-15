@@ -1,4 +1,9 @@
-import { assertPublicHttpsUrl, resolvePublicHttpsUrl, UnsafeUrlError } from './public-url'
+import {
+  assertPublicHttpsUrl,
+  isWellFormedPublicHttpsUrl,
+  resolvePublicHttpsUrl,
+  UnsafeUrlError
+} from './public-url'
 
 const resolvesTo =
   (...addresses: string[]) =>
@@ -67,5 +72,44 @@ describe('resolvePublicHttpsUrl', () => {
     await expect(
       resolvePublicHttpsUrl('https://cdn.example.com/a.jpg', resolvesTo('8.8.8.8', '192.168.1.5'))
     ).rejects.toBeInstanceOf(UnsafeUrlError)
+  })
+})
+
+describe('isWellFormedPublicHttpsUrl', () => {
+  it.each(['https://acme.com/hook', 'https://api.acme.com:443/a?b=1', 'https://8.8.8.8/a'])(
+    'accepts %s',
+    raw => {
+      expect(isWellFormedPublicHttpsUrl(raw)).toBe(true)
+    }
+  )
+
+  it.each([
+    'http://acme.com',
+    'ftp://acme.com',
+    'https://user:pass@acme.com',
+    'https://acme.com:8443',
+    'https://localhost/a',
+    'https://intranet/a',
+    'https://acme.com./a',
+    'https://a..b.com/x',
+    'https://admin.corp.internal/',
+    'https://printer.local/',
+    'https://x.localhost/',
+    'https://router.lan/',
+    'https://nas.home.arpa/',
+    'https://acme.test/',
+    'https://acme.example/',
+    'https://hidden.onion/',
+    'https://acme.123/',
+    'https://-a.com/',
+    'https://a_b.com/',
+    'https://127.0.0.1/a',
+    'https://10.0.0.5/a',
+    'https://[::1]/a',
+    'javascript:alert(1)',
+    'not a url',
+    ''
+  ])('refuses %s', raw => {
+    expect(isWellFormedPublicHttpsUrl(raw)).toBe(false)
   })
 })
