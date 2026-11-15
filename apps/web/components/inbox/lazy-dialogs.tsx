@@ -41,6 +41,11 @@ export const ShortcutHelp = dynamic(
   { ssr: false }
 )
 
+// The button that deletes the conversation: only who holds conversations:delete (the Admin preset has it) mounts it, so the rest never download it
+export const DeleteConversationButton = dynamic(() => import('./delete-conversation-button'), {
+  ssr: false
+})
+
 export const ConversationPane = dynamic(
   () => import('./conversation-pane').then(module => module.ConversationPane),
   { ssr: false, loading: () => <ConversationPaneLoading /> }
