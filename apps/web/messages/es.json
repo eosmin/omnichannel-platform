@@ -3895,7 +3895,7 @@
         "intro": "Las guías que prepagas a cada transportista: cuántas quedan, cuánto costó cada una y el beneficio de reintegro mientras tus devoluciones se mantengan bajo el límite del transportista. Nada de esto impide hacer una guía.",
         "listLabel": "Guías prepagadas por transportista",
         "empty": "Conecta primero un transportista: sus guías prepagadas se muestran aquí.",
-        "loading": "Cargando...",
+        "loading": "Cargando…",
         "notTracked": "No se lleva el saldo de este transportista. Actívalo en la política para contar las guías que compras y usas.",
         "emptyNote": "Las guías prepagadas se agotaron. Se siguen haciendo guías nuevas, pero nadie las ha pagado todavía: registra la próxima recarga.",
         "state": {
@@ -3934,7 +3934,7 @@
         "movements": {
           "title": "Movimientos",
           "label": "Movimientos de las guías prepagadas",
-          "loading": "Cargando movimientos...",
+          "loading": "Cargando movimientos…",
           "empty": "Aún no hay movimientos.",
           "more": "Ver más",
           "void": "Anular",

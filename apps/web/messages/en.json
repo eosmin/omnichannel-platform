@@ -3895,7 +3895,7 @@
         "intro": "The guides you prepay to each carrier: what is left, what each one cost, and the refund benefit while your returns stay under the carrier's limit. Nothing here ever blocks making a guide.",
         "listLabel": "Prepaid guides by carrier",
         "empty": "Connect a carrier first: its prepaid guides show here.",
-        "loading": "Loading...",
+        "loading": "Loading…",
         "notTracked": "The balance of this carrier is not followed. Turn it on in the policy to count the guides you buy and use.",
         "emptyNote": "The prepaid guides are used up. New guides are still made, but nobody has paid for them yet: record the next purchase.",
         "state": {
@@ -3934,7 +3934,7 @@
         "movements": {
           "title": "Movements",
           "label": "Movements of the prepaid guides",
-          "loading": "Loading movements...",
+          "loading": "Loading movements…",
           "empty": "No movement yet.",
           "more": "Show more",
           "void": "Void",
