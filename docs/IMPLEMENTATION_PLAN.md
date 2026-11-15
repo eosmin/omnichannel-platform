@@ -1472,6 +1472,13 @@ entry is the record of the money; a line-level check is for the reconciliation o
 (`TRANSACTION_ALREADY_VOIDED`) and the screen reads the transaction (4B.9). (l) The accounts and the rate a request names are read, not locked, like every
 post of the ledger: a chart change in the same instant ends in the database's typed refusals or in its trigger. The header of an expense whose tax is not
 creditable stores `tax_cents = 0` (the entry books it whole to the category).
+(m) A transaction voided after its period closed keeps `occurred_on` in the closed month while the reversal is dated in the open one: a report that reads the headers
+(the zero-rated base of (f)) takes the date a void took effect from the reversal entry's `entry_date` (`voided_by_entry_id` joined to `journal_entries`), never from the header's
+own date or its voided flag; owner 4B.8. (n) The list orders by `created_at` (the start of the database transaction), so a request that waited on a lock can commit with an older
+stamp than one that committed before it: ordering by the entry number is the fix if a screen ever pages while a post waits (4B.9). (o) The header is tied to its entry by type, source,
+total and date only, not by the store of its lines nor its tax line (extends (j); the reconciliation of 4B.8). (p) The audit row of a record or a void is written after the commit,
+as every audit of the platform is; a crash between the two loses it (the entry and the reversal carry the author and the time): moving it inside the transaction is a decision for the
+audit service as a whole, not for this PR.
 Review of 4B.4a (rule 12): the generic `POST finance/entries/:id/reverse` now refuses the entry of a transaction
 (`FinanceConflicts.ENTRY_OWNED_BY_TRANSACTION`), because it would leave the transaction looking live and skip its kind's permission and audit row.
 
