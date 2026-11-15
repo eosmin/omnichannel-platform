@@ -36,7 +36,7 @@ import {
   ChannelTemplatesService,
   TemplateLinkVerdicts
 } from '../channels/channel-templates.service'
-import type { Actor } from '../tenancy'
+import { type Actor, auditActorOf, auditViaOf } from '../tenancy'
 
 import type {
   ChannelTemplateLink,
@@ -305,11 +305,11 @@ export class OrderTemplatesService {
   ): void {
     this.audit.log({
       action,
-      actor: { userId: actor.userId },
+      actor: auditActorOf(actor),
       storeId,
       resourceType: 'order_message_template',
       resourceId: `${kind}:${locale}`,
-      metadata: { kind, locale, ...metadata },
+      metadata: { kind, locale, ...metadata, ...auditViaOf(actor) },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })

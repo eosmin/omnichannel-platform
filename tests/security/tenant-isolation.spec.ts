@@ -25,11 +25,14 @@ import {
   JournalEntryType,
   MembershipStatus,
   MessageType,
+  OrderConfirmationChannel,
   OrderMessageKind,
   OrderMessageNotSentReasons,
   OrderMessageRoutes,
   OrderMessageTriggers,
+  OrderStatus,
   PaymentMethod,
+  PaymentStatus,
   PLUGIN_API_KEY_TOKEN_PREFIX,
   PluginCatalogTypes,
   PluginPricingModels,
@@ -1137,6 +1140,35 @@ const resources: IsolationResource[] = [
     untouched: async (owner, id) =>
       (await owner.returnReceptionItem.findUnique({ where: { id }, select: { note: true } }))
         ?.note === null
+  },
+  // A private plugin belongs to the organization that registered it (D10): every store of it sees it, another organization
+  // never does, and one id answers the same for a plugin that is not there
+  {
+    name: 'plugin',
+    create: async (owner, { storeId }) => {
+      const id = `iso-${randomUUID().slice(0, 12)}`
+      await owner.plugin.create({
+        data: {
+          id,
+          name: 'Isolation plugin',
+          authorName: 'suite',
+          authorEmail: 'suite@example.invalid',
+          type: PluginCatalogTypes.INTEGRATION,
+          manifest: {},
+          pricingModel: PluginPricingModels.FREE,
+          status: PluginStatus.APPROVED,
+          organizationId: await organizationOfStore(owner, storeId)
+        }
+      })
+      return { id }
+    },
+    scope: 'organization',
+    readPath: ApiRoutes.plugins.byId,
+    listPath: ApiRoutes.plugins.available,
+    // No route changes a plugin row except registering a newer version (covered by "a private plugin" below)
+    untouched: async (owner, id) =>
+      (await owner.plugin.findUnique({ where: { id }, select: { name: true } }))?.name ===
+      'Isolation plugin'
   },
   {
     name: 'warehouse',
@@ -4729,6 +4761,109 @@ describe('Tenant isolation', () => {
       expect(messages.status).toBe(404)
       expect(list.status).toBe(200)
       expect(JSON.stringify(list.body)).not.toContain(orderA)
+    })
+  })
+
+  // What a plugin key writes of the orders (Step 5.6, E3b): the key of store B creates, edits, confirms, cancels, pays and decides the
+  // price of orders of store B, and an order of store A, a customer of store A and a product of store A are rows that do not exist for
+  // it, whatever the id it names. Nothing of store A changes.
+  describe('the orders written with the key of a plugin', () => {
+    const pluginId = `${prefix}-ordwrite`
+    let keyOfB = ''
+    let orderA = ''
+    let customerA = ''
+    let productA = ''
+    let customerB = ''
+    let productB = ''
+
+    beforeAll(async () => {
+      ;({ key: keyOfB } = await createPluginKey(owner, {
+        storeId: ctx.storeB.id,
+        pluginId,
+        scopes: [
+          PluginScopes.ORDERS_READ,
+          PluginScopes.ORDERS_WRITE,
+          PluginScopes.ORDERS_EDIT,
+          PluginScopes.ORDERS_CONFIRM,
+          PluginScopes.ORDERS_CANCEL,
+          PluginScopes.ORDERS_APPROVE_PRICE,
+          PluginScopes.ORDER_MESSAGES_WRITE
+        ]
+      }))
+      orderA = (await createOrder(owner, { storeId: ctx.storeA.id })).id
+      customerA = (await createCustomer(owner, { storeId: ctx.storeA.id })).id
+      productA = (await createProduct(owner, { storeId: ctx.storeA.id })).id
+      customerB = (await createCustomer(owner, { storeId: ctx.storeB.id })).id
+      productB = (await createProduct(owner, { storeId: ctx.storeB.id })).id
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId } })
+      await owner.plugin.deleteMany({ where: { id: pluginId } })
+    })
+
+    const asB = (method: 'post' | 'patch', path: string) =>
+      supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+        [method](`${API_PREFIX}${path}`)
+        .set('authorization', `Bearer ${keyOfB}`)
+
+    it('does not create an order for a customer or with a product of another store', async () => {
+      const body = {
+        items: [{ productId: productB, quantity: 1 }],
+        paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
+        recipientPhones: ['71234567']
+      }
+      const foreignCustomer = await asB('post', PluginApiRoutes.orders.create).send({
+        ...body,
+        customerId: customerA
+      })
+      const foreignProduct = await asB('post', PluginApiRoutes.orders.create).send({
+        ...body,
+        customerId: customerB,
+        items: [{ productId: productA, quantity: 1 }]
+      })
+
+      expect(foreignCustomer.status).toBe(404)
+      expect(foreignProduct.status).toBe(404)
+      expect(
+        await owner.order.count({ where: { storeId: ctx.storeB.id, createdByPluginId: pluginId } })
+      ).toBe(0)
+    })
+
+    it('does not edit, change, confirm, cancel, pay, decide the price of or send a message about an order of another store', async () => {
+      const writes = [
+        asB('patch', PluginApiRoutes.orders.byId(orderA)).send({ shippingCents: 1 }),
+        asB('post', PluginApiRoutes.orders.status(orderA)).send({ status: OrderStatus.PREPARING }),
+        asB('post', PluginApiRoutes.orders.confirm(orderA)).send({
+          via: OrderConfirmationChannel.CALL
+        }),
+        asB('post', PluginApiRoutes.orders.cancel(orderA)).send({ cancellationReason: 'x' }),
+        asB('post', PluginApiRoutes.orders.payment(orderA)).send({
+          method: PaymentMethod.CASH,
+          status: PaymentStatus.COMPLETED
+        }),
+        asB('post', PluginApiRoutes.orders.priceApprovalApprove(orderA)).send({}),
+        asB('post', PluginApiRoutes.orders.priceApprovalReject(orderA)).send({}),
+        asB('post', PluginApiRoutes.orders.messages(orderA)).send({
+          kind: OrderMessageKind.ORDER_SHIPPED,
+          idempotencyKey: randomUUID()
+        }),
+        asB('post', PluginApiRoutes.orders.confirmBulk).send({
+          ids: [orderA],
+          via: OrderConfirmationChannel.CALL
+        })
+      ]
+
+      const responses = await Promise.all(writes)
+      // The selection answers 200 and says that nothing was confirmed; every other write is a 404
+      expect(responses.slice(0, -1).map(response => response.status)).toEqual(
+        Array(writes.length - 1).fill(404)
+      )
+      expect((responses.at(-1)?.body as { succeeded: string[] }).succeeded).toEqual([])
+      const after = await owner.order.findUniqueOrThrow({ where: { id: orderA } })
+      expect(after.status).toBe(OrderStatus.PENDING_CONFIRMATION)
+      expect(after.confirmedByPluginId).toBeNull()
+      expect(after.cancelledByPluginId).toBeNull()
+      expect(await owner.orderMessageDispatch.count({ where: { orderId: orderA } })).toBe(0)
     })
   })
 

@@ -382,18 +382,14 @@ export const ApiRoutes = {
   },
 
   plugins: {
-    list: '/plugins',
     available: '/plugins/available',
     install: '/plugins/install',
     register: '/plugins/register', // The owner pastes a manifest (SETTINGS_MANAGE_PLUGINS)
-    byId: (id: string) => `/plugins/${id}`,
-    enable: (id: string) => `/plugins/${id}/enable`,
-    disable: (id: string) => `/plugins/${id}/disable`,
+    byId: (id: string) => `/plugins/${id}`, // One plugin of the catalog and what this store holds of it (GET); the id is the plugin's
     revoke: (id: string) => `/plugins/${id}/revoke`, // Uninstalls: the id is the installation's
     consent: (id: string) => `/plugins/${id}/consent`, // What installing the plugin of that id would grant (GET); the id is the plugin's
     setupCode: (id: string) => `/plugins/${id}/setup-code`, // A new one-time code for an installation that is not set up yet (POST); the id is the installation's
-    commandSecret: (id: string) => `/plugins/${id}/command-secret`, // Rotates the secret that signs the commands to a remote channel (POST); the id is the installation's
-    config: (id: string) => `/plugins/${id}/config`
+    commandSecret: (id: string) => `/plugins/${id}/command-secret` // Rotates the secret that signs the commands to a remote channel (POST); the id is the installation's
   },
 
   // The widgets of the plugins in the agent sidebar (TDD_10 §7): the ones the store has, a short session
@@ -594,11 +590,22 @@ export const PluginApiRoutes = {
   // writes need the id of a person (who confirmed, who cancelled, who created) and wait for a plugin actor (PR E3b).
   orders: {
     list: '/plugin-api/orders',
+    create: '/plugin-api/orders',
     byId: (id: string) => `/plugin-api/orders/${id}`,
-    messages: (id: string) => `/plugin-api/orders/${id}/messages`
+    messages: (id: string) => `/plugin-api/orders/${id}/messages`,
+    // Step 5.6 PR E3b: the writes, over the same services as the routes of the people, with the plugin as the actor (`ActorIdentity`)
+    status: (id: string) => `/plugin-api/orders/${id}/status`,
+    confirmBulk: '/plugin-api/orders/confirm-bulk',
+    copy: (id: string) => `/plugin-api/orders/${id}/copy`,
+    confirm: (id: string) => `/plugin-api/orders/${id}/confirm`,
+    cancel: (id: string) => `/plugin-api/orders/${id}/cancel`,
+    payment: (id: string) => `/plugin-api/orders/${id}/payment`,
+    priceApprovalApprove: (id: string) => `/plugin-api/orders/${id}/price-approval/approve`,
+    priceApprovalReject: (id: string) => `/plugin-api/orders/${id}/price-approval/reject`
   },
   orderTemplates: {
     list: '/plugin-api/order-templates',
+    preview: '/plugin-api/order-templates/preview',
     byKindAndLocale: (kind: string, locale: string) =>
       `/plugin-api/order-templates/${kind}/locales/${locale}`
   },
