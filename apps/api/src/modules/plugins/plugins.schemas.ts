@@ -17,6 +17,10 @@ import { isPluginScope, isSetupCode } from './plugin-install-rules'
 // A plugin id in a path
 export const pluginIdSchema = z.string().regex(CHANNEL_ID_PATTERN)
 
+// The id of a plugin that is looked up (`GET /plugins/:id`): any short text, so that an id that cannot be one answers 404 like one that
+// is not there, and the answer is no oracle for what exists
+export const pluginLookupSchema = z.string().min(1).max(64)
+
 export const installPluginSchema = z.strictObject({
   pluginId: z.string().regex(CHANNEL_ID_PATTERN),
   scopes: z

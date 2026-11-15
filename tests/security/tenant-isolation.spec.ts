@@ -1087,6 +1087,35 @@ const resources: IsolationResource[] = [
       (await owner.returnReceptionItem.findUnique({ where: { id }, select: { note: true } }))
         ?.note === null
   },
+  // A private plugin belongs to the organization that registered it (D10): every store of it sees it, another organization
+  // never does, and one id answers the same for a plugin that is not there
+  {
+    name: 'plugin',
+    create: async (owner, { storeId }) => {
+      const id = `iso-${randomUUID().slice(0, 12)}`
+      await owner.plugin.create({
+        data: {
+          id,
+          name: 'Isolation plugin',
+          authorName: 'suite',
+          authorEmail: 'suite@example.invalid',
+          type: PluginCatalogTypes.INTEGRATION,
+          manifest: {},
+          pricingModel: PluginPricingModels.FREE,
+          status: PluginStatus.APPROVED,
+          organizationId: await organizationOfStore(owner, storeId)
+        }
+      })
+      return { id }
+    },
+    scope: 'organization',
+    readPath: ApiRoutes.plugins.byId,
+    listPath: ApiRoutes.plugins.available,
+    // No route changes a plugin row except registering a newer version (covered by "a private plugin" below)
+    untouched: async (owner, id) =>
+      (await owner.plugin.findUnique({ where: { id }, select: { name: true } }))?.name ===
+      'Isolation plugin'
+  },
   {
     name: 'warehouse',
     create: async (owner, { storeId }) => ({

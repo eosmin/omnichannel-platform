@@ -358,18 +358,14 @@ export const ApiRoutes = {
   },
 
   plugins: {
-    list: '/plugins',
     available: '/plugins/available',
     install: '/plugins/install',
     register: '/plugins/register', // The owner pastes a manifest (SETTINGS_MANAGE_PLUGINS)
-    byId: (id: string) => `/plugins/${id}`,
-    enable: (id: string) => `/plugins/${id}/enable`,
-    disable: (id: string) => `/plugins/${id}/disable`,
+    byId: (id: string) => `/plugins/${id}`, // One plugin of the catalog and what this store holds of it (GET); the id is the plugin's
     revoke: (id: string) => `/plugins/${id}/revoke`, // Uninstalls: the id is the installation's
     consent: (id: string) => `/plugins/${id}/consent`, // What installing the plugin of that id would grant (GET); the id is the plugin's
     setupCode: (id: string) => `/plugins/${id}/setup-code`, // A new one-time code for an installation that is not set up yet (POST); the id is the installation's
-    commandSecret: (id: string) => `/plugins/${id}/command-secret`, // Rotates the secret that signs the commands to a remote channel (POST); the id is the installation's
-    config: (id: string) => `/plugins/${id}/config`
+    commandSecret: (id: string) => `/plugins/${id}/command-secret` // Rotates the secret that signs the commands to a remote channel (POST); the id is the installation's
   },
 
   // The widgets of the plugins in the agent sidebar (TDD_10 §7): the ones the store has, a short session
