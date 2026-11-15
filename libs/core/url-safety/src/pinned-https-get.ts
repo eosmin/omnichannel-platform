@@ -2,15 +2,15 @@ import { Agent, request as httpsRequest } from 'node:https'
 import { isIP } from 'node:net'
 import type { Readable } from 'node:stream'
 
+import { errorCodeOf, PERMANENT_NETWORK_CODES } from './pinned-errors'
+import type { HttpsRequester } from './pinned-https-exchange'
+import { pinnedLookup } from './pinned-lookup'
 import {
-  errorCodeOf,
   type HostResolver,
-  PERMANENT_NETWORK_CODES,
-  pinnedLookup,
   type PublicTarget,
   resolvePublicHttpsUrl,
   UnsafeUrlError
-} from '@platform/core/url-safety'
+} from './public-url'
 
 // The answer was not a file we can keep. `retryable` says whether asking again may help: a server error
 // or a slow answer may pass, a 404 or a redirect will not.
@@ -34,8 +34,6 @@ export interface PinnedResponse {
   contentType: string
   contentLength: number | null
 }
-
-export type HttpsRequester = typeof httpsRequest
 
 export interface PinnedGetOptions {
   accept: string
@@ -103,7 +101,18 @@ export async function pinnedHttpsGet(
         reject(new PinnedFetchFailed(`status ${status}`, status === 429 || status >= 500))
         return
       }
-      const length = Number(response.headers['content-length'])
+      // The body is read as it is (`identity`): a server that compresses anyway would let a small download unpack past the
+      // limit of whoever reads it
+      const encoding = String(response.headers['content-encoding'] ?? 'identity')
+        .trim()
+        .toLowerCase()
+      if (encoding !== '' && encoding !== NO_ENCODING) {
+        response.resume()
+        reject(new PinnedFetchFailed('the body is encoded', false))
+        return
+      }
+      const declared = String(response.headers['content-length'] ?? '').trim()
+      const length = declared === '' ? Number.NaN : Number(declared)
       resolve({
         stream: response,
         contentType: String(response.headers['content-type'] ?? ''),

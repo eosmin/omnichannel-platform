@@ -95,7 +95,9 @@ const CATALOG_SELECT = {
   name: true,
   authorName: true,
   type: true,
-  isOfficial: true
+  isOfficial: true,
+  // Whose it is: read to decide who sees it, never sent to the page
+  organizationId: true
 } as const
 
 // What a store does with the plugin catalog: see it, install a plugin and uninstall it (D19). The
@@ -147,11 +149,12 @@ export class PluginInstallationsService {
     return plugins
       .filter(plugin => {
         if (plugin.id === ShippingPlugin.ID) return this.carriers.list().length > 0
-        // An integration plugin runs outside the platform: no registry holds it, the row and its organization say who sees it
-        if (plugin.type === String(PluginCatalogTypes.INTEGRATION)) return true
+        // A plugin an organization registered runs outside the platform: the row and its organization say who sees it (the
+        // catalog is already cut to the organization of the store), and a channel of that kind may not be in the registry yet
+        if (plugin.organizationId !== null) return true
         return this.registry.isVisibleTo(plugin.id, storeId)
       })
-      .map(plugin => {
+      .map(({ organizationId: _owner, ...plugin }) => {
         const installation = installationOf.get(plugin.id)
         const installed =
           installation !== undefined &&

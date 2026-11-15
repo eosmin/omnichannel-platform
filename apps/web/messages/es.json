@@ -646,6 +646,7 @@
     "API_KEY_INVALID": "La llave de API no es válida",
     "PLUGIN_CONTRACT_VIOLATION": "El plugin no cumplió su contrato",
     "PLUGIN_LIMIT_REACHED": "La organización alcanzó el límite de plugins registrados",
+    "PLUGIN_ICON_INVALID": "No se pudo descargar el ícono del plugin o no es una imagen válida",
     "PLUGIN_INSTALLATION_FAILED": "No se pudo instalar el plugin",
     "PLUGIN_CHALLENGE_FAILED": "La dirección del plugin no respondió la verificación",
     "PLUGIN_CONSENT_MISMATCH": "El plugin pide un acceso distinto al que revisaste",

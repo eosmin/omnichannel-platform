@@ -1,4 +1,11 @@
-import { PluginManifestLimits } from '@platform/core/domain'
+import {
+  ChannelConnectFieldLimits,
+  ChannelIds,
+  ChannelPluginScopes,
+  ChannelManifestLimits,
+  ManifestChannelCapabilities,
+  PluginManifestLimits
+} from '@platform/core/domain'
 import { Events } from '@platform/core/events'
 import { PluginScopes } from '@platform/plugins/sdk'
 
@@ -67,7 +74,7 @@ describe('pluginManifestSchema', () => {
   })
 
   describe('type and pricing', () => {
-    it.each(['channel', 'carrier', 'other'])('refuses type %s', type => {
+    it.each(['carrier', 'other'])('refuses type %s', type => {
       expect(pathsOf(manifest({ type }))).toContain('type')
     })
 
@@ -190,13 +197,19 @@ describe('pluginManifestSchema', () => {
   describe('scopes', () => {
     it('accepts every scope that exists, once each', () => {
       expect(
-        pluginManifestSchema.safeParse(manifest({ scopes: Object.values(PluginScopes) })).success
+        pluginManifestSchema.safeParse(
+          manifest({
+            scopes: Object.values(PluginScopes).filter(
+              scope => !Object.values<string>(ChannelPluginScopes).includes(scope)
+            )
+          })
+        ).success
       ).toBe(true)
     })
 
     it.each([
       ['an unknown scope', ['orders:delete']],
-      ['a scope of a channel plugin that does not exist yet', ['channel:events']],
+      ['a scope of a channel that does not exist', ['channel:other']],
       ['a repeated scope', [PluginScopes.ORDERS_READ, PluginScopes.ORDERS_READ]],
       ['an administrator wildcard', ['*']],
       ['a scope that is not a string', [1]]
@@ -283,6 +296,232 @@ describe('pluginManifestSchema', () => {
   it('refuses what is not an object', () => {
     for (const value of [null, undefined, 'x', 1, [], [manifest()]])
       expect(refused(value)).toBe(true)
+  })
+})
+
+// The manifest of a channel plugin (TDD_10 §6.7.2); each case changes one thing
+function channelManifest(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return manifest({
+    id: 'acme-chat',
+    type: 'channel',
+    scopes: [PluginScopes.CHANNEL_CONNECTIONS, PluginScopes.CHANNEL_EVENTS],
+    capabilities: ['text', 'image', 'reply_to', 'delivery_receipts'],
+    channel: {
+      label: 'Acme Chat',
+      commandsUrl: 'https://acme.com/platform/commands',
+      messagingWindow: { hours: 24 }
+    },
+    widgets: undefined,
+    ui: undefined,
+    ...over
+  })
+}
+
+describe('pluginManifestSchema, channel plugins', () => {
+  it('accepts a channel manifest, with and without a window', () => {
+    expect(pluginManifestSchema.safeParse(channelManifest()).success).toBe(true)
+    expect(
+      pluginManifestSchema.safeParse(
+        channelManifest({
+          channel: { label: 'Acme Chat', commandsUrl: 'https://acme.com/platform/commands' }
+        })
+      ).success
+    ).toBe(true)
+  })
+
+  it('keeps the channel block and the capabilities it checked', () => {
+    const parsed = pluginManifestSchema.parse(channelManifest())
+    expect(parsed.channel?.messagingWindow).toEqual({ hours: 24 })
+    expect(parsed.capabilities).toEqual(['text', 'image', 'reply_to', 'delivery_receipts'])
+  })
+
+  it('accepts caption_per_file when it is declared and never grants it when it is not', () => {
+    const declared = pluginManifestSchema.parse(
+      channelManifest({ capabilities: ['text', 'image', 'caption_per_file'] })
+    )
+    expect(declared.capabilities).toContain('caption_per_file')
+    const plain = pluginManifestSchema.parse(channelManifest({ capabilities: ['text', 'image'] }))
+    expect(plain.capabilities).not.toContain('caption_per_file')
+    expect(
+      pluginManifestSchema.parse(channelManifest({ capabilities: undefined })).capabilities
+    ).toBeUndefined()
+  })
+
+  it('accepts every capability a remote channel may declare, and none that it may not', () => {
+    expect(
+      pluginManifestSchema.safeParse(
+        channelManifest({ capabilities: [...ManifestChannelCapabilities] })
+      ).success
+    ).toBe(true)
+    for (const capability of [
+      'location',
+      'templates',
+      'buttons',
+      'list_picker',
+      'reactions',
+      'messaging_window',
+      'names_inbound_files',
+      'nothing'
+    ]) {
+      expect(refused(channelManifest({ capabilities: [capability] }))).toBe(true)
+    }
+  })
+
+  it('refuses a repeated capability', () => {
+    expect(refused(channelManifest({ capabilities: ['text', 'text'] }))).toBe(true)
+  })
+
+  it('needs the channel block, and a plugin with another type may not carry it', () => {
+    expect(pathsOf(channelManifest({ channel: undefined }))).toContain('channel')
+    expect(
+      pathsOf(manifest({ channel: { label: 'A', commandsUrl: 'https://acme.com/c' } }))
+    ).toContain('channel')
+    expect(pathsOf(manifest({ capabilities: ['text'] }))).toContain('capabilities')
+  })
+
+  it('needs both channel scopes', () => {
+    expect(refused(channelManifest({ scopes: [PluginScopes.CHANNEL_EVENTS] }))).toBe(true)
+    expect(refused(channelManifest({ scopes: [PluginScopes.CHANNEL_CONNECTIONS] }))).toBe(true)
+    expect(refused(channelManifest({ scopes: [] }))).toBe(true)
+  })
+
+  it('keeps the two channel scopes from an integration plugin', () => {
+    expect(refused(manifest({ scopes: [PluginScopes.CHANNEL_EVENTS] }))).toBe(true)
+    expect(refused(manifest({ scopes: [PluginScopes.CHANNEL_CONNECTIONS] }))).toBe(true)
+  })
+
+  it('may ask for other scopes besides the two', () => {
+    expect(
+      pluginManifestSchema.safeParse(
+        channelManifest({
+          scopes: [
+            PluginScopes.CHANNEL_CONNECTIONS,
+            PluginScopes.CHANNEL_EVENTS,
+            PluginScopes.CONVERSATIONS_READ
+          ]
+        })
+      ).success
+    ).toBe(true)
+  })
+
+  it.each(Object.values(ChannelIds))('refuses the id of the official channel %s', id => {
+    expect(pathsOf(channelManifest({ id }))).toContain('id')
+  })
+
+  it.each([
+    [
+      'a label of more than the limit',
+      { label: 'x'.repeat(ChannelManifestLimits.LABEL_MAX_LENGTH + 1) }
+    ],
+    ['an empty label', { label: '' }],
+    ['a label with markup', { label: '<b>Acme</b>' }],
+    ['a label on two lines', { label: 'Acme\nChat' }],
+    ['a commands url that is not https', { commandsUrl: 'http://acme.com/c' }],
+    ['a commands url on the private network', { commandsUrl: 'https://10.0.0.5/c' }],
+    ['a commands url with credentials', { commandsUrl: 'https://user:pass@acme.com/c' }],
+    ['a commands url on localhost', { commandsUrl: 'https://localhost/c' }],
+    ['a window of zero hours', { messagingWindow: { hours: 0 } }],
+    [
+      'a window beyond the ceiling',
+      { messagingWindow: { hours: ChannelManifestLimits.MAX_WINDOW_HOURS + 1 } }
+    ],
+    ['a window of fractions of an hour', { messagingWindow: { hours: 1.5 } }],
+    [
+      'a window that wants templates',
+      { messagingWindow: { hours: 24, requiresTemplateWhenClosed: true } }
+    ],
+    ['an unknown key', { album: { kinds: ['image'], maxFiles: 10 } }]
+  ])('refuses %s', (_name, block) => {
+    expect(
+      refused(
+        channelManifest({
+          channel: {
+            label: 'Acme Chat',
+            commandsUrl: 'https://acme.com/platform/commands',
+            ...block
+          }
+        })
+      )
+    ).toBe(true)
+  })
+
+  it('accepts the window at its two bounds', () => {
+    for (const hours of [
+      ChannelManifestLimits.MIN_WINDOW_HOURS,
+      ChannelManifestLimits.MAX_WINDOW_HOURS
+    ]) {
+      expect(
+        pluginManifestSchema.safeParse(
+          channelManifest({
+            channel: {
+              label: 'Acme Chat',
+              commandsUrl: 'https://acme.com/platform/commands',
+              messagingWindow: { hours }
+            }
+          })
+        ).success
+      ).toBe(true)
+    }
+  })
+
+  describe('the connection fields', () => {
+    const withFields = (connectFields: unknown) =>
+      channelManifest({
+        channel: {
+          label: 'Acme Chat',
+          commandsUrl: 'https://acme.com/platform/commands',
+          connectFields
+        }
+      })
+    const field = (over: Record<string, unknown> = {}) => ({
+      key: 'accountName',
+      label: { es: 'Nombre de la cuenta', en: 'Account name' },
+      secret: false,
+      required: true,
+      multiple: false,
+      ...over
+    })
+
+    it('keeps the label of each field in both languages', () => {
+      const parsed = pluginManifestSchema.parse(withFields([field()]))
+      expect(parsed.channel?.connectFields?.[0]?.label).toEqual({
+        es: 'Nombre de la cuenta',
+        en: 'Account name'
+      })
+    })
+
+    it.each([
+      ['a label in one language', field({ label: { en: 'Account name' } })],
+      ['a label that is a message key', field({ label: 'channels.fields.token' })],
+      ['a label with markup', field({ label: { es: '<i>Nombre</i>', en: 'Name' } })],
+      ['a label with a control character', field({ label: { es: 'Nombre\u0000', en: 'Name' } })],
+      [
+        'a label past the limit',
+        field({
+          label: {
+            es: 'x'.repeat(PluginManifestLimits.FIELD_LABEL_MAX_LENGTH + 1),
+            en: 'Name'
+          }
+        })
+      ],
+      ['a label key beside the text', field({ labelKey: 'channels.fields.token' })],
+      ['a key that is not an identifier', field({ key: '1 bad' })],
+      ['a key the platform reserves', field({ key: 'constructor' })],
+      ['a key longer than the limit', field({ key: `a${'b'.repeat(64)}` })],
+      ['a field flag that is not a boolean', field({ secret: 'yes' })],
+      ['a field with a flag missing', field({ required: undefined })]
+    ])('refuses %s', (_name, bad) => {
+      expect(refused(withFields([bad]))).toBe(true)
+    })
+
+    it('refuses a repeated key and more fields than the limit', () => {
+      expect(refused(withFields([field(), field()]))).toBe(true)
+      const many = Array.from({ length: ChannelConnectFieldLimits.MAX_FIELDS + 1 }, (_, index) =>
+        field({ key: `k${index}` })
+      )
+      expect(refused(withFields(many))).toBe(true)
+      expect(refused(withFields(many.slice(0, ChannelConnectFieldLimits.MAX_FIELDS)))).toBe(false)
+    })
   })
 })
 
