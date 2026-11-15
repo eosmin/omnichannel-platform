@@ -11,6 +11,7 @@ import {
   type PluginBridgeConversation,
   type PluginBridgeCustomer,
   type PluginBridgeRequest,
+  PlatformOrigins,
   PluginInstallationStatus,
   PluginStatus,
   pluginWidgetManifestSchema,
@@ -22,7 +23,6 @@ import {
   PlatformException,
   resourceNotFound
 } from '@platform/core/errors'
-import { PlatformOrigins } from '@platform/core/http'
 import { ConversationsService, type Viewer } from '@platform/core/messaging'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import {
