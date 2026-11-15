@@ -53,7 +53,12 @@ test.describe('Settings → Plugins', () => {
     await removeWidgetPlugin(pluginId)
   })
 
-  const row = () => page.getByRole('listitem').filter({ hasText: pluginName })
+  // Inside the list of plugins only: a toast is also a list item and names the plugin it just registered or revoked
+  const row = () =>
+    page
+      .getByRole('list', { name: SCREEN.listLabel })
+      .getByRole('listitem')
+      .filter({ hasText: pluginName })
 
   test('registers a plugin by its manifest, and the list shows it', async () => {
     await page.getByRole('button', { name: SCREEN.register.action }).click()
