@@ -240,6 +240,21 @@ describe('PluginChannelEventsService.ingest', () => {
       expect(emitter.emitAsync).not.toHaveBeenCalled()
     })
 
+    it('passes one typing per customer and account of the request, not one per event', async () => {
+      const { service, prisma } = build([ChannelCapability.CUSTOMER_TYPING])
+      await expect(service.ingest(caller, [typing(), typing(), typing()])).resolves.toBe(3)
+      expect(prisma.conversation.findFirst).toHaveBeenCalledTimes(1)
+    })
+
+    it('never loses the events of the request when passing a typing fails: they are queued first', async () => {
+      const { service, prisma, queue, emitter } = build([ChannelCapability.CUSTOMER_TYPING])
+      emitter.emitAsync.mockRejectedValue(new Error('a listener failed'))
+      const message = received()
+      await expect(service.ingest(caller, [typing(), message])).resolves.toBe(2)
+      expect(queue.enqueue).toHaveBeenCalledWith(PLUGIN, [message])
+      expect(prisma.conversation.findFirst).toHaveBeenCalled()
+    })
+
     it('has nobody to tell when the customer has no conversation yet', async () => {
       const { service, prisma, limits, emitter } = build([ChannelCapability.CUSTOMER_TYPING])
       prisma.conversation.findFirst.mockResolvedValue(null)

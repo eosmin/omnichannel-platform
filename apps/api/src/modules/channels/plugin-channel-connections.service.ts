@@ -66,7 +66,7 @@ export class PluginChannelConnectionsService {
     body: PutConnectionBody,
     actor: Actor
   ): Promise<boolean> {
-    let outcome: { created: boolean; id: string }
+    let outcome: { created: boolean; id: string; connected: boolean }
     try {
       outcome = await this.write(caller, connectionId, body)
     } catch (error) {
@@ -75,16 +75,19 @@ export class PluginChannelConnectionsService {
       if (!isUniqueViolation(error)) throw error
       outcome = await this.write(caller, connectionId, body)
     }
-    this.audit.log({
-      action: AuditAction.CHANNEL_CONNECTED,
-      actor: auditActorOf(actor),
-      storeId: caller.storeId,
-      resourceType: 'channel_connection',
-      resourceId: outcome.id,
-      metadata: { pluginId: caller.pluginId, ...auditViaOf(actor) },
-      ipAddress: actor.ipAddress,
-      userAgent: actor.userAgent
-    })
+    // Only a connection that was made or brought back is a connection: a plugin that keeps its name up to date leaves no trace here
+    if (outcome.connected) {
+      this.audit.log({
+        action: AuditAction.CHANNEL_CONNECTED,
+        actor: auditActorOf(actor),
+        storeId: caller.storeId,
+        resourceType: 'channel_connection',
+        resourceId: outcome.id,
+        metadata: { pluginId: caller.pluginId, ...auditViaOf(actor) },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent
+      })
+    }
     return outcome.created
   }
 
@@ -139,7 +142,7 @@ export class PluginChannelConnectionsService {
     caller: PluginCaller,
     connectionId: string,
     body: PutConnectionBody
-  ): Promise<{ created: boolean; id: string }> {
+  ): Promise<{ created: boolean; id: string; connected: boolean }> {
     const { storeId, pluginId, installationId } = caller
     return this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
@@ -199,7 +202,7 @@ export class PluginChannelConnectionsService {
             pluginId
           })
         }
-        return { created: false, id: existing.id }
+        return { created: false, id: existing.id, connected: reactivating }
       }
       await this.assertRoom(tx, installationId)
       const row = await tx.channelConnection.create({
@@ -221,7 +224,7 @@ export class PluginChannelConnectionsService {
         channelConnectionId: row.id,
         pluginId
       })
-      return { created: true, id: row.id }
+      return { created: true, id: row.id, connected: true }
     })
   }
 

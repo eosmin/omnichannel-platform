@@ -1,5 +1,5 @@
 import { Permissions } from '@platform/core/auth'
-import { PluginScopes } from '@platform/plugins/sdk'
+import { PluginScopePermissions, PluginScopes } from '@platform/plugins/sdk'
 
 import { type PluginApiRouteFacts, pluginApiRouteViolations } from './plugin-api-route-rules'
 
@@ -161,5 +161,21 @@ describe('pluginApiRouteViolations', () => {
   it('leaves the routes of the interface alone', () => {
     expect(violations(route({ path: '/orders', scopes: undefined, isPublic: false }))).toEqual([])
     expect(violations(route({ path: undefined, scopes: undefined }))).toEqual([])
+  })
+
+  // The exemption of a route from naming a permission lives in what the scope map grants: a scope added with no permission would
+  // open its routes from the check, so each one that has none is said here, with the reason, and a new one fails this until it is
+  it('knows which scopes stand for no human permission: the webhooks and the two of a channel plugin, and no other', () => {
+    const none = Object.entries(PluginScopePermissions)
+      .filter(([, permissions]) => permissions.length === 0)
+      .map(([scope]) => scope)
+      .sort()
+    expect(none).toEqual(
+      [
+        PluginScopes.CHANNEL_CONNECTIONS,
+        PluginScopes.CHANNEL_EVENTS,
+        PluginScopes.WEBHOOKS_WRITE
+      ].sort()
+    )
   })
 })

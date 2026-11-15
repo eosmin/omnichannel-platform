@@ -122,7 +122,7 @@ describe('PluginChannelConnectionsService.put', () => {
   })
 
   it('updates the name and the data of its own live connection (200) and fires no connected event', async () => {
-    const { service, tx, publish } = build()
+    const { service, tx, publish, log } = build()
     tx.channelConnection.findUnique.mockResolvedValue({
       id: ROW,
       storeId: STORE,
@@ -136,6 +136,8 @@ describe('PluginChannelConnectionsService.put', () => {
     })
     expect(publish).not.toHaveBeenCalled()
     expect(tx.channelConnection.count).not.toHaveBeenCalled()
+    // Nothing was connected, so the audit log says nothing: a plugin that keeps its name up to date does not fill it
+    expect(log).not.toHaveBeenCalled()
   })
 
   it('does not take a connection that is in ERROR out of it by writing its name', async () => {
@@ -152,7 +154,7 @@ describe('PluginChannelConnectionsService.put', () => {
   })
 
   it('reactivates a disconnected connection of this store (200) and says it connected', async () => {
-    const { service, tx, publish } = build()
+    const { service, tx, publish, log } = build()
     tx.channelConnection.findUnique.mockResolvedValue({
       id: ROW,
       storeId: STORE,
@@ -169,6 +171,7 @@ describe('PluginChannelConnectionsService.put', () => {
       })
     })
     expect(publish).toHaveBeenCalledWith(tx, Events.CHANNEL_CONNECTED, expect.any(Object))
+    expect(log).toHaveBeenCalledTimes(1)
   })
 
   it('answers 409 when the account is linked to another store, whatever its state, and writes nothing', async () => {

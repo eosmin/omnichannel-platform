@@ -61,7 +61,7 @@ export class PluginChannelEventsService {
     this.logger.setContext(PluginChannelEventsService.name)
   }
 
-  // How many events were taken: those dropped are not counted
+  // How many events were taken: those dropped (and counted as rejected) are not
   async ingest(caller: PluginCaller, events: readonly ValidRemoteChannelEvent[]): Promise<number> {
     // First, so that a plugin past its ceiling costs nothing else
     await this.limits.takeEvents(caller.installationId, events.length)
@@ -85,6 +85,8 @@ export class PluginChannelEventsService {
 
     const foreign = await this.foreignMessageIds(caller, events)
     const queued: ValidRemoteChannelEvent[] = []
+    const typings: ValidRemoteChannelEvent[] = []
+    const typed = new Set<string>()
     let taken = 0
     for (const event of events) {
       const capability = CAPABILITY_OF[event.type]
@@ -100,15 +102,31 @@ export class PluginChannelEventsService {
         this.reject(PluginEventRejectionReasons.FOREIGN_MESSAGE)
         continue
       }
+      // Taken is what the platform accepted from the plugin: a typing that has nobody to tell or comes too soon is still taken
       taken += 1
       if (event.type === ChannelEventTypes.CUSTOMER_TYPING) {
-        // Not queued and nothing stored: the agents who have the conversation open are told, at most once every 2 seconds
-        await this.passTyping(caller, rowOf.get(event.connectionId), event)
+        // Not queued and nothing stored. One per customer and account in the request is enough: the gap is 2 seconds
+        const who = `${event.connectionId}\u0000${event.channelIdentity}`
+        if (!typed.has(who)) {
+          typed.add(who)
+          typings.push(event)
+        }
         continue
       }
       queued.push(event)
     }
+    // What can be lost goes last: the events are queued first, and a typing that fails is only a courtesy that was not passed on
     if (queued.length > 0) await this.queue.enqueue(caller.pluginId, queued)
+    for (const event of typings) {
+      try {
+        await this.passTyping(caller, rowOf.get(event.connectionId), event)
+      } catch (error) {
+        this.logger.warn(
+          { err: String(error) },
+          'a customer typing of a remote channel plugin could not be passed on'
+        )
+      }
+    }
     return taken
   }
 

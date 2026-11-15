@@ -22,7 +22,8 @@ return {n, ttl}
 
 // The two limits of the events of a remote channel plugin that live in Redis (TDD_10 §6.7.5): the ceiling of events a minute of
 // the whole installation (on top of the requests a minute of its key, which the guard counts), and the gap between two
-// `customer_typing` of one conversation. Both fail closed: a limit that is open when its store fails is no limit.
+// `customer_typing` of one conversation. The ceiling fails closed (a limit that is open when its store fails is no limit); the typing
+// gap fails soft, because a typing is a courtesy and passing none loses nothing.
 @Injectable()
 export class PluginChannelLimitsStore {
   constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
