@@ -2299,7 +2299,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 5.3 | Caching and performance | done | PR A #493 (cache invalidation listener, cached tags, snippets and preferences); PR B #499 (read replica routing); PR C #503 (PgBouncer and the pooler suites; counts and the other cached reads moved to Step 7.7) | 2026-11-15 |
 | 5.4 | Settings | done | PR A #489 (server: webhooks, API keys), PR B #495 (server: retention, cleanup, cold export), PR C #497 (server: delete a conversation, safety settings, keys of removed members), PR D1 #500 (web: Webhooks, API keys, Data retention), PR D2 (web: Safety and confirmations, delete a conversation) | 2026-11-15 |
 | 5.5 | Onboarding | deferred (Phase 2) | | |
-| 5.6 | Integration plugins (runtime) | in progress | PR P1 #506 (private registration and the division of the step into 19 PRs); PR C1 (channel manifest and registry), #508 (P2), PR P3 (webhooks and revocation; number in the PR); PR M1a #511 (core of the messages of a plugin); PR M1b (route of the messages of a plugin) | |
+| 5.6 | Integration plugins (runtime) | in progress | PR P1 #506 (private registration and the division of the step into 19 PRs); PR C1 (channel manifest and registry), #508 (P2), PR P3 (webhooks and revocation; number in the PR); PR M1a #511 (core of the messages of a plugin); PR M1b #517 (route of the messages of a plugin) | |
 | 5.7 | Plugin widgets | done | 5.7a #505 (server: session token, bridge scope checks), 5.7b (web: sidebar iframe, bridge, `frame-src` per store, settings) | |
 | **Milestone 6: Monetization** (deferred) | | | | |
 | 6.1 | Usage metering | deferred (Phase 2) | | |
