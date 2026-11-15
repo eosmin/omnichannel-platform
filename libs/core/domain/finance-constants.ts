@@ -337,7 +337,13 @@ export const FinanceConflicts = {
   // A change keeps the kind: an expense is not turned into a transfer (void it and register the other)
   TRANSACTION_KIND_CHANGED: 'transaction_kind_changed',
   // The entry of a transaction registered by hand is voided through the transaction (its kind's permission, its audit row), not reversed alone
-  ENTRY_OWNED_BY_TRANSACTION: 'entry_owned_by_transaction'
+  ENTRY_OWNED_BY_TRANSACTION: 'entry_owned_by_transaction',
+  // The receipt of a transaction is set once; another file is a new transaction (void and register it again)
+  TRANSACTION_DOCUMENT_ALREADY_SET: 'transaction_document_already_set',
+  // Only a file the scan found clean is a receipt (the pointer is set once): wait for the scan, then attach
+  TRANSACTION_DOCUMENT_NOT_CLEAN: 'transaction_document_not_clean',
+  // The transaction changed between the read and the write and nothing says how: read it and try again
+  TRANSACTION_CHANGED: 'transaction_changed'
 } as const
 
 // The names of the ways a chart change breaks the chart, beside the ones `account-rules` returns

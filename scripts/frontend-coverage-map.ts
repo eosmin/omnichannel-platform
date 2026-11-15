@@ -126,6 +126,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'finance.transactions.byId': { step: '4B.9' },
   'finance.transactions.void': { step: '4B.9' },
   'finance.transactions.replace': { step: '4B.9' },
+  'finance.transactions.document': { step: '4B.9' },
   'finance.entries.reverse': { step: '4B.9' },
   'finance.balances': { step: '4B.9' },
   'finance.postings': { step: '4B.9' },

@@ -3688,7 +3688,8 @@
       "sections": {
         "label": "Secciones de transportistas",
         "connections": "Conexiones",
-        "mapping": "Mapeo de estados"
+        "mapping": "Mapeo de estados",
+        "guides": "Guías prepagadas"
       },
       "listLabel": "Transportistas conectados",
       "registryFailed": "No se pudieron cargar los transportistas que puedes conectar.",
@@ -4009,6 +4010,168 @@
         "forza": {
           "home": "Entrega a domicilio"
         }
+      },
+      "guides": {
+        "intro": "Las guías que prepagas a cada transportista: cuántas quedan, cuánto costó cada una y el beneficio de reintegro mientras tus devoluciones se mantengan bajo el límite del transportista. Nada de esto impide hacer una guía.",
+        "listLabel": "Guías prepagadas por transportista",
+        "empty": "Conecta primero un transportista: sus guías prepagadas se muestran aquí.",
+        "loading": "Cargando…",
+        "notTracked": "No se lleva el saldo de este transportista. Actívalo en la política para contar las guías que compras y usas.",
+        "emptyNote": "Las guías prepagadas se agotaron. Se siguen haciendo guías nuevas, pero nadie las ha pagado todavía: registra la próxima recarga.",
+        "state": {
+          "ok": "Saldo en orden",
+          "low": "Por agotarse",
+          "empty": "Agotadas"
+        },
+        "stats": {
+          "available": "Disponibles",
+          "bought": "Compradas (con regalos)",
+          "used": "Usadas (neto de reintegros y ajustes)",
+          "averageCost": "Costo promedio por guía",
+          "none": "Aún sin compras"
+        },
+        "actions": {
+          "purchase": "Registrar una recarga",
+          "adjustment": "Ajustar",
+          "policy": "Política"
+        },
+        "benefit": {
+          "title": "Beneficio de reintegro",
+          "off": "No se lleva el beneficio de reintegro de este transportista.",
+          "states": {
+            "in_force": "Vigente",
+            "at_risk": "En riesgo",
+            "lost": "Perdido"
+          },
+          "period": "Periodo vigente: del {start} al {end}",
+          "rate": "Devoluciones: {rate} % del periodo ({returns} de {base} paquetes). Límite: {limit} %.",
+          "toConfirm": "Algunas reglas del beneficio son una suposición de la plataforma y falta confirmarlas con el transportista. Revísalas en la política.",
+          "showHistory": "Ver periodos cerrados",
+          "hideHistory": "Ocultar periodos cerrados",
+          "history": "Periodos cerrados",
+          "closedRow": "{rate} % de devoluciones, {refunded, plural, one {# guía reintegrada} other {# guías reintegradas}}, {state}"
+        },
+        "movements": {
+          "title": "Movimientos",
+          "label": "Movimientos de las guías prepagadas",
+          "loading": "Cargando movimientos…",
+          "empty": "Aún no hay movimientos.",
+          "more": "Ver más",
+          "void": "Anular",
+          "voided": "anulada",
+          "kinds": {
+            "purchase": "Recarga",
+            "consume": "Guía hecha",
+            "refund": "Guía reintegrada",
+            "adjustment": "Ajuste",
+            "void": "Recarga anulada"
+          },
+          "purchaseDetail": "{paid} pagadas, {gift} de regalo, {cost} en total"
+        },
+        "purchase": {
+          "title": "Registrar una recarga de guías de {name}",
+          "description": "Anota lo que te cobró el transportista por un paquete de guías prepagadas. El costo promedio por guía cuenta también las guías de regalo.",
+          "paid": "Guías pagadas",
+          "paidHint": "Las guías que pagaste.",
+          "gift": "Guías de regalo",
+          "giftHint": "Las guías que vinieron gratis con la recarga. Usa 0 si no hubo.",
+          "cost": "Total pagado (US$)",
+          "costHint": "Con impuestos incluidos, por ejemplo 45.50.",
+          "note": "Nota (opcional)",
+          "submit": "Registrar recarga",
+          "done": "Recarga registrada",
+          "problems": {
+            "paid": "Las guías pagadas deben ser un número entero de 0 o más.",
+            "gift": "Las guías de regalo deben ser un número entero de 0 o más.",
+            "none": "Una recarga tiene al menos una guía.",
+            "cost": "El total pagado debe ser un monto en dólares con máximo dos decimales.",
+            "note": "La nota es demasiado larga."
+          }
+        },
+        "adjustment": {
+          "title": "Ajustar el saldo de {name}",
+          "description": "Para una corrección que nadie más puede saber, como guías perdidas o devueltas por el transportista. Queda en los movimientos con su motivo.",
+          "guides": "Guías por sumar o quitar",
+          "guidesHint": "Un número entero: 5 suma cinco guías, -3 quita tres.",
+          "note": "Motivo",
+          "submit": "Registrar ajuste",
+          "done": "Ajuste registrado",
+          "problems": {
+            "guides": "Escribe un número entero de guías distinto de 0.",
+            "note": "El motivo es obligatorio y debe ser corto."
+          }
+        },
+        "void": {
+          "title": "Anular una recarga de {name}",
+          "description": "Las guías de la recarga salen del saldo. La recarga queda en los movimientos, marcada como anulada.",
+          "note": "Motivo",
+          "submit": "Anular recarga",
+          "done": "Recarga anulada",
+          "problem": "El motivo es obligatorio y debe ser corto."
+        },
+        "policy": {
+          "title": "Política de {name}",
+          "description": "Qué se lleva de este transportista y las reglas de su beneficio de reintegro.",
+          "submit": "Guardar política",
+          "done": "Política guardada",
+          "toConfirmMark": "(por confirmar con el transportista)",
+          "balance": {
+            "legend": "Saldo de guías",
+            "enabled": "Llevar el saldo de guías prepagadas",
+            "warnOnEmpty": "Avisar cuando el saldo llegue a 0",
+            "low": "Avisar cuando queden estas guías",
+            "lowHint": "Déjalo vacío para no avisar por saldo bajo."
+          },
+          "benefit": {
+            "legend": "Beneficio de reintegro",
+            "hint": "El transportista te devuelve la guía de un paquete que regresa mientras tu tasa de devolución se mantenga bajo su límite. Estas reglas son tu reporte de cómo funciona el transportista; confírmalas con él.",
+            "enabled": "Llevar el beneficio de reintegro",
+            "periodKind": "Periodo",
+            "periodKinds": {
+              "fixed_days": "Un número fijo de días",
+              "calendar_month": "Mes calendario",
+              "calendar_half_month": "Quincena del mes calendario"
+            },
+            "periodDays": "Días de cada periodo",
+            "anchor": "Primer día de un periodo",
+            "anchorHint": "Los periodos se cuentan desde este día, en la zona horaria de la tienda.",
+            "threshold": "Límite de devoluciones (%)",
+            "thresholdHint": "Al llegar a él o pasarlo se pierde el beneficio. Por ejemplo 10.",
+            "warnAt": "Avisar a esta parte del límite (%)",
+            "warnAtHint": "Por ejemplo, 80 avisa cuando las devoluciones llegan al 80 % del límite.",
+            "base": "Las devoluciones se cuentan sobre",
+            "bases": {
+              "created": "Guías hechas",
+              "dispatched": "Paquetes despachados",
+              "delivered": "Paquetes entregados"
+            },
+            "returnStatuses": "Estados que cuentan como devolución",
+            "statuses": {
+              "returning": "Regresando",
+              "returned": "Devuelto"
+            },
+            "refundRule": "Las guías se reintegran",
+            "refundRules": {
+              "immediate": "En cuanto el paquete regresa",
+              "at_period_close": "Al cerrar el periodo"
+            },
+            "lossRule": "El beneficio se pierde",
+            "lossRules": {
+              "from_crossing": "Desde que se llega al límite",
+              "from_close": "Desde el cierre del periodo"
+            }
+          },
+          "problems": {
+            "lowBalance": "El número de saldo bajo debe ser un entero de 1 o más, o estar vacío.",
+            "periodDays": "Los días de un periodo deben ser un entero de 1 a 366.",
+            "anchor": "Elige el primer día de un periodo.",
+            "threshold": "El límite debe ser un porcentaje mayor que 0, con máximo dos decimales.",
+            "warnAt": "El aviso debe ser un porcentaje mayor que 0, con máximo dos decimales.",
+            "returnStatuses": "Elige al menos un estado que cuente como devolución.",
+            "combination": "Un reintegro en cuanto el paquete regresa no puede esperar al cierre del periodo para perder el beneficio."
+          }
+        },
+        "partialFailed": "No se pudieron cargar algunos datos de este transportista."
       }
     },
     "returns": {
