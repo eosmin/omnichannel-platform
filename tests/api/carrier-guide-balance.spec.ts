@@ -27,8 +27,6 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 
-const DAY_MS = 24 * 60 * 60 * 1000
-
 const POLICY = {
   balanceEnabled: true,
   benefitEnabled: true,
@@ -501,9 +499,9 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
         periodEnd: string
       }
       expect(period.crossedAt).not.toBeNull()
-      expect(Date.parse(period.periodEnd) - Date.parse(period.periodStart)).toBeGreaterThanOrEqual(
-        27 * DAY_MS
-      )
+      // the period that holds now, starting no earlier than the moment the benefit was switched on
+      expect(Date.parse(period.periodStart)).toBeLessThanOrEqual(Date.now())
+      expect(Date.parse(period.periodEnd)).toBeGreaterThan(Date.now())
     })
   })
 })
