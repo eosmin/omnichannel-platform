@@ -753,54 +753,59 @@ model Snippet {
 // ============================================================
 
 model Order {
-  id                         String    @id @default(uuid())
-  storeId                    String    @map("store_id")
-  customerId                 String    @map("customer_id")
-  conversationId             String?   @map("conversation_id")
-  orderNumber                String    @map("order_number")
-  status                     String    @default("PENDING_CONFIRMATION") // OrderStatus
-  subtotalCents              Int       @map("subtotal_cents")
-  shippingCents              Int       @default(0) @map("shipping_cents")
-  discountCents              Int       @default(0) @map("discount_cents")
-  totalCents                 Int       @map("total_cents")
-  currency                   String    @default("USD")
-  paymentMethod              String    @map("payment_method") // PaymentMethod
-  paymentStatus              String    @default("PENDING") @map("payment_status") // PaymentStatus
-  paymentReference           String?   @map("payment_reference") // The transfer or deposit number of a payment recorded by hand (v1.2: no online payment)
-  paymentProofMediaId        String?   @map("payment_proof_media_id") // The receipt, a file of purpose order; plain column like proofOfDeliveryMediaId
-  shippingAddress            Json?     @map("shipping_address")
-  customerNotes              String?   @map("customer_notes")
-  internalNotes              String?   @map("internal_notes") // Customer-care note: members with a permission on the order only, never the customer, a channel, a plugin or the label
-  packingNotes               String?   @map("packing_notes") // For whoever packs the order: same audience as internalNotes, and the warehouse is told when it changes on a confirmed order
-  recipientPhones            String[]  @default([]) @map("recipient_phones") // National digits, no country code (the carriers take none); the first is the main number (TDD_02 §13)
-  scheduledDeliveryDate      DateTime? @map("scheduled_delivery_date") @db.Date // A calendar day in the store timezone, no time of day (D18)
-  trackingNumber             String?   @map("tracking_number")
-  cancellationReason         String?   @map("cancellation_reason")
-  cancelledBy                String?   @map("cancelled_by")
-  proofOfDeliveryMediaId     String?   @map("proof_of_delivery_media_id")
-  confirmedAt                DateTime? @map("confirmed_at")
-  confirmedBy                String?   @map("confirmed_by")
-  confirmedVia               String?   @map("confirmed_via") // OrderConfirmationChannel
-  exchangeOfOrderId          String?   @map("exchange_of_order_id") // The order this one replaces
-  copiedFromOrderId          String?   @map("copied_from_order_id") // The order it was copied from
-  freeShipping               Boolean   @default(false) @map("free_shipping") // Derived and stored on save (TDD_17 §4.13)
-  discountReason             String?   @map("discount_reason")
-  priceApprovalStatus        String    @default("not_required") @map("price_approval_status") // PriceApprovalStatus
-  priceApprovalRequestedBy   String?   @map("price_approval_requested_by")
-  priceApprovedBy            String?   @map("price_approved_by")
-  priceApprovedAt            DateTime? @map("price_approved_at")
-  priceApprovedDiscountCents Int?      @map("price_approved_discount_cents")
-  priceApprovedShippingCents Int?      @map("price_approved_shipping_cents")
-  carrierConnectionId        String?   @map("carrier_connection_id") // The planned carrier (TDD_17 §4.13); composite foreign key with the store, Step 4.8 PR C1
-  taxCents                   Int?      @map("tax_cents") // The tax of the order, fixed at creation (TDD_18 §7); null on an order made before the tax columns
-  pricesIncludeTax           Boolean?  @map("prices_include_tax") // Whether the prices were tax included when it was made; null as above
-  shippingTaxRateBps         Int?      @map("shipping_tax_rate_bps") // The rate the shipping fee was taxed at; null when it was not taxed
-  createdBy                  String    @map("created_by")
-  createdAt                  DateTime  @default(now()) @map("created_at")
-  updatedAt                  DateTime  @updatedAt @map("updated_at")
-  shippedAt                  DateTime? @map("shipped_at")
-  deliveredAt                DateTime? @map("delivered_at")
-  cancelledAt                DateTime? @map("cancelled_at")
+  id                               String    @id @default(uuid())
+  storeId                          String    @map("store_id")
+  customerId                       String    @map("customer_id")
+  conversationId                   String?   @map("conversation_id")
+  orderNumber                      String    @map("order_number")
+  status                           String    @default("PENDING_CONFIRMATION") // OrderStatus
+  subtotalCents                    Int       @map("subtotal_cents")
+  shippingCents                    Int       @default(0) @map("shipping_cents")
+  discountCents                    Int       @default(0) @map("discount_cents")
+  totalCents                       Int       @map("total_cents")
+  currency                         String    @default("USD")
+  paymentMethod                    String    @map("payment_method") // PaymentMethod
+  paymentStatus                    String    @default("PENDING") @map("payment_status") // PaymentStatus
+  paymentReference                 String?   @map("payment_reference") // The transfer or deposit number of a payment recorded by hand (v1.2: no online payment)
+  paymentProofMediaId              String?   @map("payment_proof_media_id") // The receipt, a file of purpose order; plain column like proofOfDeliveryMediaId
+  shippingAddress                  Json?     @map("shipping_address")
+  customerNotes                    String?   @map("customer_notes")
+  internalNotes                    String?   @map("internal_notes") // Customer-care note: members with a permission on the order only, never the customer, a channel, a plugin or the label
+  packingNotes                     String?   @map("packing_notes") // For whoever packs the order: same audience as internalNotes, and the warehouse is told when it changes on a confirmed order
+  recipientPhones                  String[]  @default([]) @map("recipient_phones") // National digits, no country code (the carriers take none); the first is the main number (TDD_02 §13)
+  scheduledDeliveryDate            DateTime? @map("scheduled_delivery_date") @db.Date // A calendar day in the store timezone, no time of day (D18)
+  trackingNumber                   String?   @map("tracking_number")
+  cancellationReason               String?   @map("cancellation_reason")
+  cancelledBy                      String?   @map("cancelled_by")
+  cancelledByPluginId              String?   @map("cancelled_by_plugin_id") // The plugin that did it, when no person did: never both (a check)
+  proofOfDeliveryMediaId           String?   @map("proof_of_delivery_media_id")
+  confirmedAt                      DateTime? @map("confirmed_at")
+  confirmedBy                      String?   @map("confirmed_by")
+  confirmedByPluginId              String?   @map("confirmed_by_plugin_id")
+  confirmedVia                     String?   @map("confirmed_via") // OrderConfirmationChannel
+  exchangeOfOrderId                String?   @map("exchange_of_order_id") // The order this one replaces
+  copiedFromOrderId                String?   @map("copied_from_order_id") // The order it was copied from
+  freeShipping                     Boolean   @default(false) @map("free_shipping") // Derived and stored on save (TDD_17 §4.13)
+  discountReason                   String?   @map("discount_reason")
+  priceApprovalStatus              String    @default("not_required") @map("price_approval_status") // PriceApprovalStatus
+  priceApprovalRequestedBy         String?   @map("price_approval_requested_by")
+  priceApprovalRequestedByPluginId String?   @map("price_approval_requested_by_plugin_id")
+  priceApprovedBy                  String?   @map("price_approved_by")
+  priceApprovedByPluginId          String?   @map("price_approved_by_plugin_id")
+  priceApprovedAt                  DateTime? @map("price_approved_at")
+  priceApprovedDiscountCents       Int?      @map("price_approved_discount_cents")
+  priceApprovedShippingCents       Int?      @map("price_approved_shipping_cents")
+  carrierConnectionId              String?   @map("carrier_connection_id") // The planned carrier (TDD_17 §4.13); composite foreign key with the store, Step 4.8 PR C1
+  taxCents                         Int?      @map("tax_cents") // The tax of the order, fixed at creation (TDD_18 §7); null on an order made before the tax columns
+  pricesIncludeTax                 Boolean?  @map("prices_include_tax") // Whether the prices were tax included when it was made; null as above
+  shippingTaxRateBps               Int?      @map("shipping_tax_rate_bps") // The rate the shipping fee was taxed at; null when it was not taxed
+  createdBy                        String?   @map("created_by") // Null when a plugin made it (`createdByPluginId`): exactly one of the two (a check)
+  createdByPluginId                String?   @map("created_by_plugin_id")
+  createdAt                        DateTime  @default(now()) @map("created_at")
+  updatedAt                        DateTime  @updatedAt @map("updated_at")
+  shippedAt                        DateTime? @map("shipped_at")
+  deliveredAt                      DateTime? @map("delivered_at")
+  cancelledAt                      DateTime? @map("cancelled_at")
 
   store              Store                  @relation(fields: [storeId], references: [id]) // No cascade: tax retention
   carrierConnection  CarrierConnection?     @relation(fields: [storeId, carrierConnectionId], references: [storeId, id], onDelete: Restrict)
@@ -919,30 +924,31 @@ model ProductVariant {
 // `quantity` is always positive and `type` carries the direction. The database refuses UPDATE and DELETE on it to
 // the application roles, and a store with stock cannot be deleted (TDD_16 §4.9: the foreign keys restrict it).
 model InventoryMovement {
-  id             String   @id @default(uuid())
+  id                String   @id @default(uuid())
   // The order in which the ledger was written: the kardex reads by it, because every movement of a transaction has
   // the same created_at (the database default is the start of the transaction) and ids are random
-  seq            BigInt   @unique @default(autoincrement())
-  storeId        String   @map("store_id")
-  productId      String   @map("product_id")
-  variantId      String?  @map("variant_id")
-  warehouseId    String   @map("warehouse_id")
-  type           String // InventoryMovementType
-  quantity       Int
-  reason         String? // InventoryAdjustmentReason, set for the manual types
-  note           String?
-  referenceType  String?  @map("reference_type") // InventoryReferenceType
-  referenceId    String?  @map("reference_id")
-  idempotencyKey String   @map("idempotency_key")
+  seq               BigInt   @unique @default(autoincrement())
+  storeId           String   @map("store_id")
+  productId         String   @map("product_id")
+  variantId         String?  @map("variant_id")
+  warehouseId       String   @map("warehouse_id")
+  type              String // InventoryMovementType
+  quantity          Int
+  reason            String? // InventoryAdjustmentReason, set for the manual types
+  note              String?
+  referenceType     String?  @map("reference_type") // InventoryReferenceType
+  referenceId       String?  @map("reference_id")
+  idempotencyKey    String   @map("idempotency_key")
   // The cost of ONE unit, in whole USD cents, for the movements that bring units in (receipts, opening stock,
   // returns); null for the rest (a reserve has no cost) and for units whose cost is not known. The weighted-average
   // cost of a level is kept from these (InventoryLevel.valueCents), and FIFO lots can later be built from the receipts
   // without changing this table.
-  unitCostCents  Int?     @map("unit_cost_cents")
-  onHandAfter    Int      @map("on_hand_after")
-  reservedAfter  Int      @map("reserved_after")
-  createdBy      String?  @map("created_by")
-  createdAt      DateTime @default(now()) @map("created_at")
+  unitCostCents     Int?     @map("unit_cost_cents")
+  onHandAfter       Int      @map("on_hand_after")
+  reservedAfter     Int      @map("reserved_after")
+  createdBy         String?  @map("created_by")
+  createdByPluginId String?  @map("created_by_plugin_id") // The plugin that moved it; null with a null person is the system
+  createdAt         DateTime @default(now()) @map("created_at")
 
   store     Store           @relation(fields: [storeId], references: [id], onDelete: Restrict)
   product   Product         @relation(fields: [storeId, productId], references: [storeId, id])
@@ -2108,19 +2114,20 @@ model BulkLabelJob {
 // (automatic: `(shipmentId, status, kind)`; manual change: `(orderId, kind, status)`), so a repeated carrier event or a
 // retried request sends nothing twice, and the timeline of the order can say "not sent, reason".
 model OrderMessageDispatch {
-  id             String   @id @default(uuid())
-  storeId        String   @map("store_id")
-  orderId        String   @map("order_id") // Composite foreign key with the store: the database refuses an order of another store
-  kind           String // OrderMessageKind
-  trigger        String // OrderMessageTrigger
-  route          String // OrderMessageRoute
-  reason         String? // OrderMessageNotSentReason, set only when the route is not_sent
-  idempotencyKey String   @map("idempotency_key")
-  messageId      String?  @map("message_id") // The outbound Message of a channel route; plain column like the other message links
-  shipmentId     String?  @map("shipment_id") // The package that caused an automatic message
-  requestedBy    String?  @map("requested_by") // The member who pressed "send" or changed the status; null for the system
-  locale         String? // The language of the template that was used
-  createdAt      DateTime @default(now()) @map("created_at")
+  id                  String   @id @default(uuid())
+  storeId             String   @map("store_id")
+  orderId             String   @map("order_id") // Composite foreign key with the store: the database refuses an order of another store
+  kind                String // OrderMessageKind
+  trigger             String // OrderMessageTrigger
+  route               String // OrderMessageRoute
+  reason              String? // OrderMessageNotSentReason, set only when the route is not_sent
+  idempotencyKey      String   @map("idempotency_key")
+  messageId           String?  @map("message_id") // The outbound Message of a channel route; plain column like the other message links
+  shipmentId          String?  @map("shipment_id") // The package that caused an automatic message
+  requestedBy         String?  @map("requested_by") // The member who pressed "send" or changed the status; null for the system
+  requestedByPluginId String?  @map("requested_by_plugin_id") // The plugin that asked for it, when no member did
+  locale              String? // The language of the template that was used
+  createdAt           DateTime @default(now()) @map("created_at")
 
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
   order Order @relation(fields: [storeId, orderId], references: [storeId, id], onDelete: Cascade)

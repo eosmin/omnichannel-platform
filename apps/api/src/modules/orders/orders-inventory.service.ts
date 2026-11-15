@@ -22,6 +22,8 @@ import {
   warehouseNotLinked
 } from '@platform/core/inventory'
 
+import type { ActorIds } from './orders-actor'
+
 // The stock side of an order (TDD_16 §4.1). OrdersService calls this inside its own transaction and nothing else writes
 // a level: every movement goes through InventoryService, which locks the level, checks the rules and writes the ledger.
 // Each effect is applied PER ALLOCATION, and each one carries a deterministic idempotency key
@@ -62,7 +64,7 @@ export class OrderInventoryService {
       storeId: string
       orderId: string
       lines: readonly LineToAllocate[]
-      createdBy: string | null
+      createdBy: ActorIds
     }
   ): Promise<void> {
     const { storeId, orderId, createdBy } = input
@@ -219,7 +221,7 @@ export class OrderInventoryService {
     tx: PrismaTransaction,
     storeId: string,
     orderId: string,
-    createdBy: string | null
+    createdBy: ActorIds
   ): Promise<void> {
     return this.applyToAllocations(tx, storeId, orderId, Effects.RELEASE, createdBy)
   }
@@ -229,7 +231,7 @@ export class OrderInventoryService {
     tx: PrismaTransaction,
     storeId: string,
     orderId: string,
-    createdBy: string | null
+    createdBy: ActorIds
   ): Promise<void> {
     return this.applyToAllocations(tx, storeId, orderId, Effects.ISSUE, createdBy)
   }
@@ -239,7 +241,7 @@ export class OrderInventoryService {
     tx: PrismaTransaction,
     storeId: string,
     orderId: string,
-    createdBy: string | null
+    createdBy: ActorIds
   ): Promise<void> {
     return this.applyToAllocations(tx, storeId, orderId, Effects.RETURN, createdBy)
   }
@@ -249,7 +251,7 @@ export class OrderInventoryService {
     storeId: string,
     orderId: string,
     effect: Effect,
-    createdBy: string | null
+    createdBy: ActorIds
   ): Promise<void> {
     const allocations = await tx.orderItemAllocation.findMany({
       where: { storeId, orderItem: { orderId } },
@@ -284,7 +286,7 @@ export class OrderInventoryService {
       variantId: string | null
       warehouseId: string
       quantity: number
-      createdBy: string | null
+      createdBy: ActorIds
     }
   ): MovementInput {
     return {
@@ -296,7 +298,8 @@ export class OrderInventoryService {
       quantity: item.quantity,
       idempotencyKey: orderMovementKey(item.orderId, item.itemId, item.warehouseId, effect),
       reference: { type: InventoryReferenceType.ORDER, id: item.orderId },
-      createdBy: item.createdBy
+      createdBy: item.createdBy.userId,
+      createdByPluginId: item.createdBy.pluginId
     }
   }
 }

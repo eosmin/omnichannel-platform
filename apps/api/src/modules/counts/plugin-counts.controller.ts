@@ -42,7 +42,7 @@ export class PluginCountsController {
   async list(
     @CurrentOrganization() organization: { id: string },
     @CurrentStore() store: { id: string },
-    @CurrentPluginInstallation() installation: { id: string },
+    @CurrentPluginInstallation() installation: { id: string; pluginId: string },
     @Query(new ZodValidationPipe(listCountsQuerySchema)) query: ListCountsQuery,
     @Req() req: AuthenticatedRequest
   ): Promise<PluginCountPage> {
@@ -57,7 +57,7 @@ export class PluginCountsController {
   async get(
     @CurrentOrganization() organization: { id: string },
     @CurrentStore() store: { id: string },
-    @CurrentPluginInstallation() installation: { id: string },
+    @CurrentPluginInstallation() installation: { id: string; pluginId: string },
     @Param('id', new ZodValidationPipe(idSchema)) countId: string,
     @Query(new ZodValidationPipe(countLinesQuerySchema)) query: CountLinesQuery,
     @Req() req: AuthenticatedRequest

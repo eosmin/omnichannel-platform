@@ -141,7 +141,7 @@ export class OrderShipmentEffects {
       if (plan.ship) {
         // The stock leaves with the package: take the allocation of the store before the levels, as the hand-made change does
         await lockStoreScope(tx, storeId, OrderLockScopes.ALLOCATION)
-        await this.stock.issue(tx, storeId, orderId, createdBy)
+        await this.stock.issue(tx, storeId, orderId, { userId: createdBy, pluginId: null })
         data.status = OrderStatus.SHIPPED
         data.shippedAt = moments.shippedAt
         steps.push(OrderStatus.SHIPPED)

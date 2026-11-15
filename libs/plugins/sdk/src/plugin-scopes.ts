@@ -18,7 +18,14 @@ export const PluginScopes = {
   CUSTOMERS_DELETE: 'customers:delete',
   CUSTOMERS_FLAG_CAUTION: 'customers:flag-caution',
   ORDERS_READ: 'orders:read',
+  // Creating an order and changing its status (ORDERS_CREATE, ORDERS_CHANGE_STATUS). Confirming, cancelling, editing and deciding a price
+  // each have a permission that this does not hold (a person who creates an order does not cancel one by that), so each is a scope of its
+  // own (Step 5.6 PR E3b): a status route reached with `orders:write` alone is refused for CONFIRMED and CANCELLED, as for a person
   ORDERS_WRITE: 'orders:write',
+  ORDERS_EDIT: 'orders:edit',
+  ORDERS_CONFIRM: 'orders:confirm',
+  ORDERS_CANCEL: 'orders:cancel',
+  ORDERS_APPROVE_PRICE: 'orders:approve-price',
   PRODUCTS_READ: 'products:read',
   // Creating and changing a product or a variant (Step 5.6 PR E4a); deleting one is a scope of its own, as a person who edits
   // the catalog does not delete from it by that. The cost and the tax of a product have permissions that no scope grants.
@@ -44,6 +51,10 @@ export const PluginScopes = {
   // What the store says to the customer about an order (the history of messages and the templates, Step 5.6 PR E3a); sending
   // one is a scope of its own, with the routes that need a person's id
   ORDER_MESSAGES_READ: 'order-messages:read',
+  // Sending the message of a kind about an order (ORDERS_SEND_MESSAGES) and writing, deleting and previewing a template
+  // (SETTINGS_MANAGE_ORDER_TEMPLATES), each its own scope because no other grants them (Step 5.6 PR E3b)
+  ORDER_MESSAGES_WRITE: 'order-messages:write',
+  ORDER_TEMPLATES_WRITE: 'order-templates:write',
   // The preferences of the store (the factory defaults it overrode, the rules of returns): reading only, SETTINGS_EDIT and the
   // security settings stay human
   SETTINGS_READ: 'settings:read',
@@ -77,6 +88,14 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.CUSTOMERS_FLAG_CAUTION]: [Permissions.CUSTOMERS_FLAG_CAUTION],
   [PluginScopes.ORDERS_READ]: [Permissions.ORDERS_VIEW],
   [PluginScopes.ORDERS_WRITE]: [Permissions.ORDERS_CREATE, Permissions.ORDERS_CHANGE_STATUS],
+  [PluginScopes.ORDERS_EDIT]: [Permissions.ORDERS_EDIT],
+  [PluginScopes.ORDERS_CONFIRM]: [Permissions.ORDERS_CONFIRM],
+  [PluginScopes.ORDERS_CANCEL]: [Permissions.ORDERS_CANCEL],
+  // Deciding the price of an order, never the override of a price (ORDERS_OVERRIDE_PRICE has no scope): a plugin does not set a
+  // price outside the catalog, and approving a request needs somebody other than who made it (a plugin included)
+  [PluginScopes.ORDERS_APPROVE_PRICE]: [Permissions.ORDERS_APPROVE_PRICE],
+  [PluginScopes.ORDER_MESSAGES_WRITE]: [Permissions.ORDERS_SEND_MESSAGES],
+  [PluginScopes.ORDER_TEMPLATES_WRITE]: [Permissions.SETTINGS_MANAGE_ORDER_TEMPLATES],
   [PluginScopes.PRODUCTS_READ]: [Permissions.PRODUCTS_VIEW],
   [PluginScopes.PRODUCTS_WRITE]: [Permissions.PRODUCTS_CREATE, Permissions.PRODUCTS_EDIT],
   [PluginScopes.PRODUCTS_DELETE]: [Permissions.PRODUCTS_DELETE],

@@ -21,6 +21,13 @@ export const sendOrderMessageSchema = z.strictObject({
 })
 export type SendOrderMessageBody = z.output<typeof sendOrderMessageSchema>
 
+// A plugin always sends (it has no screen to preview on: the rendered text would show it the customer's name, address and guide, which
+// `orders:read` withholds) and always with the key of its call, so that a retry sends once
+export const pluginSendOrderMessageSchema = sendOrderMessageSchema.required({
+  idempotencyKey: true
+})
+export type PluginSendOrderMessageBody = z.output<typeof pluginSendOrderMessageSchema>
+
 // `?preview=true` renders the message from the real order and sends nothing
 export const sendOrderMessageQuerySchema = z.strictObject({
   preview: z

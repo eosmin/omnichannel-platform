@@ -98,6 +98,9 @@ export const RemoteChannelApiLimits = {
   DISPLAY_NAME_MAX_LENGTH: 100,
   CONNECTION_METADATA_MAX_BYTES: 4096,
   MAX_EVENTS_PER_REQUEST: 50,
+  // The body of `POST /plugin-api/channel/events` (TDD_10 §6.7.5): 1 MiB, read only from a caller that carries a plugin key. The
+  // parser every other route has takes 100 KB, and fifty events with their texts and metadata can pass that.
+  EVENTS_BODY_MAX_BYTES: 1024 * 1024,
   // The ceiling of events a minute for the whole installation, on top of `rateLimitPerMinute` (requests)
   MAX_EVENTS_PER_MINUTE: 3000,
   EVENTS_WINDOW_SECONDS: 60,
