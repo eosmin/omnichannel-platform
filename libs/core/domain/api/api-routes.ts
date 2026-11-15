@@ -292,6 +292,14 @@ export const ApiRoutes = {
     config: (id: string) => `/plugins/${id}/config`
   },
 
+  // The widgets of the plugins in the agent sidebar (TDD_10 §7): the ones the store has, a short session
+  // for one conversation, and the bridge the page forwards what a widget asks over its port to
+  pluginWidgets: {
+    list: '/plugin-widgets',
+    sessions: '/plugin-widgets/sessions',
+    bridge: '/plugin-widgets/bridge'
+  },
+
   channels: {
     connections: '/channels/connections',
     // The same accounts for anyone who may see conversations: the inbox names a channel and decides

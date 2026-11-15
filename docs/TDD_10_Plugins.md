@@ -1349,6 +1349,17 @@ channel.port1.onmessage = async (event: MessageEvent<PluginBridgeRequest>) => {
 The iframe side only ever talks to the port it received; it never uses
 `window.parent.postMessage` for data.
 
+**What v1.2 builds (Step 5.7a).** The page forwards what the frame asks to `POST /api/v1/plugin-widgets/bridge`
+on the agent's own session (AuthGuard, TenantGuard, `CONVERSATIONS_VIEW`), with the widget session token the
+frame was handed over the port (`POST /api/v1/plugin-widgets/sessions`: 5 minutes, one person, one
+installation, one conversation that person may see; only the sha256 of the token is stored). The server
+checks the session, reads the installation again (a revoked one stops at once), requires the scope of the
+operation (`PluginBridgeOperationScopes`) and the matching permission of the person, and answers only about
+the conversation of the session. The operations are a closed set (`conversation.get`, `customer.get`), each
+a minimum view; the frame never names a conversation. A widget whose origin is the web app's or the api's
+is never listed: `allow-same-origin` is safe only because the frame's origin is not ours. Calling
+`/plugin-api/*` straight from the frame with the token joins with Step 5.6.
+
 ---
 
 ## 8. Plugin marketplace (MATURE)

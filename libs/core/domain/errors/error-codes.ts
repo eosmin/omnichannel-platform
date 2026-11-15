@@ -69,6 +69,8 @@ export const ErrorCodes = {
   PLUGIN_CONTRACT_VIOLATION: 'PLUGIN_CONTRACT_VIOLATION',
   PLUGIN_SCOPE_DENIED: 'PLUGIN_SCOPE_DENIED',
   PLUGIN_API_KEY_INVALID: 'PLUGIN_API_KEY_INVALID',
+  // The session of a plugin widget is unknown, expired, another person's, or its installation was revoked (one answer for all)
+  PLUGIN_WIDGET_SESSION_INVALID: 'PLUGIN_WIDGET_SESSION_INVALID',
   // The key of a store that calls the public API is missing, unknown, revoked or expired (one answer for all four)
   API_KEY_INVALID: 'API_KEY_INVALID',
 
