@@ -3018,7 +3018,7 @@
       },
       "setupCode": {
         "title": "Código de configuración de {name}",
-        "description": "Entrega este código al plugin para terminar la instalación. Sirve una sola vez y vence a las {time}.",
+        "description": "Entrega este código al plugin para terminar la instalación. Sirve una sola vez y expira a las {time}.",
         "label": "Código de configuración",
         "how": "El plugin cambia el código por su clave de acceso. La plataforma nunca muestra esa clave, y un código perdido se reemplaza desde el detalle del plugin.",
         "openSettings": "Abrir los ajustes de {name}"

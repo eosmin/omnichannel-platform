@@ -133,7 +133,9 @@ function PluginRow({ entry }: { entry: PluginCatalogEntryView }): ReactElement {
           installationId,
           ...(confirmation === undefined ? {} : { confirmation })
         })
-        toast.success(t(confirmation === undefined ? 'uninstall.done' : 'revoke.done', { name: entry.name }))
+        toast.success(
+          t(confirmation === undefined ? 'uninstall.done' : 'revoke.done', { name: entry.name })
+        )
       } catch (error) {
         toast.error(errorText(error))
       }

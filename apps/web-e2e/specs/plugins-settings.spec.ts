@@ -70,11 +70,15 @@ test.describe('Settings → Plugins', () => {
     await dialog.getByRole('button', { name: SCREEN.register.submit }).click()
     await expect(dialog).toBeHidden()
     await expect(row()).toBeVisible()
-    await expect(row().getByRole('button', { name: new RegExp(`^${SCREEN.install.action}`) })).toBeVisible()
+    await expect(
+      row().getByRole('button', { name: new RegExp(`^${SCREEN.install.action}`) })
+    ).toBeVisible()
   })
 
   test('asks for the consent of the owner and hands the setup code once', async () => {
-    await row().getByRole('button', { name: new RegExp(`^${SCREEN.install.action}`) }).click()
+    await row()
+      .getByRole('button', { name: new RegExp(`^${SCREEN.install.action}`) })
+      .click()
     const consent = page.getByRole('dialog', {
       name: SCREEN.consent.title.replace('{name}', pluginName)
     })
@@ -97,7 +101,9 @@ test.describe('Settings → Plugins', () => {
   })
 
   test('shows the detail with the scopes it was granted, and never the key', async () => {
-    await row().getByRole('button', { name: new RegExp(`^${SCREEN.detail.action}`) }).click()
+    await row()
+      .getByRole('button', { name: new RegExp(`^${SCREEN.detail.action}`) })
+      .click()
     const detail = page.getByRole('dialog', { name: pluginName })
     await expect(detail).toBeVisible()
     await expect(detail.getByText(SCREEN.detail.status.pending_setup)).toBeVisible()
@@ -112,7 +118,9 @@ test.describe('Settings → Plugins', () => {
   })
 
   test('revokes only with the word typed, and the plugin can be installed again', async () => {
-    await row().getByRole('button', { name: new RegExp(`^${SCREEN.revoke.action}`) }).click()
+    await row()
+      .getByRole('button', { name: new RegExp(`^${SCREEN.revoke.action}`) })
+      .click()
     const dialog = page.getByRole('alertdialog')
     await expect(dialog).toBeVisible()
     await expect(dialog).toContainText(SCREEN.revoke.title.replace('{name}', pluginName))
@@ -128,10 +136,14 @@ test.describe('Settings → Plugins', () => {
 
     await expect(dialog).toBeHidden()
     await expect(row()).not.toContainText(SCREEN.pendingSetup)
-    await expect(row().getByRole('button', { name: new RegExp(`^${SCREEN.install.action}`) })).toBeVisible()
+    await expect(
+      row().getByRole('button', { name: new RegExp(`^${SCREEN.install.action}`) })
+    ).toBeVisible()
 
     // The detail reads the revocation at once, with nothing left to do on a revoked installation
-    await row().getByRole('button', { name: new RegExp(`^${SCREEN.detail.action}`) }).click()
+    await row()
+      .getByRole('button', { name: new RegExp(`^${SCREEN.detail.action}`) })
+      .click()
     const detail = page.getByRole('dialog', { name: pluginName })
     await expect(detail.getByText(SCREEN.detail.status.revoked)).toBeVisible()
     await expect(detail.getByRole('button', { name: SCREEN.detail.newCode })).toHaveCount(0)

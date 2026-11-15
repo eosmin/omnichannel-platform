@@ -6,11 +6,11 @@ import { type ReactElement, useState } from 'react'
 
 import { PluginInstallationStatus } from '@platform/core/domain'
 
-import { useErrorText } from '../../lib/use-error-text'
-import { useSubmitGuard } from '../../lib/submit-guard'
 import type { PluginSetupOfferView } from '../../lib/settings/plugins-requests'
 import { useInstallIntegrationPlugin, usePluginConsent } from '../../lib/settings/use-plugins'
+import { useSubmitGuard } from '../../lib/submit-guard'
 import { toast } from '../../lib/toast'
+import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 import {
@@ -54,7 +54,8 @@ export function PluginInstallDialog({
   const data = consent.data
   // An installation that exists and is not revoked: what a newer manifest adds is a change to access already trusted
   const isLive =
-    data?.installation != null && data.installation.status !== String(PluginInstallationStatus.REVOKED)
+    data?.installation != null &&
+    data.installation.status !== String(PluginInstallationStatus.REVOKED)
   const authorize = (): void => {
     if (data === undefined || !guard.enter()) return
     install.mutate(data.scopes, {
@@ -89,7 +90,8 @@ export function PluginInstallDialog({
           <div className="flex flex-col gap-4">
             <section className="flex flex-col gap-1 text-sm">
               <h3 className="font-medium">
-                {data.plugin.name} <span className="text-muted-foreground">v{data.plugin.version}</span>
+                {data.plugin.name}{' '}
+                <span className="text-muted-foreground">v{data.plugin.version}</span>
               </h3>
               <p className="break-words">{data.plugin.description}</p>
               <p className="text-muted-foreground break-all">
@@ -98,7 +100,10 @@ export function PluginInstallDialog({
               <p className="text-muted-foreground text-xs">{t('authorOwn')}</p>
             </section>
             {data.newScopes.length > 0 && isLive ? (
-              <p role="note" className="flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+              <p
+                role="note"
+                className="flex items-start gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm"
+              >
                 <ShieldAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
                 <span>{t('newVersion')}</span>
               </p>
@@ -115,9 +120,13 @@ export function PluginInstallDialog({
                 <p>{t('noWebhooks')}</p>
               ) : (
                 <>
-                  <p className="break-all">{t('webhookEndpoint', { endpoint: data.webhooks.endpoint })}</p>
+                  <p className="break-all">
+                    {t('webhookEndpoint', { endpoint: data.webhooks.endpoint })}
+                  </p>
                   <p className="text-muted-foreground text-xs">{t('challengeNote')}</p>
-                  <p className="break-all">{t('webhookEvents', { events: data.webhooks.events.join(', ') })}</p>
+                  <p className="break-all">
+                    {t('webhookEvents', { events: data.webhooks.events.join(', ') })}
+                  </p>
                 </>
               )}
             </section>
@@ -140,7 +149,9 @@ export function PluginInstallDialog({
           <Button
             type="button"
             // A refresh that failed hides what is asked: nothing is authorized that the owner cannot see
-            disabled={data === undefined || consent.isError || consent.isFetching || install.isPending}
+            disabled={
+              data === undefined || consent.isError || consent.isFetching || install.isPending
+            }
             busy={install.isPending}
             onClick={authorize}
           >

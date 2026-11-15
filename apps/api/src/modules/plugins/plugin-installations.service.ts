@@ -141,7 +141,9 @@ function manifestSummaryOf(manifest: unknown): {
   const block =
     typeof manifest === 'object' && manifest !== null ? (manifest as Record<string, unknown>) : {}
   const scopes = Array.isArray(block['scopes'])
-    ? block['scopes'].filter((scope): scope is string => typeof scope === 'string' && isPluginScope(scope))
+    ? block['scopes'].filter(
+        (scope): scope is string => typeof scope === 'string' && isPluginScope(scope)
+      )
     : []
   return {
     version: typeof block['version'] === 'string' ? block['version'] : null,
@@ -153,9 +155,7 @@ function manifestSummaryOf(manifest: unknown): {
 function namesOf(manifest: unknown): LocalizedText | null {
   if (typeof manifest !== 'object' || manifest === null) return null
   const names = (manifest as { names?: unknown }).names
-  return names === undefined
-    ? null
-    : readLocalizedText(names, PluginManifestLimits.NAME_MAX_LENGTH)
+  return names === undefined ? null : readLocalizedText(names, PluginManifestLimits.NAME_MAX_LENGTH)
 }
 
 export type PluginInstallResult = PluginCatalogEntry & { setup: PluginSetupOffer | null }

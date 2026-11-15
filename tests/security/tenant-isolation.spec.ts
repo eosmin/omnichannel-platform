@@ -1081,10 +1081,10 @@ const resources: IsolationResource[] = [
       (await owner.returnReceptionItem.findUnique({ where: { id }, select: { note: true } }))
         ?.note === null
   },
+  // A private plugin belongs to the organization that registered it (D10): every store of it sees it, another organization
+  // never does, and one id answers the same for a plugin that is not there
   {
     name: 'plugin',
-    // A private plugin belongs to the organization that registered it (D10): every store of it sees it, another organization
-    // never does, and one id answers the same for a plugin that is not there
     create: async (owner, { storeId }) => {
       const id = `iso-${randomUUID().slice(0, 12)}`
       await owner.plugin.create({

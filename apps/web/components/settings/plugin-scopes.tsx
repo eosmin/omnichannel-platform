@@ -7,7 +7,8 @@ import type { ReactElement } from 'react'
 // (the platform grew one) is shown as its own id, never hidden: the owner must see everything that is granted.
 function useScopeLabel(): (scope: string) => string {
   const t = useTranslations('settings.plugins.scopes')
-  return scope => (t.has(scope as Parameters<typeof t.has>[0]) ? t(scope as Parameters<typeof t>[0]) : scope)
+  return scope =>
+    t.has(scope as Parameters<typeof t.has>[0]) ? t(scope as Parameters<typeof t>[0]) : scope
 }
 
 // The list of scopes of the consent screen and of the detail: the ones just asked for are marked
