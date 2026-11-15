@@ -1297,19 +1297,24 @@ routes. Never stacked: 4B.2b starts from `main` after 4B.2a is merged.
       maps, composite keys across organizations), the pure specs of `libs/core/finance`, `finance-constants.spec.ts`
 
 **PR 4B.2b (services, routes, isolation, frontend and plugin maps)**
-- [ ] The posting service in `libs/core/finance` (the only writer of the ledger: lock on `FinanceSettings`, next number and head, hash,
-      entry and lines with the organization named on each line (the balances by period follow by trigger, nothing to upsert), idempotency key, the reversal; emits
-      `finance.entry_posted` and `finance.entry_reversed`), the module registered in the api and the worker
-- [ ] `POST /finance/setup` (country, start date, template) with the setup state; `apps/api/src/modules/finance`: settings, accounts
-      (create, rename, deactivate, re-parent; type locked once used), role mappings, payment method accounts, periods (list, open on
-      demand), entries (list, one, manual with HIGH-tier confirmation, reverse), balances, `finance/postings` (failed list, post
-      again); an audit row for every mutation (`FINANCE_SETUP_COMPLETED`, `FINANCE_PAYMENT_ACCOUNT_CHANGED` and the rest)
-- [ ] Constants of `TDD_18 §3` left for this PR: `ApiRoutes` (finance group), `QueryKeys` of `finance.*`, the HIGH-tier entries
-      "Post a manual entry" and "Reverse an entry" in `DestructiveActionTiers`
-- [ ] Tests: a custom role with only `FINANCE_VIEW` reads balances and cannot read the journal, post, move money or close (one case
-      per permission); idempotency repeat; the gapless number under concurrent posts through the service; the
-      `tests/security/tenant-isolation.spec.ts` cases (cross-organization by id, the lines by store) that replace the nine lines of
-      `scripts/isolation-exemptions.ts` named `FINANCE_SCHEMA_ONLY`; `frontend-coverage-map` and `plugin-api-coverage-map` entries
+- [x] The posting service in `libs/core/finance` (`LedgerService`, entry point `@platform/core/finance-ledger`, apart from the browser-safe rules
+      of `@platform/core/finance`): the only writer of the ledger (lock on `FinanceSettings`, next number and head, hash, entry and lines with
+      the organization named on each line (the balances by period follow by trigger, nothing to upsert), idempotency key, the reversal; emits
+      `finance.entry_posted` and, for a reversal, `finance.entry_reversed` too), the module registered in the api (`FinanceModule`) and the worker
+- [x] `POST /finance/setup` (country, start date, template) with the setup state (`GET /finance/setup`); `apps/api/src/modules/finance`: settings,
+      accounts (create, rename, deactivate, reactivate, re-parent; type locked once used), role mappings, payment method accounts, periods (list,
+      open on demand), entries (list, one, manual, reverse), balances, `finance/postings` (the failed list); an audit row for every mutation
+      (`FINANCE_SETUP_COMPLETED`, `FINANCE_PAYMENT_ACCOUNT_CHANGED` and the rest). **"Post again" is Step 4B.6's** (see below): it re-runs an entry
+      builder, and the builders are 4B.6's
+- [x] Constants of `TDD_18 §3` left for this PR: `ApiRoutes` (finance group), `QueryKeys` of `finance.*`, the HIGH-tier entries
+      "Post a manual entry" and "Reverse an entry" in `DestructiveActionTiers` (`POST_MANUAL_ENTRY`, `REVERSE_ENTRY`)
+- [x] Tests: a custom role with only `FINANCE_VIEW` reads balances and cannot read the journal, post, change the chart or set up (one case per
+      permission that a route of this PR reads: `view`, `view_journal`, `post_manual`, `manage_accounts`; the other nine are read by their steps, each
+      with its own case); idempotency repeat; the gapless number and the chain under concurrent posts through the service; a closed period and the
+      reversal in the open one; `tests/api/finance.spec.ts` (56 cases) and the `tests/security/tenant-isolation.spec.ts` cases (cross-organization by
+      id, the lines by store) that replace the nine lines of `scripts/isolation-exemptions.ts` named `FINANCE_SCHEMA_ONLY`;
+      `scripts/lib/finance-single-writer.spec.ts` (no other application file writes the ledger, nested writes included);
+      `frontend-coverage-map` and `plugin-api-coverage-map` entries
 **Left for the steps that read them (rule 12, each in its step):** the jobs and schedules (`POST_FINANCE_EVENT`, 4B.6;
 `RECONCILE_FINANCE` and `VERIFY_LEDGER_CHAIN`, 4B.8; `SUBMIT_FISCAL_DOCUMENT`, 4B.7), the notification types
 (`FINANCE_POSTING_FAILED`, 4B.6; `FISCAL_DOCUMENT_REJECTED`, 4B.7), the events `FINANCE_PERIOD_CLOSED`, `FINANCE_PERIOD_REOPENED` (4B.8),
@@ -1331,6 +1336,32 @@ the service of 4B.8 changes the period first and the lock after it; a closed per
 data: { entries: { create } } })`), which the database triggers refuse to take outside the rules anyway; 4B.2b adds the posting service
 as the single writer and its spec proves no other module imports a path to the tables. The balanced-entry constraint re-sums the entry
 once per line (at most 200 lines): measured as acceptable at this volume, revisit in 4B.8 if a bulk posting is slow.
+**Decisions of PR 4B.2b (rule 12):** (1) the posting service has its own entry point (`@platform/core/finance-ledger`) and the rules keep `@platform/core/finance`,
+which a screen imports, free of Nest and of the database (rejected: one barrel, which would pull the service into every bundle); (2) a manual entry names
+no party and no tax rate (the schema is strict), because those ids belong to the entries the system derives from a sale, a purchase or a remittance, where
+the id comes from the source; the service takes them from such callers (rejected: accepting them from a form, with no table yet to prove they belong to the
+organization); (3) a manual entry carries the client's key (`manual:<key>`, required), so a double click or a retry after a lost answer posts once, and the
+same key with another content is a 409, never an overwrite (rejected: a key made by the server, which cannot tell a retry from a second entry); (4) a reversal
+needs a reason (the auditor reads it), may be dated by the person, and is otherwise dated like the original, or the first day of the open period when the
+original's is closed; it is allowed on an account that is off (the trigger agrees) and an entry is reversed once; a reversal is not reversed (409), because that would put the first entry's effect back on an account that is off (rejected: allowing it, once); a retry of a
+reversal answers the first one, and a reversal is never dated before its entry; (5) an account that a role, a payment method or the
+rounding setting points at is not switched off or made a header (rejected: letting the postings fail later, which is what 4B.6 makes visible); (6) the
+code of an account can be changed (`TDD_18 §3.1`: the accountant adjusts names and codes), unique per organization under a lock; the start date of the books
+cannot be changed by a route (it decides what is never posted, `TDD_18 §6.5`); (7) the balances route reads the table the database keeps by period, never the
+lines, and takes one period or all, and one store or the organization; the reports by date are Step 4B.8's; (8) a period is opened ahead by `POST
+/finance/periods` and refused when it ended before the books started; (9) an organization in a query or a body is refused (strict schemas), never read, and the
+accounts of a line and the stores of a line are looked up in the organization of the request, so another organization's id is a 404; (10) the party and the tax rate of a line are looked up in the organization (customer, carrier connection) and a supplier or a tax rate is refused until Steps 4B.5
+and 4B.3 add their tables and their check (rejected: trusting the caller); (11) the permission of
+`finance/postings` is `finance:manage_accounts`, the one that can fix a mapping; an opening balance is dated on or after the start date (the trigger of
+4B.2a refuses an earlier date, which `TDD_18 §6.5` wrote as "the day before": the accountant decides the start date with that in mind, see debt (b)).
+**Debts of PR 4B.2b (tracked where they are closed):** (e) how a retry of an automatic posting that moved to the open period is compared with its stored
+entry (`sameRequest` compares the date the caller asked for) is 4B.6's, with `automaticEntryDate`; (g) a change of `recognizeSaleOn` after entries exist has no cut-over date: 4B.6, which reads it, decides whether it is refused or dated; (h) the
+rounding account is the account of the ROUNDING role, kept as one from the settings and from the role; (f) a post does a period upsert and a store and account lookup
+under the lock of the settings: measured acceptable at this volume, revisit with the bulk postings of 4B.8; (a) **post again** of a failed source (`finance/postings`) is Step 4B.6's, with the entry builders it
+re-runs; (b) the opening balance rule above (a start date one day before the first real day) is for the accountant to confirm at setup, `TDD_18 §13` row 1,
+no code changes; (c) the nine permissions of Step 4B.4 to 4B.9 (`manage_transactions`, `move_money`, `manage_purchases`, `reconcile`, `close_periods`,
+`export`, `view_carrier_fees`, `fiscal:*`) get their own role cases in those steps; the `finance:` and `fiscal:` prefixes of `PermissionsOfUnbuiltAreas`
+stay until the last of them is read (4B.9); (d) the web client of these routes (`libs/api-client` hooks and the screens) is Step 4B.9's.
 **TDD:** `TDD_18 §2`, `§3`, `§4.1`, `§5`, `§9`, `TDD_02 §5`, `TDD_01 §4`
 **Done when:** the accountant's chart can be seeded and edited, a manual entry posts and is reversed, a period can be listed, every rule
 above is a failing test that passes, and no code outside `libs/core/finance` writes the ledger (lint).
@@ -1380,6 +1411,8 @@ supplier and is paid in parts from the chosen account, and the ledger agrees wit
 - [ ] The listener and `POST_FINANCE_EVENT`; the pure entry builders for E1 to E9 (payment, goods in transit, sale, carrier charges,
       remittance confirmed and voided, a discrepancy written off, returns, stock adjustments and counts); the idempotency keys; the late-post
       rule; `accountingStartDate` skipping
+- [ ] "Post again" of a failed source: `POST /finance/postings/:id/retry` (`finance:manage_accounts`) re-runs the builder of the source and
+      resolves the `FinancePostingFailure`; the list of failures (`GET /finance/postings`) is Step 4B.2b's
 - [ ] The destination account on the remittance confirm (a field added to `TDD_17 §4.15`'s confirm route, default `BANK_DEFAULT`) and the
       "write off the difference" action
 - [ ] `RECONCILE_FINANCE` (daily and before a close): the sweep of unposted sources, balance recomputation, inventory and carrier-receivable
@@ -2244,7 +2277,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4.15 | Forza and C807 adapters | in progress | PR 1 (C807 adapter, token cache port, `connectFields`); Forza adapter; PR 2a (api of the connection, #477); PR 2c (web of the guide, #478); PR 2b (web of the connection, #479); PR 3 (places of a bulk run); PR 5 (places in the default mode of bulk labels); PR 4 (QA fix FUNC-H1, a guide that cannot be cancelled at the carrier is marked as voided from `cancel_pending`); PR 6a (api of the commission and the rate per service, FUNC-H4, #483); PR 6b (web of the commission and the rates); the real webhook and one real status change (owner, see the step) | 2026-11-14 |
 | **Milestone 4B: Finance** | | | | |
 | 4B.1 | Finance design (TDD_18, no code) | in progress | written and delivered with the first code PR that follows; owner approval of `TDD_18` pending | |
-| 4B.2 | Ledger core (accounts, immutable journal, periods, permissions) | in progress | PR a (schema, constants, pure rules, database tests); PR b (services, routes, isolation) pending | |
+| 4B.2 | Ledger core (accounts, immutable journal, periods, permissions) | done | PR a (schema, constants, pure rules, database tests, #509); PR b (posting service, routes, isolation, maps, #513) | 2026-11-15 |
 | 4B.3 | VAT and the tax snapshot | todo | | |
 | 4B.4 | Expenses, incomes, transfers and bank reconciliation | todo | | |
 | 4B.5 | Suppliers and purchase orders | todo | | |
