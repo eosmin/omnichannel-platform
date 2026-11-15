@@ -836,6 +836,17 @@ styles/scripts (works under strict merchant CSPs). Every autonomous reply carrie
 `capabilities` values are `ChannelCapability` values (for a channel plugin, only those of §6.7.2; its `channel` block is §6.7.2 too); `webhooks.events` are `Events`
 values; the whole document is validated by `pluginManifestSchema` (Zod) on submission.
 
+**Private registration (MVP, D10).** There is no marketplace: the owner pastes the manifest in Settings → Plugins
+(`POST /plugins/register`, `SETTINGS_MANAGE_PLUGINS`). `pluginManifestSchema` (`libs/plugins/runtime`) refuses any key it does not
+name, bounds every text and list, checks every address for its shape (https, default port, no credentials, a host with a dot or a
+public address; the network is asked later, at the install challenge and at each delivery), accepts only the scopes that exist,
+`"type": "integration"` and `"pricing": { "model": "free" }`. A manifest may carry `names: { es, en }`, the plain-text name in each
+language, which the interface prefers to `name`. The row is stored `approved`, `isOfficial = false`, and belongs to the
+organization that registered it (`Plugin.organizationId`): only its stores see it in the catalog and install it. The id is never
+an official channel, the shipping plugin, one the registry runs, or one another organization holds. Registering a higher `version` of
+one's own plugin replaces the manifest; an installation keeps the scopes it was installed with until the owner approves the new
+ones in a consent screen (Step 5.6, install flow).
+
 ### 6.2 Scopes
 
 ```typescript

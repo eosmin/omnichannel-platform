@@ -29,6 +29,7 @@ model Organization {
   warehouses          Warehouse[]
   stockCounts         StockCount[]
   stockTransfers      StockTransfer[]
+  plugins             Plugin[]
 
   @@map("organizations")
 }
@@ -1235,12 +1236,17 @@ model Plugin {
   platformRevenueSharePercent Int?     @default(20) @map("platform_revenue_share_percent")
   status                      String   @default("submitted") // PluginStatus
   reviewNotes                 String?  @map("review_notes")
+  // The organization that registered it (private registration, D10): only its stores see it and install it. Null for the
+  // plugins the platform ships and the ones its code registers, which every store sees. Never an official plugin.
+  organizationId              String?  @map("organization_id")
   createdAt                   DateTime @default(now()) @map("created_at")
   updatedAt                   DateTime @updatedAt @map("updated_at")
 
+  organization  Organization?        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   installations PluginInstallation[]
 
   @@index([status])
+  @@index([organizationId])
   @@map("plugins")
 }
 

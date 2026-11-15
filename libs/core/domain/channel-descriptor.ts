@@ -156,7 +156,7 @@ export function readLocalizedText(
 const IMAGE_HOST =
   /^https:\/\/(?:\*\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/
 // Names that are not on the internet: an address of a private network is never a place to load a picture from
-const PRIVATE_TLDS = new Set([
+export const PRIVATE_TLDS: ReadonlySet<string> = new Set([
   'local',
   'internal',
   'localhost',

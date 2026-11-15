@@ -3,7 +3,7 @@
   "$schema": "../../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "libs/core/url-safety/src",
   "projectType": "library",
-  "tags": ["scope:core", "type:lib"],
+  "tags": ["scope:core", "scope:url-safety", "type:lib"],
   "targets": {
     "lint": {},
     "type-check": {},

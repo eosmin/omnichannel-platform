@@ -1,6 +1,8 @@
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 
+import { PRIVATE_TLDS } from '@platform/core/domain'
+
 import { isPublicAddress } from './public-address'
 
 export class UnsafeUrlError extends Error {
@@ -55,4 +57,34 @@ export async function assertPublicHttpsUrl(
   resolve: HostResolver = resolveAll
 ): Promise<URL> {
   return (await resolvePublicHttpsUrl(raw, resolve)).url
+}
+
+// The shape of a public https address, without asking the network: https, the default port, no credentials, a host
+// with a dot (or a public ip literal). It is what a document that only stores an address (a manifest) can check;
+// whoever calls the address checks it again with `resolvePublicHttpsUrl`, because a name can lead anywhere later.
+export function isWellFormedPublicHttpsUrl(raw: string): boolean {
+  let url: URL
+  try {
+    url = new URL(raw)
+  } catch {
+    return false
+  }
+  if (url.protocol !== 'https:' || url.username !== '' || url.password !== '') return false
+  if (url.port !== '' && url.port !== '443') return false
+  const host = url.hostname.replace(/^\[|\]$/g, '')
+  return isIP(host) === 0 ? isPublicDomainName(host) : isPublicAddress(host)
+}
+
+const DOMAIN_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i
+// A top level domain: letters, or the punycode form of an international one
+const TOP_LEVEL = /^(?:[a-z]{2,}|xn--[a-z0-9-]{1,59})$/i
+// Names the standard keeps out of the public DNS and the channel image list leaves alone (its tests use them)
+const RESERVED_TLDS: ReadonlySet<string> = new Set(['test', 'example', 'alt'])
+
+function isPublicDomainName(host: string): boolean {
+  const labels = host.split('.')
+  if (labels.length < 2 || !labels.every(label => DOMAIN_LABEL.test(label))) return false
+  const suffix = (labels[labels.length - 1] ?? '').toLowerCase()
+  // The names that lead to a private network and never to the internet, as the image hosts of a channel are judged
+  return TOP_LEVEL.test(suffix) && !PRIVATE_TLDS.has(suffix) && !RESERVED_TLDS.has(suffix)
 }
