@@ -66,7 +66,13 @@ export class DeletedMessagePurgeScheduler {
       })
       await tx.message.updateMany({
         where: { id: { in: messageIds }, contentPurgedAt: null },
-        data: { content: null, pendingContent: null, changeRequestedAt: null, contentPurgedAt: now }
+        data: {
+          content: null,
+          pendingContent: null,
+          pendingEditPluginId: null,
+          changeRequestedAt: null,
+          contentPurgedAt: now
+        }
       })
     })
     return messageIds.length

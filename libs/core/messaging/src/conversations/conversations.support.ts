@@ -5,9 +5,12 @@ import {
   type PrismaTransaction
 } from '@platform/core/database'
 import {
+  type ActorIdentity,
+  ActorKinds,
   ConversationAssignedFilters,
   ConversationHiddenStatuses,
-  ConversationStatus
+  ConversationStatus,
+  PLUGIN_ACTOR_PREFIX
 } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -30,10 +33,48 @@ export interface Viewer {
   userId: string
   held: readonly Permission[]
   canViewAll: boolean
+  // Set when the caller is a plugin (the route took it from the installation of the key): what it writes as the author of a change
+  // is this plugin and never `userId`, which is not a row of `users` then
+  pluginId?: string
 }
 
 export function viewerOf(userId: string, held: readonly Permission[]): Viewer {
   return { userId, held, canViewAll: held.includes(Permissions.CONVERSATIONS_VIEW_ALL) }
+}
+
+// Who a change made by this viewer is written under (`actorColumnsOf`): the plugin when the viewer is one, the person otherwise. A
+// viewer that is neither (no user id, or the `plugin:` id of a call made for a plugin that did not say which) cannot write a change:
+// naming it would put an empty or false author on the row, so it is refused here, loudly, as a bug of the caller.
+export function actorOfViewer(viewer: Viewer): ActorIdentity {
+  if (viewer.pluginId !== undefined) return { kind: ActorKinds.PLUGIN, pluginId: viewer.pluginId }
+  if (viewer.userId === '' || viewer.userId.startsWith(PLUGIN_ACTOR_PREFIX)) {
+    throw new PlatformException(
+      ErrorCodes.INTERNAL_ERROR,
+      'a viewer with no person and no plugin cannot be the author of a change',
+      HttpStatusCodes.INTERNAL_SERVER_ERROR
+    )
+  }
+  return { kind: ActorKinds.PERSON, userId: viewer.userId }
+}
+
+// What a plugin does to a message it did not write is refused whatever it holds (TDD_10 §6, M1c): `MESSAGES_DELETE` lets a person
+// of the team delete the reply of another, a plugin only what is its own. A message is a plugin's own when it names that plugin as its
+// author (`authorPluginId`), even when it was written on behalf of a person. A person's call is not touched.
+export function isOwnToPlugin(message: { authorPluginId: string | null }, viewer: Viewer): boolean {
+  return viewer.pluginId !== undefined && message.authorPluginId === viewer.pluginId
+}
+
+export function requireOwnIfPlugin(
+  message: { authorPluginId: string | null },
+  viewer: Viewer
+): void {
+  if (viewer.pluginId !== undefined && !isOwnToPlugin(message, viewer)) {
+    throw new PlatformException(
+      ErrorCodes.PERMISSION_DENIED,
+      'the caller may not change this message',
+      HttpStatusCodes.FORBIDDEN
+    )
+  }
 }
 
 // Who asks for a change of status: a user, whose view and permissions apply, or the system (the

@@ -1,16 +1,18 @@
 import { Injectable } from '@nestjs/common'
 
 import { PrismaService } from '@platform/core/database'
-import { AuthorType, DeliveryStatus } from '@platform/core/domain'
+import { DeliveryStatus } from '@platform/core/domain'
 import type { ErrorCode } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
-import { isHiddenStatus } from '@platform/core/messaging'
+import { isHiddenStatus, reactionWhereOf, reactorOfJob } from '@platform/core/messaging'
 
 export interface ReactionSettlement {
   storeId: string
   messageId: string
-  userId: string
+  // The person that reacted, or null when a plugin did (`pluginId`)
+  userId: string | null
+  pluginId?: string | undefined
   // The file the reaction is under; null: the message itself
   mediaId?: string | null | undefined
   // null: the channel took it
@@ -29,17 +31,17 @@ export class ReactionStatusWriter {
   ) {}
 
   async settle(settlement: ReactionSettlement): Promise<void> {
-    const { storeId, messageId, userId, errorCode, expectedVersion } = settlement
+    const { storeId, messageId, errorCode, expectedVersion } = settlement
+    const reactor = reactorOfJob(settlement)
     const mediaId = settlement.mediaId ?? null
     // A reaction taken back has no row to mark: the team already saw it go
     if (expectedVersion === null) return
     await this.prisma.transaction(async tx => {
       const changed = await tx.messageReaction.updateMany({
         where: {
+          ...reactionWhereOf(reactor),
           storeId,
           messageId,
-          authorType: AuthorType.AGENT,
-          userId,
           mediaId,
           deliveryStatus: DeliveryStatus.QUEUED,
           updatedAt: expectedVersion
