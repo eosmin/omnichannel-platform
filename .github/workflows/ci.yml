@@ -256,7 +256,7 @@ jobs:
 
   # The tenant isolation suite (TDD_13 section 6) and the endpoint specs of tests/api: the real app of
   # the api, the real Postgres and Redis, the database role the api runs with. A failure in the
-  # isolation suite means a user could reach the data of a store they do not belong to. It runs in four
+  # isolation suite means a user could reach the data of a store they do not belong to. It runs in five
   # jobs (`SECURITY_SHARD`; the denominator must match the `--shard` of tests/project.json), each
   # with its own services; it also needs SeaweedFS, for the media suites (Step 3.4). The required check
   # is `security-tests`, below.
@@ -265,12 +265,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The quarters of the suite, one shard of jest each, in a job of its own with its own services
-        # (`SECURITY_SHARD`, read by `tests/project.json`; empty runs all four, as `pnpm test:security` does on a laptop).
+        # The fifths of the suite, one shard of jest each, in a job of its own with its own services
+        # (`SECURITY_SHARD`, read by `tests/project.json`; empty runs all five, as `pnpm test:security` does on a laptop).
         # Jest cuts the sorted list of files into slices of the same size, so the weight of a slice is luck: with
         # two the heavy specs (team, realtime, conversations-performance, ~28 s each) ended up 184 s against 242 s;
-        # with four the slowest job took 156 s (134, 131, 156 and 127 s), peak memory 3.5-3.9 GB of the 16 GB of the runner
-        shard: ['1/4', '2/4', '3/4', '4/4']
+        # with four the slowest job took 156 s (134, 131, 156 and 127 s), peak memory 3.5-3.9 GB of the 16 GB of the runner;
+        # at four, shards 1/4 and 2/4 ran out of the 4 GB heap of node (PR #542, `JavaScript heap out of memory`) because every
+        # spec file adds an app to the process: five shards put fewer files in each process. Watch the files per shard (Step 7.3)
+        shard: ['1/5', '2/5', '3/5', '4/5', '5/5']
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -339,9 +341,10 @@ jobs:
 
       # The latency spec of the search runs in a process of its own (`tests/jest.latency.config.cts`): in the
       # process of the shard the heap is at its limit and the collections of the garbage land in the measurement.
-      # One job runs it; it is a step of the shard, so `security-tests` waits for it like for the rest
+      # One job (the last shard) runs it; it is a step of the shard, so `security-tests` waits for it like for the rest
       - name: Latency specs, in a fresh process
-        if: matrix.shard == '4/4'
+        # The last shard, whatever the count: a shard count changed in the matrix cannot leave this step without a job
+        if: startsWith(matrix.shard, format('{0}/', strategy.job-total))
         run: pnpm test:latency
 
   # The required check. It keeps the name of the job that used to run the whole suite, and it runs whatever
