@@ -62,6 +62,16 @@ export interface RegisterOptions {
   fromCode?: boolean
   // A private plugin: only these stores see it in `list`. Without it the plugin is visible to all.
   storeIds?: readonly string[]
+  // A plugin that runs outside the platform and is reached over HTTP (TDD_10 §6.7). Registering one again replaces
+  // it (a new manifest), `syncRemote` removes it when nobody has it installed, and an official id is never one.
+  remote?: boolean
+}
+
+// What the registry holds of the remote channel plugins that at least one store has installed: the adapter built from
+// the manifest, and the stores that installed it
+export interface RemoteChannelEntry {
+  plugin: ChannelPlugin
+  storeIds: readonly string[]
 }
 
 interface Entry {
@@ -78,6 +88,7 @@ interface Entry {
   descriptor: ChannelDescriptorSnapshot
   identityKind: ChannelIdentityKind
   fromCode: boolean
+  remote: boolean
   // One of the plugins that ship with the platform (the ceiling of a third party's login is read from these)
   official: boolean
   storeIds: ReadonlySet<string> | null
@@ -109,7 +120,16 @@ export class PluginRegistry {
     if (isOfficialChannelId(id) && !options.official) {
       throw contractViolation(`Plugin id ${printable(id)} is reserved for the official plugin`)
     }
-    if (this.entries.has(id)) throw pluginAlreadyRegistered('Plugin', id)
+    const present = this.entries.get(id)
+    // A remote plugin is replaced by a newer one of its own id (a new manifest); anything else is taken
+    if (present !== undefined && !(present.remote && options.remote === true)) {
+      throw pluginAlreadyRegistered('Plugin', id)
+    }
+    if (options.remote === true && (options.official === true || options.fromCode === true)) {
+      throw contractViolation(
+        `Plugin ${printable(id)} is remote and cannot be a plugin of the code`
+      )
+    }
     const storeIds = options.storeIds ? new Set(options.storeIds) : null
     if (storeIds !== null && isOfficialChannelId(id)) {
       throw contractViolation(`Official plugin ${printable(id)} cannot be private to a store`)
@@ -139,6 +159,7 @@ export class PluginRegistry {
       descriptor: snapshotChannelDescriptor(plugin, id, options.official === true),
       identityKind: snapshotIdentityKind(plugin, id),
       fromCode: options.fromCode === true || options.official === true,
+      remote: options.remote === true,
       official,
       storeIds
     })
@@ -156,6 +177,36 @@ export class PluginRegistry {
       for (const scope of entry.oauth.scopes) ceiling.add(scope)
     }
     return ceiling
+  }
+
+  // Makes the remote plugins of this process the ones given: each is registered or replaced (private to the stores that
+  // installed it) and the remote plugin that is not given is removed. The ones of the code are never touched. A plugin
+  // that breaks the contract is logged and left out, so that one bad manifest does not stop the others.
+  // Returns the ids of the plugins that were refused.
+  syncRemote(wanted: readonly RemoteChannelEntry[]): string[] {
+    const refused: string[] = []
+    const keep = new Set<string>()
+    for (const { plugin, storeIds } of wanted) {
+      // Read once, as `register` does: the id that is kept and logged is the one that was judged
+      const id = plugin.id
+      try {
+        this.register(plugin, { remote: true, storeIds })
+        keep.add(id)
+      } catch (error) {
+        refused.push(printable(id))
+        // A newer manifest that breaks the contract does not take down the one that works: the previous adapter stays,
+        // for the stores it had, until a valid one replaces it
+        if (this.entries.get(id)?.remote === true) keep.add(id)
+        this.logger.error(
+          { pluginId: printable(id), reason: error instanceof Error ? error.message : 'unknown' },
+          'a remote channel plugin was not registered'
+        )
+      }
+    }
+    for (const [id, entry] of this.entries) {
+      if (entry.remote && !keep.has(id)) this.entries.delete(id)
+    }
+    return refused
   }
 
   // An official plugin is part of the code and is never removed
@@ -176,6 +227,11 @@ export class PluginRegistry {
 
   has(pluginId: string): boolean {
     return this.entries.has(pluginId)
+  }
+
+  // Whether the plugin is one that runs outside the platform (registered by a manifest, replaceable by a newer one)
+  isRemote(pluginId: string): boolean {
+    return this.entries.get(pluginId)?.remote ?? false
   }
 
   // Whether this store may use the plugin: a public one, or a private one registered for it

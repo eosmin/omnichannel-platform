@@ -16,7 +16,10 @@ export const PluginScopes = {
   INVENTORY_READ: 'inventory:read',
   INVENTORY_WRITE: 'inventory:write',
   SHIPMENTS_READ: 'shipments:read',
-  SHIPMENTS_WRITE: 'shipments:write'
+  SHIPMENTS_WRITE: 'shipments:write',
+  // Of a channel plugin (TDD_10 §6.7): the routes arrive with Step 5.6 PR C3. They grant no human permission.
+  CHANNEL_CONNECTIONS: 'channel:connections',
+  CHANNEL_EVENTS: 'channel:events'
 } as const
 
 export type PluginScope = (typeof PluginScopes)[keyof typeof PluginScopes]
@@ -46,7 +49,9 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.INVENTORY_READ]: [Permissions.INVENTORY_VIEW],
   [PluginScopes.INVENTORY_WRITE]: [Permissions.INVENTORY_ADJUST],
   [PluginScopes.SHIPMENTS_READ]: [Permissions.SHIPPING_VIEW],
-  [PluginScopes.SHIPMENTS_WRITE]: [Permissions.SHIPPING_MANAGE]
+  [PluginScopes.SHIPMENTS_WRITE]: [Permissions.SHIPPING_MANAGE],
+  [PluginScopes.CHANNEL_CONNECTIONS]: [],
+  [PluginScopes.CHANNEL_EVENTS]: []
 }
 
 // What a widget may ask through its port, and the scope the installation must hold for each (TDD_10 §7):

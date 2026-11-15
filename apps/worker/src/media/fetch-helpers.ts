@@ -4,6 +4,7 @@ import {
   GENERIC_CONTENT_TYPE,
   sniffDeclarableType
 } from '@platform/core/storage'
+import { BodyTooLarge, readLimited as readLimitedBody } from '@platform/core/url-safety'
 
 // What a file that came from outside is read with, whoever fetched it: the plugin for a file of a
 // message, the core for the picture of an ad
@@ -17,18 +18,12 @@ export async function readLimited(
   stream: NodeJS.ReadableStream,
   maxBytes: number
 ): Promise<Buffer> {
-  const chunks: Buffer[] = []
-  let total = 0
-  for await (const chunk of stream) {
-    const part = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)
-    total += part.length
-    if (total > maxBytes) {
-      ;(stream as { destroy?: () => void }).destroy?.()
-      throw new FileRefused('the file is bigger than the limit')
-    }
-    chunks.push(part)
+  try {
+    return await readLimitedBody(stream, maxBytes)
+  } catch (error) {
+    if (error instanceof BodyTooLarge) throw new FileRefused(error.message)
+    throw error
   }
-  return Buffer.concat(chunks)
 }
 
 // The host of a link, and nothing else of it: no path, query, fragment, port or credentials. For the

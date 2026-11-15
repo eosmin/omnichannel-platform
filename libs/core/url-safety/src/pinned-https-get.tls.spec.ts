@@ -5,8 +5,9 @@ import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { readLimited } from './fetch-helpers'
-import { type HttpsRequester, PinnedFetchFailed, pinnedHttpsGet } from './pinned-https-get'
+import type { HttpsRequester } from './pinned-https-exchange'
+import { PinnedFetchFailed, pinnedHttpsGet } from './pinned-https-get'
+import { readLimited } from './read-limited'
 
 // The whole of node's http and tls stack against a real server on this machine. The server stands in
 // for `cdn.example.com`: the test resolves that name to a public address (which the check demands),

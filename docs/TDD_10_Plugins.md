@@ -1084,7 +1084,11 @@ A manifest with `"type": "channel"` carries a `channel` block (validated by `plu
 "channel": {
   "label": "Telegram",
   "commandsUrl": "https://acme.com/platform/commands",
-  "messagingWindow": { "hours": 24 }
+  "messagingWindow": { "hours": 24 },
+  "connectFields": [
+    { "key": "accountName", "label": { "es": "Nombre de la cuenta", "en": "Account name" },
+      "secret": false, "required": true, "multiple": false }
+  ]
 }
 ```
 
@@ -1093,22 +1097,30 @@ A manifest with `"type": "channel"` carries a `channel` block (validated by `plu
   `plugins` table: since D19 the official plugins have a row there too, written from the code at boot.
 - `label`: 1 to 40 characters, one line, shown as it is (a plugin does not translate its name).
 - `icon` is the top-level field of §6.1 (there is no second one inside `channel`). PNG, JPEG or SVG
-  of at most 64 KB, fetched once when the plugin is registered (`assertPublicHttpsUrl`, no redirects,
+  of at most 64 KB, fetched once when the plugin is registered (a channel plugin; at most 4 megapixels, and an SVG that
+  carries a script, an entity, an embedded document or a reference that is not to a part of the same picture is refused) (`assertPublicHttpsUrl`, no redirects,
   checked by its bytes and not by its extension). The platform **never serves the original**: it
   decodes it and stores a 128 by 128 PNG (`sharp`; an SVG is rasterised, so no script or external
   reference of it can ever run), under a platform-level key `plugin-icons/{pluginId}.png` kept in
   `Plugin.iconKey`. The UI shows it as an `<img>` from a signed URL.
+- `connectFields` (optional, at most 20): the fields the owner fills to connect an account, as `ChannelPlugin.connectFields`
+  declares them for an official plugin, except that the label is a plain text per language (`label: { es, en }`, each of
+  at most 60 characters, no markup and no control character) and never a message key of the web app. A key is an identifier,
+  unique, and not one the platform reserves. Settings → Channels draws the label of the language of the person
+  (`fieldLabelOf`); the plugin still checks the values.
 - `commandsUrl`: HTTPS and public (`assertPublicHttpsUrl`, re-checked at every call).
 - `messagingWindow`: optional; absent means the channel has no window. `hours` is an integer from 1
   to 720. `requiresTemplateWhenClosed` is not accepted (a remote plugin cannot send templates, so a
   closed window means "cannot send"); the core fills it in as `false`.
 - `capabilities` may hold: `text`, `image`, `video`, `audio`, `document`, `reply_to`,
-  `delivery_receipts`, `read_receipts`, `typing_indicator`, `customer_typing`. What each one turns
+  `delivery_receipts`, `read_receipts`, `typing_indicator`, `customer_typing`, `caption_per_file`. What each one turns
   on: `delivery_receipts` and `read_receipts` let the plugin report `message_delivered` and
   `message_read` (and, with `read_receipts`, receive `message.markRead`); `typing_indicator` makes the
   platform send `typing.send` when an agent types; `customer_typing` lets the plugin report
   `customer_typing` events. A capability that is not on the list (`location`, `templates`, `buttons`,
-  `list_picker`, `reactions`, `messaging_window`) is rejected by the validator. An event of a
+  `list_picker`, `reactions`, `messaging_window`) is rejected by the validator. `caption_per_file` means the plugin
+  carries the text under each file of a message (the send-file command carries the text of that file); a plugin that does not
+  declare it is offered only the one text of the message. A manifest never inherits a capability it did not list. An event of a
   capability the plugin did not declare is refused (`400`); a command of one is never sent, and the
   caller who asked for it (an agent who sends a media type the channel lacks) gets `409`
   `CHANNEL_CAPABILITY_UNSUPPORTED`.

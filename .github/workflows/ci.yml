@@ -545,6 +545,11 @@ jobs:
             status=$(curl --silent --output /dev/null --write-out '%{http_code}' http://localhost:${{ matrix.port }}/admin/queues)
             test "$status" = "401" || { echo "Bull Board answered $status, expected 401"; exit 1; }
           fi
+      # The container is the only place the reason is written: a start that fails would otherwise show only that curl
+      # could not connect
+      - name: The ${{ matrix.app }} container log
+        if: failure() && matrix.app != 'web'
+        run: docker logs service 2>&1 | tail -n 200 || true
       # The web image needs no database: it must serve a page with the CSP its proxy builds
       - name: The web image starts and answers
         if: matrix.app == 'web'

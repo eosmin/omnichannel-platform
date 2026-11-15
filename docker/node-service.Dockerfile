@@ -28,15 +28,16 @@ RUN test -n "$APP" \
 
 # The packages with a native binary cannot be in the bundle. They are installed on Alpine itself, so
 # that the binary is the one for musl, and only the apps that load them copy them (stage native-<app>).
-FROM ${RUNTIME_IMAGE} AS native-worker
+FROM ${RUNTIME_IMAGE} AS native-sharp
 COPY package.json /tmp/repo-package.json
 RUN version="$(node -p "require('/tmp/repo-package.json').dependencies.sharp")" \
  && mkdir /native && cd /native \
  && npm install --omit=dev --no-audit --no-fund --ignore-scripts "sharp@${version}" \
  && rm -rf /root/.npm
-# The api loads none: the directory the runtime copies is there and empty
-FROM ${RUNTIME_IMAGE} AS native-api
-RUN mkdir -p /native/node_modules
+# The worker cleans the pictures of messages and the api makes the 128 px icon of a channel plugin (Step 5.6): both load
+# sharp. An app that loads no native package would take an empty stage, with /native/node_modules there and empty.
+FROM native-sharp AS native-worker
+FROM native-sharp AS native-api
 
 # The stage of the app being built (COPY --from cannot expand a variable, FROM can)
 FROM native-${APP} AS native
@@ -59,7 +60,7 @@ COPY --from=build --chown=node:node /repo/dist/apps/${APP}/ ./
 # node_modules/@bull-board/ui (3 MB), starting from the working directory. Without them the api fails
 # to start when BULL_BOARD_ENABLED is on.
 COPY --from=build --chown=node:node /repo/node_modules/@bull-board/ui/ ./node_modules/@bull-board/ui/
-# sharp of the worker and the binary it needs; empty for the api (stage native-api)
+# sharp and the binary it needs, for the apps that load it (stage native-<app>)
 COPY --from=native --chown=node:node /native/node_modules/ ./node_modules/
 USER node
 EXPOSE 8080
