@@ -5,7 +5,7 @@ import type { Queue } from 'bullmq'
 import { type Permission, Permissions } from '@platform/core/auth'
 import { DataRetentionPolicies } from '@platform/core/compliance'
 import { type ExportWhereInput, lockStoreForWrite, PrismaService } from '@platform/core/database'
-import type { CursorPage } from '@platform/core/domain'
+import { type CursorPage, PLUGIN_ACTOR_PREFIX } from '@platform/core/domain'
 import {
   ErrorCodes,
   HttpStatusCodes,
@@ -95,7 +95,20 @@ export class ExportsService {
       const active = await tx.export.count({
         where: { storeId, status: ExportStatus.PENDING, createdAt: { gt: since } }
       })
-      if (active >= ExportLimits.MAX_ACTIVE_PER_STORE) {
+      const pluginActive = userId.startsWith(PLUGIN_ACTOR_PREFIX)
+        ? await tx.export.count({
+            where: {
+              storeId,
+              requestedBy: userId,
+              status: ExportStatus.PENDING,
+              createdAt: { gt: since }
+            }
+          })
+        : 0
+      if (
+        active >= ExportLimits.MAX_ACTIVE_PER_STORE ||
+        pluginActive >= ExportLimits.MAX_ACTIVE_PER_PLUGIN
+      ) {
         throw new PlatformException(
           ErrorCodes.RATE_LIMIT_EXCEEDED,
           'too many exports are being prepared',

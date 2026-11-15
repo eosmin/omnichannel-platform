@@ -61,3 +61,10 @@ export const metricsQuerySchema = z
     message: 'the range is too long'
   })
 export type MetricsQuery = z.output<typeof metricsQuerySchema>
+
+// What a plugin may ask: not the breakdown by agent, which names each member of the team (a staff id and their workload and response times)
+// and no plugin route answers who the staff are (the directory of the team is a person's)
+export const pluginMetricsQuerySchema = metricsQuerySchema.refine(
+  query => query.dimension !== MetricDimensions.AGENT,
+  { path: ['dimension'], message: 'the breakdown by agent is not read by a plugin' }
+)

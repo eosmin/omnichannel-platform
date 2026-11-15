@@ -87,6 +87,17 @@ export function pressedDispatchKey(
   return `pressed:${orderId}:${kind}:${clientKey}`
 }
 
+// What a plugin sends: its own namespace, so that no key a person's client can make (`pressed:`) ever meets it, and the installation
+// that made the call, so that two plugins with the same text of key are two requests
+export function pluginDispatchKey(
+  orderId: string,
+  kind: OrderMessageKindType,
+  installationId: string,
+  clientKey: string
+): string {
+  return `plugin:${installationId}:${orderId}:${kind}:${clientKey}`
+}
+
 // The summary of an order that is sent when it is created: one per order, so a retried event sends it once
 export function creationDispatchKey(orderId: string): string {
   return `created:${orderId}`

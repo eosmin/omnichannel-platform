@@ -5,6 +5,7 @@ import { RemittancesService } from '@platform/core/shipping'
 
 import { TenancyModule } from '../tenancy'
 
+import { PluginRemittancesController } from './plugin-remittances.controller'
 import { RemittanceImportsController } from './remittance-imports.controller'
 import { RemittanceImportsService } from './remittance-imports.service'
 import { RemittanceProfilesService } from './remittance-profiles.service'
@@ -16,7 +17,7 @@ import { RemittancesApiService } from './remittances.service'
 // be matched before the one of a remittance by id.
 @Module({
   imports: [QueuesPlatformModule, TenancyModule],
-  controllers: [RemittanceImportsController, RemittancesController],
+  controllers: [RemittanceImportsController, RemittancesController, PluginRemittancesController],
   providers: [
     RemittancesService,
     RemittancesApiService,

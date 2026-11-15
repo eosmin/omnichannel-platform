@@ -84,6 +84,9 @@ export const StorageKeys = {
   // The file a carrier's settlement was imported from: one folder per file, found by its media id
   remittanceFile: (storeId: string, mediaId: string, filename: string) =>
     `stores/${storeId}/remittance-files/${mediaId}/${filename}`,
+  // The CSV a bank statement was imported from (TDD_18 §4.4): one folder per file, found by its media id
+  bankStatementFile: (storeId: string, mediaId: string, filename: string) =>
+    `stores/${storeId}/bank-statements/${mediaId}/${filename}`,
   export: (storeId: string, exportId: string, filename: string) =>
     `stores/${storeId}/exports/${exportId}/${filename}`,
   exportPrefix: (storeId: string, exportId: string) => `stores/${storeId}/exports/${exportId}/`,

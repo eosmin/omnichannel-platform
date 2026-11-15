@@ -14,7 +14,8 @@ import {
   AuthorType,
   DeliveryStatus,
   MessageType,
-  PLUGIN_REVOKE_CONFIRMATION
+  PLUGIN_REVOKE_CONFIRMATION,
+  RoutingActionTypes
 } from '@platform/core/domain'
 import { DomainEvents } from '@platform/core/event-bus'
 import {
@@ -219,6 +220,22 @@ describe('A remote channel plugin, from its registration to the status of a repl
     }[]
     const listed = directory.find(item => item.pluginId === pluginId)
     expect(listed?.displayName).toBe('Reference line')
+  })
+
+  // The routing editor offers the channels of this directory (`channelChoicesOf`), so a rule can name the plugin: the
+  // api accepts the id of an installed channel plugin there, and the rule keeps it (Step 5.6 W2)
+  it('lets a routing rule name the channel of the plugin', async () => {
+    const created = await asAdmin()
+      .post(ApiRoutes.settings.routing)
+      .send({
+        name: `${prefix} remote channel`,
+        conditions: { channelTypes: [pluginId] },
+        action: { type: RoutingActionTypes.UNASSIGNED }
+      })
+      .expect(CREATED)
+    expect((created.body as { conditions: { channelTypes: string[] } }).conditions).toEqual({
+      channelTypes: [pluginId]
+    })
   })
 
   it('brings a message the plugin posts into the inbox, as a conversation of that channel', async () => {

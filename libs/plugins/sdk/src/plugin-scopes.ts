@@ -18,7 +18,14 @@ export const PluginScopes = {
   CUSTOMERS_DELETE: 'customers:delete',
   CUSTOMERS_FLAG_CAUTION: 'customers:flag-caution',
   ORDERS_READ: 'orders:read',
+  // Creating an order and changing its status (ORDERS_CREATE, ORDERS_CHANGE_STATUS). Confirming, cancelling, editing and deciding a price
+  // each have a permission that this does not hold (a person who creates an order does not cancel one by that), so each is a scope of its
+  // own (Step 5.6 PR E3b): a status route reached with `orders:write` alone is refused for CONFIRMED and CANCELLED, as for a person
   ORDERS_WRITE: 'orders:write',
+  ORDERS_EDIT: 'orders:edit',
+  ORDERS_CONFIRM: 'orders:confirm',
+  ORDERS_CANCEL: 'orders:cancel',
+  ORDERS_APPROVE_PRICE: 'orders:approve-price',
   PRODUCTS_READ: 'products:read',
   // Creating and changing a product or a variant (Step 5.6 PR E4a); deleting one is a scope of its own, as a person who edits
   // the catalog does not delete from it by that. The cost and the tax of a product have permissions that no scope grants.
@@ -33,17 +40,40 @@ export const PluginScopes = {
   // exercised; the writes get scopes of their own (PR E4b-2). A plugin sees only the lines of its own store.
   TRANSFERS_READ: 'transfers:read',
   COUNTS_READ: 'counts:read',
+  // The exports centre of the key (Step 5.6 PR E7): the files THIS installation asked for, never a person's. `exports:write` is the right to
+  // take data out of the platform (ANALYTICS_EXPORT, MEDIA_DOWNLOAD_ALL), asked together with the scope that reads what is exported, as a person
+  // needs both; the other kinds of export (conversations, customers, orders) join it with their routes (PR E7-2).
+  EXPORTS_READ: 'exports:read',
+  EXPORTS_WRITE: 'exports:write',
+  // The files of the store: MEDIA_VIEW gives signed links and `media:write` the upload through the same checks as a person's. A plugin
+  // uploads only what a person holding MEDIA_UPLOAD alone may (message files): the scopes of the other purposes are PR E7-2's.
+  MEDIA_READ: 'media:read',
+  MEDIA_WRITE: 'media:write',
+  // The returns, the batches of the scanner that receives them, and the remittances of cash collected on delivery, read only (Step
+  // 5.6 PR E6). Each scope grants the permission a person needs to see them (RETURNS_VIEW, REMITTANCES_VIEW) and only routes that
+  // read declare it; the writes store the id of a person and move stock and money, so they get scopes of their own in PR E6-2.
+  RETURNS_READ: 'returns:read',
+  REMITTANCES_READ: 'remittances:read',
   WEBHOOKS_WRITE: 'webhooks:write',
   ANALYTICS_READ: 'analytics:read',
   INVENTORY_READ: 'inventory:read',
   INVENTORY_WRITE: 'inventory:write',
   SHIPMENTS_READ: 'shipments:read',
   SHIPMENTS_WRITE: 'shipments:write',
+  // The carrier connections of the store and the pickups it asked for, read only (Step 5.6 PR E5). Each grants SHIPPING_VIEW, as the
+  // screen asks, and only routes that read declare it. What a carrier connection holds that is secret or money (the credentials, the
+  // webhook secret, the commission and the rates) is never in an answer: the views of a plugin name their fields one by one.
+  CARRIERS_READ: 'carriers:read',
+  PICKUPS_READ: 'pickups:read',
   // The directory of the channel accounts and their templates (Step 5.6 PR E1); the connection of an account stays human
   CHANNELS_READ: 'channels:read',
   // What the store says to the customer about an order (the history of messages and the templates, Step 5.6 PR E3a); sending
   // one is a scope of its own, with the routes that need a person's id
   ORDER_MESSAGES_READ: 'order-messages:read',
+  // Sending the message of a kind about an order (ORDERS_SEND_MESSAGES) and writing, deleting and previewing a template
+  // (SETTINGS_MANAGE_ORDER_TEMPLATES), each its own scope because no other grants them (Step 5.6 PR E3b)
+  ORDER_MESSAGES_WRITE: 'order-messages:write',
+  ORDER_TEMPLATES_WRITE: 'order-templates:write',
   // The preferences of the store (the factory defaults it overrode, the rules of returns): reading only, SETTINGS_EDIT and the
   // security settings stay human
   SETTINGS_READ: 'settings:read',
@@ -77,6 +107,14 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.CUSTOMERS_FLAG_CAUTION]: [Permissions.CUSTOMERS_FLAG_CAUTION],
   [PluginScopes.ORDERS_READ]: [Permissions.ORDERS_VIEW],
   [PluginScopes.ORDERS_WRITE]: [Permissions.ORDERS_CREATE, Permissions.ORDERS_CHANGE_STATUS],
+  [PluginScopes.ORDERS_EDIT]: [Permissions.ORDERS_EDIT],
+  [PluginScopes.ORDERS_CONFIRM]: [Permissions.ORDERS_CONFIRM],
+  [PluginScopes.ORDERS_CANCEL]: [Permissions.ORDERS_CANCEL],
+  // Deciding the price of an order, never the override of a price (ORDERS_OVERRIDE_PRICE has no scope): a plugin does not set a
+  // price outside the catalog, and approving a request needs somebody other than who made it (a plugin included)
+  [PluginScopes.ORDERS_APPROVE_PRICE]: [Permissions.ORDERS_APPROVE_PRICE],
+  [PluginScopes.ORDER_MESSAGES_WRITE]: [Permissions.ORDERS_SEND_MESSAGES],
+  [PluginScopes.ORDER_TEMPLATES_WRITE]: [Permissions.SETTINGS_MANAGE_ORDER_TEMPLATES],
   [PluginScopes.PRODUCTS_READ]: [Permissions.PRODUCTS_VIEW],
   [PluginScopes.PRODUCTS_WRITE]: [Permissions.PRODUCTS_CREATE, Permissions.PRODUCTS_EDIT],
   [PluginScopes.PRODUCTS_DELETE]: [Permissions.PRODUCTS_DELETE],
@@ -89,12 +127,20 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
     Permissions.INVENTORY_MANAGE_COUNTS,
     Permissions.INVENTORY_APPLY_COUNTS
   ],
+  [PluginScopes.EXPORTS_READ]: [],
+  [PluginScopes.EXPORTS_WRITE]: [Permissions.ANALYTICS_EXPORT, Permissions.MEDIA_DOWNLOAD_ALL],
+  [PluginScopes.MEDIA_READ]: [Permissions.MEDIA_VIEW],
+  [PluginScopes.MEDIA_WRITE]: [Permissions.MEDIA_UPLOAD],
+  [PluginScopes.RETURNS_READ]: [Permissions.RETURNS_VIEW],
+  [PluginScopes.REMITTANCES_READ]: [Permissions.REMITTANCES_VIEW],
   [PluginScopes.WEBHOOKS_WRITE]: [],
   [PluginScopes.ANALYTICS_READ]: [Permissions.ANALYTICS_VIEW],
   [PluginScopes.INVENTORY_READ]: [Permissions.INVENTORY_VIEW],
   [PluginScopes.INVENTORY_WRITE]: [Permissions.INVENTORY_ADJUST],
   [PluginScopes.SHIPMENTS_READ]: [Permissions.SHIPPING_VIEW],
   [PluginScopes.SHIPMENTS_WRITE]: [Permissions.SHIPPING_MANAGE],
+  [PluginScopes.CARRIERS_READ]: [Permissions.SHIPPING_VIEW],
+  [PluginScopes.PICKUPS_READ]: [Permissions.SHIPPING_VIEW],
   // The directory is read by whoever sees conversations, and the templates of an account by who may send them, as for a person.
   // The scope only lets a plugin LIST templates: the routes that send, resend or render one must name `messages:write` and take
   // the viewer of their own scopes (`@CurrentPluginViewer`), never the union of what the key holds.

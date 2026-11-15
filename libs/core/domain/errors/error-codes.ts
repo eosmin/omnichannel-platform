@@ -256,6 +256,10 @@ export const ErrorCodes = {
   PURCHASE_ORDER_INVALID_STATUS_TRANSITION: 'PURCHASE_ORDER_INVALID_STATUS_TRANSITION',
   PURCHASE_RECEIPT_EXCEEDS_ORDER: 'PURCHASE_RECEIPT_EXCEEDS_ORDER',
   SUPPLIER_HAS_HISTORY: 'SUPPLIER_HAS_HISTORY',
+  // An entry that a bank statement was reconciled with is not reversed (or its transaction voided) until the match is taken back
+  FINANCE_ENTRY_RECONCILED: 'FINANCE_ENTRY_RECONCILED',
+  // A bank statement file that cannot be read, or whose body is not what an import takes (the rows that failed travel in the metadata)
+  BANK_STATEMENT_INVALID: 'BANK_STATEMENT_INVALID',
 
   // Compliance
   DSR_VERIFICATION_INVALID: 'DSR_VERIFICATION_INVALID',

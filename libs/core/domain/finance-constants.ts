@@ -51,6 +51,24 @@ export enum FinanceTransactionKind {
   TRANSFER = 'transfer'
 }
 
+// What a person decided about a statement line and a line of the journal (TDD_18 §4.4): the only change a decision takes is to UNDONE
+export enum ReconciliationMatchStatus {
+  CONFIRMED = 'confirmed',
+  REJECTED = 'rejected',
+  UNDONE = 'undone'
+}
+
+// Which lines of an imported statement a list shows (TDD_18 §4.4)
+export const BankLineFilters = {
+  ALL: 'all',
+  MATCHED: 'matched',
+  UNMATCHED: 'unmatched',
+  SUGGESTED: 'suggested'
+} as const
+
+// The time a request that reads a whole statement and writes its lines or its decisions may take: a statement has thousands of lines
+export const BankStatementTransaction = { maxWait: 10_000, timeout: 30_000 } as const
+
 export enum PurchaseOrderStatus {
   DRAFT = 'draft',
   ORDERED = 'ordered',
@@ -280,7 +298,12 @@ export const FinanceResourceTypes = {
   // The tax preferences of a store (`finance.pricesIncludeTax`), kept in its preferences
   STORE_TAX_SETTINGS: 'finance_store_tax_settings',
   // An expense, an income or a transfer registered by hand (TDD_18 §2.6)
-  TRANSACTION: 'finance_transaction'
+  TRANSACTION: 'finance_transaction',
+  // The bank reconciliation by CSV (TDD_18 §4.4)
+  BANK_PROFILE: 'finance_bank_profile',
+  BANK_IMPORT: 'finance_bank_import',
+  BANK_LINE: 'finance_bank_line',
+  RECONCILIATION_MATCH: 'finance_reconciliation_match'
 } as const
 
 // Why a posting failed, kept in FinancePostingFailure.reason (a code, never free text: the interface translates it)
@@ -343,7 +366,34 @@ export const FinanceConflicts = {
   // Only a file the scan found clean is a receipt (the pointer is set once): wait for the scan, then attach
   TRANSACTION_DOCUMENT_NOT_CLEAN: 'transaction_document_not_clean',
   // The transaction changed between the read and the write and nothing says how: read it and try again
-  TRANSACTION_CHANGED: 'transaction_changed'
+  TRANSACTION_CHANGED: 'transaction_changed',
+  // A profile reads the file of ONE cash, bank or wallet account
+  BANK_ACCOUNT_NOT_CASH: 'bank_account_not_cash',
+  BANK_PROFILE_NAME_IN_USE: 'bank_profile_name_in_use',
+  BANK_PROFILE_LIMIT: 'bank_profile_limit',
+  // The profile a change would leave breaks a rule of the profiles, or one saved before a rule changed
+  BANK_PROFILE_INVALID: 'bank_profile_invalid',
+  // The file was imported with this profile already and every line of it is known (nothing new in it)
+  BANK_IMPORT_NOTHING_NEW: 'bank_import_nothing_new',
+  // The pair is not one the rules allow (another account, another amount or direction, outside the window, a line already matched)
+  BANK_PAIR_NOT_ALLOWED: 'bank_pair_not_allowed',
+  BANK_LINE_ALREADY_MATCHED: 'bank_line_already_matched',
+  BANK_BOOK_LINE_ALREADY_MATCHED: 'bank_book_line_already_matched',
+  // A decision that was taken back already
+  BANK_DECISION_ALREADY_UNDONE: 'bank_decision_already_undone',
+  // The line is matched: only a line without a confirmed match is registered as a transaction
+  BANK_LINE_MATCHED: 'bank_line_matched',
+  // The statement said no closing balance, so there is nothing to compare the books with
+  BANK_NO_CLOSING_BALANCE: 'bank_no_closing_balance',
+  // The books moved between the read and the decision (an entry reversed, two decisions that took turns badly): read again
+  BANK_CHANGED: 'bank_changed'
+} as const
+
+// What the database says when it refuses a decision of the reconciliation, by the prefix of the message its trigger raises (the LAST
+// prefix of a message is the database's: Prisma echoes the query, which can carry typed text)
+export const BankTriggerPrefixes = {
+  MATCH: 'RECONCILIATION_MATCH',
+  ENTRY_RECONCILED: 'FINANCE_ENTRY_RECONCILED'
 } as const
 
 // The names of the ways a chart change breaks the chart, beside the ones `account-rules` returns

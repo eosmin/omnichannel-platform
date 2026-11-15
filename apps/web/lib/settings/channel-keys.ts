@@ -20,7 +20,14 @@ export const ChannelKeys = {
     'widget',
     connectionId
   ],
-  plugins: (storeId: string) => ['plugins', storeId, 'available'] as const,
+  // Everything of Settings → Plugins that one change must refresh: the catalog, the consents and the details
+  pluginsRoot: (storeId: string) => ['plugins', storeId] as const,
+  plugins: (storeId: string) => [...ChannelKeys.pluginsRoot(storeId), 'available'] as const,
+  // What installing a plugin would grant, and one plugin with what the store holds of it (Settings → Plugins, Step 5.6 PR W1)
+  pluginConsent: (storeId: string, pluginId: string) =>
+    [...ChannelKeys.pluginsRoot(storeId), 'consent', pluginId] as const,
+  pluginDetail: (storeId: string, pluginId: string) =>
+    [...ChannelKeys.pluginsRoot(storeId), 'detail', pluginId] as const,
   // The Pages of a login with Facebook. Outside the channels root on purpose: refreshing the channels must not
   // list them again, nor ask for a session that was just used.
   loginAssets: (storeId: string, sessionId: string) =>

@@ -1,6 +1,6 @@
 import { AnalyticsMetrics, MetricDimensions } from '@platform/core/analytics'
 
-import { metricsQuerySchema } from './metrics.schemas'
+import { metricsQuerySchema, pluginMetricsQuerySchema } from './metrics.schemas'
 
 const valid = {
   metric: AnalyticsMetrics.CONVERSATIONS_CREATED,
@@ -82,5 +82,28 @@ describe('metricsQuerySchema', () => {
         to: '2026-11-23T00:00:00.000Z'
       }).success
     ).toBe(true)
+  })
+})
+
+describe('pluginMetricsQuerySchema', () => {
+  it('reads what a person reads, the breakdown by channel included', () => {
+    expect(pluginMetricsQuerySchema.safeParse(valid).success).toBe(true)
+    expect(
+      pluginMetricsQuerySchema.safeParse({
+        ...valid,
+        metric: AnalyticsMetrics.CHANNEL_VOLUME,
+        dimension: MetricDimensions.CHANNEL
+      }).success
+    ).toBe(true)
+  })
+
+  it('refuses the breakdown by agent, which a person reads and which names each member of the team', () => {
+    const query = {
+      ...valid,
+      metric: AnalyticsMetrics.CONVERSATIONS_PER_AGENT,
+      dimension: MetricDimensions.AGENT
+    }
+    expect(metricsQuerySchema.safeParse(query).success).toBe(true)
+    expect(pluginMetricsQuerySchema.safeParse(query).success).toBe(false)
   })
 })

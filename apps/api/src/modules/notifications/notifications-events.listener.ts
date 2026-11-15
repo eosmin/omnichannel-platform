@@ -885,7 +885,8 @@ export class NotificationsEventsListener {
         where: { id: payload.orderId, storeId: payload.storeId },
         select: { createdBy: true }
       })
-      if (order === null || order.createdBy === payload.actor.id) return
+      // An order a plugin made has no person to tell
+      if (order === null || order.createdBy === null || order.createdBy === payload.actor.id) return
       // Only while they are still a member who may read orders: a role that lost the permission is told nothing
       const readers = await this.membersWith(
         payload.storeId,

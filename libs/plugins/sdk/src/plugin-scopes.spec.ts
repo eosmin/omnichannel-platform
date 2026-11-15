@@ -73,6 +73,55 @@ describe('PluginScopes', () => {
     }
   })
 
+  it('gives the exports and the files their permissions and keeps the right to take data out in one scope', () => {
+    expect(PluginScopePermissions[PluginScopes.EXPORTS_READ]).toEqual([])
+    expect(PluginScopePermissions[PluginScopes.EXPORTS_WRITE]).toEqual([
+      Permissions.ANALYTICS_EXPORT,
+      Permissions.MEDIA_DOWNLOAD_ALL
+    ])
+    expect(PluginScopePermissions[PluginScopes.MEDIA_READ]).toEqual([Permissions.MEDIA_VIEW])
+    // Uploading is MEDIA_UPLOAD alone: the permissions of the purposes of an upload (editing a product, the proofs of an order) are not lent by it
+    expect(PluginScopePermissions[PluginScopes.MEDIA_WRITE]).toEqual([Permissions.MEDIA_UPLOAD])
+    for (const [scope, granted] of Object.entries(PluginScopePermissions)) {
+      if (scope !== PluginScopes.EXPORTS_WRITE) {
+        expect(granted).not.toContain(Permissions.ANALYTICS_EXPORT)
+        expect(granted).not.toContain(Permissions.MEDIA_DOWNLOAD_ALL)
+      }
+    }
+  })
+
+  it('keeps confirming, cancelling, editing, deciding a price, sending and the templates of an order in scopes of their own', () => {
+    const own: [string, string][] = [
+      [PluginScopes.ORDERS_EDIT, Permissions.ORDERS_EDIT],
+      [PluginScopes.ORDERS_CONFIRM, Permissions.ORDERS_CONFIRM],
+      [PluginScopes.ORDERS_CANCEL, Permissions.ORDERS_CANCEL],
+      [PluginScopes.ORDERS_APPROVE_PRICE, Permissions.ORDERS_APPROVE_PRICE],
+      [PluginScopes.ORDER_MESSAGES_WRITE, Permissions.ORDERS_SEND_MESSAGES],
+      [PluginScopes.ORDER_TEMPLATES_WRITE, Permissions.SETTINGS_MANAGE_ORDER_TEMPLATES]
+    ]
+    for (const [scope, permission] of own) {
+      expect(PluginScopePermissions[scope as keyof typeof PluginScopePermissions]).toEqual([
+        permission
+      ])
+      for (const [other, granted] of Object.entries(PluginScopePermissions)) {
+        if (other !== scope) expect(granted).not.toContain(permission)
+      }
+    }
+  })
+
+  it('grants no scope the override of a price: a plugin sells at the price of the catalog', () => {
+    for (const granted of Object.values(PluginScopePermissions)) {
+      expect(granted).not.toContain(Permissions.ORDERS_OVERRIDE_PRICE)
+    }
+  })
+
+  it('does not let a scope that creates an order confirm it, cancel it or touch its stock', () => {
+    expect(PluginScopePermissions[PluginScopes.ORDERS_WRITE]).toEqual([
+      Permissions.ORDERS_CREATE,
+      Permissions.ORDERS_CHANGE_STATUS
+    ])
+  })
+
   it('lets the webhooks scope grant no human permission', () => {
     expect(PluginScopePermissions[PluginScopes.WEBHOOKS_WRITE]).toEqual([])
   })

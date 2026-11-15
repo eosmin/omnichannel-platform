@@ -8,7 +8,8 @@ import {
   AnalyticsEventNames,
   AnalyticsMetrics,
   MetricDimensions,
-  ReportFrequency
+  ReportFrequency,
+  ReportMetrics
 } from '@platform/core/analytics'
 import { API_PREFIX, ApiRoutes, PluginApiRoutes } from '@platform/core/api'
 import { Permissions, RoleNames, TenantHeaders } from '@platform/core/auth'
@@ -25,11 +26,14 @@ import {
   JournalEntryType,
   MembershipStatus,
   MessageType,
+  OrderConfirmationChannel,
   OrderMessageKind,
   OrderMessageNotSentReasons,
   OrderMessageRoutes,
   OrderMessageTriggers,
+  OrderStatus,
   PaymentMethod,
+  PaymentStatus,
   PLUGIN_API_KEY_TOKEN_PREFIX,
   PluginCatalogTypes,
   PluginPricingModels,
@@ -50,7 +54,13 @@ import {
   notificationMessageKey,
   NotificationTypes
 } from '@platform/core/notifications'
-import { ExportFormats, ExportTypes, JobNames, QueueNames } from '@platform/core/queues'
+import {
+  ExportFormats,
+  ExportStatus,
+  ExportTypes,
+  JobNames,
+  QueueNames
+} from '@platform/core/queues'
 import { StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 import { PluginRegistry } from '@platform/plugins/runtime'
@@ -298,6 +308,60 @@ const purchaseRowChecks: Omit<IsolationResource, 'name' | 'create'> = {
       })
     )?.notes !== 'hacked'
 }
+// A statement of the cash account of an organization with one line, as the import writes it: the file is a finance file of the store
+// and the line carries its hash (TDD_18 §4.4)
+async function bankStatementOf(
+  owner: OwnerClient,
+  storeId: string,
+  cents = -700
+): Promise<{ organizationId: string; accountId: string; importId: string; lineId: string }> {
+  const books = await booksOfStore(owner, storeId)
+  const mediaId = randomUUID()
+  await owner.media.create({
+    data: {
+      id: mediaId,
+      storeId,
+      purpose: 'finance_document',
+      key: `${prefix}/bank-statement/${mediaId}`,
+      filename: 'statement.csv',
+      contentType: 'text/csv',
+      fileSize: 10,
+      status: 'clean'
+    }
+  })
+  const imported = await owner.bankStatementImport.create({
+    data: {
+      organizationId: books.organizationId,
+      accountId: books.accounts.cash,
+      mediaId,
+      lineCount: 1,
+      newLineCount: 1,
+      firstDay: day(FINANCE_ENTRY_DATE),
+      lastDay: day(FINANCE_ENTRY_DATE),
+      createdBy: 'isolation-suite'
+    },
+    select: { id: true }
+  })
+  const line = await owner.bankStatementLine.create({
+    data: {
+      organizationId: books.organizationId,
+      importId: imported.id,
+      accountId: books.accounts.cash,
+      lineNo: 2,
+      postedOn: day(FINANCE_ENTRY_DATE),
+      amountCents: cents,
+      lineHash: randomUUID().replaceAll('-', '').padEnd(64, '0')
+    },
+    select: { id: true }
+  })
+  return {
+    organizationId: books.organizationId,
+    accountId: books.accounts.cash,
+    importId: imported.id,
+    lineId: line.id
+  }
+}
+
 // Each call asks for a period of a year no other has taken, so that every row is one more
 let periodYear = 2100
 const nextPeriodYear = (): number => (periodYear += 1)
@@ -1217,6 +1281,35 @@ const resources: IsolationResource[] = [
       (await owner.returnReceptionItem.findUnique({ where: { id }, select: { note: true } }))
         ?.note === null
   },
+  // A private plugin belongs to the organization that registered it (D10): every store of it sees it, another organization
+  // never does, and one id answers the same for a plugin that is not there
+  {
+    name: 'plugin',
+    create: async (owner, { storeId }) => {
+      const id = `iso-${randomUUID().slice(0, 12)}`
+      await owner.plugin.create({
+        data: {
+          id,
+          name: 'Isolation plugin',
+          authorName: 'suite',
+          authorEmail: 'suite@example.invalid',
+          type: PluginCatalogTypes.INTEGRATION,
+          manifest: {},
+          pricingModel: PluginPricingModels.FREE,
+          status: PluginStatus.APPROVED,
+          organizationId: await organizationOfStore(owner, storeId)
+        }
+      })
+      return { id }
+    },
+    scope: 'organization',
+    readPath: ApiRoutes.plugins.byId,
+    listPath: ApiRoutes.plugins.available,
+    // No route changes a plugin row except registering a newer version (covered by "a private plugin" below)
+    untouched: async (owner, id) =>
+      (await owner.plugin.findUnique({ where: { id }, select: { name: true } }))?.name ===
+      'Isolation plugin'
+  },
   {
     name: 'warehouse',
     create: async (owner, { storeId }) => ({
@@ -1682,6 +1775,114 @@ const resources: IsolationResource[] = [
           select: { voidedByEntryId: true }
         })
       )?.voidedByEntryId === null
+  },
+  // The reading profile of a bank's CSV is the organization's: listed and changed by id, never read by it
+  {
+    name: 'bankImportProfile',
+    create: async (owner, { storeId }) => {
+      const books = await booksOfStore(owner, storeId)
+      return {
+        id: (
+          await owner.bankImportProfile.create({
+            data: {
+              organizationId: books.organizationId,
+              accountId: books.accounts.cash,
+              name: `Isolation ${randomUUID().slice(0, 8)}`,
+              columns: { date: 'Date', amount: 'Amount' },
+              createdBy: 'isolation-suite'
+            },
+            select: { id: true }
+          })
+        ).id
+      }
+    },
+    scope: 'organization',
+    listPath: ApiRoutes.finance.bank.profiles,
+    modify: {
+      path: ApiRoutes.finance.bank.profileById,
+      method: 'patch',
+      body: { name: 'hacked' }
+    },
+    untouched: async (owner, id) =>
+      (await owner.bankImportProfile.findUnique({ where: { id }, select: { name: true } }))
+        ?.name !== 'hacked',
+    creation: {
+      path: ApiRoutes.finance.bank.profiles,
+      body: name => {
+        const books = financeBooksA
+        if (books === null) throw new Error('the books of organization A are not set up')
+        return { accountId: books.accounts.cash, name, columns: { date: 'Date', amount: 'Amount' } }
+      },
+      strict: true,
+      countIn: async (owner, storeId) =>
+        owner.bankImportProfile.count({
+          where: { organizationId: await organizationOfStore(owner, storeId) }
+        }),
+      storeOf: async (owner, id) =>
+        (
+          await owner.bankImportProfile.findUnique({
+            where: { id },
+            select: { organizationId: true }
+          })
+        )?.organizationId ?? null
+    }
+  },
+  // An imported statement is the organization's and no route changes it: it is read by id and listed
+  {
+    name: 'bankStatementImport',
+    create: async (owner, { storeId }) => ({
+      id: (await bankStatementOf(owner, storeId)).importId
+    }),
+    scope: 'organization',
+    readPath: ApiRoutes.finance.bank.importById,
+    listPath: ApiRoutes.finance.bank.imports,
+    untouched: () => Promise.resolve(true)
+  },
+  // With an entry on the cash account the line has an exact suggestion: a request that reached these lines would confirm it.
+  // The lines belong to their import: they are read with it, and the one change a route can try is to confirm what the books suggest,
+  // which must never reach another organization's lines
+  {
+    name: 'bankStatementLine',
+    create: async (owner, { storeId }) => {
+      const statement = await bankStatementOf(owner, storeId, -700)
+      await postTestEntry(owner, simpleEntry(await booksOfStore(owner, storeId), 700))
+      return { id: statement.importId }
+    },
+    scope: 'organization',
+    readPath: ApiRoutes.finance.bank.importLines,
+    modify: { path: ApiRoutes.finance.bank.confirmExact, method: 'post', body: {} },
+    untouched: async (owner, id) =>
+      (await owner.reconciliationMatch.count({ where: { statementLine: { importId: id } } })) === 0
+  },
+  // A decision of a person: no route reads one; the change a stranger could try is to take it back
+  {
+    name: 'reconciliationMatch',
+    create: async (owner, { storeId }) => {
+      const statement = await bankStatementOf(owner, storeId, -700)
+      const books = await booksOfStore(owner, storeId)
+      const entry = await postTestEntry(owner, simpleEntry(books, 700))
+      const book = entry.lines.find(line => line.accountId === statement.accountId)
+      if (book === undefined) throw new Error('the entry has no line of the cash account')
+      return {
+        id: (
+          await owner.reconciliationMatch.create({
+            data: {
+              organizationId: statement.organizationId,
+              statementLineId: statement.lineId,
+              journalLineId: book.id,
+              status: 'confirmed',
+              decidedBy: 'isolation-suite'
+            },
+            select: { id: true }
+          })
+        ).id
+      }
+    },
+    scope: 'organization',
+    modify: { path: ApiRoutes.finance.bank.matchUndo, method: 'post', body: {} },
+    untouched: async (owner, id) =>
+      (await owner.reconciliationMatch.findUnique({ where: { id }, select: { status: true } }))
+        ?.status === 'confirmed'
   },
   // The lines belong to their entry: they are read with it, and the store of a line is a dimension and not a scope
   {
@@ -4887,6 +5088,109 @@ describe('Tenant isolation', () => {
     })
   })
 
+  // What a plugin key writes of the orders (Step 5.6, E3b): the key of store B creates, edits, confirms, cancels, pays and decides the
+  // price of orders of store B, and an order of store A, a customer of store A and a product of store A are rows that do not exist for
+  // it, whatever the id it names. Nothing of store A changes.
+  describe('the orders written with the key of a plugin', () => {
+    const pluginId = `${prefix}-ordwrite`
+    let keyOfB = ''
+    let orderA = ''
+    let customerA = ''
+    let productA = ''
+    let customerB = ''
+    let productB = ''
+
+    beforeAll(async () => {
+      ;({ key: keyOfB } = await createPluginKey(owner, {
+        storeId: ctx.storeB.id,
+        pluginId,
+        scopes: [
+          PluginScopes.ORDERS_READ,
+          PluginScopes.ORDERS_WRITE,
+          PluginScopes.ORDERS_EDIT,
+          PluginScopes.ORDERS_CONFIRM,
+          PluginScopes.ORDERS_CANCEL,
+          PluginScopes.ORDERS_APPROVE_PRICE,
+          PluginScopes.ORDER_MESSAGES_WRITE
+        ]
+      }))
+      orderA = (await createOrder(owner, { storeId: ctx.storeA.id })).id
+      customerA = (await createCustomer(owner, { storeId: ctx.storeA.id })).id
+      productA = (await createProduct(owner, { storeId: ctx.storeA.id })).id
+      customerB = (await createCustomer(owner, { storeId: ctx.storeB.id })).id
+      productB = (await createProduct(owner, { storeId: ctx.storeB.id })).id
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId } })
+      await owner.plugin.deleteMany({ where: { id: pluginId } })
+    })
+
+    const asB = (method: 'post' | 'patch', path: string) =>
+      supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+        [method](`${API_PREFIX}${path}`)
+        .set('authorization', `Bearer ${keyOfB}`)
+
+    it('does not create an order for a customer or with a product of another store', async () => {
+      const body = {
+        items: [{ productId: productB, quantity: 1 }],
+        paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
+        recipientPhones: ['71234567']
+      }
+      const foreignCustomer = await asB('post', PluginApiRoutes.orders.create).send({
+        ...body,
+        customerId: customerA
+      })
+      const foreignProduct = await asB('post', PluginApiRoutes.orders.create).send({
+        ...body,
+        customerId: customerB,
+        items: [{ productId: productA, quantity: 1 }]
+      })
+
+      expect(foreignCustomer.status).toBe(404)
+      expect(foreignProduct.status).toBe(404)
+      expect(
+        await owner.order.count({ where: { storeId: ctx.storeB.id, createdByPluginId: pluginId } })
+      ).toBe(0)
+    })
+
+    it('does not edit, change, confirm, cancel, pay, decide the price of or send a message about an order of another store', async () => {
+      const writes = [
+        asB('patch', PluginApiRoutes.orders.byId(orderA)).send({ shippingCents: 1 }),
+        asB('post', PluginApiRoutes.orders.status(orderA)).send({ status: OrderStatus.PREPARING }),
+        asB('post', PluginApiRoutes.orders.confirm(orderA)).send({
+          via: OrderConfirmationChannel.CALL
+        }),
+        asB('post', PluginApiRoutes.orders.cancel(orderA)).send({ cancellationReason: 'x' }),
+        asB('post', PluginApiRoutes.orders.payment(orderA)).send({
+          method: PaymentMethod.CASH,
+          status: PaymentStatus.COMPLETED
+        }),
+        asB('post', PluginApiRoutes.orders.priceApprovalApprove(orderA)).send({}),
+        asB('post', PluginApiRoutes.orders.priceApprovalReject(orderA)).send({}),
+        asB('post', PluginApiRoutes.orders.messages(orderA)).send({
+          kind: OrderMessageKind.ORDER_SHIPPED,
+          idempotencyKey: randomUUID()
+        }),
+        asB('post', PluginApiRoutes.orders.confirmBulk).send({
+          ids: [orderA],
+          via: OrderConfirmationChannel.CALL
+        })
+      ]
+
+      const responses = await Promise.all(writes)
+      // The selection answers 200 and says that nothing was confirmed; every other write is a 404
+      expect(responses.slice(0, -1).map(response => response.status)).toEqual(
+        Array(writes.length - 1).fill(404)
+      )
+      expect((responses.at(-1)?.body as { succeeded: string[] }).succeeded).toEqual([])
+      const after = await owner.order.findUniqueOrThrow({ where: { id: orderA } })
+      expect(after.status).toBe(OrderStatus.PENDING_CONFIRMATION)
+      expect(after.confirmedByPluginId).toBeNull()
+      expect(after.cancelledByPluginId).toBeNull()
+      expect(await owner.orderMessageDispatch.count({ where: { orderId: orderA } })).toBe(0)
+    })
+  })
+
   // What a plugin key reads and writes of the catalog, the stock and the warehouses (Step 5.6, E4a): the key of store B reaches the
   // products and the stock of store B and the warehouses of organization B, and a product of store A, a warehouse of organization A
   // and the stock of store A are rows that do not exist for it, by id, by list and by write.
@@ -5157,6 +5461,656 @@ describe('Tenant isolation', () => {
       expect((await owner.stockCount.findUniqueOrThrow({ where: { id: countA } })).status).toBe(
         CountStatus.COUNTING
       )
+    })
+  })
+
+  // What a plugin key reads of the returns, the reception batches and the remittances (Step 5.6, E6): all of them belong to ONE store
+  // and a key is bound to one store. The key of store A reads what store A holds; the key of its sibling store A2 and the key of
+  // organization B reach nothing of it, by id or by list; no answer carries the id of a person or the file a remittance came from;
+  // and no route that writes is there.
+  describe('the returns and the remittances with the key of a plugin', () => {
+    const pluginId = `${prefix}-returns-remittances`
+    const scopes = [PluginScopes.RETURNS_READ, PluginScopes.REMITTANCES_READ]
+    let keyOfA = ''
+    let keyOfA2 = ''
+    let keyOfB = ''
+    let readsNothing = ''
+    let returnA = ''
+    let batchA = ''
+    let remittanceA = ''
+    let profileA = ''
+    let authorOfA = ''
+
+    beforeAll(async () => {
+      for (const [slot, storeId] of [
+        ['a', ctx.storeA.id],
+        ['a2', ctx.storeA2.id],
+        ['b', ctx.storeB.id]
+      ] as const) {
+        const { key } = await createPluginKey(owner, {
+          storeId,
+          pluginId: `${pluginId}-${slot}`,
+          scopes
+        })
+        if (slot === 'a') keyOfA = key
+        else if (slot === 'a2') keyOfA2 = key
+        else keyOfB = key
+      }
+      ;({ key: readsNothing } = await createPluginKey(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${pluginId}-none`,
+        scopes: [PluginScopes.ORDERS_READ]
+      }))
+      authorOfA = await adminOf(owner, ctx.storeA.id)
+      returnA = (await createReturn(owner, { storeId: ctx.storeA.id })).id
+      batchA = (
+        await owner.returnReceptionBatch.create({
+          data: { storeId: ctx.storeA.id, createdBy: authorOfA },
+          select: { id: true }
+        })
+      ).id
+      const connection = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
+      remittanceA = (
+        await createRemittance(owner, {
+          storeId: ctx.storeA.id,
+          connectionId: connection.id,
+          withLine: true
+        })
+      ).id
+      profileA = (
+        await createRemittanceImportProfile(owner, {
+          storeId: ctx.storeA.id,
+          connectionId: connection.id
+        })
+      ).id
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId: { startsWith: pluginId } } })
+      await owner.plugin.deleteMany({ where: { id: { startsWith: pluginId } } })
+    })
+
+    const server = () => supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+    const as = (key: string, path: string) =>
+      server().get(`${API_PREFIX}${path}`).set('authorization', `Bearer ${key}`)
+    const reads = (): string[] => [
+      PluginApiRoutes.returns.byId(returnA),
+      PluginApiRoutes.returns.list,
+      PluginApiRoutes.returns.reception.batchById(batchA),
+      PluginApiRoutes.returns.reception.batches,
+      PluginApiRoutes.remittances.byId(remittanceA),
+      PluginApiRoutes.remittances.list,
+      PluginApiRoutes.remittances.pending,
+      PluginApiRoutes.remittances.importProfiles
+    ]
+
+    it('reads what its own store holds', async () => {
+      for (const path of reads()) expect((await as(keyOfA, path)).status).toBe(200)
+      expect(JSON.stringify((await as(keyOfA, PluginApiRoutes.returns.list)).body)).toContain(
+        returnA
+      )
+      expect(JSON.stringify((await as(keyOfA, PluginApiRoutes.remittances.list)).body)).toContain(
+        remittanceA
+      )
+      expect(
+        JSON.stringify((await as(keyOfA, PluginApiRoutes.remittances.importProfiles)).body)
+      ).toContain(profileA)
+    })
+
+    it.each([
+      ['a sibling store', () => keyOfA2],
+      ['another organization', () => keyOfB]
+    ])('does not read what %s holds, by id or by list', async (_name, key) => {
+      expect((await as(key(), PluginApiRoutes.returns.byId(returnA))).status).toBe(404)
+      expect((await as(key(), PluginApiRoutes.returns.reception.batchById(batchA))).status).toBe(
+        404
+      )
+      expect((await as(key(), PluginApiRoutes.remittances.byId(remittanceA))).status).toBe(404)
+      for (const [path, id] of [
+        [PluginApiRoutes.returns.list, returnA],
+        [PluginApiRoutes.returns.reception.batches, batchA],
+        [PluginApiRoutes.remittances.list, remittanceA],
+        [PluginApiRoutes.remittances.importProfiles, profileA]
+      ] as const) {
+        const response = await as(key(), path)
+        expect(response.status).toBe(200)
+        expect(JSON.stringify(response.body)).not.toContain(id)
+      }
+    })
+
+    it('does not answer the id of a person, nor the file a remittance came from', async () => {
+      for (const path of reads()) {
+        const response = await as(keyOfA, path)
+        const text = JSON.stringify(response.body)
+        expect(text).not.toMatch(
+          /createdBy|confirmedBy|voidedBy|sourceMediaId|flagReason|customerIsCaution/
+        )
+        expect(text).not.toContain(authorOfA)
+      }
+    })
+
+    it('needs the scope of the route', async () => {
+      for (const path of reads()) expect((await as(readsNothing, path)).status).toBe(403)
+    })
+
+    it('has no route that writes: a return, a batch or a remittance cannot be changed with a key', async () => {
+      const attempts = [
+        server().post(`${API_PREFIX}${PluginApiRoutes.returns.list}`).send({}),
+        server()
+          .post(`${API_PREFIX}${PluginApiRoutes.returns.byId(returnA)}/approve`)
+          .send({}),
+        server().post(`${API_PREFIX}${PluginApiRoutes.returns.reception.batches}`).send({}),
+        server().post(`${API_PREFIX}${PluginApiRoutes.remittances.list}`).send({}),
+        server()
+          .post(`${API_PREFIX}${PluginApiRoutes.remittances.byId(remittanceA)}/confirm`)
+          .send({}),
+        server().delete(`${API_PREFIX}${PluginApiRoutes.remittances.byId(remittanceA)}`)
+      ]
+      for (const attempt of attempts) {
+        expect((await attempt.set('authorization', `Bearer ${keyOfA}`)).status).toBe(404)
+      }
+      expect(
+        (await owner.codRemittance.findUniqueOrThrow({ where: { id: remittanceA } })).status
+      ).toBe(RemittanceStatus.DRAFT)
+      expect((await owner.orderReturn.findUniqueOrThrow({ where: { id: returnA } })).status).toBe(
+        'requested'
+      )
+    })
+  })
+
+  // What a plugin key reads of the shipping (Step 5.6, E5): the shipments, the carrier connections and the pickups of the store of the key,
+  // read only. The key of store B reaches the rows of store B; a shipment, a connection or a pickup of store A is a row that does not
+  // exist for it (by id, by list, by the places a carrier lists and by its statuses). What a carrier is paid and the secrets of a
+  // connection are not in an answer, and no route that writes is there.
+  describe('the shipments, the carriers and the pickups with the key of a plugin', () => {
+    const pluginId = `${prefix}-shipping`
+    let keyOfB = ''
+    let keyWithoutCustomers = ''
+    let keyWithoutShipments = ''
+    let readsNothing = ''
+    let shipmentA = ''
+    let shipmentB = ''
+    let connectionA = ''
+    let connectionB = ''
+    let pickupA = ''
+    let pickupB = ''
+
+    beforeAll(async () => {
+      ;({ key: keyOfB } = await createPluginKey(owner, {
+        storeId: ctx.storeB.id,
+        pluginId: `${pluginId}-b`,
+        scopes: [
+          PluginScopes.SHIPMENTS_READ,
+          PluginScopes.CARRIERS_READ,
+          PluginScopes.PICKUPS_READ,
+          PluginScopes.CUSTOMERS_READ
+        ]
+      }))
+      ;({ key: keyWithoutCustomers } = await createPluginKey(owner, {
+        storeId: ctx.storeB.id,
+        pluginId: `${pluginId}-nocust`,
+        scopes: [PluginScopes.PICKUPS_READ]
+      }))
+      ;({ key: keyWithoutShipments } = await createPluginKey(owner, {
+        storeId: ctx.storeB.id,
+        pluginId: `${pluginId}-noship`,
+        scopes: [PluginScopes.PICKUPS_READ, PluginScopes.CUSTOMERS_READ]
+      }))
+      ;({ key: readsNothing } = await createPluginKey(owner, {
+        storeId: ctx.storeB.id,
+        pluginId: `${pluginId}-none`,
+        scopes: [PluginScopes.PRODUCTS_READ]
+      }))
+      const builtA = await createShipment(owner, { storeId: ctx.storeA.id })
+      const builtB = await createShipment(owner, {
+        storeId: ctx.storeB.id,
+        carrierCostCents: 777_001,
+        codAmountCents: 5000,
+        codExpectedCents: 777_002,
+        codRemittedCents: 777_003
+      })
+      shipmentA = builtA.id
+      shipmentB = builtB.id
+      connectionA = builtA.connectionId
+      connectionB = builtB.connectionId
+      pickupA = (await createPickup(owner, { storeId: ctx.storeA.id })).id
+      pickupB = (await createPickup(owner, { storeId: ctx.storeB.id })).id
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId: { startsWith: pluginId } } })
+      await owner.plugin.deleteMany({ where: { id: { startsWith: pluginId } } })
+    })
+
+    const as = (key: string, path: string) =>
+      supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+        .get(`${API_PREFIX}${path}`)
+        .set('authorization', `Bearer ${key}`)
+
+    it('works in its own store, so that the 404 of the others means "foreign"', async () => {
+      const paths = [
+        PluginApiRoutes.shipments.byId(shipmentB),
+        PluginApiRoutes.carriers.byId(connectionB),
+        PluginApiRoutes.carriers.registry,
+        PluginApiRoutes.carriers.statusCatalog(connectionB),
+        PluginApiRoutes.carriers.unmappedStatuses(connectionB),
+        PluginApiRoutes.pickups.manifest(pickupB)
+      ]
+
+      for (const path of paths) expect([path, (await as(keyOfB, path)).status]).toEqual([path, 200])
+      for (const path of [
+        PluginApiRoutes.shipments.list,
+        PluginApiRoutes.carriers.list,
+        PluginApiRoutes.pickups.list
+      ]) {
+        expect([path, (await as(keyOfB, path)).status]).toEqual([path, 200])
+      }
+    })
+
+    it('does not read a row of another store, by id or by the places and statuses of its connection', async () => {
+      const foreign = [
+        PluginApiRoutes.shipments.byId(shipmentA),
+        PluginApiRoutes.carriers.byId(connectionA),
+        PluginApiRoutes.carriers.statusCatalog(connectionA),
+        PluginApiRoutes.carriers.unmappedStatuses(connectionA),
+        PluginApiRoutes.pickups.manifest(pickupA)
+      ]
+
+      for (const path of foreign)
+        expect([path, (await as(keyOfB, path)).status]).toEqual([path, 404])
+    })
+
+    it('does not list a row of another store, and cannot be told another store by the query', async () => {
+      const shipments = await as(keyOfB, PluginApiRoutes.shipments.list)
+      const carriers = await as(keyOfB, PluginApiRoutes.carriers.list)
+      const pickups = await as(keyOfB, PluginApiRoutes.pickups.list)
+      const byConnection = await as(
+        keyOfB,
+        `${PluginApiRoutes.shipments.list}?connectionId=${connectionA}`
+      )
+
+      expect(JSON.stringify(shipments.body)).not.toContain(shipmentA)
+      expect(JSON.stringify(carriers.body)).not.toContain(connectionA)
+      expect(JSON.stringify(pickups.body)).not.toContain(pickupA)
+      expect(JSON.stringify(shipments.body)).toContain(shipmentB)
+      expect(byConnection.status).toBe(200)
+      expect((byConnection.body as { data: unknown[] }).data).toEqual([])
+      expect(JSON.stringify(byConnection.body)).not.toContain(shipmentA)
+    })
+
+    it('does not answer the money of the carrier, the people, nor a secret of the connection', async () => {
+      const bodies = [
+        await as(keyOfB, PluginApiRoutes.shipments.byId(shipmentB)),
+        await as(keyOfB, PluginApiRoutes.shipments.list),
+        await as(keyOfB, PluginApiRoutes.carriers.byId(connectionB)),
+        await as(keyOfB, PluginApiRoutes.carriers.list),
+        await as(keyOfB, PluginApiRoutes.carriers.registry),
+        await as(keyOfB, PluginApiRoutes.pickups.list),
+        await as(keyOfB, PluginApiRoutes.pickups.manifest(pickupB)),
+        await as(keyOfB, PluginApiRoutes.carriers.statusCatalog(connectionB)),
+        await as(keyOfB, PluginApiRoutes.carriers.unmappedStatuses(connectionB))
+      ]
+      // The fixture holds what the assertions look for: a contact on the connection and money on the guide
+      expect(
+        (await owner.carrierConnection.findUniqueOrThrow({ where: { id: connectionB } })).contact
+      ).toEqual({ phone: '70000000' })
+      expect(
+        (await owner.shipment.findUniqueOrThrow({ where: { id: shipmentB } })).carrierCostCents
+      ).toBe(777_001)
+
+      for (const response of bodies) {
+        expect(response.status).toBe(200)
+        const text = JSON.stringify(response.body)
+        expect(text).not.toMatch(
+          /carrierCostCents|codExpectedCents|codRemittedCents|codRemittanceId|createdBy|requestedBy/
+        )
+        expect(text).not.toMatch(
+          /hasCredentials|hasWebhookSecret|webhookUrl|commissionBps|serviceRatesCents|connectFields|guidePrefix|sampleRawStatus|"contact"|70000000/
+        )
+        expect(text).not.toMatch(/77700[123]/)
+      }
+    })
+
+    it('needs the scope of the route, and `customers:read` and `shipments:read` for the list of the courier', async () => {
+      const noScope = await as(readsNothing, PluginApiRoutes.shipments.list)
+      const noCarriers = await as(keyWithoutCustomers, PluginApiRoutes.carriers.list)
+      const noCustomers = await as(keyWithoutCustomers, PluginApiRoutes.pickups.manifest(pickupB))
+
+      const noShipments = await as(keyWithoutShipments, PluginApiRoutes.pickups.manifest(pickupB))
+      const manifest = await as(keyOfB, PluginApiRoutes.pickups.manifest(pickupB))
+
+      expect([noScope.status, noCarriers.status, noCustomers.status, noShipments.status]).toEqual([
+        403, 403, 403, 403
+      ])
+      expect(manifest.headers['cache-control']).toMatch(/no-store/)
+      expect((await as(keyWithoutCustomers, PluginApiRoutes.pickups.list)).status).toBe(200)
+    })
+
+    it('has no route that writes, and the rows are the same after trying', async () => {
+      const server = () => supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+      const attempts = [
+        server().post(`${API_PREFIX}${PluginApiRoutes.shipments.list}`).send({}),
+        server().post(`${API_PREFIX}${PluginApiRoutes.shipments.byId(shipmentB)}/cancel`),
+        server()
+          .patch(`${API_PREFIX}${PluginApiRoutes.carriers.byId(connectionB)}`)
+          .send({}),
+        server().post(`${API_PREFIX}${PluginApiRoutes.carriers.list}`).send({}),
+        server().post(`${API_PREFIX}${PluginApiRoutes.pickups.list}`).send({})
+      ]
+
+      // The staff routes that really write are not reachable with the key of a plugin either: it is not a session
+      attempts.push(
+        server().post(`${API_PREFIX}${ApiRoutes.shipments.cancel(shipmentB)}`),
+        server().post(`${API_PREFIX}${ApiRoutes.pickups.cancel(pickupB)}`)
+      )
+      const staff = await Promise.all(
+        attempts
+          .slice(-2)
+          .map(attempt =>
+            attempt.set('authorization', `Bearer ${keyOfB}`).set('x-store-id', ctx.storeB.id)
+          )
+      )
+      for (const response of staff) expect([401, 403]).toContain(response.status)
+
+      for (const attempt of attempts.slice(0, -2)) {
+        expect((await attempt.set('authorization', `Bearer ${keyOfB}`)).status).toBe(404)
+      }
+      expect(
+        (await owner.shipment.findUniqueOrThrow({ where: { id: shipmentB } })).cancelledAt
+      ).toBeNull()
+    })
+  })
+
+  // What a plugin key reads and makes of the exports centre, the files and the figures (Step 5.6, E7): the file of an export leaves the
+  // platform with the data of the customers, so the owner of a row is the installation that asked (`plugin:<id>`), a person's exports are a
+  // 404 to it and its own never reach a person's centre; a file or a customer of another store is a 404; no address is given unsigned.
+  describe('the exports, the files and the figures with the key of a plugin', () => {
+    const pluginId = `${prefix}-exports-media`
+    const scopes = [
+      PluginScopes.ANALYTICS_READ,
+      PluginScopes.EXPORTS_READ,
+      PluginScopes.EXPORTS_WRITE,
+      PluginScopes.MEDIA_READ,
+      PluginScopes.MEDIA_WRITE,
+      PluginScopes.CUSTOMERS_READ,
+      PluginScopes.CONVERSATIONS_READ
+    ]
+    let keyOfA = ''
+    let keyOfB = ''
+    let keyOfA2 = ''
+    let readsExportsOnly = ''
+    let readsNothing = ''
+    let installationA = ''
+    let installationOnlyRead = ''
+    let ownExport = ''
+    let ownExportOfAnotherInstallation = ''
+    let exportOfAPerson = ''
+    let exportOfB = ''
+    let exportOfLostKind = ''
+    let fileA = ''
+    let fileB = ''
+
+    const exportRow = async (
+      storeId: string,
+      requestedBy: string,
+      type: string = ExportTypes.ANALYTICS
+    ) =>
+      (
+        await owner.export.create({
+          data: {
+            storeId,
+            requestedBy,
+            type,
+            format: ExportFormats.CSV,
+            // Made, so that none of them counts as an export in progress of its installation
+            status: ExportStatus.READY,
+            expiresAt: new Date(Date.now() + 86_400_000)
+          },
+          select: { id: true }
+        })
+      ).id
+    const fileOf = async (storeId: string) =>
+      (
+        await owner.media.create({
+          data: {
+            storeId,
+            purpose: 'message',
+            key: StorageKeys.message(storeId, randomUUID(), 'photo.png'),
+            filename: 'photo.png',
+            contentType: 'image/png',
+            fileSize: 68,
+            status: 'clean'
+          },
+          select: { id: true }
+        })
+      ).id
+    const server = () => supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+    const get = (key: string, path: string) =>
+      server().get(`${API_PREFIX}${path}`).set('authorization', `Bearer ${key}`)
+    const post = (key: string, path: string) =>
+      server().post(`${API_PREFIX}${path}`).set('authorization', `Bearer ${key}`)
+    const idsOf = (response: { body: unknown }): string[] =>
+      (response.body as { data: { id: string }[] }).data.map(row => row.id)
+    const analyticsQuery = {
+      metrics: ReportMetrics[0] ?? '',
+      from: '2026-01-01',
+      to: '2026-01-08',
+      format: 'csv'
+    }
+
+    beforeAll(async () => {
+      ;({ key: keyOfA, installationId: installationA } = await createPluginKey(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${pluginId}-a`,
+        scopes
+      }))
+      ;({ key: keyOfA2 } = await createPluginKey(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${pluginId}-a-other`,
+        scopes
+      }))
+      ;({ key: keyOfB } = await createPluginKey(owner, {
+        storeId: ctx.storeB.id,
+        pluginId: `${pluginId}-b`,
+        scopes
+      }))
+      ;({ key: readsExportsOnly, installationId: installationOnlyRead } = await createPluginKey(
+        owner,
+        {
+          storeId: ctx.storeA.id,
+          pluginId: `${pluginId}-read`,
+          scopes: [PluginScopes.EXPORTS_READ]
+        }
+      ))
+      ;({ key: readsNothing } = await createPluginKey(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${pluginId}-none`,
+        scopes: [PluginScopes.INVENTORY_READ]
+      }))
+      const admin = await adminOf(owner, ctx.storeA.id)
+      ownExport = await exportRow(ctx.storeA.id, `plugin:${installationA}`)
+      ownExportOfAnotherInstallation = await exportRow(ctx.storeA.id, `plugin:${randomUUID()}`)
+      exportOfAPerson = await exportRow(ctx.storeA.id, admin)
+      exportOfB = await exportRow(ctx.storeB.id, `plugin:${randomUUID()}`)
+      // A kind the key holds no scope for any more: its own row, and still a 404
+      exportOfLostKind = await exportRow(
+        ctx.storeA.id,
+        `plugin:${installationOnlyRead}`,
+        ExportTypes.ANALYTICS
+      )
+      fileA = await fileOf(ctx.storeA.id)
+      fileB = await fileOf(ctx.storeB.id)
+    })
+    afterAll(async () => {
+      await owner.export.deleteMany({
+        where: {
+          requestedBy: { startsWith: 'plugin:' },
+          storeId: { in: [ctx.storeA.id, ctx.storeB.id] }
+        }
+      })
+      await owner.pluginInstallation.deleteMany({ where: { pluginId: { startsWith: pluginId } } })
+      await owner.plugin.deleteMany({ where: { id: { startsWith: pluginId } } })
+    })
+
+    it('reads its own export and no one else: not a person, not another installation, not another store', async () => {
+      expect((await get(keyOfA, PluginApiRoutes.exports.byId(ownExport))).status).toBe(200)
+      for (const other of [exportOfAPerson, ownExportOfAnotherInstallation, exportOfB]) {
+        expect((await get(keyOfA, PluginApiRoutes.exports.byId(other))).status).toBe(404)
+        expect((await get(keyOfA, PluginApiRoutes.exports.download(other))).status).toBe(404)
+      }
+      const list = idsOf(await get(keyOfA, PluginApiRoutes.exports.list))
+      expect(list).toContain(ownExport)
+      expect(list).not.toContain(exportOfAPerson)
+      expect(list).not.toContain(ownExportOfAnotherInstallation)
+      expect(list).not.toContain(exportOfB)
+    })
+
+    it('does not read, with the key of the other store, an export of this one', async () => {
+      expect((await get(keyOfB, PluginApiRoutes.exports.byId(ownExport))).status).toBe(404)
+      expect(idsOf(await get(keyOfB, PluginApiRoutes.exports.list))).not.toContain(ownExport)
+      expect((await get(keyOfA2, PluginApiRoutes.exports.byId(ownExport))).status).toBe(404)
+    })
+
+    it('does not show a person the exports of a plugin, in the centre or by id', async () => {
+      const list = await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.exports.list)
+      const byId = await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.exports.byId(ownExport))
+
+      expect(JSON.stringify(list.body)).not.toContain(ownExport)
+      expect(byId.status).toBe(404)
+    })
+
+    it('stops showing the kinds whose scope the key does not hold, as a role that lost the permission does', async () => {
+      expect(
+        (await get(readsExportsOnly, PluginApiRoutes.exports.byId(exportOfLostKind))).status
+      ).toBe(404)
+      expect(idsOf(await get(readsExportsOnly, PluginApiRoutes.exports.list))).not.toContain(
+        exportOfLostKind
+      )
+    })
+
+    it('asks for the figures as a file for the store of the key, owned by the installation, and never names who in the row', async () => {
+      const asked = await get(keyOfA, PluginApiRoutes.analytics.export).query(analyticsQuery)
+      const named = await get(keyOfA, PluginApiRoutes.analytics.export).query({
+        ...analyticsQuery,
+        storeId: ctx.storeB.id
+      })
+
+      expect(asked.status).toBe(202)
+      expect(named.status).toBeGreaterThanOrEqual(400)
+      const row = await owner.export.findUniqueOrThrow({
+        where: { id: (asked.body as { id: string }).id }
+      })
+      expect([row.storeId, row.requestedBy, row.type]).toEqual([
+        ctx.storeA.id,
+        `plugin:${installationA}`,
+        ExportTypes.ANALYTICS
+      ])
+      expect(JSON.stringify(asked.body)).not.toContain(installationA)
+    })
+
+    it('lets an installation have one export in progress, so that it cannot take the slots of the people of the store', async () => {
+      const again = await get(keyOfA, PluginApiRoutes.analytics.export).query(analyticsQuery)
+      const other = await get(keyOfA2, PluginApiRoutes.analytics.export).query(analyticsQuery)
+
+      expect(again.status).toBe(429)
+      expect(other.status).toBe(202)
+    })
+
+    it('needs both scopes to take the figures out, and the scope of each route to read', async () => {
+      const metrics = await get(keyOfA, PluginApiRoutes.analytics.metrics).query({})
+      const withoutExport = await createPluginKey(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${pluginId}-no-export`,
+        scopes: [PluginScopes.ANALYTICS_READ, PluginScopes.EXPORTS_READ]
+      })
+      const refused = await get(withoutExport.key, PluginApiRoutes.analytics.export).query(
+        analyticsQuery
+      )
+
+      expect(metrics.status).not.toBe(403)
+      expect(refused.status).toBe(403)
+      expect((await get(readsNothing, PluginApiRoutes.exports.list)).status).toBe(403)
+      expect((await get(readsNothing, PluginApiRoutes.analytics.metrics).query({})).status).toBe(
+        403
+      )
+      expect((await get(readsNothing, PluginApiRoutes.media.byId(fileA))).status).toBe(403)
+    })
+
+    it('gives the signed links of a file of its own store only, and none of another store', async () => {
+      const own = await get(keyOfA, PluginApiRoutes.media.byId(fileA))
+      const foreign = await get(keyOfA, PluginApiRoutes.media.byId(fileB))
+      const fromB = await get(keyOfB, PluginApiRoutes.media.byId(fileA))
+
+      expect(own.status).toBe(200)
+      expect(foreign.status).toBe(404)
+      expect(fromB.status).toBe(404)
+      expect((own.body as { url: string }).url).toMatch(/^https?:\/\//)
+      // Signed, and for minutes: an address that anyone could open without the signature is never given
+      expect((own.body as { url: string }).url).toContain('X-Amz-Signature=')
+      expect((own.body as { url: string }).url).toContain('X-Amz-Expires=')
+    })
+
+    it('signs an upload inside the store of the key, owned by the installation, and refuses the purposes its scope does not lend', async () => {
+      const body = {
+        purpose: 'message',
+        filename: 'photo.png',
+        contentType: 'image/png',
+        fileSizeBytes: 68
+      }
+      const own = await post(keyOfA, PluginApiRoutes.media.uploadUrl).send(body)
+      const product = await post(keyOfA, PluginApiRoutes.media.uploadUrl).send({
+        purpose: 'product',
+        parentId: randomUUID(),
+        filename: 'photo.png',
+        contentType: 'image/png',
+        fileSizeBytes: 68
+      })
+      const named = await post(keyOfA, PluginApiRoutes.media.uploadUrl).send({
+        ...body,
+        storeId: ctx.storeB.id
+      })
+
+      expect(own.status).toBe(200)
+      expect((own.body as { key: string }).key).toMatch(
+        new RegExp(`^${StorageKeys.storePrefix(ctx.storeA.id)}uploads/`)
+      )
+      expect(product.status).toBe(403)
+      expect(named.status).toBe(400)
+    })
+
+    it('does not confirm the object of another store, and writes no row in either', async () => {
+      const mediaId = randomUUID()
+      const response = await post(keyOfA, PluginApiRoutes.media.confirmUpload).send({
+        purpose: 'message',
+        filename: 'photo.png',
+        contentType: 'image/png',
+        fileSizeBytes: 68,
+        mediaId,
+        key: StorageKeys.messageUpload(ctx.storeB.id, mediaId, 'photo.png')
+      })
+
+      expect(response.status).toBe(403)
+      expect(await owner.media.count({ where: { id: mediaId } })).toBe(0)
+    })
+
+    it('answers 404 for a customer of another store on the ZIP of a gallery, and makes no export', async () => {
+      const foreign = await createCustomer(owner, { storeId: ctx.storeB.id })
+      const before = await owner.export.count({ where: { storeId: ctx.storeA.id } })
+
+      const zip = await post(keyOfA, PluginApiRoutes.media.downloadAll).send({
+        customerId: foreign.id
+      })
+
+      expect(zip.status).toBe(404)
+      expect(await owner.export.count({ where: { storeId: ctx.storeA.id } })).toBe(before)
+    })
+
+    it('has no route for the other kinds of export nor for the scheduled reports', async () => {
+      for (const path of [
+        '/plugin-api/customers/export',
+        '/plugin-api/orders/export',
+        '/plugin-api/analytics/reports'
+      ]) {
+        expect((await get(keyOfA, path)).status).not.toBe(200)
+      }
     })
   })
 
