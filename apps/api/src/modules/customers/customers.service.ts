@@ -15,7 +15,7 @@ import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { customerSearchWhere, foldInDatabase, lockCustomerForWrite } from '@platform/core/messaging'
 
-import type { Actor } from '../tenancy'
+import { type Actor, auditActorOf, auditViaOf } from '../tenancy'
 
 import { findPossibleDuplicates } from './customer-duplicates'
 import type {
@@ -224,10 +224,11 @@ export class CustomersService {
     })
     this.audit.log({
       action: AuditAction.CUSTOMER_DELETED,
-      actor: { userId: actor.userId },
+      actor: auditActorOf(actor),
       storeId,
       resourceType: 'customer',
       resourceId: customerId,
+      ...(actor.pluginInstallationId === undefined ? {} : { metadata: auditViaOf(actor) }),
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })

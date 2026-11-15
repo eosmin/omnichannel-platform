@@ -26,6 +26,9 @@ const item = (
   priceOverrideReason: null,
   priceOverriddenBy: null,
   freeShipping: false,
+  taxTreatment: null,
+  taxRateBps: null,
+  taxCents: null,
   allocations: [{ warehouseId: 'wa', quantity: 2 }],
   ...over
 })

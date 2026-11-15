@@ -898,12 +898,16 @@ export const PluginScopes = {
   MESSAGES_READ_DELETED: 'messages:read-deleted', // the text of a message the customer deleted, while it is kept
   CUSTOMERS_READ: 'customers:read',
   CUSTOMERS_WRITE: 'customers:write',
+  CUSTOMERS_DELETE: 'customers:delete',                 // delete a customer with no history (Step 5.6 E2); CUSTOMERS_DELETE is in no other scope
+  CUSTOMERS_FLAG_CAUTION: 'customers:flag-caution',     // set and clear the caution flag (Step 5.6 E2); who edits a customer does not flag it by that
   ORDERS_READ: 'orders:read',
   ORDERS_WRITE: 'orders:write',
   PRODUCTS_READ: 'products:read',
   WEBHOOKS_WRITE: 'webhooks:write',
   ANALYTICS_READ: 'analytics:read',
   CHANNELS_READ: 'channels:read',               // the directory of channel accounts and their templates (Step 5.6 E1); no connection details
+  ORDER_MESSAGES_READ: 'order-messages:read',   // the history of messages about an order and the order templates (Step 5.6 E3a)
+  SETTINGS_READ: 'settings:read',               // the store preferences and the return rules, read only (Step 5.6 E3a)
   CHANNEL_CONNECTIONS: 'channel:connections',   // §6.7: register and remove the connections of a channel plugin
   CHANNEL_EVENTS: 'channel:events',             // §6.7: report what customers write and what happened to what was sent
 } as const
@@ -920,6 +924,8 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.MESSAGES_READ_DELETED]: [Permissions.MESSAGES_VIEW_DELETED],
   [PluginScopes.CUSTOMERS_READ]:      [Permissions.CUSTOMERS_VIEW],
   [PluginScopes.CUSTOMERS_WRITE]:     [Permissions.CUSTOMERS_CREATE, Permissions.CUSTOMERS_EDIT],
+  [PluginScopes.CUSTOMERS_DELETE]:    [Permissions.CUSTOMERS_DELETE],
+  [PluginScopes.CUSTOMERS_FLAG_CAUTION]: [Permissions.CUSTOMERS_FLAG_CAUTION],
   [PluginScopes.ORDERS_READ]:         [Permissions.ORDERS_VIEW],
   [PluginScopes.ORDERS_WRITE]:        [Permissions.ORDERS_CREATE, Permissions.ORDERS_CHANGE_STATUS],
   [PluginScopes.PRODUCTS_READ]:       [Permissions.PRODUCTS_VIEW],

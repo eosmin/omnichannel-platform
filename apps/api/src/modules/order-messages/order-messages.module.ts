@@ -15,6 +15,7 @@ import { OrderMessagesController } from './order-messages.controller'
 import { OrderMessagesService } from './order-messages.service'
 import { OrderTemplatesController } from './order-templates.controller'
 import { OrderTemplatesService } from './order-templates.service'
+import { PluginOrderMessagesController } from './plugin-order-messages.controller'
 
 // Settings → Order messages (TDD_17 §4.7) and the sending of those messages. The service that sends is exported for the
 // listener that asks for the message that an order created, a status set by hand or a shipment calls for.
@@ -27,7 +28,7 @@ import { OrderTemplatesService } from './order-templates.service'
     QueuesPlatformModule,
     TenancyModule
   ],
-  controllers: [OrderTemplatesController, OrderMessagesController],
+  controllers: [OrderTemplatesController, OrderMessagesController, PluginOrderMessagesController],
   providers: [
     OrderTemplatesService,
     OrderMessagesService,

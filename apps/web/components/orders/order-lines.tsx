@@ -131,6 +131,12 @@ export function OrderTotals({ order }: { order: OrderDetailView }): ReactElement
       <dd className="text-right tabular-nums">
         {order.discountCents === 0 ? money(0) : money(-order.discountCents)}
       </dd>
+      {order.pricesIncludeTax === false && order.taxCents !== null && order.taxCents > 0 ? (
+        <>
+          <dt className="text-muted-foreground">{t('tax')}</dt>
+          <dd className="text-right tabular-nums">{money(order.taxCents)}</dd>
+        </>
+      ) : null}
       <dt className="border-t pt-1 font-semibold">{t('total')}</dt>
       <dd className="border-t pt-1 text-right font-semibold tabular-nums">
         {money(order.totalCents)}

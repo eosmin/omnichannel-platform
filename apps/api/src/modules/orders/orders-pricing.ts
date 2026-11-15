@@ -9,6 +9,7 @@ import {
   PriceApprovalStatus,
   CarrierConnectionStatus,
   ShippingFeeBoundKinds,
+  type TaxTreatment,
   type ShippingFeeBounds,
   type OrderTotals,
   type PriceControlResult
@@ -16,6 +17,13 @@ import {
 import { ErrorCodes, resourceConflict, resourceNotFound } from '@platform/core/errors'
 import type { OrderPreferences } from '@platform/core/store-preferences'
 
+import {
+  lineTaxOf,
+  type OrderTaxSnapshot,
+  type TaxContext,
+  type TaxPlan,
+  snapshotTax
+} from './orders-tax'
 import { orderRefusal } from './orders.support'
 
 // What an order costs, decided on the server from the catalog and the rules of TDD_17 §4.13. Nothing here trusts a
@@ -37,6 +45,9 @@ export interface OrderLine {
   // Snapshot of Product.freeShipping at the moment of the order
   freeShipping: boolean
   trackInventory: boolean
+  // How the line is taxed, snapshotted when the order is made (TDD_18 §7); null on both for an order that carries no tax snapshot
+  taxTreatment: TaxTreatment | null
+  taxRateBps: number | null
   // The warehouses the agent chose for the units of this line in THIS request (never stored on the line)
   requestedAllocations?: readonly { warehouseId: string; quantity: number }[] | undefined
   // Where this line's units were before an edit that did not touch it: kept when they still can be served, otherwise
@@ -65,6 +76,8 @@ export async function resolveLines(
     // The lines the order has now, on an edit: a line that names no price (or names the one it has) and is already there
     // keeps the price it was made at (what the customer was told, an override included), not today's catalog price
     existing?: readonly OrderLine[]
+    // How the books tax today (null: no books, no tax); a line made now takes its rate from here, a kept one keeps its own
+    tax: TaxContext | null
   }
 ): Promise<{ lines: OrderLine[]; priceChanged: boolean }> {
   const products = await tx.product.findMany({
@@ -76,6 +89,8 @@ export async function resolveLines(
       active: true,
       freeShipping: true,
       trackInventory: true,
+      taxTreatment: true,
+      taxRate: { select: { rateBps: true } },
       variants: { select: { id: true, name: true, priceCents: true, active: true } }
     }
   })
@@ -151,6 +166,11 @@ export async function resolveLines(
       priceOverriddenBy: overridden ? who.userId : null,
       freeShipping: product.freeShipping,
       trackInventory: product.trackInventory,
+      // A line of the order that exists keeps the treatment and rate it was made at, even when this edit changes its price; a new one
+      // takes today's
+      ...(before !== undefined && before.taxTreatment !== null
+        ? { taxTreatment: before.taxTreatment, taxRateBps: before.taxRateBps }
+        : lineTaxOf(who.tax, product)),
       requestedAllocations: request.allocations
     }
   })
@@ -173,10 +193,14 @@ export interface PricingInput {
   feeUnchanged?: boolean
   // The range the fee is judged against: the planned carrier's, none, or unmanaged (see planCarrier)
   feeBounds: ShippingFeeBounds
+  // How the tax is computed (null: the order carries none, and its total is the price alone)
+  taxPlan: TaxPlan | null
 }
 
 export interface Pricing {
   totals: OrderTotals
+  // The tax the order stores; null when it carries none
+  tax: OrderTaxSnapshot | null
   freeShipping: boolean
   control: Extract<PriceControlResult, { ok: true }>
 }
@@ -184,11 +208,31 @@ export interface Pricing {
 // The totals, the free-shipping flag and the three levels of price control for one state of an order. A refusal of any
 // rule is thrown with its own code.
 export function priceOrder(input: PricingInput): Pricing {
-  const totals = computeOrderTotals({
+  const priced = computeOrderTotals({
     lines: input.lines,
     shippingCents: input.shippingCents,
     discountCents: input.discountCents
   })
+  if (!priced.ok) throw orderRefusal(priced.code)
+  // The tax comes after the price is known to be sound (the discount fits, the amounts are cents), and a price that excludes the tax
+  // adds it to the total, which is checked against the ceiling again
+  const tax =
+    input.taxPlan === null
+      ? null
+      : snapshotTax(input.taxPlan, {
+          lines: input.lines,
+          discountCents: input.discountCents,
+          shippingCents: input.shippingCents
+        })
+  const totals =
+    tax === null || tax.addedToTotalCents === 0
+      ? priced
+      : computeOrderTotals({
+          lines: input.lines,
+          shippingCents: input.shippingCents,
+          discountCents: input.discountCents,
+          addedTaxCents: tax.addedToTotalCents
+        })
   if (!totals.ok) throw orderRefusal(totals.code)
   const freeShipping = isFreeShippingOrder(input.lines, input.preferences.freeShippingRule)
   const feeWithinRange = isShippingFeeWithinRange(
@@ -228,7 +272,7 @@ export function priceOrder(input: PricingInput): Pricing {
     ...(input.feeUnchanged === undefined ? {} : { feeUnchanged: input.feeUnchanged })
   })
   if (!control.ok) throw orderRefusal(control.code)
-  return { totals, freeShipping, control }
+  return { totals, tax, freeShipping, control }
 }
 
 export const approvalColumnsCleared = {
