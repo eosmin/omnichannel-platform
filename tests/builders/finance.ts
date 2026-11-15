@@ -240,13 +240,16 @@ export { NormalSide }
 export async function purgeFinance(owner: OwnerClient, organizationIds: string[]): Promise<void> {
   if (organizationIds.length === 0) return
   const where = { organizationId: { in: organizationIds } }
-  // Only a run that wrote books pays for the switch of the triggers: any of the tables below says it did
-  const touched =
-    (await owner.financeSettings.count({ where })) +
-    (await owner.ledgerAccount.count({ where })) +
-    (await owner.fiscalPeriod.count({ where })) +
-    (await owner.paymentMethodAccount.count({ where }))
-  if (touched === 0) return
+  // Only a run that wrote books pays for the switch of the triggers: one query says whether it did
+  const [found] = await owner.$queryRaw<{ touched: boolean }[]>`
+    SELECT (
+      EXISTS (SELECT 1 FROM finance_settings WHERE organization_id = ANY(${organizationIds}))
+      OR EXISTS (SELECT 1 FROM ledger_accounts WHERE organization_id = ANY(${organizationIds}))
+      OR EXISTS (SELECT 1 FROM fiscal_periods WHERE organization_id = ANY(${organizationIds}))
+      OR EXISTS (SELECT 1 FROM payment_method_accounts WHERE organization_id = ANY(${organizationIds}))
+    ) AS touched`
+  const touched = found?.touched === true
+  if (!touched) return
   // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
   await owner.$transaction(async tx => {
     // The triggers of the four tables that refuse a delete are off for the length of this transaction, and on again before it

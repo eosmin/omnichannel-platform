@@ -38,13 +38,34 @@ export interface DraftEntry {
   lines: readonly DraftLine[]
 }
 
+// The names of the rules an entry can break: for the log and the tests, never shown to a person
+export const EntryRule = {
+  CURRENCY: 'currency',
+  ENTRY_DATE: 'entry_date',
+  SOURCE_DATE: 'source_date',
+  IDEMPOTENCY_KEY: 'idempotency_key',
+  MEMO_REQUIRED: 'memo_required',
+  MEMO_LENGTH: 'memo_length',
+  MANUAL_BY_USER: 'manual_by_user',
+  SOURCE_PAIR: 'source_pair',
+  AT_LEAST_TWO_LINES: 'at_least_two_lines',
+  TOO_MANY_LINES: 'too_many_lines',
+  PARTY_PAIR: 'party_pair',
+  LINE_MEMO_LENGTH: 'line_memo_length',
+  WHOLE_CENTS: 'whole_cents',
+  ONE_SIDE_PER_LINE: 'one_side_per_line',
+  DEBITS_EQUAL_CREDITS: 'debits_equal_credits',
+  TOTAL_TOO_LARGE: 'total_too_large',
+  TOTAL_POSITIVE: 'total_positive'
+} as const
+export type EntryRuleName = (typeof EntryRule)[keyof typeof EntryRule]
+
 export interface EntryProblem {
   code:
     | typeof ErrorCodes.FINANCE_ENTRY_UNBALANCED
     | typeof ErrorCodes.FINANCE_CURRENCY_UNSUPPORTED
     | typeof ErrorCodes.VALIDATION_INVALID_INPUT
-  // A short, stable name of the broken rule: for the log and the tests, never shown to a person
-  rule: string
+  rule: EntryRuleName
 }
 
 const DATE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/
@@ -81,72 +102,72 @@ export function totalsOf(lines: readonly DraftLine[]): { debitCents: number; cre
 export function validateDraftEntry(entry: DraftEntry): EntryProblem[] {
   const problems: EntryProblem[] = []
   // Only the rules about the amounts are the entry not balancing; the rest is an input that is not valid
-  const unbalanced = (rule: string): void => {
+  const unbalanced = (rule: EntryRuleName): void => {
     problems.push({ code: ErrorCodes.FINANCE_ENTRY_UNBALANCED, rule })
   }
-  const invalid = (rule: string): void => {
+  const invalid = (rule: EntryRuleName): void => {
     problems.push({ code: ErrorCodes.VALIDATION_INVALID_INPUT, rule })
   }
 
   if ((entry.currency ?? FinanceCurrency) !== FinanceCurrency) {
-    problems.push({ code: ErrorCodes.FINANCE_CURRENCY_UNSUPPORTED, rule: 'currency' })
+    problems.push({ code: ErrorCodes.FINANCE_CURRENCY_UNSUPPORTED, rule: EntryRule.CURRENCY })
   }
-  if (!isIsoDate(entry.entryDate)) invalid('entry_date')
+  if (!isIsoDate(entry.entryDate)) invalid(EntryRule.ENTRY_DATE)
   if (entry.sourceDate !== undefined && entry.sourceDate !== null && !isIsoDate(entry.sourceDate)) {
-    invalid('source_date')
+    invalid(EntryRule.SOURCE_DATE)
   }
   if (
     entry.idempotencyKey.length === 0 ||
     entry.idempotencyKey.length > FinanceLimits.IDEMPOTENCY_KEY_MAX_LENGTH
   ) {
-    invalid('idempotency_key')
+    invalid(EntryRule.IDEMPOTENCY_KEY)
   }
   // A manual entry says why: it is the accountant's adjustment, and the auditor reads the memo (TDD_18 §4.2, E13)
   const memo = entry.memo?.trim() ?? ''
-  if (entry.type === JournalEntryType.MANUAL && memo.length === 0) invalid('memo_required')
-  if (codePoints(entry.memo) > FinanceLimits.MEMO_MAX_LENGTH) invalid('memo_length')
+  if (entry.type === JournalEntryType.MANUAL && memo.length === 0) invalid(EntryRule.MEMO_REQUIRED)
+  if (codePoints(entry.memo) > FinanceLimits.MEMO_MAX_LENGTH) invalid(EntryRule.MEMO_LENGTH)
   // The system has no user: it says so by origin, and a manual entry is always a person's
   if (entry.type === JournalEntryType.MANUAL && entry.origin !== EntryOrigin.USER) {
-    invalid('manual_by_user')
+    invalid(EntryRule.MANUAL_BY_USER)
   }
 
   if (((entry.sourceType ?? null) === null) !== ((entry.sourceId ?? null) === null)) {
-    invalid('source_pair')
+    invalid(EntryRule.SOURCE_PAIR)
   }
 
-  if (entry.lines.length < 2) unbalanced('at_least_two_lines')
-  if (entry.lines.length > FinanceLimits.MAX_LINES_PER_ENTRY) invalid('too_many_lines')
+  if (entry.lines.length < 2) unbalanced(EntryRule.AT_LEAST_TWO_LINES)
+  if (entry.lines.length > FinanceLimits.MAX_LINES_PER_ENTRY) invalid(EntryRule.TOO_MANY_LINES)
 
   // Every line is looked at and each broken rule is reported once, however many lines break it
   let wholeCents = true
-  const seen = new Set<string>()
-  const once = (report: () => void, rule: string): void => {
-    if (!seen.has(rule)) {
-      seen.add(rule)
-      report()
-    }
+  const seen = new Set<EntryRuleName>()
+  const once = (kind: 'unbalanced' | 'invalid', rule: EntryRuleName): void => {
+    if (seen.has(rule)) return
+    seen.add(rule)
+    if (kind === 'invalid') invalid(rule)
+    else unbalanced(rule)
   }
   for (const line of entry.lines) {
     if (((line.partyType ?? null) === null) !== ((line.partyId ?? null) === null)) {
-      once(() => invalid('party_pair'), 'party_pair')
+      once('invalid', EntryRule.PARTY_PAIR)
     }
     if (codePoints(line.memo) > FinanceLimits.MEMO_MAX_LENGTH) {
-      once(() => invalid('line_memo_length'), 'line_memo_length')
+      once('invalid', EntryRule.LINE_MEMO_LENGTH)
     }
     if (!isWholeCents(line.debitCents) || !isWholeCents(line.creditCents)) {
       wholeCents = false
-      once(() => unbalanced('whole_cents'), 'whole_cents')
+      once('unbalanced', EntryRule.WHOLE_CENTS)
     } else if (line.debitCents > 0 === line.creditCents > 0) {
       // One side per line, and it is positive: the CHECK of the table says the same
-      once(() => unbalanced('one_side_per_line'), 'one_side_per_line')
+      once('unbalanced', EntryRule.ONE_SIDE_PER_LINE)
     }
   }
   if (wholeCents) {
     const { debitCents, creditCents } = totalsOf(entry.lines)
-    if (debitCents !== creditCents) unbalanced('debits_equal_credits')
+    if (debitCents !== creditCents) unbalanced(EntryRule.DEBITS_EQUAL_CREDITS)
     // The total of an entry is an Int of the database (JournalEntry.totalCents)
-    if (debitCents > FinanceLimits.MAX_LINE_CENTS) unbalanced('total_too_large')
-    if (debitCents === 0) unbalanced('total_positive')
+    if (debitCents > FinanceLimits.MAX_LINE_CENTS) unbalanced(EntryRule.TOTAL_TOO_LARGE)
+    if (debitCents === 0) unbalanced(EntryRule.TOTAL_POSITIVE)
   }
   return problems
 }

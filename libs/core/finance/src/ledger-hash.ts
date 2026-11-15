@@ -54,22 +54,25 @@ const escaped = (value: string | number | bigint | null): string =>
   value === null ? '' : `=${String(value).replace(/[\\|,]/g, character => `\\${character}`)}`
 
 export function canonicalEntry(entry: HashableEntry): string {
-  const lines = entry.lines.map(line =>
-    [
-      line.lineNo,
-      line.accountId,
-      line.debitCents,
-      line.creditCents,
-      line.storeId,
-      // A party is its type and its id, kept as two fields
-      line.partyType,
-      line.partyId,
-      line.taxRateId,
-      line.memo
-    ]
-      .map(escaped)
-      .join(',')
-  )
+  // In the order of their numbers whatever the order the caller read them in: a row comes back from the database in any order
+  const lines = [...entry.lines]
+    .sort((x, y) => x.lineNo - y.lineNo)
+    .map(line =>
+      [
+        line.lineNo,
+        line.accountId,
+        line.debitCents,
+        line.creditCents,
+        line.storeId,
+        // A party is its type and its id, kept as two fields
+        line.partyType,
+        line.partyId,
+        line.taxRateId,
+        line.memo
+      ]
+        .map(escaped)
+        .join(',')
+    )
   return (
     [
       LEDGER_HASH_VERSION,

@@ -131,6 +131,11 @@ describe('hashEntry', () => {
     for (const variant of variants) expect(hashEntry(variant)).not.toBe(original)
   })
 
+  it('hashes the lines in the order of their numbers, whatever the order they come in', () => {
+    const entry = base(1n, null)
+    expect(hashEntry({ ...entry, lines: [...entry.lines].reverse() })).toBe(hashEntry(entry))
+  })
+
   it('tells a missing value from an empty one', () => {
     const missing = base(1n, null)
     expect(hashEntry({ ...missing, memo: '' })).not.toBe(hashEntry(missing))

@@ -1,5 +1,10 @@
 import { Permissions, RoleNames, RolePresets } from '@platform/core/auth'
-import { ensureStore, type OwnerClient } from '@platform/core/database-testing'
+import {
+  connectionUrls,
+  createOwnerClient,
+  ensureStore,
+  type OwnerClient
+} from '@platform/core/database-testing'
 import {
   AccountRole,
   AccountType,
@@ -229,6 +234,52 @@ describe('The tables of the ledger', () => {
       )
     })
 
+    it('may be inactive for the reversal of an entry that used it, and for nothing else', async () => {
+      const org = await owner.organization.create({
+        data: { name: `${prefix}-in`, slug: `${prefix}-in` }
+      })
+      const f = await createFinanceFixture(owner, org.id)
+      const used = await owner.ledgerAccount.create({
+        data: {
+          organizationId: org.id,
+          code: '6200',
+          name: 'Usada',
+          type: AccountType.EXPENSE,
+          normalSide: NormalSide.DEBIT
+        }
+      })
+      const original = await postTestEntry(owner, {
+        ...simpleEntry(f, 90),
+        lines: [
+          { accountId: used.id, debitCents: 90 },
+          { accountId: f.accounts.cash, creditCents: 90 }
+        ]
+      })
+      await owner.ledgerAccount.update({ where: { id: used.id }, data: { active: false } })
+      await refused(
+        postTestEntry(owner, {
+          ...simpleEntry(f, 5),
+          lines: [
+            { accountId: used.id, debitCents: 5 },
+            { accountId: f.accounts.cash, creditCents: 5 }
+          ]
+        }),
+        'FINANCE_ACCOUNT_INACTIVE'
+      )
+      await expect(
+        postTestEntry(owner, {
+          organizationId: org.id,
+          periodId: f.periodId,
+          type: JournalEntryType.REVERSAL,
+          reversesEntryId: original.id,
+          lines: [
+            { accountId: used.id, creditCents: 90 },
+            { accountId: f.accounts.cash, debitCents: 90 }
+          ]
+        })
+      ).resolves.toMatchObject({ reversesEntryId: original.id })
+    })
+
     it('must be of the organization of the entry, and so must the store of a line', async () => {
       await refused(
         postTestEntry(owner, {
@@ -390,7 +441,11 @@ describe('The tables of the ledger', () => {
           }
         })
       ).resolves.toMatchObject({ status: PeriodStatus.OPEN })
-      // The record of the reopen of a closed period is frozen too, and a reopen keeps the record of the close
+      // Closed again and reopened again: the record of the reopen of a closed period is frozen, and a reopen keeps the record of the close
+      await owner.fiscalPeriod.update({
+        where: { id: closed },
+        data: { status: PeriodStatus.CLOSED, closedAt: new Date(), closedBy: 'u' }
+      })
       await owner.fiscalPeriod.update({
         where: { id: closed },
         data: {
@@ -425,6 +480,25 @@ describe('The tables of the ledger', () => {
       await refused(
         owner.fiscalPeriod.update({ where: { id: closed }, data: { status: PeriodStatus.OPEN } }),
         'says who, when and why'
+      )
+      // An open period keeps the record of its close and of its reopen as it is
+      const reopened = await createPeriod(owner, orgA.id, 2026, 4, PeriodStatus.CLOSED)
+      await owner.fiscalPeriod.update({
+        where: { id: reopened },
+        data: {
+          status: PeriodStatus.OPEN,
+          reopenedAt: new Date(),
+          reopenedBy: 'u',
+          reopenReason: 'why'
+        }
+      })
+      await refused(
+        owner.fiscalPeriod.update({ where: { id: reopened }, data: { closedBy: 'forged' } }),
+        'the record of the close and of the reopen is kept'
+      )
+      await refused(
+        owner.fiscalPeriod.update({ where: { id: reopened }, data: { reopenReason: 'forged' } }),
+        'the record of the close and of the reopen is kept'
       )
       // An open period with nothing in it may be deleted
       await expect(owner.fiscalPeriod.delete({ where: { id: open } })).resolves.toBeDefined()
@@ -560,6 +634,70 @@ describe('The tables of the ledger', () => {
           expect(await has(role, table, 'TRUNCATE')).toBe(false)
           expect(await has(role, table, 'SELECT')).toBe(true)
         }
+      }
+    })
+  })
+
+  describe('the roles of the application', () => {
+    // The design stands on privileges and on triggers that run as the owner of the function: this posts as the role of the api
+    // and tries what it must not do, so a missing grant shows here and not in the second PR
+    it('post an entry, move the head and the balances through the triggers, and can do nothing else to the books', async () => {
+      const app = createOwnerClient(connectionUrls().app)
+      try {
+        const org = await owner.organization.create({
+          data: { name: `${prefix}-app`, slug: `${prefix}-app` }
+        })
+        const f = await createFinanceFixture(owner, org.id)
+        const entry = await postTestEntry(app, simpleEntry(f, 777))
+        expect(entry.number).toBe(1n)
+        expect(
+          await owner.financeSettings.findUniqueOrThrow({ where: { organizationId: org.id } })
+        ).toMatchObject({ nextEntryNumber: 2n, lastEntryHash: entry.hash })
+        expect(
+          await owner.accountPeriodBalance.findFirst({
+            where: { organizationId: org.id, accountId: f.accounts.expense }
+          })
+        ).toMatchObject({ debitCents: 777n })
+        // What it still may do: the settings it holds, and the lock after a close
+        await app.financeSettings.update({
+          where: { organizationId: org.id },
+          data: { recognizeSaleOn: 'shipped' }
+        })
+        // What it may not
+        await refused(
+          app.journalEntry.update({ where: { id: entry.id }, data: { memo: 'x' } }),
+          /permission denied/
+        )
+        await refused(
+          app.journalLine.deleteMany({ where: { entryId: entry.id } }),
+          /permission denied/
+        )
+        await refused(
+          app.financeSettings.update({
+            where: { organizationId: org.id },
+            data: { nextEntryNumber: 99n }
+          }),
+          /permission denied/
+        )
+        await refused(
+          app.financeSettings.delete({ where: { organizationId: org.id } }),
+          /permission denied/
+        )
+        await refused(
+          app.accountPeriodBalance.updateMany({
+            where: { organizationId: org.id },
+            data: { debitCents: 0n }
+          }),
+          /permission denied/
+        )
+        await refused(
+          app.accountPeriodBalance.create({
+            data: { organizationId: org.id, accountId: f.accounts.bank, periodId: f.periodId }
+          }),
+          /permission denied/
+        )
+      } finally {
+        await app.$disconnect()
       }
     })
   })

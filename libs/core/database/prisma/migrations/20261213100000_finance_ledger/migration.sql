@@ -401,13 +401,15 @@ DECLARE
   period fiscal_periods%ROWTYPE;
   head RECORD;
 BEGIN
-  SELECT * INTO settings FROM finance_settings WHERE organization_id = NEW.organization_id;
+  -- Shared locks: the entry waits for a close that is in flight and sees it, and a close waits for the entry (the service takes the
+  -- settings row for update first, so for it these are the locks it already holds)
+  SELECT * INTO settings FROM finance_settings WHERE organization_id = NEW.organization_id FOR SHARE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'FINANCE_SETUP_REQUIRED: the organization has no finance settings';
   END IF;
-  SELECT * INTO period FROM fiscal_periods WHERE id = NEW.period_id AND organization_id = NEW.organization_id;
+  SELECT * INTO period FROM fiscal_periods WHERE id = NEW.period_id AND organization_id = NEW.organization_id FOR SHARE;
   IF NOT FOUND OR NEW.entry_date < period.starts_on OR NEW.entry_date > period.ends_on THEN
-    RAISE EXCEPTION 'the date of the entry is not in the period it names';
+    RAISE EXCEPTION 'FINANCE_ENTRY_PERIOD: the date of the entry is not in the period it names';
   END IF;
   -- The lock of the books (TDD_18 §5.2): the status of the period and the last day of the last closed one agree
   -- ... and it is read from the periods themselves too, so a period closed with a plain UPDATE locks everything up to its last day
@@ -479,17 +481,19 @@ SET search_path = public, pg_temp AS $$
 DECLARE
   account ledger_accounts%ROWTYPE;
   status text;
+  entry_type text;
 BEGIN
   SELECT * INTO account FROM ledger_accounts WHERE id = NEW.account_id AND organization_id = NEW.organization_id;
   IF NOT FOUND OR NOT account.is_postable THEN
     RAISE EXCEPTION 'FINANCE_ACCOUNT_NOT_POSTABLE: the account takes no entries';
   END IF;
-  IF NOT account.active THEN
-    RAISE EXCEPTION 'FINANCE_ACCOUNT_INACTIVE: the account is inactive';
-  END IF;
-  SELECT p.status INTO status
+  SELECT p.status, e.type INTO status, entry_type
     FROM journal_entries e JOIN fiscal_periods p ON p.id = e.period_id AND p.organization_id = e.organization_id
     WHERE e.id = NEW.entry_id AND e.organization_id = NEW.organization_id;
+  -- An inactive account takes no new entries, but the correction of an entry that used it is a reversal (TDD_18 §2.5)
+  IF NOT account.active AND entry_type IS DISTINCT FROM 'reversal' THEN
+    RAISE EXCEPTION 'FINANCE_ACCOUNT_INACTIVE: the account is inactive';
+  END IF;
   IF status IS DISTINCT FROM 'open' THEN
     RAISE EXCEPTION 'FINANCE_PERIOD_CLOSED: the period of the entry is closed';
   END IF;
@@ -540,16 +544,16 @@ SET search_path = public, pg_temp AS $$
 BEGIN
   IF TG_OP = 'DELETE' THEN
     IF OLD.is_system THEN
-      RAISE EXCEPTION 'a system account cannot be deleted, only deactivated';
+      RAISE EXCEPTION 'FINANCE_SYSTEM_ACCOUNT: a system account cannot be deleted, only deactivated';
     END IF;
     RETURN OLD;
   END IF;
   IF NEW.organization_id <> OLD.organization_id THEN
-    RAISE EXCEPTION 'an account does not change organization';
+    RAISE EXCEPTION 'FINANCE_TENANCY: an account does not change organization';
   END IF;
   -- The flag that makes an account undeletable cannot be taken off
   IF OLD.is_system AND NOT NEW.is_system THEN
-    RAISE EXCEPTION 'a system account stays a system account';
+    RAISE EXCEPTION 'FINANCE_SYSTEM_ACCOUNT: a system account stays a system account';
   END IF;
   IF NEW.type <> OLD.type AND EXISTS (SELECT 1 FROM journal_lines WHERE organization_id = OLD.organization_id AND account_id = OLD.id) THEN
     RAISE EXCEPTION 'FINANCE_ACCOUNT_TYPE_LOCKED: the type of an account with entries cannot change';
@@ -604,7 +608,14 @@ BEGIN
   END IF;
   IF NEW.organization_id <> OLD.organization_id OR NEW.year <> OLD.year OR NEW.month <> OLD.month
      OR NEW.starts_on <> OLD.starts_on OR NEW.ends_on <> OLD.ends_on THEN
-    RAISE EXCEPTION 'a period keeps its place in the calendar';
+    RAISE EXCEPTION 'FINANCE_PERIOD_CALENDAR: a period keeps its place in the calendar';
+  END IF;
+  -- An open period keeps the record of its earlier close and reopen as it is, and closing it does not touch the reopen record
+  IF OLD.status = 'open' AND (NEW.reopened_at IS DISTINCT FROM OLD.reopened_at OR NEW.reopened_by IS DISTINCT FROM OLD.reopened_by
+     OR NEW.reopen_reason IS DISTINCT FROM OLD.reopen_reason
+     OR (NEW.status = 'open' AND (NEW.closing_hash IS DISTINCT FROM OLD.closing_hash OR NEW.closed_at IS DISTINCT FROM OLD.closed_at
+                                  OR NEW.closed_by IS DISTINCT FROM OLD.closed_by))) THEN
+    RAISE EXCEPTION 'FINANCE_PERIOD_CLOSED: the record of the close and of the reopen is kept';
   END IF;
   IF OLD.status = 'closed' THEN
     IF NEW.status = 'closed' THEN
@@ -616,7 +627,7 @@ BEGIN
     -- A reopen is a new one: the time moves (the record of an earlier reopen does not do)
     ELSIF NEW.reopened_at IS NULL OR NEW.reopened_at IS NOT DISTINCT FROM OLD.reopened_at OR NEW.reopened_by IS NULL
           OR NEW.reopen_reason IS NULL OR btrim(NEW.reopen_reason) = '' THEN
-      RAISE EXCEPTION 'reopening a period says who, when and why';
+      RAISE EXCEPTION 'FINANCE_REOPEN_RECORD: reopening a period says who, when and why';
     ELSIF NEW.closing_hash IS DISTINCT FROM OLD.closing_hash OR NEW.closed_at IS DISTINCT FROM OLD.closed_at
           OR NEW.closed_by IS DISTINCT FROM OLD.closed_by THEN
       -- The record of the close stays as it was, so the audit trail keeps what was closed and by whom
