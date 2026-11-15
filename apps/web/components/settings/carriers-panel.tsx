@@ -16,12 +16,13 @@ import { Tabs, TabsList, TabsTrigger } from '../ui/tabs'
 
 import { CarrierCard } from './carrier-card'
 import { CarrierConnectDialog } from './carrier-connect-dialog'
+import { CarrierGuidesSection } from './carrier-guides-section'
 import { CarrierRulesDialog } from './carrier-rules-dialog'
 import { CarrierSecretDialog } from './carrier-secret-dialog'
 import { CarrierStatusMapping } from './carrier-status-mapping'
 import { LoadFailed, PageLoading } from './states'
 
-const Sections = { CONNECTIONS: 'connections', MAPPING: 'mapping' } as const
+const Sections = { CONNECTIONS: 'connections', MAPPING: 'mapping', GUIDES: 'guides' } as const
 type Section = (typeof Sections)[keyof typeof Sections]
 
 // What the page shows once a secret is made: kept in memory for the dialog only
@@ -45,6 +46,12 @@ export function CarriersPanel(): ReactElement {
   const [editing, setEditing] = useState<string | null>(null)
   const [secret, setSecret] = useState<SecretToShow | null>(null)
   const canManage = can(ClientPermissions.SETTINGS_MANAGE_CARRIERS)
+  // The prepaid guides show what the owner paid: a section of its own for who holds the permission
+  const canSeeGuides = can(ClientPermissions.CARRIERS_VIEW_GUIDE_BALANCE)
+
+  // A section the person may no longer open (another store, another role) shows the first one
+  const current: Section =
+    section === Sections.GUIDES && !canSeeGuides ? Sections.CONNECTIONS : section
 
   if (connections.isError) {
     return <LoadFailed error={connections.error} onRetry={() => void connections.refetch()} />
@@ -65,7 +72,7 @@ export function CarriersPanel(): ReactElement {
           <h1 className="text-2xl font-semibold">{t('title')}</h1>
           <p className="text-muted-foreground text-sm">{t('description')}</p>
         </div>
-        {canManage && section === Sections.CONNECTIONS ? (
+        {canManage && current === Sections.CONNECTIONS ? (
           <Button
             type="button"
             disabled={registry.data === undefined || registry.data.length === 0}
@@ -77,14 +84,17 @@ export function CarriersPanel(): ReactElement {
         ) : null}
       </header>
 
-      <Tabs value={section} onValueChange={value => setSection(value as Section)}>
+      <Tabs value={current} onValueChange={value => setSection(value as Section)}>
         <TabsList aria-label={t('sections.label')}>
           <TabsTrigger value={Sections.CONNECTIONS}>{t('sections.connections')}</TabsTrigger>
           <TabsTrigger value={Sections.MAPPING}>{t('sections.mapping')}</TabsTrigger>
+          {canSeeGuides ? (
+            <TabsTrigger value={Sections.GUIDES}>{t('sections.guides')}</TabsTrigger>
+          ) : null}
         </TabsList>
       </Tabs>
 
-      {section === Sections.CONNECTIONS ? (
+      {current === Sections.CONNECTIONS ? (
         <>
           {registry.isError ? (
             <p role="alert" className="text-destructive text-sm">
@@ -151,6 +161,8 @@ export function CarriersPanel(): ReactElement {
             </div>
           )}
         </>
+      ) : current === Sections.GUIDES ? (
+        <CarrierGuidesSection connections={live} />
       ) : (
         <MappingSection connections={live} />
       )}

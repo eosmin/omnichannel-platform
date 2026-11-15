@@ -632,6 +632,16 @@ export const PluginApiRoutes = {
     movements: '/plugin-api/inventory/movements',
     kardex: '/plugin-api/inventory/kardex'
   },
+  // Step 5.6 PR E4b: the reads of the transfers between warehouses and of the physical counts, over the same services as
+  // `ApiRoutes.transfers` and `.counts`. Their writes store the id of a person at every step and wait for PR E4b-2.
+  transfers: {
+    list: '/plugin-api/transfers',
+    byId: (id: string) => `/plugin-api/transfers/${id}`
+  },
+  counts: {
+    list: '/plugin-api/counts',
+    byId: (id: string) => `/plugin-api/counts/${id}`
+  },
 
   // Messages (Step 5.6 PR M1b): a plugin writes a reply or a note, and reads the edits and the kept text of a deleted message
   messages: {

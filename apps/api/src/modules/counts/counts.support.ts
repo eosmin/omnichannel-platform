@@ -1,5 +1,5 @@
 import type { Permission } from '@platform/core/auth'
-import type { PrismaTransaction } from '@platform/core/database'
+import type { PrismaTransaction, StockCountWhereInput } from '@platform/core/database'
 import {
   CountLockScopes,
   CountStatus,
@@ -108,3 +108,25 @@ export async function storesOf(
   })
   return rows.map(row => row.storeId)
 }
+
+// The counts a caller reaches (Step 5.6 PR E4b). A plugin's key is bound to ONE store and holds no membership, so it reaches the
+// counts limited to that store and the ones of every store of a warehouse that have a line of its store. A count limited to another
+// store is not its to know: not even its header (number, note, store name) is shown. A person's reach is the whole organization and
+// adds nothing to the query. It is an AND so that it does not replace the OR of the cursor. The reach comes from the ACTOR, so a
+// caller cannot forget it: a plugin actor never reads as a person.
+export const reachableCount = (actor: {
+  storeId: string
+  pluginInstallationId?: string | undefined
+}): { AND: StockCountWhereInput[] } | undefined =>
+  actor.pluginInstallationId === undefined
+    ? undefined
+    : {
+        AND: [
+          {
+            OR: [
+              { storeId: actor.storeId },
+              { storeId: null, lines: { some: { storeId: actor.storeId } } }
+            ]
+          }
+        ]
+      }

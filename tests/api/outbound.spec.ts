@@ -3062,6 +3062,53 @@ describe('Replies on their way to a channel', () => {
       expect(files.map(file => file.deliveryStatus)).toEqual(['sent', 'failed'])
     })
 
+    describe('a receipt that carries the id of the platform (a remote plugin)', () => {
+      const byMessageId = (
+        reply: { connectionId: string },
+        messageId: string,
+        externalId: string,
+        isLastAttempt = false
+      ) =>
+        receipts.handleReceipt(
+          TEST_CHANNEL_ID,
+          {
+            type: ChannelEventTypes.MESSAGE_DELIVERED,
+            connectionId: reply.connectionId,
+            channelIdentity: '50370000000',
+            status: { externalId },
+            messageId,
+            timestamp: new Date().toISOString()
+          },
+          isLastAttempt
+        )
+
+      it('finds the reply by it when the provider id is not the one the platform stored', async () => {
+        const reply = await sentReply()
+
+        await byMessageId(reply, reply.id, `other-${randomUUID()}`, true)
+
+        expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.DELIVERED)
+      })
+
+      it('never reaches the reply of another connection, whatever id it names', async () => {
+        const mine = await sentReply()
+        const theirs = await sentReply()
+
+        await byMessageId(theirs, mine.id, `other-${randomUUID()}`, true)
+
+        expect((await stored(mine.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+        expect((await stored(theirs.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+      })
+
+      it('does nothing for an id that is no message', async () => {
+        const reply = await sentReply()
+
+        await byMessageId(reply, randomUUID(), `other-${randomUUID()}`, true)
+
+        expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+      })
+    })
+
     it('moves a sent reply to delivered and then read, and says each once', async () => {
       const reply = await sentReply()
 

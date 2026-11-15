@@ -1,10 +1,5 @@
-import { Permissions } from '@platform/core/auth'
-import {
-  type PrismaService,
-  type PrismaTransaction,
-  type StockTransferWhereInput
-} from '@platform/core/database'
-import { MembershipStatus, type TransferStatus, TransferLockScopes } from '@platform/core/domain'
+import type { PrismaTransaction } from '@platform/core/database'
+import { type TransferStatus, TransferLockScopes } from '@platform/core/domain'
 import {
   ErrorCodes,
   HttpStatusCodes,
@@ -73,48 +68,6 @@ export async function nextTransferNumber(
   const highest = rows[0] === undefined ? 0 : (transferSequence(rows[0].number) ?? 0)
   return formatTransferNumber(highest + 1)
 }
-
-// The stores of the organization the caller is an active member of AND holds a transfer permission in (the permission is
-// the one of the role they have in EACH store, not only in the store of the header): the ones whose lines they see and
-// may write. A member of a store whose role has no part in transfers sees nothing of it here.
-export async function visibleStoreIds(
-  prisma: PrismaService,
-  organizationId: string,
-  userId: string
-): Promise<string[]> {
-  const rows = await prisma.client.membership.findMany({
-    where: {
-      userId,
-      organizationId,
-      status: MembershipStatus.ACTIVE,
-      revokedAt: null,
-      role: {
-        permissions: {
-          some: {
-            name: {
-              in: [Permissions.INVENTORY_MANAGE_TRANSFERS, Permissions.INVENTORY_RECEIVE_TRANSFERS]
-            }
-          }
-        }
-      }
-    },
-    select: { storeId: true }
-  })
-  return rows.map(row => row.storeId)
-}
-
-// A transfer the caller may know exists: one they made, one with no line yet, or one with a line of a store they see.
-// What is made only of other stores' lines is not theirs: not even its header (number, note, warehouses) is shown.
-export const reachableTransfer = (
-  userId: string,
-  visible: readonly string[]
-): { OR: StockTransferWhereInput[] } => ({
-  OR: [
-    { createdBy: userId },
-    { lines: { none: {} } },
-    { lines: { some: { storeId: { in: [...visible] } } } }
-  ]
-})
 
 // Dispatching and cancelling move the stock of EVERY line, so the caller must see every line: they cannot write the
 // stock of a store they do not belong to (or hold no transfer permission in).
