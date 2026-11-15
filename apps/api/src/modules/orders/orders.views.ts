@@ -40,6 +40,10 @@ export const ORDER_DETAIL_SELECT = {
   shippingCents: true,
   discountCents: true,
   totalCents: true,
+  // The tax the order was made with (TDD_18 §7); null on an order made before the tax columns
+  taxCents: true,
+  pricesIncludeTax: true,
+  shippingTaxRateBps: true,
   currency: true,
   paymentMethod: true,
   paymentStatus: true,
@@ -96,6 +100,9 @@ export const ORDER_DETAIL_SELECT = {
       priceOverrideReason: true,
       priceOverriddenBy: true,
       freeShipping: true,
+      taxTreatment: true,
+      taxRateBps: true,
+      taxCents: true,
       allocations: {
         select: { warehouseId: true, quantity: true },
         orderBy: { createdAt: 'asc' }
@@ -129,6 +136,9 @@ interface ListRow {
 }
 
 interface DetailRow extends Omit<ListRow, 'items' | 'carrierConnectionId'> {
+  taxCents: number | null
+  pricesIncludeTax: boolean | null
+  shippingTaxRateBps: number | null
   conversationId: string | null
   paymentReference: string | null
   paymentProofMediaId: string | null
@@ -183,6 +193,10 @@ export interface OrderItemView {
   priceOverrideReason: string | null
   priceOverriddenBy: string | null
   freeShipping: boolean
+  // How the line was taxed when the order was made; null on an order made before the tax columns
+  taxTreatment: string | null
+  taxRateBps: number | null
+  taxCents: number | null
   allocations: { warehouseId: string; quantity: number }[]
 }
 

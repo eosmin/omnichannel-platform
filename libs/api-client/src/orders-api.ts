@@ -59,6 +59,10 @@ const orderItemSchema = z.object({
   priceOverrideReason: z.string().nullable(),
   priceOverriddenBy: z.string().nullable(),
   freeShipping: z.boolean(),
+  // How the line was taxed when the order was made (TDD_18 §7); null on an order made before the tax columns
+  taxTreatment: z.string().nullable(),
+  taxRateBps: z.number().int().nullable(),
+  taxCents: z.number().int().nullable(),
   allocations: z.array(z.object({ warehouseId: z.string(), quantity: z.number().int() }))
 })
 export type OrderItemView = z.output<typeof orderItemSchema>
@@ -69,6 +73,10 @@ export type OrderItemView = z.output<typeof orderItemSchema>
 export const orderDetailSchema = orderSummarySchema
   .omit({ customer: true, priceModified: true, carrierConnectionId: true })
   .extend({
+    // The tax of the order, fixed when it was made; null on an order made before the tax columns (taxed at posting)
+    taxCents: z.number().int().nullable(),
+    pricesIncludeTax: z.boolean().nullable(),
+    shippingTaxRateBps: z.number().int().nullable(),
     conversationId: z.string().nullable(),
     paymentReference: z.string().nullable(),
     paymentProofMediaId: z.string().nullable(),
