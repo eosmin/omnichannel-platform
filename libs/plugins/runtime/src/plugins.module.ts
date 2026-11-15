@@ -57,7 +57,18 @@ const OFFICIAL: PluginsModuleOptions = {
 // own hook must never see it empty. A plugin that breaks its contract fails the boot.
 @Module({})
 export class PluginsModule {
+  // The module of the official composition is built once: every importer gets the same object, so the process has one registry.
+  // The remote plugins are registered in the registry that one module builds (`RemoteChannelSync`), and a second registry
+  // would not know them.
+  private static official: DynamicModule | undefined
+
   static forRoot(options: PluginsModuleOptions = OFFICIAL): DynamicModule {
+    if (options !== OFFICIAL) return PluginsModule.build(options)
+    PluginsModule.official ??= PluginsModule.build(options)
+    return PluginsModule.official
+  }
+
+  private static build(options: PluginsModuleOptions): DynamicModule {
     const withToy = options === OFFICIAL
     const channelRegistry: Provider = {
       provide: PluginRegistry,

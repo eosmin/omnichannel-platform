@@ -12,6 +12,10 @@ import type { AuthenticatedRequest } from '@platform/core/logger'
 import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
 
 import {
+  PluginCommandSecretService,
+  type RotatedCommandSecret
+} from './plugin-command-secret.service'
+import {
   type PluginCatalogEntry,
   PluginInstallationsService,
   type PluginInstallResult
@@ -38,7 +42,8 @@ type Store = ResolvedTenant['store']
 export class PluginsController {
   constructor(
     private readonly installations: PluginInstallationsService,
-    private readonly registration: PluginRegistrationService
+    private readonly registration: PluginRegistrationService,
+    private readonly commandSecrets: PluginCommandSecretService
   ) {}
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)
@@ -84,6 +89,21 @@ export class PluginsController {
     @Req() req: AuthenticatedRequest
   ): Promise<PluginSetupOffer> {
     return this.installations.reissueSetupCode(store, installationId, actorOf(user, store, req))
+  }
+
+  // A new secret for the commands to a remote channel (the id is the installation's): shown once, and the previous one still signs for
+  // ten minutes. The answer carries a secret and is not stored.
+  @RequirePermissions(Permissions.SETTINGS_MANAGE_PLUGINS)
+  @NoStore()
+  @Post(ApiRoutes.plugins.commandSecret(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  rotateCommandSecret(
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', new ZodValidationPipe(uuidSchema)) installationId: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<RotatedCommandSecret> {
+    return this.commandSecrets.rotate(store, installationId, actorOf(user, store, req))
   }
 
   // The owner pastes the manifest of an integration plugin (D10): 201 when the id is new, 200 when a newer version of one of

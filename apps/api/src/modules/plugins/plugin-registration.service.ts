@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
+import { RemoteChannelSync } from '@platform/channels/connections'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
@@ -80,7 +81,8 @@ export class PluginRegistrationService {
     private readonly registry: PluginRegistry,
     private readonly carriers: CarrierRegistry,
     private readonly audit: AuditService,
-    private readonly icons: PluginIconService
+    private readonly icons: PluginIconService,
+    private readonly sync: RemoteChannelSync
   ) {}
 
   async register(
@@ -148,6 +150,8 @@ export class PluginRegistrationService {
     })
     // After the audit: the row is committed and the registration happened, whatever becomes of the picture
     if (icon !== null) await this.keepIcon(manifest.id, icon)
+    // A newer manifest of a remote channel replaces its adapter in every process (the installations that exist keep working)
+    if (manifest.type === PluginCatalogTypes.CHANNEL) await this.sync.announceChange()
     return view
   }
 

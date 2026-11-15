@@ -1,11 +1,17 @@
 import { Injectable } from '@nestjs/common'
 
+import {
+  newCommandSecret,
+  RemoteChannelSync,
+  sealCommandSecret
+} from '@platform/channels/connections'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { generateToken, hashToken } from '@platform/core/crypto'
+import { CredentialCipher, generateToken, hashToken } from '@platform/core/crypto'
 import { lockStoreForWrite, PrismaService } from '@platform/core/database'
 import {
   PLUGIN_API_KEY_TOKEN_PREFIX,
+  PluginCatalogTypes,
   PluginInstallationStatus,
   PluginInstallLimits,
   PluginStatus
@@ -23,6 +29,8 @@ export interface PluginSetupResult {
   storeId: string
   scopes: string[]
   rateLimitPerMinute: number
+  // Only for a remote channel: the secret that signs the commands the platform sends it (TDD_10 §6.7.3). Shown here once, like the key.
+  commandSecret?: string
 }
 
 function invalidCode(): PlatformException {
@@ -45,7 +53,9 @@ export class PluginSetupExchangeService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly codes: PluginSetupCodeStore,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly cipher: CredentialCipher,
+    private readonly sync: RemoteChannelSync
   ) {}
 
   async exchange(
@@ -66,9 +76,19 @@ export class PluginSetupExchangeService {
           status: PluginInstallationStatus.PENDING_SETUP,
           plugin: { status: PluginStatus.APPROVED }
         },
-        select: { id: true, pluginId: true, scopes: true, rateLimitPerMinute: true }
+        select: {
+          id: true,
+          pluginId: true,
+          scopes: true,
+          rateLimitPerMinute: true,
+          plugin: { select: { type: true } }
+        }
       })
       if (installation === null) return null
+      // A remote channel also gets the secret of its commands, in the same write that activates it, so there is no active
+      // channel without one
+      const isChannel = installation.plugin.type === String(PluginCatalogTypes.CHANNEL)
+      const commandSecret = isChannel ? newCommandSecret() : null
       const activated = await tx.pluginInstallation.updateMany({
         where: {
           id: installation.id,
@@ -78,10 +98,17 @@ export class PluginSetupExchangeService {
         data: {
           status: PluginInstallationStatus.ACTIVE,
           apiKeyPrefix: key.slice(0, PluginInstallLimits.KEY_DISPLAY_PREFIX_LENGTH),
-          apiKeyHash: hashToken(key)
+          apiKeyHash: hashToken(key),
+          ...(commandSecret === null
+            ? {}
+            : {
+                commandSecret: sealCommandSecret(this.cipher, commandSecret),
+                commandSecretPrevious: null,
+                commandSecretRotatedAt: null
+              })
         }
       })
-      return activated.count === 1 ? installation : null
+      return activated.count === 1 ? { ...installation, commandSecret } : null
     })
     if (result === null) throw invalidCode()
 
@@ -96,13 +123,16 @@ export class PluginSetupExchangeService {
       ...(caller.ipAddress === undefined ? {} : { ipAddress: caller.ipAddress }),
       ...(caller.userAgent === undefined ? {} : { userAgent: caller.userAgent })
     })
+    // The registries of the other processes learn that a channel came up
+    if (result.commandSecret !== null) await this.sync.announceChange()
     return {
       apiKey: key,
       installationId: result.id,
       pluginId: result.pluginId,
       storeId: record.storeId,
       scopes: knownScopes(result.scopes),
-      rateLimitPerMinute: result.rateLimitPerMinute
+      rateLimitPerMinute: result.rateLimitPerMinute,
+      ...(result.commandSecret === null ? {} : { commandSecret: result.commandSecret })
     }
   }
 }

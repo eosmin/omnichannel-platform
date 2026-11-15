@@ -214,6 +214,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'plugins.revoke': { step: '3.6' },
   'plugins.consent': { step: '5.6' }, // PR W1: the consent screen
   'plugins.setupCode': { step: '5.6' }, // PR W1: the owner asks for a new code
+  'plugins.commandSecret': { step: '5.6' }, // PR W1: the owner rotates the secret of a channel plugin
   'plugins.config': { step: '5.6' },
   'pluginWidgets.list': { step: '5.7' },
   'pluginWidgets.sessions': { step: '5.7' },

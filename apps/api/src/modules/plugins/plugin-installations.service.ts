@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 
 import { API_PREFIX, ApiRoutes } from '@platform/core/api'
+import { RemoteChannelSync } from '@platform/channels/connections'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { isUniqueViolation, lockStoreForWrite, PrismaService } from '@platform/core/database'
@@ -112,7 +113,8 @@ export class PluginInstallationsService {
     private readonly carrierConnections: CarrierConnectionsService,
     private readonly publicApi: PublicApiConfig,
     private readonly audit: AuditService,
-    private readonly integrations: PluginIntegrationInstallService
+    private readonly integrations: PluginIntegrationInstallService,
+    private readonly sync: RemoteChannelSync
   ) {}
 
   // The approved plugins this store may see: the ones the platform ships (a row the registry does not know is shown to
@@ -209,11 +211,19 @@ export class PluginInstallationsService {
       plugin.status !== String(PluginStatus.APPROVED) ||
       // A plugin another organization registered does not exist for this one
       (plugin.organizationId !== null && plugin.organizationId !== store.organizationId) ||
-      (this.registry.has(pluginId) && !this.registry.isVisibleTo(pluginId, storeId))
+      // A remote channel is private to the stores that installed it, so a store that has not is not told it does not exist: the
+      // organization check above is its rule (as in the catalog and the consent)
+      (this.registry.has(pluginId) &&
+        !this.registry.isRemote(pluginId) &&
+        !this.registry.isVisibleTo(pluginId, storeId))
     ) {
       throw resourceNotFound('plugin')
     }
-    if (plugin.type === String(PluginCatalogTypes.INTEGRATION)) {
+    // A remote channel is a plugin an organization registered (an official one has no organization): it is installed with the
+    // scopes its manifest asks for, like an integration plugin, and gets its command secret when it sets itself up
+    const isRemoteChannel =
+      plugin.type === String(PluginCatalogTypes.CHANNEL) && plugin.organizationId !== null
+    if (plugin.type === String(PluginCatalogTypes.INTEGRATION) || isRemoteChannel) {
       if (scopes === undefined) {
         throw new PlatformException(
           ErrorCodes.VALIDATION_FAILED,
@@ -337,10 +347,21 @@ export class PluginInstallationsService {
     // Audited right after the revoke, before the disconnects: a failure of those must not leave the revocation unrecorded
     if (revoked) this.record(AuditAction.PLUGIN_REVOKED, storeId, installation.id, pluginId, actor)
     // A code that was still waiting for the plugin to set up stops working with the installation
-    if (installation.plugin.type === String(PluginCatalogTypes.INTEGRATION)) {
+    if (
+      installation.plugin.type === String(PluginCatalogTypes.INTEGRATION) ||
+      installation.plugin.type === String(PluginCatalogTypes.CHANNEL)
+    ) {
       await this.integrations.voidSetup(installation.id)
     }
-    await this.disconnectOpen(storeId, installation.id, pluginId, actor)
+    // The plugin hears the disconnects first (they are signed with the secrets of the revoked installation); then every process stops
+    // signing for it, whatever became of the disconnects
+    try {
+      await this.disconnectOpen(storeId, installation.id, pluginId, actor)
+    } finally {
+      if (installation.plugin.type === String(PluginCatalogTypes.CHANNEL)) {
+        await this.sync.announceChange()
+      }
+    }
     return this.entryOf(store, pluginId)
   }
 

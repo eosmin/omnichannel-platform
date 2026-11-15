@@ -163,6 +163,7 @@ export const AuditAction = {
   PLUGIN_SETUP_COMPLETED: 'plugin.setup_completed',
   PLUGIN_SCOPES_UPDATED: 'plugin.scopes_updated',
   PLUGIN_REVOKED: 'plugin.revoked',
+  PLUGIN_COMMAND_SECRET_ROTATED: 'plugin.command_secret_rotated',
   CHANNEL_CONNECTED: 'channel.connected',
   CHANNEL_DISCONNECTED: 'channel.disconnected',
   CHANNEL_TOKEN_UPDATED: 'channel.token_updated',
