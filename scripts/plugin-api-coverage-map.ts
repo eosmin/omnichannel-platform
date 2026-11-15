@@ -152,18 +152,33 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'conversations.unread': { scope: 'conversations:write' },
   'conversations.bulk': { scope: 'conversations:write' },
   'conversations.export': { proposed: ['conversations:read', 'exports:write'], step: STEP },
-  'messages.create': { scope: 'messages:write' },
-  'messages.byId': { scope: 'messages:write' },
-  'messages.resend': { scope: 'messages:write' },
-  'messages.discard': { scope: 'messages:write' },
-  'messages.resendCaption': { scope: 'messages:write' },
-  'messages.refetchFile': { scope: 'messages:write' },
+  // Seeing a conversation is `conversations:read` for a plugin as for a person, so each message route names it too
+  'messages.create': {
+    scope: ['conversations:read', 'messages:write'],
+    exposed: '/plugin-api/messages'
+  },
+  // To build (the PR that gives the core an actor that is not a person): they write the id of the person who edited, discarded,
+  // sent again or reacted, and DELETE needs MESSAGES_DELETE, which no scope grants (a scope of its own, never a wider one)
+  'messages.byId': { scope: ['conversations:read', 'messages:write'] },
+  'messages.resend': { scope: ['conversations:read', 'messages:write'] },
+  'messages.discard': { scope: ['conversations:read', 'messages:write'] },
+  'messages.resendCaption': {
+    scope: ['conversations:read', 'messages:write'],
+    exposed: '/plugin-api/messages/:id/resend-caption'
+  },
+  'messages.refetchFile': {
+    scope: ['conversations:read', 'messages:write'],
+    exposed: '/plugin-api/messages/:id/files/:index/refetch'
+  },
   'messages.reaction': { scope: ['conversations:read', 'messages:write'] },
   'messages.deletedContent': {
-    proposed: ['conversations:read', 'messages:read-deleted'],
-    step: STEP
+    scope: ['conversations:read', 'messages:read-deleted'],
+    exposed: '/plugin-api/messages/:id/deleted-content'
   },
-  'messages.revisions': { scope: 'messages:read' },
+  'messages.revisions': {
+    scope: ['conversations:read', 'messages:read'],
+    exposed: '/plugin-api/messages/:id/revisions'
+  },
 
   // Customers (`customers:*` exist)
   'customers.list': { scope: ['customers:read', 'customers:write'] },
