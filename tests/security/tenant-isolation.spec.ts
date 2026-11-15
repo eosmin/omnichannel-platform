@@ -39,18 +39,21 @@ import {
   TransferStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { Events } from '@platform/core/events'
 import { Locales } from '@platform/core/i18n'
 import {
   NotificationSeverity,
   notificationMessageKey,
   NotificationTypes
 } from '@platform/core/notifications'
-import { ExportFormats, ExportTypes } from '@platform/core/queues'
+import { ExportFormats, ExportTypes, JobNames, QueueNames } from '@platform/core/queues'
 import { StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 import { PluginRegistry } from '@platform/plugins/runtime'
+import { PluginScopes } from '@platform/plugins/sdk'
 
 import { ChannelOAuthStore } from '../../apps/api/src/modules/channels/oauth/channel-oauth.store'
+import { WebhookDispatcher } from '../../apps/api/src/modules/tenant-webhooks/webhook-dispatcher'
 import {
   buildChannelPlugin,
   createCustomer,
@@ -68,8 +71,13 @@ import {
   createProductVariant,
   itemOfStockRow,
   createTransfer,
+  createFinanceFixture,
+  createPeriod,
   createWarehouse,
   linkWarehouse,
+  postTestEntry,
+  simpleEntry,
+  type FinanceFixture,
   BUILT_SERVICE_CODE,
   createCarrierConnection,
   createRemittance,
@@ -115,6 +123,7 @@ import {
   type IsolationResource,
   type IsolationScene
 } from '../helpers/isolation'
+import { queueOf } from '../helpers/queue'
 
 // The release gate of the platform (TDD_13 section 6): no user, in no way, reaches the data of a
 // store they do not belong to. It runs against the real app, as the api runs: the same AppModule,
@@ -135,6 +144,33 @@ async function organizationOfStore(owner: OwnerClient, storeId: string): Promise
     })
   ).organizationId
 }
+
+// The books of an organization (TDD_18): set up once per organization of the run, as the owner of the database, so that the
+// resources of the ledger have something to read. The accounts are the fixture's, the entries are written the way the posting
+// service writes them.
+const financeBooks = new Map<string, Promise<FinanceFixture>>()
+function booksOf(owner: OwnerClient, organizationId: string): Promise<FinanceFixture> {
+  const known = financeBooks.get(organizationId)
+  if (known !== undefined) return known
+  const created = createFinanceFixture(owner, organizationId)
+  financeBooks.set(organizationId, created)
+  return created
+}
+async function booksOfStore(owner: OwnerClient, storeId: string): Promise<FinanceFixture> {
+  return booksOf(owner, await organizationOfStore(owner, storeId))
+}
+// Each call asks for a period of a year no other has taken, so that every row is one more
+let periodYear = 2100
+const nextPeriodYear = (): number => (periodYear += 1)
+let openedYear = 2150
+const nextOpenedYear = (): number => (openedYear += 1)
+const FINANCE_ENTRY_DATE = '2026-11-10'
+// What the one-row-per-organization resources of the books put in a row of an organization, to tell two organizations apart
+const FINANCE_MARKERS = {
+  A: { start: '2026-01-01', cents: 111 },
+  B: { start: '2026-01-02', cents: 222 }
+} as const
+let financeBooksA: FinanceFixture | null = null
 
 let viewerRoleId = ''
 // Two warehouses of organization A, for the body of the creation check of the transfers
@@ -983,6 +1019,289 @@ const resources: IsolationResource[] = [
     untouched: async (owner, id) =>
       (await owner.storeWarehouse.count({ where: { warehouseId: id } })) === 1
   },
+  // The books of the organization (TDD_18 §2.1): every store of it reaches them with the permission it holds there, another
+  // organization never does. The settings, the role and payment maps, the balances and the failed postings are one set per
+  // organization (the checks of a row of its own, read through the store of the request); the chart, the periods and the
+  // journal are rows reached by id.
+  {
+    name: 'financeSettings',
+    create: async (owner, { storeId }) => {
+      await booksOfStore(owner, storeId)
+      return { id: storeId }
+    },
+    scope: 'organization',
+    readPath: () => ApiRoutes.finance.settings,
+    own: {
+      set: async (owner, storeId, marker) => {
+        const marked = marker === 'A' ? FINANCE_MARKERS.A : FINANCE_MARKERS.B
+        await owner.financeSettings.update({
+          where: { organizationId: await organizationOfStore(owner, storeId) },
+          data: { accountingStartDate: new Date(`${marked.start}T00:00:00Z`) }
+        })
+      },
+      markerIn: body => {
+        const start = (body as { accountingStartDate?: string }).accountingStartDate
+        return start === FINANCE_MARKERS.A.start
+          ? 'A'
+          : start === FINANCE_MARKERS.B.start
+            ? 'B'
+            : null
+      }
+    },
+    modify: { path: () => ApiRoutes.finance.settings, body: { recognizeSaleOn: 'shipped' } },
+    untouched: async (owner, storeId) =>
+      (
+        await owner.financeSettings.findUniqueOrThrow({
+          where: { organizationId: await organizationOfStore(owner, storeId) },
+          select: { recognizeSaleOn: true }
+        })
+      ).recognizeSaleOn === 'delivered'
+  },
+  {
+    name: 'ledgerAccount',
+    create: async (owner, { storeId }) => {
+      const organizationId = await organizationOfStore(owner, storeId)
+      await booksOf(owner, organizationId)
+      return {
+        id: (
+          await owner.ledgerAccount.create({
+            data: {
+              organizationId,
+              code: `L${randomUUID().slice(0, 8)}`,
+              name: 'Isolation account',
+              type: 'expense',
+              normalSide: 'debit'
+            },
+            select: { id: true }
+          })
+        ).id
+      }
+    },
+    scope: 'organization',
+    readPath: ApiRoutes.finance.accounts.byId,
+    listPath: ApiRoutes.finance.accounts.list,
+    modify: { path: ApiRoutes.finance.accounts.byId, body: { name: 'hacked' } },
+    untouched: async (owner, id) =>
+      (await owner.ledgerAccount.findUnique({ where: { id }, select: { name: true } }))?.name !==
+      'hacked',
+    creation: {
+      path: ApiRoutes.finance.accounts.create,
+      body: name => ({ code: `C${randomUUID().slice(0, 8)}`, name, type: 'expense' }),
+      strict: true,
+      countIn: async (owner, storeId) =>
+        owner.ledgerAccount.count({
+          where: { organizationId: await organizationOfStore(owner, storeId) }
+        }),
+      storeOf: async (owner, id) =>
+        (await owner.ledgerAccount.findUnique({ where: { id }, select: { organizationId: true } }))
+          ?.organizationId ?? null
+    }
+  },
+  // The role map is one set per organization: the marker is which role is mapped
+  {
+    name: 'accountRoleMapping',
+    create: async (owner, { storeId }) => {
+      await booksOfStore(owner, storeId)
+      return { id: storeId }
+    },
+    scope: 'organization',
+    readPath: () => ApiRoutes.finance.accountRoles.list,
+    own: {
+      set: async (owner, storeId, marker) => {
+        const organizationId = await organizationOfStore(owner, storeId)
+        const books = await booksOf(owner, organizationId)
+        await owner.accountRoleMapping.deleteMany({ where: { organizationId } })
+        await owner.accountRoleMapping.create({
+          data:
+            marker === 'A'
+              ? { organizationId, role: 'cash_default', accountId: books.accounts.cash }
+              : { organizationId, role: 'bank_default', accountId: books.accounts.bank }
+        })
+      },
+      markerIn: body => {
+        const roles = (body as { role: string }[]).map(row => row.role)
+        return roles.includes('cash_default') ? 'A' : roles.includes('bank_default') ? 'B' : null
+      }
+    },
+    untouched: () => Promise.resolve(true)
+  },
+  {
+    name: 'paymentMethodAccount',
+    create: async (owner, { storeId }) => {
+      await booksOfStore(owner, storeId)
+      return { id: storeId }
+    },
+    scope: 'organization',
+    readPath: () => ApiRoutes.finance.paymentAccounts.list,
+    own: {
+      set: async (owner, storeId, marker) => {
+        const organizationId = await organizationOfStore(owner, storeId)
+        const books = await booksOf(owner, organizationId)
+        await owner.paymentMethodAccount.deleteMany({ where: { organizationId } })
+        await owner.paymentMethodAccount.create({
+          data: {
+            organizationId,
+            paymentMethod: marker === 'A' ? 'CASH' : 'CARD',
+            accountId: books.accounts.cash
+          }
+        })
+      },
+      markerIn: body => {
+        const methods = (body as { paymentMethod: string }[]).map(row => row.paymentMethod)
+        return methods.includes('CASH') ? 'A' : methods.includes('CARD') ? 'B' : null
+      }
+    },
+    untouched: () => Promise.resolve(true)
+  },
+  {
+    name: 'fiscalPeriod',
+    create: async (owner, { storeId }) => {
+      const organizationId = await organizationOfStore(owner, storeId)
+      await booksOf(owner, organizationId)
+      return { id: await createPeriod(owner, organizationId, nextPeriodYear(), 1) }
+    },
+    scope: 'organization',
+    readPath: ApiRoutes.finance.periods.byId,
+    listPath: ApiRoutes.finance.periods.list,
+    untouched: () => Promise.resolve(true),
+    creation: {
+      path: ApiRoutes.finance.periods.open,
+      body: () => ({ year: nextOpenedYear(), month: 1 }),
+      status: 200,
+      strict: true,
+      countIn: async (owner, storeId) =>
+        owner.fiscalPeriod.count({
+          where: { organizationId: await organizationOfStore(owner, storeId) }
+        }),
+      storeOf: async (owner, id) =>
+        (await owner.fiscalPeriod.findUnique({ where: { id }, select: { organizationId: true } }))
+          ?.organizationId ?? null
+    }
+  },
+  // The journal is immutable: the only change a route can try is a reversal, which must never reach another organization's entry
+  {
+    name: 'journalEntry',
+    create: async (owner, { storeId }) => {
+      const books = await booksOfStore(owner, storeId)
+      return { id: (await postTestEntry(owner, simpleEntry(books))).id }
+    },
+    scope: 'organization',
+    readPath: ApiRoutes.finance.entries.byId,
+    listPath: ApiRoutes.finance.entries.list,
+    modify: {
+      path: ApiRoutes.finance.entries.reverse,
+      method: 'post',
+      body: { memo: 'Reversed by the suite' }
+    },
+    untouched: async (owner, id) =>
+      (await owner.journalEntry.count({ where: { reversesEntryId: id } })) === 0,
+    creation: {
+      path: ApiRoutes.finance.entries.manual,
+      body: name => {
+        const books = financeBooksA
+        if (books === null) throw new Error('the books of organization A are not set up')
+        return {
+          idempotencyKey: `iso-${randomUUID()}`,
+          entryDate: FINANCE_ENTRY_DATE,
+          type: 'manual',
+          memo: name,
+          lines: [
+            { accountId: books.accounts.expense, debitCents: 5 },
+            { accountId: books.accounts.cash, creditCents: 5 }
+          ]
+        }
+      },
+      strict: true,
+      countIn: async (owner, storeId) =>
+        owner.journalEntry.count({
+          where: { organizationId: await organizationOfStore(owner, storeId) }
+        }),
+      storeOf: async (owner, id) =>
+        (await owner.journalEntry.findUnique({ where: { id }, select: { organizationId: true } }))
+          ?.organizationId ?? null
+    }
+  },
+  // The lines belong to their entry: they are read with it, and the store of a line is a dimension and not a scope
+  {
+    name: 'journalLine',
+    create: async (owner, { storeId }) => {
+      const books = await booksOfStore(owner, storeId)
+      return { id: (await postTestEntry(owner, simpleEntry(books, 700))).id }
+    },
+    scope: 'organization',
+    readPath: ApiRoutes.finance.entries.byId,
+    modify: {
+      path: ApiRoutes.finance.entries.reverse,
+      method: 'post',
+      body: { memo: 'Reversed by the suite' }
+    },
+    untouched: async (owner, id) =>
+      (await owner.journalEntry.count({ where: { reversesEntryId: id } })) === 0
+  },
+  // What each account has had debited and credited: one set per organization, told apart by an amount only its set posts
+  {
+    name: 'accountPeriodBalance',
+    create: async (owner, { storeId }) => {
+      await booksOfStore(owner, storeId)
+      return { id: storeId }
+    },
+    scope: 'organization',
+    readPath: () => ApiRoutes.finance.balances,
+    own: {
+      set: async (owner, storeId, marker) => {
+        const books = await booksOfStore(owner, storeId)
+        const cents = marker === 'A' ? FINANCE_MARKERS.A.cents : FINANCE_MARKERS.B.cents
+        await postTestEntry(owner, {
+          organizationId: books.organizationId,
+          periodId: books.periodId,
+          lines: [
+            { accountId: books.accounts.expense, debitCents: cents },
+            { accountId: books.accounts.liability, creditCents: cents }
+          ]
+        })
+      },
+      markerIn: body => {
+        const credits = (body as { data: { creditCents: string }[] }).data.map(
+          row => row.creditCents
+        )
+        return credits.includes(String(FINANCE_MARKERS.A.cents))
+          ? 'A'
+          : credits.includes(String(FINANCE_MARKERS.B.cents))
+            ? 'B'
+            : null
+      }
+    },
+    untouched: () => Promise.resolve(true)
+  },
+  {
+    name: 'financePostingFailure',
+    create: async (owner, { storeId }) => {
+      await booksOfStore(owner, storeId)
+      return { id: storeId }
+    },
+    scope: 'organization',
+    readPath: () => ApiRoutes.finance.postings,
+    own: {
+      set: async (owner, storeId, marker) => {
+        const organizationId = await organizationOfStore(owner, storeId)
+        await owner.financePostingFailure.deleteMany({ where: { organizationId } })
+        await owner.financePostingFailure.create({
+          data: {
+            organizationId,
+            sourceType: 'order',
+            sourceId: `marker-${marker}`,
+            eventKind: 'sale',
+            reason: 'role_not_mapped'
+          }
+        })
+      },
+      markerIn: body => {
+        const row = (body as { data: { sourceId: string }[] }).data[0]
+        return row === undefined ? null : row.sourceId.slice(-1)
+      }
+    },
+    untouched: () => Promise.resolve(true)
+  },
   // A count belongs to the organization (TDD_16 §1, §6): every store of it reaches the sheet, another organization none
   {
     name: 'stockCount',
@@ -1697,6 +2016,7 @@ describe('Tenant isolation', () => {
     templateStores = [ctx.storeA.id, ctx.storeA2.id, ctx.storeB.id]
     agentRoleId = ctx.roleIds[RoleNames.AGENT]
     reactorId = ctx.adminA.id
+    financeBooksA = await booksOf(owner, ctx.orgA.id)
     conversationInA = (await createConversationOf(owner, { storeId: ctx.storeA.id })).id
     // The shipping plugin is installed in store A, where the suite connects a carrier through the api
     await ensurePluginInstallation(owner, { storeId: ctx.storeA.id, pluginId: ShippingPlugin.ID })
@@ -1776,6 +2096,131 @@ describe('Tenant isolation', () => {
       const own = await createWarehouse(owner, { organizationId: ctx.orgA.id })
 
       const response = await api(app, ctx.adminA, ctx.storeB).get(ApiRoutes.warehouses.byId(own.id))
+
+      expect(response.status).toBe(403)
+    })
+  })
+
+  // The books belong to the organization (TDD_18 §2.1, §9.2): the checks above prove that another organization reaches none of
+  // them by id; these prove the rest of the rules of an organization-scoped ledger, through the api
+  describe('the books of an organization', () => {
+    it('are the same for a member of any store of the organization, and none of the other organization', async () => {
+      const own = await postTestEntry(owner, simpleEntry(await booksOf(owner, ctx.orgA.id), 321))
+      const foreign = await postTestEntry(
+        owner,
+        simpleEntry(await booksOf(owner, ctx.orgB.id), 321)
+      )
+
+      const fromSibling = await api(app, ctx.adminA2, ctx.storeA2)
+        .get(ApiRoutes.finance.entries.list)
+        .query({ limit: 100 })
+
+      expect(fromSibling.status).toBe(200)
+      const ids = (fromSibling.body as { data: { id: string }[] }).data.map(row => row.id)
+      expect(ids).toContain(own.id)
+      expect(ids).not.toContain(foreign.id)
+    })
+
+    it('show every line of an entry whatever store the line is tagged with: the store of a line is a dimension and not a scope', async () => {
+      const books = await booksOf(owner, ctx.orgA.id)
+      const entry = await postTestEntry(owner, {
+        organizationId: ctx.orgA.id,
+        periodId: books.periodId,
+        lines: [
+          { accountId: books.accounts.expense, debitCents: 90, storeId: ctx.storeA.id },
+          { accountId: books.accounts.expense, debitCents: 10, storeId: ctx.storeA2.id },
+          { accountId: books.accounts.cash, creditCents: 100 }
+        ]
+      })
+
+      const fromA = await api(app, ctx.adminA, ctx.storeA).get(
+        ApiRoutes.finance.entries.byId(entry.id)
+      )
+      const fromA2 = await api(app, ctx.adminA2, ctx.storeA2).get(
+        ApiRoutes.finance.entries.byId(entry.id)
+      )
+
+      const stores = (body: unknown) =>
+        (body as { lines: { storeId: string | null }[] }).lines.map(line => line.storeId)
+      expect(stores(fromA.body)).toEqual([ctx.storeA.id, ctx.storeA2.id, null])
+      expect(stores(fromA2.body)).toEqual(stores(fromA.body))
+    })
+
+    it('are told the balances of one store of the organization, and never those of a store of another', async () => {
+      const books = await booksOf(owner, ctx.orgA.id)
+      await postTestEntry(owner, {
+        organizationId: ctx.orgA.id,
+        periodId: books.periodId,
+        lines: [
+          { accountId: books.accounts.expense, debitCents: 7, storeId: ctx.storeA.id },
+          { accountId: books.accounts.cash, creditCents: 7 }
+        ]
+      })
+
+      const forA = await api(app, ctx.adminA, ctx.storeA)
+        .get(ApiRoutes.finance.balances)
+        .query({ storeId: ctx.storeA.id })
+      // The other organization has a line tagged with its own store: it is the only thing that could leak
+      const booksB = await booksOf(owner, ctx.orgB.id)
+      await postTestEntry(owner, {
+        organizationId: ctx.orgB.id,
+        periodId: booksB.periodId,
+        lines: [
+          { accountId: booksB.accounts.expense, debitCents: 9, storeId: ctx.storeB.id },
+          { accountId: booksB.accounts.cash, creditCents: 9 }
+        ]
+      })
+      const forB = await api(app, ctx.adminA, ctx.storeA)
+        .get(ApiRoutes.finance.balances)
+        .query({ storeId: ctx.storeB.id })
+
+      expect((forA.body as { data: unknown[] }).data.length).toBeGreaterThan(0)
+      expect((forB.body as { data: unknown[] }).data).toEqual([])
+    })
+
+    it('are not chosen by the request: an organization in the query or in the body is refused, never read', async () => {
+      const query = await api(app, ctx.adminA, ctx.storeA)
+        .get(ApiRoutes.finance.entries.list)
+        .query({ organizationId: ctx.orgB.id })
+      const body = await api(app, ctx.adminA, ctx.storeA)
+        .post(ApiRoutes.finance.accounts.create)
+        .send({
+          code: `Z${randomUUID().slice(0, 8)}`,
+          name: 'Elsewhere',
+          type: 'expense',
+          organizationId: ctx.orgB.id
+        })
+
+      expect([query.status, body.status]).toEqual([400, 400])
+      expect(await owner.ledgerAccount.count({ where: { name: 'Elsewhere' } })).toBe(0)
+    })
+
+    it('of another organization cannot be reversed, mapped or switched off, and nothing is written', async () => {
+      const books = await booksOf(owner, ctx.orgB.id)
+      const theirs = await postTestEntry(owner, simpleEntry(books, 55))
+      const entries = await owner.journalEntry.count({ where: { organizationId: ctx.orgB.id } })
+      const agent = api(app, ctx.adminA, ctx.storeA)
+
+      const attempts = [
+        await agent.post(ApiRoutes.finance.entries.reverse(theirs.id)).send({ memo: 'mine now' }),
+        await agent.post(ApiRoutes.finance.accounts.deactivate(books.accounts.expense)),
+        await agent
+          .put(ApiRoutes.finance.accountRoles.byRole('cash_default'))
+          .send({ accountId: books.accounts.cash })
+      ]
+
+      expect(attempts.map(attempt => attempt.status)).toEqual([404, 404, 404])
+      expect(await owner.journalEntry.count({ where: { organizationId: ctx.orgB.id } })).toBe(
+        entries
+      )
+      expect(
+        (await owner.ledgerAccount.findUniqueOrThrow({ where: { id: books.accounts.expense } }))
+          .active
+      ).toBe(true)
+    })
+
+    it('are not reached through the header of a store of another organization', async () => {
+      const response = await api(app, ctx.adminA, ctx.storeB).get(ApiRoutes.finance.entries.list)
 
       expect(response.status).toBe(403)
     })
@@ -3384,6 +3829,73 @@ describe('Tenant isolation', () => {
 
       expect(moved.status).toBe(200)
       expect((moved.body as { storeId: string }).storeId).toBe(ctx.storeA.id)
+    })
+  })
+
+  // The webhooks of a plugin installation (Step 5.6, P3) are one store's: an event of a store is queued only for the installations
+  // of that store, and a delivery reads its installation under the store of its job.
+  describe('the webhooks of a plugin installation', () => {
+    const pluginId = `${prefix}-hooked`
+    const installationOf: Record<'a' | 'b', string> = { a: '', b: '' }
+
+    beforeAll(async () => {
+      await owner.plugin.create({
+        data: {
+          id: pluginId,
+          name: 'Hooked plugin',
+          authorName: 'suite',
+          authorEmail: 'suite@example.invalid',
+          type: PluginCatalogTypes.INTEGRATION,
+          manifest: {
+            webhooks: {
+              endpoint: 'https://hooks.example.com/in',
+              events: [Events.ORDER_CREATED],
+              signatureHeader: 'X-Suite-Signature'
+            }
+          },
+          pricingModel: PluginPricingModels.FREE,
+          status: PluginStatus.APPROVED,
+          organizationId: ctx.orgA.id
+        }
+      })
+      for (const [name, store] of [
+        ['a', ctx.storeA],
+        ['b', ctx.storeB]
+      ] as const) {
+        const row = await owner.pluginInstallation.create({
+          data: {
+            storeId: store.id,
+            pluginId,
+            scopes: [PluginScopes.ORDERS_READ],
+            status: 'active',
+            webhookEndpoint: 'https://hooks.example.com/in',
+            webhookSecret: new Uint8Array([1, 2, 3]),
+            installedBy: 'suite'
+          }
+        })
+        installationOf[name] = row.id
+      }
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId } })
+      await owner.plugin.deleteMany({ where: { id: pluginId } })
+    })
+
+    it('queues an event of a store for the installation of that store only', async () => {
+      const queue = queueOf(app, QueueNames.WEBHOOKS)
+      queue.jobs.length = 0
+
+      await app.get(WebhookDispatcher).dispatch(Events.ORDER_CREATED, {
+        storeId: ctx.storeA.id,
+        orderId: randomUUID(),
+        orderNumber: '1001'
+      })
+
+      const targets = queue.jobs
+        .filter(job => job.name === JobNames.TRIGGER_PLUGIN_WEBHOOK)
+        .map(job => (job.data as { pluginInstallationId: string }).pluginInstallationId)
+      expect(targets).toEqual([installationOf.a])
+      queue.jobs.length = 0
     })
   })
 

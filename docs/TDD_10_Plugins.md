@@ -949,8 +949,8 @@ Backend:
   ↓
 Plugin exchanges the code (POST /plugin-api/setup/exchange, public: the code is the credential) for its key:
   the key is made at the exchange, plg_live_ + 256 bits; only its first 12 characters and its sha256 are
-  stored; it is returned in that answer and never again; the installation becomes ACTIVE in the same
-  transaction
+  stored; it is returned in that answer and never again, with the secret that signs the webhooks when the
+  plugin has an endpoint (§6.5); the installation becomes ACTIVE in the same transaction
   ↓
 Status: ACTIVE (PLUGIN_ENABLED)
 ```
@@ -1006,48 +1006,66 @@ cannot change `storeId`, and every service it reaches is scoped by the same
 
 ### 6.5 Outbound webhooks to plugins
 
-```typescript
-@OnEvent(Events.MESSAGE_RECEIVED)
-async notifySubscribedPlugins(payload: MessageReceivedPayload): Promise<void> {
-  const installations = await this.prisma.client.pluginInstallation.findMany({
-    where: {
-      storeId: payload.storeId,
-      status: PluginInstallationStatus.ACTIVE,
-      scopes: { has: PluginScopes.MESSAGES_READ },
-      plugin: { status: PluginStatus.APPROVED },        // Suspended plugins get nothing (TDD_15 §7)
-    },
-    select: { id: true, scopes: true },
-  })
+The setup exchange (§6.3) also hands the plugin the secret that signs what is sent to it (`whsec_` + 256 bits), when its manifest has a
+webhook endpoint: shown once with the key, kept sealed (`PluginInstallation.webhookSecret`, the same cipher as the secret of a
+tenant webhook), never in an audit entry. The `WebhookDispatcher` that queues the webhooks of a store looks the installations up in
+the same pass:
 
-  for (const installation of installations) {
-    await this.webhooksQueue.add(JobNames.TRIGGER_PLUGIN_WEBHOOK, {
-      pluginInstallationId: installation.id,
-      storeId: payload.storeId,
-      event: Events.MESSAGE_RECEIVED,
-      payload: redactForScopes(payload, installation.scopes as PluginScope[]),
-    } satisfies TriggerPluginWebhookJob)
-  }
-}
+```typescript
+// for an event of the catalog that the bus carries, with the store named in its payload
+const installations = await this.prisma.client.pluginInstallation.findMany({
+  where: {
+    storeId,                                   // the store of the event, never a value of a request
+    status: PluginInstallationStatus.ACTIVE,
+    webhookEndpoint: { not: null }, webhookSecret: { not: null },
+    webhookDisabledAt: null,                   // not turned off by its failures
+    plugin: { status: PluginStatus.APPROVED }  // Suspended plugins get nothing (TDD_15 §7)
+  },
+  select: { id: true, scopes: true, plugin: { select: { manifest: true } } }
+})
+// one TRIGGER_PLUGIN_WEBHOOK job for each that follows the event (its manifest's `webhooks.events`) and whose scopes cover it,
+// with `redactForScopes(event, payload, installation.scopes)` as the payload
 ```
 
-Payloads are redacted to the granted scopes. A plugin with only
-`messages:read` never receives customer contact details.
+**Which events, and what each carries** (`libs/plugins/sdk/src/plugin-events.ts`). Only the events a store can follow (the webhook
+catalog) are sent to a plugin, and only when the installation holds the scope of the event (`PluginEventScopes`: `order.*` needs
+`orders:read`, `customer.*` `customers:read`, `conversation.*` `conversations:read`, `message.*` `messages:read`, `shipment.*`
+`shipments:read`, `product.*` `products:read`; `return.*` has no scope yet and is not sent until the PR that exposes the returns adds
+one). What is in the payload is decided field by field: a field is sent only when it is listed, and the id of a resource only
+when the installation holds a scope that reads it (`customerId` needs `customers:read`, so a plugin with only `messages:read`
+never gets the customer; `orderId` needs `orders:read` or `shipments:read`). The text of a message, the ids of the people of the
+team (the team directory has no scope), the visibility and the flags that steer the platform are never sent, and neither is a
+value that is not a plain one. A key an event gains later is held back until someone decides which scope opens it.
+
+**Delivery** is the one of the webhooks of a store (TDD_07 §2, `webhook-sending.ts` in the worker): the body is
+`{ event, data, timestamp, deliveryId }`, the signature is `sha256=` + the hex HMAC-SHA256 of that exact text under the installation's
+secret, in the header the manifest names (`webhooks.signatureHeader`; `X-Platform-Event` and `X-Platform-Delivery` always), the
+post goes only to `PluginInstallation.webhookEndpoint` (the address that passed the install challenge, whatever a newer manifest says),
+resolved again at each delivery and connected to only if public. Every try is a row of `WebhookDelivery` (with
+`pluginInstallationId`); 20 deliveries in a row that failed for good turn the installation's webhooks off
+(`webhookDisabledAt`), raise `plugin.error` and notify whoever holds `settings:manage_plugins`, once. A newer manifest is read for
+which events the plugin follows and for the name of the signature header, never for where to send.
 
 ### 6.6 Revocation
 
 ```
 Settings → Plugins → [plugin] → Revoke access
   ↓
-Confirmation requires typing REVOKE
+Confirmation requires typing REVOKE (an integration plugin; the body `{ "confirmation": "REVOKE" }`, as written)
   ↓
 Backend:
-  1. Set installation status to REVOKED, revokedAt
-  2. The API key hash is now unusable (status check in the guard)
-  3. Delete webhook subscriptions
-  4. Send a final plugin.revoked webhook
-  5. Audit log (PLUGIN_REVOKED)
-  6. Notify store admins
+  1. In one transaction under the lock of the store: set the installation to REVOKED with revokedAt, and clear the key
+     (apiKeyHash, apiKeyPrefix): the guard already refuses a revoked installation at the next call, and there is nothing left to match
+  2. Void the setup code, if one was waiting
+  3. Audit log (PLUGIN_REVOKED), actor the person
+  4. Queue a final `plugin.revoked` webhook (`final: true`), signed with the secret that is still kept
+  5. The worker delivers it (or gives up after its tries) and then removes the endpoint and the secret: the subscription is closed;
+     a delivery still queued for an earlier event is skipped, because the installation is not active
 ```
+
+The notification to the store admins of the original design is not built: the person who revokes is one of them and the audit log
+records it. Revoking again changes nothing, and finishes what a failed run left (the final webhook has one job id, made of the installation and the moment of the revocation, so it is queued once); the plugin may hear `plugin.revoked` before events that were queued earlier, which are skipped from then on; installing the plugin again starts from `PENDING_SETUP` with no key
+and a new secret.
 
 ---
 
@@ -1367,7 +1385,10 @@ channel.port1.onmessage = async (event: MessageEvent<PluginBridgeRequest>) => {
 ```
 
 The iframe side only ever talks to the port it received; it never uses
-`window.parent.postMessage` for data.
+`window.parent.postMessage` for data. The page posts the INIT once, when the frame fires `load`, so the frame registers its `message` listener synchronously in its first script (a listener added after hydration misses it and the page shows the notice). Once it has the port the frame answers `platform.widget.ready` over it;
+a frame that has not by `PluginWidgetTimings.INIT_TIMEOUT_MS` gets a notice in its panel instead of an empty
+box. The page sends `platform.widget.session` (the token, its lifetime, the widget id and the conversation id)
+over the port when it opens and again before each session ends.
 
 **What v1.2 builds (Step 5.7a).** The page forwards what the frame asks to `POST /api/v1/plugin-widgets/bridge`
 on the agent's own session (AuthGuard, TenantGuard, `CONVERSATIONS_VIEW`), with the widget session token the

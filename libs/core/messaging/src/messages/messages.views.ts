@@ -215,6 +215,11 @@ export interface MessageView {
   content: string | null
   authorType: AuthorType
   authorId: string | null
+  // The plugin that wrote the message, whatever the author type is (`system`, or `agent` for a person it wrote for); null
+  // when no plugin wrote it. The id of the plugin, which is its name in the registry: the thread draws "sent through" it.
+  authorPluginId: string | null
+  // The name a plugin chose to write as the system; null for any other message. Text of a plugin: drawn escaped.
+  authorNickname: string | null
   replyToMessageId: string | null
   // The file of an album that the reply quotes; null: the message
   replyToMediaId: string | null
@@ -286,6 +291,8 @@ export const MESSAGE_SELECT = {
   content: true,
   authorType: true,
   authorId: true,
+  authorPluginId: true,
+  authorNickname: true,
   replyToMessageId: true,
   replyToMediaId: true,
   // Not in the view: the provider's ids decide what the view says of the files (`targetable`)
@@ -347,6 +354,8 @@ interface MessageRow {
   content: string | null
   authorType: string
   authorId: string | null
+  authorPluginId: string | null
+  authorNickname: string | null
   replyToMessageId: string | null
   replyToMediaId: string | null
   channelMessageId: string | null
@@ -438,6 +447,8 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
     content: row.deletedAt === null ? row.content : null,
     authorType: enumValueOf(AuthorTypes, row.authorType, 'message author'),
     authorId: row.authorId,
+    authorPluginId: row.authorPluginId,
+    authorNickname: row.authorNickname,
     replyToMessageId: row.replyToMessageId,
     replyToMediaId: row.replyToMediaId,
     replyTo,

@@ -174,6 +174,15 @@ export interface WebhookAutoDisabledPayload {
   consecutiveFailures: number
 }
 
+// The webhooks of a plugin were turned off after too many failures in a row (TDD_10 §6.5): which installation and how many
+// failures, never the address or the answer that failed
+export interface PluginErrorPayload {
+  storeId: string
+  installationId: string
+  pluginId: string
+  consecutiveFailures: number
+}
+
 export interface ShipmentStatusChangedPayload extends ShipmentEventPayload {
   from: ShipmentStatus
   to: ShipmentStatus
@@ -357,7 +366,8 @@ export interface MessageNoteAddedPayload {
   storeId: string
   conversationId: string
   messageId: string
-  authorId: string
+  // Null for a note a plugin wrote as the system
+  authorId: string | null
   createdAt: string
   visibility: ConversationVisibility
 }
@@ -550,6 +560,7 @@ export interface DomainEventPayloads {
   [Events.FINANCE_ENTRY_POSTED]: FinanceEntryPayload
   [Events.FINANCE_ENTRY_REVERSED]: FinanceEntryPayload
   [Events.WEBHOOK_AUTO_DISABLED]: WebhookAutoDisabledPayload
+  [Events.PLUGIN_ERROR]: PluginErrorPayload
   [Events.CARRIER_STATUS_UNMAPPED]: CarrierStatusUnmappedPayload
   [Events.BULK_LABELS_PROGRESS]: BulkLabelsProgressPayload
   [Events.BULK_LABELS_DONE]: BulkLabelsDonePayload

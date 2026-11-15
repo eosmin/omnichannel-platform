@@ -164,6 +164,7 @@ export const AuditAction = {
   PLUGIN_SCOPES_UPDATED: 'plugin.scopes_updated',
   PLUGIN_REVOKED: 'plugin.revoked',
   PLUGIN_COMMAND_SECRET_ROTATED: 'plugin.command_secret_rotated',
+  PLUGIN_WIDGET_VISIBILITY_CHANGED: 'plugin.widget_visibility_changed',
   CHANNEL_CONNECTED: 'channel.connected',
   CHANNEL_DISCONNECTED: 'channel.disconnected',
   CHANNEL_TOKEN_UPDATED: 'channel.token_updated',
@@ -184,6 +185,7 @@ export const AuditAction = {
   FINANCE_ACCOUNT_DEACTIVATED: 'finance.account_deactivated',
   FINANCE_ROLE_MAPPED: 'finance.role_mapped',
   FINANCE_PAYMENT_ACCOUNT_CHANGED: 'finance.payment_account_changed',
+  FINANCE_PERIOD_OPENED: 'finance.period_opened',
   FINANCE_ENTRY_POSTED_MANUAL: 'finance.entry_posted_manual',
   FINANCE_ENTRY_REVERSED: 'finance.entry_reversed',
 

@@ -3,7 +3,12 @@ import { Injectable } from '@nestjs/common'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { isUniqueViolation, lockStoreForWrite, PrismaService } from '@platform/core/database'
-import { PluginCatalogTypes, PluginInstallationStatus, PluginStatus } from '@platform/core/domain'
+import {
+  PLUGIN_INSTALLATION_RESOURCE_TYPE,
+  PluginCatalogTypes,
+  PluginInstallationStatus,
+  PluginStatus
+} from '@platform/core/domain'
 import {
   ErrorCodes,
   HttpStatusCodes,
@@ -200,7 +205,20 @@ export class PluginIntegrationInstallService {
           const changes = scopeChanges(current.scopes, scopes)
           await tx.pluginInstallation.update({
             where: { id: current.id },
-            data: { scopes, webhookEndpoint: endpoint, rateLimitPerMinute: rateLimit }
+            data: {
+              scopes,
+              webhookEndpoint: endpoint,
+              rateLimitPerMinute: rateLimit,
+              // A new endpoint passed the challenge just now: an installation whose webhooks the failures had turned off starts
+              // delivering again. The same endpoint was not asked anything, so it stays as it was.
+              ...(current.webhookEndpoint === endpoint
+                ? {}
+                : {
+                    webhookDisabledAt: null,
+                    webhookConsecutiveFailures: 0,
+                    webhookLastFailureAt: null
+                  })
+            }
           })
           return { id: current.id, mode: 'updated' as const, changes }
         }
@@ -218,6 +236,18 @@ export class PluginIntegrationInstallService {
             commandSecret: null,
             commandSecretPrevious: null,
             commandSecretRotatedAt: null,
+            // Nothing of the earlier incarnation is kept: the secret it was given is not this plugin's to sign with, and its
+            // failures are not this install's
+            webhookSecret: null,
+            webhookDisabledAt: null,
+            webhookConsecutiveFailures: 0,
+            webhookLastFailureAt: null,
+            // Nothing of the earlier incarnation is kept: the secret it was given is not this plugin's to sign with, and its
+            // failures are not this install's
+            webhookSecret: null,
+            webhookDisabledAt: null,
+            webhookConsecutiveFailures: 0,
+            webhookLastFailureAt: null,
             revokedAt: null,
             installedBy: actor.userId
           }
@@ -337,7 +367,7 @@ export class PluginIntegrationInstallService {
       action,
       actor: { userId: actor.userId },
       storeId,
-      resourceType: 'plugin_installation',
+      resourceType: PLUGIN_INSTALLATION_RESOURCE_TYPE,
       resourceId: installationId,
       metadata,
       ipAddress: actor.ipAddress,

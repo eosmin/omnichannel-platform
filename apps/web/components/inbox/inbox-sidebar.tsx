@@ -14,6 +14,7 @@ import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 
 import { CustomerPanel } from './customer-panel'
+import { PluginWidgetsSection } from './lazy-dialogs'
 import { MyPerformanceWidget } from './my-performance-widget'
 import { QuickActionsWidget } from './quick-actions-widget'
 import { TeamStatusWidget } from './team-status-widget'
@@ -47,6 +48,9 @@ export function InboxSidebar(): ReactElement | null {
       className="relative flex w-[280px] shrink-0 flex-col gap-4 overflow-y-auto overscroll-contain border-l p-3"
     >
       {conversationId === undefined ? null : <CustomerPanel conversationId={conversationId} />}
+      {conversationId === undefined ? null : (
+        <PluginWidgetsSection conversationId={conversationId} />
+      )}
       {shown.map((entry, index) => {
         const Body = BODIES[entry.id]
         const title = t(`widgets.${entry.id}`)

@@ -154,6 +154,48 @@ export const ApiRoutes = {
     cancel: (id: string) => `/counts/${id}/cancel`
   },
 
+  // Finance (TDD_18 §12): the books of the ORGANIZATION, read from the store of X-Store-Id like the warehouses. The routes
+  // of purchases, taxes, transactions, reports, exports and fiscal documents come with the steps that build them.
+  finance: {
+    // GET says whether the organization has its books and which countries have a template; POST sets them up once
+    setup: '/finance/setup',
+    settings: '/finance/settings',
+    accounts: {
+      list: '/finance/accounts',
+      create: '/finance/accounts',
+      byId: (id: string) => `/finance/accounts/${id}`,
+      deactivate: (id: string) => `/finance/accounts/${id}/deactivate`,
+      reactivate: (id: string) => `/finance/accounts/${id}/reactivate`
+    },
+    accountRoles: {
+      list: '/finance/account-roles',
+      // PUT maps the role to an account
+      byRole: (role: string) => `/finance/account-roles/${role}`
+    },
+    paymentAccounts: {
+      list: '/finance/payment-accounts',
+      // PUT chooses the account a payment method lands in (for the organization, or for one store)
+      set: '/finance/payment-accounts',
+      // DELETE takes a store's own choice away, so the default of the organization applies again
+      byId: (id: string) => `/finance/payment-accounts/${id}`
+    },
+    periods: {
+      list: '/finance/periods',
+      // POST opens the period of a month before any entry needs it
+      open: '/finance/periods',
+      byId: (id: string) => `/finance/periods/${id}`
+    },
+    entries: {
+      list: '/finance/entries',
+      manual: '/finance/entries',
+      byId: (id: string) => `/finance/entries/${id}`,
+      reverse: (id: string) => `/finance/entries/${id}/reverse`
+    },
+    balances: '/finance/balances',
+    // The sources whose automatic entry failed, still waiting for a person (TDD_18 §6.1)
+    postings: '/finance/postings'
+  },
+
   // Shipping (TDD_17 §6)
   carriers: {
     list: '/carriers',
@@ -300,7 +342,11 @@ export const ApiRoutes = {
   pluginWidgets: {
     list: '/plugin-widgets',
     sessions: '/plugin-widgets/sessions',
-    bridge: '/plugin-widgets/bridge'
+    bridge: '/plugin-widgets/bridge',
+    // Settings → Plugins: every widget of the store with whether the agents see it (GET), and show or hide one (PUT)
+    settings: '/plugin-widgets/settings',
+    visibility: (installationId: string, widgetId: string) =>
+      `/plugin-widgets/settings/${installationId}/widget/${widgetId}`
   },
 
   channels: {

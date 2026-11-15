@@ -1,0 +1,169 @@
+import { z } from 'zod'
+
+import {
+  AccountRole,
+  AccountType,
+  CashKind,
+  FinanceLimits,
+  FinancePaymentMethods,
+  JournalEntryType,
+  PaginationLimits,
+  SaleRecognition,
+  singleLineText
+} from '@platform/core/domain'
+import { financeTemplateCountries, isIsoDate } from '@platform/core/finance'
+
+import { cursorSchema } from '../customers/list-cursor'
+
+export const idSchema = z.uuid()
+
+// A calendar day, not only a string that looks like one (no 31 of February)
+const day = z.string().refine(isIsoDate, { message: 'not a calendar date (YYYY-MM-DD)' })
+
+const accountName = singleLineText(FinanceLimits.ACCOUNT_NAME_MAX_LENGTH, 1)
+const accountCode = z.string().regex(FinanceLimits.ACCOUNT_CODE_PATTERN)
+const memo = singleLineText(FinanceLimits.MEMO_MAX_LENGTH, 1)
+// Whole cents of one line, like an order total: an Int of the database
+const cents = z.number().int().min(0).max(FinanceLimits.MAX_LINE_CENTS)
+
+const limit = z.coerce
+  .number()
+  .int()
+  .min(1)
+  .max(PaginationLimits.MAX)
+  .default(PaginationLimits.DEFAULT)
+const flag = z.enum(['true', 'false']).transform(value => value === 'true')
+const nothingToChange = { message: 'nothing to change' }
+
+export const setupSchema = z.strictObject({
+  countryCode: z.enum(financeTemplateCountries() as [string, ...string[]]),
+  // The first day events are posted from; the first day of the month of the setup when it is left out
+  accountingStartDate: day.optional()
+})
+
+export const updateSettingsSchema = z
+  .strictObject({
+    recognizeSaleOn: z.enum(SaleRecognition).optional(),
+    // The rounding account cannot be taken away: a cent that cannot be placed needs somewhere to go (TDD_18 §6.4)
+    roundingAccountId: z.uuid().optional()
+  })
+  .refine(body => Object.values(body).some(value => value !== undefined), nothingToChange)
+
+export const listAccountsQuerySchema = z.strictObject({
+  // The code of the last account of the page: the chart is read in the order of the codes
+  cursor: z.string().regex(FinanceLimits.ACCOUNT_CODE_PATTERN).optional(),
+  limit,
+  active: flag.optional(),
+  type: z.enum(AccountType).optional()
+})
+
+export const createAccountSchema = z.strictObject({
+  code: accountCode,
+  name: accountName,
+  type: z.enum(AccountType),
+  parentId: z.uuid().nullable().optional(),
+  isPostable: z.boolean().optional(),
+  cashKind: z.enum(CashKind).nullable().optional()
+})
+
+export const updateAccountSchema = z
+  .strictObject({
+    code: accountCode.optional(),
+    name: accountName.optional(),
+    type: z.enum(AccountType).optional(),
+    parentId: z.uuid().nullable().optional(),
+    isPostable: z.boolean().optional(),
+    cashKind: z.enum(CashKind).nullable().optional()
+  })
+  .refine(body => Object.values(body).some(value => value !== undefined), nothingToChange)
+
+export const roleParamSchema = z.enum(AccountRole)
+
+export const mapRoleSchema = z.strictObject({ accountId: z.uuid() })
+
+export const setPaymentAccountSchema = z.strictObject({
+  paymentMethod: z.enum(FinancePaymentMethods as [string, ...string[]]),
+  // The store whose choice it is; none (or null) is the default of the organization
+  storeId: z.uuid().nullable().optional(),
+  accountId: z.uuid()
+})
+
+const period = z.strictObject({
+  year: z.number().int().min(FinanceLimits.MIN_YEAR).max(FinanceLimits.MAX_YEAR),
+  month: z.number().int().min(FinanceLimits.FIRST_MONTH).max(FinanceLimits.LAST_MONTH)
+})
+export const openPeriodSchema = period
+
+export const listPeriodsQuerySchema = z.strictObject({
+  // 'YYYY-MM' of the last period of the page: the newest first
+  cursor: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/)
+    .optional(),
+  limit
+})
+
+export const listEntriesQuerySchema = z.strictObject({
+  // The number of the last entry of the page: the newest first
+  cursor: z
+    .string()
+    .regex(/^[1-9]\d{0,17}$/)
+    .optional(),
+  limit,
+  periodId: z.uuid().optional(),
+  type: z.enum(JournalEntryType).optional(),
+  // The entries that touch an account
+  accountId: z.uuid().optional(),
+  from: day.optional(),
+  to: day.optional()
+})
+
+// An entry a person writes (TDD_18 §4.2, E13): free lines, balanced, with the reason. It names no party and no tax rate: those
+// belong to the entries the system derives from a sale, a purchase or a remittance, where the ids come from the source.
+const manualLine = z.strictObject({
+  accountId: z.uuid(),
+  debitCents: cents.default(0),
+  creditCents: cents.default(0),
+  storeId: z.uuid().optional(),
+  memo: singleLineText(FinanceLimits.MEMO_MAX_LENGTH, 1).optional()
+})
+
+export const manualEntrySchema = z.strictObject({
+  // Chosen by the screen once per form, so that a double click or a retry after a lost answer posts once
+  idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{8,100}$/),
+  entryDate: day,
+  type: z.enum([JournalEntryType.MANUAL, JournalEntryType.OPENING_BALANCE]),
+  memo,
+  lines: z.array(manualLine).min(2).max(FinanceLimits.MAX_LINES_PER_ENTRY)
+})
+
+export const reverseEntrySchema = z.strictObject({
+  memo,
+  // The date of the reversal when it is not the date of the entry (a closed period's entry is reversed in the open one)
+  entryDate: day.optional()
+})
+
+export const balancesQuerySchema = z.strictObject({
+  periodId: z.uuid().optional(),
+  storeId: z.uuid().optional()
+})
+
+export const listPostingsQuerySchema = z.strictObject({
+  cursor: cursorSchema.optional(),
+  limit
+})
+
+export type SetupBody = z.infer<typeof setupSchema>
+export type UpdateSettingsBody = z.infer<typeof updateSettingsSchema>
+export type ListAccountsQuery = z.infer<typeof listAccountsQuerySchema>
+export type CreateAccountBody = z.infer<typeof createAccountSchema>
+export type UpdateAccountBody = z.infer<typeof updateAccountSchema>
+export type MapRoleBody = z.infer<typeof mapRoleSchema>
+export type SetPaymentAccountBody = z.infer<typeof setPaymentAccountSchema>
+export type OpenPeriodBody = z.infer<typeof openPeriodSchema>
+export type ListPeriodsQuery = z.infer<typeof listPeriodsQuerySchema>
+export type ListEntriesQuery = z.infer<typeof listEntriesQuerySchema>
+export type ManualEntryBody = z.infer<typeof manualEntrySchema>
+export type ReverseEntryBody = z.infer<typeof reverseEntrySchema>
+export type BalancesQuery = z.infer<typeof balancesQuerySchema>
+export type ListPostingsQuery = z.infer<typeof listPostingsQuerySchema>

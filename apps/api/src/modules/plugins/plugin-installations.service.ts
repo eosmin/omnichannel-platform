@@ -1,4 +1,9 @@
+import { randomUUID } from 'node:crypto'
+
+import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable } from '@nestjs/common'
+import type { Queue } from 'bullmq'
+import { PinoLogger } from 'nestjs-pino'
 
 import { API_PREFIX, ApiRoutes } from '@platform/core/api'
 import { RemoteChannelSync } from '@platform/channels/connections'
@@ -9,6 +14,8 @@ import {
   CarrierConnectionStatus,
   ChannelConnectionStatus,
   type ChannelOAuthDescriptor,
+  PLUGIN_INSTALLATION_RESOURCE_TYPE,
+  PLUGIN_REVOKE_CONFIRMATION,
   PluginCatalogTypes,
   PluginInstallationStatus,
   PluginStatus,
@@ -20,7 +27,14 @@ import {
   PlatformException,
   resourceNotFound
 } from '@platform/core/errors'
+import { Events } from '@platform/core/events'
 import { PublicApiConfig } from '@platform/core/http'
+import {
+  JobNames,
+  pluginRevokedJobId,
+  QueueNames,
+  type TriggerPluginWebhookJob
+} from '@platform/core/queues'
 import {
   CarrierRegistry,
   type ConnectFieldSnapshot,
@@ -114,8 +128,13 @@ export class PluginInstallationsService {
     private readonly publicApi: PublicApiConfig,
     private readonly audit: AuditService,
     private readonly integrations: PluginIntegrationInstallService,
+    @InjectQueue(QueueNames.WEBHOOKS)
+    private readonly webhooksQueue: Queue<TriggerPluginWebhookJob>,
+    private readonly logger: PinoLogger,
     private readonly sync: RemoteChannelSync
-  ) {}
+  ) {
+    this.logger.setContext(PluginInstallationsService.name)
+  }
 
   // The approved plugins this store may see: the ones the platform ships (a row the registry does not know is shown to
   // nobody) and the integration plugins its organization registered, which no registry holds: the row says whose it is. An
@@ -323,10 +342,16 @@ export class PluginInstallationsService {
   // hangs from it is disconnected (the provider is told, the credentials are emptied) and the
   // conversations, messages and customers stay, because they are the business's history. Run again
   // it finishes what a failed run left.
+  //
+  // An integration plugin (TDD_10 §6.6) is revoked only with the word typed as written, and the same transaction takes away what let
+  // it in: the hash of its key goes with the status (the guard already refuses a revoked installation at the next call; with no hash
+  // there is nothing left to match), and its webhook subscription is closed after one last `plugin.revoked` delivery, which the
+  // worker signs with the secret that is still kept and then removes together with the endpoint.
   async uninstall(
     store: PluginStoreRef,
     installationId: string,
-    actor: Actor
+    actor: Actor,
+    confirmation?: string
   ): Promise<PluginCatalogEntry> {
     const storeId = store.id
     const installation = await this.prisma.client.pluginInstallation.findFirst({
@@ -335,22 +360,40 @@ export class PluginInstallationsService {
     })
     if (installation === null) throw resourceNotFound('plugin installation')
     const { pluginId } = installation
+    const integration = installation.plugin.type === String(PluginCatalogTypes.INTEGRATION)
+    const isChannel = installation.plugin.type === String(PluginCatalogTypes.CHANNEL)
+    if (integration && confirmation !== PLUGIN_REVOKE_CONFIRMATION) {
+      throw new PlatformException(
+        ErrorCodes.PLUGIN_REVOKE_NOT_CONFIRMED,
+        'type the confirmation word to revoke the plugin',
+        HttpStatusCodes.BAD_REQUEST,
+        { field: 'confirmation' }
+      )
+    }
+    const revokedAt = new Date()
     const revoked = await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
       const changed = await tx.pluginInstallation.updateMany({
         where: { id: installation.id, storeId, status: { not: PluginInstallationStatus.REVOKED } },
-        data: { status: PluginInstallationStatus.REVOKED, revokedAt: new Date() }
+        data: {
+          status: PluginInstallationStatus.REVOKED,
+          revokedAt,
+          // A key that is gone cannot be matched, whatever a check forgets
+          ...(integration || isChannel ? { apiKeyHash: null, apiKeyPrefix: null } : {})
+        }
       })
       return changed.count === 1
     })
 
     // Audited right after the revoke, before the disconnects: a failure of those must not leave the revocation unrecorded
     if (revoked) this.record(AuditAction.PLUGIN_REVOKED, storeId, installation.id, pluginId, actor)
+    if (integration) {
+      // Run again on an installation that is already revoked, it finishes what a failed run left: the one job of the revocation
+      // (its id is the same) is queued if it is not, and nothing is sent twice
+      await this.sendFinalWebhook(storeId, installation.id, pluginId)
+    }
     // A code that was still waiting for the plugin to set up stops working with the installation
-    if (
-      installation.plugin.type === String(PluginCatalogTypes.INTEGRATION) ||
-      installation.plugin.type === String(PluginCatalogTypes.CHANNEL)
-    ) {
+    if (integration || isChannel) {
       await this.integrations.voidSetup(installation.id)
     }
     // The plugin hears the disconnects first (they are signed with the secrets of the revoked installation); then every process stops
@@ -358,11 +401,70 @@ export class PluginInstallationsService {
     try {
       await this.disconnectOpen(storeId, installation.id, pluginId, actor)
     } finally {
-      if (installation.plugin.type === String(PluginCatalogTypes.CHANNEL)) {
+      if (isChannel) {
         await this.sync.announceChange()
       }
     }
     return this.entryOf(store, pluginId)
+  }
+
+  // The last thing a plugin hears from the installation (TDD_10 §6.6). Queued after the revocation stands, once: the id of the job
+  // is made of the installation and the moment of the revocation, so asking again queues nothing new while the job is there, and
+  // nothing at all once the worker has closed the subscription (the secret is gone). A plugin may see it before the events that were
+  // queued earlier, which are skipped from then on. When it cannot be queued the subscription is closed at once instead, so a secret
+  // never stays on a revoked row for a delivery that will not come; nothing here may fail the revocation, which already stands.
+  private async sendFinalWebhook(
+    storeId: string,
+    installationId: string,
+    pluginId: string
+  ): Promise<void> {
+    try {
+      const kept = await this.prisma.client.pluginInstallation.findFirst({
+        where: { id: installationId, storeId, status: PluginInstallationStatus.REVOKED },
+        select: { webhookEndpoint: true, webhookSecret: true, revokedAt: true }
+      })
+      // No endpoint or no secret: no one to tell, or it was told
+      if (
+        kept === null ||
+        kept.webhookEndpoint === null ||
+        kept.webhookSecret === null ||
+        kept.revokedAt === null
+      ) {
+        return
+      }
+      const job: TriggerPluginWebhookJob = {
+        pluginInstallationId: installationId,
+        storeId,
+        deliveryId: randomUUID(),
+        event: Events.PLUGIN_REVOKED,
+        payload: {
+          storeId,
+          installationId,
+          pluginId,
+          revokedAt: kept.revokedAt.toISOString()
+        },
+        final: true
+      }
+      await this.webhooksQueue.add(JobNames.TRIGGER_PLUGIN_WEBHOOK, job, {
+        jobId: pluginRevokedJobId(installationId, kept.revokedAt)
+      })
+    } catch (error) {
+      this.logger.error(
+        { installationId, err: String(error) },
+        'the final webhook of a revoked plugin could not be queued'
+      )
+      try {
+        await this.prisma.client.pluginInstallation.updateMany({
+          where: { id: installationId, storeId, status: PluginInstallationStatus.REVOKED },
+          data: { webhookEndpoint: null, webhookSecret: null }
+        })
+      } catch (closing) {
+        this.logger.error(
+          { installationId, err: String(closing) },
+          'the subscription of a revoked plugin could not be closed'
+        )
+      }
+    }
   }
 
   private async disconnectOpen(
@@ -445,7 +547,7 @@ export class PluginInstallationsService {
       action,
       actor: { userId: actor.userId },
       storeId,
-      resourceType: 'plugin_installation',
+      resourceType: PLUGIN_INSTALLATION_RESOURCE_TYPE,
       resourceId: installationId,
       metadata: { pluginId },
       ipAddress: actor.ipAddress,

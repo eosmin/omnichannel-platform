@@ -14,6 +14,7 @@ import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   PLUGIN_API_KEY_TOKEN_PREFIX,
+  PLUGIN_REVOKE_CONFIRMATION,
   PluginCatalogTypes,
   PluginInstallationStatus,
   PluginInstallLimits,
@@ -463,6 +464,7 @@ describe('Installing an integration plugin and calling the plugin API', () => {
       const body = installed.body as InstallBody
       await asAdmin()
         .post(ApiRoutes.plugins.revoke(body.installationId as string))
+        .send({ confirmation: PLUGIN_REVOKE_CONFIRMATION })
         .expect(OK)
 
       const response = await exchange((body.setup as SetupOffer).code)
@@ -509,7 +511,10 @@ describe('Installing an integration plugin and calling the plugin API', () => {
     it('installs again after a revocation with a new key and not the old one', async () => {
       const first = await setUp()
       const installationId = first.setup.installationId
-      await asAdmin().post(ApiRoutes.plugins.revoke(installationId)).expect(OK)
+      await asAdmin()
+        .post(ApiRoutes.plugins.revoke(installationId))
+        .send({ confirmation: PLUGIN_REVOKE_CONFIRMATION })
+        .expect(OK)
       expect((await call(`${PROBE}/tags`, first.key)).status).toBe(UNAUTHORIZED)
 
       const reinstalled = await install(first.id, [PluginScopes.ORDERS_READ]).expect(CREATED)
@@ -664,7 +669,10 @@ describe('Installing an integration plugin and calling the plugin API', () => {
       const suspended = await setUp()
       await call(`${PROBE}/tags`, revoked.key).expect(OK)
 
-      await asAdmin().post(ApiRoutes.plugins.revoke(revoked.setup.installationId)).expect(OK)
+      await asAdmin()
+        .post(ApiRoutes.plugins.revoke(revoked.setup.installationId))
+        .send({ confirmation: PLUGIN_REVOKE_CONFIRMATION })
+        .expect(OK)
       await owner.pluginInstallation.update({
         where: { id: disabled.setup.installationId },
         data: { status: PluginInstallationStatus.DISABLED }

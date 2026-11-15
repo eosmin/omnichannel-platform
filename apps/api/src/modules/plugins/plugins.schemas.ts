@@ -1,6 +1,11 @@
 import { z } from 'zod'
 
-import { CHANNEL_ID_PATTERN, CodePluginAuthor, OfficialPluginAuthor } from '@platform/core/domain'
+import {
+  CHANNEL_ID_PATTERN,
+  CodePluginAuthor,
+  OfficialPluginAuthor,
+  PluginRevokeLimits
+} from '@platform/core/domain'
 import { pluginManifestSchema } from '@platform/plugins/runtime'
 import { PluginScopes } from '@platform/plugins/sdk'
 
@@ -38,3 +43,13 @@ export type RegisterPluginBody = z.output<typeof registerPluginSchema>
 // The one-time code of an install, in the body (never in a query string, which is logged)
 export const exchangeSetupSchema = z.strictObject({ code: z.string().refine(isSetupCode) })
 export type ExchangeSetupBody = z.output<typeof exchangeSetupSchema>
+
+// What the owner typed to revoke an integration plugin (TDD_10 §6.6). Optional here because the revocation of a channel plugin takes
+// no body; the service refuses an integration plugin whose word is not exactly `PLUGIN_REVOKE_CONFIRMATION`.
+export const revokePluginSchema = z
+  // Not strict: the route took no body before, and a client that sends more than the word is not refused for it
+  .object({
+    confirmation: z.string().max(PluginRevokeLimits.CONFIRMATION_MAX_LENGTH).optional()
+  })
+  .optional()
+export type RevokePluginBody = z.output<typeof revokePluginSchema>

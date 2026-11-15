@@ -54,3 +54,10 @@ export const ConversationPane = dynamic(
 export const EmptyInbox = dynamic(() => import('./empty-inbox').then(module => module.EmptyInbox), {
   ssr: false
 })
+
+// The widgets of the plugins in the right column: the list, the frames and the bridge of the port, downloaded with the
+// first conversation that is opened. A store with no plugin widget never needs the frames.
+export const PluginWidgetsSection = dynamic(
+  () => import('./plugin-widgets-section').then(module => module.PluginWidgetsSection),
+  { ssr: false }
+)

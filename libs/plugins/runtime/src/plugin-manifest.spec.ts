@@ -9,7 +9,7 @@ import {
 import { Events } from '@platform/core/events'
 import { PluginScopes } from '@platform/plugins/sdk'
 
-import { isNewerVersion, pluginManifestSchema } from './plugin-manifest'
+import { isNewerVersion, manifestWebhookOf, pluginManifestSchema } from './plugin-manifest'
 
 // A manifest that is valid; each case changes one thing
 function manifest(over: Record<string, unknown> = {}): Record<string, unknown> {
@@ -538,5 +538,67 @@ describe('isNewerVersion', () => {
     ['x', '1.0.0', false]
   ])('%s over %s is %s', (next, current, expected) => {
     expect(isNewerVersion(next, current)).toBe(expected)
+  })
+})
+
+describe('manifestWebhookOf', () => {
+  it('reads the events and the signature header of a stored manifest', () => {
+    expect(
+      manifestWebhookOf({
+        webhooks: {
+          endpoint: 'https://acme.example/hook',
+          events: ['message.received', 7, 'order.created'],
+          signatureHeader: 'X-Acme-Signature'
+        }
+      })
+    ).toEqual({
+      events: ['message.received', 'order.created'],
+      signatureHeader: 'X-Acme-Signature'
+    })
+  })
+
+  it('reads nothing from a manifest with no webhooks, a damaged block or a header the transport owns', () => {
+    expect(manifestWebhookOf(null)).toBeNull()
+    expect(manifestWebhookOf({})).toBeNull()
+    expect(manifestWebhookOf({ webhooks: 'x' })).toBeNull()
+    expect(manifestWebhookOf({ webhooks: { events: 'a', signatureHeader: 'X-A' } })).toBeNull()
+    expect(
+      manifestWebhookOf({ webhooks: { events: ['order.created'], signatureHeader: 'Host' } })
+    ).toBeNull()
+    expect(
+      manifestWebhookOf({ webhooks: { events: ['order.created'], signatureHeader: 'a b' } })
+    ).toBeNull()
+  })
+})
+
+describe('the webhooks block of the manifest', () => {
+  const base = (webhooks: Record<string, unknown>) => ({
+    ...manifest(),
+    webhooks: { endpoint: 'https://acme.example/hook', ...webhooks }
+  })
+
+  it('refuses a signature header the platform sets on every delivery, in any case', () => {
+    for (const signatureHeader of ['X-Platform-Event', 'x-platform-delivery']) {
+      const result = pluginManifestSchema.safeParse(
+        base({ events: [Events.ORDER_CREATED], signatureHeader })
+      )
+      expect(result.success).toBe(false)
+      expect(
+        manifestWebhookOf({ webhooks: { events: [Events.ORDER_CREATED], signatureHeader } })
+      ).toBeNull()
+    }
+  })
+
+  it('refuses an event a plugin is never sent: a return, the revocation, a channel event', () => {
+    for (const event of [
+      Events.RETURN_REQUESTED,
+      Events.PLUGIN_REVOKED,
+      Events.CHANNEL_DISCONNECTED
+    ]) {
+      const result = pluginManifestSchema.safeParse(
+        base({ events: [event], signatureHeader: 'X-Sig' })
+      )
+      expect(result.success).toBe(false)
+    }
   })
 })
