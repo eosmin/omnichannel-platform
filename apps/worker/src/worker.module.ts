@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { ScheduleModule } from '@nestjs/schedule'
 
 import { ChannelConnectionsLibModule } from '@platform/channels/connections'
+import { RemoteChannelsLibModule } from '@platform/channels/remote'
 import { AuditModule } from '@platform/core/audit-module'
 import { LedgerModule } from '@platform/core/finance-ledger'
 import {
@@ -72,6 +73,7 @@ import { WebhooksWorkerModule } from './webhooks/webhooks.module'
     EmailPlatformModule,
     DigestPlatformModule,
     ChannelConnectionsLibModule,
+    RemoteChannelsLibModule,
     PluginsModule.forRoot(),
     ScheduleModule.forRoot(),
     WorkerReadinessModule,

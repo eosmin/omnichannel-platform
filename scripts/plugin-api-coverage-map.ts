@@ -116,6 +116,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'plugins.revoke': { none: PLUGIN_ADMIN },
   'plugins.consent': { none: PLUGIN_ADMIN },
   'plugins.setupCode': { none: PLUGIN_ADMIN },
+  'plugins.commandSecret': { none: PLUGIN_ADMIN },
   'plugins.config': { none: PLUGIN_ADMIN },
   'pluginWidgets.list': { none: WIDGET_HOST },
   'pluginWidgets.sessions': { none: WIDGET_HOST },

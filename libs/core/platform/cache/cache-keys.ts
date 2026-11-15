@@ -112,6 +112,9 @@ export const CacheKeys = {
     connection: (pluginId: string, connectionId: string) =>
       `channel:${pluginId}:conn:${connectionId}`, // -> storeId + connection row
     capabilities: (pluginId: string) => `channel:${pluginId}:capabilities`,
+    // The failed health checks in a row of a connection of a remote plugin (TDD_10 §6.7.7); the id is the connection row's, and the key
+    // lives an hour, so a plugin that stops being asked does not keep a count for ever
+    healthFailures: (connectionRowId: string) => `channel:health:failures:${connectionRowId}`,
     // "Connect with Facebook" (Step 7.8). Not tenant keys: the callback arrives from the provider with no
     // store, so the store, the user and the plugin are in the VALUE, read once from here and removed. The
     // arguments are the SHA-256 (hex) of the state and of the session id, never the values themselves:
