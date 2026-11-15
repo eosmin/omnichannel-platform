@@ -15,6 +15,7 @@ import {
   ConversationStatus,
   DeliveryStatus,
   MessageType,
+  OutboundLimits,
   PLUGIN_ACTOR_PREFIX,
   PLUGIN_API_KEY_TOKEN_PREFIX,
   PluginCatalogTypes,
@@ -694,7 +695,7 @@ describe('A plugin as the actor of a change of a message', () => {
       queueOf(app, QueueNames.OUTBOUND).jobs.length = 0
       await owner.messageReaction.updateMany({
         where: { messageId: id },
-        data: { updatedAt: new Date(Date.now() - 3_600_000) }
+        data: { updatedAt: new Date(Date.now() - OutboundLimits.REQUEUE_AFTER_MS - 30_000) }
       })
 
       const done = await sweep.requeueStaleReactions()
