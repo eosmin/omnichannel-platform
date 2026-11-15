@@ -481,9 +481,11 @@ const resources: IsolationResource[] = [
       connectionOfGuideMovement.set(row.id, connection.id)
       return row
     },
-    readPath: id => ApiRoutes.carriers.guideMovements(connectionOfGuideMovement.get(id) ?? ''),
+    readPath: id =>
+      ApiRoutes.carriers.guideMovements(connectionOfGuideMovement.get(id) ?? randomUUID()),
     modify: {
-      path: id => ApiRoutes.carriers.guidePurchaseVoid(connectionOfGuideMovement.get(id) ?? '', id),
+      path: id =>
+        ApiRoutes.carriers.guidePurchaseVoid(connectionOfGuideMovement.get(id) ?? randomUUID(), id),
       method: 'post',
       body: { note: 'hacked' }
     },
@@ -550,7 +552,8 @@ const resources: IsolationResource[] = [
       connectionOfBenefitPeriod.set(row.id, connection.id)
       return row
     },
-    readPath: id => ApiRoutes.carriers.benefitPeriods(connectionOfBenefitPeriod.get(id) ?? ''),
+    readPath: id =>
+      ApiRoutes.carriers.benefitPeriods(connectionOfBenefitPeriod.get(id) ?? randomUUID()),
     untouched: async (owner, id) =>
       (await owner.carrierBenefitPeriod.count({ where: { id } })) === 1
   },

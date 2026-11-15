@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
@@ -11,12 +13,14 @@ import {
   BenefitRefundRule,
   GuideMovementKind,
   ShipmentEventSource,
-  ShipmentStatus
+  ShipmentKind,
+  ShipmentStatus,
+  ShippingPayer
 } from '@platform/core/domain'
 import { NotificationTypes } from '@platform/core/notifications'
 import { closeBenefitPeriods, readGuidePolicy, ShipmentWrites } from '@platform/core/shipping'
 
-import { createCarrierConnection, createShipment } from '../builders'
+import { createCarrierConnection, createReturn, createShipment } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
@@ -304,7 +308,7 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
       const consumed = await movementsOf(id, GuideMovementKind.CONSUME)
       expect(consumed).toHaveLength(4)
       // what the guide cost on average when it was made, for the finance step to read
-      expect(consumed.filter(row => row.unitCostCents === 100)).toHaveLength(3)
+      expect(consumed.every(row => row.unitCostCents === 100)).toBe(true)
       expect(
         await notificationsOf(NotificationTypes.CARRIER_GUIDE_BALANCE_LOW, id)
       ).toBeGreaterThan(0)
@@ -316,12 +320,31 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
     it('never takes a guide for a return guide', async () => {
       const { id } = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
       await putPolicy(id, { benefitEnabled: false })
-      const shipment = await createShipment(owner, {
-        storeId: ctx.storeA.id,
-        connectionId: id,
-        status: ShipmentStatus.CREATING
+      const made = await createReturn(owner, { storeId: ctx.storeA.id })
+      const orderReturn = await owner.orderReturn.findUniqueOrThrow({
+        where: { id: made.id },
+        select: { orderId: true }
       })
-      await owner.shipment.update({ where: { id: shipment.id }, data: { kind: 'return' } })
+      const service = await owner.carrierService.findFirstOrThrow({
+        where: { connectionId: id },
+        select: { code: true }
+      })
+      const shipment = await owner.shipment.create({
+        data: {
+          storeId: ctx.storeA.id,
+          orderId: orderReturn.orderId,
+          connectionId: id,
+          kind: ShipmentKind.RETURN,
+          returnId: made.id,
+          serviceCode: service.code,
+          shippingPayer: ShippingPayer.RECIPIENT,
+          currency: 'USD',
+          status: ShipmentStatus.CREATING,
+          idempotencyKey: `return-${randomUUID()}`,
+          createdBy: 'system'
+        },
+        select: { id: true }
+      })
       await move(shipment.id, ShipmentStatus.CREATING, ShipmentStatus.LABEL_CREATED)
       expect(await movementsOf(id, GuideMovementKind.CONSUME)).toHaveLength(0)
     })
