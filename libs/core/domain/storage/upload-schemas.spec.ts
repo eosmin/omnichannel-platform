@@ -1,5 +1,11 @@
 import { MediaPurpose } from './media-purpose'
-import { AvatarUpload, OrderFileUpload, ProductImageUpload, UploadLimits } from './upload-constants'
+import {
+  AvatarUpload,
+  FinanceDocumentUpload,
+  OrderFileUpload,
+  ProductImageUpload,
+  UploadLimits
+} from './upload-constants'
 import { refuseUpload, UploadRefusals } from './upload-rules'
 import { ClientUploadPurposes, confirmUploadSchema, requestUploadUrlSchema } from './upload-schemas'
 
@@ -124,13 +130,43 @@ describe('refuseUpload for an order', () => {
   })
 })
 
+describe('refuseUpload for the receipt of a transaction of the books', () => {
+  it('takes the three still image types and a PDF within 10 MB', () => {
+    for (const type of FinanceDocumentUpload.CONTENT_TYPES) {
+      expect(
+        refuseUpload(type, FinanceDocumentUpload.MAX_SIZE_BYTES, MediaPurpose.FINANCE_DOCUMENT)
+      ).toBeNull()
+    }
+  })
+
+  it.each(['image/gif', 'video/mp4', 'text/plain', 'text/csv', 'image/svg+xml', 'text/html'])(
+    'refuses %s',
+    type => {
+      expect(refuseUpload(type, 10, MediaPurpose.FINANCE_DOCUMENT)).toBe(
+        UploadRefusals.TYPE_NOT_ALLOWED
+      )
+    }
+  )
+
+  it('refuses one byte over the limit', () => {
+    expect(
+      refuseUpload(
+        'application/pdf',
+        FinanceDocumentUpload.MAX_SIZE_BYTES + 1,
+        MediaPurpose.FINANCE_DOCUMENT
+      )
+    ).toBe(UploadRefusals.TOO_LARGE)
+  })
+})
+
 describe('the upload schemas', () => {
   it('accept a request for a purpose a client may upload for', () => {
     expect(requestUploadUrlSchema.parse(request)).toEqual(request)
     expect(ClientUploadPurposes).toEqual([
       MediaPurpose.MESSAGE,
       MediaPurpose.PRODUCT,
-      MediaPurpose.ORDER
+      MediaPurpose.ORDER,
+      MediaPurpose.FINANCE_DOCUMENT
     ])
   })
 
@@ -204,6 +240,39 @@ describe('the upload schemas', () => {
 
     it('refuse a storeId beside the parentId', () => {
       expect(requestUploadUrlSchema.safeParse({ ...order, storeId: 'x' }).success).toBe(false)
+    })
+  })
+
+  describe('for a receipt', () => {
+    const receipt = {
+      ...request,
+      purpose: MediaPurpose.FINANCE_DOCUMENT,
+      parentId: crypto.randomUUID()
+    }
+
+    it('need the id of the transaction, a UUID, on both routes', () => {
+      expect(requestUploadUrlSchema.safeParse(receipt).success).toBe(true)
+      expect(requestUploadUrlSchema.safeParse({ ...receipt, parentId: undefined }).success).toBe(
+        false
+      )
+      expect(requestUploadUrlSchema.safeParse({ ...receipt, parentId: 'nope' }).success).toBe(false)
+      const confirmReceipt = {
+        ...receipt,
+        mediaId: crypto.randomUUID(),
+        key: 'stores/s/uploads/m/a.png'
+      }
+      expect(confirmUploadSchema.safeParse(confirmReceipt).success).toBe(true)
+      expect(
+        confirmUploadSchema.safeParse({ ...confirmReceipt, parentId: undefined }).success
+      ).toBe(false)
+    })
+
+    it('refuse a storeId or an organizationId beside the parentId', () => {
+      expect(requestUploadUrlSchema.safeParse({ ...receipt, storeId: 'x' }).success).toBe(false)
+      expect(
+        requestUploadUrlSchema.safeParse({ ...receipt, organizationId: crypto.randomUUID() })
+          .success
+      ).toBe(false)
     })
   })
 

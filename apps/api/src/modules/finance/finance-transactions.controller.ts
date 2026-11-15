@@ -6,6 +6,7 @@ import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
+import type { MediaUrls } from '@platform/core/storage'
 
 import {
   actorOf,
@@ -17,8 +18,11 @@ import {
   type ResolvedTenant
 } from '../tenancy'
 
+import { FinanceTransactionDocumentsService } from './finance-transaction-documents.service'
 import { FinanceTransactionsService } from './finance-transactions.service'
 import {
+  type AttachDocumentBody,
+  attachDocumentSchema,
   idSchema,
   type ListTransactionsQuery,
   listTransactionsQuerySchema,
@@ -45,7 +49,10 @@ const id = () => new ZodValidationPipe(idSchema)
 // guard's.
 @Controller()
 export class FinanceTransactionsController {
-  constructor(private readonly transactions: FinanceTransactionsService) {}
+  constructor(
+    private readonly transactions: FinanceTransactionsService,
+    private readonly documents: FinanceTransactionDocumentsService
+  ) {}
 
   @RequirePermissions(Permissions.FINANCE_VIEW_JOURNAL)
   @Get(ApiRoutes.finance.transactions.list)
@@ -121,5 +128,40 @@ export class FinanceTransactionsController {
       actorOf(user, store, req),
       granted
     )
+  }
+
+  // The receipt is set once, by who may register this KIND of transaction (the service narrows to it) and may read the journal (the
+  // answer carries the transaction, so it tells no more than reading it)
+  @RequirePermissions(Permissions.FINANCE_VIEW_JOURNAL)
+  @RequireAnyPermission(Permissions.FINANCE_MANAGE_TRANSACTIONS, Permissions.FINANCE_MOVE_MONEY)
+  @Post(ApiRoutes.finance.transactions.document(':id'))
+  @HttpCode(HttpStatusCodes.CREATED)
+  attachDocument(
+    @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() granted: readonly Permission[],
+    @Param('id', id()) transactionId: string,
+    @Body(new ZodValidationPipe(attachDocumentSchema)) body: AttachDocumentBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<TransactionView> {
+    return this.documents.attach(
+      organization.id,
+      transactionId,
+      body,
+      actorOf(user, store, req),
+      granted
+    )
+  }
+
+  // The signed links of the receipt: the journal's permission reads it, and the files are served only once clean
+  @RequirePermissions(Permissions.FINANCE_VIEW_JOURNAL)
+  @Get(ApiRoutes.finance.transactions.document(':id'))
+  documentUrls(
+    @CurrentOrganization() organization: Organization,
+    @CurrentPermissions() granted: readonly Permission[],
+    @Param('id', id()) transactionId: string
+  ): Promise<MediaUrls> {
+    return this.documents.urls(organization.id, transactionId, granted)
   }
 }

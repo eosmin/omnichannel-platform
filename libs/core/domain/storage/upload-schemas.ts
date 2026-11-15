@@ -12,11 +12,13 @@ import type { UploadRulePurpose } from './upload-rules'
 // A product picture names its product in `parentId`; MediaService checks that it is one of the store
 // and that the member may edit products, before any signed url or row. An order file (the proof of a
 // delivery, the receipt of a payment) names its order the same way: one of the store, and a member who
-// may edit it or change its status.
+// may edit it or change its status. The receipt of a transaction of the books names the transaction: one of the organization of the
+// store, and a member who may register that kind of transaction.
 export const ClientUploadPurposes = [
   MediaPurpose.MESSAGE,
   MediaPurpose.PRODUCT,
-  MediaPurpose.ORDER
+  MediaPurpose.ORDER,
+  MediaPurpose.FINANCE_DOCUMENT
 ] as const
 export type ClientUploadPurpose = (typeof ClientUploadPurposes)[number]
 // Does not compile when a purpose is added above without rules in upload-rules.ts
@@ -36,6 +38,10 @@ const fileFields = {
 const messageFields = { purpose: z.literal(MediaPurpose.MESSAGE) }
 const productFields = { purpose: z.literal(MediaPurpose.PRODUCT), parentId: z.uuid() }
 const orderFields = { purpose: z.literal(MediaPurpose.ORDER), parentId: z.uuid() }
+const financeDocumentFields = {
+  purpose: z.literal(MediaPurpose.FINANCE_DOCUMENT),
+  parentId: z.uuid()
+}
 const confirmFields = { mediaId: z.uuid(), key: z.string().min(1).max(1024) }
 
 // Whether the type is allowed and the size fits is NOT checked here: the answers are the error codes
@@ -43,14 +49,16 @@ const confirmFields = { mediaId: z.uuid(), key: z.string().min(1).max(1024) }
 export const requestUploadUrlSchema = z.discriminatedUnion('purpose', [
   z.strictObject({ ...messageFields, ...fileFields }),
   z.strictObject({ ...productFields, ...fileFields }),
-  z.strictObject({ ...orderFields, ...fileFields })
+  z.strictObject({ ...orderFields, ...fileFields }),
+  z.strictObject({ ...financeDocumentFields, ...fileFields })
 ])
 export type RequestUploadUrlBody = z.infer<typeof requestUploadUrlSchema>
 
 export const confirmUploadSchema = z.discriminatedUnion('purpose', [
   z.strictObject({ ...confirmFields, ...messageFields, ...fileFields }),
   z.strictObject({ ...confirmFields, ...productFields, ...fileFields }),
-  z.strictObject({ ...confirmFields, ...orderFields, ...fileFields })
+  z.strictObject({ ...confirmFields, ...orderFields, ...fileFields }),
+  z.strictObject({ ...confirmFields, ...financeDocumentFields, ...fileFields })
 ])
 export type ConfirmUploadBody = z.infer<typeof confirmUploadSchema>
 

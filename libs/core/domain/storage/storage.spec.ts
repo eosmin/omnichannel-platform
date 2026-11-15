@@ -5,7 +5,12 @@ describe('MediaPurpose', () => {
     const values: string[] = Object.values(MediaPurpose)
     expect(new Set(values).size).toBe(values.length)
     expect(values).toEqual(
-      expect.arrayContaining(['shipping_label', 'bulk_labels', 'remittance_file'])
+      expect.arrayContaining([
+        'shipping_label',
+        'bulk_labels',
+        'remittance_file',
+        'finance_document'
+      ])
     )
   })
 })

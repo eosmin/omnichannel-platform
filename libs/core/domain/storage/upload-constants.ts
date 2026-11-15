@@ -65,6 +65,13 @@ export const OrderFileUpload = {
   CONTENT_TYPES: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
 } as const
 
+// The receipt or invoice of an expense, an income or a transfer: a photo or a PDF, as a file of an order (nothing that moves or runs; the
+// images are re-encoded and sanitized by the pipeline). 10 MB, as a message file.
+export const FinanceDocumentUpload = {
+  MAX_SIZE_BYTES: 10 * 1024 * 1024, // 10 MB
+  CONTENT_TYPES: ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+} as const
+
 export const AllAllowedContentTypes: ReadonlySet<string> = new Set(
   Object.values(AllowedContentTypes).flat()
 )

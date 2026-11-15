@@ -1452,20 +1452,27 @@ scheduled in this plan yet; `TDD_18 §14` already keeps it out of 4B); until it 
 orders of a period.
 
 ### Step 4B.4 — Expenses, incomes, transfers and bank reconciliation (api)
-Split in two PRs, never stacked (the second starts from a `main` that has the first): **4B.4a** the transactions, **4B.4b** the receipts
-and the bank reconciliation. Both use the upload purpose `finance_document`, so that one is built once, by 4B.4b.
+Split in three PRs, never stacked (each starts from a `main` that has the one before): **4B.4a** the transactions, **4B.4b-1** the
+receipts, **4B.4b-2** the bank reconciliation (4B.4b was one PR in the first plan and went past the size a review can hold: it carries a
+migration with triggers, a parser of customer files, a matcher and the routes of both). Both use the upload purpose `finance_document`,
+built once, by 4B.4b-1.
 - [x] **4B.4a:** `FinanceTransaction` (expense, income, transfer) posting E12 through `LedgerService` in the same transaction; void = the
       reversing entry; change = void plus a new one in one request (`replacesTransactionId`); the tax inside the amount computed by the
       server from the rate (creditable input VAT only when the person says the document is valid, [ACCOUNTANT]); permissions
       `FINANCE_MANAGE_TRANSACTIONS` (expense, income) and `FINANCE_MOVE_MONEY` (transfer), narrowed by the kind
-- [ ] **4B.4b:** receipts as `finance_document` media (upload purpose with the parent check, scanned, `documentMediaId` on the transaction,
-      a column added by its migration); permission `FINANCE_RECONCILE`
-- [ ] **4B.4b:** bank import: `BankImportProfile`, `BankStatementImport`, `BankStatementLine`, `ReconciliationMatch`; deterministic matching,
+- [x] **4B.4b-1:** receipts as `finance_document` media (upload purpose with the parent check on the transaction, scanned, `documentMediaId`
+      on the transaction, a column added by its migration, set once by `POST finance/transactions/:id/document`, signed links by the GET of
+      the same path)
+- [ ] **4B.4b-2:** permission `FINANCE_RECONCILE` (already in `Permissions`, held by the Admin preset) on the routes of the reconciliation
+- [ ] **4B.4b-2:** bank import: `BankImportProfile`, `BankStatementImport`, `BankStatementLine`, `ReconciliationMatch`; deterministic matching,
       strict parsing, no formula evaluation, the file kept as media; suggestions, confirm one or all the exact; "register it" from an
       unmatched line (a prefilled transaction of 4B.4a); the balance-versus-statement difference
 - [x] **4B.4a tests:** each kind posts the right entry, a transfer needs two distinct cash-kind accounts, voiding, changing, the closed
       period, retries and races, the permission of each kind, isolation cases, the shape and the immutability held by the database
-- [ ] **4B.4b tests:** matching rules and every parser error, isolation cases of the new tables
+- [x] **4B.4b-1 tests:** the upload of a receipt (permissions, parent of another organization, type and size), attaching it (once, replay,
+      kind narrowing, voided, a file of another organization or purpose), the signed links (clean, pending, other store, other
+      organization), the trigger whoever writes, and the isolation of the receipt (no new table: `validate:isolation` keys its cases by model, so the proof is in `tests/api/finance-transaction-documents.spec.ts`: a file of another organization is never attached, a transaction of another organization is a 404 to attach to or to read the receipt of)
+- [ ] **4B.4b-2 tests:** matching rules and every parser error, isolation cases of the new tables
 **TDD:** `TDD_18 §4.3`, `§4.4`, `TDD_07 §6.3`
 **Done when:** a person registers an expense paid from a chosen account with its VAT and a receipt, moves money between accounts, imports
 a statement and reconciles it, and every balance follows.
@@ -1509,6 +1516,41 @@ stamp than one that committed before it: ordering by the entry number is the fix
 total and date only, not by the store of its lines nor its tax line (extends (j); the reconciliation of 4B.8). (p) The audit row of a record or a void is written after the commit,
 as every audit of the platform is; a crash between the two loses it (the entry and the reversal carry the author and the time): moving it inside the transaction is a decision for the
 audit service as a whole, not for this PR.
+**Decisions of PR 4B.4b-1 (rule 12):** (1) A receipt is a `Media` of the purpose `finance_document` made FOR a transaction
+(`media.finance_transaction_id`, the parent of the upload: one transaction of the organization of the store of the request, 404 for another
+organization's or a missing one, the same answer) and the transaction then points at it ONCE (`finance_transactions.document_media_id`,
+`POST finance/transactions/:id/document`). Rejected: a `documentMediaId` in the body of the record (the file needs its parent to exist
+before the upload, so the transaction must exist first) and a free-floating file that any transaction could claim (the check of the
+organization would then be the only one). (2) The pointer is the one column besides the voiding pointer that the table lets move, from null
+to a file, once, and never together with another change; the trigger checks that the file is of the purpose of a receipt, was made for THIS
+transaction and sits in a store of the SAME organization, so a file of another organization is refused whoever writes (the owner of the table
+included). Rejected: leaving the check to the service alone. (3) A receipt is set once and a wrong file is a new transaction (void and
+register again, the immutability of the books): rejected, replacing the pointer (it would let the evidence of a posted entry change after the
+fact with no trace but an audit row). A retry of the same file answers the transaction and writes nothing. Only a file the scan found
+CLEAN can be attached (the trigger checks it too: an infected or unscanned file would be the receipt for ever); the screen waits for the
+scan (`409 transaction_document_not_clean`). (4) The permission is the one of the KIND of the transaction (as voiding), narrowed by the
+service at the upload (before anything is signed, and a voided or documented transaction takes no upload) and again at the attach; the
+upload and the attach ask for the journal's view and one of the two permissions that register (`MEDIA_UPLOAD` is the route's), so an id
+never tells more than reading it would. A file that is a receipt keeps its purpose, parent and store (a trigger on `media`), and a
+finance file has no other parent (a CHECK). Reading the file asks for `finance:view_journal`
+(a receipt shows what the organization paid and to whom). (5) The signed links come from a finance route, through the store the FILE lives in,
+because the books are the organization's: a member of another store of the same organization reads it with the same permission and a member
+of another organization gets a 404. Only a clean file is served (the scan of the pipeline; a pending or infected one is refused). (6) The
+file keeps the pipeline of every upload (signed PUT, ETag-pinned copy, type and magic bytes checked, the scan before it is served): the new
+purpose takes the three still images and a PDF, 10 MB, as a file of an order. (7) A receipt restricts the deletion of its media row and of its
+transaction (`ON DELETE RESTRICT` both ways), so a store with receipts cannot be deleted while the books name it (the same as its
+transactions, whose store link restricts).
+**Debts of PR 4B.4b-1:** (a) The replacement of a transaction (`replace`) does not carry the receipt of the one it voids: the new transaction
+takes a new file (upload for the new transaction, then attach); the screen of 4B.9 offers the old file to download. (b) A
+confirmed `finance_document` file that is never attached stays in its store (the orphan cleanup only settles pending, infected and
+avatar rows): bounded by the hourly quota of signed urls, and a cleanup of unattached receipts older than the pending window is owned by
+Step 7.7 (the worker's hardening step). (c) The receipt of
+a transfer or an expense of a store the caller cannot see is read through the store the file lives in, with the permission of the CALLER's
+store (`TDD_18 §9.1`: the ledger is the organization's), without checking that the caller belongs to the store the file lives in: by design,
+the books are the organization's and a receipt is read with the journal's permission; a per-store read of finance documents is a decision
+with the stores of Phase 2.
+(d) The web part (an upload button on the transaction) is 4B.9; `QueryKeys` for the receipt come with it.
+
 Review of 4B.4a (rule 12): the generic `POST finance/entries/:id/reverse` now refuses the entry of a transaction
 (`FinanceConflicts.ENTRY_OWNED_BY_TRANSACTION`), because it would leave the transaction looking live and skip its kind's permission and audit row.
 
@@ -2433,7 +2475,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.1 | Finance design (TDD_18, no code) | in progress | written and delivered with the first code PR that follows; owner approval of `TDD_18` pending | |
 | 4B.2 | Ledger core (accounts, immutable journal, periods, permissions) | done | PR a (schema, constants, pure rules, database tests, #509); PR b (posting service, routes, isolation, maps, #513) | 2026-11-15 |
 | 4B.3 | VAT and the tax snapshot | done | #520 (4B.3a), 4B.3b (this PR) | 2026-11-15 |
-| 4B.4 | Expenses, incomes, transfers and bank reconciliation | in progress | 4B.4a transactions (#527); 4B.4b receipts and bank reconciliation todo | |
+| 4B.4 | Expenses, incomes, transfers and bank reconciliation | in progress | 4B.4a transactions (#527); 4B.4b-1 receipts (this PR); 4B.4b-2 bank reconciliation todo | |
 | 4B.5 | Suppliers and purchase orders | todo | | |
 | 4B.6 | The automatic entries (sales, remittances, returns, stock) | todo | | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | todo | | |
