@@ -1654,28 +1654,87 @@ refused one until this step) and checks it is the organization's. The column `fi
 migration, as the ledger migration asks of every new column.
 
 ### Step 4B.6 — The automatic entries (api and worker)
-- [ ] The listener and `POST_FINANCE_EVENT`; the pure entry builders for E1 to E9 (payment, goods in transit, sale, carrier charges,
-      remittance confirmed and voided, a discrepancy written off, returns, stock adjustments and counts); the idempotency keys; the late-post
-      rule; `accountingStartDate` skipping
-- [ ] "Post again" of a failed source: `POST /finance/postings/:id/retry` (`finance:manage_accounts`) re-runs the builder of the source and
-      resolves the `FinancePostingFailure`; the list of failures (`GET /finance/postings`) is Step 4B.2b's
-- [ ] The destination account on the remittance confirm (a field added to `TDD_17 §4.15`'s confirm route, default `BANK_DEFAULT`) and the
-      "write off the difference" action
-- [ ] `RECONCILE_FINANCE` (daily and before a close): the sweep of unposted sources, balance recomputation, inventory and carrier-receivable
-      comparisons; the metrics and the `FINANCE_POSTING_FAILED` notification
-- [ ] **`FINANCE_VIEW_CARRIER_FEES`** gates the commission and the rates of a carrier connection (closes (c3)(i) of Step 4.15: `shipping:view`
-      stops showing them; the web of Settings → Carriers shows the boxes only with it)
-- [ ] The charge model of a carrier connection (`prepaid` | `collected in the remittance` | `invoiced`, `TDD_18 §4.2` note on E4, owner's information to
-      confirm with the accountant, `TDD_18 §13` rows 2 and 5) decides the entry of E4/E5 and the input VAT of a carrier charge; with 4B.5 for the
-      purchase of prepaid guides. Owner 4B.5/4B.6; not built by 4B.3
-- [ ] Tests: one case per event with exact amounts (a COD sale with a commission and a freight, a remittance that matches, one that
-      differs, one voided; a prepaid sale; a return before and after delivery; each adjustment), a lost event recovered by the sweep, a
-      missing mapping fails visibly and blocks the close, the same events twice produce one entry
+The step is cut in two PRs by what each needs (rule 12; one session, one PR; the cut is mine): **4B.6a** is the machinery and the entries that
+need nothing from the carriers' side; **4B.6b** is everything that waits on the remittance, the return and the carrier's charge model.
+- [x] **4B.6a:** the listener (api) and `POST_FINANCE_EVENT` (a job of the heavy queue, name in `JobNames`; the processor in the worker),
+      `FinancePostingService` (`libs/core/finance`, one transaction per event, an advisory lock per source, the current rows, the key
+      first), the pure builders `libs/core/finance/src/auto-entry-rules.ts` for **E1** (payment), **E2** (goods in transit), **E3** (sale
+      recognized, cash on delivery or prepaid) and **E9** (adjustments and count variances), the idempotency keys
+      (`FinancePostingKey`), the late-post rule and `accountingStartDate` skipping (`automaticEntryDate`)
+- [x] **4B.6a:** "Post again" of a failed source: `POST /finance/postings/:id/retry` (`finance:manage_accounts`) re-runs the same service
+      on the rows as they are and closes the `FinancePostingFailure`; `FINANCE_POSTING_FAILED` is an event (ids and a reason code)
+- [x] **4B.6a:** tests with exact amounts (a COD sale, a prepaid sale, the cost cleared once whichever entry came first, a missing mapping,
+      no tax recorded, no cost, a payment method without an account, sale recognized at shipping, before the start of the books, a
+      closed period, each adjustment, the same event twice), isolation between organizations, the job's schema
+- [ ] **4B.6b:** E4 (carrier charges) and E5 to E7 (remittance confirmed, voided, a discrepancy written off) with the destination account
+      on the remittance confirm (a field added to `TDD_17 §4.15`'s confirm route, default `BANK_DEFAULT`) and the "write off the
+      difference" action; E8 (returns, before and after delivery, with the refund destination)
+- [ ] **4B.6b:** `RECONCILE_FINANCE` (daily and before a close): the sweep of unposted sources (it is what heals an event that was never
+      queued), balance recomputation, inventory and carrier-receivable comparisons; the metrics and the notification of
+      `FINANCE_POSTING_FAILED` to who can fix it; the close refusing while a failure is open
+- [ ] **4B.6b:** **`FINANCE_VIEW_CARRIER_FEES`** gates the commission and the rates of a carrier connection (closes (c3)(i) of Step 4.15:
+      `shipping:view` stops showing them; the web of Settings → Carriers shows the boxes only with it)
+- [ ] **4B.6b:** the charge model of a carrier connection (`prepaid` | `collected in the remittance` | `invoiced`, `TDD_18 §4.2` note on E4,
+      owner's information to confirm with the accountant, `TDD_18 §13` rows 2 and 5) decides the entry of E4/E5 and the input VAT of a
+      carrier charge; with 4B.5 for the purchase of prepaid guides. Not built by 4B.3 or 4B.6a
+- [ ] **4B.6b:** tests of those entries (a remittance that matches, one that differs, one voided; a return before and after delivery), a
+      lost event recovered by the sweep, a failure that blocks the close
 - [ ] Debt (rule 12): the cent of a carrier that rounds otherwise (4.15 (c2)(i)) and the real fee column (4.15 (c2)(iii)) are decided by the
       real C807 file; the entries follow what the remittance confirm recorded
 **TDD:** `TDD_18 §4.2`, `§6`, `§11`, `TDD_17 §4.15`, `TDD_16 §4`, `TDD_07`
 **Done when:** a delivered COD order, its remittance with the carrier's fee, a return and a stock count each leave the right balanced
 entries with no human step, and the ledger's inventory and carrier receivables agree with the operational tables.
+
+**Decisions of PR 4B.6a (rule 12):** (1) The job is `POST_FINANCE_EVENT` on the **heavy queue**, not a queue `default`: the TDD names a queue
+that does not exist, and a tenth queue costs a processor, a dead-letter rule and a dashboard for a job that is light; the heavy queue
+already carries the finance-like `RECONCILE_INVENTORY`. Rejected: a new queue. (2) The job carries the source and the event, **never an
+amount**: `FinancePostingService` reads the current rows, so a late, repeated or reordered job posts the same entry. (3) The **service**
+lives in `libs/core/finance` (provided by `LedgerModule`), used by the worker (the job) and by the api (the "post again" route), so a retry
+can never post what the job would not. (4) **One advisory lock per source** (not per organization) serializes the events of one order, so
+the choice "E2 first, or the sale straight from inventory" is taken on a settled state; the ledger's own lock of the organization is taken
+inside it, always in that order. (5) **The cost is never taken out twice**: the sale clears inventory in transit by the total of the E2
+entry when one exists, else takes it from inventory; E2 does nothing when the sale entry already exists. This also makes a change of
+`recognizeSaleOn` safe in the middle of an order's life (the cut-over debt (f) of 4B.2b): the data, not the setting, decides. Rejected:
+forcing E2 before E3 (a lost job would block the sale). (6) The **revenue is posted net of the discount** and `SALES_DISCOUNTS` is not
+used: the order stores the tax after the discount but not the net of the discount, so showing it apart would put a figure computed here,
+not read from the order (debt a). The order's figures are checked to the cent against its total; one that does not add up is refused,
+never forced. (7) An order **without tax recorded** (made before the tax columns) is a failure `TAX_MISSING`, never an invented tax. A
+movement that left **with no cost** is `COST_MISSING`, never a cost of zero. (8) A not-COD order delivered **unpaid** is a failure
+(`SOURCE_NOT_READY`): a sale on credit is not built in the MVP (`TDD_18 §4.2` E3); the payment event queues the sale again. (9) A cash
+on delivery order with **no carrier** (no shipment, none planned) is `CARRIER_MISSING`: the receivable needs a party. (10) A failure of the
+books is **recorded and returned, not thrown**: the queue's retries are for the infrastructure; a person fixes a mapping and presses "post
+again". The event `FINANCE_POSTING_FAILED` fires on a new, reopened or changed failure, never on the same one again. (11) The entry is
+dated by the day of the event **in the store's time zone** (`automaticEntryDate`: the first day of the open period when that day is in a
+closed one, `sourceDate` kept); a retry after a close finds its entry by the key instead of being refused for a date that moved. (12)
+`INVENTORY_MOVED` now carries the `movementId`, so an adjustment is keyed by its movement. E1 and E3 use `JournalEntryType.SALE`, E2
+`SALE_SHIPMENT`, E9 `INVENTORY_ADJUSTMENT`; the memo is a code (`auto:sale`), never a sentence.
+**Debts of PR 4B.6a (all in this step):** (a) the discount shown apart on `SALES_DISCOUNTS` (decision 6) needs the net of the discount on the
+order and the accountant's view of how it is presented: owner and accountant, 4B.8 (reports) reads the revenue as posted. (b) The sweep that
+finds a source whose event was never queued, the metrics, and the notification of a failure to who can fix it are **4B.6b** (the event is
+published and logged now). (c) E4 to E8 and the charge model are 4B.6b. (d) A stock adjustment of units **in** with no cost (every count gain and any manual
+adjustment without a cost: the engine values them at the level's average but stores `null` on the movement) is a failure no "post
+again" can clear: the books must be told the cost. Fix at the source (the engine stores the unit cost it valued the units at, a change of
+`libs/core/inventory` and its kardex, with its own tests) or a "resolve without posting" action with a reason: owner's call, 4B.6b.
+(h) The cost of an issue is quantity x the rounded unit cost the movement carries, while the engine removes `value x leaving / onHand`
+from the level: they differ by up to half a cent per unit, and an issue beyond the stock on hand (negative stock allowed) is charged at the
+average for all its units. The daily `RECONCILE_FINANCE` of 4B.6b compares the ledger's inventory with `InventoryLevel.valueCents` and
+must carry a tolerance for this; the exact fix is for the movement to carry the value removed. (i) A prepaid order paid **before the
+start of the books** has no E1, so its sale waits (a failure that does not alarm) until the accountant's opening balance covers the
+advance and the failure is resolved: the "resolve without posting" action of (d). (j) "Post again" queues the job (a request's
+transaction cannot roll back in part when the ledger refuses), so it answers `{ queued: true }`; the person sees the failure close, or
+its reason change, on the list. (k) `FINANCE_POSTING_FAILED` is published by the worker and nothing consumes it yet: its bridge to the api
+and the notification are 4B.6b with the sweep. (l) The failure row stores a reason, not WHICH role is unmapped (the rules know it,
+the table has no column): the list says "role not mapped" and the person reads the mapping; a `detail` column with the role is 4B.6b.
+(m) Specs still to write in 4B.6b with the sweep: the listener's event-to-job mapping, the `LEDGER_REFUSED` second transaction,
+`markUnposted` on the last attempt, and two jobs of one order run in parallel (the advisory lock). (n) The organization of a store is read
+on every event (one query) and posting jobs share the heavy queue (concurrency 2): a cache and a queue of their own when the volume asks
+(4B.6b, with the sweep). (o) `dayInZone` is a second day-in-zone helper next to `civilDateOf` (`carrier-guide-rules.ts`): one of them
+goes at the 7.7 cleanup. (p) The settings are read before the ledger takes its own lock: a close committed in between is a
+`LEDGER_REFUSED` that "post again" clears, not a wrong entry.
+(e) The transfer shortage written off (E9, third case) has no source row in the MVP: it posts when a transfer write-off exists (Step
+4.5 debt). (f) The queued job's de-duplication id is not used on purpose (one id per source would swallow the second event of the same
+order); the keys make a repeat harmless. (g) The posting runs after the commit of the source and the sweep (4B.6b) is what heals a lost
+queue: until it exists a lost event costs an entry until someone presses "post again" on nothing, so 4B.6b must not slip past 4B.8.
 
 ### Step 4B.7 — Fiscal documents (DTE), against a simulator first
 - [ ] `libs/fiscal/sdk` (the provider port, manifest, contract suite), `libs/fiscal/simulator` (development and test only); the
@@ -2585,9 +2644,9 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.1 | Finance design (TDD_18, no code) | in progress | written and delivered with the first code PR that follows; owner approval of `TDD_18` pending | |
 | 4B.2 | Ledger core (accounts, immutable journal, periods, permissions) | done | PR a (schema, constants, pure rules, database tests, #509); PR b (posting service, routes, isolation, maps, #513) | 2026-11-15 |
 | 4B.3 | VAT and the tax snapshot | done | #520 (4B.3a), 4B.3b (this PR) | 2026-11-15 |
-| 4B.4 | Expenses, incomes, transfers and bank reconciliation | done | 4B.4a transactions (#527); 4B.4b-1 receipts (#531); 4B.4b-2 bank reconciliation (#537) | |
-| 4B.5 | Suppliers and purchase orders | todo | | |
-| 4B.6 | The automatic entries (sales, remittances, returns, stock) | todo | | |
+| 4B.4 | Expenses, incomes, transfers and bank reconciliation | done | 4B.4a transactions (#527); 4B.4b-1 receipts (#531); 4B.4b-2 bank reconciliation (#537) | 2026-11-15 |
+| 4B.5 | Suppliers and purchase orders | done | #542 | 2026-11-15 |
+| 4B.6 | The automatic entries (sales, remittances, returns, stock) | in progress | 4B.6a machinery, E1 to E3 and E9 (#546); 4B.6b remittance, returns, carriers and the sweep: todo | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | todo | | |
 | 4B.8 | Reports, monthly close and the auditor's export | todo | | |
 | 4B.9 | Finance interface (web) | todo | | |

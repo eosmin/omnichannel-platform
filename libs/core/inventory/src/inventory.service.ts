@@ -307,6 +307,7 @@ export class InventoryService {
     })
 
     this.events.publish(tx, Events.INVENTORY_MOVED, {
+      movementId: created.id,
       storeId,
       productId,
       variantId,

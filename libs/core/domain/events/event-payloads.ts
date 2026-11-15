@@ -7,6 +7,9 @@ import type {
   ChannelId,
   ConversationStatus,
   ConversationStatusReason,
+  FinanceEventKind,
+  FinancePostingFailureReason,
+  FinanceSourceType,
   InventoryMovementType,
   JournalEntryType,
   OrderMessageAlertReason,
@@ -271,6 +274,8 @@ export interface OrderPaymentPayload extends OrderEventPayload {
 
 // A superset of what the cache listener reads (TDD_16 §5).
 export interface InventoryMovedPayload {
+  // The movement just written: the books post stock adjustments by it (TDD_18 §4.2 E9)
+  movementId: string
   storeId: string
   productId: string
   variantId: string | null
@@ -319,6 +324,16 @@ export interface FinanceEntryPayload {
   // For a reversal, the entry it reversed
   reversesEntryId: string | null
   actor: ActorRef
+}
+
+// An automatic entry failed (TDD_18 §6.1): the source, the event of it and a reason code, never an amount
+export interface FinancePostingFailedPayload {
+  organizationId: string
+  sourceType: FinanceSourceType
+  sourceId: string
+  eventKind: FinanceEventKind
+  reason: FinancePostingFailureReason
+  attempts: number
 }
 
 // A receipt of a purchase order was posted (TDD_18 §3): ids only, no amount and no cost
@@ -589,6 +604,7 @@ export interface DomainEventPayloads {
   [Events.REMITTANCE_OVERDUE]: RemittanceOverduePayload
   [Events.FINANCE_ENTRY_POSTED]: FinanceEntryPayload
   [Events.FINANCE_ENTRY_REVERSED]: FinanceEntryPayload
+  [Events.FINANCE_POSTING_FAILED]: FinancePostingFailedPayload
   [Events.PURCHASE_ORDER_RECEIVED]: PurchaseOrderReceivedPayload
   [Events.WEBHOOK_AUTO_DISABLED]: WebhookAutoDisabledPayload
   [Events.PLUGIN_ERROR]: PluginErrorPayload
