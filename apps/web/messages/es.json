@@ -3092,7 +3092,9 @@
         "order-messages:read": "Leer los mensajes enviados sobre pedidos y sus plantillas",
         "settings:read": "Leer los ajustes de la tienda",
         "channel:connections": "Gestionar las cuentas del canal que ofrece",
-        "channel:events": "Informar eventos del canal que ofrece, como los mensajes entrantes"
+        "channel:events": "Informar eventos del canal que ofrece, como los mensajes entrantes",
+        "transfers:read": "Leer los traslados de existencias entre bodegas",
+        "counts:read": "Leer los conteos de existencias y sus resultados"
       },
       "reenable": "Reactivar notificaciones"
     },

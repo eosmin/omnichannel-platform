@@ -3092,7 +3092,9 @@
         "order-messages:read": "Read the messages sent about orders and their templates",
         "settings:read": "Read the settings of the store",
         "channel:connections": "Manage the accounts of the channel it provides",
-        "channel:events": "Report events of the channel it provides, such as incoming messages"
+        "channel:events": "Report events of the channel it provides, such as incoming messages",
+        "transfers:read": "Read stock transfers between warehouses",
+        "counts:read": "Read stock counts and their results"
       },
       "reenable": "Turn notifications on"
     },
