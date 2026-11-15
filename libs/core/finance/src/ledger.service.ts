@@ -484,21 +484,12 @@ export class LedgerService {
 
   // The party and the tax rate of a line name rows of other tables: they are looked up in the organization here, so that no line
   // points across it (the key of the database holds the rate too, this gives the typed answer). A customer and a carrier
-  // connection belong to a store of the organization; the suppliers have no table until Step 4B.5, which adds their check, and a
-  // line that names one is refused until then.
+  // connection belong to a store of the organization, a supplier to the organization itself.
   private async checkDimensions(
     tx: PrismaTransaction,
     organizationId: string,
     lines: readonly StoredLine[]
   ): Promise<void> {
-    // A supplier is not a row until Step 4B.5: no line names one before its table exists
-    if (lines.some(line => line.partyType === PartyType.SUPPLIER)) {
-      throw new PlatformException(
-        ErrorCodes.VALIDATION_INVALID_INPUT,
-        'a supplier cannot be named by an entry before its table exists',
-        HttpStatusCodes.BAD_REQUEST
-      )
-    }
     // A tax rate is one of the organization (another organization's is a rate that does not exist)
     const rates = [
       ...new Set(lines.flatMap(line => (line.taxRateId === null ? [] : [line.taxRateId])))
@@ -520,6 +511,12 @@ export class LedgerService {
         where: { id: { in: customers }, store: { organizationId } }
       })
       if (found !== customers.length) throw resourceNotFound('customer')
+    }
+    // A supplier is a row of the organization (Step 4B.5): another organization's is a supplier that does not exist
+    const suppliers = idsOf(PartyType.SUPPLIER)
+    if (suppliers.length > 0) {
+      const found = await tx.supplier.count({ where: { id: { in: suppliers }, organizationId } })
+      if (found !== suppliers.length) throw resourceNotFound('supplier')
     }
     const carriers = idsOf(PartyType.CARRIER_CONNECTION)
     if (carriers.length > 0) {

@@ -38,6 +38,7 @@ import {
   PluginCatalogTypes,
   PluginPricingModels,
   PluginStatus,
+  PurchaseOrderStatus,
   RemittanceStatus,
   RoutingActionTypes,
   PickupStatus,
@@ -174,6 +175,138 @@ function booksOf(owner: OwnerClient, organizationId: string): Promise<FinanceFix
 }
 async function booksOfStore(owner: OwnerClient, storeId: string): Promise<FinanceFixture> {
   return booksOf(owner, await organizationOfStore(owner, storeId))
+}
+// A supplier of an organization, and a draft purchase order of it for a warehouse of the organization (TDD_18 §2.7), as the owner
+async function createSupplierOf(
+  owner: OwnerClient,
+  organizationId: string
+): Promise<{ id: string }> {
+  return owner.supplier.create({
+    data: { organizationId, name: `iso-supplier-${randomUUID().slice(0, 8)}` },
+    select: { id: true }
+  })
+}
+async function createPurchaseOrderOf(
+  owner: OwnerClient,
+  organizationId: string,
+  line?: { storeId: string; productId: string }
+): Promise<{ id: string }> {
+  await booksOf(owner, organizationId)
+  const supplier = await createSupplierOf(owner, organizationId)
+  const warehouse = await createWarehouse(owner, { organizationId })
+  const id = randomUUID()
+  await owner.purchaseOrder.create({
+    data: {
+      id,
+      organizationId,
+      number: `ISO-${id.slice(0, 8)}`,
+      supplierId: supplier.id,
+      warehouseId: warehouse.id,
+      status: PurchaseOrderStatus.DRAFT,
+      clientKey: `iso-${id}`,
+      createdBy: 'isolation-suite'
+    }
+  })
+  if (line !== undefined) {
+    await owner.purchaseOrderLine.create({
+      data: {
+        organizationId,
+        storeId: line.storeId,
+        purchaseOrderId: id,
+        lineNo: 1,
+        productId: line.productId,
+        quantity: 2,
+        unitCostCents: 100
+      }
+    })
+  }
+  return { id }
+}
+// The supplier a payment of the suite was made to: the payments are read in the list of their supplier
+const supplierOfPayment = new Map<string, string>()
+// The order a row of the purchases belongs to: a line, a receipt and the line of a receipt are reached through their order
+const orderOfPurchaseRow = new Map<string, string>()
+const purchaseOrderPathOf = (build: (id: string) => string) => (id: string) =>
+  build(orderOfPurchaseRow.get(id) ?? randomUUID())
+// A purchase order of the organization of the store with a line of the store, a receipt of one unit of it and the line of that receipt
+async function createReceiptOf(
+  owner: OwnerClient,
+  storeId: string
+): Promise<{ orderLineId: string; receiptId: string; receiptLineId: string }> {
+  const organizationId = await organizationOfStore(owner, storeId)
+  const books = await booksOf(owner, organizationId)
+  const product = await createProduct(owner, { storeId })
+  const order = await createPurchaseOrderOf(owner, organizationId, {
+    storeId,
+    productId: product.id
+  })
+  const purchase = await owner.purchaseOrder.findUniqueOrThrow({
+    where: { id: order.id },
+    select: { supplierId: true }
+  })
+  const orderLine = await owner.purchaseOrderLine.findFirstOrThrow({
+    where: { purchaseOrderId: order.id },
+    select: { id: true }
+  })
+  const receiptId = randomUUID()
+  const entry = await postTestEntry(
+    owner,
+    simpleEntry(books, 1000, {
+      type: JournalEntryType.PURCHASE_RECEIPT,
+      sourceType: FinanceSourceType.PURCHASE_RECEIPT,
+      sourceId: receiptId
+    })
+  )
+  await owner.purchaseReceipt.create({
+    data: {
+      id: receiptId,
+      organizationId,
+      purchaseOrderId: order.id,
+      supplierId: purchase.supplierId,
+      receivedOn: day(FINANCE_ENTRY_DATE),
+      dueOn: day(FINANCE_ENTRY_DATE),
+      taxCreditable: false,
+      subtotalCents: 1000,
+      taxCents: 0,
+      totalCents: 1000,
+      clientKey: `iso-${receiptId}`,
+      entryId: entry.id,
+      createdBy: 'isolation-suite'
+    }
+  })
+  const receiptLineId = randomUUID()
+  await owner.purchaseReceiptLine.create({
+    data: {
+      id: receiptLineId,
+      organizationId,
+      storeId,
+      receiptId,
+      orderLineId: orderLine.id,
+      quantity: 1,
+      unitCostCents: 1000,
+      subtotalCents: 1000,
+      taxCents: 0,
+      movementId: 'isolation-movement'
+    }
+  })
+  for (const id of [orderLine.id, receiptId, receiptLineId]) orderOfPurchaseRow.set(id, order.id)
+  return { orderLineId: orderLine.id, receiptId, receiptLineId }
+}
+// What the rows reached through their order are checked with (see the cases below)
+const purchaseRowChecks: Omit<IsolationResource, 'name' | 'create'> = {
+  scope: 'organization',
+  readPath: purchaseOrderPathOf(ApiRoutes.purchaseOrders.byId),
+  modify: {
+    path: purchaseOrderPathOf(ApiRoutes.purchaseOrders.update),
+    body: { notes: 'hacked' }
+  },
+  untouched: async (owner, id) =>
+    (
+      await owner.purchaseOrder.findUnique({
+        where: { id: orderOfPurchaseRow.get(id) ?? randomUUID() },
+        select: { notes: true }
+      })
+    )?.notes !== 'hacked'
 }
 // A statement of the cash account of an organization with one line, as the import writes it: the file is a finance file of the store
 // and the line carries its hash (TDD_18 §4.4)
@@ -1531,6 +1664,118 @@ const resources: IsolationResource[] = [
     // No `creation` check: the body may name a store of the organization (the dimension of the lines), so a store of ANOTHER organization
     // is a 404 and not the 400 of a strict body; tests/api/finance-transactions.spec.ts proves that and that nothing is written
   },
+  // The suppliers, their orders and the payments made to them belong to the ORGANIZATION (TDD_18 §2.1): every store of it reaches them
+  // with the permission, another organization never does. The lines of an order are the stores' (see the block of purchases below).
+  {
+    name: 'supplier',
+    create: async (owner, { storeId }) => ({
+      id: (await createSupplierOf(owner, await organizationOfStore(owner, storeId))).id
+    }),
+    scope: 'organization',
+    readPath: ApiRoutes.suppliers.byId,
+    listPath: ApiRoutes.suppliers.list,
+    modify: { path: ApiRoutes.suppliers.update, body: { name: 'hacked' } },
+    untouched: async (owner, id) =>
+      (await owner.supplier.findUnique({ where: { id }, select: { name: true } }))?.name !==
+      'hacked',
+    creation: {
+      path: ApiRoutes.suppliers.create,
+      body: name => ({ name }),
+      strict: true,
+      countIn: async (owner, storeId) =>
+        owner.supplier.count({
+          where: { organizationId: await organizationOfStore(owner, storeId) }
+        }),
+      storeOf: async (owner, id) =>
+        (await owner.supplier.findUnique({ where: { id }, select: { organizationId: true } }))
+          ?.organizationId ?? null
+    }
+  },
+  {
+    name: 'purchaseOrder',
+    create: async (owner, { storeId }) => ({
+      id: (await createPurchaseOrderOf(owner, await organizationOfStore(owner, storeId))).id
+    }),
+    scope: 'organization',
+    readPath: ApiRoutes.purchaseOrders.byId,
+    listPath: ApiRoutes.purchaseOrders.list,
+    modify: { path: ApiRoutes.purchaseOrders.update, body: { notes: 'hacked' } },
+    untouched: async (owner, id) =>
+      (await owner.purchaseOrder.findUnique({ where: { id }, select: { notes: true } }))?.notes !==
+      'hacked'
+    // No `creation` check: the body names a supplier and a warehouse, so ids of ANOTHER organization are a 404 and not the 400 of a
+    // strict body; tests/api/purchases.spec.ts proves that
+  },
+  // The lines, the receipts and the lines of a receipt have no route of their own: they are read and changed through their order (the
+  // header is the organization's, so these are organization-scoped here; the block "purchase orders of an organization" below proves
+  // that a member sees only the lines of THEIR stores)
+  {
+    name: 'purchaseOrderLine',
+    create: async (owner, { storeId }) => ({
+      id: (await createReceiptOf(owner, storeId)).orderLineId
+    }),
+    ...purchaseRowChecks
+  },
+  {
+    name: 'purchaseReceipt',
+    create: async (owner, { storeId }) => ({
+      id: (await createReceiptOf(owner, storeId)).receiptId
+    }),
+    ...purchaseRowChecks
+  },
+  {
+    name: 'purchaseReceiptLine',
+    create: async (owner, { storeId }) => ({
+      id: (await createReceiptOf(owner, storeId)).receiptLineId
+    }),
+    ...purchaseRowChecks
+  },
+  {
+    name: 'supplierPayment',
+    create: async (owner, { storeId }) => {
+      const books = await booksOfStore(owner, storeId)
+      const supplier = await createSupplierOf(owner, books.organizationId)
+      const id = randomUUID()
+      const entry = await postTestEntry(
+        owner,
+        simpleEntry(books, 800, {
+          type: JournalEntryType.SUPPLIER_PAYMENT,
+          sourceType: FinanceSourceType.SUPPLIER_PAYMENT,
+          sourceId: id
+        })
+      )
+      await owner.supplierPayment.create({
+        data: {
+          id,
+          organizationId: books.organizationId,
+          supplierId: supplier.id,
+          paidFromAccountId: books.accounts.cash,
+          amountCents: 800,
+          paidOn: day(FINANCE_ENTRY_DATE),
+          clientKey: `iso-${id}`,
+          entryId: entry.id,
+          createdBy: 'isolation-suite'
+        }
+      })
+      supplierOfPayment.set(id, supplier.id)
+      return { id }
+    },
+    scope: 'organization',
+    // A payment has no route by id: it is read in the list of its supplier
+    readPath: id => ApiRoutes.suppliers.payments(supplierOfPayment.get(id) ?? randomUUID()),
+    modify: {
+      path: ApiRoutes.supplierPayments.void,
+      method: 'post',
+      body: { reason: 'Voided by the suite' }
+    },
+    untouched: async (owner, id) =>
+      (
+        await owner.supplierPayment.findUnique({
+          where: { id },
+          select: { voidedByEntryId: true }
+        })
+      )?.voidedByEntryId === null
+  },
   // The reading profile of a bank's CSV is the organization's: listed and changed by id, never read by it
   {
     name: 'bankImportProfile',
@@ -2641,6 +2886,78 @@ describe('Tenant isolation', () => {
       const response = await api(app, ctx.adminA, ctx.storeB).get(ApiRoutes.finance.entries.list)
 
       expect(response.status).toBe(403)
+    })
+  })
+
+  // The purchase orders belong to the organization, their lines to the stores whose products are bought (TDD_18 §2.1): the
+  // checks above prove that another organization reaches none of them; these prove that line visibility is the caller's stores
+  describe('purchase orders of an organization', () => {
+    it("show a member only the lines of their stores, though the header is the organization's", async () => {
+      const own = await owner.product.create({
+        data: { storeId: ctx.storeA.id, name: `p-${randomUUID().slice(0, 6)}`, priceCents: 100 },
+        select: { id: true }
+      })
+      const sibling = await owner.product.create({
+        data: { storeId: ctx.storeA2.id, name: `p-${randomUUID().slice(0, 6)}`, priceCents: 100 },
+        select: { id: true }
+      })
+      const order = await createPurchaseOrderOf(owner, ctx.orgA.id, {
+        storeId: ctx.storeA.id,
+        productId: own.id
+      })
+      await owner.purchaseOrderLine.create({
+        data: {
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA2.id,
+          purchaseOrderId: order.id,
+          lineNo: 2,
+          productId: sibling.id,
+          quantity: 1,
+          unitCostCents: 100
+        }
+      })
+
+      const fromA = await api(app, ctx.adminA, ctx.storeA).get(
+        ApiRoutes.purchaseOrders.byId(order.id)
+      )
+      const fromA2 = await api(app, ctx.adminA2, ctx.storeA2).get(
+        ApiRoutes.purchaseOrders.byId(order.id)
+      )
+
+      const storesOf = (response: { body: unknown }): string[] =>
+        (response.body as { lines: { storeId: string }[] }).lines.map(line => line.storeId)
+      expect(fromA.status).toBe(200)
+      expect(storesOf(fromA)).toEqual([ctx.storeA.id])
+      expect(fromA2.status).toBe(200)
+      expect(storesOf(fromA2)).toEqual([ctx.storeA2.id])
+    })
+
+    it('of another organization cannot be edited, placed, received, closed, cancelled or paid', async () => {
+      const foreign = await createPurchaseOrderOf(owner, ctx.orgB.id)
+      const row = await owner.purchaseOrder.findUniqueOrThrow({ where: { id: foreign.id } })
+      const agent = api(app, ctx.adminA, ctx.storeA)
+
+      const attempts = [
+        await agent.post(ApiRoutes.purchaseOrders.order(foreign.id)),
+        await agent.post(ApiRoutes.purchaseOrders.receive(foreign.id)).send({
+          idempotencyKey: randomUUID().replaceAll('-', ''),
+          receivedOn: '2026-11-10',
+          lines: [{ orderLineId: randomUUID(), quantity: 1 }]
+        }),
+        await agent.post(ApiRoutes.purchaseOrders.close(foreign.id)).send({}),
+        await agent.post(ApiRoutes.purchaseOrders.cancel(foreign.id)).send({}),
+        await agent.post(ApiRoutes.suppliers.recordPayment(row.supplierId)).send({
+          idempotencyKey: randomUUID().replaceAll('-', ''),
+          paidFromAccountId: randomUUID(),
+          amountCents: 100,
+          paidOn: '2026-11-10'
+        })
+      ]
+
+      expect(attempts.map(attempt => attempt.status)).toEqual([404, 404, 404, 404, 404])
+      expect(
+        (await owner.purchaseOrder.findUniqueOrThrow({ where: { id: foreign.id } })).status
+      ).toBe(PurchaseOrderStatus.DRAFT)
     })
   })
 

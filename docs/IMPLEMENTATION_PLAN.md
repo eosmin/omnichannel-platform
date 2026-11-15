@@ -1597,18 +1597,61 @@ Review of 4B.4a (rule 12): the generic `POST finance/entries/:id/reverse` now re
 (`FinanceConflicts.ENTRY_OWNED_BY_TRANSACTION`), because it would leave the transaction looking live and skip its kind's permission and audit row.
 
 ### Step 4B.5 — Suppliers and purchase orders (api)
-- [ ] `Supplier`, `PurchaseOrder`, `PurchaseOrderLine`, `PurchaseReceipt` (+ lines), `SupplierPayment`; the transition table;
+- [x] `Supplier`, `PurchaseOrder`, `PurchaseOrderLine`, `PurchaseReceipt` (+ lines), `SupplierPayment`; the transition table;
       the purchase number counter; permission `FINANCE_MANAGE_PURCHASES` and `FINANCE_MOVE_MONEY` for payments
-- [ ] Receiving (partial or total) calls `InventoryService.receive` per line with the unit cost before tax (the average moves) and posts
+- [x] Receiving (partial or total) calls `InventoryService.receive` per line with the unit cost before tax (the average moves) and posts
       E10; the supplier's document number is kept; a receipt above the ordered quantity is refused; payments (partial or total) post E11
       from the account the person chooses and cannot exceed the open balance; the open balance per supplier (party dimension)
-- [ ] Tests: receipt raises stock and cost and posts one entry, partial receipts and payments, closing a short purchase, cancellation
+- [x] Tests: receipt raises stock and cost and posts one entry, partial receipts and payments, closing a short purchase, cancellation
       rules, isolation (the lines by store)
-- [ ] Debts written here (rule 12): returns to suppliers and debit notes, and the allocation of a purchase's freight into the unit cost
+- [x] Debts written here (rule 12): returns to suppliers and debit notes, and the allocation of a purchase's freight into the unit cost
       (landed cost): after the MVP, owner decides when
 **TDD:** `TDD_18 §2.7`, `§4.2` E10 and E11, `TDD_16 §4`
 **Done when:** a purchase order is received into a warehouse (stock and weighted-average cost move), the amount owed appears for the
 supplier and is paid in parts from the chosen account, and the ledger agrees with the stock value.
+
+**Decisions of 4B.5 (rule 12), all marked [ACCOUNTANT] where they are the accountant's to confirm:** (1) The module is `apps/api/src/modules/purchases`
+(its own, so it does not share files with the books' module); the routes are `suppliers`, `suppliers/payables`, `suppliers/:id/balance`,
+`suppliers/:id/payments`, `supplier-payments/:id/void` and `purchase-orders` (+ `order`, `receive`, `close`, `cancel`, `payments`), all organization-scoped
+(`finance:manage_purchases` writes and reads suppliers and orders; `finance:move_money` pays and voids a payment; what is owed is read with either).
+(2) `InventoryService` has no `receive`: a receipt line is a `RECEIPT` movement through `move`/`moveMany` in the receipt's own transaction, with the unit cost
+before tax, the order number as its note and the new reference type `purchase_receipt` (the id is the receipt), so the weighted average moves and the stock value of
+the ledger of stock is exactly what the entry debits to `INVENTORY`. (3) The tax of a receipt is computed per line, ON TOP of the cost, with the organization's
+rounding (`TaxRounding`); the rate of a line is the one the order names (none = untaxed), and the input VAT account is the rate's `inputAccountId`, like 4B.4a.
+(4) **[ACCOUNTANT]** The tax is credited as input VAT only against a supplier document: `taxCreditable` defaults to "a document number was given", can be sent
+explicitly, and `true` without a number is refused (a CHECK holds it too). A tax that is NOT creditable is booked to the `UNCATEGORIZED_EXPENSE` role (a visible cost; a
+receipt that needs it without the role mapped fails with `FINANCE_ROLE_NOT_MAPPED`), so the stock keeps its cost and the ledger agrees with the stock value. The
+receiving of the prepaid-guide model of a carrier (4B.6) does not go through here. (5) The payable account of a supplier is its `defaultPayableAccountId` or the
+`PAYABLE_SUPPLIERS` role, and is fixed once the supplier has a bill or a payment (`SUPPLIER_HAS_HISTORY`), so its payments post where its bills did. (6) A payment
+is checked against the supplier's open balance and, when it names a bill, against the open part of that bill, with the supplier locked; a payment that names no
+bill is applied to the oldest due first when the bills are listed (`billBalances`, pure), so the supplier's open amount is exactly bills minus payments. (7) A payment
+is voided only by its own route (`VOID_SUPPLIER_PAYMENT`, HIGH tier): the reversing entry plus a pointer set once; the generic `POST finance/entries/:id/reverse`
+refuses the entry of a receipt or a payment (`ENTRY_OWNED_BY_PURCHASE`), like 4B.4a did for a transaction. A receipt is never voided: the way back is a return to the
+supplier (debt (a)). (8) The lines of an order and of a receipt carry the store of their product and are read and written only by the members of that store holding
+`finance:manage_purchases` (`visibleStoreIds`, like the lines of a transfer); the header is the organization's. (9) A receipt dated before `accountingStartDate` or in a
+closed period is refused by the ledger like any entry (`FINANCE_BEFORE_START_DATE`, `FINANCE_PERIOD_CLOSED`); a purchase of goods with no cost (a receipt that owes nothing)
+is refused: free goods are a stock adjustment. (10) Rejected alternative for (6): requiring every payment to name a bill; kept optional because TDD_18 §2.7 has the
+bill optional.
+**Debts of 4B.5 (rule 12):** (a) Returns to suppliers and debit notes, and the landed cost (a purchase's freight into the unit cost): after the MVP, owner decides when
+(the plan's own debt). (b) The payables read (`suppliers/payables`, `balance`) sums the bills of the organization (or the supplier) in one pass: bounded by the volume
+of an MVP, with no page; a paged and a closed-bills filter come with the reports of 4B.8. (c) The comparison of the payable account (party = supplier) with the
+operational payables, and of `INVENTORY` with `InventoryLevel.valueCents`, belongs to the daily `RECONCILE_FINANCE` of 4B.6; 4B.5 proves them equal in the integration
+suite only. (d) The web (suppliers, orders, the receive screen, payables with due dates) and the `QueryKeys` and `AppPaths` for them are 4B.9; every route is mapped to that
+step in `scripts/frontend-coverage-map.ts`. (e) The model of the carrier charge (prepaid | collected in the remittance | invoiced) and the purchase of prepaid guides stay in
+4B.6, as the note on E4 says; nothing here assumes any of the three. (f) The unique-name rule of a supplier is "ignoring case, per organization"; whether the accountant also
+wants the tax id unique is asked with the questions of the accountant. (g) Closing or cancelling does not notify anyone: the `PURCHASE_ORDER_RECEIVED` event is api-only
+(no listener until 4B.6/7.x needs it). (h) A purchase of a store's product is received into ONE warehouse per order; splitting an order across warehouses is a second
+order.
+(i) A supplier's document number belongs to ONE order (the same invoice on another order is refused, `DOCUMENT_NUMBER_IN_USE`, because it would credit the tax
+twice); several receipts of one order may share it, since an invoice can arrive in parts, and a repeat inside one order is bounded by the quantities ordered. A unique
+index per supplier waits for the accountant's answer on what a valid document is (4B.7). (j) The database ties the store of a line to the organization (composite key)
+and the line to its product (`store_id`, `product_id`), but not the variant to the product: the service checks it, and a trigger can follow with the chart of the
+variants in 7.7. (k) The payables read runs two queries with no shared snapshot when called outside a payment: a payment that lands between them shows one bill too
+open for that read only; the payment path reads inside the supplier lock, so it is exact. (l) A receipt updates its order lines one by one (up to 200 statements inside
+the lock); a single statement is an optimization for 7.7 if the volume shows it. (m) `PurchaseReceiptLine.movementId` has no foreign key (the ledger of stock is
+append-only and its rows are never deleted); the integration suite proves every line names a movement. (n) The ledger now accepts a supplier as the party of a line (it
+refused one until this step) and checks it is the organization's. The column `finance_settings.next_purchase_number` is granted to the application roles by this
+migration, as the ledger migration asks of every new column.
 
 ### Step 4B.6 — The automatic entries (api and worker)
 - [ ] The listener and `POST_FINANCE_EVENT`; the pure entry builders for E1 to E9 (payment, goods in transit, sale, carrier charges,
@@ -2535,7 +2578,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.1 | Finance design (TDD_18, no code) | in progress | written and delivered with the first code PR that follows; owner approval of `TDD_18` pending | |
 | 4B.2 | Ledger core (accounts, immutable journal, periods, permissions) | done | PR a (schema, constants, pure rules, database tests, #509); PR b (posting service, routes, isolation, maps, #513) | 2026-11-15 |
 | 4B.3 | VAT and the tax snapshot | done | #520 (4B.3a), 4B.3b (this PR) | 2026-11-15 |
-| 4B.4 | Expenses, incomes, transfers and bank reconciliation | done | 4B.4a transactions (#527); 4B.4b-1 receipts (#531); 4B.4b-2 bank reconciliation (branch `feat/finance-reconciliation`: its PR number is the one of the squash commit `feat(db): reconcile a bank statement csv`) | |
+| 4B.4 | Expenses, incomes, transfers and bank reconciliation | done | 4B.4a transactions (#527); 4B.4b-1 receipts (#531); 4B.4b-2 bank reconciliation (#537) | |
 | 4B.5 | Suppliers and purchase orders | todo | | |
 | 4B.6 | The automatic entries (sales, remittances, returns, stock) | todo | | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | todo | | |
