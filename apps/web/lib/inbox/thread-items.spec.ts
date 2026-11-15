@@ -160,6 +160,29 @@ describe('buildThreadItems', () => {
     const shown = items.flatMap(item => (item.kind === 'message' ? [item.showAuthor] : []))
     expect(shown).toEqual([true, false, true, true])
   })
+
+  it('starts a block when another plugin, or the same one under another name, writes', () => {
+    const bot = { authorType: 'system', authorPluginId: 'acme-bot', authorNickname: 'Bot' }
+    const items = buildThreadItems(
+      [
+        [
+          message({
+            id: 'm4',
+            ...bot,
+            authorNickname: 'Ana',
+            createdAt: '2026-10-30T10:03:00.000Z'
+          }),
+          message({ id: 'm3', ...bot, createdAt: '2026-10-30T10:02:00.000Z' }),
+          message({ id: 'm2', ...bot, createdAt: '2026-10-30T10:01:00.000Z' }),
+          message({ id: 'm1', authorType: 'system', createdAt: '2026-10-30T10:00:00.000Z' })
+        ]
+      ],
+      'UTC'
+    )
+
+    const shown = items.flatMap(item => (item.kind === 'message' ? [item.showAuthor] : []))
+    expect(shown).toEqual([true, true, false, true])
+  })
 })
 
 describe('memberIdsOf', () => {
