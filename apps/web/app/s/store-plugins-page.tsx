@@ -8,6 +8,7 @@ import { ClientPermissions } from '@platform/core/auth'
 import { type DestructiveAction, ShippingPlugin } from '@platform/core/domain'
 
 import { useStore } from '../../components/providers/store-context'
+import { PluginWidgetsPanel } from '../../components/settings/plugin-widgets-panel'
 import { LoadFailed, PageLoading, PermissionDenied } from '../../components/settings/states'
 import { useDestructiveAction } from '../../components/shared/destructive-action'
 import { Button } from '../../components/ui/button'
@@ -64,6 +65,7 @@ function PluginsBody({ entries }: { entries: PluginCatalogEntryView[] }): ReactE
           ))}
         </ul>
       )}
+      <PluginWidgetsPanel />
     </section>
   )
 }

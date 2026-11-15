@@ -8,7 +8,8 @@ jest.mock('./lib/env', () => ({
   webEnv: {
     NEXT_PUBLIC_API_URL: 'https://api.example.com',
     NEXT_PUBLIC_WS_URL: 'https://api.example.com',
-    NEXT_PUBLIC_STORAGE_URL: 'https://files.example.com'
+    NEXT_PUBLIC_STORAGE_URL: 'https://files.example.com',
+    NEXT_PUBLIC_WIDGET_SCRIPT_URL: 'https://cdn.widget-example.com/widget.js'
   }
 }))
 
@@ -44,6 +45,80 @@ describe('proxy', () => {
       headers: { ...SESSION, [CSP_HEADER]: "script-src 'unsafe-inline'" }
     })
     expect(proxy(request).headers.get(CSP_HEADER)).not.toContain("script-src 'unsafe-inline'")
+  })
+
+  describe('frame-src per store', () => {
+    const STORE = '0b8f6a52-3d1c-4c8e-9a47-5e2f1d7c9b10'
+    const OTHER = '9c1d3e44-7a52-4b0f-8e61-2a4b6c8d0e12'
+    const cookieFor = (id: string, origins: string) =>
+      `platform_widget_frames_${id}=${encodeURIComponent(origins)}`
+    const frameSrc = (policy: string | null) =>
+      policy?.split('; ').find(part => part.startsWith('frame-src'))
+
+    it('allows the origins of the widgets of the store in the path, for that response only', () => {
+      const request = new NextRequest(`https://app.example.com/s/${STORE}/inbox`, {
+        headers: {
+          cookie: `${SESSION.cookie}; ${cookieFor(STORE, 'https://widgets.acme.example')}`
+        }
+      })
+      const response = proxy(request)
+      expect(frameSrc(response.headers.get(CSP_HEADER))).toBe(
+        'frame-src https://widgets.acme.example'
+      )
+      expect(response.headers.get('x-middleware-request-x-plugin-frame-origins')).toBe(
+        'https://widgets.acme.example'
+      )
+    })
+
+    it("keeps 'none' on a store whose cookie is another store's", () => {
+      const request = new NextRequest(`https://app.example.com/s/${OTHER}/inbox`, {
+        headers: {
+          cookie: `${SESSION.cookie}; ${cookieFor(STORE, 'https://widgets.acme.example')}`
+        }
+      })
+      expect(frameSrc(proxy(request).headers.get(CSP_HEADER))).toBe("frame-src 'none'")
+    })
+
+    it("keeps 'none' outside the pages of a store, whatever cookie is there", () => {
+      const request = new NextRequest('https://app.example.com/account/profile', {
+        headers: {
+          cookie: `${SESSION.cookie}; ${cookieFor(STORE, 'https://widgets.acme.example')}`
+        }
+      })
+      expect(frameSrc(proxy(request).headers.get(CSP_HEADER))).toBe("frame-src 'none'")
+    })
+
+    it('never frames the platform itself, nor a sibling host of it, nor plain http', () => {
+      const forged =
+        'https://app.example.com https://api.example.com https://plugins.example.com http://widgets.acme.example https://widgets.acme.example'
+      const request = new NextRequest(`https://app.example.com/s/${STORE}/inbox`, {
+        headers: { cookie: `${SESSION.cookie}; ${cookieFor(STORE, forged)}` }
+      })
+      expect(frameSrc(proxy(request).headers.get(CSP_HEADER))).toBe(
+        'frame-src https://widgets.acme.example'
+      )
+    })
+
+    it('never frames the host the browser used, the widget script host, nor a forwarded public host', () => {
+      const forged =
+        'https://cdn.widget-example.com https://public.platform-example.org https://widgets.acme.example'
+      const request = new NextRequest(`http://localhost:3000/s/${STORE}/inbox`, {
+        headers: {
+          cookie: `${SESSION.cookie}; ${cookieFor(STORE, forged)}`,
+          'x-forwarded-host': 'public.platform-example.org'
+        }
+      })
+      expect(frameSrc(proxy(request).headers.get(CSP_HEADER))).toBe(
+        'frame-src https://widgets.acme.example'
+      )
+    })
+
+    it('overwrites a frame-origins header the client sent', () => {
+      const request = new NextRequest(`https://app.example.com/s/${STORE}/inbox`, {
+        headers: { ...SESSION, 'x-plugin-frame-origins': 'https://evil.example' }
+      })
+      expect(proxy(request).headers.get('x-middleware-request-x-plugin-frame-origins')).toBe('')
+    })
   })
 
   it('sends a visitor with no session to the login page', () => {

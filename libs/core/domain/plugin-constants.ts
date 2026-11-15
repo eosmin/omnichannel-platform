@@ -101,6 +101,9 @@ export const CodePluginAuthor = {
   NAME_MAX_LENGTH: 100
 } as const
 
+// What the audit log and the notifications name an installation of a plugin
+export const PLUGIN_INSTALLATION_RESOURCE_TYPE = 'plugin_installation'
+
 // The key a plugin calls the plugin API with starts with this, so that a leaked one is found by a secret scanner and cannot
 // be taken for the key of a store (`pk_live_`, ApiKeyGuard): each guard refuses the other's tokens at the prefix
 export const PLUGIN_API_KEY_TOKEN_PREFIX = 'plg_live_'
@@ -121,6 +124,12 @@ export const PluginInstallLimits = {
   // Used when the manifest names no limit of its own
   DEFAULT_REQUESTS_PER_MINUTE: 60
 } as const
+
+// What the owner types to revoke an integration plugin (TDD_10 §6.6): the word, as written, so that a click cannot revoke
+export const PLUGIN_REVOKE_CONFIRMATION = 'REVOKE'
+
+// The word has a ceiling so that a body is never more than that
+export const PluginRevokeLimits = { CONFIRMATION_MAX_LENGTH: 32 } as const
 
 // What the platform posts to `webhooks.endpoint` before it trusts the address, and what the plugin must answer: a 200 with
 // the same `challenge` in a JSON body proves that whoever holds the address wants this install

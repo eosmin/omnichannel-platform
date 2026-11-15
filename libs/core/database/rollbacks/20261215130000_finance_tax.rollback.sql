@@ -1,4 +1,4 @@
--- Rolls back 20261215100000_finance_tax. DESTRUCTIVE: the tax rates (with the default the setup seeded), the tax treatment and
+-- Rolls back 20261215130000_finance_tax. DESTRUCTIVE: the tax rates (with the default the setup seeded), the tax treatment and
 -- rate of every product, the tax settings of the books (rounding and shipping) and the tax snapshot of every order and order line
 -- are DROPPED with their values (the totals of the orders stay: they are their own columns, and an order whose prices excluded
 -- tax keeps the total that included it). Take a copy of the tables first if the snapshots matter. Run it before the code that

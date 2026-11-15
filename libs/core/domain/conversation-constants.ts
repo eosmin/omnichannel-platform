@@ -111,7 +111,9 @@ export const MessageLimits = {
   // How much of the quoted message the bubble of a reply carries
   QUOTE_PREVIEW_MAX_LENGTH: 200,
   TEMPLATE_MAX_VARIABLES: 20,
-  TEMPLATE_VARIABLE_MAX_LENGTH: 1024
+  TEMPLATE_VARIABLE_MAX_LENGTH: 1024,
+  // The name a plugin gives itself on the messages it writes as the system (`Message.authorNickname`)
+  NICKNAME_MAX_LENGTH: 64
 } as const
 
 // The keys a channel plugin may add to its answer to a send (`ChannelMessageResult.metadata`), and the

@@ -641,15 +641,14 @@ describe('The books of an organization', () => {
       await asAdminA()
         .put(ApiRoutes.finance.accountRoles.byRole(AccountRole.CASH_DEFAULT))
         .send({ accountId: accounts[CASH] })
-      // Two changes of the same role, written after their answers, in no promised order: wait for both and look for the first one
-      const logged = await waitForAuditEntries(
-        owner,
-        { organizationId: ctx.orgA.id, action: AuditAction.FINANCE_ROLE_MAPPED },
-        2
-      )
-      expect(logged.map(row => row.metadata)).toContainEqual(
-        expect.objectContaining({ role: AccountRole.CASH_DEFAULT, to: target })
-      )
+      const logged = await waitForAuditEntries(owner, {
+        organizationId: ctx.orgA.id,
+        action: AuditAction.FINANCE_ROLE_MAPPED,
+        // The record of this change, not whichever mapping of the role came first (the switch back
+        // to the cash box and the earlier cases leave their own)
+        metadata: { path: ['to'], equals: target }
+      })
+      expect(logged[0]?.metadata).toMatchObject({ role: AccountRole.CASH_DEFAULT, to: target })
     })
 
     it('chooses the account of a payment method for a store, falls back to the default, and keeps the default', async () => {

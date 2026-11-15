@@ -351,7 +351,11 @@ export const ApiRoutes = {
   pluginWidgets: {
     list: '/plugin-widgets',
     sessions: '/plugin-widgets/sessions',
-    bridge: '/plugin-widgets/bridge'
+    bridge: '/plugin-widgets/bridge',
+    // Settings → Plugins: every widget of the store with whether the agents see it (GET), and show or hide one (PUT)
+    settings: '/plugin-widgets/settings',
+    visibility: (installationId: string, widgetId: string) =>
+      `/plugin-widgets/settings/${installationId}/widget/${widgetId}`
   },
 
   channels: {

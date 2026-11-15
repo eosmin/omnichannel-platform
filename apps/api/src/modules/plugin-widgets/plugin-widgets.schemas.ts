@@ -1,10 +1,21 @@
 import { z } from 'zod'
 
-import { pluginBridgeRequestSchema, PluginWidgetLimits, uuidSchema } from '@platform/core/domain'
+import {
+  pluginBridgeRequestSchema,
+  pluginWidgetDeclarationSchema,
+  pluginWidgetVisibilitySchema,
+  PluginWidgetLimits,
+  uuidSchema
+} from '@platform/core/domain'
+
+// The id of a widget, the one the manifest declares
+export const widgetIdSchema = pluginWidgetDeclarationSchema.shape.id
 
 export const openWidgetSessionSchema = z.strictObject({
   installationId: uuidSchema,
-  conversationId: uuidSchema
+  conversationId: uuidSchema,
+  // Which widget of the installation the session is for: hiding a widget ends its sessions and no other's
+  widgetId: widgetIdSchema.optional()
 })
 export type OpenWidgetSessionBody = z.infer<typeof openWidgetSessionSchema>
 
@@ -15,3 +26,6 @@ export const widgetBridgeSchema = z.strictObject({
   request: pluginBridgeRequestSchema
 })
 export type WidgetBridgeBody = z.infer<typeof widgetBridgeSchema>
+
+export const widgetVisibilitySchema = pluginWidgetVisibilitySchema
+export type WidgetVisibilityBody = z.infer<typeof widgetVisibilitySchema>

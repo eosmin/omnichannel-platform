@@ -39,18 +39,21 @@ import {
   TransferStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { Events } from '@platform/core/events'
 import { Locales } from '@platform/core/i18n'
 import {
   NotificationSeverity,
   notificationMessageKey,
   NotificationTypes
 } from '@platform/core/notifications'
-import { ExportFormats, ExportTypes } from '@platform/core/queues'
+import { ExportFormats, ExportTypes, JobNames, QueueNames } from '@platform/core/queues'
 import { StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 import { PluginRegistry } from '@platform/plugins/runtime'
+import { PluginScopes } from '@platform/plugins/sdk'
 
 import { ChannelOAuthStore } from '../../apps/api/src/modules/channels/oauth/channel-oauth.store'
+import { WebhookDispatcher } from '../../apps/api/src/modules/tenant-webhooks/webhook-dispatcher'
 import {
   buildChannelPlugin,
   createCustomer,
@@ -120,6 +123,7 @@ import {
   type IsolationResource,
   type IsolationScene
 } from '../helpers/isolation'
+import { queueOf } from '../helpers/queue'
 
 // The release gate of the platform (TDD_13 section 6): no user, in no way, reaches the data of a
 // store they do not belong to. It runs against the real app, as the api runs: the same AppModule,
@@ -3882,6 +3886,73 @@ describe('Tenant isolation', () => {
 
       expect(moved.status).toBe(200)
       expect((moved.body as { storeId: string }).storeId).toBe(ctx.storeA.id)
+    })
+  })
+
+  // The webhooks of a plugin installation (Step 5.6, P3) are one store's: an event of a store is queued only for the installations
+  // of that store, and a delivery reads its installation under the store of its job.
+  describe('the webhooks of a plugin installation', () => {
+    const pluginId = `${prefix}-hooked`
+    const installationOf: Record<'a' | 'b', string> = { a: '', b: '' }
+
+    beforeAll(async () => {
+      await owner.plugin.create({
+        data: {
+          id: pluginId,
+          name: 'Hooked plugin',
+          authorName: 'suite',
+          authorEmail: 'suite@example.invalid',
+          type: PluginCatalogTypes.INTEGRATION,
+          manifest: {
+            webhooks: {
+              endpoint: 'https://hooks.example.com/in',
+              events: [Events.ORDER_CREATED],
+              signatureHeader: 'X-Suite-Signature'
+            }
+          },
+          pricingModel: PluginPricingModels.FREE,
+          status: PluginStatus.APPROVED,
+          organizationId: ctx.orgA.id
+        }
+      })
+      for (const [name, store] of [
+        ['a', ctx.storeA],
+        ['b', ctx.storeB]
+      ] as const) {
+        const row = await owner.pluginInstallation.create({
+          data: {
+            storeId: store.id,
+            pluginId,
+            scopes: [PluginScopes.ORDERS_READ],
+            status: 'active',
+            webhookEndpoint: 'https://hooks.example.com/in',
+            webhookSecret: new Uint8Array([1, 2, 3]),
+            installedBy: 'suite'
+          }
+        })
+        installationOf[name] = row.id
+      }
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId } })
+      await owner.plugin.deleteMany({ where: { id: pluginId } })
+    })
+
+    it('queues an event of a store for the installation of that store only', async () => {
+      const queue = queueOf(app, QueueNames.WEBHOOKS)
+      queue.jobs.length = 0
+
+      await app.get(WebhookDispatcher).dispatch(Events.ORDER_CREATED, {
+        storeId: ctx.storeA.id,
+        orderId: randomUUID(),
+        orderNumber: '1001'
+      })
+
+      const targets = queue.jobs
+        .filter(job => job.name === JobNames.TRIGGER_PLUGIN_WEBHOOK)
+        .map(job => (job.data as { pluginInstallationId: string }).pluginInstallationId)
+      expect(targets).toEqual([installationOf.a])
+      queue.jobs.length = 0
     })
   })
 

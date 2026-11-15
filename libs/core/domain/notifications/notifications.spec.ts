@@ -115,10 +115,13 @@ describe('isDailyDigestHour', () => {
 })
 
 describe('NotificationTypesWithoutEmitter', () => {
-  it('holds the commerce types and the plugin ones, and none the inbox raises', () => {
-    for (const type of [NotificationTypes.ORDER_PAYMENT_FAILED, NotificationTypes.PLUGIN_ERROR]) {
-      expect(NotificationTypesWithoutEmitter.has(type)).toBe(true)
-    }
+  it('holds the commerce types that nothing raises, and none the inbox raises', () => {
+    expect(NotificationTypesWithoutEmitter.has(NotificationTypes.ORDER_PAYMENT_FAILED)).toBe(true)
+    // The plugin runtime raises `plugin.error` since Step 5.6 PR P3, so its switch is shown
+    expect(NotificationTypesWithoutEmitter.has(NotificationTypes.PLUGIN_ERROR)).toBe(false)
+    expect(NotificationGroupTypes[NotificationGroups.SYSTEM]).toContain(
+      NotificationTypes.PLUGIN_ERROR
+    )
     // The message about an order that did not go is raised since Step 4.9 PR C2a, so its switch is shown
     expect(NotificationTypesWithoutEmitter.has(NotificationTypes.ORDER_MESSAGE_NOT_SENT)).toBe(
       false

@@ -43,11 +43,17 @@ export interface TriggerWebhookJob extends BaseJob {
   payload: Record<string, unknown>
 }
 
+// The delivery of one event to the webhook endpoint of one plugin installation (TDD_10 §6.5). The endpoint and the secret are
+// the ones kept on the installation, never read from the manifest; the payload is already redacted to the granted scopes.
 export interface TriggerPluginWebhookJob extends BaseJob {
-  pluginInstallationId: string // Endpoint + secret come from the manifest (TDD_10 §6.5)
+  pluginInstallationId: string
   storeId: string
+  deliveryId: string // Made when the event is queued and kept by every retry: the receiver dedupes on it
   event: EventName
   payload: Record<string, unknown>
+  // The last delivery of an installation that was revoked (`plugin.revoked`): sent while the installation is revoked and its
+  // endpoint and secret are still there; once it is over they are removed
+  final?: boolean
 }
 
 // notifications
@@ -275,3 +281,8 @@ export interface DeadLetterJob {
   error: string
   failedAt: string
 }
+
+// The id of the one job that tells a plugin its installation was revoked: made of the installation and the moment of the revocation,
+// so that asking for it again while it is queued adds nothing, and a later revocation of the same installation is a new job
+export const pluginRevokedJobId = (installationId: string, revokedAt: Date): string =>
+  `plugin-revoked-${installationId}-${revokedAt.getTime()}`
