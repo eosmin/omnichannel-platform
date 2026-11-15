@@ -60,10 +60,11 @@ describe('The messages of the plugin API', () => {
   let owner: OwnerClient
   let ctx: TestContext
   let counter = 0
-  const keys: Record<string, string> = {}
+  type KeyName = 'full' | 'writeonly' | 'readonly' | 'noconv'
+  const keys: Record<KeyName, string> = { full: '', writeonly: '', readonly: '', noconv: '' }
 
   // An installation as the setup exchange leaves it: active, with the hash of its key, in the store and with the scopes asked
-  const installIn = async (name: string, storeId: string, scopes: string[]) => {
+  const installIn = async (name: KeyName, storeId: string, scopes: string[]) => {
     counter += 1
     const key = `${PLUGIN_API_KEY_TOKEN_PREFIX}${prefix}${name}${counter}${'x'.repeat(40)}`
     const installation = await owner.pluginInstallation.create({
