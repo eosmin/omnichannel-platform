@@ -1521,8 +1521,26 @@ revocation its key stops working immediately; and a channel plugin of the suite 
 
 - [ ] Caution flag from a plugin (decision of PR 4.12-R3): plugin-api: Step 5.6 (proposed scope `customers:write`) for `PUT` and `DELETE /customers/:id/caution`; until then the flag is set by people only, with `CUSTOMERS_FLAG_CAUTION`, and the SDK reads it through the customer and conversation payloads
 ### Step 5.7 — Plugin widgets
-- [ ] Sandboxed iframe widgets in the agent sidebar with the `MessageChannel` bridge, the per-store `frame-src` added by `proxy.ts`, and the short-lived widget session token sent only over the port
-- [ ] Widget settings in Settings → Plugins
+Split in two PRs (coordinator, 2026-11-15; one PR would pass 40 files and mixes a server that decides security with an interface that draws it). 5.7b starts from a `main` that has 5.7a.
+
+**5.7a — server (`feat/plugin-widgets-server`)**
+- [x] The widget words, limits and shapes in `libs/core/domain/plugin-widgets.ts` (`PluginBridgeMessages`, `PluginBridgeOperations`, `PluginWidgetLimits`, `pluginWidgetManifestSchema` for `ui.widget` and `widgets`, `pluginBridgeRequestSchema`), the scope of each operation next to the plugin scopes (`PluginBridgeOperationScopes`), `ApiRoutes.pluginWidgets`, the cache keys and `PLUGIN_WIDGET_SESSION_INVALID`
+- [x] `GET /plugin-widgets` (the widgets of the active installations of the store; a widget on a first-party host (the web app, the api, the widget script, or the same parent domain) is dropped, and the rule runs again on every bridge request, because the frame keeps `allow-same-origin`), `POST /plugin-widgets/sessions` (a 5 minute token for one person, one installation and one conversation they may see; only its sha256 is stored) and `POST /plugin-widgets/bridge` (the session, the installation read again so a revoked one stops at once, the scope of the operation, the permission of the person, a ceiling per session, and the conversation the session names, never one the frame names). Closed set of operations: `conversation.get` (`conversations:read`) and `customer.get` (`customers:read`), each a minimum view
+- [x] Tests: schemas, the origin rule, and `tests/api/plugin-widgets.spec.ts` (answer, 403 outside the scopes, another store, another person, unknown token, revoked installation, the token never at rest, the ceiling). No new table, so no new case in `tenant-isolation.spec.ts`: the installation is the `pluginInstallation` one, and the spec above covers the routes between stores
+
+**5.7b — web (`feat/plugin-widgets-web`)**
+- [ ] The sidebar panel of each widget in the conversation view (the url carries `PluginWidgetQuery.CONVERSATION_ID` and `WIDGET_ID`, set with `URL.searchParams`; the `SESSION` message names the widget too): sandboxed iframe (`allow-scripts allow-forms allow-same-origin`, `referrerPolicy=no-referrer`, no token in the url), `apps/web/lib/plugin-widget-bridge.ts` (the `MessageChannel`, `targetOrigin = widgetOrigin`, the request parsed with `pluginBridgeRequestSchema`, forwarded to `/plugin-widgets/bridge`, the session renewed before its five minutes end), Lucide icons, i18n en/es
+- [ ] The per-store `frame-src` added by `proxy.ts` (the origins of the widgets of the store of the request: the design must decide how the proxy learns them without a session, and `security-headers.ts` builds the directive) 
+- [ ] Widget settings in Settings → Plugins (show or hide each widget per store: `PluginInstallation.config`, with its endpoint, permission `SETTINGS_MANAGE_PLUGINS` and audit action) and the sample widget the e2e renders
+- [ ] Debts to close here: the page renews the session; a widget that does not answer the `INIT` shows a notice
+
+**Left by 5.7a, for 7.7 (hardening)**
+- [ ] Audit of the requests a widget makes outside its scopes: today a denial is a Pino warning (`installationId`, `storeId`, operation; never the token) and the 403; an audit action with a denial budget like `AuditDenialBudget` joins when Settings shows a plugin's activity
+
+**Left by 5.7a for 5.6 (owner: 5.6, the PR that builds `pluginManifestSchema` and the install flow)**
+- [ ] `pluginManifestSchema` composes `pluginWidgetManifestSchema` (the `ui.widget` url and `widgets`), and registration rejects a widget url on a platform origin (5.7a drops it at read time as a second line)
+- [ ] `PluginApiKeyGuard` may also accept the widget session token for a frame that calls `/plugin-api/*` itself; until then every call goes through the bridge, whose operations are the two above. More operations (messages, orders) join `PluginBridgeOperations` with their scope when `/plugin-api/*` has the route
+- [ ] The consent screen of an integration plugin shows that it draws a widget; an integration plugin cannot be installed from the interface yet, so the suites install it with the owner client (`ensureWidgetPlugin`)
 
 **TDD:** `TDD_10 §7`, `TDD_05 §6`
 **Done when:** a sample widget renders in the sidebar, never receives the API key, and every
@@ -2154,7 +2172,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 5.4 | Settings | in progress | PR A (server: webhooks, API keys), PR B (server: retention, cleanup, cold export), PR D1 (web: Webhooks, API keys, Data retention) | |
 | 5.5 | Onboarding | deferred (Phase 2) | | |
 | 5.6 | Integration plugins (runtime) | todo | | |
-| 5.7 | Plugin widgets | todo | | |
+| 5.7 | Plugin widgets | in progress | 5.7a server (session token, bridge scope checks): in review; 5.7b web (sidebar iframe, bridge, `frame-src`, settings): todo | |
 | **Milestone 6: Monetization** (deferred) | | | | |
 | 6.1 | Usage metering | deferred (Phase 2) | | |
 | 6.2 | Stripe | deferred (Phase 2) | | |

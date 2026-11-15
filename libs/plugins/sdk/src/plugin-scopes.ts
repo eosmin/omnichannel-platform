@@ -1,4 +1,5 @@
 import { Permissions, type Permission } from '@platform/core/auth'
+import { PluginBridgeOperations, type PluginBridgeOperation } from '@platform/core/domain'
 
 export const PluginScopes = {
   CONVERSATIONS_READ: 'conversations:read',
@@ -46,4 +47,11 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.INVENTORY_WRITE]: [Permissions.INVENTORY_ADJUST],
   [PluginScopes.SHIPMENTS_READ]: [Permissions.SHIPPING_VIEW],
   [PluginScopes.SHIPMENTS_WRITE]: [Permissions.SHIPPING_MANAGE]
+}
+
+// What a widget may ask through its port, and the scope the installation must hold for each (TDD_10 §7):
+// checked on the server for every request, whatever the page forwarded
+export const PluginBridgeOperationScopes: Record<PluginBridgeOperation, PluginScope> = {
+  [PluginBridgeOperations.CONVERSATION_GET]: PluginScopes.CONVERSATIONS_READ,
+  [PluginBridgeOperations.CUSTOMER_GET]: PluginScopes.CUSTOMERS_READ
 }

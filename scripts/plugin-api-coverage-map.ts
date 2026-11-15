@@ -37,6 +37,8 @@ const SECURITY_SETTINGS =
   'Security settings (safety, webhooks, API keys, retention): a plugin must not reach the keys and hooks that govern plugins'
 const PLUGIN_ADMIN =
   'Registering, installing and revoking plugins is the owner’s (SETTINGS_MANAGE_PLUGINS); a plugin does not manage plugins'
+const WIDGET_HOST =
+  'The host of the widgets in the agent sidebar (TDD_10 §7): the signed-in agent’s page lists them, opens a session for one conversation and forwards what a frame asks over its port; a plugin has no sidebar of its own to host and reaches the same data through its own scopes'
 const COMPLIANCE = 'Data subject requests and consent: a person, and the owner who answers them'
 const PUBLIC =
   'Public route that authenticates by its own means (signature, state or site key); never with the key of a plugin'
@@ -111,6 +113,9 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'plugins.disable': { none: PLUGIN_ADMIN },
   'plugins.revoke': { none: PLUGIN_ADMIN },
   'plugins.config': { none: PLUGIN_ADMIN },
+  'pluginWidgets.list': { none: WIDGET_HOST },
+  'pluginWidgets.sessions': { none: WIDGET_HOST },
+  'pluginWidgets.bridge': { none: WIDGET_HOST },
   'compliance.dsr': { none: COMPLIANCE },
   'compliance.dsrById': { none: COMPLIANCE },
   'compliance.dsrVerify': { none: COMPLIANCE },
