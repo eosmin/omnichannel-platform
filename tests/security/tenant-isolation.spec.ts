@@ -5140,6 +5140,208 @@ describe('Tenant isolation', () => {
     })
   })
 
+  // What a plugin key reads of the shipping (Step 5.6, E5): the shipments, the carrier connections and the pickups of the store of the key,
+  // read only. The key of store B reaches the rows of store B; a shipment, a connection or a pickup of store A is a row that does not
+  // exist for it (by id, by list, by the places a carrier lists and by its statuses). What a carrier is paid and the secrets of a
+  // connection are not in an answer, and no route that writes is there.
+  describe('the shipments, the carriers and the pickups with the key of a plugin', () => {
+    const pluginId = `${prefix}-shipping`
+    let keyOfB = ''
+    let keyWithoutCustomers = ''
+    let keyWithoutShipments = ''
+    let readsNothing = ''
+    let shipmentA = ''
+    let shipmentB = ''
+    let connectionA = ''
+    let connectionB = ''
+    let pickupA = ''
+    let pickupB = ''
+
+    beforeAll(async () => {
+      ;({ key: keyOfB } = await createPluginKey(owner, {
+        storeId: ctx.storeB.id,
+        pluginId: `${pluginId}-b`,
+        scopes: [
+          PluginScopes.SHIPMENTS_READ,
+          PluginScopes.CARRIERS_READ,
+          PluginScopes.PICKUPS_READ,
+          PluginScopes.CUSTOMERS_READ
+        ]
+      }))
+      ;({ key: keyWithoutCustomers } = await createPluginKey(owner, {
+        storeId: ctx.storeB.id,
+        pluginId: `${pluginId}-nocust`,
+        scopes: [PluginScopes.PICKUPS_READ]
+      }))
+      ;({ key: keyWithoutShipments } = await createPluginKey(owner, {
+        storeId: ctx.storeB.id,
+        pluginId: `${pluginId}-noship`,
+        scopes: [PluginScopes.PICKUPS_READ, PluginScopes.CUSTOMERS_READ]
+      }))
+      ;({ key: readsNothing } = await createPluginKey(owner, {
+        storeId: ctx.storeB.id,
+        pluginId: `${pluginId}-none`,
+        scopes: [PluginScopes.PRODUCTS_READ]
+      }))
+      const builtA = await createShipment(owner, { storeId: ctx.storeA.id })
+      const builtB = await createShipment(owner, {
+        storeId: ctx.storeB.id,
+        carrierCostCents: 777_001,
+        codAmountCents: 5000,
+        codExpectedCents: 777_002,
+        codRemittedCents: 777_003
+      })
+      shipmentA = builtA.id
+      shipmentB = builtB.id
+      connectionA = builtA.connectionId
+      connectionB = builtB.connectionId
+      pickupA = (await createPickup(owner, { storeId: ctx.storeA.id })).id
+      pickupB = (await createPickup(owner, { storeId: ctx.storeB.id })).id
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId: { startsWith: pluginId } } })
+      await owner.plugin.deleteMany({ where: { id: { startsWith: pluginId } } })
+    })
+
+    const as = (key: string, path: string) =>
+      supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+        .get(`${API_PREFIX}${path}`)
+        .set('authorization', `Bearer ${key}`)
+
+    it('works in its own store, so that the 404 of the others means "foreign"', async () => {
+      const paths = [
+        PluginApiRoutes.shipments.byId(shipmentB),
+        PluginApiRoutes.carriers.byId(connectionB),
+        PluginApiRoutes.carriers.registry,
+        PluginApiRoutes.carriers.statusCatalog(connectionB),
+        PluginApiRoutes.carriers.unmappedStatuses(connectionB),
+        PluginApiRoutes.pickups.manifest(pickupB)
+      ]
+
+      for (const path of paths) expect([path, (await as(keyOfB, path)).status]).toEqual([path, 200])
+      for (const path of [
+        PluginApiRoutes.shipments.list,
+        PluginApiRoutes.carriers.list,
+        PluginApiRoutes.pickups.list
+      ]) {
+        expect([path, (await as(keyOfB, path)).status]).toEqual([path, 200])
+      }
+    })
+
+    it('does not read a row of another store, by id or by the places and statuses of its connection', async () => {
+      const foreign = [
+        PluginApiRoutes.shipments.byId(shipmentA),
+        PluginApiRoutes.carriers.byId(connectionA),
+        PluginApiRoutes.carriers.statusCatalog(connectionA),
+        PluginApiRoutes.carriers.unmappedStatuses(connectionA),
+        PluginApiRoutes.pickups.manifest(pickupA)
+      ]
+
+      for (const path of foreign)
+        expect([path, (await as(keyOfB, path)).status]).toEqual([path, 404])
+    })
+
+    it('does not list a row of another store, and cannot be told another store by the query', async () => {
+      const shipments = await as(keyOfB, PluginApiRoutes.shipments.list)
+      const carriers = await as(keyOfB, PluginApiRoutes.carriers.list)
+      const pickups = await as(keyOfB, PluginApiRoutes.pickups.list)
+      const byConnection = await as(
+        keyOfB,
+        `${PluginApiRoutes.shipments.list}?connectionId=${connectionA}`
+      )
+
+      expect(JSON.stringify(shipments.body)).not.toContain(shipmentA)
+      expect(JSON.stringify(carriers.body)).not.toContain(connectionA)
+      expect(JSON.stringify(pickups.body)).not.toContain(pickupA)
+      expect(JSON.stringify(shipments.body)).toContain(shipmentB)
+      expect(byConnection.status).toBe(200)
+      expect((byConnection.body as { data: unknown[] }).data).toEqual([])
+      expect(JSON.stringify(byConnection.body)).not.toContain(shipmentA)
+    })
+
+    it('does not answer the money of the carrier, the people, nor a secret of the connection', async () => {
+      const bodies = [
+        await as(keyOfB, PluginApiRoutes.shipments.byId(shipmentB)),
+        await as(keyOfB, PluginApiRoutes.shipments.list),
+        await as(keyOfB, PluginApiRoutes.carriers.byId(connectionB)),
+        await as(keyOfB, PluginApiRoutes.carriers.list),
+        await as(keyOfB, PluginApiRoutes.carriers.registry),
+        await as(keyOfB, PluginApiRoutes.pickups.list),
+        await as(keyOfB, PluginApiRoutes.pickups.manifest(pickupB)),
+        await as(keyOfB, PluginApiRoutes.carriers.statusCatalog(connectionB)),
+        await as(keyOfB, PluginApiRoutes.carriers.unmappedStatuses(connectionB))
+      ]
+      // The fixture holds what the assertions look for: a contact on the connection and money on the guide
+      expect(
+        (await owner.carrierConnection.findUniqueOrThrow({ where: { id: connectionB } })).contact
+      ).toEqual({ phone: '70000000' })
+      expect(
+        (await owner.shipment.findUniqueOrThrow({ where: { id: shipmentB } })).carrierCostCents
+      ).toBe(777_001)
+
+      for (const response of bodies) {
+        expect(response.status).toBe(200)
+        const text = JSON.stringify(response.body)
+        expect(text).not.toMatch(
+          /carrierCostCents|codExpectedCents|codRemittedCents|codRemittanceId|createdBy|requestedBy/
+        )
+        expect(text).not.toMatch(
+          /hasCredentials|hasWebhookSecret|webhookUrl|commissionBps|serviceRatesCents|connectFields|guidePrefix|sampleRawStatus|"contact"|70000000/
+        )
+        expect(text).not.toMatch(/77700[123]/)
+      }
+    })
+
+    it('needs the scope of the route, and `customers:read` and `shipments:read` for the list of the courier', async () => {
+      const noScope = await as(readsNothing, PluginApiRoutes.shipments.list)
+      const noCarriers = await as(keyWithoutCustomers, PluginApiRoutes.carriers.list)
+      const noCustomers = await as(keyWithoutCustomers, PluginApiRoutes.pickups.manifest(pickupB))
+
+      const noShipments = await as(keyWithoutShipments, PluginApiRoutes.pickups.manifest(pickupB))
+      const manifest = await as(keyOfB, PluginApiRoutes.pickups.manifest(pickupB))
+
+      expect([noScope.status, noCarriers.status, noCustomers.status, noShipments.status]).toEqual([
+        403, 403, 403, 403
+      ])
+      expect(manifest.headers['cache-control']).toMatch(/no-store/)
+      expect((await as(keyWithoutCustomers, PluginApiRoutes.pickups.list)).status).toBe(200)
+    })
+
+    it('has no route that writes, and the rows are the same after trying', async () => {
+      const server = () => supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+      const attempts = [
+        server().post(`${API_PREFIX}${PluginApiRoutes.shipments.list}`).send({}),
+        server().post(`${API_PREFIX}${PluginApiRoutes.shipments.byId(shipmentB)}/cancel`),
+        server()
+          .patch(`${API_PREFIX}${PluginApiRoutes.carriers.byId(connectionB)}`)
+          .send({}),
+        server().post(`${API_PREFIX}${PluginApiRoutes.carriers.list}`).send({}),
+        server().post(`${API_PREFIX}${PluginApiRoutes.pickups.list}`).send({})
+      ]
+
+      // The staff routes that really write are not reachable with the key of a plugin either: it is not a session
+      attempts.push(
+        server().post(`${API_PREFIX}${ApiRoutes.shipments.cancel(shipmentB)}`),
+        server().post(`${API_PREFIX}${ApiRoutes.pickups.cancel(pickupB)}`)
+      )
+      const staff = await Promise.all(
+        attempts
+          .slice(-2)
+          .map(attempt =>
+            attempt.set('authorization', `Bearer ${keyOfB}`).set('x-store-id', ctx.storeB.id)
+          )
+      )
+      for (const response of staff) expect([401, 403]).toContain(response.status)
+
+      for (const attempt of attempts.slice(0, -2)) {
+        expect((await attempt.set('authorization', `Bearer ${keyOfB}`)).status).toBe(404)
+      }
+      expect(
+        (await owner.shipment.findUniqueOrThrow({ where: { id: shipmentB } })).cancelledAt
+      ).toBeNull()
+    })
+  })
+
   // A plugin the owner registers by pasting its manifest belongs to the organization (Step 5.6, P1). The catalog and the
   // install of another organization never reach it; the generic matrix above cannot hold it, because a plugin has no
   // route to read it by id: the answer of the install is the one of a plugin that does not exist.

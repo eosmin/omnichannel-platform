@@ -14,6 +14,7 @@ import { ChannelRegistryModule } from '../channel-registry'
 import { TenancyModule } from '../tenancy'
 
 import { BulkLabelsService } from './bulk-labels.service'
+import { PluginShipmentsController } from './plugin-shipments.controller'
 import { ShipmentVoidQueue } from './shipment-void-queue.service'
 import { ShipmentsController } from './shipments.controller'
 import { ShipmentsService } from './shipments.service'
@@ -29,7 +30,7 @@ import { ShipmentsService } from './shipments.service'
     QueuesPlatformModule,
     TenancyModule
   ],
-  controllers: [ShipmentsController],
+  controllers: [ShipmentsController, PluginShipmentsController],
   providers: [
     ShippingService,
     ShipmentWrites,

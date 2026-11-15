@@ -476,19 +476,30 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'counts.apply': { proposed: 'counts:write', step: STEP },
   'counts.cancel': { proposed: 'counts:write', step: STEP },
 
-  // Shipping (`shipments:*` exist; carriers, pickups, returns and remittances are scopes of their own)
-  'carriers.list': { proposed: 'carriers:read', step: STEP },
+  // Shipping (`shipments:*` exist; carriers, pickups, returns and remittances are scopes of their own). Step 5.6 PR E5 exposes the
+  // reads of shipments, carrier connections and pickups, over the same services as the screens, for the one store of the key. The
+  // views of a plugin name their fields (no credentials, no webhook secret, no fees, commission or rates of a carrier, no cost or
+  // remittance of a guide, no id of a person). Everything that writes, the link of a label and the run of labels wait for PR E5-2.
+  'carriers.list': { scope: 'carriers:read', exposed: '/plugin-api/carriers' },
   'carriers.create': { none: CARRIER_ADMIN },
-  'carriers.registry': { proposed: 'carriers:read', step: STEP },
-  'carriers.byId': { proposed: 'carriers:read', step: STEP },
+  'carriers.registry': { scope: 'carriers:read', exposed: '/plugin-api/carriers/registry' },
+  // The GET is exposed; the PATCH of a connection is the owner's and has no plugin route
+  'carriers.byId': { scope: 'carriers:read', exposed: '/plugin-api/carriers/:id' },
   'carriers.test': { none: CARRIER_ADMIN },
   'carriers.disconnect': { none: CARRIER_ADMIN },
   'carriers.webhookSecret': { none: CARRIER_ADMIN },
-  'carriers.locations': { proposed: 'carriers:read', step: STEP },
-  'carriers.statusCatalog': { proposed: 'carriers:read', step: STEP },
+  // Asks the carrier with the credentials of the owner on every call, and the plugin limit is per IP: waits for PR E5-2 (a budget per installation)
+  'carriers.locations': { scope: 'carriers:read' },
+  'carriers.statusCatalog': {
+    scope: 'carriers:read',
+    exposed: '/plugin-api/carriers/:id/status-catalog'
+  },
   'carriers.statusMappings': { none: CARRIER_ADMIN },
   'carriers.statusMappingByCode': { none: CARRIER_ADMIN },
-  'carriers.unmappedStatuses': { proposed: 'carriers:read', step: STEP },
+  'carriers.unmappedStatuses': {
+    scope: 'carriers:read',
+    exposed: '/plugin-api/carriers/:id/unmapped-statuses'
+  },
   'carriers.guideBalance': { none: GUIDE_BALANCE },
   'carriers.guideMovements': { none: GUIDE_BALANCE },
   'carriers.guidePurchases': { none: GUIDE_BALANCE },
@@ -497,8 +508,8 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'carriers.guidePolicy': { none: GUIDE_BALANCE },
   'carriers.benefit': { none: GUIDE_BALANCE },
   'carriers.benefitPeriods': { none: GUIDE_BALANCE },
-  'shipments.list': { scope: 'shipments:read' },
-  'shipments.byId': { scope: 'shipments:read' },
+  'shipments.list': { scope: 'shipments:read', exposed: '/plugin-api/shipments' },
+  'shipments.byId': { scope: 'shipments:read', exposed: '/plugin-api/shipments/:id' },
   'shipments.forOrder': { scope: ['shipments:read', 'shipments:write'] },
   'shipments.bulk': { scope: 'shipments:write' },
   'shipments.bulkJob': { scope: 'shipments:read' },
@@ -508,13 +519,17 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'shipments.status': { scope: 'shipments:write' },
   'shipments.check': { scope: 'shipments:write' },
   'shipments.markVoided': { scope: 'shipments:write' },
-  'pickups.list': { proposed: ['pickups:read', 'pickups:write'], step: STEP },
+  'pickups.list': { scope: 'pickups:read', exposed: '/plugin-api/pickups' },
   'pickups.create': { proposed: 'pickups:write', step: STEP },
   'pickups.shipments': { proposed: 'pickups:write', step: STEP },
   'pickups.shipmentById': { proposed: 'pickups:write', step: STEP },
   'pickups.confirm': { proposed: 'pickups:write', step: STEP },
   'pickups.cancel': { proposed: 'pickups:write', step: STEP },
-  'pickups.manifest': { proposed: 'pickups:read', step: STEP },
+  // Names the recipients and the guide, shipment and order of each parcel: `customers:read` and `shipments:read` as well
+  'pickups.manifest': {
+    scope: ['pickups:read', 'customers:read', 'shipments:read'],
+    exposed: '/plugin-api/pickups/:id/manifest'
+  },
   'returns.list': { proposed: ['returns:read', 'returns:write'], step: STEP },
   'returns.create': { proposed: 'returns:write', step: STEP },
   'returns.byId': { proposed: 'returns:read', step: STEP },
