@@ -251,6 +251,11 @@ export const ErrorCodes = {
   FINANCE_SETUP_REQUIRED: 'FINANCE_SETUP_REQUIRED',
   // A taxed product has no tax rate of its own and the organization has no default one: an order never guesses a rate (TDD_18 §7)
   FINANCE_TAX_RATE_NOT_CONFIGURED: 'FINANCE_TAX_RATE_NOT_CONFIGURED',
+  // Purchases (TDD_18 §3, §2.7): a purchase order moves along its table only, a receipt never takes more than was ordered, and a
+  // supplier with bills or payments keeps its payable account
+  PURCHASE_ORDER_INVALID_STATUS_TRANSITION: 'PURCHASE_ORDER_INVALID_STATUS_TRANSITION',
+  PURCHASE_RECEIPT_EXCEEDS_ORDER: 'PURCHASE_RECEIPT_EXCEEDS_ORDER',
+  SUPPLIER_HAS_HISTORY: 'SUPPLIER_HAS_HISTORY',
 
   // Compliance
   DSR_VERIFICATION_INVALID: 'DSR_VERIFICATION_INVALID',

@@ -264,6 +264,8 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
       OR EXISTS (SELECT 1 FROM payment_method_accounts WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM tax_rates WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM finance_transactions WHERE organization_id = ANY(${organizationIds}))
+      OR EXISTS (SELECT 1 FROM suppliers WHERE organization_id = ANY(${organizationIds}))
+      OR EXISTS (SELECT 1 FROM purchase_orders WHERE organization_id = ANY(${organizationIds}))
     ) AS touched`
   const touched = found?.touched === true
   if (!touched) return
@@ -273,6 +275,9 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     // commits (an error rolls the whole transaction back, the switch included)
     const guarded = [
       'finance_transactions',
+      'supplier_payments',
+      'purchase_receipts',
+      'purchase_receipt_lines',
       'journal_lines',
       'journal_entries',
       'fiscal_periods',
@@ -280,6 +285,14 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     ]
     for (const table of guarded)
       await tx.$executeRawUnsafe(`ALTER TABLE ${table} DISABLE TRIGGER USER`)
+    // The purchases name the entries, the accounts, the stores and the products: they go first (a payment names a bill, a bill its
+    // order and its supplier). The lines of an order go with it (cascade)
+    await tx.supplierPayment.deleteMany({ where })
+    await tx.purchaseReceiptLine.deleteMany({ where })
+    await tx.purchaseReceipt.deleteMany({ where })
+    await tx.purchaseOrderLine.deleteMany({ where })
+    await tx.purchaseOrder.deleteMany({ where })
+    await tx.supplier.deleteMany({ where })
     // A transaction names its entry and the one it replaced: the links are cut first, then the rows go before the journal
     await tx.financeTransaction.updateMany({
       where,

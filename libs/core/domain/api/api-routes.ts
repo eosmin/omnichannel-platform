@@ -221,6 +221,35 @@ export const ApiRoutes = {
     postings: '/finance/postings'
   },
 
+  // Suppliers and what is owed to them (TDD_18 §2.7, §12): organization-scoped like the books they post to. A route is a leaf of
+  // its own (the same path with another verb is another leaf), because each one is mapped to the step that draws it.
+  suppliers: {
+    list: '/suppliers',
+    create: '/suppliers',
+    byId: (id: string) => `/suppliers/${id}`,
+    update: (id: string) => `/suppliers/${id}`,
+    // The accounts payable: every bill with something open, with its due date, and the total per supplier
+    payables: '/suppliers/payables',
+    balance: (id: string) => `/suppliers/${id}/balance`,
+    payments: (id: string) => `/suppliers/${id}/payments`,
+    recordPayment: (id: string) => `/suppliers/${id}/payments`
+  },
+  supplierPayments: {
+    void: (id: string) => `/supplier-payments/${id}/void`
+  },
+  purchaseOrders: {
+    list: '/purchase-orders',
+    create: '/purchase-orders',
+    byId: (id: string) => `/purchase-orders/${id}`,
+    update: (id: string) => `/purchase-orders/${id}`,
+    order: (id: string) => `/purchase-orders/${id}/order`,
+    receive: (id: string) => `/purchase-orders/${id}/receive`,
+    close: (id: string) => `/purchase-orders/${id}/close`,
+    cancel: (id: string) => `/purchase-orders/${id}/cancel`,
+    payments: (id: string) => `/purchase-orders/${id}/payments`,
+    recordPayment: (id: string) => `/purchase-orders/${id}/payments`
+  },
+
   // Shipping (TDD_17 §6)
   carriers: {
     list: '/carriers',

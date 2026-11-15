@@ -40,6 +40,7 @@ export const DestructiveActionTiers = {
   VOID_CONFIRMED_REMITTANCE: HIGH, // TDD_17
   POST_MANUAL_ENTRY: HIGH, // TDD_18 §3; a journal entry cannot be edited or erased afterwards, only reversed by another
   REVERSE_ENTRY: HIGH, // TDD_18 §3; an entry is reversed at most once, and the reversal stays in the journal for good
+  VOID_SUPPLIER_PAYMENT: HIGH, // TDD_18 §4.2 E11; voiding a payment to a supplier writes a reversing entry that stays in the journal for good and makes the bill owed again, and a voided one is not voided again
   VOID_FINANCE_TRANSACTION: HIGH, // TDD_18 §4.3; voiding an expense, an income or a transfer writes a reversing entry that stays in the journal for good, and a voided one is not voided again
   DELETE_WEBHOOK: HIGH, // Settings → Webhooks; the endpoint stops receiving events and its delivery log goes with it
   ROTATE_WEBHOOK_SECRET: HIGH, // Settings → Webhooks; the old secret stops working at once, so the receiver must be updated right after
