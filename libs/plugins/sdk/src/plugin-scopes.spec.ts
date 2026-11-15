@@ -1,8 +1,15 @@
 import { Permissions } from '@platform/core/auth'
+import { ChannelPluginScopes } from '@platform/core/domain'
 
 import { PluginScopePermissions, PluginScopes } from './plugin-scopes'
 
 describe('PluginScopes', () => {
+  it('names the two scopes of a channel as the domain constants do', () => {
+    expect([PluginScopes.CHANNEL_CONNECTIONS, PluginScopes.CHANNEL_EVENTS]).toEqual(
+      Object.values(ChannelPluginScopes)
+    )
+  })
+
   it('maps every scope to permissions, with an entry per scope', () => {
     expect(Object.keys(PluginScopePermissions).sort()).toEqual(Object.values(PluginScopes).sort())
   })

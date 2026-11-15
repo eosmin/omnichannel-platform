@@ -39,7 +39,7 @@ function channel(overrides: Partial<ChannelPlugin> = {}): ChannelPlugin {
 }
 
 function build(): PluginRegistry {
-  const logger = { setContext: jest.fn(), info: jest.fn() }
+  const logger = { setContext: jest.fn(), info: jest.fn(), error: jest.fn() }
   return new PluginRegistry(logger as unknown as PinoLogger)
 }
 
@@ -557,5 +557,114 @@ describe('PluginRegistry, the files a channel takes', () => {
       types: ['image/png'],
       maxBytes: 1024
     })
+  })
+})
+
+describe('PluginRegistry, remote channel plugins', () => {
+  const remote = (id: string, over: Partial<ChannelPlugin> = {}) => channel({ id, ...over })
+
+  it('lists a remote plugin only to the stores that installed it', () => {
+    const registry = build()
+    registry.register(channel({ id: 'official-like' }))
+    registry.syncRemote([{ plugin: remote('acme-chat'), storeIds: ['store-a'] }])
+
+    expect(registry.list('store-a').map(plugin => plugin.id)).toEqual([
+      'official-like',
+      'acme-chat'
+    ])
+    expect(registry.list('store-b').map(plugin => plugin.id)).toEqual(['official-like'])
+    expect(registry.isVisibleTo('acme-chat', 'store-a')).toBe(true)
+    expect(registry.isVisibleTo('acme-chat', 'store-b')).toBe(false)
+  })
+
+  it('replaces a remote plugin by a newer one of its id, and the stores follow the new set', () => {
+    const registry = build()
+    registry.syncRemote([
+      { plugin: remote('acme-chat', { version: '1.0.0' }), storeIds: ['store-a'] }
+    ])
+    registry.syncRemote([
+      { plugin: remote('acme-chat', { version: '1.1.0' }), storeIds: ['store-b'] }
+    ])
+
+    expect(registry.get('acme-chat').version).toBe('1.1.0')
+    expect(registry.isVisibleTo('acme-chat', 'store-a')).toBe(false)
+    expect(registry.isVisibleTo('acme-chat', 'store-b')).toBe(true)
+  })
+
+  it('removes a remote plugin that nobody has installed any more', () => {
+    const registry = build()
+    registry.syncRemote([{ plugin: remote('acme-chat'), storeIds: ['store-a'] }])
+    registry.syncRemote([])
+    expect(registry.has('acme-chat')).toBe(false)
+  })
+
+  it('never touches a plugin of the code, whatever the sync says', () => {
+    const registry = build()
+    registry.register(channel({ id: 'built-in' }), { fromCode: true })
+    expect(registry.syncRemote([])).toEqual([])
+    expect(registry.has('built-in')).toBe(true)
+
+    const refused = registry.syncRemote([{ plugin: remote('built-in'), storeIds: ['store-a'] }])
+    expect(refused).toEqual(['"built-in"'])
+    expect(registry.has('built-in')).toBe(true)
+    expect(registry.isVisibleTo('built-in', 'store-a')).toBe(true)
+  })
+
+  it('never lets a remote plugin take the id of an official channel', () => {
+    const registry = build()
+    registry.register(channel({ id: 'whatsapp' }), { official: true })
+    const refused = registry.syncRemote([{ plugin: remote('whatsapp'), storeIds: ['store-a'] }])
+    expect(refused).toEqual(['"whatsapp"'])
+    expect(registry.get('whatsapp').name).toBe('Telegram')
+  })
+
+  it('leaves out a plugin that breaks the contract and keeps registering the others', () => {
+    const logger = { setContext: jest.fn(), info: jest.fn(), error: jest.fn() }
+    const registry = new PluginRegistry(logger as unknown as PinoLogger)
+    const broken = remote('broken-chat', { sendMessage: undefined as never })
+    const refused = registry.syncRemote([
+      { plugin: broken, storeIds: ['store-a'] },
+      { plugin: remote('good-chat'), storeIds: ['store-a'] }
+    ])
+    expect(refused).toEqual(['"broken-chat"'])
+    expect(registry.has('good-chat')).toBe(true)
+    expect(registry.has('broken-chat')).toBe(false)
+    expect(logger.error).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the previous version of a plugin whose new one breaks the contract', () => {
+    const logger = { setContext: jest.fn(), info: jest.fn(), error: jest.fn() }
+    const registry = new PluginRegistry(logger as unknown as PinoLogger)
+    registry.syncRemote([{ plugin: remote('acme-chat'), storeIds: ['store-a'] }])
+    registry.syncRemote([
+      { plugin: remote('acme-chat', { sendMedia: undefined as never }), storeIds: ['store-a'] }
+    ])
+    expect(registry.has('acme-chat')).toBe(true)
+    expect(registry.get('acme-chat').version).toBe('1.0.0')
+    expect(registry.isVisibleTo('acme-chat', 'store-a')).toBe(true)
+  })
+
+  it('does not keep a plugin whose id changes between reads', () => {
+    const registry = build()
+    let reads = 0
+    const plugin = remote('acme-chat')
+    Object.defineProperty(plugin, 'id', {
+      get: () => {
+        reads += 1
+        return reads === 1 ? 'acme-chat' : 'other-chat'
+      }
+    })
+    registry.syncRemote([{ plugin, storeIds: ['store-a'] }])
+    // Registered under the id the adapter gave `register`, and removed because it is not the id that was judged
+    expect(registry.has('acme-chat')).toBe(false)
+    expect(registry.has('other-chat')).toBe(false)
+  })
+
+  it('does not replace a plugin of the code with register({ remote })', () => {
+    const registry = build()
+    registry.register(channel({ id: 'built-in' }), { fromCode: true })
+    expect(codeOf(() => registry.register(remote('built-in'), { remote: true }))).toBe(
+      ErrorCodes.PLUGIN_ALREADY_REGISTERED
+    )
   })
 })

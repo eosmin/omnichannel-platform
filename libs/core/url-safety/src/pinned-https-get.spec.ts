@@ -1,9 +1,9 @@
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 
-import { UnsafeUrlError } from '@platform/core/url-safety'
-
-import { PinnedFetchFailed, pinnedHttpsGet, type HttpsRequester } from './pinned-https-get'
+import type { HttpsRequester } from './pinned-https-exchange'
+import { PinnedFetchFailed, pinnedHttpsGet } from './pinned-https-get'
+import { UnsafeUrlError } from './public-url'
 
 const resolvesTo =
   (...addresses: string[]) =>
@@ -56,6 +56,27 @@ describe('pinnedHttpsGet', () => {
     const callback = jest.fn()
     lookup('cdn.example.com', {}, callback)
     expect(callback).toHaveBeenCalledWith(null, '8.8.8.8', 4)
+  })
+
+  it('takes an empty content-length as unknown and refuses an encoded body', async () => {
+    const empty = fakeRequest(200, { 'content-length': '' })
+    const response = await pinnedHttpsGet('https://cdn.example.com/a.png', {
+      accept: '*/*',
+      timeoutMs: 1000,
+      resolve: resolvesTo('8.8.8.8'),
+      request: empty.request
+    })
+    expect(response.contentLength).toBeNull()
+
+    const gzip = fakeRequest(200, { 'content-encoding': 'gzip' })
+    await expect(
+      pinnedHttpsGet('https://cdn.example.com/a.png', {
+        accept: '*/*',
+        timeoutMs: 1000,
+        resolve: resolvesTo('8.8.8.8'),
+        request: gzip.request
+      })
+    ).rejects.toMatchObject({ retryable: false })
   })
 
   it('refuses a link whose host has a private address before any request', async () => {

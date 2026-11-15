@@ -1,3 +1,4 @@
+import { ChannelCapability } from './channel-capability'
 import { PluginInstallationStatus, PluginStatus } from './status-enums'
 
 // What a row of the plugin catalog is (D19). An integration plugin calls the plugin API and has no
@@ -32,8 +33,56 @@ export const PluginManifestLimits = {
   MIN_REQUESTS_PER_MINUTE: 1,
   MAX_REQUESTS_PER_MINUTE: 600,
   MIN_WEBHOOKS_PER_DAY: 1,
-  MAX_WEBHOOKS_PER_DAY: 1_000_000
+  MAX_WEBHOOKS_PER_DAY: 1_000_000,
+  // The text of a connection field of a channel plugin, in each language (TDD_10 §6.7.2)
+  FIELD_LABEL_MAX_LENGTH: 60
 } as const
+
+// The `channel` block of the manifest of a channel plugin (TDD_10 §6.7.2)
+export const ChannelManifestLimits = {
+  LABEL_MAX_LENGTH: 40,
+  MIN_WINDOW_HOURS: 1,
+  MAX_WINDOW_HOURS: 720
+} as const
+
+// What a manifest may declare a channel can do. The rest of `ChannelCapability` (templates, buttons, location,
+// reactions, ...) needs a command the platform does not send to a remote plugin, so the validator refuses it
+// (TDD_10 §6.7.2). `caption_per_file`: the plugin carries the text of each file in the command that sends it.
+export const ManifestChannelCapabilities: readonly string[] = [
+  ChannelCapability.TEXT,
+  ChannelCapability.IMAGE,
+  ChannelCapability.VIDEO,
+  ChannelCapability.AUDIO,
+  ChannelCapability.DOCUMENT,
+  ChannelCapability.REPLY_TO,
+  ChannelCapability.DELIVERY_RECEIPTS,
+  ChannelCapability.READ_RECEIPTS,
+  ChannelCapability.TYPING_INDICATOR,
+  ChannelCapability.CUSTOMER_TYPING,
+  ChannelCapability.CAPTION_PER_FILE
+]
+
+// The scopes a channel plugin must hold (TDD_10 §6.2, §6.7.2): the routes that use them arrive with Step 5.6 PR C3
+export const ChannelPluginScopes = {
+  CONNECTIONS: 'channel:connections',
+  EVENTS: 'channel:events'
+} as const
+
+// The icon of a plugin is fetched once, when it is registered, and the platform keeps only its own 128 by 128 PNG
+// (TDD_10 §6.7.2). The original is never served.
+export const PluginIconLimits = {
+  MAX_BYTES: 64 * 1024,
+  SIZE_PX: 128,
+  FETCH_TIMEOUT_MS: 10_000,
+  // A picture with more pixels than this is not decoded: a few KB of PNG can hold gigapixels
+  MAX_INPUT_PIXELS: 4_000_000,
+  KEY_PREFIX: 'plugin-icons/',
+  CONTENT_TYPE: 'image/png'
+} as const
+
+// Where the platform keeps the picture of a plugin; platform level, not under a store
+export const pluginIconKey = (pluginId: string): string =>
+  `${PluginIconLimits.KEY_PREFIX}${pluginId}.png`
 
 // How many private plugins an organization may register: the catalog of its stores stays one screen long and a
 // loop that registers cannot fill the table

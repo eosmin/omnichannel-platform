@@ -12,14 +12,16 @@ import {
   PluginInstallationStatus,
   PluginPricingModels,
   PluginRegistrationLimits,
+  pluginIconKey,
   PluginStatus,
   ShippingPlugin
 } from '@platform/core/domain'
-import { ErrorCodes } from '@platform/core/errors'
+import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { PluginScopes } from '@platform/plugins/sdk'
 
 import { PluginCatalogSync } from '../../apps/api/src/modules/plugins/plugin-catalog-sync.service'
+import { PluginIconService } from '../../apps/api/src/modules/plugins/plugin-icon.service'
 import { buildChannelPlugin } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
@@ -46,10 +48,22 @@ describe('Private registration of an integration plugin (D10)', () => {
   let owner: OwnerClient
   let ctx: TestContext
   let counter = 0
+  const PNG = Buffer.from('a 128 px png')
+  const icons = {
+    fetch: jest.fn<Promise<Buffer>, [string]>(),
+    store: jest.fn<Promise<string>, [string, Buffer]>()
+  }
+  beforeEach(() => {
+    icons.fetch.mockReset().mockResolvedValue(PNG)
+    icons.store.mockReset().mockImplementation(id => Promise.resolve(pluginIconKey(id)))
+  })
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    // The network is never asked and nothing is written to the bucket: the icon is a fake that records what it was asked
+    app = await createTestApp([], builder =>
+      builder.overrideProvider(PluginIconService).useValue(icons)
+    )
     ctx = await seedTestContext(owner, app, prefix)
   })
   afterAll(async () => {
@@ -150,11 +164,15 @@ describe('Private registration of an integration plugin (D10)', () => {
     })
 
     it.each([
-      ['a channel plugin', { type: 'channel' }],
+      ['a channel type without its block', { type: 'channel' }],
       ['a paid plugin', { pricing: { model: 'paid' } }],
       ['a plan-gated plugin', { pricing: { model: 'plan_gated' } }],
       ['a scope that does not exist', { scopes: ['orders:delete'] }],
-      ['a scope of a channel plugin', { scopes: ['channel:events'] }],
+      ['a scope of a channel that does not exist', { scopes: ['channel:other'] }],
+      [
+        'the block of a channel on an integration plugin',
+        { channel: { label: 'x', commandsUrl: 'https://acme.com/c' } }
+      ],
       ['a repeated scope', { scopes: [PluginScopes.ORDERS_READ, PluginScopes.ORDERS_READ] }],
       [
         'a webhook that is not https',
@@ -202,6 +220,231 @@ describe('Private registration of an integration plugin (D10)', () => {
     it('refuses an empty body and a body that is not an object', async () => {
       expect((await register({})).status).toBe(BAD_REQUEST)
       expect((await register([manifestOf(newId())])).status).toBe(BAD_REQUEST)
+    })
+  })
+
+  describe('a channel plugin (TDD_10 §6.7.2)', () => {
+    const ICON = 'https://cdn.acme.com/chat.png'
+    const channelOf = (id: string, over: Record<string, unknown> = {}) =>
+      manifestOf(id, {
+        type: PluginCatalogTypes.CHANNEL,
+        icon: ICON,
+        scopes: [PluginScopes.CHANNEL_CONNECTIONS, PluginScopes.CHANNEL_EVENTS],
+        capabilities: ['text', 'image', 'caption_per_file'],
+        channel: {
+          label: 'Acme Chat',
+          commandsUrl: 'https://acme.com/platform/commands',
+          messagingWindow: { hours: 24 },
+          connectFields: [
+            {
+              key: 'accountName',
+              label: { es: 'Nombre de la cuenta', en: 'Account name' },
+              secret: false,
+              required: true,
+              multiple: false
+            }
+          ]
+        },
+        ...over
+      })
+
+    it('stores the manifest of a channel with its icon fetched once and kept as the platform’s own', async () => {
+      const id = newId()
+      const manifest = channelOf(id)
+
+      const response = await register(manifest)
+
+      expect(response.status).toBe(CREATED)
+      expect(icons.fetch).toHaveBeenCalledTimes(1)
+      expect(icons.fetch).toHaveBeenCalledWith(ICON)
+      expect(icons.store).toHaveBeenCalledWith(id, PNG)
+      const row = await owner.plugin.findUniqueOrThrow({ where: { id } })
+      expect(row).toMatchObject({
+        type: PluginCatalogTypes.CHANNEL,
+        isOfficial: false,
+        organizationId: ctx.orgA.id,
+        iconKey: pluginIconKey(id)
+      })
+      expect(row.manifest).toEqual(manifest)
+    })
+
+    it('does not fetch the icon again when the same manifest is sent again', async () => {
+      const id = newId()
+      await register(channelOf(id))
+      icons.fetch.mockClear()
+      icons.store.mockClear()
+
+      const again = await register(channelOf(id))
+
+      expect(again.status).toBe(OK)
+      expect(again.body).toMatchObject({ outcome: 'unchanged' })
+      expect(icons.fetch).not.toHaveBeenCalled()
+      expect(icons.store).not.toHaveBeenCalled()
+    })
+
+    it('does not fetch the icon again for a newer version with the same icon, and does for another address', async () => {
+      const id = newId()
+      await register(channelOf(id))
+      icons.fetch.mockClear()
+
+      expect((await register(channelOf(id, { version: '1.1.0' }))).status).toBe(OK)
+      expect(icons.fetch).not.toHaveBeenCalled()
+      expect((await owner.plugin.findUniqueOrThrow({ where: { id } })).iconKey).toBe(
+        pluginIconKey(id)
+      )
+
+      const other = 'https://cdn.acme.com/chat-2.png'
+      expect((await register(channelOf(id, { version: '1.2.0', icon: other }))).status).toBe(OK)
+      expect(icons.fetch).toHaveBeenCalledWith(other)
+    })
+
+    it('forgets the picture of a plugin whose new version has no icon', async () => {
+      const id = newId()
+      await register(channelOf(id))
+
+      const response = await register(channelOf(id, { version: '1.1.0', icon: undefined }))
+
+      expect(response.status).toBe(OK)
+      expect((await owner.plugin.findUniqueOrThrow({ where: { id } })).iconKey).toBeNull()
+    })
+
+    it('stores nothing when the icon is refused', async () => {
+      const id = newId()
+      icons.fetch.mockRejectedValue(
+        new PlatformException(
+          ErrorCodes.PLUGIN_ICON_INVALID,
+          'the icon could not be fetched',
+          HttpStatusCodes.BAD_REQUEST
+        )
+      )
+
+      const response = await register(channelOf(id))
+
+      expect(response.status).toBe(BAD_REQUEST)
+      expect(codeOf(response.body)).toBe(ErrorCodes.PLUGIN_ICON_INVALID)
+      expect(await owner.plugin.count({ where: { id } })).toBe(0)
+      expect(icons.store).not.toHaveBeenCalled()
+    })
+
+    it('registers a channel with no icon and asks nobody for one', async () => {
+      const id = newId()
+
+      const response = await register(channelOf(id, { icon: undefined }))
+
+      expect(response.status).toBe(CREATED)
+      expect(icons.fetch).not.toHaveBeenCalled()
+      expect((await owner.plugin.findUniqueOrThrow({ where: { id } })).iconKey).toBeNull()
+    })
+
+    it('keeps the row when the picture cannot be stored, and the next registration fetches it again', async () => {
+      const id = newId()
+      icons.store.mockRejectedValueOnce(new Error('bucket down'))
+
+      const failed = await register(channelOf(id))
+
+      expect(failed.status).toBe(HttpStatusCodes.SERVICE_UNAVAILABLE)
+      expect((await owner.plugin.findUniqueOrThrow({ where: { id } })).iconKey).toBeNull()
+      // The registration happened, so it is in the log even though the picture was not kept
+      expect(await auditCount(AuditAction.PLUGIN_REGISTERED, id)).toBe(1)
+      icons.fetch.mockClear()
+
+      const retry = await register(channelOf(id))
+
+      expect(retry.status).toBe(OK)
+      expect(icons.fetch).toHaveBeenCalledTimes(1)
+      expect((await owner.plugin.findUniqueOrThrow({ where: { id } })).iconKey).toBe(
+        pluginIconKey(id)
+      )
+    })
+
+    it('never writes the picture of an id that another organization holds', async () => {
+      const id = newId()
+      await register(channelOf(id))
+      const before = await owner.plugin.findUniqueOrThrow({ where: { id } })
+      icons.fetch.mockClear()
+      icons.store.mockClear()
+
+      const response = await register(channelOf(id, { version: '9.0.0' }), asAdminB)
+
+      expect(response.status).toBe(CONFLICT)
+      expect(codeOf(response.body)).toBe(ErrorCodes.PLUGIN_ALREADY_REGISTERED)
+      expect(icons.fetch).not.toHaveBeenCalled()
+      expect(icons.store).not.toHaveBeenCalled()
+      expect(await owner.plugin.findUniqueOrThrow({ where: { id } })).toEqual(before)
+    })
+
+    it('updates its own channel plugin while the registry runs it, and never an id the code runs', async () => {
+      const id = newId()
+      await register(channelOf(id))
+      const registry = app.get(PluginRegistry, { strict: false })
+      registry.syncRemote([{ plugin: buildChannelPlugin({ id }), storeIds: [ctx.storeA.id] }])
+
+      const update = await register(channelOf(id, { version: '1.1.0' }))
+      expect(update.status).toBe(OK)
+      expect(update.body).toMatchObject({ outcome: 'updated' })
+      registry.unregister(id)
+
+      const coded = newId()
+      registry.register(buildChannelPlugin({ id: coded }), { fromCode: true })
+      try {
+        const taken = await register(channelOf(coded))
+        expect(taken.status).toBe(CONFLICT)
+        expect(await owner.plugin.count({ where: { id: coded } })).toBe(0)
+      } finally {
+        registry.unregister(coded)
+      }
+    })
+
+    it('does not turn an integration plugin into a channel, nor the other way', async () => {
+      const integration = newId()
+      await register(manifestOf(integration))
+      const channel = newId()
+      await register(channelOf(channel))
+
+      const toChannel = await register({ ...channelOf(integration), version: '2.0.0' })
+      const toIntegration = await register(manifestOf(channel, { version: '2.0.0' }))
+
+      expect(toChannel.status).toBe(CONFLICT)
+      expect(toIntegration.status).toBe(CONFLICT)
+      expect((await owner.plugin.findUniqueOrThrow({ where: { id: integration } })).type).toBe(
+        PluginCatalogTypes.INTEGRATION
+      )
+      expect((await owner.plugin.findUniqueOrThrow({ where: { id: channel } })).type).toBe(
+        PluginCatalogTypes.CHANNEL
+      )
+    })
+
+    it('refuses the id of an official channel, a window that wants templates and a capability it cannot have', async () => {
+      for (const over of [
+        { id: ChannelIds.WHATSAPP },
+        {
+          channel: {
+            label: 'x',
+            commandsUrl: 'https://acme.com/c',
+            messagingWindow: { hours: 24, requiresTemplateWhenClosed: true }
+          }
+        },
+        { capabilities: ['templates'] },
+        { scopes: [PluginScopes.CHANNEL_EVENTS] }
+      ]) {
+        const id = (over as { id?: string }).id ?? newId()
+        const before = await owner.plugin.findUnique({ where: { id } })
+        const response = await register(channelOf(id, over))
+        expect(response.status).toBe(BAD_REQUEST)
+        expect(await owner.plugin.findUnique({ where: { id } })).toEqual(before)
+      }
+    })
+
+    it('is in the catalog of the organization that registered it and in no other, and is not installable yet', async () => {
+      const id = newId()
+      await register(channelOf(id))
+
+      expect(await catalogIds()).toContain(id)
+      expect(await catalogIds(asSibling)).toContain(id)
+      expect(await catalogIds(asAdminB)).not.toContain(id)
+      const install = await asAdmin().post(ApiRoutes.plugins.install).send({ pluginId: id })
+      expect(install.status).toBe(CONFLICT)
+      expect(codeOf(install.body)).toBe(ErrorCodes.PLUGIN_INSTALLATION_FAILED)
     })
   })
 
