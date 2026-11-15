@@ -17,6 +17,7 @@ import {
 } from './plugin-command-secret.service'
 import {
   type PluginCatalogEntry,
+  type PluginDetail,
   PluginInstallationsService,
   type PluginInstallResult
 } from './plugin-installations.service'
@@ -30,6 +31,7 @@ import {
   type InstallPluginBody,
   installPluginSchema,
   pluginIdSchema,
+  pluginLookupSchema,
   type RegisterPluginBody,
   registerPluginSchema,
   type RevokePluginBody,
@@ -52,6 +54,18 @@ export class PluginsController {
   @Get(ApiRoutes.plugins.available)
   catalog(@CurrentStore() store: Store): Promise<PluginCatalogEntry[]> {
     return this.installations.catalog(store)
+  }
+
+  // One plugin and what this store holds of it (the id is the plugin's). It names the scopes granted, the prefix of the key and the
+  // address of the webhook, so it is for who manages plugins, not for who only sees the catalog.
+  @RequirePermissions(Permissions.SETTINGS_MANAGE_PLUGINS)
+  @NoStore()
+  @Get(ApiRoutes.plugins.byId(':id'))
+  byId(
+    @CurrentStore() store: Store,
+    @Param('id', new ZodValidationPipe(pluginLookupSchema)) pluginId: string
+  ): Promise<PluginDetail> {
+    return this.installations.detail(store, pluginId)
   }
 
   @RequirePermissions(Permissions.SETTINGS_MANAGE_PLUGINS)

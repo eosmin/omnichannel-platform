@@ -216,6 +216,30 @@ export const ApiRoutes = {
       // The receipt: POST names the file (a Media of purpose finance_document uploaded for this transaction), GET gives its signed links
       document: (id: string) => `/finance/transactions/${id}/document`
     },
+    // Bank reconciliation by CSV (TDD_18 §4.4): the profiles that read a bank's file, the import, the suggestions a person decides on
+    bank: {
+      profiles: '/finance/bank-profiles',
+      profileById: (id: string) => `/finance/bank-profiles/${id}`,
+      // The mapper: a sample of a file read with the mapping being tried; it writes nothing
+      profilePreview: '/finance/bank-profiles/preview',
+      // POST takes the file itself (text/csv, text/tab-separated-values or text/plain) with the profile in the query
+      imports: '/finance/bank-imports',
+      importById: (id: string) => `/finance/bank-imports/${id}`,
+      importLines: (id: string) => `/finance/bank-imports/${id}/lines`,
+      // POST confirms, in one go, every line whose match is the only one and an exact one
+      confirmExact: (id: string) => `/finance/bank-imports/${id}/confirm-exact`,
+      // The balance of the books against the balance the statement ended with
+      difference: (id: string) => `/finance/bank-imports/${id}/difference`,
+      // POST confirms the pair of a statement line and a line of the journal
+      lineMatches: (id: string) => `/finance/bank-lines/${id}/matches`,
+      lineRejections: (id: string) => `/finance/bank-lines/${id}/rejections`,
+      // GET: the transaction of 4B.4a an unmatched line would be, prefilled (nothing is posted)
+      lineRegisterDraft: (id: string) => `/finance/bank-lines/${id}/register-draft`,
+      // POST takes a decision back (a confirmed pair or a rejection)
+      matchUndo: (id: string) => `/finance/bank-matches/${id}/undo`,
+      // The state of the reconciliation of an account in a month
+      status: '/finance/bank-reconciliation/status'
+    },
     balances: '/finance/balances',
     // The sources whose automatic entry failed, still waiting for a person (TDD_18 §6.1)
     postings: '/finance/postings'
@@ -358,18 +382,14 @@ export const ApiRoutes = {
   },
 
   plugins: {
-    list: '/plugins',
     available: '/plugins/available',
     install: '/plugins/install',
     register: '/plugins/register', // The owner pastes a manifest (SETTINGS_MANAGE_PLUGINS)
-    byId: (id: string) => `/plugins/${id}`,
-    enable: (id: string) => `/plugins/${id}/enable`,
-    disable: (id: string) => `/plugins/${id}/disable`,
+    byId: (id: string) => `/plugins/${id}`, // One plugin of the catalog and what this store holds of it (GET); the id is the plugin's
     revoke: (id: string) => `/plugins/${id}/revoke`, // Uninstalls: the id is the installation's
     consent: (id: string) => `/plugins/${id}/consent`, // What installing the plugin of that id would grant (GET); the id is the plugin's
     setupCode: (id: string) => `/plugins/${id}/setup-code`, // A new one-time code for an installation that is not set up yet (POST); the id is the installation's
-    commandSecret: (id: string) => `/plugins/${id}/command-secret`, // Rotates the secret that signs the commands to a remote channel (POST); the id is the installation's
-    config: (id: string) => `/plugins/${id}/config`
+    commandSecret: (id: string) => `/plugins/${id}/command-secret` // Rotates the secret that signs the commands to a remote channel (POST); the id is the installation's
   },
 
   // The widgets of the plugins in the agent sidebar (TDD_10 §7): the ones the store has, a short session
@@ -570,11 +590,22 @@ export const PluginApiRoutes = {
   // writes need the id of a person (who confirmed, who cancelled, who created) and wait for a plugin actor (PR E3b).
   orders: {
     list: '/plugin-api/orders',
+    create: '/plugin-api/orders',
     byId: (id: string) => `/plugin-api/orders/${id}`,
-    messages: (id: string) => `/plugin-api/orders/${id}/messages`
+    messages: (id: string) => `/plugin-api/orders/${id}/messages`,
+    // Step 5.6 PR E3b: the writes, over the same services as the routes of the people, with the plugin as the actor (`ActorIdentity`)
+    status: (id: string) => `/plugin-api/orders/${id}/status`,
+    confirmBulk: '/plugin-api/orders/confirm-bulk',
+    copy: (id: string) => `/plugin-api/orders/${id}/copy`,
+    confirm: (id: string) => `/plugin-api/orders/${id}/confirm`,
+    cancel: (id: string) => `/plugin-api/orders/${id}/cancel`,
+    payment: (id: string) => `/plugin-api/orders/${id}/payment`,
+    priceApprovalApprove: (id: string) => `/plugin-api/orders/${id}/price-approval/approve`,
+    priceApprovalReject: (id: string) => `/plugin-api/orders/${id}/price-approval/reject`
   },
   orderTemplates: {
     list: '/plugin-api/order-templates',
+    preview: '/plugin-api/order-templates/preview',
     byKindAndLocale: (kind: string, locale: string) =>
       `/plugin-api/order-templates/${kind}/locales/${locale}`
   },
@@ -617,6 +648,60 @@ export const PluginApiRoutes = {
   counts: {
     list: '/plugin-api/counts',
     byId: (id: string) => `/plugin-api/counts/${id}`
+  },
+  // Step 5.6 PR E6: the reads of the returns (and of the batches of the scanner that receives them) and of the remittances of
+  // cash collected on delivery, over the same services as `ApiRoutes.returns` and `.remittances`. Their writes store the id of a
+  // person, move stock or move money, and wait for PR E6-2 and the plugin actor.
+  returns: {
+    list: '/plugin-api/returns',
+    byId: (id: string) => `/plugin-api/returns/${id}`,
+    reception: {
+      batches: '/plugin-api/returns/reception/batches',
+      batchById: (id: string) => `/plugin-api/returns/reception/batches/${id}`
+    }
+  },
+  remittances: {
+    list: '/plugin-api/remittances',
+    pending: '/plugin-api/remittances/pending',
+    importProfiles: '/plugin-api/remittances/import-profiles',
+    byId: (id: string) => `/plugin-api/remittances/${id}`
+  },
+  // Step 5.6 PR E5: the reads of the shipments, the carrier connections and the pickups, over the same services as
+  // `ApiRoutes.shipments`, `.carriers` and `.pickups`. The writes (a guide spends the prepaid balance, a pickup is a promise made
+  // to a carrier) and the label link wait for PR E5-2.
+  shipments: {
+    list: '/plugin-api/shipments',
+    byId: (id: string) => `/plugin-api/shipments/${id}`
+  },
+  carriers: {
+    list: '/plugin-api/carriers',
+    registry: '/plugin-api/carriers/registry',
+    byId: (id: string) => `/plugin-api/carriers/${id}`,
+    statusCatalog: (id: string) => `/plugin-api/carriers/${id}/status-catalog`,
+    unmappedStatuses: (id: string) => `/plugin-api/carriers/${id}/unmapped-statuses`
+  },
+  pickups: {
+    list: '/plugin-api/pickups',
+    manifest: (id: string) => `/plugin-api/pickups/${id}/manifest`
+  },
+
+  // Step 5.6 PR E7: the figures of the store, the exports centre of the key and the files, over the same services as
+  // `ApiRoutes.analytics`, `.exports` and `.media`. Not here, on purpose: the scheduled reports (their recipients are people's
+  // addresses) and the other kinds of export (PR E7-2).
+  analytics: {
+    metrics: '/plugin-api/analytics/metrics',
+    export: '/plugin-api/analytics/export'
+  },
+  exports: {
+    list: '/plugin-api/exports',
+    byId: (id: string) => `/plugin-api/exports/${id}`,
+    download: (id: string) => `/plugin-api/exports/${id}/download`
+  },
+  media: {
+    uploadUrl: '/plugin-api/media/upload-url',
+    confirmUpload: '/plugin-api/media/confirm-upload',
+    byId: (id: string) => `/plugin-api/media/${id}`,
+    downloadAll: '/plugin-api/media/download-all'
   },
 
   // Messages (Step 5.6 PR M1b): a plugin writes a reply or a note, and reads the edits and the kept text of a deleted message

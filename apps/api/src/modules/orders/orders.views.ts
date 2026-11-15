@@ -1,4 +1,4 @@
-import { dateToCalendarDay } from '@platform/core/domain'
+import { dateToCalendarDay, type OrderCopyDraft } from '@platform/core/domain'
 import { nationalPhoneNumber } from '@platform/core/messaging'
 
 // What an order looks like on the way out. Money is whole USD cents. The two internal notes are read by the members who
@@ -58,21 +58,26 @@ export const ORDER_DETAIL_SELECT = {
   trackingNumber: true,
   cancellationReason: true,
   cancelledBy: true,
+  cancelledByPluginId: true,
   cancelledAt: true,
   proofOfDeliveryMediaId: true,
   confirmedAt: true,
   confirmedBy: true,
+  confirmedByPluginId: true,
   confirmedVia: true,
   copiedFromOrderId: true,
   freeShipping: true,
   discountReason: true,
   priceApprovalStatus: true,
   priceApprovalRequestedBy: true,
+  priceApprovalRequestedByPluginId: true,
   priceApprovedBy: true,
+  priceApprovedByPluginId: true,
   priceApprovedAt: true,
   priceApprovedDiscountCents: true,
   priceApprovedShippingCents: true,
   createdBy: true,
+  createdByPluginId: true,
   createdAt: true,
   updatedAt: true,
   shippedAt: true,
@@ -150,19 +155,25 @@ interface DetailRow extends Omit<ListRow, 'items' | 'carrierConnectionId'> {
   trackingNumber: string | null
   cancellationReason: string | null
   cancelledBy: string | null
+  cancelledByPluginId: string | null
   cancelledAt: Date | null
   proofOfDeliveryMediaId: string | null
   confirmedAt: Date | null
   confirmedBy: string | null
+  confirmedByPluginId: string | null
   confirmedVia: string | null
   copiedFromOrderId: string | null
   discountReason: string | null
   priceApprovalRequestedBy: string | null
+  priceApprovalRequestedByPluginId: string | null
   priceApprovedBy: string | null
+  priceApprovedByPluginId: string | null
   priceApprovedAt: Date | null
   priceApprovedDiscountCents: number | null
   priceApprovedShippingCents: number | null
-  createdBy: string
+  // Null when a plugin made the order (`createdByPluginId`): exactly one of the two
+  createdBy: string | null
+  createdByPluginId: string | null
   shippedAt: Date | null
   deliveredAt: Date | null
   customer: {
@@ -266,9 +277,13 @@ export function detailView(row: DetailRow, canRead: boolean): OrderDetailView {
       customerNotes: null,
       trackingNumber: null,
       confirmedBy: null,
+      confirmedByPluginId: null,
       cancelledBy: null,
+      cancelledByPluginId: null,
       priceApprovalRequestedBy: null,
+      priceApprovalRequestedByPluginId: null,
       priceApprovedBy: null,
+      priceApprovedByPluginId: null,
       shippingAddress: null,
       paymentReference: null,
       paymentProofMediaId: null,
@@ -346,6 +361,9 @@ export interface PluginOrderSummaryView {
   paymentMethod: string
   paymentStatus: string
   freeShipping: boolean
+  // Whether the price waits for an approval (a constant of PriceApprovalStatus): what a plugin that holds `orders:approve-price` (PR E3b)
+  // needs to know to decide, with none of the free text of the request
+  priceApprovalStatus: string
   scheduledDeliveryDate: string | null
   createdAt: Date
   updatedAt: Date
@@ -376,6 +394,7 @@ type SummarySource = Pick<
   | 'paymentMethod'
   | 'paymentStatus'
   | 'freeShipping'
+  | 'priceApprovalStatus'
   | 'scheduledDeliveryDate'
   | 'createdAt'
   | 'updatedAt'
@@ -394,6 +413,7 @@ export function pluginSummaryView(order: SummarySource): PluginOrderSummaryView 
     paymentMethod: order.paymentMethod,
     paymentStatus: order.paymentStatus,
     freeShipping: order.freeShipping,
+    priceApprovalStatus: order.priceApprovalStatus,
     scheduledDeliveryDate: order.scheduledDeliveryDate,
     createdAt: order.createdAt,
     updatedAt: order.updatedAt
@@ -421,5 +441,50 @@ export function pluginDetailView(order: OrderDetailView): PluginOrderDetailView 
       unitPriceCents: item.unitPriceCents,
       freeShipping: item.freeShipping
     }))
+  }
+}
+
+// The answer of a creation for a plugin: the same allowlisted order and the notices
+export interface PluginCreatedOrder {
+  order: PluginOrderDetailView
+  notices: string[]
+}
+
+export function pluginCreatedView(created: {
+  order: OrderDetailView
+  notices: string[]
+}): PluginCreatedOrder {
+  return { order: pluginDetailView(created.order), notices: created.notices }
+}
+
+// The draft of a copy for a plugin: what a person's form is prefilled with, without the internal and packing notes (the team's, never a
+// plugin's) and the note the customer wrote (free text, withheld from the order a plugin reads). The customer, the address, the phones and the product ids are in it, which is why the route names `customers:read` and
+// `products:read` beside `orders:read` (the scope of each, PR E3a debt (c)).
+export function pluginCopyView(copy: OrderCopyDraft): OrderCopyDraft {
+  const { draft } = copy
+  return {
+    lines: copy.lines.map(line => ({
+      productId: line.productId,
+      variantId: line.variantId,
+      productName: line.productName,
+      variantName: line.variantName,
+      quantity: line.quantity,
+      unitPriceCents: line.unitPriceCents,
+      previousUnitPriceCents: line.previousUnitPriceCents
+    })),
+    warnings: copy.warnings.map(warning => ({
+      code: warning.code,
+      itemIndex: warning.itemIndex,
+      productId: warning.productId,
+      variantId: warning.variantId
+    })),
+    draft: {
+      customerId: draft.customerId,
+      items: draft.items,
+      shippingCents: draft.shippingCents,
+      paymentMethod: draft.paymentMethod,
+      recipientPhones: draft.recipientPhones,
+      shippingAddress: draft.shippingAddress
+    }
   }
 }

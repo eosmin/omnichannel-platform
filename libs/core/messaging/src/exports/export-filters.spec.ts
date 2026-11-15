@@ -34,6 +34,24 @@ describe('the filters an export row keeps', () => {
   })
 })
 
+describe('the requester frozen in an export row', () => {
+  const held = [Permissions.CONVERSATIONS_VIEW]
+  const parse = (userId: string) =>
+    conversationsExportFiltersSchema.safeParse({ filter: {}, viewer: { userId, held } }).success
+
+  it('is a person or a plugin of the form plugin:<uuid>, so the file of a plugin is not refused when it is made', () => {
+    expect(parse(crypto.randomUUID())).toBe(true)
+    expect(parse(`plugin:${crypto.randomUUID()}`)).toBe(true)
+  })
+
+  it('refuses anything else, so a row cannot name an id that is neither', () => {
+    expect(parse('plugin:')).toBe(false)
+    expect(parse('plugin:not-a-uuid')).toBe(false)
+    expect(parse(`system:${crypto.randomUUID()}`)).toBe(false)
+    expect(parse(`plugin:${crypto.randomUUID()}x`)).toBe(false)
+  })
+})
+
 describe('the selection of a conversations export', () => {
   const viewer = { userId: crypto.randomUUID(), held: [Permissions.CONVERSATIONS_VIEW] }
 

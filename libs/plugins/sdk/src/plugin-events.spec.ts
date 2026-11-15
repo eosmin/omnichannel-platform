@@ -103,15 +103,34 @@ describe('PluginEventScopes', () => {
     }
   })
 
-  it('leaves out only the returns, which have no scope of their own yet', () => {
+  it('leaves out no event of the catalog: every one a store can follow has the scope its plugin needs', () => {
     const left = WebhookEvents.filter(event => PluginEventScopes[event] === undefined)
-    expect([...left].sort()).toEqual(
-      [
-        Events.RETURN_REQUESTED,
-        Events.RETURN_APPROVED,
-        Events.RETURN_IN_TRANSIT,
-        Events.RETURN_RECEIVED
-      ].sort()
-    )
+    expect(left).toEqual([])
+  })
+
+  it('opens the four events of a return with returns:read', () => {
+    for (const event of [
+      Events.RETURN_REQUESTED,
+      Events.RETURN_APPROVED,
+      Events.RETURN_IN_TRANSIT,
+      Events.RETURN_RECEIVED
+    ]) {
+      expect(PluginEventScopes[event]).toBe(PluginScopes.RETURNS_READ)
+    }
+  })
+
+  it('tells a plugin of a return the ids it can read, and never who did it', () => {
+    const payload = {
+      storeId: 's-1',
+      orderId: 'o-1',
+      orderNumber: '00041',
+      returnId: 'r-1',
+      actor: { id: 'agent-1' },
+      customerId: 'u-1'
+    }
+    const data = redactForScopes(Events.RETURN_REQUESTED, payload, [PluginScopes.RETURNS_READ])
+    expect(data).toEqual({ storeId: 's-1', orderId: 'o-1', orderNumber: '00041', returnId: 'r-1' })
+    // The event is told only to an installation that holds returns:read: orders:read alone is not enough
+    expect(redactForScopes(Events.RETURN_REQUESTED, payload, [PluginScopes.ORDERS_READ])).toBeNull()
   })
 })

@@ -130,6 +130,10 @@ export const PLUGIN_API_KEY_TOKEN_PREFIX = 'plg_live_'
 // way for a plugin: the audit log as the system with the installation in its metadata, a system line as the system.
 export const PLUGIN_ACTOR_PREFIX = 'plugin:'
 
+// The id of a plugin as the owner of what it asked for (an export, an upload): the prefix and the uuid of its installation
+export const PLUGIN_ACTOR_ID_PATTERN =
+  /^plugin:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
 // The install flow of an integration plugin (TDD_10 §6.3) and the keys it makes
 export const PluginInstallLimits = {
   // The one-time code the plugin exchanges for its key: 256 bits, five minutes, used once

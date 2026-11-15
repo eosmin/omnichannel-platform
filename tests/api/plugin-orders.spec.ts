@@ -260,7 +260,6 @@ describe('Orders, order messages and settings through the plugin API (read)', ()
         { q: 'ana' },
         { customerId: randomUUID() },
         { guide: OrderGuideFilters.WITH },
-        { priceApprovalStatus: 'pending' },
         { carrierConnectionId: randomUUID() }
       ]) {
         const response = await asA(PluginApiRoutes.orders.list).query(query)
@@ -343,17 +342,16 @@ describe('Orders, order messages and settings through the plugin API (read)', ()
       }
     })
 
-    it('does not expose a write of an order: it stores the person who did it, and a plugin is none', async () => {
+    it('does not give the reader keys a write of an order (the writes have their own scopes, PR E3b)', async () => {
       const order = await createOrder(owner, { storeId: ctx.storeA.id })
       const writes = [
-        send('post', PluginApiRoutes.orders.list, keyA.key),
+        send('post', PluginApiRoutes.orders.create, keyA.key),
         send('patch', PluginApiRoutes.orders.byId(order.id), keyA.key),
-        send('post', `${PluginApiRoutes.orders.byId(order.id)}/cancel`, keyA.key),
-        send('post', `${PluginApiRoutes.orders.byId(order.id)}/confirm`, keyA.key),
-        send('post', `${PluginApiRoutes.orders.byId(order.id)}/status`, keyA.key),
-        send('post', `${PluginApiRoutes.orders.byId(order.id)}/payment`, keyA.key),
+        send('post', PluginApiRoutes.orders.cancel(order.id), keyA.key),
+        send('post', PluginApiRoutes.orders.confirm(order.id), keyA.key),
+        send('post', PluginApiRoutes.orders.status(order.id), keyA.key),
+        send('post', PluginApiRoutes.orders.payment(order.id), keyA.key),
         send('post', PluginApiRoutes.orders.messages(order.id), keyA.key),
-        send('put', PluginApiRoutes.settings.preferences, keyA.key),
         send(
           'put',
           PluginApiRoutes.orderTemplates.byKindAndLocale(
@@ -365,8 +363,14 @@ describe('Orders, order messages and settings through the plugin API (read)', ()
       ]
 
       for (const request of writes) {
-        expect((await request).status).toBe(NOT_FOUND)
+        const response = await request
+        expect(response.status).toBe(FORBIDDEN)
+        expect(codeOf(response.body)).toBe(ErrorCodes.PLUGIN_SCOPE_DENIED)
       }
+      // The preferences stay read only: no route writes them for a plugin
+      expect((await send('put', PluginApiRoutes.settings.preferences, keyA.key)).status).toBe(
+        NOT_FOUND
+      )
       const after = await owner.order.findUniqueOrThrow({ where: { id: order.id } })
       expect(after.status).toBe('PENDING_CONFIRMATION')
     })

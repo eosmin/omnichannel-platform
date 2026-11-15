@@ -1,13 +1,17 @@
 import { z } from 'zod'
 
 import {
+  changeOrderStatusSchema,
+  createOrderSchema,
   lowercasedUuidSchema,
   OrderConfirmationChannel,
   OrderLimits,
   orderListFilterShape,
   orderListFiltersAreConsistent,
   orderSortShape,
-  PaginationLimits
+  PaginationLimits,
+  recordOrderPaymentSchema,
+  updateOrderSchema
 } from '@platform/core/domain'
 
 export const idSchema = lowercasedUuidSchema
@@ -66,7 +70,8 @@ export const listOrdersQuerySchema = z
   })
 
 // What a plugin may filter by: not the text search (it matches the name, email and phone of the customer), not the customer, and not
-// the guide or the carrier (shipping data). A name it is not given is a 400, as for any other the schema does not know.
+// the guide or the carrier (shipping data). The price approval status IS a filter: a plugin that holds `orders:approve-price` lists the
+// orders that wait for it (PR E3b). A name it is not given is a 400, as for any other the schema does not know.
 export const pluginListOrdersQuerySchema = z
   .strictObject({
     ...orderPageShape,
@@ -74,8 +79,7 @@ export const pluginListOrdersQuerySchema = z
       q: true,
       customerId: true,
       carrierConnectionId: true,
-      guide: true,
-      priceApprovalStatus: true
+      guide: true
     }).shape,
     ...orderSortShape
   })
@@ -133,3 +137,67 @@ export const priceDecisionSchema = z.strictObject({
 })
 
 export type PriceDecisionBody = z.output<typeof priceDecisionSchema>
+
+// What a plugin may write of an order (Step 5.6 PR E3b): the schemas of the people with the fields a plugin must not touch refused,
+// each with its own message (a 400, as for a name the schema does not know). The internal and packing notes are the team's and a
+// plugin never reads them, so it does not overwrite them either; the tracking number belongs to the guide (`shipments:write`); a
+// conversation is linked only by who may see the inbox, which no scope of an order grants; and the summary message goes through
+// the route of the messages, with its own scope, not as a flag of the creation.
+const REFUSED_FOR_PLUGINS = 'a plugin does not write this field of an order'
+
+export const pluginCreateOrderSchema = createOrderSchema.superRefine((body, ctx) => {
+  const refused = {
+    conversationId: body.conversationId,
+    internalNotes: body.internalNotes,
+    packingNotes: body.packingNotes,
+    sendConfirmationMessage: body.sendConfirmationMessage,
+    // Naming the order it was copied from tells whether that order exists, which needs `orders:read`: a plugin creates the order from
+    // the lines of the draft and does not link it
+    copiedFromOrderId: body.copiedFromOrderId
+  }
+  for (const [path, value] of Object.entries(refused)) {
+    if (value !== undefined)
+      ctx.addIssue({ code: 'custom', path: [path], message: REFUSED_FOR_PLUGINS })
+  }
+})
+
+export const pluginUpdateOrderSchema = updateOrderSchema.superRefine((body, ctx) => {
+  const refused = {
+    internalNotes: body.internalNotes,
+    packingNotes: body.packingNotes,
+    trackingNumber: body.trackingNumber,
+    // What the customer wrote is withheld from a plugin, so it does not overwrite or clear it either
+    customerNotes: body.customerNotes
+  }
+  for (const [path, value] of Object.entries(refused)) {
+    if (value !== undefined)
+      ctx.addIssue({ code: 'custom', path: [path], message: REFUSED_FOR_PLUGINS })
+  }
+})
+
+// The proof of delivery is a file of the store that only a person uploads (no scope grants an upload), so a plugin does not name one
+// A plugin does not tell the customer through a status either: the automatic message follows a change made by a person, so the flag
+// would be ignored in silence; the message goes through `order-messages:write`
+export const pluginChangeOrderStatusSchema = changeOrderStatusSchema.superRefine((body, ctx) => {
+  const refused = {
+    proofOfDeliveryMediaId: body.proofOfDeliveryMediaId,
+    notifyCustomer: body.notifyCustomer
+  }
+  for (const [path, value] of Object.entries(refused)) {
+    if (value !== undefined)
+      ctx.addIssue({ code: 'custom', path: [path], message: REFUSED_FOR_PLUGINS })
+  }
+})
+
+export const pluginCancelOrderSchema = cancelOrderSchema.superRefine((body, ctx) => {
+  if (body.notifyCustomer !== undefined) {
+    ctx.addIssue({ code: 'custom', path: ['notifyCustomer'], message: REFUSED_FOR_PLUGINS })
+  }
+})
+
+// The receipt of a payment is a file a person uploaded (no scope grants an upload), so a plugin does not name one either
+export const pluginRecordOrderPaymentSchema = recordOrderPaymentSchema.superRefine((body, ctx) => {
+  if (body.proofMediaId !== undefined) {
+    ctx.addIssue({ code: 'custom', path: ['proofMediaId'], message: REFUSED_FOR_PLUGINS })
+  }
+})

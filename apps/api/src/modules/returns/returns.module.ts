@@ -9,6 +9,7 @@ import { OrdersModule } from '../orders/orders.module'
 import { ShipmentsModule } from '../shipments/shipments.module'
 import { TenancyModule } from '../tenancy'
 
+import { PluginReturnsController } from './plugin-returns.controller'
 import { ReturnReceptionController } from './return-reception.controller'
 import { ReturnReceptionService } from './return-reception.service'
 import { ReturnsController } from './returns.controller'
@@ -19,7 +20,7 @@ import { ReturnsQueries } from './returns.queries'
 // the app's.
 @Module({
   imports: [TenancyModule, InventoryModule, OrdersModule, ShipmentsModule, CustomersModule],
-  controllers: [ReturnsController, ReturnReceptionController],
+  controllers: [ReturnsController, ReturnReceptionController, PluginReturnsController],
   providers: [
     ReturnsService,
     ReturnReceptionService,

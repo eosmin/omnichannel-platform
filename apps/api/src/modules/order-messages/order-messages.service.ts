@@ -77,8 +77,12 @@ export interface SendOrderMessageInput {
   // The package that caused the message: its guide, carrier and attempts fill the variables. Left out, the order's live
   // outbound package is the one (a person sending the shipped message by hand)
   shipmentId?: string | undefined
-  // The member who asked; null for the platform
+  // The member who asked; null for the platform or for a plugin
   requestedBy: string | null
+  // The plugin that asked, when no member did (PR E3b): never together with `requestedBy`
+  requestedByPluginId?: string | null | undefined
+  // The installation whose key asked, for the audit entry (the same `pluginInstallationId` every order entry carries)
+  requestedByInstallationId?: string | null | undefined
   // An automatic message of a kind whose template says whether it goes by itself (`autoSend`): with this, a template that is not set
   // to go, or none at all, sends nothing and records nothing (the store never asked for it)
   onlyIfAutoSend?: boolean | undefined
@@ -901,6 +905,7 @@ export class OrderMessagesService {
           messageId,
           shipmentId: input.shipmentId ?? null,
           requestedBy: input.requestedBy,
+          requestedByPluginId: input.requestedByPluginId ?? null,
           locale
         }
       ],
@@ -1022,7 +1027,13 @@ export class OrderMessagesService {
       storeId: input.storeId,
       resourceType: OrderResourceTypes.ORDER,
       resourceId: order.id,
-      metadata: { orderNumber: order.orderNumber, kind: input.kind, route, trigger: input.trigger }
+      metadata: {
+        orderNumber: order.orderNumber,
+        kind: input.kind,
+        route,
+        trigger: input.trigger,
+        ...pluginOf(input)
+      }
     })
   }
 
@@ -1037,8 +1048,28 @@ export class OrderMessagesService {
       storeId: input.storeId,
       resourceType: OrderResourceTypes.ORDER,
       resourceId: order.id,
-      metadata: { orderNumber: order.orderNumber, kind: input.kind, reason, trigger: input.trigger }
+      metadata: {
+        orderNumber: order.orderNumber,
+        kind: input.kind,
+        reason,
+        trigger: input.trigger,
+        ...pluginOf(input)
+      }
     })
+  }
+}
+
+// The plugin that asked for a message, for the audit entry (which writes the platform as the actor: a plugin is no row of `users`)
+function pluginOf(input: SendOrderMessageInput): {
+  pluginId?: string
+  pluginInstallationId?: string
+} {
+  if (input.requestedByPluginId === undefined || input.requestedByPluginId === null) return {}
+  return {
+    pluginId: input.requestedByPluginId,
+    ...(input.requestedByInstallationId == null
+      ? {}
+      : { pluginInstallationId: input.requestedByInstallationId })
   }
 }
 

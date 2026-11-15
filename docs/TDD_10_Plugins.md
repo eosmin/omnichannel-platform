@@ -902,17 +902,31 @@ export const PluginScopes = {
   CUSTOMERS_DELETE: 'customers:delete',                 // delete a customer with no history (Step 5.6 E2); CUSTOMERS_DELETE is in no other scope
   CUSTOMERS_FLAG_CAUTION: 'customers:flag-caution',     // set and clear the caution flag (Step 5.6 E2); who edits a customer does not flag it by that
   ORDERS_READ: 'orders:read',
-  ORDERS_WRITE: 'orders:write',
+  ORDERS_WRITE: 'orders:write',                 // create an order and change its status (Step 5.6 E3b); never confirm, cancel, edit or decide a price by it
+  ORDERS_EDIT: 'orders:edit',                   // edit an order and record a payment by hand (Step 5.6 E3b)
+  ORDERS_CONFIRM: 'orders:confirm',             // confirm one order or a selection (Step 5.6 E3b)
+  ORDERS_CANCEL: 'orders:cancel',               // cancel an order (Step 5.6 E3b)
+  ORDERS_APPROVE_PRICE: 'orders:approve-price', // approve or reject a price that waits for it, never the request the plugin made itself (Step 5.6 E3b)
   PRODUCTS_READ: 'products:read',
   PRODUCTS_WRITE: 'products:write',             // create and change a product or a variant (Step 5.6 E4a); never its cost, and its tax is read, not written
   PRODUCTS_DELETE: 'products:delete',           // delete a product or a variant (Step 5.6 E4a); PRODUCTS_DELETE is in no other scope
   WAREHOUSES_READ: 'warehouses:read',           // the warehouses of the organization of the key's store (Step 5.6 E4a)
   TRANSFERS_READ: 'transfers:read',             // the transfers between warehouses, read only; the lines of the key's store only (Step 5.6 E4b)
   COUNTS_READ: 'counts:read',                   // the physical counts, read only; the lines of the key's store only (Step 5.6 E4b)
+  EXPORTS_READ: 'exports:read',                 // the exports this installation asked for, with the retention and signed link of a person's (Step 5.6 E7); grants no permission
+  EXPORTS_WRITE: 'exports:write',               // take data out: ANALYTICS_EXPORT and MEDIA_DOWNLOAD_ALL, with the scope that reads what is exported (Step 5.6 E7)
+  MEDIA_READ: 'media:read',                     // signed links of the files of the store (Step 5.6 E7)
+  MEDIA_WRITE: 'media:write',                   // upload through the checks of a person's (type, size, scan); message files only (Step 5.6 E7)
+  RETURNS_READ: 'returns:read',                 // the returns and the batches of the scanner that receives them, read only; no id of a person, no flag on a customer (Step 5.6 E6)
+  REMITTANCES_READ: 'remittances:read',         // the remittances of cash collected on delivery and the saved import profiles, read only; no id of a person, no imported file (Step 5.6 E6)
+  CARRIERS_READ: 'carriers:read',               // the carrier connections of the store, read only; never a credential, a secret or an agreed amount (Step 5.6 E5)
+  PICKUPS_READ: 'pickups:read',                 // the pickups of the store and, with customers:read and shipments:read, their manifest; read only (Step 5.6 E5)
   WEBHOOKS_WRITE: 'webhooks:write',
   ANALYTICS_READ: 'analytics:read',
   CHANNELS_READ: 'channels:read',               // the directory of channel accounts and their templates (Step 5.6 E1); no connection details
   ORDER_MESSAGES_READ: 'order-messages:read',   // the history of messages about an order and the order templates (Step 5.6 E3a)
+  ORDER_MESSAGES_WRITE: 'order-messages:write', // send the message of a kind about an order (Step 5.6 E3b)
+  ORDER_TEMPLATES_WRITE: 'order-templates:write', // write, delete and preview an order template (Step 5.6 E3b)
   SETTINGS_READ: 'settings:read',               // the store preferences and the return rules, read only (Step 5.6 E3a)
   CHANNEL_CONNECTIONS: 'channel:connections',   // §6.7: register and remove the connections of a channel plugin
   CHANNEL_EVENTS: 'channel:events',             // §6.7: report what customers write and what happened to what was sent
@@ -935,7 +949,17 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.CUSTOMERS_FLAG_CAUTION]: [Permissions.CUSTOMERS_FLAG_CAUTION],
   [PluginScopes.ORDERS_READ]:         [Permissions.ORDERS_VIEW],
   [PluginScopes.ORDERS_WRITE]:        [Permissions.ORDERS_CREATE, Permissions.ORDERS_CHANGE_STATUS],
+  [PluginScopes.ORDERS_EDIT]:         [Permissions.ORDERS_EDIT],
+  [PluginScopes.ORDERS_CONFIRM]:      [Permissions.ORDERS_CONFIRM],
+  [PluginScopes.ORDERS_CANCEL]:       [Permissions.ORDERS_CANCEL],
+  [PluginScopes.ORDERS_APPROVE_PRICE]: [Permissions.ORDERS_APPROVE_PRICE],   // never ORDERS_OVERRIDE_PRICE: no scope sets a price outside the catalog
+  [PluginScopes.ORDER_MESSAGES_WRITE]: [Permissions.ORDERS_SEND_MESSAGES],
+  [PluginScopes.ORDER_TEMPLATES_WRITE]: [Permissions.SETTINGS_MANAGE_ORDER_TEMPLATES],
   [PluginScopes.PRODUCTS_READ]:       [Permissions.PRODUCTS_VIEW],
+  [PluginScopes.EXPORTS_READ]:        [],
+  [PluginScopes.EXPORTS_WRITE]:       [Permissions.ANALYTICS_EXPORT, Permissions.MEDIA_DOWNLOAD_ALL],
+  [PluginScopes.MEDIA_READ]:          [Permissions.MEDIA_VIEW],
+  [PluginScopes.MEDIA_WRITE]:         [Permissions.MEDIA_UPLOAD],
   [PluginScopes.WEBHOOKS_WRITE]:      [],
   [PluginScopes.ANALYTICS_READ]:      [Permissions.ANALYTICS_VIEW],
   [PluginScopes.CHANNEL_CONNECTIONS]: [],   // grants no human permission: only the routes of §6.7, for the connections of the plugin itself
@@ -1048,10 +1072,9 @@ const installations = await this.prisma.client.pluginInstallation.findMany({
 **Which events, and what each carries** (`libs/plugins/sdk/src/plugin-events.ts`). Only the events a store can follow (the webhook
 catalog) are sent to a plugin, and only when the installation holds the scope of the event (`PluginEventScopes`: `order.*` needs
 `orders:read`, `customer.*` `customers:read`, `conversation.*` `conversations:read`, `message.*` `messages:read`, `shipment.*`
-`shipments:read`, `product.*` `products:read`; `return.*` has no scope yet and is not sent until the PR that exposes the returns adds
-one). What is in the payload is decided field by field: a field is sent only when it is listed, and the id of a resource only
+`shipments:read`, `product.*` `products:read`, `return.*` `returns:read`). What is in the payload is decided field by field: a field is sent only when it is listed, and the id of a resource only
 when the installation holds a scope that reads it (`customerId` needs `customers:read`, so a plugin with only `messages:read`
-never gets the customer; `orderId` needs `orders:read` or `shipments:read`). The text of a message, the ids of the people of the
+never gets the customer; `orderId` needs `orders:read`, `shipments:read` or `returns:read`). The text of a message, the ids of the people of the
 team (the team directory has no scope), the visibility and the flags that steer the platform are never sent, and neither is a
 value that is not a plain one. A key an event gains later is held back until someone decides which scope opens it.
 
