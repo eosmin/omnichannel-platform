@@ -3568,7 +3568,8 @@
       "sections": {
         "label": "Carriers sections",
         "connections": "Connections",
-        "mapping": "Status mapping"
+        "mapping": "Status mapping",
+        "guides": "Prepaid guides"
       },
       "listLabel": "Connected carriers",
       "registryFailed": "The carriers you can connect could not be loaded.",
@@ -3889,6 +3890,168 @@
         "forza": {
           "home": "Home delivery"
         }
+      },
+      "guides": {
+        "intro": "The guides you prepay to each carrier: what is left, what each one cost, and the refund benefit while your returns stay under the carrier's limit. Nothing here ever blocks making a guide.",
+        "listLabel": "Prepaid guides by carrier",
+        "empty": "Connect a carrier first: its prepaid guides show here.",
+        "loading": "Loading…",
+        "notTracked": "The balance of this carrier is not followed. Turn it on in the policy to count the guides you buy and use.",
+        "emptyNote": "The prepaid guides are used up. New guides are still made, but nobody has paid for them yet: record the next purchase.",
+        "state": {
+          "ok": "Balance in order",
+          "low": "Running low",
+          "empty": "Used up"
+        },
+        "stats": {
+          "available": "Available",
+          "bought": "Bought (with gifts)",
+          "used": "Used (net of refunds and adjustments)",
+          "averageCost": "Average cost per guide",
+          "none": "No purchase yet"
+        },
+        "actions": {
+          "purchase": "Record a purchase",
+          "adjustment": "Adjust",
+          "policy": "Policy"
+        },
+        "benefit": {
+          "title": "Refund benefit",
+          "off": "The refund benefit is not followed for this carrier.",
+          "states": {
+            "in_force": "In force",
+            "at_risk": "At risk",
+            "lost": "Lost"
+          },
+          "period": "Current period: {start} to {end}",
+          "rate": "Returns: {rate} % of the period ({returns} of {base} packages). Limit: {limit} %.",
+          "toConfirm": "Some rules of the benefit are the platform's guess and are still to be confirmed with the carrier. Check them in the policy.",
+          "showHistory": "Show closed periods",
+          "hideHistory": "Hide closed periods",
+          "history": "Closed periods",
+          "closedRow": "{rate} % returns, {refunded, plural, one {# guide given back} other {# guides given back}}, {state}"
+        },
+        "movements": {
+          "title": "Movements",
+          "label": "Movements of the prepaid guides",
+          "loading": "Loading movements…",
+          "empty": "No movement yet.",
+          "more": "Show more",
+          "void": "Void",
+          "voided": "voided",
+          "kinds": {
+            "purchase": "Purchase",
+            "consume": "Guide made",
+            "refund": "Guide given back",
+            "adjustment": "Adjustment",
+            "void": "Purchase voided"
+          },
+          "purchaseDetail": "{paid} paid, {gift} as a gift, {cost} in total"
+        },
+        "purchase": {
+          "title": "Record a purchase of guides for {name}",
+          "description": "Write what the carrier charged you for a package of prepaid guides. The average cost per guide counts the gift guides too.",
+          "paid": "Guides paid for",
+          "paidHint": "The guides you paid for.",
+          "gift": "Gift guides",
+          "giftHint": "The guides that came free with the purchase. Use 0 if none.",
+          "cost": "Total paid (US$)",
+          "costHint": "With taxes included, for example 45.50.",
+          "note": "Note (optional)",
+          "submit": "Record purchase",
+          "done": "Purchase recorded",
+          "problems": {
+            "paid": "Guides paid for must be a whole number of 0 or more.",
+            "gift": "Gift guides must be a whole number of 0 or more.",
+            "none": "A purchase has at least one guide.",
+            "cost": "The total paid must be an amount in dollars with at most two decimals.",
+            "note": "The note is too long."
+          }
+        },
+        "adjustment": {
+          "title": "Adjust the balance of {name}",
+          "description": "For a correction nobody else can know, such as guides lost or given back by the carrier. It is written in the movements with its reason.",
+          "guides": "Guides to add or take away",
+          "guidesHint": "A whole number: 5 adds five guides, -3 takes away three.",
+          "note": "Reason",
+          "submit": "Record adjustment",
+          "done": "Adjustment recorded",
+          "problems": {
+            "guides": "Write a whole number of guides that is not 0.",
+            "note": "The reason is required and must be short."
+          }
+        },
+        "void": {
+          "title": "Void a purchase of {name}",
+          "description": "The guides of the purchase leave the balance. The purchase stays in the movements, marked as voided.",
+          "note": "Reason",
+          "submit": "Void purchase",
+          "done": "Purchase voided",
+          "problem": "The reason is required and must be short."
+        },
+        "policy": {
+          "title": "Policy of {name}",
+          "description": "What is followed for this carrier and the rules of its refund benefit.",
+          "submit": "Save policy",
+          "done": "Policy saved",
+          "toConfirmMark": "(to confirm with the carrier)",
+          "balance": {
+            "legend": "Balance of guides",
+            "enabled": "Follow the balance of prepaid guides",
+            "warnOnEmpty": "Warn when the balance reaches 0",
+            "low": "Warn when this many guides are left",
+            "lowHint": "Leave empty for no low-balance warning."
+          },
+          "benefit": {
+            "legend": "Refund benefit",
+            "hint": "The carrier gives back the guide of a package that is returned while your return rate stays under its limit. These rules are your report of how the carrier works; confirm them with it.",
+            "enabled": "Follow the refund benefit",
+            "periodKind": "Period",
+            "periodKinds": {
+              "fixed_days": "A fixed number of days",
+              "calendar_month": "Calendar month",
+              "calendar_half_month": "Half of a calendar month"
+            },
+            "periodDays": "Days of each period",
+            "anchor": "First day of a period",
+            "anchorHint": "The periods count from this day, in the time zone of the store.",
+            "threshold": "Limit of returns (%)",
+            "thresholdHint": "At or above it the benefit is lost. For example 10.",
+            "warnAt": "Warn at this part of the limit (%)",
+            "warnAtHint": "For example 80 warns when returns reach 80 % of the limit.",
+            "base": "Returns are counted over",
+            "bases": {
+              "created": "Guides made",
+              "dispatched": "Packages dispatched",
+              "delivered": "Packages delivered"
+            },
+            "returnStatuses": "Statuses that count as a return",
+            "statuses": {
+              "returning": "Coming back",
+              "returned": "Returned"
+            },
+            "refundRule": "Guides are given back",
+            "refundRules": {
+              "immediate": "As soon as the package is returned",
+              "at_period_close": "When the period closes"
+            },
+            "lossRule": "The benefit is lost",
+            "lossRules": {
+              "from_crossing": "From the moment the limit is reached",
+              "from_close": "From the close of the period"
+            }
+          },
+          "problems": {
+            "lowBalance": "The low-balance number must be a whole number of 1 or more, or empty.",
+            "periodDays": "The days of a period must be a whole number from 1 to 366.",
+            "anchor": "Choose the first day of a period.",
+            "threshold": "The limit must be a percent above 0, with at most two decimals.",
+            "warnAt": "The warning must be a percent above 0, with at most two decimals.",
+            "returnStatuses": "Choose at least one status that counts as a return.",
+            "combination": "A refund as soon as the package is returned cannot wait for the close of the period to be lost."
+          }
+        },
+        "partialFailed": "Some data of this carrier could not be loaded."
       }
     },
     "returns": {

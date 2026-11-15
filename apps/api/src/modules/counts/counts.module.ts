@@ -7,11 +7,12 @@ import { TenancyModule } from '../tenancy'
 import { CountsApplyService } from './counts-apply.service'
 import { CountsController } from './counts.controller'
 import { CountsService } from './counts.service'
+import { PluginCountsController } from './plugin-counts.controller'
 
 // The physical counts of a warehouse. The stock they write goes through InventoryService of libs/core/inventory.
 @Module({
   imports: [InventoryEngineModule, TenancyModule],
-  controllers: [CountsController],
+  controllers: [CountsController, PluginCountsController],
   providers: [CountsService, CountsApplyService]
 })
 export class CountsModule {}

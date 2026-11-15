@@ -1,7 +1,12 @@
 import { CountStatus } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 
-import { assertCounting, assertTransition, invalidTransition } from './counts.support'
+import {
+  assertCounting,
+  assertTransition,
+  invalidTransition,
+  reachableCount
+} from './counts.support'
 
 const thrownBy = (action: () => void): PlatformException => {
   try {
@@ -64,5 +69,19 @@ describe('assertCounting', () => {
     ]) {
       expect(() => assertCounting(count(status))).toThrow(PlatformException)
     }
+  })
+})
+
+describe('reachableCount', () => {
+  it('adds nothing for a person, who reads the counts of the whole organization', () => {
+    expect(reachableCount({ storeId: 'store-a' })).toBeUndefined()
+  })
+
+  it('limits a plugin to the counts of its store and the ones of the warehouse that have a line of it', () => {
+    expect(reachableCount({ storeId: 'store-a', pluginInstallationId: 'inst-1' })).toEqual({
+      AND: [
+        { OR: [{ storeId: 'store-a' }, { storeId: null, lines: { some: { storeId: 'store-a' } } }] }
+      ]
+    })
   })
 })
