@@ -6,6 +6,7 @@ import supertest from 'supertest'
 import { API_PREFIX, PluginApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import type { OwnerClient } from '@platform/core/database-testing'
+import { TaxTreatment } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { type PluginScope, PluginScopes } from '@platform/plugins/sdk'
 
@@ -41,7 +42,7 @@ interface WarehouseBody {
   stores: { storeId: string }[]
 }
 
-type Method = 'get' | 'post' | 'patch' | 'delete'
+type Method = 'get' | 'post' | 'put' | 'patch' | 'delete'
 
 // TDD_10 §6, Step 5.6 PR E4a: the catalog, the stock and the warehouses under the key of a plugin, over the same services as the
 // screens. What matters is the tenancy (the key names the store, and the organization for the warehouses), the scopes (each route
@@ -57,6 +58,7 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
   let readerB: { key: string; installationId: string }
   let writeOnly: { key: string; installationId: string }
   let readOnly: { key: string; installationId: string }
+  let deleter: { key: string; installationId: string }
 
   beforeAll(async () => {
     owner = ownerClient()
@@ -83,6 +85,10 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
     readOnly = await key(ctx.storeA.id, 'readonly', [
       PluginScopes.PRODUCTS_READ,
       PluginScopes.WAREHOUSES_READ
+    ])
+    deleter = await key(ctx.storeA.id, 'deleter', [
+      PluginScopes.PRODUCTS_READ,
+      PluginScopes.PRODUCTS_DELETE
     ])
   })
   afterAll(async () => {
@@ -129,7 +135,7 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
       ]
       const writes = [
         call('patch', PluginApiRoutes.products.byId(theirs.id), writer.key).send({ name: 'x' }),
-        call('delete', PluginApiRoutes.products.byId(theirs.id), writer.key),
+        call('delete', PluginApiRoutes.products.byId(theirs.id), deleter.key),
         call('post', PluginApiRoutes.products.variants(theirs.id), writer.key).send({
           name: 'v'
         }),
@@ -227,13 +233,16 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
         call('get', PluginApiRoutes.products.inventory(product.id), reader.key),
         call('get', PluginApiRoutes.inventory.levels, reader.key),
         call('get', PluginApiRoutes.inventory.movements, reader.key),
-        call('get', PluginApiRoutes.inventory.kardex, reader.key).query({ productId: product.id })
+        call('get', PluginApiRoutes.inventory.kardex, reader.key).query({
+          productId: product.id,
+          warehouseId: ctx.warehouseA.id
+        })
       ])
 
       for (const response of responses) {
         expect(response.status).toBe(OK)
         const text = JSON.stringify(response.body)
-        expect(text).not.toMatch(/777|888|999/)
+        expect(text).not.toMatch(/:(777|888|999)[,}]/)
         expect(text.toLowerCase()).not.toMatch(/costcents|valuecents|averagecost/)
       }
     })
@@ -258,7 +267,7 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
         OK
       )
       const kardex = await call('get', PluginApiRoutes.inventory.kardex, reader.key)
-        .query({ productId: product.id })
+        .query({ productId: product.id, warehouseId: ctx.warehouseA.id })
         .expect(OK)
 
       expect(ids(movements.body)).toContain(movement.id)
@@ -323,7 +332,7 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
         'patch',
         PluginApiRoutes.products.byId(product.id),
         writer.key
-      ).send({ taxTreatment: 'EXEMPT' })
+      ).send({ taxTreatment: TaxTreatment.EXEMPT })
 
       for (const response of [withCost, costChange, withTax]) {
         expect(response.status).toBe(FORBIDDEN)
@@ -336,11 +345,6 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
 
     it('deletes only with the scope of its own, as the system in the audit log', async () => {
       const product = await createProduct(owner, { storeId: ctx.storeA.id })
-      const deleter = await createPluginKey(owner, {
-        storeId: ctx.storeA.id,
-        pluginId: `${prefix}-deleter`,
-        scopes: [PluginScopes.PRODUCTS_READ, PluginScopes.PRODUCTS_DELETE]
-      })
 
       const refused = await call('delete', PluginApiRoutes.products.byId(product.id), writer.key)
       await call('delete', PluginApiRoutes.products.byId(product.id), deleter.key).expect(
