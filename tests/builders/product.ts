@@ -8,6 +8,7 @@ export interface ProductInput {
   sku?: string
   priceCents?: number
   active?: boolean
+  trackInventory?: boolean
   // Rows that are listed by age get an age of their own, so that the order never depends on the clock
   createdAt?: Date
 }
@@ -24,6 +25,7 @@ export async function createProduct(
       priceCents: input.priceCents ?? 1999,
       ...(input.sku === undefined ? {} : { sku: input.sku }),
       ...(input.active === undefined ? {} : { active: input.active }),
+      ...(input.trackInventory === undefined ? {} : { trackInventory: input.trackInventory }),
       ...(input.createdAt === undefined ? {} : { createdAt: input.createdAt })
     },
     select: { id: true, name: true }

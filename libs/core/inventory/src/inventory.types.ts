@@ -47,6 +47,8 @@ export interface MovementRecord {
   onHandAfter: number
   reservedAfter: number
   createdBy: string | null
+  // The plugin that made it, when a plugin did (then `createdBy` is null); both null is the system
+  createdByPluginId: string | null
   createdAt: Date
 }
 

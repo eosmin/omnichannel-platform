@@ -22,6 +22,8 @@ import {
   DeliveryStatus,
   FinanceSourceType,
   FinanceTransactionKind,
+  InventoryAdjustmentReason,
+  InventoryMovementType,
   InvitationStatus,
   JournalEntryType,
   MembershipStatus,
@@ -5269,6 +5271,98 @@ describe('Tenant isolation', () => {
       expect(JSON.stringify(movements.body)).not.toContain(productA)
       expect(foreign.status).toBe(404)
       expect(JSON.stringify(list.body)).not.toContain(ctx.warehouseA.id)
+    })
+  })
+
+  // The writes of stock and of the tag catalog with the key of a plugin (Step 5.6, E4a-2): the key of store B adjusts stock and
+  // writes tags, and nothing of store A or of organization A moves or changes.
+  describe('the adjustment of stock and the tag catalog with the key of a plugin', () => {
+    const pluginId = `${prefix}-stock-tags`
+    let keyOfB = ''
+    let productA = ''
+    let productB = ''
+    let tagA = ''
+    let tagB = ''
+
+    beforeAll(async () => {
+      ;({ key: keyOfB } = await createPluginKey(owner, {
+        storeId: ctx.storeB.id,
+        pluginId,
+        scopes: [
+          PluginScopes.INVENTORY_READ,
+          PluginScopes.INVENTORY_WRITE,
+          PluginScopes.TAGS_READ,
+          PluginScopes.TAGS_WRITE
+        ]
+      }))
+      productA = (await createProduct(owner, { storeId: ctx.storeA.id, trackInventory: true })).id
+      productB = (await createProduct(owner, { storeId: ctx.storeB.id, trackInventory: true })).id
+      tagA = (await createTag(owner, { storeId: ctx.storeA.id })).id
+      tagB = (await createTag(owner, { storeId: ctx.storeB.id })).id
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId } })
+      await owner.plugin.deleteMany({ where: { id: pluginId } })
+    })
+
+    const asB = (method: 'get' | 'post' | 'patch' | 'delete', path: string) =>
+      supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+        [method](`${API_PREFIX}${path}`)
+        .set('authorization', `Bearer ${keyOfB}`)
+
+    const adjustment = (productId: string, warehouseId: string) => ({
+      productId,
+      warehouseId,
+      type: InventoryMovementType.RECEIPT,
+      quantity: 4,
+      reason: InventoryAdjustmentReason.OPENING_STOCK,
+      idempotencyKey: randomUUID()
+    })
+
+    it('adjusts the stock of its own store, as the plugin and never as a person', async () => {
+      const response = await asB('post', PluginApiRoutes.inventory.adjustments).send(
+        adjustment(productB, ctx.warehouseB.id)
+      )
+
+      expect(response.status).toBe(201)
+      const movement = await owner.inventoryMovement.findFirstOrThrow({
+        where: { productId: productB }
+      })
+      expect(movement.storeId).toBe(ctx.storeB.id)
+      expect(movement.createdBy).toBeNull()
+      expect(movement.createdByPluginId).toBe(pluginId)
+    })
+
+    it('does not adjust the stock of a product of another store, nor into a warehouse of another organization', async () => {
+      const foreignProduct = await asB('post', PluginApiRoutes.inventory.adjustments).send(
+        adjustment(productA, ctx.warehouseB.id)
+      )
+      const foreignWarehouse = await asB('post', PluginApiRoutes.inventory.adjustments).send(
+        adjustment(productB, ctx.warehouseA.id)
+      )
+
+      expect(foreignProduct.status).toBe(404)
+      expect(foreignWarehouse.status).toBe(404)
+      expect(await owner.inventoryMovement.count({ where: { productId: productA } })).toBe(0)
+      expect(
+        await owner.inventoryMovement.count({
+          where: { productId: productB, warehouseId: ctx.warehouseA.id }
+        })
+      ).toBe(0)
+    })
+
+    it('lists only the tags of its own store and does not find, change or delete one of another', async () => {
+      const list = await asB('get', PluginApiRoutes.settings.tags)
+      const read = await asB('get', PluginApiRoutes.settings.tagById(tagA))
+      const changed = await asB('patch', PluginApiRoutes.settings.tagById(tagA)).send({
+        name: 'taken'
+      })
+      const removed = await asB('delete', PluginApiRoutes.settings.tagById(tagA))
+
+      expect(JSON.stringify(list.body)).toContain(tagB)
+      expect(JSON.stringify(list.body)).not.toContain(tagA)
+      for (const response of [read, changed, removed]) expect(response.status).toBe(404)
+      expect((await owner.tag.findUniqueOrThrow({ where: { id: tagA } })).name).not.toBe('taken')
     })
   })
 

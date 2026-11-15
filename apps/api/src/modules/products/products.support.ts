@@ -1,6 +1,13 @@
+import type { AuditAction } from '@platform/core/audit'
+import type { AuditService } from '@platform/core/audit-module'
 import { type Permission, Permissions } from '@platform/core/auth'
 import type { PrismaTransaction } from '@platform/core/database'
-import { MediaStatus, ProductConflicts, TaxTreatment } from '@platform/core/domain'
+import {
+  MediaStatus,
+  ProductConflicts,
+  ProductResourceTypes,
+  TaxTreatment
+} from '@platform/core/domain'
 import {
   ErrorCodes,
   HttpStatusCodes,
@@ -9,7 +16,7 @@ import {
   resourceNotFound
 } from '@platform/core/errors'
 
-import { mayViewCost } from '../tenancy'
+import { type Actor, auditActorOf, auditViaOf, mayViewCost } from '../tenancy'
 
 export interface LockedProduct {
   priceCents: number
@@ -124,4 +131,42 @@ export async function resolveProductTax(
     }
   }
   return { taxTreatment, taxRateId }
+}
+
+// The general entry of a write to the catalog (a product made, a product or a variant changed): who, and which fields the request SET (not whether the value differed from the stored one). The fields
+// are named and their values are not, as a name or a description is free text; the price, cost and tax have their own entries
+// with the values. A plugin is the system with its installation in the metadata (`auditActorOf`, `auditViaOf`).
+export function auditProductWrite(
+  audit: AuditService,
+  storeId: string,
+  actor: Actor,
+  entry: {
+    action: typeof AuditAction.PRODUCT_CREATED | typeof AuditAction.PRODUCT_UPDATED
+    productId: string
+    variantId?: string
+    fields: readonly string[]
+  }
+): void {
+  audit.log({
+    action: entry.action,
+    actor: auditActorOf(actor),
+    storeId,
+    resourceType: ProductResourceTypes.PRODUCT,
+    resourceId: entry.productId,
+    metadata: {
+      ...(entry.variantId === undefined ? {} : { variantId: entry.variantId }),
+      fields: [...entry.fields],
+      ...auditViaOf(actor)
+    },
+    ipAddress: actor.ipAddress,
+    userAgent: actor.userAgent
+  })
+}
+
+// The names of the fields a body sets (a field left out is not a change)
+export function fieldsSet(body: object): string[] {
+  return Object.entries(body)
+    .filter(([, value]) => value !== undefined)
+    .map(([key]) => key)
+    .sort()
 }

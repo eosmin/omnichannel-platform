@@ -56,6 +56,7 @@ const movement = {
   onHandAfter: 5,
   reservedAfter: 0,
   createdBy: 'u1',
+  createdByPluginId: null,
   createdAt: '2026-11-10T10:00:00.000Z'
 }
 

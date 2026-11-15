@@ -20,7 +20,13 @@ import { encodeCursor } from '../customers/list-cursor'
 import { type Actor, auditActorOf, auditViaOf } from '../tenancy'
 
 import type { CreateProductBody, ListProductsQuery, UpdateProductBody } from './products.schemas'
-import { LIVE_MEDIA_STATUSES, lockProduct, resolveProductTax } from './products.support'
+import {
+  auditProductWrite,
+  fieldsSet,
+  LIVE_MEDIA_STATUSES,
+  lockProduct,
+  resolveProductTax
+} from './products.support'
 import {
   PRODUCT_SELECT,
   type ProductDetail,
@@ -178,6 +184,11 @@ export class ProductsService {
         userAgent: actor.userAgent
       })
     }
+    auditProductWrite(this.audit, storeId, actor, {
+      action: AuditAction.PRODUCT_CREATED,
+      productId: created.id,
+      fields: fieldsSet(body)
+    })
     return this.get(storeId, created.id)
   }
 
@@ -294,6 +305,11 @@ export class ProductsService {
         userAgent: actor.userAgent
       })
     }
+    auditProductWrite(this.audit, storeId, actor, {
+      action: AuditAction.PRODUCT_UPDATED,
+      productId,
+      fields: fieldsSet(body)
+    })
     return this.get(storeId, productId)
   }
 

@@ -58,6 +58,10 @@ export const AuditAction = {
   CUSTOMER_CAUTION_SET: 'customer.caution_set',
   CUSTOMER_CAUTION_CLEARED: 'customer.caution_cleared',
   ORDER_CANCELLED: 'order.cancelled',
+  // A product was made, and a product, or one of its variants, was changed: the general entry that names who did it (a person, or
+  // an installation as the system), with the NAMES of the fields the request set (`fields`) and never their values, as a name or a description is text
+  PRODUCT_CREATED: 'product.created',
+  PRODUCT_UPDATED: 'product.updated',
   PRODUCT_DELETED: 'product.deleted',
   PRODUCT_VARIANT_DELETED: 'product.variant_deleted',
   // The price a product or variant is sold at changed (old and new, in cents)
