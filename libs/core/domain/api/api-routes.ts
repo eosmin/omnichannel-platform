@@ -510,6 +510,27 @@ export const PluginApiRoutes = {
     unread: (id: string) => `/plugin-api/conversations/${id}/unread`
   },
 
+  // Step 5.6 PR E2: the customers of the store (the same services as `ApiRoutes.customers`). `list` is also the path of the POST
+  // that creates one. Not here, on purpose: the notes that a plugin would write (an author is a person), the merge, its undo and
+  // its preview, the gallery and the export (PR E7).
+  customers: {
+    list: '/plugin-api/customers',
+    byId: (id: string) => `/plugin-api/customers/${id}`,
+    caution: (id: string) => `/plugin-api/customers/${id}/caution`,
+    identities: (id: string) => `/plugin-api/customers/${id}/identities`,
+    identityById: (id: string, identityId: string) =>
+      `/plugin-api/customers/${id}/identities/${identityId}`,
+    timeline: (id: string) => `/plugin-api/customers/${id}/timeline`,
+    orders: (id: string) => `/plugin-api/customers/${id}/orders`,
+    conversations: (id: string) => `/plugin-api/customers/${id}/conversations`,
+    notes: (id: string) => `/plugin-api/customers/${id}/notes`,
+    addresses: (id: string) => `/plugin-api/customers/${id}/addresses`,
+    addressById: (id: string, addressId: string) =>
+      `/plugin-api/customers/${id}/addresses/${addressId}`,
+    tags: (id: string) => `/plugin-api/customers/${id}/tags`,
+    tagById: (id: string, tagId: string) => `/plugin-api/customers/${id}/tags/${tagId}`
+  },
+
   search: {
     messages: '/plugin-api/search/messages',
     customers: '/plugin-api/search/customers',
@@ -521,6 +542,26 @@ export const PluginApiRoutes = {
     directory: '/plugin-api/channels/directory',
     templates: (pluginId: string) => `/plugin-api/channels/${pluginId}/templates`
   },
+
+  // Step 5.6 PR E3a: the reading of orders, over the same services as `ApiRoutes.orders` and `ApiRoutes.orderTemplates`. Their
+  // writes need the id of a person (who confirmed, who cancelled, who created) and wait for a plugin actor (PR E3b).
+  orders: {
+    list: '/plugin-api/orders',
+    byId: (id: string) => `/plugin-api/orders/${id}`,
+    messages: (id: string) => `/plugin-api/orders/${id}/messages`
+  },
+  orderTemplates: {
+    list: '/plugin-api/order-templates',
+    byKindAndLocale: (kind: string, locale: string) =>
+      `/plugin-api/order-templates/${kind}/locales/${locale}`
+  },
+
+  // Step 5.6 PR E3a: the store preferences and the return rules, read only
+  settings: {
+    preferences: '/plugin-api/settings/preferences',
+    returns: '/plugin-api/settings/returns'
+  },
+
   // Messages (Step 5.6 PR M1b): a plugin writes a reply or a note, and reads the edits and the kept text of a deleted message
   messages: {
     create: '/plugin-api/messages',

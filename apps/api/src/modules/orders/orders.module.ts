@@ -14,13 +14,14 @@ import { OrderInventoryService } from './orders-inventory.service'
 import { OrdersStatusService } from './orders-status.service'
 import { OrdersController } from './orders.controller'
 import { OrdersService } from './orders.service'
+import { PluginOrdersController } from './plugin-orders.controller'
 import { ShipmentEffectsListener } from './shipment-effects.listener'
 
 // Needs the database, audit and event modules of the app, like the products. The stock goes only through
 // InventoryService (TDD_16 §4.1)
 @Module({
   imports: [TenancyModule, InventoryModule, ExportsModule, ChannelRegistryModule, ShipmentsModule],
-  controllers: [OrdersController],
+  controllers: [OrdersController, PluginOrdersController],
   providers: [
     OrdersService,
     OrdersStatusService,
