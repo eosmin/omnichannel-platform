@@ -2520,7 +2520,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.1 | Finance design (TDD_18, no code) | in progress | written and delivered with the first code PR that follows; owner approval of `TDD_18` pending | |
 | 4B.2 | Ledger core (accounts, immutable journal, periods, permissions) | done | PR a (schema, constants, pure rules, database tests, #509); PR b (posting service, routes, isolation, maps, #513) | 2026-11-15 |
 | 4B.3 | VAT and the tax snapshot | done | #520 (4B.3a), 4B.3b (this PR) | 2026-11-15 |
-| 4B.4 | Expenses, incomes, transfers and bank reconciliation | done | 4B.4a transactions (#527); 4B.4b-1 receipts (#531); 4B.4b-2 bank reconciliation (branch `feat/finance-reconciliation`: its PR number is the one of the squash commit `feat(finance): reconcile a bank statement csv`) | |
+| 4B.4 | Expenses, incomes, transfers and bank reconciliation | done | 4B.4a transactions (#527); 4B.4b-1 receipts (#531); 4B.4b-2 bank reconciliation (branch `feat/finance-reconciliation`: its PR number is the one of the squash commit `feat(db): reconcile a bank statement csv`) | |
 | 4B.5 | Suppliers and purchase orders | todo | | |
 | 4B.6 | The automatic entries (sales, remittances, returns, stock) | todo | | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | todo | | |
