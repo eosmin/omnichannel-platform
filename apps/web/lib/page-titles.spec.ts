@@ -75,6 +75,7 @@ const TITLE_OF_PAGE: Record<string, string> = {
   's/[storeId]/settings/carriers/page.tsx': 'settingsCarriers',
   's/[storeId]/settings/webhooks/page.tsx': 'settingsWebhooks',
   's/[storeId]/settings/api-keys/page.tsx': 'settingsApiKeys',
+  's/[storeId]/settings/safety/page.tsx': 'settingsSafety',
   's/[storeId]/settings/retention/page.tsx': 'settingsRetention',
   'account/profile/page.tsx': 'accountProfile',
   'account/preferences/page.tsx': 'accountPreferences',

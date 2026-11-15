@@ -313,6 +313,58 @@ describe('A reaction or a quote that points at a message the platform sent', () 
     expect((await reactionOf(sent.id)).map(r => [r.mediaId, r.emoji])).toEqual([[null, '❤️']])
   })
 
+  it('takes back the reaction under the file that holds it whatever order the database returns the files in', async () => {
+    const { connectionId, from } = await seeded()
+    const sent = await sentByAgent(ctx.storeA.id, from, {
+      message: 'ord-1',
+      files: ['ord-1', 'ord-2', 'ord-3']
+    })
+    await react(connectionId, from, 'ord-2', '👍')
+    await react(connectionId, from, 'ord-1', '❤️')
+    // The third file now carries the id of the second
+    await owner.media.updateMany({
+      where: { messageId: sent.id, position: 2 },
+      data: { channelMessageId: 'ord-2' }
+    })
+    // Rewriting the second file through an indexed column (so the update is not a heap-only one) moves its row, and
+    // its index entry, after the third: a read with no ORDER BY now returns the third file first
+    for (const id of ['ord-tmp', 'ord-2']) {
+      await owner.media.updateMany({
+        where: { messageId: sent.id, position: 1 },
+        data: { channelMessageId: id }
+      })
+    }
+
+    // The setup did what it says: with no ORDER BY the database returns the file that shares the id first
+    const unordered = await owner.media.findMany({
+      where: { messageId: sent.id },
+      select: { position: true }
+    })
+    expect(unordered.map(f => f.position)).toEqual([0, 2, 1])
+
+    await react(connectionId, from, 'ord-2', null)
+
+    expect((await reactionOf(sent.id)).map(r => [r.mediaId, r.emoji])).toEqual([[null, '❤️']])
+  })
+
+  it('takes back the reaction under a later file even when an earlier one now shares its id', async () => {
+    const { connectionId, from } = await seeded()
+    const sent = await sentByAgent(ctx.storeA.id, from, {
+      message: 'lat-1',
+      files: ['lat-1', 'lat-2', 'lat-3']
+    })
+    await react(connectionId, from, 'lat-3', '👍')
+    await react(connectionId, from, 'lat-1', '❤️')
+    await owner.media.updateMany({
+      where: { messageId: sent.id, position: 1 },
+      data: { channelMessageId: 'lat-3' }
+    })
+
+    await react(connectionId, from, 'lat-3', null)
+
+    expect((await reactionOf(sent.id)).map(r => [r.mediaId, r.emoji])).toEqual([[null, '❤️']])
+  })
+
   it('allows one reaction for each person and target, in the database itself', async () => {
     const { connectionId, from } = await seeded()
     const sent = await sentByAgent(ctx.storeA.id, from, {

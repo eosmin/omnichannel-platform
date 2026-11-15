@@ -3,6 +3,7 @@ import { WebhookStatus } from '@platform/core/domain'
 
 import { createApiKey, fetchApiKeys, revokeApiKey } from './api-keys-requests'
 import { fetchRetention, saveRetention } from './retention-requests'
+import { fetchSafety, saveSafety } from './safety-requests'
 import {
   createWebhook,
   deleteWebhook,
@@ -228,5 +229,50 @@ describe('retention requests', () => {
   it('refuses an answer that lacks a window', async () => {
     const { client } = setup({ conversationDays: 365 })
     await expect(fetchRetention(client, 's-1')).rejects.toThrow()
+  })
+})
+
+describe('safety requests', () => {
+  const settings = {
+    confirmDeleteCustomer: true,
+    confirmDisconnectChannel: false,
+    confirmRemoveMember: true,
+    applyToRoles: ['Agent'],
+    moderateRiskMode: 'undo'
+  }
+
+  it('reads the settings of the store', async () => {
+    const { client, call } = setup(settings)
+    await expect(fetchSafety(client, 's1')).resolves.toEqual(settings)
+    expect(call().url).toBe('https://api.example.com/api/v1/settings/safety')
+    expect(call().headers.get('x-store-id')).toBe('s1')
+  })
+
+  it('reads a key the api left out as its default, which asks', async () => {
+    const { client } = setup({ moderateRiskMode: 'nonsense' })
+    await expect(fetchSafety(client, 's1')).resolves.toEqual({
+      confirmDeleteCustomer: true,
+      confirmDisconnectChannel: true,
+      confirmRemoveMember: true,
+      applyToRoles: ['Agent', 'Supervisor'],
+      moderateRiskMode: 'dialog'
+    })
+  })
+
+  it('saves with PUT and only the keys given, and returns the whole settings', async () => {
+    const { client, call } = setup(settings)
+    await expect(saveSafety(client, 's1', { moderateRiskMode: 'undo' })).resolves.toEqual(settings)
+    expect(call().init.method).toBe('PUT')
+    expect(bodyOf(call().init)).toEqual({ moderateRiskMode: 'undo' })
+  })
+
+  it('shows the refusal of a caller without the permission', async () => {
+    const { client } = setup(
+      { error: { code: 'forbidden', message: 'no', metadata: {} }, correlationId: 'c' },
+      403
+    )
+    await expect(saveSafety(client, 's1', { confirmRemoveMember: false })).rejects.toBeInstanceOf(
+      ApiError
+    )
   })
 })

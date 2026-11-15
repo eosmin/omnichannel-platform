@@ -14,6 +14,7 @@ import {
 
 import { ChannelConnectionResolver } from '../channels/channel-connection.resolver'
 import { parseChannelIdentity } from '../customers/identity'
+import { MEDIA_ORDER } from '../messages/messages.views'
 import { isTargetOfItsOwn, messageOfProviderId } from '../messages/provider-message-match'
 
 import {
@@ -110,24 +111,29 @@ export class InboundMessageTargets {
       // reacted to as a whole.
       let mediaId: string | null = null
       if (event.namesFilesToo === true && target._count.media > 1) {
+        // The order of the thread (the album's own, then arrival): the files that share an id must never be told
+        // apart by the order the database happens to return them in
         const files = await tx.media.findMany({
           where: { storeId, messageId: target.id },
+          orderBy: MEDIA_ORDER,
           select: { id: true, channelMessageId: true }
         })
-        const named = files.find(item => item.channelMessageId === event.targetExternalId)
+        const sharing = files.filter(item => item.channelMessageId === event.targetExternalId)
+        const named = sharing[0]
         if (named !== undefined && isTargetOfItsOwn(target, files, named)) mediaId = named.id
         // A removal finds the reaction where it was put even if the file cannot be told apart now (a later file
-        // shares its id): the row under that file is the one that goes
-        if (mediaId === null && named !== undefined && event.removal === true) {
-          const there = await tx.messageReaction.count({
+        // shares its id): of the files that share the id, the row under the first one that has it is the one that goes
+        if (mediaId === null && sharing.length > 0 && event.removal === true) {
+          const held = await tx.messageReaction.findMany({
             where: {
               storeId,
               messageId: target.id,
               customerIdentityId: identity.id,
-              mediaId: named.id
-            }
+              mediaId: { in: sharing.map(item => item.id) }
+            },
+            select: { mediaId: true }
           })
-          if (there > 0) mediaId = named.id
+          mediaId = sharing.find(item => held.some(row => row.mediaId === item.id))?.id ?? null
         }
       }
       await apply(tx, {

@@ -2347,7 +2347,16 @@
       "wakeUp": "Despertar",
       "resolveRow": "Resolver la conversación con {name}",
       "resolveRowMore": "Opciones de resolución de la conversación con {name}",
-      "snoozeRow": "Posponer la conversación con {name}"
+      "snoozeRow": "Posponer la conversación con {name}",
+      "delete": {
+        "action": "Eliminar conversación",
+        "title": "¿Eliminar esta conversación?",
+        "description": "La conversación con {name}, todos sus mensajes y sus archivos se eliminan para siempre. No se puede deshacer.",
+        "phraseLabel": "Escribe la frase para confirmar",
+        "phrase": "Eliminar",
+        "confirm": "Eliminar conversación",
+        "done": "Conversación eliminada"
+      }
     },
     "bulk": {
       "label": "Acciones masivas",
@@ -2832,7 +2841,8 @@
         "preferences": "Preferencias",
         "webhooks": "Integraciones salientes",
         "apiKeys": "Claves de API",
-        "retention": "Retención de datos"
+        "retention": "Retención de datos",
+        "safety": "Seguridad y confirmaciones"
       },
       "org": {
         "label": "Organización",
@@ -4311,6 +4321,49 @@
         "tooLow": "Mínimo {min} días.",
         "tooHigh": "Máximo {max} días."
       }
+    },
+    "safety": {
+      "title": "Seguridad y confirmaciones",
+      "intro": "Elige cuándo pregunta la tienda antes de una acción destructiva. Lo que elijas aquí vale para todas las personas de esta tienda.",
+      "high": {
+        "title": "Acciones de riesgo alto",
+        "hint": "Estas acciones piden un cuadro de confirmación, salvo que las desactives aquí.",
+        "switches": {
+          "confirmDeleteCustomer": "Confirmar antes de eliminar un cliente",
+          "confirmDisconnectChannel": "Confirmar antes de desconectar un canal",
+          "confirmRemoveMember": "Confirmar antes de quitar a una persona del equipo"
+        },
+        "rolesTitle": "Preguntar a estos roles",
+        "rolesHint": "Un rol sin marcar actúa sin que se le pregunte. A las personas con un rol personalizado siempre se les pregunta. Las demás acciones de riesgo alto (anular una guía, aplicar un conteo de inventario, eliminar una integración saliente y similares) siempre preguntan."
+      },
+      "moderate": {
+        "title": "Acciones de riesgo moderado",
+        "hint": "Archivar una conversación, reasignar una que ya tiene responsable y editar la identidad de un cliente.",
+        "modes": {
+          "dialog": {
+            "label": "Mostrar un cuadro de confirmación",
+            "hint": "Se pregunta antes de ejecutar la acción."
+          },
+          "undo": {
+            "label": "Ejecutar y ofrecer Deshacer",
+            "hint": "La acción se ejecuta de inmediato y un mensaje ofrece deshacerla. Una acción que no se puede deshacer sigue preguntando antes."
+          },
+          "none": {
+            "label": "No preguntar",
+            "hint": "La acción se ejecuta sin cuadro y sin forma de deshacerla desde el mensaje."
+          }
+        }
+      },
+      "critical": "Las acciones críticas siempre piden escribir una frase y no se pueden desactivar: eliminar una conversación, revocar una clave de API, eliminar una tienda y revocar todo el acceso de los plugins.",
+      "roles": {
+        "Agent": "Agente",
+        "Supervisor": "Supervisor",
+        "Admin": "Administrador"
+      },
+      "save": "Guardar",
+      "saving": "Guardando…",
+      "discard": "Descartar cambios",
+      "saved": "Ajustes de seguridad guardados"
     }
   },
   "emptyStates": {

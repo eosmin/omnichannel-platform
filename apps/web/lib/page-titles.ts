@@ -43,6 +43,7 @@ export const PageTitles = {
   settingsCarriers: ['settings.nav.store.carriers', 'shell.nav.settings'],
   settingsWebhooks: ['settings.nav.store.webhooks', 'shell.nav.settings'],
   settingsApiKeys: ['settings.nav.store.apiKeys', 'shell.nav.settings'],
+  settingsSafety: ['settings.nav.store.safety', 'shell.nav.settings'],
   settingsRetention: ['settings.nav.store.retention', 'shell.nav.settings'],
   accountProfile: ['settings.nav.account.profile', 'settings.nav.account.title'],
   accountPreferences: ['settings.nav.account.preferences', 'settings.nav.account.title'],
