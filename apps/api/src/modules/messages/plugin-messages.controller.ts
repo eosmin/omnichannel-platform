@@ -1,4 +1,17 @@
-import { Body, Controller, Get, HttpCode, Inject, Param, Post, Req, Res } from '@nestjs/common'
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Inject,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Req,
+  Res
+} from '@nestjs/common'
 import type { Response } from 'express'
 
 import { PluginApiRoutes } from '@platform/core/api'
@@ -6,11 +19,14 @@ import { AuditAction, type AuditActionType } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { type Permission, Permissions } from '@platform/core/auth'
 import { PrismaService } from '@platform/core/database'
-import { AuthorType, uuidSchema } from '@platform/core/domain'
+import { AuthorType, ChannelCapability, uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { MULTI_FILE_SEND_ENABLED, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import {
+  AgentReactionsService,
+  type EditMessageBody,
+  editMessageSchema,
   fileIndexSchema,
   MediaRefetchService,
   MessageChangesService,
@@ -20,6 +36,8 @@ import {
   pluginCreateMessageSchema,
   pluginMessageOf,
   pluginViewerOf,
+  type ReactToMessageBody,
+  reactToMessageSchema,
   type RevisionView
 } from '@platform/core/messaging'
 import { PluginRegistry } from '@platform/plugins/runtime'
@@ -31,7 +49,7 @@ import { CurrentPermissions, CurrentStore, RequirePermissions } from '../tenancy
 import { channelFileLimits } from './channel-file-limits'
 
 // What a plugin reads of an edit: the text it had, by what kind of author and when; never the person
-export type PluginRevisionView = Omit<RevisionView, 'editedById'>
+export type PluginRevisionView = Omit<RevisionView, 'editedById' | 'editedByPluginId'>
 
 interface PluginCaller {
   id: string
@@ -43,15 +61,16 @@ interface PluginCaller {
 // `conversations:read` shows and writes what `messages:write` allows, and nothing else. To see a conversation a plugin needs
 // `conversations:read` as well as the scope of the message, because the service asks for it exactly as for a person.
 //
-// Not here yet, with the reason (Step 5.6, "Left by PR M1b"): editing, sending again, discarding and reacting write the id of the
-// person who did it (`editedById`, `deletedById`, the author of the reaction, the one that reopens the conversation), and a
-// plugin is not a person; they need an actor of their own in the core first.
+// Editing, sending again, discarding, reacting and deleting (PR M1c) record WHO did it, and the viewer made here carries the plugin
+// (`pluginViewerOf(held, pluginId)`), so the services write the plugin and never a person's id (`actorOfViewer`). A plugin changes
+// only the messages it wrote; it may react to any message it can see.
 @Controller()
 export class PluginMessagesController {
   constructor(
     private readonly messages: MessagesService,
     private readonly refetches: MediaRefetchService,
     private readonly changes: MessageChangesService,
+    private readonly reactions: AgentReactionsService,
     private readonly registry: PluginRegistry,
     private readonly audit: AuditService,
     private readonly prisma: PrismaService,
@@ -101,6 +120,139 @@ export class PluginMessagesController {
       ...(origin.author === AuthorType.AGENT ? { userId: origin.userId } : {})
     })
     return created
+  }
+
+  // The whole new text of a message or note the plugin wrote. A note carries the `version` it was read at (409 with the current text
+  // if it changed); a reply the customer has changes only when the channel takes the edit, and the answer says `pendingEdit`.
+  @PluginApi(PluginScopes.MESSAGES_WRITE, PluginScopes.CONVERSATIONS_READ)
+  @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @Patch(PluginApiRoutes.messages.byId(':id'))
+  async edit(
+    @CurrentStore() store: { id: string },
+    @CurrentPluginInstallation() installation: PluginCaller,
+    @CurrentPermissions() held: readonly Permission[],
+    @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string,
+    @Body(new ZodValidationPipe(editMessageSchema)) body: EditMessageBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<MessageView> {
+    const message = await this.changes.edit(
+      store.id,
+      messageId,
+      body,
+      pluginViewerOf(held, installation.pluginId),
+      channel => this.registry.hasCapability(channel, ChannelCapability.EDIT_MESSAGE),
+      channel => this.registry.limitsOf(channel)
+    )
+    this.auditPlugin(AuditAction.MESSAGE_PLUGIN_CHANGED, store.id, messageId, installation, req, {
+      operation: 'edit'
+    })
+    return message
+  }
+
+  // Deletes for everyone a message the plugin wrote, or answers 409 when the channel cannot. Its own scope (`messages:delete`).
+  @PluginApi(
+    PluginScopes.MESSAGES_DELETE,
+    PluginScopes.MESSAGES_WRITE,
+    PluginScopes.CONVERSATIONS_READ
+  )
+  @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_DELETE)
+  @Delete(PluginApiRoutes.messages.byId(':id'))
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
+  async remove(
+    @CurrentStore() store: { id: string },
+    @CurrentPluginInstallation() installation: PluginCaller,
+    @CurrentPermissions() held: readonly Permission[],
+    @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<void> {
+    await this.changes.remove(
+      store.id,
+      messageId,
+      pluginViewerOf(held, installation.pluginId),
+      channel => this.registry.hasCapability(channel, ChannelCapability.DELETE_MESSAGE)
+    )
+    this.auditPlugin(AuditAction.MESSAGE_PLUGIN_CHANGED, store.id, messageId, installation, req, {
+      operation: 'delete'
+    })
+  }
+
+  // "Send again" on a reply of the plugin that failed. The same message goes back to the channel; the conversation does not move
+  @PluginApi(PluginScopes.MESSAGES_WRITE, PluginScopes.CONVERSATIONS_READ)
+  @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_SEND)
+  @Post(PluginApiRoutes.messages.resend(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  async resend(
+    @CurrentStore() store: { id: string },
+    @CurrentPluginInstallation() installation: PluginCaller,
+    @CurrentPermissions() held: readonly Permission[],
+    @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<MessageView> {
+    const message = await this.messages.resend(
+      store.id,
+      messageId,
+      pluginViewerOf(held, installation.pluginId)
+    )
+    this.auditPlugin(AuditAction.MESSAGE_PLUGIN_CHANGED, store.id, messageId, installation, req, {
+      operation: 'resend'
+    })
+    return message
+  }
+
+  // "Discard" on a reply of the plugin that failed for good and never reached the customer. 409 when it may have gone; twice is once
+  // (204 both times, one audit entry). Throwing away is deleting, so it needs the scope of deleting.
+  @PluginApi(
+    PluginScopes.MESSAGES_DELETE,
+    PluginScopes.MESSAGES_WRITE,
+    PluginScopes.CONVERSATIONS_READ
+  )
+  @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_SEND)
+  @Post(PluginApiRoutes.messages.discard(':id'))
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
+  async discard(
+    @CurrentStore() store: { id: string },
+    @CurrentPluginInstallation() installation: PluginCaller,
+    @CurrentPermissions() held: readonly Permission[],
+    @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<void> {
+    const outcome = await this.changes.discard(
+      store.id,
+      messageId,
+      pluginViewerOf(held, installation.pluginId)
+    )
+    if (!outcome.discarded) return
+    this.auditPlugin(AuditAction.MESSAGE_PLUGIN_CHANGED, store.id, messageId, installation, req, {
+      operation: 'discard',
+      type: outcome.type,
+      deliveryError: outcome.deliveryError
+    })
+  }
+
+  // The reaction of the plugin to a message: `{ emoji }` sets it, `{ emoji: null }` takes it back. A plugin reacts as the system.
+  @PluginApi(PluginScopes.MESSAGES_WRITE, PluginScopes.CONVERSATIONS_READ)
+  @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_SEND)
+  @Put(PluginApiRoutes.messages.reaction(':id'))
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
+  async react(
+    @CurrentStore() store: { id: string },
+    @CurrentPluginInstallation() installation: PluginCaller,
+    @CurrentPermissions() held: readonly Permission[],
+    @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string,
+    @Body(new ZodValidationPipe(reactToMessageSchema)) body: ReactToMessageBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<void> {
+    await this.reactions.react(
+      store.id,
+      messageId,
+      body.emoji,
+      pluginViewerOf(held, installation.pluginId),
+      channel => this.registry.hasCapability(channel, ChannelCapability.REACTIONS),
+      body.mediaId
+    )
+    this.auditPlugin(AuditAction.MESSAGE_PLUGIN_CHANGED, store.id, messageId, installation, req, {
+      operation: body.emoji === null ? 'unreact' : 'react'
+    })
   }
 
   // "Send the text again" on a file whose caption failed or may not have gone

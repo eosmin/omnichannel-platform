@@ -1,7 +1,14 @@
 import { Injectable } from '@nestjs/common'
 
 import { PrismaService } from '@platform/core/database'
-import { AuthorType, CaptionState, DeliveryStatus } from '@platform/core/domain'
+import {
+  type ActorColumns,
+  actorColumnsOf,
+  ActorKinds,
+  AuthorType,
+  CaptionState,
+  DeliveryStatus
+} from '@platform/core/domain'
 import type { ErrorCode } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
@@ -55,24 +62,36 @@ export class MessageChangeStatusWriter {
           editStatus: DeliveryStatus.QUEUED,
           pendingContent
         },
-        select: { content: true, authorId: true, deletedAt: true }
+        select: { content: true, authorId: true, pendingEditPluginId: true, deletedAt: true }
       })
       if (current === null) return
       // A message deleted since the agent asked is not edited: the request is dropped
       if (current.deletedAt !== null) {
         await tx.message.update({
           where: { id: messageId },
-          data: { pendingContent: null, editStatus: null, changeRequestedAt: null }
+          data: {
+            pendingContent: null,
+            pendingEditPluginId: null,
+            editStatus: null,
+            changeRequestedAt: null
+          }
         })
         return
       }
+      // The editor is the one that asked: a person is the author of the message (only the author edits), a plugin the one that
+      // was recorded with the request, whoever wrote the message
+      const by: ActorColumns =
+        current.pendingEditPluginId === null
+          ? { type: AuthorType.AGENT, id: current.authorId, pluginId: null }
+          : actorColumnsOf({ kind: ActorKinds.PLUGIN, pluginId: current.pendingEditPluginId })
       if (errorCode === null) {
         await addRevision(tx, {
           storeId,
           messageId,
           content: current.content,
-          editedByType: AuthorType.AGENT,
-          editedById: current.authorId
+          editedByType: by.type,
+          editedById: by.id,
+          editedByPluginId: by.pluginId
         })
       }
       await tx.message.update({
@@ -82,15 +101,18 @@ export class MessageChangeStatusWriter {
             ? {
                 content: pendingContent,
                 pendingContent: null,
+                pendingEditPluginId: null,
                 editStatus: DeliveryStatus.SENT,
                 editError: null,
                 editedAt: new Date(),
-                editedByType: AuthorType.AGENT,
-                editedById: current.authorId,
+                editedByType: by.type,
+                editedById: by.id,
+                editedByPluginId: by.pluginId,
                 changeRequestedAt: null
               }
             : {
                 pendingContent: null,
+                pendingEditPluginId: null,
                 editStatus: DeliveryStatus.FAILED,
                 editError: errorCode,
                 changeRequestedAt: null
@@ -142,7 +164,8 @@ export class MessageChangeStatusWriter {
                 deleteError: errorCode,
                 // Nobody deleted it
                 deletedByType: null,
-                deletedById: null
+                deletedById: null,
+                deletedByPluginId: null
               }
       })
       if (changed.count === 0) return

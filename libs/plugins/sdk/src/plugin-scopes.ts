@@ -8,6 +8,9 @@ export const PluginScopes = {
   MESSAGES_WRITE: 'messages:write',
   // The text of a message the customer deleted, while it is kept: its own scope, because no other grants MESSAGES_VIEW_DELETED
   MESSAGES_READ_DELETED: 'messages:read-deleted',
+  // Deleting a message the plugin wrote (and throwing away a reply of its own that failed): its own scope, because deleting cannot be
+  // taken back and no other scope grants MESSAGES_DELETE. It never reaches a message the plugin did not write (the service refuses it).
+  MESSAGES_DELETE: 'messages:delete',
   CUSTOMERS_READ: 'customers:read',
   CUSTOMERS_WRITE: 'customers:write',
   ORDERS_READ: 'orders:read',
@@ -44,6 +47,7 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.MESSAGES_READ]: [Permissions.MESSAGES_VIEW],
   [PluginScopes.MESSAGES_WRITE]: [Permissions.MESSAGES_SEND, Permissions.MESSAGES_INTERNAL_NOTE],
   [PluginScopes.MESSAGES_READ_DELETED]: [Permissions.MESSAGES_VIEW_DELETED],
+  [PluginScopes.MESSAGES_DELETE]: [Permissions.MESSAGES_DELETE],
   [PluginScopes.CUSTOMERS_READ]: [Permissions.CUSTOMERS_VIEW],
   [PluginScopes.CUSTOMERS_WRITE]: [Permissions.CUSTOMERS_CREATE, Permissions.CUSTOMERS_EDIT],
   [PluginScopes.ORDERS_READ]: [Permissions.ORDERS_VIEW],

@@ -22,9 +22,10 @@ export type PluginMessageOrigin = {
 
 // The viewer of a call that has no person: the permissions are the ones the scopes of the plugin stand for. The id is empty on
 // purpose, so that it is never the assignee of a conversation (a plugin without `conversations:view-all` does not see the
-// conversations assigned to someone) and is never written as an author: the author of a plugin message comes from the origin.
-export function pluginViewerOf(held: readonly Permission[]): Viewer {
-  return viewerOf('', held)
+// conversations assigned to someone) and is never written as an author: the author of a plugin message comes from the origin, and
+// the author of an edit, a deletion or a reaction is the `pluginId` (the routes that change a message pass it; `actorOfViewer`).
+export function pluginViewerOf(held: readonly Permission[], pluginId?: string): Viewer {
+  return pluginId === undefined ? viewerOf('', held) : { ...viewerOf('', held), pluginId }
 }
 
 // The nickname a plugin chose for its messages, made safe to store and to show: the characters that reorder or hide text are

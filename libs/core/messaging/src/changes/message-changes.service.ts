@@ -3,7 +3,13 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { type Permission, Permissions } from '@platform/core/auth'
 import { PrismaService, type PrismaTransaction } from '@platform/core/database'
-import { AuthorType, CaptionState, DeliveryStatus, MessageType } from '@platform/core/domain'
+import {
+  actorColumnsOf,
+  AuthorType,
+  CaptionState,
+  DeliveryStatus,
+  MessageType
+} from '@platform/core/domain'
 import {
   ErrorCodes,
   errorName,
@@ -17,6 +23,7 @@ import { Events } from '@platform/core/events'
 import { NotificationTypes } from '@platform/core/notifications'
 
 import {
+  actorOfViewer,
   canSee,
   enumValueOf,
   invalidInput,
@@ -47,6 +54,8 @@ export interface RevisionView {
   content: string | null
   editedByType: AuthorType
   editedById: string | null
+  // The plugin that edited, when it was one (then `editedById` is null)
+  editedByPluginId: string | null
   createdAt: Date
 }
 
@@ -59,6 +68,7 @@ interface Target {
   type: string
   authorType: string
   authorId: string | null
+  authorPluginId: string | null
   content: string | null
   version: number
   channelMessageId: string | null
@@ -78,6 +88,7 @@ const TARGET_SELECT = {
   type: true,
   authorType: true,
   authorId: true,
+  authorPluginId: true,
   content: true,
   version: true,
   channelMessageId: true,
@@ -187,12 +198,14 @@ export class MessageChangesService {
         throw resourceConflict('the text under this file is on its way')
       }
       if (isNote(message)) {
+        const by = actorColumnsOf(actorOfViewer(viewer))
         await tx.message.update({
           where: { id: messageId },
           data: {
             deletedAt: new Date(),
-            deletedByType: AuthorType.AGENT,
-            deletedById: viewer.userId
+            deletedByType: by.type,
+            deletedById: by.id,
+            deletedByPluginId: by.pluginId
           }
         })
         await publishMessageChanged(this.events, tx, Events.MESSAGE_DELETED, storeId, messageId)
@@ -231,6 +244,8 @@ export class MessageChangesService {
         type: enumValueOf(MessageType, message.type, 'message type'),
         deliveryError: message.deliveryError
       }
+      // A plugin throws away only what it wrote (a person of the team may throw away the reply of anyone who may send)
+      requireOwnIfPlugin(message, viewer)
       if (message.discardedAt !== null) return { discarded: false, ...outcome }
       if (!isReplyOfTeam(message) || isNote(message) || message.deletedAt !== null) {
         throw resourceConflict('only a reply of the team that failed can be discarded')
@@ -253,13 +268,15 @@ export class MessageChangesService {
         )
       }
       const now = new Date()
+      const discardedBy = actorColumnsOf(actorOfViewer(viewer))
       await tx.message.update({
         where: { id: messageId },
         data: {
           discardedAt: now,
           deletedAt: now,
-          deletedByType: AuthorType.AGENT,
-          deletedById: viewer.userId
+          deletedByType: discardedBy.type,
+          deletedById: discardedBy.id,
+          deletedByPluginId: discardedBy.pluginId
         }
       })
       // The files of a reply that never went are no part of the customer's gallery or of anything else
@@ -346,6 +363,7 @@ export class MessageChangesService {
         content: true,
         editedByType: true,
         editedById: true,
+        editedByPluginId: true,
         createdAt: true
       },
       orderBy: { version: 'desc' }
@@ -355,6 +373,7 @@ export class MessageChangesService {
       content: message.deletedAt === null ? row.content : null,
       editedByType: enumValueOf(AuthorType, row.editedByType, 'revision editor'),
       editedById: row.editedById,
+      editedByPluginId: row.editedByPluginId,
       createdAt: row.createdAt
     }))
   }
@@ -396,6 +415,8 @@ export class MessageChangesService {
   ): Promise<void> {
     // Anyone who reads notes can edit one: they are working data of the team
     requireAnyPermission(viewer.held, [Permissions.MESSAGES_INTERNAL_NOTE])
+    // ...but a plugin edits only the notes it wrote
+    requireOwnIfPlugin(message, viewer)
     if (body.version === undefined)
       throw invalidInput('editing a note needs the version it was read at')
     if (body.version !== message.version) {
@@ -404,12 +425,14 @@ export class MessageChangesService {
       })
     }
     if (body.content === message.content) return
+    const by = actorColumnsOf(actorOfViewer(viewer))
     await addRevision(tx, {
       storeId,
       messageId,
       content: message.content,
-      editedByType: AuthorType.AGENT,
-      editedById: viewer.userId
+      editedByType: by.type,
+      editedById: by.id,
+      editedByPluginId: by.pluginId
     })
     await tx.message.update({
       where: { id: messageId },
@@ -417,8 +440,9 @@ export class MessageChangesService {
         content: body.content,
         version: { increment: 1 },
         editedAt: new Date(),
-        editedByType: AuthorType.AGENT,
-        editedById: viewer.userId
+        editedByType: by.type,
+        editedById: by.id,
+        editedByPluginId: by.pluginId
       }
     })
     await publishMessageChanged(this.events, tx, Events.MESSAGE_EDITED, storeId, messageId)
@@ -437,7 +461,7 @@ export class MessageChangesService {
   ): Promise<void> {
     requireAnyPermission(viewer.held, [Permissions.MESSAGES_SEND])
     // Nobody edits the message of another person: a correction is a new message
-    if (message.authorId !== viewer.userId) throw denied()
+    if (!isOwn(message, viewer)) throw denied()
     if (message.channelMessageId === null) {
       throw resourceConflict('the message has no copy in the channel to edit')
     }
@@ -453,6 +477,8 @@ export class MessageChangesService {
       where: { id: messageId },
       data: {
         pendingContent: body.content,
+        // Who asked, for the worker to record as the editor when the channel takes it (a person is the author, as before)
+        pendingEditPluginId: viewer.pluginId ?? null,
         editStatus: DeliveryStatus.QUEUED,
         editError: null,
         changeRequestedAt: new Date(),
@@ -485,14 +511,16 @@ export class MessageChangesService {
       throw resourceConflict('the message has no copy in the channel to delete')
     }
     if (!supportsDelete(message.conversation.channelType)) throw unsupported('delete messages')
+    const by = actorColumnsOf(actorOfViewer(viewer))
     const version = message.version + 1
     await tx.message.update({
       where: { id: messageId },
       data: {
         deleteStatus: DeliveryStatus.QUEUED,
         deleteError: null,
-        deletedByType: AuthorType.AGENT,
-        deletedById: viewer.userId,
+        deletedByType: by.type,
+        deletedById: by.id,
+        deletedByPluginId: by.pluginId,
         changeRequestedAt: new Date(),
         version
       }
@@ -512,7 +540,8 @@ export class MessageChangesService {
 // Who may delete a note: its author, or who holds MESSAGES_DELETE; seeing notes is required either way
 function requireMayDeleteNote(message: Target, viewer: Viewer): void {
   requireAnyPermission(viewer.held, [Permissions.MESSAGES_INTERNAL_NOTE])
-  if (message.authorId !== viewer.userId && !holds(viewer.held, Permissions.MESSAGES_DELETE)) {
+  requireOwnIfPlugin(message, viewer)
+  if (!isOwn(message, viewer) && !holds(viewer.held, Permissions.MESSAGES_DELETE)) {
     throw denied()
   }
 }
@@ -522,13 +551,32 @@ const isNote = (message: Target): boolean => message.type === MessageType.INTERN
 
 // Who may delete a reply the customer has: its author, with MESSAGES_SEND, or who holds MESSAGES_DELETE
 function requireMayDeleteReply(message: Target, viewer: Viewer): void {
-  const own = message.authorId === viewer.userId && holds(viewer.held, Permissions.MESSAGES_SEND)
+  requireOwnIfPlugin(message, viewer)
+  const own = isOwn(message, viewer) && holds(viewer.held, Permissions.MESSAGES_SEND)
   if (!own && !holds(viewer.held, Permissions.MESSAGES_DELETE)) throw denied()
+}
+
+// A message is the viewer's own when the viewer wrote it: the person it was written as, or the plugin that wrote it (a plugin that
+// wrote on behalf of a person wrote it, whatever its `authorId`). A plugin never owns the message of a person, and a person never
+// owns the message of a plugin that wrote as the system (it has no `authorId`).
+function isOwn(message: Target, viewer: Viewer): boolean {
+  return viewer.pluginId === undefined
+    ? message.authorId === viewer.userId
+    : message.authorPluginId === viewer.pluginId
+}
+
+// What a plugin does to a message it did not write is refused whatever it holds: `MESSAGES_DELETE` lets a person of the team delete
+// the reply of another, a plugin only what is its own (TDD_10 §6, M1c). The service of a person is not touched.
+function requireOwnIfPlugin(message: Target, viewer: Viewer): void {
+  if (viewer.pluginId !== undefined && !isOwn(message, viewer)) throw denied()
 }
 
 const holds = (held: readonly Permission[], permission: Permission): boolean =>
   held.includes(permission)
 
 // A reply written by an agent of the platform, the only kind that goes out to a customer
+// A message of the platform that a plugin wrote as the system is one too: it goes out to the customer like any reply
 const isReplyOfTeam = (message: Target): boolean =>
-  message.authorType === AuthorType.AGENT.valueOf() && message.type !== MessageType.SYSTEM.valueOf()
+  (message.authorType === AuthorType.AGENT.valueOf() ||
+    (message.authorType === AuthorType.SYSTEM.valueOf() && message.authorPluginId !== null)) &&
+  message.type !== MessageType.SYSTEM.valueOf()

@@ -9,14 +9,13 @@ import {
 } from '@platform/channels/connections'
 import { PrismaService } from '@platform/core/database'
 import {
-  AuthorType,
   ChannelConnectionStatus,
   DeliveryStatus,
   isInstallationActive,
   OutboundLimits
 } from '@platform/core/domain'
 import { ErrorCodes, type ErrorCode } from '@platform/core/errors'
-import { enumValueOf } from '@platform/core/messaging'
+import { enumValueOf, reactionWhereOf, reactorOfJob } from '@platform/core/messaging'
 import type { SendOutboundReactionJob } from '@platform/core/queues'
 import { PluginRegistry } from '@platform/plugins/runtime'
 
@@ -40,11 +39,11 @@ export class ReactionSender {
 
   // Throws when the attempt should be repeated; returns when the reaction is settled
   async send(job: SendOutboundReactionJob, isLastAttempt: boolean): Promise<void> {
-    const { storeId, messageId, userId } = job
+    const { storeId, messageId } = job
     // The file of an album the reaction is under; null: the message itself
     const mediaId = job.mediaId ?? null
     const reaction = await this.prisma.client.messageReaction.findFirst({
-      where: { storeId, messageId, authorType: AuthorType.AGENT, userId, mediaId },
+      where: { ...reactionWhereOf(reactorOfJob(job)), storeId, messageId, mediaId },
       select: { emoji: true, deliveryStatus: true, updatedAt: true }
     })
     // A reaction that is there and is not waiting was sent or failed already; one changed since this job

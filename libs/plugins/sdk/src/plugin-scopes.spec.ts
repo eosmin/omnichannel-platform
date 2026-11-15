@@ -46,6 +46,16 @@ describe('PluginScopes', () => {
     }
   })
 
+  it('keeps the permission to delete a message in a scope of its own, which no other scope grants', () => {
+    expect(PluginScopePermissions[PluginScopes.MESSAGES_DELETE]).toEqual([
+      Permissions.MESSAGES_DELETE
+    ])
+    for (const [scope, granted] of Object.entries(PluginScopePermissions)) {
+      if (scope === PluginScopes.MESSAGES_DELETE) continue
+      expect(granted).not.toContain(Permissions.MESSAGES_DELETE)
+    }
+  })
+
   it('lets the webhooks scope grant no human permission', () => {
     expect(PluginScopePermissions[PluginScopes.WEBHOOKS_WRITE]).toEqual([])
   })

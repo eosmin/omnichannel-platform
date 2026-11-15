@@ -3,7 +3,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { Permissions } from '@platform/core/auth'
 import { PrismaService } from '@platform/core/database'
-import { AuthorType, DeliveryStatus, MessageType } from '@platform/core/domain'
+import { ActorKinds, AuthorType, DeliveryStatus, MessageType } from '@platform/core/domain'
 import {
   ErrorCodes,
   errorName,
@@ -14,6 +14,7 @@ import {
 } from '@platform/core/errors'
 
 import {
+  actorOfViewer,
   lockConversationForWrite,
   requireAnyPermission,
   type Viewer
@@ -21,7 +22,7 @@ import {
 import { isTargetOfItsOwn } from '../messages/provider-message-match'
 import { OutboundQueue } from '../outbound/outbound-queue'
 
-import { MessageReactionsService } from './message-reactions.service'
+import { MessageReactionsService, type Reactor, reactionWhereOf } from './message-reactions.service'
 
 // What a thread of the team is made of and the customer never sees
 const NOT_SENT_TO_CHANNEL: readonly string[] = [
@@ -57,6 +58,12 @@ export class AgentReactionsService {
     mediaId?: string
   ): Promise<void> {
     requireAnyPermission(viewer.held, [Permissions.MESSAGES_SEND])
+    // Who reacts: the person, or the plugin that holds the key (as the system, it has no user id to write)
+    const actor = actorOfViewer(viewer)
+    const reactor: Reactor =
+      actor.kind === ActorKinds.PLUGIN
+        ? { authorType: AuthorType.SYSTEM, pluginId: actor.pluginId }
+        : { authorType: AuthorType.AGENT, userId: viewer.userId }
     const target = await this.prisma.client.message.findFirst({
       where: { id: messageId, storeId },
       select: { conversationId: true }
@@ -105,7 +112,7 @@ export class AgentReactionsService {
       // now (it lost its id, or a later file shares one): the row that is there is the one that goes
       if (emoji === null && file != null && targetMediaId === null) {
         const there = await tx.messageReaction.count({
-          where: { storeId, messageId, userId: viewer.userId, mediaId: file.id }
+          where: { ...reactionWhereOf(reactor), storeId, messageId, mediaId: file.id }
         })
         if (there > 0) targetMediaId = file.id
       }
@@ -113,7 +120,7 @@ export class AgentReactionsService {
         tx,
         storeId,
         messageId,
-        { authorType: AuthorType.AGENT, userId: viewer.userId },
+        reactor,
         emoji,
         DeliveryStatus.QUEUED,
         targetMediaId
@@ -125,7 +132,8 @@ export class AgentReactionsService {
             .enqueueReaction({
               storeId,
               messageId,
-              userId: viewer.userId,
+              userId: reactor.authorType === AuthorType.AGENT ? reactor.userId : null,
+              ...(reactor.authorType === AuthorType.SYSTEM ? { pluginId: reactor.pluginId } : {}),
               version: changedAt.getTime(),
               ...(targetMediaId === null ? {} : { mediaId: targetMediaId })
             })
