@@ -381,6 +381,9 @@ jobs:
         run: docker compose up -d --wait postgres pgbouncer redis seaweedfs
       - name: Wait for the bucket
         run: pnpm exec tsx scripts/wait-for-bucket.ts
+      # db:test:prepare imports the generated client; the nx targets generate it themselves, a script does not
+      - name: Generate the Prisma client
+        run: pnpm exec nx run core-database:prisma-generate --skip-nx-cache
       - name: Migrate the development database (it gives the roles their passwords) and prepare the test one
         run: |
           # prisma.config.ts and set-db-role-passwords read .env and .env.local, not .env.example: the values
