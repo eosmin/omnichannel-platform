@@ -5,6 +5,7 @@ import { TenancyModule } from '../tenancy'
 import { BusinessHoursService } from './business-hours.service'
 import { InboxSettingsService } from './inbox-settings.service'
 import { InventorySettingsService } from './inventory-settings.service'
+import { PluginSettingsController } from './plugin-settings.controller'
 import { PreferencesService } from './preferences.service'
 import { RetentionSettingsService } from './retention-settings.service'
 import { ReturnSettingsService } from './return-settings.service'
@@ -16,7 +17,7 @@ import { TagsService } from './tags.service'
 // Needs the database and audit modules of the app
 @Module({
   imports: [TenancyModule],
-  controllers: [SettingsController],
+  controllers: [SettingsController, PluginSettingsController],
   providers: [
     TagsService,
     SnippetsService,

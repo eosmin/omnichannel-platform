@@ -103,6 +103,7 @@ import {
   createRoutingRule,
   ensurePluginInstallation,
   createOrderMessageTemplate,
+  createPluginKey,
   createSnippet,
   createApiKey,
   createWebhook,
@@ -4168,6 +4169,55 @@ describe('Tenant isolation', () => {
       expect(handle.status).toBe(404)
       expect(await owner.address.count({ where: { customerId: customerA } })).toBe(0)
       expect(await owner.customerIdentity.count({ where: { customerId: customerA } })).toBe(0)
+    })
+  })
+
+  // What a plugin key reads of the orders (Step 5.6, E3a): the key of store B reads the orders, their message history, the templates
+  // and the settings of store B, and an order of store A is an order that does not exist for it, by id or in a list.
+  describe('the orders read with the key of a plugin', () => {
+    const pluginId = `${prefix}-ordread`
+    let keyOfB = ''
+    let orderA = ''
+    let orderB = ''
+
+    beforeAll(async () => {
+      ;({ key: keyOfB } = await createPluginKey(owner, {
+        storeId: ctx.storeB.id,
+        pluginId,
+        scopes: [
+          PluginScopes.ORDERS_READ,
+          PluginScopes.ORDER_MESSAGES_READ,
+          PluginScopes.SETTINGS_READ
+        ]
+      }))
+      orderA = (await createOrder(owner, { storeId: ctx.storeA.id })).id
+      orderB = (await createOrder(owner, { storeId: ctx.storeB.id })).id
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId } })
+      await owner.plugin.deleteMany({ where: { id: pluginId } })
+    })
+
+    const asB = (path: string) =>
+      supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+        .get(`${API_PREFIX}${path}`)
+        .set('authorization', `Bearer ${keyOfB}`)
+
+    it('works in its own store, so that the 404 of the others means "foreign"', async () => {
+      expect((await asB(PluginApiRoutes.orders.byId(orderB))).status).toBe(200)
+      expect((await asB(PluginApiRoutes.orders.messages(orderB))).status).toBe(200)
+      expect((await asB(PluginApiRoutes.settings.preferences)).status).toBe(200)
+    })
+
+    it('does not read an order of another store, nor its messages, and does not list it', async () => {
+      const detail = await asB(PluginApiRoutes.orders.byId(orderA))
+      const messages = await asB(PluginApiRoutes.orders.messages(orderA))
+      const list = await asB(PluginApiRoutes.orders.list)
+
+      expect(detail.status).toBe(404)
+      expect(messages.status).toBe(404)
+      expect(list.status).toBe(200)
+      expect(JSON.stringify(list.body)).not.toContain(orderA)
     })
   })
 

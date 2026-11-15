@@ -539,6 +539,26 @@ export const PluginApiRoutes = {
     directory: '/plugin-api/channels/directory',
     templates: (pluginId: string) => `/plugin-api/channels/${pluginId}/templates`
   },
+
+  // Step 5.6 PR E3a: the reading of orders, over the same services as `ApiRoutes.orders` and `ApiRoutes.orderTemplates`. Their
+  // writes need the id of a person (who confirmed, who cancelled, who created) and wait for a plugin actor (PR E3b).
+  orders: {
+    list: '/plugin-api/orders',
+    byId: (id: string) => `/plugin-api/orders/${id}`,
+    messages: (id: string) => `/plugin-api/orders/${id}/messages`
+  },
+  orderTemplates: {
+    list: '/plugin-api/order-templates',
+    byKindAndLocale: (kind: string, locale: string) =>
+      `/plugin-api/order-templates/${kind}/locales/${locale}`
+  },
+
+  // Step 5.6 PR E3a: the store preferences and the return rules, read only
+  settings: {
+    preferences: '/plugin-api/settings/preferences',
+    returns: '/plugin-api/settings/returns'
+  },
+
   // Messages (Step 5.6 PR M1b): a plugin writes a reply or a note, and reads the edits and the kept text of a deleted message
   messages: {
     create: '/plugin-api/messages',
