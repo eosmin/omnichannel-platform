@@ -643,7 +643,10 @@ describe('The books of an organization', () => {
         .send({ accountId: accounts[CASH] })
       const logged = await waitForAuditEntries(owner, {
         organizationId: ctx.orgA.id,
-        action: AuditAction.FINANCE_ROLE_MAPPED
+        action: AuditAction.FINANCE_ROLE_MAPPED,
+        // The record of this change, not whichever mapping of the role came first (the switch back
+        // to the cash box and the earlier cases leave their own)
+        metadata: { path: ['to'], equals: target }
       })
       expect(logged[0]?.metadata).toMatchObject({ role: AccountRole.CASH_DEFAULT, to: target })
     })
