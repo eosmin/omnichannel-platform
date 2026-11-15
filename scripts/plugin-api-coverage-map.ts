@@ -356,6 +356,8 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'finance.taxRates.byId': { none: FINANCE },
   'finance.taxRates.deactivate': { none: FINANCE },
   'finance.taxRates.reactivate': { none: FINANCE },
+  'finance.reports.vat': { none: FINANCE },
+  'finance.reports.vatCsv': { none: FINANCE },
   'finance.storeTaxSettings': { none: FINANCE },
   'finance.paymentAccounts.list': { none: FINANCE },
   'finance.paymentAccounts.set': { none: FINANCE },

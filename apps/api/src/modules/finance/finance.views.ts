@@ -1,4 +1,4 @@
-import { NormalSide } from '@platform/core/domain'
+import { NormalSide, type VatLineKind, type VatSide } from '@platform/core/domain'
 import { balanceOf, dateToDay } from '@platform/core/finance'
 
 // What the finance routes answer. A date is 'YYYY-MM-DD' (an accounting date is a day, not an instant), and a count that can
@@ -471,4 +471,42 @@ export const taxRateView = (row: TaxRateRow): TaxRateView => ({
 // The tax preferences of the store of the request (TDD_18 §7): whether the prices of its catalog already include the tax
 export interface StoreTaxSettingsView {
   pricesIncludeTax: boolean
+}
+
+// One line of the VAT report (TDD_18 §7). `baseCents` is the sale without the tax; null on the input side, where the journal line
+// holds the tax and not what it was charged on. `rateBps` is null for what carries no rate (exempt, not subject, a fee with no tax,
+// an input line that names no rate).
+export interface VatRowView {
+  month: string
+  side: VatSide
+  kind: VatLineKind
+  rateBps: number | null
+  baseCents: number | null
+  taxCents: number
+  documents: number
+}
+
+export interface VatMonthView {
+  month: string
+  outputTaxCents: number
+  inputTaxCents: number
+  // Output less input: positive is to pay, negative is to carry forward
+  balanceCents: number
+}
+
+export interface VatReportView {
+  from: string
+  to: string
+  currency: string
+  recognizedOn: string
+  // The output side is read from the orders whatever the date the books start from; the date is here for whoever reconciles it with the journal
+  accountingStartDate: string
+  rows: VatRowView[]
+  months: VatMonthView[]
+  // Orders recognized in the range that were made before the tax columns: not estimated, counted here
+  ordersWithoutTaxSnapshot: number
+  // Orders whose snapshot does not add up: counted here, never guessed about
+  ordersNotReadable: number
+  // Orders in the range whose status is RETURNED: still in the output side (the tax of returns is posted by Step 4B.6, E8)
+  returnedOrdersIncluded: number
 }

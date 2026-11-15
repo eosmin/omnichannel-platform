@@ -180,6 +180,11 @@ export const ApiRoutes = {
       deactivate: (id: string) => `/finance/tax-rates/${id}/deactivate`,
       reactivate: (id: string) => `/finance/tax-rates/${id}/reactivate`
     },
+    // The VAT report of the organization for a range of days (TDD_18 §7): the JSON, and the same rows as a CSV
+    reports: {
+      vat: '/finance/reports/vat',
+      vatCsv: '/finance/reports/vat.csv'
+    },
     // The tax preferences of the store of X-Store-Id: GET reads them, PATCH changes whether its prices include the tax
     storeTaxSettings: '/finance/store-tax-settings',
     paymentAccounts: {

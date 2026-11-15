@@ -12,6 +12,9 @@ function detail(): OrderDetailView {
     shippingCents: 0,
     discountCents: 0,
     totalCents: 1999,
+    taxCents: null,
+    pricesIncludeTax: null,
+    shippingTaxRateBps: null,
     currency: 'USD',
     paymentMethod: 'CASH',
     paymentStatus: 'PENDING',
@@ -111,6 +114,9 @@ describe('the order as a plugin reads it', () => {
             priceOverrideReason: 'a favour',
             priceOverriddenBy: 'user-3',
             freeShipping: false,
+            taxTreatment: null,
+            taxRateBps: null,
+            taxCents: null,
             allocations: [{ warehouseId: 'warehouse-1', quantity: 2 }]
           }
         ]
