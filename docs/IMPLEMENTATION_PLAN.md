@@ -1467,7 +1467,12 @@ reads the base of zero-rated expenses and incomes from `finance_transactions` (`
 index for its order; the filter by account (three columns) has none until the volume asks for it (4B.9 measures). (h) The permission of a transaction is
 the caller's in the store of `X-Store-Id` and the ledger is the organization's (`TDD_18 §9.1`): a store in the body is a dimension and is not compared with
 the permissions of that store, by design. (i) A trigger of the table that fires (a race, a bug) surfaces as the error it is, not typed: the service answers
-every rule first. Review of 4B.4a (rule 12): the generic `POST finance/entries/:id/reverse` now refuses the entry of a transaction
+every rule first. (j) The trigger ties a header to its entry by type, source, total and date, not by the entry's lines (accounts and sides per kind, the tax line): the service is the only writer and the
+entry is the record of the money; a line-level check is for the reconciliation of 4B.8. (k) Voiding is not keyed: a retry after a lost answer is `409`
+(`TRANSACTION_ALREADY_VOIDED`) and the screen reads the transaction (4B.9). (l) The accounts and the rate a request names are read, not locked, like every
+post of the ledger: a chart change in the same instant ends in the database's typed refusals or in its trigger. The header of an expense whose tax is not
+creditable stores `tax_cents = 0` (the entry books it whole to the category).
+Review of 4B.4a (rule 12): the generic `POST finance/entries/:id/reverse` now refuses the entry of a transaction
 (`FinanceConflicts.ENTRY_OWNED_BY_TRANSACTION`), because it would leave the transaction looking live and skip its kind's permission and audit row.
 
 ### Step 4B.5 — Suppliers and purchase orders (api)

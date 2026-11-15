@@ -15,7 +15,7 @@ import {
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 
-import { day } from '../builders/finance'
+import { day, postTestEntry } from '../builders/finance'
 import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
@@ -225,7 +225,8 @@ describe('The expenses, incomes and transfers registered by hand (Step 4B.4)', (
     it('books the whole amount to the category when the tax is not creditable', async () => {
       const body = await registered(expense({ taxRateId: vatId, taxCreditable: false }))
 
-      expect(body.taxCents).toBe(1300)
+      // What the entry books as tax is nothing: the header says the same
+      expect(body.taxCents).toBe(0)
       expect(await linesOf(body.entryId)).toEqual([
         [SERVICES, 11_300, 0],
         [CASH, 0, 11_300]
@@ -485,6 +486,13 @@ describe('The expenses, incomes and transfers registered by hand (Step 4B.4)', (
       )
 
       expect(responses.filter(response => response.status === CREATED)).toHaveLength(1)
+      // The others are the typed refusal, never a 500 of a unique violation or a deadlock
+      for (const response of responses.filter(each => each.status !== CREATED)) {
+        expect(response.status).toBe(CONFLICT)
+        expect(errorOf(response).metadata?.conflict).toBe(
+          FinanceConflicts.TRANSACTION_ALREADY_VOIDED
+        )
+      }
       expect(await owner.journalEntry.count({ where: { reversesEntryId: body.entryId } })).toBe(1)
     })
 
@@ -584,6 +592,41 @@ describe('The expenses, incomes and transfers registered by hand (Step 4B.4)', (
       expect(second.status).toBe(CREATED)
       expect((second.body as TransactionBody).id).toBe((first.body as TransactionBody).id)
       expect(await journalCount(ctx.orgA.id)).toBe(before)
+    })
+
+    it('voids and replaces once when several changes of the same transaction arrive at once', async () => {
+      const body = await registered(expense({ amountCents: 1500 }))
+      const url = ApiRoutes.finance.transactions.replace(body.id)
+      const responses = await Promise.all(
+        [1, 2, 3].map(() =>
+          asAdminA()
+            .post(url)
+            .send({ reason: 'Race', replacement: expense({ amountCents: 1600 }) })
+        )
+      )
+
+      expect(responses.filter(response => response.status === CREATED)).toHaveLength(1)
+      for (const response of responses.filter(each => each.status !== CREATED)) {
+        expect(response.status).toBe(CONFLICT)
+      }
+      expect(await owner.journalEntry.count({ where: { reversesEntryId: body.entryId } })).toBe(1)
+      expect(
+        await owner.financeTransaction.count({ where: { replacesTransactionId: body.id } })
+      ).toBe(1)
+    })
+
+    it('voids once when a change and a plain void of the same transaction arrive at once', async () => {
+      const body = await registered(expense({ amountCents: 1700 }))
+      const responses = await Promise.all([
+        asAdminA()
+          .post(ApiRoutes.finance.transactions.replace(body.id))
+          .send({ reason: 'Change', replacement: expense({ amountCents: 1800 }) }),
+        asAdminA().post(ApiRoutes.finance.transactions.void(body.id)).send({ reason: 'Void' })
+      ])
+
+      expect(responses.filter(response => response.status === CREATED)).toHaveLength(1)
+      expect(responses.filter(response => response.status === CONFLICT)).toHaveLength(1)
+      expect(await owner.journalEntry.count({ where: { reversesEntryId: body.entryId } })).toBe(1)
     })
 
     it('refuses a replacement key that belongs to another transaction', async () => {
@@ -900,44 +943,111 @@ describe('The expenses, incomes and transfers registered by hand (Step 4B.4)', (
   })
 
   describe('the database, whoever writes', () => {
-    const insertRow = async (extra: Record<string, unknown>) => {
-      const posted = await registered(expense({ amountCents: 91 }))
-      return owner.financeTransaction.create({
-        data: {
+    // A header with ITS OWN entry (the entry of the same type, source, total and date), so that what a case trips on is the rule it
+    // names and not the entry that does not fit
+    async function ownEntryFor(kind: string, id: string, cents: number): Promise<string> {
+      const period = await owner.fiscalPeriod.findFirstOrThrow({
+        where: {
           organizationId: ctx.orgA.id,
-          kind: 'expense',
-          occurredOn: day(TODAY),
-          amountCents: 91,
-          fromAccountId: accounts[CASH] ?? '',
-          categoryAccountId: accounts[SERVICES] ?? '',
-          clientKey: key(),
-          entryId: posted.entryId,
-          createdBy: ctx.adminA.id,
-          ...extra
+          startsOn: { lte: day(TODAY) },
+          endsOn: { gte: day(TODAY) }
         }
+      })
+      const entry = await postTestEntry(owner, {
+        organizationId: ctx.orgA.id,
+        periodId: period.id,
+        entryDate: TODAY,
+        type: kind as JournalEntryType,
+        sourceType: 'finance_transaction',
+        sourceId: id,
+        lines: [
+          { accountId: accounts[SERVICES] ?? '', debitCents: cents },
+          { accountId: accounts[CASH] ?? '', creditCents: cents }
+        ]
+      })
+      return entry.id
+    }
+    const rowData = async (extra: Record<string, unknown> = {}) => {
+      const id = randomUUID()
+      const kind = (extra['kind'] as string | undefined) ?? 'expense'
+      const amountCents = (extra['amountCents'] as number | undefined) ?? 91
+      return {
+        id,
+        organizationId: ctx.orgA.id,
+        kind,
+        occurredOn: day(TODAY),
+        amountCents,
+        fromAccountId: accounts[CASH] ?? '',
+        categoryAccountId: accounts[SERVICES] ?? '',
+        clientKey: key(),
+        entryId: await ownEntryFor(kind, id, Math.max(amountCents, 1)),
+        createdBy: ctx.adminA.id,
+        ...extra
+      }
+    }
+    const insertRow = async (extra: Record<string, unknown> = {}) =>
+      owner.financeTransaction.create({ data: await rowData(extra) })
+    // The CHECKs alone: the trigger is switched off inside a transaction that is rolled back, so the CHECK is what refuses
+    async function insertWithoutTrigger(extra: Record<string, unknown>): Promise<void> {
+      const data = await rowData(extra)
+      // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+      await owner.$transaction(async tx => {
+        await tx.$executeRawUnsafe(
+          'ALTER TABLE finance_transactions DISABLE TRIGGER trg_finance_transactions_check'
+        )
+        await tx.financeTransaction.create({ data })
       })
     }
 
-    it('refuses a row that breaks the shape of its kind or names an account it may not', async () => {
-      const bad: Record<string, unknown>[] = [
-        { amountCents: 0 },
-        { kind: 'transfer' },
-        { toAccountId: accounts[BANK] ?? '' },
-        { fromAccountId: null },
-        { taxCents: 5 },
-        { taxCreditable: true },
-        { clientKey: '' }
+    it('holds the shape of each kind with CHECKs, whatever the trigger says', async () => {
+      const cases: [string, Record<string, unknown>][] = [
+        ['amount', { amountCents: 0 }],
+        ['shape', { kind: 'transfer' }],
+        ['shape', { toAccountId: accounts[BANK] ?? '' }],
+        ['shape', { fromAccountId: null }],
+        ['tax', { taxCents: 91 }],
+        ['tax_rate', { taxCents: 5 }],
+        ['creditable', { taxCreditable: true }],
+        ['client_key', { clientKey: '' }],
+        ['kind', { kind: 'sale' }]
       ]
-      for (const extra of bad) await expect(insertRow(extra)).rejects.toThrow()
+      for (const [name, extra] of cases) {
+        await expect(insertWithoutTrigger(extra)).rejects.toThrow(
+          new RegExp(`chk_finance_transactions_${name}|check constraint`, 'i')
+        )
+      }
+    })
+
+    it('names only cash accounts as the money, and a category of the type of its kind', async () => {
+      await expect(insertRow({ fromAccountId: accounts[INVENTORY] ?? '' })).rejects.toThrow(
+        /FINANCE_TRANSACTION_ACCOUNT/
+      )
+      await expect(insertRow({ categoryAccountId: accounts[OTHER_INCOME] ?? '' })).rejects.toThrow(
+        /FINANCE_TRANSACTION_ACCOUNT/
+      )
+      await expect(
+        insertRow({
+          toAccountId: accounts[INVENTORY] ?? '',
+          kind: 'income',
+          fromAccountId: null,
+          categoryAccountId: accounts[OTHER_INCOME] ?? ''
+        })
+      ).rejects.toThrow(/FINANCE_TRANSACTION_ACCOUNT/)
+      // A valid row of the same helper is accepted: what is refused above is the account, not the helper
+      await expect(insertRow()).resolves.toBeDefined()
     })
 
     it('refuses an entry that is not the one the transaction posts', async () => {
       const other = await registered(expense({ amountCents: 92 }))
 
-      // The entry of another transaction: the source, and the amount, are not this row's
+      // The entry of another transaction: the source of the entry is not this row
       await expect(insertRow({ entryId: other.entryId })).rejects.toThrow(
         /FINANCE_TRANSACTION_ENTRY/
       )
+      // An entry of another amount
+      await expect(
+        owner.financeTransaction.create({ data: { ...(await rowData()), amountCents: 92 } })
+      ).rejects.toThrow(/FINANCE_TRANSACTION_ENTRY/)
     })
 
     it('is born live, and replaces only a voided transaction of its own kind', async () => {
@@ -953,6 +1063,13 @@ describe('The expenses, incomes and transfers registered by hand (Step 4B.4)', (
       await expect(insertRow({ replacesTransactionId: live.id })).rejects.toThrow(
         /FINANCE_TRANSACTION_ENTRY/
       )
+      const moved = await registered(transfer())
+      await asAdminA().post(ApiRoutes.finance.transactions.void(moved.id)).send({ reason: 'Gone' })
+      await expect(insertRow({ replacesTransactionId: moved.id })).rejects.toThrow(
+        /FINANCE_TRANSACTION_ENTRY/
+      )
+      // What a voided transaction of its own kind replaces is accepted
+      await expect(insertRow({ replacesTransactionId: other.id })).resolves.toBeDefined()
     })
 
     it('never changes or deletes a transaction, the owner of the table included', async () => {

@@ -45,7 +45,7 @@ import type {
   ReplaceTransactionBody,
   VoidTransactionBody
 } from './finance.schemas'
-import { dayDate, lockChart, requireTransactionPermission } from './finance.support'
+import { dayDate, lockScope, requireTransactionPermission } from './finance.support'
 import {
   TRANSACTION_SELECT,
   type TransactionPage,
@@ -231,7 +231,7 @@ export class FinanceTransactionsService {
     organizationId: string,
     clientKey: string
   ): Promise<void> {
-    await lockChart(tx, `${organizationId}:transaction:${clientKey}`)
+    await lockScope(tx, `${organizationId}:transaction:${clientKey}`)
   }
 
   private byClientKey(
@@ -320,7 +320,10 @@ export class FinanceTransactionsService {
         toAccountId: draft.toAccountId,
         categoryAccountId: draft.categoryAccountId,
         taxRateId: draft.taxRate?.id ?? null,
-        taxCents,
+        // What the entry books AS tax: an expense whose tax is not creditable books it whole to its category, so the header says 0
+        // (the journal and the header agree to the cent; the report of the base reads the amount)
+        taxCents:
+          draft.kind === FinanceTransactionKind.EXPENSE && !draft.taxCreditable ? 0 : taxCents,
         taxCreditable: draft.taxCreditable,
         documentNumber: body.documentNumber ?? null,
         memo,

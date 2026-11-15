@@ -42,8 +42,14 @@ export const lockedAccount = (
 // The chart, the maps and the payment accounts of an organization change one request at a time: a count that holds a limit,
 // a cycle that two moves could make together and the code that two accounts could both take are decided under this lock
 export async function lockChart(tx: PrismaTransaction, organizationId: string): Promise<void> {
+  await lockScope(tx, `${organizationId}:finance_chart`)
+}
+
+// A named lock until the transaction ends: the requests that name the same scope take turns (the key of a request, the chart of an
+// organization), the others do not wait
+export async function lockScope(tx: PrismaTransaction, scope: string): Promise<void> {
   await tx.$queryRaw`
-    SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${`${organizationId}:finance_chart`}, 0))) AS lock`
+    SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${scope}, 0))) AS lock`
 }
 
 // The unique index of the code is what holds when two requests ask for the same code at the same moment
