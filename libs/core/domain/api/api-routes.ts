@@ -345,7 +345,7 @@ export const ApiRoutes = {
     // Settings → Plugins: every widget of the store with whether the agents see it (GET), and show or hide one (PUT)
     settings: '/plugin-widgets/settings',
     visibility: (installationId: string, widgetId: string) =>
-      `/plugin-widgets/settings/${installationId}/${widgetId}`
+      `/plugin-widgets/settings/${installationId}/widget/${widgetId}`
   },
 
   channels: {

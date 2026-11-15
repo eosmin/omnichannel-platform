@@ -11,7 +11,7 @@ import {
   PluginWidgetQuery,
   PluginWidgetTimings
 } from '@platform/core/domain'
-import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
+import { ClientErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 
 // The page side of a plugin widget (TDD_10 §7). The frame is a document of another origin: it gets one port, over
 // which it hears the session and asks for what it needs, and it never gets the API key or a token in its url.
@@ -67,10 +67,13 @@ export function widgetFrameUrl(base: string, widgetId: string, conversationId: s
 // What a frame is told when its request did not return data: a code it can act on, never the api's own text
 export function failureOf(error: unknown): PluginBridgeFailure {
   if (!(error instanceof ApiError)) return PluginBridgeFailures.FAILED
-  if (error.code === ErrorCodes.PLUGIN_WIDGET_SESSION_INVALID) {
+  if (error.code === ClientErrorCodes.PLUGIN_WIDGET_SESSION_INVALID) {
     return PluginBridgeFailures.SESSION_INVALID
   }
-  if (error.code === ErrorCodes.PLUGIN_SCOPE_DENIED || error.status === HttpStatusCodes.FORBIDDEN) {
+  if (
+    error.code === ClientErrorCodes.PLUGIN_SCOPE_DENIED ||
+    error.status === HttpStatusCodes.FORBIDDEN
+  ) {
     return PluginBridgeFailures.SCOPE_DENIED
   }
   if (error.status === HttpStatusCodes.TOO_MANY_REQUESTS) return PluginBridgeFailures.RATE_LIMITED
