@@ -143,6 +143,8 @@ describe('the order as a plugin reads it', () => {
           ...pluginDetailView(detail()),
           customerId: 'customer-1',
           carrierConnectionId: 'carrier-1',
+          priceApprovalStatus: 'not_required',
+          priceModified: false,
           customer: { id: 'customer-1', name: 'Ana', isCaution: true }
         }
       ],
