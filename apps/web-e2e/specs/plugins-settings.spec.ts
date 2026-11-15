@@ -61,18 +61,20 @@ test.describe('Settings → Plugins', () => {
       .filter({ hasText: pluginName })
 
   test('registers a plugin by its manifest, and the list shows it', async () => {
-    await page.getByRole('button', { name: SCREEN.register.action }).click()
-    const dialog = page.getByRole('dialog', { name: SCREEN.register.title })
+    await page.getByRole('button', { name: SCREEN.register.action, exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: SCREEN.register.title, exact: true })
     await expect(dialog).toBeVisible()
     await expectDialogHoldsItsContent(page, dialog)
 
     // Not JSON: said at once, nothing is sent
-    await dialog.getByLabel(SCREEN.register.manifest).fill('not json')
-    await dialog.getByRole('button', { name: SCREEN.register.submit }).click()
+    await dialog.getByLabel(SCREEN.register.manifest, { exact: true }).fill('not json')
+    await dialog.getByRole('button', { name: SCREEN.register.submit, exact: true }).click()
     await expect(dialog.getByRole('alert')).toHaveText(SCREEN.register.notJson)
 
-    await dialog.getByLabel(SCREEN.register.manifest).fill(JSON.stringify(manifest))
-    await dialog.getByRole('button', { name: SCREEN.register.submit }).click()
+    await dialog
+      .getByLabel(SCREEN.register.manifest, { exact: true })
+      .fill(JSON.stringify(manifest))
+    await dialog.getByRole('button', { name: SCREEN.register.submit, exact: true }).click()
     await expect(dialog).toBeHidden()
     await expect(row()).toBeVisible()
     await expect(
@@ -85,20 +87,24 @@ test.describe('Settings → Plugins', () => {
       .getByRole('button', { name: new RegExp(`^${SCREEN.install.action}`) })
       .click()
     const consent = page.getByRole('dialog', {
-      name: SCREEN.consent.title.replace('{name}', pluginName)
+      name: SCREEN.consent.title.replace('{name}', pluginName),
+      exact: true
     })
     await expect(consent).toBeVisible()
     // What it asks for, in the words of the store
-    await expect(consent.getByText(SCREEN.scopes['orders:read'])).toBeVisible()
-    await expect(consent.getByText(SCREEN.scopes['messages:write'])).toBeVisible()
+    await expect(consent.getByText(SCREEN.scopes['orders:read'], { exact: true })).toBeVisible()
+    await expect(consent.getByText(SCREEN.scopes['messages:write'], { exact: true })).toBeVisible()
     await expectDialogHoldsItsContent(page, consent)
 
-    await consent.getByRole('button', { name: SCREEN.consent.authorize }).click()
+    await consent.getByRole('button', { name: SCREEN.consent.authorize, exact: true }).click()
     const code = page.getByTestId('plugin-setup-code')
     await expect(code).toBeVisible()
     await expect(code).toHaveText(/^[A-Za-z0-9_-]{43}$/)
     await expectDialogHoldsItsContent(page, page.getByRole('dialog'))
-    await page.getByRole('button', { name: en.common.close }).click()
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: en.common.close, exact: true })
+      .click()
     await expect(code).toBeHidden()
 
     // The installation waits for its plugin
@@ -109,12 +115,15 @@ test.describe('Settings → Plugins', () => {
     await row()
       .getByRole('button', { name: new RegExp(`^${SCREEN.detail.action}`) })
       .click()
-    const detail = page.getByRole('dialog', { name: pluginName })
+    const detail = page.getByRole('dialog', { name: pluginName, exact: true })
     await expect(detail).toBeVisible()
-    await expect(detail.getByText(SCREEN.detail.status.pending_setup)).toBeVisible()
-    await expect(detail.getByText(SCREEN.scopes['orders:read'])).toBeVisible()
-    await expect(detail.getByText(SCREEN.scopes['messages:write'])).toBeVisible()
-    await expect(detail.getByRole('button', { name: SCREEN.detail.newCode })).toBeVisible()
+    // The state is the value of its own row: the label of another row can read the same word (a revoked one has a date of revocation)
+    await expect(detail.getByTestId('plugin-status')).toHaveText(SCREEN.detail.status.pending_setup)
+    await expect(detail.getByText(SCREEN.scopes['orders:read'], { exact: true })).toBeVisible()
+    await expect(detail.getByText(SCREEN.scopes['messages:write'], { exact: true })).toBeVisible()
+    await expect(
+      detail.getByRole('button', { name: SCREEN.detail.newCode, exact: true })
+    ).toBeVisible()
     // The setup code of the earlier dialog is not on this one
     await expect(detail.getByText(/[A-Za-z0-9_-]{43}/)).toHaveCount(0)
     await expectDialogHoldsItsContent(page, detail)
@@ -129,13 +138,15 @@ test.describe('Settings → Plugins', () => {
     const dialog = page.getByRole('alertdialog')
     await expect(dialog).toBeVisible()
     await expect(dialog).toContainText(SCREEN.revoke.title.replace('{name}', pluginName))
-    const confirm = dialog.getByRole('button', { name: SCREEN.revoke.confirm })
+    const confirm = dialog.getByRole('button', { name: SCREEN.revoke.confirm, exact: true })
     await expect(confirm).toBeDisabled()
     await expectDialogHoldsItsContent(page, dialog)
 
-    await dialog.getByLabel(CONFIRM.phraseLabel).fill(PLUGIN_REVOKE_CONFIRMATION.toLowerCase())
+    await dialog
+      .getByLabel(CONFIRM.phraseLabel, { exact: true })
+      .fill(PLUGIN_REVOKE_CONFIRMATION.toLowerCase())
     await expect(confirm).toBeDisabled()
-    await dialog.getByLabel(CONFIRM.phraseLabel).fill(PLUGIN_REVOKE_CONFIRMATION)
+    await dialog.getByLabel(CONFIRM.phraseLabel, { exact: true }).fill(PLUGIN_REVOKE_CONFIRMATION)
     await expect(confirm).toBeEnabled()
     await confirm.click()
 
@@ -149,8 +160,10 @@ test.describe('Settings → Plugins', () => {
     await row()
       .getByRole('button', { name: new RegExp(`^${SCREEN.detail.action}`) })
       .click()
-    const detail = page.getByRole('dialog', { name: pluginName })
-    await expect(detail.getByText(SCREEN.detail.status.revoked)).toBeVisible()
-    await expect(detail.getByRole('button', { name: SCREEN.detail.newCode })).toHaveCount(0)
+    const detail = page.getByRole('dialog', { name: pluginName, exact: true })
+    await expect(detail.getByTestId('plugin-status')).toHaveText(SCREEN.detail.status.revoked)
+    await expect(
+      detail.getByRole('button', { name: SCREEN.detail.newCode, exact: true })
+    ).toHaveCount(0)
   })
 })

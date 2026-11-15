@@ -115,7 +115,7 @@ export function PluginDetailDialog({
                 <p>{t('neverInstalled')}</p>
               ) : (
                 <dl className="grid grid-cols-1 gap-2">
-                  <Row label={t('status.label')}>
+                  <Row label={t('status.label')} testId="plugin-status">
                     {t(`status.${installation.status}` as Parameters<typeof t>[0])}
                   </Row>
                   <Row label={t('installedAt')}>{day(installation.installedAt)}</Row>
@@ -232,11 +232,21 @@ export function PluginDetailDialog({
   )
 }
 
-function Row({ label, children }: { label: string; children: React.ReactNode }): ReactElement {
+function Row({
+  label,
+  testId,
+  children
+}: {
+  label: string
+  testId?: string
+  children: React.ReactNode
+}): ReactElement {
   return (
     <div className="flex flex-col gap-0.5 sm:flex-row sm:gap-3">
       <dt className="text-muted-foreground sm:w-40 sm:shrink-0">{label}</dt>
-      <dd className="min-w-0">{children}</dd>
+      <dd data-testid={testId} className="min-w-0">
+        {children}
+      </dd>
     </div>
   )
 }
