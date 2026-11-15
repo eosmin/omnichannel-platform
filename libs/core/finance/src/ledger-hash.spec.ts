@@ -9,6 +9,9 @@ import {
 const base = (number: bigint, prevHash: string | null): HashableEntry => ({
   number,
   entryDate: '2026-11-15',
+  periodId: 'p1',
+  totalCents: 100,
+  currency: 'USD',
   type: 'expense',
   sourceType: null,
   sourceId: null,
@@ -21,6 +24,7 @@ const base = (number: bigint, prevHash: string | null): HashableEntry => ({
   prevHash,
   lines: [
     {
+      lineNo: 1,
       accountId: 'a',
       debitCents: 100,
       creditCents: 0,
@@ -31,6 +35,7 @@ const base = (number: bigint, prevHash: string | null): HashableEntry => ({
       memo: null
     },
     {
+      lineNo: 2,
       accountId: 'b',
       debitCents: 0,
       creditCents: 100,
@@ -68,10 +73,10 @@ describe('hashEntry', () => {
   it('is pinned: the canonical form and the digest never change under an existing chain', () => {
     // If this fails the canonical form changed: every chain already written would break. Bump LEDGER_HASH_VERSION instead.
     expect(canonicalEntry(base(1n, null))).toBe(
-      '=v1||=1|=2026-11-15|=expense|||||=k1||=user|=u1|=a,=100,=0,,,,,|=b,=0,=100,=s,=supplier,=p,,'
+      '=v1||=1|=2026-11-15|=p1|=100|=USD|=expense|||||=k1||=user|=u1|=1,=a,=100,=0,,,,,|=2,=b,=0,=100,=s,=supplier,=p,,'
     )
     expect(hashEntry(base(1n, null))).toBe(
-      'b7cba0f08c050c9498bff0084f562582acebad8f10bb4cfcbef0a9b8f4c9e835'
+      '931f02f6fce826974754758b893795596f9557d7c1fc80b948ebc78e3d141e28'
     )
   })
 
@@ -80,6 +85,13 @@ describe('hashEntry', () => {
     const variants: HashableEntry[] = [
       { ...base(1n, null), number: 2n },
       { ...base(1n, null), entryDate: '2026-11-16' },
+      { ...base(1n, null), periodId: 'p2' },
+      { ...base(1n, null), totalCents: 101 },
+      { ...base(1n, null), currency: 'COP' },
+      {
+        ...base(1n, null),
+        lines: base(1n, null).lines.map(line => ({ ...line, lineNo: line.lineNo + 1 }))
+      },
       { ...base(1n, null), type: 'income' },
       { ...base(1n, null), sourceType: 'order' },
       { ...base(1n, null), sourceId: 'x' },

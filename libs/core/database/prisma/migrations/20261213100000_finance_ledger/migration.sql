@@ -200,8 +200,6 @@ CREATE UNIQUE INDEX "journal_entries_organization_id_reverses_entry_id_key" ON "
 CREATE INDEX "journal_lines_organization_id_account_id_idx" ON "journal_lines"("organization_id", "account_id");
 
 -- CreateIndex
-CREATE INDEX "journal_lines_entry_id_idx" ON "journal_lines"("entry_id");
-
 -- CreateIndex
 CREATE INDEX "journal_lines_store_id_idx" ON "journal_lines"("store_id");
 
@@ -412,7 +410,9 @@ BEGIN
     RAISE EXCEPTION 'the date of the entry is not in the period it names';
   END IF;
   -- The lock of the books (TDD_18 §5.2): the status of the period and the last day of the last closed one agree
-  IF period.status <> 'open' OR (settings.locked_through IS NOT NULL AND NEW.entry_date <= settings.locked_through) THEN
+  -- ... and it is read from the periods themselves too, so a period closed with a plain UPDATE locks everything up to its last day
+  IF period.status <> 'open' OR (settings.locked_through IS NOT NULL AND NEW.entry_date <= settings.locked_through)
+     OR EXISTS (SELECT 1 FROM fiscal_periods c WHERE c.organization_id = NEW.organization_id AND c.status = 'closed' AND c.ends_on >= NEW.entry_date) THEN
     RAISE EXCEPTION 'FINANCE_PERIOD_CLOSED: the period of the entry is closed';
   END IF;
   IF NEW.entry_date < settings.accounting_start_date THEN
@@ -609,13 +609,18 @@ BEGIN
   IF OLD.status = 'closed' THEN
     IF NEW.status = 'closed' THEN
       IF NEW.closing_hash IS DISTINCT FROM OLD.closing_hash OR NEW.closed_at IS DISTINCT FROM OLD.closed_at
-         OR NEW.closed_by IS DISTINCT FROM OLD.closed_by THEN
+         OR NEW.closed_by IS DISTINCT FROM OLD.closed_by OR NEW.reopened_at IS DISTINCT FROM OLD.reopened_at
+         OR NEW.reopened_by IS DISTINCT FROM OLD.reopened_by OR NEW.reopen_reason IS DISTINCT FROM OLD.reopen_reason THEN
         RAISE EXCEPTION 'FINANCE_PERIOD_CLOSED: a closed period is frozen';
       END IF;
     -- A reopen is a new one: the time moves (the record of an earlier reopen does not do)
     ELSIF NEW.reopened_at IS NULL OR NEW.reopened_at IS NOT DISTINCT FROM OLD.reopened_at OR NEW.reopened_by IS NULL
           OR NEW.reopen_reason IS NULL OR btrim(NEW.reopen_reason) = '' THEN
-      RAISE EXCEPTION 'FINANCE_REOPEN_NOT_LATEST: reopening a period says who, when and why';
+      RAISE EXCEPTION 'reopening a period says who, when and why';
+    ELSIF NEW.closing_hash IS DISTINCT FROM OLD.closing_hash OR NEW.closed_at IS DISTINCT FROM OLD.closed_at
+          OR NEW.closed_by IS DISTINCT FROM OLD.closed_by THEN
+      -- The record of the close stays as it was, so the audit trail keeps what was closed and by whom
+      RAISE EXCEPTION 'FINANCE_PERIOD_CLOSED: the record of the close is kept when a period is reopened';
     END IF;
   END IF;
   RETURN NEW;

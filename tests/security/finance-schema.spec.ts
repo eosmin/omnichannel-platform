@@ -8,9 +8,11 @@ import {
   FinanceSourceType,
   JournalEntryType,
   NormalSide,
-  PeriodStatus
+  PartyType,
+  PeriodStatus,
+  SaleRecognition
 } from '@platform/core/domain'
-import { type ChainEntry, verifyChain } from '@platform/core/finance'
+import { type ChainEntry, verifyChain } from '@platform/core/finance-hash'
 
 import {
   createFinanceFixture,
@@ -312,6 +314,23 @@ describe('The tables of the ledger', () => {
       }
     })
 
+    it('locks every day up to the end of a closed period, even when the lock was not moved', async () => {
+      const org = await owner.organization.create({
+        data: { name: `${prefix}-lk`, slug: `${prefix}-lk` }
+      })
+      const f = await createFinanceFixture(owner, org.id)
+      const october = await createPeriod(owner, org.id, 2026, 10)
+      // November is closed with a plain update of its status: the lock of the settings stays where it was
+      await owner.fiscalPeriod.update({
+        where: { id: f.periodId },
+        data: { status: PeriodStatus.CLOSED, closedAt: new Date(), closedBy: 'u' }
+      })
+      await refused(
+        postTestEntry(owner, simpleEntry(f, 5, { periodId: october, entryDate: '2026-10-20' })),
+        'FINANCE_PERIOD_CLOSED'
+      )
+    })
+
     it('moves the lock only to the end of the last closed period', async () => {
       const change = (lockedThrough: Date | null) =>
         owner.financeSettings.update({
@@ -371,11 +390,38 @@ describe('The tables of the ledger', () => {
           }
         })
       ).resolves.toMatchObject({ status: PeriodStatus.OPEN })
-      // A reopen is a new one: the record of the earlier reopen does not stand for the next
+      // The record of the reopen of a closed period is frozen too, and a reopen keeps the record of the close
+      await owner.fiscalPeriod.update({
+        where: { id: closed },
+        data: {
+          status: PeriodStatus.OPEN,
+          reopenedAt: new Date(),
+          reopenedBy: 'u2',
+          reopenReason: 'again'
+        }
+      })
       await owner.fiscalPeriod.update({
         where: { id: closed },
         data: { status: PeriodStatus.CLOSED, closedAt: new Date(), closedBy: 'u' }
       })
+      await refused(
+        owner.fiscalPeriod.update({ where: { id: closed }, data: { reopenReason: 'rewritten' } }),
+        'a closed period is frozen'
+      )
+      await refused(
+        owner.fiscalPeriod.update({
+          where: { id: closed },
+          data: {
+            status: PeriodStatus.OPEN,
+            reopenedAt: new Date(),
+            reopenedBy: 'u3',
+            reopenReason: 'x',
+            closedBy: null
+          }
+        }),
+        'the record of the close is kept'
+      )
+      // A reopen is a new one: the record of the earlier reopen does not stand for the next
       await refused(
         owner.fiscalPeriod.update({ where: { id: closed }, data: { status: PeriodStatus.OPEN } }),
         'says who, when and why'
@@ -399,9 +445,14 @@ describe('The tables of the ledger', () => {
     })
 
     it('does not take a date before the day the books start', async () => {
-      const early = await createPeriod(owner, orgA.id, 2025, 12)
+      // An organization with no closed period: a closed one locks every day up to its end, which would answer first
+      const org = await owner.organization.create({
+        data: { name: `${prefix}-st`, slug: `${prefix}-st` }
+      })
+      const f = await createFinanceFixture(owner, org.id)
+      const early = await createPeriod(owner, org.id, 2025, 12)
       await refused(
-        postTestEntry(owner, simpleEntry(a, 5, { periodId: early, entryDate: '2025-12-15' })),
+        postTestEntry(owner, simpleEntry(f, 5, { periodId: early, entryDate: '2025-12-15' })),
         'FINANCE_BEFORE_START_DATE'
       )
     })
@@ -629,6 +680,9 @@ describe('The tables of the ledger', () => {
         id: row.id,
         number: row.number,
         entryDate: row.entryDate.toISOString().slice(0, 10),
+        periodId: row.periodId,
+        totalCents: row.totalCents,
+        currency: row.currency,
         type: row.type,
         sourceType: row.sourceType,
         sourceId: row.sourceId,
@@ -1038,7 +1092,11 @@ describe('The tables of the ledger', () => {
       ['chk_journal_entries_origin', EntryOrigin],
       ['chk_journal_entries_type', JournalEntryType],
       ['chk_journal_entries_source_type', FinanceSourceType],
-      ['chk_account_role_mappings_role', AccountRole]
+      ['chk_account_role_mappings_role', AccountRole],
+      ['chk_ledger_accounts_cash_kind', CashKind],
+      ['chk_journal_lines_party', PartyType],
+      ['chk_finance_settings_recognize', SaleRecognition],
+      ['chk_finance_posting_failures_source_type', FinanceSourceType]
     ])('hold exactly the values of the enum in %s', async (constraint, values) => {
       expect(await listedIn(constraint)).toEqual(Object.values(values).sort())
     })

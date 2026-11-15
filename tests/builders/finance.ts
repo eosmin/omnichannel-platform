@@ -9,7 +9,8 @@ import {
   NormalSide,
   PeriodStatus
 } from '@platform/core/domain'
-import { hashEntry, normalSideOf } from '@platform/core/finance'
+import { normalSideOf } from '@platform/core/finance'
+import { hashEntry } from '@platform/core/finance-hash'
 
 // The books of a test organization, written as the owner of the database. The posting service of Step 4B.2 (PR b) is the
 // only writer of the ledger in the application; these builders are the test's own hands, so they take the same lock and
@@ -158,11 +159,16 @@ export async function postTestEntry(owner: OwnerClient, entry: TestEntry): Promi
       if (head === undefined) throw new Error('no finance settings for the organization')
       const number = entry.override?.number ?? head.next
       const prevHash = entry.override?.prevHash === undefined ? head.hash : entry.override.prevHash
+      const summed = lines.reduce((sum, line) => sum + line.debitCents, 0)
+      const totalCents = entry.override?.totalCents ?? Math.max(summed, 1)
       const hash =
         entry.override?.hash ??
         hashEntry({
           number,
           entryDate,
+          periodId: entry.periodId,
+          totalCents,
+          currency: 'USD',
           type,
           sourceType: entry.sourceType ?? null,
           sourceId: entry.sourceId ?? null,
@@ -175,8 +181,6 @@ export async function postTestEntry(owner: OwnerClient, entry: TestEntry): Promi
           prevHash,
           lines
         })
-      const summed = lines.reduce((sum, line) => sum + line.debitCents, 0)
-      const totalCents = entry.override?.totalCents ?? Math.max(summed, 1)
       const created = await tx.journalEntry.create({
         data: {
           organizationId: entry.organizationId,

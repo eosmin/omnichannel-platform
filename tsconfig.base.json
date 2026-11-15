@@ -66,6 +66,7 @@
       "@platform/core/event-bus": ["libs/core/event-bus/src/index.ts"],
       "@platform/core/inventory": ["libs/core/inventory/src/index.ts"],
       "@platform/core/finance": ["libs/core/finance/src/index.ts"],
+      "@platform/core/finance-hash": ["libs/core/finance/src/hash.ts"],
       "@platform/core/shipping": ["libs/core/shipping/src/index.ts"],
       "@platform/core/messaging": ["libs/core/messaging/src/index.ts"],
       "@platform/core/logger": ["libs/core/logger/src/index.ts"],

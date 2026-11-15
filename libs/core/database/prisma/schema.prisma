@@ -2356,7 +2356,6 @@ model JournalLine {
 
   @@unique([entryId, lineNo])
   @@index([organizationId, accountId])
-  @@index([entryId])
   @@index([storeId])
   @@map("journal_lines")
 }

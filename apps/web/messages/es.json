@@ -589,7 +589,7 @@
     "FINANCE_ACCOUNT_NOT_POSTABLE": "Esta cuenta solo agrupa otras cuentas: elige una que acepte asientos",
     "FINANCE_ACCOUNT_INACTIVE": "Esta cuenta está inactiva",
     "FINANCE_ACCOUNT_TYPE_LOCKED": "El tipo de una cuenta con asientos no se puede cambiar",
-    "FINANCE_ACCOUNT_HAS_ENTRIES": "Una cuenta con asientos no se puede eliminar, solo desactivar",
+    "FINANCE_ACCOUNT_HAS_ENTRIES": "Una cuenta con asientos no se puede eliminar ni volver encabezado, solo desactivar",
     "FINANCE_ROLE_NOT_MAPPED": "Falta una cuenta para este rol: asígnala en los ajustes de finanzas",
     "FINANCE_BEFORE_START_DATE": "La fecha es anterior al inicio de la contabilidad",
     "FINANCE_ENTRY_ALREADY_REVERSED": "Este asiento ya fue reversado",

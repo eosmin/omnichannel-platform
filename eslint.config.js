@@ -388,6 +388,7 @@ export default defineConfig([
         conversationStatusBan,
         prismaTransactionBan,
         ...inventoryWriteBans,
+        ...financeWriteBans,
         ...shippingStateBans,
         ...orderPriceApprovalBans,
         ...httpStatusBans

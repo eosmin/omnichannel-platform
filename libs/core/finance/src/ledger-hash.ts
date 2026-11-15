@@ -11,6 +11,7 @@ import { LedgerHash } from '@platform/core/domain'
 export const LEDGER_HASH_VERSION = 'v1'
 
 export interface HashableLine {
+  lineNo: number
   accountId: string
   debitCents: number
   creditCents: number
@@ -25,13 +26,17 @@ export interface HashableEntry {
   number: bigint
   // 'YYYY-MM-DD'
   entryDate: string
+  // The period the entry sits in and the total it carries: moving an entry to another period or changing its total is detected
+  periodId: string
+  totalCents: number
+  currency: string
   type: string
   sourceType: string | null
   sourceId: string | null
   // 'YYYY-MM-DD' or null: when the source event really happened
   sourceDate: string | null
   reversesEntryId: string | null
-  // Covered too, with the memos, the tax rate of a line and the source date: a figure or an attribution edited behind the
+  // Covered too, with the memos, the tax rate of a line, the source date, the period, the total and the number of each line: a figure or an attribution edited behind the
   // application is detected, which TDD_18 §11 does not ask for and costs nothing (decision of Step 4B.2)
   idempotencyKey: string
   memo: string | null
@@ -51,6 +56,7 @@ const escaped = (value: string | number | bigint | null): string =>
 export function canonicalEntry(entry: HashableEntry): string {
   const lines = entry.lines.map(line =>
     [
+      line.lineNo,
       line.accountId,
       line.debitCents,
       line.creditCents,
@@ -70,6 +76,9 @@ export function canonicalEntry(entry: HashableEntry): string {
       entry.prevHash,
       entry.number,
       entry.entryDate,
+      entry.periodId,
+      entry.totalCents,
+      entry.currency,
       entry.type,
       entry.sourceType,
       entry.sourceId,
