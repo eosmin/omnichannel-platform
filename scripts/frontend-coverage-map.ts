@@ -109,6 +109,8 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'finance.taxRates.byId': { step: '4B.9' },
   'finance.taxRates.deactivate': { step: '4B.9' },
   'finance.taxRates.reactivate': { step: '4B.9' },
+  'finance.reports.vat': { step: '4B.9' },
+  'finance.reports.vatCsv': { step: '4B.9' },
   'finance.storeTaxSettings': { step: '4B.9' },
   'finance.paymentAccounts.list': { step: '4B.9' },
   'finance.paymentAccounts.set': { step: '4B.9' },

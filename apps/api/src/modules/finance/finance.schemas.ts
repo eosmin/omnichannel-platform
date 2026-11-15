@@ -118,6 +118,17 @@ export const updateStoreTaxSettingsSchema = z
   .strictObject({ pricesIncludeTax: z.boolean().optional() })
   .refine(body => Object.values(body).some(value => value !== undefined), nothingToChange)
 
+// A range of days of the report, both ends included: at most a year, so one request is one bounded read
+export const vatReportQuerySchema = z
+  .strictObject({ from: day, to: day })
+  .refine(range => range.from <= range.to, { message: 'from is after to' })
+  .refine(
+    range =>
+      (Date.parse(`${range.to}T00:00:00Z`) - Date.parse(`${range.from}T00:00:00Z`)) / 86_400_000 <
+      FinanceLimits.VAT_REPORT_MAX_DAYS,
+    { message: `the range is longer than ${String(FinanceLimits.VAT_REPORT_MAX_DAYS)} days` }
+  )
+
 export const roleParamSchema = z.enum(AccountRole)
 
 export const mapRoleSchema = z.strictObject({ accountId: z.uuid() })
@@ -254,3 +265,4 @@ export type RecordTransactionBody = z.infer<typeof recordTransactionSchema>
 export type VoidTransactionBody = z.infer<typeof voidTransactionSchema>
 export type ReplaceTransactionBody = z.infer<typeof replaceTransactionSchema>
 export type ListTransactionsQuery = z.infer<typeof listTransactionsQuerySchema>
+export type VatReportQuery = z.infer<typeof vatReportQuerySchema>

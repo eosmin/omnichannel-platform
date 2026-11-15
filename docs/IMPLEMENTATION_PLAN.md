@@ -1383,15 +1383,31 @@ report. Never stacked: 4B.3b starts from `main` after 4B.3a is merged.
       the tax treatment and rate on the product routes (needs `finance:manage_accounts`), the SV template seeds the rate; audit rows
 - [x] Tests: `tests/api/finance-tax.spec.ts`, the `taxRate` case of `tests/security/tenant-isolation.spec.ts`, the maps
 **PR 4B.3b (orders, report)**
-- [ ] `OrdersService` snapshots `taxCents`, `pricesIncludeTax`, `shippingTaxRateBps` and the item treatment, rate and tax at creation (and on a
-      replacement order), so a later rate change never rewrites a posted sale; the order total includes the tax when the store's prices exclude it;
-      an organization with no books keeps `null` and the old arithmetic; a taxed product with no rate and no default refuses the order
-      (`FINANCE_TAX_RATE_NOT_CONFIGURED`)
-- [ ] The tax fields on the order routes (`libs/api-client` types); old orders keep `null` and are taxed at posting
-- [ ] The VAT report data (output from the order snapshots, input from the journal, balance by period and rate) as an endpoint and a CSV; the
-      legal books layout waits for the accountant (debt (b) of 4B.1)
-- [ ] Tests: the order total in both modes with a discount and shipping, exempt and not-subject products, the snapshot is stable after a rate
-      change, the report adds up to the orders of a period
+- [x] `OrdersService` snapshots `taxCents`, `pricesIncludeTax`, `shippingTaxRateBps` and the item treatment, rate and tax at creation, on an edit that moves the
+      price, and on the replacement order of an exchange, so a later rate change never rewrites a posted sale; the order total includes the tax when the
+      store's prices exclude it; an organization with no books keeps `null` and the old arithmetic; a taxed product with no rate and no default refuses the
+      order (`FINANCE_TAX_RATE_NOT_CONFIGURED`)
+- [x] The tax fields on the order detail (`libs/api-client` types); old orders keep `null` and are taxed at posting
+- [x] The VAT report data (output from the order snapshots by the day the sale is recognized in its store's time zone, input from the journal's `VAT_INPUT`
+      lines, balance by month and rate) as `GET /finance/reports/vat` and `GET /finance/reports/vat.csv`; the legal books layout waits for the accountant
+      (debt (b) of 4B.1)
+- [x] Tests: `tests/api/finance-tax-orders.spec.ts` (22 cases: both price modes with a discount and shipping, exempt and not subject, the same total in both
+      modes, a product's own rate, no default rate, the snapshot after a change of rate, rounding and price mode, an edit that adds a line, an order made before
+      the columns, the exchange replacement, the report adding up to the orders of the period, the time zone, the input side, the CSV, the permissions and
+      isolation), unit specs of the rules
+**Decisions of PR 4B.3b (rule 12):** (1) an edit that moves the price recomputes the tax of the order with the rate each kept line was made at, the price mode the
+order was made in, the rate of an unchanged shipping fee, and today's rounding; a line the edit adds takes today's rate (rejected: freezing every line's
+tax cents, which the share of a changed discount makes impossible); (2) an order made before the tax columns is never given a snapshot by an edit (its
+total stays the price alone); (3) the report reads the sale day in the store's time zone from `deliveredAt` (or `shippedAt` when `recognizeSaleOn` is `shipped`),
+excludes cancelled orders and counts the orders with no snapshot apart (`ordersWithoutTaxSnapshot`) without estimating them; (4) the output base is
+rebuilt from the order (the discount share is deterministic, `allocateByWeight`), not stored, so net + tax of the lines adds up to what the customer paid;
+(5) the CSV is served by the report route itself (`FINANCE_VIEW`, the cells through the shared CSV writer) and not through `GENERATE_EXPORT`, because it holds
+no customer data (rejected: the audited export job, which is the journal's); (6) the preference is written only by `PreferencesService` (the contract of the
+cache writers), called by the tax settings route.
+**Debts of PR 4B.3b (tracked where they are closed):** (a) the VAT of returns and of refunds (E8) is not in the report: 4B.6 posts it and the report then reads
+it, until then a returned order counts as a sale; (b) the report is a read of orders and lines for a range of at most 366 days, in pages of 500: if it is slow at
+the owner's volume, 4B.8 moves it to a table kept by the posting (`TDD_18 §10`); (c) the CSV moves to `GENERATE_EXPORT` with `FINANCE_EXPORTED` audit in 4B.8,
+which owns the exports; (d) the order screens of the web draw the tax in 4B.9 (the types are in `libs/api-client`).
 **Decisions of PR 4B.3a (rule 12):** (1) the tax of a line is computed on the line after its share of the discount (largest remainder, by gross
 amount), and the order tax is the sum of the lines and of the shipping fee, so the order, the entry and the document agree to the cent; a stray
 cent therefore does not arise in the order, and `ROUNDING` stays for what a remittance or a carrier rounds otherwise (4B.6) (rejected: the tax of the
@@ -1412,7 +1428,7 @@ form is Step 4B.9's (the product form does not send them); a person with `produc
 there, which 4B.9 settles; (b) the VAT of returns (E8) is posted and reported by 4B.6, which owns the return entries: 4B.3b's report counts
 the sales and says so; (c) the sales book layout, the exempt categories, whether the shipping fee carries VAT, the withholdings and the
 perceptions stay **[ACCOUNTANT]** (`TDD_18 §13` rows 2 and 4): configurable here, owner's pending; (d) `FINANCE_TAX_RATE_NOT_CONFIGURED` and the
-order fields are 4B.3b's; (e) `assertMayWriteTax` refuses a product request that names the tax fields even with the value the product has,
+order fields were 4B.3b's (done); (e) `assertMayWriteTax` refuses a product request that names the tax fields even with the value the product has,
 so a client that echoes the whole product needs `finance:manage_accounts`: the web form of 4B.9 sends them only when they change; the preferences column is written only by `PreferencesService` (the contract `cache-writers`), which the tax settings route calls.
 **Owner decision (2026-11-15, recorded here by 4B.3a):** `TDD_18` is approved as written. Payroll is a separate module, **Milestone 4C** (not
 scheduled in this plan yet; `TDD_18 §14` already keeps it out of 4B); until it exists, salaries enter the books as one manual entry per month
@@ -2387,8 +2403,8 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | **Milestone 4B: Finance** | | | | |
 | 4B.1 | Finance design (TDD_18, no code) | in progress | written and delivered with the first code PR that follows; owner approval of `TDD_18` pending | |
 | 4B.2 | Ledger core (accounts, immutable journal, periods, permissions) | done | PR a (schema, constants, pure rules, database tests, #509); PR b (posting service, routes, isolation, maps, #513) | 2026-11-15 |
-| 4B.3 | VAT and the tax snapshot | in progress | 4B.3a PR pending; 4B.3b (orders, report) todo | |
-| 4B.4 | Expenses, incomes, transfers and bank reconciliation | in progress | 4B.4a transactions (PR pending); 4B.4b receipts and bank reconciliation todo | |
+| 4B.3 | VAT and the tax snapshot | done | #520 (4B.3a), 4B.3b (this PR) | 2026-11-15 |
+| 4B.4 | Expenses, incomes, transfers and bank reconciliation | in progress | 4B.4a transactions (#527); 4B.4b receipts and bank reconciliation todo | |
 | 4B.5 | Suppliers and purchase orders | todo | | |
 | 4B.6 | The automatic entries (sales, remittances, returns, stock) | todo | | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | todo | | |

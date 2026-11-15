@@ -816,3 +816,59 @@ describe('payments recorded by hand', () => {
     expect(change({ orderStatus: OrderStatus.CONFIRMED })).toEqual({ ok: true })
   })
 })
+
+describe('computeOrderTotals with the tax a price does not include (TDD_18 §7)', () => {
+  const lines = [{ unitPriceCents: 1000, quantity: 3, freeShipping: false }]
+
+  it('adds the tax to the total, and not to the subtotal', () => {
+    expect(
+      computeOrderTotals({ lines, shippingCents: 500, discountCents: 100, addedTaxCents: 442 })
+    ).toEqual({
+      ok: true,
+      subtotalCents: 3000,
+      shippingCents: 500,
+      discountCents: 100,
+      totalCents: 3842
+    })
+  })
+
+  it('totals as before without it, and refuses a tax that is not whole cents or takes the total above the ceiling', () => {
+    expect(computeOrderTotals({ lines, shippingCents: 0, discountCents: 0 })).toMatchObject({
+      ok: true,
+      totalCents: 3000
+    })
+    expect(
+      computeOrderTotals({ lines, shippingCents: 0, discountCents: 0, addedTaxCents: 1.5 })
+    ).toMatchObject({ ok: false })
+    expect(
+      computeOrderTotals({
+        lines,
+        shippingCents: 0,
+        discountCents: 0,
+        addedTaxCents: ORDER_MAX_AMOUNT_CENTS
+      })
+    ).toMatchObject({ ok: false, code: ErrorCodes.ORDER_TOTAL_OUT_OF_RANGE })
+  })
+
+  it('refuses a negative tax, and takes a total that reaches the ceiling and not one cent more', () => {
+    expect(
+      computeOrderTotals({ lines, shippingCents: 0, discountCents: 0, addedTaxCents: -100 })
+    ).toMatchObject({ ok: false })
+    expect(
+      computeOrderTotals({
+        lines,
+        shippingCents: 0,
+        discountCents: 0,
+        addedTaxCents: ORDER_MAX_AMOUNT_CENTS - 3000
+      })
+    ).toMatchObject({ ok: true, totalCents: ORDER_MAX_AMOUNT_CENTS })
+    expect(
+      computeOrderTotals({
+        lines,
+        shippingCents: 0,
+        discountCents: 0,
+        addedTaxCents: ORDER_MAX_AMOUNT_CENTS - 3000 + 1
+      })
+    ).toMatchObject({ ok: false, code: ErrorCodes.ORDER_TOTAL_OUT_OF_RANGE })
+  })
+})

@@ -45,6 +45,7 @@ import {
   scheduledDeliveryShortcutRange,
   shouldWarnWarehouseOfPackingNote,
   startOfCalendarDayIn,
+  type TaxTreatment,
   type CreateOrderInput,
   type ReplacementOrderBody,
   type UpdateOrderInput
@@ -73,6 +74,13 @@ import {
   resolveLines,
   type OrderLine
 } from './orders-pricing'
+import {
+  loadTaxContext,
+  type OrderTaxSnapshot,
+  planTax,
+  snapshotTax,
+  taxColumnsOf
+} from './orders-tax'
 import { type ListOrdersQuery, encodeOrderCursor } from './orders.schemas'
 import {
   actorRef,
@@ -451,12 +459,16 @@ export class OrdersService {
         where: { id: storeId },
         select: { currency: true, settings: { select: { preferences: true } } }
       })
+      // How the books tax a sale today: an order made now fixes it (TDD_18 §7); an organization with no books has none
+      const taxContext = await loadTaxContext(tx, storeId)
       const { lines, priceChanged } = await resolveLines(tx, storeId, body.items, {
         userId: actor.userId,
-        canOverridePrice
+        canOverridePrice,
+        tax: taxContext
       })
       const planned = await planCarrier(tx, storeId, body.carrierConnectionId, true)
-      const { totals, freeShipping, control } = priceOrder({
+      const { totals, tax, freeShipping, control } = priceOrder({
+        taxPlan: planTax(taxContext),
         feeBounds: planned.bounds,
         lines,
         shippingCents: body.shippingCents,
@@ -490,6 +502,7 @@ export class OrdersService {
           shippingCents: totals.shippingCents,
           discountCents: totals.discountCents,
           totalCents: totals.totalCents,
+          ...taxColumnsOf(tax),
           carrierConnectionId: planned.connectionId,
           currency: store.currency,
           paymentMethod: body.paymentMethod,
@@ -521,7 +534,7 @@ export class OrdersService {
         },
         select: { id: true, orderNumber: true }
       })
-      const itemIds = await this.writeLines(tx, order.id, lines)
+      const itemIds = await this.writeLines(tx, order.id, lines, tax)
       await this.stock.allocateAndReserve(tx, {
         storeId,
         orderId: order.id,
@@ -629,14 +642,18 @@ export class OrdersService {
       where: { id: storeId },
       select: { currency: true, settings: { select: { preferences: true } } }
     })
+    const taxContext = await loadTaxContext(tx, storeId)
     const { lines } = await resolveLines(tx, storeId, body.items, {
       userId: actor.userId,
-      canOverridePrice: false
+      canOverridePrice: false,
+      tax: taxContext
     })
     const planned = await planCarrier(tx, storeId, body.carrierConnectionId, true)
     // The fee and the free-shipping rule are judged as in any order, with no discount (the credit is the system's). The replacement
     // is born CONFIRMED, so a fee that would wait for an approval is refused: an exchange is no way round the range of the carrier
+    // Only the fee and the free-shipping rule are judged here, so no tax: the tax is computed once, below, on what the credit leaves
     const { freeShipping, control } = priceOrder({
+      taxPlan: null,
       feeBounds: planned.bounds,
       lines,
       shippingCents: body.shippingCents,
@@ -661,10 +678,22 @@ export class OrdersService {
       subtotalCents: gross.subtotalCents,
       creditCents: input.creditCents
     })
+    // The credit is a discount (and the system's, so no price control): the tax is computed on what is left of the lines, as in any
+    // order, and a price that excludes the tax adds it to the total
+    const taxPlan = planTax(taxContext)
+    const tax =
+      taxPlan === null
+        ? null
+        : snapshotTax(taxPlan, {
+            lines,
+            discountCents,
+            shippingCents: body.shippingCents
+          })
     const totals = computeOrderTotals({
       lines,
       shippingCents: body.shippingCents,
-      discountCents
+      discountCents,
+      addedTaxCents: tax?.addedToTotalCents ?? 0
     })
     if (!totals.ok) throw orderRefusal(totals.code)
     const now = new Date()
@@ -678,6 +707,7 @@ export class OrdersService {
         shippingCents: totals.shippingCents,
         discountCents: totals.discountCents,
         totalCents: totals.totalCents,
+        ...taxColumnsOf(tax),
         carrierConnectionId: planned.connectionId,
         currency: store.currency,
         paymentMethod: body.paymentMethod,
@@ -701,7 +731,7 @@ export class OrdersService {
       },
       select: { id: true, orderNumber: true }
     })
-    const itemIds = await this.writeLines(tx, order.id, lines)
+    const itemIds = await this.writeLines(tx, order.id, lines, tax)
     await this.stock.allocateAndReserve(tx, {
       storeId,
       orderId: order.id,
@@ -833,6 +863,8 @@ export class OrdersService {
       let newTotalCents = order.totalCents
       let newCarrierConnectionId = order.carrierConnectionId
       let lines: OrderLine[] | null = null
+      // The tax of the order priced again, when it carries one: the items follow it (written with the lines, or one by one)
+      let tax: OrderTaxSnapshot | null = null
       let overridden = false
       let becamePending = false
       let withdrewRequest = false
@@ -851,14 +883,34 @@ export class OrdersService {
           priceOverrideReason: item.priceOverrideReason,
           priceOverriddenBy: item.priceOverriddenBy,
           freeShipping: item.freeShipping,
-          trackInventory: true
+          trackInventory: true,
+          taxTreatment: item.taxTreatment as TaxTreatment | null,
+          taxRateBps: item.taxRateBps
         }))
+        // An order made before the tax columns carries none and is priced as it always was; one that carries a snapshot keeps the
+        // price mode it was made in, and the rate its lines were made at (a line this edit adds takes today's). Its tax is computed
+        // again only when what the tax is made from moved (the lines, the discount or the fee): an edit of a note, a reason or the
+        // carrier leaves the tax, and so the total the customer was quoted, exactly as it was
+        const taxInputsMoved =
+          body.items !== undefined ||
+          (body.discountCents ?? order.discountCents) !== order.discountCents ||
+          (body.shippingCents ?? order.shippingCents) !== order.shippingCents
+        const taxContext =
+          order.pricesIncludeTax === null || !taxInputsMoved
+            ? null
+            : await loadTaxContext(tx, storeId)
+        if (order.pricesIncludeTax !== null && taxInputsMoved && taxContext === null) {
+          throw orderRefusal(ErrorCodes.FINANCE_SETUP_REQUIRED)
+        }
+        // What the stored tax adds to the total, which an edit that leaves the tax alone keeps
+        const keptTaxCents = order.pricesIncludeTax === false ? (order.taxCents ?? 0) : 0
         let priceChanged = false
         if (body.items !== undefined) {
           const resolved = await resolveLines(tx, storeId, body.items, {
             userId: actor.userId,
             canOverridePrice,
-            existing: current
+            existing: current,
+            tax: taxContext
           })
           // A line the edit did not touch (same product, variant and units) keeps the warehouses it had, when they can still
           // serve it: an edit of another line must not move this one's stock
@@ -915,6 +967,15 @@ export class OrdersService {
           false
         )
         const pricing = priceOrder({
+          taxPlan:
+            taxContext === null || order.pricesIncludeTax === null
+              ? null
+              : planTax(taxContext, {
+                  includesTax: order.pricesIncludeTax,
+                  // A fee that did not change keeps the rate it was taxed at
+                  shippingRateBps:
+                    shippingCents === order.shippingCents ? order.shippingTaxRateBps : 'current'
+                }),
           feeBounds: planned.bounds,
           lines: lines ?? current,
           shippingCents,
@@ -953,7 +1014,10 @@ export class OrdersService {
           before === PriceApprovalStatus.PENDING &&
           priceTouched
         discountChanged = discountCents !== order.discountCents && discountCents > 0
-        newTotalCents = pricing.totals.totalCents
+        // The total of an order whose tax was left alone is its price priced again plus the tax it already had
+        const totalCents = pricing.totals.totalCents + (taxContext === null ? keptTaxCents : 0)
+        newTotalCents = totalCents
+        tax = pricing.tax
         if (carrierChanged) newCarrierConnectionId = planned.connectionId
         const next = pricing.control.approvalStatus
         becamePending =
@@ -962,7 +1026,8 @@ export class OrdersService {
           subtotalCents: pricing.totals.subtotalCents,
           shippingCents: pricing.totals.shippingCents,
           discountCents: pricing.totals.discountCents,
-          totalCents: pricing.totals.totalCents,
+          totalCents,
+          ...taxColumnsOf(pricing.tax),
           freeShipping: pricing.freeShipping,
           discountReason: normalizeNote(discountReason),
           priceApprovalStatus: next,
@@ -986,13 +1051,28 @@ export class OrdersService {
         await lockStoreScope(tx, storeId, OrderLockScopes.ALLOCATION)
         await this.stock.release(tx, storeId, orderId, actor.userId)
         await tx.orderItem.deleteMany({ where: { orderId, order: { storeId } } })
-        const itemIds = await this.writeLines(tx, orderId, lines)
+        const itemIds = await this.writeLines(tx, orderId, lines, tax)
         await this.stock.allocateAndReserve(tx, {
           storeId,
           orderId,
           lines: toAllocatable(lines, itemIds),
           createdBy: actor.userId
         })
+      } else if (tax !== null) {
+        // The price moved but the lines did not: the share of the discount and the fee changed, so the tax of each line is written
+        // again where the line stays (its stock is not touched)
+        for (const [index, item] of order.items.entries()) {
+          const lineTax = tax.lines[index]
+          if (lineTax === undefined || lineTax.taxCents === item.taxCents) continue
+          await tx.orderItem.update({
+            where: { id: item.id },
+            data: {
+              taxTreatment: lineTax.taxTreatment,
+              taxRateBps: lineTax.taxRateBps,
+              taxCents: lineTax.taxCents
+            }
+          })
+        }
       }
 
       if (body.shippingAddress !== undefined) {
@@ -1139,7 +1219,8 @@ export class OrdersService {
   private async writeLines(
     tx: PrismaTransaction,
     orderId: string,
-    lines: readonly OrderLine[]
+    lines: readonly OrderLine[],
+    tax: OrderTaxSnapshot | null
   ): Promise<string[]> {
     // The ids are made here so that the lines go in one statement and the allocations can name them
     const ids = lines.map(() => randomUUID())
@@ -1156,7 +1237,15 @@ export class OrdersService {
         originalUnitPriceCents: line.originalUnitPriceCents,
         priceOverrideReason: line.priceOverrideReason,
         priceOverriddenBy: line.priceOverriddenBy,
-        freeShipping: line.freeShipping
+        freeShipping: line.freeShipping,
+        // The tax of the line, as the order was priced (all three or none: the database holds them together)
+        ...(tax === null
+          ? {}
+          : {
+              taxTreatment: tax.lines[index]?.taxTreatment ?? null,
+              taxRateBps: tax.lines[index]?.taxRateBps ?? null,
+              taxCents: tax.lines[index]?.taxCents ?? null
+            })
       }))
     })
     return ids

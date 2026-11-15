@@ -13,6 +13,7 @@ import { FinanceStoreTaxSettingsService } from './finance-store-tax-settings.ser
 import { FinanceTaxRatesService } from './finance-tax-rates.service'
 import { FinanceTransactionsController } from './finance-transactions.controller'
 import { FinanceTransactionsService } from './finance-transactions.service'
+import { FinanceVatReportService } from './finance-vat-report.service'
 import { FinanceController } from './finance.controller'
 
 // The routes of the books of the organization: setup, chart, maps, periods, journal, balances. The one that writes the journal
@@ -28,7 +29,8 @@ import { FinanceController } from './finance.controller'
     FinanceEntriesService,
     FinanceTaxRatesService,
     FinanceStoreTaxSettingsService,
-    FinanceTransactionsService
+    FinanceTransactionsService,
+    FinanceVatReportService
   ],
   exports: [LedgerModule]
 })
