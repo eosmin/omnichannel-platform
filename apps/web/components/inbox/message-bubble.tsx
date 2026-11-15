@@ -15,6 +15,7 @@ import { reactionsOfMessage } from '../../lib/inbox/file-targets'
 import { mentionSegments } from '../../lib/inbox/mention-segments'
 import { hasAnyAction, type MessageActions, sideActionsOf } from '../../lib/inbox/message-actions'
 import { messageTimeOptions } from '../../lib/inbox/message-time'
+import { deleterPluginOf, editorPluginOf, pluginAuthorshipOf } from '../../lib/inbox/plugin-author'
 import { drawsWithoutBubble } from '../../lib/inbox/sticker-bubble'
 import {
   deliveryTicksOf,
@@ -35,6 +36,7 @@ import { LocationCard } from './location-card'
 import { MessageActionsBar } from './message-actions-bar'
 import { MessageMedia, PendingMedia } from './message-media'
 import { OrderLine } from './order-line'
+import { PluginAuthorLine, PluginChangeLabel } from './plugin-author-line'
 import { QuotedMessage } from './quoted-message'
 import { ReactionChips } from './reaction-chips'
 import { SharedLink } from './shared-link'
@@ -159,6 +161,8 @@ function Bubble({
   const awaitingFiles = useAwaitingFiles(message)
   const bubbleless = drawsWithoutBubble(message, kind, awaitingFiles)
   const author = authorLabel(message.authorType, message.authorId)
+  const authorship = pluginAuthorshipOf(message)
+  const editorPlugin = editorPluginOf(message)
   const ticks = deliveryTicksOf(message)
   const time = format.dateTime(new Date(message.createdAt), messageTimeOptions(locale))
   const reason = (code: string | null): string | null => (code === null ? null : codeText(code))
@@ -210,7 +214,11 @@ function Bubble({
               className="size-5 text-[10px]"
             />
           ) : null}
-          <span className="font-medium">{author}</span>
+          {authorship === null ? (
+            <span className="font-medium">{author}</span>
+          ) : (
+            <PluginAuthorLine authorship={authorship} fallbackName={author} />
+          )}
         </p>
       ) : null}
       <div
@@ -263,11 +271,15 @@ function Bubble({
           <p className="text-muted-foreground flex items-center justify-end gap-1.5 text-xs">
             {message.editedAt === null ? null : (
               <span>
-                {isNote && message.editedById !== null
-                  ? t('editedBy', {
-                      name: authorLabel(message.editedByType ?? '', message.editedById)
-                    })
-                  : t('edited')}
+                {editorPlugin !== null ? (
+                  <PluginChangeLabel pluginId={editorPlugin} messageKey="editedByPlugin" />
+                ) : isNote && message.editedById !== null ? (
+                  t('editedBy', {
+                    name: authorLabel(message.editedByType ?? '', message.editedById)
+                  })
+                ) : (
+                  t('edited')
+                )}
               </span>
             )}
             <time dateTime={message.createdAt}>{time}</time>
@@ -343,15 +355,20 @@ function Content({
   }
 }): ReactElement | null {
   const t = useTranslations('inbox.thread')
+  const deleterPlugin = deleterPluginOf(message)
   if (kind === 'deleted') {
     const who =
-      message.deletedByType === String(AuthorType.CUSTOMER)
-        ? t('deletedByCustomer')
-        : message.deletedByType === String(AuthorType.AGENT)
-          ? t('deletedByAgent', { name: authorLabel(AuthorType.AGENT, message.deletedById) })
-          : message.deletedByType === String(AuthorType.EXTERNAL)
-            ? t('deletedByOwner')
-            : t('deletedGeneric')
+      deleterPlugin !== null ? (
+        <PluginChangeLabel pluginId={deleterPlugin} messageKey="deletedByPlugin" />
+      ) : message.deletedByType === String(AuthorType.CUSTOMER) ? (
+        t('deletedByCustomer')
+      ) : message.deletedByType === String(AuthorType.AGENT) ? (
+        t('deletedByAgent', { name: authorLabel(AuthorType.AGENT, message.deletedById) })
+      ) : message.deletedByType === String(AuthorType.EXTERNAL) ? (
+        t('deletedByOwner')
+      ) : (
+        t('deletedGeneric')
+      )
     return <p className="text-muted-foreground italic">{who}</p>
   }
   // The text of a location is its name and address joined, which the card already shows

@@ -75,6 +75,8 @@ const movementSchema = z.object({
   reservedAfter: z.number().int(),
   unitCostCents: z.number().int().nullable().optional(),
   createdBy: z.string().nullable(),
+  // The plugin that made it (then `createdBy` is null)
+  createdByPluginId: z.string().nullable(),
   createdAt: z.string()
 })
 export type StockMovementView = z.output<typeof movementSchema>

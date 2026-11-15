@@ -121,6 +121,8 @@ export enum InventoryReferenceType {
   TRANSFER = 'transfer',
   COUNT = 'count',
   RETURN = 'return',
+  // Goods received against a purchase order (TDD_18 §4.2 E10): the id is the receipt
+  PURCHASE_RECEIPT = 'purchase_receipt',
   MANUAL = 'manual'
 }
 

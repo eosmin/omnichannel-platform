@@ -245,6 +245,35 @@ export const ApiRoutes = {
     postings: '/finance/postings'
   },
 
+  // Suppliers and what is owed to them (TDD_18 §2.7, §12): organization-scoped like the books they post to. A route is a leaf of
+  // its own (the same path with another verb is another leaf), because each one is mapped to the step that draws it.
+  suppliers: {
+    list: '/suppliers',
+    create: '/suppliers',
+    byId: (id: string) => `/suppliers/${id}`,
+    update: (id: string) => `/suppliers/${id}`,
+    // The accounts payable: every bill with something open, with its due date, and the total per supplier
+    payables: '/suppliers/payables',
+    balance: (id: string) => `/suppliers/${id}/balance`,
+    payments: (id: string) => `/suppliers/${id}/payments`,
+    recordPayment: (id: string) => `/suppliers/${id}/payments`
+  },
+  supplierPayments: {
+    void: (id: string) => `/supplier-payments/${id}/void`
+  },
+  purchaseOrders: {
+    list: '/purchase-orders',
+    create: '/purchase-orders',
+    byId: (id: string) => `/purchase-orders/${id}`,
+    update: (id: string) => `/purchase-orders/${id}`,
+    order: (id: string) => `/purchase-orders/${id}/order`,
+    receive: (id: string) => `/purchase-orders/${id}/receive`,
+    close: (id: string) => `/purchase-orders/${id}/close`,
+    cancel: (id: string) => `/purchase-orders/${id}/cancel`,
+    payments: (id: string) => `/purchase-orders/${id}/payments`,
+    recordPayment: (id: string) => `/purchase-orders/${id}/payments`
+  },
+
   // Shipping (TDD_17 §6)
   carriers: {
     list: '/carriers',
@@ -613,11 +642,14 @@ export const PluginApiRoutes = {
   // Step 5.6 PR E3a: the store preferences and the return rules, read only
   settings: {
     preferences: '/plugin-api/settings/preferences',
-    returns: '/plugin-api/settings/returns'
+    returns: '/plugin-api/settings/returns',
+    // Step 5.6 PR E4a-2: the tag catalog of the store
+    tags: '/plugin-api/settings/tags',
+    tagById: (id: string) => `/plugin-api/settings/tags/${id}`
   },
 
   // Step 5.6 PR E4a: the catalog and the stock, over the same services as `ApiRoutes.products`, `.inventory` and `.warehouses`. The
-  // adjustment of stock stores the id of the person who made it and waits for the plugin actor (PR E4a-2).
+  // adjustment of stock (PR E4a-2) is recorded with the plugin actor of PR M1c.
   products: {
     list: '/plugin-api/products',
     create: '/plugin-api/products',
@@ -637,7 +669,8 @@ export const PluginApiRoutes = {
     levels: '/plugin-api/inventory/levels',
     summary: '/plugin-api/inventory/summary',
     movements: '/plugin-api/inventory/movements',
-    kardex: '/plugin-api/inventory/kardex'
+    kardex: '/plugin-api/inventory/kardex',
+    adjustments: '/plugin-api/inventory/adjustments'
   },
   // Step 5.6 PR E4b and E4b-2: the transfers between warehouses and the physical counts, over the same services as
   // `ApiRoutes.transfers` and `.counts`. The change of a draft transfer is the PATCH of `byId`, the lines of a count the PATCH of
@@ -662,6 +695,23 @@ export const PluginApiRoutes = {
     apply: (id: string) => `/plugin-api/counts/${id}/apply`,
     cancel: (id: string) => `/plugin-api/counts/${id}/cancel`
   },
+  // Step 5.6 PR E6: the reads of the returns (and of the batches of the scanner that receives them) and of the remittances of
+  // cash collected on delivery, over the same services as `ApiRoutes.returns` and `.remittances`. Their writes store the id of a
+  // person, move stock or move money, and wait for PR E6-2 and the plugin actor.
+  returns: {
+    list: '/plugin-api/returns',
+    byId: (id: string) => `/plugin-api/returns/${id}`,
+    reception: {
+      batches: '/plugin-api/returns/reception/batches',
+      batchById: (id: string) => `/plugin-api/returns/reception/batches/${id}`
+    }
+  },
+  remittances: {
+    list: '/plugin-api/remittances',
+    pending: '/plugin-api/remittances/pending',
+    importProfiles: '/plugin-api/remittances/import-profiles',
+    byId: (id: string) => `/plugin-api/remittances/${id}`
+  },
   // Step 5.6 PR E5: the reads of the shipments, the carrier connections and the pickups, over the same services as
   // `ApiRoutes.shipments`, `.carriers` and `.pickups`. The writes (a guide spends the prepaid balance, a pickup is a promise made
   // to a carrier) and the label link wait for PR E5-2.
@@ -679,6 +729,25 @@ export const PluginApiRoutes = {
   pickups: {
     list: '/plugin-api/pickups',
     manifest: (id: string) => `/plugin-api/pickups/${id}/manifest`
+  },
+
+  // Step 5.6 PR E7: the figures of the store, the exports centre of the key and the files, over the same services as
+  // `ApiRoutes.analytics`, `.exports` and `.media`. Not here, on purpose: the scheduled reports (their recipients are people's
+  // addresses) and the other kinds of export (PR E7-2).
+  analytics: {
+    metrics: '/plugin-api/analytics/metrics',
+    export: '/plugin-api/analytics/export'
+  },
+  exports: {
+    list: '/plugin-api/exports',
+    byId: (id: string) => `/plugin-api/exports/${id}`,
+    download: (id: string) => `/plugin-api/exports/${id}/download`
+  },
+  media: {
+    uploadUrl: '/plugin-api/media/upload-url',
+    confirmUpload: '/plugin-api/media/confirm-upload',
+    byId: (id: string) => `/plugin-api/media/${id}`,
+    downloadAll: '/plugin-api/media/download-all'
   },
 
   // Messages (Step 5.6 PR M1b): a plugin writes a reply or a note, and reads the edits and the kept text of a deleted message

@@ -17,7 +17,7 @@ import { Events } from '@platform/core/events'
 import { type Actor, auditActorOf, auditViaOf } from '../tenancy'
 
 import type { CreateVariantBody, UpdateVariantBody } from './products.schemas'
-import { lockProduct } from './products.support'
+import { auditProductWrite, fieldsSet, lockProduct } from './products.support'
 import { VARIANT_SELECT, type VariantView, variantView } from './products.views'
 
 const nameInUse = () =>
@@ -40,8 +40,13 @@ export class ProductVariantsService {
     private readonly events: DomainEvents
   ) {}
 
-  async create(storeId: string, productId: string, body: CreateVariantBody): Promise<VariantView> {
-    return this.prisma.transaction(async tx => {
+  async create(
+    storeId: string,
+    productId: string,
+    body: CreateVariantBody,
+    actor: Actor
+  ): Promise<VariantView> {
+    const view = await this.prisma.transaction(async tx => {
       const product = await lockProduct(tx, storeId, productId)
       const [count, sameName] = await Promise.all([
         tx.productVariant.count({ where: { productId } }),
@@ -68,8 +73,15 @@ export class ProductVariantsService {
         select: VARIANT_SELECT
       })
       this.events.publish(tx, Events.PRODUCT_UPDATED, { storeId, productId })
-      return variantView(created, product)
+      return { view: variantView(created, product), variantId: created.id }
     })
+    auditProductWrite(this.audit, storeId, actor, {
+      action: AuditAction.PRODUCT_UPDATED,
+      productId,
+      variantId: view.variantId,
+      fields: ['variant', ...fieldsSet(body).map(field => `variant.${field}`)]
+    })
+    return view.view
   }
 
   async update(
@@ -144,6 +156,12 @@ export class ProductVariantsService {
         userAgent: actor.userAgent
       })
     }
+    auditProductWrite(this.audit, storeId, actor, {
+      action: AuditAction.PRODUCT_UPDATED,
+      productId,
+      variantId,
+      fields: fieldsSet(body).map(field => `variant.${field}`)
+    })
     return view
   }
 

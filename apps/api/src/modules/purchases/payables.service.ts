@@ -1,0 +1,175 @@
+import { Injectable } from '@nestjs/common'
+
+import { type PrismaTransaction, PrismaService } from '@platform/core/database'
+import { resourceNotFound } from '@platform/core/errors'
+import { type BillBalance, billBalances, dateToDay } from '@platform/core/finance'
+
+import type { PayablesQuery } from './purchases.schemas'
+import { today } from './purchases.support'
+import type { PayableBillView, PayablesView, SupplierBalanceView } from './purchases.views'
+
+type Reader = Pick<PrismaTransaction, 'purchaseReceipt' | 'supplierPayment'>
+
+// What is owed to the suppliers (TDD_18 §2.7): bills (the receipts) minus the live payments, with the due day of each bill. The
+// open balance of a supplier is exactly bills - payments, however the payments were named: a payment that names no bill is applied to
+// the oldest due first (`billBalances`). Read from the operational rows; the ledger's payable account (party = the supplier) holds the
+// same sums, and the reconciliation of Step 4B.6 compares the two.
+@Injectable()
+export class PayablesService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async payables(organizationId: string, query: PayablesQuery): Promise<PayablesView> {
+    const { bills, suppliers } = await this.compute(
+      this.prisma.client,
+      organizationId,
+      query.supplierId ?? null
+    )
+    return {
+      bills: bills
+        .filter(bill => bill.openCents > 0 && (!query.overdueOnly || bill.overdue))
+        .map(billView),
+      suppliers: suppliers.filter(
+        balance => balance.openCents > 0 || query.supplierId !== undefined
+      )
+    }
+  }
+
+  async balance(organizationId: string, supplierId: string): Promise<SupplierBalanceView> {
+    const supplier = await this.prisma.client.supplier.findFirst({
+      where: { id: supplierId, organizationId },
+      select: { id: true }
+    })
+    if (supplier === null) throw resourceNotFound('supplier')
+    const { suppliers } = await this.compute(this.prisma.client, organizationId, supplierId)
+    return (
+      suppliers[0] ?? { supplierId, billedCents: 0, paidCents: 0, openCents: 0, overdueCents: 0 }
+    )
+  }
+
+  // What the supplier owes at this moment, read inside the transaction that checks a payment against it (the supplier is locked there)
+  async openBalance(
+    db: Reader,
+    organizationId: string,
+    supplierId: string
+  ): Promise<{ supplier: SupplierBalanceView; bills: Bill[] }> {
+    const { bills, suppliers } = await this.compute(db, organizationId, supplierId)
+    return {
+      supplier: suppliers[0] ?? {
+        supplierId,
+        billedCents: 0,
+        paidCents: 0,
+        openCents: 0,
+        overdueCents: 0
+      },
+      bills
+    }
+  }
+
+  private async compute(
+    db: Reader,
+    organizationId: string,
+    supplierId: string | null
+  ): Promise<{ bills: Bill[]; suppliers: SupplierBalanceView[] }> {
+    const [receipts, payments] = await Promise.all([
+      db.purchaseReceipt.findMany({
+        where: { organizationId, ...(supplierId === null ? {} : { supplierId }) },
+        select: {
+          id: true,
+          purchaseOrderId: true,
+          supplierId: true,
+          supplierDocumentNumber: true,
+          receivedOn: true,
+          dueOn: true,
+          totalCents: true
+        }
+      }),
+      db.supplierPayment.groupBy({
+        by: ['supplierId', 'purchaseReceiptId'],
+        where: {
+          organizationId,
+          voidedByEntryId: null,
+          ...(supplierId === null ? {} : { supplierId })
+        },
+        _sum: { amountCents: true }
+      })
+    ])
+    const paidOnBill = new Map<string, number>()
+    const unapplied = new Map<string, number>()
+    const paidBySupplier = new Map<string, number>()
+    for (const group of payments) {
+      const amount = group._sum.amountCents ?? 0
+      paidBySupplier.set(group.supplierId, (paidBySupplier.get(group.supplierId) ?? 0) + amount)
+      if (group.purchaseReceiptId === null) {
+        unapplied.set(group.supplierId, (unapplied.get(group.supplierId) ?? 0) + amount)
+      } else {
+        paidOnBill.set(group.purchaseReceiptId, amount)
+      }
+    }
+    const facts = new Map(receipts.map(receipt => [receipt.id, receipt]))
+    const bills = billBalances(
+      receipts.map(receipt => ({
+        id: receipt.id,
+        supplierId: receipt.supplierId,
+        dueOn: dateToDay(receipt.dueOn),
+        totalCents: receipt.totalCents,
+        paidCents: paidOnBill.get(receipt.id) ?? 0
+      })),
+      unapplied,
+      today()
+    )
+    const balances = new Map<string, SupplierBalanceView>()
+    const touched = new Set([...receipts.map(r => r.supplierId), ...paidBySupplier.keys()])
+    for (const id of touched) {
+      balances.set(id, {
+        supplierId: id,
+        billedCents: 0,
+        paidCents: paidBySupplier.get(id) ?? 0,
+        openCents: 0,
+        overdueCents: 0
+      })
+    }
+    for (const receipt of receipts) {
+      const balance = balances.get(receipt.supplierId)
+      if (balance !== undefined) balance.billedCents += receipt.totalCents
+    }
+    for (const bill of bills) {
+      const balance = balances.get(bill.supplierId)
+      if (balance === undefined) continue
+      balance.openCents += bill.openCents
+      if (bill.overdue) balance.overdueCents += bill.openCents
+    }
+    // `bills` is sorted by due day; keep that order, and add what the list needs of the receipt
+    return {
+      bills: bills.map(bill => {
+        const receipt = facts.get(bill.id)
+        return {
+          ...bill,
+          purchaseOrderId: receipt?.purchaseOrderId ?? '',
+          supplierDocumentNumber: receipt?.supplierDocumentNumber ?? null,
+          receivedOn: receipt === undefined ? '' : dateToDay(receipt.receivedOn)
+        }
+      }),
+      suppliers: [...balances.values()].sort((a, b) => a.supplierId.localeCompare(b.supplierId))
+    }
+  }
+}
+
+interface Bill extends BillBalance {
+  purchaseOrderId: string
+  supplierDocumentNumber: string | null
+  receivedOn: string
+}
+
+function billView(bill: Bill): PayableBillView {
+  return {
+    receiptId: bill.id,
+    purchaseOrderId: bill.purchaseOrderId,
+    supplierId: bill.supplierId,
+    supplierDocumentNumber: bill.supplierDocumentNumber,
+    receivedOn: bill.receivedOn,
+    dueOn: bill.dueOn,
+    totalCents: bill.totalCents,
+    openCents: bill.openCents,
+    overdue: bill.overdue
+  }
+}

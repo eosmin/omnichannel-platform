@@ -25,6 +25,11 @@ const CUSTOMER_MERGE =
 const CUSTOMER_NOTE_AUTHOR =
   'Writing and deleting the notes of a customer: a note keeps its author, a person the profile shows by name, and only the author or CUSTOMERS_DELETE may remove it; a plugin reads the notes (GET) and does not write them until it has an actor to show (Step 5.6 W1)'
 
+const ANALYTICS_DASHBOARD =
+  'No server route of its own: the dashboard is drawn by the web from the metrics, which a plugin reads at /plugin-api/analytics/metrics'
+const ANALYTICS_REPORTS =
+  'The scheduled reports send the figures out by email to addresses of people, and a report keeps who made it: a plugin reads the metrics and asks for a file of them, and the reports wait for an actor that the screen can show (Step 5.6 PR E7-2)'
+
 const SESSION = "A person's own session: a plugin has an API key, not a login"
 const ACCOUNT =
   "A person's own account (their name, picture and preferences): the id comes from their token"
@@ -185,7 +190,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
     scope: ['conversations:read', 'conversations:write'],
     exposed: '/plugin-api/conversations/bulk'
   },
-  'conversations.export': { proposed: ['conversations:read', 'exports:write'], step: STEP },
+  'conversations.export': { scope: ['conversations:read', 'exports:write'] },
   // Seeing a conversation is `conversations:read` for a plugin as for a person, so each message route names it too
   'messages.create': {
     scope: ['conversations:read', 'messages:write'],
@@ -276,7 +281,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
     scope: ['customers:read', 'customers:write'],
     exposed: '/plugin-api/customers/:id/tags/:tagId'
   },
-  'customers.media': { proposed: ['customers:read', 'media:read'], step: STEP },
+  'customers.media': { scope: ['customers:read', 'media:read'] },
   'customers.timeline': {
     scope: 'customers:read',
     exposed: '/plugin-api/customers/:id/timeline'
@@ -285,7 +290,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
     scope: ['customers:read', 'customers:flag-caution'],
     exposed: '/plugin-api/customers/:id/caution'
   },
-  'customers.export': { proposed: ['customers:read', 'exports:write'], step: STEP },
+  'customers.export': { scope: ['customers:read', 'exports:write'] },
 
   // Orders (`orders:*` exist); the messages and templates of an order are a scope of their own
   'orders.list': { scope: 'orders:read', exposed: '/plugin-api/orders' },
@@ -306,7 +311,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   // The lines of an order are edited through the PATCH of the order itself (`items`): there is no route of the people for them either
   'orders.items': { scope: ['orders:read', 'orders:edit'], exposed: '/plugin-api/orders/:id' },
   'orders.print': { none: ORDER_PRINT },
-  'orders.export': { proposed: ['orders:read', 'exports:write'], step: STEP },
+  'orders.export': { scope: ['orders:read', 'exports:write'] },
   'orders.confirm': {
     scope: ['orders:read', 'orders:confirm'],
     exposed: '/plugin-api/orders/:id/confirm'
@@ -427,14 +432,33 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'finance.bank.status': { none: FINANCE },
   'finance.balances': { none: FINANCE },
   'finance.postings': { none: FINANCE },
+  'suppliers.list': { none: FINANCE },
+  'suppliers.create': { none: FINANCE },
+  'suppliers.byId': { none: FINANCE },
+  'suppliers.update': { none: FINANCE },
+  'suppliers.payables': { none: FINANCE },
+  'suppliers.balance': { none: FINANCE },
+  'suppliers.payments': { none: FINANCE },
+  'suppliers.recordPayment': { none: FINANCE },
+  'supplierPayments.void': { none: FINANCE },
+  'purchaseOrders.list': { none: FINANCE },
+  'purchaseOrders.create': { none: FINANCE },
+  'purchaseOrders.byId': { none: FINANCE },
+  'purchaseOrders.update': { none: FINANCE },
+  'purchaseOrders.order': { none: FINANCE },
+  'purchaseOrders.receive': { none: FINANCE },
+  'purchaseOrders.close': { none: FINANCE },
+  'purchaseOrders.cancel': { none: FINANCE },
+  'purchaseOrders.payments': { none: FINANCE },
+  'purchaseOrders.recordPayment': { none: FINANCE },
 
   // Stock (Step 5.6 PR E4a reads it; the transfers and counts are scopes of their own, PR E4b)
   'warehouses.list': {
     scope: 'warehouses:read',
     exposed: '/plugin-api/warehouses'
   },
-  // The writes of a warehouse (create, change) are organization-wide (ORG_MANAGE_WAREHOUSES) and a key is bound to one store: they wait
-  // for PR E4a-2 to decide the reach. The GET of `byId` is exposed
+  // The writes of a warehouse (create, change) are organization-wide (ORG_MANAGE_WAREHOUSES) and a key is bound to one store: PR E4a-2
+  // did NOT expose them, and the decision on their reach is the owner's ("Left by PR E4a-2" (a) in the plan). The GET of `byId` is exposed
   'warehouses.create': { proposed: 'warehouses:write', step: STEP },
   'warehouses.byId': {
     proposed: ['warehouses:read', 'warehouses:write'],
@@ -442,14 +466,17 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
     exposed: '/plugin-api/warehouses/:id'
   },
   // Replacing the store links of a warehouse moves it between stores of the organization, and the key of a plugin is bound to one
-  // store: not exposed until the plugin's reach over other stores is decided (PR E4a-2)
+  // store: not exposed until the owner decides the plugin's reach over other stores ("Left by PR E4a-2" (a) in the plan)
   'warehouses.stores': { proposed: ['warehouses:read', 'warehouses:write'], step: STEP },
   'inventory.levels': { scope: 'inventory:read', exposed: '/plugin-api/inventory/levels' },
   'inventory.summary': { scope: 'inventory:read', exposed: '/plugin-api/inventory/summary' },
   'inventory.movements': { scope: 'inventory:read', exposed: '/plugin-api/inventory/movements' },
   'inventory.kardex': { scope: 'inventory:read', exposed: '/plugin-api/inventory/kardex' },
-  // The movement of an adjustment stores the id of the person who made it (`createdBy`): it waits for the plugin actor (PR E4a-2)
-  'inventory.adjustments': { scope: 'inventory:write' },
+  // The movement of an adjustment records the plugin as its author (`createdByPluginId`, the actor of PR M1c), PR E4a-2
+  'inventory.adjustments': {
+    scope: ['inventory:read', 'inventory:write'],
+    exposed: '/plugin-api/inventory/adjustments'
+  },
   // Transfers and counts (Step 5.6 PR E4b reads, PR E4b-2 writes): a scope of its own each, and a write names its own scope AND the
   // read one. A key is bound to ONE store, so it reads the lines of its store and the transfers and counts that have one (a key of a
   // sibling store, or of another organization, gets a 404), and WRITES only a transfer whose every line is of its store (409
@@ -563,9 +590,18 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
     scope: ['pickups:read', 'customers:read', 'shipments:read'],
     exposed: '/plugin-api/pickups/:id/manifest'
   },
-  'returns.list': { proposed: ['returns:read', 'returns:write'], step: STEP },
+  // Step 5.6 PR E6: the returns, the batches of the scanner that receives them and the remittances of cash collected on delivery are
+  // exposed READ ONLY (`returns:read`, `remittances:read`, which grant RETURNS_VIEW and REMITTANCES_VIEW). Every write stores the id of a
+  // person (`createdBy`, who approved, who received, who confirmed or voided a remittance), puts stock back through movements that
+  // keep a person, may make a replacement order or a return guide that costs money, or moves money (confirming a remittance settles
+  // what a carrier owes): they wait for PR E6-2 and the plugin actor of the contract of M1c, with scopes of their own.
+  'returns.list': {
+    proposed: ['returns:read', 'returns:write'],
+    step: STEP,
+    exposed: '/plugin-api/returns'
+  },
   'returns.create': { proposed: 'returns:write', step: STEP },
-  'returns.byId': { proposed: 'returns:read', step: STEP },
+  'returns.byId': { scope: 'returns:read', exposed: '/plugin-api/returns/:id' },
   'returns.approve': { proposed: 'returns:write', step: STEP },
   'returns.reject': { proposed: 'returns:write', step: STEP },
   'returns.cancel': { proposed: 'returns:write', step: STEP },
@@ -573,31 +609,57 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'returns.receive': { proposed: 'returns:write', step: STEP },
   'returns.complete': { proposed: 'returns:write', step: STEP },
   'returns.returnShipment': { proposed: 'returns:write', step: STEP },
-  'returns.reception.batches': { proposed: ['returns:read', 'returns:write'], step: STEP },
-  'returns.reception.batchById': { proposed: 'returns:read', step: STEP },
+  // The GET lists the batches; the POST opens one in the name of a person and stays pending
+  'returns.reception.batches': {
+    proposed: ['returns:read', 'returns:write'],
+    step: STEP,
+    exposed: '/plugin-api/returns/reception/batches'
+  },
+  'returns.reception.batchById': {
+    scope: 'returns:read',
+    exposed: '/plugin-api/returns/reception/batches/:id'
+  },
   'returns.reception.scan': { proposed: 'returns:write', step: STEP },
   'returns.reception.itemById': { proposed: 'returns:write', step: STEP },
   'returns.reception.complete': { proposed: 'returns:write', step: STEP },
-  'remittances.list': { proposed: ['remittances:read', 'remittances:write'], step: STEP },
-  'remittances.byId': { proposed: ['remittances:read', 'remittances:write'], step: STEP },
+  // The GET is exposed; the POST (a draft) is a write and stays pending with the others
+  'remittances.list': {
+    proposed: ['remittances:read', 'remittances:write'],
+    step: STEP,
+    exposed: '/plugin-api/remittances'
+  },
+  // The GET is exposed; the DELETE (a draft) is a write
+  'remittances.byId': {
+    proposed: ['remittances:read', 'remittances:write'],
+    step: STEP,
+    exposed: '/plugin-api/remittances/:id'
+  },
   'remittances.imports': { proposed: 'remittances:write', step: STEP },
   'remittances.importPreview': { proposed: 'remittances:write', step: STEP },
-  'remittances.pending': { proposed: 'remittances:read', step: STEP },
+  'remittances.pending': { scope: 'remittances:read', exposed: '/plugin-api/remittances/pending' },
   'remittances.lines': { proposed: 'remittances:write', step: STEP },
   'remittances.lineById': { proposed: 'remittances:write', step: STEP },
   'remittances.confirm': { proposed: 'remittances:write', step: STEP },
   'remittances.void': { proposed: 'remittances:write', step: STEP },
-  'remittances.importProfiles': { proposed: ['remittances:read', 'remittances:write'], step: STEP },
+  // The GET is exposed; creating, changing and deleting a profile are writes
+  'remittances.importProfiles': {
+    proposed: ['remittances:read', 'remittances:write'],
+    step: STEP,
+    exposed: '/plugin-api/remittances/import-profiles'
+  },
   'remittances.importProfileById': { proposed: 'remittances:write', step: STEP },
 
   // Media, exports, search, analytics
-  'media.uploadUrl': { proposed: 'media:write', step: STEP },
-  'media.confirmUpload': { proposed: 'media:write', step: STEP },
-  'media.byId': { proposed: ['media:read', 'media:write'], step: STEP },
-  'media.downloadAll': { proposed: 'exports:write', step: STEP },
-  'exports.list': { proposed: 'exports:read', step: STEP },
-  'exports.byId': { proposed: 'exports:read', step: STEP },
-  'exports.download': { proposed: 'exports:read', step: STEP },
+  'media.uploadUrl': { scope: 'media:write', exposed: '/plugin-api/media/upload-url' },
+  'media.confirmUpload': { scope: 'media:write', exposed: '/plugin-api/media/confirm-upload' },
+  'media.byId': { scope: 'media:read', exposed: '/plugin-api/media/:id' },
+  'media.downloadAll': {
+    scope: ['customers:read', 'media:read', 'conversations:read', 'exports:write'],
+    exposed: '/plugin-api/media/download-all'
+  },
+  'exports.list': { scope: 'exports:read', exposed: '/plugin-api/exports' },
+  'exports.byId': { scope: 'exports:read', exposed: '/plugin-api/exports/:id' },
+  'exports.download': { scope: 'exports:read', exposed: '/plugin-api/exports/:id/download' },
   'search.global': { none: BELL_AND_SEARCH },
   'search.messages': {
     scope: ['conversations:read', 'messages:read'],
@@ -607,13 +669,16 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'search.orders': { scope: 'orders:read', exposed: '/plugin-api/search/orders' },
   'search.products': { scope: 'products:read', exposed: '/plugin-api/search/products' },
   'search.clicks': { none: SEARCH_CLICK },
-  'analytics.metrics': { scope: 'analytics:read' },
+  'analytics.metrics': { scope: 'analytics:read', exposed: '/plugin-api/analytics/metrics' },
   'analytics.myPerformance': { none: OWN_PERFORMANCE },
-  'analytics.dashboard': { scope: 'analytics:read' },
-  'analytics.reports': { scope: 'analytics:read' },
-  'analytics.reportById': { scope: 'analytics:read' },
+  'analytics.dashboard': { none: ANALYTICS_DASHBOARD },
+  'analytics.reports': { none: ANALYTICS_REPORTS },
+  'analytics.reportById': { none: ANALYTICS_REPORTS },
   'analytics.search': { none: SEARCH_REPORT },
-  'analytics.export': { proposed: ['analytics:read', 'exports:write'], step: STEP },
+  'analytics.export': {
+    scope: ['analytics:read', 'exports:write'],
+    exposed: '/plugin-api/analytics/export'
+  },
 
   // Channels and settings
   'channels.connections': { none: CHANNEL_ADMIN },
@@ -645,8 +710,15 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'settings.routingOrder': { none: SETTINGS_ADMIN },
   'settings.routingRuleById': { none: SETTINGS_ADMIN },
   'settings.businessHours': { none: SETTINGS_ADMIN },
-  'settings.tags': { proposed: ['tags:read', 'tags:write'], step: STEP },
-  'settings.tagById': { proposed: ['tags:read', 'tags:write'], step: STEP },
+  // The tag catalog of the store, over the same service as the screen (PR E4a-2)
+  'settings.tags': {
+    scope: ['tags:read', 'tags:write'],
+    exposed: '/plugin-api/settings/tags'
+  },
+  'settings.tagById': {
+    scope: ['tags:read', 'tags:write'],
+    exposed: '/plugin-api/settings/tags/:id'
+  },
   'settings.snippets': { none: SETTINGS_ADMIN },
   'settings.snippetById': { none: SETTINGS_ADMIN }
 }

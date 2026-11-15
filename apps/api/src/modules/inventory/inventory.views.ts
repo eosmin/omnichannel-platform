@@ -42,6 +42,8 @@ export interface MovementView {
   reservedAfter: number
   unitCostCents?: number | null
   createdBy: string | null
+  // The plugin that made it, when a plugin did (then `createdBy` is null); both null is the system
+  createdByPluginId: string | null
   createdAt: Date
 }
 
@@ -135,6 +137,7 @@ interface MovementRow {
   reservedAfter: number
   unitCostCents: number | null
   createdBy: string | null
+  createdByPluginId: string | null
   createdAt: Date
 }
 
@@ -154,6 +157,7 @@ export const MOVEMENT_SELECT = {
   reservedAfter: true,
   unitCostCents: true,
   createdBy: true,
+  createdByPluginId: true,
   createdAt: true
 } as const
 
@@ -174,6 +178,7 @@ export function movementView(row: MovementRow, canSeeCost: boolean): MovementVie
     onHandAfter: row.onHandAfter,
     reservedAfter: row.reservedAfter,
     createdBy: row.createdBy,
+    createdByPluginId: row.createdByPluginId,
     createdAt: row.createdAt
   }
   return canSeeCost ? { ...view, unitCostCents: row.unitCostCents } : view

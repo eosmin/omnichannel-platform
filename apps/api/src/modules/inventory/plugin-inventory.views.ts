@@ -1,10 +1,10 @@
 import type { MovementPage, MovementView } from './inventory.views'
 
-// A stock movement as a plugin reads it: the fields of the screen except `createdBy`, the id of the person of the team who made it.
-// A plugin has no scope that was reviewed to name a member of the team, and a movement made by a plugin will carry no person
-// (Step 5.6 PR E4a-2), so the key is absent for every movement rather than for some. The fields are named one by one, so a column
+// A stock movement as a plugin reads it: the fields of the screen except `createdBy`, the id of the person of the team who made it,
+// and `createdByPluginId`, the plugin that made it (another installation's business, and the key is absent for every movement rather
+// than for some). A plugin has no scope that was reviewed to name a member of the team. The fields are named one by one, so a column
 // added to `MovementView` does not reach a plugin until someone decides it should.
-export type PluginMovementView = Omit<MovementView, 'createdBy'>
+export type PluginMovementView = Omit<MovementView, 'createdBy' | 'createdByPluginId'>
 export type PluginMovementPage = Omit<MovementPage, 'data'> & { data: PluginMovementView[] }
 
 export function pluginMovementView(movement: MovementView): PluginMovementView {

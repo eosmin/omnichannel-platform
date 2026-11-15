@@ -58,6 +58,10 @@ export const AuditAction = {
   CUSTOMER_CAUTION_SET: 'customer.caution_set',
   CUSTOMER_CAUTION_CLEARED: 'customer.caution_cleared',
   ORDER_CANCELLED: 'order.cancelled',
+  // A product was made, and a product, or one of its variants, was changed: the general entry that names who did it (a person, or
+  // an installation as the system), with the NAMES of the fields the request set (`fields`) and never their values, as a name or a description is text
+  PRODUCT_CREATED: 'product.created',
+  PRODUCT_UPDATED: 'product.updated',
   PRODUCT_DELETED: 'product.deleted',
   PRODUCT_VARIANT_DELETED: 'product.variant_deleted',
   // The price a product or variant is sold at changed (old and new, in cents)
@@ -203,6 +207,17 @@ export const AuditAction = {
   FINANCE_TRANSACTION_RECORDED: 'finance.transaction_recorded',
   FINANCE_TRANSACTION_VOIDED: 'finance.transaction_voided',
   FINANCE_TRANSACTION_DOCUMENT_ATTACHED: 'finance.transaction_document_attached',
+  // Suppliers, purchase orders and what they owe (TDD_18 §3, Step 4B.5)
+  SUPPLIER_CREATED: 'supplier.created',
+  SUPPLIER_UPDATED: 'supplier.updated',
+  PURCHASE_ORDER_CREATED: 'purchase_order.created',
+  PURCHASE_ORDER_UPDATED: 'purchase_order.updated',
+  PURCHASE_ORDER_ORDERED: 'purchase_order.ordered',
+  PURCHASE_ORDER_RECEIVED: 'purchase_order.received',
+  PURCHASE_ORDER_CLOSED: 'purchase_order.closed',
+  PURCHASE_ORDER_CANCELLED: 'purchase_order.cancelled',
+  SUPPLIER_PAID: 'supplier.paid',
+  SUPPLIER_PAYMENT_VOIDED: 'supplier.payment_voided',
   FINANCE_BANK_STATEMENT_IMPORTED: 'finance.bank_statement_imported',
   FINANCE_RECONCILIATION_CONFIRMED: 'finance.reconciliation_confirmed',
   FINANCE_RECONCILIATION_REJECTED: 'finance.reconciliation_rejected',

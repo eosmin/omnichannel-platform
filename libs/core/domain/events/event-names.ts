@@ -127,6 +127,8 @@ export const Events = {
   // bridge to a browser (the ledger is read by request). The rest of the finance events come with their steps.
   FINANCE_ENTRY_POSTED: 'finance.entry_posted',
   FINANCE_ENTRY_REVERSED: 'finance.entry_reversed',
+  // Goods of a purchase order were received into a warehouse (TDD_18 §3, E10). Api only, like the finance ones.
+  PURCHASE_ORDER_RECEIVED: 'purchase_order.received',
 
   // Tags and snippets
   TAG_CREATED: 'tag.created',

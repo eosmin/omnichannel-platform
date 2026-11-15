@@ -321,6 +321,17 @@ export interface FinanceEntryPayload {
   actor: ActorRef
 }
 
+// A receipt of a purchase order was posted (TDD_18 §3): ids only, no amount and no cost
+export interface PurchaseOrderReceivedPayload {
+  organizationId: string
+  purchaseOrderId: string
+  receiptId: string
+  supplierId: string
+  // The order after this receipt: partially_received or received
+  status: string
+  actor: ActorRef
+}
+
 // The mark of attention of a conversation changed: `reason` is the new one, null when it was taken off.
 // Never the note of the agent: no text crosses the bridge, the client reads the row again.
 export interface ConversationAttentionChangedPayload {
@@ -578,6 +589,7 @@ export interface DomainEventPayloads {
   [Events.REMITTANCE_OVERDUE]: RemittanceOverduePayload
   [Events.FINANCE_ENTRY_POSTED]: FinanceEntryPayload
   [Events.FINANCE_ENTRY_REVERSED]: FinanceEntryPayload
+  [Events.PURCHASE_ORDER_RECEIVED]: PurchaseOrderReceivedPayload
   [Events.WEBHOOK_AUTO_DISABLED]: WebhookAutoDisabledPayload
   [Events.PLUGIN_ERROR]: PluginErrorPayload
   [Events.CARRIER_STATUS_UNMAPPED]: CarrierStatusUnmappedPayload

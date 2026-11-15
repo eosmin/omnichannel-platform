@@ -420,7 +420,7 @@ export const messageSchema = z.object({
   authorType: z.string(),
   authorId: z.string().nullable(),
   // The plugin that wrote the message and the name it chose to write as the system (Step 5.6): null when no plugin wrote it;
-  // optional so that an answer from before they existed still parses. The thread draws them in Step 5.6 W2.
+  // optional so that an answer from before they existed still parses. The thread draws them (Step 5.6 W2).
   authorPluginId: z.string().nullable().optional(),
   authorNickname: z.string().nullable().optional(),
   replyToMessageId: z.string().nullable(),
@@ -552,12 +552,16 @@ export const messageSchema = z.object({
   editedAt: z.string().nullable(),
   editedByType: z.string().nullable(),
   editedById: z.string().nullable(),
+  // The plugin that edited or deleted it (Step 5.6 W2): null when a person or the channel did; optional so that an answer
+  // from before they existed still parses
+  editedByPluginId: z.string().nullable().optional(),
   pendingEdit: z.boolean(),
   editStatus: z.string().nullable(),
   editError: z.string().nullable(),
   deletedAt: z.string().nullable(),
   deletedByType: z.string().nullable(),
   deletedById: z.string().nullable(),
+  deletedByPluginId: z.string().nullable().optional(),
   deleteStatus: z.string().nullable(),
   deleteError: z.string().nullable(),
   createdAt: z.string()

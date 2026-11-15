@@ -821,6 +821,7 @@ describe('The stock of a store', () => {
         [
           'createdAt',
           'createdBy',
+          'createdByPluginId',
           'id',
           'note',
           'onHandAfter',
