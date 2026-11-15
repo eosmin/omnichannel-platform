@@ -14,7 +14,7 @@ import { resourceConflict, resourceNotFound } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 
-import type { Actor } from '../tenancy'
+import { type Actor, auditActorOf, auditViaOf } from '../tenancy'
 
 import type { CreateVariantBody, UpdateVariantBody } from './products.schemas'
 import { lockProduct } from './products.support'
@@ -113,11 +113,16 @@ export class ProductVariantsService {
     if (body.costCents !== undefined && body.costCents !== previous.costCents) {
       this.audit.log({
         action: AuditAction.PRODUCT_COST_CHANGED,
-        actor: { userId: actor.userId },
+        actor: auditActorOf(actor),
         storeId,
         resourceType: ProductResourceTypes.VARIANT,
         resourceId: variantId,
-        metadata: { productId, fromCents: previous.costCents, toCents: body.costCents },
+        metadata: {
+          productId,
+          fromCents: previous.costCents,
+          toCents: body.costCents,
+          ...auditViaOf(actor)
+        },
         ipAddress: actor.ipAddress,
         userAgent: actor.userAgent
       })
@@ -125,11 +130,16 @@ export class ProductVariantsService {
     if (body.priceCents !== undefined && body.priceCents !== previous.priceCents) {
       this.audit.log({
         action: AuditAction.PRODUCT_PRICE_CHANGED,
-        actor: { userId: actor.userId },
+        actor: auditActorOf(actor),
         storeId,
         resourceType: ProductResourceTypes.VARIANT,
         resourceId: variantId,
-        metadata: { productId, fromCents: previous.priceCents, toCents: body.priceCents },
+        metadata: {
+          productId,
+          fromCents: previous.priceCents,
+          toCents: body.priceCents,
+          ...auditViaOf(actor)
+        },
         ipAddress: actor.ipAddress,
         userAgent: actor.userAgent
       })
@@ -167,11 +177,11 @@ export class ProductVariantsService {
     })
     this.audit.log({
       action: AuditAction.PRODUCT_VARIANT_DELETED,
-      actor: { userId: actor.userId },
+      actor: auditActorOf(actor),
       storeId,
       resourceType: ProductResourceTypes.VARIANT,
       resourceId: variantId,
-      metadata: { productId, name: removed.name, sku: removed.sku },
+      metadata: { productId, name: removed.name, sku: removed.sku, ...auditViaOf(actor) },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })

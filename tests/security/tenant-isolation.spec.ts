@@ -108,6 +108,7 @@ import {
   ensurePluginInstallation,
   createOrderMessageTemplate,
   createPluginKey,
+  createInventoryLevel,
   createSnippet,
   createApiKey,
   createWebhook,
@@ -4563,6 +4564,87 @@ describe('Tenant isolation', () => {
       expect(messages.status).toBe(404)
       expect(list.status).toBe(200)
       expect(JSON.stringify(list.body)).not.toContain(orderA)
+    })
+  })
+
+  // What a plugin key reads and writes of the catalog, the stock and the warehouses (Step 5.6, E4a): the key of store B reaches the
+  // products and the stock of store B and the warehouses of organization B, and a product of store A, a warehouse of organization A
+  // and the stock of store A are rows that do not exist for it, by id, by list and by write.
+  describe('the catalog, the stock and the warehouses with the key of a plugin', () => {
+    const pluginId = `${prefix}-catalog`
+    let keyOfB = ''
+    let productA = ''
+    let productB = ''
+
+    beforeAll(async () => {
+      ;({ key: keyOfB } = await createPluginKey(owner, {
+        storeId: ctx.storeB.id,
+        pluginId,
+        scopes: [
+          PluginScopes.PRODUCTS_READ,
+          PluginScopes.PRODUCTS_WRITE,
+          PluginScopes.PRODUCTS_DELETE,
+          PluginScopes.INVENTORY_READ,
+          PluginScopes.WAREHOUSES_READ
+        ]
+      }))
+      productA = (await createProduct(owner, { storeId: ctx.storeA.id })).id
+      productB = (await createProduct(owner, { storeId: ctx.storeB.id })).id
+      await createInventoryLevel(owner, {
+        storeId: ctx.storeA.id,
+        productId: productA,
+        warehouseId: ctx.warehouseA.id,
+        onHand: 3
+      })
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId } })
+      await owner.plugin.deleteMany({ where: { id: pluginId } })
+    })
+
+    const asB = (method: 'get' | 'patch' | 'delete', path: string) =>
+      supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+        [method](`${API_PREFIX}${path}`)
+        .set('authorization', `Bearer ${keyOfB}`)
+
+    it('works in its own store and organization, so that the 404 of the others means "foreign"', async () => {
+      expect((await asB('get', PluginApiRoutes.products.byId(productB))).status).toBe(200)
+      expect((await asB('get', PluginApiRoutes.products.inventory(productB))).status).toBe(200)
+      expect((await asB('get', PluginApiRoutes.inventory.levels)).status).toBe(200)
+      expect((await asB('get', PluginApiRoutes.warehouses.byId(ctx.warehouseB.id))).status).toBe(
+        200
+      )
+    })
+
+    it('does not read, change or delete a product of another store, and does not list it', async () => {
+      const reads = [
+        await asB('get', PluginApiRoutes.products.byId(productA)),
+        await asB('get', PluginApiRoutes.products.images(productA)),
+        await asB('get', PluginApiRoutes.products.inventory(productA))
+      ]
+      const changed = await asB('patch', PluginApiRoutes.products.byId(productA)).send({
+        name: 'taken'
+      })
+      const removed = await asB('delete', PluginApiRoutes.products.byId(productA))
+      const list = await asB('get', PluginApiRoutes.products.list)
+
+      for (const response of [...reads, changed, removed]) expect(response.status).toBe(404)
+      expect(JSON.stringify(list.body)).not.toContain(productA)
+      expect((await owner.product.findUniqueOrThrow({ where: { id: productA } })).name).not.toBe(
+        'taken'
+      )
+    })
+
+    it('does not list the stock of another store nor read a warehouse of another organization', async () => {
+      const levels = await asB('get', PluginApiRoutes.inventory.levels)
+      const movements = await asB('get', PluginApiRoutes.inventory.movements)
+      const foreign = await asB('get', PluginApiRoutes.warehouses.byId(ctx.warehouseA.id))
+      const list = await asB('get', PluginApiRoutes.warehouses.list)
+
+      expect(JSON.stringify(levels.body)).not.toContain(productA)
+      expect(JSON.stringify(movements.body)).not.toContain(productA)
+      expect(foreign.status).toBe(404)
+      expect(JSON.stringify(list.body)).not.toContain(ctx.warehouseA.id)
     })
   })
 
