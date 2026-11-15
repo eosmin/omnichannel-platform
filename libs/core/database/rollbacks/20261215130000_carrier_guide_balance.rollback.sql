@@ -12,5 +12,6 @@ DROP TABLE IF EXISTS "carrier_benefit_periods";
 DROP TABLE IF EXISTS "carrier_guide_movements";
 DROP FUNCTION IF EXISTS forbid_carrier_guide_movement_change();
 DROP TABLE IF EXISTS "carrier_guide_policies";
+DROP INDEX IF EXISTS "shipment_events_store_id_status_occurred_at_idx";
 
 COMMIT;

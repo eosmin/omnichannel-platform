@@ -280,6 +280,13 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
       benefitEnabled: false,
       thresholdBps: 1000
     })
+    // a connection that keeps no balance is neither low nor empty, whatever the sum says
+    expect(await balanceOf(id)).toMatchObject({
+      tracked: false,
+      balance: 0,
+      empty: false,
+      low: false
+    })
     expect((read.body as { toConfirm: string[] }).toConfirm).toEqual(
       expect.arrayContaining(['thresholdBps', 'refundRule'])
     )
@@ -438,6 +445,20 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
       const returned = await returnedGuide(id, new Date(Date.now() + 60_000))
       const refunds = await movementsOf(id, GuideMovementKind.REFUND)
       expect(refunds.map(row => row.shipmentId)).toEqual([returned])
+    })
+
+    it('does not judge what happened before the benefit was switched on', async () => {
+      const { id } = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
+      // No policy yet: the packages and the returns are written, and nothing is judged
+      for (let index = 0; index < 12; index += 1) await deliveredGuide(id)
+      await returnedGuide(id, new Date())
+      await new Promise(resolve => setTimeout(resolve, 50))
+      await putPolicy(id)
+      await buy(id, 10, 1000)
+      await closeBenefitPeriods(prisma, await policyOf(id), closeAt())
+      expect(await movementsOf(id, GuideMovementKind.REFUND)).toHaveLength(0)
+      const history = await admin().get(ApiRoutes.carriers.benefitPeriods(id))
+      expect(history.body).toMatchObject([{ baseCount: 0, returnCount: 0, refundedCount: 0 }])
     })
 
     it('does not give back a guide that was never taken from the balance', async () => {

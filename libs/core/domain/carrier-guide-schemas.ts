@@ -49,8 +49,8 @@ export const voidGuidePurchaseSchema = z.strictObject({
 })
 export type VoidGuidePurchaseBody = z.output<typeof voidGuidePurchaseSchema>
 
-// The policy of a connection, whole: a PUT replaces it (a missing key takes the default of `CarrierGuideDefaults` in the
-// service, so a client that sends less is never surprised by what an old value was)
+// The policy of a connection, whole: a PUT replaces it and every key is required (a screen starts from what `GET` answers,
+// which holds the defaults of `CarrierGuideDefaults` until something is saved)
 export const guidePolicySchema = z
   .strictObject({
     balanceEnabled: z.boolean(),

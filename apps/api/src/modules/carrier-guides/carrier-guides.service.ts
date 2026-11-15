@@ -60,13 +60,15 @@ export class CarrierGuidesApiService {
       readGuidePolicy(this.prisma.client, storeId, connectionId)
     ])
     const threshold = policy?.lowBalanceThreshold ?? null
+    const tracked = policy?.balanceEnabled ?? false
     return {
-      tracked: policy?.balanceEnabled ?? false,
+      tracked,
       ...summary,
       lowBalanceThreshold: threshold,
       warnOnEmptyBalance: policy?.warnOnEmptyBalance ?? CarrierGuideDefaults.WARN_ON_EMPTY_BALANCE,
-      low: threshold !== null && summary.balance <= threshold,
-      empty: summary.balance <= 0
+      // Only a connection that keeps its balance can be low or empty: with no policy the numbers are only what was recorded
+      low: tracked && threshold !== null && summary.balance <= threshold,
+      empty: tracked && summary.balance <= 0
     }
   }
 
@@ -98,22 +100,7 @@ export class CarrierGuidesApiService {
     const page = hasMore ? rows.slice(0, limit) : rows
     const last = page.at(-1)
     return {
-      data: page.map(row => ({
-        id: row.id,
-        kind: row.kind as GuideMovementKindType,
-        guidesDelta: row.guidesDelta,
-        costCentsDelta: row.costCentsDelta,
-        paidQuantity: row.paidQuantity,
-        giftQuantity: row.giftQuantity,
-        unitCostCents: row.unitCostCents,
-        shipmentId: row.shipmentId,
-        voidsMovementId: row.voidsMovementId,
-        voided: row.voidedBy !== null,
-        note: row.note,
-        createdBy: row.createdBy,
-        occurredAt: row.occurredAt.toISOString(),
-        createdAt: row.createdAt.toISOString()
-      })),
+      data: page.map(row => this.viewOf(row, row.voidedBy !== null)),
       nextCursor: hasMore && last !== undefined ? encodeCursor(last) : null,
       hasMore
     }
@@ -239,7 +226,7 @@ export class CarrierGuidesApiService {
         returnStatuses: [...CarrierGuideDefaults.RETURN_STATUSES],
         refundRule: CarrierGuideDefaults.REFUND_RULE,
         lossRule: CarrierGuideDefaults.LOSS_RULE,
-        createdAt: new Date()
+        benefitSince: new Date()
       },
       false
     )
@@ -267,10 +254,20 @@ export class CarrierGuidesApiService {
       refundRule: body.refundRule,
       lossRule: body.lossRule
     }
+    const benefitRestarts =
+      body.benefitEnabled &&
+      (!before.benefitEnabled ||
+        body.periodKind !== before.periodKind ||
+        body.periodDays !== before.periodDays ||
+        body.periodAnchor !== before.periodAnchor)
     await this.prisma.client.carrierGuidePolicy.upsert({
       where: { storeId_connectionId: { storeId, connectionId } },
       create: { storeId, connectionId, ...data },
-      update: data
+      // The benefit is judged from when it is switched on or its periods change, never retroactively
+      update: {
+        ...data,
+        ...(benefitRestarts ? { benefitSince: new Date() } : {})
+      }
     })
     this.record(AuditAction.CARRIER_GUIDE_POLICY_CHANGED, storeId, connectionId, actor, {
       // Null the first time: nothing was stored, what `policy` shows is only the defaults

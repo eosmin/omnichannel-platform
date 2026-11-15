@@ -1775,6 +1775,7 @@ model CarrierGuidePolicy {
   lowBalanceThreshold Int?     @map("low_balance_threshold") // Guides; null = no low-balance alert
   periodKind          String   @default("fixed_days") @map("period_kind") // BenefitPeriodKind
   periodDays          Int      @default(15) @map("period_days")
+  benefitSince        DateTime @default(now()) @map("benefit_since") // The benefit is judged from here: set when it is switched on or its period changes, never judging what happened before
   periodAnchor        String   @map("period_anchor") // 'YYYY-MM-DD', a calendar day of the store: the first day of a period of fixed days
   thresholdBps        Int      @default(1000) @map("threshold_bps")
   warnAtBps           Int      @default(8000) @map("warn_at_bps")
@@ -1975,6 +1976,7 @@ model ShipmentEvent {
 
   @@index([shipmentId, occurredAt])
   @@index([storeId])
+  @@index([storeId, status, occurredAt]) // The periods of the refund benefit read the first event of a status (TDD_17 §4.18)
   @@map("shipment_events")
 }
 

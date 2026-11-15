@@ -1,4 +1,4 @@
-import type { PrismaService, PrismaTransaction } from '@platform/core/database'
+import { lockStoreScope, type PrismaService, type PrismaTransaction } from '@platform/core/database'
 import {
   averageCostCents,
   BenefitBase,
@@ -17,6 +17,7 @@ import {
   type PeriodBounds,
   periodOf,
   ShipmentKind,
+  ShipmentLockScopes,
   ShipmentStatus
 } from '@platform/core/domain'
 import type { DomainEvents } from '@platform/core/event-bus'
@@ -45,7 +46,7 @@ export interface GuidePolicy {
   returnStatuses: ShipmentStatus[]
   refundRule: BenefitRefundRuleType
   lossRule: BenefitLossRuleType
-  createdAt: Date
+  benefitSince: Date
 }
 
 type Reader = Pick<
@@ -77,7 +78,7 @@ export async function readGuidePolicy(
     returnStatuses: row.returnStatuses as ShipmentStatus[],
     refundRule: row.refundRule as BenefitRefundRuleType,
     lossRule: row.lossRule as BenefitLossRuleType,
-    createdAt: row.createdAt
+    benefitSince: row.benefitSince
   }
 }
 
@@ -140,6 +141,8 @@ export async function loadBenefitEvents(
       where: {
         storeId: policy.storeId,
         status: { in: statuses },
+        // What happened after the period is not read: the first event of a package must still fall inside it
+        occurredAt: { lt: bounds.end },
         shipment: { connectionId: policy.connectionId, kind: ShipmentKind.OUTBOUND }
       },
       _min: { occurredAt: true },
@@ -193,12 +196,19 @@ export async function applyGuideEffectsOfMove(
   const isCreated = to === ShipmentStatus.LABEL_CREATED
   const policy = await readGuidePolicy(tx, shipment.storeId, shipment.connectionId)
   if (policy === null) return
-  if (isCreated && policy.balanceEnabled) {
-    await consumeGuide(tx, events, policy, shipment)
-    return
-  }
-  if (policy.benefitEnabled && policy.returnStatuses.includes(to)) {
-    await judgeReturn(tx, events, policy, shipment, occurredAt)
+  try {
+    if (isCreated && policy.balanceEnabled) {
+      await consumeGuide(tx, events, policy, shipment)
+      return
+    }
+    if (policy.benefitEnabled && policy.returnStatuses.includes(to)) {
+      await judgeReturn(tx, events, policy, shipment, occurredAt)
+    }
+  } catch (error) {
+    // A zone or an anchor the calendar cannot read (RangeError) must not stop the carrier's status from being applied: the
+    // benefit of this move is skipped and the daily close judges the period again. A database error is not caught here, it
+    // aborts the transaction as it must
+    if (!(error instanceof RangeError)) throw error
   }
 }
 
@@ -214,6 +224,13 @@ async function consumeGuide(
     select: { id: true }
   })
   if (row === null) return
+  // One taker at a time per connection until the transaction ends, so that the balance each one reads (and the alert it
+  // raises) is the one the previous one left
+  await lockStoreScope(
+    tx,
+    shipment.storeId,
+    `${ShipmentLockScopes.GUIDE_BALANCE}:${shipment.connectionId}`
+  )
   const before = await guideBalanceOf(tx, shipment.storeId, shipment.connectionId)
   const written = await tx.carrierGuideMovement.createMany({
     data: [
@@ -346,7 +363,12 @@ export async function closeBenefitPeriods(
     orderBy: { periodStart: 'desc' },
     select: { periodEnd: true }
   })
-  let cursor = periodOf(policy, last?.periodEnd ?? policy.createdAt, zone)
+  // Judged from the later of the last closed period and the moment the benefit was switched on or its period changed: what
+  // happened before is not judged retroactively and two periods never overlap
+  const floor =
+    last !== null && last.periodEnd > policy.benefitSince ? last.periodEnd : policy.benefitSince
+  const first = periodOf(policy, floor, zone)
+  let cursor: PeriodBounds = { start: first.start < floor ? floor : first.start, end: first.end }
   const closed: ClosedPeriodResult[] = []
   while (cursor.end <= now && closed.length < CarrierGuideLimits.MAX_PERIODS_PER_CLOSE) {
     const bounds = cursor
@@ -371,9 +393,27 @@ export async function closeBenefitPeriods(
       })
       // Another run judged this period first
       if (row.count === 0) return 0
-      if (policy.refundRule !== BenefitRefundRule.AT_PERIOD_CLOSE || !policy.balanceEnabled) {
+      if (policy.refundRule === BenefitRefundRule.IMMEDIATE) {
+        // The guides were given back move by move: the history says how many
+        const given = await tx.carrierGuideMovement.count({
+          where: {
+            storeId: policy.storeId,
+            connectionId: policy.connectionId,
+            kind: GuideMovementKind.REFUND,
+            shipmentId: { in: [...result.refundable] }
+          }
+        })
+        await tx.carrierBenefitPeriod.updateMany({
+          where: {
+            storeId: policy.storeId,
+            connectionId: policy.connectionId,
+            periodStart: bounds.start
+          },
+          data: { refundedCount: given }
+        })
         return 0
       }
+      if (!policy.balanceEnabled) return 0
       const count = await refundGuides(tx, policy, [...result.refundable])
       await tx.carrierBenefitPeriod.updateMany({
         where: {

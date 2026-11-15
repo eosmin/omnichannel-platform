@@ -393,7 +393,7 @@ export class NotificationsEventsListener {
       level === BenefitAlertLevel.LOST
         ? NotificationTypes.CARRIER_BENEFIT_LOST
         : NotificationTypes.CARRIER_BENEFIT_AT_RISK,
-      { rate: `${formatBpsAsPercent(rateBps)} %`, limit: `${formatBpsAsPercent(thresholdBps)} %` }
+      { rate: formatBpsAsPercent(rateBps), limit: formatBpsAsPercent(thresholdBps) }
     )
   }
 

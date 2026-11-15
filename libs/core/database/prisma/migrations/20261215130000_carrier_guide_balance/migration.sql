@@ -10,6 +10,7 @@ CREATE TABLE "carrier_guide_policies" (
   "low_balance_threshold" INTEGER,
   "period_kind" TEXT NOT NULL DEFAULT 'fixed_days',
   "period_days" INTEGER NOT NULL DEFAULT 15,
+  "benefit_since" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "period_anchor" TEXT NOT NULL,
   "threshold_bps" INTEGER NOT NULL DEFAULT 1000,
   "warn_at_bps" INTEGER NOT NULL DEFAULT 8000,
@@ -105,6 +106,9 @@ CREATE TRIGGER trg_carrier_guide_movements_append_only BEFORE UPDATE OR DELETE O
   FOR EACH ROW EXECUTE FUNCTION forbid_carrier_guide_movement_change();
 CREATE TRIGGER trg_carrier_guide_movements_no_truncate BEFORE TRUNCATE ON carrier_guide_movements
   FOR EACH STATEMENT EXECUTE FUNCTION forbid_carrier_guide_movement_change();
+
+-- The periods of the refund benefit read the first event of a status of the connection's packages
+CREATE INDEX "shipment_events_store_id_status_occurred_at_idx" ON "shipment_events"("store_id", "status", "occurred_at");
 
 CREATE TABLE "carrier_benefit_periods" (
   "id" TEXT NOT NULL,

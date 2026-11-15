@@ -795,11 +795,11 @@
       },
       "benefit_at_risk": {
         "title": "Refund benefit at risk",
-        "body": "The return rate with {carrier} is {rate} in this period and the limit is {limit}. Above it the guides of undelivered packages are no longer given back."
+        "body": "The return rate with {carrier} is {rate} % in this period and the limit is {limit} %. Above it the guides of undelivered packages are no longer given back."
       },
       "benefit_lost": {
         "title": "Refund benefit lost",
-        "body": "The return rate with {carrier} reached {rate} in this period, at or above the limit of {limit}. The guides of packages not delivered are not given back while it stays there."
+        "body": "The return rate with {carrier} reached {rate} % in this period, at or above the limit of {limit} %. The guides of packages not delivered are not given back while it stays there."
       }
     },
     "channel": {

@@ -795,11 +795,11 @@
       },
       "benefit_at_risk": {
         "title": "Beneficio de reintegro en riesgo",
-        "body": "La tasa de devoluciones con {carrier} es {rate} en este periodo y el límite es {limit}. Por encima de él ya no se reintegran las guías de los paquetes no entregados."
+        "body": "La tasa de devoluciones con {carrier} es {rate} % en este periodo y el límite es {limit} %. Por encima de él ya no se reintegran las guías de los paquetes no entregados."
       },
       "benefit_lost": {
         "title": "Beneficio de reintegro perdido",
-        "body": "La tasa de devoluciones con {carrier} llegó a {rate} en este periodo, igual o por encima del límite de {limit}. Las guías de los paquetes no entregados no se reintegran mientras siga así."
+        "body": "La tasa de devoluciones con {carrier} llegó a {rate} % en este periodo, igual o por encima del límite de {limit} %. Las guías de los paquetes no entregados no se reintegran mientras siga así."
       }
     },
     "channel": {
