@@ -31,6 +31,7 @@ import {
   invalidTransition,
   lockCount,
   lockCountNumbers,
+  reachableCount,
   storesOf
 } from './counts.support'
 import {
@@ -55,11 +56,13 @@ export class CountsService {
     private readonly events: DomainEvents
   ) {}
 
-  async list(organizationId: string, query: ListCountsQuery): Promise<CountPage> {
+  // A plugin actor reaches only the counts of the store of its key (see `reachableCount`); a person sees the whole organization
+  async list(organizationId: string, query: ListCountsQuery, actor: Actor): Promise<CountPage> {
     const { cursor } = query
     const rows = await this.prisma.client.stockCount.findMany({
       where: {
         organizationId,
+        ...reachableCount(actor),
         ...(query.status === undefined ? {} : { status: query.status }),
         ...(query.warehouseId === undefined ? {} : { warehouseId: query.warehouseId }),
         ...(cursor === undefined
@@ -94,17 +97,20 @@ export class CountsService {
 
   async get(
     organizationId: string,
-    userId: string,
+    actor: Actor,
     countId: string,
     query: CountLinesQuery
   ): Promise<CountDetailView> {
     const row = await this.prisma.client.stockCount.findFirst({
-      where: { id: countId, organizationId },
+      where: { id: countId, organizationId, ...reachableCount(actor) },
       select: COUNT_SELECT
     })
     if (row === null) throw resourceNotFound('count')
     // Only the lines of the stores the caller belongs to
-    const visible = await storesOf(this.prisma.client, organizationId, userId)
+    const visible =
+      actor.pluginInstallationId === undefined
+        ? await storesOf(this.prisma.client, organizationId, actor.userId)
+        : [actor.storeId]
     const base = { countId, storeId: { in: visible } }
     const [lines, lineCount, counted, withVariance, names] = await Promise.all([
       this.linePage(countId, visible, query),

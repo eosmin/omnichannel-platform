@@ -260,7 +260,9 @@ let countSerial = 100_000_000 + (process.pid % 1_000_000) * 100
 async function createCountOf(
   owner: OwnerClient,
   storeId: string,
-  status: CountStatus
+  status: CountStatus,
+  // A count of the whole warehouse (null) or limited to the store
+  limitedToStore = false
 ): Promise<{ countId: string; lineId: string }> {
   const organizationId = await organizationOfStore(owner, storeId)
   const warehouse = await createWarehouse(owner, { organizationId })
@@ -273,6 +275,7 @@ async function createCountOf(
       // Digits only, as the CHECK of the table asks, and one for each sheet of the run
       number: `CT-${(countSerial += 1)}`,
       status,
+      ...(limitedToStore ? { storeId } : {}),
       startedAt: status === CountStatus.COUNTING ? new Date() : null,
       createdBy: await adminOf(owner, storeId)
     },
@@ -4751,6 +4754,198 @@ describe('Tenant isolation', () => {
       expect(JSON.stringify(movements.body)).not.toContain(productA)
       expect(foreign.status).toBe(404)
       expect(JSON.stringify(list.body)).not.toContain(ctx.warehouseA.id)
+    })
+  })
+
+  // What a plugin key reads of the transfers and the counts (Step 5.6, E4b): both belong to the ORGANIZATION and their lines to
+  // the stores, and a key is bound to ONE store. The key of store A reads the lines of store A and the transfers and counts that have
+  // one; the key of its sibling store A2 sees the lines of A2 only and gets a 404 for what has no line of A2; the key of
+  // organization B reaches nothing of organization A; and no write is there.
+  describe('the transfers and the counts with the key of a plugin', () => {
+    const pluginId = `${prefix}-transfers-counts`
+    const scopes = [PluginScopes.TRANSFERS_READ, PluginScopes.COUNTS_READ]
+    let keyOfA = ''
+    let keyOfA2 = ''
+    let keyOfB = ''
+    let readsNothing = ''
+    let transferA = ''
+    let transferShared = ''
+    let transferEmpty = ''
+    let transferOfB = ''
+    let countA = ''
+    let countOnlyA = ''
+    let countOnlyA2 = ''
+
+    beforeAll(async () => {
+      ;({ key: keyOfA } = await createPluginKey(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${pluginId}-a`,
+        scopes
+      }))
+      ;({ key: keyOfA2 } = await createPluginKey(owner, {
+        storeId: ctx.storeA2.id,
+        pluginId: `${pluginId}-a2`,
+        scopes
+      }))
+      ;({ key: keyOfB } = await createPluginKey(owner, {
+        storeId: ctx.storeB.id,
+        pluginId: `${pluginId}-b`,
+        scopes
+      }))
+      ;({ key: readsNothing } = await createPluginKey(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${pluginId}-none`,
+        scopes: [PluginScopes.INVENTORY_READ]
+      }))
+      transferA = (
+        await createTransfer(owner, { organizationId: ctx.orgA.id, storeId: ctx.storeA.id })
+      ).id
+      transferEmpty = (await createTransfer(owner, { organizationId: ctx.orgA.id })).id
+      transferOfB = (
+        await createTransfer(owner, { organizationId: ctx.orgB.id, storeId: ctx.storeB.id })
+      ).id
+      // One transfer with a line of each sibling store
+      const shared = await createTransfer(owner, {
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id
+      })
+      const sibling = await createProduct(owner, { storeId: ctx.storeA2.id })
+      await owner.stockTransferLine.create({
+        data: { transferId: shared.id, storeId: ctx.storeA2.id, productId: sibling.id, quantity: 2 }
+      })
+      transferShared = shared.id
+      // A count of the warehouse with a line of store A, and one limited to store A2
+      countA = (await createCountOf(owner, ctx.storeA.id, CountStatus.COUNTING)).countId
+      // A count of the whole warehouse with a line of store A only
+      countOnlyA = (await createCountOf(owner, ctx.storeA.id, CountStatus.COUNTING)).countId
+      // countA holds a line of the sibling store too: neither key may count the line of the other
+      const siblingProduct = await createProduct(owner, { storeId: ctx.storeA2.id })
+      await owner.stockCountLine.create({
+        data: {
+          countId: countA,
+          storeId: ctx.storeA2.id,
+          productId: siblingProduct.id,
+          expectedQuantity: 9
+        }
+      })
+      countOnlyA2 = (await createCountOf(owner, ctx.storeA2.id, CountStatus.COUNTING, true)).countId
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId: { startsWith: pluginId } } })
+      await owner.plugin.deleteMany({ where: { id: { startsWith: pluginId } } })
+    })
+
+    const as = (key: string, path: string) =>
+      supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+        .get(`${API_PREFIX}${path}`)
+        .set('authorization', `Bearer ${key}`)
+    const storesOfLines = (response: { body: unknown }): string[] =>
+      (response.body as { lines: { storeId: string }[] }).lines.map(line => line.storeId)
+
+    it('works in its own store and organization, so that the 404 of the others means "foreign"', async () => {
+      expect((await as(keyOfA, PluginApiRoutes.transfers.byId(transferA))).status).toBe(200)
+      expect((await as(keyOfA, PluginApiRoutes.counts.byId(countA))).status).toBe(200)
+      expect((await as(keyOfB, PluginApiRoutes.transfers.byId(transferOfB))).status).toBe(200)
+    })
+
+    it('does not read a transfer or a count of another organization, by id or by list', async () => {
+      const byId = await as(keyOfB, PluginApiRoutes.transfers.byId(transferA))
+      const countById = await as(keyOfB, PluginApiRoutes.counts.byId(countA))
+      const transfers = await as(keyOfB, PluginApiRoutes.transfers.list)
+      const counts = await as(keyOfB, PluginApiRoutes.counts.list)
+
+      expect(byId.status).toBe(404)
+      expect(countById.status).toBe(404)
+      expect(JSON.stringify(transfers.body)).not.toContain(transferA)
+      expect(JSON.stringify(counts.body)).not.toContain(countA)
+    })
+
+    it('shows each key of two sibling stores the lines of its own store only', async () => {
+      const fromA = await as(keyOfA, PluginApiRoutes.transfers.byId(transferShared))
+      const fromA2 = await as(keyOfA2, PluginApiRoutes.transfers.byId(transferShared))
+
+      expect(storesOfLines(fromA)).toEqual([ctx.storeA.id])
+      expect(storesOfLines(fromA2)).toEqual([ctx.storeA2.id])
+    })
+
+    it('counts and lists only the lines of the store of the key in a transfer or a count that spans two', async () => {
+      const count = await as(keyOfA, PluginApiRoutes.counts.byId(countA))
+      const count2 = await as(keyOfA2, PluginApiRoutes.counts.byId(countA))
+      const counts = await as(keyOfA, PluginApiRoutes.counts.list)
+      const transfers = await as(keyOfA, PluginApiRoutes.transfers.list)
+      const transfers2 = await as(keyOfA2, PluginApiRoutes.transfers.list)
+      const linesOf = (response: { body: unknown }, id: string): number | undefined =>
+        (response.body as { data: { id: string; lineCount: number }[] }).data.find(
+          row => row.id === id
+        )?.lineCount
+
+      const totals = (response: { body: unknown }): { lines: number; stores: string[] } => ({
+        lines: (response.body as { totals: { lines: number } }).totals.lines,
+        stores: storesOfLines(response)
+      })
+      expect(totals(count)).toEqual({ lines: 1, stores: [ctx.storeA.id] })
+      expect(totals(count2)).toEqual({ lines: 1, stores: [ctx.storeA2.id] })
+      expect(JSON.stringify(counts.body)).toContain(countA)
+      expect(linesOf(transfers, transferShared)).toBe(1)
+      expect(linesOf(transfers2, transferShared)).toBe(1)
+    })
+
+    it('does not show a sibling store a transfer or a count that has no line of its own', async () => {
+      const transfer = await as(keyOfA2, PluginApiRoutes.transfers.byId(transferA))
+      const transfers = await as(keyOfA2, PluginApiRoutes.transfers.list)
+      const count = await as(keyOfA, PluginApiRoutes.counts.byId(countOnlyA2))
+      const counts = await as(keyOfA, PluginApiRoutes.counts.list)
+      const countOfA = await as(keyOfA2, PluginApiRoutes.counts.byId(countOnlyA))
+
+      expect(transfer.status).toBe(404)
+      expect(countOfA.status).toBe(404)
+      expect(JSON.stringify(transfers.body)).not.toContain(transferA)
+      expect(count.status).toBe(404)
+      expect(JSON.stringify(counts.body)).not.toContain(countOnlyA2)
+    })
+
+    it('does not show a transfer that has no line yet, which belongs to no store', async () => {
+      const byId = await as(keyOfA, PluginApiRoutes.transfers.byId(transferEmpty))
+      const list = await as(keyOfA, PluginApiRoutes.transfers.list)
+
+      expect(byId.status).toBe(404)
+      expect(JSON.stringify(list.body)).not.toContain(transferEmpty)
+    })
+
+    it('does not answer the id of the people who made, sent or approved them', async () => {
+      const bodies = [
+        await as(keyOfA, PluginApiRoutes.transfers.byId(transferA)),
+        await as(keyOfA, PluginApiRoutes.transfers.list),
+        await as(keyOfA, PluginApiRoutes.counts.byId(countA)),
+        await as(keyOfA, PluginApiRoutes.counts.list)
+      ]
+
+      for (const response of bodies) {
+        expect(response.status).toBe(200)
+        expect(JSON.stringify(response.body)).not.toMatch(/createdBy|dispatchedBy|appliedBy/)
+      }
+    })
+
+    it('needs the scope of the route, and has no route that writes', async () => {
+      const server = () => supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+      const denied = await as(readsNothing, PluginApiRoutes.transfers.list)
+      const deniedCounts = await as(readsNothing, PluginApiRoutes.counts.list)
+      const created = await server()
+        .post(`${API_PREFIX}${PluginApiRoutes.transfers.list}`)
+        .set('authorization', `Bearer ${keyOfA}`)
+        .send({})
+      const dispatched = await server()
+        .post(`${API_PREFIX}${PluginApiRoutes.transfers.byId(transferA)}/dispatch`)
+        .set('authorization', `Bearer ${keyOfA}`)
+      const applied = await server()
+        .post(`${API_PREFIX}${PluginApiRoutes.counts.byId(countA)}/apply`)
+        .set('authorization', `Bearer ${keyOfA}`)
+
+      expect([denied.status, deniedCounts.status]).toEqual([403, 403])
+      expect([created.status, dispatched.status, applied.status]).toEqual([404, 404, 404])
+      expect((await owner.stockCount.findUniqueOrThrow({ where: { id: countA } })).status).toBe(
+        CountStatus.COUNTING
+      )
     })
   })
 

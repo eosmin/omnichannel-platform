@@ -34,6 +34,12 @@ export const PluginScopes = {
   // The warehouses of the organization of the store of the key (Step 5.6 PR E4a); reading is INVENTORY_VIEW, as for a person.
   // Writing one (`warehouses:write`, ORG_MANAGE_WAREHOUSES, organization-wide) waits for PR E4a-2 to decide its reach.
   WAREHOUSES_READ: 'warehouses:read',
+  // The transfers between warehouses and the physical counts of the store of the key, read only (Step 5.6 PR E4b). The scope grants
+  // the permissions a person needs to read them (any of manage or receive, manage or apply: a person with inventory:view alone does
+  // not read them, so neither does a plugin), and only routes that read declare it, so the write permissions it holds are never
+  // exercised; the writes get scopes of their own (PR E4b-2). A plugin sees only the lines of its own store.
+  TRANSFERS_READ: 'transfers:read',
+  COUNTS_READ: 'counts:read',
   WEBHOOKS_WRITE: 'webhooks:write',
   ANALYTICS_READ: 'analytics:read',
   INVENTORY_READ: 'inventory:read',
@@ -94,6 +100,14 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.PRODUCTS_WRITE]: [Permissions.PRODUCTS_CREATE, Permissions.PRODUCTS_EDIT],
   [PluginScopes.PRODUCTS_DELETE]: [Permissions.PRODUCTS_DELETE],
   [PluginScopes.WAREHOUSES_READ]: [Permissions.INVENTORY_VIEW],
+  [PluginScopes.TRANSFERS_READ]: [
+    Permissions.INVENTORY_MANAGE_TRANSFERS,
+    Permissions.INVENTORY_RECEIVE_TRANSFERS
+  ],
+  [PluginScopes.COUNTS_READ]: [
+    Permissions.INVENTORY_MANAGE_COUNTS,
+    Permissions.INVENTORY_APPLY_COUNTS
+  ],
   [PluginScopes.WEBHOOKS_WRITE]: [],
   [PluginScopes.ANALYTICS_READ]: [Permissions.ANALYTICS_VIEW],
   [PluginScopes.INVENTORY_READ]: [Permissions.INVENTORY_VIEW],
