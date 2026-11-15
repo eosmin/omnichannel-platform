@@ -466,7 +466,8 @@ describe('The plugin catalog and the installations of a store', () => {
       const integration = await publish()
       await owner.plugin.update({
         where: { id: integration },
-        data: { type: PluginCatalogTypes.INTEGRATION }
+        // An integration plugin always belongs to an organization (the database refuses one that does not)
+        data: { type: PluginCatalogTypes.INTEGRATION, organizationId: ctx.orgA.id }
       })
       const response = await install(integration)
 
