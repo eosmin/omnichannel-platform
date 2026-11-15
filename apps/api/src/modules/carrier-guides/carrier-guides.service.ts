@@ -5,6 +5,7 @@ import { AuditService } from '@platform/core/audit-module'
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
   type BenefitStateType,
+  BenefitPeriodKind,
   CarrierConfirmKeys,
   CarrierGuideDefaults,
   CarrierResourceTypes,
@@ -23,7 +24,8 @@ import {
   currentBenefit,
   type GuidePolicy,
   guideBalanceOf,
-  readGuidePolicy
+  readGuidePolicy,
+  storeTimezone
 } from '@platform/core/shipping'
 
 import { encodeCursor } from '../customers/list-cursor'
@@ -254,12 +256,13 @@ export class CarrierGuidesApiService {
       refundRule: body.refundRule,
       lossRule: body.lossRule
     }
+    // The days and the anchor only shape a period of fixed days: changing them under a calendar period changes nothing
+    const fixedDaysChanged =
+      body.periodKind === BenefitPeriodKind.FIXED_DAYS &&
+      (body.periodDays !== before.periodDays || body.periodAnchor !== before.periodAnchor)
     const benefitRestarts =
       body.benefitEnabled &&
-      (!before.benefitEnabled ||
-        body.periodKind !== before.periodKind ||
-        body.periodDays !== before.periodDays ||
-        body.periodAnchor !== before.periodAnchor)
+      (!before.benefitEnabled || body.periodKind !== before.periodKind || fixedDaysChanged)
     await this.prisma.client.carrierGuidePolicy.upsert({
       where: { storeId_connectionId: { storeId, connectionId } },
       create: { storeId, connectionId, ...data },
@@ -339,11 +342,7 @@ export class CarrierGuidesApiService {
   }
 
   private async timezoneOf(storeId: string): Promise<string> {
-    const store = await this.prisma.client.store.findUnique({
-      where: { id: storeId },
-      select: { timezone: true }
-    })
-    return store?.timezone ?? 'UTC'
+    return storeTimezone(this.prisma.client, storeId)
   }
 
   // The ledger only has to answer the periods it asks of the policy: this is what the screen shows for a policy

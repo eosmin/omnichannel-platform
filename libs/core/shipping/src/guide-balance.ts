@@ -13,7 +13,9 @@ import {
   balanceAlertOf,
   CarrierGuideLimits,
   evaluatePeriod,
+  GuideMovementActor,
   GuideMovementKind,
+  GuideZoneFallback,
   type PeriodBounds,
   periodOf,
   ShipmentKind,
@@ -28,7 +30,7 @@ import { Events } from '@platform/core/events'
 // nothing here ever refuses a move: a guide made against a balance of 0 only raises an alert. The ledger is append-only, so a
 // retried move or two workers writing the same consume or refund end with one row (the partial unique index).
 
-const SYSTEM = 'system'
+const SYSTEM = GuideMovementActor.SYSTEM
 
 export interface GuidePolicy {
   connectionId: string
@@ -161,12 +163,12 @@ export async function loadBenefitEvents(
   return [...base, ...returns]
 }
 
-async function storeTimezone(client: Reader, storeId: string): Promise<string> {
+export async function storeTimezone(client: Reader, storeId: string): Promise<string> {
   const store = await client.store.findUnique({
     where: { id: storeId },
     select: { timezone: true }
   })
-  return store?.timezone ?? 'UTC'
+  return store?.timezone ?? GuideZoneFallback
 }
 
 // The state of the period that holds an instant, as it stands now
@@ -175,7 +177,12 @@ export async function currentBenefit(
   policy: GuidePolicy,
   at: Date
 ): Promise<{ bounds: PeriodBounds; events: BenefitEvent[] }> {
-  const bounds = periodOf(policy, at, await storeTimezone(client, policy.storeId))
+  const natural = periodOf(policy, at, await storeTimezone(client, policy.storeId))
+  // Nothing before the benefit was switched on (or its period changed) is judged, as at the daily close
+  const bounds: PeriodBounds = {
+    start: natural.start < policy.benefitSince ? policy.benefitSince : natural.start,
+    end: natural.end
+  }
   return { bounds, events: await loadBenefitEvents(client, policy, bounds) }
 }
 
@@ -206,8 +213,8 @@ export async function applyGuideEffectsOfMove(
     }
   } catch (error) {
     // A zone or an anchor the calendar cannot read (RangeError) must not stop the carrier's status from being applied: the
-    // benefit of this move is skipped and the daily close judges the period again. A database error is not caught here, it
-    // aborts the transaction as it must
+    // benefit of this move is skipped (the daily close fails on the same policy and says so in the worker's log). A database
+    // error is not caught here, it aborts the transaction as it must
     if (!(error instanceof RangeError)) throw error
   }
 }
@@ -272,7 +279,7 @@ async function judgeReturn(
   shipment: MovedShipment,
   occurredAt: Date
 ): Promise<void> {
-  const { events: periodEvents } = await currentBenefit(tx, policy, occurredAt)
+  const { bounds, events: periodEvents } = await currentBenefit(tx, policy, occurredAt)
   const after = evaluatePeriod(policy, periodEvents)
   // Only the first return event of a package changes the count (a package may pass `returning` and then `returned`)
   const returnEvents = await tx.shipmentEvent.count({
@@ -290,7 +297,8 @@ async function judgeReturn(
       )
     )
     const level = benefitAlertOf(before.state, after.state)
-    if (level !== null) {
+    // A late or replayed event of a period that already ended tells nobody: the period is history, not a warning
+    if (level !== null && bounds.end > new Date()) {
       events.publish(tx, Events.CARRIER_BENEFIT_ALERT, {
         storeId: shipment.storeId,
         connectionId: shipment.connectionId,

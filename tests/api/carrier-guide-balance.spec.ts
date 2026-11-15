@@ -455,6 +455,11 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
       await new Promise(resolve => setTimeout(resolve, 50))
       await putPolicy(id)
       await buy(id, 10, 1000)
+      // the live period does not count them either
+      expect((await admin().get(ApiRoutes.carriers.benefit(id))).body).toMatchObject({
+        baseCount: 0,
+        returnCount: 0
+      })
       await closeBenefitPeriods(prisma, await policyOf(id), closeAt())
       expect(await movementsOf(id, GuideMovementKind.REFUND)).toHaveLength(0)
       const history = await admin().get(ApiRoutes.carriers.benefitPeriods(id))

@@ -74,6 +74,11 @@ export const BenefitDispatchedStatuses: readonly ShipmentStatus[] = [
   ShipmentStatus.RETURNED
 ]
 
+// Who wrote a movement nobody typed (the move of a shipment, the daily close), and the zone used when a store names none the calendar
+// can read
+export const GuideMovementActor = { SYSTEM: 'system' } as const
+export const GuideZoneFallback = 'UTC'
+
 export const CarrierGuideLimits = {
   // One purchase and one adjustment are bounded so a typo cannot write an absurd balance
   MAX_GUIDES_PER_MOVEMENT: 1_000_000,

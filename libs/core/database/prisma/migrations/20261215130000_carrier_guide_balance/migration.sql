@@ -39,7 +39,7 @@ ALTER TABLE "carrier_guide_policies"
   ADD CONSTRAINT chk_carrier_guide_policies_refund_rule CHECK (refund_rule IN ('immediate', 'at_period_close')),
   ADD CONSTRAINT chk_carrier_guide_policies_loss_rule CHECK (loss_rule IN ('from_crossing', 'from_close')),
   ADD CONSTRAINT chk_carrier_guide_policies_combination CHECK (NOT (refund_rule = 'immediate' AND loss_rule = 'from_close')),
-  ADD CONSTRAINT chk_carrier_guide_policies_return_statuses CHECK (cardinality(return_statuses) >= 1 AND return_statuses <@ ARRAY['returning', 'returned']::TEXT[]);
+  ADD CONSTRAINT chk_carrier_guide_policies_return_statuses CHECK (return_statuses IS NOT NULL AND cardinality(return_statuses) >= 1 AND return_statuses <@ ARRAY['returning', 'returned']::TEXT[]);
 
 CREATE TABLE "carrier_guide_movements" (
   "id" TEXT NOT NULL,
