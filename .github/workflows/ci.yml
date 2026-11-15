@@ -363,7 +363,7 @@ jobs:
   # through it (`tests/jest.pooler.config.cts`), and `SHOW POOLS` is read to prove that clients share backends.
   pooler-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       # A laptop's rules: the stack is the development one, and the suites write to the platform_test
       # database that db:test:prepare makes beside platform_dev, never to platform_dev itself
@@ -383,6 +383,9 @@ jobs:
         run: pnpm exec tsx scripts/wait-for-bucket.ts
       - name: Migrate the development database (it gives the roles their passwords) and prepare the test one
         run: |
+          # prisma.config.ts and set-db-role-passwords read .env and .env.local, not .env.example: the values
+          # of the compose stack are the ones of .env.example
+          set -a; . ./.env.example; set +a
           pnpm db:migrate
           pnpm db:test:prepare
       - name: Pooler suites

@@ -46,6 +46,11 @@ export function poolerUrl(): URL | undefined {
   const value = process.env['TEST_POOLER_URL']
   if (value === undefined || value === '') return undefined
   const parsed = new URL(value)
+  // Without a port the app URLs would fall back to 5432 and go straight to Postgres while the suites say they use the pooler
+  if (parsed.port === '')
+    throw new Error(
+      'TEST_POOLER_URL needs the port of PgBouncer (for example postgresql://localhost:6432)'
+    )
   if (!LOCAL_HOSTS.has(parsed.hostname)) {
     throw new Error(`TEST_POOLER_URL must be a local PgBouncer, not ${parsed.hostname}`)
   }

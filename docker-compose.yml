@@ -4,9 +4,10 @@ services:
   postgres:
     image: postgres:18.6-alpine
     ports: ['5432:5432']
-    # PgBouncer may open max_db_connections (100) backends, and migrations and the owner scripts connect
-    # straight to Postgres beside it: the default of 100 would leave them no room (TDD_08 section 2.6)
-    command: ['postgres', '-c', 'max_connections=200']
+    # max_db_connections (100) counts per database and PgBouncer serves two here (platform_dev and the test
+    # one), so it may hold 200 backends; migrations, the owner scripts and the owner connection of the suites
+    # connect straight to Postgres beside it, and Postgres keeps 3 slots for superusers (TDD_08 section 2.6)
+    command: ['postgres', '-c', 'max_connections=250']
     environment:
       POSTGRES_USER: platform
       POSTGRES_PASSWORD: dev_password

@@ -119,6 +119,11 @@ describe('connectionUrls', () => {
       expect(new URL(urls.worker).username).toBe('platform_worker')
     })
 
+    it('refuses a pooler with no port, which would send the suites straight to Postgres', () => {
+      process.env['TEST_POOLER_URL'] = 'postgresql://localhost'
+      expect(() => connectionUrls()).toThrow('needs the port')
+    })
+
     it('takes an empty TEST_POOLER_URL for none', () => {
       process.env['TEST_POOLER_URL'] = ''
       expect(new URL(connectionUrls().app).port).toBe('5432')

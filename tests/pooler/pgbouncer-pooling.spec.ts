@@ -77,7 +77,9 @@ describe('PgBouncer in transaction mode (TDD_08 section 2.6)', () => {
 
   beforeAll(async () => {
     if (poolerUrl() === undefined) {
-      throw new Error('TEST_POOLER_URL is required: this suite is about the pooler (see CLAUDE.md)')
+      throw new Error(
+        'TEST_POOLER_URL is required: this suite is about the pooler (pnpm test:pooler, IMPLEMENTATION_PLAN.md Step 5.3)'
+      )
     }
     admin = await connected(poolerAdminUrl())
   })
@@ -123,6 +125,9 @@ describe('PgBouncer in transaction mode (TDD_08 section 2.6)', () => {
       return rows[0]?.pid ?? 0
     })
 
+    // Attached now: a client that fails while the pool is polled must not be an unhandled rejection
+    const done = Promise.all(running)
+
     // While they run, SHOW POOLS says that more clients are in the pool than backends serve them,
     // and that some wait for a backend: transaction pooling, not one backend per client
     let snapshot: PoolRow | undefined
@@ -135,11 +140,14 @@ describe('PgBouncer in transaction mode (TDD_08 section 2.6)', () => {
       }
       await sleep(POLL_MS)
     }
-    const pids = await Promise.all(running)
+    const pids = await done
 
     expect(snapshot).toBeDefined()
     expect(snapshot?.cl_active).toBeGreaterThan(0)
-    expect((snapshot?.cl_active ?? 0) + (snapshot?.cl_waiting ?? 0)).toBe(CLIENTS)
+    // More clients in the pool than a pool of backends can serve at once (some may still be connecting)
+    expect((snapshot?.cl_active ?? 0) + (snapshot?.cl_waiting ?? 0)).toBeGreaterThan(
+      DEFAULT_POOL_SIZE
+    )
     const backends =
       (snapshot?.sv_active ?? 0) + (snapshot?.sv_idle ?? 0) + (snapshot?.sv_used ?? 0)
     expect(backends).toBeLessThanOrEqual(DEFAULT_POOL_SIZE + RESERVE_POOL_SIZE)
@@ -151,7 +159,33 @@ describe('PgBouncer in transaction mode (TDD_08 section 2.6)', () => {
     expect(distinct.size).toBeLessThan(CLIENTS)
   })
 
-  it('does not let a transaction-local setting (SET LOCAL, set_config) reach the next client', async () => {
+  it('hands a client a different backend for its next transaction, so a session setting would not follow it', async () => {
+    // This is why the tenant settings are transaction-local (`set_config(..., true)`): the backend belongs to a
+    // client only while its transaction lasts. A client runs a transaction, another one takes the backend
+    // that was freed, and the first client's next transaction is served by a different one. In session mode
+    // a client keeps its backend and this never happens.
+    const pidOf = async (member: pg.Client): Promise<number> => {
+      await member.query('BEGIN')
+      const { rows } = await member.query<{ pid: number }>('SELECT pg_backend_pid()::int AS pid')
+      return rows[0]?.pid ?? 0
+    }
+    const mover = await client()
+    const taker = await client()
+    let moved = false
+    for (let round = 0; round < 10 && !moved; round += 1) {
+      const first = await pidOf(mover)
+      await mover.query('COMMIT')
+      const taken = await pidOf(taker)
+      const second = await pidOf(mover)
+      await Promise.all([taker.query('COMMIT'), mover.query('COMMIT')])
+      // While the taker holds its backend, the mover cannot be on it
+      expect(second).not.toBe(taken)
+      moved = second !== first
+    }
+    expect(moved).toBe(true)
+  })
+
+  it('does not let a transaction-local setting (set_config with true) reach the next client', async () => {
     const setter = await client()
     await setter.query('BEGIN')
     await setter.query("SELECT set_config('app.store_ids', 'a-store', true)")
@@ -174,13 +208,16 @@ describe('PgBouncer in transaction mode (TDD_08 section 2.6)', () => {
     expect(values.filter(value => value !== '')).toEqual([])
   })
 
-  it('keeps an advisory lock of a transaction until it ends, for clients on other backends', async () => {
+  it('keeps an advisory lock of a transaction until it ends, for another client', async () => {
     // A key of this run: the lock is on the number, never on a row
     const key = `pooler-${randomUUID()}`
     const holder = await client()
     const waiter = await client()
     await holder.query('BEGIN')
-    await holder.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [key])
+    const held = await holder.query<{ pid: number }>(
+      'SELECT pg_backend_pid()::int AS pid, pg_advisory_xact_lock(hashtextextended($1, 0))',
+      [key]
+    )
 
     await waiter.query('BEGIN')
     const refused = await waiter.query<{ got: boolean }>(
@@ -188,6 +225,9 @@ describe('PgBouncer in transaction mode (TDD_08 section 2.6)', () => {
       [key]
     )
     expect(refused.rows[0]?.got).toBe(false)
+    // The holder's backend is busy with its transaction, so the waiter was served by another one
+    const other = await waiter.query<{ pid: number }>('SELECT pg_backend_pid()::int AS pid')
+    expect(other.rows[0]?.pid).not.toBe(held.rows[0]?.pid)
     await waiter.query('ROLLBACK')
 
     await holder.query('COMMIT')

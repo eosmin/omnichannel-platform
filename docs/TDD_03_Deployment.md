@@ -239,8 +239,9 @@ services:
   postgres:
     image: postgres:18.6-alpine
     ports: ["5432:5432"]
-    # PgBouncer may hold max_db_connections (100) backends and the migrations connect beside it
-    command: ["postgres", "-c", "max_connections=200"]
+    # max_db_connections (100) counts per database and PgBouncer serves two here (the development and the
+    # test one): 200 backends, and the migrations and the owner scripts connect beside it
+    command: ["postgres", "-c", "max_connections=250"]
     environment:
       POSTGRES_USER: platform
       POSTGRES_PASSWORD: dev_password
