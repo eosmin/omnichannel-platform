@@ -40,7 +40,7 @@ export class PluginTransfersController {
   async list(
     @CurrentOrganization() organization: { id: string },
     @CurrentStore() store: { id: string },
-    @CurrentPluginInstallation() installation: { id: string },
+    @CurrentPluginInstallation() installation: { id: string; pluginId: string },
     @Query(new ZodValidationPipe(listTransfersQuerySchema)) query: ListTransfersQuery,
     @Req() req: AuthenticatedRequest
   ): Promise<PluginTransferPage> {
@@ -58,7 +58,7 @@ export class PluginTransfersController {
   async get(
     @CurrentOrganization() organization: { id: string },
     @CurrentStore() store: { id: string },
-    @CurrentPluginInstallation() installation: { id: string },
+    @CurrentPluginInstallation() installation: { id: string; pluginId: string },
     @Param('id', new ZodValidationPipe(idSchema)) transferId: string,
     @Req() req: AuthenticatedRequest
   ): Promise<PluginTransferView> {
