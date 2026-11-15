@@ -25,6 +25,7 @@ import { OrderMessagesModule } from './modules/order-messages'
 import { OrdersModule } from './modules/orders/orders.module'
 import { OrganizationsModule } from './modules/organizations/organizations.module'
 import { PickupsModule } from './modules/pickups/pickups.module'
+import { PluginWidgetsApiModule } from './modules/plugin-widgets/plugin-widgets.module'
 import { PluginsApiModule } from './modules/plugins/plugins.module'
 import { ProductsModule } from './modules/products/products.module'
 import { RealtimeModule } from './modules/realtime/realtime.module'
@@ -65,6 +66,7 @@ import { WidgetModule } from './modules/widget/widget.module'
     CarriersModule,
     OrderMessagesModule,
     PluginsApiModule,
+    PluginWidgetsApiModule,
     MessagingWindowModule,
     RoutingModule,
     RealtimeModule,

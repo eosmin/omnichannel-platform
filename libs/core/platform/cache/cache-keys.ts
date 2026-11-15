@@ -26,6 +26,19 @@ export const CacheKeys = {
       `store:${storeId}:customer:${customerId}:orders`
   },
 
+  // A widget session (TDD_10 §7): keyed by the sha256 of the token, so the token itself is never at rest,
+  // and the counters of sessions opened and requests asked, which live a minute from the first one
+  pluginWidget: {
+    session: (storeId: string, tokenHash: string) =>
+      `store:${storeId}:plugin-widget:session:${tokenHash}`,
+    // How many sessions one person opened for one installation in the last minute
+    sessionOpens: (storeId: string, userId: string, installationId: string) =>
+      `store:${storeId}:plugin-widget:opens:${userId}:${installationId}`,
+    // What one person asked through the bridge for one installation in the last minute, whatever the session
+    bridgeRequests: (storeId: string, userId: string, installationId: string) =>
+      `store:${storeId}:plugin-widget:requests:${userId}:${installationId}`
+  },
+
   agent: {
     convCount: (storeId: string, agentId: string) => `store:${storeId}:agent:${agentId}:conv:count`,
     permissions: (userId: string, storeId: string) => `perms:${userId}:${storeId}`

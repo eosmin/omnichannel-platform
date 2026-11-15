@@ -355,6 +355,55 @@ jobs:
           echo "::error::The shards of the security suite did not all succeed ($SHARDS)"
           exit 1
 
+  # PgBouncer in transaction mode, as production runs it (TDD_08 section 2.6). The stack is the one of
+  # docker-compose.yml (Postgres, PgBouncer, Redis, SeaweedFS), so the pooler under test is the one a laptop
+  # runs and the settings that the first spec reads are the ones the file declares. The api connects as
+  # platform_app through port 6432 (`TEST_POOLER_URL`, read by `connectionUrls`), the owner and the migrations
+  # straight to Postgres; the suites that take transaction-local settings, row locks and advisory locks run
+  # through it (`tests/jest.pooler.config.cts`), and `SHOW POOLS` is read to prove that clients share backends.
+  pooler-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # A laptop's rules: the stack is the development one, and the suites write to the platform_test
+      # database that db:test:prepare makes beside platform_dev, never to platform_dev itself
+      CI: 'false'
+      TEST_POOLER_URL: postgresql://localhost:6432
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Start Postgres, PgBouncer, Redis and SeaweedFS
+        run: docker compose up -d --wait postgres pgbouncer redis seaweedfs
+      - name: Wait for the bucket
+        run: pnpm exec tsx scripts/wait-for-bucket.ts
+      # db:test:prepare imports the generated client; the nx targets generate it themselves, a script does not
+      - name: Generate the Prisma client
+        run: pnpm exec nx run core-database:prisma-generate --skip-nx-cache
+      - name: Migrate the development database (it gives the roles their passwords) and prepare the test one
+        run: |
+          # prisma.config.ts and set-db-role-passwords read .env and .env.local, not .env.example: the values
+          # of the compose stack are the ones of .env.example
+          set -a; . ./.env.example; set +a
+          pnpm db:migrate
+          pnpm db:test:prepare
+      - name: Pooler suites
+        run: pnpm test:pooler
+      # The role of the worker and the lock timeout of the api role, through the pooler: a role setting must
+      # still be in force on a backend that PgBouncer hands over
+      - name: Database integration suites through the pooler
+        run: |
+          # These suites read the role passwords from the environment, not from the file (the values of .env.example)
+          set -a; . ./.env.example; set +a
+          pnpm exec nx run core-database:test-integration --skip-nx-cache
+      - name: Show the pools when a suite failed
+        if: failure()
+        run: docker compose logs --tail 200 pgbouncer
+
   # Builds the image of each service and scans it. A critical or high vulnerability that has a fix
   # fails the job; the ones nobody has fixed yet do not.
   security-scan:

@@ -4,11 +4,15 @@ services:
   postgres:
     image: postgres:18.6-alpine
     ports: ['5432:5432']
+    # max_db_connections (100) counts per database and PgBouncer serves two here (platform_dev and the test
+    # one), so it may hold 200 backends; migrations, the owner scripts and the owner connection of the suites
+    # connect straight to Postgres beside it, and Postgres keeps 3 slots for superusers (TDD_08 section 2.6)
+    command: ['postgres', '-c', 'max_connections=250']
     environment:
       POSTGRES_USER: platform
       POSTGRES_PASSWORD: dev_password
       POSTGRES_DB: platform_dev
-      PGBOUNCER_AUTH_PASSWORD: dev_pgbouncer_password
+      PGBOUNCER_AUTH_PASSWORD: ${PGBOUNCER_AUTH_PASSWORD:-dev_pgbouncer_password}
     volumes:
       # Postgres 18 keeps its data in a versioned subdirectory, so the volume is mounted one level up
       - postgres_data:/var/lib/postgresql
@@ -24,15 +28,27 @@ services:
     image: edoburu/pgbouncer:v1.25.2-p0
     ports: ['6432:6432']
     environment:
-      # The URL only tells the image which database to proxy and the auth_user password
-      DATABASE_URL: postgres://pgbouncer:dev_pgbouncer_password@postgres:5432/platform_dev
+      # No database in the URL: the image then writes the wildcard entry `* = host=postgres`, so the
+      # database the tests prepare (platform_test) goes through the pooler as well as platform_dev. The
+      # URL only names the host and the auth_user, whose password is the one of PGBOUNCER_AUTH_PASSWORD
+      DATABASE_URL: postgres://pgbouncer:${PGBOUNCER_AUTH_PASSWORD:-dev_pgbouncer_password}@postgres:5432
       LISTEN_PORT: 6432
       AUTH_TYPE: scram-sha-256
       AUTH_USER: pgbouncer
       AUTH_QUERY: SELECT uname, phash FROM pgbouncer.user_lookup($1)
+      # The function of the query lives in platform_dev only (scripts/postgres-init): every database asks it there
+      AUTH_DBNAME: platform_dev
+      # The settings of TDD_08 section 2.6, one by one
       POOL_MODE: transaction
       MAX_CLIENT_CONN: 1000
       DEFAULT_POOL_SIZE: 25
+      RESERVE_POOL_SIZE: 5
+      RESERVE_POOL_TIMEOUT: 3
+      SERVER_IDLE_TIMEOUT: 600
+      MAX_DB_CONNECTIONS: 100
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits
+      # SHOW POOLS and SHOW STATS (read-only) for the pgbouncer role, the one the monitoring uses
+      STATS_USERS: pgbouncer
     depends_on:
       postgres: { condition: service_healthy }
     healthcheck:

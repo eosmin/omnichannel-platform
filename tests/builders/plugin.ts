@@ -48,3 +48,48 @@ export async function ensurePluginInstallation(
     select: { id: true }
   })
 }
+
+// A third-party integration plugin that declares one widget (TDD_10 §7), installed and active in a store with the
+// scopes given. The row is written by the owner client because registering and installing an integration plugin
+// is Step 5.6; the suites that need one build it here. A second call changes the scopes and the url.
+export async function ensureWidgetPlugin(
+  owner: OwnerClient,
+  input: { storeId: string; pluginId: string; widgetUrl: string; scopes: string[] }
+): Promise<{ id: string }> {
+  const manifest = {
+    ui: { widget: input.widgetUrl },
+    widgets: [{ id: 'info', name: 'Info panel', defaultHeight: 300 }]
+  }
+  // An integration plugin belongs to the organization that registered it (D10; a check enforces it)
+  const store = await owner.store.findUniqueOrThrow({
+    where: { id: input.storeId },
+    select: { organizationId: true }
+  })
+  await owner.plugin.upsert({
+    where: { id: input.pluginId },
+    create: {
+      id: input.pluginId,
+      organizationId: store.organizationId,
+      name: input.pluginId,
+      authorName: 'suite',
+      authorEmail: 'suite@example.invalid',
+      type: PluginCatalogTypes.INTEGRATION,
+      manifest,
+      pricingModel: PluginPricingModels.FREE,
+      status: PluginStatus.APPROVED
+    },
+    update: { manifest, status: PluginStatus.APPROVED }
+  })
+  return owner.pluginInstallation.upsert({
+    where: { storeId_pluginId: { storeId: input.storeId, pluginId: input.pluginId } },
+    create: {
+      storeId: input.storeId,
+      pluginId: input.pluginId,
+      scopes: input.scopes,
+      status: PluginInstallationStatus.ACTIVE,
+      installedBy: 'suite'
+    },
+    update: { scopes: input.scopes, status: PluginInstallationStatus.ACTIVE, revokedAt: null },
+    select: { id: true }
+  })
+}
