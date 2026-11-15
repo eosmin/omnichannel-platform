@@ -2999,7 +2999,8 @@
         "analytics": "Analítica",
         "org": "Organización",
         "finance": "Finanzas",
-        "fiscal": "Documentos fiscales"
+        "fiscal": "Documentos fiscales",
+        "carriers": "Transportistas"
       },
       "permissions": {
         "conversations": {
@@ -3120,6 +3121,10 @@
         "fiscal": {
           "view": "Ver documentos fiscales",
           "manage": "Gestionar documentos fiscales"
+        },
+        "carriers": {
+          "view_guide_balance": "Ver saldo de guías y beneficio de reintegro",
+          "manage_guide_balance": "Gestionar saldo de guías y beneficio de reintegro"
         }
       },
       "members": {

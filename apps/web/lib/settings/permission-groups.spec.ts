@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { Permissions } from '@platform/core/auth'
 
 import { permissionGroups, toggled } from './permission-groups'
@@ -31,4 +34,30 @@ describe('toggled', () => {
     expect(toggled(['a', 'b'], 'a')).toEqual(['b'])
     expect(toggled([], 'a')).toEqual(['a'])
   })
+})
+
+// The matrix of a role draws a name for every group and permission from the messages (a key that is missing is drawn as the
+// key itself, long and unbreakable, which widens the dialog on a phone)
+describe('the names of the permission matrix', () => {
+  for (const locale of ['en', 'es']) {
+    it(`has a text for every group and permission in ${locale}`, () => {
+      const messages = JSON.parse(
+        readFileSync(join(__dirname, '../../messages', `${locale}.json`), 'utf8')
+      ) as {
+        settings: {
+          team: {
+            permissionGroups: Record<string, string>
+            permissions: Record<string, Record<string, string>>
+          }
+        }
+      }
+      const { permissionGroups: groupNames, permissions: names } = messages.settings.team
+      for (const { group, permissions } of permissionGroups()) {
+        expect(groupNames[group]?.length ?? 0).toBeGreaterThan(0)
+        for (const { action } of permissions) {
+          expect(names[group]?.[action]?.length ?? 0).toBeGreaterThan(0)
+        }
+      }
+    })
+  }
 })

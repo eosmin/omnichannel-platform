@@ -2999,7 +2999,8 @@
         "analytics": "Analytics",
         "org": "Organization",
         "finance": "Finance",
-        "fiscal": "Fiscal documents"
+        "fiscal": "Fiscal documents",
+        "carriers": "Carriers"
       },
       "permissions": {
         "conversations": {
@@ -3120,6 +3121,10 @@
         "fiscal": {
           "view": "View fiscal documents",
           "manage": "Manage fiscal documents"
+        },
+        "carriers": {
+          "view_guide_balance": "View guide balance and refund benefit",
+          "manage_guide_balance": "Manage guide balance and refund benefit"
         }
       },
       "members": {
