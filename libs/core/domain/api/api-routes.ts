@@ -472,7 +472,16 @@ export const PluginApiRoutes = {
   // credential (256 bits, five minutes, used once).
   setupExchange: '/plugin-api/setup/exchange',
   // Who the key is: its installation, its store and its scopes (any active key, no scope needed)
-  installation: '/plugin-api/installation'
+  installation: '/plugin-api/installation',
+  // Messages (Step 5.6 PR M1b): a plugin writes a reply or a note, and reads the edits and the kept text of a deleted message
+  messages: {
+    create: '/plugin-api/messages',
+    resendCaption: (id: string) => `/plugin-api/messages/${id}/resend-caption`,
+    refetchFile: (id: string, index: number | string) =>
+      `/plugin-api/messages/${id}/files/${index}/refetch`,
+    deletedContent: (id: string) => `/plugin-api/messages/${id}/deleted-content`,
+    revisions: (id: string) => `/plugin-api/messages/${id}/revisions`
+  }
 } as const
 
 // Mounted OUTSIDE the /api/v1 prefix.

@@ -31,6 +31,9 @@ const content = z
   // A lone surrogate is not text: Postgres would refuse it or replace it
   .refine(value => !/\p{Surrogate}/u.test(value), { message: 'is not well-formed text' })
 
+// The text of a reply or a note, as the schemas of the people and of the plugins take it
+export const messageContentSchema = content
+
 // A uuid has one spelling in the row: the same person in capitals is the same person
 const mentions = z
   .array(uuidSchema.transform(id => id.toLowerCase()))
