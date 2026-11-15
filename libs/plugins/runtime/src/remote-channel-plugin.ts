@@ -36,7 +36,8 @@ import {
   PinnedFetchFailed,
   PERMANENT_NETWORK_CODES,
   PinnedExchangeReasons,
-  UnsafeUrlError
+  UnsafeUrlError,
+  isWellFormedPublicHttpsUrl
 } from '@platform/core/url-safety'
 import {
   type ChannelContext,
@@ -358,6 +359,13 @@ export class RemoteChannelPlugin implements ChannelPlugin {
       status: DeliveryStatus.SENT,
       sentAt: parsed.data.sentAt ?? new Date(this.now()).toISOString()
     }
+  }
+
+  // The door of `POST /events` already judges the shape of the address of a file; this is the same judgement made again by the
+  // worker before it asks for the fetch, so a job queued by anything else is refused the same way. Whether the host is public
+  // is the fetch's to decide, at the moment it connects.
+  acceptsMediaLink(mediaRef: string): boolean {
+    return isWellFormedPublicHttpsUrl(mediaRef)
   }
 
   // The file a customer sent a remote plugin (§6.7.6): the address is a public https one that the plugin put in its event, so it is
