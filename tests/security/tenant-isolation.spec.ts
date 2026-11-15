@@ -26,6 +26,9 @@ import {
   OrderMessageRoutes,
   OrderMessageTriggers,
   PaymentMethod,
+  PluginCatalogTypes,
+  PluginPricingModels,
+  PluginStatus,
   RemittanceStatus,
   RoutingActionTypes,
   PickupStatus,
@@ -3309,6 +3312,78 @@ describe('Tenant isolation', () => {
         (await owner.returnReceptionBatch.findUniqueOrThrow({ where: { id: foreignBatch.id } }))
           .status
       ).toBe('draft')
+    })
+  })
+
+  // A plugin the owner registers by pasting its manifest belongs to the organization (Step 5.6, P1). The catalog and the
+  // install of another organization never reach it; the generic matrix above cannot hold it, because a plugin has no
+  // route to read it by id: the answer of the install is the one of a plugin that does not exist.
+  describe('a private plugin', () => {
+    const pluginId = `${prefix}-priv`
+
+    beforeAll(async () => {
+      await owner.plugin.create({
+        data: {
+          id: pluginId,
+          name: 'Private plugin',
+          authorName: 'suite',
+          authorEmail: 'suite@example.invalid',
+          type: PluginCatalogTypes.INTEGRATION,
+          manifest: {},
+          pricingModel: PluginPricingModels.FREE,
+          status: PluginStatus.APPROVED,
+          organizationId: ctx.orgA.id
+        }
+      })
+    })
+    afterAll(async () => {
+      await owner.plugin.deleteMany({ where: { id: pluginId } })
+    })
+
+    const idsSeenBy = async (user: TestContext['adminA'], store: TestContext['storeA']) => {
+      const response = await api(app, user, store).get(ApiRoutes.plugins.available)
+      expect(response.status).toBe(200)
+      return (response.body as { id: string }[]).map(entry => entry.id)
+    }
+
+    it('is in the catalog of its organization and not in the one of another', async () => {
+      expect(await idsSeenBy(ctx.adminA, ctx.storeA)).toContain(pluginId)
+      expect(await idsSeenBy(ctx.adminB, ctx.storeB)).not.toContain(pluginId)
+    })
+
+    it('is not installed by another organization, and answers as a plugin that does not exist', async () => {
+      const foreign = await api(app, ctx.adminB, ctx.storeB)
+        .post(ApiRoutes.plugins.install)
+        .send({ pluginId })
+      const missing = await api(app, ctx.adminB, ctx.storeB)
+        .post(ApiRoutes.plugins.install)
+        .send({ pluginId: `${prefix}-nobody` })
+
+      expect(foreign.status).toBe(404)
+      expect((foreign.body as { error: unknown }).error).toEqual(
+        (missing.body as { error: unknown }).error
+      )
+      expect(await owner.pluginInstallation.count({ where: { pluginId } })).toBe(0)
+    })
+
+    it('is not registered over by another organization', async () => {
+      const response = await api(app, ctx.adminB, ctx.storeB)
+        .post(ApiRoutes.plugins.register)
+        .send({
+          id: pluginId,
+          version: '9.9.9',
+          name: 'Taken over',
+          description: 'x',
+          author: { name: 'x', email: 'x@example.com' },
+          type: PluginCatalogTypes.INTEGRATION,
+          pricing: { model: PluginPricingModels.FREE },
+          scopes: []
+        })
+
+      expect(response.status).toBe(409)
+      expect((await owner.plugin.findUniqueOrThrow({ where: { id: pluginId } })).name).toBe(
+        'Private plugin'
+      )
     })
   })
 })

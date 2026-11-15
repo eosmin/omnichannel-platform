@@ -114,6 +114,11 @@ export class CarrierRegistry {
     return plugin
   }
 
+  // Whether the id is one the platform defines for a carrier, loaded in this process or not
+  knows(id: string): boolean {
+    return CARRIER_IDS.has(id)
+  }
+
   find(carrierId: string): CarrierPlugin | undefined {
     return CARRIER_IDS.has(carrierId)
       ? this.plugins.get(carrierId as CarrierIdType)?.plugin

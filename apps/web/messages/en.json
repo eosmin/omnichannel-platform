@@ -631,6 +631,7 @@
     "PLUGIN_WIDGET_SESSION_INVALID": "The plugin panel session ended. Open the conversation again",
     "API_KEY_INVALID": "The API key is not valid",
     "PLUGIN_CONTRACT_VIOLATION": "The plugin did not follow its contract",
+    "PLUGIN_LIMIT_REACHED": "The organization has reached the limit of registered plugins",
     "PLUGIN_INSTALLATION_FAILED": "The plugin could not be installed",
     "PLUGIN_NOT_FOUND": "The plugin does not exist",
     "PLUGIN_NOT_INSTALLED": "The plugin is not installed",

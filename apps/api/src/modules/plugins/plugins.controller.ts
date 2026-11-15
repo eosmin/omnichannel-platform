@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Req } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, Param, Post, Req, Res } from '@nestjs/common'
+import type { Response } from 'express'
 
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
@@ -11,7 +12,17 @@ import type { AuthenticatedRequest } from '@platform/core/logger'
 import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
 
 import { PluginInstallationsService, type PluginCatalogEntry } from './plugin-installations.service'
-import { type InstallPluginBody, installPluginSchema } from './plugins.schemas'
+import {
+  PluginRegistrationService,
+  RegistrationOutcomes,
+  type RegisteredPlugin
+} from './plugin-registration.service'
+import {
+  type InstallPluginBody,
+  installPluginSchema,
+  type RegisterPluginBody,
+  registerPluginSchema
+} from './plugins.schemas'
 
 type Store = ResolvedTenant['store']
 
@@ -19,12 +30,15 @@ type Store = ResolvedTenant['store']
 // uninstalling, SETTINGS_MANAGE_PLUGINS.
 @Controller()
 export class PluginsController {
-  constructor(private readonly installations: PluginInstallationsService) {}
+  constructor(
+    private readonly installations: PluginInstallationsService,
+    private readonly registration: PluginRegistrationService
+  ) {}
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)
   @Get(ApiRoutes.plugins.available)
   catalog(@CurrentStore() store: Store): Promise<PluginCatalogEntry[]> {
-    return this.installations.catalog(store.id)
+    return this.installations.catalog(store)
   }
 
   @RequirePermissions(Permissions.SETTINGS_MANAGE_PLUGINS)
@@ -36,7 +50,27 @@ export class PluginsController {
     @Body(new ZodValidationPipe(installPluginSchema)) body: InstallPluginBody,
     @Req() req: AuthenticatedRequest
   ): Promise<PluginCatalogEntry> {
-    return this.installations.install(store.id, body.pluginId, actorOf(user, store, req))
+    return this.installations.install(store, body.pluginId, actorOf(user, store, req))
+  }
+
+  // The owner pastes the manifest of an integration plugin (D10): 201 when the id is new, 200 when a newer version of one of
+  // the organization's own plugins replaced the older one, or the same manifest was sent again
+  @RequirePermissions(Permissions.SETTINGS_MANAGE_PLUGINS)
+  @Post(ApiRoutes.plugins.register)
+  async register(
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(registerPluginSchema)) body: RegisterPluginBody,
+    @Req() req: AuthenticatedRequest,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<RegisteredPlugin> {
+    const registered = await this.registration.register(store, body, actorOf(user, store, req))
+    res.status(
+      registered.outcome === RegistrationOutcomes.CREATED
+        ? HttpStatusCodes.CREATED
+        : HttpStatusCodes.OK
+    )
+    return registered
   }
 
   @RequirePermissions(Permissions.SETTINGS_MANAGE_PLUGINS)
@@ -48,6 +82,6 @@ export class PluginsController {
     @Param('id', new ZodValidationPipe(uuidSchema)) installationId: string,
     @Req() req: AuthenticatedRequest
   ): Promise<PluginCatalogEntry> {
-    return this.installations.uninstall(store.id, installationId, actorOf(user, store, req))
+    return this.installations.uninstall(store, installationId, actorOf(user, store, req))
   }
 }

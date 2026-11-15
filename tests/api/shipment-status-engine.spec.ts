@@ -11,6 +11,7 @@ import {
   CarrierConnectionStatus,
   CarrierEventOutcomes,
   CarrierId,
+  CarrierPolling,
   ShipmentEventSource,
   ShipmentStatus,
   ShippingPayer
@@ -330,52 +331,71 @@ describe('The status flow from the carrier: engine, poll and schedule (TDD_17 §
       )
       return { queue, instance }
     }
-    // A moment on the first tick of a bucket of fifteen minutes (the default interval), and one on the last
-    const at = (minuteOfBucket: number) =>
-      new Date(Math.floor(Date.now() / (15 * 60_000)) * 15 * 60_000 + minuteOfBucket * 60_000)
+    // A moment on the first tick of a bucket of fifteen minutes (the default interval), and one ten minutes later. Fixed,
+    // never the real clock: between 04:00 and 04:09 UTC the scheduler also queues the daily run of the old packages, and a
+    // spec that lands there by chance counts two jobs where it expects one. `hourUtc` picks the bucket.
+    const DAY = Date.UTC(2026, 10, 12)
+    const atHour = (hourUtc: number, minuteOfBucket: number) =>
+      new Date(DAY + hourUtc * 3_600_000 + minuteOfBucket * 60_000)
+    const QUIET_HOUR_UTC = (CarrierPolling.OLD_RUN_HOUR_UTC + 6) % 24
 
-    it('queues a poll for a connection with packages on their way, once per bucket of its interval', async () => {
-      const connection = await createCarrierConnection(owner, {
-        storeId: ctx.storeA.id,
-        carrierId: CarrierId.FORZA
-      })
-      const order = await createOrder(owner, { storeId: ctx.storeA.id, status: 'CONFIRMED' })
-      await owner.shipment.create({
-        data: {
+    it.each([
+      ['an hour with no old run', QUIET_HOUR_UTC],
+      ['the hour of the old run', CarrierPolling.OLD_RUN_HOUR_UTC]
+    ])(
+      'queues a poll for a connection with packages on their way, once per bucket of its interval (%s)',
+      async (_label, hourUtc) => {
+        const atBucket = (minuteOfBucket: number) => atHour(hourUtc, minuteOfBucket)
+        const connection = await createCarrierConnection(owner, {
           storeId: ctx.storeA.id,
-          orderId: order.id,
-          connectionId: connection.id,
-          serviceCode: connection.serviceCode,
-          shippingPayer: ShippingPayer.SENDER,
-          currency: 'USD',
-          status: ShipmentStatus.IN_TRANSIT,
-          guideNumber: `F-${randomUUID().slice(0, 8)}`,
-          idempotencyKey: `sched-${randomUUID()}`,
-          createdBy: 'system'
-        }
-      })
-      const { queue, instance } = scheduler()
-      const first = await instance.enqueueDue(at(0))
-      const mine = () =>
-        queue.jobs.filter(
-          job => (job.data as { connectionId: string }).connectionId === connection.id
+          carrierId: CarrierId.FORZA
+        })
+        const order = await createOrder(owner, { storeId: ctx.storeA.id, status: 'CONFIRMED' })
+        await owner.shipment.create({
+          data: {
+            storeId: ctx.storeA.id,
+            orderId: order.id,
+            connectionId: connection.id,
+            serviceCode: connection.serviceCode,
+            shippingPayer: ShippingPayer.SENDER,
+            currency: 'USD',
+            status: ShipmentStatus.IN_TRANSIT,
+            guideNumber: `F-${randomUUID().slice(0, 8)}`,
+            idempotencyKey: `sched-${randomUUID()}`,
+            createdBy: 'system'
+          }
+        })
+        const { queue, instance } = scheduler()
+        const first = await instance.enqueueDue(atBucket(0))
+        // The ordinary polls of the bucket; the daily run of the old packages (`includeOld`) is another job, checked below
+        const mine = () =>
+          queue.jobs.filter(job => {
+            const data = job.data as { connectionId: string; includeOld: boolean }
+            return data.connectionId === connection.id && !data.includeOld
+          })
+        expect(first).toBeGreaterThanOrEqual(1)
+        // At the hour of the old run the daily job is there, once; at any other hour it is not
+        const oldJobs = queue.jobs.filter(job => {
+          const data = job.data as { connectionId: string; includeOld: boolean }
+          return data.connectionId === connection.id && data.includeOld === true
+        })
+        expect(oldJobs).toHaveLength(hourUtc === CarrierPolling.OLD_RUN_HOUR_UTC ? 1 : 0)
+        expect(mine()).toHaveLength(1)
+        expect(mine()[0]?.name).toBe(JobNames.POLL_SHIPMENT_STATUS)
+        // The tick ten minutes later is not the first of the bucket: nothing for this connection
+        const before = mine().length
+        await instance.enqueueDue(atBucket(10))
+        expect(mine()).toHaveLength(before)
+        // Two runs of the first tick are one job: the same id
+        await instance.enqueueDue(atBucket(0))
+        const ids = mine().map(job => job.opts?.jobId)
+        expect(new Set(ids).size).toBe(1)
+        expect(ids[0]).toBe(
+          pollShipmentStatusJobId(connection.id, Math.floor(atBucket(0).getTime() / 60_000 / 15))
         )
-      expect(first).toBeGreaterThanOrEqual(1)
-      expect(mine()).toHaveLength(1)
-      expect(mine()[0]?.name).toBe(JobNames.POLL_SHIPMENT_STATUS)
-      // The tick ten minutes later is not the first of the bucket: nothing for this connection
-      const before = mine().length
-      await instance.enqueueDue(at(10))
-      expect(mine()).toHaveLength(before)
-      // Two runs of the first tick are one job: the same id
-      await instance.enqueueDue(at(0))
-      const ids = mine().map(job => job.opts?.jobId)
-      expect(new Set(ids).size).toBe(1)
-      expect(ids[0]).toBe(
-        pollShipmentStatusJobId(connection.id, Math.floor(at(0).getTime() / 60_000 / 15))
-      )
-      expect(QueueNames.HEAVY_PROCESSING).toBeDefined()
-    })
+        expect(QueueNames.HEAVY_PROCESSING).toBeDefined()
+      }
+    )
 
     it('queues the daily run of the old packages as a job of its own, whatever the interval of the connection', async () => {
       const connection = await createCarrierConnection(owner, {
@@ -403,7 +423,7 @@ describe('The status flow from the carrier: engine, poll and schedule (TDD_17 §
       })
       const { queue, instance } = scheduler()
       // 04:00 UTC, a minute that is not the first tick of a bucket of twenty-five minutes (the package coming back is polled too)
-      const day = new Date(Date.UTC(2026, 10, 12, 4, 0))
+      const day = atHour(CarrierPolling.OLD_RUN_HOUR_UTC, 0)
       await instance.enqueueDue(day)
       await instance.enqueueDue(day)
       const mine = queue.jobs.filter(
@@ -426,7 +446,7 @@ describe('The status flow from the carrier: engine, poll and schedule (TDD_17 §
       })
       expect(id).toBeDefined()
       const { queue, instance } = scheduler()
-      await instance.enqueueDue(at(0))
+      await instance.enqueueDue(atHour(QUIET_HOUR_UTC, 0))
       expect(
         queue.jobs.some(job => (job.data as { connectionId: string }).connectionId === connectionId)
       ).toBe(false)
