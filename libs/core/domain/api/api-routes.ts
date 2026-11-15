@@ -212,7 +212,9 @@ export const ApiRoutes = {
       record: '/finance/transactions',
       byId: (id: string) => `/finance/transactions/${id}`,
       void: (id: string) => `/finance/transactions/${id}/void`,
-      replace: (id: string) => `/finance/transactions/${id}/replace`
+      replace: (id: string) => `/finance/transactions/${id}/replace`,
+      // The receipt: POST names the file (a Media of purpose finance_document uploaded for this transaction), GET gives its signed links
+      document: (id: string) => `/finance/transactions/${id}/document`
     },
     balances: '/finance/balances',
     // The sources whose automatic entry failed, still waiting for a person (TDD_18 §6.1)
