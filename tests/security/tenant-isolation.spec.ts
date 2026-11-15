@@ -4240,8 +4240,7 @@ describe('Tenant isolation', () => {
           PluginScopes.PRODUCTS_WRITE,
           PluginScopes.PRODUCTS_DELETE,
           PluginScopes.INVENTORY_READ,
-          PluginScopes.WAREHOUSES_READ,
-          PluginScopes.WAREHOUSES_WRITE
+          PluginScopes.WAREHOUSES_READ
         ]
       }))
       productA = (await createProduct(owner, { storeId: ctx.storeA.id })).id
@@ -4295,15 +4294,11 @@ describe('Tenant isolation', () => {
       const levels = await asB('get', PluginApiRoutes.inventory.levels)
       const movements = await asB('get', PluginApiRoutes.inventory.movements)
       const foreign = await asB('get', PluginApiRoutes.warehouses.byId(ctx.warehouseA.id))
-      const changed = await asB('patch', PluginApiRoutes.warehouses.byId(ctx.warehouseA.id)).send({
-        name: 'taken'
-      })
       const list = await asB('get', PluginApiRoutes.warehouses.list)
 
       expect(JSON.stringify(levels.body)).not.toContain(productA)
       expect(JSON.stringify(movements.body)).not.toContain(productA)
       expect(foreign.status).toBe(404)
-      expect(changed.status).toBe(404)
       expect(JSON.stringify(list.body)).not.toContain(ctx.warehouseA.id)
     })
   })

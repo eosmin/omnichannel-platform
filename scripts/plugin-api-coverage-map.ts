@@ -372,20 +372,20 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
 
   // Stock (Step 5.6 PR E4a reads it; the transfers and counts are scopes of their own, PR E4b)
   'warehouses.list': {
-    scope: ['warehouses:read', 'warehouses:write'],
+    scope: 'warehouses:read',
     exposed: '/plugin-api/warehouses'
   },
-  'warehouses.create': {
-    scope: 'warehouses:write',
-    exposed: '/plugin-api/warehouses'
-  },
+  // The writes of a warehouse (create, change) are organization-wide (ORG_MANAGE_WAREHOUSES) and a key is bound to one store: they wait
+  // for PR E4a-2 to decide the reach. The GET of `byId` is exposed
+  'warehouses.create': { proposed: 'warehouses:write', step: STEP },
   'warehouses.byId': {
-    scope: ['warehouses:read', 'warehouses:write'],
+    proposed: ['warehouses:read', 'warehouses:write'],
+    step: STEP,
     exposed: '/plugin-api/warehouses/:id'
   },
   // Replacing the store links of a warehouse moves it between stores of the organization, and the key of a plugin is bound to one
   // store: not exposed until the plugin's reach over other stores is decided (PR E4a-2)
-  'warehouses.stores': { scope: ['warehouses:read', 'warehouses:write'] },
+  'warehouses.stores': { proposed: ['warehouses:read', 'warehouses:write'], step: STEP },
   'inventory.levels': { scope: 'inventory:read', exposed: '/plugin-api/inventory/levels' },
   'inventory.summary': { scope: 'inventory:read', exposed: '/plugin-api/inventory/summary' },
   'inventory.movements': { scope: 'inventory:read', exposed: '/plugin-api/inventory/movements' },

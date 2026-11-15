@@ -18,7 +18,7 @@ import {
 } from '@platform/core/errors'
 
 import { encodeCursor } from '../customers/list-cursor'
-import { type Actor, auditActorOf, auditViaOf } from '../tenancy'
+import type { Actor } from '../tenancy'
 
 import type {
   CreateWarehouseBody,
@@ -121,12 +121,12 @@ export class WarehousesService {
     })
     this.audit.log({
       action: AuditAction.WAREHOUSE_CREATED,
-      actor: auditActorOf(actor),
+      actor: { userId: actor.userId },
       organizationId,
       storeId: actor.storeId,
       resourceType: WarehouseResourceTypes.WAREHOUSE,
       resourceId: id,
-      metadata: { name: body.name, code: body.code, ...auditViaOf(actor) },
+      metadata: { name: body.name, code: body.code },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
@@ -177,12 +177,12 @@ export class WarehousesService {
     if (fields.length === 0) return this.get(organizationId, warehouseId)
     this.audit.log({
       action: AuditAction.WAREHOUSE_UPDATED,
-      actor: auditActorOf(actor),
+      actor: { userId: actor.userId },
       organizationId,
       storeId: actor.storeId,
       resourceType: WarehouseResourceTypes.WAREHOUSE,
       resourceId: warehouseId,
-      metadata: { change: 'updated', fields, changes, ...auditViaOf(actor) },
+      metadata: { change: 'updated', fields, changes },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })

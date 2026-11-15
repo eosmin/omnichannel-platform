@@ -21,9 +21,9 @@ export const PluginScopes = {
   // the catalog does not delete from it by that. The cost and the tax of a product have permissions that no scope grants.
   PRODUCTS_WRITE: 'products:write',
   PRODUCTS_DELETE: 'products:delete',
-  // The warehouses of the organization of the store of the key (Step 5.6 PR E4a); reading is INVENTORY_VIEW, as for a person
+  // The warehouses of the organization of the store of the key (Step 5.6 PR E4a); reading is INVENTORY_VIEW, as for a person.
+  // Writing one (`warehouses:write`, ORG_MANAGE_WAREHOUSES, organization-wide) waits for PR E4a-2 to decide its reach.
   WAREHOUSES_READ: 'warehouses:read',
-  WAREHOUSES_WRITE: 'warehouses:write',
   WEBHOOKS_WRITE: 'webhooks:write',
   ANALYTICS_READ: 'analytics:read',
   INVENTORY_READ: 'inventory:read',
@@ -71,7 +71,6 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.PRODUCTS_WRITE]: [Permissions.PRODUCTS_CREATE, Permissions.PRODUCTS_EDIT],
   [PluginScopes.PRODUCTS_DELETE]: [Permissions.PRODUCTS_DELETE],
   [PluginScopes.WAREHOUSES_READ]: [Permissions.INVENTORY_VIEW],
-  [PluginScopes.WAREHOUSES_WRITE]: [Permissions.ORG_MANAGE_WAREHOUSES],
   [PluginScopes.WEBHOOKS_WRITE]: [],
   [PluginScopes.ANALYTICS_READ]: [Permissions.ANALYTICS_VIEW],
   [PluginScopes.INVENTORY_READ]: [Permissions.INVENTORY_VIEW],

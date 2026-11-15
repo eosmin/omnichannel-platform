@@ -569,7 +569,6 @@ export const PluginApiRoutes = {
   },
   warehouses: {
     list: '/plugin-api/warehouses',
-    create: '/plugin-api/warehouses',
     byId: (id: string) => `/plugin-api/warehouses/${id}`
   },
   inventory: {

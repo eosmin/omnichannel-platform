@@ -77,13 +77,9 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
     writer = await key(ctx.storeA.id, 'writer', [
       PluginScopes.PRODUCTS_READ,
       PluginScopes.PRODUCTS_WRITE,
-      PluginScopes.WAREHOUSES_READ,
-      PluginScopes.WAREHOUSES_WRITE
+      PluginScopes.WAREHOUSES_READ
     ])
-    writeOnly = await key(ctx.storeA.id, 'writeonly', [
-      PluginScopes.PRODUCTS_WRITE,
-      PluginScopes.WAREHOUSES_WRITE
-    ])
+    writeOnly = await key(ctx.storeA.id, 'writeonly', [PluginScopes.PRODUCTS_WRITE])
     readOnly = await key(ctx.storeA.id, 'readonly', [
       PluginScopes.PRODUCTS_READ,
       PluginScopes.WAREHOUSES_READ
@@ -187,12 +183,6 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
       await call('get', PluginApiRoutes.warehouses.byId(ctx.warehouseB.id), reader.key).expect(
         NOT_FOUND
       )
-      await call('patch', PluginApiRoutes.warehouses.byId(ctx.warehouseB.id), writer.key)
-        .send({ name: 'taken' })
-        .expect(NOT_FOUND)
-      expect(
-        (await owner.warehouse.findUniqueOrThrow({ where: { id: ctx.warehouseB.id } })).name
-      ).not.toBe('taken')
     })
 
     it('does not show the links of a warehouse to the other stores of the organization', async () => {
@@ -374,51 +364,6 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
     })
   })
 
-  describe('the writes of the warehouses', () => {
-    it('creates and changes a warehouse of the organization, as the system in the audit log', async () => {
-      const code = `P${randomInt(1_000_000)}`
-
-      const created = await call('post', PluginApiRoutes.warehouses.create, writer.key)
-        .send({ name: `${prefix} depot`, code })
-        .expect(CREATED)
-      const id = (created.body as Row).id
-      const updated = await call('patch', PluginApiRoutes.warehouses.byId(id), writer.key)
-        .send({ name: `${prefix} depot 2` })
-        .expect(OK)
-
-      expect((updated.body as { name: string }).name).toBe(`${prefix} depot 2`)
-      const row = await owner.warehouse.findUniqueOrThrow({ where: { id } })
-      expect(row.organizationId).toBe(ctx.orgA.id)
-      const [entry] = await waitForAuditEntries(owner, {
-        action: AuditAction.WAREHOUSE_CREATED,
-        resourceId: id
-      })
-      expect(entry?.userId).toBeNull()
-      expect(entry?.metadata).toMatchObject({ pluginInstallationId: writer.installationId })
-      // It names no store: the links are the owner's (PR E4a-2)
-      expect((created.body as WarehouseBody).stores).toEqual([])
-    })
-
-    it('does not take the organization from the body', async () => {
-      const code = `O${randomInt(1_000_000)}`
-
-      const created = await call('post', PluginApiRoutes.warehouses.create, writer.key).send({
-        name: `${prefix} sneaky`,
-        code,
-        organizationId: ctx.orgB.id
-      })
-
-      if (created.status === CREATED) {
-        const row = await owner.warehouse.findUniqueOrThrow({
-          where: { id: (created.body as Row).id }
-        })
-        expect(row.organizationId).toBe(ctx.orgA.id)
-      } else {
-        expect(created.status).toBe(400)
-      }
-    })
-  })
-
   describe('the scopes', () => {
     it('refuses a call with no key', async () => {
       await call('get', PluginApiRoutes.products.list).expect(401)
@@ -437,16 +382,8 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
           priceCents: 1
         }),
         call('patch', PluginApiRoutes.products.byId(product.id), readOnly.key).send({ name: 'x' }),
-        call('post', PluginApiRoutes.warehouses.create, readOnly.key).send({
-          name: 'x',
-          code: 'X1'
-        }),
         // a write without the read scope does not tell whether a product exists
-        call('patch', PluginApiRoutes.products.byId(product.id), writeOnly.key).send({ name: 'x' }),
-        call('post', PluginApiRoutes.warehouses.create, writeOnly.key).send({
-          name: 'x',
-          code: 'X2'
-        })
+        call('patch', PluginApiRoutes.products.byId(product.id), writeOnly.key).send({ name: 'x' })
       ]
 
       for (const request of denied) {
@@ -459,17 +396,23 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
       )
     })
 
-    it('does not expose the adjustment of stock nor the store links of a warehouse: they store a person, or move a warehouse across stores', async () => {
+    it('does not expose the adjustment of stock nor any write of a warehouse: the first stores a person, the others reach the whole organization', async () => {
       const product = await createProduct(owner, { storeId: ctx.storeA.id })
       const requests = [
         call('post', '/plugin-api/inventory/adjustments', writer.key),
-        call('put', '/plugin-api/warehouses/x/stores', writer.key)
+        call('post', '/plugin-api/warehouses', writer.key),
+        call('patch', `/plugin-api/warehouses/${ctx.warehouseA.id}`, writer.key),
+        call('put', `/plugin-api/warehouses/${ctx.warehouseA.id}/stores`, writer.key)
       ]
 
       for (const request of requests) {
         expect([NOT_FOUND, 405]).toContain((await request.send({})).status)
       }
       expect(await owner.inventoryMovement.count({ where: { productId: product.id } })).toBe(0)
+      expect(
+        (await owner.warehouse.findUniqueOrThrow({ where: { id: ctx.warehouseA.id } }))
+          .organizationId
+      ).toBe(ctx.orgA.id)
     })
   })
 })

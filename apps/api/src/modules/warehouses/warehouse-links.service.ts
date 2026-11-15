@@ -23,7 +23,7 @@ import {
   resourceNotFound
 } from '@platform/core/errors'
 
-import { type Actor, auditActorOf, auditViaOf } from '../tenancy'
+import type { Actor } from '../tenancy'
 
 import type { PutWarehouseStoresBody } from './warehouses.schemas'
 import { lockWarehouse } from './warehouses.support'
@@ -101,13 +101,12 @@ export class WarehouseLinksService {
     if (!summary.changed) return view
     this.audit.log({
       action: AuditAction.WAREHOUSE_UPDATED,
-      actor: auditActorOf(actor),
+      actor: { userId: actor.userId },
       organizationId,
       storeId: actor.storeId,
       resourceType: WarehouseResourceTypes.STORE_LINKS,
       resourceId: warehouseId,
       metadata: {
-        ...auditViaOf(actor),
         change: 'stores',
         added: summary.added,
         removed: summary.removed,

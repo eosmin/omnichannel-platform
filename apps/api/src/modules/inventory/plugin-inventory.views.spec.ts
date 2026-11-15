@@ -41,9 +41,9 @@ describe('pluginMovementView', () => {
 
     const view = pluginMovementView(extra)
 
-    expect(Object.keys(view)).not.toEqual(
-      expect.arrayContaining(['seq', 'storeId', 'idempotencyKey'])
-    )
+    expect(view).not.toHaveProperty('seq')
+    expect(view).not.toHaveProperty('storeId')
+    expect(view).not.toHaveProperty('idempotencyKey')
   })
 
   it('carries the cost only when the movement has it (the caller holds the cost permission)', () => {

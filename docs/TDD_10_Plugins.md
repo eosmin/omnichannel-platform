@@ -903,10 +903,9 @@ export const PluginScopes = {
   ORDERS_READ: 'orders:read',
   ORDERS_WRITE: 'orders:write',
   PRODUCTS_READ: 'products:read',
-  PRODUCTS_WRITE: 'products:write',             // create and change a product or a variant (Step 5.6 E4a); never its cost or tax
+  PRODUCTS_WRITE: 'products:write',             // create and change a product or a variant (Step 5.6 E4a); never its cost, and its tax is read, not written
   PRODUCTS_DELETE: 'products:delete',           // delete a product or a variant (Step 5.6 E4a); PRODUCTS_DELETE is in no other scope
   WAREHOUSES_READ: 'warehouses:read',           // the warehouses of the organization of the key's store (Step 5.6 E4a)
-  WAREHOUSES_WRITE: 'warehouses:write',         // create and change a warehouse (Step 5.6 E4a)
   WEBHOOKS_WRITE: 'webhooks:write',
   ANALYTICS_READ: 'analytics:read',
   CHANNELS_READ: 'channels:read',               // the directory of channel accounts and their templates (Step 5.6 E1); no connection details

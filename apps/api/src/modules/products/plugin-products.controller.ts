@@ -69,10 +69,12 @@ const DELETE = PluginScopes.PRODUCTS_DELETE
 // even a write: a key must not learn that a product exists (the 404 of a change or a delete) through a scope it was not given. A
 // write takes `products:write` besides (create and edit), and deleting a product or a variant takes `products:delete`, because
 // no other scope grants that permission. The permissions a method asks for are those of the same route of the screen, checked by
-// the guard against the scopes of THE ROUTE. Cost and tax have permissions that no scope grants, so a plugin never reads a cost
-// (`redactDetail`, `redactPage`: the viewer holds no PRODUCTS_VIEW_COST) and a body that sets a cost or a tax is refused
-// (`assertMayWriteCost`, `assertMayWriteTax`). A write leaves its audit entry as the system with the installation named in the
-// metadata (`pluginActorOf`); the catalog stores no person on a product.
+// the guard against the scopes of THE ROUTE. The cost and the tax have permissions that no scope grants, so a plugin never reads a
+// cost (`redactDetail`, `redactPage`: the viewer holds no PRODUCTS_VIEW_COST), and a body that sets a cost or a tax is refused
+// (`assertMayWriteCost`, `assertMayWriteTax`); how a product is taxed (`taxTreatment`, `taxRateId`) is part of its price and is read
+// as on the screen. The audit entries the catalog writes today (price, cost, tax, delete) name the installation as the system
+// (`pluginActorOf`); changes the catalog does not audit for a person (a name, `active`) are not audited for a plugin either, and
+// PR E4a-2 adds the general entry. The catalog stores no person on a product.
 @Controller()
 export class PluginProductsController {
   constructor(
