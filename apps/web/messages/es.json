@@ -947,7 +947,7 @@
     "plugin": {
       "error": {
         "title": "Falló un plugin",
-        "body": "Los webhooks de {plugin} fallaron varias veces seguidas y se apagaron. Revísalo en Ajustes, Plugins."
+        "body": "Lo que se envía a {plugin} falló varias veces seguidas y se apagó. Revísalo en Ajustes, Plugins."
       }
     },
     "remittance": {

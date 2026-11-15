@@ -947,7 +947,7 @@
     "plugin": {
       "error": {
         "title": "A plugin failed",
-        "body": "The webhooks of {plugin} failed several times in a row and were turned off. Review it in Settings, Plugins."
+        "body": "What is sent to {plugin} failed several times in a row and was turned off. Review it in Settings, Plugins."
       }
     },
     "remittance": {
