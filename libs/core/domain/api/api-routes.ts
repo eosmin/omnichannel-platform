@@ -234,7 +234,17 @@ export const ApiRoutes = {
     statusCatalog: (id: string) => `/carriers/${id}/status-catalog`, // What the plugin knows of its codes, with the row each has
     statusMappings: (id: string) => `/carriers/${id}/status-mappings`,
     statusMappingByCode: (id: string, code: string) => `/carriers/${id}/status-mappings/${code}`, // PUT maps it, DELETE restores the plugin default
-    unmappedStatuses: (id: string) => `/carriers/${id}/unmapped-statuses`
+    unmappedStatuses: (id: string) => `/carriers/${id}/unmapped-statuses`,
+    // The balance of prepaid guides and the refund benefit of a connection (TDD_17 §4.18)
+    guideBalance: (id: string) => `/carriers/${id}/guide-balance`,
+    guideMovements: (id: string) => `/carriers/${id}/guide-movements`,
+    guidePurchases: (id: string) => `/carriers/${id}/guide-purchases`, // POST records a purchase
+    guidePurchaseVoid: (id: string, movementId: string) =>
+      `/carriers/${id}/guide-purchases/${movementId}/void`,
+    guideAdjustments: (id: string) => `/carriers/${id}/guide-adjustments`,
+    guidePolicy: (id: string) => `/carriers/${id}/guide-policy`, // GET reads it, PUT replaces it
+    benefit: (id: string) => `/carriers/${id}/benefit`, // The rate and the state of the current period
+    benefitPeriods: (id: string) => `/carriers/${id}/benefit-periods` // The periods the daily close judged
   },
 
   shipments: {
@@ -549,6 +559,12 @@ export const PluginApiRoutes = {
     directory: '/plugin-api/channels/directory',
     templates: (pluginId: string) => `/plugin-api/channels/${pluginId}/templates`
   },
+  // Step 5.6 PR C3 (TDD_10 §6.7.5): what a remote CHANNEL plugin says to the platform, about its own accounts and about what
+  // its customers write. There is no human counterpart: a person links an account in the plugin's settings page
+  channel: {
+    connection: (connectionId: string) => `/plugin-api/channel/connections/${connectionId}`,
+    events: '/plugin-api/channel/events'
+  },
 
   // Step 5.6 PR E3a: the reading of orders, over the same services as `ApiRoutes.orders` and `ApiRoutes.orderTemplates`. Their
   // writes need the id of a person (who confirmed, who cancelled, who created) and wait for a plugin actor (PR E3b).
@@ -567,6 +583,30 @@ export const PluginApiRoutes = {
   settings: {
     preferences: '/plugin-api/settings/preferences',
     returns: '/plugin-api/settings/returns'
+  },
+
+  // Step 5.6 PR E4a: the catalog and the stock, over the same services as `ApiRoutes.products`, `.inventory` and `.warehouses`. The
+  // adjustment of stock stores the id of the person who made it and waits for the plugin actor (PR E4a-2).
+  products: {
+    list: '/plugin-api/products',
+    create: '/plugin-api/products',
+    byId: (id: string) => `/plugin-api/products/${id}`,
+    variants: (id: string) => `/plugin-api/products/${id}/variants`,
+    images: (id: string) => `/plugin-api/products/${id}/images`,
+    variantById: (id: string, variantId: string) =>
+      `/plugin-api/products/${id}/variants/${variantId}`,
+    search: '/plugin-api/products/search',
+    inventory: (id: string) => `/plugin-api/products/${id}/inventory`
+  },
+  warehouses: {
+    list: '/plugin-api/warehouses',
+    byId: (id: string) => `/plugin-api/warehouses/${id}`
+  },
+  inventory: {
+    levels: '/plugin-api/inventory/levels',
+    summary: '/plugin-api/inventory/summary',
+    movements: '/plugin-api/inventory/movements',
+    kardex: '/plugin-api/inventory/kardex'
   },
 
   // Messages (Step 5.6 PR M1b): a plugin writes a reply or a note, and reads the edits and the kept text of a deleted message

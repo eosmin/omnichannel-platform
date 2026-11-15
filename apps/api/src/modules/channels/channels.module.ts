@@ -18,6 +18,10 @@ import {
 } from './oauth/channel-oauth.controller'
 import { ChannelOAuthService } from './oauth/channel-oauth.service'
 import { ChannelOAuthStore } from './oauth/channel-oauth.store'
+import { PluginChannelConnectionsService } from './plugin-channel-connections.service'
+import { PluginChannelEventsService } from './plugin-channel-events.service'
+import { PluginChannelLimitsStore } from './plugin-channel-limits.store'
+import { PluginChannelController } from './plugin-channel.controller'
 import { PluginChannelsController } from './plugin-channels.controller'
 
 // The public door of the channels (the webhook) and their management from Settings. The registry
@@ -36,14 +40,18 @@ import { PluginChannelsController } from './plugin-channels.controller'
     ChannelOAuthController,
     ChannelOAuthCallbackController,
     ChannelTemplatesController,
-    PluginChannelsController
+    PluginChannelsController,
+    PluginChannelController
   ],
   providers: [
     ChannelConnectionsService,
     ChannelTemplatesService,
     InboundEventQueue,
     ChannelOAuthStore,
-    ChannelOAuthService
+    ChannelOAuthService,
+    PluginChannelConnectionsService,
+    PluginChannelEventsService,
+    PluginChannelLimitsStore
   ],
   exports: [ChannelConnectionsService, ChannelTemplatesService, InboundEventQueue]
 })

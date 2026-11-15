@@ -130,6 +130,11 @@ export const AuditAction = {
   // The commission or the rates of a carrier connection changed: money the owner agreed with the carrier, kept with its old and new values
   CARRIER_FEES_CHANGED: 'carrier.fees_changed',
   CARRIER_DISCONNECTED: 'carrier.disconnected',
+  // The balance of prepaid guides and the benefit policy of a connection (TDD_17 §4.18): money the owner paid and rules agreed with the carrier
+  CARRIER_GUIDE_PURCHASE_RECORDED: 'carrier_guide.purchase_recorded',
+  CARRIER_GUIDE_PURCHASE_VOIDED: 'carrier_guide.purchase_voided',
+  CARRIER_GUIDE_ADJUSTED: 'carrier_guide.adjusted',
+  CARRIER_GUIDE_POLICY_CHANGED: 'carrier_guide.policy_changed',
   CARRIER_STATUS_MAPPING_CHANGED: 'carrier.status_mapping_changed',
   CARRIER_WEBHOOK_SECRET_ROTATED: 'carrier.webhook_secret_rotated',
   SHIPMENT_CREATED: 'shipment.created',

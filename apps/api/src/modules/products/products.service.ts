@@ -17,7 +17,7 @@ import { Events } from '@platform/core/events'
 import { MediaPurpose } from '@platform/core/storage'
 
 import { encodeCursor } from '../customers/list-cursor'
-import type { Actor } from '../tenancy'
+import { type Actor, auditActorOf, auditViaOf } from '../tenancy'
 
 import type { CreateProductBody, ListProductsQuery, UpdateProductBody } from './products.schemas'
 import { LIVE_MEDIA_STATUSES, lockProduct, resolveProductTax } from './products.support'
@@ -163,11 +163,12 @@ export class ProductsService {
     if (created.tax.taxTreatment !== TaxTreatment.TAXED || created.tax.taxRateId !== null) {
       this.audit.log({
         action: AuditAction.PRODUCT_TAX_CHANGED,
-        actor: { userId: actor.userId },
+        actor: auditActorOf(actor),
         storeId,
         resourceType: ProductResourceTypes.PRODUCT,
         resourceId: created.id,
         metadata: {
+          ...auditViaOf(actor),
           fromTreatment: TaxTreatment.TAXED,
           toTreatment: created.tax.taxTreatment,
           fromTaxRateId: null,
@@ -250,11 +251,12 @@ export class ProductsService {
     ) {
       this.audit.log({
         action: AuditAction.PRODUCT_TAX_CHANGED,
-        actor: { userId: actor.userId },
+        actor: auditActorOf(actor),
         storeId,
         resourceType: ProductResourceTypes.PRODUCT,
         resourceId: productId,
         metadata: {
+          ...auditViaOf(actor),
           fromTreatment: previous.taxTreatment,
           toTreatment: previous.tax.taxTreatment,
           fromTaxRateId: previous.taxRateId,
@@ -267,11 +269,11 @@ export class ProductsService {
     if (body.costCents !== undefined && body.costCents !== previous.costCents) {
       this.audit.log({
         action: AuditAction.PRODUCT_COST_CHANGED,
-        actor: { userId: actor.userId },
+        actor: auditActorOf(actor),
         storeId,
         resourceType: ProductResourceTypes.PRODUCT,
         resourceId: productId,
-        metadata: { fromCents: previous.costCents, toCents: body.costCents },
+        metadata: { fromCents: previous.costCents, toCents: body.costCents, ...auditViaOf(actor) },
         ipAddress: actor.ipAddress,
         userAgent: actor.userAgent
       })
@@ -279,11 +281,15 @@ export class ProductsService {
     if (body.priceCents !== undefined && body.priceCents !== previous.priceCents) {
       this.audit.log({
         action: AuditAction.PRODUCT_PRICE_CHANGED,
-        actor: { userId: actor.userId },
+        actor: auditActorOf(actor),
         storeId,
         resourceType: ProductResourceTypes.PRODUCT,
         resourceId: productId,
-        metadata: { fromCents: previous.priceCents, toCents: body.priceCents },
+        metadata: {
+          fromCents: previous.priceCents,
+          toCents: body.priceCents,
+          ...auditViaOf(actor)
+        },
         ipAddress: actor.ipAddress,
         userAgent: actor.userAgent
       })
@@ -333,12 +339,13 @@ export class ProductsService {
     })
     this.audit.log({
       action: AuditAction.PRODUCT_DELETED,
-      actor: { userId: actor.userId },
+      actor: auditActorOf(actor),
       storeId,
       resourceType: ProductResourceTypes.PRODUCT,
       resourceId: productId,
       // The row is gone: the entry is what says what it was
       metadata: {
+        ...auditViaOf(actor),
         name: removed.name,
         sku: removed.sku,
         priceCents: removed.priceCents,

@@ -24,6 +24,7 @@ import { ChannelEventTypes } from '@platform/plugins/sdk'
 import { MessageStatusWriter, statesBefore } from './message-status.writer'
 
 const RECEIPT_STATES = {
+  [ChannelEventTypes.MESSAGE_SENT]: DeliveryStatus.SENT,
   [ChannelEventTypes.MESSAGE_DELIVERED]: DeliveryStatus.DELIVERED,
   [ChannelEventTypes.MESSAGE_READ]: DeliveryStatus.READ,
   [ChannelEventTypes.MESSAGE_FAILED]: DeliveryStatus.FAILED
@@ -127,7 +128,9 @@ export class ChannelReceipts {
       const reached =
         to === DeliveryStatus.READ
           ? [DeliveryStatus.READ]
-          : [DeliveryStatus.DELIVERED, DeliveryStatus.READ]
+          : to === DeliveryStatus.SENT
+            ? [DeliveryStatus.SENT, DeliveryStatus.DELIVERED, DeliveryStatus.READ]
+            : [DeliveryStatus.DELIVERED, DeliveryStatus.READ]
       if (
         states.length > 1 &&
         states.some(file => !reached.some(state => state === file.deliveryStatus))

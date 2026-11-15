@@ -42,6 +42,8 @@ export const MetricNames = {
   CHANNEL_WEBHOOK_REJECTED: 'platform_channel_webhook_rejected_total',
   CHANNEL_API_ERRORS: 'platform_channel_api_errors_total',
   CHANNEL_CONNECTIONS_ACTIVE: 'platform_channel_connections_active',
+  // An event a remote channel plugin reported and the platform dropped (TDD_10 §6.7.5), by reason
+  PLUGIN_EVENT_REJECTED: 'platform_plugin_event_rejected_total',
 
   // Outbound webhooks and email
   WEBHOOK_DELIVERIES: 'platform_webhook_deliveries_total',

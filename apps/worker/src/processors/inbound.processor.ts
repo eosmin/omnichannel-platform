@@ -115,6 +115,8 @@ export class InboundProcessor extends BaseProcessor<ProcessChannelEventJob> {
           isLastAttempt(job)
         )
         return
+      // A remote plugin confirms what it took from the platform (TDD_10 §6.7.5); no official channel sends this one
+      case ChannelEventTypes.MESSAGE_SENT:
       case ChannelEventTypes.MESSAGE_DELIVERED:
       case ChannelEventTypes.MESSAGE_READ:
       case ChannelEventTypes.MESSAGE_FAILED:

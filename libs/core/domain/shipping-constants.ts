@@ -341,7 +341,11 @@ export const PickupStatusTransitions: Record<PickupStatus, readonly PickupStatus
 
 // One guide at a time per order: the lock the write of a shipment takes (TDD_17 §4.5 step 7), kept apart from the lock of
 // the row of the order that the order service takes
-export const ShipmentLockScopes = { ORDER: 'order_shipping' } as const
+export const ShipmentLockScopes = {
+  ORDER: 'order_shipping',
+  // The balance of prepaid guides of one connection: two moves that take a guide each read the balance one after the other
+  GUIDE_BALANCE: 'guide_balance'
+} as const
 
 export const ShipmentLimits = {
   // What a plugin may take for one call before the outcome is given up as unknown (a guide may exist: never "failed")

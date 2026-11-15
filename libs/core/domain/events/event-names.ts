@@ -99,6 +99,10 @@ export const Events = {
   SHIPMENT_CANCEL_FAILED: 'shipment.cancel_failed',
   // A carrier sent a status nobody has mapped, for the first time: the people who manage carriers are told (TDD_17 §4.17)
   CARRIER_STATUS_UNMAPPED: 'carrier.status_unmapped',
+  // The balance of prepaid guides of a connection fell to its low-balance threshold or to zero, and the refund benefit got worse
+  // (TDD_17 §4.18): both are raised inside the move that caused them, in the api or in the worker
+  CARRIER_GUIDE_BALANCE_ALERT: 'carrier.guide_balance_alert',
+  CARRIER_BENEFIT_ALERT: 'carrier.benefit_alert',
   // A bulk run of labels advanced, and ended: the person who asked hears it, and is told when the file is ready (TDD_17 §4.6)
   BULK_LABELS_PROGRESS: 'bulk_labels.progress',
   BULK_LABELS_DONE: 'bulk_labels.done',
@@ -233,6 +237,9 @@ export const BridgedEvents = [
   Events.SHIPMENT_CANCEL_FAILED,
   // The worker reads what the carriers push: the owner is told in the api
   Events.CARRIER_STATUS_UNMAPPED,
+  // The worker moves shipments too: the team is told in the api
+  Events.CARRIER_GUIDE_BALANCE_ALERT,
+  Events.CARRIER_BENEFIT_ALERT,
   // The daily check of the cash owed runs in the worker and the team is told in the api
   Events.REMITTANCE_OVERDUE,
   // The worker runs the bulk generation of labels: the requester hears it in the api

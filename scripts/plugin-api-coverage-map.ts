@@ -51,6 +51,8 @@ const ORDER_PRINT =
   'No server route that a plugin needs: the sheet is printed by the browser from the order a plugin already reads'
 const CARRIER_ADMIN =
   'The credentials, webhook secret and status mappings of a carrier connection: owner only, secrets never leave the store'
+const GUIDE_BALANCE =
+  'What the owner paid for prepaid guides and the refund terms agreed with a carrier: owner only (Admin preset), finance data that no plugin scope needs'
 const CHANNEL_ADMIN =
   'The connection of a channel account (tokens, labels, OAuth): owner only; a channel plugin registers its own through plugin-api/channel (Step 5.6)'
 const SETTINGS_ADMIN =
@@ -324,15 +326,34 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
     exposed: '/plugin-api/order-templates/:kind/locales/:locale'
   },
 
-  // Catalog (`products:read` exists; writing a product is `products:write`)
-  'products.list': { proposed: ['products:read', 'products:write'], step: STEP },
-  'products.create': { proposed: 'products:write', step: STEP },
-  'products.byId': { proposed: ['products:read', 'products:write'], step: STEP },
-  'products.variants': { proposed: ['products:read', 'products:write'], step: STEP },
-  'products.images': { proposed: ['products:read', 'products:write'], step: STEP },
-  'products.variantById': { proposed: 'products:write', step: STEP },
-  'products.search': { scope: 'products:read' },
-  'products.inventory': { scope: 'inventory:read' },
+  // Catalog (Step 5.6 PR E4a). Every route holds `products:read`, a write `products:write` besides and a delete `products:delete`
+  // instead; no scope grants the cost or the tax of a product, so a plugin neither reads nor writes them
+  'products.list': {
+    scope: ['products:read', 'products:write'],
+    exposed: '/plugin-api/products'
+  },
+  'products.create': {
+    scope: 'products:write',
+    exposed: '/plugin-api/products'
+  },
+  'products.byId': {
+    scope: ['products:read', 'products:write', 'products:delete'],
+    exposed: '/plugin-api/products/:id'
+  },
+  'products.variants': {
+    scope: ['products:read', 'products:write'],
+    exposed: '/plugin-api/products/:id/variants'
+  },
+  'products.images': {
+    scope: ['products:read', 'products:write'],
+    exposed: '/plugin-api/products/:id/images'
+  },
+  'products.variantById': {
+    scope: ['products:write', 'products:delete'],
+    exposed: '/plugin-api/products/:id/variants/:variantId'
+  },
+  'products.search': { scope: 'products:read', exposed: '/plugin-api/products/search' },
+  'products.inventory': { scope: 'inventory:read', exposed: '/plugin-api/products/:id/inventory' },
 
   // Finance (the books of the organization; no plugin scope in the MVP)
   'finance.setup': { none: FINANCE },
@@ -371,15 +392,27 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'finance.balances': { none: FINANCE },
   'finance.postings': { none: FINANCE },
 
-  // Stock (`inventory:*` exist; the warehouses, transfers and counts are scopes of their own)
-  'warehouses.list': { proposed: ['warehouses:read', 'warehouses:write'], step: STEP },
+  // Stock (Step 5.6 PR E4a reads it; the transfers and counts are scopes of their own, PR E4b)
+  'warehouses.list': {
+    scope: 'warehouses:read',
+    exposed: '/plugin-api/warehouses'
+  },
+  // The writes of a warehouse (create, change) are organization-wide (ORG_MANAGE_WAREHOUSES) and a key is bound to one store: they wait
+  // for PR E4a-2 to decide the reach. The GET of `byId` is exposed
   'warehouses.create': { proposed: 'warehouses:write', step: STEP },
-  'warehouses.byId': { proposed: ['warehouses:read', 'warehouses:write'], step: STEP },
+  'warehouses.byId': {
+    proposed: ['warehouses:read', 'warehouses:write'],
+    step: STEP,
+    exposed: '/plugin-api/warehouses/:id'
+  },
+  // Replacing the store links of a warehouse moves it between stores of the organization, and the key of a plugin is bound to one
+  // store: not exposed until the plugin's reach over other stores is decided (PR E4a-2)
   'warehouses.stores': { proposed: ['warehouses:read', 'warehouses:write'], step: STEP },
-  'inventory.levels': { scope: 'inventory:read' },
-  'inventory.summary': { scope: 'inventory:read' },
-  'inventory.movements': { scope: 'inventory:read' },
-  'inventory.kardex': { scope: 'inventory:read' },
+  'inventory.levels': { scope: 'inventory:read', exposed: '/plugin-api/inventory/levels' },
+  'inventory.summary': { scope: 'inventory:read', exposed: '/plugin-api/inventory/summary' },
+  'inventory.movements': { scope: 'inventory:read', exposed: '/plugin-api/inventory/movements' },
+  'inventory.kardex': { scope: 'inventory:read', exposed: '/plugin-api/inventory/kardex' },
+  // The movement of an adjustment stores the id of the person who made it (`createdBy`): it waits for the plugin actor (PR E4a-2)
   'inventory.adjustments': { scope: 'inventory:write' },
   'transfers.list': { proposed: ['transfers:read', 'transfers:write'], step: STEP },
   'transfers.create': { proposed: 'transfers:write', step: STEP },
@@ -411,6 +444,14 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'carriers.statusMappings': { none: CARRIER_ADMIN },
   'carriers.statusMappingByCode': { none: CARRIER_ADMIN },
   'carriers.unmappedStatuses': { proposed: 'carriers:read', step: STEP },
+  'carriers.guideBalance': { none: GUIDE_BALANCE },
+  'carriers.guideMovements': { none: GUIDE_BALANCE },
+  'carriers.guidePurchases': { none: GUIDE_BALANCE },
+  'carriers.guidePurchaseVoid': { none: GUIDE_BALANCE },
+  'carriers.guideAdjustments': { none: GUIDE_BALANCE },
+  'carriers.guidePolicy': { none: GUIDE_BALANCE },
+  'carriers.benefit': { none: GUIDE_BALANCE },
+  'carriers.benefitPeriods': { none: GUIDE_BALANCE },
   'shipments.list': { scope: 'shipments:read' },
   'shipments.byId': { scope: 'shipments:read' },
   'shipments.forOrder': { scope: ['shipments:read', 'shipments:write'] },

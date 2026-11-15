@@ -100,6 +100,9 @@ model Store {
   consentRecords           ConsentRecord[]
   exports                  Export[]
   carrierConnections       CarrierConnection[]
+  carrierGuidePolicies     CarrierGuidePolicy[]
+  carrierGuideMovements    CarrierGuideMovement[]
+  carrierBenefitPeriods    CarrierBenefitPeriod[]
   carrierServices          CarrierService[]
   guideSequences           GuideSequence[]
   shipments                Shipment[]
@@ -1777,12 +1780,102 @@ model CarrierConnection {
   unmappedStatuses CarrierUnmappedStatus[]
   remittances      CodRemittance[]
   importProfiles   RemittanceImportProfile[]
+  guidePolicy      CarrierGuidePolicy?
+  guideMovements   CarrierGuideMovement[]
+  benefitPeriods   CarrierBenefitPeriod[]
 
   @@unique([storeId, displayName])
   // So that what hangs from a connection can name its store and the database check that they go together
   @@unique([storeId, id])
   @@index([storeId, status])
   @@map("carrier_connections")
+}
+
+// The balance of prepaid guides and the refund benefit of a connection (TDD_17 §4.18, Step 4.16). One row per connection that
+// opted in; every column is a setting, and the defaults that stand for a carrier's rule are to be confirmed with the carrier.
+model CarrierGuidePolicy {
+  connectionId        String   @id @map("connection_id")
+  storeId             String   @map("store_id")
+  balanceEnabled      Boolean  @default(false) @map("balance_enabled")
+  benefitEnabled      Boolean  @default(false) @map("benefit_enabled")
+  warnOnEmptyBalance  Boolean  @default(true) @map("warn_on_empty_balance")
+  lowBalanceThreshold Int?     @map("low_balance_threshold") // Guides; null = no low-balance alert
+  periodKind          String   @default("fixed_days") @map("period_kind") // BenefitPeriodKind
+  periodDays          Int      @default(15) @map("period_days")
+  benefitSince        DateTime @default(now()) @map("benefit_since") // The benefit is judged from here: set when it is switched on or its period changes, never judging what happened before
+  periodAnchor        String   @map("period_anchor") // 'YYYY-MM-DD', a calendar day of the store: the first day of a period of fixed days
+  thresholdBps        Int      @default(1000) @map("threshold_bps")
+  warnAtBps           Int      @default(8000) @map("warn_at_bps")
+  base                String   @default("delivered") // BenefitBase
+  returnStatuses      String[] @default(["returned"]) @map("return_statuses") // ShipmentStatus values that count as a return
+  refundRule          String   @default("at_period_close") @map("refund_rule") // BenefitRefundRule
+  lossRule            String   @default("from_crossing") @map("loss_rule") // BenefitLossRule
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  store      Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  connection CarrierConnection @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Cascade)
+
+  @@unique([storeId, connectionId])
+  @@index([storeId])
+  @@map("carrier_guide_policies")
+}
+
+// The ledger of guides of a connection: append-only (a trigger refuses an update or a delete). The balance is the sum of
+// guidesDelta; the average cost is what the purchases and their voids paid over the guides they brought.
+model CarrierGuideMovement {
+  id              String   @id @default(uuid())
+  storeId         String   @map("store_id")
+  connectionId    String   @map("connection_id")
+  kind            String // GuideMovementKind
+  guidesDelta     Int      @map("guides_delta")
+  costCentsDelta  Int      @default(0) @map("cost_cents_delta") // Whole cents of USD; only a purchase and its void move it
+  paidQuantity    Int?     @map("paid_quantity") // purchase
+  giftQuantity    Int?     @map("gift_quantity") // purchase
+  unitCostCents   Int?     @map("unit_cost_cents") // consume: the weighted average cost of that moment, when there was one
+  shipmentId      String?  @map("shipment_id") // consume and refund: the guide it is about (one of each per shipment)
+  voidsMovementId String?  @unique @map("voids_movement_id") // void: the purchase it undoes (once)
+  note            String?
+  createdBy       String   @map("created_by") // A user id or 'system'
+  occurredAt      DateTime @default(now()) @map("occurred_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  store      Store                 @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  connection CarrierConnection     @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Restrict)
+  shipment   Shipment?             @relation(fields: [storeId, shipmentId], references: [storeId, id], onDelete: Restrict)
+  voids      CarrierGuideMovement? @relation("MovementVoid", fields: [voidsMovementId], references: [id], onDelete: Restrict)
+  voidedBy   CarrierGuideMovement? @relation("MovementVoid")
+
+  @@unique([storeId, id])
+  @@index([connectionId, createdAt, id])
+  @@index([storeId, shipmentId])
+  @@map("carrier_guide_movements")
+}
+
+// Raw SQL of the migration (Prisma cannot express it): carrier_guide_movements_one_per_shipment (one consume and one refund per
+// shipment, a partial unique index), the CHECKs of each kind, and the append-only triggers.
+
+// A period of the benefit that ended and was judged once by the daily close: its numbers and how many guides it gave back.
+// It is the idempotency of the close and the history the screen shows.
+model CarrierBenefitPeriod {
+  id            String   @id @default(uuid())
+  storeId       String   @map("store_id")
+  connectionId  String   @map("connection_id")
+  periodStart   DateTime @map("period_start")
+  periodEnd     DateTime @map("period_end")
+  baseCount     Int      @map("base_count")
+  returnCount   Int      @map("return_count")
+  rateBps       Int      @map("rate_bps")
+  state         String // BenefitState at the close
+  refundedCount Int      @map("refunded_count")
+  closedAt      DateTime @default(now()) @map("closed_at")
+
+  store      Store             @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  connection CarrierConnection @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Restrict)
+
+  @@unique([connectionId, periodStart])
+  @@index([storeId, connectionId, periodStart])
+  @@map("carrier_benefit_periods")
 }
 
 // The service types a carrier offers (next day, express, ...). The code is what the carrier's API expects; the label
@@ -1860,17 +1953,18 @@ model Shipment {
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
-  store           Store                 @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  order           Order                 @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  connection      CarrierConnection     @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Restrict)
-  pickup          PickupRequest?        @relation(fields: [storeId, pickupId], references: [storeId, id], onDelete: Restrict)
-  originWarehouse Warehouse?            @relation(fields: [originWarehouseId], references: [id], onDelete: Restrict)
-  orderReturn     OrderReturn?          @relation("ShipmentReturn", fields: [storeId, returnId], references: [storeId, id], onDelete: Restrict)
-  returnOf        OrderReturn[]         @relation("ReturnShipment")
+  store           Store                  @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  order           Order                  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  connection      CarrierConnection      @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Restrict)
+  pickup          PickupRequest?         @relation(fields: [storeId, pickupId], references: [storeId, id], onDelete: Restrict)
+  originWarehouse Warehouse?             @relation(fields: [originWarehouseId], references: [id], onDelete: Restrict)
+  orderReturn     OrderReturn?           @relation("ShipmentReturn", fields: [storeId, returnId], references: [storeId, id], onDelete: Restrict)
+  returnOf        OrderReturn[]          @relation("ReturnShipment")
   receptionItems  ReturnReceptionItem[]
   events          ShipmentEvent[]
-  remittance      CodRemittance?        @relation("RemittedShipment", fields: [storeId, codRemittanceId], references: [storeId, id], onDelete: Restrict)
+  remittance      CodRemittance?         @relation("RemittedShipment", fields: [storeId, codRemittanceId], references: [storeId, id], onDelete: Restrict)
   remittanceLines CodRemittanceLine[]
+  guideMovements  CarrierGuideMovement[]
 
   @@unique([storeId, id])
   @@unique([storeId, idempotencyKey])
@@ -1909,6 +2003,7 @@ model ShipmentEvent {
 
   @@index([shipmentId, occurredAt])
   @@index([storeId])
+  @@index([storeId, status, occurredAt]) // The periods of the refund benefit read the first event of a status (TDD_17 §4.18)
   @@map("shipment_events")
 }
 

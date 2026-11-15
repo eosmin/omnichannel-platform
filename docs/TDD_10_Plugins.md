@@ -904,6 +904,9 @@ export const PluginScopes = {
   ORDERS_READ: 'orders:read',
   ORDERS_WRITE: 'orders:write',
   PRODUCTS_READ: 'products:read',
+  PRODUCTS_WRITE: 'products:write',             // create and change a product or a variant (Step 5.6 E4a); never its cost, and its tax is read, not written
+  PRODUCTS_DELETE: 'products:delete',           // delete a product or a variant (Step 5.6 E4a); PRODUCTS_DELETE is in no other scope
+  WAREHOUSES_READ: 'warehouses:read',           // the warehouses of the organization of the key's store (Step 5.6 E4a)
   WEBHOOKS_WRITE: 'webhooks:write',
   ANALYTICS_READ: 'analytics:read',
   CHANNELS_READ: 'channels:read',               // the directory of channel accounts and their templates (Step 5.6 E1); no connection details
@@ -1292,8 +1295,8 @@ plugin are those of the key. All the answers of the errors below use the codes t
     `VALIDATION_FAILED` with the issue paths). An event whose `connectionId` is not an active
     connection of this installation refuses it too (`404` `CHANNEL_CONNECTION_NOT_FOUND`, the same
     answer as for one that does not exist). Otherwise `202 { "accepted": n }`, and each event is put
-    on the `INBOUND` queue with `jobId = sha256(installationId|connectionId|type|externalId)`
-    (hex, the parts length-prefixed, so a `:` or a `|` in an id cannot make two events look the
+    on the `INBOUND` queue with `jobId = inboundJobId(pluginId, event)`, the sha256 of
+    `pluginId|connectionId|type|externalId` (hex, the parts length-prefixed, so a `:` or a `|` in an id cannot make two events look the
     same); the connection is part of the id because two accounts can number their messages alike. The
     job id is a best-effort guard while the job is in Redis; the unique index
     `(conversationId, channelMessageId)` of `Message` is what makes a duplicate harmless afterwards.

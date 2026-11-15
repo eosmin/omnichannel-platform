@@ -8,11 +8,14 @@ import { PrismaService } from '@platform/core/database'
 import {
   AppPaths,
   AuthorType,
+  BenefitAlertLevel,
   BulkLabelJobStatus,
   CarrierResourceTypes,
   ConversationStatus,
   ConversationStatusReasons,
   CountResourceTypes,
+  formatBpsAsPercent,
+  GuideBalanceAlertLevel,
   MembershipStatus,
   OrderResourceTypes,
   OrderStatus,
@@ -33,6 +36,8 @@ import {
   type ConversationAssignedPayload,
   type ConversationReopenedPayload,
   type ConversationSnoozeExpiredPayload,
+  type CarrierBenefitAlertPayload,
+  type CarrierGuideBalanceAlertPayload,
   type CarrierStatusUnmappedPayload,
   type RemittanceOverduePayload,
   type WebhookAutoDisabledPayload,
@@ -359,6 +364,72 @@ export class NotificationsEventsListener {
       this.logger.error(
         { connectionId, err: String(error) },
         'an overdue remittance could not be notified'
+      )
+    }
+  }
+
+  // The prepaid guides of a connection fell to the low-balance threshold or to zero (TDD_17 §4.18). Raised once, inside the move
+  // that took the balance there; the people who may see the balance are told, and only while they still hold the permission.
+  @OnEvent(Events.CARRIER_GUIDE_BALANCE_ALERT)
+  async onGuideBalanceAlert(payload: CarrierGuideBalanceAlertPayload): Promise<void> {
+    const { storeId, connectionId, level, balance } = payload
+    await this.notifyConnection(
+      storeId,
+      connectionId,
+      level === GuideBalanceAlertLevel.EMPTY
+        ? NotificationTypes.CARRIER_GUIDE_BALANCE_EMPTY
+        : NotificationTypes.CARRIER_GUIDE_BALANCE_LOW,
+      { balance }
+    )
+  }
+
+  // The return rate of the period got worse: close to the limit, or at it (TDD_17 §4.18), before the carrier takes the benefit away
+  @OnEvent(Events.CARRIER_BENEFIT_ALERT)
+  async onBenefitAlert(payload: CarrierBenefitAlertPayload): Promise<void> {
+    const { storeId, connectionId, level, rateBps, thresholdBps } = payload
+    await this.notifyConnection(
+      storeId,
+      connectionId,
+      level === BenefitAlertLevel.LOST
+        ? NotificationTypes.CARRIER_BENEFIT_LOST
+        : NotificationTypes.CARRIER_BENEFIT_AT_RISK,
+      { rate: formatBpsAsPercent(rateBps), limit: formatBpsAsPercent(thresholdBps) }
+    )
+  }
+
+  // The connection is read under the store of the event: an id of another store tells nobody
+  private async notifyConnection(
+    storeId: string,
+    connectionId: string,
+    type: NotificationType,
+    params: Record<string, string | number>
+  ): Promise<void> {
+    try {
+      const connection = await this.prisma.client.carrierConnection.findFirst({
+        where: { id: connectionId, storeId },
+        select: { displayName: true }
+      })
+      const carrier = connection === null ? null : textForParams(connection.displayName)
+      if (carrier === null) {
+        this.logger.warn(
+          { connectionId, type },
+          'a guide alert names a connection that cannot be told'
+        )
+        return
+      }
+      await this.notifications.sendToStore({
+        storeId,
+        type,
+        params: { carrier, ...params },
+        resourceType: CarrierResourceTypes.CARRIER_CONNECTION,
+        resourceId: connectionId,
+        actionPath: AppPaths.store.settings(storeId, StoreSettingsSections.CARRIERS),
+        requiredPermission: Permissions.CARRIERS_VIEW_GUIDE_BALANCE
+      })
+    } catch (error) {
+      this.logger.error(
+        { connectionId, type, err: String(error) },
+        'a guide alert could not be notified'
       )
     }
   }

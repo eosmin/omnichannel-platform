@@ -1,6 +1,6 @@
 import { ChannelCapability, RemoteChannelLimits } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
-import { PinnedExchangeFailed, UnsafeUrlError } from '@platform/core/url-safety'
+import { PinnedExchangeFailed, PinnedFetchFailed, UnsafeUrlError } from '@platform/core/url-safety'
 import { type ChannelPlugin, PluginError } from '@platform/plugins/sdk'
 
 import { pluginManifestSchema } from './plugin-manifest'
@@ -9,6 +9,7 @@ import {
   type RemoteCommandSecrets,
   RemoteChannelPlugin,
   type RemoteExchange,
+  type RemoteFileGet,
   type RemoteSecretSource
 } from './remote-channel-plugin'
 import { verifyRemoteCommand } from './remote-command-signature'
@@ -599,5 +600,128 @@ describe('RemoteChannelPlugin in the registry', () => {
     )
     registry.register(newer, { remote: true })
     expect(registry.get('acme_chat').version).toBe('2.0.0')
+  })
+})
+
+describe('RemoteChannelPlugin.fetchMedia (§6.7.6)', () => {
+  interface Fetch {
+    url: string
+    accept: string
+    timeoutMs: number
+    headers: Readonly<Record<string, string>> | undefined
+  }
+
+  function fetcher(
+    answer: () => { stream: unknown; contentType: string; contentLength: number | null } | Error,
+    secrets: RemoteCommandSecrets | null = {
+      current: 'secret-new',
+      previous: null,
+      rotatedAt: null
+    }
+  ) {
+    const fetches: Fetch[] = []
+    const get: RemoteFileGet = (url, options) => {
+      fetches.push({
+        url,
+        accept: options.accept,
+        timeoutMs: options.timeoutMs,
+        headers: options.headers
+      })
+      const result = answer()
+      return result instanceof Error ? Promise.reject(result) : Promise.resolve(result as never)
+    }
+    const plugin = new RemoteChannelPlugin(manifest, {
+      secrets: {
+        secretsOf: () => Promise.resolve(secrets),
+        secretsForDisconnect: () => Promise.resolve(secrets)
+      },
+      get,
+      now: () => NOW_MS
+    })
+    return { plugin, fetches }
+  }
+
+  const file = { stream: 'bytes', contentType: 'image/png', contentLength: 12 }
+
+  it('gets the file with a 30 second wait and hands the stream, the type and the length back', async () => {
+    const { plugin, fetches } = fetcher(() => file)
+    await expect(plugin.fetchMedia(ctx, 'https://cdn.other.com/a.png')).resolves.toEqual(file)
+    expect(fetches).toHaveLength(1)
+    expect(fetches[0]).toMatchObject({
+      url: 'https://cdn.other.com/a.png',
+      timeoutMs: RemoteChannelLimits.MEDIA_FETCH_TIMEOUT_MS
+    })
+  })
+
+  it('never sends the signature to a host that is not the one of commandsUrl, and does not read the secrets for it', async () => {
+    const { plugin, fetches } = fetcher(() => file)
+    await plugin.fetchMedia(ctx, 'https://cdn.other.com/a.png')
+    await plugin.fetchMedia(ctx, 'https://acme.com.evil.net/a.png')
+    await plugin.fetchMedia(ctx, 'https://sub.acme.com/a.png')
+    for (const fetch of fetches) {
+      expect(fetch.headers).toEqual({})
+    }
+  })
+
+  it('signs an empty body for the host of commandsUrl, as a command is signed, so the plugin can keep its files private', async () => {
+    const { plugin, fetches } = fetcher(() => file)
+    await plugin.fetchMedia(ctx, 'https://acme.com/files/a.png')
+    const signature = fetches[0]?.headers?.['x-platform-command-signature']
+    expect(signature).toBeDefined()
+    expect(verifyRemoteCommand(signature ?? '', '', ['secret-new'], NOW_S)).toBe(true)
+    // Bound to the store: the secret of another one does not verify
+    expect(verifyRemoteCommand(signature ?? '', '', ['another-secret'], NOW_S)).toBe(false)
+  })
+
+  it('signs with both secrets while a rotation is open', async () => {
+    const { plugin, fetches } = fetcher(() => file, {
+      current: 'secret-new',
+      previous: 'secret-old',
+      rotatedAt: new Date(NOW_MS - 60_000)
+    })
+    await plugin.fetchMedia(ctx, 'https://acme.com/files/a.png')
+    const signature = fetches[0]?.headers?.['x-platform-command-signature'] ?? ''
+    expect(verifyRemoteCommand(signature, '', ['secret-old'], NOW_S)).toBe(true)
+    expect(verifyRemoteCommand(signature, '', ['secret-new'], NOW_S)).toBe(true)
+  })
+
+  it('fails for good, and does not ask the host, when the store has no active installation to sign for', async () => {
+    const { plugin, fetches } = fetcher(() => file, null)
+    const failure = await failureOf(plugin.fetchMedia(ctx, 'https://acme.com/files/a.png'))
+    expect(failure.code).toBe(ErrorCodes.CHANNEL_NOT_CONNECTED)
+    expect(failure.retryable).toBe(false)
+    expect(fetches).toHaveLength(0)
+  })
+
+  it('lets an unsafe address through as what it is, so that the file is marked unsafe and not tried again', async () => {
+    const { plugin } = fetcher(() => new UnsafeUrlError('its host is not on the public internet'))
+    await expect(plugin.fetchMedia(ctx, 'https://10.0.0.1/a.png')).rejects.toBeInstanceOf(
+      UnsafeUrlError
+    )
+  })
+
+  it('says whether trying again may help and nothing of what the server said', async () => {
+    const gone = fetcher(() => new PinnedFetchFailed('status 404 secret-in-the-text', false))
+    const goneFailure = await failureOf(gone.plugin.fetchMedia(ctx, 'https://cdn.other.com/a.png'))
+    expect(goneFailure.retryable).toBe(false)
+    expect(JSON.stringify(goneFailure)).not.toContain('secret-in-the-text')
+    expect(goneFailure.message).not.toContain('secret-in-the-text')
+
+    const slow = fetcher(() => new PinnedFetchFailed('the server was too slow', true))
+    expect(
+      (await failureOf(slow.plugin.fetchMedia(ctx, 'https://cdn.other.com/a.png'))).retryable
+    ).toBe(true)
+
+    // What is not the file server's is ours: it goes up as what it is and is not dressed as a failed message
+    const ours = fetcher(() => new Error('the store of secrets failed'))
+    await expect(ours.plugin.fetchMedia(ctx, 'https://cdn.other.com/a.png')).rejects.toThrow(
+      'the store of secrets failed'
+    )
+  })
+
+  it('takes a text that is not an address to the fetch, which refuses it', async () => {
+    const { plugin, fetches } = fetcher(() => new UnsafeUrlError('not a url'))
+    await expect(plugin.fetchMedia(ctx, 'not a url')).rejects.toBeInstanceOf(UnsafeUrlError)
+    expect(fetches[0]?.headers).toEqual({})
   })
 })
