@@ -300,6 +300,25 @@ export const QueryKeys = {
     // The one store of the General page; under `stores`, so a create, rename or delete refreshes it
     store: (storeId: string, id: string) => ['organizations', storeId, 'stores', id] as const
   },
+  // Keyed by the store of the request, like the warehouses: the books belong to the organization, so a mutation makes the ROOT
+  // stale and every store's cache reads again (TDD_18 §3)
+  finance: {
+    root: ['finance'] as const,
+    all: (storeId: string) => ['finance', storeId] as const,
+    setup: (storeId: string) => ['finance', storeId, 'setup'] as const,
+    settings: (storeId: string) => ['finance', storeId, 'settings'] as const,
+    accounts: (storeId: string) => ['finance', storeId, 'accounts'] as const,
+    accountRoles: (storeId: string) => ['finance', storeId, 'account-roles'] as const,
+    paymentAccounts: (storeId: string) => ['finance', storeId, 'payment-accounts'] as const,
+    periods: (storeId: string) => ['finance', storeId, 'periods'] as const,
+    entries: (storeId: string, filters: Record<string, string>) =>
+      ['finance', storeId, 'entries', filters] as const,
+    entry: (storeId: string, id: string) => ['finance', storeId, 'entries', id] as const,
+    // A period, or every period when none is named
+    balances: (storeId: string, periodId: string | null) =>
+      ['finance', storeId, 'balances', periodId] as const,
+    postings: (storeId: string) => ['finance', storeId, 'postings'] as const
+  },
   // The person's own account: no store in the key, because it belongs to the person
   account: {
     profile: ['account', 'profile'] as const,
