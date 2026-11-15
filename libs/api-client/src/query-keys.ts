@@ -326,6 +326,8 @@ export const QueryKeys = {
     accounts: (storeId: string) => ['finance', storeId, 'accounts'] as const,
     accountRoles: (storeId: string) => ['finance', storeId, 'account-roles'] as const,
     paymentAccounts: (storeId: string) => ['finance', storeId, 'payment-accounts'] as const,
+    taxRates: (storeId: string) => ['finance', storeId, 'tax-rates'] as const,
+    storeTaxSettings: (storeId: string) => ['finance', storeId, 'store-tax-settings'] as const,
     periods: (storeId: string) => ['finance', storeId, 'periods'] as const,
     entries: (storeId: string, filters: Record<string, string>) =>
       ['finance', storeId, 'entries', filters] as const,

@@ -46,7 +46,12 @@ export class FinanceSettingsService {
       await lockChart(tx, organizationId)
       const current = await tx.financeSettings.findUnique({
         where: { organizationId },
-        select: { recognizeSaleOn: true, roundingAccountId: true }
+        select: {
+          recognizeSaleOn: true,
+          roundingAccountId: true,
+          taxRounding: true,
+          shippingTaxed: true
+        }
       })
       if (current === null) throw financeRefusal(ErrorCodes.FINANCE_SETUP_REQUIRED)
       const changed: Record<string, { from: unknown; to: unknown }> = {}
@@ -72,11 +77,21 @@ export class FinanceSettingsService {
           to: body.roundingAccountId
         }
       }
+      // How a fraction of a cent of tax is placed and whether the shipping fee carries the tax: read when an order is made, so a
+      // change moves the orders made after it and never rewrites one that exists (their tax is a snapshot, TDD_18 §7)
+      if (body.taxRounding !== undefined && (body.taxRounding as string) !== current.taxRounding) {
+        changed['taxRounding'] = { from: current.taxRounding, to: body.taxRounding }
+      }
+      if (body.shippingTaxed !== undefined && body.shippingTaxed !== current.shippingTaxed) {
+        changed['shippingTaxed'] = { from: current.shippingTaxed, to: body.shippingTaxed }
+      }
       if (Object.keys(changed).length === 0) return changed
       await tx.financeSettings.update({
         where: { organizationId },
         data: {
           ...(body.recognizeSaleOn === undefined ? {} : { recognizeSaleOn: body.recognizeSaleOn }),
+          ...(body.taxRounding === undefined ? {} : { taxRounding: body.taxRounding }),
+          ...(body.shippingTaxed === undefined ? {} : { shippingTaxed: body.shippingTaxed }),
           ...(body.roundingAccountId === undefined
             ? {}
             : { roundingAccountId: body.roundingAccountId })

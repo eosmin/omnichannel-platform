@@ -103,8 +103,9 @@ export interface ChannelPlugin {
 
   // The files the channel takes (Step 7.8 follow-up, media capability map): the types and the largest size of each
   // kind, and the files per message. Required for exactly the kinds declared as capabilities (image, video,
-  // audio, document); the registry copies and freezes it at registration. The core signs no download link for
-  // a plugin: `SendMediaParams.openFile` gives the bytes.
+  // audio, document); the registry copies and freezes it at registration. The core gives a plugin the bytes
+  // (`SendMediaParams.openFile`) and signs no download link unless the plugin asks: `SendMediaParams.signedUrl(ttlSeconds)` makes a signed
+  // GET address of the stored file, for a plugin that is handed an address and not the bytes (a remote plugin, §6.7.4).
   readonly media?: ChannelMediaCapabilities
   // A text under each file (`SendMediaParams.caption`, once per file, in the order of the message) is carried
   // by the channel when it declares CAPTION_PER_FILE; a channel that does not has its text sent as a message
@@ -894,13 +895,19 @@ export const PluginScopes = {
   CONVERSATIONS_WRITE: 'conversations:write',
   MESSAGES_READ: 'messages:read',
   MESSAGES_WRITE: 'messages:write',
+  MESSAGES_READ_DELETED: 'messages:read-deleted', // the text of a message the customer deleted, while it is kept
   CUSTOMERS_READ: 'customers:read',
   CUSTOMERS_WRITE: 'customers:write',
+  CUSTOMERS_DELETE: 'customers:delete',                 // delete a customer with no history (Step 5.6 E2); CUSTOMERS_DELETE is in no other scope
+  CUSTOMERS_FLAG_CAUTION: 'customers:flag-caution',     // set and clear the caution flag (Step 5.6 E2); who edits a customer does not flag it by that
   ORDERS_READ: 'orders:read',
   ORDERS_WRITE: 'orders:write',
   PRODUCTS_READ: 'products:read',
   WEBHOOKS_WRITE: 'webhooks:write',
   ANALYTICS_READ: 'analytics:read',
+  CHANNELS_READ: 'channels:read',               // the directory of channel accounts and their templates (Step 5.6 E1); no connection details
+  ORDER_MESSAGES_READ: 'order-messages:read',   // the history of messages about an order and the order templates (Step 5.6 E3a)
+  SETTINGS_READ: 'settings:read',               // the store preferences and the return rules, read only (Step 5.6 E3a)
   CHANNEL_CONNECTIONS: 'channel:connections',   // §6.7: register and remove the connections of a channel plugin
   CHANNEL_EVENTS: 'channel:events',             // §6.7: report what customers write and what happened to what was sent
 } as const
@@ -914,8 +921,11 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.CONVERSATIONS_WRITE]: [Permissions.CONVERSATIONS_CREATE, Permissions.CONVERSATIONS_ASSIGN, Permissions.CONVERSATIONS_RESOLVE, Permissions.CONVERSATIONS_SNOOZE],
   [PluginScopes.MESSAGES_READ]:       [Permissions.MESSAGES_VIEW],
   [PluginScopes.MESSAGES_WRITE]:      [Permissions.MESSAGES_SEND, Permissions.MESSAGES_INTERNAL_NOTE],
+  [PluginScopes.MESSAGES_READ_DELETED]: [Permissions.MESSAGES_VIEW_DELETED],
   [PluginScopes.CUSTOMERS_READ]:      [Permissions.CUSTOMERS_VIEW],
   [PluginScopes.CUSTOMERS_WRITE]:     [Permissions.CUSTOMERS_CREATE, Permissions.CUSTOMERS_EDIT],
+  [PluginScopes.CUSTOMERS_DELETE]:    [Permissions.CUSTOMERS_DELETE],
+  [PluginScopes.CUSTOMERS_FLAG_CAUTION]: [Permissions.CUSTOMERS_FLAG_CAUTION],
   [PluginScopes.ORDERS_READ]:         [Permissions.ORDERS_VIEW],
   [PluginScopes.ORDERS_WRITE]:        [Permissions.ORDERS_CREATE, Permissions.ORDERS_CHANGE_STATUS],
   [PluginScopes.PRODUCTS_READ]:       [Permissions.PRODUCTS_VIEW],
@@ -1002,6 +1012,8 @@ export class PluginApiKeyGuard implements CanActivate {
 **The plugin is bound to exactly one store.** It cannot enumerate other stores,
 cannot change `storeId`, and every service it reaches is scoped by the same
 `request.store` that `TenantGuard` would have set for a human.
+
+Messages (Step 5.6 PR M1b): `POST /plugin-api/messages` writes a reply (`type: text`) or an internal note (`type: note`) with `authorType` `system` (default) or `agent` (+ `userId`), `quiet` and `nickname`; `POST /plugin-api/messages/:id/resend-caption`, `POST /plugin-api/messages/:id/files/:index/refetch`, `GET /plugin-api/messages/:id/revisions` and `GET /plugin-api/messages/:id/deleted-content` (scope `messages:read-deleted`). Every one of them needs `conversations:read` as well as its own scope, because a plugin sees a conversation as a person with `conversations:view` does. A plugin's message is audited as `message.plugin_sent` (other changes: `message.plugin_changed`) with the platform as the actor and the plugin and installation on the metadata. Editing, sending again, discarding, reacting and deleting come with a plugin actor in a later PR (M1c).
 
 ### 6.5 Outbound webhooks to plugins
 
@@ -1171,8 +1183,14 @@ re-read everything every 60 seconds in case a message was lost. `register` of an
 `RemoteChannelPlugin` replaces it (a new manifest), and `unregister(id)` removes it; an official id
 is never replaced. `registry.list()` takes the store: it returns the official plugins and the
 remote ones that this store has installed, never another store's private plugin. The adapter is
-the same object for all stores; what is per store (the command secret, the URL) it takes from the
-installation of `ctx.storeId`, read through a cache of 60 seconds that the same Redis channel clears.
+the same object for all stores; the address of the commands is the `commandsUrl` of the manifest, the same for every store,
+and what is per store (the command secret) it takes from the installation of `ctx.storeId`, read through a cache of 60
+seconds that the same Redis channel clears. The secret is generated when the installation is set up (the same exchange that
+gives the plugin its API key returns it, once) and `POST /plugins/:id/command-secret` (the id is the installation's,
+`SETTINGS_MANAGE_PLUGINS`) rotates it, returning the new one once. A rotation is refused (`409`) while another is still open
+(the ten minutes below), so a second one cannot drop a secret the plugin has not replaced yet. An installation that is not
+`ACTIVE`, or whose secret cannot be read, is signed for by nobody: nothing is sent and the command fails with
+`CHANNEL_NOT_CONNECTED`.
 
 The owner links an account of the provider on the settings page of the plugin (`ui.settings` of the
 manifest, in the plugin's service: a QR to scan, a login). When that succeeds the plugin registers
@@ -1298,10 +1316,10 @@ failed to fetch, and never loses the message.
 
 #### 6.7.7 Health and revocation
 
-`CHECK_CHANNEL_HEALTH` (§10) enqueues one job per connection of a remote plugin (concurrency 10), so
-a slow plugin delays only its own checks and not the lock of the others. Each job calls
+`CHECK_REMOTE_CHANNEL_HEALTH` (the schedule of §10, with a lock of its own) checks the connections of the remote
+plugins one by one, ten at a time, so a slow plugin delays its own checks and not the lock of the official ones. Each check calls
 `connection.health` through the adapter. A failure (unhealthy, error or timeout) adds to a counter
-kept in Redis (`CacheKeys.channel.healthFailures(connectionId)`, 1 hour); three in a row put the
+kept in Redis (`CacheKeys.channel.healthFailures(connectionRowId)`, 1 hour); three in a row put the
 connection in `ERROR` (agents see the banner of the channel) and a healthy one clears the counter and
 puts it back to `ACTIVE`. An official plugin keeps the behaviour of §10. Revoking or suspending the
 installation (§6.6) invalidates the API key and the secrets at once, sets its connections

@@ -44,7 +44,7 @@ function build(connect: () => Promise<unknown>): {
   const warn = jest.fn<void, [Record<string, unknown>, string]>()
   const logger = { setContext: jest.fn(), warn } as unknown as PinoLogger
   const prisma = { client: { $queryRaw: jest.fn().mockResolvedValue([{ id: 'installation' }]) } }
-  const registry = { isVisibleTo: () => true, get: () => ({ connect }) }
+  const registry = { isVisibleTo: () => true, isRemote: () => false, get: () => ({ connect }) }
   const service = new ChannelConnectionsService(
     prisma as never,
     registry as never,

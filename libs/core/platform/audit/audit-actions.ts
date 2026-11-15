@@ -64,6 +64,8 @@ export const AuditAction = {
   PRODUCT_PRICE_CHANGED: 'product.price_changed',
   // The reference cost changed (old and new, in cents): it is the margin the finance module will read
   PRODUCT_COST_CHANGED: 'product.cost_changed',
+  // The tax treatment or the tax rate of a product (TDD_18 §7): what an order charges and the books owe
+  PRODUCT_TAX_CHANGED: 'product.tax_changed',
   CONVERSATION_DELETED: 'conversation.deleted',
   BULK_ACTION_EXECUTED: 'conversation.bulk_action',
   // A person resolved a conversation, and took it back with the Undo of the toast: the thread keeps no
@@ -76,6 +78,10 @@ export const AuditAction = {
   MESSAGE_DELETED: 'message.deleted',
   MESSAGE_DISCARDED: 'message.discarded',
   MESSAGE_DELETED_CONTENT_VIEWED: 'message.deleted_content_viewed',
+  // A message a plugin wrote through its key (the actor is the platform; the plugin and its installation are in the metadata)
+  MESSAGE_PLUGIN_SENT: 'message.plugin_sent',
+  // What a plugin did to a message of the team or of a customer that is not a new one (the operation is on the metadata)
+  MESSAGE_PLUGIN_CHANGED: 'message.plugin_changed',
   ORDER_MESSAGE_SENT: 'order.message_sent',
   ORDER_MESSAGE_NOT_SENT: 'order.message_not_sent',
   ORDER_TEMPLATE_UPDATED: 'order.template_updated',
@@ -168,6 +174,7 @@ export const AuditAction = {
   PLUGIN_SETUP_COMPLETED: 'plugin.setup_completed',
   PLUGIN_SCOPES_UPDATED: 'plugin.scopes_updated',
   PLUGIN_REVOKED: 'plugin.revoked',
+  PLUGIN_COMMAND_SECRET_ROTATED: 'plugin.command_secret_rotated',
   PLUGIN_WIDGET_VISIBILITY_CHANGED: 'plugin.widget_visibility_changed',
   CHANNEL_CONNECTED: 'channel.connected',
   CHANNEL_DISCONNECTED: 'channel.disconnected',
@@ -188,6 +195,7 @@ export const AuditAction = {
   FINANCE_ACCOUNT_UPDATED: 'finance.account_updated',
   FINANCE_ACCOUNT_DEACTIVATED: 'finance.account_deactivated',
   FINANCE_ROLE_MAPPED: 'finance.role_mapped',
+  FINANCE_TAX_RATE_CHANGED: 'finance.tax_rate_changed',
   FINANCE_PAYMENT_ACCOUNT_CHANGED: 'finance.payment_account_changed',
   FINANCE_PERIOD_OPENED: 'finance.period_opened',
   FINANCE_ENTRY_POSTED_MANUAL: 'finance.entry_posted_manual',

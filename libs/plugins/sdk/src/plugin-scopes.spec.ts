@@ -36,6 +36,33 @@ describe('PluginScopes', () => {
     ])
   })
 
+  it('keeps the kept text of deleted messages in a scope of its own, which no other scope grants', () => {
+    expect(PluginScopePermissions[PluginScopes.MESSAGES_READ_DELETED]).toEqual([
+      Permissions.MESSAGES_VIEW_DELETED
+    ])
+    for (const [scope, granted] of Object.entries(PluginScopePermissions)) {
+      if (scope === PluginScopes.MESSAGES_READ_DELETED) continue
+      expect(granted).not.toContain(Permissions.MESSAGES_VIEW_DELETED)
+    }
+  })
+
+  it('keeps the delete and the caution of a customer in scopes of their own, which customers:write does not grant', () => {
+    expect(PluginScopePermissions[PluginScopes.CUSTOMERS_DELETE]).toEqual([
+      Permissions.CUSTOMERS_DELETE
+    ])
+    expect(PluginScopePermissions[PluginScopes.CUSTOMERS_FLAG_CAUTION]).toEqual([
+      Permissions.CUSTOMERS_FLAG_CAUTION
+    ])
+    for (const [scope, granted] of Object.entries(PluginScopePermissions)) {
+      if (scope !== PluginScopes.CUSTOMERS_DELETE) {
+        expect(granted).not.toContain(Permissions.CUSTOMERS_DELETE)
+      }
+      if (scope !== PluginScopes.CUSTOMERS_FLAG_CAUTION) {
+        expect(granted).not.toContain(Permissions.CUSTOMERS_FLAG_CAUTION)
+      }
+    }
+  })
+
   it('lets the webhooks scope grant no human permission', () => {
     expect(PluginScopePermissions[PluginScopes.WEBHOOKS_WRITE]).toEqual([])
   })

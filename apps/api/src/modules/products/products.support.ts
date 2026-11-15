@@ -1,10 +1,11 @@
-import type { Permission } from '@platform/core/auth'
+import { type Permission, Permissions } from '@platform/core/auth'
 import type { PrismaTransaction } from '@platform/core/database'
-import { MediaStatus } from '@platform/core/domain'
+import { MediaStatus, ProductConflicts, TaxTreatment } from '@platform/core/domain'
 import {
   ErrorCodes,
   HttpStatusCodes,
   PlatformException,
+  resourceConflict,
   resourceNotFound
 } from '@platform/core/errors'
 
@@ -15,6 +16,8 @@ export interface LockedProduct {
   costCents: number | null
   name: string
   sku: string | null
+  taxTreatment: string
+  taxRateId: string | null
 }
 
 // The product of the store, locked until the transaction ends: whoever changes it, or adds a variant to it,
@@ -26,12 +29,26 @@ export async function lockProduct(
   productId: string
 ): Promise<LockedProduct> {
   const rows = await tx.$queryRaw<
-    { price_cents: number; cost_cents: number | null; name: string; sku: string | null }[]
+    {
+      price_cents: number
+      cost_cents: number | null
+      name: string
+      sku: string | null
+      tax_treatment: string
+      tax_rate_id: string | null
+    }[]
   >`
-    SELECT price_cents, cost_cents, name, sku FROM products WHERE id = ${productId} AND store_id = ${storeId} FOR UPDATE`
+    SELECT price_cents, cost_cents, name, sku, tax_treatment, tax_rate_id FROM products WHERE id = ${productId} AND store_id = ${storeId} FOR UPDATE`
   const row = rows[0]
   if (row === undefined) throw resourceNotFound('product')
-  return { priceCents: row.price_cents, costCents: row.cost_cents, name: row.name, sku: row.sku }
+  return {
+    priceCents: row.price_cents,
+    costCents: row.cost_cents,
+    name: row.name,
+    sku: row.sku,
+    taxTreatment: row.tax_treatment,
+    taxRateId: row.tax_rate_id
+  }
 }
 
 // The files of a product that count: one the scan has not judged yet or found clean. A refused or unscannable
@@ -50,4 +67,61 @@ export function assertMayWriteCost(
       HttpStatusCodes.FORBIDDEN
     )
   }
+}
+
+// How a product is taxed decides what an order charges and what the books owe, so changing it, even to the value it has, needs the
+// permission that manages the taxes: whoever edits a product may not make it exempt
+export function assertMayWriteTax(
+  held: readonly Permission[],
+  body: { taxTreatment?: unknown; taxRateId?: unknown }
+): void {
+  if (
+    (body.taxTreatment !== undefined || body.taxRateId !== undefined) &&
+    !held.includes(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  ) {
+    throw new PlatformException(
+      ErrorCodes.PERMISSION_DENIED,
+      'the tax of a product needs finance:manage_accounts',
+      HttpStatusCodes.FORBIDDEN
+    )
+  }
+}
+
+// The tax columns a product ends up with: the request over what the product has. A product that is not taxed names no rate, and a
+// rate is one of the organization of the store (another organization's is one that does not exist) and is on. The row of the rate
+// is locked in share mode, so a rate cannot be switched off between this check and the write that names it.
+export async function resolveProductTax(
+  tx: PrismaTransaction,
+  storeId: string,
+  current: { taxTreatment: string; taxRateId: string | null },
+  body: { taxTreatment?: TaxTreatment | undefined; taxRateId?: string | null | undefined }
+): Promise<{ taxTreatment: TaxTreatment; taxRateId: string | null }> {
+  const taxTreatment = body.taxTreatment ?? (current.taxTreatment as TaxTreatment)
+  let taxRateId = body.taxRateId === undefined ? current.taxRateId : body.taxRateId
+  if (taxTreatment !== TaxTreatment.TAXED) {
+    // A rate the request names for a product that is not taxed is a contradiction; one it kept is dropped with the treatment
+    if (typeof body.taxRateId === 'string') {
+      throw new PlatformException(
+        ErrorCodes.VALIDATION_INVALID_INPUT,
+        'only a taxed product has a tax rate of its own',
+        HttpStatusCodes.BAD_REQUEST
+      )
+    }
+    taxRateId = null
+  }
+  if (taxRateId !== null) {
+    const rows = await tx.$queryRaw<{ active: boolean }[]>`
+      SELECT r.active FROM tax_rates r
+      JOIN stores s ON s.organization_id = r.organization_id
+      WHERE r.id = ${taxRateId} AND s.id = ${storeId} FOR SHARE OF r`
+    const rate = rows[0]
+    if (rate === undefined) throw resourceNotFound('tax rate')
+    // Keeping a rate that was switched off since is not naming it again
+    if (!rate.active && taxRateId !== current.taxRateId) {
+      throw resourceConflict('the tax rate is switched off', {
+        conflict: ProductConflicts.TAX_RATE_INACTIVE
+      })
+    }
+  }
+  return { taxTreatment, taxRateId }
 }

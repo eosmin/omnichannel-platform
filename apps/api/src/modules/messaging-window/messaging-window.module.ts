@@ -11,12 +11,13 @@ import { ChannelRegistryModule } from '../channel-registry'
 import { TenancyModule } from '../tenancy'
 
 import { MessagingWindowController } from './messaging-window.controller'
+import { PluginMessagingWindowController } from './plugin-messaging-window.controller'
 
 // Needs the database module of the app. MessagingWindowService is exported for the messages module
 // and, later, for the outbound processor.
 @Module({
   imports: [TenancyModule, ChannelRegistryModule],
-  controllers: [MessagingWindowController],
+  controllers: [MessagingWindowController, PluginMessagingWindowController],
   providers: [
     MessagingWindowService,
     {

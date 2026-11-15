@@ -1,6 +1,6 @@
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
-import { actorOf } from './actor'
+import { actorOf, auditActorOf, auditViaOf, pluginActorOf, pluginUserId } from './actor'
 
 describe('actorOf', () => {
   const user = { id: 'u-1', sessionFamilyId: 'f-1', email: 'a@example.com' }
@@ -28,5 +28,41 @@ describe('actorOf', () => {
       ipAddress: undefined,
       userAgent: undefined
     })
+  })
+})
+
+describe('the actor of a plugin', () => {
+  const request = {
+    ip: '203.0.113.9',
+    get: (name: string) => (name === 'user-agent' ? 'plugin-client' : undefined)
+  } as unknown as AuthenticatedRequest
+
+  it('is never the id of a person: it carries the installation', () => {
+    expect(pluginUserId('inst-1')).toBe('plugin:inst-1')
+    expect(pluginActorOf({ id: 'inst-1' }, { id: 's-1' }, request)).toEqual({
+      userId: 'plugin:inst-1',
+      storeId: 's-1',
+      ipAddress: '203.0.113.9',
+      userAgent: 'plugin-client',
+      pluginInstallationId: 'inst-1'
+    })
+  })
+
+  it('is written to the audit log as the system, with the installation in the metadata', () => {
+    const plugin = pluginActorOf({ id: 'inst-1' }, { id: 's-1' }, request)
+
+    expect(auditActorOf(plugin)).toEqual({ system: true })
+    expect(auditViaOf(plugin)).toEqual({ pluginInstallationId: 'inst-1' })
+  })
+
+  it('leaves a person as the person who acted, with nothing added to the metadata', () => {
+    const person = actorOf(
+      { id: 'u-1', sessionFamilyId: 'f-1', email: 'a@example.com' },
+      { id: 's-1' },
+      request
+    )
+
+    expect(auditActorOf(person)).toEqual({ userId: 'u-1' })
+    expect(auditViaOf(person)).toEqual({})
   })
 })

@@ -8,6 +8,7 @@ import {
   ProductConflicts,
   ProductHistoryTables,
   ProductResourceTypes,
+  TaxTreatment,
   TransferStatus
 } from '@platform/core/domain'
 import { resourceConflict, resourceNotFound } from '@platform/core/errors'
@@ -19,7 +20,7 @@ import { encodeCursor } from '../customers/list-cursor'
 import type { Actor } from '../tenancy'
 
 import type { CreateProductBody, ListProductsQuery, UpdateProductBody } from './products.schemas'
-import { LIVE_MEDIA_STATUSES, lockProduct } from './products.support'
+import { LIVE_MEDIA_STATUSES, lockProduct, resolveProductTax } from './products.support'
 import {
   PRODUCT_SELECT,
   type ProductDetail,
@@ -117,8 +118,8 @@ export class ProductsService {
     })
   }
 
-  async create(storeId: string, body: CreateProductBody): Promise<ProductDetail> {
-    const id = await this.write(() =>
+  async create(storeId: string, body: CreateProductBody, actor: Actor): Promise<ProductDetail> {
+    const created = await this.write(() =>
       this.prisma.transaction(async tx => {
         await lockStoreForWrite(tx, storeId)
         // A product that does not say starts with the default of the store (none until the owner sets one); one that
@@ -132,9 +133,17 @@ export class ProductsService {
                 })
               )?.defaultLowStockThreshold ?? null)
             : body.lowStockThreshold
+        const tax = await resolveProductTax(
+          tx,
+          storeId,
+          { taxTreatment: TaxTreatment.TAXED, taxRateId: null },
+          body
+        )
         const created = await tx.product.create({
           data: {
             storeId,
+            taxTreatment: tax.taxTreatment,
+            taxRateId: tax.taxRateId,
             name: body.name,
             priceCents: body.priceCents,
             ...(body.description === undefined ? {} : { description: body.description }),
@@ -148,10 +157,27 @@ export class ProductsService {
           select: { id: true }
         })
         this.events.publish(tx, Events.PRODUCT_CREATED, { storeId, productId: created.id })
-        return created.id
+        return { id: created.id, tax }
       })
     )
-    return this.get(storeId, id)
+    if (created.tax.taxTreatment !== TaxTreatment.TAXED || created.tax.taxRateId !== null) {
+      this.audit.log({
+        action: AuditAction.PRODUCT_TAX_CHANGED,
+        actor: { userId: actor.userId },
+        storeId,
+        resourceType: ProductResourceTypes.PRODUCT,
+        resourceId: created.id,
+        metadata: {
+          fromTreatment: TaxTreatment.TAXED,
+          toTreatment: created.tax.taxTreatment,
+          fromTaxRateId: null,
+          toTaxRateId: created.tax.taxRateId
+        },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent
+      })
+    }
+    return this.get(storeId, created.id)
   }
 
   async update(
@@ -191,9 +217,14 @@ export class ProductsService {
             })
           }
         }
+        const tax =
+          body.taxTreatment === undefined && body.taxRateId === undefined
+            ? null
+            : await resolveProductTax(tx, storeId, before, body)
         await tx.product.update({
           where: { id: productId },
           data: {
+            ...(tax === null ? {} : { taxTreatment: tax.taxTreatment, taxRateId: tax.taxRateId }),
             ...(body.name === undefined ? {} : { name: body.name }),
             ...(body.description === undefined ? {} : { description: body.description }),
             ...(body.priceCents === undefined ? {} : { priceCents: body.priceCents }),
@@ -209,9 +240,30 @@ export class ProductsService {
           }
         })
         this.events.publish(tx, Events.PRODUCT_UPDATED, { storeId, productId })
-        return before
+        return { ...before, tax }
       })
     )
+    if (
+      previous.tax !== null &&
+      ((previous.tax.taxTreatment as string) !== previous.taxTreatment ||
+        previous.tax.taxRateId !== previous.taxRateId)
+    ) {
+      this.audit.log({
+        action: AuditAction.PRODUCT_TAX_CHANGED,
+        actor: { userId: actor.userId },
+        storeId,
+        resourceType: ProductResourceTypes.PRODUCT,
+        resourceId: productId,
+        metadata: {
+          fromTreatment: previous.taxTreatment,
+          toTreatment: previous.tax.taxTreatment,
+          fromTaxRateId: previous.taxRateId,
+          toTaxRateId: previous.tax.taxRateId
+        },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent
+      })
+    }
     if (body.costCents !== undefined && body.costCents !== previous.costCents) {
       this.audit.log({
         action: AuditAction.PRODUCT_COST_CHANGED,

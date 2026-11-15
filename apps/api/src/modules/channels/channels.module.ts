@@ -18,6 +18,7 @@ import {
 } from './oauth/channel-oauth.controller'
 import { ChannelOAuthService } from './oauth/channel-oauth.service'
 import { ChannelOAuthStore } from './oauth/channel-oauth.store'
+import { PluginChannelsController } from './plugin-channels.controller'
 
 // The public door of the channels (the webhook) and their management from Settings. The registry
 // comes from the registry module, the inbound queue from the queues module and the cipher of the
@@ -34,7 +35,8 @@ import { ChannelOAuthStore } from './oauth/channel-oauth.store'
     ChannelConnectionsController,
     ChannelOAuthController,
     ChannelOAuthCallbackController,
-    ChannelTemplatesController
+    ChannelTemplatesController,
+    PluginChannelsController
   ],
   providers: [
     ChannelConnectionsService,

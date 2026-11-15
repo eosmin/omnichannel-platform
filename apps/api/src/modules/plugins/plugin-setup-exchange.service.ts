@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 
+import { newCommandSecret, RemoteChannelSync, sealCommandSecret } from '@platform/channels/remote'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { CredentialCipher, generateToken, hashToken } from '@platform/core/crypto'
@@ -7,6 +8,7 @@ import { lockStoreForWrite, PrismaService } from '@platform/core/database'
 import {
   PLUGIN_API_KEY_TOKEN_PREFIX,
   PLUGIN_INSTALLATION_RESOURCE_TYPE,
+  PluginCatalogTypes,
   PluginInstallationStatus,
   PluginInstallLimits,
   PluginStatus,
@@ -29,6 +31,8 @@ export interface PluginSetupResult {
   storeId: string
   scopes: string[]
   rateLimitPerMinute: number
+  // Only for a remote channel: the secret that signs the commands the platform sends it (TDD_10 §6.7.3). Shown here once, like the key.
+  commandSecret?: string
 }
 
 function invalidCode(): PlatformException {
@@ -52,7 +56,8 @@ export class PluginSetupExchangeService {
     private readonly prisma: PrismaService,
     private readonly codes: PluginSetupCodeStore,
     private readonly audit: AuditService,
-    private readonly cipher: CredentialCipher
+    private readonly cipher: CredentialCipher,
+    private readonly sync: RemoteChannelSync
   ) {}
 
   async exchange(
@@ -79,10 +84,15 @@ export class PluginSetupExchangeService {
           pluginId: true,
           scopes: true,
           rateLimitPerMinute: true,
-          webhookEndpoint: true
+          webhookEndpoint: true,
+          plugin: { select: { type: true } }
         }
       })
       if (installation === null) return null
+      // A remote channel also gets the secret of its commands, in the same write that activates it, so there is no active
+      // channel without one
+      const isChannel = installation.plugin.type === String(PluginCatalogTypes.CHANNEL)
+      const commandSecret = isChannel ? newCommandSecret() : null
       const activated = await tx.pluginInstallation.updateMany({
         where: {
           id: installation.id,
@@ -93,6 +103,13 @@ export class PluginSetupExchangeService {
           status: PluginInstallationStatus.ACTIVE,
           apiKeyPrefix: key.slice(0, PluginInstallLimits.KEY_DISPLAY_PREFIX_LENGTH),
           apiKeyHash: hashToken(key),
+          ...(commandSecret === null
+            ? {}
+            : {
+                commandSecret: sealCommandSecret(this.cipher, commandSecret),
+                commandSecretPrevious: null,
+                commandSecretRotatedAt: null
+              }),
           // A plugin with a webhook endpoint gets the secret that signs what is sent to it, and starts with a clean count of
           // failures (an installation that was revoked and installed again must not come back turned off)
           webhookSecret:
@@ -104,7 +121,7 @@ export class PluginSetupExchangeService {
           webhookDisabledAt: null
         }
       })
-      return activated.count === 1 ? installation : null
+      return activated.count === 1 ? { ...installation, commandSecret } : null
     })
     if (result === null) throw invalidCode()
 
@@ -119,6 +136,8 @@ export class PluginSetupExchangeService {
       ...(caller.ipAddress === undefined ? {} : { ipAddress: caller.ipAddress }),
       ...(caller.userAgent === undefined ? {} : { userAgent: caller.userAgent })
     })
+    // The registries of the other processes learn that a channel came up
+    if (result.commandSecret !== null) await this.sync.announceChange()
     return {
       apiKey: key,
       webhookSecret: result.webhookEndpoint === null ? null : webhookSecret,
@@ -126,7 +145,8 @@ export class PluginSetupExchangeService {
       pluginId: result.pluginId,
       storeId: record.storeId,
       scopes: knownScopes(result.scopes),
-      rateLimitPerMinute: result.rateLimitPerMinute
+      rateLimitPerMinute: result.rateLimitPerMinute,
+      ...(result.commandSecret === null ? {} : { commandSecret: result.commandSecret })
     }
   }
 }

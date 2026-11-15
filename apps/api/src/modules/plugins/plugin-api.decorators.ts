@@ -11,10 +11,14 @@ import { Public } from '@platform/core/auth-module'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import { RateLimit } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
+import { type Viewer, viewerOf } from '@platform/core/messaging'
 import type { PluginScope } from '@platform/plugins/sdk'
+
+import { pluginUserId } from '../tenancy/actor'
 
 import { PluginApiKeyGuard } from './plugin-api-key.guard'
 import { PLUGIN_SCOPES_KEY } from './plugin-api.keys'
+import { permissionsOfScopes } from './plugin-install-rules'
 
 // The mark of a route of the plugin API: the key of an installation is the credential, and the scopes listed are all of them
 // needed (not any). It makes the route public for the two global guards (a plugin has no user and no X-Store-Id: the key names
@@ -40,5 +44,26 @@ export const CurrentPluginInstallation = createParamDecorator(
       )
     }
     return pluginInstallation
+  }
+)
+
+// The viewer the services of the inbox answer for (`plugin:<installation id>`), holding the permissions of the scopes THE ROUTE
+// names and not of every scope the key holds: a route declared `conversations:read` must not show what `messages:read` guards
+// (the preview of the last message) because the same key happens to have both. The guard already checked that the key holds them.
+export const CurrentPluginViewer = createParamDecorator(
+  (_data: unknown, context: ExecutionContext): Viewer => {
+    const { pluginInstallation } = context.switchToHttp().getRequest<AuthenticatedRequest>()
+    if (pluginInstallation === undefined) {
+      throw new PlatformException(
+        ErrorCodes.INTERNAL_ERROR,
+        'the route reads the plugin viewer but PluginApiKeyGuard did not run for it',
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+    // Where the guard finds them: on the handler, else on the class
+    const scopes = (Reflect.getMetadata(PLUGIN_SCOPES_KEY, context.getHandler()) ??
+      Reflect.getMetadata(PLUGIN_SCOPES_KEY, context.getClass()) ??
+      []) as PluginScope[]
+    return viewerOf(pluginUserId(pluginInstallation.id), permissionsOfScopes(scopes))
   }
 )

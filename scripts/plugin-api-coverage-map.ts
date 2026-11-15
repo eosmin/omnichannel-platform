@@ -20,6 +20,11 @@ import type { PluginApiCoverage } from './lib/plugin-api-coverage'
 
 const STEP = '5.6'
 
+const CUSTOMER_MERGE =
+  'Merging customers, undoing a merge and its preview: the merge writes who did it (`mergedById`), and the profile names that person, so it waits for a plugin to have an actor of its own to show (Step 5.6 W1); the permission has no scope either'
+const CUSTOMER_NOTE_AUTHOR =
+  'Writing and deleting the notes of a customer: a note keeps its author, a person the profile shows by name, and only the author or CUSTOMERS_DELETE may remove it; a plugin reads the notes (GET) and does not write them until it has an actor to show (Step 5.6 W1)'
+
 const SESSION = "A person's own session: a plugin has an API key, not a login"
 const ACCOUNT =
   "A person's own account (their name, picture and preferences): the id comes from their token"
@@ -118,6 +123,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'plugins.revoke': { none: PLUGIN_ADMIN },
   'plugins.consent': { none: PLUGIN_ADMIN },
   'plugins.setupCode': { none: PLUGIN_ADMIN },
+  'plugins.commandSecret': { none: PLUGIN_ADMIN },
   'plugins.config': { none: PLUGIN_ADMIN },
   'pluginWidgets.list': { none: WIDGET_HOST },
   'pluginWidgets.sessions': { none: WIDGET_HOST },
@@ -140,58 +146,148 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'channels.oauthCallback': { none: PUBLIC },
 
   // Conversations and messages (`conversations:*` and `messages:*` exist)
-  'conversations.list': { scope: 'conversations:read' },
-  'conversations.byId': { scope: 'conversations:read' },
+  'conversations.list': { scope: 'conversations:read', exposed: '/plugin-api/conversations' },
+  'conversations.byId': { scope: 'conversations:read', exposed: '/plugin-api/conversations/:id' },
   'conversations.messages': { scope: ['conversations:read', 'messages:read'] },
-  'conversations.origins': { scope: 'conversations:read' },
-  'conversations.messagingWindow': { scope: 'conversations:read' },
-  'conversations.assign': { scope: 'conversations:write' },
-  'conversations.status': { scope: 'conversations:write' },
-  'conversations.snooze': { scope: 'conversations:write' },
-  'conversations.tags': { scope: 'conversations:write' },
-  'conversations.tagById': { scope: 'conversations:write' },
-  'conversations.read': { scope: 'conversations:write' },
-  'conversations.unread': { scope: 'conversations:write' },
-  'conversations.bulk': { scope: 'conversations:write' },
+  'conversations.origins': {
+    scope: ['conversations:read', 'messages:read'],
+    exposed: '/plugin-api/conversations/:id/origins'
+  },
+  'conversations.messagingWindow': {
+    scope: 'conversations:read',
+    exposed: '/plugin-api/conversations/:id/messaging-window'
+  },
+  'conversations.assign': {
+    scope: ['conversations:read', 'conversations:write'],
+    exposed: '/plugin-api/conversations/:id/assign'
+  },
+  'conversations.status': {
+    scope: ['conversations:read', 'conversations:write'],
+    exposed: '/plugin-api/conversations/:id/status'
+  },
+  'conversations.snooze': {
+    scope: ['conversations:read', 'conversations:write'],
+    exposed: '/plugin-api/conversations/:id/snooze'
+  },
+  'conversations.tags': {
+    scope: ['conversations:read', 'conversations:write'],
+    exposed: '/plugin-api/conversations/:id/tags'
+  },
+  'conversations.tagById': {
+    scope: ['conversations:read', 'conversations:write'],
+    exposed: '/plugin-api/conversations/:id/tags/:tagId'
+  },
+  'conversations.read': {
+    scope: ['conversations:read', 'conversations:write'],
+    exposed: '/plugin-api/conversations/:id/read'
+  },
+  'conversations.unread': {
+    scope: ['conversations:read', 'conversations:write'],
+    exposed: '/plugin-api/conversations/:id/unread'
+  },
+  'conversations.bulk': {
+    scope: ['conversations:read', 'conversations:write'],
+    exposed: '/plugin-api/conversations/bulk'
+  },
   'conversations.export': { proposed: ['conversations:read', 'exports:write'], step: STEP },
-  'messages.create': { scope: 'messages:write' },
-  'messages.byId': { scope: 'messages:write' },
-  'messages.resend': { scope: 'messages:write' },
-  'messages.discard': { scope: 'messages:write' },
-  'messages.resendCaption': { scope: 'messages:write' },
-  'messages.refetchFile': { scope: 'messages:write' },
+  // Seeing a conversation is `conversations:read` for a plugin as for a person, so each message route names it too
+  'messages.create': {
+    scope: ['conversations:read', 'messages:write'],
+    exposed: '/plugin-api/messages'
+  },
+  // To build (the PR that gives the core an actor that is not a person): they write the id of the person who edited, discarded,
+  // sent again or reacted, and DELETE needs MESSAGES_DELETE, which no scope grants (a scope of its own, never a wider one)
+  'messages.byId': { scope: ['conversations:read', 'messages:write'] },
+  'messages.resend': { scope: ['conversations:read', 'messages:write'] },
+  'messages.discard': { scope: ['conversations:read', 'messages:write'] },
+  'messages.resendCaption': {
+    scope: ['conversations:read', 'messages:write'],
+    exposed: '/plugin-api/messages/:id/resend-caption'
+  },
+  'messages.refetchFile': {
+    scope: ['conversations:read', 'messages:write'],
+    exposed: '/plugin-api/messages/:id/files/:index/refetch'
+  },
   'messages.reaction': { scope: ['conversations:read', 'messages:write'] },
   'messages.deletedContent': {
-    proposed: ['conversations:read', 'messages:read-deleted'],
-    step: STEP
+    scope: ['conversations:read', 'messages:read-deleted'],
+    exposed: '/plugin-api/messages/:id/deleted-content'
   },
-  'messages.revisions': { scope: 'messages:read' },
+  'messages.revisions': {
+    scope: ['conversations:read', 'messages:read'],
+    exposed: '/plugin-api/messages/:id/revisions'
+  },
 
   // Customers (`customers:*` exist)
-  'customers.list': { scope: ['customers:read', 'customers:write'] },
-  'customers.byId': { scope: ['customers:read', 'customers:write'] },
-  'customers.identities': { scope: ['customers:read', 'customers:write'] },
-  'customers.identityById': { scope: 'customers:write' },
-  'customers.merge': { proposed: 'customers:merge', step: STEP },
-  'customers.unmerge': { proposed: 'customers:merge', step: STEP },
-  'customers.mergePreview': { proposed: 'customers:merge', step: STEP },
-  'customers.orders': { scope: 'customers:read' },
-  'customers.conversations': { scope: 'customers:read' },
-  'customers.notes': { scope: ['customers:read', 'customers:write'] },
-  'customers.noteById': { scope: 'customers:write' },
-  'customers.addresses': { scope: ['customers:read', 'customers:write'] },
-  'customers.addressById': { scope: 'customers:write' },
-  'customers.tags': { scope: ['customers:read', 'customers:write'] },
-  'customers.tagById': { scope: 'customers:write' },
+  'customers.list': {
+    scope: ['customers:read', 'customers:write'],
+    exposed: '/plugin-api/customers'
+  },
+  'customers.byId': {
+    scope: ['customers:read', 'customers:write', 'customers:delete'],
+    exposed: '/plugin-api/customers/:id'
+  },
+  'customers.identities': {
+    scope: ['customers:read', 'customers:write'],
+    exposed: '/plugin-api/customers/:id/identities'
+  },
+  'customers.identityById': {
+    scope: ['customers:read', 'customers:write'],
+    exposed: '/plugin-api/customers/:id/identities/:identityId'
+  },
+  'customers.merge': { none: CUSTOMER_MERGE },
+  'customers.unmerge': { none: CUSTOMER_MERGE },
+  'customers.mergePreview': { none: CUSTOMER_MERGE },
+  'customers.orders': {
+    scope: ['customers:read', 'orders:read'],
+    exposed: '/plugin-api/customers/:id/orders'
+  },
+  'customers.conversations': {
+    scope: ['customers:read', 'conversations:read'],
+    exposed: '/plugin-api/customers/:id/conversations'
+  },
+  // The notes are read; writing one is CUSTOMER_NOTE_AUTHOR
+  'customers.notes': {
+    scope: 'customers:read',
+    exposed: '/plugin-api/customers/:id/notes'
+  },
+  'customers.noteById': { none: CUSTOMER_NOTE_AUTHOR },
+  'customers.addresses': {
+    scope: ['customers:read', 'customers:write'],
+    exposed: '/plugin-api/customers/:id/addresses'
+  },
+  'customers.addressById': {
+    scope: ['customers:read', 'customers:write'],
+    exposed: '/plugin-api/customers/:id/addresses/:addressId'
+  },
+  'customers.tags': {
+    scope: ['customers:read', 'customers:write'],
+    exposed: '/plugin-api/customers/:id/tags'
+  },
+  'customers.tagById': {
+    scope: ['customers:read', 'customers:write'],
+    exposed: '/plugin-api/customers/:id/tags/:tagId'
+  },
   'customers.media': { proposed: ['customers:read', 'media:read'], step: STEP },
-  'customers.timeline': { scope: 'customers:read' },
-  'customers.caution': { scope: 'customers:write' },
+  'customers.timeline': {
+    scope: 'customers:read',
+    exposed: '/plugin-api/customers/:id/timeline'
+  },
+  'customers.caution': {
+    scope: ['customers:read', 'customers:flag-caution'],
+    exposed: '/plugin-api/customers/:id/caution'
+  },
   'customers.export': { proposed: ['customers:read', 'exports:write'], step: STEP },
 
   // Orders (`orders:*` exist); the messages and templates of an order are a scope of their own
-  'orders.list': { scope: ['orders:read', 'orders:write'] },
+  'orders.list': { scope: 'orders:read', exposed: '/plugin-api/orders' },
   'orders.create': { scope: 'orders:write' },
-  'orders.byId': { proposed: ['orders:read', 'orders:edit'], step: STEP },
+  // The GET is exposed (PR E3a); the PATCH needs the id of a person (PR E3b)
+  'orders.byId': {
+    proposed: ['orders:read', 'orders:edit'],
+    step: STEP,
+    exposed: '/plugin-api/orders/:id'
+  },
   'orders.cancel': { proposed: 'orders:cancel', step: STEP },
   'orders.status': { scope: 'orders:write' },
   'orders.items': { proposed: 'orders:edit', step: STEP },
@@ -200,15 +296,22 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'orders.confirm': { proposed: 'orders:confirm', step: STEP },
   'orders.confirmBulk': { proposed: 'orders:confirm', step: STEP },
   'orders.copy': { scope: ['orders:read', 'orders:write'] },
-  'orders.messages': { proposed: ['order-messages:read', 'order-messages:write'], step: STEP },
+  // The GET (the history) is exposed (PR E3a); sending a message stores who pressed it (PR E3b)
+  'orders.messages': {
+    proposed: ['orders:read', 'order-messages:read', 'order-messages:write'],
+    step: STEP,
+    exposed: '/plugin-api/orders/:id/messages'
+  },
   'orders.payment': { proposed: 'orders:edit', step: STEP },
   'orders.priceApprovalApprove': { proposed: 'orders:approve-price', step: STEP },
   'orders.priceApprovalReject': { proposed: 'orders:approve-price', step: STEP },
-  'orderTemplates.list': { proposed: ['order-messages:read', 'order-templates:write'], step: STEP },
+  'orderTemplates.list': { scope: 'order-messages:read', exposed: '/plugin-api/order-templates' },
   'orderTemplates.preview': { proposed: 'order-templates:write', step: STEP },
+  // The GET is exposed (PR E3a); the PUT and DELETE are SETTINGS_MANAGE_ORDER_TEMPLATES and audit a person (PR E3b)
   'orderTemplates.byKindAndLocale': {
     proposed: ['order-messages:read', 'order-templates:write'],
-    step: STEP
+    step: STEP,
+    exposed: '/plugin-api/order-templates/:kind/locales/:locale'
   },
 
   // Catalog (`products:read` exists; writing a product is `products:write`)
@@ -231,6 +334,12 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'finance.accounts.reactivate': { none: FINANCE },
   'finance.accountRoles.list': { none: FINANCE },
   'finance.accountRoles.byRole': { none: FINANCE },
+  'finance.taxRates.list': { none: FINANCE },
+  'finance.taxRates.create': { none: FINANCE },
+  'finance.taxRates.byId': { none: FINANCE },
+  'finance.taxRates.deactivate': { none: FINANCE },
+  'finance.taxRates.reactivate': { none: FINANCE },
+  'finance.storeTaxSettings': { none: FINANCE },
   'finance.paymentAccounts.list': { none: FINANCE },
   'finance.paymentAccounts.set': { none: FINANCE },
   'finance.paymentAccounts.byId': { none: FINANCE },
@@ -346,10 +455,13 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'exports.byId': { proposed: 'exports:read', step: STEP },
   'exports.download': { proposed: 'exports:read', step: STEP },
   'search.global': { none: BELL_AND_SEARCH },
-  'search.messages': { scope: 'messages:read' },
-  'search.customers': { scope: 'customers:read' },
-  'search.orders': { scope: 'orders:read' },
-  'search.products': { scope: 'products:read' },
+  'search.messages': {
+    scope: ['conversations:read', 'messages:read'],
+    exposed: '/plugin-api/search/messages'
+  },
+  'search.customers': { scope: 'customers:read', exposed: '/plugin-api/search/customers' },
+  'search.orders': { scope: 'orders:read', exposed: '/plugin-api/search/orders' },
+  'search.products': { scope: 'products:read', exposed: '/plugin-api/search/products' },
   'search.clicks': { none: SEARCH_CLICK },
   'analytics.metrics': { scope: 'analytics:read' },
   'analytics.myPerformance': { none: OWN_PERFORMANCE },
@@ -361,14 +473,17 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
 
   // Channels and settings
   'channels.connections': { none: CHANNEL_ADMIN },
-  'channels.directory': { proposed: 'channels:read', step: STEP },
+  'channels.directory': { scope: 'channels:read', exposed: '/plugin-api/channels/directory' },
   'channels.connect': { none: CHANNEL_ADMIN },
   'channels.connectionById': { none: CHANNEL_ADMIN },
   'channels.test': { none: CHANNEL_ADMIN },
   'channels.disconnect': { none: CHANNEL_ADMIN },
   'channels.updateToken': { none: CHANNEL_ADMIN },
   'channels.label': { none: CHANNEL_ADMIN },
-  'channels.templates': { proposed: 'channels:read', step: STEP },
+  'channels.templates': {
+    scope: 'channels:read',
+    exposed: '/plugin-api/channels/:pluginId/templates'
+  },
   'channels.widgetEmbed': { none: CHANNEL_ADMIN },
   'channels.widgetOrigins': { none: CHANNEL_ADMIN },
   'channels.widgetPreChat': { none: CHANNEL_ADMIN },
@@ -378,8 +493,9 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'channels.oauthSession': { none: CHANNEL_ADMIN },
   'settings.inbox': { none: SETTINGS_ADMIN },
   'settings.inboxBehavior': { none: SETTINGS_ADMIN },
-  'settings.preferences': { proposed: ['settings:read', 'settings:write'], step: STEP },
-  'settings.returns': { proposed: ['settings:read', 'settings:write'], step: STEP },
+  // Read only, as every other setting of how the store works: the owner changes them (the PUT and PATCH stay human)
+  'settings.preferences': { scope: 'settings:read', exposed: '/plugin-api/settings/preferences' },
+  'settings.returns': { scope: 'settings:read', exposed: '/plugin-api/settings/returns' },
   'settings.inventory': { proposed: ['inventory:read', 'settings:write'], step: STEP },
   'settings.routing': { none: SETTINGS_ADMIN },
   'settings.routingOrder': { none: SETTINGS_ADMIN },

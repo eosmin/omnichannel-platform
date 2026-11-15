@@ -49,7 +49,7 @@ import {
 import { DomainEvents } from '@platform/core/event-bus'
 import { ChannelDisconnectedReasons, Events } from '@platform/core/events'
 import { enumValueOf } from '@platform/core/messaging'
-import { PluginRegistry } from '@platform/plugins/runtime'
+import { PluginRegistry, RemoteChannelPlugin } from '@platform/plugins/runtime'
 import {
   ChannelCapability,
   type ChannelCapabilityType,
@@ -433,6 +433,7 @@ export class ChannelConnectionsService {
     const { authMethod } = options
     if (!this.registry.isVisibleTo(pluginId, storeId)) throw resourceNotFound('channel')
     const plugin = this.registry.get(pluginId)
+    this.refuseIfRemote(pluginId, plugin)
     // Before the provider hears of it: connecting a plugin the store has not installed is refused
     await this.installationOf(this.prisma.client, storeId, pluginId)
 
@@ -569,6 +570,15 @@ export class ChannelConnectionsService {
   // What the provider said may echo the credentials: it is not logged nor sent back.
   // Only the name of the error, the numbers of the provider's answer and the name of the local check
   // that refused: never the message, a value or the token (see pluginFailureLog)
+  // A channel that runs outside the platform is connected in its own settings page (a QR to scan, a login) and then registers the
+  // connection through the plugin API: the platform has nothing to connect, and says where to go (TDD_10 §6.7.4)
+  private refuseIfRemote(pluginId: string, plugin: ChannelPlugin): void {
+    if (!this.registry.isRemote(pluginId)) return
+    throw resourceConflict('this channel is connected in its own settings page', {
+      settingsUrl: plugin instanceof RemoteChannelPlugin ? plugin.settingsUrl : null
+    })
+  }
+
   private providerRefusal(
     error: unknown,
     pluginId: string,
@@ -616,6 +626,7 @@ export class ChannelConnectionsService {
     if (working === 0) throw resourceConflict('the plugin is not installed in this store')
     const plugin = this.registry.find(row.pluginId)
     if (plugin === undefined) throw resourceNotFound('channel')
+    this.refuseIfRemote(row.pluginId, plugin)
     const fields = this.registry.connectManifestOf(row.pluginId)?.connectFields ?? []
     const secretKeys = fields.filter(field => field.secret).map(field => field.key)
     if (secretKeys.length === 0) throw resourceConflict('this channel has no token to replace')

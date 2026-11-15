@@ -139,10 +139,7 @@ export const AssigneePermissions: readonly Permission[] = [
 // test `permission-usage.spec.ts` refuses a permission of a built resource that is neither read nor
 // listed. The resources of the Commerce, Analytics and Organization milestones are not built yet and
 // are covered by `PermissionsOfUnbuiltAreas`.
-export const ReservedPermissions: Readonly<Record<string, string>> = {
-  [Permissions.CONVERSATIONS_CREATE]:
-    'Step 5.6: POST /plugin-api/conversations (scope conversations:write) is the first route that starts a conversation'
-}
+export const ReservedPermissions: Readonly<Record<string, string>> = {}
 
 // The prefixes of the resources whose milestone is not built (Milestones 4 and 5): their permissions
 // have no reader until that step, and each step lists its own in the plan

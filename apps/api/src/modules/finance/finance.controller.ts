@@ -32,11 +32,15 @@ import { FinanceEntriesService } from './finance-entries.service'
 import { FinancePeriodsService } from './finance-periods.service'
 import { FinanceSettingsService } from './finance-settings.service'
 import { FinanceSetupService } from './finance-setup.service'
+import { FinanceStoreTaxSettingsService } from './finance-store-tax-settings.service'
+import { FinanceTaxRatesService } from './finance-tax-rates.service'
 import {
   balancesQuerySchema,
   type BalancesQuery,
   type CreateAccountBody,
   createAccountSchema,
+  type CreateTaxRateBody,
+  createTaxRateSchema,
   idSchema,
   type ListAccountsQuery,
   listAccountsQuerySchema,
@@ -62,7 +66,11 @@ import {
   type UpdateAccountBody,
   updateAccountSchema,
   type UpdateSettingsBody,
-  updateSettingsSchema
+  updateSettingsSchema,
+  type UpdateStoreTaxSettingsBody,
+  updateStoreTaxSettingsSchema,
+  type UpdateTaxRateBody,
+  updateTaxRateSchema
 } from './finance.schemas'
 import type {
   AccountPage,
@@ -76,7 +84,9 @@ import type {
   PostingPage,
   RoleMappingView,
   SettingsView,
-  SetupState
+  SetupState,
+  StoreTaxSettingsView,
+  TaxRateView
 } from './finance.views'
 
 type Store = ResolvedTenant['store']
@@ -96,7 +106,9 @@ export class FinanceController {
     private readonly settings: FinanceSettingsService,
     private readonly accounts: FinanceAccountsService,
     private readonly periods: FinancePeriodsService,
-    private readonly entries: FinanceEntriesService
+    private readonly entries: FinanceEntriesService,
+    private readonly taxRates: FinanceTaxRatesService,
+    private readonly storeTax: FinanceStoreTaxSettingsService
   ) {}
 
   @RequirePermissions(Permissions.FINANCE_VIEW)
@@ -260,6 +272,82 @@ export class FinanceController {
       paymentAccountId,
       actorOf(user, store, req)
     )
+  }
+
+  @RequirePermissions(Permissions.FINANCE_VIEW)
+  @Get(ApiRoutes.finance.taxRates.list)
+  listTaxRates(@CurrentOrganization() organization: Organization): Promise<TaxRateView[]> {
+    return this.taxRates.list(organization.id)
+  }
+
+  @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @Post(ApiRoutes.finance.taxRates.create)
+  @HttpCode(HttpStatusCodes.CREATED)
+  createTaxRate(
+    @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(createTaxRateSchema)) body: CreateTaxRateBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<TaxRateView> {
+    return this.taxRates.create(organization.id, body, actorOf(user, store, req))
+  }
+
+  @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @Patch(ApiRoutes.finance.taxRates.byId(':id'))
+  updateTaxRate(
+    @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) taxRateId: string,
+    @Body(new ZodValidationPipe(updateTaxRateSchema)) body: UpdateTaxRateBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<TaxRateView> {
+    return this.taxRates.update(organization.id, taxRateId, body, actorOf(user, store, req))
+  }
+
+  @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @Post(ApiRoutes.finance.taxRates.deactivate(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  deactivateTaxRate(
+    @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) taxRateId: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<TaxRateView> {
+    return this.taxRates.deactivate(organization.id, taxRateId, actorOf(user, store, req))
+  }
+
+  @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @Post(ApiRoutes.finance.taxRates.reactivate(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  reactivateTaxRate(
+    @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) taxRateId: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<TaxRateView> {
+    return this.taxRates.reactivate(organization.id, taxRateId, actorOf(user, store, req))
+  }
+
+  @RequirePermissions(Permissions.FINANCE_VIEW)
+  @Get(ApiRoutes.finance.storeTaxSettings)
+  getStoreTaxSettings(@CurrentStore() store: Store): Promise<StoreTaxSettingsView> {
+    return this.storeTax.get(store.id)
+  }
+
+  @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @Patch(ApiRoutes.finance.storeTaxSettings)
+  updateStoreTaxSettings(
+    @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(updateStoreTaxSettingsSchema)) body: UpdateStoreTaxSettingsBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<StoreTaxSettingsView> {
+    return this.storeTax.update(organization.id, store.id, body, actorOf(user, store, req))
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW)

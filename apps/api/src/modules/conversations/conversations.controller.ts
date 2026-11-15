@@ -13,16 +13,9 @@ import {
 } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
-import { AuditAction } from '@platform/core/audit'
-import { AuditService } from '@platform/core/audit-module'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
-import {
-  CHANNEL_ANONYMITY,
-  type ChannelAnonymitySource,
-  ConversationStatus,
-  uuidSchema
-} from '@platform/core/domain'
+import { CHANNEL_ANONYMITY, type ChannelAnonymitySource, uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
@@ -35,7 +28,6 @@ import {
   attachTagSchema,
   type ChangeStatusBody,
   changeStatusSchema,
-  ConversationClosingService,
   type ConversationCounts,
   type ConversationFilter,
   conversationFilterSchema,
@@ -44,7 +36,6 @@ import {
   type ConversationDetail,
   type ConversationPage,
   ConversationsService,
-  type StatusTransition,
   type ListConversationsQuery,
   listConversationsQuerySchema,
   ReadReceipts,
@@ -75,6 +66,7 @@ import { type BulkResult, ConversationBulkService } from './conversation-bulk.se
 import { ConversationCountsService } from './conversation-counts.service'
 import { ConversationDeletionService } from './conversation-deletion.service'
 import { ConversationOriginsService, type OriginView } from './conversation-origins.service'
+import { ConversationStatusChangeService } from './conversation-status-change.service'
 import { type ConversationTag, ConversationTagsService } from './conversation-tags.service'
 
 type Store = ResolvedTenant['store']
@@ -88,7 +80,7 @@ const id = () => new ZodValidationPipe(uuidSchema)
 export class ConversationsController {
   constructor(
     private readonly conversations: ConversationsService,
-    private readonly closing: ConversationClosingService,
+    private readonly statusChange: ConversationStatusChangeService,
     private readonly bulk: ConversationBulkService,
     private readonly counts: ConversationCountsService,
     private readonly tags: ConversationTagsService,
@@ -97,7 +89,6 @@ export class ConversationsController {
     private readonly readReceipts: ReadReceipts,
     private readonly widgetRead: WidgetReadNotifier,
     private readonly exports: ExportsService,
-    private readonly audit: AuditService,
     @Inject(CHANNEL_ANONYMITY) private readonly anonymity: ChannelAnonymitySource
   ) {}
 
@@ -214,39 +205,9 @@ export class ConversationsController {
     @Body(new ZodValidationPipe(changeStatusSchema)) body: ChangeStatusBody,
     @Req() req: AuthenticatedRequest
   ): Promise<WithAnonymous<ConversationDetail>> {
-    const actor = actorOf(user, store, req)
-    const options = {
-      actor: viewerOf(user.id, held),
-      ...(body.resolutionReason === undefined ? {} : { resolutionReason: body.resolutionReason }),
-      ...(body.undoesResolution === undefined ? {} : { undoesResolution: true }),
-      // The log says what the service did, once it committed: a resolution that happened, or the Undo of
-      // one (and whether the thread kept a line of it), never a request that changed nothing
-      afterTransition: ({ from, to, retracted }: StatusTransition) => {
-        const resolved = to === ConversationStatus.RESOLVED
-        const undone =
-          body.undoesResolution === true &&
-          from === ConversationStatus.RESOLVED &&
-          to === ConversationStatus.OPEN
-        if (!resolved && !undone) return
-        this.audit.log({
-          action: resolved
-            ? AuditAction.CONVERSATION_RESOLVED
-            : AuditAction.CONVERSATION_RESOLVE_UNDONE,
-          actor: { userId: actor.userId },
-          storeId: store.id,
-          resourceType: 'conversation',
-          resourceId: conversationId,
-          metadata: undone ? { silent: retracted } : {},
-          ipAddress: actor.ipAddress,
-          userAgent: actor.userAgent
-        })
-      }
-    }
-    const changed =
-      body.closingSnippetId !== undefined
-        ? this.closing.resolve(store.id, conversationId, body.closingSnippetId, options)
-        : this.conversations.updateStatus(store.id, conversationId, body.status, options)
-    return changed.then(detail => this.marked(detail))
+    return this.statusChange
+      .change(store.id, conversationId, body, viewerOf(user.id, held), actorOf(user, store, req))
+      .then(detail => this.marked(detail))
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_SNOOZE)

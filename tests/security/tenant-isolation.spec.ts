@@ -103,6 +103,7 @@ import {
   createRoutingRule,
   ensurePluginInstallation,
   createOrderMessageTemplate,
+  createPluginKey,
   createSnippet,
   createApiKey,
   createWebhook,
@@ -1254,6 +1255,63 @@ const resources: IsolationResource[] = [
       }
     },
     untouched: () => Promise.resolve(true)
+  },
+  // The tax rates are the organization's: read by the list, changed by id; no route reads one by its id
+  {
+    name: 'taxRate',
+    create: async (owner, { storeId }) => {
+      const organizationId = await organizationOfStore(owner, storeId)
+      const books = await booksOf(owner, organizationId)
+      return {
+        id: (
+          await owner.taxRate.create({
+            data: {
+              organizationId,
+              code: `X${randomUUID().slice(0, 8)}`,
+              name: 'Isolation rate',
+              rateBps: 700,
+              outputAccountId: books.accounts.liability,
+              inputAccountId: books.accounts.cash
+            },
+            select: { id: true }
+          })
+        ).id
+      }
+    },
+    scope: 'organization',
+    listPath: ApiRoutes.finance.taxRates.list,
+    // Switching it off is the change that does the most harm: the rate stops being taxed at, and the check also looks that the
+    // other routes of the rate (rename, make default, switch on) left it as it was
+    modify: { path: ApiRoutes.finance.taxRates.deactivate, method: 'post', body: {} },
+    untouched: async (owner, id) => {
+      const row = await owner.taxRate.findUnique({
+        where: { id },
+        select: { name: true, active: true, isDefault: true }
+      })
+      return row?.name !== 'hacked' && row?.active === true && row?.isDefault === false
+    },
+    creation: {
+      path: ApiRoutes.finance.taxRates.create,
+      body: name => {
+        const books = financeBooksA
+        if (books === null) throw new Error('the books of organization A are not set up')
+        return {
+          code: `C${randomUUID().slice(0, 8)}`,
+          name,
+          rateBps: 500,
+          outputAccountId: books.accounts.liability,
+          inputAccountId: books.accounts.cash
+        }
+      },
+      strict: true,
+      countIn: async (owner, storeId) =>
+        owner.taxRate.count({
+          where: { organizationId: await organizationOfStore(owner, storeId) }
+        }),
+      storeOf: async (owner, id) =>
+        (await owner.taxRate.findUnique({ where: { id }, select: { organizationId: true } }))
+          ?.organizationId ?? null
+    }
   },
   {
     name: 'fiscalPeriod',
@@ -3998,6 +4056,270 @@ describe('Tenant isolation', () => {
         .map(job => (job.data as { pluginInstallationId: string }).pluginInstallationId)
       expect(targets).toEqual([installationOf.a])
       queue.jobs.length = 0
+    })
+  })
+
+  // The messages a plugin reads and writes (Step 5.6, M1b): the key of one store reaches the conversations and messages of that store
+  // and of no other, whatever the call carries. The conversation and the message are the resources.
+  describe('the messages of the plugin API', () => {
+    const pluginId = `${prefix}-msgkey`
+    const scopes = [
+      'conversations:read',
+      'messages:read',
+      'messages:write',
+      'messages:read-deleted'
+    ]
+    const keyOfB = `${PLUGIN_API_KEY_TOKEN_PREFIX}${prefix}msgb${'y'.repeat(40)}`
+    let conversationA = ''
+    let messageA = ''
+
+    beforeAll(async () => {
+      await owner.plugin.create({
+        data: {
+          id: pluginId,
+          name: 'Message plugin',
+          authorName: 'suite',
+          authorEmail: 'suite@example.invalid',
+          type: PluginCatalogTypes.INTEGRATION,
+          manifest: {},
+          pricingModel: PluginPricingModels.FREE,
+          status: PluginStatus.APPROVED,
+          organizationId: ctx.orgA.id
+        }
+      })
+      await owner.pluginInstallation.create({
+        data: {
+          storeId: ctx.storeB.id,
+          pluginId,
+          scopes,
+          status: 'active',
+          apiKeyPrefix: keyOfB.slice(0, 12),
+          apiKeyHash: createHash('sha256').update(keyOfB).digest('hex'),
+          installedBy: 'suite'
+        }
+      })
+      conversationA = (await createConversationOf(owner, { storeId: ctx.storeA.id })).id
+      messageA = (
+        await owner.message.create({
+          data: {
+            storeId: ctx.storeA.id,
+            conversationId: conversationA,
+            type: 'text',
+            authorType: 'agent',
+            content: 'of store A',
+            deletedAt: new Date()
+          }
+        })
+      ).id
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId } })
+      await owner.plugin.deleteMany({ where: { id: pluginId } })
+    })
+
+    const asB = (method: 'get' | 'post', path: string) =>
+      supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+        [method](`${API_PREFIX}${path}`)
+        .set('authorization', `Bearer ${keyOfB}`)
+
+    it('works in its own store, so that the 404 of the others means "foreign"', async () => {
+      const own = (await createConversationOf(owner, { storeId: ctx.storeB.id })).id
+
+      const response = await asB('post', PluginApiRoutes.messages.create).send({
+        type: 'text',
+        conversationId: own,
+        content: 'from the own store',
+        idempotencyKey: randomUUID()
+      })
+
+      expect(response.status).toBe(201)
+    })
+
+    it('does not write into a conversation of another store, even with the id and the header of that store', async () => {
+      const response = await asB('post', PluginApiRoutes.messages.create)
+        .set('x-store-id', ctx.storeA.id)
+        .send({
+          type: 'text',
+          conversationId: conversationA,
+          content: 'from the other store',
+          idempotencyKey: randomUUID()
+        })
+
+      expect(response.status).toBe(404)
+      expect(
+        await owner.message.count({
+          where: { conversationId: conversationA, content: 'from the other store' }
+        })
+      ).toBe(0)
+    })
+
+    it('does not read the edits or the kept text of a message of another store', async () => {
+      const edits = await asB('get', PluginApiRoutes.messages.revisions(messageA))
+      const kept = await asB('get', PluginApiRoutes.messages.deletedContent(messageA))
+
+      expect(edits.status).toBe(404)
+      expect(kept.status).toBe(404)
+      expect(JSON.stringify([edits.body, kept.body])).not.toContain('of store A')
+    })
+  })
+
+  // The customers a plugin reads and changes (Step 5.6, E2): the key of one store reaches the customers of that store and of no
+  // other, whatever the call carries. The customer, with its contact data, is the resource.
+  describe('the customers of the plugin API', () => {
+    const pluginId = `${prefix}-custkey`
+    const scopes = [
+      'customers:read',
+      'customers:write',
+      'customers:delete',
+      'customers:flag-caution',
+      'orders:read',
+      'conversations:read'
+    ]
+    const keyOfB = `${PLUGIN_API_KEY_TOKEN_PREFIX}${prefix}custb${'z'.repeat(40)}`
+    let customerA = ''
+
+    beforeAll(async () => {
+      await owner.plugin.create({
+        data: {
+          id: pluginId,
+          name: 'Customer plugin',
+          authorName: 'suite',
+          authorEmail: 'suite@example.invalid',
+          type: PluginCatalogTypes.INTEGRATION,
+          manifest: {},
+          pricingModel: PluginPricingModels.FREE,
+          status: PluginStatus.APPROVED,
+          organizationId: ctx.orgA.id
+        }
+      })
+      await owner.pluginInstallation.create({
+        data: {
+          storeId: ctx.storeB.id,
+          pluginId,
+          scopes,
+          status: 'active',
+          apiKeyPrefix: keyOfB.slice(0, 12),
+          apiKeyHash: createHash('sha256').update(keyOfB).digest('hex'),
+          installedBy: 'suite'
+        }
+      })
+      customerA = (await createCustomer(owner, { storeId: ctx.storeA.id, name: 'of store A' })).id
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId } })
+      await owner.plugin.deleteMany({ where: { id: pluginId } })
+    })
+
+    const asB = (method: 'get' | 'post' | 'patch' | 'put' | 'delete', path: string) =>
+      supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+        [method](`${API_PREFIX}${path}`)
+        .set('authorization', `Bearer ${keyOfB}`)
+        .set('x-store-id', ctx.storeA.id)
+
+    it('works in its own store, so that the 404 of the others means "foreign"', async () => {
+      const own = (await createCustomer(owner, { storeId: ctx.storeB.id })).id
+
+      const response = await asB('get', PluginApiRoutes.customers.byId(own))
+
+      expect(response.status).toBe(200)
+    })
+
+    it('does not list, read, change, flag or delete a customer of another store, even with the id and the header of that store', async () => {
+      const listed = await asB('get', PluginApiRoutes.customers.list)
+      const read = await asB('get', PluginApiRoutes.customers.byId(customerA))
+      const changed = await asB('patch', PluginApiRoutes.customers.byId(customerA)).send({
+        name: 'hacked'
+      })
+      const flagged = await asB('put', PluginApiRoutes.customers.caution(customerA)).send({
+        reason: 'hacked'
+      })
+      const deleted = await asB('delete', PluginApiRoutes.customers.byId(customerA))
+
+      expect(JSON.stringify(listed.body)).not.toContain(customerA)
+      for (const response of [read, changed, flagged, deleted]) expect(response.status).toBe(404)
+      const after = await owner.customer.findUniqueOrThrow({ where: { id: customerA } })
+      expect(after.name).toBe('of store A')
+      expect(after.isCaution).toBe(false)
+    })
+
+    it('does not read what hangs from a customer of another store', async () => {
+      const responses = [
+        await asB('get', PluginApiRoutes.customers.timeline(customerA)),
+        await asB('get', PluginApiRoutes.customers.orders(customerA)),
+        await asB('get', PluginApiRoutes.customers.conversations(customerA)),
+        await asB('get', PluginApiRoutes.customers.notes(customerA))
+      ]
+
+      for (const response of responses) {
+        expect(response.status).toBe(404)
+        expect(JSON.stringify(response.body)).not.toContain('of store A')
+      }
+    })
+
+    it('does not add an address or a handle to a customer of another store', async () => {
+      const address = await asB('post', PluginApiRoutes.customers.addresses(customerA)).send({
+        line1: 'x',
+        city: 'y',
+        country: 'SV'
+      })
+      const handle = await asB('post', PluginApiRoutes.customers.identities(customerA)).send({
+        channelType: 'instagram',
+        channelIdentity: 'someone'
+      })
+
+      expect(address.status).toBe(404)
+      expect(handle.status).toBe(404)
+      expect(await owner.address.count({ where: { customerId: customerA } })).toBe(0)
+      expect(await owner.customerIdentity.count({ where: { customerId: customerA } })).toBe(0)
+    })
+  })
+
+  // What a plugin key reads of the orders (Step 5.6, E3a): the key of store B reads the orders, their message history, the templates
+  // and the settings of store B, and an order of store A is an order that does not exist for it, by id or in a list.
+  describe('the orders read with the key of a plugin', () => {
+    const pluginId = `${prefix}-ordread`
+    let keyOfB = ''
+    let orderA = ''
+    let orderB = ''
+
+    beforeAll(async () => {
+      ;({ key: keyOfB } = await createPluginKey(owner, {
+        storeId: ctx.storeB.id,
+        pluginId,
+        scopes: [
+          PluginScopes.ORDERS_READ,
+          PluginScopes.ORDER_MESSAGES_READ,
+          PluginScopes.SETTINGS_READ
+        ]
+      }))
+      orderA = (await createOrder(owner, { storeId: ctx.storeA.id })).id
+      orderB = (await createOrder(owner, { storeId: ctx.storeB.id })).id
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId } })
+      await owner.plugin.deleteMany({ where: { id: pluginId } })
+    })
+
+    const asB = (path: string) =>
+      supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+        .get(`${API_PREFIX}${path}`)
+        .set('authorization', `Bearer ${keyOfB}`)
+
+    it('works in its own store, so that the 404 of the others means "foreign"', async () => {
+      expect((await asB(PluginApiRoutes.orders.byId(orderB))).status).toBe(200)
+      expect((await asB(PluginApiRoutes.orders.messages(orderB))).status).toBe(200)
+      expect((await asB(PluginApiRoutes.settings.preferences)).status).toBe(200)
+    })
+
+    it('does not read an order of another store, nor its messages, and does not list it', async () => {
+      const detail = await asB(PluginApiRoutes.orders.byId(orderA))
+      const messages = await asB(PluginApiRoutes.orders.messages(orderA))
+      const list = await asB(PluginApiRoutes.orders.list)
+
+      expect(detail.status).toBe(404)
+      expect(messages.status).toBe(404)
+      expect(list.status).toBe(200)
+      expect(JSON.stringify(list.body)).not.toContain(orderA)
     })
   })
 

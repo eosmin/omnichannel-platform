@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule'
 import { PinoLogger } from 'nestjs-pino'
 
 import { ChannelHealthService } from '@platform/channels/connections'
+import { RemoteChannelHealthService } from '@platform/channels/remote'
 import { LockNames, Schedules } from '@platform/core/queues'
 import { PluginRegistry } from '@platform/plugins/runtime'
 
@@ -19,6 +20,7 @@ export class ChannelHealthScheduler {
   constructor(
     private readonly locks: LeaderLockService,
     private readonly health: ChannelHealthService,
+    private readonly remoteHealth: RemoteChannelHealthService,
     private readonly registry: PluginRegistry,
     private readonly logger: PinoLogger
   ) {
@@ -29,12 +31,29 @@ export class ChannelHealthScheduler {
   async run(): Promise<void> {
     try {
       await this.locks.withLock(LockNames.CHECK_CHANNEL_HEALTH, LOCK_SECONDS, async () => {
-        const { checked, unhealthy } = await this.health.checkAll(id => this.registry.find(id))
+        // The remote plugins have a round of their own (their own lock and counter, TDD_10 §6.7.7)
+        const { checked, unhealthy } = await this.health.checkAll(
+          id => this.registry.find(id),
+          undefined,
+          id => this.registry.isRemote(id)
+        )
         this.logger.info({ checked, unhealthy }, 'channel health checked')
       })
     } catch (error) {
       // A cron that throws must not take the worker down; the next round tries again
       this.logger.error({ err: error }, 'the channel health round failed')
+    }
+  }
+
+  @Cron(Schedules.CHECK_REMOTE_CHANNEL_HEALTH)
+  async runRemote(): Promise<void> {
+    try {
+      await this.locks.withLock(LockNames.CHECK_REMOTE_CHANNEL_HEALTH, LOCK_SECONDS, async () => {
+        const { checked, unhealthy } = await this.remoteHealth.checkAll()
+        this.logger.info({ checked, unhealthy }, 'remote channel health checked')
+      })
+    } catch (error) {
+      this.logger.error({ err: error }, 'the remote channel health round failed')
     }
   }
 }

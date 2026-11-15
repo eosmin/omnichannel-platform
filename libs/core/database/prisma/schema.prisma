@@ -31,6 +31,7 @@ model Organization {
   stockTransfers      StockTransfer[]
   financeSettings     FinanceSettings?
   ledgerAccounts      LedgerAccount[]
+  taxRates            TaxRate[]
   accountRoles        AccountRoleMapping[]
   paymentAccounts     PaymentMethodAccount[]
   fiscalPeriods       FiscalPeriod[]
@@ -779,6 +780,9 @@ model Order {
   priceApprovedDiscountCents Int?      @map("price_approved_discount_cents")
   priceApprovedShippingCents Int?      @map("price_approved_shipping_cents")
   carrierConnectionId        String?   @map("carrier_connection_id") // The planned carrier (TDD_17 §4.13); composite foreign key with the store, Step 4.8 PR C1
+  taxCents                   Int?      @map("tax_cents") // The tax of the order, fixed at creation (TDD_18 §7); null on an order made before the tax columns
+  pricesIncludeTax           Boolean?  @map("prices_include_tax") // Whether the prices were tax included when it was made; null as above
+  shippingTaxRateBps         Int?      @map("shipping_tax_rate_bps") // The rate the shipping fee was taxed at; null when it was not taxed
   createdBy                  String    @map("created_by")
   createdAt                  DateTime  @default(now()) @map("created_at")
   updatedAt                  DateTime  @updatedAt @map("updated_at")
@@ -822,6 +826,9 @@ model OrderItem {
   priceOverrideReason    String? @map("price_override_reason")
   priceOverriddenBy      String? @map("price_overridden_by")
   freeShipping           Boolean @default(false) @map("free_shipping") // Snapshot of Product.freeShipping at order time
+  taxTreatment           String? @map("tax_treatment") // Snapshot of the treatment at order time (TDD_18 §7); null on an order made before
+  taxRateBps             Int?    @map("tax_rate_bps") // Snapshot of the rate of a taxed line; null for an exempt or not subject one
+  taxCents               Int?    @map("tax_cents") // The tax of the line, after its share of the discount
 
   order       Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
   product     Product               @relation(fields: [productId], references: [id])
@@ -848,10 +855,13 @@ model Product {
   lowStockThreshold Int?     @map("low_stock_threshold") // Null = no low-stock alert (TDD_16 §4.4)
   active            Boolean  @default(true)
   freeShipping      Boolean  @default(false) @map("free_shipping") // The price already includes shipping (TDD_17 §4.13)
+  taxTreatment      String   @default("taxed") @map("tax_treatment") // TaxTreatment (TDD_18 §7)
+  taxRateId         String?  @map("tax_rate_id") // A rate other than the default of the organization; only for a taxed product
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   store           Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  taxRate         TaxRate?            @relation(fields: [taxRateId], references: [id], onDelete: Restrict)
   variants        ProductVariant[]
   inventory       InventoryMovement[]
   inventoryLevels InventoryLevel[]
@@ -864,6 +874,7 @@ model Product {
   // So that the stock of a product can name its store and the database check that they go together
   @@unique([storeId, id])
   @@index([storeId, active])
+  @@index([taxRateId])
   @@map("products")
 }
 
@@ -2332,6 +2343,8 @@ model FinanceSettings {
   lastEntryHash       String?   @map("last_entry_hash") // the head of the hash chain
   recognizeSaleOn     String    @default("delivered") @map("recognize_sale_on") // SaleRecognition
   roundingAccountId   String?   @map("rounding_account_id")
+  taxRounding         String    @default("half_up") @map("tax_rounding") // TaxRounding (TDD_18 §7): how a fraction of a cent of tax is placed
+  shippingTaxed       Boolean   @default(true) @map("shipping_taxed") // Whether the shipping fee carries VAT [ACCOUNTANT] (TDD_18 §7, §13 row 2)
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
 
@@ -2366,12 +2379,43 @@ model LedgerAccount {
   settings        FinanceSettings[]
   lines           JournalLine[]
   balances        AccountPeriodBalance[]
+  taxRatesOutput  TaxRate[]              @relation("TaxRateOutputAccount")
+  taxRatesInput   TaxRate[]              @relation("TaxRateInputAccount")
 
   @@unique([organizationId, code])
   // So that every table that names an account can name its organization with it
   @@unique([organizationId, id])
   @@index([organizationId, type])
   @@map("ledger_accounts")
+}
+
+// A tax of the organization (TDD_18 §7). The rate is basis points (13 % is 1300): no float ever holds a percent. The accounts are
+// the ones a sale (output) and a purchase or an expense (input) post the tax to. A rate that was used is deactivated, never
+// deleted: the orders, the products and the lines of the journal point at it.
+model TaxRate {
+  id              String   @id @default(uuid())
+  organizationId  String   @map("organization_id")
+  code            String // the accountant's short name, unique per organization
+  name            String // plain data the accountant edits (the template seeds it)
+  rateBps         Int      @map("rate_bps") // 0 to 10000
+  kind            String   @default("vat") // TaxKind
+  outputAccountId String   @map("output_account_id")
+  inputAccountId  String   @map("input_account_id")
+  active          Boolean  @default(true)
+  isDefault       Boolean  @default(false) @map("is_default") // the rate of a taxed product that names none; at most one per organization
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  outputAccount LedgerAccount @relation("TaxRateOutputAccount", fields: [organizationId, outputAccountId], references: [organizationId, id], onDelete: Restrict)
+  inputAccount  LedgerAccount @relation("TaxRateInputAccount", fields: [organizationId, inputAccountId], references: [organizationId, id], onDelete: Restrict)
+  products      Product[]
+  lines         JournalLine[]
+
+  @@unique([organizationId, code])
+  // So that a product and a line can name the organization with the rate
+  @@unique([organizationId, id])
+  @@map("tax_rates")
 }
 
 // Which account each automatic entry posts to (TDD_18 §3, AccountRole)
@@ -2479,7 +2523,7 @@ model JournalLine {
   creditCents    Int     @default(0) @map("credit_cents")
   partyType      String? @map("party_type") // PartyType: supplier | carrier_connection | customer
   partyId        String? @map("party_id") // dimension for subledgers (payables, carrier receivables)
-  taxRateId      String? @map("tax_rate_id") // set on the lines that carry VAT (Step 4B.3 adds the table it points at)
+  taxRateId      String? @map("tax_rate_id") // set on the lines that carry VAT
   memo           String?
   lineNo         Int     @map("line_no")
 
@@ -2487,6 +2531,7 @@ model JournalLine {
   entry        JournalEntry  @relation(fields: [organizationId, entryId], references: [organizationId, id], onDelete: Restrict)
   account      LedgerAccount @relation(fields: [organizationId, accountId], references: [organizationId, id], onDelete: Restrict)
   store        Store?        @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Restrict)
+  taxRate      TaxRate?      @relation(fields: [organizationId, taxRateId], references: [organizationId, id], onDelete: Restrict)
 
   @@unique([entryId, lineNo])
   @@index([organizationId, accountId])

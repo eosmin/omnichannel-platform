@@ -99,4 +99,25 @@ describe('the template of El Salvador', () => {
     }
     expect(SvTemplate.paymentMethods[PaymentMethod.CASH_ON_DELIVERY]).toBeUndefined()
   })
+
+  it('seeds exactly one default tax rate, in basis points, whose roles map to a liability and an asset', () => {
+    expect(SvTemplate.taxRates.filter(rate => rate.isDefault)).toHaveLength(1)
+    expect(new Set(SvTemplate.taxRates.map(rate => rate.code)).size).toBe(
+      SvTemplate.taxRates.length
+    )
+    for (const rate of SvTemplate.taxRates) {
+      expect([
+        rate.code,
+        Number.isInteger(rate.rateBps) && rate.rateBps >= 0 && rate.rateBps <= 10_000
+      ]).toEqual([rate.code, true])
+    }
+    const [vat] = SvTemplate.taxRates
+    expect(vat?.rateBps).toBe(1300)
+    expect(byCode.get(SvTemplate.roles[vat?.outputRole as AccountRole])?.type).toBe(
+      AccountType.LIABILITY
+    )
+    expect(byCode.get(SvTemplate.roles[vat?.inputRole as AccountRole])?.type).toBe(
+      AccountType.ASSET
+    )
+  })
 })

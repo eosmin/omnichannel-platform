@@ -108,6 +108,13 @@ export const PLUGIN_INSTALLATION_RESOURCE_TYPE = 'plugin_installation'
 // be taken for the key of a store (`pk_live_`, ApiKeyGuard): each guard refuses the other's tokens at the prefix
 export const PLUGIN_API_KEY_TOKEN_PREFIX = 'plg_live_'
 
+// The services of the inbox answer for "a person" (who may see what, who read it last, who did it). A plugin has no user, so the
+// call is made as `plugin:<installation id>`: it is never the id of a person, so it matches no assignment and no row of `users`.
+// Only what has no foreign key and no uuid contract holds it (`lastReadBy`, the actor of an event); what points at a user or is
+// read back as a uuid (the audit log, the exports, the author of a message, the people of a system line) is written some other
+// way for a plugin: the audit log as the system with the installation in its metadata, a system line as the system.
+export const PLUGIN_ACTOR_PREFIX = 'plugin:'
+
 // The install flow of an integration plugin (TDD_10 §6.3) and the keys it makes
 export const PluginInstallLimits = {
   // The one-time code the plugin exchanges for its key: 256 bits, five minutes, used once

@@ -16,6 +16,7 @@ import {
   MembershipStatus,
   MessageType,
   OfActiveInstallation,
+  PLUGIN_ACTOR_PREFIX,
   ResolveUndo,
   SystemMessageEvents
 } from '@platform/core/domain'
@@ -909,8 +910,12 @@ function userRef(userId: string): ActorRef {
   return { type: 'user', id: userId }
 }
 
+// A plugin has no user id (its viewer is `plugin:<installation id>`) and a system line names a person by uuid, so the line says
+// the system did it; the audit log keeps which plugin
 function actorRef(actor: ConversationActor): ActorRef {
-  return actor === 'system' ? { type: 'system', id: null } : userRef(actor.userId)
+  return actor === 'system' || actor.userId.startsWith(PLUGIN_ACTOR_PREFIX)
+    ? { type: 'system', id: null }
+    : userRef(actor.userId)
 }
 
 // The fields that go with a status, besides the status itself. Only reopening clears anything: the

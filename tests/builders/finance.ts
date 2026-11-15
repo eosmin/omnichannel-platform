@@ -247,6 +247,7 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
       OR EXISTS (SELECT 1 FROM ledger_accounts WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM fiscal_periods WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM payment_method_accounts WHERE organization_id = ANY(${organizationIds}))
+      OR EXISTS (SELECT 1 FROM tax_rates WHERE organization_id = ANY(${organizationIds}))
     ) AS touched`
   const touched = found?.touched === true
   if (!touched) return
@@ -263,6 +264,12 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     await tx.financePostingFailure.deleteMany({ where })
     await tx.accountRoleMapping.deleteMany({ where })
     await tx.paymentMethodAccount.deleteMany({ where })
+    // A product names its tax rate and the rate names accounts: the products let go first, then the rates, then the accounts
+    await tx.product.updateMany({
+      where: { store: { organizationId: { in: organizationIds } }, taxRateId: { not: null } },
+      data: { taxRateId: null }
+    })
+    await tx.taxRate.deleteMany({ where })
     await tx.financeSettings.deleteMany({ where })
     // The tree of accounts: a parent restricts its children, so the links are cut first (the guard of the chart is off, so the
     // system accounts go too)

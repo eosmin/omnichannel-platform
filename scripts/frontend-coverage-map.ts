@@ -104,6 +104,12 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'finance.accounts.reactivate': { step: '4B.9' },
   'finance.accountRoles.list': { step: '4B.9' },
   'finance.accountRoles.byRole': { step: '4B.9' },
+  'finance.taxRates.list': { step: '4B.9' },
+  'finance.taxRates.create': { step: '4B.9' },
+  'finance.taxRates.byId': { step: '4B.9' },
+  'finance.taxRates.deactivate': { step: '4B.9' },
+  'finance.taxRates.reactivate': { step: '4B.9' },
+  'finance.storeTaxSettings': { step: '4B.9' },
   'finance.paymentAccounts.list': { step: '4B.9' },
   'finance.paymentAccounts.set': { step: '4B.9' },
   'finance.paymentAccounts.byId': { step: '4B.9' },
@@ -246,6 +252,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'plugins.revoke': { step: '3.6' },
   'plugins.consent': { step: '5.6' }, // PR W1: the consent screen
   'plugins.setupCode': { step: '5.6' }, // PR W1: the owner asks for a new code
+  'plugins.commandSecret': { step: '5.6' }, // PR W1: the owner rotates the secret of a channel plugin
   'plugins.config': { step: '5.6' },
   'pluginWidgets.list': { step: '5.7' },
   'pluginWidgets.sessions': { step: '5.7' },

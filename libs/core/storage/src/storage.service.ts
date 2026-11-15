@@ -33,6 +33,8 @@ export interface DownloadUrlParams {
   filename: string
   // Only for the re-encoded variants. Anything the uploader sent is always an attachment.
   inline?: boolean
+  // Shorter than the default life of a link, for a link that goes to a plugin (never longer: a larger value is cut)
+  expiresInSeconds?: number
 }
 
 export interface StoredObject {
@@ -89,7 +91,12 @@ export class StorageService implements OnApplicationShutdown {
       ResponseContentDisposition:
         params.inline === true ? 'inline' : attachmentDisposition(params.filename)
     })
-    return getSignedUrl(this.s3, command, { expiresIn: UploadLimits.DOWNLOAD_URL_TTL_SECONDS })
+    return getSignedUrl(this.s3, command, {
+      expiresIn: Math.min(
+        params.expiresInSeconds ?? UploadLimits.DOWNLOAD_URL_TTL_SECONDS,
+        UploadLimits.DOWNLOAD_URL_TTL_SECONDS
+      )
+    })
   }
 
   // The object as a stream, for what is too big to hold (a virus scan). null when it is not there.
