@@ -20,6 +20,11 @@ import type { PluginApiCoverage } from './lib/plugin-api-coverage'
 
 const STEP = '5.6'
 
+const CUSTOMER_MERGE =
+  'Merging customers, undoing a merge and its preview: the merge writes who did it (`mergedById`), and the profile names that person, so it waits for a plugin to have an actor of its own to show (Step 5.6 W1); the permission has no scope either'
+const CUSTOMER_NOTE_AUTHOR =
+  'Writing and deleting the notes of a customer: a note keeps its author, a person the profile shows by name, and only the author or CUSTOMERS_DELETE may remove it; a plugin reads the notes (GET) and does not write them until it has an actor to show (Step 5.6 W1)'
+
 const SESSION = "A person's own session: a plugin has an API key, not a login"
 const ACCOUNT =
   "A person's own account (their name, picture and preferences): the id comes from their token"
@@ -212,24 +217,64 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   },
 
   // Customers (`customers:*` exist)
-  'customers.list': { scope: ['customers:read', 'customers:write'] },
-  'customers.byId': { scope: ['customers:read', 'customers:write'] },
-  'customers.identities': { scope: ['customers:read', 'customers:write'] },
-  'customers.identityById': { scope: 'customers:write' },
-  'customers.merge': { proposed: 'customers:merge', step: STEP },
-  'customers.unmerge': { proposed: 'customers:merge', step: STEP },
-  'customers.mergePreview': { proposed: 'customers:merge', step: STEP },
-  'customers.orders': { scope: 'customers:read' },
-  'customers.conversations': { scope: 'customers:read' },
-  'customers.notes': { scope: ['customers:read', 'customers:write'] },
-  'customers.noteById': { scope: 'customers:write' },
-  'customers.addresses': { scope: ['customers:read', 'customers:write'] },
-  'customers.addressById': { scope: 'customers:write' },
-  'customers.tags': { scope: ['customers:read', 'customers:write'] },
-  'customers.tagById': { scope: 'customers:write' },
+  'customers.list': {
+    scope: ['customers:read', 'customers:write'],
+    exposed: '/plugin-api/customers'
+  },
+  'customers.byId': {
+    scope: ['customers:read', 'customers:write', 'customers:delete'],
+    exposed: '/plugin-api/customers/:id'
+  },
+  'customers.identities': {
+    scope: ['customers:read', 'customers:write'],
+    exposed: '/plugin-api/customers/:id/identities'
+  },
+  'customers.identityById': {
+    scope: ['customers:read', 'customers:write'],
+    exposed: '/plugin-api/customers/:id/identities/:identityId'
+  },
+  'customers.merge': { none: CUSTOMER_MERGE },
+  'customers.unmerge': { none: CUSTOMER_MERGE },
+  'customers.mergePreview': { none: CUSTOMER_MERGE },
+  'customers.orders': {
+    scope: ['customers:read', 'orders:read'],
+    exposed: '/plugin-api/customers/:id/orders'
+  },
+  'customers.conversations': {
+    scope: ['customers:read', 'conversations:read'],
+    exposed: '/plugin-api/customers/:id/conversations'
+  },
+  // The notes are read; writing one is CUSTOMER_NOTE_AUTHOR
+  'customers.notes': {
+    scope: 'customers:read',
+    exposed: '/plugin-api/customers/:id/notes'
+  },
+  'customers.noteById': { none: CUSTOMER_NOTE_AUTHOR },
+  'customers.addresses': {
+    scope: ['customers:read', 'customers:write'],
+    exposed: '/plugin-api/customers/:id/addresses'
+  },
+  'customers.addressById': {
+    scope: ['customers:read', 'customers:write'],
+    exposed: '/plugin-api/customers/:id/addresses/:addressId'
+  },
+  'customers.tags': {
+    scope: ['customers:read', 'customers:write'],
+    exposed: '/plugin-api/customers/:id/tags'
+  },
+  'customers.tagById': {
+    scope: ['customers:read', 'customers:write'],
+    exposed: '/plugin-api/customers/:id/tags/:tagId'
+  },
   'customers.media': { proposed: ['customers:read', 'media:read'], step: STEP },
-  'customers.timeline': { scope: 'customers:read' },
-  'customers.caution': { scope: 'customers:write' },
+  'customers.timeline': {
+    scope: 'customers:read',
+    exposed: '/plugin-api/customers/:id/timeline'
+  },
+  'customers.caution': {
+    scope: ['customers:read', 'customers:flag-caution'],
+    exposed: '/plugin-api/customers/:id/caution'
+  },
   'customers.export': { proposed: ['customers:read', 'exports:write'], step: STEP },
 
   // Orders (`orders:*` exist); the messages and templates of an order are a scope of their own

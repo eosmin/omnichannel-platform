@@ -10,6 +10,10 @@ export const PluginScopes = {
   MESSAGES_READ_DELETED: 'messages:read-deleted',
   CUSTOMERS_READ: 'customers:read',
   CUSTOMERS_WRITE: 'customers:write',
+  // Deleting a customer and flagging it with a caution each have a permission that `customers:write` does not hold (a person who
+  // edits a customer neither deletes nor flags it by that), so a plugin asks for each by its own scope (Step 5.6 PR E2)
+  CUSTOMERS_DELETE: 'customers:delete',
+  CUSTOMERS_FLAG_CAUTION: 'customers:flag-caution',
   ORDERS_READ: 'orders:read',
   ORDERS_WRITE: 'orders:write',
   PRODUCTS_READ: 'products:read',
@@ -52,6 +56,8 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.MESSAGES_READ_DELETED]: [Permissions.MESSAGES_VIEW_DELETED],
   [PluginScopes.CUSTOMERS_READ]: [Permissions.CUSTOMERS_VIEW],
   [PluginScopes.CUSTOMERS_WRITE]: [Permissions.CUSTOMERS_CREATE, Permissions.CUSTOMERS_EDIT],
+  [PluginScopes.CUSTOMERS_DELETE]: [Permissions.CUSTOMERS_DELETE],
+  [PluginScopes.CUSTOMERS_FLAG_CAUTION]: [Permissions.CUSTOMERS_FLAG_CAUTION],
   [PluginScopes.ORDERS_READ]: [Permissions.ORDERS_VIEW],
   [PluginScopes.ORDERS_WRITE]: [Permissions.ORDERS_CREATE, Permissions.ORDERS_CHANGE_STATUS],
   [PluginScopes.PRODUCTS_READ]: [Permissions.PRODUCTS_VIEW],
