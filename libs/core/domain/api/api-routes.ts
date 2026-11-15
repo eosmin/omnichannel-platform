@@ -242,7 +242,9 @@ export const ApiRoutes = {
     },
     balances: '/finance/balances',
     // The sources whose automatic entry failed, still waiting for a person (TDD_18 §6.1)
-    postings: '/finance/postings'
+    postings: '/finance/postings',
+    // POST posts the entry of a failed source again, now: the person fixed what failed (a mapping, an account)
+    postingRetry: (id: string) => `/finance/postings/${id}/retry`
   },
 
   // Suppliers and what is owed to them (TDD_18 §2.7, §12): organization-scoped like the books they post to. A route is a leaf of

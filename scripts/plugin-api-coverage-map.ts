@@ -432,6 +432,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'finance.bank.status': { none: FINANCE },
   'finance.balances': { none: FINANCE },
   'finance.postings': { none: FINANCE },
+  'finance.postingRetry': { none: FINANCE },
   'suppliers.list': { none: FINANCE },
   'suppliers.create': { none: FINANCE },
   'suppliers.byId': { none: FINANCE },

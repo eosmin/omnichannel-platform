@@ -143,6 +143,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'finance.bank.status': { step: '4B.9' },
   'finance.balances': { step: '4B.9' },
   'finance.postings': { step: '4B.9' },
+  'finance.postingRetry': { step: '4B.9' },
   'suppliers.list': { step: '4B.9' },
   'suppliers.create': { step: '4B.9' },
   'suppliers.byId': { step: '4B.9' },

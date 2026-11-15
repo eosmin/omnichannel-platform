@@ -10,6 +10,7 @@ import {
 import { PluginsModule } from '@platform/plugins/runtime'
 
 import { CarriersWorkerModule } from '../carriers/carriers.module'
+import { FinancePostingWorkerModule } from '../finance/finance-posting.module'
 import { InventoryReconcileModule } from '../inventory/inventory.module'
 import { HeavyProcessingProcessor } from '../processors/heavy-processing.processor'
 import { ProcessorSupport } from '../processors/processor-support'
@@ -34,6 +35,8 @@ import { UnavailableFileMarker } from './unavailable-file-marker.service'
     PluginsModule.forRoot(),
     // The processor of the heavy queue also runs the reconciliation job of the stock
     InventoryReconcileModule,
+    // ... and the automatic entries of the books
+    FinancePostingWorkerModule,
     // ... and the nightly retention of a store
     RetentionWorkerModule,
     ShippingWorkerModule,

@@ -204,6 +204,7 @@ export const AuditAction = {
   FINANCE_PERIOD_OPENED: 'finance.period_opened',
   FINANCE_ENTRY_POSTED_MANUAL: 'finance.entry_posted_manual',
   FINANCE_ENTRY_REVERSED: 'finance.entry_reversed',
+  FINANCE_POSTING_RETRIED: 'finance.posting_retried',
   FINANCE_TRANSACTION_RECORDED: 'finance.transaction_recorded',
   FINANCE_TRANSACTION_VOIDED: 'finance.transaction_voided',
   FINANCE_TRANSACTION_DOCUMENT_ATTACHED: 'finance.transaction_document_attached',

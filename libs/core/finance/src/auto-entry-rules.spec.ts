@@ -1,0 +1,371 @@
+import {
+  AccountRole,
+  FinancePostingFailureReason,
+  InventoryAdjustmentReason,
+  InventoryMovementType
+} from '@platform/core/domain'
+
+import {
+  adjustmentLines,
+  issueCost,
+  orderPaymentLines,
+  saleAmounts,
+  saleLines,
+  sentLines,
+  type DraftLine,
+  type RoleAccounts,
+  type SaleOrderRow
+} from './index'
+
+const accounts: RoleAccounts = role => `acc-${role}`
+const STORE = 'store-1'
+
+const sum = (lines: readonly DraftLine[], side: 'debitCents' | 'creditCents'): number =>
+  lines.reduce((total, line) => total + line[side], 0)
+const lineOf = (lines: readonly DraftLine[], role: AccountRole): DraftLine | undefined =>
+  lines.find(line => line.accountId === `acc-${role}`)
+
+describe('saleAmounts', () => {
+  it('splits an order whose prices include the tax, shipping included', () => {
+    // 2 x 11.30 with 13% in the price: tax 2.60, net 20.00; shipping 5.65 with 0.65 of tax: net 5.00
+    const order: SaleOrderRow = {
+      subtotalCents: 2260,
+      shippingCents: 565,
+      discountCents: 0,
+      totalCents: 2825,
+      taxCents: 325,
+      pricesIncludeTax: true,
+      lines: [{ quantity: 2, unitPriceCents: 1130, taxCents: 260 }]
+    }
+    expect(saleAmounts(order)).toEqual({
+      ok: true,
+      amounts: { revenueNetCents: 2000, shippingNetCents: 500, vatCents: 325, totalCents: 2825 }
+    })
+  })
+
+  it('takes the discount out of the revenue when the prices do not include the tax', () => {
+    // 2 x 10.00, discount 2.00: base 18.00, tax 2.34; shipping 5.00 with 0.65: the tax is added to the total
+    const order: SaleOrderRow = {
+      subtotalCents: 2000,
+      shippingCents: 500,
+      discountCents: 200,
+      totalCents: 2599,
+      taxCents: 299,
+      pricesIncludeTax: false,
+      lines: [{ quantity: 2, unitPriceCents: 1000, taxCents: 234 }]
+    }
+    expect(saleAmounts(order)).toEqual({
+      ok: true,
+      amounts: { revenueNetCents: 1800, shippingNetCents: 500, vatCents: 299, totalCents: 2599 }
+    })
+  })
+
+  it('shares the discount across lines to the cent', () => {
+    const order: SaleOrderRow = {
+      subtotalCents: 1000,
+      shippingCents: 0,
+      discountCents: 1,
+      totalCents: 999,
+      taxCents: 0,
+      pricesIncludeTax: false,
+      lines: [
+        { quantity: 1, unitPriceCents: 333, taxCents: 0 },
+        { quantity: 1, unitPriceCents: 333, taxCents: 0 },
+        { quantity: 1, unitPriceCents: 334, taxCents: 0 }
+      ]
+    }
+    const result = saleAmounts(order)
+    expect(result.ok && result.amounts.totalCents).toBe(999)
+  })
+
+  it('refuses an order made before the tax columns instead of inventing a tax', () => {
+    const order: SaleOrderRow = {
+      subtotalCents: 1000,
+      shippingCents: 0,
+      discountCents: 0,
+      totalCents: 1000,
+      taxCents: null,
+      pricesIncludeTax: null,
+      lines: [{ quantity: 1, unitPriceCents: 1000, taxCents: null }]
+    }
+    expect(saleAmounts(order)).toEqual({
+      ok: false,
+      reason: FinancePostingFailureReason.TAX_MISSING
+    })
+  })
+
+  it('refuses figures that do not add up to the total', () => {
+    const order: SaleOrderRow = {
+      subtotalCents: 1000,
+      shippingCents: 0,
+      discountCents: 0,
+      totalCents: 1001,
+      taxCents: 0,
+      pricesIncludeTax: false,
+      lines: [{ quantity: 1, unitPriceCents: 1000, taxCents: 0 }]
+    }
+    expect(saleAmounts(order)).toEqual({
+      ok: false,
+      reason: FinancePostingFailureReason.AMOUNTS_DISAGREE
+    })
+  })
+
+  it('refuses a tax of the shipping fee that is negative or above the fee', () => {
+    const order: SaleOrderRow = {
+      subtotalCents: 1000,
+      shippingCents: 100,
+      discountCents: 0,
+      totalCents: 1100,
+      taxCents: 50,
+      pricesIncludeTax: false,
+      // The lines carry more tax than the order says in all
+      lines: [{ quantity: 1, unitPriceCents: 1000, taxCents: 80 }]
+    }
+    expect(saleAmounts(order).ok).toBe(false)
+  })
+})
+
+describe('issueCost', () => {
+  it('multiplies the units by the cost each carried', () => {
+    expect(
+      issueCost([
+        { quantity: 2, unitCostCents: 350 },
+        { quantity: 1, unitCostCents: 1234 }
+      ])
+    ).toEqual({ ok: true, costCents: 1934 })
+  })
+
+  it('is zero without movements (a service)', () => {
+    expect(issueCost([])).toEqual({ ok: true, costCents: 0 })
+  })
+
+  it('fails on a movement that left with no cost', () => {
+    expect(issueCost([{ quantity: 1, unitCostCents: null }])).toEqual({
+      ok: false,
+      reason: FinancePostingFailureReason.COST_MISSING
+    })
+  })
+})
+
+describe('orderPaymentLines (E1)', () => {
+  it('debits the account of the method and credits the advance', () => {
+    const result = orderPaymentLines({
+      accounts,
+      paymentAccountId: 'acc-bank',
+      totalCents: 2825,
+      storeId: STORE
+    })
+    expect(result).toEqual({
+      ok: true,
+      lines: [
+        { accountId: 'acc-bank', debitCents: 2825, creditCents: 0, storeId: STORE },
+        {
+          accountId: `acc-${AccountRole.CUSTOMER_ADVANCES}`,
+          debitCents: 0,
+          creditCents: 2825,
+          storeId: STORE
+        }
+      ]
+    })
+  })
+
+  it('names the role that has no account', () => {
+    expect(
+      orderPaymentLines({
+        accounts: () => null,
+        paymentAccountId: 'x',
+        totalCents: 5,
+        storeId: STORE
+      })
+    ).toEqual({
+      ok: false,
+      reason: FinancePostingFailureReason.ROLE_NOT_MAPPED,
+      role: AccountRole.CUSTOMER_ADVANCES
+    })
+  })
+
+  it('posts nothing for a free order', () => {
+    expect(
+      orderPaymentLines({ accounts, paymentAccountId: 'x', totalCents: 0, storeId: STORE })
+    ).toEqual({ ok: true, lines: [] })
+  })
+})
+
+describe('sentLines (E2)', () => {
+  it('moves the cost from inventory to inventory in transit', () => {
+    const result = sentLines({ accounts, costCents: 1934, storeId: STORE })
+    expect(result.ok && sum(result.lines, 'debitCents')).toBe(1934)
+    expect(result.ok && lineOf(result.lines, AccountRole.INVENTORY_IN_TRANSIT)?.debitCents).toBe(
+      1934
+    )
+    expect(result.ok && lineOf(result.lines, AccountRole.INVENTORY)?.creditCents).toBe(1934)
+  })
+
+  it('posts nothing at no cost', () => {
+    expect(sentLines({ accounts, costCents: 0, storeId: STORE })).toEqual({ ok: true, lines: [] })
+  })
+})
+
+describe('saleLines (E3)', () => {
+  const amounts = {
+    revenueNetCents: 2000,
+    shippingNetCents: 500,
+    vatCents: 325,
+    totalCents: 2825
+  }
+
+  it('a cash on delivery sale is the carrier receivable, with the carrier as party, and clears the transit cost', () => {
+    const result = saleLines({
+      accounts,
+      amounts,
+      collection: { kind: 'carrier', carrierConnectionId: 'conn-1' },
+      costCents: 1934,
+      costFromTransit: true,
+      storeId: STORE
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(sum(result.lines, 'debitCents')).toBe(sum(result.lines, 'creditCents'))
+    expect(sum(result.lines, 'debitCents')).toBe(2825 + 1934)
+    expect(lineOf(result.lines, AccountRole.RECEIVABLE_CARRIERS)).toMatchObject({
+      debitCents: 2825,
+      partyType: 'carrier_connection',
+      partyId: 'conn-1'
+    })
+    expect(lineOf(result.lines, AccountRole.SALES_REVENUE)?.creditCents).toBe(2000)
+    expect(lineOf(result.lines, AccountRole.SHIPPING_REVENUE)?.creditCents).toBe(500)
+    expect(lineOf(result.lines, AccountRole.VAT_OUTPUT)?.creditCents).toBe(325)
+    expect(lineOf(result.lines, AccountRole.COST_OF_GOODS_SOLD)?.debitCents).toBe(1934)
+    expect(lineOf(result.lines, AccountRole.INVENTORY_IN_TRANSIT)?.creditCents).toBe(1934)
+    expect(lineOf(result.lines, AccountRole.INVENTORY)).toBeUndefined()
+  })
+
+  it('a prepaid sale clears the advance, and without an E2 the cost leaves inventory itself', () => {
+    const result = saleLines({
+      accounts,
+      amounts,
+      collection: { kind: 'advance' },
+      costCents: 1934,
+      costFromTransit: false,
+      storeId: STORE
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(lineOf(result.lines, AccountRole.CUSTOMER_ADVANCES)?.debitCents).toBe(2825)
+    expect(lineOf(result.lines, AccountRole.INVENTORY)?.creditCents).toBe(1934)
+    expect(lineOf(result.lines, AccountRole.RECEIVABLE_CARRIERS)).toBeUndefined()
+  })
+
+  it('leaves out a shipping fee of zero and a sale with no tax', () => {
+    const result = saleLines({
+      accounts,
+      amounts: { revenueNetCents: 1000, shippingNetCents: 0, vatCents: 0, totalCents: 1000 },
+      collection: { kind: 'advance' },
+      costCents: 0,
+      costFromTransit: true,
+      storeId: STORE
+    })
+    expect(result.ok && result.lines).toHaveLength(2)
+  })
+
+  it('fails visibly, naming the role, when a mapping is missing', () => {
+    const result = saleLines({
+      accounts: role => (role === AccountRole.VAT_OUTPUT ? null : `acc-${role}`),
+      amounts,
+      collection: { kind: 'advance' },
+      costCents: 0,
+      costFromTransit: true,
+      storeId: STORE
+    })
+    expect(result).toEqual({
+      ok: false,
+      reason: FinancePostingFailureReason.ROLE_NOT_MAPPED,
+      role: AccountRole.VAT_OUTPUT
+    })
+  })
+})
+
+describe('adjustmentLines (E9)', () => {
+  const movement = (
+    type: string,
+    quantity: number,
+    unitCostCents: number | null,
+    reason: string | null = null
+  ) => ({ type, reason, quantity, unitCostCents })
+
+  it('units out are a loss at the cost of the movement', () => {
+    const result = adjustmentLines({
+      accounts,
+      movement: movement(InventoryMovementType.COUNT_OUT, 3, 250),
+      storeId: STORE
+    })
+    expect(result.ok && lineOf(result.lines, AccountRole.INVENTORY_LOSS)?.debitCents).toBe(750)
+    expect(result.ok && lineOf(result.lines, AccountRole.INVENTORY)?.creditCents).toBe(750)
+  })
+
+  it('units in are a gain', () => {
+    const result = adjustmentLines({
+      accounts,
+      movement: movement(
+        InventoryMovementType.ADJUSTMENT_IN,
+        2,
+        500,
+        InventoryAdjustmentReason.FOUND
+      ),
+      storeId: STORE
+    })
+    expect(result.ok && lineOf(result.lines, AccountRole.INVENTORY_GAIN)?.creditCents).toBe(1000)
+    expect(result.ok && lineOf(result.lines, AccountRole.INVENTORY)?.debitCents).toBe(1000)
+  })
+
+  it('opening stock goes against the opening equity, not a gain', () => {
+    const result = adjustmentLines({
+      accounts,
+      movement: movement(
+        InventoryMovementType.ADJUSTMENT_IN,
+        4,
+        100,
+        InventoryAdjustmentReason.OPENING_STOCK
+      ),
+      storeId: STORE
+    })
+    expect(result.ok && lineOf(result.lines, AccountRole.OPENING_EQUITY)?.creditCents).toBe(400)
+    expect(result.ok && lineOf(result.lines, AccountRole.INVENTORY_GAIN)).toBeUndefined()
+  })
+
+  it('units in with no cost cannot be valued: a failure, not a zero', () => {
+    expect(
+      adjustmentLines({
+        accounts,
+        movement: movement(InventoryMovementType.COUNT_IN, 1, null),
+        storeId: STORE
+      })
+    ).toEqual({ ok: false, reason: FinancePostingFailureReason.COST_MISSING })
+  })
+
+  it('units out that carried no cost have nothing to write off', () => {
+    expect(
+      adjustmentLines({
+        accounts,
+        movement: movement(InventoryMovementType.ADJUSTMENT_OUT, 1, null),
+        storeId: STORE
+      })
+    ).toEqual({ ok: true, lines: [] })
+  })
+
+  it.each([
+    InventoryMovementType.TRANSFER_OUT,
+    InventoryMovementType.TRANSFER_IN,
+    InventoryMovementType.RECEIPT,
+    InventoryMovementType.ISSUE,
+    InventoryMovementType.RESERVE,
+    InventoryMovementType.RETURN_IN
+  ])('%s posts nothing here', type => {
+    expect(adjustmentLines({ accounts, movement: movement(type, 1, 100), storeId: STORE })).toEqual(
+      {
+        ok: true,
+        lines: []
+      }
+    )
+  })
+})

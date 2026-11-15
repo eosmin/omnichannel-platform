@@ -475,6 +475,19 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @Post(ApiRoutes.finance.postingRetry(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  retryPosting(
+    @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) failureId: string,
+    @Req() req: AuthenticatedRequest
+  ): ReturnType<FinanceEntriesService['retryPosting']> {
+    return this.entries.retryPosting(organization.id, failureId, actorOf(user, store, req))
+  }
+
+  @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
   @Get(ApiRoutes.finance.postings)
   postings(
     @CurrentOrganization() organization: Organization,

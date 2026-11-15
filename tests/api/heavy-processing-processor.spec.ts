@@ -19,6 +19,7 @@ describe('HeavyProcessingProcessor', () => {
   const runPickup = jest.fn().mockResolvedValue(undefined)
   const evaluatePickups = jest.fn().mockResolvedValue(null)
   const enforceRetention = jest.fn().mockResolvedValue(undefined)
+  const postFinance = jest.fn().mockResolvedValue({ outcome: 'posted' })
   const support = {
     run: (_queue: string, current: ProcessorJob, work: (job: ProcessorJob) => Promise<void>) =>
       work(current)
@@ -35,7 +36,8 @@ describe('HeavyProcessingProcessor', () => {
     { run: runVoid } as never, // the void of a guide: what it is handed is what is tested
     { run: runPickup } as never, // the pickup sync: what it is handed is what is tested
     { run: evaluatePickups } as never, // the pickup evaluation: what it is handed is what is tested
-    { enforce: enforceRetention } as never // the nightly retention of a store: what it is handed is what is tested
+    { enforce: enforceRetention } as never, // the nightly retention of a store: what it is handed is what is tested
+    { post: postFinance } as never // the automatic entries of the books: what it is handed is what is tested
   )
 
   const base = {
@@ -94,6 +96,54 @@ describe('HeavyProcessingProcessor', () => {
   ])('refuses for good a job with %s', async (_name, data) => {
     await expect(run(data)).rejects.toBeInstanceOf(UnrecoverableError)
     expect(fetch).not.toHaveBeenCalled()
+  })
+
+  describe('post-finance-event jobs', () => {
+    const ORG_ID = '8d88e80f-cecb-408a-bd99-9da2db20a7da'
+    const ORDER_ID = '1d307c85-af40-4e6f-9c63-2c3d4e5f6071'
+    const post = (data: unknown): Promise<void> =>
+      processor.process({
+        name: JobNames.POST_FINANCE_EVENT,
+        data: JSON.parse(JSON.stringify(data)) as unknown,
+        attemptsMade: 0,
+        opts: { attempts: 5 }
+      } as unknown as ProcessorJob)
+
+    it('hands the source and the event to the posting service, nothing else', async () => {
+      await post({
+        organizationId: ORG_ID,
+        sourceType: 'order',
+        sourceId: ORDER_ID,
+        kind: 'sale',
+        occurredAt: '2026-11-16T18:00:00.000Z'
+      })
+      expect(postFinance).toHaveBeenCalledWith({
+        organizationId: ORG_ID,
+        sourceType: 'order',
+        sourceId: ORDER_ID,
+        kind: 'sale',
+        occurredAt: '2026-11-16T18:00:00.000Z'
+      })
+    })
+
+    it.each([
+      ['an event that does not exist', { kind: 'refund' }],
+      ['a source that does not exist', { sourceType: 'invoice' }],
+      ['a source that is not an id', { sourceId: 'all' }],
+      ['an organization that is not an id', { organizationId: 'mine' }]
+    ])('refuses %s, and does not ask again', async (_label, patch) => {
+      postFinance.mockClear()
+      await expect(
+        post({
+          organizationId: ORG_ID,
+          sourceType: 'order',
+          sourceId: ORDER_ID,
+          kind: 'sale',
+          ...patch
+        })
+      ).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(postFinance).not.toHaveBeenCalled()
+    })
   })
 
   describe('the replay of carrier events', () => {
