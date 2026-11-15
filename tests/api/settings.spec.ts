@@ -23,6 +23,7 @@ const FACTORY_RETURNS = { preselectCautionOnRefusal: false }
 
 // The remittances block of the preferences at its factory value (TDD_17 §4.15)
 const FACTORY_REMITTANCES = { overdueAfterDays: 7 }
+const FACTORY_FINANCE = { pricesIncludeTax: true }
 const FACTORY_ORDERS = {
   confirmOnCreate: false,
   sendSummaryOnCreate: true,
@@ -603,7 +604,8 @@ describe('The settings of the inbox of a store', () => {
         assignOnReply: true,
         orders: FACTORY_ORDERS,
         returns: FACTORY_RETURNS,
-        remittances: FACTORY_REMITTANCES
+        remittances: FACTORY_REMITTANCES,
+        finance: FACTORY_FINANCE
       })
     })
 
@@ -618,7 +620,8 @@ describe('The settings of the inbox of a store', () => {
         assignOnReply: true,
         orders: FACTORY_ORDERS,
         returns: FACTORY_RETURNS,
-        remittances: FACTORY_REMITTANCES
+        remittances: FACTORY_REMITTANCES,
+        finance: FACTORY_FINANCE
       })
       expect(
         (await api(app, ctx.adminA2, ctx.storeA2).get(ApiRoutes.settings.preferences)).body
@@ -627,7 +630,8 @@ describe('The settings of the inbox of a store', () => {
         assignOnReply: true,
         orders: FACTORY_ORDERS,
         returns: FACTORY_RETURNS,
-        remittances: FACTORY_REMITTANCES
+        remittances: FACTORY_REMITTANCES,
+        finance: FACTORY_FINANCE
       })
       const settings = await owner.storeSettings.findUniqueOrThrow({
         where: { storeId: ctx.storeA2.id }
@@ -710,7 +714,8 @@ describe('The settings of the inbox of a store', () => {
         assignOnReply: true,
         orders: FACTORY_ORDERS,
         returns: FACTORY_RETURNS,
-        remittances: FACTORY_REMITTANCES
+        remittances: FACTORY_REMITTANCES,
+        finance: FACTORY_FINANCE
       })
       const put = await asAdmin()
         .put(ApiRoutes.settings.preferences)
@@ -720,7 +725,8 @@ describe('The settings of the inbox of a store', () => {
         assignOnReply: true,
         orders: FACTORY_ORDERS,
         returns: FACTORY_RETURNS,
-        remittances: FACTORY_REMITTANCES
+        remittances: FACTORY_REMITTANCES,
+        finance: FACTORY_FINANCE
       })
     })
 

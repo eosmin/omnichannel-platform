@@ -13,6 +13,8 @@ export const SETTINGS_SELECT = {
   lockedThrough: true,
   recognizeSaleOn: true,
   roundingAccountId: true,
+  taxRounding: true,
+  shippingTaxed: true,
   updatedAt: true
 } as const
 
@@ -23,6 +25,8 @@ export interface SettingsRow {
   lockedThrough: Date | null
   recognizeSaleOn: string
   roundingAccountId: string | null
+  taxRounding: string
+  shippingTaxed: boolean
   updatedAt: Date
 }
 
@@ -33,6 +37,8 @@ export interface SettingsView {
   lockedThrough: string | null
   recognizeSaleOn: string
   roundingAccountId: string | null
+  taxRounding: string
+  shippingTaxed: boolean
   updatedAt: string
 }
 
@@ -43,6 +49,8 @@ export const settingsView = (row: SettingsRow): SettingsView => ({
   lockedThrough: row.lockedThrough === null ? null : isoDay(row.lockedThrough),
   recognizeSaleOn: row.recognizeSaleOn,
   roundingAccountId: row.roundingAccountId,
+  taxRounding: row.taxRounding,
+  shippingTaxed: row.shippingTaxed,
   updatedAt: row.updatedAt.toISOString()
 })
 
@@ -401,4 +409,66 @@ export interface PostingPage {
   data: PostingView[]
   nextCursor: string | null
   hasMore: boolean
+}
+
+export const TAX_RATE_SELECT = {
+  id: true,
+  code: true,
+  name: true,
+  rateBps: true,
+  kind: true,
+  outputAccountId: true,
+  inputAccountId: true,
+  active: true,
+  isDefault: true,
+  createdAt: true,
+  updatedAt: true
+} as const
+
+export interface TaxRateRow {
+  id: string
+  code: string
+  name: string
+  rateBps: number
+  kind: string
+  outputAccountId: string
+  inputAccountId: string
+  active: boolean
+  isDefault: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface TaxRateView {
+  id: string
+  code: string
+  name: string
+  // Basis points: 13 % is 1300
+  rateBps: number
+  kind: string
+  outputAccountId: string
+  inputAccountId: string
+  active: boolean
+  isDefault: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export const taxRateView = (row: TaxRateRow): TaxRateView => ({
+  id: row.id,
+  code: row.code,
+  name: row.name,
+  rateBps: row.rateBps,
+  kind: row.kind,
+  outputAccountId: row.outputAccountId,
+  inputAccountId: row.inputAccountId,
+  active: row.active,
+  isDefault: row.isDefault,
+  createdAt: row.createdAt.toISOString(),
+  updatedAt: row.updatedAt.toISOString()
+})
+
+// The tax preferences of the store of the request (TDD_18 §7): whether the prices of its catalog already include the tax
+export interface StoreTaxSettingsView {
+  pricesIncludeTax: boolean
 }

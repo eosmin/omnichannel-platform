@@ -22,6 +22,8 @@ const product: ProductDetailView = {
   lowStockThreshold: 5,
   active: true,
   freeShipping: false,
+  taxTreatment: 'taxed',
+  taxRateId: null,
   createdAt: '2026-11-10T10:00:00.000Z',
   updatedAt: '2026-11-10T10:00:00.000Z',
   variants: []

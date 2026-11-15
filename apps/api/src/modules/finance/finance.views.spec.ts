@@ -1,4 +1,4 @@
-import { balanceView, entryView, isoDay, settingsView } from './finance.views'
+import { balanceView, entryView, isoDay, settingsView, taxRateView } from './finance.views'
 
 describe('isoDay', () => {
   it('is the accounting day of a DATE column, whatever the time zone of the server', () => {
@@ -72,10 +72,35 @@ describe('settingsView', () => {
       lockedThrough: null,
       recognizeSaleOn: 'delivered',
       roundingAccountId: null,
+      taxRounding: 'half_up',
+      shippingTaxed: true,
       updatedAt: new Date('2026-01-01T00:00:00Z')
     })
 
     expect(view.lockedThrough).toBeNull()
+    expect([view.taxRounding, view.shippingTaxed]).toEqual(['half_up', true])
     expect(Object.keys(view)).not.toContain('nextEntryNumber')
+  })
+})
+
+describe('taxRateView', () => {
+  it('shows the rate as basis points and the dates as instants, with the accounts it posts to', () => {
+    const view = taxRateView({
+      id: 't',
+      code: 'IVA',
+      name: 'IVA 13 %',
+      rateBps: 1300,
+      kind: 'vat',
+      outputAccountId: 'o',
+      inputAccountId: 'i',
+      active: true,
+      isDefault: true,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-02T00:00:00Z')
+    })
+
+    expect(view.rateBps).toBe(1300)
+    expect(view.createdAt).toBe('2026-01-01T00:00:00.000Z')
+    expect([view.outputAccountId, view.inputAccountId, view.isDefault]).toEqual(['o', 'i', true])
   })
 })

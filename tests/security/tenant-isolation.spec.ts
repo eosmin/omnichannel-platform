@@ -1149,6 +1149,57 @@ const resources: IsolationResource[] = [
     },
     untouched: () => Promise.resolve(true)
   },
+  // The tax rates are the organization's: read by the list, changed by id; no route reads one by its id
+  {
+    name: 'taxRate',
+    create: async (owner, { storeId }) => {
+      const organizationId = await organizationOfStore(owner, storeId)
+      const books = await booksOf(owner, organizationId)
+      return {
+        id: (
+          await owner.taxRate.create({
+            data: {
+              organizationId,
+              code: `X${randomUUID().slice(0, 8)}`,
+              name: 'Isolation rate',
+              rateBps: 700,
+              outputAccountId: books.accounts.liability,
+              inputAccountId: books.accounts.cash
+            },
+            select: { id: true }
+          })
+        ).id
+      }
+    },
+    scope: 'organization',
+    listPath: ApiRoutes.finance.taxRates.list,
+    modify: { path: ApiRoutes.finance.taxRates.byId, body: { name: 'hacked' } },
+    untouched: async (owner, id) =>
+      (await owner.taxRate.findUnique({ where: { id }, select: { name: true } }))?.name !==
+      'hacked',
+    creation: {
+      path: ApiRoutes.finance.taxRates.create,
+      body: name => {
+        const books = financeBooksA
+        if (books === null) throw new Error('the books of organization A are not set up')
+        return {
+          code: `C${randomUUID().slice(0, 8)}`,
+          name,
+          rateBps: 500,
+          outputAccountId: books.accounts.liability,
+          inputAccountId: books.accounts.cash
+        }
+      },
+      strict: true,
+      countIn: async (owner, storeId) =>
+        owner.taxRate.count({
+          where: { organizationId: await organizationOfStore(owner, storeId) }
+        }),
+      storeOf: async (owner, id) =>
+        (await owner.taxRate.findUnique({ where: { id }, select: { organizationId: true } }))
+          ?.organizationId ?? null
+    }
+  },
   {
     name: 'fiscalPeriod',
     create: async (owner, { storeId }) => {

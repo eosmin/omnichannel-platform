@@ -64,6 +64,8 @@ export const AuditAction = {
   PRODUCT_PRICE_CHANGED: 'product.price_changed',
   // The reference cost changed (old and new, in cents): it is the margin the finance module will read
   PRODUCT_COST_CHANGED: 'product.cost_changed',
+  // The tax treatment or the tax rate of a product (TDD_18 §7): what an order charges and the books owe
+  PRODUCT_TAX_CHANGED: 'product.tax_changed',
   CONVERSATION_DELETED: 'conversation.deleted',
   BULK_ACTION_EXECUTED: 'conversation.bulk_action',
   // A person resolved a conversation, and took it back with the Undo of the toast: the thread keeps no
@@ -182,6 +184,7 @@ export const AuditAction = {
   FINANCE_ACCOUNT_UPDATED: 'finance.account_updated',
   FINANCE_ACCOUNT_DEACTIVATED: 'finance.account_deactivated',
   FINANCE_ROLE_MAPPED: 'finance.role_mapped',
+  FINANCE_TAX_RATE_CHANGED: 'finance.tax_rate_changed',
   FINANCE_PAYMENT_ACCOUNT_CHANGED: 'finance.payment_account_changed',
   FINANCE_PERIOD_OPENED: 'finance.period_opened',
   FINANCE_ENTRY_POSTED_MANUAL: 'finance.entry_posted_manual',

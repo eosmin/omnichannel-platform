@@ -136,16 +136,17 @@ function asRecord(value: unknown): JsonObject {
     : {}
 }
 
-// The preferences as one level of keys, `orders.<key>`, `returns.<key>` and `remittances.<key>` for the keys of the blocks
+// The preferences as one level of keys, `orders.<key>`, `returns.<key>`, `remittances.<key>` and `finance.<key>` for the keys of the blocks
 function flatten(preferences: StorePreferences): Record<string, unknown> {
-  const { orders, returns, remittances, ...flat } = preferences
+  const { orders, returns, remittances, finance, ...flat } = preferences
   return {
     ...flat,
     ...Object.fromEntries(Object.entries(returns).map(([key, value]) => [`returns.${key}`, value])),
     ...Object.fromEntries(Object.entries(orders).map(([key, value]) => [`orders.${key}`, value])),
     ...Object.fromEntries(
       Object.entries(remittances).map(([key, value]) => [`remittances.${key}`, value])
-    )
+    ),
+    ...Object.fromEntries(Object.entries(finance).map(([key, value]) => [`finance.${key}`, value]))
   }
 }
 

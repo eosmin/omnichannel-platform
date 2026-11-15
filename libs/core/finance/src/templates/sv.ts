@@ -3,7 +3,8 @@ import {
   AccountType,
   CashKind,
   FinanceCountryCodes,
-  PaymentMethod
+  PaymentMethod,
+  TaxKind
 } from '@platform/core/domain'
 
 import type { FinanceTemplate, TemplateAccount } from './types'
@@ -128,5 +129,20 @@ export const SvTemplate: FinanceTemplate = {
     [PaymentMethod.TRANSFER]: '111001',
     [PaymentMethod.CARD]: '111001',
     [PaymentMethod.OTHER]: '1101'
-  }
+  },
+  // **[ACCOUNTANT]** 13 % is the platform's working assumption for the value added tax (TDD_18 §7, §13 row 2): one rate for every
+  // product, with the exempt flag of the product for what does not carry it. The rate is editable data from the moment it is seeded.
+  taxRates: [
+    {
+      code: 'IVA',
+      name: 'IVA 13 %',
+      rateBps: 1300,
+      kind: TaxKind.VAT,
+      outputRole: AccountRole.VAT_OUTPUT,
+      inputRole: AccountRole.VAT_INPUT,
+      isDefault: true
+    }
+  ],
+  // **[ACCOUNTANT]** whether the carrier's shipping fee carries the tax: taxed until the accountant says otherwise
+  shippingTaxed: true
 }
