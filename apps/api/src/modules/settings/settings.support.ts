@@ -14,7 +14,7 @@ import {
   resourceNotFound
 } from '@platform/core/errors'
 
-import type { Actor } from '../tenancy'
+import { type Actor, auditActorOf, auditViaOf } from '../tenancy'
 
 // Every change of a setting of the store leaves the same entry: who, where, and what it was about
 export function auditSettingsChange(
@@ -27,11 +27,11 @@ export function auditSettingsChange(
 ): void {
   audit.log({
     action: AuditAction.SETTINGS_CHANGED,
-    actor: { userId: actor.userId },
+    actor: auditActorOf(actor),
     storeId,
     resourceType,
     resourceId,
-    metadata,
+    metadata: { ...metadata, ...auditViaOf(actor) },
     ipAddress: actor.ipAddress,
     userAgent: actor.userAgent
   })

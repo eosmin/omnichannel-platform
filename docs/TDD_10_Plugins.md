@@ -911,6 +911,8 @@ export const PluginScopes = {
   PRODUCTS_WRITE: 'products:write',             // create and change a product or a variant (Step 5.6 E4a); never its cost, and its tax is read, not written
   PRODUCTS_DELETE: 'products:delete',           // delete a product or a variant (Step 5.6 E4a); PRODUCTS_DELETE is in no other scope
   WAREHOUSES_READ: 'warehouses:read',           // the warehouses of the organization of the key's store (Step 5.6 E4a)
+  TAGS_READ: 'tags:read',                       // the tag catalog of the store (Step 5.6 E4a-2)
+  TAGS_WRITE: 'tags:write',                     // create, rename, recolor and delete a tag of the catalog (Step 5.6 E4a-2)
   TRANSFERS_READ: 'transfers:read',             // the transfers between warehouses, read only; the lines of the key's store only (Step 5.6 E4b)
   COUNTS_READ: 'counts:read',                   // the physical counts, read only; the lines of the key's store only (Step 5.6 E4b)
   CARRIERS_READ: 'carriers:read',               // the carrier connections of the store, read only; never a credential, a secret or an agreed amount (Step 5.6 E5)

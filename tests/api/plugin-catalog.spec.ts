@@ -1,4 +1,4 @@
-import { randomInt } from 'node:crypto'
+import { randomInt, randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
 import supertest from 'supertest'
@@ -6,7 +6,11 @@ import supertest from 'supertest'
 import { API_PREFIX, PluginApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { TaxTreatment } from '@platform/core/domain'
+import {
+  InventoryAdjustmentReason,
+  InventoryMovementType,
+  TaxTreatment
+} from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { type PluginScope, PluginScopes } from '@platform/plugins/sdk'
 
@@ -15,7 +19,8 @@ import {
   createInventoryMovement,
   createPluginKey,
   createProduct,
-  createProductVariant
+  createProductVariant,
+  createTag
 } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
@@ -47,7 +52,8 @@ type Method = 'get' | 'post' | 'put' | 'patch' | 'delete'
 // TDD_10 §6, Step 5.6 PR E4a: the catalog, the stock and the warehouses under the key of a plugin, over the same services as the
 // screens. What matters is the tenancy (the key names the store, and the organization for the warehouses), the scopes (each route
 // its own), what a plugin must never read or write (cost, tax, the person behind a movement, the links to other stores) and that
-// the adjustment of stock and the store links are not there.
+// the writes of a warehouse are not there. Step 5.6 PR E4a-2 adds the adjustment of stock (the plugin as the author of the
+// movement), the general audit entries of the catalog and the tag catalog.
 describe('Catalog, stock and warehouses through the plugin API', () => {
   const prefix = newRunPrefix()
   let app: INestApplication
@@ -59,6 +65,9 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
   let writeOnly: { key: string; installationId: string }
   let readOnly: { key: string; installationId: string }
   let deleter: { key: string; installationId: string }
+  let adjuster: { key: string; installationId: string; pluginId: string }
+  let tagger: { key: string; installationId: string }
+  let tagReader: { key: string; installationId: string }
 
   beforeAll(async () => {
     owner = ownerClient()
@@ -90,6 +99,15 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
       PluginScopes.PRODUCTS_READ,
       PluginScopes.PRODUCTS_DELETE
     ])
+    adjuster = {
+      ...(await key(ctx.storeA.id, 'adjuster', [
+        PluginScopes.INVENTORY_READ,
+        PluginScopes.INVENTORY_WRITE
+      ])),
+      pluginId: `${prefix}-adjuster`
+    }
+    tagger = await key(ctx.storeA.id, 'tagger', [PluginScopes.TAGS_READ, PluginScopes.TAGS_WRITE])
+    tagReader = await key(ctx.storeA.id, 'tagreader', [PluginScopes.TAGS_READ])
   })
   afterAll(async () => {
     await owner.pluginInstallation.deleteMany({ where: { pluginId: { startsWith: prefix } } })
@@ -368,6 +386,221 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
     })
   })
 
+  describe('the adjustment of stock', () => {
+    const adjustment = (productId: string, extra: object = {}) => ({
+      warehouseId: ctx.warehouseA.id,
+      productId,
+      type: InventoryMovementType.RECEIPT,
+      quantity: 5,
+      reason: InventoryAdjustmentReason.OPENING_STOCK,
+      idempotencyKey: randomUUID(),
+      ...extra
+    })
+
+    it('records the plugin as the author of the movement and the installation in the audit log, never a user', async () => {
+      const product = await createProduct(owner, { storeId: ctx.storeA.id, trackInventory: true })
+      const body = adjustment(product.id)
+
+      const made = await call('post', PluginApiRoutes.inventory.adjustments, adjuster.key)
+        .send(body)
+        .expect(CREATED)
+      const retry = await call('post', PluginApiRoutes.inventory.adjustments, adjuster.key)
+        .send(body)
+        .expect(OK)
+
+      const movement = (made.body as { movement: Row & { onHandAfter: number } }).movement
+      expect(movement.onHandAfter).toBe(5)
+      expect((retry.body as { movement: Row; replayed: boolean }).replayed).toBe(true)
+      expect((retry.body as { movement: Row }).movement.id).toBe(movement.id)
+      const row = await owner.inventoryMovement.findUniqueOrThrow({ where: { id: movement.id } })
+      expect(row.createdBy).toBeNull()
+      expect(row.createdByPluginId).toBe(adjuster.pluginId)
+      expect(row.storeId).toBe(ctx.storeA.id)
+      expect(await owner.inventoryMovement.count({ where: { productId: product.id } })).toBe(1)
+      const [entry] = await waitForAuditEntries(owner, {
+        action: AuditAction.INVENTORY_ADJUSTED,
+        resourceId: product.id
+      })
+      expect(entry?.userId).toBeNull()
+      expect(entry?.metadata).toMatchObject({ pluginInstallationId: adjuster.installationId })
+      // neither the plugin nor a person is named in what the plugin reads back
+      expect(JSON.stringify(made.body)).not.toMatch(/createdBy/)
+    })
+
+    it('refuses to set the cost of the units: no scope grants products:view_cost', async () => {
+      const product = await createProduct(owner, { storeId: ctx.storeA.id, trackInventory: true })
+
+      const response = await call('post', PluginApiRoutes.inventory.adjustments, adjuster.key).send(
+        adjustment(product.id, { unitCostCents: 100 })
+      )
+
+      expect(response.status).toBe(FORBIDDEN)
+      expect(codeOf(response.body)).toBe(ErrorCodes.PERMISSION_DENIED)
+      expect(await owner.inventoryMovement.count({ where: { productId: product.id } })).toBe(0)
+    })
+
+    it('does not move the stock of a product or a warehouse of another store', async () => {
+      const theirs = await createProduct(owner, { storeId: ctx.storeB.id, trackInventory: true })
+      const mine = await createProduct(owner, { storeId: ctx.storeA.id, trackInventory: true })
+
+      const foreignProduct = await call(
+        'post',
+        PluginApiRoutes.inventory.adjustments,
+        adjuster.key
+      ).send(adjustment(theirs.id))
+      const foreignWarehouse = await call(
+        'post',
+        PluginApiRoutes.inventory.adjustments,
+        adjuster.key
+      ).send(adjustment(mine.id, { warehouseId: ctx.warehouseB.id }))
+
+      expect(foreignProduct.status).toBe(NOT_FOUND)
+      expect(foreignWarehouse.status).toBe(NOT_FOUND)
+      expect(
+        await owner.inventoryMovement.count({ where: { productId: { in: [theirs.id, mine.id] } } })
+      ).toBe(0)
+    })
+
+    it('needs both scopes: a key that reads or one that only writes is refused', async () => {
+      const product = await createProduct(owner, { storeId: ctx.storeA.id, trackInventory: true })
+      const writeOnlyKey = await createPluginKey(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${prefix}-adjustwriteonly`,
+        scopes: [PluginScopes.INVENTORY_WRITE]
+      })
+
+      for (const key of [reader.key, writeOnlyKey.key]) {
+        const response = await call('post', PluginApiRoutes.inventory.adjustments, key).send(
+          adjustment(product.id)
+        )
+        expect(response.status).toBe(FORBIDDEN)
+        expect(codeOf(response.body)).toBe(ErrorCodes.PLUGIN_SCOPE_DENIED)
+      }
+      expect(await owner.inventoryMovement.count({ where: { productId: product.id } })).toBe(0)
+    })
+  })
+
+  describe('the audit of the catalog', () => {
+    it('names the installation, and the fields it set but never their values, in a general entry', async () => {
+      const created = await call('post', PluginApiRoutes.products.create, writer.key)
+        .send({ name: `${prefix} secret name`, priceCents: 700 })
+        .expect(CREATED)
+      const productId = (created.body as Row).id
+      await call('patch', PluginApiRoutes.products.byId(productId), writer.key)
+        .send({ name: `${prefix} another secret`, active: false })
+        .expect(OK)
+      const variant = await call('post', PluginApiRoutes.products.variants(productId), writer.key)
+        .send({ name: 'xl' })
+        .expect(CREATED)
+
+      const entries = await waitForAuditEntries(
+        owner,
+        { action: AuditAction.PRODUCT_UPDATED, resourceId: productId },
+        2
+      )
+      const [made] = await waitForAuditEntries(owner, {
+        action: AuditAction.PRODUCT_CREATED,
+        resourceId: productId
+      })
+
+      expect(made?.userId).toBeNull()
+      expect(made?.metadata).toMatchObject({
+        fields: ['name', 'priceCents'],
+        pluginInstallationId: writer.installationId
+      })
+      const changed = entries.map(entry => entry.metadata)
+      expect(changed).toContainEqual(
+        expect.objectContaining({
+          fields: ['active', 'name'],
+          pluginInstallationId: writer.installationId
+        })
+      )
+      expect(changed).toContainEqual(
+        expect.objectContaining({
+          variantId: (variant.body as Row).id,
+          pluginInstallationId: writer.installationId
+        })
+      )
+      for (const entry of [made, ...entries]) {
+        expect(entry?.userId).toBeNull()
+        expect(JSON.stringify(entry?.metadata)).not.toContain('secret')
+      }
+    })
+  })
+
+  describe('the tag catalog', () => {
+    it('lists, creates, changes and deletes the tags of its own store, as the installation in the audit log', async () => {
+      const mine = await createTag(owner, { storeId: ctx.storeA.id })
+      const theirs = await createTag(owner, { storeId: ctx.storeB.id })
+
+      const list = await call('get', PluginApiRoutes.settings.tags, tagReader.key).expect(OK)
+      const created = await call('post', PluginApiRoutes.settings.tags, tagger.key)
+        .send({ name: `${prefix}-vip` })
+        .expect(CREATED)
+      const tagId = (created.body as Row).id
+      const renamed = await call('patch', PluginApiRoutes.settings.tagById(tagId), tagger.key)
+        .send({ name: `${prefix}-vip2` })
+        .expect(OK)
+      await call('delete', PluginApiRoutes.settings.tagById(tagId), tagger.key).expect(NO_CONTENT)
+
+      const names = (list.body as Row[]).map(tag => tag.id)
+      expect(names).toContain(mine.id)
+      expect(names).not.toContain(theirs.id)
+      expect((renamed.body as { name: string }).name).toBe(`${prefix}-vip2`)
+      expect(await owner.tag.count({ where: { id: tagId } })).toBe(0)
+      const [entry] = await waitForAuditEntries(owner, {
+        action: AuditAction.SETTINGS_CHANGED,
+        resourceId: tagId
+      })
+      expect(entry?.userId).toBeNull()
+      expect(entry?.metadata).toMatchObject({ pluginInstallationId: tagger.installationId })
+    })
+
+    it('does not find, change or delete a tag of another store', async () => {
+      const theirs = await createTag(owner, { storeId: ctx.storeB.id })
+
+      const responses = [
+        await call('get', PluginApiRoutes.settings.tagById(theirs.id), tagReader.key),
+        await call('patch', PluginApiRoutes.settings.tagById(theirs.id), tagger.key).send({
+          name: 'x'
+        }),
+        await call('delete', PluginApiRoutes.settings.tagById(theirs.id), tagger.key)
+      ]
+
+      for (const response of responses) expect(response.status).toBe(NOT_FOUND)
+      expect((await owner.tag.findUniqueOrThrow({ where: { id: theirs.id } })).name).toBe(
+        theirs.name
+      )
+    })
+
+    it('writes only with the write scope, and a write scope alone does not read', async () => {
+      const mine = await createTag(owner, { storeId: ctx.storeA.id })
+      const writeOnlyKey = await createPluginKey(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${prefix}-tagwriteonly`,
+        scopes: [PluginScopes.TAGS_WRITE]
+      })
+
+      const responses = [
+        await call('post', PluginApiRoutes.settings.tags, tagReader.key).send({ name: 'x' }),
+        await call('patch', PluginApiRoutes.settings.tagById(mine.id), tagReader.key).send({
+          name: 'x'
+        }),
+        await call('delete', PluginApiRoutes.settings.tagById(mine.id), tagReader.key),
+        await call('patch', PluginApiRoutes.settings.tagById(mine.id), writeOnlyKey.key).send({
+          name: 'x'
+        }),
+        await call('get', PluginApiRoutes.settings.tags, reader.key)
+      ]
+
+      for (const response of responses) {
+        expect(response.status).toBe(FORBIDDEN)
+        expect(codeOf(response.body)).toBe(ErrorCodes.PLUGIN_SCOPE_DENIED)
+      }
+      expect((await owner.tag.findUniqueOrThrow({ where: { id: mine.id } })).name).toBe(mine.name)
+    })
+  })
+
   describe('the scopes', () => {
     it('refuses a call with no key', async () => {
       await call('get', PluginApiRoutes.products.list).expect(401)
@@ -400,10 +633,8 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
       )
     })
 
-    it('does not expose the adjustment of stock nor any write of a warehouse: the first stores a person, the others reach the whole organization', async () => {
-      const product = await createProduct(owner, { storeId: ctx.storeA.id })
+    it('does not expose any write of a warehouse: they reach every store that shares it, and a key is bound to one', async () => {
       const requests = [
-        call('post', '/plugin-api/inventory/adjustments', writer.key),
         call('post', '/plugin-api/warehouses', writer.key),
         call('patch', `/plugin-api/warehouses/${ctx.warehouseA.id}`, writer.key),
         call('put', `/plugin-api/warehouses/${ctx.warehouseA.id}/stores`, writer.key)
@@ -412,7 +643,6 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
       for (const request of requests) {
         expect([NOT_FOUND, 405]).toContain((await request.send({})).status)
       }
-      expect(await owner.inventoryMovement.count({ where: { productId: product.id } })).toBe(0)
       expect(
         (await owner.warehouse.findUniqueOrThrow({ where: { id: ctx.warehouseA.id } }))
           .organizationId

@@ -15,6 +15,7 @@ const movement = (over: Partial<MovementView> = {}): MovementView => ({
   onHandAfter: 3,
   reservedAfter: 0,
   createdBy: 'user-staff-1',
+  createdByPluginId: null,
   createdAt: new Date('2026-11-15T00:00:00Z'),
   ...over
 })
@@ -25,6 +26,15 @@ describe('pluginMovementView', () => {
 
     expect('createdBy' in view).toBe(false)
     expect(JSON.stringify(view)).not.toContain('user-staff-1')
+  })
+
+  it("drops the plugin that made the movement: it is another installation's business", () => {
+    const view = pluginMovementView(
+      movement({ createdBy: null, createdByPluginId: 'plugin-other-9' })
+    )
+
+    expect('createdByPluginId' in view).toBe(false)
+    expect(JSON.stringify(view)).not.toContain('plugin-other-9')
   })
 
   it('keeps the fields a plugin reads', () => {

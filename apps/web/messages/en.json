@@ -3084,6 +3084,8 @@
         "products:write": "Create and change products and variants, never their cost or tax",
         "products:delete": "Delete products and variants",
         "warehouses:read": "Read the warehouses of the organization",
+        "tags:read": "Read the tag catalog of the store",
+        "tags:write": "Create, change and delete the tags of the store",
         "webhooks:write": "Manage the notification subscriptions of the store",
         "analytics:read": "Read analytics and reports",
         "inventory:read": "Read stock levels and movements",

@@ -613,11 +613,14 @@ export const PluginApiRoutes = {
   // Step 5.6 PR E3a: the store preferences and the return rules, read only
   settings: {
     preferences: '/plugin-api/settings/preferences',
-    returns: '/plugin-api/settings/returns'
+    returns: '/plugin-api/settings/returns',
+    // Step 5.6 PR E4a-2: the tag catalog of the store
+    tags: '/plugin-api/settings/tags',
+    tagById: (id: string) => `/plugin-api/settings/tags/${id}`
   },
 
   // Step 5.6 PR E4a: the catalog and the stock, over the same services as `ApiRoutes.products`, `.inventory` and `.warehouses`. The
-  // adjustment of stock stores the id of the person who made it and waits for the plugin actor (PR E4a-2).
+  // adjustment of stock (PR E4a-2) is recorded with the plugin actor of PR M1c.
   products: {
     list: '/plugin-api/products',
     create: '/plugin-api/products',
@@ -637,7 +640,8 @@ export const PluginApiRoutes = {
     levels: '/plugin-api/inventory/levels',
     summary: '/plugin-api/inventory/summary',
     movements: '/plugin-api/inventory/movements',
-    kardex: '/plugin-api/inventory/kardex'
+    kardex: '/plugin-api/inventory/kardex',
+    adjustments: '/plugin-api/inventory/adjustments'
   },
   // Step 5.6 PR E4b: the reads of the transfers between warehouses and of the physical counts, over the same services as
   // `ApiRoutes.transfers` and `.counts`. Their writes store the id of a person at every step and wait for PR E4b-2.

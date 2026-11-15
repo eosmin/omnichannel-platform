@@ -158,13 +158,15 @@ export class ProductsController {
   @Post(ApiRoutes.products.variants(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   async createVariant(
-    @CurrentStore() store: { id: string },
+    @CurrentStore() store: ResolvedTenant['store'],
+    @CurrentUser() user: AuthenticatedUser,
     @CurrentPermissions() held: readonly Permission[],
     @Param('id', id()) productId: string,
-    @Body(new ZodValidationPipe(createVariantSchema)) body: CreateVariantBody
+    @Body(new ZodValidationPipe(createVariantSchema)) body: CreateVariantBody,
+    @Req() req: AuthenticatedRequest
   ): Promise<VariantView> {
     assertMayWriteCost(held, body)
-    const created = await this.variants.create(store.id, productId, body)
+    const created = await this.variants.create(store.id, productId, body, actorOf(user, store, req))
     return mayViewCost(held) ? created : redactVariant(created)
   }
 

@@ -32,7 +32,8 @@ export const PluginScopes = {
   PRODUCTS_WRITE: 'products:write',
   PRODUCTS_DELETE: 'products:delete',
   // The warehouses of the organization of the store of the key (Step 5.6 PR E4a); reading is INVENTORY_VIEW, as for a person.
-  // Writing one (`warehouses:write`, ORG_MANAGE_WAREHOUSES, organization-wide) waits for PR E4a-2 to decide its reach.
+  // Writing one (`warehouses:write`, ORG_MANAGE_WAREHOUSES, organization-wide) is not a scope: a key is bound to one store, and a write
+  // would act on every store that shares the warehouse (the decision is the owner's, see "Left by PR E4a-2" in the plan).
   WAREHOUSES_READ: 'warehouses:read',
   // The transfers between warehouses and the physical counts of the store of the key, read only (Step 5.6 PR E4b). The scope grants
   // the permissions a person needs to read them (any of manage or receive, manage or apply: a person with inventory:view alone does
@@ -40,6 +41,10 @@ export const PluginScopes = {
   // exercised; the writes get scopes of their own (PR E4b-2). A plugin sees only the lines of its own store.
   TRANSFERS_READ: 'transfers:read',
   COUNTS_READ: 'counts:read',
+  // The tag catalog of the store (Step 5.6 PR E4a-2): the tags a conversation or a customer can carry. Reading is what the inbox
+  // offers (CONVERSATIONS_VIEW); creating, renaming, recoloring and deleting one is SETTINGS_EDIT, a scope of its own.
+  TAGS_READ: 'tags:read',
+  TAGS_WRITE: 'tags:write',
   WEBHOOKS_WRITE: 'webhooks:write',
   ANALYTICS_READ: 'analytics:read',
   INVENTORY_READ: 'inventory:read',
@@ -113,6 +118,8 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
     Permissions.INVENTORY_MANAGE_COUNTS,
     Permissions.INVENTORY_APPLY_COUNTS
   ],
+  [PluginScopes.TAGS_READ]: [Permissions.CONVERSATIONS_VIEW],
+  [PluginScopes.TAGS_WRITE]: [Permissions.SETTINGS_EDIT],
   [PluginScopes.WEBHOOKS_WRITE]: [],
   [PluginScopes.ANALYTICS_READ]: [Permissions.ANALYTICS_VIEW],
   [PluginScopes.INVENTORY_READ]: [Permissions.INVENTORY_VIEW],

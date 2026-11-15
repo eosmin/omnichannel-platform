@@ -72,9 +72,9 @@ const DELETE = PluginScopes.PRODUCTS_DELETE
 // the guard against the scopes of THE ROUTE. The cost and the tax have permissions that no scope grants, so a plugin never reads a
 // cost (`redactDetail`, `redactPage`: the viewer holds no PRODUCTS_VIEW_COST), and a body that sets a cost or a tax is refused
 // (`assertMayWriteCost`, `assertMayWriteTax`); how a product is taxed (`taxTreatment`, `taxRateId`) is part of its price and is read
-// as on the screen. The audit entries the catalog writes today (price, cost, tax, delete) name the installation as the system
-// (`pluginActorOf`); changes the catalog does not audit for a person (a name, `active`) are not audited for a plugin either, and
-// PR E4a-2 adds the general entry. The catalog stores no person on a product.
+// as on the screen. The audit entries of the catalog (price, cost, tax and delete with their values, and the general `product.created` and
+// `product.updated` with the names of the fields set, `auditProductWrite`) name the installation as the system (`pluginActorOf`),
+// as they name the person for a screen. The catalog stores no person on a product.
 @Controller()
 export class PluginProductsController {
   constructor(
@@ -190,12 +190,19 @@ export class PluginProductsController {
   @HttpCode(HttpStatusCodes.CREATED)
   async createVariant(
     @CurrentStore() store: Store,
+    @CurrentPluginInstallation() installation: Installation,
     @CurrentPluginViewer() viewer: Viewer,
     @Param('id', id()) productId: string,
-    @Body(new ZodValidationPipe(createVariantSchema)) body: CreateVariantBody
+    @Body(new ZodValidationPipe(createVariantSchema)) body: CreateVariantBody,
+    @Req() req: AuthenticatedRequest
   ): Promise<VariantView> {
     assertMayWriteCost(viewer.held, body)
-    const created = await this.variants.create(store.id, productId, body)
+    const created = await this.variants.create(
+      store.id,
+      productId,
+      body,
+      pluginActorOf(installation, store, req)
+    )
     return mayViewCost(viewer.held) ? created : redactVariant(created)
   }
 

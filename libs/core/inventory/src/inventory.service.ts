@@ -436,6 +436,7 @@ function recordOf(row: {
   onHandAfter: number
   reservedAfter: number
   createdBy: string | null
+  createdByPluginId: string | null
   createdAt: Date
 }): MovementRecord {
   // What the columns hold is written only by this service, from the enums

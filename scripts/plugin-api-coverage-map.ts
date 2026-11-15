@@ -433,8 +433,8 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
     scope: 'warehouses:read',
     exposed: '/plugin-api/warehouses'
   },
-  // The writes of a warehouse (create, change) are organization-wide (ORG_MANAGE_WAREHOUSES) and a key is bound to one store: they wait
-  // for PR E4a-2 to decide the reach. The GET of `byId` is exposed
+  // The writes of a warehouse (create, change) are organization-wide (ORG_MANAGE_WAREHOUSES) and a key is bound to one store: PR E4a-2
+  // did NOT expose them, and the decision on their reach is the owner's ("Left by PR E4a-2" (a) in the plan). The GET of `byId` is exposed
   'warehouses.create': { proposed: 'warehouses:write', step: STEP },
   'warehouses.byId': {
     proposed: ['warehouses:read', 'warehouses:write'],
@@ -442,14 +442,17 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
     exposed: '/plugin-api/warehouses/:id'
   },
   // Replacing the store links of a warehouse moves it between stores of the organization, and the key of a plugin is bound to one
-  // store: not exposed until the plugin's reach over other stores is decided (PR E4a-2)
+  // store: not exposed until the owner decides the plugin's reach over other stores ("Left by PR E4a-2" (a) in the plan)
   'warehouses.stores': { proposed: ['warehouses:read', 'warehouses:write'], step: STEP },
   'inventory.levels': { scope: 'inventory:read', exposed: '/plugin-api/inventory/levels' },
   'inventory.summary': { scope: 'inventory:read', exposed: '/plugin-api/inventory/summary' },
   'inventory.movements': { scope: 'inventory:read', exposed: '/plugin-api/inventory/movements' },
   'inventory.kardex': { scope: 'inventory:read', exposed: '/plugin-api/inventory/kardex' },
-  // The movement of an adjustment stores the id of the person who made it (`createdBy`): it waits for the plugin actor (PR E4a-2)
-  'inventory.adjustments': { scope: 'inventory:write' },
+  // The movement of an adjustment records the plugin as its author (`createdByPluginId`, the actor of PR M1c), PR E4a-2
+  'inventory.adjustments': {
+    scope: ['inventory:read', 'inventory:write'],
+    exposed: '/plugin-api/inventory/adjustments'
+  },
   // Transfers and counts (Step 5.6 PR E4b): read only, with a scope of their own each. A key is bound to ONE store, so it reads the
   // lines of its store and the transfers and counts that have one (a key of a sibling store, or of another organization, gets a 404).
   // Every write stores the id of a person (`createdBy`, `dispatchedBy`, `appliedBy`, the movements of the stock it moves) or acts on
@@ -612,8 +615,15 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'settings.routingOrder': { none: SETTINGS_ADMIN },
   'settings.routingRuleById': { none: SETTINGS_ADMIN },
   'settings.businessHours': { none: SETTINGS_ADMIN },
-  'settings.tags': { proposed: ['tags:read', 'tags:write'], step: STEP },
-  'settings.tagById': { proposed: ['tags:read', 'tags:write'], step: STEP },
+  // The tag catalog of the store, over the same service as the screen (PR E4a-2)
+  'settings.tags': {
+    scope: ['tags:read', 'tags:write'],
+    exposed: '/plugin-api/settings/tags'
+  },
+  'settings.tagById': {
+    scope: ['tags:read', 'tags:write'],
+    exposed: '/plugin-api/settings/tags/:id'
+  },
   'settings.snippets': { none: SETTINGS_ADMIN },
   'settings.snippetById': { none: SETTINGS_ADMIN }
 }
