@@ -19,6 +19,8 @@ export const PluginScopes = {
   INVENTORY_WRITE: 'inventory:write',
   SHIPMENTS_READ: 'shipments:read',
   SHIPMENTS_WRITE: 'shipments:write',
+  // The directory of the channel accounts and their templates (Step 5.6 PR E1); the connection of an account stays human
+  CHANNELS_READ: 'channels:read',
   // Of a channel plugin (TDD_10 §6.7): the routes arrive with Step 5.6 PR C3. They grant no human permission.
   CHANNEL_CONNECTIONS: 'channel:connections',
   CHANNEL_EVENTS: 'channel:events'
@@ -53,6 +55,13 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.INVENTORY_WRITE]: [Permissions.INVENTORY_ADJUST],
   [PluginScopes.SHIPMENTS_READ]: [Permissions.SHIPPING_VIEW],
   [PluginScopes.SHIPMENTS_WRITE]: [Permissions.SHIPPING_MANAGE],
+  // The directory is read by whoever sees conversations, and the templates of an account by who may send them, as for a person.
+  // The scope only lets a plugin LIST templates: the routes that send, resend or render one must name `messages:write` and take
+  // the viewer of their own scopes (`@CurrentPluginViewer`), never the union of what the key holds.
+  [PluginScopes.CHANNELS_READ]: [
+    Permissions.CONVERSATIONS_VIEW,
+    Permissions.MESSAGES_SEND_TEMPLATE
+  ],
   [PluginScopes.CHANNEL_CONNECTIONS]: [],
   [PluginScopes.CHANNEL_EVENTS]: []
 }

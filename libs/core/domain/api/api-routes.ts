@@ -473,6 +473,35 @@ export const PluginApiRoutes = {
   setupExchange: '/plugin-api/setup/exchange',
   // Who the key is: its installation, its store and its scopes (any active key, no scope needed)
   installation: '/plugin-api/installation',
+
+  // Step 5.6 PR E1: the conversations of the store (the same services as `ApiRoutes.conversations`). `list` is also the path of
+  // the one route with no human counterpart, POST, that starts a conversation.
+  conversations: {
+    list: '/plugin-api/conversations',
+    bulk: '/plugin-api/conversations/bulk',
+    byId: (id: string) => `/plugin-api/conversations/${id}`,
+    origins: (id: string) => `/plugin-api/conversations/${id}/origins`,
+    messagingWindow: (id: string) => `/plugin-api/conversations/${id}/messaging-window`,
+    assign: (id: string) => `/plugin-api/conversations/${id}/assign`,
+    status: (id: string) => `/plugin-api/conversations/${id}/status`,
+    snooze: (id: string) => `/plugin-api/conversations/${id}/snooze`,
+    tags: (id: string) => `/plugin-api/conversations/${id}/tags`,
+    tagById: (id: string, tagId: string) => `/plugin-api/conversations/${id}/tags/${tagId}`,
+    read: (id: string) => `/plugin-api/conversations/${id}/read`,
+    unread: (id: string) => `/plugin-api/conversations/${id}/unread`
+  },
+
+  search: {
+    messages: '/plugin-api/search/messages',
+    customers: '/plugin-api/search/customers',
+    orders: '/plugin-api/search/orders',
+    products: '/plugin-api/search/products'
+  },
+
+  channels: {
+    directory: '/plugin-api/channels/directory',
+    templates: (pluginId: string) => `/plugin-api/channels/${pluginId}/templates`
+  },
   // Messages (Step 5.6 PR M1b): a plugin writes a reply or a note, and reads the edits and the kept text of a deleted message
   messages: {
     create: '/plugin-api/messages',

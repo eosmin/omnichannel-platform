@@ -40,27 +40,30 @@ export class SearchRunner {
   messages(
     storeId: string,
     viewer: SearchViewer,
-    params: { q: string; limit: number; conversationId?: string }
+    params: { q: string; limit: number; conversationId?: string },
+    passive = false
   ): Promise<SearchResult<MessageSearchHit>> {
-    return this.tracked(storeId, SearchTrackedScopes.MESSAGES, params.q, false, () =>
+    return this.tracked(storeId, SearchTrackedScopes.MESSAGES, params.q, passive, () =>
       this.search.searchMessages(storeId, viewer, params)
     )
   }
 
   customers(
     storeId: string,
-    params: { q: string; limit: number }
+    params: { q: string; limit: number },
+    passive = false
   ): Promise<SearchResult<CustomerSearchHit>> {
-    return this.tracked(storeId, SearchTrackedScopes.CUSTOMERS, params.q, false, () =>
+    return this.tracked(storeId, SearchTrackedScopes.CUSTOMERS, params.q, passive, () =>
       this.search.searchCustomers(storeId, params)
     )
   }
 
   orders(
     storeId: string,
-    params: { q: string; limit: number }
+    params: { q: string; limit: number },
+    passive = false
   ): Promise<SearchResult<OrderSearchHit>> {
-    return this.tracked(storeId, SearchTrackedScopes.ORDERS, params.q, false, () =>
+    return this.tracked(storeId, SearchTrackedScopes.ORDERS, params.q, passive, () =>
       this.search.searchOrders(storeId, params)
     )
   }
@@ -68,9 +71,10 @@ export class SearchRunner {
   // The products are the autocomplete of the catalog (Step 4.1), which has its own ceiling on how many it returns
   productSuggestions(
     storeId: string,
-    params: { q: string; limit: number }
+    params: { q: string; limit: number },
+    passive = false
   ): Promise<ProductSuggestions> {
-    return this.tracked(storeId, SearchTrackedScopes.PRODUCTS, params.q, false, () =>
+    return this.tracked(storeId, SearchTrackedScopes.PRODUCTS, params.q, passive, () =>
       this.productsOf(storeId, params)
     )
   }

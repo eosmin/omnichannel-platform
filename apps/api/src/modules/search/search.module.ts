@@ -5,6 +5,7 @@ import { QueuesPlatformModule, SearchPlatformModule } from '@platform/core/http'
 import { ProductsModule } from '../products/products.module'
 import { TenancyModule } from '../tenancy'
 
+import { PluginSearchController } from './plugin-search.controller'
 import { SearchRunner } from './search-runner.service'
 import { SearchTracker } from './search-tracker.service'
 import { SearchController } from './search.controller'
@@ -14,7 +15,7 @@ import { SearchService } from './search.service'
 // autocomplete of the catalog, which the products module exports
 @Module({
   imports: [TenancyModule, QueuesPlatformModule, SearchPlatformModule, ProductsModule],
-  controllers: [SearchController],
+  controllers: [SearchController, PluginSearchController],
   providers: [SearchService, SearchRunner, SearchTracker]
 })
 export class SearchModule {}
