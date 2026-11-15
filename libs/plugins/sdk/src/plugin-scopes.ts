@@ -32,14 +32,29 @@ export const PluginScopes = {
   PRODUCTS_WRITE: 'products:write',
   PRODUCTS_DELETE: 'products:delete',
   // The warehouses of the organization of the store of the key (Step 5.6 PR E4a); reading is INVENTORY_VIEW, as for a person.
-  // Writing one (`warehouses:write`, ORG_MANAGE_WAREHOUSES, organization-wide) waits for PR E4a-2 to decide its reach.
+  // Writing one (`warehouses:write`, ORG_MANAGE_WAREHOUSES, organization-wide) is not a scope: a key is bound to one store, and a write
+  // would act on every store that shares the warehouse (the decision is the owner's, see "Left by PR E4a-2" in the plan).
   WAREHOUSES_READ: 'warehouses:read',
-  // The transfers between warehouses and the physical counts of the store of the key, read only (Step 5.6 PR E4b). The scope grants
-  // the permissions a person needs to read them (any of manage or receive, manage or apply: a person with inventory:view alone does
-  // not read them, so neither does a plugin), and only routes that read declare it, so the write permissions it holds are never
-  // exercised; the writes get scopes of their own (PR E4b-2). A plugin sees only the lines of its own store.
+  // The transfers between warehouses and the physical counts of the store of the key (Step 5.6 PR E4b reads them). The READ scopes
+  // grant the permissions a person needs to read them (any of manage or receive, manage or apply: a person with inventory:view alone
+  // does not read them, so neither does a plugin), which are WRITE permissions: a route that reads names one of them, and a route
+  // that writes names its own write scope AND the read one (the guard needs every scope of a route), never the read scope alone, or
+  // the permissions it holds would satisfy a write check. A plugin sees only the lines of its own store.
   TRANSFERS_READ: 'transfers:read',
   COUNTS_READ: 'counts:read',
+  // Their writes (Step 5.6 PR E4b-2), each scope its own because who counts does not approve and who sends does not receive:
+  // `transfers:write` makes, changes, dispatches and cancels (inventory:manage_transfers), `transfers:receive` receives and closes
+  // (inventory:receive_transfers), `counts:write` opens, counts, submits, reopens and cancels (inventory:manage_counts) and
+  // `counts:apply` applies a count, the one step that moves the stock (inventory:apply_counts). A route that writes names its own
+  // scope AND the read one, and a plugin writes only a transfer whose every line is of the store of its key.
+  TRANSFERS_WRITE: 'transfers:write',
+  TRANSFERS_RECEIVE: 'transfers:receive',
+  COUNTS_WRITE: 'counts:write',
+  COUNTS_APPLY: 'counts:apply',
+  // The tag catalog of the store (Step 5.6 PR E4a-2): the tags a conversation or a customer can carry. Reading is what the inbox
+  // offers (CONVERSATIONS_VIEW); creating, renaming, recoloring and deleting one is SETTINGS_EDIT, a scope of its own.
+  TAGS_READ: 'tags:read',
+  TAGS_WRITE: 'tags:write',
   // The exports centre of the key (Step 5.6 PR E7): the files THIS installation asked for, never a person's. `exports:write` is the right to
   // take data out of the platform (ANALYTICS_EXPORT, MEDIA_DOWNLOAD_ALL), asked together with the scope that reads what is exported, as a person
   // needs both; the other kinds of export (conversations, customers, orders) join it with their routes (PR E7-2).
@@ -127,6 +142,12 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
     Permissions.INVENTORY_MANAGE_COUNTS,
     Permissions.INVENTORY_APPLY_COUNTS
   ],
+  [PluginScopes.TRANSFERS_WRITE]: [Permissions.INVENTORY_MANAGE_TRANSFERS],
+  [PluginScopes.TRANSFERS_RECEIVE]: [Permissions.INVENTORY_RECEIVE_TRANSFERS],
+  [PluginScopes.COUNTS_WRITE]: [Permissions.INVENTORY_MANAGE_COUNTS],
+  [PluginScopes.COUNTS_APPLY]: [Permissions.INVENTORY_APPLY_COUNTS],
+  [PluginScopes.TAGS_READ]: [Permissions.CONVERSATIONS_VIEW],
+  [PluginScopes.TAGS_WRITE]: [Permissions.SETTINGS_EDIT],
   [PluginScopes.EXPORTS_READ]: [],
   [PluginScopes.EXPORTS_WRITE]: [Permissions.ANALYTICS_EXPORT, Permissions.MEDIA_DOWNLOAD_ALL],
   [PluginScopes.MEDIA_READ]: [Permissions.MEDIA_VIEW],

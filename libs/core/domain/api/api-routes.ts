@@ -644,11 +644,14 @@ export const PluginApiRoutes = {
   // Step 5.6 PR E3a: the store preferences and the return rules, read only
   settings: {
     preferences: '/plugin-api/settings/preferences',
-    returns: '/plugin-api/settings/returns'
+    returns: '/plugin-api/settings/returns',
+    // Step 5.6 PR E4a-2: the tag catalog of the store
+    tags: '/plugin-api/settings/tags',
+    tagById: (id: string) => `/plugin-api/settings/tags/${id}`
   },
 
   // Step 5.6 PR E4a: the catalog and the stock, over the same services as `ApiRoutes.products`, `.inventory` and `.warehouses`. The
-  // adjustment of stock stores the id of the person who made it and waits for the plugin actor (PR E4a-2).
+  // adjustment of stock (PR E4a-2) is recorded with the plugin actor of PR M1c.
   products: {
     list: '/plugin-api/products',
     create: '/plugin-api/products',
@@ -668,17 +671,31 @@ export const PluginApiRoutes = {
     levels: '/plugin-api/inventory/levels',
     summary: '/plugin-api/inventory/summary',
     movements: '/plugin-api/inventory/movements',
-    kardex: '/plugin-api/inventory/kardex'
+    kardex: '/plugin-api/inventory/kardex',
+    adjustments: '/plugin-api/inventory/adjustments'
   },
-  // Step 5.6 PR E4b: the reads of the transfers between warehouses and of the physical counts, over the same services as
-  // `ApiRoutes.transfers` and `.counts`. Their writes store the id of a person at every step and wait for PR E4b-2.
+  // Step 5.6 PR E4b and E4b-2: the transfers between warehouses and the physical counts, over the same services as
+  // `ApiRoutes.transfers` and `.counts`. The change of a draft transfer is the PATCH of `byId`, the lines of a count the PATCH of
+  // `lines`.
   transfers: {
     list: '/plugin-api/transfers',
-    byId: (id: string) => `/plugin-api/transfers/${id}`
+    create: '/plugin-api/transfers',
+    byId: (id: string) => `/plugin-api/transfers/${id}`,
+    dispatch: (id: string) => `/plugin-api/transfers/${id}/dispatch`,
+    receive: (id: string) => `/plugin-api/transfers/${id}/receive`,
+    close: (id: string) => `/plugin-api/transfers/${id}/close`,
+    cancel: (id: string) => `/plugin-api/transfers/${id}/cancel`
   },
   counts: {
     list: '/plugin-api/counts',
-    byId: (id: string) => `/plugin-api/counts/${id}`
+    create: '/plugin-api/counts',
+    byId: (id: string) => `/plugin-api/counts/${id}`,
+    start: (id: string) => `/plugin-api/counts/${id}/start`,
+    lines: (id: string) => `/plugin-api/counts/${id}/lines`,
+    submit: (id: string) => `/plugin-api/counts/${id}/submit`,
+    reopen: (id: string) => `/plugin-api/counts/${id}/reopen`,
+    apply: (id: string) => `/plugin-api/counts/${id}/apply`,
+    cancel: (id: string) => `/plugin-api/counts/${id}/cancel`
   },
   // Step 5.6 PR E6: the reads of the returns (and of the batches of the scanner that receives them) and of the remittances of
   // cash collected on delivery, over the same services as `ApiRoutes.returns` and `.remittances`. Their writes store the id of a

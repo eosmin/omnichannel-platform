@@ -497,6 +497,37 @@ describe('The products of a store', () => {
     })
   })
 
+  describe('the general audit entries', () => {
+    it('names the person, and the fields set but never their values, for a product made, changed and a variant added', async () => {
+      const product = await create({ name: 'Secret lamp' })
+      await asAdmin().patch(ApiRoutes.products.byId(product.id)).send({ name: 'Other secret' })
+      const variant = await addVariant(product.id, {})
+
+      const made = await waitForAuditEntries(owner, {
+        action: AuditAction.PRODUCT_CREATED,
+        resourceId: product.id
+      })
+      const changed = await waitForAuditEntries(
+        owner,
+        { action: AuditAction.PRODUCT_UPDATED, resourceId: product.id },
+        2
+      )
+
+      expect(made[0]).toMatchObject({ storeId: ctx.storeA.id, userId: ctx.adminA.id })
+      expect(made[0]?.metadata).not.toHaveProperty('pluginInstallationId')
+      expect(changed.map(entry => entry.userId)).toEqual([ctx.adminA.id, ctx.adminA.id])
+      expect(changed.map(entry => entry.metadata)).toContainEqual(
+        expect.objectContaining({ fields: ['name'] })
+      )
+      expect(changed.map(entry => entry.metadata)).toContainEqual(
+        expect.objectContaining({ variantId: variant.id })
+      )
+      for (const entry of [...made, ...changed]) {
+        expect(JSON.stringify(entry.metadata)).not.toContain('secret')
+      }
+    })
+  })
+
   describe('deleting a product', () => {
     it('removes a product that nothing refers to, with its variants, and records who did it', async () => {
       const product = await create({})

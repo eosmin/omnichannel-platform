@@ -1080,20 +1080,22 @@ model OrderItemAllocation {
 // there); its foreign key (organization_id, store_id) is declared in the raw SQL of the migration, because Prisma cannot
 // declare a composite relation with an optional column.
 model StockCount {
-  id             String    @id @default(uuid())
-  organizationId String    @map("organization_id")
-  warehouseId    String    @map("warehouse_id")
-  number         String // "CT-0001", unique inside the organization
-  status         String    @default("draft") // CountStatus
-  storeId        String?   @map("store_id")
-  note           String?
-  createdBy      String    @map("created_by")
-  startedAt      DateTime? @map("started_at")
-  submittedAt    DateTime? @map("submitted_at")
-  appliedBy      String?   @map("applied_by")
-  appliedAt      DateTime? @map("applied_at")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  updatedAt      DateTime  @updatedAt @map("updated_at")
+  id                String    @id @default(uuid())
+  organizationId    String    @map("organization_id")
+  warehouseId       String    @map("warehouse_id")
+  number            String // "CT-0001", unique inside the organization
+  status            String    @default("draft") // CountStatus
+  storeId           String?   @map("store_id")
+  note              String?
+  createdBy         String?   @map("created_by") // Null when a plugin made it (createdByPluginId): exactly one of the two is set
+  createdByPluginId String?   @map("created_by_plugin_id")
+  startedAt         DateTime? @map("started_at")
+  submittedAt       DateTime? @map("submitted_at")
+  appliedBy         String?   @map("applied_by")
+  appliedByPluginId String?   @map("applied_by_plugin_id") // The plugin that applied it, never beside appliedBy
+  appliedAt         DateTime? @map("applied_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
   organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   warehouse    Warehouse        @relation(fields: [organizationId, warehouseId], references: [organizationId, id])
@@ -1133,19 +1135,21 @@ model StockCountLine {
 // organization; its lines belong to the stores whose products travel. The status only moves through the transfers
 // service, which writes the stock through InventoryService and never touches a level itself.
 model StockTransfer {
-  id              String    @id @default(uuid())
-  organizationId  String    @map("organization_id")
-  number          String // "TR-0001", per organization
-  fromWarehouseId String    @map("from_warehouse_id")
-  toWarehouseId   String    @map("to_warehouse_id")
-  status          String    @default("draft") // TransferStatus
-  note            String?
-  createdBy       String    @map("created_by")
-  dispatchedBy    String?   @map("dispatched_by")
-  dispatchedAt    DateTime? @map("dispatched_at")
-  closedAt        DateTime? @map("closed_at")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id                   String    @id @default(uuid())
+  organizationId       String    @map("organization_id")
+  number               String // "TR-0001", per organization
+  fromWarehouseId      String    @map("from_warehouse_id")
+  toWarehouseId        String    @map("to_warehouse_id")
+  status               String    @default("draft") // TransferStatus
+  note                 String?
+  createdBy            String?   @map("created_by") // Null when a plugin made it (createdByPluginId): exactly one of the two is set
+  createdByPluginId    String?   @map("created_by_plugin_id")
+  dispatchedBy         String?   @map("dispatched_by")
+  dispatchedByPluginId String?   @map("dispatched_by_plugin_id") // The plugin that sent it, never beside dispatchedBy
+  dispatchedAt         DateTime? @map("dispatched_at")
+  closedAt             DateTime? @map("closed_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
 
   // Both warehouses carry the organization, so the database refuses a transfer that reaches another organization's
   organization  Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)

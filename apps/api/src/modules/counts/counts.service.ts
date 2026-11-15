@@ -16,7 +16,8 @@ import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 
 import { encodeCursor } from '../customers/list-cursor'
-import type { Actor } from '../tenancy'
+import { actorIds } from '../orders/orders-actor'
+import { type Actor, auditActorOf, auditViaOf } from '../tenancy'
 
 import { countNumber } from './counts.rules'
 import type {
@@ -26,13 +27,15 @@ import type {
   UpdateCountLinesBody
 } from './counts.schemas'
 import {
+  assertActorMayWrite,
   assertCounting,
   assertTransition,
   invalidTransition,
   lockCount,
   lockCountNumbers,
   reachableCount,
-  storesOf
+  storesOf,
+  storesOfActor
 } from './counts.support'
 import {
   COUNT_LINE_SELECT,
@@ -187,6 +190,9 @@ export class CountsService {
   }
 
   async create(organizationId: string, body: CreateCountBody, actor: Actor): Promise<CountView> {
+    const ids = actorIds(actor)
+    const plugin = actor.pluginInstallationId !== undefined
+    const countStoreId = body.storeId ?? (plugin ? actor.storeId : undefined)
     const id = await this.prisma.transaction(async tx => {
       // The store of the request exists while the count is written (a delete of it waits for this)
       await lockStoreForWrite(tx, actor.storeId)
@@ -202,14 +208,23 @@ export class CountsService {
       }
       // A count limited to a store names a store where the caller may count: another store, or one of another
       // organization, is a store that does not exist
-      if (body.storeId !== undefined) {
-        const mine = await storesOf(
+      // A plugin counts the store of its key and no other: its count is limited to it (a count of the whole warehouse snapshots the
+      // levels of every store), and the warehouse must be one the store keeps stock in
+      if (countStoreId !== undefined) {
+        const mine = await storesOfActor(
           tx,
           organizationId,
-          actor.userId,
+          actor,
           Permissions.INVENTORY_MANAGE_COUNTS
         )
-        if (!mine.includes(body.storeId)) throw resourceNotFound('store')
+        if (!mine.includes(countStoreId)) throw resourceNotFound('store')
+      }
+      if (plugin) {
+        const linked = await tx.storeWarehouse.findFirst({
+          where: { organizationId, storeId: actor.storeId, warehouseId: body.warehouseId },
+          select: { id: true }
+        })
+        if (linked === null) throw resourceNotFound('warehouse')
       }
       await lockCountNumbers(tx, organizationId)
       const latest = await tx.$queryRaw<{ latest: bigint }[]>`
@@ -220,9 +235,10 @@ export class CountsService {
           organizationId,
           warehouseId: body.warehouseId,
           number: countNumber(Number(latest[0]?.latest ?? 0n) + 1),
-          storeId: body.storeId ?? null,
+          storeId: countStoreId ?? null,
           note: body.note ?? null,
-          createdBy: actor.userId
+          createdBy: ids.userId,
+          createdByPluginId: ids.pluginId
         },
         select: { id: true, number: true }
       })
@@ -230,15 +246,16 @@ export class CountsService {
     })
     this.audit.log({
       action: AuditAction.COUNT_CREATED,
-      actor: { userId: actor.userId },
+      actor: auditActorOf(actor),
       organizationId,
       storeId: actor.storeId,
       resourceType: CountResourceTypes.COUNT,
       resourceId: id.id,
       metadata: {
         number: id.number,
+        ...auditViaOf(actor),
         warehouseId: body.warehouseId,
-        limitedToStore: body.storeId ?? null
+        limitedToStore: countStoreId ?? null
       },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
@@ -251,6 +268,7 @@ export class CountsService {
   async start(organizationId: string, countId: string, actor: Actor): Promise<CountView> {
     const lines = await this.prisma.transaction(async tx => {
       const count = await lockCount(tx, organizationId, countId)
+      await assertActorMayWrite(tx, count, actor)
       assertTransition(count.status, CountStatus.COUNTING)
       const warehouse = await tx.warehouse.findFirst({
         where: { id: count.warehouseId, organizationId },
@@ -305,12 +323,12 @@ export class CountsService {
     })
     this.audit.log({
       action: AuditAction.COUNT_STARTED,
-      actor: { userId: actor.userId },
+      actor: auditActorOf(actor),
       organizationId,
       storeId: actor.storeId,
       resourceType: CountResourceTypes.COUNT,
       resourceId: countId,
-      metadata: { lines },
+      metadata: { ...auditViaOf(actor), lines },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
@@ -327,11 +345,12 @@ export class CountsService {
   ): Promise<CountView> {
     await this.prisma.transaction(async tx => {
       const count = await lockCount(tx, organizationId, countId)
+      await assertActorMayWrite(tx, count, actor)
       assertCounting(count)
-      const mine = await storesOf(
+      const mine = await storesOfActor(
         tx,
         organizationId,
-        actor.userId,
+        actor,
         Permissions.INVENTORY_MANAGE_COUNTS
       )
       const owned = await tx.stockCountLine.findMany({
@@ -348,12 +367,12 @@ export class CountsService {
     })
     this.audit.log({
       action: AuditAction.COUNT_LINES_UPDATED,
-      actor: { userId: actor.userId },
+      actor: auditActorOf(actor),
       organizationId,
       storeId: actor.storeId,
       resourceType: CountResourceTypes.COUNT_LINES,
       resourceId: countId,
-      metadata: { lines: body.lines.length },
+      metadata: { ...auditViaOf(actor), lines: body.lines.length },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
@@ -363,6 +382,7 @@ export class CountsService {
   async submit(organizationId: string, countId: string, actor: Actor): Promise<CountView> {
     const number = await this.prisma.transaction(async tx => {
       const count = await lockCount(tx, organizationId, countId)
+      await assertActorMayWrite(tx, count, actor)
       assertTransition(count.status, CountStatus.REVIEW)
       await tx.stockCount.update({
         where: { id: countId },
@@ -379,12 +399,12 @@ export class CountsService {
     })
     this.audit.log({
       action: AuditAction.COUNT_SUBMITTED,
-      actor: { userId: actor.userId },
+      actor: auditActorOf(actor),
       organizationId,
       storeId: actor.storeId,
       resourceType: CountResourceTypes.COUNT,
       resourceId: countId,
-      metadata: { number },
+      metadata: { ...auditViaOf(actor), number },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
@@ -395,6 +415,7 @@ export class CountsService {
   async reopen(organizationId: string, countId: string, actor: Actor): Promise<CountView> {
     await this.prisma.transaction(async tx => {
       const count = await lockCount(tx, organizationId, countId)
+      await assertActorMayWrite(tx, count, actor)
       // draft → counting is `start`, which makes the lines: it is not a way to reopen
       if (count.status !== CountStatus.REVIEW) {
         throw invalidTransition(count.status, CountStatus.COUNTING)
@@ -406,11 +427,12 @@ export class CountsService {
     })
     this.audit.log({
       action: AuditAction.COUNT_REOPENED,
-      actor: { userId: actor.userId },
+      actor: auditActorOf(actor),
       organizationId,
       storeId: actor.storeId,
       resourceType: CountResourceTypes.COUNT,
       resourceId: countId,
+      metadata: { ...auditViaOf(actor) },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
@@ -420,6 +442,7 @@ export class CountsService {
   async cancel(organizationId: string, countId: string, actor: Actor): Promise<CountView> {
     const from = await this.prisma.transaction(async tx => {
       const count = await lockCount(tx, organizationId, countId)
+      await assertActorMayWrite(tx, count, actor)
       assertTransition(count.status, CountStatus.CANCELLED)
       await tx.stockCount.update({
         where: { id: countId },
@@ -429,12 +452,12 @@ export class CountsService {
     })
     this.audit.log({
       action: AuditAction.COUNT_CANCELLED,
-      actor: { userId: actor.userId },
+      actor: auditActorOf(actor),
       organizationId,
       storeId: actor.storeId,
       resourceType: CountResourceTypes.COUNT,
       resourceId: countId,
-      metadata: { from },
+      metadata: { ...auditViaOf(actor), from },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })

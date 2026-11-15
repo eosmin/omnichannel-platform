@@ -35,8 +35,11 @@ const headerShape = {
   fromWarehouse: warehouseSchema,
   toWarehouse: warehouseSchema,
   note: z.string().nullable(),
-  createdBy: z.string(),
+  // Null when a plugin made or sent it; the plugin is in the `...PluginId` beside (left out by a server that does not say)
+  createdBy: z.string().nullable(),
+  createdByPluginId: z.string().nullable().optional(),
   dispatchedBy: z.string().nullable(),
+  dispatchedByPluginId: z.string().nullable().optional(),
   dispatchedAt: z.string().nullable(),
   closedAt: z.string().nullable(),
   createdAt: z.string(),

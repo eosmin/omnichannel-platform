@@ -16,7 +16,9 @@ const summary = (over: Partial<TransferSummaryView> = {}): TransferSummaryView =
   toWarehouse: { ...warehouse, id: 'w-2' },
   note: null,
   createdBy: 'user-staff-1',
+  createdByPluginId: 'plugin-1',
   dispatchedBy: 'user-staff-2',
+  dispatchedByPluginId: 'plugin-2',
   dispatchedAt: new Date('2026-11-15T00:00:00Z'),
   closedAt: null,
   createdAt: new Date('2026-11-14T00:00:00Z'),
@@ -31,6 +33,8 @@ describe('the transfers a plugin reads', () => {
 
     expect('createdBy' in view).toBe(false)
     expect('dispatchedBy' in view).toBe(false)
+    expect('createdByPluginId' in view).toBe(false)
+    expect('dispatchedByPluginId' in view).toBe(false)
     expect(JSON.stringify(view)).not.toContain('user-staff')
   })
 

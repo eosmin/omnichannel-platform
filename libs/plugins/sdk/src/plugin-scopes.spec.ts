@@ -125,4 +125,19 @@ describe('PluginScopes', () => {
   it('lets the webhooks scope grant no human permission', () => {
     expect(PluginScopePermissions[PluginScopes.WEBHOOKS_WRITE]).toEqual([])
   })
+
+  it('keeps who sends apart from who receives and who counts apart from who approves: each write is a scope of its own', () => {
+    expect(PluginScopePermissions[PluginScopes.TRANSFERS_WRITE]).toEqual([
+      Permissions.INVENTORY_MANAGE_TRANSFERS
+    ])
+    expect(PluginScopePermissions[PluginScopes.TRANSFERS_RECEIVE]).toEqual([
+      Permissions.INVENTORY_RECEIVE_TRANSFERS
+    ])
+    expect(PluginScopePermissions[PluginScopes.COUNTS_WRITE]).toEqual([
+      Permissions.INVENTORY_MANAGE_COUNTS
+    ])
+    expect(PluginScopePermissions[PluginScopes.COUNTS_APPLY]).toEqual([
+      Permissions.INVENTORY_APPLY_COUNTS
+    ])
+  })
 })

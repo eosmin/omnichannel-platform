@@ -28,8 +28,11 @@ export interface TransferSummaryView {
   fromWarehouse: TransferWarehouseView
   toWarehouse: TransferWarehouseView
   note: string | null
-  createdBy: string
+  // Null when a plugin made or sent it; the plugin is in the `...PluginId` beside (never both)
+  createdBy: string | null
+  createdByPluginId: string | null
   dispatchedBy: string | null
+  dispatchedByPluginId: string | null
   dispatchedAt: Date | null
   closedAt: Date | null
   createdAt: Date
@@ -54,7 +57,9 @@ export const TRANSFER_SELECT = {
   status: true,
   note: true,
   createdBy: true,
+  createdByPluginId: true,
   dispatchedBy: true,
+  dispatchedByPluginId: true,
   dispatchedAt: true,
   closedAt: true,
   createdAt: true,
@@ -80,8 +85,11 @@ export interface TransferRow {
   number: string
   status: string
   note: string | null
-  createdBy: string
+  // Null when a plugin made or sent it; the plugin is in the `...PluginId` beside (never both)
+  createdBy: string | null
+  createdByPluginId: string | null
   dispatchedBy: string | null
+  dispatchedByPluginId: string | null
   dispatchedAt: Date | null
   closedAt: Date | null
   createdAt: Date
@@ -112,7 +120,9 @@ function headerOf(row: TransferRow): Omit<TransferSummaryView, 'lineCount'> {
     toWarehouse: row.toWarehouse,
     note: row.note,
     createdBy: row.createdBy,
+    createdByPluginId: row.createdByPluginId,
     dispatchedBy: row.dispatchedBy,
+    dispatchedByPluginId: row.dispatchedByPluginId,
     dispatchedAt: row.dispatchedAt,
     closedAt: row.closedAt,
     createdAt: row.createdAt,

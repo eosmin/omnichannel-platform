@@ -62,6 +62,31 @@ export async function lockCountNumbers(
     SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${`${organizationId}:${CountLockScopes.NUMBER}`}, 0))) AS lock`
 }
 
+// What a plugin writes is a count limited to the store of its key: starting one snapshots, and applying one moves, the stock of every
+// store it covers, and cancelling, submitting or reopening one decides for the people who count it. A count of the whole warehouse
+// that has a line of its store is read only to a plugin (403), as a transfer that spans a sibling store is (PR E4b-2); a count it
+// cannot read (limited to another store, or of a warehouse with no line of its store) does not exist for it (404), the same as for
+// a read. A person writes any count of the organization, as before.
+export async function assertActorMayWrite(
+  tx: Pick<PrismaTransaction, 'stockCountLine'>,
+  count: { id: string; storeId: string | null },
+  actor: { storeId: string; pluginInstallationId?: string | undefined }
+): Promise<void> {
+  if (actor.pluginInstallationId === undefined || count.storeId === actor.storeId) return
+  const reads =
+    count.storeId === null &&
+    (await tx.stockCountLine.findFirst({
+      where: { countId: count.id, storeId: actor.storeId },
+      select: { id: true }
+    })) !== null
+  if (!reads) throw resourceNotFound('count')
+  throw new PlatformException(
+    ErrorCodes.INVENTORY_COUNT_STORES_NOT_ALLOWED,
+    'a plugin changes only a count limited to the store of its key',
+    HttpStatusCodes.FORBIDDEN
+  )
+}
+
 export function invalidTransition(from: CountStatus, to: CountStatus): PlatformException {
   return new PlatformException(
     ErrorCodes.INVENTORY_COUNT_INVALID_STATUS_TRANSITION,
@@ -107,6 +132,20 @@ export async function storesOf(
     select: { storeId: true }
   })
   return rows.map(row => row.storeId)
+}
+
+// The stores a caller counts or applies in: a person's are the ones where they hold the permission, a plugin's is the one store of its
+// key (it holds no membership; the permission is its scope's). One place, so that no write of a count forgets the plugin and asks the
+// memberships for the synthetic id of an installation.
+export async function storesOfActor(
+  db: Pick<PrismaTransaction, 'membership'>,
+  organizationId: string,
+  actor: { userId: string; storeId: string; pluginInstallationId?: string | undefined },
+  permission: Permission
+): Promise<string[]> {
+  return actor.pluginInstallationId === undefined
+    ? storesOf(db, organizationId, actor.userId, permission)
+    : [actor.storeId]
 }
 
 // The counts a caller reaches (Step 5.6 PR E4b). A plugin's key is bound to ONE store and holds no membership, so it reaches the

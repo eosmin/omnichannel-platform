@@ -22,6 +22,8 @@ import {
   DeliveryStatus,
   FinanceSourceType,
   FinanceTransactionKind,
+  InventoryAdjustmentReason,
+  InventoryMovementType,
   InvitationStatus,
   JournalEntryType,
   MembershipStatus,
@@ -5272,6 +5274,98 @@ describe('Tenant isolation', () => {
     })
   })
 
+  // The writes of stock and of the tag catalog with the key of a plugin (Step 5.6, E4a-2): the key of store B adjusts stock and
+  // writes tags, and nothing of store A or of organization A moves or changes.
+  describe('the adjustment of stock and the tag catalog with the key of a plugin', () => {
+    const pluginId = `${prefix}-stock-tags`
+    let keyOfB = ''
+    let productA = ''
+    let productB = ''
+    let tagA = ''
+    let tagB = ''
+
+    beforeAll(async () => {
+      ;({ key: keyOfB } = await createPluginKey(owner, {
+        storeId: ctx.storeB.id,
+        pluginId,
+        scopes: [
+          PluginScopes.INVENTORY_READ,
+          PluginScopes.INVENTORY_WRITE,
+          PluginScopes.TAGS_READ,
+          PluginScopes.TAGS_WRITE
+        ]
+      }))
+      productA = (await createProduct(owner, { storeId: ctx.storeA.id, trackInventory: true })).id
+      productB = (await createProduct(owner, { storeId: ctx.storeB.id, trackInventory: true })).id
+      tagA = (await createTag(owner, { storeId: ctx.storeA.id })).id
+      tagB = (await createTag(owner, { storeId: ctx.storeB.id })).id
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId } })
+      await owner.plugin.deleteMany({ where: { id: pluginId } })
+    })
+
+    const asB = (method: 'get' | 'post' | 'patch' | 'delete', path: string) =>
+      supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+        [method](`${API_PREFIX}${path}`)
+        .set('authorization', `Bearer ${keyOfB}`)
+
+    const adjustment = (productId: string, warehouseId: string) => ({
+      productId,
+      warehouseId,
+      type: InventoryMovementType.RECEIPT,
+      quantity: 4,
+      reason: InventoryAdjustmentReason.OPENING_STOCK,
+      idempotencyKey: randomUUID()
+    })
+
+    it('adjusts the stock of its own store, as the plugin and never as a person', async () => {
+      const response = await asB('post', PluginApiRoutes.inventory.adjustments).send(
+        adjustment(productB, ctx.warehouseB.id)
+      )
+
+      expect(response.status).toBe(201)
+      const movement = await owner.inventoryMovement.findFirstOrThrow({
+        where: { productId: productB }
+      })
+      expect(movement.storeId).toBe(ctx.storeB.id)
+      expect(movement.createdBy).toBeNull()
+      expect(movement.createdByPluginId).toBe(pluginId)
+    })
+
+    it('does not adjust the stock of a product of another store, nor into a warehouse of another organization', async () => {
+      const foreignProduct = await asB('post', PluginApiRoutes.inventory.adjustments).send(
+        adjustment(productA, ctx.warehouseB.id)
+      )
+      const foreignWarehouse = await asB('post', PluginApiRoutes.inventory.adjustments).send(
+        adjustment(productB, ctx.warehouseA.id)
+      )
+
+      expect(foreignProduct.status).toBe(404)
+      expect(foreignWarehouse.status).toBe(404)
+      expect(await owner.inventoryMovement.count({ where: { productId: productA } })).toBe(0)
+      expect(
+        await owner.inventoryMovement.count({
+          where: { productId: productB, warehouseId: ctx.warehouseA.id }
+        })
+      ).toBe(0)
+    })
+
+    it('lists only the tags of its own store and does not find, change or delete one of another', async () => {
+      const list = await asB('get', PluginApiRoutes.settings.tags)
+      const read = await asB('get', PluginApiRoutes.settings.tagById(tagA))
+      const changed = await asB('patch', PluginApiRoutes.settings.tagById(tagA)).send({
+        name: 'taken'
+      })
+      const removed = await asB('delete', PluginApiRoutes.settings.tagById(tagA))
+
+      expect(JSON.stringify(list.body)).toContain(tagB)
+      expect(JSON.stringify(list.body)).not.toContain(tagA)
+      for (const response of [read, changed, removed]) expect(response.status).toBe(404)
+      expect((await owner.tag.findUniqueOrThrow({ where: { id: tagA } })).name).not.toBe('taken')
+    })
+  })
+
   // What a plugin key reads of the transfers and the counts (Step 5.6, E4b): both belong to the ORGANIZATION and their lines to
   // the stores, and a key is bound to ONE store. The key of store A reads the lines of store A and the transfers and counts that have
   // one; the key of its sibling store A2 sees the lines of A2 only and gets a 404 for what has no line of A2; the key of
@@ -5441,26 +5535,286 @@ describe('Tenant isolation', () => {
       }
     })
 
-    it('needs the scope of the route, and has no route that writes', async () => {
-      const server = () => supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+    it('needs the scope of the route', async () => {
       const denied = await as(readsNothing, PluginApiRoutes.transfers.list)
       const deniedCounts = await as(readsNothing, PluginApiRoutes.counts.list)
-      const created = await server()
-        .post(`${API_PREFIX}${PluginApiRoutes.transfers.list}`)
-        .set('authorization', `Bearer ${keyOfA}`)
-        .send({})
-      const dispatched = await server()
-        .post(`${API_PREFIX}${PluginApiRoutes.transfers.byId(transferA)}/dispatch`)
-        .set('authorization', `Bearer ${keyOfA}`)
-      const applied = await server()
-        .post(`${API_PREFIX}${PluginApiRoutes.counts.byId(countA)}/apply`)
-        .set('authorization', `Bearer ${keyOfA}`)
 
       expect([denied.status, deniedCounts.status]).toEqual([403, 403])
-      expect([created.status, dispatched.status, applied.status]).toEqual([404, 404, 404])
-      expect((await owner.stockCount.findUniqueOrThrow({ where: { id: countA } })).status).toBe(
-        CountStatus.COUNTING
+    })
+  })
+
+  // What a plugin key WRITES of the transfers and the counts (Step 5.6, E4b-2). A key is bound to ONE store, so it writes only a
+  // transfer whose every line is of its store (409 when a sibling store's line is there) and a count limited to its store (403 for
+  // a count of the whole warehouse); a transfer or a count of another store or organization does not exist for it (404). The
+  // scope of the route decides: a key that only reads writes nothing, and a key that writes without reading cannot reach the routes.
+  describe('the writes of the transfers and the counts with the key of a plugin', () => {
+    const pluginId = `${prefix}-transfers-counts-write`
+    const everything = [
+      PluginScopes.TRANSFERS_READ,
+      PluginScopes.TRANSFERS_WRITE,
+      PluginScopes.TRANSFERS_RECEIVE,
+      PluginScopes.COUNTS_READ,
+      PluginScopes.COUNTS_WRITE,
+      PluginScopes.COUNTS_APPLY
+    ]
+    let keyOfA = ''
+    let keyOfA2 = ''
+    let keyOfB = ''
+    let readOnly = ''
+    let writeWithoutRead = ''
+    let transferA = ''
+    let transferShared = ''
+    let transferOfB = ''
+    let countLimitedA = ''
+    let countWholeWarehouse = ''
+    let countLimitedA2 = ''
+
+    beforeAll(async () => {
+      ;({ key: keyOfA } = await createPluginKey(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${pluginId}-a`,
+        scopes: everything
+      }))
+      ;({ key: keyOfA2 } = await createPluginKey(owner, {
+        storeId: ctx.storeA2.id,
+        pluginId: `${pluginId}-a2`,
+        scopes: everything
+      }))
+      ;({ key: keyOfB } = await createPluginKey(owner, {
+        storeId: ctx.storeB.id,
+        pluginId: `${pluginId}-b`,
+        scopes: everything
+      }))
+      ;({ key: readOnly } = await createPluginKey(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${pluginId}-read`,
+        scopes: [PluginScopes.TRANSFERS_READ, PluginScopes.COUNTS_READ]
+      }))
+      ;({ key: writeWithoutRead } = await createPluginKey(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${pluginId}-write`,
+        scopes: [
+          PluginScopes.TRANSFERS_WRITE,
+          PluginScopes.TRANSFERS_RECEIVE,
+          PluginScopes.COUNTS_WRITE,
+          PluginScopes.COUNTS_APPLY
+        ]
+      }))
+      transferA = (
+        await createTransfer(owner, { organizationId: ctx.orgA.id, storeId: ctx.storeA.id })
+      ).id
+      transferOfB = (
+        await createTransfer(owner, { organizationId: ctx.orgB.id, storeId: ctx.storeB.id })
+      ).id
+      // A transfer with a line of each sibling store: the key of either may read it and neither may write it
+      const shared = await createTransfer(owner, {
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id
+      })
+      const sibling = await createProduct(owner, { storeId: ctx.storeA2.id })
+      await owner.stockTransferLine.create({
+        data: { transferId: shared.id, storeId: ctx.storeA2.id, productId: sibling.id, quantity: 2 }
+      })
+      transferShared = shared.id
+      countLimitedA = (await createCountOf(owner, ctx.storeA.id, CountStatus.COUNTING, true))
+        .countId
+      countWholeWarehouse = (await createCountOf(owner, ctx.storeA.id, CountStatus.COUNTING))
+        .countId
+      countLimitedA2 = (await createCountOf(owner, ctx.storeA2.id, CountStatus.COUNTING, true))
+        .countId
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId: { startsWith: pluginId } } })
+      await owner.plugin.deleteMany({ where: { id: { startsWith: pluginId } } })
+    })
+
+    const send = (key: string, method: 'post' | 'patch', path: string, body: object = {}) =>
+      supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+        [method](`${API_PREFIX}${path}`)
+        .set('authorization', `Bearer ${key}`)
+        .send(body)
+    const transferStatus = async (id: string) =>
+      (await owner.stockTransfer.findUniqueOrThrow({ where: { id } })).status
+    const countStatus = async (id: string) =>
+      (await owner.stockCount.findUniqueOrThrow({ where: { id } })).status
+    const uuid = '00000000-0000-4000-8000-000000000001'
+    const codeOf = (response: { body: unknown }): string =>
+      (response.body as { error: { code: string } }).error.code
+
+    const transferWrites = (id: string): [string, 'post' | 'patch', string, object][] => [
+      [
+        'create',
+        'post',
+        PluginApiRoutes.transfers.create,
+        { fromWarehouseId: uuid, toWarehouseId: uuid }
+      ],
+      ['update', 'patch', PluginApiRoutes.transfers.byId(id), { note: 'x' }],
+      ['dispatch', 'post', PluginApiRoutes.transfers.dispatch(id), {}],
+      [
+        'receive',
+        'post',
+        PluginApiRoutes.transfers.receive(id),
+        { receiptKey: uuid, lines: [{ lineId: uuid, quantity: 1 }] }
+      ],
+      ['close', 'post', PluginApiRoutes.transfers.close(id), { lines: [] }],
+      ['cancel', 'post', PluginApiRoutes.transfers.cancel(id), {}]
+    ]
+    const countWrites = (id: string): [string, 'post' | 'patch', string, object][] => [
+      ['create', 'post', PluginApiRoutes.counts.create, { warehouseId: uuid }],
+      ['start', 'post', PluginApiRoutes.counts.start(id), {}],
+      [
+        'lines',
+        'patch',
+        PluginApiRoutes.counts.lines(id),
+        { lines: [{ lineId: uuid, countedQuantity: 1 }] }
+      ],
+      ['submit', 'post', PluginApiRoutes.counts.submit(id), {}],
+      ['reopen', 'post', PluginApiRoutes.counts.reopen(id), {}],
+      ['apply', 'post', PluginApiRoutes.counts.apply(id), {}],
+      ['cancel', 'post', PluginApiRoutes.counts.cancel(id), {}]
+    ]
+
+    it('refuses every write to a key that only reads, and to a key that writes without reading (403)', async () => {
+      const routes = [...transferWrites(transferA), ...countWrites(countLimitedA)]
+      for (const key of [readOnly, writeWithoutRead]) {
+        for (const [name, method, path, body] of routes) {
+          const response = await send(key, method, path, body)
+          expect([name, response.status]).toEqual([name, 403])
+        }
+      }
+      expect(await transferStatus(transferA)).toBe(TransferStatus.DRAFT)
+      expect(await countStatus(countLimitedA)).toBe(CountStatus.COUNTING)
+    })
+
+    it('does not let a key write what it needs the other scope for: receiving is not sending, applying is not counting', async () => {
+      const sendsOnly = await createPluginKey(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${pluginId}-sends`,
+        scopes: [
+          PluginScopes.TRANSFERS_READ,
+          PluginScopes.TRANSFERS_WRITE,
+          PluginScopes.COUNTS_READ,
+          PluginScopes.COUNTS_WRITE
+        ]
+      })
+      const receive = await send(
+        sendsOnly.key,
+        'post',
+        PluginApiRoutes.transfers.receive(transferA),
+        {
+          receiptKey: uuid,
+          lines: [{ lineId: uuid, quantity: 1 }]
+        }
       )
+      const close = await send(sendsOnly.key, 'post', PluginApiRoutes.transfers.close(transferA), {
+        lines: []
+      })
+      const apply = await send(sendsOnly.key, 'post', PluginApiRoutes.counts.apply(countLimitedA))
+
+      expect([receive.status, close.status, apply.status]).toEqual([403, 403, 403])
+      expect(await countStatus(countLimitedA)).toBe(CountStatus.COUNTING)
+    })
+
+    it('does not write a transfer or a count of another organization (404), and changes nothing', async () => {
+      for (const [name, method, path, body] of transferWrites(transferA).slice(1)) {
+        const response = await send(keyOfB, method, path, body)
+        expect([name, response.status]).toEqual([name, 404])
+      }
+      for (const [name, method, path, body] of countWrites(countLimitedA).slice(1)) {
+        const response = await send(keyOfB, method, path, body)
+        expect([name, response.status]).toEqual([name, 404])
+      }
+      // A real product of its own store with the warehouses of the other organization: only the warehouses are foreign
+      const ownProduct = await createProduct(owner, { storeId: ctx.storeB.id })
+      const warehouses = await owner.stockTransfer.findUniqueOrThrow({ where: { id: transferA } })
+      const created = await send(keyOfB, 'post', PluginApiRoutes.transfers.create, {
+        fromWarehouseId: warehouses.fromWarehouseId,
+        toWarehouseId: warehouses.toWarehouseId,
+        lines: [{ productId: ownProduct.id, quantity: 1 }]
+      })
+      expect(created.status).toBe(404)
+      expect(await transferStatus(transferA)).toBe(TransferStatus.DRAFT)
+      expect(await countStatus(countLimitedA)).toBe(CountStatus.COUNTING)
+      expect(await transferStatus(transferOfB)).toBe(TransferStatus.DRAFT)
+    })
+
+    it('does not write a transfer or a count that has nothing of the sibling store of the key (404)', async () => {
+      for (const [name, method, path, body] of transferWrites(transferA).slice(1)) {
+        const response = await send(keyOfA2, method, path, body)
+        expect([name, response.status]).toEqual([name, 404])
+      }
+      for (const [name, method, path, body] of countWrites(countLimitedA).slice(1)) {
+        const response = await send(keyOfA2, method, path, body)
+        expect([name, response.status]).toEqual([name, 404])
+      }
+      expect(await transferStatus(transferA)).toBe(TransferStatus.DRAFT)
+      expect(await countStatus(countLimitedA)).toBe(CountStatus.COUNTING)
+    })
+
+    it('reads a transfer that spans two stores but writes none of it: the stock of the sibling store is not its to move (409)', async () => {
+      const before = await owner.stockTransferLine.count({ where: { transferId: transferShared } })
+      for (const key of [keyOfA, keyOfA2]) {
+        for (const [name, method, path, body] of transferWrites(transferShared).slice(1)) {
+          const response = await send(key, method, path, body)
+          // The code too: a draft is refused by receive and close for its state, so the status alone proves nothing
+          expect([name, response.status, codeOf(response)]).toEqual([
+            name,
+            409,
+            ErrorCodes.INVENTORY_TRANSFER_LINES_OUT_OF_REACH
+          ])
+        }
+      }
+      expect(await transferStatus(transferShared)).toBe(TransferStatus.DRAFT)
+      expect(await owner.stockTransferLine.count({ where: { transferId: transferShared } })).toBe(
+        before
+      )
+    })
+
+    it('reads a count of the whole warehouse but writes none of it (403), and opens its own limited to its store', async () => {
+      for (const [name, method, path, body] of countWrites(countWholeWarehouse).slice(1)) {
+        const response = await send(keyOfA, method, path, body)
+        expect([name, response.status]).toEqual([name, 403])
+        // The sibling store has no line in it: for that key the count does not exist
+        const sibling = await send(keyOfA2, method, path, body)
+        expect([name, sibling.status]).toEqual([name, 404])
+      }
+      // A count a plugin opens is the store of the key's, whatever the body says, and a store of another key is not its to name:
+      // the warehouse is real and linked to both stores, so only the store decides
+      const shared = await createWarehouse(owner, { organizationId: ctx.orgA.id })
+      for (const storeId of [ctx.storeA.id, ctx.storeA2.id]) {
+        await linkWarehouse(owner, { organizationId: ctx.orgA.id, storeId, warehouseId: shared.id })
+      }
+      const foreignStore = await send(keyOfA2, 'post', PluginApiRoutes.counts.create, {
+        warehouseId: shared.id,
+        storeId: ctx.storeA.id
+      })
+      expect(foreignStore.status).toBe(404)
+      const own = await send(keyOfA2, 'post', PluginApiRoutes.counts.create, {
+        warehouseId: shared.id
+      })
+      expect(own.status).toBe(201)
+      expect((own.body as { storeId: string }).storeId).toBe(ctx.storeA2.id)
+      expect(await countStatus(countWholeWarehouse)).toBe(CountStatus.COUNTING)
+      expect(await countStatus(countLimitedA2)).toBe(CountStatus.COUNTING)
+    })
+
+    it('does not open a count of a warehouse the store of the key keeps no stock in, nor a transfer of a product of a sibling store', async () => {
+      const unlinked = await createWarehouse(owner, { organizationId: ctx.orgA.id })
+      const sibling = await createProduct(owner, { storeId: ctx.storeA2.id })
+      const count = await send(keyOfA, 'post', PluginApiRoutes.counts.create, {
+        warehouseId: unlinked.id
+      })
+      const transfer = await send(keyOfA, 'post', PluginApiRoutes.transfers.create, {
+        fromWarehouseId: ctx.warehouseA.id,
+        toWarehouseId: ctx.warehouseASecond.id,
+        lines: [{ productId: sibling.id, quantity: 1 }]
+      })
+      const empty = await send(keyOfA, 'post', PluginApiRoutes.transfers.create, {
+        fromWarehouseId: ctx.warehouseA.id,
+        toWarehouseId: ctx.warehouseASecond.id
+      })
+
+      expect([count.status, transfer.status, empty.status]).toEqual([404, 404, 400])
     })
   })
 

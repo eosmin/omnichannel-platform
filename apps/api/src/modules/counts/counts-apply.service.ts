@@ -14,11 +14,12 @@ import {
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import { InventoryService } from '@platform/core/inventory'
 
-import type { Actor } from '../tenancy'
+import { actorIds } from '../orders/orders-actor'
+import { type Actor, auditActorOf, auditViaOf } from '../tenancy'
 
 import { countMovementKey, movementOf } from './counts.rules'
 import { CountsService } from './counts.service'
-import { assertTransition, lockCount, storesOf } from './counts.support'
+import { assertActorMayWrite, assertTransition, lockCount, storesOfActor } from './counts.support'
 import type { CountView } from './counts.views'
 
 interface ShortLine {
@@ -44,8 +45,10 @@ export class CountsApplyService {
   ) {}
 
   async apply(organizationId: string, countId: string, actor: Actor): Promise<CountView> {
+    const ids = actorIds(actor)
     const summary = await this.prisma.transaction(async tx => {
       const count = await lockCount(tx, organizationId, countId)
+      await assertActorMayWrite(tx, count, actor)
       assertTransition(count.status, CountStatus.APPLIED)
 
       const lines = await tx.stockCountLine.findMany({
@@ -75,7 +78,7 @@ export class CountsApplyService {
 
       // Applying changes the stock of the stores of the lines: the person must hold the permission in each of them
       const allowed = new Set(
-        await storesOf(tx, organizationId, actor.userId, Permissions.INVENTORY_APPLY_COUNTS)
+        await storesOfActor(tx, organizationId, actor, Permissions.INVENTORY_APPLY_COUNTS)
       )
       const foreign = new Set(moves.map(move => move.line.storeId).filter(id => !allowed.has(id)))
       if (foreign.size > 0) {
@@ -103,7 +106,8 @@ export class CountsApplyService {
               quantity: movement.quantity,
               idempotencyKey: countMovementKey(countId, line.id),
               reference: { type: InventoryReferenceType.COUNT, id: countId },
-              createdBy: actor.userId
+              createdBy: ids.userId,
+              createdByPluginId: ids.pluginId
             },
             tx
           )
@@ -156,18 +160,23 @@ export class CountsApplyService {
       }
       await tx.stockCount.update({
         where: { id: countId },
-        data: { status: CountStatus.APPLIED, appliedBy: actor.userId, appliedAt: new Date() }
+        data: {
+          status: CountStatus.APPLIED,
+          appliedBy: ids.userId,
+          appliedByPluginId: ids.pluginId,
+          appliedAt: new Date()
+        }
       })
       return { number: count.number, lines: moves.length, unitsIn, unitsOut }
     })
     this.audit.log({
       action: AuditAction.COUNT_APPLIED,
-      actor: { userId: actor.userId },
+      actor: auditActorOf(actor),
       organizationId,
       storeId: actor.storeId,
       resourceType: CountResourceTypes.COUNT,
       resourceId: countId,
-      metadata: summary,
+      metadata: { ...auditViaOf(actor), ...summary },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })

@@ -3,8 +3,14 @@ import type { CountDetailView, CountPage, CountView } from './counts.views'
 // A count as a plugin reads it: the fields of the screen except `createdBy` and `appliedBy`, the ids of the people of the team who
 // opened and approved it (see `plugin-transfers.views.ts`). The fields are named one by one, so a column added to the views of the
 // screen does not reach a plugin until someone decides it should.
-export type PluginCountView = Omit<CountView, 'createdBy' | 'appliedBy'>
-export type PluginCountDetailView = Omit<CountDetailView, 'createdBy' | 'appliedBy'>
+export type PluginCountView = Omit<
+  CountView,
+  'createdBy' | 'createdByPluginId' | 'appliedBy' | 'appliedByPluginId'
+>
+export type PluginCountDetailView = Omit<
+  CountDetailView,
+  'createdBy' | 'createdByPluginId' | 'appliedBy' | 'appliedByPluginId'
+>
 export type PluginCountPage = Omit<CountPage, 'data'> & { data: PluginCountView[] }
 
 export function pluginCountView(count: CountView): PluginCountView {

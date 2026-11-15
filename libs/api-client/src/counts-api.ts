@@ -22,10 +22,13 @@ const countSchema = z.object({
   storeId: z.string().nullable(),
   storeName: z.string().nullable(),
   note: z.string().nullable(),
-  createdBy: z.string(),
+  // Null when a plugin opened or applied it; the plugin is in the `...PluginId` beside (left out by a server that does not say)
+  createdBy: z.string().nullable(),
+  createdByPluginId: z.string().nullable().optional(),
   startedAt: z.string().nullable(),
   submittedAt: z.string().nullable(),
   appliedBy: z.string().nullable(),
+  appliedByPluginId: z.string().nullable().optional(),
   appliedAt: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string()
