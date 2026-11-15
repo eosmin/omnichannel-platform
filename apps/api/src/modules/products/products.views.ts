@@ -31,6 +31,9 @@ export interface ProductItem {
   lowStockThreshold: number | null
   active: boolean
   freeShipping: boolean
+  // How the product is taxed (TDD_18 §7) and the rate it names, null for the default of the organization
+  taxTreatment: string
+  taxRateId: string | null
   createdAt: Date
   updatedAt: Date
 }
@@ -67,6 +70,8 @@ export const PRODUCT_SELECT = {
   lowStockThreshold: true,
   active: true,
   freeShipping: true,
+  taxTreatment: true,
+  taxRateId: true,
   createdAt: true,
   updatedAt: true
 } as const

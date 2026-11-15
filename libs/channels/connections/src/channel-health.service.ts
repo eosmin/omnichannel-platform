@@ -139,18 +139,21 @@ export class ChannelHealthService {
   // starting checks when its budget is spent.
   async checkAll(
     findPlugin: (pluginId: string) => ChannelPlugin | undefined,
-    budgetMs: number = ChannelHealthLimits.ROUND_BUDGET_MS
+    budgetMs: number = ChannelHealthLimits.ROUND_BUDGET_MS,
+    // The plugins another round takes (the remote ones have their own, with their own lock and counter)
+    skip: (pluginId: string) => boolean = () => false
   ): Promise<{ checked: number; unhealthy: number }> {
     // The ids first, and each row only when its turn comes: a round is long, and a connection
     // reconnected or disconnected meanwhile must be asked with what it has now, not with what it had
-    const ids = await this.prisma.client.channelConnection.findMany({
+    const rows = await this.prisma.client.channelConnection.findMany({
       where: {
         status: { in: [ChannelConnectionStatus.ACTIVE, ChannelConnectionStatus.ERROR] },
         ...OfActiveInstallation
       },
-      select: { id: true },
+      select: { id: true, pluginId: true },
       orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }]
     })
+    const ids = rows.filter(row => !skip(row.pluginId))
     const deadline = Date.now() + budgetMs
     const result = { checked: 0, unhealthy: 0 }
     let next = 0

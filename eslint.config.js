@@ -172,6 +172,7 @@ export default defineConfig([
                 'scope:plugins',
                 'scope:plugins-sdk',
                 'scope:channels',
+                'scope:remote-channels',
                 'scope:shipping'
               ]
             },
@@ -183,6 +184,7 @@ export default defineConfig([
                 'scope:plugins',
                 'scope:plugins-sdk',
                 'scope:channels',
+                'scope:remote-channels',
                 'scope:shipping'
               ]
             },
@@ -211,6 +213,19 @@ export default defineConfig([
                 'scope:core',
                 'scope:core-domain',
                 'scope:channels-shared'
+              ]
+            },
+            {
+              // What a process needs to run the channel plugins that live outside the platform (the registry sync, their health
+              // round): it joins the plugins runtime, which holds the registry, with the connections of the channels. It sits
+              // apart because the runtime already reaches the channels library, and that one never reaches the runtime
+              sourceTag: 'scope:remote-channels',
+              onlyDependOnLibsWithTags: [
+                'scope:core',
+                'scope:core-domain',
+                'scope:plugins',
+                'scope:plugins-sdk',
+                'scope:channels'
               ]
             },
             {

@@ -633,20 +633,43 @@ describe('The life of an order', () => {
 
     it('does not call an edit an override when it leaves the price as it was', async () => {
       const { order } = await placed({ discountCents: 100, discountReason: 'vip' })
-      await new Promise(resolve => setTimeout(resolve, 200))
-      const before = await owner.auditLog.count({
-        where: { action: AuditAction.ORDER_PRICE_OVERRIDDEN, resourceId: order.id }
-      })
-
-      await edit(order.id, { recipientPhones: ['71234567', '22123456'], discountReason: 'vip' })
-      await edit(order.id, { shippingCents: 0, discountCents: 100, discountReason: 'vip' })
-      await new Promise(resolve => setTimeout(resolve, 300))
-
-      expect(
-        await owner.auditLog.count({
+      const overrides = () =>
+        owner.auditLog.count({
           where: { action: AuditAction.ORDER_PRICE_OVERRIDDEN, resourceId: order.id }
         })
-      ).toBe(before)
+      // The admin may override, so placing the order with a discount writes its own entry, after the answer. Wait for
+      // it: counting before it lands would take the placing for the edits
+      await waitForAuditEntries(owner, {
+        action: AuditAction.ORDER_PRICE_OVERRIDDEN,
+        resourceId: order.id
+      })
+      const before = await overrides()
+      expect(before).toBe(1)
+
+      // Both are accepted: an edit the validation refused would leave the price alone for the wrong reason
+      const phones = await edit(order.id, {
+        recipientPhones: ['71234567', '22123456'],
+        discountCents: 100,
+        discountReason: 'vip'
+      })
+      const same = await edit(order.id, {
+        shippingCents: 0,
+        discountCents: 100,
+        discountReason: 'vip'
+      })
+      expect([phones.status, same.status]).toEqual([OK, OK])
+      // An entry that is not there cannot be waited for: an edit that does write one, made after those two, is
+      // waited for instead, and what the two wrote before it is in the table by then
+      const marker = await edit(order.id, { internalNotes: 'the two edits above are done' })
+      expect(marker.status).toBe(OK)
+      expect(
+        await waitForAuditEntries(owner, {
+          action: AuditAction.ORDER_INTERNAL_NOTE_CHANGED,
+          resourceId: order.id
+        })
+      ).toHaveLength(1)
+
+      expect(await overrides()).toBe(before)
     })
 
     it('does not put an old discount to a new test when an agent edits only the fee', async () => {
@@ -1087,8 +1110,17 @@ describe('The life of an order', () => {
     it('does not audit a note that did not change', async () => {
       const { order } = await placed({ internalNotes: 'same' })
 
-      await edit(order.id, { internalNotes: 'same', customerNotes: 'x' })
-      await new Promise(resolve => setTimeout(resolve, 300))
+      const unchanged = await edit(order.id, { internalNotes: 'same', customerNotes: 'x' })
+      expect(unchanged.status).toBe(OK)
+      // Nothing to wait for in an entry that must not be written: an edit made after it, which does write one, is
+      const marker = await edit(order.id, { packingNotes: 'the edit above is done' })
+      expect(marker.status).toBe(OK)
+      expect(
+        await waitForAuditEntries(owner, {
+          action: AuditAction.ORDER_PACKING_NOTE_CHANGED,
+          resourceId: order.id
+        })
+      ).toHaveLength(1)
 
       const entries = await owner.auditLog.findMany({
         where: { action: AuditAction.ORDER_INTERNAL_NOTE_CHANGED, resourceId: order.id }

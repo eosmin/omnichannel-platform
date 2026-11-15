@@ -130,22 +130,54 @@ export class PreferencesService {
   }
 }
 
+// The one writer of the preferences column also writes the key that the finance routes own (`finance.pricesIncludeTax`, TDD_18
+// §7): the route checks the permission of the accountant and this method takes the same locks and publishes the same event as a
+// change of any other key, so the cache of the store is dropped. Answers what the key was and what it is.
+export async function writeFinancePricesIncludeTax(
+  prisma: PrismaService,
+  events: DomainEvents,
+  storeId: string,
+  pricesIncludeTax: boolean
+): Promise<{ from: boolean; to: boolean }> {
+  return prisma.transaction(async tx => {
+    await lockStoreForWrite(tx, storeId)
+    await lockStoreScope(tx, storeId, 'preferences')
+    const current = await tx.storeSettings.findUnique({
+      where: { storeId },
+      select: { preferences: true }
+    })
+    if (current === null) throw resourceNotFound('store settings')
+    const base = asRecord(current.preferences)
+    const from = readStorePreferences(base).finance.pricesIncludeTax
+    if (from === pricesIncludeTax) return { from, to: from }
+    await tx.storeSettings.update({
+      where: { storeId },
+      data: {
+        preferences: { ...base, finance: { ...asRecord(base['finance']), pricesIncludeTax } }
+      }
+    })
+    events.publish(tx, Events.STORE_SETTINGS_UPDATED, { storeId })
+    return { from, to: pricesIncludeTax }
+  })
+}
+
 function asRecord(value: unknown): JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as JsonObject)
     : {}
 }
 
-// The preferences as one level of keys, `orders.<key>`, `returns.<key>` and `remittances.<key>` for the keys of the blocks
+// The preferences as one level of keys, `orders.<key>`, `returns.<key>`, `remittances.<key>` and `finance.<key>` for the keys of the blocks
 function flatten(preferences: StorePreferences): Record<string, unknown> {
-  const { orders, returns, remittances, ...flat } = preferences
+  const { orders, returns, remittances, finance, ...flat } = preferences
   return {
     ...flat,
     ...Object.fromEntries(Object.entries(returns).map(([key, value]) => [`returns.${key}`, value])),
     ...Object.fromEntries(Object.entries(orders).map(([key, value]) => [`orders.${key}`, value])),
     ...Object.fromEntries(
       Object.entries(remittances).map(([key, value]) => [`remittances.${key}`, value])
-    )
+    ),
+    ...Object.fromEntries(Object.entries(finance).map(([key, value]) => [`finance.${key}`, value]))
   }
 }
 
