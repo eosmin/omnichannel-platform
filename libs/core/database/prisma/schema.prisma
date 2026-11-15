@@ -1261,6 +1261,9 @@ model PluginInstallation {
   apiKeyPrefix       String?   @map("api_key_prefix") // First 12 chars, shown in UI
   apiKeyHash         String?   @unique @map("api_key_hash") // sha256 of the full key
   rateLimitPerMinute Int       @default(60) @map("rate_limit_per_minute") // From manifest.limits
+  // The webhook endpoint that answered the install challenge: the only address a delivery goes to, whatever a newer version of
+  // the manifest says. Null for a plugin with no webhooks and for the plugins that run inside the platform.
+  webhookEndpoint    String?   @map("webhook_endpoint")
   config             Json?
   installedBy        String    @map("installed_by")
   createdAt          DateTime  @default(now()) @map("created_at")

@@ -903,13 +903,14 @@ Consent screen shows:
 Backend:
   1. Validate manifest schema (again — the catalog row may be stale)
   2. Verify the webhook endpoint responds to a challenge (assertPublicHttpsUrl, TDD_07 §2)
-  3. Create PluginInstallation { status: PENDING_SETUP, scopes granted }
-  4. Generate a scoped API key: pk_{12 random}.{32 random} — store keyPrefix + sha256 hash ONLY;
-     the full key is shown once to the plugin setup handshake, never again
-  5. Audit log the installation (PLUGIN_INSTALLED)
-  6. Redirect to the plugin's setup URL with a one-time code (5 min, Redis)
+  3. Create PluginInstallation { status: PENDING_SETUP, scopes granted, webhookEndpoint that passed }
+  4. Audit log the installation (PLUGIN_INSTALLED)
+  5. Hand the owner a one-time code (5 min, Redis, under its SHA-256) and the plugin's settings URL
   ↓
-Plugin exchanges the code for the API key and calls back
+Plugin exchanges the code (POST /plugin-api/setup/exchange, public: the code is the credential) for its key:
+  the key is made at the exchange, plg_live_ + 256 bits; only its first 12 characters and its sha256 are
+  stored; it is returned in that answer and never again; the installation becomes ACTIVE in the same
+  transaction
   ↓
 Status: ACTIVE (PLUGIN_ENABLED)
 ```

@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { argv, exit } from 'node:process'
 
-import { ApiRoutes } from '@platform/core/api'
+import { ApiRoutes, PluginApiRoutes } from '@platform/core/api'
 
 import { flattenKeys } from './lib/frontend-coverage'
 import { planSteps } from './lib/isolation'
@@ -17,7 +17,8 @@ import {
   checkPluginApiCoverage,
   declaredScopes,
   mappedKeys,
-  pendingKeys
+  pendingKeys,
+  pluginApiPaths
 } from './lib/plugin-api-coverage'
 import { PLUGIN_API_COVERAGE } from './plugin-api-coverage-map'
 
@@ -38,11 +39,14 @@ if (scopes.length === 0) {
 }
 
 const exposed = flattenKeys(ApiRoutes)
+// What `exposed` points to is read from the route constants of the plugin API, not from the shape of a string (open point b)
+const { paths: pluginApiRoutePaths, outside } = pluginApiPaths(PluginApiRoutes)
 const { unmapped, stale, invalid } = checkPluginApiCoverage(
   exposed,
   PLUGIN_API_COVERAGE,
   scopes,
-  steps
+  steps,
+  pluginApiRoutePaths
 )
 const failures: string[] = []
 if (unmapped.length > 0) {
@@ -55,7 +59,13 @@ if (stale.length > 0) {
 }
 if (invalid.length > 0) {
   failures.push(
-    `invalid entries (one of scope, proposed or none; a scope PluginScopes declares; a proposed scope it does not, with a step of the plan that is not deferred; a plugin-api path in exposed; a reason that is not empty):\n  ${invalid.join('\n  ')}`
+    `invalid entries (one of scope, proposed or none; a scope PluginScopes declares; a proposed scope it does not, with a step of the plan that is not deferred; a path of PluginApiRoutes in exposed; a reason that is not empty):\n  ${invalid.join('\n  ')}`
+  )
+}
+
+if (outside.length > 0) {
+  failures.push(
+    `PluginApiRoutes holds paths that are not under /plugin-api/ (a plugin reaches nothing else with its key):\n  ${outside.join('\n  ')}`
   )
 }
 

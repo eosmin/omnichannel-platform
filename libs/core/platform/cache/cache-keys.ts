@@ -110,7 +110,12 @@ export const CacheKeys = {
 
   plugin: {
     manifest: (pluginId: string) => `plugin:${pluginId}:manifest`,
-    installation: (storeId: string, pluginId: string) => `store:${storeId}:plugin:${pluginId}`
+    installation: (storeId: string, pluginId: string) => `store:${storeId}:plugin:${pluginId}`,
+    // The one-time code of an install, under the SHA-256 of the code (a copy of Redis holds no code that still works). Not a
+    // tenant key: the plugin that exchanges it has no store header, so the installation is in the value.
+    setupCode: (codeDigest: string) => `plugin:setup:${codeDigest}`,
+    // The digest of the code that is live for an installation, so that a new code voids the old one
+    setupCodeOf: (installationId: string) => `plugin:setup-of:${installationId}`
   },
 
   rateLimit: (subject: string, endpoint: string) => `rl:${subject}:${endpoint}`,

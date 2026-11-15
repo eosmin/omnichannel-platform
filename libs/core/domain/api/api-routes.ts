@@ -289,6 +289,8 @@ export const ApiRoutes = {
     enable: (id: string) => `/plugins/${id}/enable`,
     disable: (id: string) => `/plugins/${id}/disable`,
     revoke: (id: string) => `/plugins/${id}/revoke`, // Uninstalls: the id is the installation's
+    consent: (id: string) => `/plugins/${id}/consent`, // What installing the plugin of that id would grant (GET); the id is the plugin's
+    setupCode: (id: string) => `/plugins/${id}/setup-code`, // A new one-time code for an installation that is not set up yet (POST); the id is the installation's
     config: (id: string) => `/plugins/${id}/config`
   },
 
@@ -405,6 +407,18 @@ export const ApiRoutes = {
     // The signed link of one file of the visitor's own conversation
     download: '/widget/download-url'
   }
+} as const
+
+// The routes a plugin calls with its own key (TDD_10 §6.4), under the same /api/v1 prefix. They are not in `ApiRoutes` because
+// they are not the routes of the interface: `ApiRoutes` is what the web draws and what `pnpm validate:plugin-api` asks a plugin
+// scope for, and these are what that check points to (`exposed: '/plugin-api/...'` of scripts/plugin-api-coverage-map.ts must
+// be one of them). Every path starts with /plugin-api/, and a test refuses a plugin-api controller route that is not listed here.
+export const PluginApiRoutes = {
+  // A plugin that was just installed trades its one-time code for its key. Public: it has no key yet, and the code is the
+  // credential (256 bits, five minutes, used once).
+  setupExchange: '/plugin-api/setup/exchange',
+  // Who the key is: its installation, its store and its scopes (any active key, no scope needed)
+  installation: '/plugin-api/installation'
 } as const
 
 // Mounted OUTSIDE the /api/v1 prefix.

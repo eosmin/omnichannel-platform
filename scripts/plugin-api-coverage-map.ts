@@ -110,6 +110,8 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'plugins.enable': { none: PLUGIN_ADMIN },
   'plugins.disable': { none: PLUGIN_ADMIN },
   'plugins.revoke': { none: PLUGIN_ADMIN },
+  'plugins.consent': { none: PLUGIN_ADMIN },
+  'plugins.setupCode': { none: PLUGIN_ADMIN },
   'plugins.config': { none: PLUGIN_ADMIN },
   'compliance.dsr': { none: COMPLIANCE },
   'compliance.dsrById': { none: COMPLIANCE },

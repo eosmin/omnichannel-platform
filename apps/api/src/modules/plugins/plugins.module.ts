@@ -8,9 +8,14 @@ import { ChannelRegistryModule } from '../channel-registry'
 import { ChannelsModule } from '../channels/channels.module'
 import { TenancyModule } from '../tenancy'
 
+import { PluginApiController } from './plugin-api.controller'
 import { PluginCatalogSync } from './plugin-catalog-sync.service'
+import { PluginChallengeService } from './plugin-challenge.service'
 import { PluginInstallationsService } from './plugin-installations.service'
+import { PluginIntegrationInstallService } from './plugin-integration-install.service'
 import { PluginRegistrationService } from './plugin-registration.service'
+import { PluginSetupCodeStore } from './plugin-setup-code.store'
+import { PluginSetupExchangeService } from './plugin-setup-exchange.service'
 import { PluginsController } from './plugins.controller'
 
 // The catalog of plugins and the installation of each in a store (D19). The sync writes the
@@ -25,7 +30,15 @@ import { PluginsController } from './plugins.controller'
     PublicApiPlatformModule,
     TenancyModule
   ],
-  controllers: [PluginsController],
-  providers: [PluginCatalogSync, PluginInstallationsService, PluginRegistrationService]
+  controllers: [PluginsController, PluginApiController],
+  providers: [
+    PluginCatalogSync,
+    PluginChallengeService,
+    PluginInstallationsService,
+    PluginIntegrationInstallService,
+    PluginRegistrationService,
+    PluginSetupCodeStore,
+    PluginSetupExchangeService
+  ]
 })
 export class PluginsApiModule {}

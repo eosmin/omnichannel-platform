@@ -7,7 +7,14 @@ import { join, resolve } from 'node:path'
 
 import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants'
 
+import { pluginApiPaths, PluginApiRoutes } from '@platform/core/api'
 import { IS_PUBLIC_KEY } from '@platform/core/auth-module'
+
+import {
+  type PluginApiRouteFacts,
+  pluginApiRouteViolations
+} from '../plugins/plugin-api-route-rules'
+import { PLUGIN_SCOPES_KEY } from '../plugins/plugin-api.keys'
 
 import { ANY_PERMISSION_KEY, MEMBER_ONLY_KEY, PERMISSIONS_KEY, SKIP_TENANT_KEY } from './decorators'
 
@@ -45,10 +52,22 @@ interface Route {
   skipsTenant: boolean
   memberOnly: boolean
   permissions: string[]
+  // What PluginApiKeyGuard checks for a plugin-api route (see plugin-api-route-rules.ts)
+  pluginApi: PluginApiRouteFacts
 }
 
 function read<T>(key: string, target: object): T | undefined {
   return Reflect.getMetadata(key, target) as T | undefined
+}
+
+// The path of a route as Express would mount it: the controller's and the handler's, each with a leading slash and joined with one
+function joinedPath(base: unknown, own: unknown): string | undefined {
+  if (typeof own !== 'string') return undefined
+  const clean = (part: unknown): string =>
+    typeof part === 'string' && part !== '' && part !== '/'
+      ? `/${part.replace(/^\/+|\/+$/g, '')}`
+      : ''
+  return `${clean(base)}${clean(own)}` || '/'
 }
 
 function routesOf(file: string): Route[] {
@@ -59,10 +78,34 @@ function routesOf(file: string): Route[] {
     return Object.getOwnPropertyNames(controller.prototype).flatMap(name => {
       const handler = controller.prototype[name]
       if (typeof handler !== 'function' || read(METHOD_METADATA, handler) === undefined) return []
+      const permissions = [
+        ...(read<string[]>(PERMISSIONS_KEY, controller) ?? []),
+        ...(read<string[]>(PERMISSIONS_KEY, handler) ?? [])
+      ]
+      const anyOf =
+        read<string[]>(ANY_PERMISSION_KEY, handler) ??
+        read<string[]>(ANY_PERMISSION_KEY, controller) ??
+        []
+      const isPublic =
+        read<boolean>(IS_PUBLIC_KEY, handler) === true ||
+        read<boolean>(IS_PUBLIC_KEY, controller) === true
+      // As the guard reads them: the handler's own list wins over the class's
+      const scopes =
+        read<string[]>(PLUGIN_SCOPES_KEY, handler) ?? read<string[]>(PLUGIN_SCOPES_KEY, controller)
+      const own = read<string>(PATH_METADATA, handler)
+      const base = read<string>(PATH_METADATA, controller)
       return [
         {
           controller: controller.name,
           handler: name,
+          pluginApi: {
+            label: `${controller.name}.${name}`,
+            path: joinedPath(base, own),
+            scopes,
+            isPublic,
+            permissions,
+            anyOf
+          },
           isPublic:
             read<boolean>(IS_PUBLIC_KEY, handler) === true ||
             read<boolean>(IS_PUBLIC_KEY, controller) === true,
@@ -83,6 +126,30 @@ function routesOf(file: string): Route[] {
     })
   })
 }
+
+// The routes a plugin reaches with its key: what they ask of a person must be inside what their scopes grant
+describe('the routes of the plugin API', () => {
+  const routes = ROOTS.flatMap(controllerFiles).flatMap(routesOf)
+
+  it('are declared, marked and bound by their scopes', () => {
+    const { paths } = pluginApiPaths(PluginApiRoutes)
+
+    expect(
+      pluginApiRouteViolations(
+        routes.map(route => route.pluginApi),
+        paths,
+        new Set([PluginApiRoutes.setupExchange])
+      )
+    ).toEqual([])
+  })
+
+  it('finds the routes it is meant to check, so that an empty scan cannot pass', () => {
+    const found = routes.map(route => route.pluginApi.path)
+
+    expect(found).toContain(PluginApiRoutes.setupExchange)
+    expect(found).toContain(PluginApiRoutes.installation)
+  })
+})
 
 describe('the protection of every route', () => {
   const routes = ROOTS.flatMap(controllerFiles).flatMap(routesOf)
@@ -130,7 +197,13 @@ describe('the protection of every route', () => {
   // route is protected and it is not. (@Public on a method of a @SkipTenant class is fine.)
   it('does not declare permissions on a route that is exempt from the guards', () => {
     const misleading = routes
-      .filter(route => (route.isPublic || route.skipsTenant) && route.permissions.length > 0)
+      // A plugin-api route is public to the global guards on purpose: PluginApiKeyGuard checks its permissions
+      .filter(
+        route =>
+          (route.isPublic || route.skipsTenant) &&
+          route.permissions.length > 0 &&
+          route.pluginApi.scopes === undefined
+      )
       .map(label)
 
     expect(misleading).toEqual([])

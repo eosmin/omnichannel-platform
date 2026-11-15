@@ -32,6 +32,10 @@ export const ChannelWebhookThrottle = { limit: 600, ttlMs: 60_000 } as const
 // the connection: the same reasoning as a channel's webhook
 export const CarrierWebhookThrottle = { limit: 600, ttlMs: 60_000 } as const
 
+// The plugin API from one address: a plugin serves every store that installed it from a few addresses, and the key and the
+// limit of the installation (PluginApiKeyGuard) are what authenticate and bound each call, so this is only the flood guard
+export const PluginApiIpThrottle = { limit: 3000, ttlMs: 60_000 } as const
+
 // The login profile of D2: 5 a minute per IP, and the same per hashed email, so the endpoint cannot
 // be used to mail-bomb an address from many IPs
 export const MagicLinkThrottle = { limit: 5, ttlMs: 60_000 } as const

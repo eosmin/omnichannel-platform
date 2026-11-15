@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
+import supertest from 'supertest'
 
 import { ChannelOAuthConfig } from '@platform/channels/connections'
 import {
@@ -9,7 +10,7 @@ import {
   MetricDimensions,
   ReportFrequency
 } from '@platform/core/analytics'
-import { ApiRoutes } from '@platform/core/api'
+import { API_PREFIX, ApiRoutes, PluginApiRoutes } from '@platform/core/api'
 import { Permissions, RoleNames, TenantHeaders } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
@@ -26,6 +27,7 @@ import {
   OrderMessageRoutes,
   OrderMessageTriggers,
   PaymentMethod,
+  PLUGIN_API_KEY_TOKEN_PREFIX,
   PluginCatalogTypes,
   PluginPricingModels,
   PluginStatus,
@@ -3312,6 +3314,76 @@ describe('Tenant isolation', () => {
         (await owner.returnReceptionBatch.findUniqueOrThrow({ where: { id: foreignBatch.id } }))
           .status
       ).toBe('draft')
+    })
+  })
+
+  // The key of an installation (Step 5.6, P2) is one store's: the plugin API names the store from the key, and nothing the call
+  // carries (a header, a query) changes it. The installation is the resource, `pluginInstallation` above covers revoking it by id.
+  describe('the key of a plugin installation', () => {
+    const pluginId = `${prefix}-keyed`
+    const keys: Record<'a' | 'a2' | 'b', string> = { a: '', a2: '', b: '' }
+    const stores = () => ({ a: ctx.storeA, a2: ctx.storeA2, b: ctx.storeB })
+
+    beforeAll(async () => {
+      await owner.plugin.create({
+        data: {
+          id: pluginId,
+          name: 'Keyed plugin',
+          authorName: 'suite',
+          authorEmail: 'suite@example.invalid',
+          type: PluginCatalogTypes.INTEGRATION,
+          manifest: {},
+          pricingModel: PluginPricingModels.FREE,
+          status: PluginStatus.APPROVED,
+          organizationId: ctx.orgA.id
+        }
+      })
+      for (const [name, store] of Object.entries(stores()) as [
+        'a' | 'a2' | 'b',
+        { id: string }
+      ][]) {
+        const key = `${PLUGIN_API_KEY_TOKEN_PREFIX}${name}${'x'.repeat(40)}`
+        keys[name] = key
+        // Installed as the setup exchange leaves it: active, with the hash of the key only
+        await owner.pluginInstallation.create({
+          data: {
+            storeId: store.id,
+            pluginId,
+            scopes: [],
+            status: 'active',
+            apiKeyPrefix: key.slice(0, 12),
+            apiKeyHash: createHash('sha256').update(key).digest('hex'),
+            installedBy: 'suite'
+          }
+        })
+      }
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId } })
+      await owner.plugin.deleteMany({ where: { id: pluginId } })
+    })
+
+    const whoIs = (key: string) =>
+      supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+        .get(`${API_PREFIX}${PluginApiRoutes.installation}`)
+        .set('authorization', `Bearer ${key}`)
+
+    it('names the store of its own installation, and the sibling and foreign stores each their own', async () => {
+      for (const [name, store] of Object.entries(stores())) {
+        const response = await whoIs(keys[name as 'a' | 'a2' | 'b'])
+        expect(response.status).toBe(200)
+        expect((response.body as { storeId: string }).storeId).toBe(store.id)
+      }
+    })
+
+    it('is not moved to another store by a header, a query or a body that names one', async () => {
+      const moved = await whoIs(keys.a)
+        .set('x-store-id', ctx.storeB.id)
+        .query({ storeId: ctx.storeB.id })
+        .send({ storeId: ctx.storeB.id })
+
+      expect(moved.status).toBe(200)
+      expect((moved.body as { storeId: string }).storeId).toBe(ctx.storeA.id)
     })
   })
 

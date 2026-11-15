@@ -11,4 +11,6 @@ export interface AuthenticatedRequest extends Request {
   organization?: { id: string }
   membership?: { id: string; roleId: string; roleName: string }
   permissions?: readonly Permission[]
+  // Set by PluginApiKeyGuard on a plugin-api route, instead of `user` and `membership`: the call is the installation's
+  pluginInstallation?: { id: string; pluginId: string; scopes: readonly string[] }
 }
