@@ -61,7 +61,7 @@ describe('plugin widgets api', () => {
     const { client, fetchImpl } = setup(json(200, { ...widget, visible: true }))
     await setPluginWidgetVisible(client, 'store-1', 'i1', 'info', true)
     const { url, init } = callOf(fetchImpl)
-    expect(url).toBe('https://api.example.com/api/v1/plugin-widgets/settings/i1/info')
+    expect(url).toBe('https://api.example.com/api/v1/plugin-widgets/settings/i1/widget/info')
     expect(init.method).toBe('PUT')
     expect(init.body).toBe(JSON.stringify({ visible: true }))
   })
