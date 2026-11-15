@@ -60,10 +60,16 @@ export async function ensureWidgetPlugin(
     ui: { widget: input.widgetUrl },
     widgets: [{ id: 'info', name: 'Info panel', defaultHeight: 300 }]
   }
+  // An integration plugin belongs to the organization that registered it (D10; a check enforces it)
+  const store = await owner.store.findUniqueOrThrow({
+    where: { id: input.storeId },
+    select: { organizationId: true }
+  })
   await owner.plugin.upsert({
     where: { id: input.pluginId },
     create: {
       id: input.pluginId,
+      organizationId: store.organizationId,
       name: input.pluginId,
       authorName: 'suite',
       authorEmail: 'suite@example.invalid',
