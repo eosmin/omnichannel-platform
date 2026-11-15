@@ -66,6 +66,7 @@ import { ExportsService, type ExportView } from '../exports'
 import type { Actor } from '../tenancy'
 
 import { OrderGuides, type VoidedGuides } from './order-guides.service'
+import { actorIds, actorRef } from './orders-actor'
 import { type LineToAllocate, OrderInventoryService } from './orders-inventory.service'
 import {
   approvalColumnsCleared,
@@ -83,7 +84,6 @@ import {
 } from './orders-tax'
 import { type ListOrdersQuery, encodeOrderCursor } from './orders.schemas'
 import {
-  actorRef,
   assertHolds,
   hasActiveGuide,
   lockOrder,
@@ -433,6 +433,8 @@ export class OrdersService {
     // Naming the order it was copied from tells whether that order exists: only who may read orders can (the draft needs it too)
     if (body.copiedFromOrderId !== undefined) assertHolds(held, Permissions.ORDERS_VIEW)
     const canOverridePrice = held.includes(Permissions.ORDERS_OVERRIDE_PRICE)
+    // A person's id or a plugin's, never one for the other (PR E3b)
+    const by = actorIds(actor)
 
     const created = await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
@@ -462,7 +464,7 @@ export class OrdersService {
       // How the books tax a sale today: an order made now fixes it (TDD_18 §7); an organization with no books has none
       const taxContext = await loadTaxContext(tx, storeId)
       const { lines, priceChanged } = await resolveLines(tx, storeId, body.items, {
-        userId: actor.userId,
+        userId: by.userId,
         canOverridePrice,
         tax: taxContext
       })
@@ -519,18 +521,22 @@ export class OrdersService {
           discountReason: normalizeNote(body.discountReason),
           priceApprovalStatus: control.approvalStatus,
           priceApprovalRequestedBy:
-            control.approvalStatus === PriceApprovalStatus.PENDING ? actor.userId : null,
+            control.approvalStatus === PriceApprovalStatus.PENDING ? by.userId : null,
+          priceApprovalRequestedByPluginId:
+            control.approvalStatus === PriceApprovalStatus.PENDING ? by.pluginId : null,
           ...(confirmNow
             ? {
                 confirmedAt: now,
-                confirmedBy: actor.userId,
+                confirmedBy: by.userId,
+                confirmedByPluginId: by.pluginId,
                 confirmedVia: OrderConfirmationChannel.AT_CREATION
               }
             : {}),
           ...(body.copiedFromOrderId === undefined
             ? {}
             : { copiedFromOrderId: body.copiedFromOrderId }),
-          createdBy: actor.userId
+          createdBy: by.userId,
+          createdByPluginId: by.pluginId
         },
         select: { id: true, orderNumber: true }
       })
@@ -539,7 +545,7 @@ export class OrdersService {
         storeId,
         orderId: order.id,
         lines: toAllocatable(lines, itemIds),
-        createdBy: actor.userId
+        createdBy: by
       })
 
       // The thread of the conversation the order came from says so, in the same transaction
@@ -643,8 +649,9 @@ export class OrdersService {
       select: { currency: true, settings: { select: { preferences: true } } }
     })
     const taxContext = await loadTaxContext(tx, storeId)
+    const by = actorIds(actor)
     const { lines } = await resolveLines(tx, storeId, body.items, {
-      userId: actor.userId,
+      userId: by.userId,
       canOverridePrice: false,
       tax: taxContext
     })
@@ -724,10 +731,12 @@ export class OrdersService {
         discountReason: totals.discountCents > 0 ? exchangeCreditReason(input.returnId) : null,
         priceApprovalStatus: PriceApprovalStatus.NOT_REQUIRED,
         confirmedAt: now,
-        confirmedBy: actor.userId,
+        confirmedBy: by.userId,
+        confirmedByPluginId: by.pluginId,
         confirmedVia: OrderConfirmationChannel.OTHER,
         exchangeOfOrderId: input.ofOrderId,
-        createdBy: actor.userId
+        createdBy: by.userId,
+        createdByPluginId: by.pluginId
       },
       select: { id: true, orderNumber: true }
     })
@@ -736,7 +745,7 @@ export class OrdersService {
       storeId,
       orderId: order.id,
       lines: toAllocatable(lines, itemIds),
-      createdBy: actor.userId
+      createdBy: by
     })
     const common = {
       storeId,
@@ -792,6 +801,7 @@ export class OrdersService {
     held: readonly Permission[]
   ): Promise<OrderDetailView> {
     const canOverridePrice = held.includes(Permissions.ORDERS_OVERRIDE_PRICE)
+    const by = actorIds(actor)
     const outcome = await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
       await lockOrder(tx, storeId, orderId)
@@ -907,7 +917,7 @@ export class OrdersService {
         let priceChanged = false
         if (body.items !== undefined) {
           const resolved = await resolveLines(tx, storeId, body.items, {
-            userId: actor.userId,
+            userId: by.userId,
             canOverridePrice,
             existing: current,
             tax: taxContext
@@ -1034,13 +1044,24 @@ export class OrdersService {
           ...(carrierChanged ? { carrierConnectionId: planned.connectionId } : {})
         })
         if (next === PriceApprovalStatus.NOT_REQUIRED) {
-          Object.assign(data, { priceApprovalRequestedBy: null, ...approvalColumnsCleared })
+          Object.assign(data, {
+            priceApprovalRequestedBy: null,
+            priceApprovalRequestedByPluginId: null,
+            ...approvalColumnsCleared
+          })
         } else if (next === PriceApprovalStatus.PENDING) {
           // The old approval named other values: it is spent. The one who asks is who made the change that needs it.
           Object.assign(data, {
             // Whoever moved the price is who asks for its approval, so nobody approves a price they set
-            priceApprovalRequestedBy:
-              becamePending || priceTouched ? actor.userId : order.priceApprovalRequestedBy,
+            ...(becamePending || priceTouched
+              ? {
+                  priceApprovalRequestedBy: by.userId,
+                  priceApprovalRequestedByPluginId: by.pluginId
+                }
+              : {
+                  priceApprovalRequestedBy: order.priceApprovalRequestedBy,
+                  priceApprovalRequestedByPluginId: order.priceApprovalRequestedByPluginId
+                }),
             ...approvalColumnsCleared
           })
         }
@@ -1049,14 +1070,14 @@ export class OrdersService {
       if (lines !== null) {
         // Same order of locks as a creation: the order, then the allocation of the store, then the levels
         await lockStoreScope(tx, storeId, OrderLockScopes.ALLOCATION)
-        await this.stock.release(tx, storeId, orderId, actor.userId)
+        await this.stock.release(tx, storeId, orderId, by)
         await tx.orderItem.deleteMany({ where: { orderId, order: { storeId } } })
         const itemIds = await this.writeLines(tx, orderId, lines, tax)
         await this.stock.allocateAndReserve(tx, {
           storeId,
           orderId,
           lines: toAllocatable(lines, itemIds),
-          createdBy: actor.userId
+          createdBy: by
         })
       } else if (tax !== null) {
         // The price moved but the lines did not: the share of the discount and the fee changed, so the tax of each line is written
@@ -1211,7 +1232,7 @@ export class OrdersService {
     }
     // The carrier is asked once the order has committed and its audit entries are written; the guides are CANCEL_PENDING until
     // the worker does
-    await this.guides.hand(storeId, outcome.voided, actor.userId)
+    await this.guides.hand(storeId, outcome.voided, by.userId)
     return this.get(storeId, orderId, held)
   }
 

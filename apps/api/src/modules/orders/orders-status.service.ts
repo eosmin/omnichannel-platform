@@ -46,11 +46,11 @@ import { MediaPurpose } from '@platform/core/storage'
 import type { Actor } from '../tenancy'
 
 import { OrderGuides, type VoidedGuides } from './order-guides.service'
+import { actorIds, actorKeyOf, actorRef } from './orders-actor'
 import { OrderInventoryService } from './orders-inventory.service'
 import type { ConfirmOrdersBulkBody } from './orders.schemas'
 import { OrdersService } from './orders.service'
 import {
-  actorRef,
   assertHolds,
   hasActiveGuide,
   lockOrder,
@@ -251,6 +251,7 @@ export class OrdersStatusService {
     // Step 4.12 will own this decision)
     if (body.restock === true) assertHolds(held, Permissions.INVENTORY_ADJUST)
 
+    const by = actorIds(actor)
     const result = await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
       await lockOrder(tx, storeId, orderId)
@@ -317,21 +318,23 @@ export class OrdersStatusService {
         case OrderStatus.CONFIRMED:
           Object.assign(data, {
             confirmedAt: now,
-            confirmedBy: actor.userId,
+            confirmedBy: by.userId,
+            confirmedByPluginId: by.pluginId,
             confirmedVia: body.confirmedVia ?? OrderConfirmationChannel.OTHER
           })
           break
         case OrderStatus.CANCELLED:
           // Before SHIPPED the stock was only promised: the reservations go back
-          await this.stock.release(tx, storeId, orderId, actor.userId)
+          await this.stock.release(tx, storeId, orderId, by)
           Object.assign(data, {
             cancellationReason: body.cancellationReason ?? null,
-            cancelledBy: actor.userId,
+            cancelledBy: by.userId,
+            cancelledByPluginId: by.pluginId,
             cancelledAt: now
           })
           break
         case OrderStatus.SHIPPED:
-          await this.stock.issue(tx, storeId, orderId, actor.userId)
+          await this.stock.issue(tx, storeId, orderId, by)
           Object.assign(data, { shippedAt: now })
           break
         case OrderStatus.DELIVERED: {
@@ -367,7 +370,7 @@ export class OrdersStatusService {
             throw orderRefusal(ErrorCodes.ORDER_HAS_ACTIVE_RETURNS)
           }
           // An order with no OrderReturn: the agent chooses to put the units back on the shelf or not
-          if (body.restock === true) await this.stock.restock(tx, storeId, orderId, actor.userId)
+          if (body.restock === true) await this.stock.restock(tx, storeId, orderId, by)
           break
         case OrderStatus.PENDING_CONFIRMATION:
         case OrderStatus.PREPARING:
@@ -432,7 +435,7 @@ export class OrdersStatusService {
     }
     // The carrier is asked once the order has committed and its audit entries are written (the shipments are CANCEL_PENDING
     // until the worker does): a queue that hangs cannot take the entries with it
-    await this.guides.hand(storeId, result.voided, actor.userId)
+    await this.guides.hand(storeId, result.voided, by.userId)
   }
 
   // Approve or reject the price of an order that waits for it (TDD_17 §4.13). Nobody approves their own request.
@@ -444,6 +447,7 @@ export class OrdersStatusService {
     actor: Actor,
     held: readonly Permission[]
   ): Promise<OrderDetailView> {
+    const by = actorIds(actor)
     const result = await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
       await lockOrder(tx, storeId, orderId)
@@ -455,7 +459,8 @@ export class OrdersStatusService {
           shippingCents: true,
           status: true,
           priceApprovalStatus: true,
-          priceApprovalRequestedBy: true
+          priceApprovalRequestedBy: true,
+          priceApprovalRequestedByPluginId: true
         }
       })
       // A price is decided while the order can still change: not after it shipped, was delivered, cancelled or returned
@@ -464,8 +469,11 @@ export class OrdersStatusService {
       }
       const verdict = checkPriceDecision({
         status: order.priceApprovalStatus as PriceApprovalStatus,
-        requestedBy: order.priceApprovalRequestedBy,
-        approverId: actor.userId,
+        requestedBy: actorKeyOf({
+          userId: order.priceApprovalRequestedBy,
+          pluginId: order.priceApprovalRequestedByPluginId
+        }),
+        approverId: actorKeyOf(by) ?? '',
         decision
       })
       if (!verdict.ok) throw orderRefusal(verdict.code)
@@ -477,7 +485,8 @@ export class OrdersStatusService {
           // What the approver accepted is what the order costs now: an edit that moves either goes back to pending
           ...(approved
             ? {
-                priceApprovedBy: actor.userId,
+                priceApprovedBy: by.userId,
+                priceApprovedByPluginId: by.pluginId,
                 priceApprovedAt: new Date(),
                 priceApprovedDiscountCents: order.discountCents,
                 priceApprovedShippingCents: order.shippingCents
@@ -508,6 +517,7 @@ export class OrdersStatusService {
         discountCents: result.discountCents,
         shippingCents: result.shippingCents,
         requestedBy: result.priceApprovalRequestedBy,
+        requestedByPluginId: result.priceApprovalRequestedByPluginId,
         reason: reason ?? null
       }
     )

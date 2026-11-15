@@ -65,6 +65,9 @@ export class OrderMessageListener implements OnModuleDestroy {
   onOrderCreated(payload: OrderCreatedPayload): Promise<void> {
     return this.track(async () => {
       const { storeId, orderId, actor } = payload
+      // An order a plugin made tells the customer through `order-messages:write`, not by the preference of the store: that message
+      // would go out with no scope behind it and no one to name as who asked
+      if (actor.type !== 'user') return
       const wanted =
         payload.sendSummary ?? (await this.preferencesOf(storeId)).orders.sendSummaryOnCreate
       if (!wanted) return

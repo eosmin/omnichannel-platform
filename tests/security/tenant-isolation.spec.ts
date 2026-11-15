@@ -25,11 +25,14 @@ import {
   JournalEntryType,
   MembershipStatus,
   MessageType,
+  OrderConfirmationChannel,
   OrderMessageKind,
   OrderMessageNotSentReasons,
   OrderMessageRoutes,
   OrderMessageTriggers,
+  OrderStatus,
   PaymentMethod,
+  PaymentStatus,
   PLUGIN_API_KEY_TOKEN_PREFIX,
   PluginCatalogTypes,
   PluginPricingModels,
@@ -165,6 +168,60 @@ function booksOf(owner: OwnerClient, organizationId: string): Promise<FinanceFix
 async function booksOfStore(owner: OwnerClient, storeId: string): Promise<FinanceFixture> {
   return booksOf(owner, await organizationOfStore(owner, storeId))
 }
+// A statement of the cash account of an organization with one line, as the import writes it: the file is a finance file of the store
+// and the line carries its hash (TDD_18 §4.4)
+async function bankStatementOf(
+  owner: OwnerClient,
+  storeId: string,
+  cents = -700
+): Promise<{ organizationId: string; accountId: string; importId: string; lineId: string }> {
+  const books = await booksOfStore(owner, storeId)
+  const mediaId = randomUUID()
+  await owner.media.create({
+    data: {
+      id: mediaId,
+      storeId,
+      purpose: 'finance_document',
+      key: `${prefix}/bank-statement/${mediaId}`,
+      filename: 'statement.csv',
+      contentType: 'text/csv',
+      fileSize: 10,
+      status: 'clean'
+    }
+  })
+  const imported = await owner.bankStatementImport.create({
+    data: {
+      organizationId: books.organizationId,
+      accountId: books.accounts.cash,
+      mediaId,
+      lineCount: 1,
+      newLineCount: 1,
+      firstDay: day(FINANCE_ENTRY_DATE),
+      lastDay: day(FINANCE_ENTRY_DATE),
+      createdBy: 'isolation-suite'
+    },
+    select: { id: true }
+  })
+  const line = await owner.bankStatementLine.create({
+    data: {
+      organizationId: books.organizationId,
+      importId: imported.id,
+      accountId: books.accounts.cash,
+      lineNo: 2,
+      postedOn: day(FINANCE_ENTRY_DATE),
+      amountCents: cents,
+      lineHash: randomUUID().replaceAll('-', '').padEnd(64, '0')
+    },
+    select: { id: true }
+  })
+  return {
+    organizationId: books.organizationId,
+    accountId: books.accounts.cash,
+    importId: imported.id,
+    lineId: line.id
+  }
+}
+
 // Each call asks for a period of a year no other has taken, so that every row is one more
 let periodYear = 2100
 const nextPeriodYear = (): number => (periodYear += 1)
@@ -1084,6 +1141,35 @@ const resources: IsolationResource[] = [
       (await owner.returnReceptionItem.findUnique({ where: { id }, select: { note: true } }))
         ?.note === null
   },
+  // A private plugin belongs to the organization that registered it (D10): every store of it sees it, another organization
+  // never does, and one id answers the same for a plugin that is not there
+  {
+    name: 'plugin',
+    create: async (owner, { storeId }) => {
+      const id = `iso-${randomUUID().slice(0, 12)}`
+      await owner.plugin.create({
+        data: {
+          id,
+          name: 'Isolation plugin',
+          authorName: 'suite',
+          authorEmail: 'suite@example.invalid',
+          type: PluginCatalogTypes.INTEGRATION,
+          manifest: {},
+          pricingModel: PluginPricingModels.FREE,
+          status: PluginStatus.APPROVED,
+          organizationId: await organizationOfStore(owner, storeId)
+        }
+      })
+      return { id }
+    },
+    scope: 'organization',
+    readPath: ApiRoutes.plugins.byId,
+    listPath: ApiRoutes.plugins.available,
+    // No route changes a plugin row except registering a newer version (covered by "a private plugin" below)
+    untouched: async (owner, id) =>
+      (await owner.plugin.findUnique({ where: { id }, select: { name: true } }))?.name ===
+      'Isolation plugin'
+  },
   {
     name: 'warehouse',
     create: async (owner, { storeId }) => ({
@@ -1437,6 +1523,114 @@ const resources: IsolationResource[] = [
       )?.voidedByEntryId === null
     // No `creation` check: the body may name a store of the organization (the dimension of the lines), so a store of ANOTHER organization
     // is a 404 and not the 400 of a strict body; tests/api/finance-transactions.spec.ts proves that and that nothing is written
+  },
+  // The reading profile of a bank's CSV is the organization's: listed and changed by id, never read by it
+  {
+    name: 'bankImportProfile',
+    create: async (owner, { storeId }) => {
+      const books = await booksOfStore(owner, storeId)
+      return {
+        id: (
+          await owner.bankImportProfile.create({
+            data: {
+              organizationId: books.organizationId,
+              accountId: books.accounts.cash,
+              name: `Isolation ${randomUUID().slice(0, 8)}`,
+              columns: { date: 'Date', amount: 'Amount' },
+              createdBy: 'isolation-suite'
+            },
+            select: { id: true }
+          })
+        ).id
+      }
+    },
+    scope: 'organization',
+    listPath: ApiRoutes.finance.bank.profiles,
+    modify: {
+      path: ApiRoutes.finance.bank.profileById,
+      method: 'patch',
+      body: { name: 'hacked' }
+    },
+    untouched: async (owner, id) =>
+      (await owner.bankImportProfile.findUnique({ where: { id }, select: { name: true } }))
+        ?.name !== 'hacked',
+    creation: {
+      path: ApiRoutes.finance.bank.profiles,
+      body: name => {
+        const books = financeBooksA
+        if (books === null) throw new Error('the books of organization A are not set up')
+        return { accountId: books.accounts.cash, name, columns: { date: 'Date', amount: 'Amount' } }
+      },
+      strict: true,
+      countIn: async (owner, storeId) =>
+        owner.bankImportProfile.count({
+          where: { organizationId: await organizationOfStore(owner, storeId) }
+        }),
+      storeOf: async (owner, id) =>
+        (
+          await owner.bankImportProfile.findUnique({
+            where: { id },
+            select: { organizationId: true }
+          })
+        )?.organizationId ?? null
+    }
+  },
+  // An imported statement is the organization's and no route changes it: it is read by id and listed
+  {
+    name: 'bankStatementImport',
+    create: async (owner, { storeId }) => ({
+      id: (await bankStatementOf(owner, storeId)).importId
+    }),
+    scope: 'organization',
+    readPath: ApiRoutes.finance.bank.importById,
+    listPath: ApiRoutes.finance.bank.imports,
+    untouched: () => Promise.resolve(true)
+  },
+  // With an entry on the cash account the line has an exact suggestion: a request that reached these lines would confirm it.
+  // The lines belong to their import: they are read with it, and the one change a route can try is to confirm what the books suggest,
+  // which must never reach another organization's lines
+  {
+    name: 'bankStatementLine',
+    create: async (owner, { storeId }) => {
+      const statement = await bankStatementOf(owner, storeId, -700)
+      await postTestEntry(owner, simpleEntry(await booksOfStore(owner, storeId), 700))
+      return { id: statement.importId }
+    },
+    scope: 'organization',
+    readPath: ApiRoutes.finance.bank.importLines,
+    modify: { path: ApiRoutes.finance.bank.confirmExact, method: 'post', body: {} },
+    untouched: async (owner, id) =>
+      (await owner.reconciliationMatch.count({ where: { statementLine: { importId: id } } })) === 0
+  },
+  // A decision of a person: no route reads one; the change a stranger could try is to take it back
+  {
+    name: 'reconciliationMatch',
+    create: async (owner, { storeId }) => {
+      const statement = await bankStatementOf(owner, storeId, -700)
+      const books = await booksOfStore(owner, storeId)
+      const entry = await postTestEntry(owner, simpleEntry(books, 700))
+      const book = entry.lines.find(line => line.accountId === statement.accountId)
+      if (book === undefined) throw new Error('the entry has no line of the cash account')
+      return {
+        id: (
+          await owner.reconciliationMatch.create({
+            data: {
+              organizationId: statement.organizationId,
+              statementLineId: statement.lineId,
+              journalLineId: book.id,
+              status: 'confirmed',
+              decidedBy: 'isolation-suite'
+            },
+            select: { id: true }
+          })
+        ).id
+      }
+    },
+    scope: 'organization',
+    modify: { path: ApiRoutes.finance.bank.matchUndo, method: 'post', body: {} },
+    untouched: async (owner, id) =>
+      (await owner.reconciliationMatch.findUnique({ where: { id }, select: { status: true } }))
+        ?.status === 'confirmed'
   },
   // The lines belong to their entry: they are read with it, and the store of a line is a dimension and not a scope
   {
@@ -4567,6 +4761,109 @@ describe('Tenant isolation', () => {
       expect(messages.status).toBe(404)
       expect(list.status).toBe(200)
       expect(JSON.stringify(list.body)).not.toContain(orderA)
+    })
+  })
+
+  // What a plugin key writes of the orders (Step 5.6, E3b): the key of store B creates, edits, confirms, cancels, pays and decides the
+  // price of orders of store B, and an order of store A, a customer of store A and a product of store A are rows that do not exist for
+  // it, whatever the id it names. Nothing of store A changes.
+  describe('the orders written with the key of a plugin', () => {
+    const pluginId = `${prefix}-ordwrite`
+    let keyOfB = ''
+    let orderA = ''
+    let customerA = ''
+    let productA = ''
+    let customerB = ''
+    let productB = ''
+
+    beforeAll(async () => {
+      ;({ key: keyOfB } = await createPluginKey(owner, {
+        storeId: ctx.storeB.id,
+        pluginId,
+        scopes: [
+          PluginScopes.ORDERS_READ,
+          PluginScopes.ORDERS_WRITE,
+          PluginScopes.ORDERS_EDIT,
+          PluginScopes.ORDERS_CONFIRM,
+          PluginScopes.ORDERS_CANCEL,
+          PluginScopes.ORDERS_APPROVE_PRICE,
+          PluginScopes.ORDER_MESSAGES_WRITE
+        ]
+      }))
+      orderA = (await createOrder(owner, { storeId: ctx.storeA.id })).id
+      customerA = (await createCustomer(owner, { storeId: ctx.storeA.id })).id
+      productA = (await createProduct(owner, { storeId: ctx.storeA.id })).id
+      customerB = (await createCustomer(owner, { storeId: ctx.storeB.id })).id
+      productB = (await createProduct(owner, { storeId: ctx.storeB.id })).id
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId } })
+      await owner.plugin.deleteMany({ where: { id: pluginId } })
+    })
+
+    const asB = (method: 'post' | 'patch', path: string) =>
+      supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+        [method](`${API_PREFIX}${path}`)
+        .set('authorization', `Bearer ${keyOfB}`)
+
+    it('does not create an order for a customer or with a product of another store', async () => {
+      const body = {
+        items: [{ productId: productB, quantity: 1 }],
+        paymentMethod: PaymentMethod.CASH_ON_DELIVERY,
+        recipientPhones: ['71234567']
+      }
+      const foreignCustomer = await asB('post', PluginApiRoutes.orders.create).send({
+        ...body,
+        customerId: customerA
+      })
+      const foreignProduct = await asB('post', PluginApiRoutes.orders.create).send({
+        ...body,
+        customerId: customerB,
+        items: [{ productId: productA, quantity: 1 }]
+      })
+
+      expect(foreignCustomer.status).toBe(404)
+      expect(foreignProduct.status).toBe(404)
+      expect(
+        await owner.order.count({ where: { storeId: ctx.storeB.id, createdByPluginId: pluginId } })
+      ).toBe(0)
+    })
+
+    it('does not edit, change, confirm, cancel, pay, decide the price of or send a message about an order of another store', async () => {
+      const writes = [
+        asB('patch', PluginApiRoutes.orders.byId(orderA)).send({ shippingCents: 1 }),
+        asB('post', PluginApiRoutes.orders.status(orderA)).send({ status: OrderStatus.PREPARING }),
+        asB('post', PluginApiRoutes.orders.confirm(orderA)).send({
+          via: OrderConfirmationChannel.CALL
+        }),
+        asB('post', PluginApiRoutes.orders.cancel(orderA)).send({ cancellationReason: 'x' }),
+        asB('post', PluginApiRoutes.orders.payment(orderA)).send({
+          method: PaymentMethod.CASH,
+          status: PaymentStatus.COMPLETED
+        }),
+        asB('post', PluginApiRoutes.orders.priceApprovalApprove(orderA)).send({}),
+        asB('post', PluginApiRoutes.orders.priceApprovalReject(orderA)).send({}),
+        asB('post', PluginApiRoutes.orders.messages(orderA)).send({
+          kind: OrderMessageKind.ORDER_SHIPPED,
+          idempotencyKey: randomUUID()
+        }),
+        asB('post', PluginApiRoutes.orders.confirmBulk).send({
+          ids: [orderA],
+          via: OrderConfirmationChannel.CALL
+        })
+      ]
+
+      const responses = await Promise.all(writes)
+      // The selection answers 200 and says that nothing was confirmed; every other write is a 404
+      expect(responses.slice(0, -1).map(response => response.status)).toEqual(
+        Array(writes.length - 1).fill(404)
+      )
+      expect((responses.at(-1)?.body as { succeeded: string[] }).succeeded).toEqual([])
+      const after = await owner.order.findUniqueOrThrow({ where: { id: orderA } })
+      expect(after.status).toBe(OrderStatus.PENDING_CONFIRMATION)
+      expect(after.confirmedByPluginId).toBeNull()
+      expect(after.cancelledByPluginId).toBeNull()
+      expect(await owner.orderMessageDispatch.count({ where: { orderId: orderA } })).toBe(0)
     })
   })
 

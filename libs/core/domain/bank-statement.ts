@@ -1,0 +1,607 @@
+import { FinanceLimits } from './finance-constants'
+import {
+  cleanImportText as cleanText,
+  headerKey,
+  parseImportDay,
+  resolveImportColumn as resolveColumn,
+  shownImportValue as shown,
+  widthOfMostImportRows as widthOfMostRows,
+  type RemittanceDateFormat,
+  type RemittanceDecimalSeparator,
+  type RemittanceDelimiter,
+  splitDelimited
+} from './remittance-import'
+import { plainText } from './text'
+import { DAY_MS } from './time-constants'
+
+// The deterministic reading of the CSV a bank gives (TDD_18 §4.4) and the matching of its lines with the books. No AI, no connection
+// to a bank, no locale guessed, no formula evaluated: a cell is text, and a cell that is not what its column says is a visible row
+// error and is never read as zero. Pure: the service reads the file, keeps it and writes. [ACCOUNTANT] / the owner configure the
+// columns, the formats and the window of dates of each bank in a saved profile; nothing about a bank is built in.
+
+export const BankStatementLimits = {
+  MAX_BYTES: 5 * 1024 * 1024,
+  MAX_ROWS: 5000,
+  // The preview of the mapper reads a sample, not the file (it travels as JSON, whose body the app reads up to 100 KB)
+  PREVIEW_MAX_BYTES: 32 * 1024,
+  PREVIEW_ROWS: 20,
+  MAX_ERRORS_REPORTED: 100,
+  REFERENCE_MAX_LENGTH: 100,
+  DESCRIPTION_MAX_LENGTH: 300,
+  // A cent amount of a line is an Int of the database, like every amount of the books
+  MAX_AMOUNT_CENTS: FinanceLimits.MAX_LINE_CENTS,
+  // The days a statement line and a book line may be apart and still be suggested (the profile's own choice)
+  DATE_WINDOW_DEFAULT_DAYS: 3,
+  DATE_WINDOW_MAX_DAYS: 31,
+  // A reference shorter than this says nothing ("1" is inside every number): it never makes a match "exact"
+  REFERENCE_MIN_MATCH_LENGTH: 4,
+  MAX_PROFILES_PER_ACCOUNT: 20,
+  PROFILE_NAME_MAX_LENGTH: 80,
+  // A page of statement lines, and how many suggestions one line shows
+  MAX_SUGGESTIONS_PER_LINE: 5,
+  // The most statement lines one bulk confirmation settles
+  MAX_BULK_CONFIRM: 1000
+} as const
+
+// How the bytes of the file become text. A bank of the region may still send Latin-1 (Windows-1252): the profile says so, nothing is guessed.
+export const BankStatementEncodings = { UTF8: 'utf-8', WINDOWS_1252: 'windows-1252' } as const
+export type BankStatementEncoding =
+  (typeof BankStatementEncodings)[keyof typeof BankStatementEncodings]
+
+// The thousands separator a bank prints inside an amount ("1,234.50"): none unless the profile says so
+export const BankThousandsSeparators = {
+  NONE: 'none',
+  COMMA: 'comma',
+  DOT: 'dot',
+  SPACE: 'space'
+} as const
+export type BankThousandsSeparator =
+  (typeof BankThousandsSeparators)[keyof typeof BankThousandsSeparators]
+const THOUSANDS_CHARACTER: Record<BankThousandsSeparator, string | null> = {
+  none: null,
+  comma: ',',
+  dot: '.',
+  space: ' '
+}
+
+// How the file is kept and named (the delimiter decides the extension of the copy that is kept)
+export const BankStatementFiles = {
+  CSV: { contentType: 'text/csv', extension: 'csv' },
+  TSV: { contentType: 'text/tab-separated-values', extension: 'tsv' },
+  FILENAME_PREFIX: 'bank-statement'
+} as const
+
+export const BankStatementFields = {
+  DATE: 'date',
+  DESCRIPTION: 'description',
+  REFERENCE: 'reference',
+  AMOUNT: 'amount',
+  DEBIT: 'debit',
+  CREDIT: 'credit'
+} as const
+export type BankStatementField = (typeof BankStatementFields)[keyof typeof BankStatementFields]
+
+// Why a row, or the mapping, was refused: the closed list a screen translates
+export const BankStatementErrors = {
+  COLUMN_NOT_FOUND: 'column_not_found',
+  COLUMN_AMBIGUOUS: 'column_ambiguous',
+  COLUMN_REUSED: 'column_reused',
+  MISSING_CELL: 'missing_cell',
+  EMPTY_VALUE: 'empty_value',
+  INVALID_AMOUNT: 'invalid_amount',
+  INVALID_DATE: 'invalid_date',
+  INVALID_TEXT: 'invalid_text',
+  // Debit and credit columns: a row that fills both, or neither, does not say which way the money went
+  AMBIGUOUS_DIRECTION: 'ambiguous_direction',
+  ZERO_AMOUNT: 'zero_amount',
+  TOO_MANY_ROWS: 'too_many_rows',
+  EMPTY_FILE: 'empty_file',
+  UNCLOSED_QUOTE: 'unclosed_quote',
+  ROW_TOO_WIDE: 'row_too_wide',
+  STRAY_QUOTE: 'stray_quote'
+} as const
+export type BankStatementError = (typeof BankStatementErrors)[keyof typeof BankStatementErrors]
+
+export type BankColumnRef = string | number
+
+// The money is one signed column, or one column for what came in (credit) and one for what went out (debit): never both ways
+export interface BankStatementMapping {
+  date: BankColumnRef
+  description?: BankColumnRef | undefined
+  reference?: BankColumnRef | undefined
+  amount?: BankColumnRef | undefined
+  debit?: BankColumnRef | undefined
+  credit?: BankColumnRef | undefined
+}
+
+export interface BankStatementProfileShape {
+  delimiter: RemittanceDelimiter
+  hasHeader: boolean
+  decimalSeparator: RemittanceDecimalSeparator
+  thousandsSeparator: BankThousandsSeparator
+  dateFormat: RemittanceDateFormat
+  columns: BankStatementMapping
+}
+
+export interface BankRowError {
+  // 1-based line of the file where the row starts, counting the header
+  row: number
+  field: BankStatementField | null
+  code: BankStatementError
+  value: string | null
+}
+
+export interface ParsedBankLine {
+  // 'yyyy-MM-dd'
+  postedOn: string
+  // Positive: money in (the bank credited the account). Negative: money out.
+  amountCents: number
+  description: string | null
+  reference: string | null
+  row: number
+  // Which of the lines of the same day, amount, reference and description this one is, in file order: a statement that has two
+  // identical lines is two lines, and the same file read again gives each the same number
+  occurrence: number
+}
+
+export interface ParsedBankStatement {
+  headers: string[]
+  lines: ParsedBankLine[]
+  errors: BankRowError[]
+  errorCount: number
+  rowCount: number
+}
+
+// The rules a profile keeps, written once (the schemas refuse a profile that breaks one, the service checks the one a change would
+// leave): returns what is wrong, or null.
+export function bankProfileProblem(value: {
+  hasHeader: boolean
+  delimiter: string
+  decimalSeparator: string
+  thousandsSeparator: string
+  columns: Record<string, string | number | undefined>
+}): string | null {
+  const { amount, debit, credit } = value.columns
+  const hasAmount = amount !== undefined
+  const hasSplit = debit !== undefined || credit !== undefined
+  if (hasAmount === hasSplit) {
+    return 'the money is one signed column, or one column for debits and one for credits'
+  }
+  if (hasSplit && (debit === undefined || credit === undefined)) {
+    return 'a debit column needs a credit column, and the other way round'
+  }
+  if (!value.hasHeader && Object.values(value.columns).some(ref => typeof ref === 'string')) {
+    return 'a file with no header is mapped by column position'
+  }
+  const refs = Object.values(value.columns).filter(ref => ref !== undefined)
+  const keys = refs.map(ref => (typeof ref === 'string' ? `h:${headerKey(ref)}` : `i:${ref}`))
+  if (new Set(keys).size !== keys.length) return 'each value must be read from a column of its own'
+  if (value.delimiter === value.decimalSeparator) {
+    return 'the delimiter and the decimal separator must differ'
+  }
+  const thousands = THOUSANDS_CHARACTER[value.thousandsSeparator as BankThousandsSeparator]
+  if (thousands !== null && thousands !== undefined) {
+    if (thousands === value.decimalSeparator) {
+      return 'the thousands separator and the decimal separator must differ'
+    }
+    if (thousands === value.delimiter) return 'the thousands separator cannot be the delimiter'
+  }
+  return null
+}
+
+// ------------------------------------------------------------------------------------------------------ the cells
+
+const escapeForPattern = (character: string): string =>
+  character.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+const AMOUNT_PATTERNS = new Map<string, RegExp>()
+function amountPattern(
+  decimal: RemittanceDecimalSeparator,
+  thousands: BankThousandsSeparator
+): RegExp {
+  const key = `${decimal}|${thousands}`
+  const cached = AMOUNT_PATTERNS.get(key)
+  if (cached !== undefined) return cached
+  const group = THOUSANDS_CHARACTER[thousands]
+  // With a thousands separator the groups must be exactly three digits: "1,23" is not an amount and is never read as one
+  const whole =
+    group === null ? '\\d{1,12}' : `(?:\\d{1,3}(?:${escapeForPattern(group)}\\d{3}){1,3}|\\d{1,12})`
+  const pattern = new RegExp(`^([+-])?(${whole})(?:${escapeForPattern(decimal)}(\\d{1,2}))?$`)
+  AMOUNT_PATTERNS.set(key, pattern)
+  return pattern
+}
+
+// An amount as a bank prints it, to whole cents: an optional sign (only when `allowSign`), digits with the thousands separator of the
+// profile, at most one decimal separator and at most two decimals. No currency symbol, no exponent, no parentheses, no spaces
+// inside (unless the separator is a space): "abc" is never 0 and "1,234.50" is never 1.23. Returns signed cents, or null.
+export function parseBankAmountCents(
+  cell: string,
+  decimal: RemittanceDecimalSeparator,
+  thousands: BankThousandsSeparator,
+  allowSign: boolean
+): number | null {
+  const match = amountPattern(decimal, thousands).exec(cell.trim())
+  if (match === null) return null
+  const sign = match[1]
+  if (sign !== undefined && !allowSign) return null
+  const group = THOUSANDS_CHARACTER[thousands]
+  const wholeText = group === null ? (match[2] ?? '') : (match[2] ?? '').split(group).join('')
+  const cents = Number(wholeText) * 100 + Number((match[3] ?? '').padEnd(2, '0'))
+  if (!Number.isSafeInteger(cents) || cents > BankStatementLimits.MAX_AMOUNT_CENTS) return null
+  return sign === '-' ? -cents : cents
+}
+
+// ------------------------------------------------------------------------------------------------------ the file
+
+// Reads the whole text with the profile. Every problem is returned, none is thrown: the file is accepted only when `errorCount` is 0
+// (one bad row refuses the whole file, so a statement is never imported half). `maxRows` bounds the rows read (the preview reads few).
+export function parseBankStatement(
+  text: string,
+  profile: BankStatementProfileShape,
+  options: { maxRows?: number; partial?: boolean } = {}
+): ParsedBankStatement {
+  const maxRows = options.maxRows ?? BankStatementLimits.MAX_ROWS
+  const errors: BankRowError[] = []
+  let errorCount = 0
+  const fail = (
+    row: number,
+    field: BankStatementField | null,
+    code: BankStatementError,
+    value: string | null
+  ) => {
+    errorCount += 1
+    if (errors.length < BankStatementLimits.MAX_ERRORS_REPORTED) {
+      errors.push({ row, field, code, value })
+    }
+  }
+  const empty: ParsedBankStatement = { headers: [], lines: [], errors, errorCount: 0, rowCount: 0 }
+  const {
+    rows,
+    lines: startLines,
+    unclosedQuote,
+    openLine,
+    strayRows,
+    truncated
+  } = splitDelimited(text, profile.delimiter, BankStatementLimits.MAX_ROWS * 2 + 10)
+  if (truncated) {
+    fail(openLine, null, BankStatementErrors.TOO_MANY_ROWS, null)
+    return { ...empty, errorCount }
+  }
+  if (unclosedQuote && !options.partial) {
+    fail(openLine, null, BankStatementErrors.UNCLOSED_QUOTE, null)
+    return { ...empty, errorCount }
+  }
+  const body = rows
+    .map((cells, index) => ({ cells, line: startLines[index] ?? index + 1, index }))
+    .filter(entry => entry.cells.some(cell => cell.trim() !== ''))
+  const first = body[0]
+  if (profile.hasHeader && first !== undefined && strayRows.has(first.index)) {
+    fail(first.line, null, BankStatementErrors.STRAY_QUOTE, null)
+    return { ...empty, errorCount }
+  }
+  if (body.length === 0) {
+    fail(1, null, BankStatementErrors.EMPTY_FILE, null)
+    return { ...empty, errorCount }
+  }
+  const headerRow = profile.hasHeader ? (body[0]?.cells ?? []) : []
+  const headerLine = body[0]?.line ?? 1
+  const data = profile.hasHeader ? body.slice(1) : body
+  if (profile.hasHeader && data.length === 0) {
+    fail(headerLine, null, BankStatementErrors.EMPTY_FILE, null)
+  }
+  if (data.length > BankStatementLimits.MAX_ROWS) {
+    fail(
+      data[BankStatementLimits.MAX_ROWS]?.line ?? 1,
+      null,
+      BankStatementErrors.TOO_MANY_ROWS,
+      String(data.length)
+    )
+    return { ...empty, headers: headerRow, errorCount }
+  }
+  const width = profile.hasHeader
+    ? headerRow.length
+    : widthOfMostRows(data.map(entry => entry.cells.length))
+  const reach = profile.hasHeader
+    ? width
+    : data.reduce((most, entry) => Math.max(most, entry.cells.length), 0)
+  const columns: Partial<Record<BankStatementField, number>> = {}
+  const mapping: [BankStatementField, BankColumnRef | undefined][] = [
+    [BankStatementFields.DATE, profile.columns.date],
+    [BankStatementFields.DESCRIPTION, profile.columns.description],
+    [BankStatementFields.REFERENCE, profile.columns.reference],
+    [BankStatementFields.AMOUNT, profile.columns.amount],
+    [BankStatementFields.DEBIT, profile.columns.debit],
+    [BankStatementFields.CREDIT, profile.columns.credit]
+  ]
+  for (const [field, ref] of mapping) {
+    const index = resolveColumn(ref, headerRow, profile.hasHeader, reach)
+    if (index === null || index === 'ambiguous') {
+      fail(
+        headerLine,
+        field,
+        index === null
+          ? BankStatementErrors.COLUMN_NOT_FOUND
+          : BankStatementErrors.COLUMN_AMBIGUOUS,
+        ref === undefined ? null : shown(String(ref))
+      )
+    } else if (index !== undefined) {
+      if (Object.values(columns).includes(index)) {
+        fail(headerLine, field, BankStatementErrors.COLUMN_REUSED, shown(String(ref)))
+      } else columns[field] = index
+    }
+  }
+  const lines: ParsedBankLine[] = []
+  let rowCount = 0
+  const split = profile.columns.amount === undefined
+  const moneyMissing = split
+    ? columns.debit === undefined || columns.credit === undefined
+    : columns.amount === undefined
+  if (errorCount > 0 && (columns.date === undefined || moneyMissing)) {
+    return { headers: headerRow, lines, errors, errorCount, rowCount }
+  }
+  const seen = new Map<string, number>()
+  for (const { cells, line: row, index: at } of data.slice(0, maxRows)) {
+    rowCount += 1
+    const before = errorCount
+    if (strayRows.has(at)) {
+      fail(row, null, BankStatementErrors.STRAY_QUOTE, null)
+      continue
+    }
+    if (cells.slice(width).some(extra => extra.trim() !== '')) {
+      fail(row, null, BankStatementErrors.ROW_TOO_WIDE, String(cells.length))
+      continue
+    }
+    const cell = (field: BankStatementField): string | undefined => {
+      const index = columns[field]
+      return index === undefined ? undefined : cells[index]
+    }
+    const required = (field: BankStatementField): string | null => {
+      const value = cell(field)
+      if (value === undefined) {
+        fail(row, field, BankStatementErrors.MISSING_CELL, null)
+        return null
+      }
+      if (value.trim() === '') {
+        fail(row, field, BankStatementErrors.EMPTY_VALUE, null)
+        return null
+      }
+      return value
+    }
+    let postedOn: string | null = null
+    const dateCell = required(BankStatementFields.DATE)
+    if (dateCell !== null) {
+      postedOn = parseImportDay(dateCell, profile.dateFormat)
+      if (postedOn === null) {
+        fail(row, BankStatementFields.DATE, BankStatementErrors.INVALID_DATE, shown(dateCell))
+      }
+    }
+    let amount: number | null = null
+    if (!split) {
+      const amountCell = required(BankStatementFields.AMOUNT)
+      if (amountCell !== null) {
+        amount = parseBankAmountCents(
+          amountCell,
+          profile.decimalSeparator,
+          profile.thousandsSeparator,
+          true
+        )
+        if (amount === null) {
+          fail(
+            row,
+            BankStatementFields.AMOUNT,
+            BankStatementErrors.INVALID_AMOUNT,
+            shown(amountCell)
+          )
+        }
+      }
+    } else {
+      // A bank that prints a 0.00 in the column that does not apply is read as saying nothing there: exactly one of the two says an
+      // amount, the other is empty or zero; both saying one, or neither saying anything, does not say which way the money went
+      const sides = (
+        [
+          [BankStatementFields.DEBIT, cell(BankStatementFields.DEBIT), -1],
+          [BankStatementFields.CREDIT, cell(BankStatementFields.CREDIT), 1]
+        ] as const
+      ).map(([field, value, sign]) => {
+        if (value === undefined || value.trim() === '')
+          return { field, filled: false, cents: 0, sign }
+        const cents = parseBankAmountCents(
+          value,
+          profile.decimalSeparator,
+          profile.thousandsSeparator,
+          false
+        )
+        if (cents === null) {
+          fail(row, field, BankStatementErrors.INVALID_AMOUNT, shown(value))
+          return { field, filled: true, cents: null, sign }
+        }
+        return { field, filled: true, cents, sign }
+      })
+      if (sides.every(side => side.cents !== null)) {
+        const spoken = sides.filter(side => side.cents !== 0)
+        const only = spoken[0]
+        if (spoken.length === 1 && only !== undefined && only.cents !== null) {
+          amount = only.sign * only.cents
+        } else if (spoken.length === 0 && sides.some(side => side.filled)) {
+          amount = 0
+        } else {
+          fail(row, null, BankStatementErrors.AMBIGUOUS_DIRECTION, null)
+        }
+      }
+    }
+    if (amount === 0) {
+      fail(row, split ? null : BankStatementFields.AMOUNT, BankStatementErrors.ZERO_AMOUNT, null)
+    }
+    let description: string | null = null
+    const descriptionCell = cell(BankStatementFields.DESCRIPTION)
+    if (descriptionCell !== undefined && descriptionCell.trim() !== '') {
+      // The description is information, not what the money is: a long memo (banks join the text of a transfer) is cut, never a reason to
+      // refuse the statement
+      description = cleanText(
+        Array.from(descriptionCell.trim())
+          .slice(0, BankStatementLimits.DESCRIPTION_MAX_LENGTH)
+          .join(''),
+        BankStatementLimits.DESCRIPTION_MAX_LENGTH
+      )
+      if (description === null) {
+        fail(
+          row,
+          BankStatementFields.DESCRIPTION,
+          BankStatementErrors.INVALID_TEXT,
+          shown(descriptionCell)
+        )
+      }
+    }
+    let reference: string | null = null
+    const referenceCell = cell(BankStatementFields.REFERENCE)
+    if (referenceCell !== undefined && referenceCell.trim() !== '') {
+      reference = cleanText(referenceCell, BankStatementLimits.REFERENCE_MAX_LENGTH)
+      if (reference === null) {
+        fail(
+          row,
+          BankStatementFields.REFERENCE,
+          BankStatementErrors.INVALID_TEXT,
+          shown(referenceCell)
+        )
+      }
+    }
+    if (errorCount === before && postedOn !== null && amount !== null && amount !== 0) {
+      const key = [postedOn, amount, reference ?? '', description ?? ''].join('\u0000')
+      const occurrence = seen.get(key) ?? 0
+      seen.set(key, occurrence + 1)
+      lines.push({ postedOn, amountCents: amount, description, reference, row, occurrence })
+    }
+  }
+  return { headers: headerRow, lines, errors, errorCount, rowCount }
+}
+
+// ------------------------------------------------------------------------------------------------------ the matching
+
+// A line of the statement, as the matcher sees it
+export interface MatchStatementLine {
+  id: string
+  postedOn: string
+  amountCents: number
+  reference: string | null
+}
+
+// A line of the journal on the cash account being reconciled that no confirmed match has taken yet. `signedCents` is debit minus credit:
+// money that came into the account is positive, like the statement. `texts` are what the books say about it (the supplier's document
+// number, the memo), compared with the statement's reference.
+export interface MatchBookLine {
+  id: string
+  entryDate: string
+  signedCents: number
+  texts: readonly string[]
+}
+
+export interface MatchSuggestion {
+  bookLineId: string
+  // Whole days between the statement's date and the books' date
+  dayDifference: number
+  referenceMatch: boolean
+  // The same day or the reference is in the books: the strongest the deterministic rules say
+  exact: boolean
+}
+
+export function daysBetween(a: string, b: string): number {
+  return Math.abs(
+    Math.round((Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / DAY_MS)
+  )
+}
+
+function normalizeText(value: string): string {
+  return plainText(value)
+}
+
+// Does the reference of the bank appear in what the books say, or the other way round? Only a token that can be a document number:
+// the shorter text has at least 4 characters and a digit ("Pago" or "Venta" is in every memo and says nothing), so a generic word
+// never makes a match "exact".
+export function referencesAgree(reference: string | null, texts: readonly string[]): boolean {
+  if (reference === null) return false
+  const wanted = normalizeText(reference)
+  return texts.some(text => {
+    const other = normalizeText(text)
+    const [shorter, longer] = wanted.length <= other.length ? [wanted, other] : [other, wanted]
+    if (shorter.length < BankStatementLimits.REFERENCE_MIN_MATCH_LENGTH || !/\d/.test(shorter)) {
+      return false
+    }
+    // As a whole token: "0012" is not inside "INV-100125"
+    return new RegExp(`(?:^|[^a-z0-9])${escapeForPattern(shorter)}(?:[^a-z0-9]|$)`).test(longer)
+  })
+}
+
+// The lines of the books a statement line may be matched with: the amount equal to the cent, in the same direction, within the window
+// of days. Rejected pairs ("lineId:bookLineId") are never suggested again. Strongest first: the reference, then the nearest day, then
+// the id (so the order never changes between two reads).
+export function suggestMatches(
+  lines: readonly MatchStatementLine[],
+  book: readonly MatchBookLine[],
+  windowDays: number,
+  rejected: ReadonlySet<string>
+): Map<string, MatchSuggestion[]> {
+  const byAmount = new Map<number, MatchBookLine[]>()
+  for (const candidate of book) {
+    const list = byAmount.get(candidate.signedCents)
+    if (list === undefined) byAmount.set(candidate.signedCents, [candidate])
+    else list.push(candidate)
+  }
+  const result = new Map<string, MatchSuggestion[]>()
+  for (const line of lines) {
+    const found: MatchSuggestion[] = []
+    for (const candidate of byAmount.get(line.amountCents) ?? []) {
+      if (rejected.has(`${line.id}:${candidate.id}`)) continue
+      const dayDifference = daysBetween(line.postedOn, candidate.entryDate)
+      if (dayDifference > windowDays) continue
+      const referenceMatch = referencesAgree(line.reference, candidate.texts)
+      found.push({
+        bookLineId: candidate.id,
+        dayDifference,
+        referenceMatch,
+        exact: dayDifference === 0 || referenceMatch
+      })
+    }
+    found.sort(
+      (a, b) =>
+        Number(b.referenceMatch) - Number(a.referenceMatch) ||
+        a.dayDifference - b.dayDifference ||
+        a.bookLineId.localeCompare(b.bookLineId)
+    )
+    result.set(line.id, found)
+  }
+  return result
+}
+
+// The pairs that are safe to confirm all at once: the line has ONE suggestion, it is exact, and no other line has that same book line
+// as a suggestion. Anything with a second possibility is left for a person to choose.
+export function unambiguousExactPairs(
+  suggestions: ReadonlyMap<string, readonly MatchSuggestion[]>
+): { lineId: string; bookLineId: string }[] {
+  const claims = new Map<string, number>()
+  for (const list of suggestions.values()) {
+    for (const suggestion of list) {
+      claims.set(suggestion.bookLineId, (claims.get(suggestion.bookLineId) ?? 0) + 1)
+    }
+  }
+  const pairs: { lineId: string; bookLineId: string }[] = []
+  for (const [lineId, list] of suggestions) {
+    const only = list.length === 1 ? list[0] : undefined
+    if (only !== undefined && only.exact && claims.get(only.bookLineId) === 1) {
+      pairs.push({ lineId, bookLineId: only.bookLineId })
+    }
+  }
+  return pairs.sort((a, b) => a.lineId.localeCompare(b.lineId))
+}
+
+// Whether a statement line and a line of the books can be a pair at all (the check a person's confirmation must pass, whatever the
+// screen sent): the same amount in the same direction, within the window
+export function canPair(
+  line: Pick<MatchStatementLine, 'postedOn' | 'amountCents'>,
+  book: Pick<MatchBookLine, 'entryDate' | 'signedCents'>,
+  windowDays: number
+): boolean {
+  return (
+    line.amountCents === book.signedCents &&
+    daysBetween(line.postedOn, book.entryDate) <= windowDays
+  )
+}

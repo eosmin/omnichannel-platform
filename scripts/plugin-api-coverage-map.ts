@@ -113,18 +113,14 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'settings.apiKeys': { none: SECURITY_SETTINGS },
   'settings.apiKeyById': { none: SECURITY_SETTINGS },
   'settings.retention': { none: SECURITY_SETTINGS },
-  'plugins.list': { none: PLUGIN_ADMIN },
   'plugins.available': { none: PLUGIN_ADMIN },
   'plugins.install': { none: PLUGIN_ADMIN },
   'plugins.register': { none: PLUGIN_ADMIN },
   'plugins.byId': { none: PLUGIN_ADMIN },
-  'plugins.enable': { none: PLUGIN_ADMIN },
-  'plugins.disable': { none: PLUGIN_ADMIN },
   'plugins.revoke': { none: PLUGIN_ADMIN },
   'plugins.consent': { none: PLUGIN_ADMIN },
   'plugins.setupCode': { none: PLUGIN_ADMIN },
   'plugins.commandSecret': { none: PLUGIN_ADMIN },
-  'plugins.config': { none: PLUGIN_ADMIN },
   'pluginWidgets.list': { none: WIDGET_HOST },
   'pluginWidgets.sessions': { none: WIDGET_HOST },
   'pluginWidgets.bridge': { none: WIDGET_HOST },
@@ -293,36 +289,63 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
 
   // Orders (`orders:*` exist); the messages and templates of an order are a scope of their own
   'orders.list': { scope: 'orders:read', exposed: '/plugin-api/orders' },
-  'orders.create': { scope: 'orders:write' },
-  // The GET is exposed (PR E3a); the PATCH needs the id of a person (PR E3b)
+  'orders.create': { scope: ['orders:read', 'orders:write'], exposed: '/plugin-api/orders' },
+  // The GET is exposed by PR E3a (`orders:read`) and the PATCH by PR E3b (`orders:edit`, with the plugin as the actor)
   'orders.byId': {
-    proposed: ['orders:read', 'orders:edit'],
-    step: STEP,
+    scope: ['orders:read', 'orders:edit'],
     exposed: '/plugin-api/orders/:id'
   },
-  'orders.cancel': { proposed: 'orders:cancel', step: STEP },
-  'orders.status': { scope: 'orders:write' },
-  'orders.items': { proposed: 'orders:edit', step: STEP },
+  'orders.cancel': {
+    scope: ['orders:read', 'orders:cancel'],
+    exposed: '/plugin-api/orders/:id/cancel'
+  },
+  'orders.status': {
+    scope: ['orders:read', 'orders:write'],
+    exposed: '/plugin-api/orders/:id/status'
+  },
+  // The lines of an order are edited through the PATCH of the order itself (`items`): there is no route of the people for them either
+  'orders.items': { scope: ['orders:read', 'orders:edit'], exposed: '/plugin-api/orders/:id' },
   'orders.print': { none: ORDER_PRINT },
   'orders.export': { proposed: ['orders:read', 'exports:write'], step: STEP },
-  'orders.confirm': { proposed: 'orders:confirm', step: STEP },
-  'orders.confirmBulk': { proposed: 'orders:confirm', step: STEP },
-  'orders.copy': { scope: ['orders:read', 'orders:write'] },
-  // The GET (the history) is exposed (PR E3a); sending a message stores who pressed it (PR E3b)
+  'orders.confirm': {
+    scope: ['orders:read', 'orders:confirm'],
+    exposed: '/plugin-api/orders/:id/confirm'
+  },
+  'orders.confirmBulk': {
+    scope: ['orders:read', 'orders:confirm'],
+    exposed: '/plugin-api/orders/confirm-bulk'
+  },
+  // The draft carries the customer, the address, the phones and the product ids that `orders:read` withholds, so the route names the
+  // scope of each (PR E3a debt (c)), and it leaves out the internal and packing notes (a plugin never reads them)
+  'orders.copy': {
+    scope: ['orders:read', 'orders:write', 'customers:read', 'products:read'],
+    exposed: '/plugin-api/orders/:id/copy'
+  },
+  // The GET (the history) is `orders:read` + `order-messages:read` (PR E3a); sending a message is `order-messages:write` (PR E3b)
   'orders.messages': {
-    proposed: ['orders:read', 'order-messages:read', 'order-messages:write'],
-    step: STEP,
+    scope: ['orders:read', 'order-messages:read', 'order-messages:write'],
     exposed: '/plugin-api/orders/:id/messages'
   },
-  'orders.payment': { proposed: 'orders:edit', step: STEP },
-  'orders.priceApprovalApprove': { proposed: 'orders:approve-price', step: STEP },
-  'orders.priceApprovalReject': { proposed: 'orders:approve-price', step: STEP },
+  'orders.payment': {
+    scope: ['orders:read', 'orders:edit'],
+    exposed: '/plugin-api/orders/:id/payment'
+  },
+  'orders.priceApprovalApprove': {
+    scope: ['orders:read', 'orders:approve-price'],
+    exposed: '/plugin-api/orders/:id/price-approval/approve'
+  },
+  'orders.priceApprovalReject': {
+    scope: ['orders:read', 'orders:approve-price'],
+    exposed: '/plugin-api/orders/:id/price-approval/reject'
+  },
   'orderTemplates.list': { scope: 'order-messages:read', exposed: '/plugin-api/order-templates' },
-  'orderTemplates.preview': { proposed: 'order-templates:write', step: STEP },
-  // The GET is exposed (PR E3a); the PUT and DELETE are SETTINGS_MANAGE_ORDER_TEMPLATES and audit a person (PR E3b)
+  'orderTemplates.preview': {
+    scope: 'order-templates:write',
+    exposed: '/plugin-api/order-templates/preview'
+  },
+  // The GET is `order-messages:read` (PR E3a); the PUT and the DELETE are `order-templates:write` (PR E3b, audited as the plugin)
   'orderTemplates.byKindAndLocale': {
-    proposed: ['order-messages:read', 'order-templates:write'],
-    step: STEP,
+    scope: ['order-messages:read', 'order-templates:write'],
     exposed: '/plugin-api/order-templates/:kind/locales/:locale'
   },
 
@@ -389,6 +412,19 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'finance.transactions.void': { none: FINANCE },
   'finance.transactions.replace': { none: FINANCE },
   'finance.transactions.document': { none: FINANCE },
+  'finance.bank.profiles': { none: FINANCE },
+  'finance.bank.profileById': { none: FINANCE },
+  'finance.bank.profilePreview': { none: FINANCE },
+  'finance.bank.imports': { none: FINANCE },
+  'finance.bank.importById': { none: FINANCE },
+  'finance.bank.importLines': { none: FINANCE },
+  'finance.bank.confirmExact': { none: FINANCE },
+  'finance.bank.difference': { none: FINANCE },
+  'finance.bank.lineMatches': { none: FINANCE },
+  'finance.bank.lineRejections': { none: FINANCE },
+  'finance.bank.lineRegisterDraft': { none: FINANCE },
+  'finance.bank.matchUndo': { none: FINANCE },
+  'finance.bank.status': { none: FINANCE },
   'finance.balances': { none: FINANCE },
   'finance.postings': { none: FINANCE },
 

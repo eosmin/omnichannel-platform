@@ -578,3 +578,12 @@ export function parseRemittanceFile(
     receivedOn: days.size === 1 ? ([...days][0] ?? null) : null
   }
 }
+
+// What another file reader of the platform (the bank statement, TDD_18 §4.4) shares with this one, so that a fix to one of the rules of a
+// cell reaches both
+export {
+  cleanText as cleanImportText,
+  resolveColumn as resolveImportColumn,
+  shown as shownImportValue,
+  widthOfMostRows as widthOfMostImportRows
+}
