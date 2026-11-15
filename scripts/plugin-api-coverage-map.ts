@@ -388,6 +388,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'finance.transactions.byId': { none: FINANCE },
   'finance.transactions.void': { none: FINANCE },
   'finance.transactions.replace': { none: FINANCE },
+  'finance.transactions.document': { none: FINANCE },
   'finance.balances': { none: FINANCE },
   'finance.postings': { none: FINANCE },
 

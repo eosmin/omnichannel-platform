@@ -6,11 +6,12 @@ import type { Redis } from 'ioredis'
 import type { Permission } from '@platform/core/auth'
 import { CacheKeys } from '@platform/core/cache'
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
-import { MediaStatus } from '@platform/core/domain'
+import { FinanceConflicts, FinanceTransactionKind, MediaStatus } from '@platform/core/domain'
 import {
   ErrorCodes,
   HttpStatusCodes,
   PlatformException,
+  resourceConflict,
   resourceNotFound
 } from '@platform/core/errors'
 import { assertMediaServable } from '@platform/core/messaging'
@@ -34,6 +35,8 @@ import {
   VARIANT_CONTENT_TYPE
 } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
+
+import { requireTransactionPermission } from '../finance/finance.support'
 
 import {
   countWithinQuota,
@@ -70,7 +73,8 @@ const MEDIA_SELECT = {
   processedAt: true,
   uploadedBy: true,
   productId: true,
-  orderId: true
+  orderId: true,
+  financeTransactionId: true
 } as const
 
 type MediaRow = Omit<MediaView, 'purpose' | 'status'> & {
@@ -82,6 +86,7 @@ type MediaRow = Omit<MediaView, 'purpose' | 'status'> & {
   uploadedBy: string | null
   productId: string | null
   orderId: string | null
+  financeTransactionId: string | null
 }
 
 interface UploadKeys {
@@ -126,7 +131,7 @@ export class MediaService {
     refuseTypeOrSize(body.contentType, body.fileSizeBytes, body.purpose)
     // The quota first: a refused parent counts too, so ids cannot be probed without limit
     await this.takeQuota(storeId, userId)
-    await this.requireParent(storeId, body)
+    await this.requireParent(storeId, body, held)
 
     // Chosen by the server: it becomes Media.id on confirmation and is part of the key, so a client
     // cannot confirm a key it was not given
@@ -197,7 +202,7 @@ export class MediaService {
 
     // The parent is checked again: the request that signed the url was another one. After the retry
     // above, so a retry of a file that was kept is not refused because its product went away since.
-    await this.requireParent(storeId, body)
+    await this.requireParent(storeId, body, held)
 
     // Only who asked for the signed url confirms it. Same answer as any other bad upload.
     const requester = await this.redis.get(CacheKeys.upload.requester(storeId, body.mediaId))
@@ -246,7 +251,7 @@ export class MediaService {
     } catch (error) {
       // The parent was deleted after it was checked: the same answer as a parent that is not there
       if (isForeignKeyViolation(error)) {
-        throw resourceNotFound(body.purpose === MediaPurpose.ORDER ? 'order' : 'product')
+        throw resourceNotFound(parentNameOf(body.purpose))
       }
       if (!isUniqueViolation(error)) throw error
       // Two confirmations at once: the other one won
@@ -326,7 +331,8 @@ export class MediaService {
   // foreign one cannot be probed. Not read at all for a purpose that has no parent.
   private async requireParent(
     storeId: string,
-    body: RequestUploadUrlBody | ConfirmUploadBody
+    body: RequestUploadUrlBody | ConfirmUploadBody,
+    held: readonly Permission[]
   ): Promise<void> {
     if (body.purpose === MediaPurpose.PRODUCT) {
       const product = await this.prisma.client.product.findFirst({
@@ -340,6 +346,22 @@ export class MediaService {
         select: { id: true }
       })
       if (order === null) throw resourceNotFound('order')
+    } else if (body.purpose === MediaPurpose.FINANCE_DOCUMENT) {
+      // The books belong to the organization and a file to a store: the transaction must be one of the organization of THIS store (the
+      // header's, never the body's). One of another organization, or that does not exist, is the same answer.
+      const transaction = await this.prisma.client.financeTransaction.findFirst({
+        where: { id: body.parentId, organization: { stores: { some: { id: storeId } } } },
+        select: { kind: true, documentMediaId: true, voidedByEntryId: true }
+      })
+      if (transaction === null) throw resourceNotFound('finance transaction')
+      // The permission of the KIND of THIS transaction (a treasurer does not file receipts of an expense), and a transaction that can
+      // still take one: a file made for a voided or documented one could never be attached
+      requireTransactionPermission(transaction.kind as FinanceTransactionKind, held)
+      if (transaction.voidedByEntryId !== null || transaction.documentMediaId !== null) {
+        throw resourceConflict('the transaction takes no receipt', {
+          conflict: FinanceConflicts.TRANSACTION_DOCUMENT_ALREADY_SET
+        })
+      }
     }
   }
 
@@ -356,7 +378,8 @@ export class MediaService {
       media.uploadedBy !== userId ||
       media.purpose !== body.purpose ||
       media.productId !== parent.productId ||
-      media.orderId !== parent.orderId
+      media.orderId !== parent.orderId ||
+      media.financeTransactionId !== parent.financeTransactionId
     ) {
       throw uploadVerificationFailed()
     }
@@ -395,16 +418,25 @@ export class MediaService {
   }
 }
 
-// The parent columns of the row of a file: the product or the order it is for, null in both when its
+// The parent columns of the row of a file: the product, the order or the transaction of the books it is for, null in all when its
 // purpose has no parent
 function parentColumnsOf(body: RequestUploadUrlBody | ConfirmUploadBody): {
   productId: string | null
   orderId: string | null
+  financeTransactionId: string | null
 } {
   return {
     productId: body.purpose === MediaPurpose.PRODUCT ? body.parentId : null,
-    orderId: body.purpose === MediaPurpose.ORDER ? body.parentId : null
+    orderId: body.purpose === MediaPurpose.ORDER ? body.parentId : null,
+    financeTransactionId: body.purpose === MediaPurpose.FINANCE_DOCUMENT ? body.parentId : null
   }
+}
+
+// What a parent that is not there is called in the answer
+function parentNameOf(purpose: RequestUploadUrlBody['purpose']): string {
+  if (purpose === MediaPurpose.ORDER) return 'order'
+  if (purpose === MediaPurpose.FINANCE_DOCUMENT) return 'finance transaction'
+  return 'product'
 }
 
 const FOREIGN_KEY_CONSTRAINT_FAILED = 'P2003'

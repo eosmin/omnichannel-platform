@@ -1172,45 +1172,48 @@ model StockTransferLine {
 // ============================================================
 
 model Media {
-  id               String    @id @default(uuid())
-  storeId          String?   @map("store_id") // Null only for user avatars
-  purpose          String // MediaPurpose: message | origin | product | order | avatar | export
-  messageId        String?   @map("message_id")
-  originSlot       String?   @map("origin_slot") // OriginMediaSlot: which picture of the ad this is
-  originId         String?   @map("origin_id") // Set for the picture of an ad (purpose origin), never for the gallery
-  customerId       String?   @map("customer_id") // Set for message media: gallery queries
-  productId        String?   @map("product_id")
-  orderId          String?   @map("order_id")
-  uploadedBy       String?   @map("uploaded_by") // User id; null for inbound channel media
-  key              String    @unique // S3 object key, built by storage-keys.ts
-  filename         String
-  contentType      String    @map("content_type")
-  fileSize         Int       @map("file_size")
+  id                   String    @id @default(uuid())
+  storeId              String?   @map("store_id") // Null only for user avatars
+  purpose              String // MediaPurpose: message | origin | product | order | avatar | export
+  messageId            String?   @map("message_id")
+  originSlot           String?   @map("origin_slot") // OriginMediaSlot: which picture of the ad this is
+  originId             String?   @map("origin_id") // Set for the picture of an ad (purpose origin), never for the gallery
+  customerId           String?   @map("customer_id") // Set for message media: gallery queries
+  productId            String?   @map("product_id")
+  orderId              String?   @map("order_id")
+  financeTransactionId String?   @map("finance_transaction_id") // The transaction of the books a receipt is for (purpose finance_document)
+  uploadedBy           String?   @map("uploaded_by") // User id; null for inbound channel media
+  key                  String    @unique // S3 object key, built by storage-keys.ts
+  filename             String
+  contentType          String    @map("content_type")
+  fileSize             Int       @map("file_size")
   // { full: key, medium: key, thumb: key } — KEYS, signed at read time (TDD_07 §6.6)
-  variants         Json?
-  status           String    @default("pending") // MediaStatus
-  scanResult       Json?     @map("scan_result") // { viruses: string[] } when infected; { reason } when refused; { sanitized: true } once a pending picture was cleaned of its metadata
-  processedAt      DateTime? @map("processed_at")
-  scannedAt        DateTime? @map("scanned_at")
-  createdAt        DateTime  @default(now()) @map("created_at")
+  variants             Json?
+  status               String    @default("pending") // MediaStatus
+  scanResult           Json?     @map("scan_result") // { viruses: string[] } when infected; { reason } when refused; { sanitized: true } once a pending picture was cleaned of its metadata
+  processedAt          DateTime? @map("processed_at")
+  scannedAt            DateTime? @map("scanned_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
   // The files an agent sends in one message: their order and the state of each toward the channel. Null for
   // an inbound file, a gallery file and any file sent before several were allowed (the message's state is theirs).
-  position         Int?      @map("position")
-  deliveryStatus   String?   @map("delivery_status") // DeliveryStatus: queued | sent | failed (the receipts of the provider move it on)
-  channelMessageId String?   @map("channel_message_id") // Provider id of the message that carried this file
-  sendErrorCode    String?   @map("send_error_code") // ErrorCode when its delivery failed
-  sentAt           DateTime? @map("sent_at")
+  position             Int?      @map("position")
+  deliveryStatus       String?   @map("delivery_status") // DeliveryStatus: queued | sent | failed (the receipts of the provider move it on)
+  channelMessageId     String?   @map("channel_message_id") // Provider id of the message that carried this file
+  sendErrorCode        String?   @map("send_error_code") // ErrorCode when its delivery failed
+  sentAt               DateTime? @map("sent_at")
   // The text the agent put under this file (null: none, or a file sent before each had its own, when the text
   // of the message was the one of the first). How the text of the message went is on the message.
-  caption          String?   @map("caption")
+  caption              String?   @map("caption")
 
-  store     Store?              @relation(fields: [storeId], references: [id], onDelete: Cascade)
-  message   Message?            @relation(fields: [messageId], references: [id], onDelete: SetNull)
-  origin    ConversationOrigin? @relation(fields: [originId], references: [id], onDelete: Cascade)
-  customer  Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  product   Product?            @relation(fields: [productId], references: [id], onDelete: SetNull)
-  order     Order?              @relation(fields: [orderId], references: [id], onDelete: SetNull)
-  reactions MessageReaction[]
+  store              Store?              @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  message            Message?            @relation(fields: [messageId], references: [id], onDelete: SetNull)
+  origin             ConversationOrigin? @relation(fields: [originId], references: [id], onDelete: Cascade)
+  customer           Customer?           @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  product            Product?            @relation(fields: [productId], references: [id], onDelete: SetNull)
+  order              Order?              @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  financeTransaction FinanceTransaction? @relation("TransactionDocuments", fields: [financeTransactionId], references: [id], onDelete: Restrict)
+  documentOf         FinanceTransaction? @relation("TransactionDocument")
+  reactions          MessageReaction[]
 
   @@index([storeId, createdAt])
   @@index([storeId, customerId, createdAt(sort: Desc)])
@@ -1219,6 +1222,7 @@ model Media {
   @@index([status, createdAt])
   @@index([storeId, channelMessageId])
   @@index([productId, storeId])
+  @@index([financeTransactionId])
   @@map("media")
 }
 
@@ -2599,6 +2603,7 @@ model FinanceTransaction {
   taxCents              Int      @default(0) @map("tax_cents") // the tax inside amountCents, computed by the server
   taxCreditable         Boolean  @default(false) @map("tax_creditable") // an expense's tax is input VAT only with a valid document [ACCOUNTANT]
   documentNumber        String?  @map("document_number") // the supplier's document number
+  documentMediaId       String?  @unique @map("document_media_id") // the receipt: a Media of purpose finance_document made for this transaction, set once
   memo                  String?
   clientKey             String   @map("client_key") // the screen's key for the request: a retry is the same transaction
   entryId               String   @map("entry_id") // the entry it produced
@@ -2617,6 +2622,8 @@ model FinanceTransaction {
   voidedByEntry   JournalEntry?       @relation("TransactionVoidEntry", fields: [organizationId, voidedByEntryId], references: [organizationId, id], onDelete: Restrict)
   replaces        FinanceTransaction? @relation("TransactionReplaced", fields: [organizationId, replacesTransactionId], references: [organizationId, id], onDelete: Restrict)
   replacedBy      FinanceTransaction? @relation("TransactionReplaced")
+  documentMedia   Media?              @relation("TransactionDocument", fields: [documentMediaId], references: [id], onDelete: Restrict)
+  documents       Media[]             @relation("TransactionDocuments")
 
   @@unique([organizationId, id])
   @@unique([organizationId, clientKey])
