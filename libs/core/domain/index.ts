@@ -1,4 +1,5 @@
 export * from './account-constants'
+export * from './actor-identity'
 export * from './app-paths'
 export * from './business-hours'
 export * from './channel-capability'
