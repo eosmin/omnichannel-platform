@@ -25,6 +25,8 @@ export interface MovementInput {
   note?: string | null
   reference?: { type: InventoryReferenceType; id?: string | null } | null
   createdBy?: string | null
+  // The plugin that moved the stock, when no person did (PR E3b): at most one of the two, a check of the table
+  createdByPluginId?: string | null
 }
 
 export interface MovementRecord {

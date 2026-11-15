@@ -57,6 +57,24 @@ export const putTemplateSchema = z.strictObject({
 })
 export type PutTemplateBody = z.output<typeof putTemplateSchema>
 
+// What a plugin with `order-templates:write` may change is the text: whether the message goes by itself and whether the order PDF
+// goes with it send real messages to customers, which is `order-messages:write`'s, so a plugin leaves them to the store
+export const pluginPutTemplateSchema = putTemplateSchema.superRefine((body, ctx) => {
+  const refused = {
+    autoSend: body.autoSend,
+    attachSummary: body.attachSummary === true ? true : undefined
+  }
+  for (const [path, value] of Object.entries(refused)) {
+    if (value !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [path],
+        message: 'a plugin does not change this setting of a template'
+      })
+    }
+  }
+})
+
 // The preview takes the text being edited and the language it is written in
 export const previewTemplateSchema = z.strictObject({ body: bodySchema, locale: localeSchema })
 export type PreviewTemplateBody = z.output<typeof previewTemplateSchema>

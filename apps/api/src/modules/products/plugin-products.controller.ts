@@ -58,7 +58,7 @@ import {
 
 const id = () => new ZodValidationPipe(idSchema)
 
-type Installation = { id: string }
+type Installation = { id: string; pluginId: string }
 type Store = { id: string }
 
 const READ = PluginScopes.PRODUCTS_READ
