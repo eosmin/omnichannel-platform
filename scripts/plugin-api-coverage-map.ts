@@ -450,31 +450,64 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'inventory.kardex': { scope: 'inventory:read', exposed: '/plugin-api/inventory/kardex' },
   // The movement of an adjustment stores the id of the person who made it (`createdBy`): it waits for the plugin actor (PR E4a-2)
   'inventory.adjustments': { scope: 'inventory:write' },
-  // Transfers and counts (Step 5.6 PR E4b): read only, with a scope of their own each. A key is bound to ONE store, so it reads the
-  // lines of its store and the transfers and counts that have one (a key of a sibling store, or of another organization, gets a 404).
-  // Every write stores the id of a person (`createdBy`, `dispatchedBy`, `appliedBy`, the movements of the stock it moves) or acts on
-  // the lines of stores the key does not belong to: they wait for PR E4b-2 and its plugin actor
+  // Transfers and counts (Step 5.6 PR E4b reads, PR E4b-2 writes): a scope of its own each, and a write names its own scope AND the
+  // read one. A key is bound to ONE store, so it reads the lines of its store and the transfers and counts that have one (a key of a
+  // sibling store, or of another organization, gets a 404), and WRITES only a transfer whose every line is of its store (409
+  // otherwise) and a count limited to its store (403 otherwise, and a count it opens is limited to it). The transfer, the count, the
+  // movements of stock and the audit entry name the plugin (migration `stock_plugin_actor`).
   'transfers.list': { scope: 'transfers:read', exposed: '/plugin-api/transfers' },
-  'transfers.create': { proposed: 'transfers:write', step: STEP },
-  // The GET is exposed; the PATCH (change a draft) is a write and stays pending with the others
+  'transfers.create': {
+    scope: ['transfers:write', 'transfers:read'],
+    exposed: '/plugin-api/transfers'
+  },
+  // The GET is read, the PATCH (change a draft) a write of the same path
   'transfers.byId': {
-    proposed: ['transfers:read', 'transfers:write'],
-    step: STEP,
+    scope: ['transfers:read', 'transfers:write'],
     exposed: '/plugin-api/transfers/:id'
   },
-  'transfers.dispatch': { proposed: 'transfers:write', step: STEP },
-  'transfers.receive': { proposed: 'transfers:write', step: STEP },
-  'transfers.close': { proposed: 'transfers:write', step: STEP },
-  'transfers.cancel': { proposed: 'transfers:write', step: STEP },
+  'transfers.dispatch': {
+    scope: ['transfers:write', 'transfers:read'],
+    exposed: '/plugin-api/transfers/:id/dispatch'
+  },
+  'transfers.receive': {
+    scope: ['transfers:receive', 'transfers:read'],
+    exposed: '/plugin-api/transfers/:id/receive'
+  },
+  'transfers.close': {
+    scope: ['transfers:receive', 'transfers:read'],
+    exposed: '/plugin-api/transfers/:id/close'
+  },
+  'transfers.cancel': {
+    scope: ['transfers:write', 'transfers:read'],
+    exposed: '/plugin-api/transfers/:id/cancel'
+  },
   'counts.list': { scope: 'counts:read', exposed: '/plugin-api/counts' },
-  'counts.create': { proposed: 'counts:write', step: STEP },
+  'counts.create': { scope: ['counts:write', 'counts:read'], exposed: '/plugin-api/counts' },
   'counts.byId': { scope: 'counts:read', exposed: '/plugin-api/counts/:id' },
-  'counts.start': { proposed: 'counts:write', step: STEP },
-  'counts.lines': { proposed: 'counts:write', step: STEP },
-  'counts.submit': { proposed: 'counts:write', step: STEP },
-  'counts.reopen': { proposed: 'counts:write', step: STEP },
-  'counts.apply': { proposed: 'counts:write', step: STEP },
-  'counts.cancel': { proposed: 'counts:write', step: STEP },
+  'counts.start': {
+    scope: ['counts:write', 'counts:read'],
+    exposed: '/plugin-api/counts/:id/start'
+  },
+  'counts.lines': {
+    scope: ['counts:write', 'counts:read'],
+    exposed: '/plugin-api/counts/:id/lines'
+  },
+  'counts.submit': {
+    scope: ['counts:write', 'counts:read'],
+    exposed: '/plugin-api/counts/:id/submit'
+  },
+  'counts.reopen': {
+    scope: ['counts:write', 'counts:read'],
+    exposed: '/plugin-api/counts/:id/reopen'
+  },
+  'counts.apply': {
+    scope: ['counts:apply', 'counts:read'],
+    exposed: '/plugin-api/counts/:id/apply'
+  },
+  'counts.cancel': {
+    scope: ['counts:write', 'counts:read'],
+    exposed: '/plugin-api/counts/:id/cancel'
+  },
 
   // Shipping (`shipments:*` exist; carriers, pickups, returns and remittances are scopes of their own). Step 5.6 PR E5 exposes the
   // reads of shipments, carrier connections and pickups, over the same services as the screens, for the one store of the key. The

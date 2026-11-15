@@ -12,9 +12,11 @@ const count = (over: Partial<CountView> = {}): CountView => ({
   storeName: 'Store',
   note: null,
   createdBy: 'user-staff-1',
+  createdByPluginId: 'plugin-1',
   startedAt: null,
   submittedAt: null,
   appliedBy: 'user-staff-2',
+  appliedByPluginId: 'plugin-2',
   appliedAt: new Date('2026-11-15T00:00:00Z'),
   createdAt: new Date('2026-11-14T00:00:00Z'),
   updatedAt: new Date('2026-11-15T00:00:00Z'),
@@ -27,6 +29,8 @@ describe('the counts a plugin reads', () => {
 
     expect('createdBy' in view).toBe(false)
     expect('appliedBy' in view).toBe(false)
+    expect('createdByPluginId' in view).toBe(false)
+    expect('appliedByPluginId' in view).toBe(false)
     expect(JSON.stringify(view)).not.toContain('user-staff')
   })
 

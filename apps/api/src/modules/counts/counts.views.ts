@@ -18,10 +18,13 @@ export interface CountView {
   storeId: string | null
   storeName: string | null
   note: string | null
-  createdBy: string
+  // Null when a plugin opened or applied it; the plugin is in the `...PluginId` beside (never both)
+  createdBy: string | null
+  createdByPluginId: string | null
   startedAt: Date | null
   submittedAt: Date | null
   appliedBy: string | null
+  appliedByPluginId: string | null
   appliedAt: Date | null
   createdAt: Date
   updatedAt: Date
@@ -61,9 +64,11 @@ export const COUNT_SELECT = {
   storeId: true,
   note: true,
   createdBy: true,
+  createdByPluginId: true,
   startedAt: true,
   submittedAt: true,
   appliedBy: true,
+  appliedByPluginId: true,
   appliedAt: true,
   createdAt: true,
   updatedAt: true,
@@ -87,10 +92,13 @@ interface CountRow {
   status: string
   storeId: string | null
   note: string | null
-  createdBy: string
+  // Null when a plugin opened or applied it; the plugin is in the `...PluginId` beside (never both)
+  createdBy: string | null
+  createdByPluginId: string | null
   startedAt: Date | null
   submittedAt: Date | null
   appliedBy: string | null
+  appliedByPluginId: string | null
   appliedAt: Date | null
   createdAt: Date
   updatedAt: Date
@@ -107,9 +115,11 @@ export function countView(row: CountRow, storeName: string | null): CountView {
     storeName,
     note: row.note,
     createdBy: row.createdBy,
+    createdByPluginId: row.createdByPluginId,
     startedAt: row.startedAt,
     submittedAt: row.submittedAt,
     appliedBy: row.appliedBy,
+    appliedByPluginId: row.appliedByPluginId,
     appliedAt: row.appliedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt

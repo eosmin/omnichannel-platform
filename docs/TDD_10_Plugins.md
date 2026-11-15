@@ -913,6 +913,10 @@ export const PluginScopes = {
   WAREHOUSES_READ: 'warehouses:read',           // the warehouses of the organization of the key's store (Step 5.6 E4a)
   TRANSFERS_READ: 'transfers:read',             // the transfers between warehouses, read only; the lines of the key's store only (Step 5.6 E4b)
   COUNTS_READ: 'counts:read',                   // the physical counts, read only; the lines of the key's store only (Step 5.6 E4b)
+  TRANSFERS_WRITE: 'transfers:write',           // make, change, dispatch and cancel a transfer; only one whose every line is of the key's store (Step 5.6 E4b-2)
+  TRANSFERS_RECEIVE: 'transfers:receive',       // receive a transfer and close it with a shortage; a scope of its own as who sends does not receive (Step 5.6 E4b-2)
+  COUNTS_WRITE: 'counts:write',                 // open, fill in, submit, reopen and cancel a count; never apply it (Step 5.6 E4b-2)
+  COUNTS_APPLY: 'counts:apply',                 // apply a count in review: the stock becomes what was counted, a scope of its own (Step 5.6 E4b-2)
   CARRIERS_READ: 'carriers:read',               // the carrier connections of the store, read only; never a credential, a secret or an agreed amount (Step 5.6 E5)
   PICKUPS_READ: 'pickups:read',                 // the pickups of the store and, with customers:read and shipments:read, their manifest; read only (Step 5.6 E5)
   WEBHOOKS_WRITE: 'webhooks:write',
