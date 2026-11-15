@@ -1,6 +1,8 @@
 import type { MessageView } from '@platform/api-client'
 import { AuthorType, DeliveryStatus, MessageType } from '@platform/core/domain'
 
+import { sameAuthorship } from './plugin-author'
+
 // Messages of the same author this close together are one block: the name and the avatar show once
 const GROUP_WINDOW_MS = 5 * 60_000
 
@@ -60,6 +62,7 @@ function startsBlock(previous: MessageView | null, message: MessageView): boolea
   return (
     previous.authorType !== message.authorType ||
     previous.authorId !== message.authorId ||
+    !sameAuthorship(previous, message) ||
     new Date(message.createdAt).getTime() - new Date(previous.createdAt).getTime() > GROUP_WINDOW_MS
   )
 }

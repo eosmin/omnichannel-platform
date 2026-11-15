@@ -270,6 +270,9 @@ export interface MessageView {
   editedAt: Date | null
   editedByType: AuthorType | null
   editedById: string | null
+  // The plugin that edited it, or deleted it below (`editedByType` is then `system`); null when a person or the channel did.
+  // The id of the plugin, which is its name in the registry: the thread draws "edited by" it.
+  editedByPluginId: string | null
   pendingEdit: boolean
   editStatus: DeliveryStatus | null
   editError: string | null
@@ -279,6 +282,7 @@ export interface MessageView {
   deletedAt: Date | null
   deletedByType: AuthorType | null
   deletedById: string | null
+  deletedByPluginId: string | null
   deleteStatus: DeliveryStatus | null
   deleteError: string | null
   createdAt: Date
@@ -308,12 +312,14 @@ export const MESSAGE_SELECT = {
   editedAt: true,
   editedByType: true,
   editedById: true,
+  editedByPluginId: true,
   pendingContent: true,
   editStatus: true,
   editError: true,
   deletedAt: true,
   deletedByType: true,
   deletedById: true,
+  deletedByPluginId: true,
   deleteStatus: true,
   deleteError: true,
   reactions: {
@@ -370,12 +376,14 @@ interface MessageRow {
   editedAt: Date | null
   editedByType: string | null
   editedById: string | null
+  editedByPluginId: string | null
   pendingContent: string | null
   editStatus: string | null
   editError: string | null
   deletedAt: Date | null
   deletedByType: string | null
   deletedById: string | null
+  deletedByPluginId: string | null
   deleteStatus: string | null
   deleteError: string | null
   reactions: {
@@ -415,13 +423,20 @@ function editFieldsOf(
   row: MessageRow
 ): Pick<
   MessageView,
-  'editedAt' | 'editedByType' | 'editedById' | 'pendingEdit' | 'editStatus' | 'editError'
+  | 'editedAt'
+  | 'editedByType'
+  | 'editedById'
+  | 'editedByPluginId'
+  | 'pendingEdit'
+  | 'editStatus'
+  | 'editError'
 > {
   if (row.deletedAt !== null) {
     return {
       editedAt: null,
       editedByType: null,
       editedById: null,
+      editedByPluginId: null,
       pendingEdit: false,
       editStatus: null,
       editError: null
@@ -431,6 +446,7 @@ function editFieldsOf(
     editedAt: row.editedAt,
     editedByType: authorOrNull(row.editedByType, 'message editor'),
     editedById: row.editedById,
+    editedByPluginId: row.editedByPluginId,
     pendingEdit: row.pendingContent !== null,
     editStatus: deliveryOrNull(row.editStatus, 'edit delivery'),
     editError: row.editError
@@ -508,6 +524,7 @@ export function messageView(row: MessageRow, replyTo: QuotedMessage | null = nul
     deletedAt: row.deletedAt,
     deletedByType: authorOrNull(row.deletedByType, 'message deleter'),
     deletedById: row.deletedById,
+    deletedByPluginId: row.deletedByPluginId,
     deleteStatus: deliveryOrNull(row.deleteStatus, 'delete delivery'),
     deleteError: row.deleteError,
     createdAt: row.createdAt
