@@ -3,6 +3,12 @@
   "compilerOptions": {
     "types": ["jest", "node"]
   },
-  "include": ["**/*.ts", "jest.config.cts", "jest.contracts.config.cts", "jest.pooler.config.cts"],
+  "include": [
+    "**/*.ts",
+    "jest.config.cts",
+    "jest.contracts.config.cts",
+    "jest.pooler.config.cts",
+    "jest.latency.config.cts"
+  ],
   "exclude": ["node_modules"]
 }
