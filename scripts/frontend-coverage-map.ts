@@ -241,6 +241,8 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'pluginWidgets.list': { step: '5.7' },
   'pluginWidgets.sessions': { step: '5.7' },
   'pluginWidgets.bridge': { step: '5.7' },
+  'pluginWidgets.settings': { step: '5.7' },
+  'pluginWidgets.visibility': { step: '5.7' },
   'channels.connections': { step: '3.6' },
   'channels.directory': { step: '3.2' },
   'channels.connect': { step: '3.6' },

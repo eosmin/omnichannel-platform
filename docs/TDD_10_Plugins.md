@@ -1378,7 +1378,10 @@ channel.port1.onmessage = async (event: MessageEvent<PluginBridgeRequest>) => {
 ```
 
 The iframe side only ever talks to the port it received; it never uses
-`window.parent.postMessage` for data.
+`window.parent.postMessage` for data. The page posts the INIT once, when the frame fires `load`, so the frame registers its `message` listener synchronously in its first script (a listener added after hydration misses it and the page shows the notice). Once it has the port the frame answers `platform.widget.ready` over it;
+a frame that has not by `PluginWidgetTimings.INIT_TIMEOUT_MS` gets a notice in its panel instead of an empty
+box. The page sends `platform.widget.session` (the token, its lifetime, the widget id and the conversation id)
+over the port when it opens and again before each session ends.
 
 **What v1.2 builds (Step 5.7a).** The page forwards what the frame asks to `POST /api/v1/plugin-widgets/bridge`
 on the agent's own session (AuthGuard, TenantGuard, `CONVERSATIONS_VIEW`), with the widget session token the

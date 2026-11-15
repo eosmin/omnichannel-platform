@@ -1,5 +1,9 @@
 import {
+  pluginBridgeReadySchema,
   pluginBridgeRequestSchema,
+  pluginWidgetConfigSchema,
+  pluginWidgetVisibilitySchema,
+  PluginWidgetFrames,
   PluginBridgeMessages,
   PluginBridgeOperations,
   pluginWidgetManifestSchema
@@ -60,5 +64,54 @@ describe('pluginBridgeRequestSchema', () => {
     expect(
       pluginBridgeRequestSchema.safeParse({ ...valid, conversationId: 'another' }).success
     ).toBe(false)
+  })
+})
+
+describe('pluginBridgeReadySchema', () => {
+  it('is exactly the ready message and nothing more', () => {
+    expect(pluginBridgeReadySchema.safeParse({ type: PluginBridgeMessages.READY }).success).toBe(
+      true
+    )
+    expect(
+      pluginBridgeReadySchema.safeParse({ type: PluginBridgeMessages.READY, token: 'x' }).success
+    ).toBe(false)
+    expect(pluginBridgeReadySchema.safeParse({ type: PluginBridgeMessages.REQUEST }).success).toBe(
+      false
+    )
+  })
+})
+
+describe('pluginWidgetConfigSchema', () => {
+  it('hides nothing by default and keeps the keys of the config that are not its own', () => {
+    expect(pluginWidgetConfigSchema.parse({})).toEqual({ hiddenWidgets: [] })
+    expect(pluginWidgetConfigSchema.parse({ hiddenWidgets: ['info'], other: 1 })).toEqual({
+      hiddenWidgets: ['info'],
+      other: 1
+    })
+  })
+
+  it.each([
+    ['a string', 'info'],
+    ['a list of numbers', [1]],
+    ['null', null]
+  ])('refuses a hidden list that is %s', (_label, hiddenWidgets) => {
+    expect(pluginWidgetConfigSchema.safeParse({ hiddenWidgets }).success).toBe(false)
+  })
+})
+
+describe('pluginWidgetVisibilitySchema', () => {
+  it('is one boolean', () => {
+    expect(pluginWidgetVisibilitySchema.safeParse({ visible: false }).success).toBe(true)
+    expect(pluginWidgetVisibilitySchema.safeParse({ visible: 'no' }).success).toBe(false)
+    expect(pluginWidgetVisibilitySchema.safeParse({ visible: true, extra: 1 }).success).toBe(false)
+  })
+})
+
+describe('PluginWidgetFrames', () => {
+  it('separates origins with a character that cannot be part of one', () => {
+    expect(PluginWidgetFrames.COOKIE_SEPARATOR).toBe(' ')
+    expect(new URL('https://widgets.acme.example').origin).not.toContain(
+      PluginWidgetFrames.COOKIE_SEPARATOR
+    )
   })
 })
