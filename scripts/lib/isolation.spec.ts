@@ -183,7 +183,8 @@ describe('planSteps', () => {
     '| 1.2 | Tenancy | done | #39 | 2026-10-25 |',
     '| 1.3 | Tenant isolation test suite | todo | | |',
     '| 5.5 | Onboarding | deferred (Phase 2) | | |',
-    '| 2.2 | Customers | todo | | |'
+    '| 2.2 | Customers | todo | | |',
+    '| 4B.2 | Ledger core | in progress | | |'
   ].join('\n')
 
   it('reads the status of each step of the progress table', () => {
@@ -192,7 +193,8 @@ describe('planSteps', () => {
         ['1.2', 'done'],
         ['1.3', 'todo'],
         ['5.5', 'deferred (Phase 2)'],
-        ['2.2', 'todo']
+        ['2.2', 'todo'],
+        ['4B.2', 'in progress']
       ])
     )
   })
@@ -207,7 +209,7 @@ describe('planSteps', () => {
 
     expect(planSteps(withRuleset).get('1.3')).toBe('todo')
     expect(planSteps(withRuleset).has('9.9')).toBe(false)
-    expect(planSteps(withRuleset).size).toBe(4)
+    expect(planSteps(withRuleset).size).toBe(5)
   })
 
   it('ignores the heading, the milestones and prose that mention a step', () => {

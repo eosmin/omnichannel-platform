@@ -170,6 +170,19 @@ export const AuditAction = {
   ROUTING_RULE_CHANGED: 'routing_rule.changed',
   RETENTION_CHANGED: 'retention.changed',
 
+  // Finance (TDD_18 §3). The entry is itself the audit of the money (user, time, source, hash); these rows are the
+  // mutations around it. FINANCE_SETUP_COMPLETED and FINANCE_PAYMENT_ACCOUNT_CHANGED are not in the TDD list: §9.3
+  // asks that every mutation write an audit row, and these two are mutations it did not name.
+  FINANCE_SETUP_COMPLETED: 'finance.setup_completed',
+  FINANCE_SETTINGS_CHANGED: 'finance.settings_changed',
+  FINANCE_ACCOUNT_CREATED: 'finance.account_created',
+  FINANCE_ACCOUNT_UPDATED: 'finance.account_updated',
+  FINANCE_ACCOUNT_DEACTIVATED: 'finance.account_deactivated',
+  FINANCE_ROLE_MAPPED: 'finance.role_mapped',
+  FINANCE_PAYMENT_ACCOUNT_CHANGED: 'finance.payment_account_changed',
+  FINANCE_ENTRY_POSTED_MANUAL: 'finance.entry_posted_manual',
+  FINANCE_ENTRY_REVERSED: 'finance.entry_reversed',
+
   // Compliance
   DSR_CREATED: 'dsr.created',
   DSR_VERIFIED: 'dsr.verified',

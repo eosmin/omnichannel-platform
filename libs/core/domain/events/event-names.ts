@@ -119,6 +119,11 @@ export const Events = {
   // A carrier has kept cash on delivery for longer than the store allows (the daily check, TDD_17 §4.15)
   REMITTANCE_OVERDUE: 'remittance.overdue',
 
+  // Finance (TDD_18 §3): an entry was added to the journal, and one reversed it. Api only: they never cross the worker
+  // bridge to a browser (the ledger is read by request). The rest of the finance events come with their steps.
+  FINANCE_ENTRY_POSTED: 'finance.entry_posted',
+  FINANCE_ENTRY_REVERSED: 'finance.entry_reversed',
+
   // Tags and snippets
   TAG_CREATED: 'tag.created',
   TAG_UPDATED: 'tag.updated',

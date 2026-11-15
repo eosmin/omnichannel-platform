@@ -584,6 +584,20 @@
     "FILE_UNAVAILABLE": "The file could not be sent because it is no longer available",
     "FILE_UPLOAD_FAILED": "The file could not be uploaded",
     "INSUFFICIENT_INVENTORY": "There is not enough stock",
+    "FINANCE_PERIOD_CLOSED": "The period is closed: no entry can be dated in it",
+    "FINANCE_ENTRY_UNBALANCED": "The entry does not balance: debits and credits must be equal and positive",
+    "FINANCE_ACCOUNT_NOT_POSTABLE": "This account only groups other accounts: choose one that accepts entries",
+    "FINANCE_ACCOUNT_INACTIVE": "This account is inactive",
+    "FINANCE_ACCOUNT_TYPE_LOCKED": "The type of an account with entries cannot change",
+    "FINANCE_ACCOUNT_HAS_ENTRIES": "An account with entries cannot be deleted or turned into a header, only deactivated",
+    "FINANCE_ROLE_NOT_MAPPED": "An account is missing for this role: map it in the finance settings",
+    "FINANCE_BEFORE_START_DATE": "The date is before the accounting start date",
+    "FINANCE_ENTRY_ALREADY_REVERSED": "This entry was already reversed",
+    "FINANCE_REOPEN_NOT_LATEST": "Only the latest closed period can be reopened",
+    "FINANCE_CLOSE_PENDING_POSTINGS": "There are postings pending or failed in this period: resolve them first",
+    "FINANCE_CLOSE_PREVIOUS_OPEN": "The previous period is still open: close periods in order",
+    "FINANCE_CURRENCY_UNSUPPORTED": "Only USD is supported",
+    "FINANCE_SETUP_REQUIRED": "Finance has not been set up for this organization yet",
     "INTERNAL_ERROR": "Something went wrong. Try again",
     "NETWORK_UNAVAILABLE": "No connection. What you wrote is still here: try again when it is back",
     "INVENTORY_ADJUSTMENT_REASON_REQUIRED": "Say why you are adjusting the stock",
@@ -2936,7 +2950,9 @@
         "team": "Team",
         "settings": "Settings",
         "analytics": "Analytics",
-        "org": "Organization"
+        "org": "Organization",
+        "finance": "Finance",
+        "fiscal": "Fiscal documents"
       },
       "permissions": {
         "conversations": {
@@ -3040,6 +3056,23 @@
           "manage_warehouses": "Manage warehouses",
           "view_audit_log": "View the audit log",
           "manage_compliance": "Manage compliance"
+        },
+        "finance": {
+          "view": "View balances and reports",
+          "view_journal": "View the journal",
+          "manage_transactions": "Register expenses and incomes",
+          "move_money": "Move money",
+          "manage_purchases": "Manage suppliers and purchases",
+          "reconcile": "Reconcile bank statements",
+          "manage_accounts": "Manage the chart of accounts and settings",
+          "post_manual": "Post manual entries",
+          "close_periods": "Close and reopen periods",
+          "export": "Export the books",
+          "view_carrier_fees": "View carrier fees"
+        },
+        "fiscal": {
+          "view": "View fiscal documents",
+          "manage": "Manage fiscal documents"
         }
       },
       "members": {
