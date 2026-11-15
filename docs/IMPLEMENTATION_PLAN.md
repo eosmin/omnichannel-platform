@@ -1413,9 +1413,7 @@ there, which 4B.9 settles; (b) the VAT of returns (E8) is posted and reported by
 the sales and says so; (c) the sales book layout, the exempt categories, whether the shipping fee carries VAT, the withholdings and the
 perceptions stay **[ACCOUNTANT]** (`TDD_18 §13` rows 2 and 4): configurable here, owner's pending; (d) `FINANCE_TAX_RATE_NOT_CONFIGURED` and the
 order fields are 4B.3b's; (e) `assertMayWriteTax` refuses a product request that names the tax fields even with the value the product has,
-so a client that echoes the whole product needs `finance:manage_accounts`: the web form of 4B.9 sends them only when they change;
-(f) the JSON merge helpers of the preferences column are in two services (`PreferencesService` and the tax settings one): move them
-to one support module in 4B.9, which touches both.
+so a client that echoes the whole product needs `finance:manage_accounts`: the web form of 4B.9 sends them only when they change; the preferences column is written only by `PreferencesService` (the contract `cache-writers`), which the tax settings route calls.
 **Owner decision (2026-11-15, recorded here by 4B.3a):** `TDD_18` is approved as written. Payroll is a separate module, **Milestone 4C** (not
 scheduled in this plan yet; `TDD_18 §14` already keeps it out of 4B); until it exists, salaries enter the books as one manual entry per month
 (`finance:post_manual`, E13), on the `Planilla` expense account of the SV chart.
