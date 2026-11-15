@@ -1,5 +1,6 @@
 import type { Redis } from 'ioredis'
 
+import type { AuditService } from '@platform/core/audit-module'
 import type { PrismaService } from '@platform/core/database'
 import type { ConversationsService } from '@platform/core/messaging'
 
@@ -21,18 +22,45 @@ function serviceWith(installations: unknown[], platformOrigins: string[]): Plugi
     {} as Redis,
     {} as ConversationsService,
     {} as CustomersService,
-    { origins: platformOrigins }
+    { origins: platformOrigins },
+    { log: jest.fn() } as unknown as AuditService
   )
 }
 
-const row = (id: string, url: string, manifestOverride?: unknown) => ({
+const row = (id: string, url: string, manifestOverride?: unknown, config: unknown = null) => ({
   id,
   scopes: [],
+  config,
   plugin: { id: `plugin-${id}`, name: `Plugin ${id}`, manifest: manifestOverride ?? manifest(url) }
 })
 
 describe('PluginWidgetsService.list', () => {
   const platform = ['https://app.platform.example', 'https://api.platform.example']
+
+  it('leaves out a widget the store hid, and shows it to Settings as not visible', async () => {
+    const hidden = row('h', 'https://widgets.acme.example/panel', undefined, {
+      hiddenWidgets: ['info'],
+      other: 1
+    })
+    const service = serviceWith([hidden, row('v', 'https://widgets.other.example/panel')], platform)
+    expect((await service.list('store')).map(view => view.installationId)).toEqual(['v'])
+    const all = await service.settings('store')
+    expect(all.map(view => [view.installationId, view.visible])).toEqual([
+      ['h', false],
+      ['v', true]
+    ])
+  })
+
+  it('treats a config that is not the expected shape as hiding nothing', async () => {
+    const service = serviceWith(
+      [
+        row('a', 'https://widgets.acme.example/panel', undefined, 'garbage'),
+        row('b', 'https://widgets.other.example/panel', undefined, { hiddenWidgets: 7 })
+      ],
+      platform
+    )
+    expect((await service.list('store')).map(view => view.installationId)).toEqual(['a', 'b'])
+  })
 
   it('lists the widgets of a plugin on its own origin', async () => {
     const service = serviceWith([row('a', 'https://widgets.acme.example/panel')], platform)

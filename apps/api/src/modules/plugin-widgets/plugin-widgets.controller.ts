@@ -1,14 +1,16 @@
-import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common'
+import { Body, Controller, Get, HttpCode, Param, Post, Put, Req } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
-import { PluginBridgeMessages, type PluginBridgeResponse } from '@platform/core/domain'
+import { PluginBridgeMessages, type PluginBridgeResponse, uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
+import type { AuthenticatedRequest } from '@platform/core/logger'
 import { viewerOf } from '@platform/core/messaging'
 
 import {
+  actorOf,
   CurrentPermissions,
   CurrentStore,
   RequirePermissions,
@@ -19,10 +21,14 @@ import {
   type OpenWidgetSessionBody,
   openWidgetSessionSchema,
   type WidgetBridgeBody,
-  widgetBridgeSchema
+  widgetBridgeSchema,
+  widgetIdSchema,
+  type WidgetVisibilityBody,
+  widgetVisibilitySchema
 } from './plugin-widgets.schemas'
 import {
   type PluginWidgetSession,
+  type PluginWidgetSettingsView,
   type PluginWidgetView,
   PluginWidgetsService
 } from './plugin-widgets.service'
@@ -42,6 +48,32 @@ export class PluginWidgetsController {
     return this.widgets.list(store.id)
   }
 
+  // Settings → Plugins: all of them, the hidden ones with `visible: false`
+  @RequirePermissions(Permissions.SETTINGS_VIEW)
+  @Get(ApiRoutes.pluginWidgets.settings)
+  settings(@CurrentStore() store: Store): Promise<PluginWidgetSettingsView[]> {
+    return this.widgets.settings(store.id)
+  }
+
+  @RequirePermissions(Permissions.SETTINGS_MANAGE_PLUGINS)
+  @Put(ApiRoutes.pluginWidgets.visibility(':installationId', ':widgetId'))
+  setVisible(
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('installationId', new ZodValidationPipe(uuidSchema)) installationId: string,
+    @Param('widgetId', new ZodValidationPipe(widgetIdSchema)) widgetId: string,
+    @Body(new ZodValidationPipe(widgetVisibilitySchema)) body: WidgetVisibilityBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<PluginWidgetSettingsView> {
+    return this.widgets.setVisible(
+      store.id,
+      installationId,
+      widgetId,
+      body.visible,
+      actorOf(user, store, req)
+    )
+  }
+
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
   @Post(ApiRoutes.pluginWidgets.sessions)
   @HttpCode(HttpStatusCodes.CREATED)
@@ -55,7 +87,8 @@ export class PluginWidgetsController {
       store.id,
       viewerOf(user.id, held),
       body.installationId,
-      body.conversationId
+      body.conversationId,
+      body.widgetId
     )
   }
 

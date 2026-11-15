@@ -11,6 +11,9 @@ export const PluginBridgeMessages = {
   INIT: 'platform.widget.init',
   // Page to frame, over the port: the session token, its lifetime and the context of the open conversation
   SESSION: 'platform.widget.session',
+  // Frame to page, over the port, once, when the frame has taken the port: the page waits for it and shows a notice
+  // when it does not come (`PluginWidgetTimings.INIT_TIMEOUT_MS`)
+  READY: 'platform.widget.ready',
   // Frame to page, over the port
   REQUEST: 'platform.widget.request',
   // Page to frame, over the port
@@ -61,6 +64,57 @@ export const PluginWidgetLimits = {
   REFRESH_INTERVAL_MIN_MS: 5000,
   REFRESH_INTERVAL_MAX_MS: 3_600_000
 } as const
+
+// A host is first-party when it lives under the same parent domain as one of ours (the last two labels, which includes
+// the host itself): a frame there could reach what the web app's cookies and storage hold. A trailing dot is the same
+// host. It errs on the side of refusing: a plugin on `x.co.uk` is refused where our host ends in `.co.uk`. One rule for the
+// api (what it lists and answers) and the web proxy (what it lets a page frame), so they cannot drift.
+function parentDomainOf(host: string): string {
+  return host.replace(/\.$/, '').split('.').slice(-2).join('.')
+}
+
+export function isPlatformHost(host: string, platformHosts: readonly string[]): boolean {
+  return platformHosts.some(platformHost => parentDomainOf(host) === parentDomainOf(platformHost))
+}
+
+// How the page drives a frame (TDD_10 §7). Timings are the page's: the server's own limits are above.
+export const PluginWidgetTimings = {
+  // A frame that has not answered the INIT with a first request by now gets a notice instead of an empty box
+  INIT_TIMEOUT_MS: 10_000,
+  // The page asks for a new session this long before the old one ends, and tries again this often if it fails
+  RENEW_MARGIN_MS: 60_000,
+  RENEW_RETRY_MS: 15_000
+} as const
+
+// The origins a store's widgets are framed from, written by the page as a cookie for the proxy (the proxy has no
+// session: the refresh cookie is all it sees) and read there to build `frame-src` for that store only. The cookie is
+// the browser's own and is never trusted as more than a hint of what to allow in this browser: the proxy keeps only
+// well-formed https origins that are not the platform's, and the api decides what a frame may ask.
+export const PluginWidgetFrames = {
+  COOKIE_PREFIX: 'platform_widget_frames_',
+  // Origins joined by this character; it cannot appear in an origin
+  COOKIE_SEPARATOR: ' ',
+  COOKIE_MAX_AGE_SECONDS: 2_592_000,
+  // At most one origin per plugin, and a store has few plugins
+  ORIGINS_MAX: 20,
+  // The proxy hands the origins it allowed to the document, so the page knows what its own policy permits: a request
+  // header the proxy always sets (a client's own is overwritten) that the root layout writes into a meta tag
+  ORIGINS_HEADER: 'x-plugin-frame-origins',
+  ORIGINS_META_NAME: 'plugin-frame-origins',
+  // Where the page remembers that it already reloaded for a new set of origins, so a store whose cookie cannot be
+  // set (blocked cookies) reloads once and not forever
+  RELOAD_MARK_PREFIX: 'platform.widget.frames.reload.'
+} as const
+
+// What the installation's `config` keeps for widgets: the ones the store chose to hide from the agents. Other keys
+// of the config are kept as they are when this one changes.
+export const pluginWidgetConfigSchema = z.looseObject({
+  hiddenWidgets: z.array(z.string().max(PluginWidgetLimits.WIDGET_ID_MAX_LENGTH)).default([])
+})
+export type PluginWidgetConfig = z.infer<typeof pluginWidgetConfigSchema>
+
+export const pluginWidgetVisibilitySchema = z.strictObject({ visible: z.boolean() })
+export type PluginWidgetVisibilityBody = z.infer<typeof pluginWidgetVisibilitySchema>
 
 // The query parameter that tells the frame which conversation it is drawn for (an id, never a token)
 // and which of the plugin's widgets it is (one url serves them all)
@@ -129,6 +183,20 @@ export const pluginBridgeRequestSchema = z.strictObject({
   operation: z.enum([PluginBridgeOperations.CONVERSATION_GET, PluginBridgeOperations.CUSTOMER_GET])
 })
 export type PluginBridgeRequest = z.infer<typeof pluginBridgeRequestSchema>
+
+export const pluginBridgeReadySchema = z.strictObject({
+  type: z.literal(PluginBridgeMessages.READY)
+})
+
+// What the page posts to the frame over the port: the session and the context it was opened in. The token is the
+// only secret in it and is only ever on the port; the conversation is named here and never taken from the frame.
+export interface PluginBridgeSessionMessage {
+  type: typeof PluginBridgeMessages.SESSION
+  token: string
+  expiresInSeconds: number
+  widgetId: string
+  conversationId: string
+}
 
 // The fields of a conversation and of its customer a widget may read: the minimum, never the avatar url,
 // the caution reason, the addresses or the identities

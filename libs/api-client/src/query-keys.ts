@@ -273,6 +273,11 @@ export const QueryKeys = {
     templates: (storeId: string, pluginId: string, connectionId: string) =>
       ['channels', storeId, 'templates', pluginId, connectionId] as const
   },
+  // The widgets of the plugins in the inbox sidebar, and the same list Settings draws with the hidden ones
+  pluginWidgets: {
+    list: (storeId: string) => ['plugin-widgets', storeId, 'list'] as const,
+    settings: (storeId: string) => ['plugin-widgets', storeId, 'settings'] as const
+  },
   snippets: {
     all: (storeId: string) => ['snippets', storeId] as const
   },

@@ -12,6 +12,7 @@ import {
 } from '@tanstack/react-query'
 import { useCallback } from 'react'
 
+import { QueryKeys } from '@platform/api-client'
 import type { ChannelConnectionListState } from '@platform/core/domain'
 
 import { apiClient } from '../api'
@@ -82,6 +83,9 @@ function useRefreshChannels(storeId: string): () => void {
   return () => {
     void queryClient.invalidateQueries({ queryKey: ChannelKeys.root(storeId) })
     void queryClient.invalidateQueries({ queryKey: ChannelKeys.plugins(storeId) })
+    // An install or an uninstall adds or removes the widgets the plugin draws
+    void queryClient.invalidateQueries({ queryKey: QueryKeys.pluginWidgets.list(storeId) })
+    void queryClient.invalidateQueries({ queryKey: QueryKeys.pluginWidgets.settings(storeId) })
   }
 }
 

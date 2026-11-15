@@ -14,6 +14,42 @@ function directive(policy: string, name: string): string {
   return found
 }
 
+describe('buildContentSecurityPolicy: frame-src', () => {
+  it('writes no origin that could add a directive, whatever the caller passed', () => {
+    const policy = buildContentSecurityPolicy({
+      ...options,
+      frameOrigins: [
+        'https://a.example; script-src *',
+        'https://*.acme.example',
+        'http://plain.example',
+        'https://ok.example'
+      ]
+    })
+    expect(directive(policy, 'frame-src')).toBe('frame-src https://ok.example')
+    expect(policy).not.toContain('script-src *')
+  })
+
+  it("is 'none' with no widget origins", () => {
+    expect(directive(buildContentSecurityPolicy(options), 'frame-src')).toBe("frame-src 'none'")
+    expect(
+      directive(buildContentSecurityPolicy({ ...options, frameOrigins: [] }), 'frame-src')
+    ).toBe("frame-src 'none'")
+  })
+
+  it('lists the origins of the widgets of the store and only those', () => {
+    const policy = buildContentSecurityPolicy({
+      ...options,
+      frameOrigins: ['https://widgets.acme.example', 'https://panel.other.example']
+    })
+    expect(directive(policy, 'frame-src')).toBe(
+      'frame-src https://widgets.acme.example https://panel.other.example'
+    )
+    // Nothing else loosens: the app still cannot be framed and scripts keep the nonce
+    expect(directive(policy, 'frame-ancestors')).toBe("frame-ancestors 'none'")
+    expect(directive(policy, 'default-src')).toBe("default-src 'self'")
+  })
+})
+
 describe('buildContentSecurityPolicy', () => {
   it('lets scripts run only with the nonce of the request', () => {
     const script = directive(buildContentSecurityPolicy(options), 'script-src')

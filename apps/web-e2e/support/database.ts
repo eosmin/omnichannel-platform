@@ -32,6 +32,7 @@ import {
 } from '@platform/core/domain'
 import { ExportTypes } from '@platform/core/queues'
 import { MediaPurpose, StorageKeys } from '@platform/core/storage'
+import { PluginScopes } from '@platform/plugins/sdk'
 
 // The e2e cases build their rows with the builders of the suites in tests/
 // eslint-disable-next-line no-restricted-imports -- the only deep relative import, to a folder no alias covers
@@ -58,7 +59,8 @@ import {
   type MetadataValue,
   createRole,
   createTag,
-  ensurePluginInstallation
+  ensurePluginInstallation,
+  ensureWidgetPlugin
 } from '../../../tests/builders'
 
 import { credentialsEncryptionKey, databaseUrls } from './env'
@@ -1945,5 +1947,33 @@ export function clearOpenReceptionBatches(storeId: string): Promise<void> {
     const ids = open.map(batch => batch.id)
     await owner.returnReceptionItem.deleteMany({ where: { batchId: { in: ids } } })
     await owner.returnReceptionBatch.deleteMany({ where: { id: { in: ids } } })
+  })
+}
+
+// A third-party plugin that draws one panel in the agent sidebar (TDD_10 §7), installed and active in the store with
+// the scopes to read a conversation and its customer. An integration plugin cannot be installed from the interface yet
+// (Step 5.6), so the row is written as the owner. Returns the installation, for the specs that read what it holds.
+export function addWidgetPlugin(
+  storeId: string,
+  input: { pluginId: string; widgetUrl: string }
+): Promise<string> {
+  return withOwner(
+    async owner =>
+      (
+        await ensureWidgetPlugin(owner, {
+          storeId,
+          pluginId: input.pluginId,
+          widgetUrl: input.widgetUrl,
+          scopes: [PluginScopes.CONVERSATIONS_READ, PluginScopes.CUSTOMERS_READ]
+        })
+      ).id
+  )
+}
+
+// The plugin's row stays between runs of a laptop: a spec that added one removes it at the end
+export function removeWidgetPlugin(pluginId: string): Promise<void> {
+  return withOwner(async owner => {
+    await owner.pluginInstallation.deleteMany({ where: { pluginId } })
+    await owner.plugin.deleteMany({ where: { id: pluginId } })
   })
 }

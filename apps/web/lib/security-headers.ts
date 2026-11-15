@@ -13,6 +13,8 @@ export interface ContentSecurityPolicyOptions {
   storageUrl: string
   sentryDsn?: string | undefined
   isDev: boolean
+  // The origins of the plugin widgets of the store in the path of the request, already filtered by `parseFrameOrigins`
+  frameOrigins?: readonly string[] | undefined
 }
 
 // The websocket origin of a url that may be http(s) or already ws(s): the env schema allows only
@@ -23,11 +25,25 @@ function webSocketOrigin(url: string): string {
   return `${secure ? 'wss:' : 'ws:'}//${host}`
 }
 
+// What may be written into `frame-src`: a bare https origin with letters, digits, dots and hyphens (and a port). The
+// caller has filtered already (plugin-frames.ts); this is the last check before a value becomes part of a header, so a
+// new caller cannot inject a directive.
+const FRAME_ORIGIN = /^https:\/\/[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]{1,5})?$/
+
 // Scripts run only with the nonce of the request (Next puts it on its own scripts); styles keep
 // 'unsafe-inline' because the Radix portals inject a few. Nothing here lets another site frame
-// the app or load a plugin iframe: those origins join frame-src with the step that builds them.
+// the app, and only the widgets of the store of the request can be framed (`frameOrigins`, see plugin-frames.ts).
 export function buildContentSecurityPolicy(options: ContentSecurityPolicyOptions): string {
-  const { nonce, apiUrl, wsUrl, storageUrl, sentryDsn, isDev } = options
+  const {
+    nonce,
+    apiUrl,
+    wsUrl,
+    storageUrl,
+    sentryDsn,
+    isDev,
+    frameOrigins: requestedFrames = []
+  } = options
+  const frameOrigins = requestedFrames.filter(origin => FRAME_ORIGIN.test(origin))
   const storageOrigin = new URL(storageUrl).origin
   // A Set, because the api and the websocket share an origin in development
   const connectSources = new Set([
@@ -47,7 +63,7 @@ export function buildContentSecurityPolicy(options: ContentSecurityPolicyOptions
     `connect-src ${[...connectSources].join(' ')}`,
     "font-src 'self'",
     "object-src 'none'",
-    "frame-src 'none'",
+    frameOrigins.length === 0 ? "frame-src 'none'" : `frame-src ${frameOrigins.join(' ')}`,
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",

@@ -116,6 +116,8 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'pluginWidgets.list': { none: WIDGET_HOST },
   'pluginWidgets.sessions': { none: WIDGET_HOST },
   'pluginWidgets.bridge': { none: WIDGET_HOST },
+  'pluginWidgets.settings': { none: PLUGIN_ADMIN },
+  'pluginWidgets.visibility': { none: PLUGIN_ADMIN },
   'compliance.dsr': { none: COMPLIANCE },
   'compliance.dsrById': { none: COMPLIANCE },
   'compliance.dsrVerify': { none: COMPLIANCE },

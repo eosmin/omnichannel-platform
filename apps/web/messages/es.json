@@ -2557,7 +2557,16 @@
       }
     },
     "anonymousCustomer": "Visitante ····{digits}",
-    "unnamedCustomer": "Cliente ····{digits}"
+    "unnamedCustomer": "Cliente ····{digits}",
+    "pluginWidgets": {
+      "manage": "Ajustes de {name}",
+      "frameTitle": "{name}: {widget}",
+      "unresponsive": "Este panel no respondió. Puede que el plugin esté caído o que no permita mostrarse aquí.",
+      "failed": "No se pudo iniciar este panel.",
+      "preparing": "Preparando los paneles de los plugins",
+      "blocked": "Los paneles de los plugins necesitan recargar la página para mostrarse. Recárgala cuando hayas guardado lo que estás escribiendo. Si siguen sin verse, permite las cookies de este sitio.",
+      "reload": "Recargar la página"
+    }
   },
   "exports": {
     "title": "Exportaciones",
@@ -2911,6 +2920,19 @@
         "confirm": "Desinstalar",
         "done": "{name} se desinstaló.",
         "descriptionShipping": "{count, plural, =0 {El plugin deja de funcionar en esta tienda.} one {El plugin deja de funcionar y se desconecta su transportista conectado.} other {El plugin deja de funcionar y se desconectan sus # transportistas conectados.}} {shipments, plural, =0 {} one {# envío sigue en camino y ya no se le dará seguimiento. } other {# envíos siguen en camino y ya no se les dará seguimiento. }}{pickups, plural, =0 {} one {# recolección sigue en espera. } other {# recolecciones siguen en espera. }}Los pedidos, los clientes y los envíos ya hechos se conservan."
+      },
+      "widgets": {
+        "title": "Paneles de la barra lateral",
+        "description": "Paneles que los plugins instalados dibujan junto a la conversación. Ocultar uno lo quita para todo el equipo de esta tienda; el plugin sigue instalado.",
+        "listLabel": "Paneles de plugins",
+        "from": "De {plugin}",
+        "visible": "Visible para los agentes",
+        "notVisible": "Oculto para los agentes",
+        "hide": "Ocultar",
+        "show": "Mostrar",
+        "hidden": "{name} de {plugin} ahora está oculto para los agentes.",
+        "shown": "{name} de {plugin} ahora es visible para los agentes.",
+        "failed": "No se pudieron cargar los paneles de los plugins."
       }
     },
     "team": {
