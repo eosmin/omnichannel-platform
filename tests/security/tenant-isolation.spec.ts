@@ -4060,6 +4060,117 @@ describe('Tenant isolation', () => {
     })
   })
 
+  // The customers a plugin reads and changes (Step 5.6, E2): the key of one store reaches the customers of that store and of no
+  // other, whatever the call carries. The customer, with its contact data, is the resource.
+  describe('the customers of the plugin API', () => {
+    const pluginId = `${prefix}-custkey`
+    const scopes = [
+      'customers:read',
+      'customers:write',
+      'customers:delete',
+      'customers:flag-caution',
+      'orders:read',
+      'conversations:read'
+    ]
+    const keyOfB = `${PLUGIN_API_KEY_TOKEN_PREFIX}${prefix}custb${'z'.repeat(40)}`
+    let customerA = ''
+
+    beforeAll(async () => {
+      await owner.plugin.create({
+        data: {
+          id: pluginId,
+          name: 'Customer plugin',
+          authorName: 'suite',
+          authorEmail: 'suite@example.invalid',
+          type: PluginCatalogTypes.INTEGRATION,
+          manifest: {},
+          pricingModel: PluginPricingModels.FREE,
+          status: PluginStatus.APPROVED,
+          organizationId: ctx.orgA.id
+        }
+      })
+      await owner.pluginInstallation.create({
+        data: {
+          storeId: ctx.storeB.id,
+          pluginId,
+          scopes,
+          status: 'active',
+          apiKeyPrefix: keyOfB.slice(0, 12),
+          apiKeyHash: createHash('sha256').update(keyOfB).digest('hex'),
+          installedBy: 'suite'
+        }
+      })
+      customerA = (await createCustomer(owner, { storeId: ctx.storeA.id, name: 'of store A' })).id
+    })
+    afterAll(async () => {
+      await owner.pluginInstallation.deleteMany({ where: { pluginId } })
+      await owner.plugin.deleteMany({ where: { id: pluginId } })
+    })
+
+    const asB = (method: 'get' | 'post' | 'patch' | 'put' | 'delete', path: string) =>
+      supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+        [method](`${API_PREFIX}${path}`)
+        .set('authorization', `Bearer ${keyOfB}`)
+        .set('x-store-id', ctx.storeA.id)
+
+    it('works in its own store, so that the 404 of the others means "foreign"', async () => {
+      const own = (await createCustomer(owner, { storeId: ctx.storeB.id })).id
+
+      const response = await asB('get', PluginApiRoutes.customers.byId(own))
+
+      expect(response.status).toBe(200)
+    })
+
+    it('does not list, read, change, flag or delete a customer of another store, even with the id and the header of that store', async () => {
+      const listed = await asB('get', PluginApiRoutes.customers.list)
+      const read = await asB('get', PluginApiRoutes.customers.byId(customerA))
+      const changed = await asB('patch', PluginApiRoutes.customers.byId(customerA)).send({
+        name: 'hacked'
+      })
+      const flagged = await asB('put', PluginApiRoutes.customers.caution(customerA)).send({
+        reason: 'hacked'
+      })
+      const deleted = await asB('delete', PluginApiRoutes.customers.byId(customerA))
+
+      expect(JSON.stringify(listed.body)).not.toContain(customerA)
+      for (const response of [read, changed, flagged, deleted]) expect(response.status).toBe(404)
+      const after = await owner.customer.findUniqueOrThrow({ where: { id: customerA } })
+      expect(after.name).toBe('of store A')
+      expect(after.isCaution).toBe(false)
+    })
+
+    it('does not read what hangs from a customer of another store', async () => {
+      const responses = [
+        await asB('get', PluginApiRoutes.customers.timeline(customerA)),
+        await asB('get', PluginApiRoutes.customers.orders(customerA)),
+        await asB('get', PluginApiRoutes.customers.conversations(customerA)),
+        await asB('get', PluginApiRoutes.customers.notes(customerA))
+      ]
+
+      for (const response of responses) {
+        expect(response.status).toBe(404)
+        expect(JSON.stringify(response.body)).not.toContain('of store A')
+      }
+    })
+
+    it('does not add an address or a handle to a customer of another store', async () => {
+      const address = await asB('post', PluginApiRoutes.customers.addresses(customerA)).send({
+        line1: 'x',
+        city: 'y',
+        country: 'SV'
+      })
+      const handle = await asB('post', PluginApiRoutes.customers.identities(customerA)).send({
+        channelType: 'instagram',
+        channelIdentity: 'someone'
+      })
+
+      expect(address.status).toBe(404)
+      expect(handle.status).toBe(404)
+      expect(await owner.address.count({ where: { customerId: customerA } })).toBe(0)
+      expect(await owner.customerIdentity.count({ where: { customerId: customerA } })).toBe(0)
+    })
+  })
+
   // A plugin the owner registers by pasting its manifest belongs to the organization (Step 5.6, P1). The catalog and the
   // install of another organization never reach it; the generic matrix above cannot hold it, because a plugin has no
   // route to read it by id: the answer of the install is the one of a plugin that does not exist.
