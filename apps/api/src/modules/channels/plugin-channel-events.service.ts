@@ -49,7 +49,8 @@ const CAPABILITY_OF: Readonly<Record<string, ChannelCapabilityType>> = {
 //   - name a connection that is not one of its installation: the whole request is a 404, the same one as for a connection that
 //     does not exist, and nothing is queued;
 //   - say something about a message that is not on one of its own connections: that event is dropped and counted;
-//   - use an event type its channel never declared the capability for: dropped and counted.
+//   - use an event type its channel never declared the capability for: dropped and counted (typing, delivered, read, reaction, edit
+//     and deletion: what a customer sends in, such as a file or an echo, is stored and needs no capability of the channel).
 // The store is never read from the request: the connection row says it, and that row hangs from the installation of the key.
 @Injectable()
 export class PluginChannelEventsService {

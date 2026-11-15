@@ -39,6 +39,10 @@ export const remoteChannelEventSchema = channelEventSchema.superRefine((event, c
   if (name !== undefined && name.length > limits.PROFILE_NAME_MAX_LENGTH) {
     issue(['channelProfile', 'displayName'], 'the name of the customer is too long')
   }
+  const avatar = event.channelProfile?.avatarUrl
+  if (avatar !== undefined && !isWellFormedPublicHttpsUrl(avatar)) {
+    issue(['channelProfile', 'avatarUrl'], 'the address must be a public https one')
+  }
   const now = Date.now()
   if (!withinWindow(event.timestamp, now)) {
     issue(['timestamp'], 'the timestamp is outside the window a plugin may report')

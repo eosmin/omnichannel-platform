@@ -132,6 +132,21 @@ describe('remoteChannelEventSchema', () => {
     ).toEqual(['message.media.0.id'])
   })
 
+  it.each([
+    'http://cdn.example.com/a.png',
+    'https://10.0.0.1/a.png',
+    'javascript:alert(1)',
+    'data:image/png;base64,AAAA'
+  ])('refuses an avatar at %s', avatarUrl => {
+    expect(paths(received({ channelProfile: { avatarUrl } }))).toContain('channelProfile.avatarUrl')
+  })
+
+  it('takes a public https avatar', () => {
+    expect(
+      paths(received({ channelProfile: { avatarUrl: 'https://cdn.example.com/a.png' } }))
+    ).toEqual([])
+  })
+
   describe('the origin of a message', () => {
     const withOrigin = (origin: object): object => received({}, { origin })
     it('takes public https addresses and a small referral', () => {
