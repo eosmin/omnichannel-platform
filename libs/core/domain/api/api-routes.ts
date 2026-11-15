@@ -554,6 +554,31 @@ export const PluginApiRoutes = {
     returns: '/plugin-api/settings/returns'
   },
 
+  // Step 5.6 PR E4a: the catalog and the stock, over the same services as `ApiRoutes.products`, `.inventory` and `.warehouses`. The
+  // adjustment of stock stores the id of the person who made it and waits for the plugin actor (PR E4a-2).
+  products: {
+    list: '/plugin-api/products',
+    create: '/plugin-api/products',
+    byId: (id: string) => `/plugin-api/products/${id}`,
+    variants: (id: string) => `/plugin-api/products/${id}/variants`,
+    images: (id: string) => `/plugin-api/products/${id}/images`,
+    variantById: (id: string, variantId: string) =>
+      `/plugin-api/products/${id}/variants/${variantId}`,
+    search: '/plugin-api/products/search',
+    inventory: (id: string) => `/plugin-api/products/${id}/inventory`
+  },
+  warehouses: {
+    list: '/plugin-api/warehouses',
+    create: '/plugin-api/warehouses',
+    byId: (id: string) => `/plugin-api/warehouses/${id}`
+  },
+  inventory: {
+    levels: '/plugin-api/inventory/levels',
+    summary: '/plugin-api/inventory/summary',
+    movements: '/plugin-api/inventory/movements',
+    kardex: '/plugin-api/inventory/kardex'
+  },
+
   // Messages (Step 5.6 PR M1b): a plugin writes a reply or a note, and reads the edits and the kept text of a deleted message
   messages: {
     create: '/plugin-api/messages',
