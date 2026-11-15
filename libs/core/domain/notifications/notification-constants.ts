@@ -34,6 +34,11 @@ export const NotificationTypes = {
   BULK_LABELS_READY: 'bulk_labels.ready',
   RETURN_AWAITING_RECEIPT: 'return.awaiting_receipt',
   REMITTANCE_OVERDUE: 'remittance.overdue',
+  // The balance of prepaid guides of a carrier connection and its refund benefit (TDD_17 §4.18)
+  CARRIER_GUIDE_BALANCE_LOW: 'carrier.guide_balance_low',
+  CARRIER_GUIDE_BALANCE_EMPTY: 'carrier.guide_balance_empty',
+  CARRIER_BENEFIT_AT_RISK: 'carrier.benefit_at_risk',
+  CARRIER_BENEFIT_LOST: 'carrier.benefit_lost',
 
   MEMBER_JOINED: 'member.joined',
   INVITATION_ACCEPTED: 'invitation.accepted',
@@ -125,6 +130,10 @@ export const NotificationDefaults: Record<NotificationType, NotificationDefault>
   [NotificationTypes.BULK_LABELS_READY]: { severity: INFO, channels: [IN_APP] },
   [NotificationTypes.RETURN_AWAITING_RECEIPT]: { severity: INFO, channels: [IN_APP] },
   [NotificationTypes.REMITTANCE_OVERDUE]: { severity: WARNING, channels: [IN_APP, EMAIL] },
+  [NotificationTypes.CARRIER_GUIDE_BALANCE_LOW]: { severity: WARNING, channels: [IN_APP] },
+  [NotificationTypes.CARRIER_GUIDE_BALANCE_EMPTY]: { severity: WARNING, channels: [IN_APP, EMAIL] },
+  [NotificationTypes.CARRIER_BENEFIT_AT_RISK]: { severity: WARNING, channels: [IN_APP, EMAIL] },
+  [NotificationTypes.CARRIER_BENEFIT_LOST]: { severity: ERROR, channels: [IN_APP, EMAIL] },
   [NotificationTypes.MEMBER_JOINED]: { severity: INFO, channels: [IN_APP] },
   [NotificationTypes.INVITATION_ACCEPTED]: { severity: INFO, channels: [IN_APP] },
   [NotificationTypes.CHANNEL_DISCONNECTED]: { severity: ERROR, channels: [IN_APP, PUSH, EMAIL] },
@@ -186,7 +195,11 @@ export const NotificationGroupTypes: Record<NotificationGroup, readonly Notifica
     NotificationTypes.CARRIER_STATUS_UNMAPPED,
     NotificationTypes.BULK_LABELS_READY,
     NotificationTypes.RETURN_AWAITING_RECEIPT,
-    NotificationTypes.REMITTANCE_OVERDUE
+    NotificationTypes.REMITTANCE_OVERDUE,
+    NotificationTypes.CARRIER_GUIDE_BALANCE_LOW,
+    NotificationTypes.CARRIER_GUIDE_BALANCE_EMPTY,
+    NotificationTypes.CARRIER_BENEFIT_AT_RISK,
+    NotificationTypes.CARRIER_BENEFIT_LOST
   ],
   [TEAM]: [NotificationTypes.MEMBER_JOINED, NotificationTypes.INVITATION_ACCEPTED],
   [SYSTEM]: [
@@ -227,7 +240,12 @@ export const NotificationTypesWithoutEmitter: ReadonlySet<NotificationType> = ne
       type !== NotificationTypes.PICKUP_MANUAL_REQUIRED &&
       type !== NotificationTypes.PICKUP_CUTOFF_APPROACHING &&
       type !== NotificationTypes.RETURN_AWAITING_RECEIPT &&
-      type !== NotificationTypes.REMITTANCE_OVERDUE
+      type !== NotificationTypes.REMITTANCE_OVERDUE &&
+      // The guide balance and the benefit alerts have an emitter since Step 4.16 PR A
+      type !== NotificationTypes.CARRIER_GUIDE_BALANCE_LOW &&
+      type !== NotificationTypes.CARRIER_GUIDE_BALANCE_EMPTY &&
+      type !== NotificationTypes.CARRIER_BENEFIT_AT_RISK &&
+      type !== NotificationTypes.CARRIER_BENEFIT_LOST
   )
 ])
 

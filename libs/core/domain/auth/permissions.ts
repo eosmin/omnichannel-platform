@@ -64,6 +64,11 @@ export const Permissions = {
   RETURNS_MANAGE: 'returns:manage',
   REMITTANCES_VIEW: 'remittances:view',
   REMITTANCES_MANAGE: 'remittances:manage',
+  // The balance of prepaid guides and the refund benefit of a carrier connection (TDD_17 §4.18): they show what the owner paid for
+  // guides, so only the Admin preset holds them. The balance and the benefit are read with `view_guide_balance`; purchases,
+  // adjustments, voids and the policy are written with `manage_guide_balance`.
+  CARRIERS_VIEW_GUIDE_BALANCE: 'carriers:view_guide_balance',
+  CARRIERS_MANAGE_GUIDE_BALANCE: 'carriers:manage_guide_balance',
 
   // Media
   MEDIA_VIEW: 'media:view',

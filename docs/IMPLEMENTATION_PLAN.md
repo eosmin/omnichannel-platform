@@ -1238,6 +1238,19 @@ ships with the `local` carrier and the fake carrier.
 changes and (where the documentation allows) its cancellation and pickup work against the carrier's
 sandbox.
 
+### Step 4.16 — Prepaid guide balance and the refund benefit per carrier (owner request, 2026-11-15)
+
+The owner asked for it expressly. What the carriers do (prepaid packages of guides with a gift promotion, and a refund of the guide while the shop's return rate stays under 10 % per period) is **the owner's report, to confirm with each carrier** (questions C9 to C13 and F4 to F6 of the owner's private file), so every rule is a setting of the connection and every default that stands for a carrier's rule is marked `[CARRIER-CONFIRM]`. Design: `TDD_17 §4.18`. It posts nothing to the journal: Finance (Steps 4B.5 and 4B.6) reads the balance movements later.
+- [ ] **PR A (server only):** the append-only ledger of guides per connection (`purchase` with paid quantity, gift quantity and total cost; `consume` when a guide is made; `refund`; `adjustment`; `void` of a purchase), the balance and the weighted average cost per guide (total paid over every guide received, in whole cents of USD), the low-balance alert and the warning (never a block) when a guide is made against a balance of 0
+- [ ] The benefit policy of a connection, every part a setting: period (fixed days from an anchor, calendar month, calendar half month), threshold in basis points (default 1000), the base of the percentage (created, dispatched, delivered), the statuses that count as a return, the refund rule (immediate, at period close) and the loss rule (from the crossing, from the close)
+- [ ] The rate and the state of the current period (`in_force`, `at_risk`, `lost`), the closed periods as history, the refund of a returned guide when the rule says (inside the move, or by the daily close), and the warning **before** the threshold is crossed (a notification with its own type, es and en)
+- [ ] Constants in `libs/core/*`, two new permissions (`carriers:view_guide_balance`, `carriers:manage_guide_balance`), events, routes with `AuthGuard` + `TenantGuard` + `@RequirePermissions`, `ApiRoutes`, query keys and api-client functions, the cases of `tests/security/tenant-isolation.spec.ts`, the coverage maps, and a migration with its rollback
+- [ ] **PR B (web, another session):** the screens of Settings → Carriers (movements, record a purchase, policy, state of the period) and the warning of the create-guide dialog; the guide-balance routes are mapped to it in `scripts/frontend-coverage-map.ts`
+- [ ] **Open with the carriers (not code):** the questions C9 to C13 and F4 to F6; when each is answered the default of the policy is changed and its `[CARRIER-CONFIRM]` mark removed. Also unknown: whether a return guide (`kind = return`) or a voided guide gives a guide back (today neither does; a person writes an `adjustment`)
+
+**TDD:** `TDD_17 §4.18` (reads: `TDD_17 §4.8`, `§4.9`, `§4.15`; `TDD_18 §4.2` E4 and E5 and `§13` for how Finance will read it)
+**Done when:** with a policy on, a guide made lowers the balance by one, a returned guide is given back exactly when the policy says (and never twice), the average cost follows a purchase with a gift, the team is warned before the threshold is crossed and when the balance is low or empty, nothing is refused at a balance of 0, and another store sees none of it.
+
 ---
 
 ## Milestone 4B — Finance (owner request of 2026-11-10, design settled 2026-11-14)
@@ -2281,6 +2294,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4.13 | COD remittances | done | PR A #441 (shipment COD lifecycle, `RemittancesService`, routes); PR B #444 (daily check, `remittance.overdue`, preference); PR C (import: profiles, parser, file kept as media) | |
 | 4.14 | Shipping UI | done | PR F1 #452, #455 (orders page, bulk actions); F2 #451 (drawer, caution flag); F3a #456, F3b #460, #462 (order detail panels, messages, pickup); F4 #450, F4b #453 (Settings → Carriers); F5 #454 (order messages, returns, preferences); F6 #457 (shipments and pickups); F7a #458, #461, #466 (returns screens and scanner reception); F7b #459, #463 (remittances and import); F8 #465 (journey and gating); F8b (reception, bulk labels and import in the browser) | |
 | 4.15 | Forza and C807 adapters | in progress | PR 1 (C807 adapter, token cache port, `connectFields`); Forza adapter; PR 2a (api of the connection, #477); PR 2c (web of the guide, #478); PR 2b (web of the connection, #479); PR 3 (places of a bulk run); PR 5 (places in the default mode of bulk labels); PR 4 (QA fix FUNC-H1, a guide that cannot be cancelled at the carrier is marked as voided from `cancel_pending`); PR 6a (api of the commission and the rate per service, FUNC-H4, #483); PR 6b (web of the commission and the rates); the real webhook and one real status change (owner, see the step) | 2026-11-14 |
+| 4.16 | Prepaid guide balance and the refund benefit per carrier | in progress | PR A (server); PR B (web, another session) | 2026-11-15 |
 | **Milestone 4B: Finance** | | | | |
 | 4B.1 | Finance design (TDD_18, no code) | in progress | written and delivered with the first code PR that follows; owner approval of `TDD_18` pending | |
 | 4B.2 | Ledger core (accounts, immutable journal, periods, permissions) | done | PR a (schema, constants, pure rules, database tests, #509); PR b (posting service, routes, isolation, maps, #513) | 2026-11-15 |

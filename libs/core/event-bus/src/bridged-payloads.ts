@@ -3,11 +3,13 @@ import { z } from 'zod'
 import {
   AttentionReasons,
   AuthorType,
+  BenefitAlertLevel,
   BulkLabelJobStatus,
   CarrierStatusLimits,
   CHANNEL_ID_PATTERN,
   ConversationStatus,
   ConversationStatusReasons,
+  GuideBalanceAlertLevel,
   idempotencyKeySchema,
   PickupManualReasons,
   ShipmentStatus
@@ -175,6 +177,20 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     storeId: id,
     connectionId: id,
     providerCode: z.string().min(1).max(CarrierStatusLimits.PROVIDER_CODE_MAX_LENGTH)
+  }),
+  // The balance of prepaid guides and the refund benefit of a connection: ids, a level and numbers, nothing else
+  [Events.CARRIER_GUIDE_BALANCE_ALERT]: z.object({
+    storeId: id,
+    connectionId: id,
+    level: z.enum(GuideBalanceAlertLevel),
+    balance: z.number().int()
+  }),
+  [Events.CARRIER_BENEFIT_ALERT]: z.object({
+    storeId: id,
+    connectionId: id,
+    level: z.enum(BenefitAlertLevel),
+    rateBps: z.number().int().min(0),
+    thresholdBps: z.number().int().min(1)
   }),
   // The cash on delivery a carrier has kept too long: ids and numbers, no guide, no customer
   [Events.REMITTANCE_OVERDUE]: z.object({

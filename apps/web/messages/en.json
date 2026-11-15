@@ -70,7 +70,11 @@
           "failed_attempt": "Delivery attempt failed"
         },
         "carrier": {
-          "status_unmapped": "Carrier status not recognized"
+          "status_unmapped": "Carrier status not recognized",
+          "guide_balance_low": "Prepaid guides running low",
+          "guide_balance_empty": "Prepaid guides used up",
+          "benefit_at_risk": "Refund benefit at risk",
+          "benefit_lost": "Refund benefit lost"
         },
         "bulk_labels": {
           "ready": "Labels ready"
@@ -780,6 +784,22 @@
       "status_unmapped": {
         "title": "Unknown carrier status",
         "body": "{carrier} sent the status \"{code}\", which the platform does not know. Map it in Settings, Carriers, so its shipment updates are applied."
+      },
+      "guide_balance_low": {
+        "title": "Prepaid guides running low",
+        "body": "{carrier} has {balance, plural, one {# prepaid guide} other {# prepaid guides}} left."
+      },
+      "guide_balance_empty": {
+        "title": "Prepaid guides used up",
+        "body": "The prepaid guides of {carrier} are used up. New guides are still made, but nobody has paid for them yet: record the next purchase."
+      },
+      "benefit_at_risk": {
+        "title": "Refund benefit at risk",
+        "body": "The return rate with {carrier} is {rate} in this period and the limit is {limit}. Above it the guides of undelivered packages are no longer given back."
+      },
+      "benefit_lost": {
+        "title": "Refund benefit lost",
+        "body": "The return rate with {carrier} reached {rate} in this period, at or above the limit of {limit}. The guides of packages not delivered are not given back while it stays there."
       }
     },
     "channel": {

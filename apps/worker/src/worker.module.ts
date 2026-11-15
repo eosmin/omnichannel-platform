@@ -43,6 +43,7 @@ import { RetentionWorkerModule } from './retention/retention.module'
 import { AnalyticsRollupScheduler } from './schedulers/analytics-rollup.scheduler'
 import { AuditColdExportScheduler } from './schedulers/audit-cold-export.scheduler'
 import { AutoArchiveScheduler } from './schedulers/auto-archive.scheduler'
+import { BenefitCloseScheduler } from './schedulers/benefit-close.scheduler'
 import { BulkLabelsScheduler } from './schedulers/bulk-labels.scheduler'
 import { ChannelHealthScheduler } from './schedulers/channel-health.scheduler'
 import { DeletedMessagePurgeScheduler } from './schedulers/deleted-message-purge.scheduler'
@@ -129,6 +130,7 @@ import { WebhooksWorkerModule } from './webhooks/webhooks.module'
     AnalyticsRollupScheduler,
     ShipmentPollScheduler,
     RemittanceCheckScheduler,
+    BenefitCloseScheduler,
     PickupEvaluateScheduler,
     BulkLabelsScheduler,
     RetentionScheduler,

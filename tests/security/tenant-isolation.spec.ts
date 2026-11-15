@@ -374,6 +374,10 @@ function searchMarkerIn(body: unknown): string | null {
   return queries.length === 1 ? (queries[0]?.query ?? null) : null
 }
 
+// The connection each row of the guide balance was made under: the routes of the ledger name the connection and the row
+const connectionOfGuideMovement = new Map<string, string>()
+const connectionOfBenefitPeriod = new Map<string, string>()
+
 const resources: IsolationResource[] = [
   {
     name: 'customer',
@@ -454,6 +458,101 @@ const resources: IsolationResource[] = [
         (await owner.carrierConnection.findUnique({ where: { id }, select: { storeId: true } }))
           ?.storeId ?? null
     }
+  },
+  // The balance of prepaid guides and the refund benefit of a connection (Step 4.16). Every route names the connection of the
+  // store: another store's connection is a 404 whatever the row asked for, and the ledger is never changed by a refused request.
+  {
+    name: 'carrierGuideMovement',
+    create: async (owner, input) => {
+      const connection = await createCarrierConnection(owner, { storeId: input.storeId })
+      const row = await owner.carrierGuideMovement.create({
+        data: {
+          storeId: input.storeId,
+          connectionId: connection.id,
+          kind: 'purchase',
+          guidesDelta: 10,
+          costCentsDelta: 800,
+          paidQuantity: 10,
+          giftQuantity: 0,
+          createdBy: 'system'
+        },
+        select: { id: true }
+      })
+      connectionOfGuideMovement.set(row.id, connection.id)
+      return row
+    },
+    readPath: id => ApiRoutes.carriers.guideMovements(connectionOfGuideMovement.get(id) ?? ''),
+    modify: {
+      path: id => ApiRoutes.carriers.guidePurchaseVoid(connectionOfGuideMovement.get(id) ?? '', id),
+      method: 'post',
+      body: { note: 'hacked' }
+    },
+    untouched: async (owner, id) =>
+      (await owner.carrierGuideMovement.count({ where: { voidsMovementId: id } })) === 0
+  },
+  // The connection is the id of its policy
+  {
+    name: 'carrierGuidePolicy',
+    create: async (owner, input) => {
+      const connection = await createCarrierConnection(owner, { storeId: input.storeId })
+      await owner.carrierGuidePolicy.create({
+        data: { storeId: input.storeId, connectionId: connection.id, periodAnchor: '2026-11-01' }
+      })
+      return { id: connection.id }
+    },
+    readPath: ApiRoutes.carriers.guidePolicy,
+    modify: {
+      path: ApiRoutes.carriers.guidePolicy,
+      method: 'put',
+      body: {
+        balanceEnabled: true,
+        benefitEnabled: true,
+        warnOnEmptyBalance: true,
+        lowBalanceThreshold: null,
+        periodKind: 'fixed_days',
+        periodDays: 15,
+        periodAnchor: '2026-11-01',
+        thresholdBps: 1000,
+        warnAtBps: 8000,
+        base: 'delivered',
+        returnStatuses: ['returned'],
+        refundRule: 'at_period_close',
+        lossRule: 'from_crossing'
+      }
+    },
+    untouched: async (owner, id) =>
+      (
+        await owner.carrierGuidePolicy.findUnique({
+          where: { connectionId: id },
+          select: { balanceEnabled: true }
+        })
+      )?.balanceEnabled === false
+  },
+  // A judged period is only read (the daily close of the worker writes it): the history of a connection of another store is a 404
+  {
+    name: 'carrierBenefitPeriod',
+    create: async (owner, input) => {
+      const connection = await createCarrierConnection(owner, { storeId: input.storeId })
+      const row = await owner.carrierBenefitPeriod.create({
+        data: {
+          storeId: input.storeId,
+          connectionId: connection.id,
+          periodStart: new Date('2026-11-01T00:00:00Z'),
+          periodEnd: new Date('2026-11-16T00:00:00Z'),
+          baseCount: 10,
+          returnCount: 0,
+          rateBps: 0,
+          state: 'in_force',
+          refundedCount: 0
+        },
+        select: { id: true }
+      })
+      connectionOfBenefitPeriod.set(row.id, connection.id)
+      return row
+    },
+    readPath: id => ApiRoutes.carriers.benefitPeriods(connectionOfBenefitPeriod.get(id) ?? ''),
+    untouched: async (owner, id) =>
+      (await owner.carrierBenefitPeriod.count({ where: { id } })) === 1
   },
   // The templates of the messages of an order (Step 4.9, PR C1). A template is addressed by its kind and language, not by an
   // id, so the suite keeps which pair each row it makes has. The stores of the suite take kinds of their own, so that a row of

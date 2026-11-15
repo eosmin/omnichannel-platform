@@ -15,6 +15,7 @@ import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/e
 import { DomainEvents } from '@platform/core/event-bus'
 import { type ActorRef, Events } from '@platform/core/events'
 
+import { applyGuideEffectsOfMove } from './guide-balance'
 import { isShipmentTransitionAllowed } from './shipment-rules'
 
 // The only writes of the status of a shipment and of a pickup (TDD_17 §3): a lint rule keeps every other file out of
@@ -128,6 +129,19 @@ export class ShipmentWrites {
         payload: { actorId: meta.actor.id, from, ...(meta.payload ?? {}) }
       }
     })
+    // The balance of prepaid guides and the refund benefit of the connection follow the move, in the same transaction; a
+    // connection with no policy is not touched (TDD_17 §4.18)
+    await applyGuideEffectsOfMove(
+      tx,
+      this.events,
+      {
+        shipmentId: identity.shipmentId,
+        storeId: identity.storeId,
+        connectionId: identity.connectionId
+      },
+      to,
+      meta.occurredAt ?? new Date()
+    )
     this.announce(tx, identity, from, to, meta.actor, meta.replay === true)
   }
 

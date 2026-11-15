@@ -203,6 +203,19 @@ describe('bridgedPayload', () => {
       connectionId: randomUUID(),
       providerCode: '16:115'
     },
+    [Events.CARRIER_GUIDE_BALANCE_ALERT]: {
+      storeId: randomUUID(),
+      connectionId: randomUUID(),
+      level: 'low',
+      balance: 5
+    },
+    [Events.CARRIER_BENEFIT_ALERT]: {
+      storeId: randomUUID(),
+      connectionId: randomUUID(),
+      level: 'at_risk',
+      rateBps: 850,
+      thresholdBps: 1000
+    },
     [Events.REMITTANCE_OVERDUE]: {
       storeId: randomUUID(),
       connectionId: randomUUID(),
