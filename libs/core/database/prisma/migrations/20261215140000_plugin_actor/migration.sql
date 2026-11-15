@@ -10,17 +10,16 @@ ALTER TABLE "messages" ADD COLUMN "pending_edit_plugin_id" TEXT;
 ALTER TABLE "message_revisions" ADD COLUMN "edited_by_plugin_id" TEXT;
 ALTER TABLE "message_reactions" ADD COLUMN "plugin_id" TEXT;
 
--- A change is made by a person or by a plugin, never by both. Added NOT VALID and validated apart, so that the lock taken to add
--- them is not held while the existing rows are read.
+-- A change is made by a person or by a plugin, never by both. Added NOT VALID and NOT validated here: it is enforced for every new
+-- write at once, and a scan of `messages` under the lock a migration holds (one transaction) is the outage NOT VALID avoids. Every
+-- row that exists has a null in the new column, so none can break it; `VALIDATE CONSTRAINT` can be run by hand, outside a
+-- transaction, to mark them valid.
 ALTER TABLE "messages" ADD CONSTRAINT "messages_edited_actor_check"
   CHECK ("edited_by_id" IS NULL OR "edited_by_plugin_id" IS NULL) NOT VALID;
 ALTER TABLE "messages" ADD CONSTRAINT "messages_deleted_actor_check"
   CHECK ("deleted_by_id" IS NULL OR "deleted_by_plugin_id" IS NULL) NOT VALID;
 ALTER TABLE "message_revisions" ADD CONSTRAINT "message_revisions_actor_check"
   CHECK ("edited_by_id" IS NULL OR "edited_by_plugin_id" IS NULL) NOT VALID;
-ALTER TABLE "messages" VALIDATE CONSTRAINT "messages_edited_actor_check";
-ALTER TABLE "messages" VALIDATE CONSTRAINT "messages_deleted_actor_check";
-ALTER TABLE "message_revisions" VALIDATE CONSTRAINT "message_revisions_actor_check";
 
 -- A reaction of a plugin is the system's (`author_type` = 'system') with the plugin in its own column; each author type keeps its own
 -- id column and no other. The check is the one of the reactions migration with the fourth kind, replaced the same way.

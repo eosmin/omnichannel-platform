@@ -19,7 +19,12 @@ import { AuditAction, type AuditActionType } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { type Permission, Permissions } from '@platform/core/auth'
 import { PrismaService } from '@platform/core/database'
-import { AuthorType, ChannelCapability, uuidSchema } from '@platform/core/domain'
+import {
+  AuthorType,
+  ChannelCapability,
+  PluginMessageOperations,
+  uuidSchema
+} from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { MULTI_FILE_SEND_ENABLED, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
@@ -144,7 +149,7 @@ export class PluginMessagesController {
       channel => this.registry.limitsOf(channel)
     )
     this.auditPlugin(AuditAction.MESSAGE_PLUGIN_CHANGED, store.id, messageId, installation, req, {
-      operation: 'edit'
+      operation: PluginMessageOperations.EDIT
     })
     return message
   }
@@ -172,7 +177,7 @@ export class PluginMessagesController {
       channel => this.registry.hasCapability(channel, ChannelCapability.DELETE_MESSAGE)
     )
     this.auditPlugin(AuditAction.MESSAGE_PLUGIN_CHANGED, store.id, messageId, installation, req, {
-      operation: 'delete'
+      operation: PluginMessageOperations.DELETE
     })
   }
 
@@ -194,7 +199,7 @@ export class PluginMessagesController {
       pluginViewerOf(held, installation.pluginId)
     )
     this.auditPlugin(AuditAction.MESSAGE_PLUGIN_CHANGED, store.id, messageId, installation, req, {
-      operation: 'resend'
+      operation: PluginMessageOperations.RESEND
     })
     return message
   }
@@ -223,7 +228,7 @@ export class PluginMessagesController {
     )
     if (!outcome.discarded) return
     this.auditPlugin(AuditAction.MESSAGE_PLUGIN_CHANGED, store.id, messageId, installation, req, {
-      operation: 'discard',
+      operation: PluginMessageOperations.DISCARD,
       type: outcome.type,
       deliveryError: outcome.deliveryError
     })
@@ -251,7 +256,8 @@ export class PluginMessagesController {
       body.mediaId
     )
     this.auditPlugin(AuditAction.MESSAGE_PLUGIN_CHANGED, store.id, messageId, installation, req, {
-      operation: body.emoji === null ? 'unreact' : 'react'
+      operation:
+        body.emoji === null ? PluginMessageOperations.UNREACT : PluginMessageOperations.REACT
     })
   }
 
@@ -267,9 +273,13 @@ export class PluginMessagesController {
     @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string,
     @Req() req: AuthenticatedRequest
   ): Promise<MessageView> {
-    const message = await this.messages.resendCaption(store.id, messageId, pluginViewerOf(held))
+    const message = await this.messages.resendCaption(
+      store.id,
+      messageId,
+      pluginViewerOf(held, installation.pluginId)
+    )
     this.auditPlugin(AuditAction.MESSAGE_PLUGIN_CHANGED, store.id, messageId, installation, req, {
-      operation: 'resend_caption'
+      operation: PluginMessageOperations.RESEND_CAPTION
     })
     return message
   }
@@ -289,7 +299,7 @@ export class PluginMessagesController {
   ): Promise<MessageView> {
     const message = await this.refetches.refetch(store.id, messageId, index, pluginViewerOf(held))
     this.auditPlugin(AuditAction.MESSAGE_PLUGIN_CHANGED, store.id, messageId, installation, req, {
-      operation: 'refetch_file',
+      operation: PluginMessageOperations.REFETCH_FILE,
       index
     })
     return message

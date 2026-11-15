@@ -527,6 +527,41 @@ describe('A plugin as the actor of a change of a message', () => {
       }
     })
 
+    it('does not count as the answer of the team when a person sends again what a plugin wrote as the system', async () => {
+      const conversationId = await conversationOn({
+        status: ConversationStatus.RESOLVED,
+        resolvedAt: new Date(Date.now() - 3_600_000)
+      })
+      const id = await messageIn(conversationId, {
+        authorPluginId: pluginA,
+        deliveryStatus: DeliveryStatus.FAILED
+      })
+
+      const response = await api(app, ctx.agentA, ctx.storeA).post(ApiRoutes.messages.resend(id))
+
+      expect(response.status).toBe(OK)
+      const after = await owner.conversation.findUniqueOrThrow({ where: { id: conversationId } })
+      expect(after.status).toBe(ConversationStatus.RESOLVED)
+      expect(after.firstResponseAt).toBeNull()
+    })
+
+    it('refuses to send again the caption of a message of a person or of another plugin', async () => {
+      const person = await messageIn(await conversationOn(), {
+        authorType: AuthorType.AGENT,
+        authorId: ctx.agentA.id
+      })
+      const theirs = await messageIn(await conversationOn(), {
+        authorType: AuthorType.AGENT,
+        authorId: ctx.agentA.id,
+        authorPluginId: pluginB
+      })
+
+      for (const id of [person, theirs]) {
+        const response = await call('post', PluginApiRoutes.messages.resendCaption(id), keys.a, {})
+        expect(response.status).toBe(FORBIDDEN)
+      }
+    })
+
     it('refuses a reply that did not fail', async () => {
       const id = await messageIn(await conversationOn(), { authorPluginId: pluginA })
 

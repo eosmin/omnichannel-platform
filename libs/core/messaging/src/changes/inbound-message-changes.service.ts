@@ -64,7 +64,8 @@ export class InboundMessageChangesService {
           messageId,
           content: message.content,
           editedByType: by,
-          editedById: null
+          editedById: null,
+          editedByPluginId: null
         })
         await tx.message.update({
           where: { id: messageId },
@@ -74,9 +75,11 @@ export class InboundMessageChangesService {
             editedAt: new Date(),
             editedByType: by,
             editedById: null,
+            editedByPluginId: null,
             // What the provider now holds is the latest word: an edit of an agent that still waits would
             // overwrite it, so it is dropped
             pendingContent: null,
+            pendingEditPluginId: null,
             editStatus: null,
             changeRequestedAt: null
           }
@@ -122,6 +125,7 @@ export class InboundMessageChangesService {
                 }),
             // Whatever of ours was still on its way to a deleted message is moot
             pendingContent: null,
+            pendingEditPluginId: null,
             editStatus: null,
             changeRequestedAt: null
           }

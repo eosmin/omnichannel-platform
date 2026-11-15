@@ -27,8 +27,10 @@ import {
   canSee,
   enumValueOf,
   invalidInput,
+  isOwnToPlugin,
   lockConversationForWrite,
   requireAnyPermission,
+  requireOwnIfPlugin,
   type Viewer
 } from '../conversations/conversations.support'
 import { requireTextFits } from '../messages/caption-rules'
@@ -562,13 +564,7 @@ function requireMayDeleteReply(message: Target, viewer: Viewer): void {
 function isOwn(message: Target, viewer: Viewer): boolean {
   return viewer.pluginId === undefined
     ? message.authorId === viewer.userId
-    : message.authorPluginId === viewer.pluginId
-}
-
-// What a plugin does to a message it did not write is refused whatever it holds: `MESSAGES_DELETE` lets a person of the team delete
-// the reply of another, a plugin only what is its own (TDD_10 §6, M1c). The service of a person is not touched.
-function requireOwnIfPlugin(message: Target, viewer: Viewer): void {
-  if (viewer.pluginId !== undefined && !isOwn(message, viewer)) throw denied()
+    : isOwnToPlugin(message, viewer)
 }
 
 const holds = (held: readonly Permission[], permission: Permission): boolean =>

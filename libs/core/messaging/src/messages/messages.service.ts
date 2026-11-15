@@ -48,6 +48,7 @@ import {
   type LockedConversation,
   lockConversationForWrite,
   requireAnyPermission,
+  requireOwnIfPlugin,
   statusOf,
   type Viewer
 } from '../conversations/conversations.support'
@@ -444,13 +445,7 @@ export class MessagesService {
         row.authorType === String(AuthorType.AGENT) ||
         (row.authorType === String(AuthorType.SYSTEM) && row.authorPluginId !== null)
       // A plugin sends again only what it wrote (a person of the team sends again the reply of any other who may send)
-      if (viewer.pluginId !== undefined && row.authorPluginId !== viewer.pluginId) {
-        throw new PlatformException(
-          ErrorCodes.PERMISSION_DENIED,
-          'the caller may not change this message',
-          HttpStatusCodes.FORBIDDEN
-        )
-      }
+      requireOwnIfPlugin(row, viewer)
       if (
         !isOurs ||
         row.type === String(MessageType.INTERNAL_NOTE) ||
@@ -497,11 +492,15 @@ export class MessagesService {
       // time, and one that was resolved, snoozed or archived since is open again. A plugin that sends again changes
       // nothing of the conversation: the message's own first send already moved it (or was quiet, which the row does not
       // keep), and nobody on the team chose to answer now.
-      if (viewer.pluginId === undefined) {
+      // The same holds for a person who sends again what a plugin wrote as the system: it is no answer of the team, so it
+      // is not counted as the first response either.
+      const answersAsTeam =
+        viewer.pluginId === undefined && row.authorType === String(AuthorType.AGENT)
+      if (answersAsTeam) {
         await this.conversations.recordReply(tx, storeId, row.conversationId, now)
       }
       if (
-        viewer.pluginId === undefined &&
+        answersAsTeam &&
         ConversationReopenedByReply.some(status => status === statusOf(current.status))
       ) {
         await this.conversations.applyStatus(
@@ -557,6 +556,7 @@ export class MessagesService {
       })
       if (row === null) throw resourceNotFound('message')
       requireAnyPermission(viewer.held, [Permissions.MESSAGES_SEND])
+      requireOwnIfPlugin(row, viewer)
       const state = row.captionState
       if (
         row.authorType !== String(AuthorType.AGENT) ||

@@ -2,6 +2,7 @@ import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable } from '@nestjs/common'
 import type { Queue } from 'bullmq'
 
+import { PLUGIN_REACTION_JOB_ID_PREFIX } from '@platform/core/domain'
 import {
   JobNames,
   QueueNames,
@@ -33,7 +34,7 @@ export function outboundJobId(messageId: string): string {
 
 // One job for each version of a reaction: a later emoji is another job, the same one is the same job
 export function reactionJobId(job: SendOutboundReactionJob): string {
-  return `react-${job.messageId}-${job.pluginId === undefined ? job.userId : `plugin-${job.pluginId}`}-${job.mediaId ?? 'message'}-${job.version}`
+  return `react-${job.messageId}-${job.pluginId === undefined ? job.userId : `${PLUGIN_REACTION_JOB_ID_PREFIX}${job.pluginId}`}-${job.mediaId ?? 'message'}-${job.version}`
 }
 
 // One job for each request of the agent (the `version` of the message after it), so that a request made

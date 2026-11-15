@@ -34,7 +34,7 @@ export const outboundReactionJobSchema = exactly<SendOutboundReactionJob>()(
     messageId: z.uuid(),
     userId: z.uuid().nullable(),
     // A plugin's id is the id of its catalog row (a slug or a uuid), not necessarily a uuid
-    pluginId: z.string().min(1).optional(),
+    pluginId: z.string().min(1).max(128).optional(),
     version: z.number().int(),
     // The file of an album the reaction is under; absent: the message itself
     // As permissive as the id the web widget may choose for a file (`CHOSEN_ID` of the media fetcher): a
