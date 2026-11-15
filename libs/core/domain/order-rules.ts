@@ -118,6 +118,8 @@ export interface OrderTotalsInput {
   readonly lines: readonly PricedLine[]
   readonly shippingCents: number
   readonly discountCents: number
+  // The tax the order adds on top of its price, when the prices of the store do not include it (TDD_18 §7): zero otherwise
+  readonly addedTaxCents?: number
 }
 
 export interface OrderTotals {
@@ -130,17 +132,18 @@ export interface OrderTotals {
 export type OrderTotalsResult =
   ({ readonly ok: true } & OrderTotals) | { readonly ok: false; readonly code: ErrorCode }
 
-// total = subtotal + shipping - discount, every part and every partial sum an integer that fits the 32 bits of its
+// total = subtotal + shipping - discount (+ the tax the prices do not include), every part and every partial sum an integer that fits the 32 bits of its
 // column. A part that is not a whole non-negative number of cents is a caller bug, refused like an overflow: the
 // server never "fixes" money.
 export function computeOrderTotals({
   lines,
   shippingCents,
-  discountCents
+  discountCents,
+  addedTaxCents = 0
 }: OrderTotalsInput): OrderTotalsResult {
   // An order with no lines is a caller bug (the schemas ask for at least one), not an amount out of range
   if (lines.length === 0) return refuse(ErrorCodes.VALIDATION_FAILED)
-  if (!isCents(shippingCents) || !isCents(discountCents)) {
+  if (!isCents(shippingCents) || !isCents(discountCents) || !isCents(addedTaxCents)) {
     return refuse(ErrorCodes.ORDER_TOTAL_OUT_OF_RANGE)
   }
   let subtotalCents = 0
@@ -158,7 +161,7 @@ export function computeOrderTotals({
     if (subtotalCents > ORDER_MAX_AMOUNT_CENTS) return refuse(ErrorCodes.ORDER_TOTAL_OUT_OF_RANGE)
   }
   if (discountCents > subtotalCents) return refuse(ErrorCodes.ORDER_DISCOUNT_EXCEEDS_SUBTOTAL)
-  const totalCents = subtotalCents + shippingCents - discountCents
+  const totalCents = subtotalCents + shippingCents - discountCents + addedTaxCents
   if (totalCents > ORDER_MAX_AMOUNT_CENTS) return refuse(ErrorCodes.ORDER_TOTAL_OUT_OF_RANGE)
   return { ok: true, subtotalCents, shippingCents, discountCents, totalCents }
 }
