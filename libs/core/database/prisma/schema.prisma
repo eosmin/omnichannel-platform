@@ -29,6 +29,15 @@ model Organization {
   warehouses          Warehouse[]
   stockCounts         StockCount[]
   stockTransfers      StockTransfer[]
+  financeSettings     FinanceSettings?
+  ledgerAccounts      LedgerAccount[]
+  accountRoles        AccountRoleMapping[]
+  paymentAccounts     PaymentMethodAccount[]
+  fiscalPeriods       FiscalPeriod[]
+  journalEntries      JournalEntry[]
+  journalLines        JournalLine[]
+  periodBalances      AccountPeriodBalance[]
+  postingFailures     FinancePostingFailure[]
 
   @@map("organizations")
 }
@@ -67,6 +76,9 @@ model Store {
   orderItemAllocations     OrderItemAllocation[]
   stockCountLines          StockCountLine[]
   stockTransferLines       StockTransferLine[]
+  journalLines             JournalLine[]
+  periodBalances           AccountPeriodBalance[]
+  paymentAccounts          PaymentMethodAccount[]
   tags                     Tag[]
   snippets                 Snippet[]
   media                    Media[]
@@ -2165,4 +2177,230 @@ model RemittanceImportProfile {
   @@unique([storeId, id])
   @@unique([connectionId, name])
   @@map("remittance_import_profiles")
+}
+
+// ============================================================
+// FINANCE (TDD_18, Step 4B.2): the double-entry ledger of the ORGANIZATION
+// ============================================================
+// Every table is scoped by organization_id (TDD_18 §2.1), and every foreign key to another finance table or to a store
+// carries it, so the database itself refuses a link across organizations. Whatever the schema cannot say is raw SQL in
+// the migration (20261213100000_finance_ledger): the append-only triggers, the balanced-entry constraint, the open-period
+// and postable-account checks, the gapless number and the hash chain head, and the CHECKs. Money is whole USD cents;
+// stored balances are BigInt because a sum of cents passes the 32-bit ceiling of one line.
+
+model FinanceSettings {
+  organizationId      String    @id @map("organization_id")
+  countryCode         String    @map("country_code") // ISO 3166-1 alpha-2, 'SV' now: picks the template
+  baseCurrency        String    @default("USD") @map("base_currency") // CHECK = 'USD' in the MVP (TDD_18 §2.8)
+  accountingStartDate DateTime  @map("accounting_start_date") @db.Date // events before it are never posted
+  lockedThrough       DateTime? @map("locked_through") @db.Date // last day of the last closed period; null = none
+  nextEntryNumber     BigInt    @default(1) @map("next_entry_number") // gapless counter, locked per post
+  lastEntryHash       String?   @map("last_entry_hash") // the head of the hash chain
+  recognizeSaleOn     String    @default("delivered") @map("recognize_sale_on") // SaleRecognition
+  roundingAccountId   String?   @map("rounding_account_id")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  roundingAccount LedgerAccount? @relation(fields: [organizationId, roundingAccountId], references: [organizationId, id], onDelete: Restrict)
+
+  @@map("finance_settings")
+}
+
+model LedgerAccount {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  storeId        String?  @map("store_id") // NULL in the MVP, held by a CHECK (accounts per store are Phase 2, TDD_18 §2.2)
+  code           String // the accountant's numbering, unique per organization
+  name           String // plain data the accountant edits (the template seeds it)
+  type           String // AccountType
+  normalSide     String   @map("normal_side") // NormalSide: derived from the type, stored for the CHECK
+  parentId       String?  @map("parent_id")
+  isPostable     Boolean  @default(true) @map("is_postable") // false for a header that only groups
+  cashKind       String?  @map("cash_kind") // CashKind: cash | bank | wallet; null for every other account
+  isSystem       Boolean  @default(false) @map("is_system") // created by the template: cannot be deleted, can be renamed
+  active         Boolean  @default(true)
+  currency       String   @default("USD")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  parent          LedgerAccount?         @relation("AccountTree", fields: [organizationId, parentId], references: [organizationId, id], onDelete: Restrict)
+  children        LedgerAccount[]        @relation("AccountTree")
+  roleMappings    AccountRoleMapping[]
+  paymentAccounts PaymentMethodAccount[]
+  settings        FinanceSettings[]
+  lines           JournalLine[]
+  balances        AccountPeriodBalance[]
+
+  @@unique([organizationId, code])
+  // So that every table that names an account can name its organization with it
+  @@unique([organizationId, id])
+  @@index([organizationId, type])
+  @@map("ledger_accounts")
+}
+
+// Which account each automatic entry posts to (TDD_18 §3, AccountRole)
+model AccountRoleMapping {
+  organizationId String @map("organization_id")
+  role           String // AccountRole
+  accountId      String @map("account_id")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  account      LedgerAccount @relation(fields: [organizationId, accountId], references: [organizationId, id], onDelete: Restrict)
+
+  @@id([organizationId, role])
+  @@index([accountId])
+  @@map("account_role_mappings")
+}
+
+// Which account receives a payment method (TDD_18 §6.2); store_id NULL is the default of the organization
+model PaymentMethodAccount {
+  id             String  @id @default(uuid())
+  organizationId String  @map("organization_id")
+  storeId        String? @map("store_id")
+  paymentMethod  String  @map("payment_method") // PaymentMethod (CASH_ON_DELIVERY is not listed: it goes to the carrier receivable)
+  accountId      String  @map("account_id")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  store        Store?        @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Restrict)
+  account      LedgerAccount @relation(fields: [organizationId, accountId], references: [organizationId, id], onDelete: Restrict)
+
+  // One default per method is a partial index in the migration: here a NULL store is never equal to another
+  @@unique([organizationId, storeId, paymentMethod])
+  @@index([accountId])
+  @@map("payment_method_accounts")
+}
+
+model FiscalPeriod {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  year           Int
+  month          Int // 1 to 12
+  startsOn       DateTime  @map("starts_on") @db.Date
+  endsOn         DateTime  @map("ends_on") @db.Date
+  status         String    @default("open") // PeriodStatus
+  closedAt       DateTime? @map("closed_at")
+  closedBy       String?   @map("closed_by")
+  reopenedAt     DateTime? @map("reopened_at")
+  reopenedBy     String?   @map("reopened_by")
+  reopenReason   String?   @map("reopen_reason")
+  closingHash    String?   @map("closing_hash") // the head of the entry chain when it closed (TDD_18 §5.1)
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  entries      JournalEntry[]
+  balances     AccountPeriodBalance[]
+
+  @@unique([organizationId, year, month])
+  @@unique([organizationId, id])
+  @@map("fiscal_periods")
+}
+
+// The journal: immutable (TDD_18 §2.5). The database refuses an UPDATE or a DELETE of an entry or a line, whoever asks.
+model JournalEntry {
+  id              String    @id @default(uuid())
+  organizationId  String    @map("organization_id")
+  number          BigInt // gapless, per organization, from FinanceSettings.nextEntryNumber
+  entryDate       DateTime  @map("entry_date") @db.Date // the accounting date; decides the period
+  periodId        String    @map("period_id")
+  type            String // JournalEntryType
+  sourceType      String?   @map("source_type") // FinanceSourceType; null for a manual entry
+  sourceId        String?   @map("source_id")
+  sourceDate      DateTime? @map("source_date") @db.Date // when the source event really happened (a late post keeps it)
+  idempotencyKey  String    @map("idempotency_key") // e.g. 'order:<id>:sale'; unique per organization
+  reversesEntryId String?   @map("reverses_entry_id") // set on the reversing entry only; the original is never touched
+  memo            String?
+  currency        String    @default("USD")
+  totalCents      Int       @map("total_cents") // sum of debits (= sum of credits)
+  createdBy       String?   @map("created_by") // a user; null for the system, then `origin` says why
+  origin          String // EntryOrigin: user | system
+  createdAt       DateTime  @default(now()) @map("created_at")
+  prevHash        String?   @map("prev_hash") // hash of the previous entry of the organization
+  hash            String // sha256 over the canonical entry and its lines and prevHash (TDD_18 §11)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  period       FiscalPeriod  @relation(fields: [organizationId, periodId], references: [organizationId, id], onDelete: Restrict)
+  reverses     JournalEntry? @relation("Reversal", fields: [organizationId, reversesEntryId], references: [organizationId, id], onDelete: Restrict)
+  reversedBy   JournalEntry? @relation("Reversal")
+  lines        JournalLine[]
+
+  @@unique([organizationId, number])
+  @@unique([organizationId, idempotencyKey])
+  @@unique([organizationId, id])
+  // An entry is reversed at most once (FINANCE_ENTRY_ALREADY_REVERSED)
+  @@unique([organizationId, reversesEntryId])
+  @@index([organizationId, periodId])
+  @@index([organizationId, sourceType, sourceId])
+  @@map("journal_entries")
+}
+
+model JournalLine {
+  id             String  @id @default(uuid())
+  entryId        String  @map("entry_id")
+  organizationId String  @map("organization_id")
+  storeId        String? @map("store_id") // a dimension, not a scope (TDD_18 §2.2)
+  accountId      String  @map("account_id")
+  debitCents     Int     @default(0) @map("debit_cents")
+  creditCents    Int     @default(0) @map("credit_cents")
+  partyType      String? @map("party_type") // PartyType: supplier | carrier_connection | customer
+  partyId        String? @map("party_id") // dimension for subledgers (payables, carrier receivables)
+  taxRateId      String? @map("tax_rate_id") // set on the lines that carry VAT (Step 4B.3 adds the table it points at)
+  memo           String?
+  lineNo         Int     @map("line_no")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  entry        JournalEntry  @relation(fields: [organizationId, entryId], references: [organizationId, id], onDelete: Restrict)
+  account      LedgerAccount @relation(fields: [organizationId, accountId], references: [organizationId, id], onDelete: Restrict)
+  store        Store?        @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([entryId, lineNo])
+  @@index([organizationId, accountId])
+  @@index([entryId])
+  @@index([storeId])
+  @@map("journal_lines")
+}
+
+// What each account has had debited and credited in a period, by store (TDD_18 §2.5): kept in the same transaction as
+// the entry and recomputed by the daily reconciliation. The unique key treats a null store as one (a partial index pair
+// in the migration, since Prisma cannot say it).
+model AccountPeriodBalance {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  accountId      String   @map("account_id")
+  storeId        String?  @map("store_id")
+  periodId       String   @map("period_id")
+  debitCents     BigInt   @default(0) @map("debit_cents")
+  creditCents    BigInt   @default(0) @map("credit_cents")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  account      LedgerAccount @relation(fields: [organizationId, accountId], references: [organizationId, id], onDelete: Restrict)
+  period       FiscalPeriod  @relation(fields: [organizationId, periodId], references: [organizationId, id], onDelete: Restrict)
+  store        Store?        @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Restrict)
+
+  @@index([organizationId, periodId])
+  @@index([accountId])
+  @@map("account_period_balances")
+}
+
+// A source whose automatic entry could not be posted (TDD_18 §6.1): visible, never silent, and a period will not close
+// over it. The posting service of Step 4B.6 writes it; Step 4B.2 only builds the table the close reads.
+model FinancePostingFailure {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  sourceType     String    @map("source_type") // FinanceSourceType
+  sourceId       String    @map("source_id")
+  eventKind      String    @map("event_kind") // which event of the source: sale, shipped, confirm...
+  reason         String // FinancePostingFailureReason: a code, never free text
+  attempts       Int       @default(1)
+  resolvedAt     DateTime? @map("resolved_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, sourceType, sourceId, eventKind])
+  @@index([organizationId, resolvedAt])
+  @@map("finance_posting_failures")
 }

@@ -1274,24 +1274,55 @@ external audit (user and time on every entry, immutable, a hash chain, CSV expor
 (never as a docs-only PR, unless the owner gives an exception in writing).
 
 ### Step 4B.2 — Ledger core (api)
-- [ ] Migration with its rollback: `FinanceSettings`, `LedgerAccount`, `AccountRoleMapping`, `PaymentMethodAccount`, `FiscalPeriod`,
-      `JournalEntry`, `JournalLine`, `AccountPeriodBalance`, `FinancePostingFailure`; raw SQL: append-only triggers, the deferred
-      balanced-entry constraint, the postable-and-open-period trigger, the `CHECK`s (one side per line, currency `USD`, `store_id` null
-      on accounts), the gapless number and the hash chain (`TDD_18 §2`)
-- [ ] Constants of `TDD_18 §3` (enums in `libs/core/domain/finance-constants.ts`, permissions, events, error codes, audit actions,
-      metric names, routes, query keys); the finance permissions in `PermissionsOfUnbuiltAreas` until read; labels of the permission matrix
-      (`es`, `en`); `RolePresets` unchanged (only Admin holds them)
-- [ ] `libs/core/finance` (pure): the entry builder and validator, the hash, the period rules; the posting service is the only writer
-      of the ledger (lint rule of the `TDD_16 §8` kind)
-- [ ] Finance templates (`libs/core/finance/templates/sv.ts`): the starter chart, the role map and the tax seeds, seeded once at setup;
-      `POST /finance/setup` (country, start date, template) and the setup state
-- [ ] `apps/api/src/modules/finance`: settings, accounts (create, rename, deactivate, re-parent; type locked once used), role
-      mappings, payment method accounts, periods (list, open on demand), entries (list, one, manual with HIGH-tier confirmation, reverse),
-      balances, `finance/postings` (failed list, post again); audit rows for every mutation
-- [ ] Tests: unbalanced entry refused, closed period refused (service and trigger), no update or delete of an entry (the trigger),
-      idempotency key repeat, reversal, the gapless number under concurrent posts, the hash chain; a custom role with only `FINANCE_VIEW`
-      reads balances and cannot read the journal or post; `tests/security/tenant-isolation.spec.ts` cases (cross-organization by id, the lines by store) and
-      `check-isolation-coverage`; `frontend-coverage-map` and `plugin-api-coverage-map` entries
+Delivered in two PRs (the step is bigger than one review): **4B.2a** the schema and the pure rules, **4B.2b** the services and the
+routes. Never stacked: 4B.2b starts from `main` after 4B.2a is merged.
+
+**PR 4B.2a (schema, constants, pure rules, the database tests)**
+- [x] Migration with its rollback (`20261213100000_finance_ledger`): `FinanceSettings`, `LedgerAccount`, `AccountRoleMapping`,
+      `PaymentMethodAccount`, `FiscalPeriod`, `JournalEntry`, `JournalLine`, `AccountPeriodBalance`, `FinancePostingFailure`; raw SQL:
+      append-only triggers (and the privileges of the application roles), the deferred balanced-entry constraint, the
+      postable-and-open-period triggers, the `CHECK`s (one side per line, currency `USD`, `store_id` null on accounts), the gapless
+      number, the hash-chain head and its guard (`TDD_18 §2`); the `finance:*` and `fiscal:*` permissions given to the Admin role of
+      every existing store
+- [x] Constants of `TDD_18 §3` that this step reads: the enums and transition tables (`libs/core/domain/finance-constants.ts`), the
+      permissions (13, in `PermissionsOfUnbuiltAreas` by prefix until read), the error codes with their `es`/`en` texts, the audit
+      actions, the two events of the journal (`finance.entry_posted`, `finance.entry_reversed`) with their payload, the labels of the
+      permission matrix (`es`, `en`); `RolePresets` unchanged (only Admin holds them)
+- [x] `libs/core/finance` (pure): the entry validator and the reversal, the hash chain (`verifyChain`), the period and lock rules, the
+      chart rules, the `SV` template (`templates/sv.ts`, starter chart, role map, payment-method accounts); the lint rule that makes
+      the posting service the only writer of the ledger (`eslint-finance-bans.cjs`, spec in `scripts/lib`)
+- [x] Tests: `tests/security/finance-schema.spec.ts` (unbalanced entry, closed period and lock, no update or delete of an entry or a
+      line even for the owner, the privileges, the gapless number and the chain, concurrent posts, reversal once, the chart and the
+      maps, composite keys across organizations), the pure specs of `libs/core/finance`, `finance-constants.spec.ts`
+
+**PR 4B.2b (services, routes, isolation, frontend and plugin maps)**
+- [ ] The posting service in `libs/core/finance` (the only writer of the ledger: lock on `FinanceSettings`, next number and head, hash,
+      entry and lines with the organization named on each line, the balances by upsert, idempotency key, the reversal; emits
+      `finance.entry_posted` and `finance.entry_reversed`), the module registered in the api and the worker
+- [ ] `POST /finance/setup` (country, start date, template) with the setup state; `apps/api/src/modules/finance`: settings, accounts
+      (create, rename, deactivate, re-parent; type locked once used), role mappings, payment method accounts, periods (list, open on
+      demand), entries (list, one, manual with HIGH-tier confirmation, reverse), balances, `finance/postings` (failed list, post
+      again); an audit row for every mutation (`FINANCE_SETUP_COMPLETED`, `FINANCE_PAYMENT_ACCOUNT_CHANGED` and the rest)
+- [ ] Constants of `TDD_18 §3` left for this PR: `ApiRoutes` (finance group), `QueryKeys` of `finance.*`, the HIGH-tier entries
+      "Post a manual entry" and "Reverse an entry" in `DestructiveActionTiers`
+- [ ] Tests: a custom role with only `FINANCE_VIEW` reads balances and cannot read the journal, post, move money or close (one case
+      per permission); idempotency repeat; the gapless number under concurrent posts through the service; the
+      `tests/security/tenant-isolation.spec.ts` cases (cross-organization by id, the lines by store) that replace the nine lines of
+      `scripts/isolation-exemptions.ts` named `FINANCE_SCHEMA_ONLY`; `frontend-coverage-map` and `plugin-api-coverage-map` entries
+**Left for the steps that read them (rule 12, each in its step):** the jobs and schedules (`POST_FINANCE_EVENT`, 4B.6;
+`RECONCILE_FINANCE` and `VERIFY_LEDGER_CHAIN`, 4B.8; `SUBMIT_FISCAL_DOCUMENT`, 4B.7), the notification types
+(`FINANCE_POSTING_FAILED`, 4B.6; `FISCAL_DOCUMENT_REJECTED`, 4B.7), the events `FINANCE_PERIOD_CLOSED`, `FINANCE_PERIOD_REOPENED` (4B.8),
+`FINANCE_POSTING_FAILED` (4B.6), `PURCHASE_ORDER_RECEIVED` (4B.5) and the fiscal ones (4B.7), the four metrics (4B.6 and 4B.8), the
+audit actions of purchases, taxes, periods, exports and fiscal documents (their steps), the upload purpose `finance_document` (4B.4),
+the entry builders of each event of `TDD_18 §4.2` (4B.6), the `finance:`/`fiscal:` prefixes of `PermissionsOfUnbuiltAreas` (a step
+that reads every permission of one prefix removes it; 4B.9 at the latest), and the `finance.pricesIncludeTax` preference (4B.3).
+**Decisions of PR 4B.2a (rule 12):** (1) the hash covers the memo, the key, the author and the origin besides what `TDD_18 §11` lists, so
+an edit behind the application is detected (rejected: the minimal form; costs nothing); (2) the counter and the head of the chain are
+moved by a trigger of the entry (and guarded against any direct change), not by the service, so they cannot drift from the journal
+(rejected: the service updates them; the service still takes the lock to serialize the posts); (3) the triggers refuse the owner of the
+table too, and the test cleanup disables them inside one transaction (rejected: an owner exception, which would leave nothing for the
+trigger to prove); (4) an entry is reversed at most once, by a unique index (`FINANCE_ENTRY_ALREADY_REVERSED` is mapped by the
+service); (5) accounts, role maps and settings restrict the deletion of their organization (the books are never lost by a cascade).
 **TDD:** `TDD_18 §2`, `§3`, `§4.1`, `§5`, `§9`, `TDD_02 §5`, `TDD_01 §4`
 **Done when:** the accountant's chart can be seeded and edited, a manual entry posts and is reversed, a period can be listed, every rule
 above is a failing test that passes, and no code outside `libs/core/finance` writes the ledger (lint).
@@ -2139,7 +2170,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4.15 | Forza and C807 adapters | in progress | PR 1 (C807 adapter, token cache port, `connectFields`); Forza adapter; PR 2a (api of the connection, #477); PR 2c (web of the guide, #478); PR 2b (web of the connection, #479); PR 3 (places of a bulk run); PR 5 (places in the default mode of bulk labels); PR 4 (QA fix FUNC-H1, a guide that cannot be cancelled at the carrier is marked as voided from `cancel_pending`); PR 6a (api of the commission and the rate per service, FUNC-H4, #483); PR 6b (web of the commission and the rates); the real webhook and one real status change (owner, see the step) | 2026-11-14 |
 | **Milestone 4B: Finance** | | | | |
 | 4B.1 | Finance design (TDD_18, no code) | in progress | written and delivered with the first code PR that follows; owner approval of `TDD_18` pending | |
-| 4B.2 | Ledger core (accounts, immutable journal, periods, permissions) | todo | | |
+| 4B.2 | Ledger core (accounts, immutable journal, periods, permissions) | in progress | PR a (schema, constants, pure rules, database tests); PR b (services, routes, isolation) pending | |
 | 4B.3 | VAT and the tax snapshot | todo | | |
 | 4B.4 | Expenses, incomes, transfers and bank reconciliation | todo | | |
 | 4B.5 | Suppliers and purchase orders | todo | | |

@@ -7,6 +7,7 @@ import type {
   ConversationStatus,
   ConversationStatusReason,
   InventoryMovementType,
+  JournalEntryType,
   OrderMessageAlertReason,
   OrderMessageKindType,
   OrderStatus,
@@ -280,6 +281,18 @@ export interface TransferChangedPayload {
   storeIds: string[]
 }
 
+// An entry was posted to the journal of an organization, or one reversed another (TDD_18 §3): ids and the number only, no
+// amount and no memo
+export interface FinanceEntryPayload {
+  organizationId: string
+  entryId: string
+  number: number
+  type: JournalEntryType
+  // For a reversal, the entry it reversed
+  reversesEntryId: string | null
+  actor: ActorRef
+}
+
 // The mark of attention of a conversation changed: `reason` is the new one, null when it was taken off.
 // Never the note of the agent: no text crosses the bridge, the client reads the row again.
 export interface ConversationAttentionChangedPayload {
@@ -534,6 +547,8 @@ export interface DomainEventPayloads {
   [Events.REMITTANCE_CONFIRMED]: RemittanceEventPayload
   [Events.REMITTANCE_VOIDED]: RemittanceEventPayload
   [Events.REMITTANCE_OVERDUE]: RemittanceOverduePayload
+  [Events.FINANCE_ENTRY_POSTED]: FinanceEntryPayload
+  [Events.FINANCE_ENTRY_REVERSED]: FinanceEntryPayload
   [Events.WEBHOOK_AUTO_DISABLED]: WebhookAutoDisabledPayload
   [Events.CARRIER_STATUS_UNMAPPED]: CarrierStatusUnmappedPayload
   [Events.BULK_LABELS_PROGRESS]: BulkLabelsProgressPayload

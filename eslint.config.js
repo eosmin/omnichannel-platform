@@ -23,6 +23,10 @@ const conversationStatusBan = {
 // that a spec can run it (scripts/lib/inventory-write-bans.spec.ts)
 const { inventoryWriteBans } = createRequire(import.meta.url)('./eslint-inventory-bans.cjs')
 
+// The ledger of the organization is written in ONE place (TDD_18 §9.2): see eslint-finance-bans.cjs, where the rule lives so
+// that a spec can run it (scripts/lib/finance-write-bans.spec.ts)
+const { financeWriteBans } = createRequire(import.meta.url)('./eslint-finance-bans.cjs')
+
 // The states of the shipping module change in the service that owns them (TDD_17 §8): see eslint-shipping-bans.cjs,
 // where the rules live so that a spec can run them (scripts/lib/shipping-state-bans.spec.ts)
 const { shippingStateBans, orderPriceApprovalBans } = createRequire(import.meta.url)(
@@ -141,6 +145,7 @@ export default defineConfig([
         conversationStatusBan,
         prismaTransactionBan,
         ...inventoryWriteBans,
+        ...financeWriteBans,
         ...shippingStateBans,
         ...orderPriceApprovalBans,
         ...httpStatusBans
@@ -399,6 +404,26 @@ export default defineConfig([
         processEnvBan,
         conversationStatusBan,
         prismaTransactionBan,
+        ...financeWriteBans,
+        ...shippingStateBans,
+        ...orderPriceApprovalBans,
+        ...httpStatusBans
+      ]
+    }
+  },
+
+  // The posting service and everything of the ledger engine: the one place that writes entries, lines and balances (the
+  // specs keep their own block above, which leaves these bans out)
+  {
+    files: ['libs/core/finance/**/*.ts'],
+    ignores: ['**/*.spec.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        processEnvBan,
+        conversationStatusBan,
+        prismaTransactionBan,
+        ...inventoryWriteBans,
         ...shippingStateBans,
         ...orderPriceApprovalBans,
         ...httpStatusBans
@@ -418,6 +443,7 @@ export default defineConfig([
         conversationStatusBan,
         prismaTransactionBan,
         ...inventoryWriteBans,
+        ...financeWriteBans,
         ...orderPriceApprovalBans,
         ...httpStatusBans
       ]
@@ -435,6 +461,7 @@ export default defineConfig([
         conversationStatusBan,
         prismaTransactionBan,
         ...inventoryWriteBans,
+        ...financeWriteBans,
         ...shippingStateBans,
         ...httpStatusBans
       ]

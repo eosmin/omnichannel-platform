@@ -77,7 +77,8 @@ export function checkIsolationCoverage(
 }
 
 // The progress table of the plan: | 1.2 | Tenancy | done | #39 | 2026-10-25 |  ->  { '1.2': 'done' }
-const PROGRESS_ROW = /^\|\s*(\d+\.\d+)\s*\|[^|]*\|\s*([^|]*?)\s*\|/gm
+// (a step of the finance milestone is `4B.2`: a letter may follow the milestone number)
+const PROGRESS_ROW = /^\|\s*(\d+[A-Z]?\.\d+)\s*\|[^|]*\|\s*([^|]*?)\s*\|/gm
 // Other tables of the plan (the CI jobs by step) also start their rows with a step number
 const PROGRESS_HEADING = '## Progress tracking'
 
