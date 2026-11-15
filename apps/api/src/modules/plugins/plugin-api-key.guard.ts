@@ -115,8 +115,10 @@ export class PluginApiKeyGuard implements CanActivate {
     const needed = this.reflector.getAllAndMerge<Permission[]>(PERMISSIONS_KEY, targets)
     const anyOf =
       this.reflector.getAllAndOverride<Permission[] | undefined>(ANY_PERMISSION_KEY, targets) ?? []
-    // As PermissionGuard does: a route that asks for scopes and names no permission is a mistake of the code, closed and not open
-    if (required.length > 0 && needed.length === 0 && anyOf.length === 0) {
+    // As PermissionGuard does: a route whose scopes stand for permissions and that names none is a mistake of the code, closed and
+    // not open. A route whose scopes stand for no human permission (the channel scopes of §6.7: they exist only for the routes of
+    // the plugin's own accounts and events, and a person has no counterpart) has none to name.
+    if (permissions.length > 0 && needed.length === 0 && anyOf.length === 0) {
       this.logger.error(
         { installationId: installation.id, handler: context.getHandler().name },
         'a plugin-api route with scopes declares no @RequirePermissions: refused'

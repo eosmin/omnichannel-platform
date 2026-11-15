@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash, randomInt, randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
 import supertest from 'supertest'
@@ -3886,6 +3886,149 @@ describe('Tenant isolation', () => {
 
       expect(moved.status).toBe(200)
       expect((moved.body as { storeId: string }).storeId).toBe(ctx.storeA.id)
+    })
+  })
+
+  // The connections and events of a remote channel plugin (Step 5.6, C3): the key of one installation reaches the connections of that
+  // installation and of no other, in its own store or in another. `channelConnection` and `pluginInstallation` are the resources.
+  describe('the channel routes of the plugin API', () => {
+    const pluginId = `${prefix}-chan`
+    const channelScopes = [PluginScopes.CHANNEL_CONNECTIONS, PluginScopes.CHANNEL_EVENTS]
+    const keyOf: Record<'a' | 'a2' | 'b', string> = { a: '', a2: '', b: '' }
+    const installationOf: Record<'a' | 'a2' | 'b', string> = { a: '', a2: '', b: '' }
+    const connectionOf: Record<'a' | 'b', string> = { a: '', b: '' }
+    const call = (method: 'put' | 'delete' | 'post', path: string, key: string) =>
+      supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+        [method](`${API_PREFIX}${path}`)
+        .set('authorization', `Bearer ${key}`)
+        .set('x-forwarded-for', `10.${randomInt(256)}.${randomInt(256)}.${randomInt(1, 255)}`)
+
+    beforeAll(async () => {
+      await owner.plugin.create({
+        data: {
+          id: pluginId,
+          name: 'Channel plugin',
+          authorName: 'suite',
+          authorEmail: 'suite@example.invalid',
+          type: PluginCatalogTypes.CHANNEL,
+          manifest: {},
+          pricingModel: PluginPricingModels.FREE,
+          status: PluginStatus.APPROVED,
+          organizationId: ctx.orgA.id
+        }
+      })
+      for (const [name, store] of [
+        ['a', ctx.storeA],
+        ['a2', ctx.storeA2],
+        ['b', ctx.storeB]
+      ] as const) {
+        const key = `${PLUGIN_API_KEY_TOKEN_PREFIX}${prefix}chan${name}${'z'.repeat(40)}`
+        keyOf[name] = key
+        const installation = await owner.pluginInstallation.create({
+          data: {
+            storeId: store.id,
+            pluginId,
+            scopes: channelScopes,
+            status: 'active',
+            apiKeyPrefix: key.slice(0, 12),
+            apiKeyHash: createHash('sha256').update(key).digest('hex'),
+            installedBy: 'suite'
+          }
+        })
+        installationOf[name] = installation.id
+      }
+      for (const name of ['a', 'b'] as const) {
+        const created = await call(
+          'put',
+          PluginApiRoutes.channel.connection(`acct-${name}`),
+          keyOf[name]
+        ).send({
+          displayName: `Account ${name}`
+        })
+        expect(created.status).toBe(201)
+        connectionOf[name] = (
+          await owner.channelConnection.findUniqueOrThrow({
+            where: { pluginId_connectionId: { pluginId, connectionId: `acct-${name}` } }
+          })
+        ).id
+      }
+    })
+    afterAll(async () => {
+      await owner.channelConnection.deleteMany({ where: { pluginId } })
+      await owner.pluginInstallation.deleteMany({ where: { pluginId } })
+      await owner.plugin.deleteMany({ where: { id: pluginId } })
+    })
+
+    it('makes each connection in the store and under the installation of its own key', async () => {
+      const rows = await owner.channelConnection.findMany({
+        where: { pluginId },
+        select: { id: true, storeId: true, installationId: true }
+      })
+      expect(rows).toHaveLength(2)
+      expect(rows.find(row => row.id === connectionOf.a)).toMatchObject({
+        storeId: ctx.storeA.id,
+        installationId: installationOf.a
+      })
+      expect(rows.find(row => row.id === connectionOf.b)).toMatchObject({
+        storeId: ctx.storeB.id,
+        installationId: installationOf.b
+      })
+    })
+
+    it('does not let the key of a sibling store or of a foreign one disconnect, rename or take the connection of another', async () => {
+      for (const key of [keyOf.a2, keyOf.b]) {
+        const removed = await call('delete', PluginApiRoutes.channel.connection('acct-a'), key)
+        expect(removed.status).toBe(404)
+        const taken = await call('put', PluginApiRoutes.channel.connection('acct-a'), key).send({
+          displayName: 'Hijacked'
+        })
+        expect(taken.status).toBe(409)
+      }
+      expect(
+        await owner.channelConnection.findUniqueOrThrow({
+          where: { id: connectionOf.a },
+          select: { storeId: true, installationId: true, displayName: true, status: true }
+        })
+      ).toEqual({
+        storeId: ctx.storeA.id,
+        installationId: installationOf.a,
+        displayName: 'Account a',
+        status: 'active'
+      })
+    })
+
+    it('refuses the events of a request that names a connection of another store, and says the same as for one that is not there', async () => {
+      const event = (connectionId: string) => ({
+        type: 'message_received',
+        connectionId,
+        channelIdentity: 'customer-1',
+        message: {
+          externalId: `m-${randomUUID()}`,
+          type: MessageType.TEXT,
+          content: 'hello',
+          timestamp: new Date().toISOString()
+        },
+        timestamp: new Date().toISOString()
+      })
+      const foreign = await call('post', PluginApiRoutes.channel.events, keyOf.a).send({
+        events: [event('acct-b')]
+      })
+      const absent = await call('post', PluginApiRoutes.channel.events, keyOf.a).send({
+        events: [event('acct-nobody')]
+      })
+      expect(foreign.status).toBe(404)
+      expect(absent.status).toBe(404)
+      expect((foreign.body as { error: { code: string } }).error).toEqual(
+        (absent.body as { error: { code: string } }).error
+      )
+    })
+
+    it('leaves the installation of the other store as it was', async () => {
+      const row = await owner.pluginInstallation.findUniqueOrThrow({
+        where: { id: installationOf.b },
+        select: { storeId: true, status: true, scopes: true }
+      })
+      expect(row).toEqual({ storeId: ctx.storeB.id, status: 'active', scopes: channelScopes })
     })
   })
 

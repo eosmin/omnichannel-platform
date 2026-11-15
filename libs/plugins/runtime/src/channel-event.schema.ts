@@ -196,6 +196,7 @@ export const channelEventSchema = z
       })
     }
     const needsStatus: readonly string[] = [
+      ChannelEventTypes.MESSAGE_SENT,
       ChannelEventTypes.MESSAGE_DELIVERED,
       ChannelEventTypes.MESSAGE_READ,
       ChannelEventTypes.MESSAGE_FAILED

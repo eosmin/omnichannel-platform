@@ -131,7 +131,11 @@ export const CacheKeys = {
     // tenant key: the plugin that exchanges it has no store header, so the installation is in the value.
     setupCode: (codeDigest: string) => `plugin:setup:${codeDigest}`,
     // The digest of the code that is live for an installation, so that a new code voids the old one
-    setupCodeOf: (installationId: string) => `plugin:setup-of:${installationId}`
+    setupCodeOf: (installationId: string) => `plugin:setup-of:${installationId}`,
+    // Events a remote channel plugin reported in the current minute (TDD_10 §6.7.5, the ceiling of 3000 a minute), by installation
+    channelEventsWindow: (installationId: string) => `plugin:channel-events:${installationId}`,
+    // A `customer_typing` of a remote channel is passed on at most once per conversation every 2 seconds
+    channelTyping: (conversationId: string) => `plugin:channel-typing:${conversationId}`
   },
 
   rateLimit: (subject: string, endpoint: string) => `rl:${subject}:${endpoint}`,

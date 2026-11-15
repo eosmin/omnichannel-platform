@@ -65,10 +65,11 @@ export function pluginApiRouteViolations(
     for (const scope of scopes.filter(scope => !isPluginScope(scope))) {
       violations.push(`${route.label}: ${scope} is not a plugin scope`)
     }
-    if (scopes.length > 0 && route.permissions.length === 0 && route.anyOf.length === 0) {
+    const granted = permissionsOfScopes(scopes)
+    // A route whose scopes stand for no human permission (the channel scopes of TDD_10 §6.7) has none to name
+    if (granted.length > 0 && route.permissions.length === 0 && route.anyOf.length === 0) {
       violations.push(`${route.label}: it names scopes and no @RequirePermissions`)
     }
-    const granted = permissionsOfScopes(scopes)
     for (const permission of missingPermissions(granted, route.permissions)) {
       violations.push(`${route.label}: ${permission} is outside what its scopes grant`)
     }

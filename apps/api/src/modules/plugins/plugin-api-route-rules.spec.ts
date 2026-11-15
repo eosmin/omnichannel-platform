@@ -44,6 +44,41 @@ describe('pluginApiRouteViolations', () => {
     expect(violations(route({ permissions: [Permissions.ORDERS_CHANGE_STATUS] }))).toHaveLength(1)
   })
 
+  it('accepts a route whose scopes stand for no human permission and that names none (the channel scopes of §6.7)', () => {
+    const channel = route({
+      label: 'PluginChannelController.report',
+      path: '/plugin-api/channel/events',
+      scopes: [PluginScopes.CHANNEL_EVENTS],
+      permissions: [],
+      anyOf: []
+    })
+    expect(
+      pluginApiRouteViolations([channel], new Set(['/plugin-api/channel/events']), withoutKey)
+    ).toEqual([])
+  })
+
+  it('still refuses a permission on a route whose scopes grant none: it would be refused at every call', () => {
+    const channel = route({
+      label: 'PluginChannelController.report',
+      path: '/plugin-api/channel/events',
+      scopes: [PluginScopes.CHANNEL_EVENTS],
+      permissions: [Permissions.CONVERSATIONS_VIEW]
+    })
+    expect(
+      pluginApiRouteViolations([channel], new Set(['/plugin-api/channel/events']), withoutKey)
+    ).toEqual([
+      `PluginChannelController.report: ${Permissions.CONVERSATIONS_VIEW} is outside what its scopes grant`
+    ])
+  })
+
+  it('still refuses a route that mixes a scope with permissions and a channel scope and names none', () => {
+    expect(
+      violations(
+        route({ scopes: [PluginScopes.ORDERS_READ, PluginScopes.CHANNEL_EVENTS], permissions: [] })
+      )
+    ).toEqual(['OrdersPluginController.list: it names scopes and no @RequirePermissions'])
+  })
+
   it('refuses a route that names scopes and no permission at all (the guard would let every key of the scope in)', () => {
     expect(violations(route({ permissions: [], anyOf: [] }))).toEqual([
       'OrdersPluginController.list: it names scopes and no @RequirePermissions'

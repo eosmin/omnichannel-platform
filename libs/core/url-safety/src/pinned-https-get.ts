@@ -38,6 +38,8 @@ export interface PinnedResponse {
 export interface PinnedGetOptions {
   accept: string
   timeoutMs: number
+  // Sent as they are, except `accept` and `accept-encoding`, which are the caller's `accept` and the identity the body is read with
+  headers?: Readonly<Record<string, string>>
   resolve?: HostResolver
   // Replaceable so that a unit test needs no network
   request?: HttpsRequester
@@ -74,7 +76,7 @@ export async function pinnedHttpsGet(
       port: HTTPS_PORT,
       path: `${url.pathname}${url.search}`,
       method: 'GET',
-      headers: { accept: options.accept, 'accept-encoding': NO_ENCODING },
+      headers: { ...options.headers, accept: options.accept, 'accept-encoding': NO_ENCODING },
       // A socket of its own: a pooled one, opened for an earlier call, would not go through this lookup
       agent: new Agent({ keepAlive: false }),
       lookup: pinnedLookup(addresses),
