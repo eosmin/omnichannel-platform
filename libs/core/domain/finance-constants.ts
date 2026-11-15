@@ -250,6 +250,9 @@ export const FinanceLimits = {
   MEMO_MAX_LENGTH: 500,
   REOPEN_REASON_MAX_LENGTH: 500,
   IDEMPOTENCY_KEY_MAX_LENGTH: 200,
+  DOCUMENT_NUMBER_MAX_LENGTH: 100,
+  // The accounting date of a transaction may be a day ahead of today: the clock of the person is not the server's
+  TRANSACTION_FUTURE_DAYS: 1,
   MAX_LINES_PER_ENTRY: 200,
   MAX_ACCOUNTS_PER_ORGANIZATION: 2000,
   // How deep a chart of accounts may nest: a header, its groups and the accounts that post
@@ -275,7 +278,9 @@ export const FinanceResourceTypes = {
   POSTING: 'finance_posting',
   TAX_RATE: 'finance_tax_rate',
   // The tax preferences of a store (`finance.pricesIncludeTax`), kept in its preferences
-  STORE_TAX_SETTINGS: 'finance_store_tax_settings'
+  STORE_TAX_SETTINGS: 'finance_store_tax_settings',
+  // An expense, an income or a transfer registered by hand (TDD_18 §2.6)
+  TRANSACTION: 'finance_transaction'
 } as const
 
 // Why a posting failed, kept in FinancePostingFailure.reason (a code, never free text: the interface translates it)
@@ -292,7 +297,9 @@ export enum FinancePostingFailureReason {
 // The prefix of the idempotency key of each kind of entry (TDD_18 §4.1): `<prefix>:<sourceId>:<event>`
 export const FinanceIdempotencyKey = {
   MANUAL: (key: string): string => `manual:${key}`,
-  REVERSAL: (entryId: string): string => `reversal:${entryId}`
+  REVERSAL: (entryId: string): string => `reversal:${entryId}`,
+  // The entry of an expense, an income or a transfer registered by hand (TDD_18 §4.1): one per transaction
+  TRANSACTION: (transactionId: string): string => `transaction:${transactionId}:record`
 } as const
 
 // What the hash of an entry is made of, in this order and with this separator (TDD_18 §11). Changing either breaks
@@ -322,7 +329,15 @@ export const FinanceConflicts = {
   // A switched-off rate cannot be made the default
   TAX_RATE_INACTIVE: 'tax_rate_inactive',
   // The accounts of a rate: the tax owed is a liability, the tax to credit is an asset, and they are not the same account
-  TAX_RATE_ACCOUNT_TYPE: 'tax_rate_account_type'
+  TAX_RATE_ACCOUNT_TYPE: 'tax_rate_account_type',
+  // The key of a request that registered another transaction: a retry sends the same content, never another
+  TRANSACTION_KEY_REUSED: 'transaction_key_reused',
+  // A transaction is voided once; the reversing entry is in the journal
+  TRANSACTION_ALREADY_VOIDED: 'transaction_already_voided',
+  // A change keeps the kind: an expense is not turned into a transfer (void it and register the other)
+  TRANSACTION_KIND_CHANGED: 'transaction_kind_changed',
+  // The entry of a transaction registered by hand is voided through the transaction (its kind's permission, its audit row), not reversed alone
+  ENTRY_OWNED_BY_TRANSACTION: 'entry_owned_by_transaction'
 } as const
 
 // The names of the ways a chart change breaks the chart, beside the ones `account-rules` returns

@@ -39,6 +39,7 @@ model Organization {
   journalLines        JournalLine[]
   periodBalances      AccountPeriodBalance[]
   postingFailures     FinancePostingFailure[]
+  financeTransactions FinanceTransaction[]
   plugins             Plugin[]
 
   @@map("organizations")
@@ -81,6 +82,7 @@ model Store {
   journalLines             JournalLine[]
   periodBalances           AccountPeriodBalance[]
   paymentAccounts          PaymentMethodAccount[]
+  financeTransactions      FinanceTransaction[]
   tags                     Tag[]
   snippets                 Snippet[]
   media                    Media[]
@@ -2286,16 +2288,19 @@ model LedgerAccount {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  parent          LedgerAccount?         @relation("AccountTree", fields: [organizationId, parentId], references: [organizationId, id], onDelete: Restrict)
-  children        LedgerAccount[]        @relation("AccountTree")
-  roleMappings    AccountRoleMapping[]
-  paymentAccounts PaymentMethodAccount[]
-  settings        FinanceSettings[]
-  lines           JournalLine[]
-  balances        AccountPeriodBalance[]
-  taxRatesOutput  TaxRate[]              @relation("TaxRateOutputAccount")
-  taxRatesInput   TaxRate[]              @relation("TaxRateInputAccount")
+  organization         Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  parent               LedgerAccount?         @relation("AccountTree", fields: [organizationId, parentId], references: [organizationId, id], onDelete: Restrict)
+  children             LedgerAccount[]        @relation("AccountTree")
+  roleMappings         AccountRoleMapping[]
+  paymentAccounts      PaymentMethodAccount[]
+  settings             FinanceSettings[]
+  lines                JournalLine[]
+  balances             AccountPeriodBalance[]
+  taxRatesOutput       TaxRate[]              @relation("TaxRateOutputAccount")
+  taxRatesInput        TaxRate[]              @relation("TaxRateInputAccount")
+  transactionsFrom     FinanceTransaction[]   @relation("TransactionFromAccount")
+  transactionsTo       FinanceTransaction[]   @relation("TransactionToAccount")
+  transactionsCategory FinanceTransaction[]   @relation("TransactionCategoryAccount")
 
   @@unique([organizationId, code])
   // So that every table that names an account can name its organization with it
@@ -2321,11 +2326,12 @@ model TaxRate {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  outputAccount LedgerAccount @relation("TaxRateOutputAccount", fields: [organizationId, outputAccountId], references: [organizationId, id], onDelete: Restrict)
-  inputAccount  LedgerAccount @relation("TaxRateInputAccount", fields: [organizationId, inputAccountId], references: [organizationId, id], onDelete: Restrict)
+  organization  Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  outputAccount LedgerAccount        @relation("TaxRateOutputAccount", fields: [organizationId, outputAccountId], references: [organizationId, id], onDelete: Restrict)
+  inputAccount  LedgerAccount        @relation("TaxRateInputAccount", fields: [organizationId, inputAccountId], references: [organizationId, id], onDelete: Restrict)
   products      Product[]
   lines         JournalLine[]
+  transactions  FinanceTransaction[]
 
   @@unique([organizationId, code])
   // So that a product and a line can name the organization with the rate
@@ -2412,11 +2418,13 @@ model JournalEntry {
   prevHash        String?   @map("prev_hash") // hash of the previous entry of the organization
   hash            String // sha256 over the canonical entry and its lines and prevHash (TDD_18 §11)
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  period       FiscalPeriod  @relation(fields: [organizationId, periodId], references: [organizationId, id], onDelete: Restrict)
-  reverses     JournalEntry? @relation("Reversal", fields: [organizationId, reversesEntryId], references: [organizationId, id], onDelete: Restrict)
-  reversedBy   JournalEntry? @relation("Reversal")
-  lines        JournalLine[]
+  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  period            FiscalPeriod        @relation(fields: [organizationId, periodId], references: [organizationId, id], onDelete: Restrict)
+  reverses          JournalEntry?       @relation("Reversal", fields: [organizationId, reversesEntryId], references: [organizationId, id], onDelete: Restrict)
+  reversedBy        JournalEntry?       @relation("Reversal")
+  lines             JournalLine[]
+  transaction       FinanceTransaction? @relation("TransactionEntry")
+  voidedTransaction FinanceTransaction? @relation("TransactionVoidEntry")
 
   @@unique([organizationId, number])
   @@unique([organizationId, idempotencyKey])
@@ -2475,6 +2483,56 @@ model AccountPeriodBalance {
   @@index([organizationId, periodId])
   @@index([accountId])
   @@map("account_period_balances")
+}
+
+// What a person registers by hand: an expense, an income or a transfer between accounts (TDD_18 §2.6, §4.3). The operational header
+// of ONE journal entry (E12): the amounts and accounts here are what the entry was posted from, and the entry is the record of the
+// money. A transaction is never edited: voiding it writes the reversing entry and points at it, and changing one voids it and
+// creates another in one request (`replacesTransactionId`), so the journal tells the whole story. Organization-scoped; `storeId`
+// is the dimension its lines carry. Whole USD cents, tax included.
+model FinanceTransaction {
+  id                    String   @id @default(uuid())
+  organizationId        String   @map("organization_id")
+  storeId               String?  @map("store_id") // the store it belongs to for the reports, optional
+  kind                  String // FinanceTransactionKind: expense | income | transfer
+  occurredOn            DateTime @map("occurred_on") @db.Date
+  amountCents           Int      @map("amount_cents") // paid or received, tax included
+  fromAccountId         String?  @map("from_account_id") // the money source (expense, transfer): a cash-kind account
+  toAccountId           String?  @map("to_account_id") // the money destination (income, transfer): a cash-kind account
+  categoryAccountId     String?  @map("category_account_id") // the expense or income account it is classified under
+  taxRateId             String?  @map("tax_rate_id")
+  taxCents              Int      @default(0) @map("tax_cents") // the tax inside amountCents, computed by the server
+  taxCreditable         Boolean  @default(false) @map("tax_creditable") // an expense's tax is input VAT only with a valid document [ACCOUNTANT]
+  documentNumber        String?  @map("document_number") // the supplier's document number
+  memo                  String?
+  clientKey             String   @map("client_key") // the screen's key for the request: a retry is the same transaction
+  entryId               String   @map("entry_id") // the entry it produced
+  voidedByEntryId       String?  @map("voided_by_entry_id") // the reversing entry, once voided
+  replacesTransactionId String?  @map("replaces_transaction_id") // the transaction this one replaced when it was changed
+  createdBy             String   @map("created_by")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  store           Store?              @relation(fields: [organizationId, storeId], references: [organizationId, id], onDelete: Restrict)
+  fromAccount     LedgerAccount?      @relation("TransactionFromAccount", fields: [organizationId, fromAccountId], references: [organizationId, id], onDelete: Restrict)
+  toAccount       LedgerAccount?      @relation("TransactionToAccount", fields: [organizationId, toAccountId], references: [organizationId, id], onDelete: Restrict)
+  categoryAccount LedgerAccount?      @relation("TransactionCategoryAccount", fields: [organizationId, categoryAccountId], references: [organizationId, id], onDelete: Restrict)
+  taxRate         TaxRate?            @relation(fields: [organizationId, taxRateId], references: [organizationId, id], onDelete: Restrict)
+  entry           JournalEntry        @relation("TransactionEntry", fields: [organizationId, entryId], references: [organizationId, id], onDelete: Restrict)
+  voidedByEntry   JournalEntry?       @relation("TransactionVoidEntry", fields: [organizationId, voidedByEntryId], references: [organizationId, id], onDelete: Restrict)
+  replaces        FinanceTransaction? @relation("TransactionReplaced", fields: [organizationId, replacesTransactionId], references: [organizationId, id], onDelete: Restrict)
+  replacedBy      FinanceTransaction? @relation("TransactionReplaced")
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, clientKey])
+  @@unique([organizationId, entryId])
+  @@unique([organizationId, voidedByEntryId])
+  @@unique([organizationId, replacesTransactionId])
+  @@index([organizationId, occurredOn])
+  @@index([organizationId, kind, occurredOn])
+  // The list: the newest first, by page
+  @@index([organizationId, createdAt, id])
+  @@map("finance_transactions")
 }
 
 // A source whose automatic entry could not be posted (TDD_18 §6.1): visible, never silent, and a period will not close

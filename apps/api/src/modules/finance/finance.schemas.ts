@@ -6,6 +6,7 @@ import {
   CashKind,
   FinanceLimits,
   FinancePaymentMethods,
+  FinanceTransactionKind,
   FinanceTaxLimits,
   JournalEntryType,
   PaginationLimits,
@@ -194,6 +195,45 @@ export const reverseEntrySchema = z.strictObject({
   entryDate: day.optional()
 })
 
+// What a person registers by hand (TDD_18 §4.3): the key is the screen's, once per form, so a double click or a retry after a lost
+// answer registers once. `amountCents` is what was paid or received, tax included; the tax is computed from the rate, never
+// sent. Which accounts a kind takes (and refuses) is the rule of `transaction-rules`, not of the shape.
+export const recordTransactionSchema = z.strictObject({
+  idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{8,100}$/),
+  kind: z.enum(FinanceTransactionKind),
+  occurredOn: day,
+  amountCents: z.number().int().min(1).max(FinanceLimits.MAX_LINE_CENTS),
+  fromAccountId: z.uuid().optional(),
+  toAccountId: z.uuid().optional(),
+  categoryAccountId: z.uuid().optional(),
+  storeId: z.uuid().optional(),
+  taxRateId: z.uuid().optional(),
+  taxCreditable: z.boolean().default(false),
+  documentNumber: singleLineText(FinanceLimits.DOCUMENT_NUMBER_MAX_LENGTH, 1).optional(),
+  memo: memo.optional()
+})
+
+// Voiding says why: the auditor reads it in the reversing entry
+export const voidTransactionSchema = z.strictObject({ reason: memo })
+
+export const replaceTransactionSchema = z.strictObject({
+  reason: memo,
+  replacement: recordTransactionSchema
+})
+
+export const listTransactionsQuerySchema = z.strictObject({
+  cursor: cursorSchema.optional(),
+  limit,
+  kind: z.enum(FinanceTransactionKind).optional(),
+  // The accounting date of the transaction
+  from: day.optional(),
+  to: day.optional(),
+  // The transactions that touch an account (the source, the destination or the category)
+  accountId: z.uuid().optional(),
+  // The voided ones are listed only when asked
+  includeVoided: flag.default(false)
+})
+
 export const balancesQuerySchema = z.strictObject({
   periodId: z.uuid().optional(),
   storeId: z.uuid().optional()
@@ -221,4 +261,8 @@ export type ListPostingsQuery = z.infer<typeof listPostingsQuerySchema>
 export type CreateTaxRateBody = z.infer<typeof createTaxRateSchema>
 export type UpdateTaxRateBody = z.infer<typeof updateTaxRateSchema>
 export type UpdateStoreTaxSettingsBody = z.infer<typeof updateStoreTaxSettingsSchema>
+export type RecordTransactionBody = z.infer<typeof recordTransactionSchema>
+export type VoidTransactionBody = z.infer<typeof voidTransactionSchema>
+export type ReplaceTransactionBody = z.infer<typeof replaceTransactionSchema>
+export type ListTransactionsQuery = z.infer<typeof listTransactionsQuerySchema>
 export type VatReportQuery = z.infer<typeof vatReportQuerySchema>

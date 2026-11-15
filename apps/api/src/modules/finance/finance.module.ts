@@ -11,6 +11,8 @@ import { FinanceSettingsService } from './finance-settings.service'
 import { FinanceSetupService } from './finance-setup.service'
 import { FinanceStoreTaxSettingsService } from './finance-store-tax-settings.service'
 import { FinanceTaxRatesService } from './finance-tax-rates.service'
+import { FinanceTransactionsController } from './finance-transactions.controller'
+import { FinanceTransactionsService } from './finance-transactions.service'
 import { FinanceVatReportService } from './finance-vat-report.service'
 import { FinanceController } from './finance.controller'
 
@@ -18,7 +20,7 @@ import { FinanceController } from './finance.controller'
 // is LedgerService of libs/core/finance; the database, audit and event-bus modules are the global ones of the app.
 @Module({
   imports: [LedgerModule, TenancyModule],
-  controllers: [FinanceController],
+  controllers: [FinanceController, FinanceTransactionsController],
   providers: [
     FinanceSetupService,
     FinanceSettingsService,
@@ -27,6 +29,7 @@ import { FinanceController } from './finance.controller'
     FinanceEntriesService,
     FinanceTaxRatesService,
     FinanceStoreTaxSettingsService,
+    FinanceTransactionsService,
     FinanceVatReportService
   ],
   exports: [LedgerModule]

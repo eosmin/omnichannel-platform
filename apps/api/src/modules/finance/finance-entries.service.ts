@@ -3,8 +3,13 @@ import { Injectable } from '@nestjs/common'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { PrismaService } from '@platform/core/database'
-import { EntryOrigin, FinanceIdempotencyKey, FinanceResourceTypes } from '@platform/core/domain'
-import { resourceNotFound } from '@platform/core/errors'
+import {
+  EntryOrigin,
+  FinanceConflicts,
+  FinanceIdempotencyKey,
+  FinanceResourceTypes
+} from '@platform/core/domain'
+import { resourceConflict, resourceNotFound } from '@platform/core/errors'
 import { LedgerService } from '@platform/core/finance-ledger'
 
 import { encodeCursor } from '../customers/list-cursor'
@@ -138,6 +143,16 @@ export class FinanceEntriesService {
     body: ReverseEntryBody,
     actor: Actor
   ): Promise<EntryDetailView> {
+    // The entry of an expense, an income or a transfer is voided through its transaction: that is where the permission of its kind,
+    // the pointer that marks it voided and the audit row live, and a reversal made here would leave the transaction looking live
+    const owned = await this.prisma.client.financeTransaction.count({
+      where: { organizationId, entryId }
+    })
+    if (owned > 0) {
+      throw resourceConflict('the entry belongs to a transaction: void the transaction', {
+        conflict: FinanceConflicts.ENTRY_OWNED_BY_TRANSACTION
+      })
+    }
     const posted = await this.ledger.reverse({
       organizationId,
       entryId,

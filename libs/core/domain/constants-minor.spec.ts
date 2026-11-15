@@ -141,7 +141,8 @@ describe('DestructiveActionTiers', () => {
       'DELETE_WEBHOOK',
       'ROTATE_WEBHOOK_SECRET',
       'POST_MANUAL_ENTRY',
-      'REVERSE_ENTRY'
+      'REVERSE_ENTRY',
+      'VOID_FINANCE_TRANSACTION'
     ]) {
       expect(tierOf[action]).toBe(DestructiveActionTierLevels.HIGH)
     }

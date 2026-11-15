@@ -206,6 +206,14 @@ export const ApiRoutes = {
       byId: (id: string) => `/finance/entries/${id}`,
       reverse: (id: string) => `/finance/entries/${id}/reverse`
     },
+    // What a person registers by hand: an expense, an income, a transfer (TDD_18 §4.3)
+    transactions: {
+      list: '/finance/transactions',
+      record: '/finance/transactions',
+      byId: (id: string) => `/finance/transactions/${id}`,
+      void: (id: string) => `/finance/transactions/${id}/void`,
+      replace: (id: string) => `/finance/transactions/${id}/replace`
+    },
     balances: '/finance/balances',
     // The sources whose automatic entry failed, still waiting for a person (TDD_18 §6.1)
     postings: '/finance/postings'

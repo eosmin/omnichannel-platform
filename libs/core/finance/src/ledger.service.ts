@@ -468,24 +468,30 @@ export class LedgerService {
     return period
   }
 
-  // The party and the tax rate of a line name rows of other tables, with no key of the database between them: they are looked up in
-  // the organization here, so that no line points across it. A customer and a carrier connection belong to a store of the
-  // organization; the suppliers and the tax rates have no table until Steps 4B.5 and 4B.3, which add their check, and a line that
-  // names one is refused until then.
+  // The party and the tax rate of a line name rows of other tables: they are looked up in the organization here, so that no line
+  // points across it (the key of the database holds the rate too, this gives the typed answer). A customer and a carrier
+  // connection belong to a store of the organization; the suppliers have no table until Step 4B.5, which adds their check, and a
+  // line that names one is refused until then.
   private async checkDimensions(
     tx: PrismaTransaction,
     organizationId: string,
     lines: readonly StoredLine[]
   ): Promise<void> {
-    const unverifiable = lines.some(
-      line => line.taxRateId !== null || line.partyType === PartyType.SUPPLIER
-    )
-    if (unverifiable) {
+    // A supplier is not a row until Step 4B.5: no line names one before its table exists
+    if (lines.some(line => line.partyType === PartyType.SUPPLIER)) {
       throw new PlatformException(
         ErrorCodes.VALIDATION_INVALID_INPUT,
-        'a supplier or a tax rate cannot be named by an entry before their tables exist',
+        'a supplier cannot be named by an entry before its table exists',
         HttpStatusCodes.BAD_REQUEST
       )
+    }
+    // A tax rate is one of the organization (another organization's is a rate that does not exist)
+    const rates = [
+      ...new Set(lines.flatMap(line => (line.taxRateId === null ? [] : [line.taxRateId])))
+    ]
+    if (rates.length > 0) {
+      const found = await tx.taxRate.count({ where: { id: { in: rates }, organizationId } })
+      if (found !== rates.length) throw resourceNotFound('tax rate')
     }
     const idsOf = (type: PartyType): string[] => [
       ...new Set(

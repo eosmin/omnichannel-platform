@@ -263,6 +263,7 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
       OR EXISTS (SELECT 1 FROM fiscal_periods WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM payment_method_accounts WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM tax_rates WHERE organization_id = ANY(${organizationIds}))
+      OR EXISTS (SELECT 1 FROM finance_transactions WHERE organization_id = ANY(${organizationIds}))
     ) AS touched`
   const touched = found?.touched === true
   if (!touched) return
@@ -270,9 +271,21 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
   await owner.$transaction(async tx => {
     // The triggers of the four tables that refuse a delete are off for the length of this transaction, and on again before it
     // commits (an error rolls the whole transaction back, the switch included)
-    const guarded = ['journal_lines', 'journal_entries', 'fiscal_periods', 'ledger_accounts']
+    const guarded = [
+      'finance_transactions',
+      'journal_lines',
+      'journal_entries',
+      'fiscal_periods',
+      'ledger_accounts'
+    ]
     for (const table of guarded)
       await tx.$executeRawUnsafe(`ALTER TABLE ${table} DISABLE TRIGGER USER`)
+    // A transaction names its entry and the one it replaced: the links are cut first, then the rows go before the journal
+    await tx.financeTransaction.updateMany({
+      where,
+      data: { replacesTransactionId: null, voidedByEntryId: null }
+    })
+    await tx.financeTransaction.deleteMany({ where })
     await tx.journalLine.deleteMany({ where })
     await tx.journalEntry.deleteMany({ where })
     await tx.accountPeriodBalance.deleteMany({ where })
