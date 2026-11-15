@@ -5,7 +5,9 @@ import {
   checkPluginApiCoverage,
   declaredScopes,
   mappedKeys,
-  pendingKeys
+  normalizedPluginApiPath,
+  pendingKeys,
+  pluginApiPaths
 } from './plugin-api-coverage'
 
 const steps = new Map([
@@ -109,6 +111,59 @@ describe('checkPluginApiCoverage', () => {
   it('accepts an exposed path under /plugin-api', () => {
     expect(
       check({ 'orders.list': { scope: 'orders:read', exposed: '/plugin-api/orders' } }).invalid
+    ).toEqual([])
+  })
+})
+
+describe('the plugin-api routes the map points to (open point b)', () => {
+  const routes = {
+    setupExchange: '/plugin-api/setup/exchange',
+    orders: {
+      list: '/plugin-api/orders',
+      byId: (id: string) => `/plugin-api/orders/${id}`,
+      item: (orderId: string, itemId: string) => `/plugin-api/orders/${orderId}/items/${itemId}`
+    }
+  }
+  const { paths } = pluginApiPaths(routes)
+  const withPaths = (entry: PluginApiCoverage) =>
+    checkPluginApiCoverage(['orders.list'], { 'orders.list': entry }, scopes, steps, paths).invalid
+
+  it('reads paths and builders, with every parameter the same', () => {
+    expect([...paths].sort()).toEqual([
+      '/plugin-api/orders',
+      '/plugin-api/orders/:p',
+      '/plugin-api/orders/:p/items/:p',
+      '/plugin-api/setup/exchange'
+    ])
+    expect(normalizedPluginApiPath('/plugin-api/orders/:orderId/items/:itemId')).toBe(
+      '/plugin-api/orders/:p/items/:p'
+    )
+  })
+
+  it('reports a constant that is not under /plugin-api/', () => {
+    expect(pluginApiPaths({ a: { b: '/orders' }, c: () => '/x' }).outside).toEqual(['a.b', 'c'])
+  })
+
+  it('accepts an exposed path that a constant declares, whatever the parameter is called', () => {
+    expect(withPaths({ scope: 'orders:read', exposed: '/plugin-api/orders' })).toEqual([])
+    expect(withPaths({ scope: 'orders:read', exposed: '/plugin-api/orders/:id' })).toEqual([])
+    expect(
+      withPaths({ scope: 'orders:read', exposed: '/plugin-api/orders/:orderId/items/:x' })
+    ).toEqual([])
+  })
+
+  it('refuses an exposed path that no constant declares, even one of the right shape', () => {
+    expect(withPaths({ scope: 'orders:read', exposed: '/plugin-api/ordres' })).toEqual([
+      'orders.list'
+    ])
+    expect(withPaths({ scope: 'orders:read', exposed: '/plugin-api/orders/:id/refund' })).toEqual([
+      'orders.list'
+    ])
+  })
+
+  it('leaves the shape check alone when no constants are given', () => {
+    expect(
+      check({ 'orders.list': { scope: 'orders:read', exposed: '/plugin-api/anything' } }).invalid
     ).toEqual([])
   })
 })
