@@ -479,9 +479,18 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'pickups.confirm': { proposed: 'pickups:write', step: STEP },
   'pickups.cancel': { proposed: 'pickups:write', step: STEP },
   'pickups.manifest': { proposed: 'pickups:read', step: STEP },
-  'returns.list': { proposed: ['returns:read', 'returns:write'], step: STEP },
+  // Step 5.6 PR E6: the returns, the batches of the scanner that receives them and the remittances of cash collected on delivery are
+  // exposed READ ONLY (`returns:read`, `remittances:read`, which grant RETURNS_VIEW and REMITTANCES_VIEW). Every write stores the id of a
+  // person (`createdBy`, who approved, who received, who confirmed or voided a remittance), puts stock back through movements that
+  // keep a person, may make a replacement order or a return guide that costs money, or moves money (confirming a remittance settles
+  // what a carrier owes): they wait for PR E6-2 and the plugin actor of the contract of M1c, with scopes of their own.
+  'returns.list': {
+    proposed: ['returns:read', 'returns:write'],
+    step: STEP,
+    exposed: '/plugin-api/returns'
+  },
   'returns.create': { proposed: 'returns:write', step: STEP },
-  'returns.byId': { proposed: 'returns:read', step: STEP },
+  'returns.byId': { scope: 'returns:read', exposed: '/plugin-api/returns/:id' },
   'returns.approve': { proposed: 'returns:write', step: STEP },
   'returns.reject': { proposed: 'returns:write', step: STEP },
   'returns.cancel': { proposed: 'returns:write', step: STEP },
@@ -489,21 +498,44 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'returns.receive': { proposed: 'returns:write', step: STEP },
   'returns.complete': { proposed: 'returns:write', step: STEP },
   'returns.returnShipment': { proposed: 'returns:write', step: STEP },
-  'returns.reception.batches': { proposed: ['returns:read', 'returns:write'], step: STEP },
-  'returns.reception.batchById': { proposed: 'returns:read', step: STEP },
+  // The GET lists the batches; the POST opens one in the name of a person and stays pending
+  'returns.reception.batches': {
+    proposed: ['returns:read', 'returns:write'],
+    step: STEP,
+    exposed: '/plugin-api/returns/reception/batches'
+  },
+  'returns.reception.batchById': {
+    scope: 'returns:read',
+    exposed: '/plugin-api/returns/reception/batches/:id'
+  },
   'returns.reception.scan': { proposed: 'returns:write', step: STEP },
   'returns.reception.itemById': { proposed: 'returns:write', step: STEP },
   'returns.reception.complete': { proposed: 'returns:write', step: STEP },
-  'remittances.list': { proposed: ['remittances:read', 'remittances:write'], step: STEP },
-  'remittances.byId': { proposed: ['remittances:read', 'remittances:write'], step: STEP },
+  // The GET is exposed; the POST (a draft) is a write and stays pending with the others
+  'remittances.list': {
+    proposed: ['remittances:read', 'remittances:write'],
+    step: STEP,
+    exposed: '/plugin-api/remittances'
+  },
+  // The GET is exposed; the DELETE (a draft) is a write
+  'remittances.byId': {
+    proposed: ['remittances:read', 'remittances:write'],
+    step: STEP,
+    exposed: '/plugin-api/remittances/:id'
+  },
   'remittances.imports': { proposed: 'remittances:write', step: STEP },
   'remittances.importPreview': { proposed: 'remittances:write', step: STEP },
-  'remittances.pending': { proposed: 'remittances:read', step: STEP },
+  'remittances.pending': { scope: 'remittances:read', exposed: '/plugin-api/remittances/pending' },
   'remittances.lines': { proposed: 'remittances:write', step: STEP },
   'remittances.lineById': { proposed: 'remittances:write', step: STEP },
   'remittances.confirm': { proposed: 'remittances:write', step: STEP },
   'remittances.void': { proposed: 'remittances:write', step: STEP },
-  'remittances.importProfiles': { proposed: ['remittances:read', 'remittances:write'], step: STEP },
+  // The GET is exposed; creating, changing and deleting a profile are writes
+  'remittances.importProfiles': {
+    proposed: ['remittances:read', 'remittances:write'],
+    step: STEP,
+    exposed: '/plugin-api/remittances/import-profiles'
+  },
   'remittances.importProfileById': { proposed: 'remittances:write', step: STEP },
 
   // Media, exports, search, analytics

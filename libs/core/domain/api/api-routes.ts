@@ -618,6 +618,23 @@ export const PluginApiRoutes = {
     list: '/plugin-api/counts',
     byId: (id: string) => `/plugin-api/counts/${id}`
   },
+  // Step 5.6 PR E6: the reads of the returns (and of the batches of the scanner that receives them) and of the remittances of
+  // cash collected on delivery, over the same services as `ApiRoutes.returns` and `.remittances`. Their writes store the id of a
+  // person, move stock or move money, and wait for PR E6-2 and the plugin actor.
+  returns: {
+    list: '/plugin-api/returns',
+    byId: (id: string) => `/plugin-api/returns/${id}`,
+    reception: {
+      batches: '/plugin-api/returns/reception/batches',
+      batchById: (id: string) => `/plugin-api/returns/reception/batches/${id}`
+    }
+  },
+  remittances: {
+    list: '/plugin-api/remittances',
+    pending: '/plugin-api/remittances/pending',
+    importProfiles: '/plugin-api/remittances/import-profiles',
+    byId: (id: string) => `/plugin-api/remittances/${id}`
+  },
 
   // Messages (Step 5.6 PR M1b): a plugin writes a reply or a note, and reads the edits and the kept text of a deleted message
   messages: {
