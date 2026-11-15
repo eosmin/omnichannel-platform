@@ -1484,9 +1484,13 @@ model Plugin {
   status                      String   @default("submitted")             // PluginStatus
   reviewNotes                 String?  @map("review_notes")
   reviewedByStaffId           String?  @map("reviewed_by_staff_id")
+  // The organization that registered it (private registration, D10, Step 5.6): only its stores see and install it.
+  // Null for the plugins the platform ships and the ones its code registers. A CHECK keeps an official plugin out of an organization.
+  organizationId              String?  @map("organization_id")
   createdAt                   DateTime @default(now()) @map("created_at")
   updatedAt                   DateTime @updatedAt @map("updated_at")
 
+  organization  Organization?        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   installations PluginInstallation[]
   reviewedBy    Staff?               @relation(fields: [reviewedByStaffId], references: [id])
 

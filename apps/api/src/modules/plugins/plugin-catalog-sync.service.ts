@@ -72,23 +72,44 @@ export class PluginCatalogSync implements OnApplicationBootstrap {
           skipDuplicates: true
         })
         await this.prisma.client.plugin.updateMany({
-          where: { id: plugin.id, isOfficial: false, authorEmail: CodePluginAuthor.EMAIL },
+          where: {
+            id: plugin.id,
+            isOfficial: false,
+            organizationId: null,
+            authorEmail: CodePluginAuthor.EMAIL
+          },
           data
         })
+        // The id of a plugin of the code that an organization registered first stays the organization's
+        const taken = await this.prisma.client.plugin.findFirst({
+          where: { id: plugin.id, organizationId: { not: null } },
+          select: { id: true }
+        })
+        if (taken !== null) {
+          this.logger.error(
+            { pluginId: plugin.id },
+            'the id of a plugin of the platform is taken by a plugin an organization registered'
+          )
+        }
         continue
       }
-      const write = () =>
-        this.prisma.client.plugin.upsert({
-          where: { id: plugin.id },
-          create: { id: plugin.id, ...data, status },
-          update: data
-        })
-      try {
-        await write()
-      } catch (error) {
-        // Another instance booting at the same time wrote it first: the second write updates
-        if (!isUniqueViolation(error)) throw error
-        await write()
+      // Written when it is not there, and refreshed only while it is not an organization's: the id of an official plugin
+      // that an organization registered before the platform shipped it stays the organization's, and the row is never
+      // turned into the platform's with the organization's installations and keys under it. Two statements that
+      // each decide on the row in the database, so nothing is read and then overwritten.
+      await this.prisma.client.plugin.createMany({
+        data: [{ id: plugin.id, ...data, status }],
+        skipDuplicates: true
+      })
+      const refreshed = await this.prisma.client.plugin.updateMany({
+        where: { id: plugin.id, organizationId: null },
+        data
+      })
+      if (refreshed.count === 0) {
+        this.logger.error(
+          { pluginId: plugin.id },
+          'the id of an official plugin is taken by a plugin an organization registered'
+        )
       }
     }
     await this.syncShipping()

@@ -13,6 +13,32 @@ export type PluginCatalogType = (typeof PluginCatalogTypes)[keyof typeof PluginC
 // The marketplace, plan-gated and paid plugins are Phase 2; every plugin of the MVP is free.
 export const PluginPricingModels = { FREE: 'free' } as const
 
+// The bounds of a manifest that the owner pastes (TDD_10 §6.1). Every list and text has a ceiling, so a document that
+// is stored as it is cannot grow without limit.
+export const PluginManifestLimits = {
+  NAME_MAX_LENGTH: 100,
+  DESCRIPTION_MAX_LENGTH: 500,
+  VERSION_MAX_LENGTH: 32,
+  EMAIL_MAX_LENGTH: 254,
+  URL_MAX_LENGTH: 2048,
+  HEADER_MAX_LENGTH: 64,
+  MAX_WEBHOOK_EVENTS: 200,
+  MAX_WIDGETS: 10,
+  WIDGET_ID_MAX_LENGTH: 64,
+  MIN_WIDGET_SIZE: 100,
+  MAX_WIDGET_SIZE: 2000,
+  MIN_WIDGET_REFRESH_MS: 1000,
+  MAX_WIDGET_REFRESH_MS: 3_600_000,
+  MIN_REQUESTS_PER_MINUTE: 1,
+  MAX_REQUESTS_PER_MINUTE: 600,
+  MIN_WEBHOOKS_PER_DAY: 1,
+  MAX_WEBHOOKS_PER_DAY: 1_000_000
+} as const
+
+// How many private plugins an organization may register: the catalog of its stores stays one screen long and a
+// loop that registers cannot fill the table
+export const PluginRegistrationLimits = { MAX_PER_ORGANIZATION: 50 } as const
+
 // Who the catalog names as the author of the plugins that ship with the platform
 export const OfficialPluginAuthor = {
   NAME: 'Omnichannel Platform',
