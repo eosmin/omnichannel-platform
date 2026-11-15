@@ -283,7 +283,16 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     // A transaction names its entry and the one it replaced: the links are cut first, then the rows go before the journal
     await tx.financeTransaction.updateMany({
       where,
-      data: { replacesTransactionId: null, voidedByEntryId: null }
+      data: { replacesTransactionId: null, voidedByEntryId: null, documentMediaId: null }
+    })
+    // A receipt names its transaction (and restricts its deletion): the link is cut, the file stays a file of its store. The order
+    // matters: the triggers of `media` stay on, and the one that keeps a receipt's parent lets go only once no transaction points at it
+    await tx.media.updateMany({
+      where: {
+        financeTransactionId: { not: null },
+        store: { organizationId: { in: organizationIds } }
+      },
+      data: { financeTransactionId: null }
     })
     await tx.financeTransaction.deleteMany({ where })
     await tx.journalLine.deleteMany({ where })

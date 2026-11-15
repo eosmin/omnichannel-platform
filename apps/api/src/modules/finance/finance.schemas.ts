@@ -216,6 +216,9 @@ export const recordTransactionSchema = z.strictObject({
 // Voiding says why: the auditor reads it in the reversing entry
 export const voidTransactionSchema = z.strictObject({ reason: memo })
 
+// The receipt: the media id the upload gave, for a file made for this transaction
+export const attachDocumentSchema = z.strictObject({ mediaId: z.uuid() })
+
 export const replaceTransactionSchema = z.strictObject({
   reason: memo,
   replacement: recordTransactionSchema
@@ -263,6 +266,7 @@ export type UpdateTaxRateBody = z.infer<typeof updateTaxRateSchema>
 export type UpdateStoreTaxSettingsBody = z.infer<typeof updateStoreTaxSettingsSchema>
 export type RecordTransactionBody = z.infer<typeof recordTransactionSchema>
 export type VoidTransactionBody = z.infer<typeof voidTransactionSchema>
+export type AttachDocumentBody = z.infer<typeof attachDocumentSchema>
 export type ReplaceTransactionBody = z.infer<typeof replaceTransactionSchema>
 export type ListTransactionsQuery = z.infer<typeof listTransactionsQuerySchema>
 export type VatReportQuery = z.infer<typeof vatReportQuerySchema>
