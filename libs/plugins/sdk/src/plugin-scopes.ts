@@ -13,6 +13,10 @@ export const PluginScopes = {
   MESSAGES_DELETE: 'messages:delete',
   CUSTOMERS_READ: 'customers:read',
   CUSTOMERS_WRITE: 'customers:write',
+  // Deleting a customer and flagging it with a caution each have a permission that `customers:write` does not hold (a person who
+  // edits a customer neither deletes nor flags it by that), so a plugin asks for each by its own scope (Step 5.6 PR E2)
+  CUSTOMERS_DELETE: 'customers:delete',
+  CUSTOMERS_FLAG_CAUTION: 'customers:flag-caution',
   ORDERS_READ: 'orders:read',
   ORDERS_WRITE: 'orders:write',
   PRODUCTS_READ: 'products:read',
@@ -24,6 +28,12 @@ export const PluginScopes = {
   SHIPMENTS_WRITE: 'shipments:write',
   // The directory of the channel accounts and their templates (Step 5.6 PR E1); the connection of an account stays human
   CHANNELS_READ: 'channels:read',
+  // What the store says to the customer about an order (the history of messages and the templates, Step 5.6 PR E3a); sending
+  // one is a scope of its own, with the routes that need a person's id
+  ORDER_MESSAGES_READ: 'order-messages:read',
+  // The preferences of the store (the factory defaults it overrode, the rules of returns): reading only, SETTINGS_EDIT and the
+  // security settings stay human
+  SETTINGS_READ: 'settings:read',
   // Of a channel plugin (TDD_10 §6.7): the routes arrive with Step 5.6 PR C3. They grant no human permission.
   CHANNEL_CONNECTIONS: 'channel:connections',
   CHANNEL_EVENTS: 'channel:events'
@@ -50,6 +60,8 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.MESSAGES_DELETE]: [Permissions.MESSAGES_DELETE],
   [PluginScopes.CUSTOMERS_READ]: [Permissions.CUSTOMERS_VIEW],
   [PluginScopes.CUSTOMERS_WRITE]: [Permissions.CUSTOMERS_CREATE, Permissions.CUSTOMERS_EDIT],
+  [PluginScopes.CUSTOMERS_DELETE]: [Permissions.CUSTOMERS_DELETE],
+  [PluginScopes.CUSTOMERS_FLAG_CAUTION]: [Permissions.CUSTOMERS_FLAG_CAUTION],
   [PluginScopes.ORDERS_READ]: [Permissions.ORDERS_VIEW],
   [PluginScopes.ORDERS_WRITE]: [Permissions.ORDERS_CREATE, Permissions.ORDERS_CHANGE_STATUS],
   [PluginScopes.PRODUCTS_READ]: [Permissions.PRODUCTS_VIEW],
@@ -66,6 +78,9 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
     Permissions.CONVERSATIONS_VIEW,
     Permissions.MESSAGES_SEND_TEMPLATE
   ],
+  // The history of what was sent about an order and the templates are read by whoever reads orders, as for a person
+  [PluginScopes.ORDER_MESSAGES_READ]: [Permissions.ORDERS_VIEW],
+  [PluginScopes.SETTINGS_READ]: [Permissions.SETTINGS_VIEW],
   [PluginScopes.CHANNEL_CONNECTIONS]: [],
   [PluginScopes.CHANNEL_EVENTS]: []
 }
