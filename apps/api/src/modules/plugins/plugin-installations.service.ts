@@ -5,6 +5,7 @@ import { Injectable } from '@nestjs/common'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
+import { RemoteChannelSync } from '@platform/channels/remote'
 import { API_PREFIX, ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
@@ -129,7 +130,8 @@ export class PluginInstallationsService {
     private readonly integrations: PluginIntegrationInstallService,
     @InjectQueue(QueueNames.WEBHOOKS)
     private readonly webhooksQueue: Queue<TriggerPluginWebhookJob>,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly sync: RemoteChannelSync
   ) {
     this.logger.setContext(PluginInstallationsService.name)
   }
@@ -228,11 +230,19 @@ export class PluginInstallationsService {
       plugin.status !== String(PluginStatus.APPROVED) ||
       // A plugin another organization registered does not exist for this one
       (plugin.organizationId !== null && plugin.organizationId !== store.organizationId) ||
-      (this.registry.has(pluginId) && !this.registry.isVisibleTo(pluginId, storeId))
+      // A remote channel is private to the stores that installed it, so a store that has not is not told it does not exist: the
+      // organization check above is its rule (as in the catalog and the consent)
+      (this.registry.has(pluginId) &&
+        !this.registry.isRemote(pluginId) &&
+        !this.registry.isVisibleTo(pluginId, storeId))
     ) {
       throw resourceNotFound('plugin')
     }
-    if (plugin.type === String(PluginCatalogTypes.INTEGRATION)) {
+    // A remote channel is a plugin an organization registered (an official one has no organization): it is installed with the
+    // scopes its manifest asks for, like an integration plugin, and gets its command secret when it sets itself up
+    const isRemoteChannel =
+      plugin.type === String(PluginCatalogTypes.CHANNEL) && plugin.organizationId !== null
+    if (plugin.type === String(PluginCatalogTypes.INTEGRATION) || isRemoteChannel) {
       if (scopes === undefined) {
         throw new PlatformException(
           ErrorCodes.VALIDATION_FAILED,
@@ -351,6 +361,7 @@ export class PluginInstallationsService {
     if (installation === null) throw resourceNotFound('plugin installation')
     const { pluginId } = installation
     const integration = installation.plugin.type === String(PluginCatalogTypes.INTEGRATION)
+    const isChannel = installation.plugin.type === String(PluginCatalogTypes.CHANNEL)
     if (integration && confirmation !== PLUGIN_REVOKE_CONFIRMATION) {
       throw new PlatformException(
         ErrorCodes.PLUGIN_REVOKE_NOT_CONFIRMED,
@@ -368,7 +379,7 @@ export class PluginInstallationsService {
           status: PluginInstallationStatus.REVOKED,
           revokedAt,
           // A key that is gone cannot be matched, whatever a check forgets
-          ...(integration ? { apiKeyHash: null, apiKeyPrefix: null } : {})
+          ...(integration || isChannel ? { apiKeyHash: null, apiKeyPrefix: null } : {})
         }
       })
       return changed.count === 1
@@ -380,10 +391,20 @@ export class PluginInstallationsService {
       // Run again on an installation that is already revoked, it finishes what a failed run left: the one job of the revocation
       // (its id is the same) is queued if it is not, and nothing is sent twice
       await this.sendFinalWebhook(storeId, installation.id, pluginId)
-      // A code that was still waiting for the plugin to set up stops working with the installation
+    }
+    // A code that was still waiting for the plugin to set up stops working with the installation
+    if (integration || isChannel) {
       await this.integrations.voidSetup(installation.id)
     }
-    await this.disconnectOpen(storeId, installation.id, pluginId, actor)
+    // The plugin hears the disconnects first (they are signed with the secrets of the revoked installation); then every process stops
+    // signing for it, whatever became of the disconnects
+    try {
+      await this.disconnectOpen(storeId, installation.id, pluginId, actor)
+    } finally {
+      if (isChannel) {
+        await this.sync.announceChange()
+      }
+    }
     return this.entryOf(store, pluginId)
   }
 

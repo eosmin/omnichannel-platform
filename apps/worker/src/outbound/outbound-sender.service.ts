@@ -78,6 +78,8 @@ interface AttachmentToSend {
   // The text the agent put under this file (the first file's is the message's); null when none
   caption: string | null
   open: () => Promise<NodeJS.ReadableStream>
+  // A signed GET of the stored file, for a plugin that is handed an address and not the bytes (a remote one, TDD_10 §6.7.4)
+  sign: (ttlSeconds: number) => Promise<string>
 }
 
 // The states of a file the provider has taken
@@ -501,9 +503,9 @@ export class OutboundSender {
       earlierErrorCode: file.sendErrorCode,
       channelMessageId: file.channelMessageId,
       caption: file.caption,
-      // No link is signed: a plugin gets the bytes through `open`, and a signed link nobody reads is only one
-      // more live credential to the storage in memory and in logs. Only the object of this row, read from the
-      // platform's own storage, when the plugin is about to send: one stream for each attempt.
+      // A plugin gets the bytes through `open`, one stream for each attempt, from the object of this row in the platform's own
+      // storage. A signed link is made only for a plugin that asks for it (`sign`), because a link nobody reads is one more
+      // live credential in memory and in logs.
       open: async () => {
         // Checked again at the moment the bytes are read: a file marked infected or deleted since the
         // message was picked up must not be uploaded to anybody
@@ -518,6 +520,25 @@ export class OutboundSender {
           throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false })
         }
         return stream
+      },
+      // Made only when a plugin asks for it, and checked as `open` is: a file marked infected or deleted since the message was
+      // picked up gets no address. The life of the link is the plugin's ask, never longer than the one the storage allows.
+      sign: async (ttlSeconds: number) => {
+        const stillClean = await this.prisma.client.media.count({
+          where: { id: file.id, storeId, messageId, status: MediaStatus.CLEAN }
+        })
+        if (stillClean !== 1) {
+          throw new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
+            retryable: false,
+            refused: true
+          })
+        }
+        return this.storage.downloadUrl({
+          key: file.key,
+          contentType: file.contentType,
+          filename: file.filename,
+          expiresInSeconds: ttlSeconds
+        })
       }
     }))
   }
@@ -659,6 +680,7 @@ export class OutboundSender {
               contentType: file.contentType,
               fileSize: file.size,
               openFile: file.open,
+              signedUrl: file.sign,
               filename: file.filename,
               // The text of this file goes with it, unless its kind has no place for one on the channel (then it
               // follows as a message of its own, below). It is the text of the message for the first file.

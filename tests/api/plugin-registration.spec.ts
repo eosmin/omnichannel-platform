@@ -382,7 +382,8 @@ describe('Private registration of an integration plugin (D10)', () => {
       const update = await register(channelOf(id, { version: '1.1.0' }))
       expect(update.status).toBe(OK)
       expect(update.body).toMatchObject({ outcome: 'updated' })
-      registry.unregister(id)
+      // The registration told the registry to read the database again, which holds no installation of this plugin
+      if (registry.isRemote(id)) registry.unregister(id)
 
       const coded = newId()
       registry.register(buildChannelPlugin({ id: coded }), { fromCode: true })
@@ -435,7 +436,7 @@ describe('Private registration of an integration plugin (D10)', () => {
       }
     })
 
-    it('is in the catalog of the organization that registered it and in no other, and is not installable yet', async () => {
+    it('is in the catalog of the organization that registered it and in no other, and installs only through the integration flow', async () => {
       const id = newId()
       await register(channelOf(id))
 
@@ -443,8 +444,10 @@ describe('Private registration of an integration plugin (D10)', () => {
       expect(await catalogIds(asSibling)).toContain(id)
       expect(await catalogIds(asAdminB)).not.toContain(id)
       const install = await asAdmin().post(ApiRoutes.plugins.install).send({ pluginId: id })
-      expect(install.status).toBe(CONFLICT)
-      expect(codeOf(install.body)).toBe(ErrorCodes.PLUGIN_INSTALLATION_FAILED)
+      // A remote channel is installed with the scopes the owner authorized, like an integration plugin (TDD_10 §6.7.3): the plain
+      // install, which carries none, is refused (the whole flow is in remote-channel-secret.spec.ts)
+      expect(install.status).toBe(BAD_REQUEST)
+      expect(codeOf(install.body)).toBe(ErrorCodes.VALIDATION_FAILED)
     })
   })
 

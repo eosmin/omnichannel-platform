@@ -172,6 +172,16 @@ export const ApiRoutes = {
       // PUT maps the role to an account
       byRole: (role: string) => `/finance/account-roles/${role}`
     },
+    // The tax rates of the organization (TDD_18 §7)
+    taxRates: {
+      list: '/finance/tax-rates',
+      create: '/finance/tax-rates',
+      byId: (id: string) => `/finance/tax-rates/${id}`,
+      deactivate: (id: string) => `/finance/tax-rates/${id}/deactivate`,
+      reactivate: (id: string) => `/finance/tax-rates/${id}/reactivate`
+    },
+    // The tax preferences of the store of X-Store-Id: GET reads them, PATCH changes whether its prices include the tax
+    storeTaxSettings: '/finance/store-tax-settings',
     paymentAccounts: {
       list: '/finance/payment-accounts',
       // PUT chooses the account a payment method lands in (for the organization, or for one store)
@@ -333,6 +343,7 @@ export const ApiRoutes = {
     revoke: (id: string) => `/plugins/${id}/revoke`, // Uninstalls: the id is the installation's
     consent: (id: string) => `/plugins/${id}/consent`, // What installing the plugin of that id would grant (GET); the id is the plugin's
     setupCode: (id: string) => `/plugins/${id}/setup-code`, // A new one-time code for an installation that is not set up yet (POST); the id is the installation's
+    commandSecret: (id: string) => `/plugins/${id}/command-secret`, // Rotates the secret that signs the commands to a remote channel (POST); the id is the installation's
     config: (id: string) => `/plugins/${id}/config`
   },
 

@@ -93,7 +93,8 @@ export class FinanceSetupService {
         data: {
           organizationId,
           countryCode: template.countryCode,
-          accountingStartDate: dayDate(start)
+          accountingStartDate: dayDate(start),
+          shippingTaxed: template.shippingTaxed
         }
       })
 
@@ -133,6 +134,18 @@ export class FinanceSetupService {
           storeId: null,
           paymentMethod,
           accountId: accountId(code)
+        }))
+      })
+      await tx.taxRate.createMany({
+        data: template.taxRates.map(rate => ({
+          organizationId,
+          code: rate.code,
+          name: rate.name,
+          rateBps: rate.rateBps,
+          kind: rate.kind,
+          outputAccountId: accountId(template.roles[rate.outputRole]),
+          inputAccountId: accountId(template.roles[rate.inputRole]),
+          isDefault: rate.isDefault
         }))
       })
       await tx.financeSettings.update({

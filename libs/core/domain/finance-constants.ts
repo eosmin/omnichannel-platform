@@ -81,6 +81,27 @@ export enum FinanceSourceType {
   MANUAL = 'manual'
 }
 
+// How a product is taxed (TDD_18 §7). Exempt and not subject both carry no tax; the books tell them apart (the legal books of the
+// accountant list them apart, **[ACCOUNTANT]**), so the order keeps which one a line was.
+export enum TaxTreatment {
+  TAXED = 'taxed',
+  EXEMPT = 'exempt',
+  NOT_SUBJECT = 'not_subject'
+}
+
+// The kind of a tax rate: `vat` in the MVP, the field is there for a country with other taxes (TDD_18 §7)
+export enum TaxKind {
+  VAT = 'vat'
+}
+
+// How the fraction of a cent of a tax is placed (TDD_18 §6.4, §7: half up by default). **[ACCOUNTANT]** may ask for another.
+export enum TaxRounding {
+  HALF_UP = 'half_up',
+  HALF_EVEN = 'half_even',
+  DOWN = 'down',
+  UP = 'up'
+}
+
 // The keys of AccountRoleMapping: which account each automatic entry posts to. A role without a mapping makes the
 // posting that needs it fail visibly (TDD_18 §6.1), never fall into a default.
 export enum AccountRole {
@@ -185,6 +206,17 @@ export const FinanceCountryCodes = {
   EL_SALVADOR: 'SV'
 } as const
 
+// What a tax rate and a tax computation are held to. A rate is basis points (13 % is 1300): no float ever holds a percent.
+export const FinanceTaxLimits = {
+  MIN_RATE_BPS: 0,
+  MAX_RATE_BPS: 10_000,
+  // The divisor of basis points: a rate of 10000 is the whole amount
+  BPS_DENOMINATOR: 10_000,
+  CODE_PATTERN: /^[A-Za-z0-9][A-Za-z0-9._-]{0,19}$/,
+  NAME_MAX_LENGTH: 100,
+  MAX_TAX_RATES_PER_ORGANIZATION: 50
+} as const
+
 export const FinanceLimits = {
   // The accountant's numbering: ASCII letters and digits with . _ - inside, so no space, control or look-alike character
   ACCOUNT_CODE_PATTERN: /^[A-Za-z0-9][A-Za-z0-9._-]{0,19}$/,
@@ -212,7 +244,10 @@ export const FinanceResourceTypes = {
   PAYMENT_ACCOUNT: 'finance_payment_account',
   PERIOD: 'finance_period',
   ENTRY: 'finance_entry',
-  POSTING: 'finance_posting'
+  POSTING: 'finance_posting',
+  TAX_RATE: 'finance_tax_rate',
+  // The tax preferences of a store (`finance.pricesIncludeTax`), kept in its preferences
+  STORE_TAX_SETTINGS: 'finance_store_tax_settings'
 } as const
 
 // Why a posting failed, kept in FinancePostingFailure.reason (a code, never free text: the interface translates it)
@@ -249,7 +284,17 @@ export const FinanceConflicts = {
   // A reversal stays as it is: reversing it could put the first entry's effect back on an account that is off
   REVERSAL_NOT_REVERSIBLE: 'reversal_not_reversible',
   // A payment method keeps its default account: only a store's own choice is taken away
-  DEFAULT_PAYMENT_ACCOUNT: 'default_payment_account'
+  DEFAULT_PAYMENT_ACCOUNT: 'default_payment_account',
+  TAX_RATE_CODE_IN_USE: 'tax_rate_code_in_use',
+  TAX_RATE_LIMIT: 'tax_rate_limit',
+  // The default rate is what a product that names none is taxed at: another one is chosen first, then this one can go off
+  TAX_RATE_IS_DEFAULT: 'tax_rate_is_default',
+  // A product names the rate, so switching it off would make that product's next order fail
+  TAX_RATE_IN_USE_BY_PRODUCT: 'tax_rate_in_use_by_product',
+  // A switched-off rate cannot be made the default
+  TAX_RATE_INACTIVE: 'tax_rate_inactive',
+  // The accounts of a rate: the tax owed is a liability, the tax to credit is an asset, and they are not the same account
+  TAX_RATE_ACCOUNT_TYPE: 'tax_rate_account_type'
 } as const
 
 // The names of the ways a chart change breaks the chart, beside the ones `account-rules` returns

@@ -26,7 +26,9 @@ export const ProductConflicts = {
   HAS_HISTORY: 'has_history',
   // Switching off the stock of a product whose units are on the road in a transfer in transit: the receipt (or the
   // return of a cancel) would be refused and the units stranded (Step 4.5)
-  IN_TRANSIT: 'in_transit'
+  IN_TRANSIT: 'in_transit',
+  // The tax rate the product would name was switched off (Step 4B.3)
+  TAX_RATE_INACTIVE: 'tax_rate_inactive'
 } as const
 export type ProductConflict = (typeof ProductConflicts)[keyof typeof ProductConflicts]
 

@@ -3,4 +3,5 @@
 export * from './account-rules'
 export * from './entry-rules'
 export * from './period-rules'
+export * from './tax-rules'
 export * from './templates'

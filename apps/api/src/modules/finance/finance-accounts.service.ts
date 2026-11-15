@@ -178,7 +178,7 @@ export class FinanceAccountsService {
           (await this.usedBySetting(tx, organizationId, accountId))
         ) {
           throw resourceConflict(
-            'a role, a payment method or the rounding setting uses the account',
+            'a role, a payment method, a tax rate or the rounding setting uses the account',
             {
               conflict: FinanceConflicts.ACCOUNT_IN_USE_BY_SETTING
             }
@@ -242,7 +242,7 @@ export class FinanceAccountsService {
       if (!current.active) return false
       if (await this.usedBySetting(tx, organizationId, accountId)) {
         throw resourceConflict(
-          'a role, a payment method or the rounding setting uses the account',
+          'a role, a payment method, a tax rate or the rounding setting uses the account',
           {
             conflict: FinanceConflicts.ACCOUNT_IN_USE_BY_SETTING
           }
@@ -311,12 +311,19 @@ export class FinanceAccountsService {
     organizationId: string,
     accountId: string
   ): Promise<boolean> {
-    const [roles, payments, rounding] = await Promise.all([
+    const [roles, payments, rounding, taxRates] = await Promise.all([
       tx.accountRoleMapping.count({ where: { organizationId, accountId } }),
       tx.paymentMethodAccount.count({ where: { organizationId, accountId } }),
-      tx.financeSettings.count({ where: { organizationId, roundingAccountId: accountId } })
+      tx.financeSettings.count({ where: { organizationId, roundingAccountId: accountId } }),
+      // A tax rate posts the tax to its output and input accounts (TDD_18 §7)
+      tx.taxRate.count({
+        where: {
+          organizationId,
+          OR: [{ outputAccountId: accountId }, { inputAccountId: accountId }]
+        }
+      })
     ])
-    return roles + payments + rounding > 0
+    return roles + payments + rounding + taxRates > 0
   }
 
   // The rules of a place in the chart (TDD_18 §2.3): the parent is a header of the same type of the organization, the account

@@ -5,7 +5,8 @@ import {
   plainName,
   ProductLimits,
   ProductSearchConfig,
-  singleLineText
+  singleLineText,
+  TaxTreatment
 } from '@platform/core/domain'
 
 import { cursorSchema } from '../customers/list-cursor'
@@ -44,6 +45,11 @@ export const listProductsQuerySchema = z.strictObject({
   active: flag.optional()
 })
 
+// How the product is taxed (TDD_18 §7): taxed by default, exempt or not subject for what carries no VAT. A rate of its own is for a
+// taxed product that is not at the default rate of the organization; null takes the default again.
+const taxTreatment = z.enum(TaxTreatment)
+const taxRateId = z.uuid()
+
 export const createProductSchema = z.strictObject({
   name,
   description: description.nullable().optional(),
@@ -53,7 +59,9 @@ export const createProductSchema = z.strictObject({
   trackInventory: z.boolean().optional(),
   lowStockThreshold: lowStockThreshold.nullable().optional(),
   active: z.boolean().optional(),
-  freeShipping: z.boolean().optional()
+  freeShipping: z.boolean().optional(),
+  taxTreatment: taxTreatment.optional(),
+  taxRateId: taxRateId.nullable().optional()
 })
 
 const notEmpty = (body: object): boolean => Object.values(body).some(value => value !== undefined)
@@ -69,6 +77,8 @@ export const updateProductSchema = z
     lowStockThreshold: lowStockThreshold.nullable().optional(),
     active: z.boolean().optional(),
     freeShipping: z.boolean().optional(),
+    taxTreatment: taxTreatment.optional(),
+    taxRateId: taxRateId.nullable().optional(),
     // The cover: a live file of THIS product (checked by the service), or null for none
     imageMediaId: z.uuid().nullable().optional()
   })
