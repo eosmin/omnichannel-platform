@@ -896,6 +896,7 @@ export const PluginScopes = {
   MESSAGES_READ: 'messages:read',
   MESSAGES_WRITE: 'messages:write',
   MESSAGES_READ_DELETED: 'messages:read-deleted', // the text of a message the customer deleted, while it is kept
+  MESSAGES_DELETE: 'messages:delete', // deleting and discarding a message the plugin wrote (PR M1c)
   CUSTOMERS_READ: 'customers:read',
   CUSTOMERS_WRITE: 'customers:write',
   CUSTOMERS_DELETE: 'customers:delete',                 // delete a customer with no history (Step 5.6 E2); CUSTOMERS_DELETE is in no other scope
@@ -922,6 +923,7 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.MESSAGES_READ]:       [Permissions.MESSAGES_VIEW],
   [PluginScopes.MESSAGES_WRITE]:      [Permissions.MESSAGES_SEND, Permissions.MESSAGES_INTERNAL_NOTE],
   [PluginScopes.MESSAGES_READ_DELETED]: [Permissions.MESSAGES_VIEW_DELETED],
+  [PluginScopes.MESSAGES_DELETE]: [Permissions.MESSAGES_DELETE],
   [PluginScopes.CUSTOMERS_READ]:      [Permissions.CUSTOMERS_VIEW],
   [PluginScopes.CUSTOMERS_WRITE]:     [Permissions.CUSTOMERS_CREATE, Permissions.CUSTOMERS_EDIT],
   [PluginScopes.CUSTOMERS_DELETE]:    [Permissions.CUSTOMERS_DELETE],
@@ -1013,7 +1015,7 @@ export class PluginApiKeyGuard implements CanActivate {
 cannot change `storeId`, and every service it reaches is scoped by the same
 `request.store` that `TenantGuard` would have set for a human.
 
-Messages (Step 5.6 PR M1b): `POST /plugin-api/messages` writes a reply (`type: text`) or an internal note (`type: note`) with `authorType` `system` (default) or `agent` (+ `userId`), `quiet` and `nickname`; `POST /plugin-api/messages/:id/resend-caption`, `POST /plugin-api/messages/:id/files/:index/refetch`, `GET /plugin-api/messages/:id/revisions` and `GET /plugin-api/messages/:id/deleted-content` (scope `messages:read-deleted`). Every one of them needs `conversations:read` as well as its own scope, because a plugin sees a conversation as a person with `conversations:view` does. A plugin's message is audited as `message.plugin_sent` (other changes: `message.plugin_changed`) with the platform as the actor and the plugin and installation on the metadata. Editing, sending again, discarding, reacting and deleting come with a plugin actor in a later PR (M1c).
+Messages (Step 5.6 PR M1b): `POST /plugin-api/messages` writes a reply (`type: text`) or an internal note (`type: note`) with `authorType` `system` (default) or `agent` (+ `userId`), `quiet` and `nickname`; `POST /plugin-api/messages/:id/resend-caption`, `POST /plugin-api/messages/:id/files/:index/refetch`, `GET /plugin-api/messages/:id/revisions` and `GET /plugin-api/messages/:id/deleted-content` (scope `messages:read-deleted`). Every one of them needs `conversations:read` as well as its own scope, because a plugin sees a conversation as a person with `conversations:view` does. A plugin's message is audited as `message.plugin_sent` (other changes: `message.plugin_changed`) with the platform as the actor and the plugin and installation on the metadata. Editing, sending again, discarding, reacting and deleting (Step 5.6 PR M1c) record the plugin as the actor (`ActorIdentity`, `libs/core/domain/actor-identity.ts`; the columns `edited_by_plugin_id`, `deleted_by_plugin_id`, `pending_edit_plugin_id` and `message_reactions.plugin_id`, never both a person and a plugin): `PATCH /plugin-api/messages/:id` (`messages:write`), `DELETE /plugin-api/messages/:id` and `POST .../:id/discard` (`messages:delete` as well), `POST .../:id/resend` and `PUT .../:id/reaction` (`messages:write`). A plugin edits, deletes, sends again and discards only the messages it wrote (403 otherwise, whatever it holds); it may react to any message it can see, as the system. A plugin that sends a reply again moves nothing of the conversation.
 
 ### 6.5 Outbound webhooks to plugins
 

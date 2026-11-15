@@ -102,6 +102,32 @@ export enum TaxRounding {
   UP = 'up'
 }
 
+// The sides and the kinds of line of the VAT report (TDD_18 §7). A not taxed shipping fee has its own kind: whether it is exempt or not
+// subject is for the accountant (**[ACCOUNTANT]**).
+export enum VatSide {
+  OUTPUT = 'output',
+  INPUT = 'input'
+}
+
+// What a CSV of the report says beside its rows: the monthly balance and the orders the report could not read or counted apart
+export enum VatCsvSide {
+  BALANCE = 'balance',
+  WARNING = 'warning'
+}
+
+export enum VatWarningKind {
+  ORDERS_WITHOUT_TAX_SNAPSHOT = 'orders_without_tax_snapshot',
+  ORDERS_NOT_READABLE = 'orders_not_readable',
+  RETURNED_ORDERS_INCLUDED = 'returned_orders_included'
+}
+
+export enum VatLineKind {
+  TAXED = 'taxed',
+  EXEMPT = 'exempt',
+  NOT_SUBJECT = 'not_subject',
+  SHIPPING_NOT_TAXED = 'shipping_not_taxed'
+}
+
 // The keys of AccountRoleMapping: which account each automatic entry posts to. A role without a mapping makes the
 // posting that needs it fail visibly (TDD_18 §6.1), never fall into a default.
 export enum AccountRole {
@@ -230,6 +256,8 @@ export const FinanceLimits = {
   MAX_ACCOUNT_DEPTH: 8,
   // A cent amount of one line is an Int of the database (TDD_18 §2): the same ceiling as an order total
   MAX_LINE_CENTS: 2_147_483_647,
+  // The longest range one VAT report reads, in days: one request is one bounded read (TDD_18 §7)
+  VAT_REPORT_MAX_DAYS: 366,
   FIRST_MONTH: 1,
   LAST_MONTH: 12,
   MIN_YEAR: 2000,

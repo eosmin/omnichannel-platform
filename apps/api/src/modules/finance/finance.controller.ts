@@ -9,13 +9,16 @@ import {
   Post,
   Put,
   Query,
-  Req
+  Req,
+  Res
 } from '@nestjs/common'
+import type { Response } from 'express'
 
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
+import { ExportContentTypes, ExportFileExtensions } from '@platform/core/exports'
 import { ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
@@ -34,6 +37,8 @@ import { FinanceSettingsService } from './finance-settings.service'
 import { FinanceSetupService } from './finance-setup.service'
 import { FinanceStoreTaxSettingsService } from './finance-store-tax-settings.service'
 import { FinanceTaxRatesService } from './finance-tax-rates.service'
+import { vatReportCsv } from './finance-vat-report.csv'
+import { FinanceVatReportService } from './finance-vat-report.service'
 import {
   balancesQuerySchema,
   type BalancesQuery,
@@ -70,7 +75,9 @@ import {
   type UpdateStoreTaxSettingsBody,
   updateStoreTaxSettingsSchema,
   type UpdateTaxRateBody,
-  updateTaxRateSchema
+  updateTaxRateSchema,
+  type VatReportQuery,
+  vatReportQuerySchema
 } from './finance.schemas'
 import type {
   AccountPage,
@@ -86,7 +93,8 @@ import type {
   SettingsView,
   SetupState,
   StoreTaxSettingsView,
-  TaxRateView
+  TaxRateView,
+  VatReportView
 } from './finance.views'
 
 type Store = ResolvedTenant['store']
@@ -108,7 +116,8 @@ export class FinanceController {
     private readonly periods: FinancePeriodsService,
     private readonly entries: FinanceEntriesService,
     private readonly taxRates: FinanceTaxRatesService,
-    private readonly storeTax: FinanceStoreTaxSettingsService
+    private readonly storeTax: FinanceStoreTaxSettingsService,
+    private readonly vatReport: FinanceVatReportService
   ) {}
 
   @RequirePermissions(Permissions.FINANCE_VIEW)
@@ -272,6 +281,34 @@ export class FinanceController {
       paymentAccountId,
       actorOf(user, store, req)
     )
+  }
+
+  // The VAT report (TDD_18 §7) of the organization for a range of days: the JSON, and the same rows as a CSV file
+  @RequirePermissions(Permissions.FINANCE_VIEW)
+  @Get(ApiRoutes.finance.reports.vat)
+  vat(
+    @CurrentOrganization() organization: Organization,
+    @Query(new ZodValidationPipe(vatReportQuerySchema)) query: VatReportQuery
+  ): Promise<VatReportView> {
+    return this.vatReport.report(organization.id, query)
+  }
+
+  @RequirePermissions(Permissions.FINANCE_VIEW)
+  @Get(ApiRoutes.finance.reports.vatCsv)
+  async vatCsv(
+    @CurrentOrganization() organization: Organization,
+    @Query(new ZodValidationPipe(vatReportQuerySchema)) query: VatReportQuery,
+    @Res({ passthrough: true }) res: Response
+  ): Promise<string> {
+    const report = await this.vatReport.report(organization.id, query)
+    res.setHeader('Content-Type', ExportContentTypes.CSV)
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="vat-${report.from}-${report.to}.${ExportFileExtensions.CSV}"`
+    )
+    // A financial file is not kept by a shared cache
+    res.setHeader('Cache-Control', 'no-store')
+    return vatReportCsv(report)
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW)

@@ -180,6 +180,11 @@ export const ApiRoutes = {
       deactivate: (id: string) => `/finance/tax-rates/${id}/deactivate`,
       reactivate: (id: string) => `/finance/tax-rates/${id}/reactivate`
     },
+    // The VAT report of the organization for a range of days (TDD_18 §7): the JSON, and the same rows as a CSV
+    reports: {
+      vat: '/finance/reports/vat',
+      vatCsv: '/finance/reports/vat.csv'
+    },
     // The tax preferences of the store of X-Store-Id: GET reads them, PATCH changes whether its prices include the tax
     storeTaxSettings: '/finance/store-tax-settings',
     paymentAccounts: {
@@ -567,6 +572,11 @@ export const PluginApiRoutes = {
   // Messages (Step 5.6 PR M1b): a plugin writes a reply or a note, and reads the edits and the kept text of a deleted message
   messages: {
     create: '/plugin-api/messages',
+    // PATCH (edit its own message or note) and DELETE (delete its own)
+    byId: (id: string) => `/plugin-api/messages/${id}`,
+    resend: (id: string) => `/plugin-api/messages/${id}/resend`,
+    discard: (id: string) => `/plugin-api/messages/${id}/discard`,
+    reaction: (id: string) => `/plugin-api/messages/${id}/reaction`,
     resendCaption: (id: string) => `/plugin-api/messages/${id}/resend-caption`,
     refetchFile: (id: string, index: number | string) =>
       `/plugin-api/messages/${id}/files/${index}/refetch`,

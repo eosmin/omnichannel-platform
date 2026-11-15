@@ -21,6 +21,8 @@ import type { MissingTargetShape } from '../inbound/missing-target-shape'
 export type Reactor =
   | { authorType: AuthorType.CUSTOMER; customerIdentityId: string }
   | { authorType: AuthorType.AGENT; userId: string }
+  // A plugin reacts as the system, with its own id column (it has no user)
+  | { authorType: AuthorType.SYSTEM; pluginId: string }
   | { authorType: AuthorType.EXTERNAL }
 
 export interface InboundReaction {
@@ -38,8 +40,25 @@ export type ReactionOutcome = (typeof ReactionOutcomes)[keyof typeof ReactionOut
 const keyOf = (reactor: Reactor): Record<string, string | null> => ({
   customerIdentityId:
     reactor.authorType === AuthorType.CUSTOMER ? reactor.customerIdentityId : null,
-  userId: reactor.authorType === AuthorType.AGENT ? reactor.userId : null
+  userId: reactor.authorType === AuthorType.AGENT ? reactor.userId : null,
+  pluginId: reactor.authorType === AuthorType.SYSTEM ? reactor.pluginId : null
 })
+
+// The reactor a job of the queue stands for: the plugin when it names one, the person otherwise. The worker finds the row of
+// the reaction with it.
+export function reactorOfJob(job: {
+  userId: string | null
+  pluginId?: string | undefined
+}): Reactor {
+  if (job.pluginId !== undefined) return { authorType: AuthorType.SYSTEM, pluginId: job.pluginId }
+  if (job.userId === null) throw new Error('a reaction job names neither a person nor a plugin')
+  return { authorType: AuthorType.AGENT, userId: job.userId }
+}
+
+// The columns that find the row of a reactor (what `keyOf` writes, with the author type)
+export function reactionWhereOf(reactor: Reactor): Record<string, string | null> {
+  return { authorType: reactor.authorType, ...keyOf(reactor) }
+}
 
 // The reactions of a message: one emoji for each person, a new one replaces the old, and none takes it
 // back. The same writer serves the reactions a channel reports and, when agents react, the api.

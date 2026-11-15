@@ -54,6 +54,20 @@ export async function createFinanceFixture(
         select: { id: true }
       })
     ).id
+  // The books of an organization always have a default tax rate (the setup seeds one): a taxed product with none cannot be sold
+  const outputAccountId = await account('2201', 'IVA debito', AccountType.LIABILITY)
+  const inputAccountId = await account('1401', 'IVA credito', AccountType.ASSET)
+  await owner.taxRate.create({
+    data: {
+      organizationId,
+      code: 'IVA',
+      name: 'IVA 13 %',
+      rateBps: 1300,
+      outputAccountId,
+      inputAccountId,
+      isDefault: true
+    }
+  })
   return {
     organizationId,
     periodId,
@@ -107,6 +121,7 @@ export interface TestLine {
   storeId?: string | null
   partyType?: string | null
   partyId?: string | null
+  taxRateId?: string | null
 }
 
 export interface TestEntry {
@@ -145,7 +160,7 @@ export async function postTestEntry(owner: OwnerClient, entry: TestEntry): Promi
     storeId: line.storeId ?? null,
     partyType: line.partyType ?? null,
     partyId: line.partyId ?? null,
-    taxRateId: null,
+    taxRateId: line.taxRateId ?? null,
     memo: null,
     lineNo: index + 1
   }))

@@ -15,7 +15,12 @@ import { api } from '../helpers/http'
 // The "done when" of Step 4.1: the autocomplete answers in under 200 ms (p95) over 5 000 products, and a
 // query of "%" returns nothing. A third of the products have two variants, as a clothing store does.
 const PRODUCTS = 5000
-const REQUESTS = 40
+// The failures seen in CI were isolated stalls, not a slow query: the server-side time of the requests had a median
+// of about 40 ms in every query, and one query had a single request of 479 ms. The 95th percentile of 40 samples
+// lets two slow requests through and fails on the third (7.5%); over 100 samples it lets five through. The SQL
+// itself runs in about 6 ms (EXPLAIN ANALYZE: index scan by store, 5 000 rows filtered), so the limit is not tight.
+const REQUESTS = 100
+const WARM_UP_REQUESTS = 10
 const P95_LIMIT_MS = 200
 const ADJECTIVES = ['Classic', 'Urban', 'Light', 'Heavy', 'Soft', 'Sport', 'Slim', 'Retro']
 const NOUNS = ['Shirt', 'Shoe', 'Jacket', 'Cap', 'Belt', 'Bag', 'Sock', 'Scarf', 'Pants', 'Dress']
@@ -70,9 +75,11 @@ describe('The search of products at the size of a real catalog', () => {
         }))
       )
     await owner.productVariant.createMany({ data: variants })
-    // A real database has statistics; a table that was just filled has none until this runs
-    await owner.$executeRawUnsafe('ANALYZE products')
-    await owner.$executeRawUnsafe('ANALYZE product_variants')
+    // A real database has statistics and settled pages; a table that was just filled has neither. VACUUM ANALYZE
+    // does here, and at once, what autovacuum would do in the middle of the measurement (a stall of the database
+    // that one request in the sample pays for)
+    await owner.$executeRawUnsafe('VACUUM (ANALYZE) products')
+    await owner.$executeRawUnsafe('VACUUM (ANALYZE) product_variants')
   }, 120_000)
   afterAll(async () => {
     await cleanUp(owner, prefix)
@@ -82,7 +89,8 @@ describe('The search of products at the size of a real catalog', () => {
 
   async function measure(query: string): Promise<number[]> {
     const search = () => admin.get(ApiRoutes.products.search).query({ q: query })
-    await search() // The first call warms the connection and the plan
+    // The first calls warm the connection pool, the generic plan and the JIT of the handlers
+    for (let i = 0; i < WARM_UP_REQUESTS; i += 1) await search()
     const times: number[] = []
     for (let i = 0; i < REQUESTS; i += 1) {
       const started = performance.now()
@@ -103,11 +111,15 @@ describe('The search of products at the size of a real catalog', () => {
     ['a variant sku', '-L'],
     ['two characters', 'sh'],
     ['a text nothing has', 'zzzzzz']
-  ])('answers %s in under 200 ms at the 95th percentile', async (_label, query) => {
-    const times = await measure(query)
+  ])(
+    'answers %s in under 200 ms at the 95th percentile',
+    async (_label, query) => {
+      const times = await measure(query)
 
-    expect(percentile95(times)).toBeLessThan(P95_LIMIT_MS)
-  })
+      expect(percentile95(times)).toBeLessThan(P95_LIMIT_MS)
+    },
+    60_000
+  )
 
   it('finds what it should in the big catalog, and nothing for a wildcard', async () => {
     const found = await admin.get(ApiRoutes.products.search).query({ q: 'SKU-00421' })

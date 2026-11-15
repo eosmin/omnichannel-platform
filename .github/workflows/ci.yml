@@ -337,6 +337,13 @@ jobs:
           trap report EXIT
           pnpm test:security
 
+      # The latency spec of the search runs in a process of its own (`tests/jest.latency.config.cts`): in the
+      # process of the shard the heap is at its limit and the collections of the garbage land in the measurement.
+      # One job runs it; it is a step of the shard, so `security-tests` waits for it like for the rest
+      - name: Latency specs, in a fresh process
+        if: matrix.shard == '4/4'
+        run: pnpm test:latency
+
   # The required check. It keeps the name of the job that used to run the whole suite, and it runs whatever
   # happened upstream (`always()`): a shard that failed, was cancelled or was skipped can never read as a pass,
   # and only `success` of the matrix (every shard) is a green.

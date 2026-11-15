@@ -46,6 +46,16 @@ describe('PluginScopes', () => {
     }
   })
 
+  it('keeps the permission to delete a message in a scope of its own, which no other scope grants', () => {
+    expect(PluginScopePermissions[PluginScopes.MESSAGES_DELETE]).toEqual([
+      Permissions.MESSAGES_DELETE
+    ])
+    for (const [scope, granted] of Object.entries(PluginScopePermissions)) {
+      if (scope === PluginScopes.MESSAGES_DELETE) continue
+      expect(granted).not.toContain(Permissions.MESSAGES_DELETE)
+    }
+  })
+
   it('keeps the delete and the caution of a customer in scopes of their own, which customers:write does not grant', () => {
     expect(PluginScopePermissions[PluginScopes.CUSTOMERS_DELETE]).toEqual([
       Permissions.CUSTOMERS_DELETE

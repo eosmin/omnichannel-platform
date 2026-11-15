@@ -232,6 +232,12 @@ function PrintSheet({
           <dd className="text-right tabular-nums">
             {order.discountCents === 0 ? money(0) : money(-order.discountCents)}
           </dd>
+          {order.pricesIncludeTax === false && order.taxCents !== null && order.taxCents > 0 ? (
+            <>
+              <dt>{tLines('tax')}</dt>
+              <dd className="text-right tabular-nums">{money(order.taxCents)}</dd>
+            </>
+          ) : null}
           <dt className="border-t border-black pt-1 font-bold">{tLines('total')}</dt>
           <dd className="border-t border-black pt-1 text-right font-bold tabular-nums">
             {money(order.totalCents)}
