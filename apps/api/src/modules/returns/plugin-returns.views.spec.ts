@@ -1,7 +1,8 @@
-import type {
-  OrderReturnCondition,
-  OrderReturnStatus,
-  OrderReturnType
+import {
+  type OrderReturnCondition,
+  type OrderReturnStatus,
+  type OrderReturnType,
+  ReceptionBatchStatus
 } from '@platform/core/domain'
 
 import {
@@ -69,7 +70,7 @@ const item = (over: Partial<ReceptionItemView> = {}): ReceptionItemView =>
 
 const batch = (): ReceptionBatchView => ({
   id: 'b-1',
-  status: 'draft',
+  status: ReceptionBatchStatus.DRAFT,
   createdBy: 'user-staff-2',
   createdAt: '2026-11-15T00:00:00.000Z',
   completedAt: null,

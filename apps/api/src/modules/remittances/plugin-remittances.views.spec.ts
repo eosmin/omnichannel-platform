@@ -1,3 +1,5 @@
+import { RemittanceStatus } from '@platform/core/domain'
+
 import {
   pluginImportProfileView,
   pluginPendingConnectionView,
@@ -12,7 +14,7 @@ const remittance = (over: Partial<RemittanceView> = {}): RemittanceView => ({
   connectionId: 'cn-1',
   connectionName: 'Carrier',
   carrierId: 'carrier',
-  status: 'confirmed',
+  status: RemittanceStatus.CONFIRMED,
   reference: 'REF-1',
   receivedOn: '2026-11-14',
   importProfileId: null,
