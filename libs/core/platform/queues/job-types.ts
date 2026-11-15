@@ -229,7 +229,10 @@ export interface SendOutboundMessageJob extends BaseJob {
 export interface SendOutboundReactionJob extends BaseJob {
   storeId: string
   messageId: string
-  userId: string
+  // The person that reacted; null when a plugin did (`pluginId`). Jobs made before a plugin could react carry a user id.
+  userId: string | null
+  // The plugin that reacted (it reacts as the system, with no user)
+  pluginId?: string | undefined
   version: number
   // The file of an album the reaction is under; absent: the message itself
   mediaId?: string | undefined

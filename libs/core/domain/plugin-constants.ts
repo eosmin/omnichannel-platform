@@ -104,6 +104,21 @@ export const CodePluginAuthor = {
 // What the audit log and the notifications name an installation of a plugin
 export const PLUGIN_INSTALLATION_RESOURCE_TYPE = 'plugin_installation'
 
+// What a plugin did to a message, as the audit entry `message.plugin_changed` names it (`metadata.operation`)
+export const PluginMessageOperations = {
+  EDIT: 'edit',
+  DELETE: 'delete',
+  RESEND: 'resend',
+  DISCARD: 'discard',
+  REACT: 'react',
+  UNREACT: 'unreact',
+  RESEND_CAPTION: 'resend_caption',
+  REFETCH_FILE: 'refetch_file'
+} as const
+
+// The part of the id of an outbound reaction job that names a plugin instead of a person (a `:` is not allowed in a job id)
+export const PLUGIN_REACTION_JOB_ID_PREFIX = 'plugin-'
+
 // The key a plugin calls the plugin API with starts with this, so that a leaked one is found by a secret scanner and cannot
 // be taken for the key of a store (`pk_live_`, ApiKeyGuard): each guard refuses the other's tokens at the prefix
 export const PLUGIN_API_KEY_TOKEN_PREFIX = 'plg_live_'

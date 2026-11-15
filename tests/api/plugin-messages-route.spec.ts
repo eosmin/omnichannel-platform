@@ -437,6 +437,8 @@ describe('The messages of the plugin API', () => {
     it('refuses to send again the text of a message that has no file, or to download a file the customer did not lose, and audits neither', async () => {
       const { id } = await mk()
       const message = await messageIn(id)
+      // A plugin sends again the text of what it wrote (M1c): the message is the plugin's, and still has no file
+      await owner.message.update({ where: { id: message.id }, data: { authorPluginId: pluginId } })
 
       const caption = await call(
         'post',
