@@ -32,6 +32,12 @@ const PURPOSE_PERMISSIONS: Record<ClientUploadPurpose, UploadRule> = {
   [MediaPurpose.ORDER]: {
     all: [Permissions.ORDERS_VIEW],
     any: [Permissions.ORDERS_EDIT, Permissions.ORDERS_CHANGE_STATUS]
+  },
+  // A receipt changes a transaction of the books, so it asks for what registering one asks for (the service narrows to the kind of
+  // THIS transaction); the journal's view too, so that the answer for a transaction id never tells more than reading it would
+  [MediaPurpose.FINANCE_DOCUMENT]: {
+    all: [Permissions.FINANCE_VIEW_JOURNAL],
+    any: [Permissions.FINANCE_MANAGE_TRANSACTIONS, Permissions.FINANCE_MOVE_MONEY]
   }
 }
 
@@ -68,7 +74,9 @@ const READ_PERMISSIONS: Record<MediaPurposeType, Permission | null> = {
   // The labels carry the name, address and phone of every customer in the file: only who prints guides reads it
   [MediaPurpose.BULK_LABELS]: Permissions.SHIPPING_MANAGE,
   // A settlement file holds amounts and guide numbers, no customer: who may read the remittances may read it
-  [MediaPurpose.REMITTANCE_FILE]: Permissions.REMITTANCES_VIEW
+  [MediaPurpose.REMITTANCE_FILE]: Permissions.REMITTANCES_VIEW,
+  // A receipt or a statement shows what the organization paid, to whom and what its accounts hold: who reads the journal reads it
+  [MediaPurpose.FINANCE_DOCUMENT]: Permissions.FINANCE_VIEW_JOURNAL
 }
 
 export function refuseUnlessMayRead(purpose: string, held: readonly Permission[] | null): void {

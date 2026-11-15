@@ -197,6 +197,7 @@ export const AuditAction = {
   FINANCE_ENTRY_REVERSED: 'finance.entry_reversed',
   FINANCE_TRANSACTION_RECORDED: 'finance.transaction_recorded',
   FINANCE_TRANSACTION_VOIDED: 'finance.transaction_voided',
+  FINANCE_TRANSACTION_DOCUMENT_ATTACHED: 'finance.transaction_document_attached',
 
   // Compliance
   DSR_CREATED: 'dsr.created',

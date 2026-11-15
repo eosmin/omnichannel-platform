@@ -486,6 +486,7 @@ export const TRANSACTION_SELECT = {
   taxCents: true,
   taxCreditable: true,
   documentNumber: true,
+  documentMediaId: true,
   memo: true,
   entryId: true,
   voidedByEntryId: true,
@@ -507,6 +508,7 @@ export interface TransactionRow {
   taxCents: number
   taxCreditable: boolean
   documentNumber: string | null
+  documentMediaId: string | null
   memo: string | null
   entryId: string
   voidedByEntryId: string | null
@@ -528,6 +530,8 @@ export interface TransactionView {
   taxCents: number
   taxCreditable: boolean
   documentNumber: string | null
+  // The receipt, once attached: its signed links are `GET finance/transactions/:id/document`
+  documentMediaId: string | null
   memo: string | null
   // The entry it posted, and the one that reversed it once it was voided
   entryId: string
