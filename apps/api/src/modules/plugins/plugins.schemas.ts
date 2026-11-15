@@ -4,6 +4,7 @@ import {
   CHANNEL_ID_PATTERN,
   CodePluginAuthor,
   OfficialPluginAuthor,
+  PluginManifestLimits,
   PluginRevokeLimits
 } from '@platform/core/domain'
 import { pluginManifestSchema } from '@platform/plugins/runtime'
@@ -57,3 +58,10 @@ export const revokePluginSchema = z
   })
   .optional()
 export type RevokePluginBody = z.output<typeof revokePluginSchema>
+
+// The name of the plugin as the owner typed it to delete it. Optional here, as for a revocation: the service answers a plugin that
+// is not the organization's with a 404 before it looks at the name, so that a body with no name is no oracle for what exists.
+export const deletePluginSchema = z
+  .strictObject({ confirmation: z.string().max(PluginManifestLimits.NAME_MAX_LENGTH).optional() })
+  .optional()
+export type DeletePluginBody = z.output<typeof deletePluginSchema>

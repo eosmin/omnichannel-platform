@@ -17,6 +17,7 @@ import { PluginApiController } from './plugin-api.controller'
 import { PluginCatalogSync } from './plugin-catalog-sync.service'
 import { PluginChallengeService } from './plugin-challenge.service'
 import { PluginCommandSecretService } from './plugin-command-secret.service'
+import { PluginDeletionService } from './plugin-deletion.service'
 import { PluginIconService } from './plugin-icon.service'
 import { PluginInstallationsService } from './plugin-installations.service'
 import { PluginIntegrationInstallService } from './plugin-integration-install.service'
@@ -45,6 +46,7 @@ import { PluginsController } from './plugins.controller'
     PluginCatalogSync,
     PluginChallengeService,
     PluginCommandSecretService,
+    PluginDeletionService,
     PluginIconService,
     PluginInstallationsService,
     PluginIntegrationInstallService,

@@ -414,7 +414,7 @@ export const ApiRoutes = {
     available: '/plugins/available',
     install: '/plugins/install',
     register: '/plugins/register', // The owner pastes a manifest (SETTINGS_MANAGE_PLUGINS)
-    byId: (id: string) => `/plugins/${id}`, // One plugin of the catalog and what this store holds of it (GET); the id is the plugin's
+    byId: (id: string) => `/plugins/${id}`, // One plugin of the catalog and what this store holds of it (GET), or removes a plugin of the organization (DELETE); the id is the plugin's
     revoke: (id: string) => `/plugins/${id}/revoke`, // Uninstalls: the id is the installation's
     consent: (id: string) => `/plugins/${id}/consent`, // What installing the plugin of that id would grant (GET); the id is the plugin's
     setupCode: (id: string) => `/plugins/${id}/setup-code`, // A new one-time code for an installation that is not set up yet (POST); the id is the installation's

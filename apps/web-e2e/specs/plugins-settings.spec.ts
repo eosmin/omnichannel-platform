@@ -165,5 +165,33 @@ test.describe('Settings → Plugins', () => {
     await expect(
       detail.getByRole('button', { name: SCREEN.detail.newCode, exact: true })
     ).toHaveCount(0)
+    await page.keyboard.press('Escape')
+    await expect(detail).toBeHidden()
+  })
+
+  test('deletes the plugin only with its name typed, and the list no longer has it', async () => {
+    await row()
+      .getByRole('button', { name: new RegExp(`^${SCREEN.delete.action}`) })
+      .click()
+    const dialog = page.getByRole('alertdialog')
+    await expect(dialog).toBeVisible()
+    await expect(dialog).toContainText(SCREEN.delete.title.replace('{name}', pluginName))
+    const confirm = dialog.getByRole('button', { name: SCREEN.delete.confirm, exact: true })
+    await expect(confirm).toBeDisabled()
+    await expectDialogHoldsItsContent(page, dialog)
+
+    // The name as it is registered: another case is not it
+    await dialog.getByLabel(CONFIRM.phraseLabel, { exact: true }).fill(pluginName.toLowerCase())
+    await expect(confirm).toBeDisabled()
+    await dialog.getByLabel(CONFIRM.phraseLabel, { exact: true }).fill(pluginName)
+    await expect(confirm).toBeEnabled()
+    await confirm.click()
+
+    await expect(dialog).toBeHidden()
+    await expect(row()).toHaveCount(0)
+    // The page still lists the others (the register button is still there)
+    await expect(
+      page.getByRole('button', { name: SCREEN.register.action, exact: true })
+    ).toBeVisible()
   })
 })

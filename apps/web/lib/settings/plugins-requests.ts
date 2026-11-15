@@ -133,6 +133,22 @@ export function registerPlugin(
   })
 }
 
+// Deletes a plugin the organization registered. The name is the one the owner typed; the api checks it again (and that no store of the
+// organization still holds the plugin).
+export function deletePlugin(
+  client: ApiClient,
+  storeId: string,
+  pluginId: string,
+  confirmation: string
+): Promise<undefined> {
+  return client.request(ApiRoutes.plugins.byId(encodeURIComponent(pluginId)), {
+    method: 'DELETE',
+    body: { confirmation },
+    schema: z.undefined(),
+    storeId
+  })
+}
+
 // `scopes` are exactly the ones the consent screen showed: the api refuses the install when the manifest asks for others now
 export function installIntegrationPlugin(
   client: ApiClient,

@@ -19,6 +19,7 @@ export const DestructiveActionTiers = {
   // Critical
   DELETE_STORE: CRITICAL,
   REVOKE_ALL_PLUGIN_ACCESS: CRITICAL,
+  DELETE_PLUGIN: CRITICAL, // Settings → Plugins; the plugin the organization registered leaves the catalog, with the rows of its revoked installations
   REVOKE_API_KEY: CRITICAL,
   DELETE_CONVERSATION: CRITICAL, // The conversation, its messages and its files are gone for good (TDD_05 §10.4)
 
