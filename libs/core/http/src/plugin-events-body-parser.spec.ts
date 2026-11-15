@@ -104,11 +104,12 @@ describe('the body parser of POST /plugin-api/channel/events', () => {
   })
 
   it('keeps the 100 KB for a caller with no key, or a header that is not a plugin key', async () => {
-    for (const headers of [
+    const withoutKey: Record<string, string>[] = [
       {},
       { authorization: 'Bearer eyJhbGciOi' },
       { authorization: KEY.slice(0, 6) }
-    ]) {
+    ]
+    for (const headers of withoutKey) {
       const response = await events(batchOf(300 * 1024), headers)
 
       expect(response.status).toBe(HttpStatusCodes.PAYLOAD_TOO_LARGE)
