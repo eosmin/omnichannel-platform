@@ -1,3 +1,5 @@
+import { PaymentMethod } from './status-enums'
+
 // The constants of the finance module (TDD_18 §3). Prisma stores each of these as a String, so a value can be added
 // without a migration; the TypeScript enum is the source of truth and the database holds the same list in a CHECK
 // where an invalid value would break the books (tests/security/finance-schema.spec.ts compares the two).
@@ -236,3 +238,25 @@ export const LedgerHash = {
   ALGORITHM: 'sha256',
   SEPARATOR: '|'
 } as const
+
+// Why a request that is valid in itself is refused by the state of the books: for the client to tell apart (`metadata.conflict`)
+export const FinanceConflicts = {
+  ALREADY_SET_UP: 'already_set_up',
+  ACCOUNT_CODE_IN_USE: 'account_code_in_use',
+  ACCOUNT_LIMIT: 'account_limit',
+  // A role, a payment method or the rounding setting points at the account, so switching it off would break the postings
+  ACCOUNT_IN_USE_BY_SETTING: 'account_in_use_by_setting',
+  // A reversal stays as it is: reversing it could put the first entry's effect back on an account that is off
+  REVERSAL_NOT_REVERSIBLE: 'reversal_not_reversible',
+  // A payment method keeps its default account: only a store's own choice is taken away
+  DEFAULT_PAYMENT_ACCOUNT: 'default_payment_account'
+} as const
+
+// The names of the ways a chart change breaks the chart, beside the ones `account-rules` returns
+export const FinanceChartProblems = { HAS_CHILDREN: 'has_children' } as const
+
+// The payment methods whose money lands in an account of the organization: a collect-on-delivery parcel is the carrier's until
+// a remittance brings it (TDD_18 §6.2)
+export const FinancePaymentMethods: readonly PaymentMethod[] = Object.values(PaymentMethod).filter(
+  method => method !== PaymentMethod.CASH_ON_DELIVERY
+)

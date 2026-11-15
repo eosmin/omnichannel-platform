@@ -56,6 +56,8 @@ const SEARCH_CLICK =
   'The record that a person opened a search result, written from the screen the person is using: a plugin has no palette or results page to click on'
 const SEARCH_REPORT =
   'The report of what people searched in the store, for the dashboard: a plugin has no screen for it and reads the metrics of the store'
+const FINANCE =
+  'The books of the organization (TDD_18 §14): finance is not exposed to plugins in the MVP, so no scope reaches the ledger, the chart or the periods'
 const BELL_AND_SEARCH =
   'Search over what the person sees in the app bar; a plugin lists with the filters of each resource'
 
@@ -214,6 +216,29 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'products.variantById': { proposed: 'products:write', step: STEP },
   'products.search': { scope: 'products:read' },
   'products.inventory': { scope: 'inventory:read' },
+
+  // Finance (the books of the organization; no plugin scope in the MVP)
+  'finance.setup': { none: FINANCE },
+  'finance.settings': { none: FINANCE },
+  'finance.accounts.list': { none: FINANCE },
+  'finance.accounts.create': { none: FINANCE },
+  'finance.accounts.byId': { none: FINANCE },
+  'finance.accounts.deactivate': { none: FINANCE },
+  'finance.accounts.reactivate': { none: FINANCE },
+  'finance.accountRoles.list': { none: FINANCE },
+  'finance.accountRoles.byRole': { none: FINANCE },
+  'finance.paymentAccounts.list': { none: FINANCE },
+  'finance.paymentAccounts.set': { none: FINANCE },
+  'finance.paymentAccounts.byId': { none: FINANCE },
+  'finance.periods.list': { none: FINANCE },
+  'finance.periods.open': { none: FINANCE },
+  'finance.periods.byId': { none: FINANCE },
+  'finance.entries.list': { none: FINANCE },
+  'finance.entries.manual': { none: FINANCE },
+  'finance.entries.byId': { none: FINANCE },
+  'finance.entries.reverse': { none: FINANCE },
+  'finance.balances': { none: FINANCE },
+  'finance.postings': { none: FINANCE },
 
   // Stock (`inventory:*` exist; the warehouses, transfers and counts are scopes of their own)
   'warehouses.list': { proposed: ['warehouses:read', 'warehouses:write'], step: STEP },

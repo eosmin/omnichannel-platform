@@ -3,6 +3,7 @@ import { ScheduleModule } from '@nestjs/schedule'
 
 import { ChannelConnectionsLibModule } from '@platform/channels/connections'
 import { AuditModule } from '@platform/core/audit-module'
+import { LedgerModule } from '@platform/core/finance-ledger'
 import {
   DigestPlatformModule,
   EmailPlatformModule,
@@ -84,7 +85,9 @@ import { WebhooksWorkerModule } from './webhooks/webhooks.module'
     // The cleanup of the bulk labels is run by the scheduler below
     ShippingWorkerModule,
     // The platform cleanup is run by its scheduler below; the processors of the heavy and exports queues run the rest
-    RetentionWorkerModule
+    RetentionWorkerModule,
+    // The posting service of the books (TDD_18 §6.1): the processors of Step 4B.6 post through it; nothing else writes the journal
+    LedgerModule
   ],
   providers: [
     ProcessorSupport,

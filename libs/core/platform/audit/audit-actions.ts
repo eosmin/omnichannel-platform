@@ -183,6 +183,7 @@ export const AuditAction = {
   FINANCE_ACCOUNT_DEACTIVATED: 'finance.account_deactivated',
   FINANCE_ROLE_MAPPED: 'finance.role_mapped',
   FINANCE_PAYMENT_ACCOUNT_CHANGED: 'finance.payment_account_changed',
+  FINANCE_PERIOD_OPENED: 'finance.period_opened',
   FINANCE_ENTRY_POSTED_MANUAL: 'finance.entry_posted_manual',
   FINANCE_ENTRY_REVERSED: 'finance.entry_reversed',
 

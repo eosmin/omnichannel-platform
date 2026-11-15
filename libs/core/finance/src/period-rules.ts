@@ -14,6 +14,10 @@ export interface PeriodBounds {
   endsOn: string
 }
 
+// An accounting date is a day: 'YYYY-MM-DD' and the DATE column's midnight UTC are one thing, converted in these two places
+export const dayToDate = (day: string): Date => new Date(`${day}T00:00:00Z`)
+export const dateToDay = (date: Date): string => date.toISOString().slice(0, 10)
+
 const pad = (value: number): string => String(value).padStart(2, '0')
 
 export function periodBounds(year: number, month: number): PeriodBounds {
