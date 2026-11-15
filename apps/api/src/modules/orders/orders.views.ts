@@ -303,3 +303,109 @@ export function detailView(row: DetailRow, canRead: boolean): OrderDetailView {
     priceModified: items.some(item => item.originalUnitPriceCents !== null)
   }
 }
+
+// What a plugin reads of an order, written field by field (an allowlist, as `FIELD_SCOPES` of the SDK is for events): a column the
+// detail gains tomorrow stays out of a plugin until somebody decides which scope opens it. Left out on purpose, because no
+// scope of `orders:read` was reviewed to open them: the two internal notes (never for a plugin, TDD_17 §8), the note the customer wrote
+// (free text that may carry an address, a phone or an id), the customer (its id is
+// the way to their contact details: `customers:read` is theirs), the address and phones, the payment reference and proofs, the
+// free text of a discount, a cancellation or a price override, the conversation, the guide and the carrier (`shipments:read`),
+// the product and variant ids of the lines (`products:read`) and the ids of the people of the team (no scope opens them).
+export interface PluginOrderItemView {
+  id: string
+  productName: string
+  variantName: string | null
+  quantity: number
+  unitPriceCents: number
+  freeShipping: boolean
+}
+
+export interface PluginOrderSummaryView {
+  id: string
+  orderNumber: string
+  status: string
+  subtotalCents: number
+  shippingCents: number
+  discountCents: number
+  totalCents: number
+  currency: string
+  paymentMethod: string
+  paymentStatus: string
+  freeShipping: boolean
+  scheduledDeliveryDate: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface PluginOrderDetailView extends PluginOrderSummaryView {
+  confirmedAt: Date | null
+  cancelledAt: Date | null
+  items: PluginOrderItemView[]
+}
+
+export interface PluginOrderPage {
+  data: PluginOrderSummaryView[]
+  nextCursor: string | null
+  hasMore: boolean
+}
+
+type SummarySource = Pick<
+  OrderSummaryView,
+  | 'id'
+  | 'orderNumber'
+  | 'status'
+  | 'subtotalCents'
+  | 'shippingCents'
+  | 'discountCents'
+  | 'totalCents'
+  | 'currency'
+  | 'paymentMethod'
+  | 'paymentStatus'
+  | 'freeShipping'
+  | 'scheduledDeliveryDate'
+  | 'createdAt'
+  | 'updatedAt'
+>
+
+export function pluginSummaryView(order: SummarySource): PluginOrderSummaryView {
+  return {
+    id: order.id,
+    orderNumber: order.orderNumber,
+    status: order.status,
+    subtotalCents: order.subtotalCents,
+    shippingCents: order.shippingCents,
+    discountCents: order.discountCents,
+    totalCents: order.totalCents,
+    currency: order.currency,
+    paymentMethod: order.paymentMethod,
+    paymentStatus: order.paymentStatus,
+    freeShipping: order.freeShipping,
+    scheduledDeliveryDate: order.scheduledDeliveryDate,
+    createdAt: order.createdAt,
+    updatedAt: order.updatedAt
+  }
+}
+
+export function pluginPageView(page: OrderPage): PluginOrderPage {
+  return {
+    data: page.data.map(pluginSummaryView),
+    nextCursor: page.nextCursor,
+    hasMore: page.hasMore
+  }
+}
+
+export function pluginDetailView(order: OrderDetailView): PluginOrderDetailView {
+  return {
+    ...pluginSummaryView(order),
+    confirmedAt: order.confirmedAt,
+    cancelledAt: order.cancelledAt,
+    items: order.items.map(item => ({
+      id: item.id,
+      productName: item.productName,
+      variantName: item.variantName,
+      quantity: item.quantity,
+      unitPriceCents: item.unitPriceCents,
+      freeShipping: item.freeShipping
+    }))
+  }
+}

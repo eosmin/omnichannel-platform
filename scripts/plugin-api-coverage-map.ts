@@ -278,9 +278,14 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'customers.export': { proposed: ['customers:read', 'exports:write'], step: STEP },
 
   // Orders (`orders:*` exist); the messages and templates of an order are a scope of their own
-  'orders.list': { scope: ['orders:read', 'orders:write'] },
+  'orders.list': { scope: 'orders:read', exposed: '/plugin-api/orders' },
   'orders.create': { scope: 'orders:write' },
-  'orders.byId': { proposed: ['orders:read', 'orders:edit'], step: STEP },
+  // The GET is exposed (PR E3a); the PATCH needs the id of a person (PR E3b)
+  'orders.byId': {
+    proposed: ['orders:read', 'orders:edit'],
+    step: STEP,
+    exposed: '/plugin-api/orders/:id'
+  },
   'orders.cancel': { proposed: 'orders:cancel', step: STEP },
   'orders.status': { scope: 'orders:write' },
   'orders.items': { proposed: 'orders:edit', step: STEP },
@@ -289,15 +294,22 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'orders.confirm': { proposed: 'orders:confirm', step: STEP },
   'orders.confirmBulk': { proposed: 'orders:confirm', step: STEP },
   'orders.copy': { scope: ['orders:read', 'orders:write'] },
-  'orders.messages': { proposed: ['order-messages:read', 'order-messages:write'], step: STEP },
+  // The GET (the history) is exposed (PR E3a); sending a message stores who pressed it (PR E3b)
+  'orders.messages': {
+    proposed: ['orders:read', 'order-messages:read', 'order-messages:write'],
+    step: STEP,
+    exposed: '/plugin-api/orders/:id/messages'
+  },
   'orders.payment': { proposed: 'orders:edit', step: STEP },
   'orders.priceApprovalApprove': { proposed: 'orders:approve-price', step: STEP },
   'orders.priceApprovalReject': { proposed: 'orders:approve-price', step: STEP },
-  'orderTemplates.list': { proposed: ['order-messages:read', 'order-templates:write'], step: STEP },
+  'orderTemplates.list': { scope: 'order-messages:read', exposed: '/plugin-api/order-templates' },
   'orderTemplates.preview': { proposed: 'order-templates:write', step: STEP },
+  // The GET is exposed (PR E3a); the PUT and DELETE are SETTINGS_MANAGE_ORDER_TEMPLATES and audit a person (PR E3b)
   'orderTemplates.byKindAndLocale': {
     proposed: ['order-messages:read', 'order-templates:write'],
-    step: STEP
+    step: STEP,
+    exposed: '/plugin-api/order-templates/:kind/locales/:locale'
   },
 
   // Catalog (`products:read` exists; writing a product is `products:write`)
@@ -471,8 +483,9 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'channels.oauthSession': { none: CHANNEL_ADMIN },
   'settings.inbox': { none: SETTINGS_ADMIN },
   'settings.inboxBehavior': { none: SETTINGS_ADMIN },
-  'settings.preferences': { proposed: ['settings:read', 'settings:write'], step: STEP },
-  'settings.returns': { proposed: ['settings:read', 'settings:write'], step: STEP },
+  // Read only, as every other setting of how the store works: the owner changes them (the PUT and PATCH stay human)
+  'settings.preferences': { scope: 'settings:read', exposed: '/plugin-api/settings/preferences' },
+  'settings.returns': { scope: 'settings:read', exposed: '/plugin-api/settings/returns' },
   'settings.inventory': { proposed: ['inventory:read', 'settings:write'], step: STEP },
   'settings.routing': { none: SETTINGS_ADMIN },
   'settings.routingOrder': { none: SETTINGS_ADMIN },
