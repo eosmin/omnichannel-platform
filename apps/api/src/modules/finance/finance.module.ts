@@ -11,13 +11,15 @@ import { FinanceSettingsService } from './finance-settings.service'
 import { FinanceSetupService } from './finance-setup.service'
 import { FinanceStoreTaxSettingsService } from './finance-store-tax-settings.service'
 import { FinanceTaxRatesService } from './finance-tax-rates.service'
+import { FinanceTransactionsController } from './finance-transactions.controller'
+import { FinanceTransactionsService } from './finance-transactions.service'
 import { FinanceController } from './finance.controller'
 
 // The routes of the books of the organization: setup, chart, maps, periods, journal, balances. The one that writes the journal
 // is LedgerService of libs/core/finance; the database, audit and event-bus modules are the global ones of the app.
 @Module({
   imports: [LedgerModule, TenancyModule],
-  controllers: [FinanceController],
+  controllers: [FinanceController, FinanceTransactionsController],
   providers: [
     FinanceSetupService,
     FinanceSettingsService,
@@ -25,7 +27,8 @@ import { FinanceController } from './finance.controller'
     FinancePeriodsService,
     FinanceEntriesService,
     FinanceTaxRatesService,
-    FinanceStoreTaxSettingsService
+    FinanceStoreTaxSettingsService,
+    FinanceTransactionsService
   ],
   exports: [LedgerModule]
 })

@@ -1,5 +1,6 @@
+import { type Permission, Permissions } from '@platform/core/auth'
 import { type PrismaTransaction, isUniqueViolation } from '@platform/core/database'
-import { FinanceConflicts } from '@platform/core/domain'
+import { FinanceConflicts, FinanceTransactionKind } from '@platform/core/domain'
 import {
   ErrorCodes,
   HttpStatusCodes,
@@ -83,4 +84,28 @@ export async function requireSettings(
     select: { organizationId: true }
   })
   if (found === null) throw financeRefusal(ErrorCodes.FINANCE_SETUP_REQUIRED)
+}
+
+// A transaction registered by hand needs the permission of its kind (TDD_18 §9.1): an expense or an income is
+// `finance:manage_transactions`, any movement of cash between accounts is `finance:move_money`. The routes accept either (a
+// bookkeeper may hold one and not the other), so the kind is narrowed here, before anything is read or written.
+export const PermissionOfTransactionKind: Readonly<Record<FinanceTransactionKind, Permission>> = {
+  [FinanceTransactionKind.EXPENSE]: Permissions.FINANCE_MANAGE_TRANSACTIONS,
+  [FinanceTransactionKind.INCOME]: Permissions.FINANCE_MANAGE_TRANSACTIONS,
+  [FinanceTransactionKind.TRANSFER]: Permissions.FINANCE_MOVE_MONEY
+}
+
+export function requireTransactionPermission(
+  kind: FinanceTransactionKind,
+  granted: readonly Permission[]
+): void {
+  const required = PermissionOfTransactionKind[kind]
+  if (!granted.includes(required)) {
+    throw new PlatformException(
+      ErrorCodes.PERMISSION_DENIED,
+      'Missing permission',
+      HttpStatusCodes.FORBIDDEN,
+      { required: [required] }
+    )
+  }
 }

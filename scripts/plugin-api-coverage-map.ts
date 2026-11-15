@@ -291,6 +291,11 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'finance.entries.manual': { none: FINANCE },
   'finance.entries.byId': { none: FINANCE },
   'finance.entries.reverse': { none: FINANCE },
+  'finance.transactions.list': { none: FINANCE },
+  'finance.transactions.record': { none: FINANCE },
+  'finance.transactions.byId': { none: FINANCE },
+  'finance.transactions.void': { none: FINANCE },
+  'finance.transactions.replace': { none: FINANCE },
   'finance.balances': { none: FINANCE },
   'finance.postings': { none: FINANCE },
 

@@ -472,3 +472,82 @@ export const taxRateView = (row: TaxRateRow): TaxRateView => ({
 export interface StoreTaxSettingsView {
   pricesIncludeTax: boolean
 }
+
+export const TRANSACTION_SELECT = {
+  id: true,
+  storeId: true,
+  kind: true,
+  occurredOn: true,
+  amountCents: true,
+  fromAccountId: true,
+  toAccountId: true,
+  categoryAccountId: true,
+  taxRateId: true,
+  taxCents: true,
+  taxCreditable: true,
+  documentNumber: true,
+  memo: true,
+  entryId: true,
+  voidedByEntryId: true,
+  replacesTransactionId: true,
+  createdBy: true,
+  createdAt: true
+} as const
+
+export interface TransactionRow {
+  id: string
+  storeId: string | null
+  kind: string
+  occurredOn: Date
+  amountCents: number
+  fromAccountId: string | null
+  toAccountId: string | null
+  categoryAccountId: string | null
+  taxRateId: string | null
+  taxCents: number
+  taxCreditable: boolean
+  documentNumber: string | null
+  memo: string | null
+  entryId: string
+  voidedByEntryId: string | null
+  replacesTransactionId: string | null
+  createdBy: string
+  createdAt: Date
+}
+
+export interface TransactionView {
+  id: string
+  storeId: string | null
+  kind: string
+  occurredOn: string
+  amountCents: number
+  fromAccountId: string | null
+  toAccountId: string | null
+  categoryAccountId: string | null
+  taxRateId: string | null
+  taxCents: number
+  taxCreditable: boolean
+  documentNumber: string | null
+  memo: string | null
+  // The entry it posted, and the one that reversed it once it was voided
+  entryId: string
+  voidedByEntryId: string | null
+  voided: boolean
+  // The transaction this one replaced when it was changed
+  replacesTransactionId: string | null
+  createdBy: string
+  createdAt: string
+}
+
+export const transactionView = (row: TransactionRow): TransactionView => ({
+  ...row,
+  occurredOn: isoDay(row.occurredOn),
+  voided: row.voidedByEntryId !== null,
+  createdAt: row.createdAt.toISOString()
+})
+
+export interface TransactionPage {
+  data: TransactionView[]
+  nextCursor: string | null
+  hasMore: boolean
+}

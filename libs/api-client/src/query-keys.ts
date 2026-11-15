@@ -324,7 +324,10 @@ export const QueryKeys = {
     // A period, or every period when none is named
     balances: (storeId: string, periodId: string | null) =>
       ['finance', storeId, 'balances', periodId] as const,
-    postings: (storeId: string) => ['finance', storeId, 'postings'] as const
+    postings: (storeId: string) => ['finance', storeId, 'postings'] as const,
+    transactions: (storeId: string, filters: Record<string, string>) =>
+      ['finance', storeId, 'transactions', filters] as const,
+    transaction: (storeId: string, id: string) => ['finance', storeId, 'transactions', id] as const
   },
   // The person's own account: no store in the key, because it belongs to the person
   account: {

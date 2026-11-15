@@ -1422,16 +1422,46 @@ scheduled in this plan yet; `TDD_18 §14` already keeps it out of 4B); until it 
 orders of a period.
 
 ### Step 4B.4 — Expenses, incomes, transfers and bank reconciliation (api)
-- [ ] `FinanceTransaction` (expense, income, transfer) posting E12; void = reversal in the same request; receipts as `finance_document`
-      media (upload purpose with the parent check, scanned); permissions `FINANCE_MANAGE_TRANSACTIONS` and `FINANCE_MOVE_MONEY`
-- [ ] Bank import: `BankImportProfile`, `BankStatementImport`, `BankStatementLine`, `ReconciliationMatch`; deterministic matching,
+Split in two PRs, never stacked (the second starts from a `main` that has the first): **4B.4a** the transactions, **4B.4b** the receipts
+and the bank reconciliation. Both use the upload purpose `finance_document`, so that one is built once, by 4B.4b.
+- [x] **4B.4a:** `FinanceTransaction` (expense, income, transfer) posting E12 through `LedgerService` in the same transaction; void = the
+      reversing entry; change = void plus a new one in one request (`replacesTransactionId`); the tax inside the amount computed by the
+      server from the rate (creditable input VAT only when the person says the document is valid, [ACCOUNTANT]); permissions
+      `FINANCE_MANAGE_TRANSACTIONS` (expense, income) and `FINANCE_MOVE_MONEY` (transfer), narrowed by the kind
+- [ ] **4B.4b:** receipts as `finance_document` media (upload purpose with the parent check, scanned, `documentMediaId` on the transaction,
+      a column added by its migration); permission `FINANCE_RECONCILE`
+- [ ] **4B.4b:** bank import: `BankImportProfile`, `BankStatementImport`, `BankStatementLine`, `ReconciliationMatch`; deterministic matching,
       strict parsing, no formula evaluation, the file kept as media; suggestions, confirm one or all the exact; "register it" from an
-      unmatched line; the balance-versus-statement difference
-- [ ] Tests: each kind posts the right entry, a transfer needs two distinct cash-kind accounts, voiding, the closed period, matching
-      rules and every parser error, isolation cases
+      unmatched line (a prefilled transaction of 4B.4a); the balance-versus-statement difference
+- [x] **4B.4a tests:** each kind posts the right entry, a transfer needs two distinct cash-kind accounts, voiding, changing, the closed
+      period, retries and races, the permission of each kind, isolation cases, the shape and the immutability held by the database
+- [ ] **4B.4b tests:** matching rules and every parser error, isolation cases of the new tables
 **TDD:** `TDD_18 §4.3`, `§4.4`, `TDD_07 §6.3`
 **Done when:** a person registers an expense paid from a chosen account with its VAT and a receipt, moves money between accounts, imports
 a statement and reconciles it, and every balance follows.
+
+**Decisions of PR 4B.4a (rule 12):** (1) the three kinds share one route (`finance/transactions`) and the permission of the KIND is
+checked by the service (`RequireAnyPermission` on the route, `requireTransactionPermission` in the service): rejected, one route per kind
+(three times the routes, the same check). A bookkeeper holding only `manage_transactions` cannot register or void a transfer, a treasurer
+holding only `move_money` cannot register an expense, and `finance:view_journal` reads. (2) The money source and destination of an expense,
+an income and a transfer must be cash-kind accounts (cash, bank or wallet), and the category must be an expense (or income) account:
+rejected, any account of the chart (an expense paid out of "suppliers" is a purchase, 4B.5, and out of inventory is a stock adjustment);
+checked by the rules, the service and a database trigger. (3) The tax is computed by the server from the chosen rate with the rounding of the
+books and is never taken from the body; an expense whose tax is not creditable books the whole amount to the category. Rejected: a tax
+amount typed by the person. (4) A transaction is never edited: `replace` voids and registers in one database transaction (either both happen or
+neither), keeps the kind, and a retry with the same key answers the replacement without voiding twice. The row can change only by its pointer to
+the voiding entry, once (a trigger refuses the owner of the table too; the application roles hold UPDATE on that one column and no DELETE).
+(5) The client key (`idempotencyKey`) is stored per organization and compared on a retry: the same content is the same request, other content under
+the same key is `409` (`FinanceConflicts.TRANSACTION_KEY_REUSED`), never an overwrite; requests with one key at once wait on an advisory lock
+rather than depend on catching a unique violation inside the request's transaction. (6) The accounting date may be at most one day ahead of the
+server's day (`FinanceLimits.TRANSACTION_FUTURE_DAYS`): a typed year in the future would open a period years ahead. (7) `LedgerService` now
+checks that a tax rate a line names is one of the organization (it refused every rate since 4B.2, before the rate table existed); the supplier check
+stays refused until 4B.5. (8) Voiding is a HIGH-tier destructive action (`VOID_FINANCE_TRANSACTION`), like reversing an entry.
+**Debts of PR 4B.4a:** (a) the supplier of an expense (`supplierId`, TDD_18 §2.6): the column comes with the `Supplier` table in 4B.5 (additive).
+(b) The receipt (`documentMediaId`) and `finance_document` are 4B.4b. (c) A tax amount that the supplier's document rounds differently from the
+server by a cent cannot be typed: owner and accountant decide with `TDD_18 §13` row 2; the interface (4B.9) shows the computed amount. (d) The
+`finance:` entry of `PermissionsOfUnbuiltAreas` stays until 4B.9, which draws the screens (the permissions are read by the code now).
+(e) A fee a bank charges on a transfer is a second expense by hand: a transfer with a fee line is not modelled.
 
 ### Step 4B.5 — Suppliers and purchase orders (api)
 - [ ] `Supplier`, `PurchaseOrder`, `PurchaseOrderLine`, `PurchaseReceipt` (+ lines), `SupplierPayment`; the transition table;
@@ -2334,7 +2364,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.1 | Finance design (TDD_18, no code) | in progress | written and delivered with the first code PR that follows; owner approval of `TDD_18` pending | |
 | 4B.2 | Ledger core (accounts, immutable journal, periods, permissions) | done | PR a (schema, constants, pure rules, database tests, #509); PR b (posting service, routes, isolation, maps, #513) | 2026-11-15 |
 | 4B.3 | VAT and the tax snapshot | in progress | 4B.3a PR pending; 4B.3b (orders, report) todo | |
-| 4B.4 | Expenses, incomes, transfers and bank reconciliation | todo | | |
+| 4B.4 | Expenses, incomes, transfers and bank reconciliation | in progress | 4B.4a transactions (PR pending); 4B.4b receipts and bank reconciliation todo | |
 | 4B.5 | Suppliers and purchase orders | todo | | |
 | 4B.6 | The automatic entries (sales, remittances, returns, stock) | todo | | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | todo | | |

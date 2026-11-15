@@ -636,6 +636,39 @@ describe('The tables of the ledger', () => {
         }
       }
     })
+
+    it('lets the roles of the application add a transaction by hand and point it at its voiding entry, and change or remove nothing else', async () => {
+      const allowed = async (role: string, privilege: string): Promise<boolean> =>
+        (
+          await owner.$queryRaw<{ allowed: boolean }[]>`
+            SELECT has_table_privilege(${role}, 'finance_transactions', ${privilege}) AS allowed`
+        )[0]?.allowed === true
+      const column = async (role: string, name: string): Promise<boolean> =>
+        (
+          await owner.$queryRaw<{ allowed: boolean }[]>`
+            SELECT has_column_privilege(${role}, 'finance_transactions', ${name}, 'UPDATE') AS allowed`
+        )[0]?.allowed === true
+      for (const role of ['platform_app', 'platform_worker']) {
+        expect(await allowed(role, 'SELECT')).toBe(true)
+        expect(await allowed(role, 'INSERT')).toBe(true)
+        for (const privilege of ['UPDATE', 'DELETE', 'TRUNCATE']) {
+          expect({ role, privilege, allowed: await allowed(role, privilege) }).toEqual({
+            role,
+            privilege,
+            allowed: false
+          })
+        }
+        // A privilege on a column only: the table-level UPDATE above is false
+        expect(await column(role, 'voided_by_entry_id')).toBe(true)
+        for (const name of ['amount_cents', 'memo', 'entry_id', 'kind', 'from_account_id']) {
+          expect({ role, name, allowed: await column(role, name) }).toEqual({
+            role,
+            name,
+            allowed: false
+          })
+        }
+      }
+    })
   })
 
   describe('the roles of the application', () => {

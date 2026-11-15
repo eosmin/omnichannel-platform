@@ -19,7 +19,10 @@ import {
   CountStatus,
   ConversationStatus,
   DeliveryStatus,
+  FinanceSourceType,
+  FinanceTransactionKind,
   InvitationStatus,
+  JournalEntryType,
   MembershipStatus,
   MessageType,
   OrderMessageKind,
@@ -73,6 +76,7 @@ import {
   createTransfer,
   createFinanceFixture,
   createPeriod,
+  day,
   createWarehouse,
   linkWarehouse,
   postTestEntry,
@@ -1277,6 +1281,55 @@ const resources: IsolationResource[] = [
         (await owner.journalEntry.findUnique({ where: { id }, select: { organizationId: true } }))
           ?.organizationId ?? null
     }
+  },
+  // What a person registers by hand: one row and one entry of the organization. The only change a route can try is voiding, which
+  // must never reach another organization's transaction (and writes its reversing entry only in its own books)
+  {
+    name: 'financeTransaction',
+    create: async (owner, { storeId }) => {
+      const books = await booksOfStore(owner, storeId)
+      const id = randomUUID()
+      const entry = await postTestEntry(
+        owner,
+        simpleEntry(books, 900, {
+          type: JournalEntryType.EXPENSE,
+          sourceType: FinanceSourceType.FINANCE_TRANSACTION,
+          sourceId: id
+        })
+      )
+      await owner.financeTransaction.create({
+        data: {
+          id,
+          organizationId: books.organizationId,
+          kind: FinanceTransactionKind.EXPENSE,
+          occurredOn: day(FINANCE_ENTRY_DATE),
+          amountCents: 900,
+          fromAccountId: books.accounts.cash,
+          categoryAccountId: books.accounts.expense,
+          clientKey: `iso-${id}`,
+          entryId: entry.id,
+          createdBy: 'isolation-suite'
+        }
+      })
+      return { id }
+    },
+    scope: 'organization',
+    readPath: ApiRoutes.finance.transactions.byId,
+    listPath: ApiRoutes.finance.transactions.list,
+    modify: {
+      path: ApiRoutes.finance.transactions.void,
+      method: 'post',
+      body: { reason: 'Voided by the suite' }
+    },
+    untouched: async (owner, id) =>
+      (
+        await owner.financeTransaction.findUnique({
+          where: { id },
+          select: { voidedByEntryId: true }
+        })
+      )?.voidedByEntryId === null
+    // No `creation` check: the body may name a store of the organization (the dimension of the lines), so a store of ANOTHER organization
+    // is a 404 and not the 400 of a strict body; tests/api/finance-transactions.spec.ts proves that and that nothing is written
   },
   // The lines belong to their entry: they are read with it, and the store of a line is a dimension and not a scope
   {
