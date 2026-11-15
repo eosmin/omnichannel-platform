@@ -4,8 +4,13 @@ import { PinoLogger } from 'nestjs-pino'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { type Permission, Permissions } from '@platform/core/auth'
-import { BulkActions, BulkLimits, ConversationStatus } from '@platform/core/domain'
-import { errorName, ErrorCodes, PlatformException } from '@platform/core/errors'
+import {
+  BulkActions,
+  BulkLimits,
+  ConversationStatus,
+  PLUGIN_ACTOR_PREFIX
+} from '@platform/core/domain'
+import { errorName, ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import {
   type BulkActionBody,
   type ConversationFilter,
@@ -20,7 +25,7 @@ import {
 import { ExportFormats, ExportTypes } from '@platform/core/queues'
 
 import { ExportsService } from '../exports'
-import type { Actor } from '../tenancy'
+import { type Actor, auditActorOf, auditViaOf } from '../tenancy'
 import { WidgetReadNotifier } from '../widget/widget-read-notifier.service'
 
 import { ConversationTagsService } from './conversation-tags.service'
@@ -77,6 +82,18 @@ export class ConversationBulkService {
     viewer: Viewer,
     actor: Actor
   ): Promise<BulkResult> {
+    // The CSV is a file of a person and "assign to me" gives the thread to the caller: a plugin is neither (its schema refuses them;
+    // this is the second line, because the user id of a plugin is not a row of `users`)
+    if (
+      actor.pluginInstallationId !== undefined &&
+      (body.action === BulkActions.EXPORT_CSV || body.action === BulkActions.ASSIGN_TO_ME)
+    ) {
+      throw new PlatformException(
+        ErrorCodes.PERMISSION_DENIED,
+        'a plugin cannot run this bulk action',
+        HttpStatusCodes.FORBIDDEN
+      )
+    }
     const needed = UP_FRONT_PERMISSIONS[body.action]
     if (needed !== undefined) requireAnyPermission(viewer.held, [needed])
 
@@ -105,10 +122,11 @@ export class ConversationBulkService {
   ): void {
     this.audit.log({
       action: AuditAction.BULK_ACTION_EXECUTED,
-      actor: { userId: actor.userId },
+      actor: auditActorOf(actor),
       storeId,
       resourceType: 'conversation',
       metadata: {
+        ...auditViaOf(actor),
         action: body.action,
         requested,
         succeeded: result.exported ?? result.succeeded.length,
@@ -272,9 +290,12 @@ export class ConversationBulkService {
         return
       case BulkActions.MARK_READ:
         await this.conversations.markRead(storeId, conversationId, viewer)
-        // Not awaited, as the route of one conversation does: queueFor logs its own failures
-        void this.readReceipts.queueFor(storeId, conversationId)
-        void this.widgetRead.notify(storeId, conversationId)
+        // A plugin reads without telling the customer that a person saw it (as its route of one conversation); not awaited, as the
+        // route of one conversation does: queueFor logs its own failures
+        if (!viewer.userId.startsWith(PLUGIN_ACTOR_PREFIX)) {
+          void this.readReceipts.queueFor(storeId, conversationId)
+          void this.widgetRead.notify(storeId, conversationId)
+        }
         return
       case BulkActions.MARK_UNREAD:
         await this.conversations.markUnread(storeId, conversationId, viewer)

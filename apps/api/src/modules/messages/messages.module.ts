@@ -19,6 +19,7 @@ import { MessagingWindowModule } from '../messaging-window'
 import { TenancyModule } from '../tenancy'
 
 import { MessagesController } from './messages.controller'
+import { PluginMessagesController } from './plugin-messages.controller'
 
 @Module({
   imports: [
@@ -29,7 +30,7 @@ import { MessagesController } from './messages.controller'
     ChannelRegistryModule,
     ChannelsModule
   ],
-  controllers: [MessagesController],
+  controllers: [MessagesController, PluginMessagesController],
   providers: [
     MessagesService,
     MediaRefetchService,

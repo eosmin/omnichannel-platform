@@ -77,6 +77,15 @@ class PluginProbeController {
     return { done: true }
   }
 
+  // Asks of a person a permission that ANOTHER scope of the key stands for, not one of its own: the key below holds both scopes, so
+  // the union of what it was granted would pass and the scopes of the route alone do not
+  @PluginApi(PluginScopes.ORDERS_READ)
+  @RequirePermissions(Permissions.ORDERS_VIEW, Permissions.INVENTORY_VIEW)
+  @Get(`${PROBE}/borrowed`)
+  borrowed(): { done: true } {
+    return { done: true }
+  }
+
   // Forgot to list its scopes: not even the marker, so the guard is not there and the global ones refuse it
   @Get(`${PROBE}/unmarked`)
   unmarked(): string {
@@ -646,6 +655,17 @@ describe('Installing an integration plugin and calling the plugin API', () => {
       const { key } = await setUp({ scopes: [PluginScopes.ORDERS_READ] })
 
       const response = await call(`${PROBE}/escalated`, key)
+
+      expect(response.status).toBe(FORBIDDEN)
+      expect(codeOf(response.body)).toBe(ErrorCodes.PERMISSION_DENIED)
+    })
+
+    it('checks what a route asks of a person against the scopes of the route, not every scope the key holds', async () => {
+      const { key } = await setUp({
+        scopes: [PluginScopes.ORDERS_READ, PluginScopes.INVENTORY_READ]
+      })
+
+      const response = await call(`${PROBE}/borrowed`, key)
 
       expect(response.status).toBe(FORBIDDEN)
       expect(codeOf(response.body)).toBe(ErrorCodes.PERMISSION_DENIED)

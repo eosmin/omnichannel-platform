@@ -139,32 +139,77 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'channels.oauthCallback': { none: PUBLIC },
 
   // Conversations and messages (`conversations:*` and `messages:*` exist)
-  'conversations.list': { scope: 'conversations:read' },
-  'conversations.byId': { scope: 'conversations:read' },
+  'conversations.list': { scope: 'conversations:read', exposed: '/plugin-api/conversations' },
+  'conversations.byId': { scope: 'conversations:read', exposed: '/plugin-api/conversations/:id' },
   'conversations.messages': { scope: ['conversations:read', 'messages:read'] },
-  'conversations.origins': { scope: 'conversations:read' },
-  'conversations.messagingWindow': { scope: 'conversations:read' },
-  'conversations.assign': { scope: 'conversations:write' },
-  'conversations.status': { scope: 'conversations:write' },
-  'conversations.snooze': { scope: 'conversations:write' },
-  'conversations.tags': { scope: 'conversations:write' },
-  'conversations.tagById': { scope: 'conversations:write' },
-  'conversations.read': { scope: 'conversations:write' },
-  'conversations.unread': { scope: 'conversations:write' },
-  'conversations.bulk': { scope: 'conversations:write' },
+  'conversations.origins': {
+    scope: ['conversations:read', 'messages:read'],
+    exposed: '/plugin-api/conversations/:id/origins'
+  },
+  'conversations.messagingWindow': {
+    scope: 'conversations:read',
+    exposed: '/plugin-api/conversations/:id/messaging-window'
+  },
+  'conversations.assign': {
+    scope: ['conversations:read', 'conversations:write'],
+    exposed: '/plugin-api/conversations/:id/assign'
+  },
+  'conversations.status': {
+    scope: ['conversations:read', 'conversations:write'],
+    exposed: '/plugin-api/conversations/:id/status'
+  },
+  'conversations.snooze': {
+    scope: ['conversations:read', 'conversations:write'],
+    exposed: '/plugin-api/conversations/:id/snooze'
+  },
+  'conversations.tags': {
+    scope: ['conversations:read', 'conversations:write'],
+    exposed: '/plugin-api/conversations/:id/tags'
+  },
+  'conversations.tagById': {
+    scope: ['conversations:read', 'conversations:write'],
+    exposed: '/plugin-api/conversations/:id/tags/:tagId'
+  },
+  'conversations.read': {
+    scope: ['conversations:read', 'conversations:write'],
+    exposed: '/plugin-api/conversations/:id/read'
+  },
+  'conversations.unread': {
+    scope: ['conversations:read', 'conversations:write'],
+    exposed: '/plugin-api/conversations/:id/unread'
+  },
+  'conversations.bulk': {
+    scope: ['conversations:read', 'conversations:write'],
+    exposed: '/plugin-api/conversations/bulk'
+  },
   'conversations.export': { proposed: ['conversations:read', 'exports:write'], step: STEP },
-  'messages.create': { scope: 'messages:write' },
-  'messages.byId': { scope: 'messages:write' },
-  'messages.resend': { scope: 'messages:write' },
-  'messages.discard': { scope: 'messages:write' },
-  'messages.resendCaption': { scope: 'messages:write' },
-  'messages.refetchFile': { scope: 'messages:write' },
+  // Seeing a conversation is `conversations:read` for a plugin as for a person, so each message route names it too
+  'messages.create': {
+    scope: ['conversations:read', 'messages:write'],
+    exposed: '/plugin-api/messages'
+  },
+  // To build (the PR that gives the core an actor that is not a person): they write the id of the person who edited, discarded,
+  // sent again or reacted, and DELETE needs MESSAGES_DELETE, which no scope grants (a scope of its own, never a wider one)
+  'messages.byId': { scope: ['conversations:read', 'messages:write'] },
+  'messages.resend': { scope: ['conversations:read', 'messages:write'] },
+  'messages.discard': { scope: ['conversations:read', 'messages:write'] },
+  'messages.resendCaption': {
+    scope: ['conversations:read', 'messages:write'],
+    exposed: '/plugin-api/messages/:id/resend-caption'
+  },
+  'messages.refetchFile': {
+    scope: ['conversations:read', 'messages:write'],
+    exposed: '/plugin-api/messages/:id/files/:index/refetch'
+  },
   'messages.reaction': { scope: ['conversations:read', 'messages:write'] },
   'messages.deletedContent': {
-    proposed: ['conversations:read', 'messages:read-deleted'],
-    step: STEP
+    scope: ['conversations:read', 'messages:read-deleted'],
+    exposed: '/plugin-api/messages/:id/deleted-content'
   },
-  'messages.revisions': { scope: 'messages:read' },
+  'messages.revisions': {
+    scope: ['conversations:read', 'messages:read'],
+    exposed: '/plugin-api/messages/:id/revisions'
+  },
 
   // Customers (`customers:*` exist)
   'customers.list': { scope: ['customers:read', 'customers:write'] },
@@ -337,10 +382,13 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'exports.byId': { proposed: 'exports:read', step: STEP },
   'exports.download': { proposed: 'exports:read', step: STEP },
   'search.global': { none: BELL_AND_SEARCH },
-  'search.messages': { scope: 'messages:read' },
-  'search.customers': { scope: 'customers:read' },
-  'search.orders': { scope: 'orders:read' },
-  'search.products': { scope: 'products:read' },
+  'search.messages': {
+    scope: ['conversations:read', 'messages:read'],
+    exposed: '/plugin-api/search/messages'
+  },
+  'search.customers': { scope: 'customers:read', exposed: '/plugin-api/search/customers' },
+  'search.orders': { scope: 'orders:read', exposed: '/plugin-api/search/orders' },
+  'search.products': { scope: 'products:read', exposed: '/plugin-api/search/products' },
   'search.clicks': { none: SEARCH_CLICK },
   'analytics.metrics': { scope: 'analytics:read' },
   'analytics.myPerformance': { none: OWN_PERFORMANCE },
@@ -352,14 +400,17 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
 
   // Channels and settings
   'channels.connections': { none: CHANNEL_ADMIN },
-  'channels.directory': { proposed: 'channels:read', step: STEP },
+  'channels.directory': { scope: 'channels:read', exposed: '/plugin-api/channels/directory' },
   'channels.connect': { none: CHANNEL_ADMIN },
   'channels.connectionById': { none: CHANNEL_ADMIN },
   'channels.test': { none: CHANNEL_ADMIN },
   'channels.disconnect': { none: CHANNEL_ADMIN },
   'channels.updateToken': { none: CHANNEL_ADMIN },
   'channels.label': { none: CHANNEL_ADMIN },
-  'channels.templates': { proposed: 'channels:read', step: STEP },
+  'channels.templates': {
+    scope: 'channels:read',
+    exposed: '/plugin-api/channels/:pluginId/templates'
+  },
   'channels.widgetEmbed': { none: CHANNEL_ADMIN },
   'channels.widgetOrigins': { none: CHANNEL_ADMIN },
   'channels.widgetPreChat': { none: CHANNEL_ADMIN },

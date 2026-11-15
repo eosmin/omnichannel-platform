@@ -6,6 +6,8 @@ export const PluginScopes = {
   CONVERSATIONS_WRITE: 'conversations:write',
   MESSAGES_READ: 'messages:read',
   MESSAGES_WRITE: 'messages:write',
+  // The text of a message the customer deleted, while it is kept: its own scope, because no other grants MESSAGES_VIEW_DELETED
+  MESSAGES_READ_DELETED: 'messages:read-deleted',
   CUSTOMERS_READ: 'customers:read',
   CUSTOMERS_WRITE: 'customers:write',
   ORDERS_READ: 'orders:read',
@@ -17,6 +19,8 @@ export const PluginScopes = {
   INVENTORY_WRITE: 'inventory:write',
   SHIPMENTS_READ: 'shipments:read',
   SHIPMENTS_WRITE: 'shipments:write',
+  // The directory of the channel accounts and their templates (Step 5.6 PR E1); the connection of an account stays human
+  CHANNELS_READ: 'channels:read',
   // Of a channel plugin (TDD_10 §6.7): the routes arrive with Step 5.6 PR C3. They grant no human permission.
   CHANNEL_CONNECTIONS: 'channel:connections',
   CHANNEL_EVENTS: 'channel:events'
@@ -39,6 +43,7 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   ],
   [PluginScopes.MESSAGES_READ]: [Permissions.MESSAGES_VIEW],
   [PluginScopes.MESSAGES_WRITE]: [Permissions.MESSAGES_SEND, Permissions.MESSAGES_INTERNAL_NOTE],
+  [PluginScopes.MESSAGES_READ_DELETED]: [Permissions.MESSAGES_VIEW_DELETED],
   [PluginScopes.CUSTOMERS_READ]: [Permissions.CUSTOMERS_VIEW],
   [PluginScopes.CUSTOMERS_WRITE]: [Permissions.CUSTOMERS_CREATE, Permissions.CUSTOMERS_EDIT],
   [PluginScopes.ORDERS_READ]: [Permissions.ORDERS_VIEW],
@@ -50,6 +55,13 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.INVENTORY_WRITE]: [Permissions.INVENTORY_ADJUST],
   [PluginScopes.SHIPMENTS_READ]: [Permissions.SHIPPING_VIEW],
   [PluginScopes.SHIPMENTS_WRITE]: [Permissions.SHIPPING_MANAGE],
+  // The directory is read by whoever sees conversations, and the templates of an account by who may send them, as for a person.
+  // The scope only lets a plugin LIST templates: the routes that send, resend or render one must name `messages:write` and take
+  // the viewer of their own scopes (`@CurrentPluginViewer`), never the union of what the key holds.
+  [PluginScopes.CHANNELS_READ]: [
+    Permissions.CONVERSATIONS_VIEW,
+    Permissions.MESSAGES_SEND_TEMPLATE
+  ],
   [PluginScopes.CHANNEL_CONNECTIONS]: [],
   [PluginScopes.CHANNEL_EVENTS]: []
 }
