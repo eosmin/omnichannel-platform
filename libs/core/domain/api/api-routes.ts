@@ -618,6 +618,24 @@ export const PluginApiRoutes = {
     list: '/plugin-api/counts',
     byId: (id: string) => `/plugin-api/counts/${id}`
   },
+  // Step 5.6 PR E5: the reads of the shipments, the carrier connections and the pickups, over the same services as
+  // `ApiRoutes.shipments`, `.carriers` and `.pickups`. The writes (a guide spends the prepaid balance, a pickup is a promise made
+  // to a carrier) and the label link wait for PR E5-2.
+  shipments: {
+    list: '/plugin-api/shipments',
+    byId: (id: string) => `/plugin-api/shipments/${id}`
+  },
+  carriers: {
+    list: '/plugin-api/carriers',
+    registry: '/plugin-api/carriers/registry',
+    byId: (id: string) => `/plugin-api/carriers/${id}`,
+    statusCatalog: (id: string) => `/plugin-api/carriers/${id}/status-catalog`,
+    unmappedStatuses: (id: string) => `/plugin-api/carriers/${id}/unmapped-statuses`
+  },
+  pickups: {
+    list: '/plugin-api/pickups',
+    manifest: (id: string) => `/plugin-api/pickups/${id}/manifest`
+  },
 
   // Messages (Step 5.6 PR M1b): a plugin writes a reply or a note, and reads the edits and the kept text of a deleted message
   messages: {

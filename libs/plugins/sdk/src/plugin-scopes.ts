@@ -39,6 +39,11 @@ export const PluginScopes = {
   INVENTORY_WRITE: 'inventory:write',
   SHIPMENTS_READ: 'shipments:read',
   SHIPMENTS_WRITE: 'shipments:write',
+  // The carrier connections of the store and the pickups it asked for, read only (Step 5.6 PR E5). Each grants SHIPPING_VIEW, as the
+  // screen asks, and only routes that read declare it. What a carrier connection holds that is secret or money (the credentials, the
+  // webhook secret, the commission and the rates) is never in an answer: the views of a plugin name their fields one by one.
+  CARRIERS_READ: 'carriers:read',
+  PICKUPS_READ: 'pickups:read',
   // The directory of the channel accounts and their templates (Step 5.6 PR E1); the connection of an account stays human
   CHANNELS_READ: 'channels:read',
   // What the store says to the customer about an order (the history of messages and the templates, Step 5.6 PR E3a); sending
@@ -95,6 +100,8 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.INVENTORY_WRITE]: [Permissions.INVENTORY_ADJUST],
   [PluginScopes.SHIPMENTS_READ]: [Permissions.SHIPPING_VIEW],
   [PluginScopes.SHIPMENTS_WRITE]: [Permissions.SHIPPING_MANAGE],
+  [PluginScopes.CARRIERS_READ]: [Permissions.SHIPPING_VIEW],
+  [PluginScopes.PICKUPS_READ]: [Permissions.SHIPPING_VIEW],
   // The directory is read by whoever sees conversations, and the templates of an account by who may send them, as for a person.
   // The scope only lets a plugin LIST templates: the routes that send, resend or render one must name `messages:write` and take
   // the viewer of their own scopes (`@CurrentPluginViewer`), never the union of what the key holds.

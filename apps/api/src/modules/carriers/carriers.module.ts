@@ -15,6 +15,7 @@ import { CarrierStatusMappingsController } from './carrier-status-mappings.contr
 import { CarrierStatusMappingsService } from './carrier-status-mappings.service'
 import { CarrierWebhookController } from './carrier-webhook.controller'
 import { CarrierWebhookService } from './carrier-webhook.service'
+import { PluginCarriersController } from './plugin-carriers.controller'
 
 // Settings → Carriers: the connections of the store with their carriers, what their statuses mean, and the public door the
 // carriers push to (TDD_17 §4.9, §4.17, §6). The registries come from the registry module, the cipher of the credentials
@@ -30,7 +31,8 @@ import { CarrierWebhookService } from './carrier-webhook.service'
   controllers: [
     CarrierConnectionsController,
     CarrierStatusMappingsController,
-    CarrierWebhookController
+    CarrierWebhookController,
+    PluginCarriersController
   ],
   providers: [CarrierConnectionsService, CarrierStatusMappingsService, CarrierWebhookService],
   exports: [CarrierConnectionsService]
