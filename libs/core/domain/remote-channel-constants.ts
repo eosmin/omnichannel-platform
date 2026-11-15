@@ -56,7 +56,7 @@ export const RemoteChannelLimits = {
   BEST_EFFORT_TIMEOUT_MS: 3_000,
   // The plugin refuses a `t` farther than this from its clock; the platform signs with its own
   SIGNATURE_TOLERANCE_SECONDS: 300,
-  // The GET of a file a customer sent (§6.7.6)
+  // The GET of a file a customer sent (§6.7.6): how long the connection may go quiet; the worker's own limit on the whole fetch bounds the total
   MEDIA_FETCH_TIMEOUT_MS: 30_000,
   // The signed GET of the file of an outbound message
   MEDIA_URL_TTL_SECONDS: 600,

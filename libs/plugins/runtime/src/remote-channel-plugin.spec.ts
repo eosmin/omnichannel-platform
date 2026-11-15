@@ -712,10 +712,11 @@ describe('RemoteChannelPlugin.fetchMedia (§6.7.6)', () => {
       (await failureOf(slow.plugin.fetchMedia(ctx, 'https://cdn.other.com/a.png'))).retryable
     ).toBe(true)
 
-    const odd = fetcher(() => new Error('socket hang up'))
-    expect(
-      (await failureOf(odd.plugin.fetchMedia(ctx, 'https://cdn.other.com/a.png'))).retryable
-    ).toBe(true)
+    // What is not the file server's is ours: it goes up as what it is and is not dressed as a failed message
+    const ours = fetcher(() => new Error('the store of secrets failed'))
+    await expect(ours.plugin.fetchMedia(ctx, 'https://cdn.other.com/a.png')).rejects.toThrow(
+      'the store of secrets failed'
+    )
   })
 
   it('takes a text that is not an address to the fetch, which refuses it', async () => {

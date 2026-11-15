@@ -399,10 +399,12 @@ export class RemoteChannelPlugin implements ChannelPlugin {
     } catch (error) {
       // The caller marks an unsafe address as such, and does not try it again
       if (error instanceof UnsafeUrlError) throw error
-      // What the file server said is its own: only whether trying again may help
-      throw this.failure(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
-        retryable: error instanceof PinnedFetchFailed ? error.retryable : true
-      })
+      // What the file server said is its own: only whether trying again may help. Anything else is ours (a bug, a store that
+      // failed) and goes up as what it is, not as a failure of a message
+      if (error instanceof PinnedFetchFailed) {
+        throw this.failure(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: error.retryable })
+      }
+      throw error
     }
   }
 

@@ -132,6 +132,41 @@ describe('remoteChannelEventSchema', () => {
     ).toEqual(['message.media.0.id'])
   })
 
+  describe('the origin of a message', () => {
+    const withOrigin = (origin: object): object => received({}, { origin })
+    it('takes public https addresses and a small referral', () => {
+      expect(
+        paths(
+          withOrigin({
+            kind: 'ad',
+            sourceUrl: 'https://ads.example.com/1',
+            thumbnailUrl: 'https://cdn.example.com/t.jpg',
+            media: { type: 'image', url: 'https://cdn.example.com/a.jpg' },
+            referral: { a: 1 }
+          })
+        )
+      ).toEqual([])
+    })
+
+    it.each([
+      ['sourceUrl', { sourceUrl: 'http://ads.example.com/1' }, 'message.origin.sourceUrl'],
+      ['thumbnailUrl', { thumbnailUrl: 'https://10.0.0.1/t.jpg' }, 'message.origin.thumbnailUrl'],
+      [
+        'media url',
+        { media: { type: 'image', url: 'https://169.254.169.254/x' } },
+        'message.origin.media.url'
+      ],
+      ['media ref', { media: { type: 'image', ref: 'media-123' } }, 'message.origin.media.ref']
+    ])('refuses a %s that is not a public https address', (_name, extra, path) => {
+      expect(paths(withOrigin({ kind: 'ad', ...extra }))).toContain(path)
+    })
+
+    it('refuses a referral over 4 KB', () => {
+      const referral = { note: 'x'.repeat(RemoteChannelApiLimits.MESSAGE_METADATA_MAX_BYTES) }
+      expect(paths(withOrigin({ kind: 'ad', referral }))).toEqual(['message.origin.referral'])
+    })
+  })
+
   it('refuses an edit whose text is over the cap', () => {
     const edit = {
       type: ChannelEventTypes.MESSAGE_EDITED,

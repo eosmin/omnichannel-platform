@@ -58,9 +58,6 @@ export const remoteChannelEventSchema = channelEventSchema.superRefine((event, c
       issue(['message', 'media'], 'a message of a remote plugin carries one file')
     }
     sent.media?.forEach((file, index) => {
-      if (file.ref.length > limits.MEDIA_REF_MAX_LENGTH) {
-        issue(['message', 'media', index, 'ref'], 'the address of the file is too long')
-      }
       // Only the shape is judged here: the API never opens the address, and the fetch resolves it, pins the answer and follows no
       // redirect (TDD_10 §6.7.6). What can already be told apart from the text (http, a port, credentials, a private name or an
       // address literal) is refused now, so a hostile plugin learns nothing from the fetch.
@@ -72,6 +69,27 @@ export const remoteChannelEventSchema = channelEventSchema.superRefine((event, c
         issue(['message', 'media', index, 'id'], 'a remote plugin does not name its files')
       }
     })
+  }
+  // The origin of a message (an ad it came from) is read and fetched like a file: the same rules, and the same cap on what it carries
+  const origin = sent?.origin
+  if (origin !== undefined) {
+    const links: [(string | number)[], string | undefined][] = [
+      [['message', 'origin', 'sourceUrl'], origin.sourceUrl],
+      [['message', 'origin', 'thumbnailUrl'], origin.thumbnailUrl],
+      [['message', 'origin', 'media', 'url'], origin.media?.url],
+      [['message', 'origin', 'media', 'ref'], origin.media?.ref]
+    ]
+    for (const [path, link] of links) {
+      if (link !== undefined && !isWellFormedPublicHttpsUrl(link)) {
+        issue(path, 'the address must be a public https one')
+      }
+    }
+    if (
+      origin.referral !== undefined &&
+      bytesOf(origin.referral) > limits.MESSAGE_METADATA_MAX_BYTES
+    ) {
+      issue(['message', 'origin', 'referral'], 'the referral is too large')
+    }
   }
   if (event.edit !== undefined && event.edit.content.length > limits.MESSAGE_CONTENT_MAX_LENGTH) {
     issue(['edit', 'content'], 'the text of the message is too long')

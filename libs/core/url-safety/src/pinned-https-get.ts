@@ -35,10 +35,25 @@ export interface PinnedResponse {
   contentLength: number | null
 }
 
+// What a caller cannot set: the host a shared front end would route by, and the framing of the message
+export const FORBIDDEN_HEADERS: ReadonlySet<string> = new Set([
+  'host',
+  'content-length',
+  'transfer-encoding',
+  'connection',
+  'upgrade',
+  'te',
+  'trailer',
+  'accept',
+  'accept-encoding'
+])
+
 export interface PinnedGetOptions {
   accept: string
   timeoutMs: number
-  // Sent as they are, except `accept` and `accept-encoding`, which are the caller's `accept` and the identity the body is read with
+  // Extra headers of the request. Never the ones that say where the request goes or how its body is framed (`FORBIDDEN_HEADERS`: the
+  // function connects to the address it checked and to no other, and reads the body as it is), and `accept` and `accept-encoding`
+  // are the caller's `accept` and the identity the body is read with
   headers?: Readonly<Record<string, string>>
   resolve?: HostResolver
   // Replaceable so that a unit test needs no network
@@ -53,6 +68,11 @@ export async function pinnedHttpsGet(
   raw: string,
   options: PinnedGetOptions
 ): Promise<PinnedResponse> {
+  for (const name of Object.keys(options.headers ?? {})) {
+    if (FORBIDDEN_HEADERS.has(name.toLowerCase())) {
+      throw new TypeError(`the header ${name} cannot be set on a pinned request`)
+    }
+  }
   let target: PublicTarget
   try {
     target = await resolvePublicHttpsUrl(raw, options.resolve)
