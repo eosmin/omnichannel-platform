@@ -13,6 +13,7 @@ import {
 export type PluginErrorCode = Extract<
   ErrorCode,
   | typeof ErrorCodes.CHANNEL_MESSAGE_FAILED
+  | typeof ErrorCodes.CHANNEL_NOT_CONNECTED
   | typeof ErrorCodes.CHANNEL_CREDENTIALS_INVALID
   | typeof ErrorCodes.CHANNEL_FEATURE_NOT_PERMITTED
   | typeof ErrorCodes.CHANNEL_TEMPLATE_NOT_APPROVED

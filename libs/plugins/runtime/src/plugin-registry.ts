@@ -183,9 +183,13 @@ export class PluginRegistry {
   // installed it) and the remote plugin that is not given is removed. The ones of the code are never touched. A plugin
   // that breaks the contract is logged and left out, so that one bad manifest does not stop the others.
   // Returns the ids of the plugins that were refused.
-  syncRemote(wanted: readonly RemoteChannelEntry[]): string[] {
+  syncRemote(
+    wanted: readonly RemoteChannelEntry[],
+    untouched: ReadonlySet<string> = new Set()
+  ): string[] {
     const refused: string[] = []
-    const keep = new Set<string>()
+    // The ids the caller found unchanged (or could not read this time): their adapters stay as they are, with no new contract check
+    const keep = new Set<string>(untouched)
     for (const { plugin, storeIds } of wanted) {
       // Read once, as `register` does: the id that is kept and logged is the one that was judged
       const id = plugin.id

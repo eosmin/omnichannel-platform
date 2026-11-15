@@ -103,8 +103,9 @@ export interface ChannelPlugin {
 
   // The files the channel takes (Step 7.8 follow-up, media capability map): the types and the largest size of each
   // kind, and the files per message. Required for exactly the kinds declared as capabilities (image, video,
-  // audio, document); the registry copies and freezes it at registration. The core signs no download link for
-  // a plugin: `SendMediaParams.openFile` gives the bytes.
+  // audio, document); the registry copies and freezes it at registration. The core gives a plugin the bytes
+  // (`SendMediaParams.openFile`) and signs no download link unless the plugin asks: `SendMediaParams.signedUrl(ttlSeconds)` makes a signed
+  // GET address of the stored file, for a plugin that is handed an address and not the bytes (a remote plugin, §6.7.4).
   readonly media?: ChannelMediaCapabilities
   // A text under each file (`SendMediaParams.caption`, once per file, in the order of the message) is carried
   // by the channel when it declares CAPTION_PER_FILE; a channel that does not has its text sent as a message
@@ -1171,8 +1172,14 @@ re-read everything every 60 seconds in case a message was lost. `register` of an
 `RemoteChannelPlugin` replaces it (a new manifest), and `unregister(id)` removes it; an official id
 is never replaced. `registry.list()` takes the store: it returns the official plugins and the
 remote ones that this store has installed, never another store's private plugin. The adapter is
-the same object for all stores; what is per store (the command secret, the URL) it takes from the
-installation of `ctx.storeId`, read through a cache of 60 seconds that the same Redis channel clears.
+the same object for all stores; the address of the commands is the `commandsUrl` of the manifest, the same for every store,
+and what is per store (the command secret) it takes from the installation of `ctx.storeId`, read through a cache of 60
+seconds that the same Redis channel clears. The secret is generated when the installation is set up (the same exchange that
+gives the plugin its API key returns it, once) and `POST /plugins/:id/command-secret` (the id is the installation's,
+`SETTINGS_MANAGE_PLUGINS`) rotates it, returning the new one once. A rotation is refused (`409`) while another is still open
+(the ten minutes below), so a second one cannot drop a secret the plugin has not replaced yet. An installation that is not
+`ACTIVE`, or whose secret cannot be read, is signed for by nobody: nothing is sent and the command fails with
+`CHANNEL_NOT_CONNECTED`.
 
 The owner links an account of the provider on the settings page of the plugin (`ui.settings` of the
 manifest, in the plugin's service: a QR to scan, a login). When that succeeds the plugin registers
@@ -1298,10 +1305,10 @@ failed to fetch, and never loses the message.
 
 #### 6.7.7 Health and revocation
 
-`CHECK_CHANNEL_HEALTH` (§10) enqueues one job per connection of a remote plugin (concurrency 10), so
-a slow plugin delays only its own checks and not the lock of the others. Each job calls
+`CHECK_REMOTE_CHANNEL_HEALTH` (the schedule of §10, with a lock of its own) checks the connections of the remote
+plugins one by one, ten at a time, so a slow plugin delays its own checks and not the lock of the official ones. Each check calls
 `connection.health` through the adapter. A failure (unhealthy, error or timeout) adds to a counter
-kept in Redis (`CacheKeys.channel.healthFailures(connectionId)`, 1 hour); three in a row put the
+kept in Redis (`CacheKeys.channel.healthFailures(connectionRowId)`, 1 hour); three in a row put the
 connection in `ERROR` (agents see the banner of the channel) and a healthy one clears the counter and
 puts it back to `ACTIVE`. An official plugin keeps the behaviour of §10. Revoking or suspending the
 installation (§6.6) invalidates the API key and the secrets at once, sets its connections

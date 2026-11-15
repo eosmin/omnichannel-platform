@@ -232,6 +232,16 @@ export class PluginIntegrationInstallService {
             status: PluginInstallationStatus.PENDING_SETUP,
             apiKeyPrefix: null,
             apiKeyHash: null,
+            // What the plugin held is void: it gets new ones when it sets itself up
+            commandSecret: null,
+            commandSecretPrevious: null,
+            commandSecretRotatedAt: null,
+            // Nothing of the earlier incarnation is kept: the secret it was given is not this plugin's to sign with, and its
+            // failures are not this install's
+            webhookSecret: null,
+            webhookDisabledAt: null,
+            webhookConsecutiveFailures: 0,
+            webhookLastFailureAt: null,
             // Nothing of the earlier incarnation is kept: the secret it was given is not this plugin's to sign with, and its
             // failures are not this install's
             webhookSecret: null,
@@ -272,7 +282,7 @@ export class PluginIntegrationInstallService {
       where: {
         id: installationId,
         storeId: store.id,
-        plugin: { type: PluginCatalogTypes.INTEGRATION }
+        plugin: { type: { in: [PluginCatalogTypes.INTEGRATION, PluginCatalogTypes.CHANNEL] } }
       },
       select: { id: true, status: true, pluginId: true }
     })
@@ -322,7 +332,10 @@ export class PluginIntegrationInstallService {
     if (
       plugin === null ||
       plugin.status !== String(PluginStatus.APPROVED) ||
-      plugin.type !== String(PluginCatalogTypes.INTEGRATION) ||
+      // An integration plugin, or a remote channel: only a plugin an organization registered has a manifest of its own (the
+      // official channels run inside the platform and are installed by the other flow)
+      (plugin.type !== String(PluginCatalogTypes.INTEGRATION) &&
+        plugin.type !== String(PluginCatalogTypes.CHANNEL)) ||
       // A plugin another organization registered does not exist for this one
       plugin.organizationId !== store.organizationId
     ) {

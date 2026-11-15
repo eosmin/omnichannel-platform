@@ -184,6 +184,10 @@ export interface SendMediaParams {
   // Opens the stored bytes, to be read once. Each call opens a new stream, and the caller must
   // read it to the end or destroy it. The platform's storage is the only place it reads from.
   openFile: () => Promise<NodeJS.ReadableStream>
+  // A signed GET of the stored file that expires in `ttlSeconds`, for a plugin that does not take the bytes (a remote one
+  // is handed the address, TDD_10 §6.7.4). It is made when called, so no live link exists unless a plugin asks for one;
+  // absent where the caller has no storage to sign for.
+  signedUrl?: (ttlSeconds: number) => Promise<string>
   filename: string | null
   caption?: string
   replyToExternalId?: string

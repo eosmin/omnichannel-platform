@@ -1,0 +1,111 @@
+import { Injectable } from '@nestjs/common'
+
+import {
+  newCommandSecret,
+  RemoteChannelSync,
+  sealCommandSecret
+} from '@platform/channels/connections'
+import { AuditAction } from '@platform/core/audit'
+import { AuditService } from '@platform/core/audit-module'
+import { CredentialCipher } from '@platform/core/crypto'
+import { lockStoreForWrite, PrismaService } from '@platform/core/database'
+import {
+  PluginCatalogTypes,
+  PluginInstallationStatus,
+  PluginStatus,
+  RemoteChannelLimits
+} from '@platform/core/domain'
+import {
+  ErrorCodes,
+  HttpStatusCodes,
+  PlatformException,
+  resourceNotFound
+} from '@platform/core/errors'
+
+import type { Actor } from '../tenancy'
+
+// What the owner gets, once: the new secret, and until when the old one still signs
+export interface RotatedCommandSecret {
+  commandSecret: string
+  rotatedAt: string
+  previousValidUntil: string
+}
+
+// Rotating the secret that signs the commands to a remote channel (TDD_10 §6.7.3). The new secret signs from now on and the
+// previous one stays valid for ten minutes (every command carries both signatures), so what is already queued is not
+// interrupted. A rotation is refused while another one is still open: a second one would drop the secret the plugin has not
+// had the time to replace.
+@Injectable()
+export class PluginCommandSecretService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cipher: CredentialCipher,
+    private readonly sync: RemoteChannelSync,
+    private readonly audit: AuditService
+  ) {}
+
+  async rotate(
+    store: { id: string },
+    installationId: string,
+    actor: Actor
+  ): Promise<RotatedCommandSecret> {
+    const secret = newCommandSecret()
+    const graceMs = RemoteChannelLimits.ROTATION_GRACE_SECONDS * 1000
+    const { pluginId, now } = await this.prisma.transaction(async tx => {
+      await lockStoreForWrite(tx, store.id)
+      // Taken under the lock: the grace window counts from the moment the rotation is visible
+      const now = new Date()
+      // The installation is the one of this store and of a remote channel that is up: another store's id is "not found"
+      const installation = await tx.pluginInstallation.findFirst({
+        where: {
+          id: installationId,
+          storeId: store.id,
+          status: PluginInstallationStatus.ACTIVE,
+          plugin: {
+            type: PluginCatalogTypes.CHANNEL,
+            status: PluginStatus.APPROVED,
+            isOfficial: false
+          }
+        },
+        select: { pluginId: true, commandSecret: true, commandSecretRotatedAt: true }
+      })
+      if (installation === null) throw resourceNotFound('plugin installation')
+      if (
+        installation.commandSecretRotatedAt !== null &&
+        now.getTime() - installation.commandSecretRotatedAt.getTime() <= graceMs
+      ) {
+        throw new PlatformException(
+          ErrorCodes.RESOURCE_CONFLICT,
+          'the secret was rotated a moment ago: wait until the previous one stops working',
+          HttpStatusCodes.CONFLICT
+        )
+      }
+      await tx.pluginInstallation.update({
+        where: { id: installationId },
+        data: {
+          commandSecret: sealCommandSecret(this.cipher, secret),
+          commandSecretPrevious: installation.commandSecret,
+          commandSecretRotatedAt: now
+        }
+      })
+      return { pluginId: installation.pluginId, now }
+    })
+    // Never the secret: only which installation it was rotated for
+    this.audit.log({
+      action: AuditAction.PLUGIN_COMMAND_SECRET_ROTATED,
+      actor: { userId: actor.userId },
+      storeId: store.id,
+      resourceType: 'plugin_installation',
+      resourceId: installationId,
+      metadata: { pluginId },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
+    await this.sync.announceChange()
+    return {
+      commandSecret: secret,
+      rotatedAt: now.toISOString(),
+      previousValidUntil: new Date(now.getTime() + graceMs).toISOString()
+    }
+  }
+}

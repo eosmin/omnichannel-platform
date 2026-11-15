@@ -38,6 +38,9 @@ export interface PinnedExchangeOptions {
   timeoutMs: number
   // The answer is read up to this many bytes; a longer one fails (an address that streams must not fill memory)
   maxResponseBytes: number
+  // The answer of any status is read (up to the same ceiling) and returned, for a caller that decides by the status and the body
+  // of a refusal (TDD_10 §6.7.4). Without it only a 2xx resolves and any other status is a `bad_status` failure.
+  anyStatus?: boolean
   resolve?: HostResolver
   // Replaceable so that a unit test needs no network
   request?: HttpsRequester
@@ -133,7 +136,7 @@ export async function pinnedHttpsExchange(
     })
     req.on('response', response => {
       const status = response.statusCode ?? 0
-      if (status < 200 || status >= 300) {
+      if (options.anyStatus !== true && (status < 200 || status >= 300)) {
         response.resume()
         finish(() => {
           reject(new PinnedExchangeFailed(PinnedExchangeReasons.BAD_STATUS, status))

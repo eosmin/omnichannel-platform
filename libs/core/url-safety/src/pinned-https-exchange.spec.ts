@@ -54,7 +54,7 @@ function fakeRequest(outcome: Outcome) {
 const exchange = (
   url: string,
   outcome: Outcome,
-  { addresses = ['8.8.8.8'], maxResponseBytes = 64 } = {}
+  { addresses = ['8.8.8.8'], maxResponseBytes = 64, anyStatus = false } = {}
 ) => {
   const fake = fakeRequest(outcome)
   const result = pinnedHttpsExchange(url, {
@@ -62,6 +62,7 @@ const exchange = (
     headers: { 'content-type': 'application/json' },
     timeoutMs: 1000,
     maxResponseBytes,
+    ...(anyStatus ? { anyStatus } : {}),
     resolve: resolvesTo(...addresses),
     request: fake.request
   })
@@ -129,6 +130,30 @@ describe('pinnedHttpsExchange', () => {
     const { result } = exchange('https://hooks.example.com/in', { status: 503 })
 
     await expect(result).rejects.toMatchObject({ reason: PinnedExchangeReasons.BAD_STATUS })
+  })
+
+  it('with `anyStatus` returns the status and the body of a refusal and of a redirect, for the caller to map', async () => {
+    const refusal = exchange(
+      'https://hooks.example.com/in',
+      { status: 422, chunks: ['{"error":{"code":"rejected"}}'] },
+      { anyStatus: true, maxResponseBytes: 128 }
+    )
+    await expect(refusal.result).resolves.toEqual({
+      status: 422,
+      body: '{"error":{"code":"rejected"}}'
+    })
+    const redirect = exchange('https://hooks.example.com/in', { status: 302 }, { anyStatus: true })
+    await expect(redirect.result).resolves.toEqual({ status: 302, body: '' })
+  })
+
+  it('with `anyStatus` still reads no more than the ceiling', async () => {
+    const { result } = exchange(
+      'https://hooks.example.com/in',
+      { status: 500, chunks: ['x'.repeat(65)] },
+      { anyStatus: true }
+    )
+
+    await expect(result).rejects.toMatchObject({ reason: PinnedExchangeReasons.TOO_LARGE })
   })
 
   it('stops reading an answer that is longer than the ceiling', async () => {
