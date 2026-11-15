@@ -19,8 +19,11 @@ import { ConversationBulkService } from './conversation-bulk.service'
 import { ConversationCountsService } from './conversation-counts.service'
 import { ConversationDeletionService } from './conversation-deletion.service'
 import { ConversationOriginsService } from './conversation-origins.service'
+import { ConversationStartService } from './conversation-start.service'
+import { ConversationStatusChangeService } from './conversation-status-change.service'
 import { ConversationTagsService } from './conversation-tags.service'
 import { ConversationsController } from './conversations.controller'
+import { PluginConversationsController } from './plugin-conversations.controller'
 
 // Needs the database module of the app. ConversationsService is exported for the inbound pipeline
 // (Step 2.6), which creates the conversation of a message and changes its status.
@@ -33,7 +36,7 @@ import { ConversationsController } from './conversations.controller'
     MessagingWindowModule,
     WidgetDeliveryModule
   ],
-  controllers: [ConversationsController],
+  controllers: [ConversationsController, PluginConversationsController],
   providers: [
     ConversationsService,
     ConversationClosingService,
@@ -41,6 +44,8 @@ import { ConversationsController } from './conversations.controller'
     ConversationCountsService,
     ConversationTagsService,
     ConversationOriginsService,
+    ConversationStartService,
+    ConversationStatusChangeService,
     ConversationDeletionService,
     OutboundQueue,
     ReadReceipts,

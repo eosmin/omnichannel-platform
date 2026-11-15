@@ -40,7 +40,7 @@ function invalidKey(): PlatformException {
 //   - the installation's own rate limit, counted in Redis and shared by every replica, answers 429 past it; Redis down refuses
 //     the call, because a limit that is open when its store fails is no limit;
 //   - every scope the route names must have been granted (403 PLUGIN_SCOPE_DENIED);
-//   - what the route asks of a person with @RequirePermissions must be inside the permissions its scopes stand for
+//   - what the route asks of a person with @RequirePermissions must be inside the permissions the scopes OF THE ROUTE stand for
 //     (PluginScopePermissions), so a plugin can do no more than a human could, whatever the controller says;
 //   - the request gets `store`, `organization` and `permissions` as TenantGuard sets them, so the services behave as for a
 //     person, and `pluginInstallation`; it never gets `user` or `membership`.
@@ -109,7 +109,9 @@ export class PluginApiKeyGuard implements CanActivate {
       )
     }
 
-    const permissions = permissionsOfScopes(granted)
+    // What the route may ask of a person is checked against the scopes THE ROUTE names (the key holds them: checked above), never
+    // the union of everything the key was granted: a scope that stands for a permission does not lend it to another scope's route
+    const permissions = permissionsOfScopes(required)
     const needed = this.reflector.getAllAndMerge<Permission[]>(PERMISSIONS_KEY, targets)
     const anyOf =
       this.reflector.getAllAndOverride<Permission[] | undefined>(ANY_PERMISSION_KEY, targets) ?? []

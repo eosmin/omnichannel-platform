@@ -1,10 +1,16 @@
+import { randomBytes } from 'node:crypto'
+
+import { hashToken } from '@platform/core/crypto'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
+  PLUGIN_API_KEY_TOKEN_PREFIX,
   PluginCatalogTypes,
   PluginInstallationStatus,
+  PluginInstallLimits,
   PluginPricingModels,
   PluginStatus
 } from '@platform/core/domain'
+import type { PluginScope } from '@platform/plugins/sdk'
 
 // The catalog row of a plugin the suites use, and its active installation in a store: what a
 // channel connection hangs from (D19). The row is approved, because a connection works only for an
@@ -92,4 +98,54 @@ export async function ensureWidgetPlugin(
     update: { scopes: input.scopes, status: PluginInstallationStatus.ACTIVE, revokedAt: null },
     select: { id: true }
   })
+}
+
+// An approved integration plugin, installed and active in a store with the scopes given, and its key: what the setup exchange
+// leaves, written by the owner client so that a suite of the plugin API does not have to run the install flow for each store and
+// scope set (a second call for the same store and plugin makes a new key and the first stops working). Only the hash is stored, as the exchange does; the key is returned once, for the suite to send.
+export async function createPluginKey(
+  owner: OwnerClient,
+  input: { storeId: string; pluginId: string; scopes: readonly PluginScope[] }
+): Promise<{ key: string; installationId: string }> {
+  const store = await owner.store.findUniqueOrThrow({
+    where: { id: input.storeId },
+    select: { organizationId: true }
+  })
+  await owner.plugin.upsert({
+    where: { id: input.pluginId },
+    create: {
+      id: input.pluginId,
+      organizationId: store.organizationId,
+      name: input.pluginId,
+      authorName: 'suite',
+      authorEmail: 'suite@example.invalid',
+      type: PluginCatalogTypes.INTEGRATION,
+      manifest: {},
+      pricingModel: PluginPricingModels.FREE,
+      status: PluginStatus.APPROVED
+    },
+    update: { status: PluginStatus.APPROVED }
+  })
+  const key = `${PLUGIN_API_KEY_TOKEN_PREFIX}${randomBytes(32).toString('base64url')}`
+  const installation = await owner.pluginInstallation.upsert({
+    where: { storeId_pluginId: { storeId: input.storeId, pluginId: input.pluginId } },
+    create: {
+      storeId: input.storeId,
+      pluginId: input.pluginId,
+      scopes: [...input.scopes],
+      status: PluginInstallationStatus.ACTIVE,
+      installedBy: 'suite',
+      apiKeyHash: hashToken(key),
+      apiKeyPrefix: key.slice(0, PluginInstallLimits.KEY_DISPLAY_PREFIX_LENGTH)
+    },
+    update: {
+      scopes: [...input.scopes],
+      status: PluginInstallationStatus.ACTIVE,
+      revokedAt: null,
+      apiKeyHash: hashToken(key),
+      apiKeyPrefix: key.slice(0, PluginInstallLimits.KEY_DISPLAY_PREFIX_LENGTH)
+    },
+    select: { id: true }
+  })
+  return { key, installationId: installation.id }
 }

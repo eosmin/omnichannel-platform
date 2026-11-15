@@ -901,6 +901,7 @@ export const PluginScopes = {
   PRODUCTS_READ: 'products:read',
   WEBHOOKS_WRITE: 'webhooks:write',
   ANALYTICS_READ: 'analytics:read',
+  CHANNELS_READ: 'channels:read',               // the directory of channel accounts and their templates (Step 5.6 E1); no connection details
   CHANNEL_CONNECTIONS: 'channel:connections',   // §6.7: register and remove the connections of a channel plugin
   CHANNEL_EVENTS: 'channel:events',             // §6.7: report what customers write and what happened to what was sent
 } as const
