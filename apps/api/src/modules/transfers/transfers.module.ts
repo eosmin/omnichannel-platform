@@ -4,6 +4,7 @@ import { InventoryModule as InventoryEngineModule } from '@platform/core/invento
 
 import { TenancyModule } from '../tenancy'
 
+import { PluginTransfersController } from './plugin-transfers.controller'
 import { TransfersController } from './transfers.controller'
 import { TransfersService } from './transfers.service'
 
@@ -11,7 +12,7 @@ import { TransfersService } from './transfers.service'
 // libs/core/inventory; the database, audit and event-bus modules are global in the app, like in the warehouses.
 @Module({
   imports: [InventoryEngineModule, TenancyModule],
-  controllers: [TransfersController],
+  controllers: [TransfersController, PluginTransfersController],
   providers: [TransfersService]
 })
 export class TransfersModule {}

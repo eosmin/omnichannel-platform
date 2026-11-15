@@ -413,18 +413,27 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'inventory.kardex': { scope: 'inventory:read', exposed: '/plugin-api/inventory/kardex' },
   // The movement of an adjustment stores the id of the person who made it (`createdBy`): it waits for the plugin actor (PR E4a-2)
   'inventory.adjustments': { scope: 'inventory:write' },
-  'transfers.list': { proposed: ['transfers:read', 'transfers:write'], step: STEP },
+  // Transfers and counts (Step 5.6 PR E4b): read only, with a scope of their own each. A key is bound to ONE store, so it reads the
+  // lines of its store and the transfers and counts that have one (a key of a sibling store, or of another organization, gets a 404).
+  // Every write stores the id of a person (`createdBy`, `dispatchedBy`, `appliedBy`, the movements of the stock it moves) or acts on
+  // the lines of stores the key does not belong to: they wait for PR E4b-2 and its plugin actor
+  'transfers.list': { scope: 'transfers:read', exposed: '/plugin-api/transfers' },
   'transfers.create': { proposed: 'transfers:write', step: STEP },
-  'transfers.byId': { proposed: ['transfers:read', 'transfers:write'], step: STEP },
+  // The GET is exposed; the PATCH (change a draft) is a write and stays pending with the others
+  'transfers.byId': {
+    proposed: ['transfers:read', 'transfers:write'],
+    step: STEP,
+    exposed: '/plugin-api/transfers/:id'
+  },
   'transfers.dispatch': { proposed: 'transfers:write', step: STEP },
   'transfers.receive': { proposed: 'transfers:write', step: STEP },
   'transfers.close': { proposed: 'transfers:write', step: STEP },
   'transfers.cancel': { proposed: 'transfers:write', step: STEP },
-  'counts.list': { proposed: ['counts:read', 'counts:write'], step: STEP },
+  'counts.list': { scope: 'counts:read', exposed: '/plugin-api/counts' },
   'counts.create': { proposed: 'counts:write', step: STEP },
-  'counts.byId': { proposed: 'counts:read', step: STEP },
+  'counts.byId': { scope: 'counts:read', exposed: '/plugin-api/counts/:id' },
   'counts.start': { proposed: 'counts:write', step: STEP },
-  'counts.lines': { proposed: ['counts:read', 'counts:write'], step: STEP },
+  'counts.lines': { proposed: 'counts:write', step: STEP },
   'counts.submit': { proposed: 'counts:write', step: STEP },
   'counts.reopen': { proposed: 'counts:write', step: STEP },
   'counts.apply': { proposed: 'counts:write', step: STEP },
