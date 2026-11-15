@@ -122,7 +122,11 @@ function fakeDb(
           }
         })
       },
-      createMany: ({ data }: { data: Movement[] }) => {
+      createMany: ({
+        data
+      }: {
+        data: Array<Omit<Movement, 'costCentsDelta'> & { costCentsDelta?: number }>
+      }) => {
         let count = 0
         for (const row of data) {
           const twin = state.movements.some(
@@ -133,7 +137,7 @@ function fakeDb(
               (row.kind === GuideMovementKind.CONSUME || row.kind === GuideMovementKind.REFUND)
           )
           if (twin) continue
-          state.movements.push({ costCentsDelta: 0, ...row })
+          state.movements.push({ ...row, costCentsDelta: row.costCentsDelta ?? 0 })
           count += 1
         }
         return Promise.resolve({ count })
