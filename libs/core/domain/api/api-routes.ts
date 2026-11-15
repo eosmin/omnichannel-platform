@@ -507,6 +507,27 @@ export const PluginApiRoutes = {
     unread: (id: string) => `/plugin-api/conversations/${id}/unread`
   },
 
+  // Step 5.6 PR E2: the customers of the store (the same services as `ApiRoutes.customers`). `list` is also the path of the POST
+  // that creates one. Not here, on purpose: the notes that a plugin would write (an author is a person), the merge, its undo and
+  // its preview, the gallery and the export (PR E7).
+  customers: {
+    list: '/plugin-api/customers',
+    byId: (id: string) => `/plugin-api/customers/${id}`,
+    caution: (id: string) => `/plugin-api/customers/${id}/caution`,
+    identities: (id: string) => `/plugin-api/customers/${id}/identities`,
+    identityById: (id: string, identityId: string) =>
+      `/plugin-api/customers/${id}/identities/${identityId}`,
+    timeline: (id: string) => `/plugin-api/customers/${id}/timeline`,
+    orders: (id: string) => `/plugin-api/customers/${id}/orders`,
+    conversations: (id: string) => `/plugin-api/customers/${id}/conversations`,
+    notes: (id: string) => `/plugin-api/customers/${id}/notes`,
+    addresses: (id: string) => `/plugin-api/customers/${id}/addresses`,
+    addressById: (id: string, addressId: string) =>
+      `/plugin-api/customers/${id}/addresses/${addressId}`,
+    tags: (id: string) => `/plugin-api/customers/${id}/tags`,
+    tagById: (id: string, tagId: string) => `/plugin-api/customers/${id}/tags/${tagId}`
+  },
+
   search: {
     messages: '/plugin-api/search/messages',
     customers: '/plugin-api/search/customers',

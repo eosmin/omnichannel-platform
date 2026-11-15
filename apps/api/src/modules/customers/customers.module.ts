@@ -20,12 +20,13 @@ import { CustomersController } from './customers.controller'
 import { CustomersService } from './customers.service'
 import { IdentitiesService } from './identities.service'
 import { NotesService } from './notes.service'
+import { PluginCustomersController } from './plugin-customers.controller'
 
 // Needs the database and audit modules of the app. CustomerIdentityService is exported for the
 // inbound pipeline (Step 2.6), which resolves the customer behind a handle.
 @Module({
   imports: [ChannelRegistryModule, ConversationsModule, ExportsModule, MediaModule, TenancyModule],
-  controllers: [CustomersController],
+  controllers: [CustomersController, PluginCustomersController],
   providers: [
     CustomersService,
     IdentitiesService,
