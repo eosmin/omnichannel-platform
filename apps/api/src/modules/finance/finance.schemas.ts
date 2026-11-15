@@ -6,10 +6,12 @@ import {
   CashKind,
   FinanceLimits,
   FinancePaymentMethods,
+  FinanceTaxLimits,
   JournalEntryType,
   PaginationLimits,
   SaleRecognition,
-  singleLineText
+  singleLineText,
+  TaxRounding
 } from '@platform/core/domain'
 import { financeTemplateCountries, isIsoDate } from '@platform/core/finance'
 
@@ -44,6 +46,9 @@ export const setupSchema = z.strictObject({
 export const updateSettingsSchema = z
   .strictObject({
     recognizeSaleOn: z.enum(SaleRecognition).optional(),
+    // How a fraction of a cent of tax is placed, and whether the shipping fee carries the tax (TDD_18 §7)
+    taxRounding: z.enum(TaxRounding).optional(),
+    shippingTaxed: z.boolean().optional(),
     // The rounding account cannot be taken away: a cent that cannot be placed needs somewhere to go (TDD_18 §6.4)
     roundingAccountId: z.uuid().optional()
   })
@@ -75,6 +80,41 @@ export const updateAccountSchema = z
     isPostable: z.boolean().optional(),
     cashKind: z.enum(CashKind).nullable().optional()
   })
+  .refine(body => Object.values(body).some(value => value !== undefined), nothingToChange)
+
+const taxRateBps = z
+  .number()
+  .int()
+  .min(FinanceTaxLimits.MIN_RATE_BPS)
+  .max(FinanceTaxLimits.MAX_RATE_BPS)
+const taxRateCode = z.string().regex(FinanceTaxLimits.CODE_PATTERN)
+const taxRateName = singleLineText(FinanceTaxLimits.NAME_MAX_LENGTH, 1)
+
+export const createTaxRateSchema = z.strictObject({
+  code: taxRateCode,
+  name: taxRateName,
+  // Basis points: 13 % is 1300
+  rateBps: taxRateBps,
+  outputAccountId: z.uuid(),
+  inputAccountId: z.uuid(),
+  // Makes it the default rate, taking the place of the one that was
+  isDefault: z.boolean().optional()
+})
+
+export const updateTaxRateSchema = z
+  .strictObject({
+    code: taxRateCode.optional(),
+    name: taxRateName.optional(),
+    rateBps: taxRateBps.optional(),
+    outputAccountId: z.uuid().optional(),
+    inputAccountId: z.uuid().optional(),
+    // Only to make a rate the default: another rate takes the place when this one stops being it
+    isDefault: z.literal(true).optional()
+  })
+  .refine(body => Object.values(body).some(value => value !== undefined), nothingToChange)
+
+export const updateStoreTaxSettingsSchema = z
+  .strictObject({ pricesIncludeTax: z.boolean().optional() })
   .refine(body => Object.values(body).some(value => value !== undefined), nothingToChange)
 
 export const roleParamSchema = z.enum(AccountRole)
@@ -167,3 +207,6 @@ export type ManualEntryBody = z.infer<typeof manualEntrySchema>
 export type ReverseEntryBody = z.infer<typeof reverseEntrySchema>
 export type BalancesQuery = z.infer<typeof balancesQuerySchema>
 export type ListPostingsQuery = z.infer<typeof listPostingsQuerySchema>
+export type CreateTaxRateBody = z.infer<typeof createTaxRateSchema>
+export type UpdateTaxRateBody = z.infer<typeof updateTaxRateSchema>
+export type UpdateStoreTaxSettingsBody = z.infer<typeof updateStoreTaxSettingsSchema>

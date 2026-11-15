@@ -1,6 +1,7 @@
 import { OrderCancellationReasons } from './order-constants'
 import {
   cancellationReasonsSchema,
+  readFinancePreferences,
   readRemittancePreferences,
   updateRemittancePreferencesSchema,
   CancellationReasonLimits,
@@ -22,12 +23,14 @@ const factoryOrders = {
 }
 const factoryReturns = { preselectCautionOnRefusal: false }
 const factoryRemittances = { overdueAfterDays: 7 }
+const factoryFinance = { pricesIncludeTax: true }
 const factory = {
   sendReadReceipts: true,
   assignOnReply: true,
   orders: factoryOrders,
   returns: factoryReturns,
-  remittances: factoryRemittances
+  remittances: factoryRemittances,
+  finance: factoryFinance
 }
 
 describe('the returns block', () => {
@@ -357,5 +360,27 @@ describe('updateStorePreferencesSchema, the returns block', () => {
     ['a switch that is not a boolean', { returns: { preselectCautionOnRefusal: 'on' } }]
   ])('refuses %s', (_name, body) => {
     expect(updateStorePreferencesSchema.safeParse(body).success).toBe(false)
+  })
+})
+
+describe('the finance block (TDD_18 §7)', () => {
+  it('has the prices include the tax by default and keeps a store that turned it off', () => {
+    expect(readStorePreferences({}).finance).toEqual(factoryFinance)
+    expect(readFinancePreferences({ finance: { pricesIncludeTax: false } })).toEqual({
+      pricesIncludeTax: false
+    })
+  })
+
+  it('reads the default from a value that does not fit, without touching the other blocks', () => {
+    const read = readStorePreferences({ finance: { pricesIncludeTax: 'no' }, assignOnReply: false })
+    expect(read.finance).toEqual(factoryFinance)
+    expect(read.assignOnReply).toBe(false)
+    expect(readFinancePreferences({ finance: 'x' })).toEqual(factoryFinance)
+  })
+
+  it('is not taken by the route of the preferences: it needs finance:manage_accounts, which that route does not check', () => {
+    expect(
+      updateStorePreferencesSchema.safeParse({ finance: { pricesIncludeTax: false } }).success
+    ).toBe(false)
   })
 })

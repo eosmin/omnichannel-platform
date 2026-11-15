@@ -4592,7 +4592,8 @@
       "variant_name_in_use": "This product already has a variant with that name.",
       "too_many_variants": "A product can have up to {max} variants.",
       "has_history": "This product is part of the history of the store, so it cannot be deleted. Archive it instead.",
-      "in_transit": "This product has units on the road in a transfer in transit, so its stock cannot be switched off yet. Wait for the transfer to arrive or cancel it."
+      "in_transit": "This product has units on the road in a transfer in transit, so its stock cannot be switched off yet. Wait for the transfer to arrive or cancel it.",
+      "tax_rate_inactive": "This tax rate is switched off, so a product cannot take it."
     },
     "noMatchesYet": "No product loaded so far matches. Show more products to keep looking.",
     "stock": {

@@ -172,6 +172,16 @@ export const ApiRoutes = {
       // PUT maps the role to an account
       byRole: (role: string) => `/finance/account-roles/${role}`
     },
+    // The tax rates of the organization (TDD_18 §7)
+    taxRates: {
+      list: '/finance/tax-rates',
+      create: '/finance/tax-rates',
+      byId: (id: string) => `/finance/tax-rates/${id}`,
+      deactivate: (id: string) => `/finance/tax-rates/${id}/deactivate`,
+      reactivate: (id: string) => `/finance/tax-rates/${id}/reactivate`
+    },
+    // The tax preferences of the store of X-Store-Id: GET reads them, PATCH changes whether its prices include the tax
+    storeTaxSettings: '/finance/store-tax-settings',
     paymentAccounts: {
       list: '/finance/payment-accounts',
       // PUT chooses the account a payment method lands in (for the organization, or for one store)

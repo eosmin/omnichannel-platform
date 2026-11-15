@@ -9,6 +9,8 @@ import { FinanceEntriesService } from './finance-entries.service'
 import { FinancePeriodsService } from './finance-periods.service'
 import { FinanceSettingsService } from './finance-settings.service'
 import { FinanceSetupService } from './finance-setup.service'
+import { FinanceStoreTaxSettingsService } from './finance-store-tax-settings.service'
+import { FinanceTaxRatesService } from './finance-tax-rates.service'
 import { FinanceController } from './finance.controller'
 
 // The routes of the books of the organization: setup, chart, maps, periods, journal, balances. The one that writes the journal
@@ -21,7 +23,9 @@ import { FinanceController } from './finance.controller'
     FinanceSettingsService,
     FinanceAccountsService,
     FinancePeriodsService,
-    FinanceEntriesService
+    FinanceEntriesService,
+    FinanceTaxRatesService,
+    FinanceStoreTaxSettingsService
   ],
   exports: [LedgerModule]
 })

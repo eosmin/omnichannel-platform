@@ -42,6 +42,9 @@ const productFields = {
   lowStockThreshold: z.number().int().nullable(),
   active: z.boolean(),
   freeShipping: z.boolean(),
+  // How the product is taxed (TDD_18 §7) and the rate it names; null takes the default rate of the organization
+  taxTreatment: z.string(),
+  taxRateId: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string()
 }

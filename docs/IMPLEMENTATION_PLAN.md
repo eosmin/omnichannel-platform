@@ -1367,16 +1367,56 @@ stay until the last of them is read (4B.9); (d) the web client of these routes (
 above is a failing test that passes, and no code outside `libs/core/finance` writes the ledger (lint).
 
 ### Step 4B.3 — VAT and the tax snapshot (api)
-- [ ] `TaxRate` (basis points) with its output and input accounts and the default; `Product.taxTreatment` and `taxRateId`; the store
-      preference `finance.pricesIncludeTax` (default true); migration with its rollback for `products`, `orders`, `order_items`
-- [ ] The tax math as pure functions (included and not included, per line, half up, the order tax is the sum of its lines, a stray cent
-      to `ROUNDING`); `OrdersService` snapshots `taxCents`, `pricesIncludeTax` and the item rates at creation, so a later rate change never
-      rewrites a posted sale; the order total includes the tax when the store's prices exclude it
-- [ ] The tax fields on the order and product routes (`libs/api-client` types); old orders keep `null` and are taxed at posting
-- [ ] The VAT report data (output, input, balance by period and rate) as an endpoint and a CSV; the legal books layout waits for the
-      accountant (debt (b) of 4B.1)
-- [ ] Tests: the rounding table (13 % included and not included, several lines, a discount, shipping), exempt and not-subject products,
-      the order total in both modes, the snapshot is stable after a rate change
+Delivered in two PRs (the step is bigger than one review): **4B.3a** the schema, the constants, the tax math, the rates, the product
+treatment and the store preference; **4B.3b** the snapshot on the orders, the order total, the tax fields of the order routes and the VAT
+report. Never stacked: 4B.3b starts from `main` after 4B.3a is merged.
+
+**PR 4B.3a (schema, constants, pure rules, rates, product treatment, store preference)**
+- [x] `TaxRate` (basis points) with its output and input accounts and the default; `Product.taxTreatment` and `taxRateId`; migration with its
+      rollback for `products`, `orders`, `order_items` (all the columns of the step, so 4B.3b has no migration), `finance_settings`
+      (`taxRounding`, `shippingTaxed`), the FK of `journal_lines.tax_rate_id`, and the 13 % rate for the organizations already set up
+- [x] The store preference `finance.pricesIncludeTax` (default true), written by `PATCH /finance/store-tax-settings` under
+      `finance:manage_accounts` and read in `GET /settings/preferences`
+- [x] The tax math as pure functions in `libs/core/finance` (included and not included, per line, four roundings, the discount shared by
+      the largest remainder, the order tax is the sum of its lines and of the shipping fee), with the rounding table as its spec
+- [x] `finance/tax-rates` (list, create, update, deactivate, reactivate), the tax settings of the books (`taxRounding`, `shippingTaxed`),
+      the tax treatment and rate on the product routes (needs `finance:manage_accounts`), the SV template seeds the rate; audit rows
+- [x] Tests: `tests/api/finance-tax.spec.ts`, the `taxRate` case of `tests/security/tenant-isolation.spec.ts`, the maps
+**PR 4B.3b (orders, report)**
+- [ ] `OrdersService` snapshots `taxCents`, `pricesIncludeTax`, `shippingTaxRateBps` and the item treatment, rate and tax at creation (and on a
+      replacement order), so a later rate change never rewrites a posted sale; the order total includes the tax when the store's prices exclude it;
+      an organization with no books keeps `null` and the old arithmetic; a taxed product with no rate and no default refuses the order
+      (`FINANCE_TAX_RATE_NOT_CONFIGURED`)
+- [ ] The tax fields on the order routes (`libs/api-client` types); old orders keep `null` and are taxed at posting
+- [ ] The VAT report data (output from the order snapshots, input from the journal, balance by period and rate) as an endpoint and a CSV; the
+      legal books layout waits for the accountant (debt (b) of 4B.1)
+- [ ] Tests: the order total in both modes with a discount and shipping, exempt and not-subject products, the snapshot is stable after a rate
+      change, the report adds up to the orders of a period
+**Decisions of PR 4B.3a (rule 12):** (1) the tax of a line is computed on the line after its share of the discount (largest remainder, by gross
+amount), and the order tax is the sum of the lines and of the shipping fee, so the order, the entry and the document agree to the cent; a stray
+cent therefore does not arise in the order, and `ROUNDING` stays for what a remittance or a carrier rounds otherwise (4B.6) (rejected: the tax of the
+sum, which the document cannot reproduce); (2) the rounding is a setting of the books (`half_up`, `half_even`, `down`, `up`), `half_up` by default
+as `TDD_18 §7` says; (3) `shippingTaxed` is a setting of the books (default true), and the rate the shipping fee was taxed at is kept on the order
+(`shippingTaxRateBps`, a column `TDD_18 §7` did not list) so the VAT report can group it by rate (rejected: deriving it from the default rate of today);
+(4) an order item also keeps its treatment (`taxTreatment`), because exempt and not subject sales go to different lines of the legal books
+**[ACCOUNTANT]**; (5) the tax treatment and the rate of a product need `finance:manage_accounts` on top of `products:edit`, and
+`pricesIncludeTax` is written by its own finance route, because both decide what a customer pays and what the books owe (rejected: the
+permission of the preferences, which is not the accountant's); (6) the database, not only the service, refuses a product that names the rate of
+another organization (a trigger: the keys cannot say it, a product has a store and not an organization), a rate above 100 %, two defaults and a
+switched-off default; (7) the default rate and a rate an active product names are not switched off; a rate that was changed moves the orders made
+after it, never one that exists; (8) a store with no books (the organization has no finance settings) keeps its orders as they are, with no tax
+snapshot (decided here, built in 4B.3b); (9) the 13 % rate is seeded by the SV template and by the migration for the organizations already
+set up, and both are editable data.
+**Debts of PR 4B.3a (tracked where they are closed):** (a) the web client of the rates, the store tax setting and the tax fields of the product
+form is Step 4B.9's (the product form does not send them); a person with `products:edit` and without `finance:view` cannot list the rates
+there, which 4B.9 settles; (b) the VAT of returns (E8) is posted and reported by 4B.6, which owns the return entries: 4B.3b's report counts
+the sales and says so; (c) the sales book layout, the exempt categories, whether the shipping fee carries VAT, the withholdings and the
+perceptions stay **[ACCOUNTANT]** (`TDD_18 §13` rows 2 and 4): configurable here, owner's pending; (d) `FINANCE_TAX_RATE_NOT_CONFIGURED` and the
+order fields are 4B.3b's; (e) `assertMayWriteTax` refuses a product request that names the tax fields even with the value the product has,
+so a client that echoes the whole product needs `finance:manage_accounts`: the web form of 4B.9 sends them only when they change; the preferences column is written only by `PreferencesService` (the contract `cache-writers`), which the tax settings route calls.
+**Owner decision (2026-11-15, recorded here by 4B.3a):** `TDD_18` is approved as written. Payroll is a separate module, **Milestone 4C** (not
+scheduled in this plan yet; `TDD_18 §14` already keeps it out of 4B); until it exists, salaries enter the books as one manual entry per month
+(`finance:post_manual`, E13), on the `Planilla` expense account of the SV chart.
 **TDD:** `TDD_18 §7`, `TDD_17 §4.13`, `TDD_16`
 **Done when:** an order computes and stores its tax exactly to the cent in both pricing modes and the VAT report adds up to the
 orders of a period.
@@ -1419,6 +1459,9 @@ supplier and is paid in parts from the chosen account, and the ledger agrees wit
       comparisons; the metrics and the `FINANCE_POSTING_FAILED` notification
 - [ ] **`FINANCE_VIEW_CARRIER_FEES`** gates the commission and the rates of a carrier connection (closes (c3)(i) of Step 4.15: `shipping:view`
       stops showing them; the web of Settings → Carriers shows the boxes only with it)
+- [ ] The charge model of a carrier connection (`prepaid` | `collected in the remittance` | `invoiced`, `TDD_18 §4.2` note on E4, owner's information to
+      confirm with the accountant, `TDD_18 §13` rows 2 and 5) decides the entry of E4/E5 and the input VAT of a carrier charge; with 4B.5 for the
+      purchase of prepaid guides. Owner 4B.5/4B.6; not built by 4B.3
 - [ ] Tests: one case per event with exact amounts (a COD sale with a commission and a freight, a remittance that matches, one that
       differs, one voided; a prepaid sale; a return before and after delivery; each adjustment), a lost event recovered by the sweep, a
       missing mapping fails visibly and blocks the close, the same events twice produce one entry
@@ -2290,7 +2333,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | **Milestone 4B: Finance** | | | | |
 | 4B.1 | Finance design (TDD_18, no code) | in progress | written and delivered with the first code PR that follows; owner approval of `TDD_18` pending | |
 | 4B.2 | Ledger core (accounts, immutable journal, periods, permissions) | done | PR a (schema, constants, pure rules, database tests, #509); PR b (posting service, routes, isolation, maps, #513) | 2026-11-15 |
-| 4B.3 | VAT and the tax snapshot | todo | | |
+| 4B.3 | VAT and the tax snapshot | in progress | 4B.3a PR pending; 4B.3b (orders, report) todo | |
 | 4B.4 | Expenses, incomes, transfers and bank reconciliation | todo | | |
 | 4B.5 | Suppliers and purchase orders | todo | | |
 | 4B.6 | The automatic entries (sales, remittances, returns, stock) | todo | | |

@@ -155,6 +155,16 @@ export const updateRemittancePreferencesSchema = z
 
 export type UpdateRemittancePreferencesBody = z.output<typeof updateRemittancePreferencesSchema>
 
+// The `finance` block (TDD_18 §7): whether the prices of the catalog of the store already include the tax. Included is the default
+// (a final consumer sees one price); a store that itemizes the tax for businesses sets it to false and the tax is added to the
+// order total. Read by the orders; written by `PATCH /finance/store-tax-settings` (it needs finance:manage_accounts, which
+// `settings:manage_preferences` is not), so `PUT /settings/preferences` does not take it.
+export const financePreferencesSchema = z.object({
+  pricesIncludeTax: z.boolean().catch(true)
+})
+
+export type FinancePreferences = z.output<typeof financePreferencesSchema>
+
 // Each key falls back to its own default (`catch`): a value that does not fit in one key must not reset
 // the others, least of all a switch the store turned off.
 export const storePreferencesSchema = z.object({
@@ -168,7 +178,9 @@ export const storePreferencesSchema = z.object({
   // The returns block (TDD_17 §4.16); a column with none reads as every default of the block
   returns: returnPreferencesSchema.catch(() => returnPreferencesSchema.parse({})),
   // The remittances block (TDD_17 §4.15); a column with none reads as every default of the block
-  remittances: remittancePreferencesSchema.catch(() => remittancePreferencesSchema.parse({}))
+  remittances: remittancePreferencesSchema.catch(() => remittancePreferencesSchema.parse({})),
+  // The finance block (TDD_18 §7); a column with none reads as every default of the block
+  finance: financePreferencesSchema.catch(() => financePreferencesSchema.parse({}))
 })
 
 export type StorePreferences = z.output<typeof storePreferencesSchema>
@@ -182,6 +194,10 @@ export function readStorePreferences(raw: unknown): StorePreferences {
 
 export function readOrderPreferences(raw: unknown): OrderPreferences {
   return readStorePreferences(raw).orders
+}
+
+export function readFinancePreferences(raw: unknown): FinancePreferences {
+  return readStorePreferences(raw).finance
 }
 
 export function readRemittancePreferences(raw: unknown): RemittancePreferences {

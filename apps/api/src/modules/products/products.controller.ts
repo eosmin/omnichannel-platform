@@ -45,7 +45,7 @@ import {
   updateVariantSchema
 } from './products.schemas'
 import { ProductsService } from './products.service'
-import { assertMayWriteCost } from './products.support'
+import { assertMayWriteCost, assertMayWriteTax } from './products.support'
 import {
   type ProductDetail,
   type ProductImageView,
@@ -94,12 +94,15 @@ export class ProductsController {
   @Post(ApiRoutes.products.create)
   @HttpCode(HttpStatusCodes.CREATED)
   async create(
-    @CurrentStore() store: { id: string },
+    @CurrentStore() store: ResolvedTenant['store'],
+    @CurrentUser() user: AuthenticatedUser,
     @CurrentPermissions() held: readonly Permission[],
-    @Body(new ZodValidationPipe(createProductSchema)) body: CreateProductBody
+    @Body(new ZodValidationPipe(createProductSchema)) body: CreateProductBody,
+    @Req() req: AuthenticatedRequest
   ): Promise<ProductDetail> {
     assertMayWriteCost(held, body)
-    const created = await this.products.create(store.id, body)
+    assertMayWriteTax(held, body)
+    const created = await this.products.create(store.id, body, actorOf(user, store, req))
     return mayViewCost(held) ? created : redactDetail(created)
   }
 
@@ -134,6 +137,7 @@ export class ProductsController {
     @Req() req: AuthenticatedRequest
   ): Promise<ProductDetail> {
     assertMayWriteCost(held, body)
+    assertMayWriteTax(held, body)
     const updated = await this.products.update(store.id, productId, body, actorOf(user, store, req))
     return mayViewCost(held) ? updated : redactDetail(updated)
   }
