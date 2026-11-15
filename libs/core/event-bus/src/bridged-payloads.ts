@@ -234,7 +234,8 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     storeId: id,
     conversationId: id,
     messageId: id,
-    authorId: id,
+    // Null for a note a plugin wrote as the system
+    authorId: id.nullable(),
     createdAt: z.iso.datetime(),
     visibility
   })

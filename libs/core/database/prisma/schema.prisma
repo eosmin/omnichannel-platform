@@ -583,6 +583,12 @@ model Message {
   // text goes with the retention of the deleted ones. It also has `deletedAt`, so every rule of the deleted
   // applies; this is what tells it from one that was deleted for the customer to see as a tombstone.
   discardedAt       DateTime? @map("discarded_at")
+  // The plugin that wrote the message (TDD_10 §6), whatever the author type says: `system` or `agent` (a person of the team on whose
+  // behalf it wrote). Null for a message no plugin wrote. Kept if the plugin is later revoked. No FK, like the other ids of a message
+  // (the route takes it from the installation of the key): a FK would scan `messages` to be added and again to delete a plugin.
+  authorPluginId    String?   @map("author_plugin_id")
+  // The name the message shows for a plugin that wrote as `system` (the plugin chose it, cleaned); null for any other message
+  authorNickname    String?   @map("author_nickname")
 
   store        Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
   conversation Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)

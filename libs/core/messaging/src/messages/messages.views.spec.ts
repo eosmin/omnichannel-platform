@@ -16,6 +16,8 @@ const row = (metadata: unknown): Parameters<typeof messageView>[0] => ({
   content: 'hola',
   authorType: AuthorType.CUSTOMER,
   authorId: null,
+  authorPluginId: null,
+  authorNickname: null,
   replyToMessageId: null,
   replyToMediaId: null,
   channelMessageId: null,
