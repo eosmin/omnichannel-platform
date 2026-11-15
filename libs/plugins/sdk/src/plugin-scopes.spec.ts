@@ -36,6 +36,16 @@ describe('PluginScopes', () => {
     ])
   })
 
+  it('keeps the kept text of deleted messages in a scope of its own, which no other scope grants', () => {
+    expect(PluginScopePermissions[PluginScopes.MESSAGES_READ_DELETED]).toEqual([
+      Permissions.MESSAGES_VIEW_DELETED
+    ])
+    for (const [scope, granted] of Object.entries(PluginScopePermissions)) {
+      if (scope === PluginScopes.MESSAGES_READ_DELETED) continue
+      expect(granted).not.toContain(Permissions.MESSAGES_VIEW_DELETED)
+    }
+  })
+
   it('lets the webhooks scope grant no human permission', () => {
     expect(PluginScopePermissions[PluginScopes.WEBHOOKS_WRITE]).toEqual([])
   })
