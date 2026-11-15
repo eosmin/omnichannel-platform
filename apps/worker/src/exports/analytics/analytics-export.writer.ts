@@ -13,6 +13,7 @@ import { StorageService } from '@platform/core/storage-module'
 
 import type { CsvSource } from '../csv-export-writer'
 import { CsvExportWriter } from '../csv-export-writer'
+import { isPluginRequester } from '../export-requester'
 
 import { buildPdf } from './pdf-writer'
 import { readReportTable } from './report-table'
@@ -62,10 +63,13 @@ export class AnalyticsExportWriter {
     filters: AnalyticsExportFilters,
     onProgress: (done: number) => void
   ): Promise<{ rowCount: number }> {
-    const user = await this.prisma.client.user.findUnique({
-      where: { id: row.requestedBy },
-      select: { locale: true }
-    })
+    // A plugin has no profile: the file is in the default language
+    const user = isPluginRequester(row.requestedBy)
+      ? null
+      : await this.prisma.client.user.findUnique({
+          where: { id: row.requestedBy },
+          select: { locale: true }
+        })
     const table = await readReportTable(this.prisma, row.storeId, filters)
     const texts = reportTexts(localeOf(user?.locale), {
       ...(filters.reportName === undefined ? {} : { name: filters.reportName }),

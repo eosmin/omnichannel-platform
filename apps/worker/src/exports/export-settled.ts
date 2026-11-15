@@ -2,6 +2,8 @@ import type { PrismaService } from '@platform/core/database'
 import type { DomainEvents } from '@platform/core/event-bus'
 import type { Events } from '@platform/core/events'
 
+import { isPluginRequester } from './export-requester'
+
 export interface SettledExportRow {
   id: string
   storeId: string
@@ -16,6 +18,8 @@ export async function publishExportSettled(
   event: typeof Events.EXPORT_READY | typeof Events.EXPORT_FAILED,
   row: SettledExportRow
 ): Promise<void> {
+  // A plugin has no screen to refresh and no inbox for a notification (the event names a person): it reads the state of its export
+  if (isPluginRequester(row.requestedBy)) return
   await prisma.transaction(tx =>
     Promise.resolve(
       events.publish(tx, event, {

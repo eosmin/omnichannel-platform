@@ -25,6 +25,11 @@ const CUSTOMER_MERGE =
 const CUSTOMER_NOTE_AUTHOR =
   'Writing and deleting the notes of a customer: a note keeps its author, a person the profile shows by name, and only the author or CUSTOMERS_DELETE may remove it; a plugin reads the notes (GET) and does not write them until it has an actor to show (Step 5.6 W1)'
 
+const ANALYTICS_DASHBOARD =
+  'No server route of its own: the dashboard is drawn by the web from the metrics, which a plugin reads at /plugin-api/analytics/metrics'
+const ANALYTICS_REPORTS =
+  'The scheduled reports send the figures out by email to addresses of people, and a report keeps who made it: a plugin reads the metrics and asks for a file of them, and the reports wait for an actor that the screen can show (Step 5.6 PR E7-2)'
+
 const SESSION = "A person's own session: a plugin has an API key, not a login"
 const ACCOUNT =
   "A person's own account (their name, picture and preferences): the id comes from their token"
@@ -185,7 +190,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
     scope: ['conversations:read', 'conversations:write'],
     exposed: '/plugin-api/conversations/bulk'
   },
-  'conversations.export': { proposed: ['conversations:read', 'exports:write'], step: STEP },
+  'conversations.export': { scope: ['conversations:read', 'exports:write'] },
   // Seeing a conversation is `conversations:read` for a plugin as for a person, so each message route names it too
   'messages.create': {
     scope: ['conversations:read', 'messages:write'],
@@ -276,7 +281,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
     scope: ['customers:read', 'customers:write'],
     exposed: '/plugin-api/customers/:id/tags/:tagId'
   },
-  'customers.media': { proposed: ['customers:read', 'media:read'], step: STEP },
+  'customers.media': { scope: ['customers:read', 'media:read'] },
   'customers.timeline': {
     scope: 'customers:read',
     exposed: '/plugin-api/customers/:id/timeline'
@@ -285,7 +290,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
     scope: ['customers:read', 'customers:flag-caution'],
     exposed: '/plugin-api/customers/:id/caution'
   },
-  'customers.export': { proposed: ['customers:read', 'exports:write'], step: STEP },
+  'customers.export': { scope: ['customers:read', 'exports:write'] },
 
   // Orders (`orders:*` exist); the messages and templates of an order are a scope of their own
   'orders.list': { scope: 'orders:read', exposed: '/plugin-api/orders' },
@@ -306,7 +311,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   // The lines of an order are edited through the PATCH of the order itself (`items`): there is no route of the people for them either
   'orders.items': { scope: ['orders:read', 'orders:edit'], exposed: '/plugin-api/orders/:id' },
   'orders.print': { none: ORDER_PRINT },
-  'orders.export': { proposed: ['orders:read', 'exports:write'], step: STEP },
+  'orders.export': { scope: ['orders:read', 'exports:write'] },
   'orders.confirm': {
     scope: ['orders:read', 'orders:confirm'],
     exposed: '/plugin-api/orders/:id/confirm'
@@ -590,13 +595,16 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'remittances.importProfileById': { proposed: 'remittances:write', step: STEP },
 
   // Media, exports, search, analytics
-  'media.uploadUrl': { proposed: 'media:write', step: STEP },
-  'media.confirmUpload': { proposed: 'media:write', step: STEP },
-  'media.byId': { proposed: ['media:read', 'media:write'], step: STEP },
-  'media.downloadAll': { proposed: 'exports:write', step: STEP },
-  'exports.list': { proposed: 'exports:read', step: STEP },
-  'exports.byId': { proposed: 'exports:read', step: STEP },
-  'exports.download': { proposed: 'exports:read', step: STEP },
+  'media.uploadUrl': { scope: 'media:write', exposed: '/plugin-api/media/upload-url' },
+  'media.confirmUpload': { scope: 'media:write', exposed: '/plugin-api/media/confirm-upload' },
+  'media.byId': { scope: 'media:read', exposed: '/plugin-api/media/:id' },
+  'media.downloadAll': {
+    scope: ['customers:read', 'media:read', 'conversations:read', 'exports:write'],
+    exposed: '/plugin-api/media/download-all'
+  },
+  'exports.list': { scope: 'exports:read', exposed: '/plugin-api/exports' },
+  'exports.byId': { scope: 'exports:read', exposed: '/plugin-api/exports/:id' },
+  'exports.download': { scope: 'exports:read', exposed: '/plugin-api/exports/:id/download' },
   'search.global': { none: BELL_AND_SEARCH },
   'search.messages': {
     scope: ['conversations:read', 'messages:read'],
@@ -606,13 +614,16 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'search.orders': { scope: 'orders:read', exposed: '/plugin-api/search/orders' },
   'search.products': { scope: 'products:read', exposed: '/plugin-api/search/products' },
   'search.clicks': { none: SEARCH_CLICK },
-  'analytics.metrics': { scope: 'analytics:read' },
+  'analytics.metrics': { scope: 'analytics:read', exposed: '/plugin-api/analytics/metrics' },
   'analytics.myPerformance': { none: OWN_PERFORMANCE },
-  'analytics.dashboard': { scope: 'analytics:read' },
-  'analytics.reports': { scope: 'analytics:read' },
-  'analytics.reportById': { scope: 'analytics:read' },
+  'analytics.dashboard': { none: ANALYTICS_DASHBOARD },
+  'analytics.reports': { none: ANALYTICS_REPORTS },
+  'analytics.reportById': { none: ANALYTICS_REPORTS },
   'analytics.search': { none: SEARCH_REPORT },
-  'analytics.export': { proposed: ['analytics:read', 'exports:write'], step: STEP },
+  'analytics.export': {
+    scope: ['analytics:read', 'exports:write'],
+    exposed: '/plugin-api/analytics/export'
+  },
 
   // Channels and settings
   'channels.connections': { none: CHANNEL_ADMIN },

@@ -4,6 +4,9 @@ export const ExportLimits = {
   // Exports of one store that may wait or run at once. A member who asks again while these run gets
   // a 429 instead of queueing a copy of the same personal data
   MAX_ACTIVE_PER_STORE: 3,
+  // Exports of one plugin installation that may wait or run at once: a plugin that retries in a loop must not take the slots of the store
+  // that the people of the team need (the ceiling above counts every row of the store)
+  MAX_ACTIVE_PER_PLUGIN: 1,
   // A `pending` export older than this stops counting as active: its job was lost (a worker killed mid-run)
   ACTIVE_WINDOW_MINUTES: 60,
   // A `pending` export this old will never be made (the job is gone): the cleanup marks it failed

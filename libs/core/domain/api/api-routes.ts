@@ -685,6 +685,25 @@ export const PluginApiRoutes = {
     manifest: (id: string) => `/plugin-api/pickups/${id}/manifest`
   },
 
+  // Step 5.6 PR E7: the figures of the store, the exports centre of the key and the files, over the same services as
+  // `ApiRoutes.analytics`, `.exports` and `.media`. Not here, on purpose: the scheduled reports (their recipients are people's
+  // addresses) and the other kinds of export (PR E7-2).
+  analytics: {
+    metrics: '/plugin-api/analytics/metrics',
+    export: '/plugin-api/analytics/export'
+  },
+  exports: {
+    list: '/plugin-api/exports',
+    byId: (id: string) => `/plugin-api/exports/${id}`,
+    download: (id: string) => `/plugin-api/exports/${id}/download`
+  },
+  media: {
+    uploadUrl: '/plugin-api/media/upload-url',
+    confirmUpload: '/plugin-api/media/confirm-upload',
+    byId: (id: string) => `/plugin-api/media/${id}`,
+    downloadAll: '/plugin-api/media/download-all'
+  },
+
   // Messages (Step 5.6 PR M1b): a plugin writes a reply or a note, and reads the edits and the kept text of a deleted message
   messages: {
     create: '/plugin-api/messages',
