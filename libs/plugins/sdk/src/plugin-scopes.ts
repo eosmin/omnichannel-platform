@@ -33,6 +33,15 @@ export const PluginScopes = {
   // exercised; the writes get scopes of their own (PR E4b-2). A plugin sees only the lines of its own store.
   TRANSFERS_READ: 'transfers:read',
   COUNTS_READ: 'counts:read',
+  // The exports centre of the key (Step 5.6 PR E7): the files THIS installation asked for, never a person's. `exports:write` is the right to
+  // take data out of the platform (ANALYTICS_EXPORT, MEDIA_DOWNLOAD_ALL), asked together with the scope that reads what is exported, as a person
+  // needs both; the other kinds of export (conversations, customers, orders) join it with their routes (PR E7-2).
+  EXPORTS_READ: 'exports:read',
+  EXPORTS_WRITE: 'exports:write',
+  // The files of the store: MEDIA_VIEW gives signed links and `media:write` the upload through the same checks as a person's. A plugin
+  // uploads only what a person holding MEDIA_UPLOAD alone may (message files): the scopes of the other purposes are PR E7-2's.
+  MEDIA_READ: 'media:read',
+  MEDIA_WRITE: 'media:write',
   WEBHOOKS_WRITE: 'webhooks:write',
   ANALYTICS_READ: 'analytics:read',
   INVENTORY_READ: 'inventory:read',
@@ -89,6 +98,10 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
     Permissions.INVENTORY_MANAGE_COUNTS,
     Permissions.INVENTORY_APPLY_COUNTS
   ],
+  [PluginScopes.EXPORTS_READ]: [],
+  [PluginScopes.EXPORTS_WRITE]: [Permissions.ANALYTICS_EXPORT, Permissions.MEDIA_DOWNLOAD_ALL],
+  [PluginScopes.MEDIA_READ]: [Permissions.MEDIA_VIEW],
+  [PluginScopes.MEDIA_WRITE]: [Permissions.MEDIA_UPLOAD],
   [PluginScopes.WEBHOOKS_WRITE]: [],
   [PluginScopes.ANALYTICS_READ]: [Permissions.ANALYTICS_VIEW],
   [PluginScopes.INVENTORY_READ]: [Permissions.INVENTORY_VIEW],

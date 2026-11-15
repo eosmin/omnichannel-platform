@@ -8,7 +8,8 @@ import {
   AnalyticsEventNames,
   AnalyticsMetrics,
   MetricDimensions,
-  ReportFrequency
+  ReportFrequency,
+  ReportMetrics
 } from '@platform/core/analytics'
 import { API_PREFIX, ApiRoutes, PluginApiRoutes } from '@platform/core/api'
 import { Permissions, RoleNames, TenantHeaders } from '@platform/core/auth'
@@ -49,7 +50,13 @@ import {
   notificationMessageKey,
   NotificationTypes
 } from '@platform/core/notifications'
-import { ExportFormats, ExportTypes, JobNames, QueueNames } from '@platform/core/queues'
+import {
+  ExportFormats,
+  ExportStatus,
+  ExportTypes,
+  JobNames,
+  QueueNames
+} from '@platform/core/queues'
 import { StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 import { PluginRegistry } from '@platform/plugins/runtime'
@@ -4840,6 +4847,301 @@ describe('Tenant isolation', () => {
       expect((await owner.stockCount.findUniqueOrThrow({ where: { id: countA } })).status).toBe(
         CountStatus.COUNTING
       )
+    })
+  })
+
+  // What a plugin key reads and makes of the exports centre, the files and the figures (Step 5.6, E7): the file of an export leaves the
+  // platform with the data of the customers, so the owner of a row is the installation that asked (`plugin:<id>`), a person's exports are a
+  // 404 to it and its own never reach a person's centre; a file or a customer of another store is a 404; no address is given unsigned.
+  describe('the exports, the files and the figures with the key of a plugin', () => {
+    const pluginId = `${prefix}-exports-media`
+    const scopes = [
+      PluginScopes.ANALYTICS_READ,
+      PluginScopes.EXPORTS_READ,
+      PluginScopes.EXPORTS_WRITE,
+      PluginScopes.MEDIA_READ,
+      PluginScopes.MEDIA_WRITE,
+      PluginScopes.CUSTOMERS_READ,
+      PluginScopes.CONVERSATIONS_READ
+    ]
+    let keyOfA = ''
+    let keyOfB = ''
+    let keyOfA2 = ''
+    let readsExportsOnly = ''
+    let readsNothing = ''
+    let installationA = ''
+    let installationOnlyRead = ''
+    let ownExport = ''
+    let ownExportOfAnotherInstallation = ''
+    let exportOfAPerson = ''
+    let exportOfB = ''
+    let exportOfLostKind = ''
+    let fileA = ''
+    let fileB = ''
+
+    const exportRow = async (
+      storeId: string,
+      requestedBy: string,
+      type: string = ExportTypes.ANALYTICS
+    ) =>
+      (
+        await owner.export.create({
+          data: {
+            storeId,
+            requestedBy,
+            type,
+            format: ExportFormats.CSV,
+            // Made, so that none of them counts as an export in progress of its installation
+            status: ExportStatus.READY,
+            expiresAt: new Date(Date.now() + 86_400_000)
+          },
+          select: { id: true }
+        })
+      ).id
+    const fileOf = async (storeId: string) =>
+      (
+        await owner.media.create({
+          data: {
+            storeId,
+            purpose: 'message',
+            key: StorageKeys.message(storeId, randomUUID(), 'photo.png'),
+            filename: 'photo.png',
+            contentType: 'image/png',
+            fileSize: 68,
+            status: 'clean'
+          },
+          select: { id: true }
+        })
+      ).id
+    const server = () => supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
+    const get = (key: string, path: string) =>
+      server().get(`${API_PREFIX}${path}`).set('authorization', `Bearer ${key}`)
+    const post = (key: string, path: string) =>
+      server().post(`${API_PREFIX}${path}`).set('authorization', `Bearer ${key}`)
+    const idsOf = (response: { body: unknown }): string[] =>
+      (response.body as { data: { id: string }[] }).data.map(row => row.id)
+    const analyticsQuery = {
+      metrics: ReportMetrics[0] ?? '',
+      from: '2026-01-01',
+      to: '2026-01-08',
+      format: 'csv'
+    }
+
+    beforeAll(async () => {
+      ;({ key: keyOfA, installationId: installationA } = await createPluginKey(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${pluginId}-a`,
+        scopes
+      }))
+      ;({ key: keyOfA2 } = await createPluginKey(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${pluginId}-a-other`,
+        scopes
+      }))
+      ;({ key: keyOfB } = await createPluginKey(owner, {
+        storeId: ctx.storeB.id,
+        pluginId: `${pluginId}-b`,
+        scopes
+      }))
+      ;({ key: readsExportsOnly, installationId: installationOnlyRead } = await createPluginKey(
+        owner,
+        {
+          storeId: ctx.storeA.id,
+          pluginId: `${pluginId}-read`,
+          scopes: [PluginScopes.EXPORTS_READ]
+        }
+      ))
+      ;({ key: readsNothing } = await createPluginKey(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${pluginId}-none`,
+        scopes: [PluginScopes.INVENTORY_READ]
+      }))
+      const admin = await adminOf(owner, ctx.storeA.id)
+      ownExport = await exportRow(ctx.storeA.id, `plugin:${installationA}`)
+      ownExportOfAnotherInstallation = await exportRow(ctx.storeA.id, `plugin:${randomUUID()}`)
+      exportOfAPerson = await exportRow(ctx.storeA.id, admin)
+      exportOfB = await exportRow(ctx.storeB.id, `plugin:${randomUUID()}`)
+      // A kind the key holds no scope for any more: its own row, and still a 404
+      exportOfLostKind = await exportRow(
+        ctx.storeA.id,
+        `plugin:${installationOnlyRead}`,
+        ExportTypes.ANALYTICS
+      )
+      fileA = await fileOf(ctx.storeA.id)
+      fileB = await fileOf(ctx.storeB.id)
+    })
+    afterAll(async () => {
+      await owner.export.deleteMany({
+        where: {
+          requestedBy: { startsWith: 'plugin:' },
+          storeId: { in: [ctx.storeA.id, ctx.storeB.id] }
+        }
+      })
+      await owner.pluginInstallation.deleteMany({ where: { pluginId: { startsWith: pluginId } } })
+      await owner.plugin.deleteMany({ where: { id: { startsWith: pluginId } } })
+    })
+
+    it('reads its own export and no one else: not a person, not another installation, not another store', async () => {
+      expect((await get(keyOfA, PluginApiRoutes.exports.byId(ownExport))).status).toBe(200)
+      for (const other of [exportOfAPerson, ownExportOfAnotherInstallation, exportOfB]) {
+        expect((await get(keyOfA, PluginApiRoutes.exports.byId(other))).status).toBe(404)
+        expect((await get(keyOfA, PluginApiRoutes.exports.download(other))).status).toBe(404)
+      }
+      const list = idsOf(await get(keyOfA, PluginApiRoutes.exports.list))
+      expect(list).toContain(ownExport)
+      expect(list).not.toContain(exportOfAPerson)
+      expect(list).not.toContain(ownExportOfAnotherInstallation)
+      expect(list).not.toContain(exportOfB)
+    })
+
+    it('does not read, with the key of the other store, an export of this one', async () => {
+      expect((await get(keyOfB, PluginApiRoutes.exports.byId(ownExport))).status).toBe(404)
+      expect(idsOf(await get(keyOfB, PluginApiRoutes.exports.list))).not.toContain(ownExport)
+      expect((await get(keyOfA2, PluginApiRoutes.exports.byId(ownExport))).status).toBe(404)
+    })
+
+    it('does not show a person the exports of a plugin, in the centre or by id', async () => {
+      const list = await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.exports.list)
+      const byId = await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.exports.byId(ownExport))
+
+      expect(JSON.stringify(list.body)).not.toContain(ownExport)
+      expect(byId.status).toBe(404)
+    })
+
+    it('stops showing the kinds whose scope the key does not hold, as a role that lost the permission does', async () => {
+      expect(
+        (await get(readsExportsOnly, PluginApiRoutes.exports.byId(exportOfLostKind))).status
+      ).toBe(404)
+      expect(idsOf(await get(readsExportsOnly, PluginApiRoutes.exports.list))).not.toContain(
+        exportOfLostKind
+      )
+    })
+
+    it('asks for the figures as a file for the store of the key, owned by the installation, and never names who in the row', async () => {
+      const asked = await get(keyOfA, PluginApiRoutes.analytics.export).query(analyticsQuery)
+      const named = await get(keyOfA, PluginApiRoutes.analytics.export).query({
+        ...analyticsQuery,
+        storeId: ctx.storeB.id
+      })
+
+      expect(asked.status).toBe(202)
+      expect(named.status).toBeGreaterThanOrEqual(400)
+      const row = await owner.export.findUniqueOrThrow({
+        where: { id: (asked.body as { id: string }).id }
+      })
+      expect([row.storeId, row.requestedBy, row.type]).toEqual([
+        ctx.storeA.id,
+        `plugin:${installationA}`,
+        ExportTypes.ANALYTICS
+      ])
+      expect(JSON.stringify(asked.body)).not.toContain(installationA)
+    })
+
+    it('lets an installation have one export in progress, so that it cannot take the slots of the people of the store', async () => {
+      const again = await get(keyOfA, PluginApiRoutes.analytics.export).query(analyticsQuery)
+      const other = await get(keyOfA2, PluginApiRoutes.analytics.export).query(analyticsQuery)
+
+      expect(again.status).toBe(429)
+      expect(other.status).toBe(202)
+    })
+
+    it('needs both scopes to take the figures out, and the scope of each route to read', async () => {
+      const metrics = await get(keyOfA, PluginApiRoutes.analytics.metrics).query({})
+      const withoutExport = await createPluginKey(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${pluginId}-no-export`,
+        scopes: [PluginScopes.ANALYTICS_READ, PluginScopes.EXPORTS_READ]
+      })
+      const refused = await get(withoutExport.key, PluginApiRoutes.analytics.export).query(
+        analyticsQuery
+      )
+
+      expect(metrics.status).not.toBe(403)
+      expect(refused.status).toBe(403)
+      expect((await get(readsNothing, PluginApiRoutes.exports.list)).status).toBe(403)
+      expect((await get(readsNothing, PluginApiRoutes.analytics.metrics).query({})).status).toBe(
+        403
+      )
+      expect((await get(readsNothing, PluginApiRoutes.media.byId(fileA))).status).toBe(403)
+    })
+
+    it('gives the signed links of a file of its own store only, and none of another store', async () => {
+      const own = await get(keyOfA, PluginApiRoutes.media.byId(fileA))
+      const foreign = await get(keyOfA, PluginApiRoutes.media.byId(fileB))
+      const fromB = await get(keyOfB, PluginApiRoutes.media.byId(fileA))
+
+      expect(own.status).toBe(200)
+      expect(foreign.status).toBe(404)
+      expect(fromB.status).toBe(404)
+      expect((own.body as { url: string }).url).toMatch(/^https?:\/\//)
+      // Signed, and for minutes: an address that anyone could open without the signature is never given
+      expect((own.body as { url: string }).url).toContain('X-Amz-Signature=')
+      expect((own.body as { url: string }).url).toContain('X-Amz-Expires=')
+    })
+
+    it('signs an upload inside the store of the key, owned by the installation, and refuses the purposes its scope does not lend', async () => {
+      const body = {
+        purpose: 'message',
+        filename: 'photo.png',
+        contentType: 'image/png',
+        fileSizeBytes: 68
+      }
+      const own = await post(keyOfA, PluginApiRoutes.media.uploadUrl).send(body)
+      const product = await post(keyOfA, PluginApiRoutes.media.uploadUrl).send({
+        purpose: 'product',
+        parentId: randomUUID(),
+        filename: 'photo.png',
+        contentType: 'image/png',
+        fileSizeBytes: 68
+      })
+      const named = await post(keyOfA, PluginApiRoutes.media.uploadUrl).send({
+        ...body,
+        storeId: ctx.storeB.id
+      })
+
+      expect(own.status).toBe(200)
+      expect((own.body as { key: string }).key).toMatch(
+        new RegExp(`^${StorageKeys.storePrefix(ctx.storeA.id)}uploads/`)
+      )
+      expect(product.status).toBe(403)
+      expect(named.status).toBe(400)
+    })
+
+    it('does not confirm the object of another store, and writes no row in either', async () => {
+      const mediaId = randomUUID()
+      const response = await post(keyOfA, PluginApiRoutes.media.confirmUpload).send({
+        purpose: 'message',
+        filename: 'photo.png',
+        contentType: 'image/png',
+        fileSizeBytes: 68,
+        mediaId,
+        key: StorageKeys.messageUpload(ctx.storeB.id, mediaId, 'photo.png')
+      })
+
+      expect(response.status).toBe(403)
+      expect(await owner.media.count({ where: { id: mediaId } })).toBe(0)
+    })
+
+    it('answers 404 for a customer of another store on the ZIP of a gallery, and makes no export', async () => {
+      const foreign = await createCustomer(owner, { storeId: ctx.storeB.id })
+      const before = await owner.export.count({ where: { storeId: ctx.storeA.id } })
+
+      const zip = await post(keyOfA, PluginApiRoutes.media.downloadAll).send({
+        customerId: foreign.id
+      })
+
+      expect(zip.status).toBe(404)
+      expect(await owner.export.count({ where: { storeId: ctx.storeA.id } })).toBe(before)
+    })
+
+    it('has no route for the other kinds of export nor for the scheduled reports', async () => {
+      for (const path of [
+        '/plugin-api/customers/export',
+        '/plugin-api/orders/export',
+        '/plugin-api/analytics/reports'
+      ]) {
+        expect((await get(keyOfA, path)).status).not.toBe(200)
+      }
     })
   })
 
