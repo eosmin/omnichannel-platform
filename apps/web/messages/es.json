@@ -596,6 +596,8 @@
     "FINANCE_ACCOUNT_HAS_ENTRIES": "Una cuenta con asientos no se puede eliminar ni volver encabezado, solo desactivar",
     "FINANCE_ROLE_NOT_MAPPED": "Falta una cuenta para este rol: asígnala en los ajustes de finanzas",
     "FINANCE_BEFORE_START_DATE": "La fecha es anterior al inicio de la contabilidad",
+    "BANK_STATEMENT_INVALID": "El archivo del extracto bancario no es válido",
+    "FINANCE_ENTRY_RECONCILED": "Este asiento está conciliado con un extracto bancario: deshaz primero la conciliación",
     "FINANCE_ENTRY_ALREADY_REVERSED": "Este asiento ya fue reversado",
     "FINANCE_REOPEN_NOT_LATEST": "Solo se puede reabrir el último periodo cerrado",
     "FINANCE_CLOSE_PENDING_POSTINGS": "Hay asientos pendientes o fallidos en este periodo: resuélvelos primero",

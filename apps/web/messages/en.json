@@ -596,6 +596,8 @@
     "FINANCE_ACCOUNT_HAS_ENTRIES": "An account with entries cannot be deleted or turned into a header, only deactivated",
     "FINANCE_ROLE_NOT_MAPPED": "An account is missing for this role: map it in the finance settings",
     "FINANCE_BEFORE_START_DATE": "The date is before the accounting start date",
+    "BANK_STATEMENT_INVALID": "The bank statement file is not valid",
+    "FINANCE_ENTRY_RECONCILED": "This entry is reconciled with a bank statement: take the reconciliation back first",
     "FINANCE_ENTRY_ALREADY_REVERSED": "This entry was already reversed",
     "FINANCE_REOPEN_NOT_LATEST": "Only the latest closed period can be reopened",
     "FINANCE_CLOSE_PENDING_POSTINGS": "There are postings pending or failed in this period: resolve them first",

@@ -52,6 +52,24 @@ describe('readImportBody', () => {
     await expect(reading).rejects.toMatchObject({ code: ErrorCodes.REMITTANCE_IMPORT_INVALID })
   })
 
+  it('reads the encoding it is told, and refuses bytes that are not that encoding with the code it is given', async () => {
+    const latin = Buffer.from('Depósito niño', 'latin1')
+    const body = await readImportBody(request([latin]), 1024, {
+      encoding: 'windows-1252',
+      invalidCode: ErrorCodes.BANK_STATEMENT_INVALID
+    })
+    expect(body.text).toBe('Depósito niño')
+    expect(body.bytes.equals(latin)).toBe(true)
+    // the same bytes as UTF-8 are not text, and the refusal carries the code of the bank import
+    await expect(
+      readImportBody(request([latin]), 1024, { invalidCode: ErrorCodes.BANK_STATEMENT_INVALID })
+    ).rejects.toMatchObject({ code: ErrorCodes.BANK_STATEMENT_INVALID })
+    // the size limit is the same whatever the encoding
+    await expect(
+      readImportBody(request([Buffer.alloc(11)]), 10, { encoding: 'windows-1252' })
+    ).rejects.toMatchObject({ code: ErrorCodes.PAYLOAD_TOO_LARGE })
+  })
+
   it('reads an empty body as empty text', async () => {
     expect((await readImportBody(request([]), 10)).text).toBe('')
   })

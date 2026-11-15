@@ -216,6 +216,30 @@ export const ApiRoutes = {
       // The receipt: POST names the file (a Media of purpose finance_document uploaded for this transaction), GET gives its signed links
       document: (id: string) => `/finance/transactions/${id}/document`
     },
+    // Bank reconciliation by CSV (TDD_18 §4.4): the profiles that read a bank's file, the import, the suggestions a person decides on
+    bank: {
+      profiles: '/finance/bank-profiles',
+      profileById: (id: string) => `/finance/bank-profiles/${id}`,
+      // The mapper: a sample of a file read with the mapping being tried; it writes nothing
+      profilePreview: '/finance/bank-profiles/preview',
+      // POST takes the file itself (text/csv, text/tab-separated-values or text/plain) with the profile in the query
+      imports: '/finance/bank-imports',
+      importById: (id: string) => `/finance/bank-imports/${id}`,
+      importLines: (id: string) => `/finance/bank-imports/${id}/lines`,
+      // POST confirms, in one go, every line whose match is the only one and an exact one
+      confirmExact: (id: string) => `/finance/bank-imports/${id}/confirm-exact`,
+      // The balance of the books against the balance the statement ended with
+      difference: (id: string) => `/finance/bank-imports/${id}/difference`,
+      // POST confirms the pair of a statement line and a line of the journal
+      lineMatches: (id: string) => `/finance/bank-lines/${id}/matches`,
+      lineRejections: (id: string) => `/finance/bank-lines/${id}/rejections`,
+      // GET: the transaction of 4B.4a an unmatched line would be, prefilled (nothing is posted)
+      lineRegisterDraft: (id: string) => `/finance/bank-lines/${id}/register-draft`,
+      // POST takes a decision back (a confirmed pair or a rejection)
+      matchUndo: (id: string) => `/finance/bank-matches/${id}/undo`,
+      // The state of the reconciliation of an account in a month
+      status: '/finance/bank-reconciliation/status'
+    },
     balances: '/finance/balances',
     // The sources whose automatic entry failed, still waiting for a person (TDD_18 §6.1)
     postings: '/finance/postings'

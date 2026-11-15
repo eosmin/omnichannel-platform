@@ -8,6 +8,8 @@ import {
 import {
   AccountRole,
   AccountType,
+  BankStatementEncodings,
+  BankThousandsSeparators,
   CashKind,
   EntryOrigin,
   FinanceSourceType,
@@ -15,6 +17,8 @@ import {
   NormalSide,
   PartyType,
   PeriodStatus,
+  ReconciliationMatchStatus,
+  RemittanceDateFormats,
   SaleRecognition
 } from '@platform/core/domain'
 import { type ChainEntry, verifyChain } from '@platform/core/finance-hash'
@@ -593,7 +597,11 @@ describe('The tables of the ledger', () => {
         owner.$executeRaw`DELETE FROM journal_entries WHERE organization_id = ${orgA.id}`,
         'FINANCE_LEDGER_IMMUTABLE'
       )
-      await refused(owner.$executeRawUnsafe('TRUNCATE journal_lines'), 'FINANCE_LEDGER_IMMUTABLE')
+      // The decisions of the reconciliation name journal lines, so the table is truncated with them (alone it is refused for the key)
+      await refused(
+        owner.$executeRawUnsafe('TRUNCATE journal_lines, reconciliation_matches'),
+        'FINANCE_LEDGER_IMMUTABLE'
+      )
       await refused(
         owner.$executeRawUnsafe('TRUNCATE journal_entries CASCADE'),
         'FINANCE_LEDGER_IMMUTABLE'
@@ -1267,7 +1275,11 @@ describe('The tables of the ledger', () => {
       ['chk_ledger_accounts_cash_kind', CashKind],
       ['chk_journal_lines_party', PartyType],
       ['chk_finance_settings_recognize', SaleRecognition],
-      ['chk_finance_posting_failures_source_type', FinanceSourceType]
+      ['chk_finance_posting_failures_source_type', FinanceSourceType],
+      ['chk_reconciliation_status', ReconciliationMatchStatus],
+      ['chk_bank_profiles_thousands', BankThousandsSeparators],
+      ['chk_bank_profiles_encoding', BankStatementEncodings],
+      ['chk_bank_profiles_date_format', RemittanceDateFormats]
     ])('hold exactly the values of the enum in %s', async (constraint, values) => {
       expect(await listedIn(constraint)).toEqual(Object.values(values).sort())
     })
