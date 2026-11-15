@@ -5,19 +5,18 @@ jest.mock('@platform/channels/connections', () => ({
   withTimeout: <T>(work: Promise<T>) => work
 }))
 const pinnedHttpsGet = jest.fn<Promise<unknown>, unknown[]>()
-jest.mock('./pinned-https-get', () => ({
-  ...jest.requireActual<object>('./pinned-https-get'),
+jest.mock('@platform/core/url-safety', () => ({
+  ...jest.requireActual<object>('@platform/core/url-safety'),
   pinnedHttpsGet: (...args: unknown[]): Promise<unknown> => pinnedHttpsGet(...args)
 }))
 
 import { MediaStatus, OriginMediaSlots } from '@platform/core/domain'
 import { JobNames } from '@platform/core/queues'
 import { MediaPurpose } from '@platform/core/storage'
-import { UnsafeUrlError } from '@platform/core/url-safety'
+import { PinnedFetchFailed, UnsafeUrlError } from '@platform/core/url-safety'
 
 import { originMediaId } from './inbound-media-id'
 import { OriginMediaFetcher } from './origin-media-fetcher.service'
-import { PinnedFetchFailed } from './pinned-https-get'
 
 const STORE = '11111111-1111-4111-8111-111111111111'
 const ORIGIN = '33333333-3333-4333-8333-333333333333'

@@ -2,12 +2,18 @@ import { z } from 'zod'
 
 import {
   CHANNEL_ID_PATTERN,
+  ChannelConnectFieldLimits,
+  ChannelManifestLimits,
+  ChannelPluginScopes,
+  isOfficialChannelId,
   isPlainDescriptorText,
   type LocalizedText,
   PluginCatalogTypes,
   PluginManifestLimits,
   PluginPricingModels,
-  readLocalizedText
+  readLocalizedText,
+  ManifestChannelCapabilities,
+  RESERVED_CONNECT_FIELD_KEYS
 } from '@platform/core/domain'
 import { type EventName, Events } from '@platform/core/events'
 import { isWellFormedPublicHttpsUrl } from '@platform/core/url-safety'
@@ -19,7 +25,8 @@ import { type PluginScope, PluginScopes } from '@platform/plugins/sdk'
 // the network, by whoever calls them (the install challenge, every delivery): a name can lead anywhere later.
 //
 // What it refuses on purpose, each with the step that will accept it:
-// - `type: "channel"` and the `channel` block: the manifest of a channel plugin (Step 5.6, channel plugins by manifest).
+// - `type: "channel"` is accepted with its `channel` block (TDD_10 §6.7.2); an integration plugin carries neither the
+//   block nor `capabilities`, and a channel plugin carries both, with the two channel scopes.
 // - `pricing.model` other than `free`: paid and plan-gated plugins are Phase 2 (`MVP_TRIM_CHECKLIST.md` §7).
 // - a scope that does not exist: a scope is added with the first route that uses it.
 
@@ -130,6 +137,58 @@ const widget = z.strictObject({
     .optional()
 })
 
+const CHANNEL_CAPABILITIES: ReadonlySet<string> = new Set(ManifestChannelCapabilities)
+
+// The text of a connection field, in each language the interface speaks (the web draws it when it has no message of
+// its own for the field, `fieldLabelOf`)
+const fieldLabel = z.unknown().transform((value, ctx): LocalizedText => {
+  const text = readLocalizedText(value, PluginManifestLimits.FIELD_LABEL_MAX_LENGTH)
+  if (text === null) {
+    ctx.addIssue({ code: 'custom', message: 'a plain text in es and en' })
+    return z.NEVER
+  }
+  return text
+})
+
+// A field of the form that connects an account of the provider, as the registry keeps it (`ConnectFieldSnapshot`),
+// except that a third party names it with a text and never with a message key of the web app
+const connectField = z.strictObject({
+  key: z
+    .string()
+    .regex(ChannelConnectFieldLimits.KEY_PATTERN)
+    .refine(key => !RESERVED_CONNECT_FIELD_KEYS.has(key), {
+      message: 'a key the platform reserves'
+    }),
+  label: fieldLabel,
+  secret: z.boolean(),
+  required: z.boolean(),
+  multiple: z.boolean()
+})
+
+const channelBlock = z.strictObject({
+  // Shown as it is: a plugin does not translate its name
+  label: plainText(ChannelManifestLimits.LABEL_MAX_LENGTH),
+  // Checked for its shape here; resolved against the network at every call
+  commandsUrl: publicUrl,
+  // Absent: the channel has no window. `requiresTemplateWhenClosed` is not accepted: a remote plugin sends no template.
+  messagingWindow: z
+    .strictObject({
+      hours: z
+        .number()
+        .int()
+        .min(ChannelManifestLimits.MIN_WINDOW_HOURS)
+        .max(ChannelManifestLimits.MAX_WINDOW_HOURS)
+    })
+    .optional(),
+  connectFields: z
+    .array(connectField)
+    .max(ChannelConnectFieldLimits.MAX_FIELDS)
+    .refine(list => new Set(list.map(field => field.key)).size === list.length, {
+      message: 'repeated field key'
+    })
+    .optional()
+})
+
 export const pluginManifestSchema = z
   .strictObject({
     id: z.string().regex(PLAIN_ID),
@@ -139,9 +198,20 @@ export const pluginManifestSchema = z
     names: localizedName.optional(),
     description: plainText(PluginManifestLimits.DESCRIPTION_MAX_LENGTH),
     author,
-    type: z.literal(PluginCatalogTypes.INTEGRATION),
+    type: z.enum([PluginCatalogTypes.INTEGRATION, PluginCatalogTypes.CHANNEL]),
     icon: publicUrl.optional(),
     pricing: z.strictObject({ model: z.literal(PluginPricingModels.FREE) }),
+    // What a channel can do (TDD_10 §6.7.2); only a channel plugin has them
+    capabilities: z
+      .array(
+        z.string().refine(capability => CHANNEL_CAPABILITIES.has(capability), {
+          message: 'a capability a remote channel cannot declare'
+        })
+      )
+      .max(CHANNEL_CAPABILITIES.size)
+      .refine(list => new Set(list).size === list.length, { message: 'repeated capability' })
+      .optional(),
+    channel: channelBlock.optional(),
     scopes: z
       .array(z.string().refine((scope): scope is PluginScope => SCOPES.has(scope)))
       .max(SCOPES.size)
@@ -177,6 +247,46 @@ export const pluginManifestSchema = z
         termsOfService: publicUrl.optional()
       })
       .optional()
+  })
+  .superRefine((manifest, ctx) => {
+    if (manifest.type !== PluginCatalogTypes.CHANNEL) {
+      for (const key of ['channel', 'capabilities'] as const) {
+        if (manifest[key] !== undefined) {
+          ctx.addIssue({ code: 'custom', path: [key], message: 'only a channel plugin has it' })
+        }
+      }
+      // The two scopes of a channel are the channel's: an integration plugin that held one could act as a channel
+      for (const scope of Object.values(ChannelPluginScopes)) {
+        if (manifest.scopes.includes(scope)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['scopes'],
+            message: `${scope} is for a channel plugin`
+          })
+        }
+      }
+      return
+    }
+    if (manifest.channel === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['channel'],
+        message: 'a channel plugin has a channel block'
+      })
+    }
+    // The id is the channel id: never one of the platform's (the table is checked by whoever stores it)
+    if (isOfficialChannelId(manifest.id)) {
+      ctx.addIssue({ code: 'custom', path: ['id'], message: 'the id of an official channel' })
+    }
+    for (const scope of Object.values(ChannelPluginScopes)) {
+      if (!manifest.scopes.includes(scope)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['scopes'],
+          message: `a channel plugin holds ${scope}`
+        })
+      }
+    }
   })
   // A widget needs the address its iframe loads
   .refine(manifest => manifest.widgets === undefined || manifest.ui?.widget !== undefined, {

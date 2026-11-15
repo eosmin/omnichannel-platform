@@ -1251,6 +1251,9 @@ model Plugin {
   // The organization that registered it (private registration, D10): only its stores see it and install it. Null for the
   // plugins the platform ships and the ones its code registers, which every store sees. Never an official plugin.
   organizationId              String?  @map("organization_id")
+  // The platform's own 128 px PNG of the icon of a channel plugin (`plugin-icons/{id}.png`), made once when the plugin is
+  // registered; the original the author hosts is never served. Null: no icon, or not fetched yet.
+  iconKey                     String?  @map("icon_key")
   createdAt                   DateTime @default(now()) @map("created_at")
   updatedAt                   DateTime @updatedAt @map("updated_at")
 
@@ -1263,24 +1266,30 @@ model Plugin {
 }
 
 model PluginInstallation {
-  id                 String    @id @default(uuid())
-  storeId            String    @map("store_id")
-  pluginId           String    @map("plugin_id")
-  scopes             String[] // PluginScope[]
-  status             String    @default("pending_setup") // PluginInstallationStatus
+  id                     String    @id @default(uuid())
+  storeId                String    @map("store_id")
+  pluginId               String    @map("plugin_id")
+  scopes                 String[] // PluginScope[]
+  status                 String    @default("pending_setup") // PluginInstallationStatus
   // The scoped key of a plugin that calls the platform: null for an official channel, which runs
   // inside it and has none
-  apiKeyPrefix       String?   @map("api_key_prefix") // First 12 chars, shown in UI
-  apiKeyHash         String?   @unique @map("api_key_hash") // sha256 of the full key
-  rateLimitPerMinute Int       @default(60) @map("rate_limit_per_minute") // From manifest.limits
+  apiKeyPrefix           String?   @map("api_key_prefix") // First 12 chars, shown in UI
+  apiKeyHash             String?   @unique @map("api_key_hash") // sha256 of the full key
+  rateLimitPerMinute     Int       @default(60) @map("rate_limit_per_minute") // From manifest.limits
   // The webhook endpoint that answered the install challenge: the only address a delivery goes to, whatever a newer version of
   // the manifest says. Null for a plugin with no webhooks and for the plugins that run inside the platform.
-  webhookEndpoint    String?   @map("webhook_endpoint")
-  config             Json?
-  installedBy        String    @map("installed_by")
-  createdAt          DateTime  @default(now()) @map("created_at")
-  updatedAt          DateTime  @updatedAt @map("updated_at")
-  revokedAt          DateTime? @map("revoked_at")
+  webhookEndpoint        String?   @map("webhook_endpoint")
+  config                 Json?
+  // The secret that signs the commands the platform sends to a remote channel plugin (TDD_10 §6.7.3), encrypted as
+  // `Webhook.secret` is; null for an installation that is not of a remote channel. The previous one stays valid for 10 minutes
+  // after a rotation. The install flow and the rotation arrive with Step 5.6 PR P2 and PR C2.
+  commandSecret          Bytes?    @map("command_secret")
+  commandSecretPrevious  Bytes?    @map("command_secret_previous")
+  commandSecretRotatedAt DateTime? @map("command_secret_rotated_at")
+  installedBy            String    @map("installed_by")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+  revokedAt              DateTime? @map("revoked_at")
 
   store              Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
   plugin             Plugin              @relation(fields: [pluginId], references: [id], onDelete: Restrict)

@@ -24,6 +24,7 @@ import {
 
 import type { Actor } from '../tenancy'
 
+import { PluginIconService } from './plugin-icon.service'
 import type { PluginStoreRef } from './plugin-installations.service'
 
 // What the owner gets back from registering a manifest. The manifest itself is not repeated: they just sent it.
@@ -57,6 +58,7 @@ function storedManifest(manifest: PluginManifest): { [key: string]: JsonValue } 
 }
 
 const storedVersionSchema = z.object({ version: z.string() })
+const storedIconSchema = z.object({ icon: z.string().optional() })
 
 function alreadyRegistered(message: string): PlatformException {
   return new PlatformException(
@@ -77,7 +79,8 @@ export class PluginRegistrationService {
     private readonly prisma: PrismaService,
     private readonly registry: PluginRegistry,
     private readonly carriers: CarrierRegistry,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly icons: PluginIconService
   ) {}
 
   async register(
@@ -91,10 +94,15 @@ export class PluginRegistrationService {
       isOfficialChannelId(manifest.id) ||
       manifest.id === ShippingPlugin.ID ||
       this.carriers.knows(manifest.id) ||
-      this.registry.has(manifest.id)
+      (this.registry.has(manifest.id) && !this.registry.isRemote(manifest.id))
     ) {
       throw alreadyRegistered('that plugin id belongs to the platform')
     }
+
+    // The icon of a channel plugin is fetched before anything is written (the network is never asked inside a transaction)
+    // and stored after the row is committed and the id is known to be this organization's: a key of the platform for an id
+    // another organization holds is never written
+    const icon = await this.iconToFetch(store, manifest)
 
     const write = () => this.write(store, manifest)
     let result: WriteResult
@@ -113,8 +121,12 @@ export class PluginRegistrationService {
       status: result.status,
       outcome: result.outcome
     }
-    // Sent again as it is stored (a retry whose answer was lost): the same answer, and nothing written or audited
-    if (result.outcome === RegistrationOutcomes.UNCHANGED) return view
+    // Sent again as it is stored (a retry whose answer was lost): the same answer, and nothing written or audited. The
+    // picture may still be missing (an earlier store failed): it is kept now.
+    if (result.outcome === RegistrationOutcomes.UNCHANGED) {
+      if (icon !== null) await this.keepIcon(manifest.id, icon)
+      return view
+    }
     this.audit.log({
       action:
         result.outcome === RegistrationOutcomes.UPDATED
@@ -134,7 +146,43 @@ export class PluginRegistrationService {
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
+    // After the audit: the row is committed and the registration happened, whatever becomes of the picture
+    if (icon !== null) await this.keepIcon(manifest.id, icon)
     return view
+  }
+
+  // The picture of the icon of a channel plugin when it has to be fetched: the plugin declares one, and it is a new address or
+  // there is no stored picture yet. Whoever the id belongs to is decided later, by the write; an id that is not this
+  // organization's is fetched at most once per attempt and never stored.
+  private async iconToFetch(
+    store: PluginStoreRef,
+    manifest: PluginManifest
+  ): Promise<Buffer | null> {
+    if (manifest.type !== PluginCatalogTypes.CHANNEL || manifest.icon === undefined) return null
+    const existing = await this.prisma.client.plugin.findUnique({
+      where: { id: manifest.id },
+      select: { organizationId: true, iconKey: true, manifest: true }
+    })
+    if (existing !== null && existing.organizationId !== store.organizationId) return null
+    const stored = storedIconSchema.safeParse(existing?.manifest)
+    if (existing?.iconKey != null && stored.success && stored.data.icon === manifest.icon) {
+      return null
+    }
+    return this.icons.fetch(manifest.icon)
+  }
+
+  private async keepIcon(pluginId: string, png: Buffer): Promise<void> {
+    let key: string
+    try {
+      key = await this.icons.store(pluginId, png)
+    } catch {
+      throw new PlatformException(
+        ErrorCodes.PLUGIN_ICON_INVALID,
+        'the icon could not be kept, register the plugin again',
+        HttpStatusCodes.SERVICE_UNAVAILABLE
+      )
+    }
+    await this.prisma.client.plugin.update({ where: { id: pluginId }, data: { iconKey: key } })
   }
 
   private write(store: PluginStoreRef, manifest: PluginManifest): Promise<WriteResult> {
@@ -166,7 +214,7 @@ export class PluginRegistrationService {
           data: {
             id: manifest.id,
             ...data,
-            type: PluginCatalogTypes.INTEGRATION,
+            type: manifest.type,
             isOfficial: false,
             pricingModel: PluginPricingModels.FREE,
             status: PluginStatus.APPROVED,
@@ -184,7 +232,8 @@ export class PluginRegistrationService {
       if (
         existing.organizationId !== store.organizationId ||
         existing.isOfficial ||
-        existing.type !== String(PluginCatalogTypes.INTEGRATION)
+        // A plugin does not change what it is: an integration stays one and a channel stays one
+        existing.type !== manifest.type
       ) {
         throw alreadyRegistered('that plugin id is taken')
       }
@@ -205,8 +254,13 @@ export class PluginRegistrationService {
           'a manifest of this plugin with that version or a newer one is already registered'
         )
       }
-      // The pricing, the owner organization and the installations are not touched
-      await tx.plugin.update({ where: { id: manifest.id }, data })
+      // The pricing, the owner organization and the installations are not touched. A picture whose address changed is
+      // not kept: until the new one is stored there is none, so the old one is never shown for the new address.
+      const iconChanged = storedIconSchema.safeParse(existing.manifest).data?.icon !== manifest.icon
+      await tx.plugin.update({
+        where: { id: manifest.id },
+        data: iconChanged ? { ...data, iconKey: null } : data
+      })
       return { outcome: RegistrationOutcomes.UPDATED, previousVersion, status: existing.status }
     })
   }
