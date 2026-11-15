@@ -488,6 +488,23 @@ describe('The expenses, incomes and transfers registered by hand (Step 4B.4)', (
       expect(await owner.journalEntry.count({ where: { reversesEntryId: body.entryId } })).toBe(1)
     })
 
+    it('is not done by the generic reversal of the journal: the entry belongs to its transaction', async () => {
+      const body = await registered(transfer())
+      const before = await journalCount(ctx.orgA.id)
+      const reversed = await asAdminA()
+        .post(ApiRoutes.finance.entries.reverse(body.entryId))
+        .send({ memo: 'Around the transaction' })
+
+      expect(reversed.status).toBe(CONFLICT)
+      expect(errorOf(reversed).metadata?.conflict).toBe(FinanceConflicts.ENTRY_OWNED_BY_TRANSACTION)
+      expect(await journalCount(ctx.orgA.id)).toBe(before)
+      expect(
+        (await asAdminA().get(ApiRoutes.finance.transactions.byId(body.id))).body
+      ).toMatchObject({
+        voided: false
+      })
+    })
+
     it('says why, and an unknown transaction is a 404', async () => {
       const body = await registered(expense())
 
@@ -919,6 +936,21 @@ describe('The expenses, incomes and transfers registered by hand (Step 4B.4)', (
 
       // The entry of another transaction: the source, and the amount, are not this row's
       await expect(insertRow({ entryId: other.entryId })).rejects.toThrow(
+        /FINANCE_TRANSACTION_ENTRY/
+      )
+    })
+
+    it('is born live, and replaces only a voided transaction of its own kind', async () => {
+      const live = await registered(expense({ amountCents: 94 }))
+      const other = await registered(expense({ amountCents: 95 }))
+      await asAdminA().post(ApiRoutes.finance.transactions.void(other.id)).send({ reason: 'Gone' })
+      const voided = await owner.financeTransaction.findUniqueOrThrow({ where: { id: other.id } })
+
+      await expect(insertRow({ voidedByEntryId: voided.voidedByEntryId })).rejects.toThrow(
+        /FINANCE_TRANSACTION_IMMUTABLE/
+      )
+      // A live transaction is not replaced, and neither is one of another kind
+      await expect(insertRow({ replacesTransactionId: live.id })).rejects.toThrow(
         /FINANCE_TRANSACTION_ENTRY/
       )
     })

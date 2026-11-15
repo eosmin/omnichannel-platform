@@ -307,7 +307,9 @@ export const FinanceConflicts = {
   // A transaction is voided once; the reversing entry is in the journal
   TRANSACTION_ALREADY_VOIDED: 'transaction_already_voided',
   // A change keeps the kind: an expense is not turned into a transfer (void it and register the other)
-  TRANSACTION_KIND_CHANGED: 'transaction_kind_changed'
+  TRANSACTION_KIND_CHANGED: 'transaction_kind_changed',
+  // The entry of a transaction registered by hand is voided through the transaction (its kind's permission, its audit row), not reversed alone
+  ENTRY_OWNED_BY_TRANSACTION: 'entry_owned_by_transaction'
 } as const
 
 // The names of the ways a chart change breaks the chart, beside the ones `account-rules` returns

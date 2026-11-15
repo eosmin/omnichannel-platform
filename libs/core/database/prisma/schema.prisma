@@ -2520,6 +2520,8 @@ model FinanceTransaction {
   @@unique([organizationId, replacesTransactionId])
   @@index([organizationId, occurredOn])
   @@index([organizationId, kind, occurredOn])
+  // The list: the newest first, by page
+  @@index([organizationId, createdAt, id])
   @@map("finance_transactions")
 }
 

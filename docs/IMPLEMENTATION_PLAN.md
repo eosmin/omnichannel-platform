@@ -1462,6 +1462,13 @@ stays refused until 4B.5. (8) Voiding is a HIGH-tier destructive action (`VOID_F
 server by a cent cannot be typed: owner and accountant decide with `TDD_18 §13` row 2; the interface (4B.9) shows the computed amount. (d) The
 `finance:` entry of `PermissionsOfUnbuiltAreas` stays until 4B.9, which draws the screens (the permissions are read by the code now).
 (e) A fee a bank charges on a transfer is a second expense by hand: a transfer with a fee line is not modelled.
+(f) A transaction at a rate of 0 % posts no tax line (a line has one side above zero), so no journal line carries its rate: the VAT report of 4B.8
+reads the base of zero-rated expenses and incomes from `finance_transactions` (`tax_rate_id`, `amount_cents`), not from the lines. (g) The list has an
+index for its order; the filter by account (three columns) has none until the volume asks for it (4B.9 measures). (h) The permission of a transaction is
+the caller's in the store of `X-Store-Id` and the ledger is the organization's (`TDD_18 §9.1`): a store in the body is a dimension and is not compared with
+the permissions of that store, by design. (i) A trigger of the table that fires (a race, a bug) surfaces as the error it is, not typed: the service answers
+every rule first. Review of 4B.4a (rule 12): the generic `POST finance/entries/:id/reverse` now refuses the entry of a transaction
+(`FinanceConflicts.ENTRY_OWNED_BY_TRANSACTION`), because it would leave the transaction looking live and skip its kind's permission and audit row.
 
 ### Step 4B.5 — Suppliers and purchase orders (api)
 - [ ] `Supplier`, `PurchaseOrder`, `PurchaseOrderLine`, `PurchaseReceipt` (+ lines), `SupplierPayment`; the transition table;

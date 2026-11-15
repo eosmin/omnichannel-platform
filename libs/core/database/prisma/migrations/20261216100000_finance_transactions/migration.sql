@@ -28,6 +28,9 @@ CREATE TABLE "finance_transactions" (
 CREATE INDEX "finance_transactions_organization_id_occurred_on_idx" ON "finance_transactions"("organization_id", "occurred_on");
 
 -- CreateIndex
+CREATE INDEX "finance_transactions_organization_id_created_at_id_idx" ON "finance_transactions"("organization_id", "created_at", "id");
+
+-- CreateIndex
 CREATE INDEX "finance_transactions_organization_id_kind_occurred_on_idx" ON "finance_transactions"("organization_id", "kind", "occurred_on");
 
 -- CreateIndex
@@ -96,7 +99,8 @@ ALTER TABLE finance_transactions
   ADD CONSTRAINT chk_finance_transactions_replaces CHECK (replaces_transaction_id IS NULL OR replaces_transaction_id <> id),
   ADD CONSTRAINT chk_finance_transactions_void CHECK (voided_by_entry_id IS NULL OR voided_by_entry_id <> entry_id);
 
--- The accounts a transaction names and the entry it belongs to (raised as the typed prefix the service maps)
+-- The accounts a transaction names and the entry it belongs to. The service checks the same rules first and answers them typed; this is the
+-- net under it, so a trigger that fires is a race or a bug and surfaces as the error it is (the prefix is for the log and the tests)
 CREATE FUNCTION check_finance_transaction_row() RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = public, pg_temp AS $$
@@ -106,8 +110,20 @@ DECLARE
   category ledger_accounts%ROWTYPE;
   posted journal_entries%ROWTYPE;
   voiding journal_entries%ROWTYPE;
+  replaced finance_transactions%ROWTYPE;
 BEGIN
   IF TG_OP = 'INSERT' THEN
+    -- A transaction is born live: only the one update below voids it, and what it replaces was voided by the reversal of its entry
+    IF NEW.voided_by_entry_id IS NOT NULL THEN
+      RAISE EXCEPTION 'FINANCE_TRANSACTION_IMMUTABLE: a transaction is born live and voided by an update';
+    END IF;
+    IF NEW.replaces_transaction_id IS NOT NULL THEN
+      SELECT * INTO replaced FROM finance_transactions WHERE id = NEW.replaces_transaction_id AND organization_id = NEW.organization_id;
+      SELECT * INTO voiding FROM journal_entries WHERE id = replaced.voided_by_entry_id AND organization_id = NEW.organization_id;
+      IF replaced.id IS NULL OR replaced.kind <> NEW.kind OR voiding.reverses_entry_id IS DISTINCT FROM replaced.entry_id THEN
+        RAISE EXCEPTION 'FINANCE_TRANSACTION_ENTRY: what it replaces is not a voided transaction of its kind';
+      END IF;
+    END IF;
     IF NEW.from_account_id IS NOT NULL THEN
       SELECT * INTO moved_from FROM ledger_accounts WHERE id = NEW.from_account_id AND organization_id = NEW.organization_id;
       IF moved_from.cash_kind IS NULL THEN

@@ -172,19 +172,7 @@ export class FinanceTransactionsService {
     const voided = await this.prisma.transaction(async tx =>
       this.voidIn(tx, organizationId, id, body.reason, actor, granted)
     )
-    if (!voided.replayed) {
-      this.audit.log({
-        action: AuditAction.FINANCE_TRANSACTION_VOIDED,
-        actor: { userId: actor.userId },
-        organizationId,
-        storeId: actor.storeId,
-        resourceType: FinanceResourceTypes.TRANSACTION,
-        resourceId: id,
-        metadata: { reversalEntryId: voided.entryId },
-        ipAddress: actor.ipAddress,
-        userAgent: actor.userAgent
-      })
-    }
+    this.auditVoided(organizationId, id, voided.entryId, null, actor)
     return this.get(organizationId, id)
   }
 
@@ -228,18 +216,8 @@ export class FinanceTransactionsService {
         recorded: await this.recordIn(tx, organizationId, body.replacement, actor, id)
       }
     })
-    if (result.voided !== null && !result.voided.replayed) {
-      this.audit.log({
-        action: AuditAction.FINANCE_TRANSACTION_VOIDED,
-        actor: { userId: actor.userId },
-        organizationId,
-        storeId: actor.storeId,
-        resourceType: FinanceResourceTypes.TRANSACTION,
-        resourceId: id,
-        metadata: { reversalEntryId: result.voided.entryId, replacedBy: result.recorded.id },
-        ipAddress: actor.ipAddress,
-        userAgent: actor.userAgent
-      })
+    if (result.voided !== null) {
+      this.auditVoided(organizationId, id, result.voided.entryId, result.recorded.id, actor)
     }
     if (!result.recorded.replayed) {
       this.auditRecorded(organizationId, result.recorded, body.replacement, actor)
@@ -462,7 +440,7 @@ export class FinanceTransactionsService {
     actor: Actor,
     granted: readonly Permission[],
     mustBeKind: FinanceTransactionKind | null = null
-  ): Promise<{ entryId: string; replayed: boolean }> {
+  ): Promise<{ entryId: string }> {
     const original = await this.row(tx, organizationId, id)
     requireTransactionPermission(original.kind as FinanceTransactionKind, granted)
     if (mustBeKind !== null && (original.kind as FinanceTransactionKind) !== mustBeKind) {
@@ -495,7 +473,28 @@ export class FinanceTransactionsService {
         conflict: FinanceConflicts.TRANSACTION_ALREADY_VOIDED
       })
     }
-    return { entryId: reversal.id, replayed: reversal.replayed }
+    // The pointer was set by THIS request (a second one finds it set and is refused above), so this is the request that voided it
+    return { entryId: reversal.id }
+  }
+
+  private auditVoided(
+    organizationId: string,
+    id: string,
+    reversalEntryId: string,
+    replacedBy: string | null,
+    actor: Actor
+  ): void {
+    this.audit.log({
+      action: AuditAction.FINANCE_TRANSACTION_VOIDED,
+      actor: { userId: actor.userId },
+      organizationId,
+      storeId: actor.storeId,
+      resourceType: FinanceResourceTypes.TRANSACTION,
+      resourceId: id,
+      metadata: { reversalEntryId, ...(replacedBy === null ? {} : { replacedBy }) },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
   }
 
   private auditRecorded(
