@@ -187,6 +187,32 @@ describe('computeOrderTax', () => {
     expect(result.addedToTotalCents).toBe(260)
   })
 
+  it('gives the same tax and the same total whether the price is shown with the tax included or as a base plus the tax', () => {
+    // 10.00 + 13 % = 11.30: the shop shows either price and the customer pays the same, with the same tax inside
+    const shown = computeOrderTax({
+      ...base,
+      lines: [taxed(1000, 3)],
+      shippingCents: 500,
+      shippingRateBps: VAT,
+      includesTax: false
+    })
+    const grossPrice = computeOrderTax({
+      ...base,
+      lines: [taxed(1130, 3)],
+      shippingCents: 565,
+      shippingRateBps: VAT,
+      includesTax: true
+    })
+    const totalOf = (subtotal: number, shipping: number, added: number): number =>
+      subtotal + shipping + added
+
+    expect(totalOf(3000, 500, shown.addedToTotalCents)).toBe(3955)
+    expect(totalOf(3390, 565, grossPrice.addedToTotalCents)).toBe(3955)
+    expect(shown.taxCents).toBe(455)
+    expect(grossPrice.taxCents).toBe(455)
+    expect(shown.lines[0]?.netCents).toBe(grossPrice.lines[0]?.netCents)
+  })
+
   it('computes the tax of each line and sums them, not the tax of the sum', () => {
     // Three lines of 9.99 holding 1.15 each (3.45), where the 29.97 together would hold 3.4478 (3.45): same here, so use
     // 3 x 3.33 excluded, where each line is 0.4329 (0.43) and the sum of the lines is 1.29 but the whole is 1.2987 (1.30)

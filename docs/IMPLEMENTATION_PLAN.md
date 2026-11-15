@@ -1461,6 +1461,9 @@ supplier and is paid in parts from the chosen account, and the ledger agrees wit
       comparisons; the metrics and the `FINANCE_POSTING_FAILED` notification
 - [ ] **`FINANCE_VIEW_CARRIER_FEES`** gates the commission and the rates of a carrier connection (closes (c3)(i) of Step 4.15: `shipping:view`
       stops showing them; the web of Settings → Carriers shows the boxes only with it)
+- [ ] The charge model of a carrier connection (`prepaid` | `collected in the remittance` | `invoiced`, `TDD_18 §4.2` note on E4, owner's information to
+      confirm with the accountant, `TDD_18 §13` rows 2 and 5) decides the entry of E4/E5 and the input VAT of a carrier charge; with 4B.5 for the
+      purchase of prepaid guides. Owner 4B.5/4B.6; not built by 4B.3
 - [ ] Tests: one case per event with exact amounts (a COD sale with a commission and a freight, a remittance that matches, one that
       differs, one voided; a prepaid sale; a return before and after delivery; each adjustment), a lost event recovered by the sweep, a
       missing mapping fails visibly and blocks the close, the same events twice produce one entry
