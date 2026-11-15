@@ -952,7 +952,7 @@ describe('InventoryService', () => {
     }
     const settle = () => new Promise(resolve => setTimeout(resolve, 150))
 
-    it('announces a movement after it commits, with the item, the warehouse, the type and the quantity', async () => {
+    it('announces a movement after it commits, with the movement, the item, the warehouse, the type and the quantity', async () => {
       const moved = listen(Events.INVENTORY_MOVED)
       const stock = await item({ onHand: 4 })
       await stock.move({ type: Type.RESERVE, quantity: 2 })
@@ -962,6 +962,8 @@ describe('InventoryService', () => {
       expect(moved.heard.filter(payload => payload['productId'] === stock.productId)).toEqual([
         expect.objectContaining({ type: Type.RECEIPT, quantity: 4 }),
         {
+          // The books post a stock adjustment by its movement (TDD_18 §4.2 E9): the id is new on every run
+          movementId: expect.any(String) as string,
           storeId: ctx.storeA.id,
           productId: stock.productId,
           variantId: null,
