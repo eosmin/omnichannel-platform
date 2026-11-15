@@ -18,6 +18,18 @@
         }
       }
     },
+    "test-pooler": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": ["^prisma-generate"],
+      "options": {
+        "command": "jest --config jest.pooler.config.cts --runInBand",
+        "cwd": "{projectRoot}",
+        "env": {
+          "NODE_OPTIONS": "--experimental-vm-modules --max-old-space-size=4096 --no-warnings=ExperimentalWarning"
+        }
+      }
+    },
     "test-security": {
       "executor": "nx:run-commands",
       "cache": false,

@@ -14,6 +14,7 @@
     "test:cov": "nx run-many --target=test --all -- --coverage",
     "test:contracts": "nx run tests:test-contracts --skip-nx-cache",
     "test:security": "nx run tests:test-security --skip-nx-cache",
+    "test:pooler": "nx run tests:test-pooler --skip-nx-cache",
     "test:affected": "nx affected --target=test --base=origin/main",
     "lint": "nx run-many --target=lint --all",
     "lint:fix": "nx run-many --target=lint --all -- --fix",

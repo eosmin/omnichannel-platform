@@ -8,6 +8,13 @@ export const dbRoleEnvSchema = z.object({
   DB_APP_PASSWORD: z.string().min(12),
   DB_WORKER_PASSWORD: z.string().min(12)
 })
+// The password of the pgbouncer role (the auth_user of PgBouncer and the monitoring user of SHOW POOLS):
+// docker-compose.yml gives it to Postgres and to PgBouncer, and the pooler suites read it to open the
+// admin console. Not the api's: the api only holds the URL of its own role.
+export const poolerEnvSchema = z.object({
+  PGBOUNCER_AUTH_PASSWORD: z.string().min(12)
+})
+
 export type DbRoleEnv = z.infer<typeof dbRoleEnvSchema>
 
 export function loadDbRoleEnv(): DbRoleEnv {

@@ -8,14 +8,18 @@ import { metaEnvShape } from '../libs/channels/meta/src/meta-env'
 import { toyEnvShape } from '../libs/channels/toy/src/toy-env'
 import { envSchema } from '../libs/core/platform/config/env-schema'
 
-import { dbRoleEnvSchema } from './db-role-env'
+import { dbRoleEnvSchema, poolerEnvSchema } from './db-role-env'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 
 // Variables read by tooling, not by the api or the worker: DIRECT_DATABASE_URL by prisma.config.ts
-// and the two role passwords by scripts/set-db-role-passwords.ts. They come from that script's own
+// the two role passwords by scripts/set-db-role-passwords.ts and the password of the pgbouncer role by the
+// pooler suites. They come from that script's own
 // schema and are always required.
-const TOOLING_KEYS: readonly string[] = Object.keys(dbRoleEnvSchema.shape)
+const TOOLING_KEYS: readonly string[] = [
+  ...Object.keys(dbRoleEnvSchema.shape),
+  ...Object.keys(poolerEnvSchema.shape)
+]
 
 interface Declared {
   key: string
