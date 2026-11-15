@@ -106,7 +106,6 @@ export const RemoteChannelApiLimits = {
   PROFILE_NAME_MAX_LENGTH: 100,
   MESSAGE_CONTENT_MAX_LENGTH: 4096,
   MESSAGE_METADATA_MAX_BYTES: 4096,
-  MEDIA_REF_MAX_LENGTH: 2048,
   // A timestamp older than this, or further ahead than the second, is refused
   TIMESTAMP_MAX_AGE_DAYS: 30,
   TIMESTAMP_MAX_AHEAD_MINUTES: 5,

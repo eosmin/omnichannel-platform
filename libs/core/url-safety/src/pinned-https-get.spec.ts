@@ -135,7 +135,12 @@ describe('pinnedHttpsGet extra headers', () => {
     'upgrade',
     'TE',
     'accept',
-    'Accept-Encoding'
+    'Accept-Encoding',
+    'Proxy-Authorization',
+    'Expect',
+    'Cookie',
+    'x_bad',
+    'x-'
   ])('refuses to set %s, before any lookup or request', async name => {
     const { request, calls } = fakeRequest(200)
     const resolve = jest.fn(resolvesTo('93.184.216.34'))
@@ -150,6 +155,21 @@ describe('pinnedHttpsGet extra headers', () => {
     ).rejects.toThrow(TypeError)
     expect(resolve).not.toHaveBeenCalled()
     expect(calls).toHaveLength(0)
+  })
+})
+
+describe('pinnedHttpsGet header names', () => {
+  it('refuses two spellings of one name, as Node would keep only one of them', async () => {
+    const { request } = fakeRequest(200)
+    await expect(
+      pinnedHttpsGet('https://cdn.example.com/a.png', {
+        accept: '*/*',
+        timeoutMs: 1000,
+        resolve: resolvesTo('93.184.216.34'),
+        request,
+        headers: { 'X-A': '1', 'x-a': '2' }
+      })
+    ).rejects.toThrow(TypeError)
   })
 })
 

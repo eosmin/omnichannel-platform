@@ -36,7 +36,11 @@ const STATUS_EVENTS: readonly string[] = [
 const CAPABILITY_OF: Readonly<Record<string, ChannelCapabilityType>> = {
   [ChannelEventTypes.CUSTOMER_TYPING]: ChannelCapability.CUSTOMER_TYPING,
   [ChannelEventTypes.MESSAGE_DELIVERED]: ChannelCapability.DELIVERY_RECEIPTS,
-  [ChannelEventTypes.MESSAGE_READ]: ChannelCapability.READ_RECEIPTS
+  [ChannelEventTypes.MESSAGE_READ]: ChannelCapability.READ_RECEIPTS,
+  // What a customer does to a message changes what is stored, so the channel must have said it can
+  [ChannelEventTypes.MESSAGE_REACTION]: ChannelCapability.REACTIONS,
+  [ChannelEventTypes.MESSAGE_EDITED]: ChannelCapability.EDIT_MESSAGE,
+  [ChannelEventTypes.MESSAGE_DELETED]: ChannelCapability.DELETE_MESSAGE
 }
 
 // `POST /plugin-api/channel/events` (TDD_10 §6.7.5, scope `channel:events`): what the customers of a remote channel write and what

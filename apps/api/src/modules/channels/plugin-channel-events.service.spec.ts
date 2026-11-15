@@ -203,6 +203,25 @@ describe('PluginChannelEventsService.ingest', () => {
     ).resolves.toBe(2)
   })
 
+  it.each([
+    [ChannelEventTypes.MESSAGE_REACTION, ChannelCapability.REACTIONS],
+    [ChannelEventTypes.MESSAGE_EDITED, ChannelCapability.EDIT_MESSAGE],
+    [ChannelEventTypes.MESSAGE_DELETED, ChannelCapability.DELETE_MESSAGE]
+  ])('takes a %s event only from a channel that declared %s', async (type, capability) => {
+    const event = {
+      type,
+      connectionId: 'acct-1',
+      channelIdentity: 'customer-1',
+      timestamp: TIME
+    } as ValidRemoteChannelEvent
+    const without = build()
+    await expect(without.service.ingest(caller, [event])).resolves.toBe(0)
+    expect(without.queue.enqueue).not.toHaveBeenCalled()
+    const withIt = build([capability])
+    await expect(withIt.service.ingest(caller, [event])).resolves.toBe(1)
+    expect(withIt.queue.enqueue).toHaveBeenCalledWith(PLUGIN, [event])
+  })
+
   describe('customer typing', () => {
     it('is dropped and counted when the channel did not declare it', async () => {
       const { service, emitter, rejected } = build()

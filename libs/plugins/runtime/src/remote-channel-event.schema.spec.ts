@@ -1,4 +1,4 @@
-import { MessageType, RemoteChannelApiLimits } from '@platform/core/domain'
+import { InboundLimits, MessageType, RemoteChannelApiLimits } from '@platform/core/domain'
 import { ChannelEventTypes } from '@platform/plugins/sdk'
 
 import {
@@ -122,7 +122,7 @@ describe('remoteChannelEventSchema', () => {
   })
 
   it('refuses an address over its cap', () => {
-    const ref = `https://cdn.example.com/${'a'.repeat(RemoteChannelApiLimits.MEDIA_REF_MAX_LENGTH)}`
+    const ref = `https://cdn.example.com/${'a'.repeat(InboundLimits.MEDIA_REF_MAX_LENGTH)}`
     expect(paths(image(ref))).toContain('message.media.0.ref')
   })
 
