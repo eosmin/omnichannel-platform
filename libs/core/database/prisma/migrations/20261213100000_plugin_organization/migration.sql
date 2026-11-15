@@ -1,6 +1,10 @@
 -- A plugin the owner registers by pasting its manifest (D10) belongs to the organization that registered it: only the
 -- stores of that organization see it in the catalog and install it. Null stays for the plugins the platform ships and the
 -- ones its code registers, which every store sees.
+-- Deleting an organization removes its stores (and their installations) before its plugins: Postgres fires the cascades in the
+-- order the constraints were made, and `stores_organization_id_fkey` is older than this one. The plugin rows are held by
+-- RESTRICT on `plugin_installations`, so this order matters; tests/api/plugin-registration.spec.ts deletes an organization
+-- with an installed plugin to keep it so.
 ALTER TABLE "plugins" ADD COLUMN "organization_id" TEXT;
 
 ALTER TABLE "plugins"

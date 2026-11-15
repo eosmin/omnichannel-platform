@@ -1,15 +1,18 @@
 BEGIN;
 
--- Safe to run twice. A plugin an organization registered would be visible to every store once the column is gone, so each
--- one is suspended first (a suspended plugin is in nobody's catalog and runs for nobody); the rows stay, because an
--- installation keeps its plugin row and the registration is the owner's data.
+-- Safe to run twice. The plugins an organization registered cannot outlive the column that says whose they are: without it
+-- they would be in every store's catalog, and the migration could not be applied again (its CHECK needs an organization on
+-- every integration plugin). They are the registrations this migration made possible, so they go, with their installations
+-- (an installation keeps its plugin row, so those go first). What later migrations hang from an installation is removed by
+-- their own rollbacks, which run before this one.
 DO $$
 BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns
     WHERE table_schema = current_schema() AND table_name = 'plugins' AND column_name = 'organization_id'
   ) THEN
-    UPDATE "plugins" SET "status" = 'suspended' WHERE "organization_id" IS NOT NULL;
+    DELETE FROM "plugin_installations" WHERE "plugin_id" IN (SELECT "id" FROM "plugins" WHERE "organization_id" IS NOT NULL);
+    DELETE FROM "plugins" WHERE "organization_id" IS NOT NULL;
   END IF;
 END
 $$;

@@ -98,6 +98,8 @@ describe('isWellFormedPublicHttpsUrl', () => {
     'https://router.lan/',
     'https://nas.home.arpa/',
     'https://acme.test/',
+    'https://acme.example/',
+    'https://hidden.onion/',
     'https://acme.123/',
     'https://-a.com/',
     'https://a_b.com/',

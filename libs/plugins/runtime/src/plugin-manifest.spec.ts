@@ -220,22 +220,33 @@ describe('pluginManifestSchema', () => {
       ).toBe(true)
     })
 
-    it.each(['', '1X', 'X Sig', 'X-Sig\r\nSet-Cookie: a=b', 'x'.repeat(65)])(
-      'refuses the signature header %j',
-      signatureHeader => {
-        expect(
-          refused(
-            manifest({
-              webhooks: {
-                endpoint: 'https://acme.com/h',
-                events: [Events.ORDER_CREATED],
-                signatureHeader
-              }
-            })
-          )
-        ).toBe(true)
-      }
-    )
+    it.each([
+      '',
+      '1X',
+      'X Sig',
+      'X-Sig\r\nSet-Cookie: a=b',
+      'x'.repeat(65),
+      'Host',
+      'content-length',
+      'Authorization',
+      'COOKIE',
+      'Transfer-Encoding',
+      'Proxy-Anything',
+      'Sec-Fetch-Site',
+      'X-Forwarded-For'
+    ])('refuses the signature header %j', signatureHeader => {
+      expect(
+        refused(
+          manifest({
+            webhooks: {
+              endpoint: 'https://acme.com/h',
+              events: [Events.ORDER_CREATED],
+              signatureHeader
+            }
+          })
+        )
+      ).toBe(true)
+    })
   })
 
   describe('widgets and limits', () => {

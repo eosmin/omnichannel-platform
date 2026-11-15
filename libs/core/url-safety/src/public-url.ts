@@ -1,6 +1,8 @@
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 
+import { PRIVATE_TLDS } from '@platform/core/domain'
+
 import { isPublicAddress } from './public-address'
 
 export class UnsafeUrlError extends Error {
@@ -73,27 +75,16 @@ export function isWellFormedPublicHttpsUrl(raw: string): boolean {
   return isIP(host) === 0 ? isPublicDomainName(host) : isPublicAddress(host)
 }
 
-// The last label of a name that leads to a private network and never to the internet (an address of the owner's own
-// network is not a place for a plugin to send an iframe or a request)
-const PRIVATE_SUFFIXES: ReadonlySet<string> = new Set([
-  'local',
-  'localhost',
-  'localdomain',
-  'internal',
-  'intranet',
-  'private',
-  'corp',
-  'home',
-  'lan',
-  'arpa',
-  'test',
-  'invalid'
-])
 const DOMAIN_LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i
+// A top level domain: letters, or the punycode form of an international one
+const TOP_LEVEL = /^(?:[a-z]{2,}|xn--[a-z0-9-]{1,59})$/i
+// Names the standard keeps out of the public DNS and the channel image list leaves alone (its tests use them)
+const RESERVED_TLDS: ReadonlySet<string> = new Set(['test', 'example', 'alt'])
 
 function isPublicDomainName(host: string): boolean {
   const labels = host.split('.')
   if (labels.length < 2 || !labels.every(label => DOMAIN_LABEL.test(label))) return false
   const suffix = (labels[labels.length - 1] ?? '').toLowerCase()
-  return /^[a-z]{2,}$/.test(suffix) && !PRIVATE_SUFFIXES.has(suffix)
+  // The names that lead to a private network and never to the internet, as the image hosts of a channel are judged
+  return TOP_LEVEL.test(suffix) && !PRIVATE_TLDS.has(suffix) && !RESERVED_TLDS.has(suffix)
 }

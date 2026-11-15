@@ -102,8 +102,10 @@ export class PluginInstallationsService {
     private readonly audit: AuditService
   ) {}
 
-  // The approved plugins this store may see: the official ones and the private ones the registry
-  // holds for it. A row the registry does not know is shown to nobody.
+  // The approved plugins this store may see: the ones the platform ships (a row the registry does not know is shown to
+  // nobody) and the integration plugins its organization registered, which no registry holds: the row says whose it is. An
+  // integration plugin is listed here and installed by the install flow of Step 5.6 (PR P2); until then the install answers
+  // that it cannot be installed yet.
   async catalog(store: PluginStoreRef): Promise<PluginCatalogEntry[]> {
     const storeId = store.id
     const [plugins, installations, live, shipping] = await Promise.all([

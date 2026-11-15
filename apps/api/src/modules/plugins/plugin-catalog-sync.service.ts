@@ -80,6 +80,17 @@ export class PluginCatalogSync implements OnApplicationBootstrap {
           },
           data
         })
+        // The id of a plugin of the code that an organization registered first stays the organization's
+        const taken = await this.prisma.client.plugin.findFirst({
+          where: { id: plugin.id, organizationId: { not: null } },
+          select: { id: true }
+        })
+        if (taken !== null) {
+          this.logger.error(
+            { pluginId: plugin.id },
+            'the id of a plugin of the platform is taken by a plugin an organization registered'
+          )
+        }
         continue
       }
       // Written when it is not there, and refreshed only while it is not an organization's: the id of an official plugin

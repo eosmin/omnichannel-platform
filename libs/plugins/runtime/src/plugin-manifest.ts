@@ -27,6 +27,41 @@ const PLAIN_ID = new RegExp(CHANNEL_ID_PATTERN)
 // Up to nine digits a part: a number that a double cannot tell from its neighbour is not a version
 const SEMVER = /^(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})$/
 const HEADER_NAME = /^[A-Za-z][A-Za-z0-9-]*$/
+// Headers the transport, a proxy or the platform's own request sets: a signature header that is one of them would be
+// overwritten, would break the request or would clobber what the receiver relies on
+const RESERVED_HEADERS: ReadonlySet<string> = new Set([
+  'host',
+  'content-length',
+  'content-type',
+  'content-encoding',
+  'transfer-encoding',
+  'connection',
+  'keep-alive',
+  'upgrade',
+  'te',
+  'trailer',
+  'expect',
+  'authorization',
+  'proxy-authorization',
+  'cookie',
+  'set-cookie',
+  'user-agent',
+  'accept',
+  'accept-encoding',
+  'date',
+  'forwarded',
+  'origin',
+  'referer'
+])
+const isReservedHeader = (name: string): boolean => {
+  const lower = name.toLowerCase()
+  return (
+    RESERVED_HEADERS.has(lower) ||
+    lower.startsWith('proxy-') ||
+    lower.startsWith('sec-') ||
+    lower.startsWith('x-forwarded-')
+  )
+}
 const EMAIL = /^[^\s@<>"',;:()[\]\\]+@[^\s@<>"',;:()[\]\\]+\.[^\s@<>"',;:()[\]\\]+$/
 
 const EVENT_NAMES: ReadonlySet<string> = new Set(Object.values(Events))
@@ -68,7 +103,11 @@ const webhooks = z.strictObject({
     .min(1)
     .max(PluginManifestLimits.MAX_WEBHOOK_EVENTS)
     .refine(list => new Set(list).size === list.length, { message: 'repeated event' }),
-  signatureHeader: z.string().max(PluginManifestLimits.HEADER_MAX_LENGTH).regex(HEADER_NAME)
+  signatureHeader: z
+    .string()
+    .max(PluginManifestLimits.HEADER_MAX_LENGTH)
+    .regex(HEADER_NAME)
+    .refine(name => !isReservedHeader(name), { message: 'a header the transport sets' })
 })
 
 const widgetSize = z

@@ -1,6 +1,6 @@
-import { Injectable } from '@nestjs/common'
 import { isDeepStrictEqual } from 'node:util'
 
+import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import { AuditAction } from '@platform/core/audit'
@@ -106,16 +106,15 @@ export class PluginRegistrationService {
       result = await write()
     }
 
-    // Sent again as it is stored (a retry whose answer was lost): the same answer, and nothing written or audited
-    if (result.outcome === RegistrationOutcomes.UNCHANGED) {
-      return {
-        id: manifest.id,
-        name: manifest.name,
-        version: manifest.version,
-        status: result.status,
-        outcome: result.outcome
-      }
+    const view: RegisteredPlugin = {
+      id: manifest.id,
+      name: manifest.name,
+      version: manifest.version,
+      status: result.status,
+      outcome: result.outcome
     }
+    // Sent again as it is stored (a retry whose answer was lost): the same answer, and nothing written or audited
+    if (result.outcome === RegistrationOutcomes.UNCHANGED) return view
     this.audit.log({
       action:
         result.outcome === RegistrationOutcomes.UPDATED
@@ -135,13 +134,7 @@ export class PluginRegistrationService {
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
-    return {
-      id: manifest.id,
-      name: manifest.name,
-      version: manifest.version,
-      status: result.status,
-      outcome: result.outcome
-    }
+    return view
   }
 
   private write(store: PluginStoreRef, manifest: PluginManifest): Promise<WriteResult> {
@@ -152,11 +145,12 @@ export class PluginRegistrationService {
         where: { id: manifest.id },
         select: { organizationId: true, isOfficial: true, type: true, status: true, manifest: true }
       })
+      const stored = storedManifest(manifest)
       const data = {
         name: manifest.name,
         authorName: manifest.author.name,
         authorEmail: manifest.author.email,
-        manifest: storedManifest(manifest)
+        manifest: stored
       }
 
       if (existing === null) {
@@ -194,13 +188,12 @@ export class PluginRegistrationService {
       ) {
         throw alreadyRegistered('that plugin id is taken')
       }
-      const stored = storedVersionSchema.safeParse(existing.manifest)
+      const storedVersion = storedVersionSchema.safeParse(existing.manifest)
       // A row whose manifest has no version is not one this code wrote: it is not replaced, whatever comes
-      if (!stored.success)
+      if (!storedVersion.success)
         throw alreadyRegistered('the registered manifest of that plugin cannot be read')
-      const previousVersion = stored.data.version
-      const incoming = storedManifest(manifest)
-      if (isDeepStrictEqual(incoming, existing.manifest)) {
+      const previousVersion = storedVersion.data.version
+      if (isDeepStrictEqual(stored, existing.manifest)) {
         return { outcome: RegistrationOutcomes.UNCHANGED, previousVersion, status: existing.status }
       }
       // A suspended plugin is not edited: what its manifest says is what it was suspended with
