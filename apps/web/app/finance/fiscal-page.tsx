@@ -45,13 +45,13 @@ function Fiscal(): ReactElement {
     [documents.data]
   )
   const replacedIds = useMemo(() => replacedIdsOf(rows), [rows])
-  if (documents.isError) {
+  if (documents.isError && documents.data === undefined) {
     return <LoadFailed error={documents.error} onRetry={() => void documents.refetch()} />
   }
-  if (issuer.isError) {
+  if (issuer.isError && issuer.data === undefined) {
     return <LoadFailed error={issuer.error} onRetry={() => void issuer.refetch()} />
   }
-  if (providers.isError) {
+  if (providers.isError && providers.data === undefined) {
     return <LoadFailed error={providers.error} onRetry={() => void providers.refetch()} />
   }
   if (documents.data === undefined || issuer.data === undefined || providers.data === undefined) {
@@ -80,7 +80,10 @@ function Fiscal(): ReactElement {
           </Link>
         </p>
       ) : null}
-      <AttentionBanner onShowRejected={() => setStatus(FiscalDocumentStatus.REJECTED)} />
+      <AttentionBanner
+        onShowRejected={() => setStatus(FiscalDocumentStatus.REJECTED)}
+        onShowStuck={() => setStatus(FiscalDocumentStatus.QUEUED)}
+      />
       <div className="grid gap-1.5 sm:max-w-xs">
         <Label htmlFor={`${ids}-status`}>{t('filters.status')}</Label>
         <select

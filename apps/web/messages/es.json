@@ -7109,7 +7109,8 @@
         "rejectedMore": "Más de {count} documentos fueron rechazados y necesitan a una persona.",
         "stuck": "{count, plural, one {# documento agotó sus intentos y está atascado en la cola.} other {# documentos agotaron sus intentos y están atascados en la cola.}}",
         "show": "Ver los rechazados",
-        "stuckMore": "Se revisaron los documentos en espera y algunos agotaron sus intentos (más de {count} en cola)."
+        "stuckMore": "Se revisaron los documentos en espera y algunos agotaron sus intentos (más de {count} en cola).",
+        "showStuck": "Ver los que están en espera"
       },
       "detail": {
         "titleLoading": "Documento fiscal",
@@ -7248,8 +7249,9 @@
         "legend": "Dirección",
         "key": "Nombre de la línea",
         "value": "Valor",
-        "remove": "Quitar la línea",
-        "add": "Agregar una línea"
+        "remove": "Quitar la línea {number}",
+        "add": "Agregar una línea",
+        "requiredMark": "(lo pide el proveedor)"
       },
       "issuer": {
         "title": "Emisor fiscal",
@@ -7299,7 +7301,8 @@
         "providerProblems": "El proveedor no aceptó: {codes}",
         "readOnly": "Puedes leer el emisor. Para cambiarlo hace falta el permiso de gestionar documentos fiscales.",
         "submit": "Guardar el emisor",
-        "done": "El emisor se guardó."
+        "done": "El emisor se guardó.",
+        "providerMissing": "El proveedor de este emisor ya no está en esta instalación. Elige otro para guardar."
       }
     }
   }

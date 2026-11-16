@@ -1,7 +1,7 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import type { ReactElement } from 'react'
+import { type ReactElement, useState } from 'react'
 
 import { FiscalGate } from '../../components/fiscal/fiscal-gate'
 import { IssuerForm } from '../../components/fiscal/issuer-form'
@@ -20,10 +20,11 @@ function Issuer({ canManage }: { canManage: boolean }): ReactElement {
   const { storeId } = useStore()
   const providers = useFiscalProviders(storeId, true)
   const issuer = useFiscalIssuer(storeId, true)
-  if (providers.isError) {
+  const [generation, setGeneration] = useState(0)
+  if (providers.isError && providers.data === undefined) {
     return <LoadFailed error={providers.error} onRetry={() => void providers.refetch()} />
   }
-  if (issuer.isError) {
+  if (issuer.isError && issuer.data === undefined) {
     return <LoadFailed error={issuer.error} onRetry={() => void issuer.refetch()} />
   }
   if (providers.data === undefined || issuer.data === undefined) return <PageLoading />
@@ -39,8 +40,10 @@ function Issuer({ canManage }: { canManage: boolean }): ReactElement {
         </p>
       ) : (
         <IssuerForm
-          // A saved issuer is a new starting point: the form begins again from what the api now has
-          key={issuer.data?.updatedAt ?? 'new'}
+          // A saved issuer is a new starting point: the form begins again from what the api now has. Only this person's own save does it: a
+          // refetch that brings another person's change never throws away what is being typed.
+          key={String(generation)}
+          onSaved={() => setGeneration(count => count + 1)}
           providers={providers.data}
           issuer={issuer.data}
           canManage={canManage}

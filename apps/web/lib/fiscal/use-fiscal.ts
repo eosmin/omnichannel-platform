@@ -78,8 +78,13 @@ export function useFiscalDocuments(
     queryFn: ({ pageParam, signal }) =>
       fetchFiscalDocumentPage(apiClient, storeId, filters, pageParam, signal),
     getNextPageParam: last => (last.hasMore ? (last.nextCursor ?? undefined) : undefined),
+    // The rows of the last list stand in while the next loads only when it is the same list (same store, same filters): rows of another
+    // status under a filter that says otherwise would be opened and sent again as if they were the ones asked for
     placeholderData: (previous, previousQuery) =>
-      previousQuery?.queryKey[1] === storeId ? previous : undefined,
+      previousQuery?.queryKey[1] === storeId &&
+      JSON.stringify(previousQuery.queryKey[3]) === JSON.stringify(keyOfFilters(filters))
+        ? previous
+        : undefined,
     enabled
   })
 }

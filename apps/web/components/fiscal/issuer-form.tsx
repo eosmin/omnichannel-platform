@@ -6,7 +6,6 @@ import { type FormEvent, type ReactElement, useId, useState } from 'react'
 import { ApiError, type FiscalIssuerView, type FiscalProviderView } from '@platform/api-client'
 import { FiscalFieldLimits, FiscalIssueOn } from '@platform/core/domain'
 
-import { SEQUENCE_DIGITS } from '../../lib/fiscal/issuer-form'
 import {
   emptyIssuerDraft,
   type IssuerDraft,
@@ -15,7 +14,8 @@ import {
   issuerDraftOf,
   issuerInputOf,
   type IssuerProblem,
-  issuerProblems
+  issuerProblems,
+  SEQUENCE_DIGITS
 } from '../../lib/fiscal/issuer-form'
 import { usePutFiscalIssuer } from '../../lib/fiscal/use-fiscal'
 import { useFiscalErrorText } from '../../lib/fiscal/use-fiscal-error-text'
@@ -34,11 +34,14 @@ import { AddressRowsField } from './address-rows-field'
 export function IssuerForm({
   providers,
   issuer,
-  canManage
+  canManage,
+  onSaved
 }: {
   providers: readonly FiscalProviderView[]
   issuer: FiscalIssuerView | null
   canManage: boolean
+  // Called after a save, for the page to start the form again from what the api now has
+  onSaved: () => void
 }): ReactElement {
   const t = useTranslations('finance.fiscal.issuer')
   const errorText = useFiscalErrorText()
@@ -85,7 +88,10 @@ export function IssuerForm({
     // and the answer is read here, not in per-call callbacks that a remount would skip
     void save
       .mutateAsync(issuerInputOf(draft, provider))
-      .then(() => toast.success(t('done')))
+      .then(() => {
+        toast.success(t('done'))
+        onSaved()
+      })
       .catch((error: unknown) => {
         setRefusal(errorText(error))
         // The codes the provider chose for what it did not accept (a field, a certificate), never a value
@@ -132,6 +138,11 @@ export function IssuerForm({
           </option>
         ))}
       </SelectField>
+      {provider === undefined ? (
+        <p role="alert" className="text-destructive text-sm" data-testid="fiscal-provider-missing">
+          {t('providerMissing')}
+        </p>
+      ) : null}
       {contingency === null ? null : (
         <p className="text-muted-foreground text-xs" data-testid="fiscal-contingency">
           {t('contingency', { text: contingency })}
@@ -176,7 +187,7 @@ export function IssuerForm({
         </p>
       ) : null}
       <TextField
-        label={mark(t('legalName'), 'legalName')}
+        label={mark(t('legalName'), IssuerFields.LEGAL_NAME)}
         value={draft.legalName}
         maxLength={FiscalFieldLimits.NAME}
         disabled={locked}
@@ -185,7 +196,7 @@ export function IssuerForm({
       />
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField
-          label={mark(t('taxId'), 'taxId')}
+          label={mark(t('taxId'), IssuerFields.TAX_ID)}
           value={draft.taxId}
           maxLength={FiscalFieldLimits.TAX_ID}
           disabled={locked}
@@ -193,7 +204,7 @@ export function IssuerForm({
           onChange={taxId => set({ taxId })}
         />
         <TextField
-          label={mark(t('registrationId'), 'registrationId')}
+          label={mark(t('registrationId'), IssuerFields.REGISTRATION_ID)}
           value={draft.registrationId}
           maxLength={FiscalFieldLimits.REGISTRATION_ID}
           disabled={locked}
@@ -201,7 +212,7 @@ export function IssuerForm({
           onChange={registrationId => set({ registrationId })}
         />
         <TextField
-          label={mark(t('activityCode'), 'activityCode')}
+          label={mark(t('activityCode'), IssuerFields.ACTIVITY_CODE)}
           value={draft.activityCode}
           maxLength={FiscalFieldLimits.CODE}
           disabled={locked}
@@ -209,7 +220,7 @@ export function IssuerForm({
           onChange={activityCode => set({ activityCode })}
         />
         <TextField
-          label={mark(t('establishmentCode'), 'establishmentCode')}
+          label={mark(t('establishmentCode'), IssuerFields.ESTABLISHMENT_CODE)}
           value={draft.establishmentCode}
           maxLength={FiscalFieldLimits.CODE}
           disabled={locked}
@@ -222,6 +233,7 @@ export function IssuerForm({
         onChange={address => set({ address })}
         disabled={locked}
         hint={t('addressHint')}
+        required={requires(IssuerFields.ADDRESS)}
         problem={wordsOf(IssuerFields.ADDRESS)}
       />
       <TextField

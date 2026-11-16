@@ -7109,7 +7109,8 @@
         "rejectedMore": "More than {count} documents were refused and need a person.",
         "stuck": "{count, plural, one {# document ran out of attempts and is stuck in the queue.} other {# documents ran out of attempts and are stuck in the queue.}}",
         "show": "Show the refused",
-        "stuckMore": "More than {count} queued documents were checked and some have run out of attempts."
+        "stuckMore": "More than {count} queued documents were checked and some have run out of attempts.",
+        "showStuck": "Show the queued ones"
       },
       "detail": {
         "titleLoading": "Fiscal document",
@@ -7248,8 +7249,9 @@
         "legend": "Address",
         "key": "Line name",
         "value": "Value",
-        "remove": "Remove the line",
-        "add": "Add a line"
+        "remove": "Remove line {number}",
+        "add": "Add a line",
+        "requiredMark": "(asked by the provider)"
       },
       "issuer": {
         "title": "Fiscal issuer",
@@ -7299,7 +7301,8 @@
         "providerProblems": "The provider did not accept: {codes}",
         "readOnly": "You can read the issuer. Changing it needs the permission to manage fiscal documents.",
         "submit": "Save the issuer",
-        "done": "The issuer was saved."
+        "done": "The issuer was saved.",
+        "providerMissing": "The provider of this issuer is not in this deployment any more. Choose another one to save."
       }
     }
   }

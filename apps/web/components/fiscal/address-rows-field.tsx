@@ -17,7 +17,8 @@ export function AddressRowsField({
   onChange,
   problem,
   disabled,
-  hint
+  hint,
+  required = false
 }: {
   rows: readonly AddressRow[]
   onChange: (rows: AddressRow[]) => void
@@ -25,6 +26,8 @@ export function AddressRowsField({
   problem: string | null
   disabled: boolean
   hint?: string
+  // The provider asks for an address (its manifest says so)
+  required?: boolean
 }): ReactElement {
   const t = useTranslations('finance.fiscal.address')
   const id = useId()
@@ -35,7 +38,9 @@ export function AddressRowsField({
       className="grid gap-2"
       aria-describedby={problem === null ? undefined : `${id}-error`}
     >
-      <legend className="text-sm font-medium">{t('legend')}</legend>
+      <legend className="text-sm font-medium">
+        {required ? `${t('legend')} ${t('requiredMark')}` : t('legend')}
+      </legend>
       {hint === undefined ? null : <p className="text-muted-foreground text-xs">{hint}</p>}
       {rows.map((row, index) => (
         <div
@@ -71,7 +76,7 @@ export function AddressRowsField({
             type="button"
             variant="outline"
             size="icon"
-            aria-label={t('remove')}
+            aria-label={t('remove', { number: index + 1 })}
             disabled={disabled || rows.length === 1}
             onClick={() => onChange(rows.filter((_, at) => at !== index))}
           >

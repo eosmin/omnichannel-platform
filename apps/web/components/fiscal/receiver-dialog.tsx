@@ -67,7 +67,8 @@ export function ReceiverDialog({
   )
 }
 
-// What the manifest says the document type cannot be built without, across the types of the provider that are not credit notes
+// What the manifest says the type of this document cannot be built without. A document never built has no type yet (the provider picks it
+// when it builds), so nothing is marked for it: the rule is the provider's and it is not guessed here.
 const requiredFieldsOf = (
   provider: FiscalProviderView | undefined,
   documentType: string
@@ -165,6 +166,7 @@ function ReceiverForm({
         onChange={address => set({ address })}
         disabled={patch.isPending}
         hint={t('addressHint')}
+        required={required.includes(ReceiverFields.ADDRESS)}
         problem={addressProblem}
       />
       {wrong?.kind === 'nothing' ? (

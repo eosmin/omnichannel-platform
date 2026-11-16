@@ -15,9 +15,11 @@ import { Button } from '../ui/button'
 // list below is filtered by. It counts the newest page of each (the api filters by status, not by attempts), and says "more than" when
 // there is another page.
 export function AttentionBanner({
-  onShowRejected
+  onShowRejected,
+  onShowStuck
 }: {
   onShowRejected: () => void
+  onShowStuck: () => void
 }): ReactElement | null {
   const t = useTranslations('finance.fiscal.banner')
   const { storeId } = useStore()
@@ -51,11 +53,18 @@ export function AttentionBanner({
           )}
         </div>
       </div>
-      {refused === 0 ? null : (
-        <Button variant="outline" size="sm" onClick={onShowRejected}>
-          {t('show')}
-        </Button>
-      )}
+      <div className="flex flex-wrap gap-2">
+        {refused === 0 ? null : (
+          <Button variant="outline" size="sm" onClick={onShowRejected}>
+            {t('show')}
+          </Button>
+        )}
+        {stuck === 0 ? null : (
+          <Button variant="outline" size="sm" onClick={onShowStuck}>
+            {t('showStuck')}
+          </Button>
+        )}
+      </div>
     </div>
   )
 }
