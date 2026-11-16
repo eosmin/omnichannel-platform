@@ -104,6 +104,8 @@ const TITLE_OF_PAGE: Record<string, string> = {
   'finance/payables/page.tsx': 'financePayables',
   'finance/statements/page.tsx': 'financeStatements',
   'finance/aging/page.tsx': 'financeAging',
+  'finance/vat/page.tsx': 'financeVat',
+  'finance/margin/page.tsx': 'financeMargin',
   'finance/books/page.tsx': 'financeBooks'
 }
 

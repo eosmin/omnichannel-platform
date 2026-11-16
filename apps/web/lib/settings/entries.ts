@@ -141,6 +141,20 @@ export const FINANCE_SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     labelKey: 'books',
     href: AppPaths.finance.books,
     permission: ClientPermissions.FINANCE_VIEW_REPORTS
+  },
+  // The VAT of a range and the margin by product (Step 4B.9b-4a): the api asks finance:view for the VAT (and finance:export for its
+  // file) and finance:view_reports for the margin
+  {
+    id: 'vat',
+    labelKey: 'vat',
+    href: AppPaths.finance.vat,
+    permission: ClientPermissions.FINANCE_VIEW
+  },
+  {
+    id: 'margin',
+    labelKey: 'margin',
+    href: AppPaths.finance.margin,
+    permission: ClientPermissions.FINANCE_VIEW_REPORTS
   }
 ]
 

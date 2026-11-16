@@ -93,6 +93,8 @@ export const AppPaths = {
     reconciliation: '/finance/reconciliation',
     statements: '/finance/statements',
     aging: '/finance/aging',
+    vat: '/finance/vat',
+    margin: '/finance/margin',
     books: '/finance/books'
   },
   account: {
