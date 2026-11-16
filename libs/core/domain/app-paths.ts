@@ -95,6 +95,8 @@ export const AppPaths = {
     fiscalIssuer: '/finance/fiscal/issuer',
     statements: '/finance/statements',
     aging: '/finance/aging',
+    vat: '/finance/vat',
+    margin: '/finance/margin',
     books: '/finance/books'
   },
   account: {

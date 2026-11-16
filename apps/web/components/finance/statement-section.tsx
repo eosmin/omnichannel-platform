@@ -60,7 +60,7 @@ export function TotalLine({
   note
 }: {
   label: ReactNode
-  cents: string
+  cents: string | number
   testId: string
   note?: ReactNode
 }): ReactElement {

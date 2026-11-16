@@ -5,6 +5,7 @@ import type { ReactElement } from 'react'
 
 import { ClientPermissions } from '@platform/core/auth'
 
+import { ChainIncidentNotice } from '../../components/finance/chain-incident-notice'
 import { ChainPanel } from '../../components/finance/chain-panel'
 import { FinanceGate } from '../../components/finance/finance-gate'
 import { JournalExportPanel } from '../../components/finance/journal-export-panel'
@@ -31,6 +32,7 @@ function Reports(): ReactElement {
         <h1 className="text-2xl font-semibold">{t('title')}</h1>
         <p className="text-muted-foreground text-sm">{t('description')}</p>
       </header>
+      <ChainIncidentNotice />
       <TrialBalancePanel />
       {canJournal ? <LedgerPanel /> : null}
       {canJournal && canExport ? <JournalExportPanel /> : null}

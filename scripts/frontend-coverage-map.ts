@@ -97,8 +97,9 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   // the setup, the settings, the chart, the roles, the tax rates, the payment accounts, the store tax settings, the periods (read and
   // open), the balances and the postings; 4B.9a-3 drew the bank reconciliation by CSV (every `finance.bank.*` route, on Finance → Bank
   // reconciliation); 4B.9b-1 drew the close, the trial balance, the ledger, the three files and the check of the chain; 4B.9b-3 drew the
-  // income statement, balance sheet, cash flow and aging with their files, the legal books, their layouts (read) and the frozen books; the
-  // rest of these waits for 4B.9b-2 (fiscal documents) and 4B.9b-4a (the VAT file and the margin). 4B.9a-4 drew every route of
+  // income statement, balance sheet, cash flow and aging with their files, the legal books, their layouts (read) and the frozen books; 4B.9b-4a drew
+  // the VAT report and its file (Finance → VAT), the margin by product and its file (Finance → Margin) and the state of the weekly check
+  // of the chain (the notice on Periods and Reports); the rest of these waits for 4B.9b-2 (fiscal documents). 4B.9a-4 drew every route of
   // suppliers, purchase orders, payables and payments to suppliers: Finance → Suppliers (list, create, edit, detail with the balance and
   // the payments, register and void a payment), Finance → Purchases (the orders, their lines, receiving, closing, cancelling, the bills
   // and the payments of an order) and Finance → Payables. A route stays on '4B.9' until the whole step is done

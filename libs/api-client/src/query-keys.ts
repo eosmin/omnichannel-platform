@@ -359,6 +359,10 @@ export const QueryKeys = {
       ['finance', storeId, 'reports', 'cash-flow', from, to] as const,
     aging: (storeId: string, kind: string, asOf: string) =>
       ['finance', storeId, 'reports', 'aging', kind, asOf] as const,
+    // The margin by product and the state of the weekly check of the chain (Step 4B.9b-4a)
+    marginReport: (storeId: string, from: string, to: string) =>
+      ['finance', storeId, 'reports', 'margin', from, to] as const,
+    chainStatus: (storeId: string) => ['finance', storeId, 'reports', 'chain-status'] as const,
     // The legal books: the layouts, a book of a month (a layout change or a close makes it stale with the rest of `finance`), the frozen ones
     bookLayouts: (storeId: string) => ['finance', storeId, 'book-layouts'] as const,
     book: (storeId: string, kind: string, periodId: string) =>
