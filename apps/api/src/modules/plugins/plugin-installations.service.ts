@@ -65,6 +65,8 @@ export interface PluginCatalogEntry {
   authorName: string
   type: string
   isOfficial: boolean
+  // A plugin the organization registered with its own manifest: the only kind `DELETE /plugins/:id` removes
+  registered: boolean
   installed: boolean
   // Where the installation of this store stands (`PluginInstallationStatus`): `pending_setup` is an integration plugin that has
   // not traded its setup code for its key yet, which `installed` (true only when active) does not say. Null: never installed.
@@ -239,7 +241,7 @@ export class PluginInstallationsService {
         if (plugin.organizationId !== null) return true
         return this.registry.isVisibleTo(plugin.id, storeId)
       })
-      .map(({ organizationId: _owner, manifest, ...plugin }) => {
+      .map(({ organizationId: owner, manifest, ...plugin }) => {
         const installation = installationOf.get(plugin.id)
         const live =
           installation !== undefined &&
@@ -249,6 +251,8 @@ export class PluginInstallationsService {
           installation.status === String(PluginInstallationStatus.ACTIVE)
         return {
           ...plugin,
+          // The organization registered it, so the organization may delete it (the owner id itself never leaves)
+          registered: owner !== null && !plugin.isOfficial,
           installed,
           installationStatus: installation?.status ?? null,
           // A revoked installation hears nothing and says nothing of its webhooks (the revocation keeps the column until a new install)

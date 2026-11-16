@@ -87,7 +87,8 @@ describe('confirmationStyleFor with the settings of the store', () => {
       'DELETE_CONVERSATION',
       'REVOKE_API_KEY',
       'DELETE_STORE',
-      'REVOKE_ALL_PLUGIN_ACCESS'
+      'REVOKE_ALL_PLUGIN_ACCESS',
+      'DELETE_PLUGIN'
     ] as const) {
       expect(confirmationStyleFor(action, true, off)).toBe(ConfirmationStyles.TYPED_PHRASE)
     }

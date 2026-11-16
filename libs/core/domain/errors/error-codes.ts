@@ -78,6 +78,10 @@ export const ErrorCodes = {
   PLUGIN_SETUP_CODE_INVALID: 'PLUGIN_SETUP_CODE_INVALID',
   // Revoking an integration plugin takes the word typed as written (TDD_10 §6.6)
   PLUGIN_REVOKE_NOT_CONFIRMED: 'PLUGIN_REVOKE_NOT_CONFIRMED',
+  // Deleting a plugin takes its name typed as written
+  PLUGIN_DELETE_NOT_CONFIRMED: 'PLUGIN_DELETE_NOT_CONFIRMED',
+  // A plugin that is installed, waiting for its setup, closing its webhooks or holding connections is not deleted
+  PLUGIN_IN_USE: 'PLUGIN_IN_USE',
   // The session of a plugin widget is unknown, expired, another person's, or its installation was revoked (one answer for all)
   PLUGIN_WIDGET_SESSION_INVALID: 'PLUGIN_WIDGET_SESSION_INVALID',
   // The key of a store that calls the public API is missing, unknown, revoked or expired (one answer for all four)
