@@ -2174,7 +2174,7 @@ sale rows follow the ledger: a sale is out of a month's book only when its entry
           note and its re-issue, with the fiscal simulator): they need a delivered sale and a sealed receiver made by the pipeline, which the month case
           does not build; (b) the sale, the purchase received and the remittance of the month (the figures after a sale and a remittance, the VAT and
           the margin with data); (c) drawing the sealed `detail` and the `from`/`to` filter of #569 in the fiscal screens; (d) the permission-gate
-          case of every page of the area (the month case covers only Periods for the read-only person); (e) a write the api refuses in the closed month (an entry dated in it). It closes 4B.9.
+          case of every page of the area (the month case covers only Periods for the read-only person); (e) a write the api refuses in the closed month (an entry dated in it). (f) the month case runs in English only: the same case in Spanish. It closes 4B.9.
   - **Decisions of PR 4B.9b-2 (rule 12):** (1) the bodies of the fiscal routes moved from the api to `libs/core/domain/fiscal-schemas.ts` (the api's
     `fiscal.schemas.ts` re-exports them), so the web forms are tested against the schema that reads them, as the purchases do; the alternative, a copy in the
     web, drifts. (2) The area opens for `fiscal:view` alone and the fiscal pages do not wait for the books to be set up (the api's routes do not need them).
