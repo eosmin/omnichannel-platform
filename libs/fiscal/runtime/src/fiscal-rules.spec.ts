@@ -22,6 +22,23 @@ describe('the transitions of a fiscal document', () => {
     expect(canTransition(S.ACCEPTED, S.VOIDED)).toBe(true)
   })
 
+  it('is exactly the table: every edge, in both directions', () => {
+    const allowed: Record<string, string[]> = {
+      [S.DRAFT]: [S.QUEUED],
+      [S.QUEUED]: [S.SUBMITTED],
+      // QUEUED again when the provider could not answer: the contingency path
+      [S.SUBMITTED]: [S.ACCEPTED, S.REJECTED, S.QUEUED],
+      [S.ACCEPTED]: [S.VOIDED],
+      [S.REJECTED]: [S.QUEUED],
+      [S.VOIDED]: []
+    }
+    for (const from of Object.values(S)) {
+      for (const to of Object.values(S)) {
+        expect(canTransition(from, to)).toBe(allowed[from]?.includes(to) ?? false)
+      }
+    }
+  })
+
   it('refuses the rest: nothing leaves VOIDED, an accepted document is only voided, a refusal is not accepted at once', () => {
     expect(canTransition(S.VOIDED, S.QUEUED)).toBe(false)
     expect(canTransition(S.ACCEPTED, S.REJECTED)).toBe(false)
@@ -42,6 +59,8 @@ describe('the transitions of a fiscal document', () => {
     expect(receiverEditable(S.ACCEPTED, 1)).toBe(false)
     expect(retryable(S.REJECTED)).toBe(true)
     expect(retryable(S.ACCEPTED)).toBe(false)
+    expect(retryable(S.VOIDED)).toBe(false)
+    expect(retryable(S.SUBMITTED)).toBe(false)
   })
 })
 
@@ -63,9 +82,19 @@ describe('the lines of a document', () => {
         unitPriceCents: 500,
         taxRateBps: null,
         taxCents: null
+      },
+      {
+        productName: 'Partial snapshot',
+        variantName: null,
+        quantity: 1,
+        unitPriceCents: 100,
+        taxRateBps: 1300,
+        taxCents: null
       }
     ])
-    expect(lines).toEqual([
+    // A rate with no tax amount says no rate: never a rate beside a zero tax
+    expect(lines[2]?.taxRateBps).toBeNull()
+    expect(lines.slice(0, 2)).toEqual([
       {
         description: 'Shirt (M)',
         quantity: 2,

@@ -19,6 +19,27 @@ describe('the registry of fiscal providers', () => {
   })
 })
 
+describe('the manifest of a provider', () => {
+  const withTypes = (ids: string[]) => {
+    const provider = simulatorProvider()
+    return {
+      ...provider,
+      id: provider.id,
+      manifest: {
+        ...provider.manifest,
+        documentTypes: ids.map(id => ({ id, label: id, requiredReceiverFields: [] }))
+      }
+    } as unknown as ReturnType<typeof simulatorProvider>
+  }
+
+  it('is refused when a type is empty, repeated or the placeholder of core', () => {
+    for (const ids of [[''], ['a', 'a'], ['pending']]) {
+      expect(() => new FiscalProviderRegistry([withTypes(ids)])).toThrow(/not valid/)
+    }
+    expect(() => new FiscalProviderRegistry([withTypes(['a', 'b'])])).not.toThrow()
+  })
+})
+
 describe('the providers of a deployment', () => {
   it('registers the simulator in development and test only: staging, production and an unset environment never get it', () => {
     expect(officialFiscalProviders('development')).toHaveLength(1)

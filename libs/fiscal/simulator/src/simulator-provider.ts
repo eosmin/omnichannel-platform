@@ -76,13 +76,14 @@ export class SimulatorProvider implements FiscalDocumentProvider {
     if (issuer.legalName.trim() === '') problems.push('legalName')
     if (issuer.taxId.trim() === '') problems.push('taxId')
     if (Object.keys(issuer.address).length === 0) problems.push('address')
-    if (typeof credentials.credentials['signingKey'] !== 'string') problems.push('signingKey')
+    const key = credentials.credentials['signingKey']
+    if (typeof key !== 'string' || key.trim() === '') problems.push('signingKey')
     if (issuer.environment !== FiscalEnvironment.SANDBOX) problems.push('environment')
     return Promise.resolve({ ok: problems.length === 0, problems })
   }
 
   build(input: FiscalBuildInput): Promise<BuiltDocument> {
-    const business = input.receiver.taxId !== null && input.receiver.taxId !== ''
+    const business = input.receiver.taxId !== null && input.receiver.taxId.trim() !== ''
     const documentType = business
       ? SimulatorDocumentTypes.BUSINESS
       : SimulatorDocumentTypes.CONSUMER
@@ -100,6 +101,7 @@ export class SimulatorProvider implements FiscalDocumentProvider {
       receiver: { name: input.receiver.name, taxId: input.receiver.taxId },
       lines: input.lines.map(line => ({ ...line })),
       shippingCents: input.shippingCents,
+      shippingTaxCents: input.shippingTaxCents,
       discountCents: input.discountCents,
       totalCents: input.totalCents,
       taxCents: input.taxCents,
@@ -152,7 +154,8 @@ export class SimulatorProvider implements FiscalDocumentProvider {
   }
 
   private numberOf(ctx: ProviderContext): string {
-    return `SIM-${ctx.idempotencyKey.slice(-12)}`
+    // The whole key: two submissions never share a number
+    return `SIM-${ctx.idempotencyKey}`
   }
 
   private accepted(externalNumber: string): SubmitResult {

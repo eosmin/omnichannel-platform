@@ -41,7 +41,8 @@ export function documentLines(rows: readonly OrderLineRow[]): FiscalLine[] {
       row.variantName === null ? row.productName : `${row.productName} (${row.variantName})`,
     quantity: row.quantity,
     unitPriceCents: row.unitPriceCents,
-    taxRateBps: row.taxRateBps,
+    // A rate with no tax amount is a partial snapshot: the line says no rate rather than a rate with no tax
+    taxRateBps: row.taxCents === null ? null : row.taxRateBps,
     taxCents: row.taxCents ?? 0,
     totalCents: row.quantity * row.unitPriceCents
   }))
