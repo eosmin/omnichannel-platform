@@ -91,7 +91,7 @@ export class SearchController {
     @CurrentStore() store: { id: string },
     @Query(new ZodValidationPipe(searchQuerySchema)) query: SearchQuery
   ): Promise<SearchResult<OrderSearchHit>> {
-    return this.runner.orders(store.id, query)
+    return this.runner.orders(store.id, query, false, true)
   }
 
   @RequirePermissions(Permissions.PRODUCTS_VIEW)

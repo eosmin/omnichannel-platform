@@ -58,13 +58,16 @@ export class SearchRunner {
     )
   }
 
+  // `byCustomer`: whether the name and the phone of the customer are searched (a person who may read orders reads customers too in
+  // the inbox; a plugin needs `customers:read` for it)
   orders(
     storeId: string,
     params: { q: string; limit: number },
-    passive = false
+    passive: boolean,
+    byCustomer: boolean
   ): Promise<SearchResult<OrderSearchHit>> {
     return this.tracked(storeId, SearchTrackedScopes.ORDERS, params.q, passive, () =>
-      this.search.searchOrders(storeId, params)
+      this.search.searchOrders(storeId, params, byCustomer)
     )
   }
 
@@ -101,7 +104,8 @@ export class SearchRunner {
         if (hits.length > 0) groups.push({ entity: SearchEntities.MESSAGES, hits })
       }
       if (kinds.has(SearchEntities.ORDERS)) {
-        const { hits } = await this.search.searchOrders(storeId, params)
+        // A person who may read orders reads customers in the inbox: the palette searches by who the order is for
+        const { hits } = await this.search.searchOrders(storeId, params, true)
         if (hits.length > 0) groups.push({ entity: SearchEntities.ORDERS, hits })
       }
       if (kinds.has(SearchEntities.PRODUCTS)) {
