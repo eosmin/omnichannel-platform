@@ -2977,7 +2977,9 @@
         "aging": "Aging",
         "books": "Legal books",
         "fiscal": "Fiscal documents",
-        "fiscalIssuer": "Fiscal issuer"
+        "fiscalIssuer": "Fiscal issuer",
+        "vat": "VAT",
+        "margin": "Margin"
       }
     },
     "store": {
@@ -7094,7 +7096,8 @@
         "from": "Write the first day as a real date.",
         "to": "Write the last day as a real date.",
         "order": "The first day is after the last day.",
-        "day": "Write a real date."
+        "day": "Write a real date.",
+        "tooLong": "The range cannot be longer than {days} days."
       },
       "warningsTitle": "This report is not complete",
       "warnings": {
@@ -7599,6 +7602,98 @@
           }
         }
       }
+    },
+    "vat": {
+      "title": "VAT of a period",
+      "description": "The tax charged on sales and the tax paid on purchases, month by month and by rate, and what is owed or carried forward.",
+      "pick": "Choose the first and the last day and press Show.",
+      "download": "Download CSV",
+      "none": "There is no VAT activity in this range.",
+      "basis": "Sales count on the day they are recognized: {recognizedOn}. The books start on {start}; the sales side is read from the orders whatever that date.",
+      "notices": {
+        "withoutSnapshot": "{count, plural, one {# order was made before orders kept their tax and is not in this report.} other {# orders were made before orders kept their tax and are not in this report.}}",
+        "notReadable": "{count, plural, one {# order has a tax that does not add up and is not in this report.} other {# orders have a tax that does not add up and are not in this report.}}",
+        "returned": "{count, plural, one {# returned order is still counted on the sales side.} other {# returned orders are still counted on the sales side.}} The tax of returns is not taken off here yet."
+      },
+      "sides": {
+        "output": "Tax charged on sales",
+        "input": "Tax paid on purchases"
+      },
+      "totals": {
+        "output": "Total charged",
+        "input": "Total paid"
+      },
+      "kind": "Kind of sale",
+      "rate": "Rate",
+      "base": "Taxable amount",
+      "tax": "Tax",
+      "documents": "Documents",
+      "noRate": "No rate",
+      "noLines": "No lines this month.",
+      "kinds": {
+        "taxed": "Taxed",
+        "exempt": "Exempt",
+        "not_subject": "Not subject",
+        "shipping_not_taxed": "Shipping, not taxed"
+      },
+      "balance": "Balance of the month",
+      "balanceKinds": {
+        "toPay": "Charged is more than paid: this is what is owed.",
+        "carriedForward": "Paid is more than charged: this carries forward.",
+        "even": "Charged and paid are equal."
+      },
+      "otherSide": "A line of an unknown side ({side}, {kind}):"
+    },
+    "margin": {
+      "title": "Margin by product",
+      "description": "What each product earned in a range of days, by store: the revenue of the sales less the cost the stock carried, next to what the books hold.",
+      "pick": "Choose the first and the last day and press Show.",
+      "download": "Download CSV",
+      "none": "No sale was recognized in this range.",
+      "product": "Product",
+      "unnamedProduct": "Product without a name",
+      "units": "Units",
+      "revenue": "Revenue",
+      "cost": "Cost",
+      "margin": "Margin",
+      "marginPercent": "Margin %",
+      "noPercent": "No revenue",
+      "totals": "Totals",
+      "warningsTitle": "This report is not complete",
+      "warnings": {
+        "revenue_role_not_mapped": "The revenue account has no account in the finance settings, so the report has nothing in the books to compare its revenue with.",
+        "cost_role_not_mapped": "The cost of goods account has no account in the finance settings, so the report has nothing in the books to compare its cost with.",
+        "orders_not_readable": "Some sales could not be read from their order or do not add up: they are left out.",
+        "unvalued_units": "Some units left with no cost recorded: their cost is not in these figures."
+      },
+      "counts": {
+        "ordersUsed": "{count, plural, one {# order read} other {# orders read}}",
+        "ordersNotReadable": "{count, plural, one {# order not readable} other {# orders not readable}}",
+        "unvaluedUnits": "{count, plural, one {# unit without a cost} other {# units without a cost}}"
+      },
+      "ledger": {
+        "title": "Compared with the books",
+        "description": "The products are counted before returns. The difference is shown as it is and is never made zero.",
+        "line": "Line",
+        "report": "This report",
+        "books": "In the books",
+        "difference": "Difference",
+        "returned": "Taken back by returns",
+        "notMapped": "Account not set",
+        "lines": {
+          "revenue": "Revenue",
+          "cost": "Cost of goods"
+        }
+      }
+    },
+    "chainIncident": {
+      "title": "The check of the books found a problem",
+      "blocksClose": "No month can be closed until the check passes again.",
+      "found": "The weekly check found that {reason}",
+      "atEntry": "First entry affected: {number}.",
+      "seen": "{checked, plural, one {# entry checked} other {# entries checked}}. First seen {first}, last seen {last}.",
+      "whatToDo": "Tell an administrator: the journal must be looked at before anything else is closed.",
+      "unreadable": "The state of the weekly check of the books could not be read. A close may still be refused if it found a problem."
     }
   }
 }

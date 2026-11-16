@@ -36,7 +36,16 @@ describe('the finance area', () => {
         FINANCE_SETTINGS_ENTRIES,
         holding(Permissions.FINANCE_VIEW, Permissions.FINANCE_VIEW_JOURNAL)
       ).map(entry => entry.id)
-    ).toEqual(['accounts', 'journal', 'transactions', 'taxes', 'periods', 'reports', 'settings'])
+    ).toEqual([
+      'accounts',
+      'journal',
+      'transactions',
+      'taxes',
+      'periods',
+      'reports',
+      'settings',
+      'vat'
+    ])
   })
 
   it('lists the journal for the journal permission alone, while the area itself still needs finance:view', () => {
@@ -67,7 +76,7 @@ describe('the finance area', () => {
         FINANCE_SETTINGS_ENTRIES,
         holding(Permissions.FINANCE_VIEW, Permissions.FINANCE_RECONCILE)
       ).map(entry => entry.id)
-    ).toEqual(['accounts', 'taxes', 'periods', 'reports', 'reconciliation', 'settings'])
+    ).toEqual(['accounts', 'taxes', 'periods', 'reports', 'reconciliation', 'settings', 'vat'])
     // finance:reconcile alone opens no area: the page reads the chart to offer its accounts, which is finance:view
     expect(mayOpenFinance(holding(Permissions.FINANCE_RECONCILE))).toBe(false)
   })
@@ -77,7 +86,7 @@ describe('the finance area', () => {
       visibleEntries(FINANCE_SETTINGS_ENTRIES, holding(Permissions.FINANCE_VIEW)).map(
         entry => entry.id
       )
-    ).toEqual(['accounts', 'taxes', 'periods', 'reports', 'settings'])
+    ).toEqual(['accounts', 'taxes', 'periods', 'reports', 'settings', 'vat'])
     // Paying opens the payables and nothing of the books; managing purchases opens the three pages of purchases and nothing of the books
     expect(
       visibleEntries(FINANCE_SETTINGS_ENTRIES, holding(Permissions.FINANCE_MOVE_MONEY)).map(
@@ -103,7 +112,7 @@ describe('the finance area', () => {
       visibleEntries(FINANCE_SETTINGS_ENTRIES, holding(Permissions.FINANCE_VIEW_REPORTS)).map(
         entry => entry.id
       )
-    ).toEqual(['statements', 'aging', 'books'])
+    ).toEqual(['statements', 'aging', 'books', 'margin'])
     expect(
       visibleEntries(FINANCE_SETTINGS_ENTRIES, holding(Permissions.FINANCE_EXPORT)).map(
         entry => entry.id
