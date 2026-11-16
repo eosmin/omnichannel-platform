@@ -269,6 +269,12 @@ export const ErrorCodes = {
   SUPPLIER_HAS_HISTORY: 'SUPPLIER_HAS_HISTORY',
   // An entry that a bank statement was reconciled with is not reversed (or its transaction voided) until the match is taken back
   FINANCE_ENTRY_RECONCILED: 'FINANCE_ENTRY_RECONCILED',
+  // Fiscal documents (TDD_18 §8): an accepted document never changes; a state the document cannot move from; the
+  // provider of the issuer is not one this deployment has; the issuer fails the checks of its provider
+  FISCAL_DOCUMENT_IMMUTABLE: 'FISCAL_DOCUMENT_IMMUTABLE',
+  FISCAL_DOCUMENT_INVALID_TRANSITION: 'FISCAL_DOCUMENT_INVALID_TRANSITION',
+  FISCAL_PROVIDER_UNAVAILABLE: 'FISCAL_PROVIDER_UNAVAILABLE',
+  FISCAL_ISSUER_INVALID: 'FISCAL_ISSUER_INVALID',
   // A bank statement file that cannot be read, or whose body is not what an import takes (the rows that failed travel in the metadata)
   BANK_STATEMENT_INVALID: 'BANK_STATEMENT_INVALID',
 

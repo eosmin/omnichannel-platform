@@ -145,6 +145,7 @@ describe('DestructiveActionTiers', () => {
       'REOPEN_FISCAL_PERIOD',
       'REVERSE_ENTRY',
       'VOID_FINANCE_TRANSACTION',
+      'VOID_FISCAL_DOCUMENT',
       'VOID_SUPPLIER_PAYMENT'
     ]) {
       expect(tierOf[action]).toBe(DestructiveActionTierLevels.HIGH)

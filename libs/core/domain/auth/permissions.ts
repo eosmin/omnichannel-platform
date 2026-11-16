@@ -157,8 +157,7 @@ export const PermissionsOfUnbuiltAreas: readonly string[] = [
   // (Step 4B.8), and the carrier fees (Step 4B.6b-2). Each step takes its own out of this list
   'finance:close_periods',
   'finance:export',
-  'finance:view_carrier_fees',
-  'fiscal:'
+  'finance:view_carrier_fees'
 ]
 
 export const RoleNames = {
