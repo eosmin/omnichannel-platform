@@ -179,6 +179,22 @@ function booksOf(owner: OwnerClient, organizationId: string): Promise<FinanceFix
 async function booksOfStore(owner: OwnerClient, storeId: string): Promise<FinanceFixture> {
   return booksOf(owner, await organizationOfStore(owner, storeId))
 }
+// The fiscal issuer of an organization (TDD_18 §8.2), as the owner: the simulator's, with no credentials (the isolation cases do not
+// submit anything)
+async function ensureFiscalIssuer(owner: OwnerClient, organizationId: string): Promise<void> {
+  await owner.fiscalIssuer.upsert({
+    where: { organizationId },
+    create: {
+      organizationId,
+      providerId: 'simulator',
+      legalName: 'iso-issuer',
+      taxId: 'ISO-TAX',
+      address: { line1: 'x' },
+      environment: 'sandbox'
+    },
+    update: {}
+  })
+}
 // A supplier of an organization, and a draft purchase order of it for a warehouse of the organization (TDD_18 §2.7), as the owner
 async function createSupplierOf(
   owner: OwnerClient,
@@ -1575,6 +1591,95 @@ const resources: IsolationResource[] = [
       storeOf: async (owner, id) =>
         (await owner.fiscalPeriod.findUnique({ where: { id }, select: { organizationId: true } }))
           ?.organizationId ?? null
+    }
+  },
+  // The issuer of the fiscal documents (TDD_18 §8): one row per organization, read through the store of the request and never by an
+  // id, like the settings of the books. The credentials of the row are never in an answer.
+  {
+    name: 'fiscalIssuer',
+    create: async (owner, { storeId }) => {
+      const organizationId = await organizationOfStore(owner, storeId)
+      await ensureFiscalIssuer(owner, organizationId)
+      return { id: storeId }
+    },
+    scope: 'organization',
+    readPath: () => ApiRoutes.fiscal.issuer,
+    own: {
+      set: async (owner, storeId, marker) => {
+        await owner.fiscalIssuer.update({
+          where: { organizationId: await organizationOfStore(owner, storeId) },
+          data: { legalName: `iso-issuer-${marker}` }
+        })
+      },
+      markerIn: body => {
+        const name = (body as { data?: { legalName?: string } }).data?.legalName
+        return name === 'iso-issuer-A' ? 'A' : name === 'iso-issuer-B' ? 'B' : null
+      }
+    },
+    modify: {
+      path: () => ApiRoutes.fiscal.issuer,
+      method: 'put',
+      body: {
+        providerId: 'simulator',
+        legalName: 'hacked',
+        taxId: 'X',
+        address: { line1: 'x' },
+        environment: 'sandbox',
+        issueOn: 'shipped',
+        credentials: { signingKey: 'not-a-real-key' }
+      }
+    },
+    untouched: async (owner, storeId) =>
+      (
+        await owner.fiscalIssuer.findUniqueOrThrow({
+          where: { organizationId: await organizationOfStore(owner, storeId) },
+          select: { legalName: true }
+        })
+      ).legalName !== 'hacked'
+  },
+  // A fiscal document is the row of a sale of a store of the organization: every store of it reads it with FISCAL_VIEW, another
+  // organization never does. No route makes one (the sale does); the changes a person can try are the receiver, a retry and a void.
+  {
+    name: 'fiscalDocument',
+    create: async (owner, { storeId }) => {
+      const organizationId = await organizationOfStore(owner, storeId)
+      await ensureFiscalIssuer(owner, organizationId)
+      const order = await createOrder(owner, { storeId })
+      const row = await owner.fiscalDocument.create({
+        data: {
+          organizationId,
+          storeId,
+          orderId: order.id,
+          sequenceNumber: randomInt(1_000_000, 2_000_000_000),
+          documentType: 'pending',
+          status: 'queued',
+          providerId: 'simulator',
+          environment: 'sandbox',
+          issuerSnapshot: {},
+          linesSnapshot: { lines: [] },
+          // Not a sealed receiver: the view reads it as an empty one, which is all this case needs
+          receiverEncrypted: Buffer.from('isolation-fixture'),
+          totalCents: 1999,
+          taxCents: 0
+        },
+        select: { id: true }
+      })
+      return row
+    },
+    scope: 'organization',
+    readPath: ApiRoutes.fiscal.documents.byId,
+    listPath: ApiRoutes.fiscal.documents.list,
+    modify: {
+      path: ApiRoutes.fiscal.documents.retry,
+      method: 'post',
+      body: {}
+    },
+    untouched: async (owner, id) => {
+      const row = await owner.fiscalDocument.findUnique({
+        where: { id },
+        select: { status: true, attempts: true, rejectionReason: true }
+      })
+      return row?.status === 'queued' && row.attempts === 0 && row.rejectionReason === null
     }
   },
   // The journal is immutable: the only change a route can try is a reversal, which must never reach another organization's entry

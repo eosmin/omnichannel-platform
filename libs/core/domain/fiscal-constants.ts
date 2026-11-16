@@ -25,8 +25,14 @@ export const FiscalLimits = {
   MAX_ATTEMPTS: 6,
   BACKOFF_MS: 60_000,
   REASON_MAX_LENGTH: 500,
+  // What a provider may hand back of the authority's answer, as text: more is cut (a provider may copy the whole body of the authority)
+  RESPONSE_MAX_CHARS: 16_000,
   VOID_REASON_MAX_LENGTH: 500,
   FAILED_JOB_KEEP_SECONDS: 7 * 24 * 60 * 60,
+  // The correlative is an INTEGER of the database
+  MAX_SEQUENCE: 2_000_000_000,
+  // A submission that was claimed less than this ago is alive: another attempt is working on it. Older, its worker died and it is taken over.
+  CLAIM_LEASE_MS: 5 * 60 * 1000,
   LIST_PAGE_SIZE: 25,
   LIST_MAX_PAGE_SIZE: 100
 } as const
@@ -62,7 +68,12 @@ export const FiscalRejectionReasons = {
   RECEIVER_INCOMPLETE: 'receiver_incomplete',
   PROVIDER_UNAVAILABLE: 'provider_unavailable',
   BUILD_FAILED: 'build_failed',
-  CREDENTIALS_UNREADABLE: 'credentials_unreadable'
+  CREDENTIALS_UNREADABLE: 'credentials_unreadable',
+  // The lines, the shipping, the discount and the tax of the sale do not add up to its total: no provider is asked to sign it
+  SALE_INCONSISTENT: 'sale_inconsistent',
+  // The issuer was changed (its provider or its environment) after this document was made: a person retries it and it is made again
+  // with the issuer as it is now
+  ISSUER_CHANGED: 'issuer_changed'
 } as const
 
 // The type of a document that has not been built yet: the provider picks the real one when it builds (its rule, not core's)

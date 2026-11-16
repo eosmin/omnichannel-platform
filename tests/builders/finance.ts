@@ -266,6 +266,8 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
       OR EXISTS (SELECT 1 FROM finance_transactions WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM suppliers WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM purchase_orders WHERE organization_id = ANY(${organizationIds}))
+      OR EXISTS (SELECT 1 FROM fiscal_documents WHERE organization_id = ANY(${organizationIds}))
+      OR EXISTS (SELECT 1 FROM fiscal_issuers WHERE organization_id = ANY(${organizationIds}))
     ) AS touched`
   const touched = found?.touched === true
   if (!touched) return
@@ -274,6 +276,7 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     // The triggers of the four tables that refuse a delete are off for the length of this transaction, and on again before it
     // commits (an error rolls the whole transaction back, the switch included)
     const guarded = [
+      'fiscal_documents',
       'reconciliation_matches',
       'bank_statement_lines',
       'bank_statement_imports',
@@ -290,6 +293,9 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
       await tx.$executeRawUnsafe(`ALTER TABLE ${table} DISABLE TRIGGER USER`)
     // The purchases name the entries, the accounts, the stores and the products: they go first (a payment names a bill, a bill its
     // order and its supplier). The lines of an order go with it (cascade)
+    // A fiscal document names its order, its store and the sale entry: it goes before all of them
+    await tx.fiscalDocument.deleteMany({ where })
+    await tx.fiscalIssuer.deleteMany({ where })
     await tx.supplierPayment.deleteMany({ where })
     await tx.purchaseReceiptLine.deleteMany({ where })
     await tx.purchaseReceipt.deleteMany({ where })

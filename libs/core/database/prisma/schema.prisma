@@ -35,6 +35,8 @@ model Organization {
   accountRoles          AccountRoleMapping[]
   paymentAccounts       PaymentMethodAccount[]
   fiscalPeriods         FiscalPeriod[]
+  fiscalIssuer          FiscalIssuer?
+  fiscalDocuments       FiscalDocument[]
   journalEntries        JournalEntry[]
   journalLines          JournalLine[]
   periodBalances        AccountPeriodBalance[]
@@ -130,6 +132,7 @@ model Store {
   orderReturnLines         OrderReturnLine[]
   returnReceptionBatches   ReturnReceptionBatch[]
   returnReceptionItems     ReturnReceptionItem[]
+  fiscalDocuments          FiscalDocument[]
 
   @@unique([organizationId, slug])
   // So that a link to a store can name its organization and the database check that they go together (StoreWarehouse)
@@ -827,6 +830,7 @@ model Order {
   messageDispatches  OrderMessageDispatch[]
   returns            OrderReturn[]          @relation("ReturnOrder")
   replacementReturns OrderReturn[]          @relation("ReturnReplacement")
+  fiscalDocuments    FiscalDocument[]
 
   @@unique([storeId, orderNumber])
   // The key the records that hang from an order point at, so that the database refuses one of another store
@@ -2563,6 +2567,7 @@ model JournalEntry {
   purchaseReceipt   PurchaseReceipt?    @relation("ReceiptEntry")
   supplierPayment   SupplierPayment?    @relation("PaymentEntry")
   voidedPayment     SupplierPayment?    @relation("PaymentVoidEntry")
+  fiscalDocuments   FiscalDocument[]
 
   @@unique([organizationId, number])
   @@unique([organizationId, idempotencyKey])
@@ -2989,4 +2994,73 @@ model ReconciliationMatch {
   @@index([organizationId, statementLineId])
   @@index([journalLineId])
   @@map("reconciliation_matches")
+}
+
+// Fiscal documents (TDD_18 §8, Step 4B.7). Core owns the lifecycle; the provider named by `providerId` owns what is legal and
+// country-specific, and its id is plain data here, never a constant of core.
+// The legal entity that issues (the organization), one row. The credentials are what the provider needs to sign and to talk to the
+// authority, encrypted like the credentials of a carrier (libs/core/crypto): never returned, never logged.
+model FiscalIssuer {
+  organizationId       String   @id @map("organization_id")
+  providerId           String   @map("provider_id")
+  legalName            String   @map("legal_name")
+  taxId                String   @map("tax_id")
+  registrationId       String?  @map("registration_id")
+  address              Json
+  activityCode         String?  @map("activity_code")
+  establishmentCode    String?  @map("establishment_code")
+  environment          String // FiscalEnvironment
+  issueOn              String   @default("delivered") @map("issue_on") // FiscalIssueOn: when the document of a sale is made
+  credentialsEncrypted Bytes?   @map("credentials_encrypted")
+  // The correlative of the documents of the organization: taken with an atomic increment when a document is made
+  nextSequence         Int      @default(1) @map("next_sequence")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@map("fiscal_issuers")
+}
+
+model FiscalDocument {
+  id                    String    @id @default(uuid())
+  organizationId        String    @map("organization_id")
+  storeId               String    @map("store_id")
+  orderId               String    @map("order_id")
+  journalEntryId        String?   @map("journal_entry_id") // the sale entry it belongs to; linked, never copied amounts
+  sequenceNumber        Int       @map("sequence_number") // the correlative of the organization
+  documentType          String    @map("document_type") // a type the manifest of the provider declares
+  status                String // FiscalDocumentStatus
+  providerId            String    @map("provider_id") // the provider that built it: a later change of issuer does not rewrite history
+  environment           String // FiscalEnvironment at the time
+  externalNumber        String?   @map("external_number") // what the provider or the authority assigned
+  providerData          Json?     @map("provider_data") // opaque to core
+  issuerSnapshot        Json      @map("issuer_snapshot") // the issuer at issue time, without credentials
+  linesSnapshot         Json      @map("lines_snapshot") // the lines with the tax snapshot of the order (Step 4B.3b)
+  receiverEncrypted     Bytes     @map("receiver_encrypted") // name, tax id and address of the customer: customer data, encrypted at rest
+  builtPayloadEncrypted Bytes?    @map("built_payload_encrypted") // what the provider built: the legal evidence, fixed once accepted; it holds the receiver's data, so it is sealed like the receiver
+  response              Json? // what the authority answered
+  currency              String    @default("USD")
+  totalCents            Int       @map("total_cents")
+  taxCents              Int       @map("tax_cents")
+  rejectionReason       String?   @map("rejection_reason") // a code, never the receiver's data
+  attempts              Int       @default(0)
+  submission            Int       @default(1) // moves only when the authority refused the document: the idempotency key is organization:document:submission
+  voidReason            String?   @map("void_reason")
+  voidedBy              String?   @map("voided_by")
+  voidedAt              DateTime? @map("voided_at")
+  issuedAt              DateTime? @map("issued_at")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  store        Store         @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  order        Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  entry        JournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+
+  // One document per sale: the credit note of a return (Step 4B.7b) is another kind of row
+  @@unique([organizationId, orderId])
+  @@unique([organizationId, sequenceNumber])
+  @@index([organizationId, status])
+  @@index([storeId])
+  @@map("fiscal_documents")
 }

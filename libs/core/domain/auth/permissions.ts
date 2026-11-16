@@ -152,8 +152,7 @@ export const PermissionsOfUnbuiltAreas: readonly string[] = [
   'remittances:',
   'analytics:',
   'org:',
-  'finance:',
-  'fiscal:'
+  'finance:'
 ]
 
 export const RoleNames = {

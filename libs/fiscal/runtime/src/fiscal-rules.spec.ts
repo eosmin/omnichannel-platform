@@ -8,7 +8,9 @@ import {
   receiverEditable,
   receiverOf,
   receiverRecord,
-  retryable
+  retryable,
+  saleAddsUp,
+  saleOf
 } from './fiscal-rules'
 
 describe('the transitions of a fiscal document', () => {
@@ -155,5 +157,65 @@ describe('the receiver', () => {
     expect(maskTaxId('123')).toBe('**3')
     expect(maskTaxId('12')).toBe('**')
     expect(maskTaxId(null)).toBeNull()
+  })
+})
+
+describe('a sale that adds up', () => {
+  const line = (totalCents: number, taxCents: number) => ({
+    description: 'x',
+    quantity: 1,
+    unitPriceCents: totalCents,
+    taxRateBps: 1300,
+    taxCents,
+    totalCents
+  })
+  const sale = (over: Partial<ReturnType<typeof saleOf>> = {}) => ({
+    lines: [line(2260, 260)],
+    shippingCents: 565,
+    shippingTaxCents: 65,
+    discountCents: 0,
+    pricesIncludeTax: true,
+    totalCents: 2825,
+    taxCents: 325,
+    ...over
+  })
+
+  it('accepts the lines plus the shipping when the prices include the tax', () => {
+    expect(saleAddsUp(sale())).toBe(true)
+  })
+
+  it('takes the discount off once, for the whole document', () => {
+    expect(saleAddsUp(sale({ discountCents: 100, totalCents: 2725 }))).toBe(true)
+    expect(saleAddsUp(sale({ discountCents: 100 }))).toBe(false)
+  })
+
+  it('adds the tax to the total when the prices did not include it', () => {
+    expect(saleAddsUp(sale({ pricesIncludeTax: false, totalCents: 3150 }))).toBe(true)
+    expect(saleAddsUp(sale({ pricesIncludeTax: false }))).toBe(false)
+  })
+
+  it('refuses a tax that is not the one of the lines and the shipping, and a total that is not theirs', () => {
+    expect(saleAddsUp(sale({ taxCents: 326 }))).toBe(false)
+    expect(saleAddsUp(sale({ shippingTaxCents: 0 }))).toBe(false)
+    expect(saleAddsUp(sale({ totalCents: 2826 }))).toBe(false)
+  })
+
+  it('reads the parts of the snapshot, and reads a missing or odd one as nothing', () => {
+    expect(
+      saleOf(
+        { totalCents: 10, taxCents: 1 },
+        { lines: [line(10, 1)], shippingCents: 'x', discountCents: 1.5, pricesIncludeTax: false }
+      )
+    ).toEqual({
+      lines: [line(10, 1)],
+      shippingCents: 0,
+      shippingTaxCents: 0,
+      discountCents: 0,
+      pricesIncludeTax: false,
+      totalCents: 10,
+      taxCents: 1
+    })
+    // An order made before the tax columns kept no flag: its prices are read as tax included
+    expect(saleOf({ totalCents: 0, taxCents: 0 }, {}).pricesIncludeTax).toBe(true)
   })
 })

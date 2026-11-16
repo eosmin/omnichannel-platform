@@ -1,5 +1,8 @@
 import { Test } from '@nestjs/testing'
 
+import { FiscalDocumentsService, FiscalProviderRegistry } from '@platform/fiscal/runtime'
+import { SIMULATOR_PROVIDER_ID } from '@platform/fiscal/simulator'
+
 import { FinanceReconciler } from './finance/finance-reconciler.service'
 import { AnalyticsProcessor } from './processors/analytics.processor'
 import { CustomerProfileProcessor } from './processors/customer-profile.processor'
@@ -25,6 +28,14 @@ describe('WorkerModule', () => {
     expect(moduleRef.get(AnalyticsProcessor, { strict: false })).toBeInstanceOf(AnalyticsProcessor)
     // The daily check of the books asks the heavy queue and the metrics: it must be built with them (it broke the worker once)
     expect(moduleRef.get(FinanceReconciler, { strict: false })).toBeInstanceOf(FinanceReconciler)
+    // The fiscal documents are submitted by the heavy processor: the lifecycle must be built with the providers of the deployment, and the
+    // simulator is one of them in test (it is never one in production)
+    expect(moduleRef.get(FiscalDocumentsService, { strict: false })).toBeInstanceOf(
+      FiscalDocumentsService
+    )
+    expect(
+      moduleRef.get(FiscalProviderRegistry, { strict: false }).find(SIMULATOR_PROVIDER_ID)
+    ).toBeDefined()
     await moduleRef.close()
   })
 })

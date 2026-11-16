@@ -207,6 +207,11 @@ export const AuditAction = {
   FINANCE_ENTRY_POSTED_MANUAL: 'finance.entry_posted_manual',
   FINANCE_ENTRY_REVERSED: 'finance.entry_reversed',
   FINANCE_POSTING_RETRIED: 'finance.posting_retried',
+  // Fiscal documents (TDD_18 §8): the issuer's settings (field names only, never the credentials), a retry and an invalidation
+  FISCAL_ISSUER_CHANGED: 'fiscal.issuer_changed',
+  FISCAL_DOCUMENT_RETRIED: 'fiscal.document_retried',
+  FISCAL_DOCUMENT_RECEIVER_CHANGED: 'fiscal.document_receiver_changed',
+  FISCAL_DOCUMENT_VOIDED: 'fiscal.document_voided',
   FINANCE_TRANSACTION_RECORDED: 'finance.transaction_recorded',
   FINANCE_TRANSACTION_VOIDED: 'finance.transaction_voided',
   FINANCE_TRANSACTION_DOCUMENT_ATTACHED: 'finance.transaction_document_attached',

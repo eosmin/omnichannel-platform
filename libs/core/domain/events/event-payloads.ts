@@ -344,6 +344,15 @@ export interface FinancePostingFailedPayload {
   attempts: number
 }
 
+// A fiscal document was refused (TDD_18 §8.3): ids and a reason code, never the receiver's data
+export interface FiscalDocumentRejectedPayload {
+  organizationId: string
+  storeId: string
+  documentId: string
+  orderId: string
+  reason: string
+}
+
 // A receipt of a purchase order was posted (TDD_18 §3): ids only, no amount and no cost
 export interface PurchaseOrderReceivedPayload {
   organizationId: string
@@ -614,6 +623,7 @@ export interface DomainEventPayloads {
   [Events.FINANCE_ENTRY_POSTED]: FinanceEntryPayload
   [Events.FINANCE_ENTRY_REVERSED]: FinanceEntryPayload
   [Events.FINANCE_POSTING_FAILED]: FinancePostingFailedPayload
+  [Events.FISCAL_DOCUMENT_REJECTED]: FiscalDocumentRejectedPayload
   [Events.PURCHASE_ORDER_RECEIVED]: PurchaseOrderReceivedPayload
   [Events.WEBHOOK_AUTO_DISABLED]: WebhookAutoDisabledPayload
   [Events.PLUGIN_ERROR]: PluginErrorPayload
