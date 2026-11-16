@@ -4,7 +4,7 @@ import { AuthorType, MessageType } from '@platform/core/domain'
 
 import { pluginCreateMessageSchema, pluginMessageOf } from './plugin-messages.schemas'
 
-const plugin = { id: 'order-bot', name: 'Order Bot' }
+const plugin = { id: 'order-bot', name: 'Order Bot', uploaderId: 'plugin:installation-1' }
 const base = () => ({
   type: 'text',
   conversationId: randomUUID(),
@@ -33,10 +33,12 @@ describe('pluginCreateMessageSchema', () => {
       'a nickname on an agent message',
       { authorType: AuthorType.AGENT, userId: randomUUID(), nickname: 'x' }
     ],
-    ['a file type', { type: 'image' }],
+    ['a file with no files', { type: 'image', content: undefined }],
     ['a template', { type: 'template' }],
     ['an avatar', { avatar: 'https://evil.example.com/a.png' }],
     ['a mention', { type: 'note', mentions: [randomUUID()] }],
+    ['a file type the human route has not', { type: 'sticker', mediaIds: [randomUUID()] }],
+    ['a text with files', { mediaIds: [randomUUID()] }],
     ['a file quoted by a note', { type: 'note', replyToMediaId: randomUUID() }],
     ['a quiet that is not a boolean', { quiet: 'yes' }],
     ['an author that is the customer', { authorType: AuthorType.CUSTOMER }]
@@ -66,6 +68,7 @@ describe('pluginMessageOf', () => {
     expect(body).toMatchObject({ type: MessageType.TEXT, content: 'Your order is on its way' })
     expect(origin).toEqual({
       pluginId: 'order-bot',
+      uploaderId: 'plugin:installation-1',
       quiet: false,
       author: AuthorType.SYSTEM,
       nickname: 'Order Bot'
@@ -99,6 +102,77 @@ describe('pluginMessageOf', () => {
     const { body, origin } = pluginMessageOf(parsed, plugin)
 
     expect(body).toMatchObject({ type: MessageType.INTERNAL_NOTE, mentions: [] })
-    expect(origin).toEqual({ pluginId: 'order-bot', quiet: true, author: AuthorType.AGENT, userId })
+    expect(origin).toEqual({
+      pluginId: 'order-bot',
+      uploaderId: 'plugin:installation-1',
+      quiet: true,
+      author: AuthorType.AGENT,
+      userId
+    })
+  })
+})
+
+describe('a file or an album of a plugin', () => {
+  const file = (extra: Record<string, unknown> = {}) => ({
+    type: 'image',
+    conversationId: randomUUID(),
+    mediaIds: [randomUUID()],
+    idempotencyKey: randomUUID(),
+    ...extra
+  })
+
+  it.each([
+    ['image', MessageType.IMAGE],
+    ['video', MessageType.VIDEO],
+    ['audio', MessageType.AUDIO],
+    ['document', MessageType.DOCUMENT]
+  ])(
+    'takes a %s and gives the service its type, files and the owner of the upload',
+    (type, expected) => {
+      const parsed = pluginCreateMessageSchema.parse(file({ type, content: 'Here you are' }))
+
+      const { body, origin } = pluginMessageOf(parsed, plugin)
+
+      expect(body).toMatchObject({ type: expected, content: 'Here you are' })
+      expect('mediaIds' in body && body.mediaIds).toHaveLength(1)
+      expect(origin.uploaderId).toBe('plugin:installation-1')
+    }
+  )
+
+  it('takes an album with a text under each file and the quote of a file', () => {
+    const ids = [randomUUID(), randomUUID()]
+    const quoted = randomUUID()
+    const parsed = pluginCreateMessageSchema.parse(
+      file({
+        mediaIds: ids,
+        captions: ['one', ''],
+        replyToMessageId: randomUUID(),
+        replyToMediaId: quoted
+      })
+    )
+
+    const { body } = pluginMessageOf(parsed, plugin)
+
+    expect(body).toMatchObject({ mediaIds: ids, captions: ['one', null], replyToMediaId: quoted })
+  })
+
+  it.each([
+    ['no files', { mediaIds: [] }],
+    [
+      'the same file twice',
+      { mediaIds: ['6f1c6e0e-1b8a-4d57-9d54-3c3c8f2a1b11', '6F1C6E0E-1B8A-4D57-9D54-3C3C8F2A1B11'] }
+    ],
+    ['no key of idempotency', { idempotencyKey: undefined }],
+    ['a field of the human route', { mentions: [randomUUID()] }],
+    ['a quote that is not an id', { replyToMediaId: 'x' }]
+  ])('refuses %s', (_name, extra) => {
+    expect(pluginCreateMessageSchema.safeParse(file(extra)).success).toBe(false)
+  })
+
+  it('holds a file to the same rules of author as a text', () => {
+    expect(
+      pluginCreateMessageSchema.safeParse(file({ authorType: AuthorType.AGENT })).success
+    ).toBe(false)
+    expect(pluginCreateMessageSchema.safeParse(file({ userId: randomUUID() })).success).toBe(false)
   })
 })

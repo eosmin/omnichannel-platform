@@ -25,7 +25,7 @@ import {
   PluginMessageOperations,
   uuidSchema
 } from '@platform/core/domain'
-import { HttpStatusCodes } from '@platform/core/errors'
+import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import { MULTI_FILE_SEND_ENABLED, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import {
@@ -50,6 +50,7 @@ import { PluginScopes } from '@platform/plugins/sdk'
 
 import { CurrentPluginInstallation, PluginApi } from '../plugins/plugin-api.decorators'
 import { CurrentPermissions, CurrentStore, RequirePermissions } from '../tenancy'
+import { pluginUserId } from '../tenancy/actor'
 
 import { channelFileLimits } from './channel-file-limits'
 
@@ -59,6 +60,7 @@ export type PluginRevisionView = Omit<RevisionView, 'editedById' | 'editedByPlug
 interface PluginCaller {
   id: string
   pluginId: string
+  scopes?: readonly string[]
 }
 
 // What a plugin does with the messages of a conversation of its store, through its key (TDD_10 §6.4). The same services as the
@@ -95,13 +97,25 @@ export class PluginMessagesController {
     @Req() req: AuthenticatedRequest,
     @Res({ passthrough: true }) res: Response
   ): Promise<MessageView> {
+    // A file is the installation's own upload, which asked for `media:write`: a key that lost that scope since sends no file (the route
+    // names `messages:write` only, because the same route carries text)
+    if ('mediaIds' in body && installation.scopes?.includes(PluginScopes.MEDIA_WRITE) !== true) {
+      throw new PlatformException(
+        ErrorCodes.PLUGIN_SCOPE_DENIED,
+        'sending a file needs the scope media:write',
+        HttpStatusCodes.FORBIDDEN,
+        { required: [PluginScopes.MEDIA_WRITE] }
+      )
+    }
     const plugin = await this.prisma.client.plugin.findUnique({
       where: { id: installation.pluginId },
       select: { name: true }
     })
     const { body: message, origin } = pluginMessageOf(body, {
       id: installation.pluginId,
-      name: plugin?.name ?? installation.pluginId
+      name: plugin?.name ?? installation.pluginId,
+      // The files of the message are the ones this installation uploaded (`media:write`), owned by `plugin:<installation id>`
+      uploaderId: pluginUserId(installation.id)
     })
     const { message: created, created: isNew } = await this.messages.create(
       store.id,
@@ -122,6 +136,7 @@ export class PluginMessagesController {
       type: message.type,
       authorType: origin.author,
       quiet: origin.quiet,
+      ...('mediaIds' in message ? { files: message.mediaIds.length } : {}),
       ...(origin.author === AuthorType.AGENT ? { userId: origin.userId } : {})
     })
     return created

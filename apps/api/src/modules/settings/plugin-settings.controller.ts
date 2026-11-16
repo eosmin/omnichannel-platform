@@ -20,11 +20,12 @@ import {
   type UpdateTagBody,
   updateTagSchema
 } from './settings.schemas'
+import { type SnippetView, SnippetsService } from './snippets.service'
 import { type TagView, TagsService } from './tags.service'
 
 const TAGS_READ = PluginScopes.TAGS_READ
 const TAGS_WRITE = PluginScopes.TAGS_WRITE
-const tagId = () => new ZodValidationPipe(idSchema)
+const idParam = () => new ZodValidationPipe(idSchema)
 
 // How the store is set up to work, read only (Step 5.6 PR E3a, scope `settings:read`): the preferences (an allowlist: not the approval controls) and the return rules. The
 // security settings, the routing, the hours and the inbox behaviour stay human (the map says why), and no setting is written.
@@ -36,7 +37,8 @@ export class PluginSettingsController {
   constructor(
     private readonly preferences: PreferencesService,
     private readonly returns: ReturnSettingsService,
-    private readonly tags: TagsService
+    private readonly tags: TagsService,
+    private readonly snippets: SnippetsService
   ) {}
 
   @PluginApi(PluginScopes.SETTINGS_READ)
@@ -65,9 +67,28 @@ export class PluginSettingsController {
   @Get(PluginApiRoutes.settings.tagById(':id'))
   getTag(
     @CurrentStore() store: { id: string },
-    @Param('id', tagId()) id: string
+    @Param('id', idParam()) id: string
   ): Promise<TagView> {
     return this.tags.get(store.id, id)
+  }
+
+  // The canned replies, read only (PR E7-2, scope `snippets:read`): the same service and the same fields as the composer. Writing one
+  // is the owner's (SETTINGS_EDIT) and has no scope.
+  @PluginApi(PluginScopes.SNIPPETS_READ)
+  @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @Get(PluginApiRoutes.settings.snippets)
+  listSnippets(@CurrentStore() store: { id: string }): Promise<SnippetView[]> {
+    return this.snippets.list(store.id)
+  }
+
+  @PluginApi(PluginScopes.SNIPPETS_READ)
+  @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @Get(PluginApiRoutes.settings.snippetById(':id'))
+  getSnippet(
+    @CurrentStore() store: { id: string },
+    @Param('id', idParam()) id: string
+  ): Promise<SnippetView> {
+    return this.snippets.get(store.id, id)
   }
 
   @PluginApi(TAGS_READ, TAGS_WRITE)
@@ -89,7 +110,7 @@ export class PluginSettingsController {
   updateTag(
     @CurrentStore() store: { id: string },
     @CurrentPluginInstallation() installation: { id: string; pluginId: string },
-    @Param('id', tagId()) id: string,
+    @Param('id', idParam()) id: string,
     @Body(new ZodValidationPipe(updateTagSchema)) body: UpdateTagBody,
     @Req() req: AuthenticatedRequest
   ): Promise<TagView> {
@@ -103,7 +124,7 @@ export class PluginSettingsController {
   async removeTag(
     @CurrentStore() store: { id: string },
     @CurrentPluginInstallation() installation: { id: string; pluginId: string },
-    @Param('id', tagId()) id: string,
+    @Param('id', idParam()) id: string,
     @Req() req: AuthenticatedRequest
   ): Promise<void> {
     await this.tags.remove(store.id, id, pluginActorOf(installation, store, req))
