@@ -316,6 +316,27 @@ export const QueryKeys = {
     // The one store of the General page; under `stores`, so a create, rename or delete refreshes it
     store: (storeId: string, id: string) => ['organizations', storeId, 'stores', id] as const
   },
+  // Suppliers, purchase orders and what is owed (TDD_18 §2.7, Step 4B.9a-4). They sit under the `finance` root on purpose: a purchase writes
+  // entries, so `finance.root` makes them stale with the rest of the books
+  purchases: {
+    suppliers: (storeId: string, filters: Record<string, string>) =>
+      ['finance', storeId, 'purchases', 'suppliers', filters] as const,
+    allSuppliers: (storeId: string) =>
+      ['finance', storeId, 'purchases', 'suppliers', 'all'] as const,
+    supplier: (storeId: string, id: string) =>
+      ['finance', storeId, 'purchases', 'supplier', id] as const,
+    supplierBalance: (storeId: string, id: string) =>
+      ['finance', storeId, 'purchases', 'supplier', id, 'balance'] as const,
+    supplierPayments: (storeId: string, id: string) =>
+      ['finance', storeId, 'purchases', 'supplier', id, 'payments'] as const,
+    payables: (storeId: string, filters: Record<string, string>) =>
+      ['finance', storeId, 'purchases', 'payables', filters] as const,
+    orders: (storeId: string, filters: Record<string, string>) =>
+      ['finance', storeId, 'purchases', 'orders', filters] as const,
+    order: (storeId: string, id: string) => ['finance', storeId, 'purchases', 'order', id] as const,
+    orderPayments: (storeId: string, id: string) =>
+      ['finance', storeId, 'purchases', 'order', id, 'payments'] as const
+  },
   // Keyed by the store of the request, like the warehouses: the books belong to the organization, so a mutation makes the ROOT
   // stale and every store's cache reads again (TDD_18 §3)
   finance: {

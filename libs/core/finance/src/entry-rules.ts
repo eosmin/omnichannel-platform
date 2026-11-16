@@ -1,29 +1,17 @@
 import {
+  type DraftLine,
   EntryOrigin,
   FinanceCurrency,
   FinanceLimits,
-  isIsoDate,
-  JournalEntryType,
   type FinanceSourceType,
-  type PartyType
+  isIsoDate,
+  JournalEntryType
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 
 // The pure rules of a journal entry (TDD_18 §4.1): what makes an entry valid before the database sees it. The posting
 // service builds a draft, asks this file whether it is valid and only then writes it; the database holds the same
 // rules (balanced at commit, one side per line, open period) as the net under a bug of the service.
-
-export interface DraftLine {
-  accountId: string
-  debitCents: number
-  creditCents: number
-  // The dimension of the line (the store of the order, the warehouse's owner, the store of the expense)
-  storeId?: string | null
-  partyType?: PartyType | null
-  partyId?: string | null
-  taxRateId?: string | null
-  memo?: string | null
-}
 
 export interface DraftEntry {
   // The accounting date, 'YYYY-MM-DD': it decides the period
@@ -68,9 +56,6 @@ export interface EntryProblem {
     | typeof ErrorCodes.VALIDATION_INVALID_INPUT
   rule: EntryRuleName
 }
-
-// A calendar date, not only a shape that looks like one (no 31 of February): the rule lives in `@platform/core/domain` for the screens
-export { isIsoDate } from '@platform/core/domain'
 
 const isWholeCents = (value: number): boolean =>
   Number.isSafeInteger(value) && value >= 0 && value <= FinanceLimits.MAX_LINE_CENTS
@@ -184,3 +169,5 @@ export function balanceOf(
   const net = BigInt(debitCents) - BigInt(creditCents)
   return debitNormal ? net : -net
 }
+
+export { type DraftLine, isIsoDate }

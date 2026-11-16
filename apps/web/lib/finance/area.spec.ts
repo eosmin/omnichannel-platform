@@ -64,9 +64,20 @@ describe('the finance area', () => {
         entry => entry.id
       )
     ).toEqual(['accounts', 'taxes', 'periods', 'settings'])
+    // Paying opens the payables and nothing of the books; managing purchases opens the three pages of purchases and nothing of the books
     expect(
-      visibleEntries(FINANCE_SETTINGS_ENTRIES, holding(Permissions.FINANCE_MOVE_MONEY))
-    ).toEqual([])
+      visibleEntries(FINANCE_SETTINGS_ENTRIES, holding(Permissions.FINANCE_MOVE_MONEY)).map(
+        entry => entry.id
+      )
+    ).toEqual(['payables'])
+    expect(
+      visibleEntries(FINANCE_SETTINGS_ENTRIES, holding(Permissions.FINANCE_MANAGE_PURCHASES)).map(
+        entry => entry.id
+      )
+    ).toEqual(['suppliers', 'purchases', 'payables'])
+    expect(
+      firstVisibleHref(FINANCE_SETTINGS_ENTRIES, holding(Permissions.FINANCE_MANAGE_PURCHASES))
+    ).toBe('/finance/suppliers')
     expect(firstVisibleHref(FINANCE_SETTINGS_ENTRIES, holding())).toBeNull()
     expect(firstVisibleHref(FINANCE_SETTINGS_ENTRIES, holding(Permissions.FINANCE_VIEW))).toBe(
       '/finance/accounts'
@@ -96,6 +107,12 @@ describe('bestFinanceMembership', () => {
       )
     ])
     expect(best?.id).toBe('bookkeeper')
+  })
+
+  it('takes a store where the person manages purchases even when they cannot read the books', () => {
+    expect(bestFinanceMembership([store('buys', Permissions.FINANCE_MANAGE_PURCHASES)])?.id).toBe(
+      'buys'
+    )
   })
 
   it('never takes a store where the person can change the books but not read them', () => {

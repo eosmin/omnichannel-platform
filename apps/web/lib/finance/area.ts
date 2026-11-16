@@ -5,7 +5,10 @@ import { type Permission, ClientPermissions } from '@platform/core/auth'
 // never leads to an area with nothing in it. The bank reconciliation (`finance:reconcile`) is not one of them on its own: its page also
 // reads the chart to offer the accounts (`finance:view`), so it is listed for who holds both.
 export const FINANCE_AREA_PERMISSIONS = [
-  ClientPermissions.FINANCE_VIEW
+  ClientPermissions.FINANCE_VIEW,
+  // The purchases open for these, with no need to read the books (Step 4B.9a-4)
+  ClientPermissions.FINANCE_MANAGE_PURCHASES,
+  ClientPermissions.FINANCE_MOVE_MONEY
 ] as const satisfies readonly Permission[]
 
 // What else the books give a person to do once the area is open: the pages and the writes of the later steps of 4B.9 add theirs here.
