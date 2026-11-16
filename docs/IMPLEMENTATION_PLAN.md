@@ -2074,18 +2074,50 @@ sale rows follow the ledger: a sale is out of a month's book only when its entry
           (`finance:export`). Routes drawn: `finance.periods.close`, `finance.periods.reopen`, `finance.reports.trialBalance`,
           `finance.reports.trialBalanceCsv`, `finance.reports.ledger`, `finance.reports.ledgerCsv`, `finance.reports.journalCsv`,
           `finance.reports.verifyChain`.
-    - [ ] **4B.9b-2 (fiscal documents):** `fiscal.*` (the server of 4B.7a-2, #555): the issuer settings, the documents of the sales (list, one,
-          the receiver, the retry) and the void of an accepted document (typed reason, the effect shown first), and the document on the order.
+    - [x] **4B.9b-2 (fiscal documents):** the pages Finance → Fiscal documents (`/finance/fiscal`) and Fiscal issuer (`/finance/fiscal/issuer`), opened by
+          `fiscal:view` (changing needs `fiscal:manage`; the area itself now opens for `fiscal:view` alone). Documents: the list of the organization with its
+          status and a filter by status, the notice of the documents that were refused or ran out of attempts, and a detail (kind, type, number given by the
+          authority, environment, amounts in whole cents, receiver minimized, relations, the void reason) that is read only; from it a person with
+          `fiscal:manage` fixes the receiver of a document that was refused or never sent, sends it again, voids an accepted one (reason written, the effect
+          shown first, the confirmation of its HIGH tier) and makes a voided sale document again (one more confirmation). Issuer: the form follows the manifest
+          of the chosen provider (what it requires, the names of its credentials, its environments); the credentials are written and never read back; the
+          correlative only moves forward. The UI names no country and no provider. Routes drawn: `fiscal.providers`, `fiscal.issuer`, `fiscal.documents.*`.
     - [x] **4B.9b-3 (statements, aging, legal books):** built, see "Built in PR 4B.9b-3" below: Finance → Statements, Aging and Legal books
           (`finance.reports.{incomeStatement,balanceSheet,cashFlow,aging}` and their files, `finance.bookLayouts.list`, `finance.books.*`,
           `finance.frozenBooks.*`, always with the notice that a book is a draft while it is `unvalidated`).
-    - [ ] **4B.9b-4a (the VAT file and the margin):** `finance.reports.vat` and its CSV and the margin of 4B.8b-2 (#561), the weekly check of the
-          chain if it has a screen, and what 4B.9b-3 left (the `fields` of a book column, the layout editor with the accountant's answers of
-          4B.8b-4); with the box that writes off the difference of a cash-on-delivery remittance (`remittances.writeOff`, shown only with
-          `remittances:manage`, moved here from 4B.9a-4), the receipt file of a payment to a supplier and the name of the supplier in the payables
-          view (small server PRs before it; debts (a) and (f) of 4B.9a-4), the aging buckets, the export and the day filter of the payables.
+    - [x] **4B.9b-4a (the VAT file and the margin):** built, see "Built in PR 4B.9b-4a" below: Finance → VAT (`finance.reports.vat` and its CSV),
+          Finance → Margin (`finance.reports.margin` and its CSV) and the state of the weekly check of the chain (`finance.reports.chainStatus`) as a
+          notice on Periods and Reports.
+    - [ ] **4B.9b-4b (what 4B.9b-4a did not take):** the `fields` of a book column and the layout editor with the accountant's answers of 4B.8b-4;
+          the box that writes off the difference of a cash-on-delivery remittance (`remittances.writeOff`, shown only with `remittances:manage`,
+          moved here from 4B.9a-4), the receipt file of a payment to a supplier and the name of the supplier in the payables view (small server PRs
+          before it; debts (a) and (f) of 4B.9a-4), the aging buckets, the export and the day filter of the payables.
     - [ ] **4B.9b-5 (the month end to end):** the e2e case of the month (register, receive, sell, remit, close) and the permission-gate case of
           every page of the area; it closes 4B.9.
+  - **Decisions of PR 4B.9b-2 (rule 12):** (1) the bodies of the fiscal routes moved from the api to `libs/core/domain/fiscal-schemas.ts` (the api's
+    `fiscal.schemas.ts` re-exports them), so the web forms are tested against the schema that reads them, as the purchases do; the alternative, a copy in the
+    web, drifts. (2) The area opens for `fiscal:view` alone and the fiscal pages do not wait for the books to be set up (the api's routes do not need them).
+    (3) Credentials are all or none: the api replaces the stored ones whole, so a half-written set is refused before it is sent. (4) Making a voided
+    document again is a two-step inside the detail, not a tier of `DestructiveActionTiers` (it has none): it makes a new number and cannot be undone.
+  - **Left by PR 4B.9b-2, each with its owner:** (a) "issue a document" and "consult its state" are not buttons: the api has no route for either (the
+    document is made when the sale is recognized, and the consultation runs inside the submission job); a button needs a server route and the owner's
+    word, Step 4B.7b-4. (b) The detail shows no lines, no tax breakdown and no issuer snapshot: the view of the api does not carry them; a read of the
+    sealed snapshot (without credentials) is a server change, Step 4B.7b-4. (c) The list has no period filter: the api filters by status and order only; a
+    `from`/`to` on `createdAt` is a server change, Step 4B.7b-4. (d) The list has no search by order and the order page shows no link to its document: Step 7.3.
+    (e) The address of the issuer and of a receiver is written as lines (a name and a value) because the manifest of a provider does not declare its address
+    fields: the manifest should declare them when the real provider is built [OWNER] [ACCOUNTANT], Step 4B.7b-4. (f) A receiver field cannot be cleared (the api
+    takes null; the form only replaces): Step 7.7. (g) The notice counts the newest page of the refused and of the queued documents, and "stuck" is a document
+    queued with every attempt spent; a document whose job was lost earlier is not flagged: an exact count and a `stuck` flag in the view are Step 4B.7b-4.
+    (h) The notices of a refused or stuck document are PR 4B.7b-2's (#564, merged): this PR draws the banner only. (i) The button that makes a voided document again is shown unless the loaded list holds its replacement, so with a filter on it may be shown for a document that has one: the api refuses with `already_replaced` and the screen says so; a `replacedBy` in the view closes it. The web repeats three rules of the runtime to
+    decide which buttons to show (`document-rules.ts`); the api decides again on every call. If a fourth appears, the view should carry `allowedActions`:
+    Step 4B.7b-4. (j) The e2e drives the issuer, the empty list and the read-only person; a case with a real document (a delivered sale, its void, its
+    replacement) needs a sealed receiver and the provider's answer, and belongs to the end-to-end case of the month, Step 4B.9b-5. (k) The area is asked of the api through one store of the person (`bestFinanceMembership`); with `fiscal:*` in one store and `finance:*` in another, the pages of the other family may be asked through a store that lacks their permission (the api answers 403): the same limit as 4B.9a-4's, closed with it, Step 7.3. (l) The visual pass,
+    Step 7.7.
+    **Step 4B.9b-2b (next, from `main` after #564; it is 4B.7b-2's "4B.9 PR D"):** the links of the evidence files of a document
+    (`fiscal.documents.evidence`), the confirmation dialog of an issuer change (`fiscal.documents.confirmIssuerChange`, HIGH tier) and the re-issue of a
+    voided credit note (the replace button of a note), plus the reason `issuer_changed_in_flight` of a retry. They are not drawn here because their routes
+    were left out to keep this PR under 40 files (they are mapped in the coverage map). **Step 4B.7b-4 (new, server, small):** (b), (c), (e), (g) and (i) above are one server PR: the sealed snapshot in the view, a
+    period filter, the address fields in the manifest, the `stuck` flag and an exact count, and `allowedActions`.
 - [ ] Every route of 4B.2 to 4B.8 drawn (`frontend-coverage-map`), i18n keys in `es` and `en`, Lucide icons only, no emoji, the mobile layout of the
       common actions (register an expense, receive a purchase), the e2e of the month (register, receive, sell, remit, close)
 - **Decisions of PR 4B.9a-1 (rule 12):** (1) the books are an area of their own (`/finance`), not a page of Settings or of the organization: they are the
@@ -2249,6 +2281,28 @@ sale rows follow the ledger: a sale is out of a month's book only when its entry
   wiring, the notices and the permissions and not the figures; the figures with data are the end-to-end case of the month (4B.9b-5), and it runs in CI only
   (Playwright is not run on the shared machine); (h) a person who holds `finance:view_reports` and not `finance:view` cannot open the area (the setup read is
   `finance:view`): whether the accountant's role should carry both is the owner's call, Step 7.7; (i) the visual pass of these screens is Step 7.7.
+- **Built in PR 4B.9b-4a** (Finance → VAT, Finance → Margin, the notice of the chain; `finance.reports.{vat,vatCsv,margin,marginCsv,chainStatus}`): the VAT of
+  a range of days month by month (the sales side by kind of line and rate with the taxable amount, the purchases side by rate, the balance of the month as
+  the api computes it, and what the report could not read counted and shown); the margin by product grouped by store, with the units, the revenue, the cost
+  and the percent, the totals and the same sales as the ledger holds them (a role with no account is said and the ledger side is not drawn, never a zero);
+  a file of each, only for who holds `finance:export`; and the incident the weekly check of the chain left open, said on Periods (where the close it stops
+  is) and on Reports. Read-only: every figure is the api's, nothing is added again on the screen, and a report never writes the books.
+- **Decisions of PR 4B.9b-4a (rule 12):** (1) the VAT page asks for `finance:view` like its route (the api asks no more), the margin and the notice for
+  `finance:view_reports`, and the two files for `finance:export` besides; the rejected alternative was to hide the VAT behind `finance:view_reports` to be
+  uniform, which would hide from a person what the api lets them read (the page would be less than the permission); (2) the range limit is held in the form
+  with the api's own rule, which differs by a day between the VAT report (fewer days than the limit) and the margin (up to it): two named bounds, and the
+  contract spec holds each to its schema on both sides of the line; the alternative, one stricter rule for both, would refuse a range the api accepts;
+  (3) money is a JSON integer of cents in these answers (the api sends numbers, not digit strings); the schema refuses a fraction and the text is made
+  from the digits by `moneyText`, never from a float; (4) a store with no name the person may see is its first eight characters (the margin names the
+  stores of the organization and a person may not belong to all of them); (5) the notice of the chain reads the incident only for who may read the reports
+  (it is a read of one row), so who closes without that permission gets the api's refusal with its text, as before.
+- **Left by PR 4B.9b-4a, each with its owner:** (a) the margin accepts `storeId` and the screen does not offer it: the rows already carry the store, a filter
+  is Step 7.7, and the VAT report takes none; (b) the products are gross of returns and the VAT report still counts the sales of returned orders (the api
+  says both; the tax of returns is the server's, Step 4B.8b-2b): the screens say it and do not correct it; (c) no paging of the margin rows (the range is
+  bounded at a year, a catalog of thousands of products is a long table), no comparison of two ranges and no print view, Step 7.7; (d) the end-to-end case
+  (`apps/web-e2e/specs/finance-vat-margin.spec.ts`) reads books with no entry, so it proves the wiring, the range rule and the permissions and not the figures;
+  the figures with data are the end-to-end case of the month (4B.9b-5), and Playwright is not run on the shared machine; (e) the history of resolved
+  incidents of the chain has no screen (the api keeps them): only the open one is said, Step 7.7; (f) the visual pass of these screens is Step 7.7; (g) the length limit of the VAT report and of the margin is one constant (`FinanceLimits.VAT_REPORT_MAX_DAYS`) that the two api schemas read with a different comparison, and the form holds each rule by a contract spec: a named constant per report in `libs/core/domain`, read by both schemas and the form, is a small server change, **4B.9b-4b**.
 **TDD:** `TDD_18 §12`, `TDD_09`
 **Done when:** the owner runs a month of the business end to end from the screens (a purchase received and paid, orders sold and remitted, an
 expense and a transfer, the statements checked, the month closed).
@@ -3129,7 +3183,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.6 | The automatic entries (sales, remittances, returns, stock) | in progress | 4B.6a machinery, E1 to E3 and E9 (#546); 4B.6b-1 carrier charges, remittance confirmed and voided (E4 to E6; #548); 4B.6b-2 the difference written off, returns and the fee permission (E7, E8, E4 of a return guide; #550); 4B.6b-3 the sweep, its metrics, the failure notice and the close guard (this PR); 4B.6b-4 the prepaid charge model: todo | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | in progress | 4B.7a-1 the libraries and the rule (#552, done); 4B.7a-2 the database, the lifecycle, the queue and the routes (#555, done); 4B.7b-1 the credit note of a return and the replacement of a voided document (#562, done); 4B.7b-2 the evidence as media, the notices, the consultation for `void`, the issuer change a person confirms and the credit note made again (this PR); 4B.7b-3 the customer's fiscal data (this PR) | |
 | 4B.8 | Reports, monthly close and the auditor's export | in progress | 4B.8a (#553); 4B.8b-1 statements and aging (#556); 4B.8b-2 chain job, margin, VAT file (#561); 4B.8b-3 legal books mechanism (#559); 4B.8b-2b and 4B.8b-4 (the accountant's layout): todo | |
-| 4B.9 | Finance interface (web) | in progress | 4B.9a-1 (setup, chart, taxes, settings, periods) #554, 4B.9a-2 (the journal, transactions and receipts; #560), 4B.9a-3 (bank reconciliation by CSV) #557, 4B.9a-4 (suppliers, purchases, payables; #558), 4B.9b-1 (close, reports; #563), 4B.9b-3 (statements, aging, legal books; #565); 4B.9b-2, 4B.9b-4a (VAT file, margin) and 4B.9b-5 (the month end to end): todo | |
+| 4B.9 | Finance interface (web) | in progress | 4B.9a-1 (setup, chart, taxes, settings, periods) #554, 4B.9a-2 (the journal, transactions and receipts; #560), 4B.9a-3 (bank reconciliation by CSV) #557, 4B.9a-4 (suppliers, purchases, payables; #558), 4B.9b-1 (close, reports; #563), 4B.9b-3 (statements, aging, legal books; #565), 4B.9b-4a (VAT, margin, the notice of the chain; this PR); 4B.9b-2, 4B.9b-4b and 4B.9b-5 (the month end to end): todo | |
 | **Milestone 5: Operations** | | | | |
 | 5.1 | Search | done | #486 (PR A: the server), #488 (PR B: the web), #496 (the click, in Step 5.2 PR C3) | 2026-11-15 |
 | 5.2 | Analytics | done | #485 (PR A: rollups, answer semantics, metrics route), PR B #487 (dashboard, My performance, View analytics), PR C1 #491 (reports and export, server), PR C2 #494 (reports and export, web); PR C3 #496 (search click, passive flag and report) | 2026-11-15 |

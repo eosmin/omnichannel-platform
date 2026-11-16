@@ -6,6 +6,9 @@ import { type FormEvent, type ReactElement, type ReactNode, useState } from 'rea
 import { dayOfClock } from '../../lib/finance/dates'
 import {
   balanceSheetQueryOf,
+  type BoundedRange,
+  boundedRangeMaxDays,
+  boundedRangeProblem,
   defaultRange,
   flowQueryOf,
   type StatementRangeDraft,
@@ -25,11 +28,14 @@ import { TextField } from './fields'
 export function RangeFilters({
   onApply,
   applied,
+  bound,
   children
 }: {
   onApply: (query: { from: string; to: string }) => void
   // The question on screen now: what sits beside the button (the file) is for that question, so it is hidden while the fields say another
   applied: { from: string; to: string } | null
+  // The reports that walk rows (the VAT and the margin) have a longest range, and each says its own
+  bound?: BoundedRange
   children?: ReactNode
 }): ReactElement {
   const t = useTranslations('finance.statementsCommon')
@@ -37,7 +43,8 @@ export function RangeFilters({
   const [wrong, setWrong] = useState<StatementRangeProblem | null>(null)
   const submit = (event: FormEvent): void => {
     event.preventDefault()
-    const problem = statementRangeProblem(draft)
+    const problem =
+      bound === undefined ? statementRangeProblem(draft) : boundedRangeProblem(draft, bound)
     setWrong(problem)
     if (problem === null) onApply(flowQueryOf(draft))
   }
@@ -72,7 +79,13 @@ export function RangeFilters({
         type="date"
         value={draft.to}
         maxLength={10}
-        problem={wrong === StatementRangeProblems.TO ? t('problems.to') : null}
+        problem={
+          wrong === StatementRangeProblems.TO
+            ? t('problems.to')
+            : wrong === StatementRangeProblems.TOO_LONG && bound !== undefined
+              ? t('problems.tooLong', { days: boundedRangeMaxDays(bound) })
+              : null
+        }
         onChange={to => {
           setDraft(current => ({ ...current, to }))
           setWrong(null)

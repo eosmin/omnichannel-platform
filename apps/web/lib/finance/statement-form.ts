@@ -1,4 +1,4 @@
-import type { AgingKind } from '@platform/core/domain'
+import { type AgingKind, FinanceLimits } from '@platform/core/domain'
 
 import { dayOfClock, isCalendarDay } from './dates'
 
@@ -9,7 +9,9 @@ import { dayOfClock, isCalendarDay } from './dates'
 export const StatementRangeProblems = {
   FROM: 'from',
   TO: 'to',
-  ORDER: 'order'
+  ORDER: 'order',
+  // Only for the reports that walk rows (the VAT and the margin): their range has a length limit
+  TOO_LONG: 'tooLong'
 } as const
 export type StatementRangeProblem =
   (typeof StatementRangeProblems)[keyof typeof StatementRangeProblems]
@@ -53,3 +55,33 @@ export function defaultRange(clock: Date): StatementRangeDraft {
 export const flowFileName = (report: string, query: { from: string; to: string }): string =>
   `${report}-${query.from}-${query.to}.csv`
 export const dayFileName = (report: string, day: string): string => `${report}-${day}.csv`
+
+// The reports of a range that walk the rows of the books carry a length limit the sums do not. The two of the api differ by one day on
+// purpose (the VAT report takes fewer days than the limit, the margin takes up to it): each report names its own, and the contract spec
+// holds the form to the schema of the api for both.
+export const BoundedRanges = { VAT: 'vat', MARGIN: 'margin' } as const
+export type BoundedRange = (typeof BoundedRanges)[keyof typeof BoundedRanges]
+
+const DAY_MS = 86_400_000
+const daysBetween = (from: string, to: string): number =>
+  (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS
+
+export function boundedRangeProblem(
+  draft: StatementRangeDraft,
+  bound: BoundedRange
+): StatementRangeProblem | null {
+  const problem = statementRangeProblem(draft)
+  if (problem !== null) return problem
+  const length = daysBetween(draft.from.trim(), draft.to.trim())
+  const over =
+    bound === BoundedRanges.VAT
+      ? length >= FinanceLimits.VAT_REPORT_MAX_DAYS
+      : length > FinanceLimits.VAT_REPORT_MAX_DAYS
+  return over ? StatementRangeProblems.TOO_LONG : null
+}
+
+// The longest range a person can ask, in days counted the way the form says it (inclusive of both ends)
+export const boundedRangeMaxDays = (bound: BoundedRange): number =>
+  bound === BoundedRanges.VAT
+    ? FinanceLimits.VAT_REPORT_MAX_DAYS
+    : FinanceLimits.VAT_REPORT_MAX_DAYS + 1

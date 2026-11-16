@@ -2975,7 +2975,11 @@
         "payables": "Cuentas por pagar",
         "statements": "Estados financieros",
         "aging": "Antigüedad de saldos",
-        "books": "Libros legales"
+        "books": "Libros legales",
+        "fiscal": "Documentos fiscales",
+        "fiscalIssuer": "Emisor fiscal",
+        "vat": "IVA",
+        "margin": "Margen"
       }
     },
     "store": {
@@ -7093,7 +7097,8 @@
         "from": "Escribe el primer día como una fecha real.",
         "to": "Escribe el último día como una fecha real.",
         "order": "El primer día es posterior al último.",
-        "day": "Escribe una fecha real."
+        "day": "Escribe una fecha real.",
+        "tooLong": "El rango no puede ser de más de {days} días."
       },
       "warningsTitle": "Este reporte no está completo",
       "warnings": {
@@ -7298,6 +7303,336 @@
       },
       "fieldsUnknown": "Las columnas de dinero de esta versión del formato no se distinguen en pantalla: las cifras son centavos enteros (100 es 1.00). El archivo las trae como las escribió el api.",
       "totalsAllRows": "Totales (todas las filas)"
+    },
+    "fiscal": {
+      "title": "Documentos fiscales",
+      "description": "Los documentos de las ventas y de las devoluciones de la organización, y el estado de cada uno.",
+      "caution": "El proveedor y el formato de estos documentos se eligen en los ajustes del emisor. Antes de confiar en ellos, confirma con tu contador que son los que acepta tu autoridad tributaria.",
+      "noIssuer": "No hay un emisor configurado, así que no se hace ningún documento cuando se reconoce una venta.",
+      "noIssuerLink": "Configurar el emisor",
+      "filters": {
+        "status": "Estado",
+        "allStatuses": "Todos los estados"
+      },
+      "empty": "Aún no hay documentos fiscales. Se hacen solos cuando se reconoce una venta.",
+      "more": "Ver más",
+      "status": {
+        "draft": "Borrador",
+        "queued": "En espera",
+        "submitted": "Enviado",
+        "accepted": "Aceptado",
+        "rejected": "Rechazado",
+        "voided": "Anulado"
+      },
+      "kind": {
+        "sale": "Documento de venta",
+        "credit_note": "Nota de crédito"
+      },
+      "row": {
+        "number": "N.º {number}",
+        "noReceiver": "Sin nombre de receptor",
+        "attention": {
+          "rejected": "Requiere atención",
+          "stuck": "Atascado en la cola"
+        }
+      },
+      "banner": {
+        "rejected": "{count, plural, one {# documento fue rechazado y necesita a una persona.} other {# documentos fueron rechazados y necesitan a una persona.}}",
+        "rejectedMore": "Más de {count} documentos fueron rechazados y necesitan a una persona.",
+        "stuck": "{count, plural, one {# documento agotó sus intentos y está atascado en la cola.} other {# documentos agotaron sus intentos y están atascados en la cola.}}",
+        "show": "Ver los rechazados",
+        "stuckMore": "Se revisaron los documentos en espera y algunos agotaron sus intentos (más de {count} en cola).",
+        "showStuck": "Ver los que están en espera",
+        "unread": "No se pudo revisar si hay documentos rechazados o atascados.",
+        "retry": "Intentar de nuevo"
+      },
+      "detail": {
+        "titleLoading": "Documento fiscal",
+        "loading": "Cargando el documento.",
+        "title": "Documento N.º {number}",
+        "description": "Lo que dice el documento y en qué punto está. Cuando la autoridad lo acepta, nada de él cambia salvo su estado.",
+        "kind": "Tipo",
+        "type": "Tipo de documento",
+        "typePending": "Aún no se construye",
+        "externalNumber": "Número que dio la autoridad",
+        "environment": "Ambiente",
+        "environments": {
+          "sandbox": "Pruebas",
+          "production": "Producción"
+        },
+        "total": "Total",
+        "tax": "Impuesto",
+        "createdAt": "Hecho",
+        "issuedAt": "Aceptado",
+        "attempts": "Intentos",
+        "order": "Pedido",
+        "openOrder": "Abrir el pedido",
+        "cancels": "Cancela",
+        "cancelsDocument": "Parte o todo el documento de venta de su pedido",
+        "replaces": "Reemplaza",
+        "replacesDocument": "Un documento de venta que fue anulado",
+        "voidedAt": "Anulado",
+        "voidReason": "Motivo de la anulación",
+        "never": "Aún no",
+        "none": "Ninguno",
+        "receiver": {
+          "title": "Receptor",
+          "name": "Nombre",
+          "taxId": "Identificación tributaria",
+          "complete": "Tiene lo que pide su tipo",
+          "yes": "Sí",
+          "no": "No",
+          "minimized": "El receptor es dato del cliente: aquí solo se muestran el nombre y la identificación tributaria enmascarada."
+        },
+        "immutable": "Las líneas, los impuestos y el emisor de un documento aceptado se sellan al hacerlo y no se muestran ni se cambian aquí."
+      },
+      "attention": {
+        "rejected": {
+          "title": "El documento fue rechazado",
+          "description": "Corrige lo que dice el motivo y envíalo de nuevo."
+        },
+        "stuck": {
+          "title": "El documento está atascado en la cola",
+          "description": "Se agotaron todos los intentos mientras la autoridad no respondía. Envíalo de nuevo cuando el proveedor vuelva."
+        }
+      },
+      "rejection": {
+        "receiver_incomplete": "Al receptor le falta algo que pide el tipo de documento.",
+        "provider_unavailable": "No se pudo contactar al proveedor.",
+        "build_failed": "El proveedor no pudo construir el documento.",
+        "credentials_unreadable": "No se pudieron leer las credenciales del emisor. Escríbelas de nuevo en los ajustes del emisor.",
+        "sale_inconsistent": "Los montos de la venta no cuadran, así que no se envió nada.",
+        "issuer_changed": "El emisor cambió después de hacer este documento. Envíalo de nuevo y se hace con el emisor como está ahora.",
+        "provider_answer_invalid": "El proveedor respondió de una forma que no puede tomarse como una aceptación.",
+        "original_voided": "El documento de venta que cancela esta nota fue anulado. Reemplaza primero el documento de venta y luego envía esta nota de nuevo.",
+        "return_inconsistent": "Las unidades de la devolución no encajan con la venta de la que vienen, así que no se envió nada.",
+        "provider": "Motivo dado por el proveedor: {code}"
+      },
+      "actions": {
+        "title": "Acciones",
+        "editReceiver": "Corregir el receptor",
+        "retry": "Enviar de nuevo",
+        "retried": "El documento volvió a la cola.",
+        "replace": "Hacerlo de nuevo",
+        "replaceConfirmTitle": "¿Hacer de nuevo este documento de venta?",
+        "replaceConfirmDescription": "Se hace un documento nuevo, con otro número, para la misma venta y se envía a la autoridad. Las notas de crédito que esperaban lo siguen. No se puede deshacer.",
+        "replaceConfirm": "Hacer el documento de nuevo",
+        "replaced": "El documento nuevo se hizo y quedó en cola.",
+        "void": "Anular el documento",
+        "cancel": "Cancelar"
+      },
+      "conflicts": {
+        "has_credit_notes": "Este documento tiene notas de crédito que no están anuladas. Anula primero las notas.",
+        "already_replaced": "Esta venta ya tiene un documento que la reemplaza.",
+        "credit_note_receiver": "El receptor de una nota de crédito es el del documento que cancela: corrígelo allí.",
+        "original_voided": "El documento de venta de esta nota de crédito fue anulado y aún no tiene reemplazo.",
+        "return_inconsistent": "Las unidades de la devolución todavía no encajan con la venta de la que vienen."
+      },
+      "receiver": {
+        "title": "Corregir el receptor del documento N.º {number}",
+        "description": "Escribe solo lo que cambia: un campo vacío se queda como está. Lo que escribas lo reemplaza.",
+        "formLabel": "Receptor del documento fiscal",
+        "current": "Ahora: {name}, identificación tributaria {taxId}.",
+        "currentNone": "El documento aún no tiene nombre de receptor ni identificación tributaria.",
+        "noName": "sin nombre",
+        "noTaxId": "ninguna",
+        "requiredMark": "(lo pide el tipo de documento)",
+        "requiredHint": "Los campos marcados son los que este tipo de documento necesita para construirse.",
+        "fields": {
+          "name": "Nombre",
+          "taxId": "Identificación tributaria",
+          "registrationId": "Número de registro",
+          "email": "Correo",
+          "phone": "Teléfono",
+          "taxpayerType": "Tipo de contribuyente",
+          "economicActivity": "Actividad económica"
+        },
+        "addressHint": "Si escribes una dirección, reemplaza toda la dirección.",
+        "problems": {
+          "nothing": "Escribe al menos un campo para cambiar.",
+          "tooLong": "Un campo es demasiado largo.",
+          "incomplete": "Cada línea de la dirección necesita un nombre y un valor.",
+          "duplicate": "Dos líneas de la dirección tienen el mismo nombre.",
+          "tooMany": "Hay demasiadas líneas de dirección."
+        },
+        "cancel": "Cancelar",
+        "submit": "Guardar el receptor",
+        "done": "El receptor se guardó."
+      },
+      "void": {
+        "title": "Anular el documento N.º {number}",
+        "description": "Invalida un documento aceptado ante la autoridad, por medio del proveedor.",
+        "formLabel": "Anular el documento fiscal",
+        "effectTitle": "Qué pasa",
+        "effect": {
+          "authority": "El documento de {total} se invalida ante la autoridad por medio del proveedor.",
+          "irreversible": "Un documento anulado no se puede restaurar.",
+          "replace": "Para facturar la venta otra vez, haz de nuevo el documento de venta cuando esté anulado."
+        },
+        "reason": "Motivo",
+        "problems": {
+          "required": "Escribe el motivo.",
+          "tooLong": "El motivo es demasiado largo."
+        },
+        "cancel": "Cancelar",
+        "submit": "Anular el documento",
+        "confirmTitle": "¿Anular el documento N.º {number}?",
+        "confirmDescription": "La invalidación se envía a la autoridad y no se puede deshacer. El motivo queda en el registro de auditoría.",
+        "confirm": "Anular el documento",
+        "done": "El documento se anuló."
+      },
+      "address": {
+        "legend": "Dirección",
+        "key": "Nombre de la línea",
+        "value": "Valor",
+        "remove": "Quitar la línea {number}",
+        "add": "Agregar una línea",
+        "requiredMark": "(lo pide el proveedor)",
+        "rowLabel": "Línea {number}"
+      },
+      "issuer": {
+        "title": "Emisor fiscal",
+        "description": "La entidad legal en cuyo nombre se hacen los documentos, y el proveedor que los hace. Sin emisor no se hace ningún documento.",
+        "noProviders": "Esta instalación no tiene ningún proveedor de documentos fiscales, así que no se puede configurar un emisor.",
+        "formLabel": "Emisor fiscal",
+        "provider": "Proveedor",
+        "providerOption": "{id} ({country})",
+        "contingency": "Mientras la autoridad no responde: {text}",
+        "environment": "Ambiente",
+        "environments": {
+          "sandbox": "Pruebas",
+          "production": "Producción"
+        },
+        "issueOn": "Hacer el documento cuando el pedido esté",
+        "issueOnHint": "El momento en que se reconoce la venta.",
+        "issueOnOptions": {
+          "delivered": "Entregado",
+          "shipped": "Enviado"
+        },
+        "changeNotice": "Un documento hecho antes conserva el proveedor y el ambiente con que se hizo. Uno que aún no se envió se envía con el emisor como está ahora, y uno aceptado ya no se podrá anular cuando el emisor cambie.",
+        "legalName": "Razón social",
+        "taxId": "Identificación tributaria",
+        "registrationId": "Número de registro",
+        "activityCode": "Código de actividad",
+        "establishmentCode": "Código de establecimiento",
+        "requiredMark": "(lo pide el proveedor)",
+        "addressHint": "Nombra cada línea como la pide el proveedor.",
+        "nextSequence": "Siguiente número",
+        "nextSequenceFirst": "Déjalo vacío para empezar en 1. Solo avanza.",
+        "nextSequenceHint": "El siguiente documento toma el número {next}. Un número nuevo debe ser mayor: solo avanza.",
+        "credentials": {
+          "legend": "Credenciales",
+          "stored": "Hay credenciales guardadas. No se vuelven a mostrar.",
+          "none": "Aún no hay credenciales guardadas.",
+          "hint": "Escribe todas para reemplazar las guardadas, o ninguna para conservarlas. Un proveedor o ambiente nuevo necesita las suyas."
+        },
+        "problems": {
+          "required": "Esto es necesario.",
+          "tooLong": "Esto es demasiado largo.",
+          "sequence": "Escribe un número entero que no sea menor que el siguiente.",
+          "environment": "El proveedor no trabaja en este ambiente.",
+          "incomplete": "Cada línea de la dirección necesita un nombre y un valor.",
+          "duplicate": "Dos líneas de la dirección tienen el mismo nombre.",
+          "tooMany": "Hay demasiadas líneas de dirección."
+        },
+        "providerProblems": "El proveedor no aceptó: {codes}",
+        "readOnly": "Puedes leer el emisor. Para cambiarlo hace falta el permiso de gestionar documentos fiscales.",
+        "submit": "Guardar el emisor",
+        "done": "El emisor se guardó.",
+        "providerMissing": "El proveedor de este emisor ya no está en esta instalación. Elige otro para guardar."
+      }
+    },
+    "vat": {
+      "title": "IVA de un período",
+      "description": "El impuesto cobrado en las ventas y el pagado en las compras, mes a mes y por tasa, y lo que se debe o se arrastra.",
+      "pick": "Elige el primer y el último día y pulsa Mostrar.",
+      "download": "Descargar CSV",
+      "none": "No hay movimiento de IVA en este rango.",
+      "basis": "Las ventas cuentan el día en que se reconocen: {recognizedOn}. Los libros empiezan el {start}; el lado de ventas se lee de los pedidos sin importar esa fecha.",
+      "notices": {
+        "withoutSnapshot": "{count, plural, one {# pedido se hizo antes de que los pedidos guardaran su impuesto y no está en este reporte.} other {# pedidos se hicieron antes de que los pedidos guardaran su impuesto y no están en este reporte.}}",
+        "notReadable": "{count, plural, one {# pedido tiene un impuesto que no cuadra y no está en este reporte.} other {# pedidos tienen un impuesto que no cuadra y no están en este reporte.}}",
+        "returned": "{count, plural, one {# pedido devuelto sigue contado en el lado de ventas.} other {# pedidos devueltos siguen contados en el lado de ventas.}} El impuesto de las devoluciones todavía no se descuenta aquí."
+      },
+      "sides": {
+        "output": "Impuesto cobrado en ventas",
+        "input": "Impuesto pagado en compras"
+      },
+      "totals": {
+        "output": "Total cobrado",
+        "input": "Total pagado"
+      },
+      "kind": "Tipo de venta",
+      "rate": "Tasa",
+      "base": "Base gravada",
+      "tax": "Impuesto",
+      "documents": "Documentos",
+      "noRate": "Sin tasa",
+      "noLines": "Sin líneas este mes.",
+      "kinds": {
+        "taxed": "Gravada",
+        "exempt": "Exenta",
+        "not_subject": "No sujeta",
+        "shipping_not_taxed": "Envío, sin impuesto"
+      },
+      "balance": "Saldo del mes",
+      "balanceKinds": {
+        "toPay": "Lo cobrado supera lo pagado: esto es lo que se debe.",
+        "carriedForward": "Lo pagado supera lo cobrado: esto se arrastra.",
+        "even": "Lo cobrado y lo pagado son iguales."
+      },
+      "otherSide": "Una línea de un lado desconocido ({side}, {kind}):"
+    },
+    "margin": {
+      "title": "Margen por producto",
+      "description": "Lo que ganó cada producto en un rango de días, por tienda: el ingreso de las ventas menos el costo que llevaba el inventario, junto a lo que dicen los libros.",
+      "pick": "Elige el primer y el último día y pulsa Mostrar.",
+      "download": "Descargar CSV",
+      "none": "No se reconoció ninguna venta en este rango.",
+      "product": "Producto",
+      "unnamedProduct": "Producto sin nombre",
+      "units": "Unidades",
+      "revenue": "Ingreso",
+      "cost": "Costo",
+      "margin": "Margen",
+      "marginPercent": "Margen %",
+      "noPercent": "Sin ingreso",
+      "totals": "Totales",
+      "warningsTitle": "Este reporte no está completo",
+      "warnings": {
+        "revenue_role_not_mapped": "El rol de ingresos no tiene cuenta en los ajustes de finanzas, así que el reporte no tiene nada en los libros con qué comparar su ingreso.",
+        "cost_role_not_mapped": "El rol de costo de ventas no tiene cuenta en los ajustes de finanzas, así que el reporte no tiene nada en los libros con qué comparar su costo.",
+        "orders_not_readable": "Algunas ventas no se pudieron leer de su pedido o no cuadran: se dejaron fuera.",
+        "unvalued_units": "Algunas unidades salieron sin costo registrado: su costo no está en estas cifras."
+      },
+      "counts": {
+        "ordersUsed": "{count, plural, one {# pedido leído} other {# pedidos leídos}}",
+        "ordersNotReadable": "{count, plural, one {# pedido no legible} other {# pedidos no legibles}}",
+        "unvaluedUnits": "{count, plural, one {# unidad sin costo} other {# unidades sin costo}}"
+      },
+      "ledger": {
+        "title": "Comparado con los libros",
+        "description": "Los productos se cuentan antes de las devoluciones. La diferencia se muestra tal cual y nunca se lleva a cero.",
+        "line": "Línea",
+        "report": "Este reporte",
+        "books": "En los libros",
+        "difference": "Diferencia",
+        "returned": "Devuelto por devoluciones",
+        "notMapped": "Cuenta sin definir",
+        "lines": {
+          "revenue": "Ingreso",
+          "cost": "Costo de ventas"
+        }
+      }
+    },
+    "chainIncident": {
+      "title": "La revisión de los libros encontró un problema",
+      "blocksClose": "No se puede cerrar ningún mes hasta que la revisión vuelva a pasar.",
+      "found": "La revisión semanal encontró que {reason}",
+      "atEntry": "Primer asiento afectado: {number}.",
+      "seen": "{checked, plural, one {# asiento revisado} other {# asientos revisados}}. Visto por primera vez {first}, por última vez {last}.",
+      "whatToDo": "Avisa a un administrador: hay que revisar el libro diario antes de cerrar cualquier otra cosa.",
+      "unreadable": "No se pudo leer el estado de la revisión semanal de los libros. Un cierre aún puede ser rechazado si encontró un problema."
     }
   }
 }

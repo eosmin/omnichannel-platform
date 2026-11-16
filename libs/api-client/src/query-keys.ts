@@ -359,6 +359,10 @@ export const QueryKeys = {
       ['finance', storeId, 'reports', 'cash-flow', from, to] as const,
     aging: (storeId: string, kind: string, asOf: string) =>
       ['finance', storeId, 'reports', 'aging', kind, asOf] as const,
+    // The margin by product and the state of the weekly check of the chain (Step 4B.9b-4a)
+    marginReport: (storeId: string, from: string, to: string) =>
+      ['finance', storeId, 'reports', 'margin', from, to] as const,
+    chainStatus: (storeId: string) => ['finance', storeId, 'reports', 'chain-status'] as const,
     // The legal books: the layouts, a book of a month (a layout change or a close makes it stale with the rest of `finance`), the frozen ones
     bookLayouts: (storeId: string) => ['finance', storeId, 'book-layouts'] as const,
     book: (storeId: string, kind: string, periodId: string) =>
@@ -414,6 +418,17 @@ export const QueryKeys = {
     profile: ['account', 'profile'] as const,
     preferences: ['account', 'preferences'] as const,
     sessions: ['account', 'sessions'] as const
+  },
+
+  // The fiscal documents (TDD_18 §8, Step 4B.9b-2): the organization's, asked through the store of the request like the books. A write
+  // makes the ROOT stale; the lists carry their filters in the key.
+  fiscal: {
+    root: ['fiscal'] as const,
+    providers: (storeId: string) => ['fiscal', storeId, 'providers'] as const,
+    issuer: (storeId: string) => ['fiscal', storeId, 'issuer'] as const,
+    documents: (storeId: string, filters: Record<string, string>) =>
+      ['fiscal', storeId, 'documents', filters] as const,
+    document: (storeId: string, id: string) => ['fiscal', storeId, 'document', id] as const
   },
 
   session: ['session'] as const
