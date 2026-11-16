@@ -1,5 +1,6 @@
 import { Test } from '@nestjs/testing'
 
+import { FinanceReconciler } from './finance/finance-reconciler.service'
 import { AnalyticsProcessor } from './processors/analytics.processor'
 import { CustomerProfileProcessor } from './processors/customer-profile.processor'
 import { NotificationsProcessor } from './processors/notifications.processor'
@@ -22,6 +23,8 @@ describe('WorkerModule', () => {
       NotificationsProcessor
     )
     expect(moduleRef.get(AnalyticsProcessor, { strict: false })).toBeInstanceOf(AnalyticsProcessor)
+    // The daily check of the books asks the heavy queue and the metrics: it must be built with them (it broke the worker once)
+    expect(moduleRef.get(FinanceReconciler, { strict: false })).toBeInstanceOf(FinanceReconciler)
     await moduleRef.close()
   })
 })
