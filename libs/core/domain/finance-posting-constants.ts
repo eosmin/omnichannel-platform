@@ -50,7 +50,9 @@ export enum FinancePostingOutcome {
   BEFORE_START = 'before_start',
   // The event has no entry (an order cancelled before it existed, a transfer, a movement of a kind that posts nothing)
   NOTHING_TO_POST = 'nothing_to_post',
-  FAILED = 'failed'
+  FAILED = 'failed',
+  // Only for a dry run (the sweep asks what an event WOULD do): the entry would be written, nothing was
+  PENDING = 'pending'
 }
 
 // The idempotency key of the entry each event posts (TDD_18 §4.1)
@@ -65,6 +67,20 @@ export const FinancePostingKey = {
   RETURN_RESTOCK: (returnId: string): string => `return:${returnId}:restock`,
   ORDER_RETURN: (orderId: string): string => `order:${orderId}:return`,
   MOVEMENT_ADJUST: (movementId: string): string => `movement:${movementId}:adjust`
+} as const
+
+// The daily sweep of the books (TDD_18 §6.1)
+export const FinanceSweepLimits = {
+  // Sources one run looks at and queues: the oldest first, so a backlog (the first run after the machinery was deployed) drains over
+  // the days instead of in one transaction-heavy night
+  MAX_CANDIDATES_PER_RUN: 500,
+  // Organizations one page of the scheduler reads
+  ORGANIZATIONS_PAGE_SIZE: 200,
+  // Accounts-and-periods whose balance one run recomputes in one statement
+  BALANCE_PAGE_SIZE: 1000,
+  // Attempts of the daily check of one organization when the infrastructure fails, and the pause between them
+  JOB_ATTEMPTS: 3,
+  JOB_BACKOFF_MS: 60_000
 } as const
 
 export const FinancePostingLimits = {

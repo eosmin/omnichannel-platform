@@ -108,6 +108,9 @@
         "media": {
           "infected": "Infected file blocked",
           "unscannable": "File could not be scanned"
+        },
+        "finance": {
+          "posting_failed": "Entry of the books failed"
         }
       },
       "push": {
@@ -1019,6 +1022,12 @@
     "unknown": {
       "title": "New notification",
       "body": "Open it to see the details."
+    },
+    "finance": {
+      "posting_failed": {
+        "title": "Entry of the books failed",
+        "body": "An entry of the books could not be posted automatically. Open the list of failed postings, fix its cause and post it again: the month cannot be closed until then."
+      }
     }
   },
   "orders": {

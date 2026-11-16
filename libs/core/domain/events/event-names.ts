@@ -261,7 +261,9 @@ export const BridgedEvents = [
   // The worker delivers the webhooks and turns one off after too many failures: the admins are told in the api
   Events.WEBHOOK_AUTO_DISABLED,
   // The worker turns the webhooks of a plugin off after too many failures in a row: the admins are told in the api
-  Events.PLUGIN_ERROR
+  Events.PLUGIN_ERROR,
+  // The worker says it once when an automatic entry of the books fails; the api tells whoever can fix it
+  Events.FINANCE_POSTING_FAILED
 ] as const satisfies readonly EventName[]
 
 export type BridgedEvent = (typeof BridgedEvents)[number]

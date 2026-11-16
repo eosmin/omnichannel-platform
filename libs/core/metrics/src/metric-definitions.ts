@@ -77,6 +77,22 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
     labels: ['store_id']
   },
 
+  [MetricNames.FINANCE_UNPOSTED_SOURCES]: {
+    kind: 'gauge',
+    help: 'Sources with no entry in the books that the daily sweep found (queued again), plus the failures still open',
+    labels: ['organization_id']
+  },
+  [MetricNames.FINANCE_POSTING_FAILURES]: {
+    kind: 'counter',
+    help: 'Automatic entries the books could not post and a person must fix',
+    labels: ['reason']
+  },
+  [MetricNames.FINANCE_BALANCE_MISMATCHES]: {
+    kind: 'gauge',
+    help: 'Balances by account and period that do not match the sum of their lines in the last daily check: any non-zero value is an incident',
+    labels: ['organization_id']
+  },
+
   [MetricNames.SHIPMENTS_CREATED_TOTAL]: {
     kind: 'counter',
     help: 'Shipments created',
