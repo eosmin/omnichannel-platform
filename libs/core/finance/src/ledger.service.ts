@@ -34,6 +34,7 @@ import {
   periodOfDate,
   reversalDate
 } from './period-rules'
+import { isRetryOfReversal, normalizedMemo } from './reversal-rules'
 
 // A post takes the lock of the settings row of its organization, and a close and other posts can queue behind it: more room than
 // the default of Prisma. When the caller passes (or the request holds) a transaction, the lock lasts until that one commits, so a
@@ -50,13 +51,6 @@ interface LockedSettings {
 
 const isoDay = dateToDay
 const dayDate = dayToDate
-
-// A memo is what a person typed with the edges trimmed, and nothing at all when it is blank: so what is stored, what is
-// hashed and what a retry sends are the same text
-const normalizedMemo = (memo: string | null | undefined): string | null => {
-  const trimmed = memo?.trim() ?? ''
-  return trimmed.length === 0 ? null : trimmed
-}
 
 interface StoredLine {
   accountId: string
@@ -119,6 +113,15 @@ export class LedgerService {
   // The reversing entry of an entry (TDD_18 §2.5): the same lines with their sides swapped, dated like the original or in
   // the open period when the original's is closed. The original is never touched, and an entry is reversed at most once.
   async reverse(input: ReverseEntryInput, tx?: PrismaTransaction): Promise<PostedEntry> {
+    // A reversal says why, and that needs no book: a blank reason is a bad request before the settings row is locked, whether or not the
+    // entry was reversed already
+    if (input.memo.trim().length === 0) {
+      throw new PlatformException(
+        ErrorCodes.VALIDATION_INVALID_INPUT,
+        'a reversal says why',
+        HttpStatusCodes.BAD_REQUEST
+      )
+    }
     return this.run(tx, async inner => {
       const settings = await this.lockSettings(inner, input.organizationId)
       const original = await inner.journalEntry.findFirst({
@@ -132,29 +135,29 @@ export class LedgerService {
           conflict: FinanceConflicts.REVERSAL_NOT_REVERSIBLE
         })
       }
-      // A retry after a lost answer finds its own reversal and answers it
-      const mine = await inner.journalEntry.findUnique({
-        where: {
-          organizationId_idempotencyKey: {
-            organizationId: input.organizationId,
-            idempotencyKey: FinanceIdempotencyKey.REVERSAL(original.id)
-          }
-        },
+      // The reversal of this entry, found by the pointer it carries (one per entry: a unique index), whatever key it was written under. A
+      // retry after a lost answer finds its own and answers it, and only the SAME request is a retry (see isRetryOfReversal): another
+      // person, reason or day is a second reversal of an entry that is reversed once, refused with the reversal that exists
+      const mine = await inner.journalEntry.findFirst({
+        where: { organizationId: input.organizationId, reversesEntryId: original.id },
         select: {
           id: true,
-          reversesEntryId: true,
           number: true,
           entryDate: true,
           periodId: true,
           totalCents: true,
-          hash: true
+          hash: true,
+          createdBy: true,
+          memo: true
         }
       })
       if (mine !== null) {
-        // The key is only ever written by reverse(): anything else under it is a mistake, never a replay
-        if (mine.reversesEntryId !== original.id) {
-          throw resourceConflict('the reversal key belongs to another entry', {
-            entryId: original.id
+        if (!isRetryOfReversal(mine, input)) {
+          throw financeRefusal(ErrorCodes.FINANCE_ENTRY_ALREADY_REVERSED, {
+            entryId: original.id,
+            reversalEntryId: mine.id,
+            // Whether the reversal that exists is this caller's own earlier one (a retry with another reason or day), for a screen to say so
+            byCaller: mine.createdBy === input.createdBy
           })
         }
         return {
@@ -167,13 +170,6 @@ export class LedgerService {
           hash: mine.hash,
           replayed: true
         }
-      }
-      const reversed = await inner.journalEntry.findFirst({
-        where: { organizationId: input.organizationId, reversesEntryId: original.id },
-        select: { id: true }
-      })
-      if (reversed !== null) {
-        throw financeRefusal(ErrorCodes.FINANCE_ENTRY_ALREADY_REVERSED, { entryId: original.id })
       }
       // A line that a bank statement was reconciled with is evidence that the money moved: the match is taken back first (the database
       // holds the same rule under a lock, for a confirmation and a reversal that run at the same moment)
@@ -190,10 +186,10 @@ export class LedgerService {
       }
       const entryDate = reversalDate(isoDay(original.entryDate), input.entryDate, settings.calendar)
       // Never before the entry it reverses, and always with a reason
-      if (entryDate < isoDay(original.entryDate) || input.memo.trim().length === 0) {
+      if (entryDate < isoDay(original.entryDate)) {
         throw new PlatformException(
           ErrorCodes.VALIDATION_INVALID_INPUT,
-          'a reversal is not dated before its entry and says why',
+          'a reversal is not dated before its entry',
           HttpStatusCodes.BAD_REQUEST
         )
       }

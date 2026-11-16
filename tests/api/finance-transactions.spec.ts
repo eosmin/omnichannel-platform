@@ -625,7 +625,12 @@ describe('The expenses, incomes and transfers registered by hand (Step 4B.4)', (
       ])
 
       expect(responses.filter(response => response.status === CREATED)).toHaveLength(1)
-      expect(responses.filter(response => response.status === CONFLICT)).toHaveLength(1)
+      const refused = responses.filter(response => response.status === CONFLICT)
+      expect(refused).toHaveLength(1)
+      // The typed refusal of the route, even though the two asked for the void with other reasons
+      expect(errorOf(refused[0] ?? { body: {} }).metadata?.conflict).toBe(
+        FinanceConflicts.TRANSACTION_ALREADY_VOIDED
+      )
       expect(await owner.journalEntry.count({ where: { reversesEntryId: body.entryId } })).toBe(1)
     })
 
