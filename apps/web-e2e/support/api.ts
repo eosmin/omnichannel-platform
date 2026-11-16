@@ -224,3 +224,18 @@ export async function setWidgetPreChat(
     body: JSON.stringify({ enabled })
   })
 }
+
+// A call to the books of the organization of a store as the signed-in person, for a case that needs the books in a state the screens of
+// the step do not set up (the accounts and the entries a bank statement is matched against). The answer is the body, or null for a 204.
+export function financeCall(
+  token: string,
+  storeId: string,
+  path: string,
+  init: { method?: 'GET' | 'POST' | 'PATCH'; body?: unknown } = {}
+): Promise<unknown> {
+  return call(path, {
+    method: init.method ?? 'GET',
+    headers: { authorization: `Bearer ${token}`, [TenantHeaders.STORE_ID]: storeId },
+    body: init.body === undefined ? undefined : JSON.stringify(init.body)
+  })
+}
