@@ -51,6 +51,12 @@ export const putFiscalIssuerSchema = z
     address: fiscalAddressSchema,
     activityCode: text(FiscalFieldLimits.CODE).nullable().default(null),
     establishmentCode: text(FiscalFieldLimits.CODE).nullable().default(null),
+    // The kind of establishment, the point of sale and the contact of the issuer (Step 4B.7c-1): a field left out keeps the stored one, a
+    // field sent as null clears it, so a form that does not know them yet never wipes them
+    establishmentType: text(FiscalFieldLimits.CODE).nullable().optional(),
+    pointOfSaleCode: text(FiscalFieldLimits.CODE).nullable().optional(),
+    phone: text(FiscalFieldLimits.PHONE).nullable().optional(),
+    email: text(FiscalFieldLimits.EMAIL).nullable().optional(),
     environment: z.enum(FiscalEnvironment),
     // Absent keeps the one stored (a new issuer starts at delivered): a change that does not name it must not change when the documents are made
     issueOn: z.enum(FiscalIssueOn).optional(),
@@ -108,6 +114,8 @@ export const fiscalReceiverPatchSchema = z
     // The kind of taxpayer and the economic activity, in the words of the provider's own manifest
     taxpayerType: text(FiscalCustomerDataLimits.ID_MAX_LENGTH).nullable(),
     economicActivity: text(FiscalCustomerDataLimits.VALUE_MAX_LENGTH).nullable(),
+    // The kind of identity document of `taxId`, in the words of the provider's own manifest
+    documentType: text(FiscalCustomerDataLimits.ID_MAX_LENGTH).nullable(),
     address: fiscalAddressSchema.nullable()
   })
   .partial()

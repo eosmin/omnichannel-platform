@@ -37,6 +37,36 @@ describe('the fiscal schemas', () => {
     ).toBe(false)
   })
 
+  it('leaves the point of sale and the contact of the issuer out, sets them, or clears them with null (Step 4B.7c-1)', () => {
+    const none = putFiscalIssuerSchema.parse(issuer)
+    // Left out they are undefined (the service keeps the stored ones), never null: a form that does not know them wipes nothing
+    expect(none.pointOfSaleCode).toBeUndefined()
+    expect(none.phone).toBeUndefined()
+    const set = putFiscalIssuerSchema.parse({
+      ...issuer,
+      establishmentType: 'branch',
+      pointOfSaleCode: 'P001',
+      phone: '2222-0000',
+      email: 'billing@example.test'
+    })
+    expect(set).toMatchObject({ pointOfSaleCode: 'P001', phone: '2222-0000' })
+    expect(putFiscalIssuerSchema.parse({ ...issuer, phone: null }).phone).toBeNull()
+    expect(putFiscalIssuerSchema.safeParse({ ...issuer, phone: '' }).success).toBe(false)
+    expect(putFiscalIssuerSchema.safeParse({ ...issuer, email: 'x'.repeat(201) }).success).toBe(
+      false
+    )
+  })
+
+  it('takes the kind of identity document in a receiver change, and null to remove it', () => {
+    expect(fiscalReceiverPatchSchema.parse({ documentType: 'passport' })).toEqual({
+      documentType: 'passport'
+    })
+    expect(fiscalReceiverPatchSchema.parse({ documentType: null })).toEqual({ documentType: null })
+    expect(fiscalReceiverPatchSchema.safeParse({ documentType: 'x'.repeat(41) }).success).toBe(
+      false
+    )
+  })
+
   it('refuses a receiver change with nothing in it, and takes null to remove a field', () => {
     expect(fiscalReceiverPatchSchema.safeParse({}).success).toBe(false)
     expect(fiscalReceiverPatchSchema.safeParse({ email: null }).success).toBe(true)

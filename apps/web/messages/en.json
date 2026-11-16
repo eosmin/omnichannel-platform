@@ -3150,13 +3150,13 @@
         "done": "{name} was revoked. Its access key no longer works."
       },
       "scopes": {
-        "conversations:read": "Read conversations and their state",
+        "conversations:read": "Read conversations and their state (the customer appears only as an id, unless the plugin can also read customers)",
         "conversations:write": "Change conversations: assign, close, tag and start new ones",
         "messages:read": "Read the messages of conversations",
         "messages:write": "Send messages to customers, as the system or on behalf of a team member",
         "messages:read-deleted": "Read the text of messages the customer deleted",
         "messages:delete": "Delete the messages the plugin itself wrote",
-        "customers:read": "Read customers, their notes and history",
+        "customers:read": "Read customers, their notes and history, and who the customer is in the conversations, orders and searches (name, phone and photo)",
         "customers:write": "Create and edit customers",
         "customers:delete": "Delete customers",
         "customers:flag-caution": "Flag customers with a caution",
@@ -7423,6 +7423,7 @@
         "provider_answer_invalid": "The provider answered in a way that cannot be taken as an acceptance.",
         "original_voided": "The sale document this credit note cancels was voided. Replace the sale document first, then send this note again.",
         "return_inconsistent": "The units of the return do not fit the sale they came from, so nothing was sent.",
+        "sequence_exhausted": "The series this document is numbered in has no number left, so nothing was sent.",
         "provider": "Reason given by the provider: {code}"
       },
       "actions": {

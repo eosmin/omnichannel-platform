@@ -36,6 +36,7 @@ model Organization {
   paymentAccounts       PaymentMethodAccount[]
   fiscalPeriods         FiscalPeriod[]
   fiscalIssuer          FiscalIssuer?
+  fiscalSequences       FiscalSequence[]
   fiscalDocuments       FiscalDocument[]
   financeBookLayouts    FinanceBookLayout[]
   financeBookSnapshots  FinanceBookSnapshot[]
@@ -3061,6 +3062,11 @@ model FiscalIssuer {
   address              Json
   activityCode         String?  @map("activity_code")
   establishmentCode    String?  @map("establishment_code")
+  // The kind of establishment, the code of the point of sale and the contact of the issuer, in the words of the provider's manifest (Step 4B.7c-1)
+  establishmentType    String?  @map("establishment_type")
+  pointOfSaleCode      String?  @map("point_of_sale_code")
+  phone                String?
+  email                String?
   environment          String // FiscalEnvironment
   issueOn              String   @default("delivered") @map("issue_on") // FiscalIssueOn: when the document of a sale is made
   credentialsEncrypted Bytes?   @map("credentials_encrypted")
@@ -3071,6 +3077,22 @@ model FiscalIssuer {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   @@map("fiscal_issuers")
+}
+
+// The counters of the correlatives a provider's manifest asks for (Step 4B.7c-1): one row per series, the key being a hash of the provider,
+// the environment and what the manifest declares (document type, establishment, point of sale). Taken with an atomic increment under the
+// lock of the document that takes it. A provider that declares no scope has no row here: its documents count in `FiscalIssuer.nextSequence`.
+model FiscalSequence {
+  organizationId String   @map("organization_id")
+  scopeKey       String   @map("scope_key")
+  scope          Json // what the key was made of, for a person who reads the table (never read back by the code)
+  nextValue      Int      @default(1) @map("next_value")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@id([organizationId, scopeKey])
+  @@map("fiscal_sequences")
 }
 
 // The layout of a legal book of the organization (TDD_18 §7, §13 row 6; Step 4B.8b-3). **[ACCOUNTANT]** The format of a legal book is the
@@ -3131,6 +3153,8 @@ model FiscalDocument {
   replacesDocumentId    String?   @map("replaces_document_id") // a sale document made again after the one before was voided
   journalEntryId        String?   @map("journal_entry_id") // the sale entry it belongs to; linked, never copied amounts
   sequenceNumber        Int       @map("sequence_number") // the correlative of the organization
+  correlative           Int?      @map("correlative") // the number in the series the provider's manifest names (Step 4B.7c-1); null while the document has none, and for a provider that declares no scope (its number is sequenceNumber)
+  correlativeScopeKey   String?   @map("correlative_scope_key") // the series `correlative` was taken in (`FiscalSequence.scopeKey`)
   documentType          String    @map("document_type") // a type the manifest of the provider declares
   status                String // FiscalDocumentStatus
   providerId            String    @map("provider_id") // the provider that built it: a later change of issuer does not rewrite history
@@ -3171,6 +3195,8 @@ model FiscalDocument {
   // At most one live sale document per order, one live credit note per return and one per order that came back with no return row: the
   // partial unique indexes of the migration say it (Prisma cannot), a voided document leaves room for the one that replaces it
   @@unique([organizationId, sequenceNumber])
+  // One number of a series for one document: Postgres reads two nulls as different, so a document with no number yet never collides
+  @@unique([organizationId, correlativeScopeKey, correlative])
   @@index([organizationId, orderId])
   @@index([returnId])
   @@index([parentDocumentId])

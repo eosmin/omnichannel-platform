@@ -15,5 +15,13 @@ import type { IsolationExemption } from './lib/isolation'
 export const ISOLATION_EXEMPTIONS: Readonly<Record<string, IsolationExemption>> = {
   AuditLog: { step: '7.2', reason: 'Read through the audit log viewer of the organization' },
   ConsentRecord: { step: '7.2', reason: 'Written by the compliance flows' },
-  DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' }
+  DataSubjectRequest: { step: '7.2', reason: 'Created by the data subject request flow' },
+  // Step 4B.7c-1: the counters of the series of fiscal correlatives are taken by the lifecycle of a document (raw SQL filtered by the organization of the document) and reached by no HTTP route yet.
+  // Until the issuer view shows them (Step 4B.7c-5, debt (f) of 4B.7c-1) their isolation is proved by tests/api/fiscal-series.spec.ts
+  // (another organization's series starts at 1 and never reads the first's) and by the composite key (organization, series)
+  FiscalSequence: {
+    step: '4B.7',
+    reason:
+      'Counters of the fiscal series: taken by the lifecycle, shown by the issuer view in Step 4B.7c-5'
+  }
 }

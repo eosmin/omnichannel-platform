@@ -51,12 +51,16 @@ import { FiscalProviderRegistry } from './fiscal-provider.registry'
 import {
   canTransition,
   creditNoteSaleOf,
+  declaresSequence,
   documentDetailOf,
   documentLines,
   type FiscalDocumentDetail,
+  fiscalDocumentUuid,
+  fiscalSequenceKey,
   isImmutable,
   maskTaxId,
   originalStateOf,
+  paymentOfSnapshot,
   receiverEditable,
   receiverOf,
   receiverRecord,
@@ -78,12 +82,19 @@ interface IssuerRow {
   address: unknown
   activityCode: string | null
   establishmentCode: string | null
+  establishmentType: string | null
+  pointOfSaleCode: string | null
+  phone: string | null
+  email: string | null
   environment: string
 }
 
 // The attempt did not run because another one holds the document or its sale document is not accepted yet: a claim that is alive may still
 // decide the document, so the exhaustion of this job is not the exhaustion of the document
 export class FiscalDocumentBusyError extends Error {}
+
+// The series a document is numbered in has no number left: thrown inside the transaction that took one, so it rolls back
+class FiscalSequenceExhaustedError extends Error {}
 
 // An acceptance has a number: what a provider returns is not trusted to
 const hasNumber = (value: unknown): value is string =>
@@ -316,6 +327,9 @@ export class FiscalDocumentsService {
         totalCents: true,
         taxCents: true,
         pricesIncludeTax: true,
+        paymentMethod: true,
+        paymentStatus: true,
+        paymentReference: true,
         shippingAddress: true,
         customerId: true,
         customer: {
@@ -329,7 +343,8 @@ export class FiscalDocumentsService {
             quantity: true,
             unitPriceCents: true,
             taxRateBps: true,
-            taxCents: true
+            taxCents: true,
+            taxTreatment: true
           }
         }
       }
@@ -372,7 +387,11 @@ export class FiscalDocumentsService {
         discountCents: order.discountCents,
         // null on an order made before the tax columns: its prices are read as tax included, like the order does
         pricesIncludeTax: order.pricesIncludeTax ?? true,
-        orderNumber: order.orderNumber
+        orderNumber: order.orderNumber,
+        // How the order was paid when the document was made, kept with it so every attempt builds the same document
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        paymentReference: order.paymentReference
       })
     }
   }
@@ -600,6 +619,9 @@ export class FiscalDocumentsService {
         totalCents: true,
         taxCents: true,
         pricesIncludeTax: true,
+        paymentMethod: true,
+        paymentStatus: true,
+        paymentReference: true,
         items: {
           orderBy: { id: 'asc' },
           select: {
@@ -609,7 +631,8 @@ export class FiscalDocumentsService {
             quantity: true,
             unitPriceCents: true,
             taxRateBps: true,
-            taxCents: true
+            taxCents: true,
+            taxTreatment: true
           }
         }
       }
@@ -675,7 +698,8 @@ export class FiscalDocumentsService {
           quantity: item.quantity,
           unitPriceCents: item.unitPriceCents,
           taxRateBps: item.taxRateBps,
-          taxCents: item.taxCents
+          taxCents: item.taxCents,
+          taxTreatment: item.taxTreatment
         }))
       },
       before,
@@ -704,7 +728,10 @@ export class FiscalDocumentsService {
         shippingTaxCents: sale.shippingTaxCents,
         discountCents: sale.discountCents,
         pricesIncludeTax: sale.pricesIncludeTax,
-        orderNumber: order.orderNumber
+        orderNumber: order.orderNumber,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        paymentReference: order.paymentReference
       })
     }
   }
@@ -786,11 +813,37 @@ export class FiscalDocumentsService {
       })
       return
     }
+    // The number the document carries: the next one of the series the provider's manifest names, kept for this document from now on (a
+    // document refused and corrected keeps its number), or the correlative of the organization when the provider declares no series
+    const numbered = await this.correlativeOf(organizationId, doc, provider, issuerInput, receiver)
+    if (numbered === null) {
+      await this.reject(doc.id, organizationId, FiscalRejectionReasons.BUILD_FAILED, {
+        beforeSending: true
+      })
+      return
+    }
+    // Another attempt took the document over and decided it: nothing is left for this one to do
+    if (numbered === 'stale') return
+    if (numbered === 'exhausted') {
+      await this.reject(doc.id, organizationId, FiscalRejectionReasons.SEQUENCE_EXHAUSTED, {
+        beforeSending: true
+      })
+      return
+    }
+    const payment = paymentOfSnapshot(
+      parts,
+      sale.totalCents,
+      doc.kind === (FiscalDocumentKind.CREDIT_NOTE as string)
+    )
     const built = await this.attempt('build', doc.id, () =>
       provider.build({
         kind: doc.kind as FiscalDocumentKind,
         credited: original === null ? null : this.creditedOf(original),
         sequenceNumber: doc.sequenceNumber,
+        correlative: numbered.correlative,
+        documentUuid: fiscalDocumentUuid(organizationId, doc.id),
+        payments: payment.payments,
+        condition: payment.condition,
         // Fixed when the document was made: every attempt of every submission builds the same document
         issuedAt: doc.createdAt.toISOString(),
         orderNumber: typeof parts['orderNumber'] === 'string' ? parts['orderNumber'] : '',
@@ -806,6 +859,14 @@ export class FiscalDocumentsService {
       })
     )
     if (built === null) {
+      await this.reject(doc.id, organizationId, FiscalRejectionReasons.BUILD_FAILED, {
+        beforeSending: true
+      })
+      return
+    }
+    // The series was chosen from the type the provider said the document is: a document of another type would carry a number of a series
+    // that is not its own, so it is never sent
+    if (numbered.documentType !== null && built.documentType !== numbered.documentType) {
       await this.reject(doc.id, organizationId, FiscalRejectionReasons.BUILD_FAILED, {
         beforeSending: true
       })
@@ -873,6 +934,99 @@ export class FiscalDocumentsService {
     }
     // The authority did not answer: back to the queue, and the job fails so that the backoff of the queue spaces the next attempt
     await this.requeueAndFail(organizationId, doc.id, 'the fiscal provider did not answer')
+  }
+
+  // The number a document carries in the series its provider's manifest declares (`FiscalSequenceDeclaration`). A provider that declares
+  // no series numbers by the correlative of the organization, taken when the document was made. Otherwise the series is the provider, the
+  // environment and what the manifest names (the type of the document, the establishment, the point of sale): the first attempt takes the
+  // next number of it and keeps it on the document, and every later attempt and submission of the same document builds with that number.
+  // Only when the series changes (a receiver fixed after a refusal makes another type of document) the document takes the next number of
+  // the new series; the number of the old one stays unused (the books of the accountant see the gap: debt (a) of Step 4B.7c-1).
+  // Returns null when the provider cannot say which type the document is or the issuer lacks a part of the series the manifest declares,
+  // 'exhausted' when the series has no number left, and 'stale' when the document is no longer the one this attempt claimed (another
+  // attempt took it over and decided it): nothing is taken then, so a late attempt never spends a number.
+  private async correlativeOf(
+    organizationId: string,
+    doc: { id: string; kind: string; sequenceNumber: number },
+    provider: FiscalDocumentProvider,
+    issuer: FiscalIssuerInput,
+    receiver: FiscalReceiver
+  ): Promise<{ correlative: number; documentType: string | null } | null | 'exhausted' | 'stale'> {
+    const scope = provider.manifest.sequence
+    if (!declaresSequence(scope)) return { correlative: doc.sequenceNumber, documentType: null }
+    // A series the manifest declares by establishment or point of sale needs that code: with none, every document would share one series
+    // and the numbers would start again the day the owner sets it
+    if (
+      (scope?.perEstablishment === true && issuer.establishmentCode === null) ||
+      (scope?.perPointOfSale === true && issuer.pointOfSaleCode === null)
+    ) {
+      return null
+    }
+    let documentType = ''
+    if (scope?.perDocumentType === true) {
+      const resolved = await this.attempt('resolve', doc.id, () =>
+        Promise.resolve().then(() =>
+          provider.resolveDocumentType?.({ kind: doc.kind as FiscalDocumentKind, receiver })
+        )
+      )
+      if (typeof resolved !== 'string' || resolved.trim() === '') return null
+      documentType = resolved
+    }
+    const parts = {
+      providerId: provider.id,
+      environment: issuer.environment,
+      documentType,
+      establishmentCode: issuer.establishmentCode,
+      pointOfSaleCode: issuer.pointOfSaleCode
+    }
+    const key = fiscalSequenceKey(scope, parts)
+    if (key === null) return { correlative: doc.sequenceNumber, documentType: null }
+    const resolvedType = scope?.perDocumentType === true ? documentType : null
+    return this.prisma
+      .transaction(async tx => {
+        await tx.$queryRaw`SELECT id FROM fiscal_documents WHERE id = ${doc.id} AND organization_id = ${organizationId} FOR UPDATE`
+        const current = await tx.fiscalDocument.findFirst({
+          where: { id: doc.id, organizationId },
+          select: { correlative: true, correlativeScopeKey: true, status: true }
+        })
+        if (current === null) return null
+        // Only the attempt that holds the claim numbers a document
+        if (current.status !== (FiscalDocumentStatus.SUBMITTED as string)) return 'stale' as const
+        // Already numbered in this series (an earlier attempt, a corrected document of the same type): the same number
+        if (current.correlative !== null && current.correlativeScopeKey === key) {
+          return { correlative: current.correlative, documentType: resolvedType }
+        }
+        const described = toJson({
+          providerId: parts.providerId,
+          environment: parts.environment,
+          ...(scope?.perDocumentType === true ? { documentType } : {}),
+          ...(scope?.perEstablishment === true
+            ? { establishmentCode: parts.establishmentCode }
+            : {}),
+          ...(scope?.perPointOfSale === true ? { pointOfSaleCode: parts.pointOfSaleCode } : {})
+        })
+        // An atomic upsert: the first document of a series creates it at 2 and takes 1, any other adds one and takes the one before. Two
+        // documents of the same series never share a number, and the lock of the document above keeps the same document from taking two.
+        const rows = await tx.$queryRaw<{ taken: number }[]>`
+        INSERT INTO fiscal_sequences (organization_id, scope_key, scope, next_value, updated_at)
+        VALUES (${organizationId}, ${key}, ${JSON.stringify(described)}::jsonb, 2, now())
+        ON CONFLICT (organization_id, scope_key)
+        DO UPDATE SET next_value = fiscal_sequences.next_value + 1, updated_at = now()
+        RETURNING next_value - 1 AS taken`
+        const taken = rows[0]?.taken
+        if (taken === undefined) throw new Error('the series did not answer a number')
+        // Past the INTEGER of the document: the transaction is rolled back, so the counter stays where it was and nothing is written
+        if (taken > FiscalLimits.MAX_CORRELATIVE) throw new FiscalSequenceExhaustedError()
+        await tx.fiscalDocument.update({
+          where: { id: doc.id },
+          data: { correlative: taken, correlativeScopeKey: key }
+        })
+        return { correlative: taken, documentType: resolvedType }
+      })
+      .catch((error: unknown) => {
+        if (error instanceof FiscalSequenceExhaustedError) return 'exhausted' as const
+        throw error
+      })
   }
 
   // The last attempt of the job failed and the document is still waiting for the provider (QUEUED or SUBMITTED): nobody retries it any
@@ -1196,7 +1350,8 @@ export class FiscalDocumentsService {
         | 'email'
         | 'phone'
         | 'taxpayerType'
-        | 'economicActivity',
+        | 'economicActivity'
+        | 'documentType',
         string | null
       >
     > & {
@@ -1232,7 +1387,9 @@ export class FiscalDocumentsService {
         economicActivity:
           'economicActivity' in patch
             ? (patch.economicActivity ?? null)
-            : (current.economicActivity ?? null)
+            : (current.economicActivity ?? null),
+        documentType:
+          'documentType' in patch ? (patch.documentType ?? null) : (current.documentType ?? null)
       }
       await tx.fiscalDocument.update({
         where: { id },
@@ -1998,6 +2155,11 @@ export class FiscalDocumentsService {
       address: kept['address'],
       activityCode: optional('activityCode'),
       establishmentCode: optional('establishmentCode'),
+      // Absent from a snapshot made before they were kept: the same as empty (see `sameIssuer`)
+      establishmentType: optional('establishmentType'),
+      pointOfSaleCode: optional('pointOfSaleCode'),
+      phone: optional('phone'),
+      email: optional('email'),
       environment: text('environment')
     })
   }
@@ -2010,6 +2172,10 @@ export class FiscalDocumentsService {
       address: record(row.address),
       activityCode: row.activityCode,
       establishmentCode: row.establishmentCode,
+      establishmentType: row.establishmentType,
+      pointOfSaleCode: row.pointOfSaleCode,
+      phone: row.phone,
+      email: row.email,
       environment: row.environment as FiscalEnvironment
     }
   }
