@@ -1899,7 +1899,8 @@
       "shipments": "Shipments",
       "pickups": "Pickups",
       "analytics": "Analytics",
-      "analyticsReports": "Scheduled reports"
+      "analyticsReports": "Scheduled reports",
+      "finance": "Finance"
     },
     "notifications": {
       "open": "Notifications",
@@ -2919,6 +2920,14 @@
         "preferences": "Preferences",
         "notifications": "Notifications",
         "security": "Security"
+      },
+      "finance": {
+        "label": "Finance",
+        "title": "Finance",
+        "accounts": "Accounts",
+        "taxes": "Taxes",
+        "periods": "Periods",
+        "settings": "Settings"
       }
     },
     "store": {
@@ -5755,6 +5764,255 @@
         "orders": "Orders",
         "products": "Products",
         "messages": "Messages"
+      }
+    }
+  },
+  "finance": {
+    "setup": {
+      "title": "Set up the books",
+      "description": "The books of your organization start here: pick the country to begin with its chart of accounts, and the day events are posted from.",
+      "askAdmin": "The books have not been set up yet. Ask who manages the accounts of your organization to set them up.",
+      "noCountries": "There is no chart of accounts to start from. Contact support.",
+      "formLabel": "Set up the books",
+      "country": "Country",
+      "countryHint": "It decides the chart of accounts and the taxes the books start with. You can change them later.",
+      "startsOn": "First day of the books",
+      "startsOnHint": "Write it as year-month-day, like 2026-11-01. Left empty, it is the first day of this month.",
+      "startsOnProblem": "Write a real date as year-month-day, like 2026-11-01.",
+      "submit": "Set up the books",
+      "done": "The books are ready."
+    },
+    "accounts": {
+      "title": "Accounts",
+      "description": "The chart of accounts of the organization and the balance of each account across all periods.",
+      "new": "New account",
+      "empty": "There are no accounts yet.",
+      "balancesFailed": "The balances could not be read. The accounts are shown without them.",
+      "edit": "Edit",
+      "deactivate": "Turn off",
+      "reactivate": "Turn on",
+      "deactivated": "Account turned off.",
+      "reactivated": "Account turned on.",
+      "badges": {
+        "header": "Header",
+        "system": "System",
+        "inactive": "Off"
+      },
+      "types": {
+        "asset": "Asset",
+        "liability": "Liability",
+        "equity": "Equity",
+        "income": "Income",
+        "cost_of_sales": "Cost of sales",
+        "expense": "Expense"
+      },
+      "cashKinds": {
+        "cash": "Cash",
+        "bank": "Bank",
+        "wallet": "Wallet"
+      },
+      "fields": {
+        "code": "Code",
+        "codeHint": "Letters, numbers and the signs . _ - , up to 20 characters.",
+        "name": "Name",
+        "type": "Type",
+        "parent": "Under",
+        "noParent": "Nothing (top level)",
+        "cashKind": "Kind of cash",
+        "cashKindHint": "Only an asset can be cash, a bank account or a wallet.",
+        "notCash": "Not cash",
+        "postable": "Entries can be posted to it",
+        "postableHint": "Leave it off for an account that only groups others."
+      },
+      "problems": {
+        "code": "Write a code with letters, numbers or . _ - (up to 20 characters).",
+        "name": "Write a name of up to 150 characters.",
+        "cashKind": "Only an asset can be cash, a bank account or a wallet."
+      },
+      "dialog": {
+        "createTitle": "New account",
+        "createDescription": "Add an account to the chart. Entries can only be posted to accounts that are not headers.",
+        "editTitle": "Edit account",
+        "editDescription": "An account with entries cannot change its type.",
+        "formLabel": "Account",
+        "cancel": "Cancel",
+        "create": "Create account",
+        "save": "Save changes",
+        "created": "Account {name} created.",
+        "saved": "Account saved."
+      }
+    },
+    "taxes": {
+      "title": "Taxes",
+      "description": "The tax rates of the organization, which one is the default, and the accounts each one posts to.",
+      "new": "New rate",
+      "empty": "There are no tax rates yet.",
+      "edit": "Edit",
+      "makeDefault": "Make default",
+      "madeDefault": "{name} is now the default rate.",
+      "deactivate": "Turn off",
+      "reactivate": "Turn on",
+      "deactivated": "Rate turned off.",
+      "reactivated": "Rate turned on.",
+      "percent": "{percent} %",
+      "accounts": "Tax on sales to {output} · tax on purchases to {input}",
+      "badges": {
+        "default": "Default",
+        "inactive": "Off"
+      },
+      "fields": {
+        "code": "Code",
+        "name": "Name",
+        "percent": "Rate (%)",
+        "percentHint": "Up to two decimals, like 13 or 12.5.",
+        "outputAccount": "Account for the tax on sales",
+        "outputHint": "Where the tax charged to customers is posted.",
+        "inputAccount": "Account for the tax on purchases",
+        "inputHint": "Where the tax paid to suppliers is posted.",
+        "pickAccount": "Pick an account",
+        "isDefaultNow": "This is the default rate. Make another rate the default to change it.",
+        "makeDefault": "Make it the default rate",
+        "makeDefaultHint": "The rate that is the default now stops being it."
+      },
+      "problems": {
+        "code": "Write a code with letters, numbers or . _ - (up to 20 characters).",
+        "name": "Write a name of up to 100 characters.",
+        "percent": "Write a rate from 0 to 100, with at most two decimals.",
+        "outputAccount": "Pick the account for the tax on sales.",
+        "inputAccount": "Pick the account for the tax on purchases."
+      },
+      "dialog": {
+        "createTitle": "New tax rate",
+        "createDescription": "A rate is written as a percent. The accounts are the ones its tax is posted to.",
+        "editTitle": "Edit tax rate",
+        "editDescription": "A change of the rate applies to what is posted from now on, never to what is already in the books.",
+        "formLabel": "Tax rate",
+        "cancel": "Cancel",
+        "create": "Create rate",
+        "save": "Save changes",
+        "created": "Rate {name} created.",
+        "saved": "Rate saved."
+      },
+      "noAccount": "no account"
+    },
+    "periods": {
+      "title": "Periods",
+      "description": "The months of the books and whether each one is open.",
+      "lockedThrough": "Closed through {date}: no entry can be dated on or before it.",
+      "empty": "There are no periods yet. They open when the first entry needs one.",
+      "status": {
+        "open": "Open",
+        "closed": "Closed"
+      },
+      "reopenReason": "Reopened: {reason}",
+      "open": {
+        "action": "Open a month",
+        "title": "Open a month",
+        "description": "Opens the period of a month before any entry needs it. A month that is already open stays as it is.",
+        "formLabel": "Open a month",
+        "month": "Month (1 to 12)",
+        "year": "Year",
+        "cancel": "Cancel",
+        "submit": "Open month",
+        "done": "Month opened.",
+        "problems": {
+          "month": "Write a month from 1 to 12.",
+          "year": "Write a year from 2000 to 2200."
+        }
+      }
+    },
+    "postings": {
+      "title": "Entries that could not be posted",
+      "description": "A sale, a purchase or a remittance the books could not post. Fix the cause, like an account missing for a role, and try again.",
+      "empty": "Everything was posted.",
+      "failed": "The entries that could not be posted could not be read.",
+      "more": "There are more. Fix these and the next ones will show.",
+      "event": "{kind} of {source}",
+      "attempts": "{count, plural, one {# attempt} other {# attempts}}",
+      "retry": "Try again",
+      "queued": "It will be posted again in a moment."
+    },
+    "settings": {
+      "title": "Settings",
+      "description": "How the books post, the account each role and payment method uses, and the tax preference of this store.",
+      "posting": {
+        "title": "How sales are posted",
+        "description": "These choices change what is posted from now on, never what is already in the books.",
+        "formLabel": "Posting settings",
+        "recognizeSaleOn": "A sale counts when it is",
+        "recognizeSaleOnHint": "The order moment that posts the sale to the books.",
+        "recognize": {
+          "delivered": "Delivered",
+          "shipped": "Shipped"
+        },
+        "taxRounding": "Tax rounding",
+        "taxRoundingHint": "How a fraction of a cent of tax is placed.",
+        "rounding": {
+          "half_up": "Half up (0.5 goes up)",
+          "half_even": "Half to even",
+          "down": "Always down",
+          "up": "Always up"
+        },
+        "roundingAccount": "Account for rounding",
+        "roundingAccountHint": "A cent that cannot be placed goes here. It can be changed, not taken away.",
+        "noneYet": "None yet",
+        "shippingTaxed": "The shipping fee carries the tax",
+        "shippingTaxedHint": "Turn it off if the shipping fee is exempt or not subject to the tax.",
+        "save": "Save changes",
+        "saved": "Settings saved.",
+        "readOnly": "You can see these settings. To change them you need to manage the accounts."
+      },
+      "roles": {
+        "title": "Account of each role",
+        "description": "A role is what an entry of the books needs: the sales, the tax, the stock, what is owed. A role with no account stops the entries that need it.",
+        "notMapped": "No account yet",
+        "saved": "Account of {role} saved.",
+        "names": {
+          "cash_default": "Cash",
+          "bank_default": "Bank",
+          "inventory": "Inventory",
+          "inventory_in_transit": "Inventory in transit",
+          "receivable_carriers": "Owed by carriers",
+          "customer_advances": "Customer advances",
+          "payable_suppliers": "Owed to suppliers",
+          "payable_carriers": "Owed to carriers",
+          "vat_output": "Sales tax (VAT charged)",
+          "vat_input": "Purchase tax (VAT paid)",
+          "sales_revenue": "Sales revenue",
+          "shipping_revenue": "Shipping revenue",
+          "sales_discounts": "Sales discounts",
+          "sales_returns": "Sales returns",
+          "cost_of_goods_sold": "Cost of goods sold",
+          "inventory_loss": "Inventory loss",
+          "inventory_gain": "Inventory gain",
+          "carrier_freight_expense": "Carrier freight expense",
+          "carrier_commission_expense": "Carrier commission expense",
+          "cod_differences": "Cash on delivery differences",
+          "opening_equity": "Opening equity",
+          "rounding": "Rounding",
+          "uncategorized_expense": "Uncategorized expense"
+        }
+      },
+      "payments": {
+        "title": "Account of each payment method",
+        "description": "Where the money of each payment method lands. The organization has one choice; a store that keeps its own cash or bank can have its own.",
+        "organization": "{method}: organization",
+        "thisStore": "{method}: {store}",
+        "notChosen": "No account yet",
+        "followsOrganization": "Same as the organization",
+        "saved": "Payment account saved.",
+        "methods": {
+          "CASH": "Cash",
+          "TRANSFER": "Transfer",
+          "CARD": "Card",
+          "OTHER": "Other"
+        }
+      },
+      "storeTax": {
+        "title": "Taxes of this store",
+        "pricesIncludeTax": "The prices of this store already include the tax",
+        "pricesIncludeTaxHint": "It only changes how the tax is separated from the price of what is sold from now on.",
+        "saved": "Preference saved."
       }
     }
   }

@@ -1044,6 +1044,16 @@ export function addWarehouseTo(
   })
 }
 
+// Someone who may read the books and change nothing: finance:view only (Step 4B.9)
+export function addFinanceViewer(storeId: string, email: string): Promise<() => Promise<void>> {
+  return addUserWithPermissions(storeId, {
+    email,
+    userName: 'Finance Viewer',
+    roleName: 'E2E finance viewer',
+    permissions: [Permissions.FINANCE_VIEW]
+  })
+}
+
 // A person who may see the inventory and nothing that changes it (the warehouses screen opens and shows, no
 // button changes anything)
 export function addInventoryViewer(storeId: string, email: string): Promise<() => Promise<void>> {

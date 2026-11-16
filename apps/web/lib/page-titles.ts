@@ -55,7 +55,12 @@ export const PageTitles = {
   orgWarehouses: ['settings.nav.org.warehouses', 'settings.nav.org.title'],
   orgTransfers: ['settings.nav.org.transfers', 'settings.nav.org.title'],
   orgTransfer: ['transfers.detailTitle', 'settings.nav.org.title'],
-  orgCounts: ['settings.nav.org.counts', 'settings.nav.org.title']
+  orgCounts: ['settings.nav.org.counts', 'settings.nav.org.title'],
+  finance: ['settings.nav.finance.title'],
+  financeAccounts: ['settings.nav.finance.accounts', 'settings.nav.finance.title'],
+  financeTaxes: ['settings.nav.finance.taxes', 'settings.nav.finance.title'],
+  financePeriods: ['settings.nav.finance.periods', 'settings.nav.finance.title'],
+  financeSettings: ['settings.nav.finance.settings', 'settings.nav.finance.title']
 } as const satisfies Record<string, readonly string[]>
 
 export type PageTitleName = keyof typeof PageTitles
