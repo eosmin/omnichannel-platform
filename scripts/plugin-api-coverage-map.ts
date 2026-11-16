@@ -763,6 +763,13 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
     scope: ['tags:read', 'tags:write'],
     exposed: '/plugin-api/settings/tags/:id'
   },
-  'settings.snippets': { none: SETTINGS_ADMIN },
-  'settings.snippetById': { none: SETTINGS_ADMIN }
+  // The canned replies are read over the same service as the composer (PR E7-2); creating, changing and deleting one stays the owner's
+  'settings.snippets': {
+    scope: 'snippets:read',
+    exposed: '/plugin-api/settings/snippets'
+  },
+  'settings.snippetById': {
+    scope: 'snippets:read',
+    exposed: '/plugin-api/settings/snippets/:id'
+  }
 }

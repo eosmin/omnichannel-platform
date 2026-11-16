@@ -14,6 +14,9 @@ import { type Viewer, viewerOf } from '../conversations/conversations.support'
 // There is no author `customer`: a plugin cannot write as the customer.
 export type PluginMessageOrigin = {
   pluginId: string
+  // Who owns the files this installation uploaded (`plugin:<installation id>`): the files a message of the plugin may carry are those
+  // and no others. Missing, a file is refused (there is nobody whose upload it could be).
+  uploaderId?: string
   quiet: boolean
 } & (
   | { author: AuthorType.SYSTEM; nickname: string | null }

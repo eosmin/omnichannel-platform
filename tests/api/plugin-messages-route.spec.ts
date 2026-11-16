@@ -9,6 +9,7 @@ import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
   ConversationStatus,
+  DeliveryStatus,
   MessageType,
   PLUGIN_API_KEY_TOKEN_PREFIX,
   PluginCatalogTypes,
@@ -16,9 +17,11 @@ import {
   PluginStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
-import { PluginScopes } from '@platform/plugins/sdk'
+import { MULTI_FILE_SEND_ENABLED } from '@platform/core/http'
+import { PluginRegistry } from '@platform/plugins/runtime'
+import { ChannelCapability, PluginScopes } from '@platform/plugins/sdk'
 
-import { createConversationOf } from '../builders'
+import { buildChannelPlugin, createConversationOf } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
@@ -29,6 +32,9 @@ const CREATED = 201
 const BAD_REQUEST = 400
 const FORBIDDEN = 403
 const NOT_FOUND = 404
+const CONFLICT = 409
+const FILES_CHANNEL = 'plugin_files_channel'
+const TEXT_ONLY_CHANNEL = 'plugin_text_only_channel'
 
 interface ErrorBody {
   error: { code: string }
@@ -46,7 +52,8 @@ const ALL_SCOPES = [
   PluginScopes.CONVERSATIONS_READ,
   PluginScopes.MESSAGES_READ,
   PluginScopes.MESSAGES_WRITE,
-  PluginScopes.MESSAGES_READ_DELETED
+  PluginScopes.MESSAGES_READ_DELETED,
+  PluginScopes.MEDIA_WRITE
 ]
 
 // TDD_10 §6.4, Step 5.6 PR M1b: the messages a plugin writes and reads through its key. The core (who the message is from,
@@ -56,21 +63,37 @@ describe('The messages of the plugin API', () => {
   const prefix = newRunPrefix()
   const pluginId = `${prefix}-msg`
   const pluginName = 'Order Bot'
+  const otherPluginId = `${prefix}-msg2`
   let app: INestApplication
   let owner: OwnerClient
   let ctx: TestContext
   let counter = 0
-  type KeyName = 'full' | 'writeonly' | 'readonly' | 'noconv'
-  const keys: Record<KeyName, string> = { full: '', writeonly: '', readonly: '', noconv: '' }
+  type KeyName = 'full' | 'writeonly' | 'readonly' | 'noconv' | 'other' | 'nomedia'
+  const keys: Record<KeyName, string> = {
+    full: '',
+    writeonly: '',
+    readonly: '',
+    noconv: '',
+    other: '',
+    nomedia: ''
+  }
+  // The owners of the uploads: `plugin:<installation id>` for each installation of store A
+  let fullUploader = ''
+  let otherUploader = ''
 
   // An installation as the setup exchange leaves it: active, with the hash of its key, in the store and with the scopes asked
-  const installIn = async (name: KeyName, storeId: string, scopes: string[]) => {
+  const installIn = async (
+    name: KeyName,
+    storeId: string,
+    scopes: string[],
+    ofPlugin = pluginId
+  ) => {
     counter += 1
     const key = `${PLUGIN_API_KEY_TOKEN_PREFIX}${prefix}${name}${counter}${'x'.repeat(40)}`
     const installation = await owner.pluginInstallation.create({
       data: {
         storeId,
-        pluginId,
+        pluginId: ofPlugin,
         scopes,
         status: 'active',
         apiKeyPrefix: key.slice(0, 12),
@@ -84,8 +107,30 @@ describe('The messages of the plugin API', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    app = await createTestApp([], builder =>
+      builder.overrideProvider(MULTI_FILE_SEND_ENABLED).useValue(true)
+    )
     ctx = await seedTestContext(owner, app, prefix)
+    app.get(PluginRegistry, { strict: false }).register(
+      buildChannelPlugin({
+        id: FILES_CHANNEL,
+        capabilities: [
+          ChannelCapability.TEXT,
+          ChannelCapability.IMAGE,
+          ChannelCapability.MESSAGING_WINDOW
+        ],
+        media: {
+          maxFilesPerMessage: 3,
+          kinds: { image: { types: ['image/png'], maxBytes: 100 } }
+        }
+      })
+    )
+    app.get(PluginRegistry, { strict: false }).register(
+      buildChannelPlugin({
+        id: TEXT_ONLY_CHANNEL,
+        capabilities: [ChannelCapability.TEXT, ChannelCapability.MESSAGING_WINDOW]
+      })
+    )
     await owner.plugin.create({
       data: {
         id: pluginId,
@@ -99,7 +144,27 @@ describe('The messages of the plugin API', () => {
         status: PluginStatus.APPROVED
       }
     })
-    await installIn('full', ctx.storeA.id, ALL_SCOPES)
+    await owner.plugin.create({
+      data: {
+        id: otherPluginId,
+        name: 'Other Bot',
+        authorName: 'suite',
+        authorEmail: 'suite@example.invalid',
+        type: PluginCatalogTypes.INTEGRATION,
+        organizationId: ctx.orgA.id,
+        manifest: {},
+        pricingModel: PluginPricingModels.FREE,
+        status: PluginStatus.APPROVED
+      }
+    })
+    fullUploader = `plugin:${(await installIn('full', ctx.storeA.id, ALL_SCOPES)).id}`
+    otherUploader = `plugin:${(await installIn('other', ctx.storeA.id, ALL_SCOPES, otherPluginId)).id}`
+    await installIn(
+      'nomedia',
+      ctx.storeA2.id,
+      [PluginScopes.CONVERSATIONS_READ, PluginScopes.MESSAGES_WRITE],
+      otherPluginId
+    )
     await installIn('writeonly', ctx.storeA2.id, [PluginScopes.MESSAGES_WRITE])
     await installIn('readonly', ctx.storeB.id, [
       PluginScopes.CONVERSATIONS_READ,
@@ -107,7 +172,9 @@ describe('The messages of the plugin API', () => {
     ])
   })
   afterAll(async () => {
-    await owner.pluginInstallation.deleteMany({ where: { pluginId } })
+    await owner.pluginInstallation.deleteMany({
+      where: { pluginId: { in: [pluginId, otherPluginId] } }
+    })
     await cleanUp(owner, prefix)
     await owner.plugin.deleteMany({ where: { id: { startsWith: prefix } } })
     await app.close()
@@ -294,11 +361,12 @@ describe('The messages of the plugin API', () => {
       expect((await row(id)).firstAutomatedResponseAt).toBeNull()
     })
 
-    it('does not take a file, a template, an avatar that is a link or any field it does not know', async () => {
+    it('does not take a template, a file with no files, a text with files, an avatar that is a link or any field it does not know', async () => {
       const { id } = await mk()
       const attempts: Record<string, unknown>[] = [
-        text(id, { type: 'image', mediaIds: [randomUUID()] }),
         text(id, { type: 'template' }),
+        text(id, { type: 'image' }),
+        text(id, { mediaIds: [randomUUID()] }),
         text(id, { avatar: 'https://evil.example.com/a.png' }),
         text(id, { authorId: ctx.agentA.id }),
         text(id, { quiet: 'yes' }),
@@ -489,6 +557,218 @@ describe('The messages of the plugin API', () => {
       ])
       // The person who edited is not told to a plugin
       expect(JSON.stringify(response.body)).not.toContain('editedById')
+    })
+  })
+  // PR E7-2: a plugin sends the files it uploaded, with the rules of a person (the service is the same)
+  describe('POST /plugin-api/messages with files', () => {
+    const conversation = async (lastInboundAt: Date | null = new Date()) => {
+      const created = await createConversationOf(owner, {
+        storeId: ctx.storeA.id,
+        channelType: FILES_CHANNEL
+      })
+      await owner.customerIdentity.update({
+        where: { id: created.customerIdentityId },
+        data: { lastInboundAt }
+      })
+      return created
+    }
+    const file = (
+      uploadedBy: string,
+      storeId = ctx.storeA.id,
+      extra: { contentType?: string; fileSize?: number; status?: string } = {}
+    ) => {
+      const id = randomUUID()
+      return owner.media.create({
+        data: {
+          id,
+          storeId,
+          purpose: 'message',
+          key: `stores/${storeId}/messages/${id}/photo.png`,
+          filename: 'photo.png',
+          contentType: extra.contentType ?? 'image/png',
+          fileSize: extra.fileSize ?? 10,
+          status: extra.status ?? 'clean',
+          uploadedBy
+        },
+        select: { id: true }
+      })
+    }
+    const image = (
+      conversationId: string,
+      mediaIds: string[],
+      extra: Record<string, unknown> = {}
+    ) => ({
+      type: 'image',
+      conversationId,
+      mediaIds,
+      idempotencyKey: randomUUID(),
+      ...extra
+    })
+    const attached = (id: string) => owner.media.findUniqueOrThrow({ where: { id } })
+
+    it('sends the image the installation uploaded, as the plugin, linked to the message and audited with the count', async () => {
+      const { id } = await conversation()
+      const upload = await file(fullUploader)
+
+      const response = await post(image(id, [upload.id], { content: 'Your receipt' }))
+
+      expect(response.status).toBe(CREATED)
+      expect(response.body).toMatchObject({
+        type: MessageType.IMAGE,
+        authorType: AuthorType.SYSTEM,
+        authorPluginId: pluginId,
+        content: 'Your receipt',
+        deliveryStatus: DeliveryStatus.QUEUED
+      })
+      expect((response.body as { media: { id: string }[] }).media.map(item => item.id)).toEqual([
+        upload.id
+      ])
+      expect((await attached(upload.id)).messageId).toBe((response.body as MessageBody).id)
+      const [entry] = await waitForAuditEntries(owner, {
+        action: AuditAction.MESSAGE_PLUGIN_SENT,
+        resourceId: (response.body as MessageBody).id
+      })
+      expect(entry?.metadata).toMatchObject({ type: MessageType.IMAGE, files: 1 })
+    })
+
+    it('sends an album of several images with one text, as a person does', async () => {
+      const { id } = await conversation()
+      const first = await file(fullUploader)
+      const second = await file(fullUploader)
+
+      const response = await post(image(id, [first.id, second.id], { content: 'Both photos' }))
+
+      expect(response.status).toBe(CREATED)
+      expect((response.body as { media: { id: string; position: number }[] }).media).toHaveLength(2)
+    })
+
+    it('does not send a file that another installation, a person or another store uploaded: one 404, and the file stays free', async () => {
+      const { id } = await conversation()
+      const ofOther = await file(otherUploader)
+      const ofPerson = await file(ctx.agentA.id)
+      const ofStoreB = await file(fullUploader, ctx.storeB.id)
+      const ofNobody = await file(fullUploader, ctx.storeA.id).then(async made => {
+        await owner.media.update({ where: { id: made.id }, data: { uploadedBy: null } })
+        return made
+      })
+
+      for (const target of [ofOther, ofPerson, ofStoreB, ofNobody]) {
+        const response = await post(image(id, [target.id]))
+
+        expect(response.status).toBe(NOT_FOUND)
+        expect((await attached(target.id)).messageId).toBeNull()
+      }
+      // One file that is the installation's does not carry along one that is not
+      const own = await file(fullUploader)
+      expect((await post(image(id, [own.id, ofOther.id]))).status).toBe(NOT_FOUND)
+      expect((await attached(own.id)).messageId).toBeNull()
+      expect(await owner.message.count({ where: { conversationId: id } })).toBe(0)
+    })
+
+    it('holds a file to the rules of the channel: its type, its size, its kind, how many, and a file that is not clean', async () => {
+      const { id } = await conversation()
+      const wrongType = await file(fullUploader, ctx.storeA.id, { contentType: 'image/jpeg' })
+      const tooBig = await file(fullUploader, ctx.storeA.id, { fileSize: 1000 })
+      const infected = await file(fullUploader, ctx.storeA.id, { status: 'infected' })
+      const pending = await file(fullUploader, ctx.storeA.id, { status: 'pending' })
+      const many = await Promise.all([1, 2, 3, 4].map(() => file(fullUploader)))
+      const audio = await file(fullUploader, ctx.storeA.id, { contentType: 'audio/ogg' })
+
+      const wrongTypeAnswer = await post(image(id, [wrongType.id]))
+      const tooBigAnswer = await post(image(id, [tooBig.id]))
+      const manyAnswer = await post(
+        image(
+          id,
+          many.map(item => item.id)
+        )
+      )
+      const audioAnswer = await post(image(id, [audio.id]))
+      const audioKindAnswer = await post(image(id, [audio.id], { type: 'audio' }))
+      const unclean = [await post(image(id, [infected.id])), await post(image(id, [pending.id]))]
+
+      expect(codeOf(wrongTypeAnswer.body)).toBe(ErrorCodes.CHANNEL_FILE_TYPE_UNSUPPORTED)
+      expect(codeOf(tooBigAnswer.body)).toBe(ErrorCodes.CHANNEL_FILE_TOO_LARGE)
+      expect(codeOf(manyAnswer.body)).toBe(ErrorCodes.CHANNEL_TOO_MANY_FILES)
+      // The kind of the file is not the type of the message, and the channel does not carry audio
+      expect(audioAnswer.status).toBe(BAD_REQUEST)
+      expect(codeOf(audioKindAnswer.body)).toBe(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED)
+      for (const response of unclean) expect(response.status).toBeGreaterThanOrEqual(BAD_REQUEST)
+      expect(await owner.message.count({ where: { conversationId: id } })).toBe(0)
+    })
+
+    it('does not send a file to a customer whose messaging window is closed, and a quiet file changes nothing in the conversation', async () => {
+      const closed = await conversation(new Date(Date.now() - 48 * 3_600_000))
+      const open = await conversation()
+      const before = (await row(open.id)).status
+      const late = await file(fullUploader)
+      const silent = await file(fullUploader)
+
+      const refused = await post(image(closed.id, [late.id]))
+      const quiet = await post(image(open.id, [silent.id], { quiet: true }))
+
+      expect(refused.status).toBe(CONFLICT)
+      expect(codeOf(refused.body)).toBe(ErrorCodes.CHANNEL_WINDOW_EXPIRED)
+      expect((await attached(late.id)).messageId).toBeNull()
+      expect(quiet.status).toBe(CREATED)
+      expect((await row(open.id)).status).toBe(before)
+    })
+
+    it('answers a repeated key with the message it made (200) and refuses it for other files (409)', async () => {
+      const { id } = await conversation()
+      const upload = await file(fullUploader)
+      const another = await file(fullUploader)
+      const body = image(id, [upload.id])
+
+      const first = await post(body)
+      const again = await post(body)
+      const other = await post({ ...body, mediaIds: [another.id] })
+
+      expect(first.status).toBe(CREATED)
+      expect(again.status).toBe(OK)
+      expect((again.body as MessageBody).id).toBe((first.body as MessageBody).id)
+      expect(other.status).toBe(CONFLICT)
+      expect(await owner.message.count({ where: { conversationId: id } })).toBe(1)
+    })
+
+    it('does not send an image on a channel that does not carry it, and answers 403 without the scope of writing', async () => {
+      const plain = await createConversationOf(owner, {
+        storeId: ctx.storeA.id,
+        channelType: TEXT_ONLY_CHANNEL
+      })
+      await owner.customerIdentity.update({
+        where: { id: plain.customerIdentityId },
+        data: { lastInboundAt: new Date() }
+      })
+      const upload = await file(fullUploader)
+
+      const refused = await post(image(plain.id, [upload.id]))
+      const forbidden = await post(image(plain.id, [upload.id]), keys.readonly)
+
+      expect(refused.status).toBe(CONFLICT)
+      expect(codeOf(refused.body)).toBe(ErrorCodes.CHANNEL_CAPABILITY_UNSUPPORTED)
+      expect(forbidden.status).toBe(FORBIDDEN)
+      expect((await attached(upload.id)).messageId).toBeNull()
+    })
+
+    it('refuses a file to a key that holds no media:write (the owner took it back), and still sends it a text', async () => {
+      const own = await createConversationOf(owner, { storeId: ctx.storeA2.id })
+      const upload = await file(otherUploader, ctx.storeA2.id)
+
+      const refused = await post(image(own.id, [upload.id]), keys.nomedia)
+      const text_ = await post(text(own.id), keys.nomedia)
+
+      expect(refused.status).toBe(FORBIDDEN)
+      expect(codeOf(refused.body)).toBe(ErrorCodes.PLUGIN_SCOPE_DENIED)
+      expect((await attached(upload.id)).messageId).toBeNull()
+      expect(text_.status).toBe(CREATED)
+    })
+
+    it('lets two installations of the same store keep their uploads apart, with the same scopes', async () => {
+      const { id } = await conversation()
+      const upload = await file(otherUploader)
+
+      expect((await post(image(id, [upload.id]), keys.full)).status).toBe(NOT_FOUND)
+      expect((await post(image(id, [upload.id]), keys.other)).status).toBe(CREATED)
     })
   })
 })

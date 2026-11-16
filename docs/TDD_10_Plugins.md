@@ -923,6 +923,7 @@ export const PluginScopes = {
   PRODUCTS_DELETE: 'products:delete',           // delete a product or a variant (Step 5.6 E4a); PRODUCTS_DELETE is in no other scope
   WAREHOUSES_READ: 'warehouses:read',           // the warehouses of the organization of the key's store (Step 5.6 E4a)
   TAGS_READ: 'tags:read',                       // the tag catalog of the store (Step 5.6 E4a-2)
+  SNIPPETS_READ: 'snippets:read',               // the canned replies of the store, read only (Step 5.6 E7-2)
   TAGS_WRITE: 'tags:write',                     // create, rename, recolor and delete a tag of the catalog (Step 5.6 E4a-2)
   TRANSFERS_READ: 'transfers:read',             // the transfers between warehouses, read only; the lines of the key's store only (Step 5.6 E4b)
   COUNTS_READ: 'counts:read',                   // the physical counts, read only; the lines of the key's store only (Step 5.6 E4b)

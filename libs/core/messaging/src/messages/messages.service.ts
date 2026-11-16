@@ -192,14 +192,11 @@ export class MessagesService {
     if (isTemplate && rendered === undefined) {
       throw invalidInput('a template message needs its template checked first')
     }
-    // A plugin sends text and notes; a template is the provider's and a file needs a person's upload (a route for the files of a
-    // plugin is a step of its own), so neither is taken from it here
-    if (
-      plugin !== undefined &&
-      body.type !== MessageType.TEXT &&
-      body.type !== MessageType.INTERNAL_NOTE
-    ) {
-      throw invalidInput('a plugin sends text and notes only')
+    // A plugin sends text, notes and files and nothing else: a template is the provider's, asked with the permission `channels:read`
+    // stands for, and the route of the messages does not name that scope (PR E7-3). A new kind of message is refused for a plugin
+    // until someone adds it here on purpose.
+    if (plugin !== undefined && !isPluginKind(body)) {
+      throw invalidInput('a plugin sends text, notes and files only')
     }
     requireAnyPermission(viewer.held, [permissionToWrite(body)])
     // The person a plugin writes for (the author of its `agent` messages) and the id the message and its events carry
@@ -283,7 +280,14 @@ export class MessagesService {
       if (mentions.length > 0) await this.requireMentionable(tx, storeId, mentions, current)
       // Checked under the lock and after the replay: a retry finds its files already linked
       const files = isMediaBody(body)
-        ? await this.requireFiles(tx, storeId, body, viewer, supports, limitsOf)
+        ? await this.requireFiles(
+            tx,
+            storeId,
+            body,
+            plugin === undefined ? viewer.userId : (plugin.uploaderId ?? null),
+            supports,
+            limitsOf
+          )
         : null
 
       // The date is set here, in milliseconds, so that the message and the conversation agree on it
@@ -715,7 +719,8 @@ export class MessagesService {
     tx: PrismaTransaction,
     storeId: string,
     body: MediaMessageBody,
-    viewer: Viewer,
+    // Whose upload a file must be: the person's id, or `plugin:<installation id>`; null (a plugin with no owner for its files) holds no file
+    uploaderId: string | null,
     supports: ChannelSupportsFile | undefined,
     limitsOf: ChannelFileLimitsOf | undefined
   ): Promise<LinkableFiles> {
@@ -757,12 +762,14 @@ export class MessagesService {
         { max: maxFiles }
       )
     }
+    // Nobody's upload can be sent: closed, never a query without the uploader (that would take any file of the store)
+    if (uploaderId === null || uploaderId === '') throw resourceNotFound('media')
     const rows = await tx.media.findMany({
       where: {
         id: { in: body.mediaIds },
         storeId,
         purpose: MediaPurpose.MESSAGE,
-        uploadedBy: viewer.userId
+        uploadedBy: uploaderId
       },
       select: { id: true, status: true, contentType: true, messageId: true, fileSize: true }
     })
@@ -1095,6 +1102,13 @@ function sameTemplate(
 }
 
 // What each kind of message needs on top of seeing the conversation
+// What a plugin may send: a text, an internal note and the four kinds of file
+function isPluginKind(body: CreateMessageBody): boolean {
+  return (
+    body.type === MessageType.TEXT || body.type === MessageType.INTERNAL_NOTE || isMediaBody(body)
+  )
+}
+
 function permissionToWrite(body: CreateMessageBody): Permission {
   switch (body.type) {
     case MessageType.INTERNAL_NOTE:

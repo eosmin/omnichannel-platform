@@ -3168,6 +3168,7 @@
         "warehouses:read": "Read the warehouses of the organization",
         "tags:read": "Read the tag catalog of the store",
         "tags:write": "Create, change and delete the tags of the store",
+        "snippets:read": "Read the canned replies of the store",
         "webhooks:write": "Manage the notification subscriptions of the store",
         "analytics:read": "Read analytics and reports",
         "inventory:read": "Read stock levels and movements",
