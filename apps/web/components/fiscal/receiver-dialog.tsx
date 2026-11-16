@@ -4,7 +4,7 @@ import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useEffect, useState } from 'react'
 
 import type { FiscalDocumentView, FiscalProviderView } from '@platform/api-client'
-import { FiscalFieldLimits } from '@platform/core/domain'
+import { FiscalCustomerDataLimits, FiscalFieldLimits } from '@platform/core/domain'
 
 import {
   type ReceiverDraft,
@@ -161,6 +161,8 @@ function ReceiverForm({
       {textField(ReceiverFields.REGISTRATION_ID, FiscalFieldLimits.REGISTRATION_ID)}
       {textField(ReceiverFields.EMAIL, FiscalFieldLimits.EMAIL)}
       {textField(ReceiverFields.PHONE, FiscalFieldLimits.PHONE)}
+      {textField(ReceiverFields.TAXPAYER_TYPE, FiscalCustomerDataLimits.ID_MAX_LENGTH)}
+      {textField(ReceiverFields.ECONOMIC_ACTIVITY, FiscalCustomerDataLimits.VALUE_MAX_LENGTH)}
       <AddressRowsField
         rows={draft.address}
         onChange={address => set({ address })}

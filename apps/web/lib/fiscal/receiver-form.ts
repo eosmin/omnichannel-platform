@@ -1,4 +1,8 @@
-import { FiscalFieldLimits, type FiscalReceiverPatchBody } from '@platform/core/domain'
+import {
+  FiscalCustomerDataLimits,
+  FiscalFieldLimits,
+  type FiscalReceiverPatchBody
+} from '@platform/core/domain'
 
 import {
   type AddressProblem,
@@ -18,6 +22,8 @@ export interface ReceiverDraft {
   registrationId: string
   email: string
   phone: string
+  taxpayerType: string
+  economicActivity: string
   address: AddressRow[]
 }
 
@@ -27,6 +33,8 @@ export const ReceiverFields = {
   REGISTRATION_ID: 'registrationId',
   EMAIL: 'email',
   PHONE: 'phone',
+  TAXPAYER_TYPE: 'taxpayerType',
+  ECONOMIC_ACTIVITY: 'economicActivity',
   ADDRESS: 'address'
 } as const
 export type ReceiverField = (typeof ReceiverFields)[keyof typeof ReceiverFields]
@@ -42,6 +50,8 @@ export const emptyReceiverDraft = (): ReceiverDraft => ({
   registrationId: '',
   email: '',
   phone: '',
+  taxpayerType: '',
+  economicActivity: '',
   address: [emptyAddressRow()]
 })
 
@@ -50,7 +60,9 @@ const LIMITS: Record<Exclude<ReceiverField, 'address'>, number> = {
   taxId: FiscalFieldLimits.TAX_ID,
   registrationId: FiscalFieldLimits.REGISTRATION_ID,
   email: FiscalFieldLimits.EMAIL,
-  phone: FiscalFieldLimits.PHONE
+  phone: FiscalFieldLimits.PHONE,
+  taxpayerType: FiscalCustomerDataLimits.ID_MAX_LENGTH,
+  economicActivity: FiscalCustomerDataLimits.VALUE_MAX_LENGTH
 }
 const TEXT_FIELDS = Object.keys(LIMITS) as (keyof typeof LIMITS)[]
 

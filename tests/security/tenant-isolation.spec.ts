@@ -129,6 +129,8 @@ import {
   createTag,
   resetStoreSettings,
   customerOfIdentity,
+  customerOfFiscalData,
+  createCustomerFiscalData,
   survivorOfMerge,
   dropCachedSettings
 } from '../builders'
@@ -634,6 +636,20 @@ const resources: IsolationResource[] = [
     },
     untouched: async (owner, id) =>
       (await owner.customerIdentity.findUnique({ where: { id }, select: { id: true } })) !== null
+  },
+  // The fiscal data of a customer (Step 4B.7b-3): personal and tax data, reached through its customer by the route that changes it. A
+  // request from another store names a customer it does not have: a 404, and the row stays as it was.
+  {
+    name: 'customerFiscalData',
+    create: createCustomerFiscalData,
+    modify: {
+      path: id => ApiRoutes.fiscal.customerData.put(customerOfFiscalData.get(id) ?? ''),
+      method: 'put',
+      body: { taxId: 'hacked' }
+    },
+    untouched: async (owner, id) =>
+      (await owner.customerFiscalData.findUnique({ where: { id }, select: { updatedBy: true } }))
+        ?.updatedBy === 'isolation-fixture'
   },
   {
     name: 'customerMerge',

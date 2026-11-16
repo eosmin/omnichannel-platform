@@ -277,6 +277,8 @@ export const ErrorCodes = {
   FISCAL_DOCUMENT_INVALID_TRANSITION: 'FISCAL_DOCUMENT_INVALID_TRANSITION',
   FISCAL_PROVIDER_UNAVAILABLE: 'FISCAL_PROVIDER_UNAVAILABLE',
   FISCAL_ISSUER_INVALID: 'FISCAL_ISSUER_INVALID',
+  // The fiscal data of a customer does not pass the checks of the issuer's provider (the fields and codes travel in the metadata, never the values)
+  FISCAL_CUSTOMER_DATA_INVALID: 'FISCAL_CUSTOMER_DATA_INVALID',
   // A bank statement file that cannot be read, or whose body is not what an import takes (the rows that failed travel in the metadata)
   BANK_STATEMENT_INVALID: 'BANK_STATEMENT_INVALID',
 

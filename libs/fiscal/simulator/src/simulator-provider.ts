@@ -13,7 +13,9 @@ import type {
   FiscalDocumentProvider,
   FiscalIssuerCredentials,
   FiscalIssuerInput,
+  FiscalReceiver,
   FiscalReceiverField,
+  FiscalReceiverProblem,
   IssuerCheck,
   ProviderContext,
   StoredFiscalDocument,
@@ -41,7 +43,8 @@ export const SimulatorRules = {
   LOST: 'LOST',
   VOID_LOST: 'VOID_LOST',
   REJECT_REASON: 'simulated_rejection',
-  VOID_REFUSED_REASON: 'simulated_void_refused'
+  VOID_REFUSED_REASON: 'simulated_void_refused',
+  TAX_ID_WITH_SPACES: 'simulated_tax_id_has_spaces'
 } as const
 
 const FAKE_KEY = 'simulator-key-not-a-secret'
@@ -90,6 +93,13 @@ export class SimulatorProvider implements FiscalDocumentProvider {
     if (typeof key !== 'string' || key.trim() === '') problems.push('signingKey')
     if (issuer.environment !== FiscalEnvironment.SANDBOX) problems.push('environment')
     return Promise.resolve({ ok: problems.length === 0, problems })
+  }
+
+  // The simulator's only rule: a tax id has no spaces (what a real provider checks is its country's format)
+  validateReceiver(receiver: FiscalReceiver): readonly FiscalReceiverProblem[] {
+    return receiver.taxId !== null && /\s/.test(receiver.taxId)
+      ? [{ field: 'taxId', code: SimulatorRules.TAX_ID_WITH_SPACES }]
+      : []
   }
 
   build(input: FiscalBuildInput): Promise<BuiltDocument> {

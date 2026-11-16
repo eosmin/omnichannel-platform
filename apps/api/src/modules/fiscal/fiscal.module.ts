@@ -6,6 +6,7 @@ import { FiscalRuntimeModule } from '@platform/fiscal/runtime'
 import { MediaModule } from '../media/media.module'
 import { TenancyModule } from '../tenancy'
 
+import { CustomerFiscalDataController } from './customer-fiscal-data.controller'
 import { FiscalEvidenceUrlsService } from './fiscal-evidence-urls.service'
 import { FiscalSubmissionQueue } from './fiscal-submission.queue'
 import { FiscalController } from './fiscal.controller'
@@ -15,7 +16,7 @@ import { FiscalListener } from './fiscal.listener'
 // providers are `libs/fiscal/runtime`, which the worker also runs.
 @Module({
   imports: [FiscalRuntimeModule, MediaModule, QueuesPlatformModule, TenancyModule],
-  controllers: [FiscalController],
+  controllers: [FiscalController, CustomerFiscalDataController],
   providers: [FiscalEvidenceUrlsService, FiscalSubmissionQueue, FiscalListener]
 })
 export class FiscalModule {}

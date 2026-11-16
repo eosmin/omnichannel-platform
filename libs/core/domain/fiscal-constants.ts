@@ -86,7 +86,8 @@ export const fiscalJobOptions = (): {
 
 export const FiscalResourceTypes = {
   ISSUER: 'fiscal_issuer',
-  DOCUMENT: 'fiscal_document'
+  DOCUMENT: 'fiscal_document',
+  CUSTOMER_DATA: 'customer_fiscal_data'
 } as const
 
 export const FiscalEvidenceContentType = 'application/json'
@@ -155,3 +156,12 @@ export enum FiscalVoidConsultState {
 // The environments in which a provider that signs nothing real (a simulator) may be registered: closed by default, so a staging
 // deployment or a process whose NODE_ENV is not set never gets one
 export const FiscalSimulatorEnvironments: readonly string[] = ['development', 'test']
+
+// The fiscal data of a customer (Step 4B.7b-3): what the store keeps about whom it invoices, apart from the contact data of the
+// customer. The limits are core's (a sane size for a text kept sealed); what a value must look like is the provider's rule.
+export const FiscalCustomerDataLimits = {
+  VALUE_MAX_LENGTH: 200,
+  ID_MAX_LENGTH: 40,
+  ADDRESS_MAX_FIELDS: 12,
+  ADDRESS_KEY_MAX_LENGTH: 40
+} as const

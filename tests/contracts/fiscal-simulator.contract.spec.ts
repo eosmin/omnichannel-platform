@@ -26,3 +26,21 @@ testFiscalProviderContract(() => simulatorProvider(), {
     incomplete: { name: null, taxId: '1234-5' }
   }
 })
+
+describe('the simulator checks the fiscal data of a customer by its one rule', () => {
+  const receiver = {
+    name: 'Ana',
+    registrationId: null,
+    address: null,
+    email: null,
+    phone: null
+  }
+  it('refuses a tax id with spaces, by field and code, and accepts one without', () => {
+    const provider = simulatorProvider()
+    expect(provider.validateReceiver({ ...receiver, taxId: '12 34' })).toEqual([
+      { field: 'taxId', code: SimulatorRules.TAX_ID_WITH_SPACES }
+    ])
+    expect(provider.validateReceiver({ ...receiver, taxId: '1234' })).toEqual([])
+    expect(provider.validateReceiver({ ...receiver, taxId: null })).toEqual([])
+  })
+})

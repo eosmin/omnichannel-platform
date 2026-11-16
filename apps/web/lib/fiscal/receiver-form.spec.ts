@@ -45,6 +45,13 @@ describe('the form that fixes a receiver', () => {
     }
   })
 
+  it('sends the kind of taxpayer and the economic activity, as the schema of the api takes them', () => {
+    const draft = { ...emptyReceiverDraft(), taxpayerType: 'kind', economicActivity: 'retail' }
+    expect(receiverProblem(draft)).toBeNull()
+    expect(receiverPatchOf(draft)).toEqual({ taxpayerType: 'kind', economicActivity: 'retail' })
+    expect(fiscalReceiverPatchSchema.safeParse(receiverPatchOf(draft)).success).toBe(true)
+  })
+
   it('refuses a text longer than the api takes before sending it', () => {
     const draft = { ...emptyReceiverDraft(), name: 'n'.repeat(FiscalFieldLimits.NAME + 1) }
     expect(receiverProblem(draft)).toEqual({ field: 'name', kind: 'tooLong' })

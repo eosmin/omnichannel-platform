@@ -120,6 +120,26 @@ export function testFiscalProviderContract(
     })
   })
 
+  describe('the fiscal data of a customer', () => {
+    it('is checked, when the provider checks it, without echoing a value: the plain receiver passes', () => {
+      const provider = makeProvider()
+      if (provider.validateReceiver === undefined) return
+      const receiver = {
+        registrationId: null,
+        address: null,
+        email: null,
+        phone: null,
+        ...fixtures.receivers.plain
+      }
+      expect(provider.validateReceiver(receiver)).toEqual([])
+      const problems = provider.validateReceiver({ ...receiver, taxId: ' ZQ9 K7 \n', name: null })
+      for (const problem of problems) {
+        expect(typeof problem.code).toBe('string')
+        expect(JSON.stringify(problem)).not.toContain('ZQ9')
+      }
+    })
+  })
+
   describe('building', () => {
     it('is pure: the same input builds the same document, of a type the manifest declares', async () => {
       const provider = makeProvider()

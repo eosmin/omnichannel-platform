@@ -1,7 +1,12 @@
 import { z } from 'zod'
 
 import { FiscalDocumentStatus } from './finance-constants'
-import { FiscalEnvironment, FiscalIssueOn, FiscalLimits } from './fiscal-constants'
+import {
+  FiscalCustomerDataLimits,
+  FiscalEnvironment,
+  FiscalIssueOn,
+  FiscalLimits
+} from './fiscal-constants'
 import { singleLineText } from './validation'
 
 // The bodies and the query of the fiscal routes (TDD_18 §8, §12). They live here, not in the api, so the web form that sends one is
@@ -87,6 +92,9 @@ export const fiscalReceiverPatchSchema = z
     registrationId: text(FiscalFieldLimits.REGISTRATION_ID).nullable(),
     email: text(FiscalFieldLimits.EMAIL).nullable(),
     phone: text(FiscalFieldLimits.PHONE).nullable(),
+    // The kind of taxpayer and the economic activity, in the words of the provider's own manifest
+    taxpayerType: text(FiscalCustomerDataLimits.ID_MAX_LENGTH).nullable(),
+    economicActivity: text(FiscalCustomerDataLimits.VALUE_MAX_LENGTH).nullable(),
     address: fiscalAddressSchema.nullable()
   })
   .partial()

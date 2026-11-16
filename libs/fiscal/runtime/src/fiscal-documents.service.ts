@@ -58,6 +58,7 @@ import {
   receiverEditable,
   receiverOf,
   receiverRecord,
+  receiverWithFiscalData,
   retryable,
   saleAddsUp,
   saleOf,
@@ -258,7 +259,14 @@ export class FiscalDocumentsService {
 
   // The sale as the order has it now: the lines with the tax snapshot of Step 4B.3b, the amounts of the order and its customer as the
   // receiver. The amounts are the order's own, never recomputed here.
-  private async readSale(tx: PrismaTransaction, organizationId: string, orderId: string) {
+  // `withFiscalData` is false where the receiver is not taken from the sale (a retry keeps the receiver of the document, a replacement the one
+  // of the voided document): the customer's sealed data is not opened for nothing
+  private async readSale(
+    tx: PrismaTransaction,
+    organizationId: string,
+    orderId: string,
+    withFiscalData = true
+  ) {
     const order = await tx.order.findFirst({
       where: { id: orderId, store: { organizationId } },
       select: {
@@ -272,7 +280,10 @@ export class FiscalDocumentsService {
         taxCents: true,
         pricesIncludeTax: true,
         shippingAddress: true,
-        customer: { select: { name: true, email: true, phone: true } },
+        customerId: true,
+        customer: {
+          select: { name: true, email: true, phone: true, erasedAt: true, mergedIntoId: true }
+        },
         items: {
           orderBy: { id: 'asc' },
           select: {
@@ -294,7 +305,7 @@ export class FiscalDocumentsService {
     for (const [key, value] of Object.entries(record(order.shippingAddress))) {
       if (typeof value === 'string' && value !== '') address[key] = value
     }
-    const receiver: FiscalReceiver = {
+    const contact: FiscalReceiver = {
       name: order.customer.name,
       taxId: null,
       registrationId: null,
@@ -302,6 +313,15 @@ export class FiscalDocumentsService {
       email: order.customer.email,
       phone: order.customer.phone
     }
+    // The fiscal data of the customer, as it is at this moment, is copied into the receiver: the document keeps its own sealed copy and a
+    // later change of the customer's data never reaches it
+    const receiver = receiverWithFiscalData(
+      contact,
+      // A customer that was erased or merged into another has no fiscal data to copy: it must not come back in a new document
+      !withFiscalData || order.customer.erasedAt !== null || order.customer.mergedIntoId !== null
+        ? null
+        : await this.customerFiscalReceiver(tx, order.storeId, order.customerId)
+    )
     return {
       storeId: order.storeId,
       currency: order.currency,
@@ -317,6 +337,32 @@ export class FiscalDocumentsService {
         pricesIncludeTax: order.pricesIncludeTax ?? true,
         orderNumber: order.orderNumber
       })
+    }
+  }
+
+  // The fiscal data of a customer of the store, opened. What cannot be opened (a key that changed) stops the document: made without it, a
+  // customer who has a tax id would be invoiced as a consumer, a legal document that says less than the customer asked for.
+  private async customerFiscalReceiver(
+    tx: PrismaTransaction,
+    storeId: string,
+    customerId: string
+  ): Promise<FiscalReceiver | null> {
+    const row = await tx.customerFiscalData.findFirst({
+      where: { storeId, customerId },
+      select: { dataEncrypted: true }
+    })
+    if (row === null) return null
+    try {
+      return receiverOf(this.cipher.open(row.dataEncrypted))
+    } catch (error) {
+      // The name of the error only, so a key that no longer opens rows shows in the logs
+      this.logger.error({ err: errorName(error) }, 'the fiscal data of a customer cannot be opened')
+      throw new PlatformException(
+        ErrorCodes.FISCAL_CUSTOMER_DATA_INVALID,
+        'the fiscal data of the customer cannot be read: write it again',
+        HttpStatusCodes.CONFLICT,
+        { reason: 'unreadable' }
+      )
     }
   }
 
@@ -1104,7 +1150,16 @@ export class FiscalDocumentsService {
     organizationId: string,
     id: string,
     patch: Partial<
-      Record<'name' | 'taxId' | 'registrationId' | 'email' | 'phone', string | null>
+      Record<
+        | 'name'
+        | 'taxId'
+        | 'registrationId'
+        | 'email'
+        | 'phone'
+        | 'taxpayerType'
+        | 'economicActivity',
+        string | null
+      >
     > & {
       address?: Record<string, string> | null
     },
@@ -1132,7 +1187,13 @@ export class FiscalDocumentsService {
           'registrationId' in patch ? (patch.registrationId ?? null) : current.registrationId,
         email: 'email' in patch ? (patch.email ?? null) : current.email,
         phone: 'phone' in patch ? (patch.phone ?? null) : current.phone,
-        address: 'address' in patch ? (patch.address ?? null) : current.address
+        address: 'address' in patch ? (patch.address ?? null) : current.address,
+        taxpayerType:
+          'taxpayerType' in patch ? (patch.taxpayerType ?? null) : (current.taxpayerType ?? null),
+        economicActivity:
+          'economicActivity' in patch
+            ? (patch.economicActivity ?? null)
+            : (current.economicActivity ?? null)
       }
       await tx.fiscalDocument.update({
         where: { id },
@@ -1213,7 +1274,7 @@ export class FiscalDocumentsService {
           ? null
           : isNote
             ? await this.readCreditNote(tx, organizationId, doc.orderId, doc.returnId)
-            : await this.readSale(tx, organizationId, doc.orderId)
+            : await this.readSale(tx, organizationId, doc.orderId, false)
         if (isNote && inconsistent && (sale === null || ('ok' in sale && !sale.ok))) {
           throw new PlatformException(
             ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
@@ -1587,7 +1648,7 @@ export class FiscalDocumentsService {
             { reason: FiscalConflictReasons.ALREADY_REPLACED }
           )
         }
-        const sale = await this.readSale(tx, organizationId, old.orderId)
+        const sale = await this.readSale(tx, organizationId, old.orderId, false)
         if (sale === null) throw resourceNotFound('order')
         const sequenceNumber = await this.takeSequence(tx, organizationId)
         const entry = await tx.journalEntry.findFirst({
