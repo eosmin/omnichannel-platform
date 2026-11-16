@@ -2079,8 +2079,14 @@ sale rows follow the ledger: a sale is out of a month's book only when its entry
           (`finance:export`). Routes drawn: `finance.periods.close`, `finance.periods.reopen`, `finance.reports.trialBalance`,
           `finance.reports.trialBalanceCsv`, `finance.reports.ledger`, `finance.reports.ledgerCsv`, `finance.reports.journalCsv`,
           `finance.reports.verifyChain`.
-    - [ ] **4B.9b-2 (fiscal documents):** `fiscal.*` (the server of 4B.7a-2, #555): the issuer settings, the documents of the sales (list, one,
-          the receiver, the retry) and the void of an accepted document (typed reason, the effect shown first), and the document on the order.
+    - [x] **4B.9b-2 (fiscal documents):** the pages Finance → Fiscal documents (`/finance/fiscal`) and Fiscal issuer (`/finance/fiscal/issuer`), opened by
+          `fiscal:view` (changing needs `fiscal:manage`; the area itself now opens for `fiscal:view` alone). Documents: the list of the organization with its
+          status and a filter by status, the notice of the documents that were refused or ran out of attempts, and a detail (kind, type, number given by the
+          authority, environment, amounts in whole cents, receiver minimized, relations, the void reason) that is read only; from it a person with
+          `fiscal:manage` fixes the receiver of a document that was refused or never sent, sends it again, voids an accepted one (reason written, the effect
+          shown first, the confirmation of its HIGH tier) and makes a voided sale document again (one more confirmation). Issuer: the form follows the manifest
+          of the chosen provider (what it requires, the names of its credentials, its environments); the credentials are written and never read back; the
+          correlative only moves forward. The UI names no country and no provider. Routes drawn: `fiscal.providers`, `fiscal.issuer`, `fiscal.documents.*`.
     - [x] **4B.9b-3 (statements, aging, legal books):** built, see "Built in PR 4B.9b-3" below: Finance → Statements, Aging and Legal books
           (`finance.reports.{incomeStatement,balanceSheet,cashFlow,aging}` and their files, `finance.bookLayouts.list`, `finance.books.*`,
           `finance.frozenBooks.*`, always with the notice that a book is a draft while it is `unvalidated`).
@@ -2091,6 +2097,30 @@ sale rows follow the ledger: a sale is out of a month's book only when its entry
           view (small server PRs before it; debts (a) and (f) of 4B.9a-4), the aging buckets, the export and the day filter of the payables.
     - [ ] **4B.9b-5 (the month end to end):** the e2e case of the month (register, receive, sell, remit, close) and the permission-gate case of
           every page of the area; it closes 4B.9.
+  - **Decisions of PR 4B.9b-2 (rule 12):** (1) the bodies of the fiscal routes moved from the api to `libs/core/domain/fiscal-schemas.ts` (the api's
+    `fiscal.schemas.ts` re-exports them), so the web forms are tested against the schema that reads them, as the purchases do; the alternative, a copy in the
+    web, drifts. (2) The area opens for `fiscal:view` alone and the fiscal pages do not wait for the books to be set up (the api's routes do not need them).
+    (3) Credentials are all or none: the api replaces the stored ones whole, so a half-written set is refused before it is sent. (4) Making a voided
+    document again is a two-step inside the detail, not a tier of `DestructiveActionTiers` (it has none): it makes a new number and cannot be undone.
+  - **Left by PR 4B.9b-2, each with its owner:** (a) "issue a document" and "consult its state" are not buttons: the api has no route for either (the
+    document is made when the sale is recognized, and the consultation runs inside the submission job); a button needs a server route and the owner's
+    word, Step 4B.7b-4. (b) The detail shows no lines, no tax breakdown and no issuer snapshot: the view of the api does not carry them; a read of the
+    sealed snapshot (without credentials) is a server change, Step 4B.7b-4. (c) The list has no period filter: the api filters by status and order only; a
+    `from`/`to` on `createdAt` is a server change, Step 4B.7b-4. (d) The list has no search by order and the order page shows no link to its document: Step 7.3.
+    (e) The address of the issuer and of a receiver is written as lines (a name and a value) because the manifest of a provider does not declare its address
+    fields: the manifest should declare them when the real provider is built [OWNER] [ACCOUNTANT], Step 4B.7b-4. (f) A receiver field cannot be cleared (the api
+    takes null; the form only replaces): Step 7.7. (g) The notice counts the newest page of the refused and of the queued documents, and "stuck" is a document
+    queued with every attempt spent; a document whose job was lost earlier is not flagged: an exact count and a `stuck` flag in the view are Step 4B.7b-4.
+    (h) The notices of a refused or stuck document are PR 4B.7b-2's (#564, merged): this PR draws the banner only. (i) The button that makes a voided document again is shown unless the loaded list holds its replacement, so with a filter on it may be shown for a document that has one: the api refuses with `already_replaced` and the screen says so; a `replacedBy` in the view closes it. The web repeats three rules of the runtime to
+    decide which buttons to show (`document-rules.ts`); the api decides again on every call. If a fourth appears, the view should carry `allowedActions`:
+    Step 4B.7b-4. (j) The e2e drives the issuer, the empty list and the read-only person; a case with a real document (a delivered sale, its void, its
+    replacement) needs a sealed receiver and the provider's answer, and belongs to the end-to-end case of the month, Step 4B.9b-5. (k) The area is asked of the api through one store of the person (`bestFinanceMembership`); with `fiscal:*` in one store and `finance:*` in another, the pages of the other family may be asked through a store that lacks their permission (the api answers 403): the same limit as 4B.9a-4's, closed with it, Step 7.3. (l) The visual pass,
+    Step 7.7.
+    **Step 4B.9b-2b (next, from `main` after #564; it is 4B.7b-2's "4B.9 PR D"):** the links of the evidence files of a document
+    (`fiscal.documents.evidence`), the confirmation dialog of an issuer change (`fiscal.documents.confirmIssuerChange`, HIGH tier) and the re-issue of a
+    voided credit note (the replace button of a note), plus the reason `issuer_changed_in_flight` of a retry. They are not drawn here because their routes
+    were left out to keep this PR under 40 files (they are mapped in the coverage map). **Step 4B.7b-4 (new, server, small):** (b), (c), (e), (g) and (i) above are one server PR: the sealed snapshot in the view, a
+    period filter, the address fields in the manifest, the `stuck` flag and an exact count, and `allowedActions`.
 - [ ] Every route of 4B.2 to 4B.8 drawn (`frontend-coverage-map`), i18n keys in `es` and `en`, Lucide icons only, no emoji, the mobile layout of the
       common actions (register an expense, receive a purchase), the e2e of the month (register, receive, sell, remit, close)
 - **Decisions of PR 4B.9a-1 (rule 12):** (1) the books are an area of their own (`/finance`), not a page of Settings or of the organization: they are the

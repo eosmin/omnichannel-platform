@@ -2980,7 +2980,9 @@
         "payables": "Payables",
         "statements": "Statements",
         "aging": "Aging",
-        "books": "Legal books"
+        "books": "Legal books",
+        "fiscal": "Fiscal documents",
+        "fiscalIssuer": "Fiscal issuer"
       }
     },
     "store": {
@@ -7302,6 +7304,244 @@
       },
       "fieldsUnknown": "The money columns of this layout version cannot be told apart on screen: the figures are whole cents (100 is 1.00). The file has them as the api wrote them.",
       "totalsAllRows": "Totals (all rows)"
+    },
+    "fiscal": {
+      "title": "Fiscal documents",
+      "description": "The documents of the sales and the returns of the organization, and the state each one is in.",
+      "caution": "The provider and the format of these documents are chosen in the issuer settings. Before relying on them, confirm with your accountant that they are the ones your tax authority accepts.",
+      "noIssuer": "No issuer is set up, so no document is made when a sale is recognized.",
+      "noIssuerLink": "Set up the issuer",
+      "filters": {
+        "status": "Status",
+        "allStatuses": "All statuses"
+      },
+      "empty": "There are no fiscal documents here yet. They are made by themselves when a sale is recognized.",
+      "more": "Show more",
+      "status": {
+        "draft": "Draft",
+        "queued": "Waiting",
+        "submitted": "Sent",
+        "accepted": "Accepted",
+        "rejected": "Refused",
+        "voided": "Voided"
+      },
+      "kind": {
+        "sale": "Sale document",
+        "credit_note": "Credit note"
+      },
+      "row": {
+        "number": "No. {number}",
+        "noReceiver": "No receiver name",
+        "attention": {
+          "rejected": "Needs attention",
+          "stuck": "Stuck in the queue"
+        }
+      },
+      "banner": {
+        "rejected": "{count, plural, one {# document was refused and needs a person.} other {# documents were refused and need a person.}}",
+        "rejectedMore": "More than {count} documents were refused and need a person.",
+        "stuck": "{count, plural, one {# document ran out of attempts and is stuck in the queue.} other {# documents ran out of attempts and are stuck in the queue.}}",
+        "show": "Show the refused",
+        "stuckMore": "More than {count} queued documents were checked and some have run out of attempts.",
+        "showStuck": "Show the queued ones",
+        "unread": "Could not check for refused or stuck documents.",
+        "retry": "Try again"
+      },
+      "detail": {
+        "titleLoading": "Fiscal document",
+        "loading": "Loading the document.",
+        "title": "Document No. {number}",
+        "description": "What the document says and where it stands. Once the authority accepts it, nothing of it changes but its status.",
+        "kind": "Kind",
+        "type": "Document type",
+        "typePending": "Not built yet",
+        "externalNumber": "Number given by the authority",
+        "environment": "Environment",
+        "environments": {
+          "sandbox": "Test",
+          "production": "Production"
+        },
+        "total": "Total",
+        "tax": "Tax",
+        "createdAt": "Made",
+        "issuedAt": "Accepted",
+        "attempts": "Attempts",
+        "order": "Order",
+        "openOrder": "Open the order",
+        "cancels": "Cancels",
+        "cancelsDocument": "Part or all of the sale document of its order",
+        "replaces": "Replaces",
+        "replacesDocument": "A sale document that was voided",
+        "voidedAt": "Voided",
+        "voidReason": "Reason for voiding",
+        "never": "Not yet",
+        "none": "None",
+        "receiver": {
+          "title": "Receiver",
+          "name": "Name",
+          "taxId": "Tax id",
+          "complete": "Has what its type needs",
+          "yes": "Yes",
+          "no": "No",
+          "minimized": "The receiver is customer data: only the name and a masked tax id are shown here."
+        },
+        "immutable": "The lines, the taxes and the issuer of an accepted document are sealed when it is made and are not shown or changed here."
+      },
+      "attention": {
+        "rejected": {
+          "title": "The document was refused",
+          "description": "Fix what the reason says, then send it again."
+        },
+        "stuck": {
+          "title": "The document is stuck in the queue",
+          "description": "Every attempt was spent while the authority did not answer. Send it again when the provider is back."
+        }
+      },
+      "rejection": {
+        "receiver_incomplete": "The receiver lacks something the document type needs.",
+        "provider_unavailable": "The provider could not be reached.",
+        "build_failed": "The provider could not build the document.",
+        "credentials_unreadable": "The credentials of the issuer could not be read. Write them again in the issuer settings.",
+        "sale_inconsistent": "The amounts of the sale do not add up, so nothing was sent.",
+        "issuer_changed": "The issuer changed after this document was made. Send it again and it is made with the issuer as it is now.",
+        "provider_answer_invalid": "The provider answered in a way that cannot be taken as an acceptance.",
+        "original_voided": "The sale document this credit note cancels was voided. Replace the sale document first, then send this note again.",
+        "return_inconsistent": "The units of the return do not fit the sale they came from, so nothing was sent.",
+        "provider": "Reason given by the provider: {code}"
+      },
+      "actions": {
+        "title": "Actions",
+        "editReceiver": "Fix the receiver",
+        "retry": "Send again",
+        "retried": "The document went back to the queue.",
+        "replace": "Make it again",
+        "replaceConfirmTitle": "Make this sale document again?",
+        "replaceConfirmDescription": "A new document with a new number is made for the same sale and sent to the authority. The credit notes that were waiting for it follow. This cannot be undone.",
+        "replaceConfirm": "Make the document again",
+        "replaced": "The new document was made and queued.",
+        "void": "Void the document",
+        "cancel": "Cancel"
+      },
+      "conflicts": {
+        "has_credit_notes": "This document has credit notes that are not voided. Void the notes first.",
+        "already_replaced": "This sale already has a document that replaces it.",
+        "credit_note_receiver": "The receiver of a credit note is the one of the document it cancels: fix it there.",
+        "original_voided": "The sale document of this credit note was voided and has no replacement yet.",
+        "return_inconsistent": "The units of the return still do not fit the sale they came from."
+      },
+      "receiver": {
+        "title": "Fix the receiver of document No. {number}",
+        "description": "Write only what changes: a field left empty stays as it is. What is written replaces it.",
+        "formLabel": "Receiver of the fiscal document",
+        "current": "Now: {name}, tax id {taxId}.",
+        "currentNone": "The document has no receiver name or tax id yet.",
+        "noName": "no name",
+        "noTaxId": "none",
+        "requiredMark": "(asked by the document type)",
+        "requiredHint": "The fields marked are the ones this document type cannot be built without.",
+        "fields": {
+          "name": "Name",
+          "taxId": "Tax id",
+          "registrationId": "Registration id",
+          "email": "Email",
+          "phone": "Phone",
+          "taxpayerType": "Taxpayer type",
+          "economicActivity": "Economic activity"
+        },
+        "addressHint": "If you write an address, it replaces the whole address.",
+        "problems": {
+          "nothing": "Write at least one field to change.",
+          "tooLong": "A field is too long.",
+          "incomplete": "Each address line needs a name and a value.",
+          "duplicate": "Two address lines have the same name.",
+          "tooMany": "There are too many address lines."
+        },
+        "cancel": "Cancel",
+        "submit": "Save the receiver",
+        "done": "The receiver was saved."
+      },
+      "void": {
+        "title": "Void document No. {number}",
+        "description": "Invalidates an accepted document with the authority, through the provider.",
+        "formLabel": "Void the fiscal document",
+        "effectTitle": "What happens",
+        "effect": {
+          "authority": "The document of {total} is invalidated with the authority through the provider.",
+          "irreversible": "A voided document cannot be restored.",
+          "replace": "To bill the sale again, make the sale document again once it is voided."
+        },
+        "reason": "Reason",
+        "problems": {
+          "required": "Write the reason.",
+          "tooLong": "The reason is too long."
+        },
+        "cancel": "Cancel",
+        "submit": "Void the document",
+        "confirmTitle": "Void document No. {number}?",
+        "confirmDescription": "The invalidation is sent to the authority and cannot be undone. The reason is kept in the audit log.",
+        "confirm": "Void the document",
+        "done": "The document was voided."
+      },
+      "address": {
+        "legend": "Address",
+        "key": "Line name",
+        "value": "Value",
+        "remove": "Remove line {number}",
+        "add": "Add a line",
+        "requiredMark": "(asked by the provider)",
+        "rowLabel": "Line {number}"
+      },
+      "issuer": {
+        "title": "Fiscal issuer",
+        "description": "The legal entity the documents are made in the name of, and the provider that makes them. Without an issuer, no document is made.",
+        "noProviders": "This deployment has no provider of fiscal documents, so an issuer cannot be set up.",
+        "formLabel": "Fiscal issuer",
+        "provider": "Provider",
+        "providerOption": "{id} ({country})",
+        "contingency": "While the authority is down: {text}",
+        "environment": "Environment",
+        "environments": {
+          "sandbox": "Test",
+          "production": "Production"
+        },
+        "issueOn": "Make the document when the order is",
+        "issueOnHint": "The moment the sale is recognized.",
+        "issueOnOptions": {
+          "delivered": "Delivered",
+          "shipped": "Shipped"
+        },
+        "changeNotice": "A document made before keeps the provider and the environment it was made with. One that was not sent yet is sent again with the issuer as it is now, and an accepted one can no longer be voided once the issuer changes.",
+        "legalName": "Legal name",
+        "taxId": "Tax id",
+        "registrationId": "Registration id",
+        "activityCode": "Activity code",
+        "establishmentCode": "Establishment code",
+        "requiredMark": "(asked by the provider)",
+        "addressHint": "Name each line as the provider asks for it.",
+        "nextSequence": "Next number",
+        "nextSequenceFirst": "Leave it empty to start at 1. It only moves forward.",
+        "nextSequenceHint": "The next document takes number {next}. A new number must be higher: it only moves forward.",
+        "credentials": {
+          "legend": "Credentials",
+          "stored": "Credentials are stored. They are never shown again.",
+          "none": "No credentials are stored yet.",
+          "hint": "Write all of them to replace the stored ones, or none to keep them. A new provider or environment needs its own."
+        },
+        "problems": {
+          "required": "This is needed.",
+          "tooLong": "This is too long.",
+          "sequence": "Write a whole number that is not lower than the next one.",
+          "environment": "The provider does not work in this environment.",
+          "incomplete": "Each address line needs a name and a value.",
+          "duplicate": "Two address lines have the same name.",
+          "tooMany": "There are too many address lines."
+        },
+        "providerProblems": "The provider did not accept: {codes}",
+        "readOnly": "You can read the issuer. Changing it needs the permission to manage fiscal documents.",
+        "submit": "Save the issuer",
+        "done": "The issuer was saved.",
+        "providerMissing": "The provider of this issuer is not in this deployment any more. Choose another one to save."
+      }
     }
   }
 }

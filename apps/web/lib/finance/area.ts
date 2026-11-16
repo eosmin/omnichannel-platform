@@ -8,7 +8,9 @@ export const FINANCE_AREA_PERMISSIONS = [
   ClientPermissions.FINANCE_VIEW,
   // The purchases open for these, with no need to read the books (Step 4B.9a-4)
   ClientPermissions.FINANCE_MANAGE_PURCHASES,
-  ClientPermissions.FINANCE_MOVE_MONEY
+  ClientPermissions.FINANCE_MOVE_MONEY,
+  // The fiscal documents open for this, with no need to read the books (Step 4B.9b-2)
+  ClientPermissions.FISCAL_VIEW
 ] as const satisfies readonly Permission[]
 
 // What else the books give a person to do once the area is open: the pages and the writes of the later steps of 4B.9 add theirs here.
@@ -19,6 +21,7 @@ const FINANCE_WORKING_PERMISSIONS = [
   ClientPermissions.FINANCE_MANAGE_TRANSACTIONS,
   ClientPermissions.FINANCE_MOVE_MONEY,
   ClientPermissions.FINANCE_POST_MANUAL,
+  ClientPermissions.FISCAL_MANAGE,
   ClientPermissions.FINANCE_VIEW_REPORTS
 ] as const satisfies readonly Permission[]
 

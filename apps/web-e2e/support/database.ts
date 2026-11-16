@@ -1054,6 +1054,16 @@ export function addFinanceViewer(storeId: string, email: string): Promise<() => 
   })
 }
 
+// Someone who may read the fiscal documents and the issuer and change nothing: fiscal:view only (Step 4B.9b-2)
+export function addFiscalViewer(storeId: string, email: string): Promise<() => Promise<void>> {
+  return addUserWithPermissions(storeId, {
+    email,
+    userName: 'Fiscal Viewer',
+    roleName: 'E2E fiscal viewer',
+    permissions: [Permissions.FISCAL_VIEW]
+  })
+}
+
 // A person who may read the books and their statements, with or without the permission to take a file (Step 4B.9b-3): the legal books
 // need both, the statements need only the first and hide the file
 export function addFinanceReportsViewer(

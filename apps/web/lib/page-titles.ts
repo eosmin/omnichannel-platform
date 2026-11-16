@@ -64,6 +64,8 @@ export const PageTitles = {
   financePeriods: ['settings.nav.finance.periods', 'settings.nav.finance.title'],
   financeReports: ['settings.nav.finance.reports', 'settings.nav.finance.title'],
   financeReconciliation: ['settings.nav.finance.reconciliation', 'settings.nav.finance.title'],
+  financeFiscal: ['settings.nav.finance.fiscal', 'settings.nav.finance.title'],
+  financeFiscalIssuer: ['settings.nav.finance.fiscalIssuer', 'settings.nav.finance.title'],
   financeSettings: ['settings.nav.finance.settings', 'settings.nav.finance.title'],
   financeSuppliers: ['settings.nav.finance.suppliers', 'settings.nav.finance.title'],
   financePurchases: ['settings.nav.finance.purchases', 'settings.nav.finance.title'],
