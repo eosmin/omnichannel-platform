@@ -144,7 +144,7 @@ describe('settleRemittanceLine (E5)', () => {
     })
   })
 
-  it('lets the figure of the file replace the estimate: the difference is commission expense', () => {
+  it('lets the figure of the file win over the estimate: what it kept beyond it is commission expense', () => {
     // the carrier kept 5.40 and E4 estimated 5.13: 0.27 more of expense
     expect(settleRemittanceLine(facts({ reportedFeeCents: 540 }))).toEqual({
       reportedCents: 2000,
@@ -153,11 +153,11 @@ describe('settleRemittanceLine (E5)', () => {
       expenseCents: 27,
       clearedCents: 2540
     })
-    // kept less than estimated: the expense is corrected downwards, the payable is cleared whole
+    // kept less than estimated: only what it kept is settled, the rest stays owed (to be invoiced), no expense is taken back
     expect(settleRemittanceLine(facts({ reportedFeeCents: 500 }))).toMatchObject({
       keptCents: 500,
-      payableCents: 513,
-      expenseCents: -13,
+      payableCents: 500,
+      expenseCents: 0,
       clearedCents: 2500
     })
   })
@@ -254,7 +254,7 @@ describe('remittanceLines (E5)', () => {
     expect(sum(result.lines, 'debitCents')).toBe(sum(result.lines, 'creditCents'))
   })
 
-  it('credits the commission expense when the file says the carrier kept less than the estimate', () => {
+  it('settles only what the carrier kept when the file says it kept less than the estimate', () => {
     const result = remittanceLines({
       accounts,
       destinationAccountId: null,
@@ -263,10 +263,8 @@ describe('remittanceLines (E5)', () => {
       lines: [settle({ reportedFeeCents: 500 })]
     })
     if (!result.ok) throw new Error('expected lines')
-    expect(lineOf(result.lines, `acc-${AccountRole.CARRIER_COMMISSION_EXPENSE}`)).toMatchObject({
-      debitCents: 0,
-      creditCents: 13
-    })
+    expect(lineOf(result.lines, `acc-${AccountRole.PAYABLE_CARRIERS}`)?.debitCents).toBe(500)
+    expect(lineOf(result.lines, `acc-${AccountRole.CARRIER_COMMISSION_EXPENSE}`)).toBeUndefined()
     expect(sum(result.lines, 'debitCents')).toBe(sum(result.lines, 'creditCents'))
   })
 
@@ -298,6 +296,17 @@ describe('remittanceLines (E5)', () => {
     if (!result.ok) throw new Error('expected lines')
     expect(result.lines).toHaveLength(2)
     expect(sum(result.lines, 'debitCents')).toBe(2000)
+  })
+
+  it('does not ask for the destination when no cash came', () => {
+    const result = remittanceLines({
+      accounts: role => (role === AccountRole.BANK_DEFAULT ? null : `acc-${role}`),
+      destinationAccountId: null,
+      carrierConnectionId: CARRIER,
+      storeId: STORE,
+      lines: [settle({ reportedCents: 0, reportedFeeCents: 0 })]
+    })
+    expect(result).toEqual({ ok: true, lines: [] })
   })
 
   it('posts nothing for no lines, and names a missing default account', () => {

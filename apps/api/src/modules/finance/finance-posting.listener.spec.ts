@@ -1,0 +1,115 @@
+import type { PinoLogger } from 'nestjs-pino'
+
+import { FinanceEventKind, FinanceSourceType, ShipmentStatus } from '@platform/core/domain'
+import type { ShipmentStatusChangedPayload } from '@platform/core/events'
+import type { FinancePostingService } from '@platform/core/finance-ledger'
+
+import { FinancePostingListener } from './finance-posting.listener'
+import type { FinancePostingQueue } from './finance-posting.queue'
+
+const ORG = 'org-1'
+const STORE = 'store-1'
+
+interface Queued {
+  organizationId: string
+  sourceType: string
+  sourceId: string
+  kind: string
+}
+
+function build(options: { organization?: string | null; queueFails?: boolean } = {}) {
+  const queued: Queued[] = []
+  const unposted: Queued[] = []
+  const prisma = {
+    client: {
+      store: {
+        findUnique: () =>
+          Promise.resolve(
+            options.organization === null ? null : { organizationId: options.organization ?? ORG }
+          )
+      }
+    }
+  }
+  const logger = { setContext: () => undefined, error: () => undefined, warn: () => undefined }
+  const queue = {
+    enqueue: (job: Queued) => {
+      if (options.queueFails === true) return Promise.reject(new Error('redis is down'))
+      queued.push(job)
+      return Promise.resolve()
+    }
+  }
+  const posting = {
+    markUnposted: (job: Queued) => {
+      unposted.push(job)
+      return Promise.resolve()
+    }
+  }
+  const listener = new FinancePostingListener(
+    prisma as never,
+    logger as unknown as PinoLogger,
+    queue as unknown as FinancePostingQueue,
+    posting as unknown as FinancePostingService
+  )
+  return { listener, queued, unposted }
+}
+
+const shipmentPayload = (to: ShipmentStatus): ShipmentStatusChangedPayload => ({
+  storeId: STORE,
+  shipmentId: 'ship-1',
+  orderId: 'order-1',
+  orderNumber: '1001',
+  connectionId: 'conn-1',
+  actor: { type: 'system', id: null },
+  from: ShipmentStatus.OUT_FOR_DELIVERY,
+  to
+})
+
+describe('FinancePostingListener, the carrier events (E4 to E6)', () => {
+  it('queues the charges of a guide when it is delivered, and nothing for another status', async () => {
+    const { listener, queued } = build()
+    await listener.onShipmentStatus(shipmentPayload(ShipmentStatus.IN_TRANSIT))
+    await listener.onShipmentStatus(shipmentPayload(ShipmentStatus.RETURNED))
+    expect(queued).toEqual([])
+    await listener.onShipmentStatus(shipmentPayload(ShipmentStatus.DELIVERED))
+    expect(queued).toMatchObject([
+      {
+        organizationId: ORG,
+        sourceType: FinanceSourceType.SHIPMENT,
+        sourceId: 'ship-1',
+        kind: FinanceEventKind.CHARGES
+      }
+    ])
+  })
+
+  it('queues the confirmation and the voiding of a remittance, each as its own event of the remittance', async () => {
+    const { listener, queued } = build()
+    const payload = {
+      storeId: STORE,
+      remittanceId: 'rem-1',
+      connectionId: 'conn-1',
+      actor: { type: 'user' as const, id: 'user-1' }
+    }
+    await listener.onRemittanceConfirmed(payload)
+    await listener.onRemittanceVoided(payload)
+    expect(queued.map(job => [job.sourceType, job.sourceId, job.kind])).toEqual([
+      [FinanceSourceType.REMITTANCE, 'rem-1', FinanceEventKind.REMITTANCE_CONFIRM],
+      [FinanceSourceType.REMITTANCE, 'rem-1', FinanceEventKind.REMITTANCE_VOID]
+    ])
+  })
+
+  it('queues nothing for a store it cannot place', async () => {
+    const { listener, queued } = build({ organization: null })
+    await listener.onShipmentStatus(shipmentPayload(ShipmentStatus.DELIVERED))
+    expect(queued).toEqual([])
+  })
+
+  it('lists the source as unposted when the queue is down, and never throws to the operation', async () => {
+    const { listener, unposted } = build({ queueFails: true })
+    await expect(
+      listener.onShipmentStatus(shipmentPayload(ShipmentStatus.DELIVERED))
+    ).resolves.toBeUndefined()
+    expect(unposted).toMatchObject([
+      { sourceType: FinanceSourceType.SHIPMENT, kind: FinanceEventKind.CHARGES }
+    ])
+  })
+})

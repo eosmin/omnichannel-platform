@@ -438,6 +438,143 @@ describe('The entries that depend on a carrier (Step 4B.6b-1)', () => {
       expect(failure?.resolvedAt).not.toBeNull()
     })
 
+    it('settles nothing of the payable when the carrier does not deduct its fee: it stays owed', async () => {
+      const shipment = await delivered({ deductsFee: false })
+      await post(FinanceSourceType.SHIPMENT, shipment.id, FinanceEventKind.CHARGES)
+      const remittanceId = await confirmed(shipment.connectionId, [
+        { shipmentId: shipment.id, reported: 2515 }
+      ])
+      await post(FinanceSourceType.REMITTANCE, remittanceId, FinanceEventKind.REMITTANCE_CONFIRM)
+      const entry = await entryOf(FinancePostingKey.REMITTANCE_CONFIRM(remittanceId))
+      expect(linesOf(entry as NonNullable<typeof entry>)).toEqual(
+        sorted([
+          [code(AccountRole.BANK_DEFAULT), 2515, 0],
+          [code(AccountRole.RECEIVABLE_CARRIERS), 0, 2515]
+        ])
+      )
+    })
+
+    it('settles only what the carrier kept when the file says it kept less than the estimate', async () => {
+      const shipment = await delivered()
+      await post(FinanceSourceType.SHIPMENT, shipment.id, FinanceEventKind.CHARGES)
+      // The carrier kept the $1.13 commission only: the $3.00 of the guide stays owed
+      const remittanceId = await confirmed(shipment.connectionId, [
+        { shipmentId: shipment.id, reported: 2402, fee: 113 }
+      ])
+      await post(FinanceSourceType.REMITTANCE, remittanceId, FinanceEventKind.REMITTANCE_CONFIRM)
+      const entry = await entryOf(FinancePostingKey.REMITTANCE_CONFIRM(remittanceId))
+      expect(linesOf(entry as NonNullable<typeof entry>)).toEqual(
+        sorted([
+          [code(AccountRole.BANK_DEFAULT), 2402, 0],
+          [code(AccountRole.PAYABLE_CARRIERS), 113, 0],
+          [code(AccountRole.RECEIVABLE_CARRIERS), 0, 2515]
+        ])
+      )
+    })
+
+    it('lets a later remittance settle the payable when the earlier one said the carrier kept nothing', async () => {
+      const shipment = await delivered()
+      await post(FinanceSourceType.SHIPMENT, shipment.id, FinanceEventKind.CHARGES)
+      const first = await confirmed(
+        shipment.connectionId,
+        [{ shipmentId: shipment.id, reported: 1000, fee: 0 }],
+        { confirmedAt: new Date(Date.now() - 60_000) }
+      )
+      const second = await confirmed(shipment.connectionId, [
+        { shipmentId: shipment.id, reported: 1102, fee: 413 }
+      ])
+      await post(FinanceSourceType.REMITTANCE, first, FinanceEventKind.REMITTANCE_CONFIRM)
+      await post(FinanceSourceType.REMITTANCE, second, FinanceEventKind.REMITTANCE_CONFIRM)
+      const entry = await entryOf(FinancePostingKey.REMITTANCE_CONFIRM(second))
+      expect(linesOf(entry as NonNullable<typeof entry>)).toEqual(
+        sorted([
+          [code(AccountRole.BANK_DEFAULT), 1102, 0],
+          [code(AccountRole.PAYABLE_CARRIERS), 413, 0],
+          [code(AccountRole.RECEIVABLE_CARRIERS), 0, 1515]
+        ])
+      )
+    })
+
+    it('uses the charges read from a guide delivered before the start of the books', async () => {
+      const shipment = await delivered({ day: '2019-12-20' })
+      // No E4 exists for it (before the start) and none is awaited: its payable is in the opening balance
+      const remittanceId = await confirmed(shipment.connectionId, [
+        { shipmentId: shipment.id, reported: 2102 }
+      ])
+      const result = await post(
+        FinanceSourceType.REMITTANCE,
+        remittanceId,
+        FinanceEventKind.REMITTANCE_CONFIRM
+      )
+      expect(result.outcome).toBe(FinancePostingOutcome.POSTED)
+      const entry = await entryOf(FinancePostingKey.REMITTANCE_CONFIRM(remittanceId))
+      expect(linesOf(entry as NonNullable<typeof entry>)).toEqual(
+        sorted([
+          [code(AccountRole.BANK_DEFAULT), 2102, 0],
+          [code(AccountRole.PAYABLE_CARRIERS), 413, 0],
+          [code(AccountRole.RECEIVABLE_CARRIERS), 0, 2515]
+        ])
+      )
+    })
+
+    it('fails, naming why, when the account chosen stopped being one the money can go to', async () => {
+      const shipment = await delivered()
+      await post(FinanceSourceType.SHIPMENT, shipment.id, FinanceEventKind.CHARGES)
+      const cash = await owner.ledgerAccount.findFirstOrThrow({
+        where: {
+          organizationId: ctx.orgA.id,
+          cashKind: { not: null },
+          isPostable: true,
+          active: true,
+          NOT: { code: code(AccountRole.BANK_DEFAULT) }
+        }
+      })
+      const remittanceId = await confirmed(
+        shipment.connectionId,
+        [{ shipmentId: shipment.id, reported: 2102 }],
+        { destinationAccountId: cash.id }
+      )
+      await owner.ledgerAccount.update({ where: { id: cash.id }, data: { active: false } })
+      try {
+        const off = await post(
+          FinanceSourceType.REMITTANCE,
+          remittanceId,
+          FinanceEventKind.REMITTANCE_CONFIRM
+        )
+        expect(off).toMatchObject({
+          outcome: FinancePostingOutcome.FAILED,
+          reason: FinancePostingFailureReason.ACCOUNT_INACTIVE
+        })
+        await owner.ledgerAccount.update({
+          where: { id: cash.id },
+          data: { active: true, cashKind: null }
+        })
+        const notCash = await post(
+          FinanceSourceType.REMITTANCE,
+          remittanceId,
+          FinanceEventKind.REMITTANCE_CONFIRM
+        )
+        expect(notCash).toMatchObject({
+          outcome: FinancePostingOutcome.FAILED,
+          reason: FinancePostingFailureReason.ACCOUNT_NOT_POSTABLE
+        })
+      } finally {
+        await owner.ledgerAccount.update({
+          where: { id: cash.id },
+          data: { active: true, cashKind: cash.cashKind }
+        })
+      }
+      expect(
+        (
+          await post(
+            FinanceSourceType.REMITTANCE,
+            remittanceId,
+            FinanceEventKind.REMITTANCE_CONFIRM
+          )
+        ).outcome
+      ).toBe(FinancePostingOutcome.POSTED)
+    })
+
     it('posts nothing for a remittance that is not confirmed', async () => {
       const shipment = await delivered()
       const remittanceId = await confirmed(shipment.connectionId, [

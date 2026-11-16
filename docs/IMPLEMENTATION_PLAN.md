@@ -1751,11 +1751,12 @@ remittance, so the two never differ by a cent). The charge model of a connection
 here: its prepaid case needs an account role that does not exist (the advance of guides) and the accountant chooses the account, so it is 4B.6b-3
 with the purchase of prepaid guides, configurable and marked [ACCOUNTANT]; nothing is invented. (2) **E5 per line:** the cash is what the carrier
 reported; what it kept is the file's own figure when the file has one, else the estimate E4 posted (only for a connection that deducts its fee,
-`remittanceDeductsFee`); the receivable is cleared for reported plus kept; the payable E4 posted is settled when the carrier kept a fee; the
-difference between what was kept and the estimate goes to `CARRIER_COMMISSION_EXPENSE` (a debit when more, a credit when less: the file
-replaces the estimate, TDD_17 §4.15). A line that differs clears only what the carrier reported and kept, the rest stays open on the receivable.
-Rejected: clearing the receivable by the guide's amount (it would hide a shortfall). (3) **The payable of a guide is settled once:** a guide that an
-earlier confirmed (not voided) remittance already settled takes only the figure of its own file in a later one. (4) **E5 waits for E4:** a guide
+`remittanceDeductsFee`); the receivable is cleared for reported plus kept; the payable E4 posted is settled up to what the carrier kept; what it kept beyond the estimate goes to `CARRIER_COMMISSION_EXPENSE` (the
+file's figure wins over the estimate, TDD_17 §4.15), and what it did NOT keep stays owed (a carrier that invoices the guide apart is not wiped
+out: rejected, taking back expense when the file shows less than the estimate). A line that differs clears only what the carrier reported and
+kept, the rest stays open on the receivable. Rejected: clearing the receivable by the guide's amount (it would hide a shortfall). (3) **The payable of a guide is settled once:** a guide for which an
+earlier confirmed (not voided) remittance already kept a fee takes only the figure of its own file in a later one; if the earlier file said the
+carrier kept nothing, the later one may settle it. (4) **E5 waits for E4:** a guide
 delivered after the start of the books whose E4 is not posted yet makes the remittance a `SOURCE_NOT_READY` failure (not an alarm), and the
 posting of E4 asks the remittances of the guide again; a guide delivered before the start has no E4 (its charges are in the opening balance)
 and uses the estimate read from the guide. (5) **E6 reverses E5 with an entry of the system** (`LedgerService.reverse` takes `createdBy: null`,
@@ -1769,7 +1770,13 @@ switched off after the confirmation.
 event waits for it). (t) A guide delivered before the start of the books that is remitted after it clears a payable the opening balance must hold:
 the accountant's opening entry has to include the carriers' payable and receivable (owner and accountant, before the first remittance after the
 start). (u) A remittance that is confirmed with a destination account and then voided keeps the column (the evidence of the choice); the reversal
-uses the lines of E5, never the column. (v) E4 is posted for the guide of the outbound leg only; the charges of a return guide are 4B.6b-2 with E8.
+uses the lines of E5, never the column. (v) E4 is posted for the guide of the outbound leg only; the charges of a return guide are 4B.6b-2 with E8. (w) Voiding an EARLIER remittance
+of a guide that a LATER one settled again re-opens the payable the earlier one cleared, and the later entry (immutable, written knowing the
+earlier one cleared it) does not clear it: the carriers' payable is overstated until an adjustment by hand. The recomputation of payables of
+4B.6b-3's sweep flags it; the accountant adjusts. (x) The destination account of a confirmed remittance cannot be changed after the
+confirmation: one switched off afterwards leaves E5 a failure ("account inactive" or "not cash") until it is reactivated; a route to re-point
+it is 4B.6b-3. (y) The payable of a guide whose carrier kept less than the estimate stays open until the carrier's invoice is paid by hand
+(`FinanceTransaction` expense): there is no payment of a carrier's payable in the MVP (4B.6b-3, with the charge model).
 
 ### Step 4B.7 — Fiscal documents (DTE), against a simulator first
 - [ ] `libs/fiscal/sdk` (the provider port, manifest, contract suite), `libs/fiscal/simulator` (development and test only); the

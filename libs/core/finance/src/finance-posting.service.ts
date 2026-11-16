@@ -19,6 +19,8 @@ import {
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
+  RemittanceDestinationProblem,
+  remittanceDestinationProblem,
   RemittanceStatus,
   SaleRecognition,
   SettlingOutcomes,
@@ -764,8 +766,12 @@ export class FinancePostingService {
         where: { id: remittance.destinationAccountId, organizationId: input.organizationId },
         select: { id: true, cashKind: true, active: true, isPostable: true }
       })
-      if (account === null || !account.active || !account.isPostable || account.cashKind === null) {
+      const problem = account === null ? null : remittanceDestinationProblem(account)
+      if (account === null || problem === RemittanceDestinationProblem.INACTIVE) {
         return failed(FinancePostingFailureReason.ACCOUNT_INACTIVE)
+      }
+      if (problem === RemittanceDestinationProblem.NOT_CASH) {
+        return failed(FinancePostingFailureReason.ACCOUNT_NOT_POSTABLE)
       }
       destinationAccountId = account.id
     }
@@ -794,38 +800,59 @@ export class FinancePostingService {
         }
       }
     })
+    const shipmentIds = lines.flatMap(line => (line.shipmentId === null ? [] : [line.shipmentId]))
+    // What E4 posted for every guide and the lines of earlier confirmed remittances for them: one query each, not one per line (a
+    // file can carry thousands of guides and this runs inside the transaction that holds the lock of the books)
+    const charged = await tx.journalEntry.findMany({
+      where: {
+        organizationId: input.organizationId,
+        idempotencyKey: { in: shipmentIds.map(id => FinancePostingKey.SHIPMENT_CHARGES(id)) }
+      },
+      select: { idempotencyKey: true, totalCents: true }
+    })
+    const chargedOf = new Map(charged.map(entry => [entry.idempotencyKey, entry.totalCents]))
+    const earlier = await tx.codRemittanceLine.findMany({
+      where: {
+        storeId: remittance.storeId,
+        shipmentId: { in: shipmentIds },
+        excluded: false,
+        outcome: { in: [...SettlingOutcomes] },
+        remittance: {
+          storeId: remittance.storeId,
+          status: RemittanceStatus.CONFIRMED,
+          OR: [
+            { confirmedAt: { lt: remittance.confirmedAt } },
+            { confirmedAt: remittance.confirmedAt, id: { lt: remittance.id } }
+          ]
+        }
+      },
+      select: { shipmentId: true, reportedFeeCents: true }
+    })
+    const deducts = remittance.connection.remittanceDeductsFee
     const settlements: RemittanceLineSettlement[] = []
     for (const line of lines) {
       if (line.shipmentId === null || line.shipment === null) continue
-      const estimate = await this.estimateOf(tx, input.organizationId, accountingStartDate, {
-        shipmentId: line.shipmentId,
-        shipment: line.shipment,
-        timeZone: remittance.store.timezone
-      })
+      const estimate = this.estimateOf(
+        chargedOf.get(FinancePostingKey.SHIPMENT_CHARGES(line.shipmentId)),
+        accountingStartDate,
+        line.shipment,
+        remittance.store.timezone
+      )
       if (estimate === null) return failed(FinancePostingFailureReason.SOURCE_NOT_READY)
-      // An earlier confirmed remittance that settled the guide took its fee already (a guide settled again after a difference)
-      const earlier = await tx.codRemittanceLine.findFirst({
-        where: {
-          shipmentId: line.shipmentId,
-          excluded: false,
-          outcome: { in: [...SettlingOutcomes] },
-          remittance: {
-            status: RemittanceStatus.CONFIRMED,
-            OR: [
-              { confirmedAt: { lt: remittance.confirmedAt } },
-              { confirmedAt: remittance.confirmedAt, id: { lt: remittance.id } }
-            ]
-          }
-        },
-        select: { id: true }
-      })
+      // An earlier confirmed remittance that kept a fee for the guide cleared its payable already (a guide settled again after a
+      // difference); one whose file said the carrier kept nothing did not, and this one may
+      const feeAlreadySettled = earlier.some(
+        row =>
+          row.shipmentId === line.shipmentId &&
+          (row.reportedFeeCents ?? (deducts ? estimate : 0)) > 0
+      )
       settlements.push(
         settleRemittanceLine({
           reportedCents: line.reportedCents,
           reportedFeeCents: line.reportedFeeCents,
           estimateCents: estimate,
-          deductsFee: remittance.connection.remittanceDeductsFee,
-          feeAlreadySettled: earlier !== null
+          deductsFee: deducts,
+          feeAlreadySettled
         })
       )
     }
@@ -847,39 +874,28 @@ export class FinancePostingService {
     }
   }
 
-  // What E4 posted as payable for a guide. A guide delivered before the start of the books has no E4 (its charges are in the
-  // opening balance), so the estimate is read from the guide; one delivered after it whose E4 has not been posted yet (a failure, a
-  // lost job) makes the remittance wait: null. A guide with nothing to charge has an estimate of zero.
-  private async estimateOf(
-    tx: PrismaTransaction,
-    organizationId: string,
+  // What E4 posted as payable for a guide (`posted`, read in one query for the whole remittance). A guide delivered before the start of
+  // the books has no E4 (its charges are in the opening balance), so the estimate is read from the guide; one delivered after it whose
+  // E4 has not been posted yet makes the remittance wait: null. A guide with nothing to charge has an estimate of zero.
+  private estimateOf(
+    posted: number | undefined,
     accountingStartDate: string,
-    input: {
-      shipmentId: string
-      timeZone: string
-      shipment: {
-        deliveredAt: Date | null
-        shippingPayer: string
-        codAmountCents: number | null
-        carrierCostCents: number | null
-        carrierRateCents: number | null
-        commissionBps: number | null
-      }
-    }
-  ): Promise<number | null> {
-    const amounts = chargeAmounts(input.shipment)
+    shipment: {
+      deliveredAt: Date | null
+      shippingPayer: string
+      codAmountCents: number | null
+      carrierCostCents: number | null
+      carrierRateCents: number | null
+      commissionBps: number | null
+    },
+    timeZone: string
+  ): number | null {
+    const amounts = chargeAmounts(shipment)
     const wanted = amounts.freightCents + amounts.commissionCents
     if (wanted === 0) return 0
-    const entry = await this.entryOf(
-      tx,
-      organizationId,
-      FinancePostingKey.SHIPMENT_CHARGES(input.shipmentId)
-    )
-    if (entry !== null) return entry.totalCents
+    if (posted !== undefined) return posted
     const deliveredDay =
-      input.shipment.deliveredAt === null
-        ? null
-        : dayInZone(input.shipment.deliveredAt, input.timeZone)
+      shipment.deliveredAt === null ? null : dayInZone(shipment.deliveredAt, timeZone)
     return deliveredDay !== null && deliveredDay < accountingStartDate ? wanted : null
   }
 

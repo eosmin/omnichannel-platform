@@ -78,8 +78,8 @@ export function chargeLines(input: {
 // ---------------------------------------------------------------------------------------------------------------------------
 // E5: a COD remittance confirmed. One entry per remittance:
 //   Dr the account the money went to ........ what the carrier reported (what it remitted)
-//   Dr PAYABLE_CARRIERS ...................... the estimate of E4 that the carrier settled by keeping its fee
-//   Dr / Cr CARRIER_COMMISSION_EXPENSE ....... what the carrier really kept, less that estimate (the file replaces the estimate)
+//   Dr PAYABLE_CARRIERS ...................... what the carrier kept, up to the estimate E4 posted
+//   Dr CARRIER_COMMISSION_EXPENSE ............ what it kept beyond that estimate (the file's figure wins over the estimate)
 //   Cr RECEIVABLE_CARRIERS ................... what was reported plus what was kept, per line
 // A line whose amount differs clears the receivable only for what the carrier reported and kept: the rest stays open on the
 // receivable, and the shipment stays matchable by a later remittance (TDD_18 §4.2 E5).
@@ -93,8 +93,8 @@ export interface RemittanceLineFacts {
   estimateCents: number
   // Whether the connection deducts its fee from what it remits (the flag of the connection, TDD_17 §4.15)
   deductsFee: boolean
-  // An earlier confirmed remittance already settled this guide's fee: a guide that is settled again (after a difference) clears no
-  // payable twice
+  // An earlier confirmed remittance already cleared the payable of this guide (it kept a fee): a guide that is settled again (after a
+  // difference) clears no payable twice
   feeAlreadySettled: boolean
 }
 
@@ -104,7 +104,7 @@ export interface RemittanceLineSettlement {
   keptCents: number
   // Of the payable E4 posted, how much this line settles
   payableCents: number
-  // The commission expense this line corrects: positive when the carrier kept more than the estimate, negative when less
+  // What the carrier kept beyond the estimate of E4 (or all of it when E4 posted none): commission expense
   expenseCents: number
   // What the line clears on the receivable
   clearedCents: number
@@ -115,9 +115,9 @@ export function settleRemittanceLine(line: RemittanceLineFacts): RemittanceLineS
   // the first time this guide is settled
   const estimated = line.deductsFee && !line.feeAlreadySettled ? line.estimateCents : 0
   const keptCents = line.reportedFeeCents ?? estimated
-  // The payable is settled when the carrier kept a fee (it paid itself out of the cash): a fee of nothing leaves it owed, to be
-  // invoiced and paid by hand
-  const payableCents = !line.feeAlreadySettled && keptCents > 0 ? line.estimateCents : 0
+  // The payable is settled up to what the carrier kept (it paid itself out of the cash). What it did NOT keep stays owed, to be invoiced
+  // and paid by hand: the books never wipe a payable the carrier did not take, and a fee of nothing leaves it all owed
+  const payableCents = line.feeAlreadySettled ? 0 : Math.min(keptCents, line.estimateCents)
   return {
     reportedCents: line.reportedCents,
     keptCents,
@@ -149,22 +149,21 @@ export function remittanceLines(input: {
     return { ok: true, lines: [] }
   }
   const party = { partyType: PartyType.CARRIER_CONNECTION, partyId: input.carrierConnectionId }
-  const destination = input.destinationAccountId ?? input.accounts(AccountRole.BANK_DEFAULT)
-  if (destination === null) return missing(AccountRole.BANK_DEFAULT)
+  // The destination is needed only when there is cash to put in it
+  const destination =
+    reported > 0 ? (input.destinationAccountId ?? input.accounts(AccountRole.BANK_DEFAULT)) : null
+  if (reported > 0 && destination === null) return missing(AccountRole.BANK_DEFAULT)
   const result = linesOf(
     input.accounts,
     [
       { role: AccountRole.PAYABLE_CARRIERS, cents: payable, party },
-      { role: AccountRole.CARRIER_COMMISSION_EXPENSE, cents: Math.max(expense, 0) }
+      { role: AccountRole.CARRIER_COMMISSION_EXPENSE, cents: expense }
     ],
-    [
-      { role: AccountRole.RECEIVABLE_CARRIERS, cents: cleared, party },
-      { role: AccountRole.CARRIER_COMMISSION_EXPENSE, cents: Math.max(-expense, 0) }
-    ],
+    [{ role: AccountRole.RECEIVABLE_CARRIERS, cents: cleared, party }],
     { storeId: input.storeId }
   )
   if (!result.ok) return result
-  if (reported > 0) {
+  if (destination !== null) {
     result.lines.unshift({
       accountId: destination,
       debitCents: reported,
