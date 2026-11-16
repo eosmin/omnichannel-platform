@@ -1428,7 +1428,7 @@ export class FiscalDocumentsService {
         })
         // The notes that never left core (waiting, or refused) and name the voided document follow the replacement: they are the notes of the
         // same returns, and a person would otherwise retry each one to move it
-        await tx.fiscalDocument.updateMany({
+        const movable = await tx.fiscalDocument.findMany({
           where: {
             organizationId,
             parentDocumentId: old.id,
@@ -1436,8 +1436,14 @@ export class FiscalDocumentsService {
             status: { in: [FiscalDocumentStatus.QUEUED, FiscalDocumentStatus.REJECTED] },
             attempts: 0
           },
-          data: { parentDocumentId: created.id }
+          select: { id: true, status: true }
         })
+        if (movable.length > 0) {
+          await tx.fiscalDocument.updateMany({
+            where: { id: { in: movable.map(note => note.id) }, organizationId },
+            data: { parentDocumentId: created.id }
+          })
+        }
         // Every return the order has received needs a note against the sale that is live now: the ones that were voided with the old document,
         // and the ones whose return was received while the sale had none (no note could be made then). One that already has a live note is
         // left as it is. An order that came back as a whole with no return row gets its one note.
@@ -1468,19 +1474,23 @@ export class FiscalDocumentsService {
         if (withReturns === 0 && order?.status === (OrderStatus.RETURNED as string)) {
           targets.push(null)
         }
-        const creditNoteIds: string[] = []
+        // The notes to send once the replacement is accepted: the ones moved that were waiting (their job may be spent) and the new ones
+        const creditNoteIds: string[] = movable
+          .filter(note => note.status === (FiscalDocumentStatus.QUEUED as string))
+          .map(note => note.id)
         for (const returnId of targets) {
           const again = await this.makeCreditNote(tx, organizationId, old.orderId, returnId, {
             id: created.id
           })
           if (again !== null) creditNoteIds.push(again)
         }
-        return { id: created.id, creditNoteIds }
+        return { id: created.id, creditNoteIds, moved: movable.length }
       })
       // Two requests that race for the same replacement (or a return event that makes its note at the same time) meet a unique index:
       // the loser is told the document was already replaced, never a fault
       .catch((error: unknown) => {
         if (!isUniqueViolation(error)) throw error
+        this.logger.warn({ documentId: id }, 'a replacement met a unique rule of the table')
         throw new PlatformException(
           ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
           'the document was already replaced',
@@ -1495,11 +1505,12 @@ export class FiscalDocumentsService {
       storeId: actor.storeId,
       resourceType: FiscalResourceTypes.DOCUMENT,
       resourceId: made.id,
-      metadata: { replaces: id, creditNotes: made.creditNoteIds.length },
+      // The notes made again and the notes that now name the replacement: the chain of documents can be read from the audit
+      metadata: { replaces: id, creditNotes: made.creditNoteIds.length, movedNotes: made.moved },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
-    return made
+    return { id: made.id, creditNoteIds: made.creditNoteIds }
   }
 
   // ---------------------------------------------------------------- helpers

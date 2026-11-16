@@ -6,6 +6,7 @@ import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
+  FiscalConflictReasons,
   FiscalDocumentKind,
   FiscalDocumentStatus,
   FiscalEnvironment,
@@ -434,11 +435,44 @@ describe('The credit notes of the fiscal documents (Step 4B.7b)', () => {
       const newId = (replaced.body as { data: { id: string } }).data.id
       const moved = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: waiting?.id } })
       expect(moved.parentDocumentId).toBe(newId)
+      // Moved, not made again: one note for the return, and it is sent with the replacement
+      expect(await owner.fiscalDocument.count({ where: { returnId: waiting?.returnId } })).toBe(1)
+      const queued = jobs().some(
+        job => job.opts?.jobId === submitFiscalDocumentJobId(waiting?.id ?? '', 1)
+      )
+      expect(queued).toBe(true)
       await documents.submit(ctx.orgA.id, newId)
-      await asAdminA().post(ApiRoutes.fiscal.documents.void(newId)).send({ reason: 'again' })
-      // The note is the only one: voiding the replacement is refused while it is there only if it was sent; it was not, so this went through
+      // The note never left core, so it does not keep the replacement from being voided
+      const voidedAgain = await asAdminA()
+        .post(ApiRoutes.fiscal.documents.void(newId))
+        .send({ reason: 'again' })
+      expect(voidedAgain.status).toBe(OK)
+      // The original has its replacement, voided or not: it is replaced once
       const second = await asAdminA().post(ApiRoutes.fiscal.documents.replace(order.documentId))
       expect(second.status).toBe(CONFLICT)
+      expect(
+        (second.body as { error: { metadata?: { reason?: string } } }).error.metadata?.reason
+      ).toBe(FiscalConflictReasons.ALREADY_REPLACED)
+    })
+
+    it('does not let a note that was sent and not answered keep going out of the way: it blocks the void', async () => {
+      const order = await sale(true)
+      const sent = await noteOf(await receivedReturn(order, 1))
+      // Back in the queue with an attempt counted: the authority may have it
+      await owner.fiscalDocument.update({ where: { id: sent?.id }, data: { attempts: 1 } })
+      const blocked = await asAdminA()
+        .post(ApiRoutes.fiscal.documents.void(order.documentId))
+        .send({ reason: 'wrong customer' })
+      expect(blocked.status).toBe(CONFLICT)
+      expect(
+        (blocked.body as { error: { metadata?: { reason?: string } } }).error.metadata?.reason
+      ).toBe(FiscalConflictReasons.HAS_CREDIT_NOTES)
+      // A retry asks the authority and settles it (the simulator knows nothing of it: it is sent again and accepted)
+      expect((await asAdminA().post(ApiRoutes.fiscal.documents.retry(sent?.id ?? ''))).status).toBe(
+        OK
+      )
+      await documents.submit(ctx.orgA.id, sent?.id ?? '')
+      expect(await statusOf(sent?.id ?? '')).toBe(FiscalDocumentStatus.ACCEPTED)
     })
 
     it('makes the sale document again with a new number, keeps the receiver, and makes the voided credit notes again against it', async () => {
