@@ -788,7 +788,7 @@ describe('The entries of a difference written off and of a return (Step 4B.6b-2)
   })
 
   describe('E4 for the guide of a return', () => {
-    it('owes the carrier the cost of the guide when the sender pays it, with no commission, and charges nothing to the recipient', async () => {
+    it('owes the carrier the cost of the guide when the store pays the return, with no commission, and nothing when the customer pays it', async () => {
       const ret = await createReturn(owner, { storeId: ctx.storeA.id })
       const retOrder = (await owner.orderReturn.findUniqueOrThrow({ where: { id: ret.id } }))
         .orderId
@@ -796,7 +796,8 @@ describe('The entries of a difference written off and of a return (Step 4B.6b-2)
         storeId: ctx.storeA.id,
         returnOf: { returnId: ret.id, orderId: retOrder },
         status: ShipmentStatus.DELIVERED,
-        shippingPayer: ShippingPayer.SENDER,
+        // The store pays the return: the guide's payer is its recipient (the warehouse)
+        shippingPayer: ShippingPayer.RECIPIENT,
         carrierCostCents: 300,
         commissionBps: 450,
         deliveredAt: NOON(TODAY)
@@ -818,7 +819,7 @@ describe('The entries of a difference written off and of a return (Step 4B.6b-2)
         storeId: ctx.storeA.id,
         returnOf: { returnId: other.id, orderId: otherOrder },
         status: ShipmentStatus.DELIVERED,
-        shippingPayer: ShippingPayer.RECIPIENT,
+        shippingPayer: ShippingPayer.SENDER,
         carrierCostCents: 300,
         deliveredAt: NOON(TODAY)
       })

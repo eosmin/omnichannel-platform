@@ -31,7 +31,8 @@ import {
   SettlingOutcomes,
   ShipmentInactiveStatuses,
   ShipmentKind,
-  ShipmentStatus
+  ShipmentStatus,
+  ShippingPayer
 } from '@platform/core/domain'
 import { errorName, PlatformException } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
@@ -728,14 +729,15 @@ export class FinancePostingService {
       select: { remittanceId: true, reportedCents: true, reportedFeeCents: true }
     })
     // What each remittance cleared is in its entry: one that is not posted yet makes this wait
-    for (const remittanceId of new Set(lines.map(line => line.remittanceId))) {
-      const posted = await this.entryOf(
-        tx,
-        input.organizationId,
-        FinancePostingKey.REMITTANCE_CONFIRM(remittanceId)
-      )
-      if (posted === null) return failed(FinancePostingFailureReason.SOURCE_NOT_READY)
-    }
+    const wanted = [
+      ...new Set(lines.map(line => FinancePostingKey.REMITTANCE_CONFIRM(line.remittanceId)))
+    ]
+    const postedKeys = await tx.journalEntry.findMany({
+      where: { organizationId: input.organizationId, idempotencyKey: { in: wanted } },
+      select: { idempotencyKey: true }
+    })
+    if (postedKeys.length < wanted.length)
+      return failed(FinancePostingFailureReason.SOURCE_NOT_READY)
     const charged = await this.entryOf(
       tx,
       input.organizationId,
@@ -1110,8 +1112,9 @@ export class FinancePostingService {
       }
     })
     if (shipment === null || shipment.deliveredAt === null) return NOTHING
-    // The guide of the way out and the guide of a return (E8's leg: the units come back by one): both are charged when they arrive. A
-    // return guide collects no cash, so it has no commission; its cost is the sender's only when the sender pays it
+    // The guide of the way out and the guide of a return (the units come back by one): both are charged when they arrive. A return guide
+    // collects no cash, so it has no commission. Its payer is stored from the side of the guide, not of the store (the sender of a return
+    // is the customer): the store pays when the RECIPIENT of the guide pays, so the sides are swapped back before the rule is applied
     const charged: readonly string[] = [ShipmentKind.OUTBOUND, ShipmentKind.RETURN]
     if (
       !charged.includes(shipment.kind) ||
@@ -1119,7 +1122,17 @@ export class FinancePostingService {
     ) {
       return NOTHING
     }
-    const amounts = chargeAmounts(shipment)
+    const amounts = chargeAmounts(
+      shipment.kind === (ShipmentKind.RETURN as string)
+        ? {
+            ...shipment,
+            shippingPayer:
+              shipment.shippingPayer === (ShippingPayer.SENDER as string)
+                ? ShippingPayer.RECIPIENT
+                : ShippingPayer.SENDER
+          }
+        : shipment
+    )
     if (amounts.freightCents + amounts.commissionCents === 0) return NOTHING
     const accounts = await this.accountsOf(tx, input.organizationId)
     return {
