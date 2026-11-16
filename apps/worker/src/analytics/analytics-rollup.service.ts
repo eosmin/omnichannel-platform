@@ -134,6 +134,8 @@ export class AnalyticsRollupService {
       resolvedByAutomation
     )
     add(AnalyticsMetrics.ORDERS_CREATED, orders.count, orders.count)
+    // Money is kept in whole units of the currency (19.99) and read that way by the dashboard, the metrics of the plugins and every
+    // file: the only place where cents become units is here (MetricUnits.CURRENCY)
     add(AnalyticsMetrics.ORDERS_REVENUE, orders.totalCents / CENTS_PER_UNIT, orders.count)
     addTime(AnalyticsMetrics.FIRST_RESPONSE_TIME, firstResponse)
     addTime(AnalyticsMetrics.FIRST_AUTOMATED_RESPONSE_TIME, firstAutomated)

@@ -1,6 +1,6 @@
 import { MetricUnits, type MetricUnit } from '@platform/core/analytics'
 
-import type { ReportSheet } from './sheet'
+import { displayValue, type ReportSheet } from './sheet'
 
 // A minimal PDF written by hand: pages of text and lines, in the standard Helvetica every reader has (no font is embedded, no
 // image, no script, no link). A report is a table of figures; a rendering library would be a large dependency for it. The words
@@ -17,7 +17,6 @@ const HEADER_LINES = 3
 const HELVETICA_WIDTH = 0.52 // an average width of a character, as a fraction of the size
 const SECONDS_PER_MINUTE = 60
 const SECONDS_PER_HOUR = 3600
-const CENTS = 100
 
 const LATIN1 = /[^\u0020-\u007E\u00A0-\u00FF]/gu
 
@@ -47,7 +46,7 @@ export function formatSeconds(seconds: number): string {
 export function formatCell(value: number | null, unit: MetricUnit): string {
   if (value === null || !Number.isFinite(value)) return '-'
   if (unit === MetricUnits.SECONDS) return formatSeconds(value)
-  if (unit === MetricUnits.CENTS) return (value / CENTS).toFixed(2)
+  if (unit === MetricUnits.CURRENCY) return (displayValue(value, unit) ?? 0).toFixed(2)
   return String(Math.round(value))
 }
 
