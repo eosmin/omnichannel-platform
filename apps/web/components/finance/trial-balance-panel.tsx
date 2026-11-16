@@ -59,7 +59,9 @@ export function TrialBalancePanel(): ReactElement {
         <p className="text-muted-foreground text-sm">{t('description')}</p>
       </header>
       {period === undefined ? (
-        <p className="text-muted-foreground text-sm">{t('noPeriods')}</p>
+        <p className="text-muted-foreground text-sm">
+          {periods.data === undefined ? t('loading') : t('noPeriods')}
+        </p>
       ) : (
         <>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -140,7 +142,11 @@ export function TrialBalancePanel(): ReactElement {
                       <td className="px-3 py-2">
                         <span className="font-mono text-xs">{row.code}</span> {row.name}
                       </td>
-                      <td className="px-3 py-2">{typeLabel(row.type as 'asset')}</td>
+                      <td className="px-3 py-2">
+                        {typeLabel.has(row.type as 'asset')
+                          ? typeLabel(row.type as 'asset')
+                          : row.type}
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums">{money(row.debitCents)}</td>
                       <td className="px-3 py-2 text-right tabular-nums">
                         {money(row.creditCents)}

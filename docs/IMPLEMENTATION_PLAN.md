@@ -1986,7 +1986,7 @@ balance includes the balance before the range, which the ledger JSON reports as 
   document still queued) is not drawn before closing: the api only refuses what it blocks and the dialog shows that text; the warnings need a route that
   4B.8b gives, so 4B.9b-3 or 4B.9b-4 draws them. (e) The e2e case of the month (close a month that has ended, reopen it with its reason) needs entries
   in a past month and is 4B.9b-4; this PR's cases show that a month that has not ended has no close button and the gate of each section; the close and reopen dialogs on a phone (dialog-fit) are measured with that case in 4B.9b-4.
-  (f) Playwright ran only in CI (not on the shared machine).
+  (f) Playwright ran only in CI (not on the shared machine). (g) The three download panels share one flow (guard, refusal, name at the click, save) and the ledger and journal share their range fields, and every period row mounts both dialogs: one `useCsvDownload` hook, one range component and one dialog for the row being asked about are Step 7.7 (the visual and structure pass).
 **TDD:** `TDD_18 §12`, `TDD_09`
 **Done when:** the owner runs a month of the business end to end from the screens (a purchase received and paid, orders sold and remitted, an
 expense and a transfer, the statements checked, the month closed).

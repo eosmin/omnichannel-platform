@@ -20,7 +20,8 @@ export function ChainPanel(): ReactElement {
   const verify = useVerifyFinanceChain(storeId)
   const [refusal, setRefusal] = useState<string | null>(null)
   const result = verify.data
-  const reason = result?.break == null ? null : knownChainReason(result.break.reason)
+  const found = result?.break ?? null
+  const reason = found === null ? null : knownChainReason(found.reason)
   return (
     <section
       className="flex flex-col gap-3"

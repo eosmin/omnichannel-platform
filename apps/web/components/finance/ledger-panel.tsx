@@ -52,6 +52,13 @@ export function LedgerPanel(): ReactElement {
   const chosen = postable.find(account => account.id === accountId)
   const canExport = can(ClientPermissions.FINANCE_EXPORT)
   const csvProblem = reportRangeProblem(draft, { bothEnds: true })
+  // The file is of what the table shows: the form may have moved on since Show, and then the button waits for a new Show
+  const inSync =
+    applied !== null &&
+    chosen !== undefined &&
+    applied.accountId === chosen.id &&
+    applied.from === (draft.from.trim() === '' ? null : draft.from.trim()) &&
+    applied.to === (draft.to.trim() === '' ? null : draft.to.trim())
 
   const show = (event: FormEvent): void => {
     event.preventDefault()
@@ -113,7 +120,13 @@ export function LedgerPanel(): ReactElement {
           hint={t('dayHint')}
           value={draft.to}
           maxLength={10}
-          problem={wrong === 'to' ? t('problems.to') : null}
+          problem={
+            wrong === 'to'
+              ? t('problems.to')
+              : csvProblem === 'length' && draft.to.trim() !== ''
+                ? t('problems.length')
+                : null
+          }
           onChange={to => {
             setDraft(current => ({ ...current, to }))
             setWrong(null)
@@ -128,7 +141,7 @@ export function LedgerPanel(): ReactElement {
               type="button"
               variant="outline"
               size="sm"
-              disabled={chosen === undefined || csvProblem !== null || download.isPending}
+              disabled={!inSync || csvProblem !== null || download.isPending}
               busy={download.isPending}
               onClick={() => {
                 if (chosen === undefined || !guard.enter()) return
@@ -156,7 +169,7 @@ export function LedgerPanel(): ReactElement {
           {refusal}
         </p>
       )}
-      {applied === null ? null : ledger.isError ? (
+      {applied === null ? null : ledger.isError && first === undefined ? (
         <LoadFailed error={ledger.error} onRetry={() => void ledger.refetch()} />
       ) : first === undefined ? (
         <p className="text-muted-foreground text-sm">{t('loading')}</p>
@@ -223,6 +236,11 @@ export function LedgerPanel(): ReactElement {
               </table>
             </div>
           )}
+          {ledger.isError ? (
+            <p role="alert" className="text-destructive text-sm">
+              {errorText(ledger.error)}
+            </p>
+          ) : null}
           {ledger.hasNextPage ? (
             <div>
               <Button

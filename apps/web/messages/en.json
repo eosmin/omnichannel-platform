@@ -6122,7 +6122,8 @@
         "problems": {
           "from": "Write a real day as YYYY-MM-DD.",
           "to": "Write a real day as YYYY-MM-DD.",
-          "order": "The first day is after the last one."
+          "order": "The first day is after the last one.",
+          "length": "The range is longer than 366 days. Choose a shorter one."
         }
       },
       "journal": {

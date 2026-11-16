@@ -6122,7 +6122,8 @@
         "problems": {
           "from": "Escribe un día real como AAAA-MM-DD.",
           "to": "Escribe un día real como AAAA-MM-DD.",
-          "order": "El primer día es posterior al último."
+          "order": "El primer día es posterior al último.",
+          "length": "El rango es de más de 366 días. Elige uno más corto."
         }
       },
       "journal": {
