@@ -28,7 +28,8 @@ import {
   OriginMediaSlots,
   PaymentStatus,
   ShipmentStatus,
-  type SystemMessageEvent
+  type SystemMessageEvent,
+  TaxTreatment
 } from '@platform/core/domain'
 import { ExportTypes } from '@platform/core/queues'
 import { MediaPurpose, StorageKeys } from '@platform/core/storage'
@@ -1042,6 +1043,50 @@ export function addWarehouseTo(
     })
     return warehouse.id
   })
+}
+
+// A shipped sale of the store with its tax snapshot (Step 4B.9b-5b): 2 x $11.30 with 13 % inside the price, $22.60 in all, of which $2.60 is
+// tax, not yet paid (the case records the payment through the screen, so the advance entry exists before the sale one), with a customer who has no fiscal data (so its document is a consumer one). Delivering it through the screens is what
+// makes the fiscal document and the sale entry. Returns what the case needs to find it and tries to take the order out afterwards.
+export async function addShippedTaxedSale(
+  storeId: string
+): Promise<{ id: string; orderNumber: string; remove: () => Promise<void> }> {
+  const made = await withOwner(async owner => {
+    const created = await createOrder(owner, {
+      storeId,
+      status: OrderStatus.SHIPPED
+    })
+    await owner.orderItem.update({
+      where: { id: created.itemId },
+      data: {
+        quantity: 2,
+        unitPriceCents: 1130,
+        taxTreatment: TaxTreatment.TAXED,
+        taxRateBps: 1300,
+        taxCents: 260
+      }
+    })
+    return owner.order.update({
+      where: { id: created.id },
+      data: {
+        subtotalCents: 2260,
+        shippingCents: 0,
+        totalCents: 2260,
+        taxCents: 260,
+        pricesIncludeTax: true
+      },
+      select: { id: true, orderNumber: true, customerId: true }
+    })
+  })
+  return {
+    id: made.id,
+    orderNumber: made.orderNumber,
+    remove: () =>
+      withOwner(async owner => {
+        // Best effort: the books and the fiscal document keep what they hold, and the next run uses its own names
+        await owner.order.deleteMany({ where: { id: made.id } }).catch(() => undefined)
+      })
+  }
 }
 
 // Someone who may read the books and change nothing: finance:view only (Step 4B.9)
