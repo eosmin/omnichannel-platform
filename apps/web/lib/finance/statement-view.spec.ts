@@ -1,14 +1,7 @@
 import type { FinanceStatementRowView } from '@platform/api-client'
 import { FinanceSourceType, PartyType, StatementWarning } from '@platform/core/domain'
 
-import {
-  bucketLabels,
-  indentedRows,
-  partyKeyOf,
-  sectionsAreEmpty,
-  sourceKeyOf,
-  warningKeyOf
-} from './statement-view'
+import { bucketLabels, indentedRows, partyKeyOf, sourceKeyOf, warningKeyOf } from './statement-view'
 
 const row = (
   id: string,
@@ -88,16 +81,5 @@ describe('the buckets of the list with age', () => {
 
   it('falls back to the constant of the books when the api sends none', () => {
     expect(bucketLabels([])).toHaveLength(4)
-  })
-})
-
-describe('an empty statement', () => {
-  it('has no row in any section', () => {
-    expect(sectionsAreEmpty({ rows: [], totalCents: '0' }, { rows: [], totalCents: '0' })).toBe(
-      true
-    )
-    expect(
-      sectionsAreEmpty({ rows: [row('1', null)], totalCents: '100' }, { rows: [], totalCents: '0' })
-    ).toBe(false)
   })
 })

@@ -73,7 +73,7 @@ export function FrozenBooksPanel({
               <Button
                 size="sm"
                 variant="outline"
-                aria-pressed={openId === item.id}
+                aria-expanded={openId === item.id}
                 onClick={() => setOpenId(openId === item.id ? null : item.id)}
               >
                 {openId === item.id ? t('hide') : t('open')}
@@ -87,7 +87,12 @@ export function FrozenBooksPanel({
       ) : opened.data === undefined ? (
         <PageLoading />
       ) : (
-        <BookContent book={opened.data} kind={opened.data.kind} layouts={layouts} />
+        <BookContent
+          book={opened.data}
+          kind={opened.data.kind}
+          layouts={layouts}
+          testId="finance-frozen-book"
+        />
       )}
     </section>
   )

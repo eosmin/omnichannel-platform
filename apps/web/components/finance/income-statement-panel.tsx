@@ -34,6 +34,7 @@ export function IncomeStatementPanel({
     <div className="flex flex-col gap-4" data-testid="finance-income-statement">
       <p className="text-muted-foreground text-sm">{t('description')}</p>
       <RangeFilters
+        applied={query}
         onApply={next => {
           // The same question again is a new read: the books may have moved since
           if (query?.from === next.from && query.to === next.to) void statement.refetch()

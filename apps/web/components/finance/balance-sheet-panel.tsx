@@ -34,6 +34,7 @@ export function BalanceSheetPanel({
     <div className="flex flex-col gap-4" data-testid="finance-balance-sheet">
       <p className="text-muted-foreground text-sm">{t('description')}</p>
       <DayFilters
+        applied={query?.asOf ?? null}
         onApply={next => {
           // The same question again is a new read: the books may have moved since
           if (query?.asOf === next.asOf) void sheet.refetch()

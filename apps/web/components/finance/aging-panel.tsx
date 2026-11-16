@@ -19,24 +19,29 @@ import { DayFilters } from './statement-filters'
 // The balances owed to the business or by it, by the age of each one (TDD_18 §10): the buckets are the upper bounds in days the api
 // says it used, and an amount paid or received that no bill claims is its own column (it is not hidden inside a bucket). A role of the
 // list with no account in the settings is said, and the list is not made up.
+const isZero = (cents: string): boolean => /^-?0+$/.test(cents)
+
 export function AgingPanel({ lockedThrough }: { lockedThrough: string | null }): ReactElement {
   const t = useTranslations('finance.aging')
   const tRoles = useTranslations('finance.settings.roles.names')
   const tParties = useTranslations('finance.aging.parties')
   const { storeId, can } = useStore()
+  // The kind in the field, and the question that was asked (kind and day together, when Show was pressed)
   const [kind, setKind] = useState<AgingKind>(AgingKind.RECEIVABLES)
-  const [asOf, setAsOf] = useState<string | null>(null)
-  const query = asOf === null ? null : agingQueryOf(kind, asOf)
+  const [query, setQuery] = useState<{ kind: AgingKind; asOf: string } | null>(null)
   const aging = useFinanceAging(storeId, query)
   const download = useDownloadAgingCsv(storeId)
   const data = aging.data
   return (
     <div className="flex flex-col gap-4" data-testid="finance-aging">
       <DayFilters
+        applied={query?.asOf ?? null}
+        extraDirty={query !== null && query.kind !== kind}
         onApply={day => {
+          const next = agingQueryOf(kind, day.asOf)
           // The same question again is a new read: the books may have moved since
-          if (day.asOf === asOf) void aging.refetch()
-          setAsOf(day.asOf)
+          if (query?.kind === next.kind && query.asOf === next.asOf) void aging.refetch()
+          setQuery(next)
         }}
         extra={
           <SelectField
@@ -89,7 +94,8 @@ export function AgingPanel({ lockedThrough }: { lockedThrough: string | null }):
           <ClosedThroughNote lockedThrough={lockedThrough} lastDay={query.asOf} />
           <ReportWarnings warnings={data.warnings} />
           {/* Lines that carry no party are in the total and in no row: a list with no rows may still have something to say */}
-          {data.rows.length === 0 && /^-?0+$/.test(data.totalCents) ? (
+          {data.rows.length === 0 &&
+          [...data.bucketsCents, data.unappliedCents, data.totalCents].every(isZero) ? (
             <p className="text-muted-foreground text-sm">{t('none')}</p>
           ) : (
             <div className="overflow-x-auto rounded-md border">

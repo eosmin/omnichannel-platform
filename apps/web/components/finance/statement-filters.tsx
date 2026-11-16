@@ -10,6 +10,7 @@ import {
   flowQueryOf,
   type StatementRangeDraft,
   type StatementRangeProblem,
+  StatementRangeProblems,
   statementDayProblem,
   statementRangeProblem
 } from '../../lib/finance/statement-form'
@@ -23,10 +24,12 @@ import { TextField } from './fields'
 
 export function RangeFilters({
   onApply,
+  applied,
   children
 }: {
   onApply: (query: { from: string; to: string }) => void
-  // What sits beside the button once an answer is on screen (the file)
+  // The question on screen now: what sits beside the button (the file) is for that question, so it is hidden while the fields say another
+  applied: { from: string; to: string } | null
   children?: ReactNode
 }): ReactElement {
   const t = useTranslations('finance.statementsCommon')
@@ -38,6 +41,8 @@ export function RangeFilters({
     setWrong(problem)
     if (problem === null) onApply(flowQueryOf(draft))
   }
+  const dirty =
+    applied === null || applied.from !== draft.from.trim() || applied.to !== draft.to.trim()
   return (
     <form
       onSubmit={submit}
@@ -51,7 +56,11 @@ export function RangeFilters({
         value={draft.from}
         maxLength={10}
         problem={
-          wrong === 'from' ? t('problems.from') : wrong === 'order' ? t('problems.order') : null
+          wrong === StatementRangeProblems.FROM
+            ? t('problems.from')
+            : wrong === StatementRangeProblems.ORDER
+              ? t('problems.order')
+              : null
         }
         onChange={from => {
           setDraft(current => ({ ...current, from }))
@@ -63,7 +72,7 @@ export function RangeFilters({
         type="date"
         value={draft.to}
         maxLength={10}
-        problem={wrong === 'to' ? t('problems.to') : null}
+        problem={wrong === StatementRangeProblems.TO ? t('problems.to') : null}
         onChange={to => {
           setDraft(current => ({ ...current, to }))
           setWrong(null)
@@ -73,7 +82,7 @@ export function RangeFilters({
         <Button type="submit" size="sm" data-testid="finance-report-show">
           {t('show')}
         </Button>
-        {children}
+        {dirty ? null : children}
       </div>
     </form>
   )
@@ -81,10 +90,15 @@ export function RangeFilters({
 
 export function DayFilters({
   onApply,
+  applied,
+  extraDirty = false,
   extra,
   children
 }: {
   onApply: (query: { asOf: string }) => void
+  // The day on screen now (see `RangeFilters`), and whether the field of `extra` says another question than the one on screen
+  applied: string | null
+  extraDirty?: boolean
   // A field of its own beside the day (the list with age asks which one)
   extra?: ReactNode
   children?: ReactNode
@@ -98,6 +112,7 @@ export function DayFilters({
     setWrong(problem)
     if (!problem) onApply(balanceSheetQueryOf(day))
   }
+  const dirty = applied === null || extraDirty || applied !== day.trim()
   return (
     <form
       onSubmit={submit}
@@ -121,7 +136,7 @@ export function DayFilters({
         <Button type="submit" size="sm" data-testid="finance-report-show">
           {t('show')}
         </Button>
-        {children}
+        {dirty ? null : children}
       </div>
     </form>
   )

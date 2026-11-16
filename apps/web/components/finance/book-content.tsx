@@ -24,17 +24,21 @@ import { Amount } from './report-parts'
 export function BookContent({
   book,
   kind,
-  layouts
+  layouts,
+  testId = 'finance-book'
 }: {
   book: FinanceBookView
   kind: string
+  // The one of the book of the page and the one of a frozen book opened under it differ, so a locator names one of the two
+  testId?: string
   layouts: readonly FinanceBookLayoutView[] | undefined
 }): ReactElement {
   const t = useTranslations('finance.books')
   const columns = bookColumns(book, layouts, kind)
   const totals = totalCells(columns, book.totals)
   const shown = book.rows.slice(0, BOOK_ROWS_SHOWN)
-  const closed = book.period.status === String(PeriodStatus.CLOSED)
+  // A frozen book is the one of a month that was closed, whatever the month is now (it can have been reopened since)
+  const closed = book.frozen || book.period.status === String(PeriodStatus.CLOSED)
   const warnings = bookWarnings(book.warnings)
   const truncated = book.rows.length > shown.length
   // The label of the totals row sits in the first column that is not money, so a layout that opens with an amount still says it is a total
@@ -43,7 +47,7 @@ export function BookContent({
     columns.findIndex(column => !column.money)
   )
   return (
-    <div className="flex flex-col gap-4" data-testid="finance-book" data-kind={kind}>
+    <div className="flex flex-col gap-4" data-testid={testId} data-kind={kind}>
       {book.unvalidated ? (
         <p
           role="note"
@@ -151,16 +155,15 @@ export function BookContent({
                         <span>
                           {truncated ? t('totalsAllRows') : t('totals')}
                           {total === null ? null : (
-                            <>
-                              {' '}
-                              <Amount cents={total} />
-                            </>
+                            <> {isCentsCell(total) ? <Amount cents={total} /> : String(total)}</>
                           )}
                         </span>
                       ) : total === null ? (
                         ''
-                      ) : (
+                      ) : isCentsCell(total) ? (
                         <Amount cents={total} />
+                      ) : (
+                        String(total)
                       )}
                     </td>
                   ))}

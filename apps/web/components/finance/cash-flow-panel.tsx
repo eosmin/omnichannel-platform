@@ -32,6 +32,7 @@ export function CashFlowPanel({ lockedThrough }: { lockedThrough: string | null 
     <div className="flex flex-col gap-4" data-testid="finance-cash-flow">
       <p className="text-muted-foreground text-sm">{t('description')}</p>
       <RangeFilters
+        applied={query}
         onApply={next => {
           // The same question again is a new read: the books may have moved since
           if (query?.from === next.from && query.to === next.to) void flow.refetch()

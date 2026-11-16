@@ -1,8 +1,4 @@
-import type {
-  FinanceAgingView,
-  FinanceStatementRowView,
-  FinanceStatementSectionView
-} from '@platform/api-client'
+import type { FinanceStatementRowView, FinanceStatementSectionView } from '@platform/api-client'
 import {
   AccountRole,
   AgingBucketDays,
@@ -10,7 +6,6 @@ import {
   PartyType,
   StatementWarning
 } from '@platform/core/domain'
-
 
 // What the pages of the statements read from an answer. Nothing here knows a country or a chart: the rows come grouped by the chart of the
 // accountant (type and parent), and a total is the one the api computed, never one added again on the screen.
@@ -112,11 +107,3 @@ export function bucketLabels(bucketDays: readonly number[]): BucketLabel[] {
   labels.push({ kind: 'over', from: from - 1, to: from - 1 })
   return labels
 }
-
-// A row of the list with age that no party owns: the lines that carry no party, in the total and in no row
-export const isUnassignedRow = (row: FinanceAgingView['rows'][number]): boolean =>
-  row.partyId === null
-
-// A statement that has nothing to say: no row in any section
-export const sectionsAreEmpty = (...sections: FinanceStatementSectionView[]): boolean =>
-  sections.every(section => section.rows.length === 0)

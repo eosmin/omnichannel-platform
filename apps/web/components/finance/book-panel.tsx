@@ -41,6 +41,8 @@ export function BookPanel(): ReactElement {
   if (periods.isError) {
     return <LoadFailed error={periods.error} onRetry={() => void periods.refetch()} />
   }
+  if (layouts.isError)
+    return <LoadFailed error={layouts.error} onRetry={() => void layouts.refetch()} />
   // The layouts say which columns are money: the book waits for them, so it is never drawn once as plain numbers and then as amounts
   if (periods.data === undefined || layouts.isPending) return <PageLoading />
   const layout = layouts.data?.find(item => item.kind === String(kind))
@@ -97,7 +99,7 @@ export function BookPanel(): ReactElement {
         </div>
       )}
       {query === null ? null : (
-        <FrozenBooksPanel periodId={query.periodId} layouts={layouts.data} />
+        <FrozenBooksPanel key={query.periodId} periodId={query.periodId} layouts={layouts.data} />
       )}
     </div>
   )

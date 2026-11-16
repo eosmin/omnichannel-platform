@@ -123,6 +123,8 @@ export function useFinanceBookLayouts(
   return useQuery({
     queryKey: QueryKeys.finance.bookLayouts(storeId),
     queryFn: ({ signal }) => fetchFinanceBookLayouts(apiClient, storeId, signal),
+    // Never served from an older read: the layouts say which columns are money, and a book of a new version needs the new list
+    staleTime: 0,
     enabled
   })
 }

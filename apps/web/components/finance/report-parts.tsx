@@ -2,7 +2,7 @@
 
 import { Download, Lock, TriangleAlert } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { type ReactElement, useEffect, useState } from 'react'
+import { type ReactElement, useEffect, useRef, useState } from 'react'
 
 import { saveCsvFile } from '../../lib/finance/save-file'
 import { warningKeyOf } from '../../lib/finance/statement-view'
@@ -41,10 +41,10 @@ export function ReportWarnings({ warnings }: { warnings: readonly string[] }): R
         {t('warningsTitle')}
       </p>
       <ul className="list-disc pl-6">
-        {warnings.map(warning => {
+        {warnings.map((warning, index) => {
           const key = warningKeyOf(warning)
           return (
-            <li key={warning} data-warning={warning}>
+            <li key={`${warning}-${String(index)}`} data-warning={warning}>
               {key === null ? warning : t(`warnings.${key}`)}
             </li>
           )
@@ -74,13 +74,20 @@ export function CsvDownloadButton<Q>({
   const guard = useSubmitGuard()
   const [refusal, setRefusal] = useState<string | null>(null)
   // A refusal belongs to the question that was asked: another one starts clean
-  useEffect(() => setRefusal(null), [fileName])
+  const current = useRef(fileName)
+  useEffect(() => {
+    current.current = fileName
+    setRefusal(null)
+  }, [fileName])
   const start = (): void => {
     if (!guard.enter()) return
     setRefusal(null)
     run(query)
       .then(text => saveCsvFile(fileName, text))
-      .catch((error: unknown) => setRefusal(errorText(error)))
+      // An answer that comes late belongs to the question it was asked for: a failure of March is not the refusal of April
+      .catch((error: unknown) => {
+        if (current.current === fileName) setRefusal(errorText(error))
+      })
       .finally(guard.leave)
   }
   return (
