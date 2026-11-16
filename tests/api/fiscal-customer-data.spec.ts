@@ -257,13 +257,67 @@ describe('The fiscal data of a customer (Step 4B.7b-3)', () => {
   })
 
   describe('a row that cannot be opened', () => {
-    it('is an error to fix, never an empty answer, and writing the data again repairs it', async () => {
+    it('is an error to fix, never an empty answer: it is cleared and written again, never merged into', async () => {
       const made = await createCustomerFiscalData(owner, { storeId: ctx.storeA.id })
       const read = await get(made.customerId)
       expect(read.status).toBe(CONFLICT)
       expect(JSON.stringify(read.body)).toContain(ErrorCodes.FISCAL_CUSTOMER_DATA_INVALID)
+      // A patch would be merged into an empty record and lose what it does not name: refused
+      expect((await put(made.customerId, { taxId: 'ZQ-FIXED-1' })).status).toBe(CONFLICT)
+      expect(
+        (await asAdminA().delete(ApiRoutes.fiscal.customerData.clear(made.customerId))).status
+      ).toBe(NO_CONTENT)
       expect((await put(made.customerId, { taxId: 'ZQ-FIXED-1' })).status).toBe(OK)
       expect((await get(made.customerId)).status).toBe(OK)
+    })
+  })
+
+  describe('a customer that was erased or merged', () => {
+    it('has no data to read or write, but its data can still be removed, and a sale never copies it', async () => {
+      const id = await customerA()
+      await put(id, { taxId: TAX_ID })
+      await owner.customer.update({ where: { id }, data: { erasedAt: new Date() } })
+      expect((await get(id)).status).toBe(NOT_FOUND)
+      expect((await put(id, { name: 'Zq' })).status).toBe(NOT_FOUND)
+      // A sale of that customer is invoiced with the contact of the sale only
+      const orderId = await saleOf(id)
+      const document = await owner.fiscalDocument.findFirstOrThrow({
+        where: { orderId },
+        select: { id: true }
+      })
+      const view = await asAdminA().get(ApiRoutes.fiscal.documents.byId(document.id))
+      expect(
+        (view.body as { data: { receiver: Record<string, unknown> } }).data.receiver['taxIdMasked']
+      ).toBeNull()
+      // An erasure request can still remove the row
+      expect((await asAdminA().delete(ApiRoutes.fiscal.customerData.clear(id))).status).toBe(
+        NO_CONTENT
+      )
+      expect(await owner.customerFiscalData.count({ where: { customerId: id } })).toBe(0)
+    })
+  })
+
+  describe('the audit', () => {
+    it('records a change once, and the same data again records nothing', async () => {
+      const id = await customerA()
+      await put(id, { taxId: TAX_ID })
+      await put(id, { taxId: TAX_ID })
+      await put(id, { name: null })
+      const entries = await waitForAuditEntries(
+        owner,
+        { action: AuditAction.FISCAL_CUSTOMER_DATA_CHANGED, resourceId: id },
+        1
+      )
+      expect(entries).toHaveLength(1)
+      // Nothing to clear on a customer with no row records no clearing
+      const empty = await customerA()
+      await put(empty, { taxId: null })
+      await asAdminA().delete(ApiRoutes.fiscal.customerData.clear(empty))
+      expect(
+        await owner.auditLog.count({
+          where: { action: AuditAction.FISCAL_CUSTOMER_DATA_CLEARED, resourceId: empty }
+        })
+      ).toBe(0)
     })
   })
 

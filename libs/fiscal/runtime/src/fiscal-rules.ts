@@ -296,8 +296,9 @@ export function receiverWithFiscalData(
   }
 }
 
-// The fiscal data of a customer as a person sees it: identifiers masked (the last characters only), the rest of the fields said to be
-// set or not, never read back whole. A person who has to change a value sends the new one; nothing here can be copied into another form.
+// The fiscal data of a customer as a person sees it: the identifiers masked (the last characters only), the address said to be set or not.
+// The fiscal name, the kind of taxpayer and the activity are shown as they are: they are what a person needs to recognize the record, and
+// the permission to view it (`fiscal:view_customer_data`) is what protects them. The mask shows how long an identifier is.
 export interface MaskedCustomerFiscalData {
   name: string | null
   taxId: string | null

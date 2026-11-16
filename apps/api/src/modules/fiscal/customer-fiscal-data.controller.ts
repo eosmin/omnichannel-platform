@@ -31,7 +31,7 @@ const id = () => new ZodValidationPipe(idSchema)
 
 // The fiscal data of a customer of the store of X-Store-Id (TDD_18 §8, Step 4B.7b-3). The store comes from the guard, never from the
 // body. Every answer is masked: the tax id and the registration show their last characters only, and the fiscal address is said to be set,
-// never read back. It is held by its own permissions, apart from `customers:view`, and it is not exposed to plugins (`/plugin-api/*`).
+// never read back (the fiscal name, the kind of taxpayer and the activity are shown: they are what identifies the record). It is held by its own permissions, apart from `customers:view`, and it is not exposed to plugins (`/plugin-api/*`).
 @Controller()
 export class CustomerFiscalDataController {
   constructor(private readonly data: FiscalCustomerDataService) {}

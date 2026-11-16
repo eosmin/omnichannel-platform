@@ -265,7 +265,9 @@ export class FiscalDocumentsService {
         pricesIncludeTax: true,
         shippingAddress: true,
         customerId: true,
-        customer: { select: { name: true, email: true, phone: true } },
+        customer: {
+          select: { name: true, email: true, phone: true, erasedAt: true, mergedIntoId: true }
+        },
         items: {
           orderBy: { id: 'asc' },
           select: {
@@ -299,7 +301,10 @@ export class FiscalDocumentsService {
     // later change of the customer's data never reaches it
     const receiver = receiverWithFiscalData(
       contact,
-      await this.customerFiscalReceiver(tx, order.storeId, order.customerId)
+      // A customer that was erased or merged into another has no fiscal data to copy: it must not come back in a new document
+      order.customer.erasedAt !== null || order.customer.mergedIntoId !== null
+        ? null
+        : await this.customerFiscalReceiver(tx, order.storeId, order.customerId)
     )
     return {
       storeId: order.storeId,

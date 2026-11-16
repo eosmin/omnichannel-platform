@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
@@ -6,6 +7,7 @@ import { CredentialCipher } from '@platform/core/crypto'
 import { PrismaService } from '@platform/core/database'
 import { FiscalResourceTypes } from '@platform/core/domain'
 import {
+  errorName,
   ErrorCodes,
   HttpStatusCodes,
   PlatformException,
@@ -36,12 +38,15 @@ export class FiscalCustomerDataService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly cipher: CredentialCipher,
-    private readonly providers: FiscalProviderRegistry
-  ) {}
+    private readonly providers: FiscalProviderRegistry,
+    private readonly logger: PinoLogger
+  ) {
+    this.logger.setContext(FiscalCustomerDataService.name)
+  }
 
   // The data of a customer of the store, masked. `null` when the customer has none.
   async get(storeId: string, customerId: string): Promise<MaskedCustomerFiscalData | null> {
-    await this.assertCustomer(this.prisma.client, storeId, customerId)
+    await this.assertCustomer(this.prisma.client, storeId, customerId, true)
     const row = await this.prisma.client.customerFiscalData.findFirst({
       where: { storeId, customerId },
       select: { dataEncrypted: true }
@@ -57,16 +62,26 @@ export class FiscalCustomerDataService {
     patch: CustomerFiscalDataPatch,
     actor: FiscalActor
   ): Promise<MaskedCustomerFiscalData | null> {
-    const result = await this.prisma.transaction(async tx => {
-      await this.assertCustomer(tx, storeId, customerId)
-      // One writer at a time per customer: two requests that each merge into what they read cannot lose each other's fields
-      await tx.$queryRaw`SELECT id FROM customers WHERE id = ${customerId} AND store_id = ${storeId} FOR UPDATE`
+    const outcome = await this.prisma.transaction(async tx => {
+      // The lock first, and the customer is judged under it: a merge or an erasure that commits meanwhile is seen, never written over
+      const locked = await tx.$queryRaw<
+        { merged_into_id: string | null; erased_at: Date | null }[]
+      >`SELECT merged_into_id, erased_at FROM customers WHERE id = ${customerId} AND store_id = ${storeId} FOR UPDATE`
+      const customer = locked[0]
+      if (
+        customer === undefined ||
+        customer.merged_into_id !== null ||
+        customer.erased_at !== null
+      ) {
+        throw resourceNotFound('customer')
+      }
       const row = await tx.customerFiscalData.findFirst({
         where: { storeId, customerId },
         select: { dataEncrypted: true }
       })
-      // What cannot be opened is replaced by what the person sends now: it is how the data is written again after a key change
-      const current = row === null ? receiverOf({}) : this.openOrEmpty(row.dataEncrypted)
+      // A row that cannot be opened is never merged into silently (the fields the patch does not name would be lost): the person clears it
+      // first (DELETE does not open it) and writes the data again
+      const current = row === null ? receiverOf({}) : this.open(row.dataEncrypted)
       const next: FiscalReceiver = {
         name: 'name' in patch ? (patch.name ?? null) : current.name,
         taxId: 'taxId' in patch ? (patch.taxId ?? null) : current.taxId,
@@ -83,41 +98,55 @@ export class FiscalCustomerDataService {
             : (current.economicActivity ?? null)
       }
       const stored = receiverRecord(next)
+      const before = receiverRecord(current)
+      // The same data again changes nothing and leaves no entry
+      if (row !== null && JSON.stringify(stored) === JSON.stringify(before)) {
+        return { kind: 'unchanged' as const, view: maskedCustomerFiscalData(current) }
+      }
       // Nothing left to keep is no row: clearing every field is clearing the data
       if (Object.keys(stored).length === 0) {
         await tx.customerFiscalData.deleteMany({ where: { storeId, customerId } })
-        return null
+        return { kind: row === null ? ('unchanged' as const) : ('cleared' as const), view: null }
       }
       await this.check(tx, organizationId, receiverOf(stored))
       const sealed = new Uint8Array(this.cipher.seal(stored))
-      await tx.customerFiscalData.upsert({
-        where: { customerId },
-        create: { storeId, customerId, dataEncrypted: sealed, updatedBy: actor.userId },
-        update: { dataEncrypted: sealed, updatedBy: actor.userId }
+      if (row === null) {
+        await tx.customerFiscalData.create({
+          data: { storeId, customerId, dataEncrypted: sealed, updatedBy: actor.userId }
+        })
+      } else {
+        // Filtered by the store like every query of a tenant-scoped table
+        await tx.customerFiscalData.updateMany({
+          where: { storeId, customerId },
+          data: { dataEncrypted: sealed, updatedBy: actor.userId }
+        })
+      }
+      return { kind: 'changed' as const, view: maskedCustomerFiscalData(receiverOf(stored)) }
+    })
+    if (outcome.kind !== 'unchanged') {
+      this.audit.log({
+        action:
+          outcome.kind === 'cleared'
+            ? AuditAction.FISCAL_CUSTOMER_DATA_CLEARED
+            : AuditAction.FISCAL_CUSTOMER_DATA_CHANGED,
+        actor: { userId: actor.userId },
+        storeId,
+        resourceType: FiscalResourceTypes.CUSTOMER_DATA,
+        resourceId: customerId,
+        // The names of the fields, never their values
+        metadata: { fields: Object.keys(patch) },
+        ipAddress: actor.ipAddress,
+        userAgent: actor.userAgent
       })
-      return maskedCustomerFiscalData(receiverOf(stored))
-    })
-    this.audit.log({
-      action:
-        result === null
-          ? AuditAction.FISCAL_CUSTOMER_DATA_CLEARED
-          : AuditAction.FISCAL_CUSTOMER_DATA_CHANGED,
-      actor: { userId: actor.userId },
-      storeId,
-      resourceType: FiscalResourceTypes.CUSTOMER_DATA,
-      resourceId: customerId,
-      // The names of the fields, never their values
-      metadata: { fields: Object.keys(patch) },
-      ipAddress: actor.ipAddress,
-      userAgent: actor.userAgent
-    })
-    return result
+    }
+    return outcome.view
   }
 
   // Removes all of it. A fiscal document already made keeps its own copy: it is the legal evidence and this data does not reach it.
   async clear(storeId: string, customerId: string, actor: FiscalActor): Promise<void> {
     const removed = await this.prisma.transaction(async tx => {
-      await this.assertCustomer(tx, storeId, customerId)
+      // Any customer of the store, even one that was erased or merged: the data of such a customer must still be removable
+      await this.assertCustomer(tx, storeId, customerId, false)
       const { count } = await tx.customerFiscalData.deleteMany({ where: { storeId, customerId } })
       return count
     })
@@ -151,8 +180,13 @@ export class FiscalCustomerDataService {
     let problems: readonly FiscalReceiverProblem[]
     try {
       problems = provider.validateReceiver(receiver)
-    } catch {
-      // What a provider throws may carry the value: only the fact is kept
+    } catch (error) {
+      // What a provider throws may carry the value: only the name of the error is logged, never its message
+      this.logger.error(
+        { err: errorName(error), providerId: issuer.providerId },
+        'a provider could not check the fiscal data of a customer'
+      )
+      // The fact is kept
       throw new PlatformException(
         ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
         'the provider could not check the fiscal data of the customer',
@@ -172,21 +206,14 @@ export class FiscalCustomerDataService {
   private async assertCustomer(
     client: Pick<PrismaService['client'], 'customer'>,
     storeId: string,
-    customerId: string
+    customerId: string,
+    live: boolean
   ): Promise<void> {
     const customer = await client.customer.findFirst({
-      where: { id: customerId, storeId, mergedIntoId: null, erasedAt: null },
+      where: { id: customerId, storeId, ...(live ? { mergedIntoId: null, erasedAt: null } : {}) },
       select: { id: true }
     })
     if (customer === null) throw resourceNotFound('customer')
-  }
-
-  private openOrEmpty(sealed: Uint8Array): FiscalReceiver {
-    try {
-      return receiverOf(this.cipher.open(sealed))
-    } catch {
-      return receiverOf({})
-    }
   }
 
   // A row that cannot be opened (a key that changed) is an error to fix by writing the data again, never an empty answer that a person
