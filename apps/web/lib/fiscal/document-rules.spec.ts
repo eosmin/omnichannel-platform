@@ -3,6 +3,7 @@ import {
   FiscalConflictReasons,
   FiscalDocumentKind,
   FiscalDocumentStatus,
+  FiscalEvidenceKind,
   FiscalLimits,
   FiscalRejectionReasons
 } from '@platform/core/domain'
@@ -13,6 +14,8 @@ import {
   fiscalActionsOf,
   FiscalAttention,
   fiscalAttentionOf,
+  fiscalEvidenceKindsOf,
+  isIssuerChangedInFlight,
   replacedIdsOf
 } from './document-rules'
 
@@ -20,7 +23,8 @@ const base = {
   id: 'd1',
   kind: FiscalDocumentKind.SALE,
   status: FiscalDocumentStatus.ACCEPTED,
-  attempts: 1
+  attempts: 1,
+  rejectionReason: null as string | null
 }
 const none = new Set<string>()
 
@@ -53,16 +57,64 @@ describe('what a person may do with a fiscal document', () => {
     expect(edit(FiscalDocumentStatus.REJECTED, 1, FiscalDocumentKind.CREDIT_NOTE)).toBe(false)
   })
 
-  it('makes a voided sale document again once, never a credit note and never one that has its replacement', () => {
+  it('makes a voided sale document again once, and a voided credit note again, never one that is not voided or has its replacement', () => {
     const voided = { ...base, status: FiscalDocumentStatus.VOIDED }
     expect(fiscalActionsOf(voided, none).replace).toBe(true)
     expect(fiscalActionsOf(voided, new Set(['d1'])).replace).toBe(false)
+    // A credit note is made again from its return: the api says if it already was (`note_already_replaced`)
     expect(fiscalActionsOf({ ...voided, kind: FiscalDocumentKind.CREDIT_NOTE }, none).replace).toBe(
+      true
+    )
+    for (const status of Object.values(FiscalDocumentStatus)) {
+      if (status === FiscalDocumentStatus.VOIDED) continue
+      for (const kind of Object.values(FiscalDocumentKind)) {
+        expect(fiscalActionsOf({ ...base, status, kind }, none).replace).toBe(false)
+      }
+    }
+  })
+
+  it('confirms an issuer change only on a refused document that was sent and was refused because the issuer changed', () => {
+    const moved = {
+      ...base,
+      status: FiscalDocumentStatus.REJECTED,
+      rejectionReason: FiscalRejectionReasons.ISSUER_CHANGED
+    }
+    expect(fiscalActionsOf(moved, none).confirmIssuerChange).toBe(true)
+    expect(fiscalActionsOf({ ...moved, attempts: 0 }, none).confirmIssuerChange).toBe(false)
+    expect(fiscalActionsOf({ ...moved, rejectionReason: 'x' }, none).confirmIssuerChange).toBe(
       false
     )
-    expect(fiscalActionsOf({ ...base, status: FiscalDocumentStatus.ACCEPTED }, none).replace).toBe(
+    expect(fiscalActionsOf({ ...moved, rejectionReason: null }, none).confirmIssuerChange).toBe(
       false
     )
+    expect(
+      fiscalActionsOf({ ...moved, status: FiscalDocumentStatus.QUEUED }, none).confirmIssuerChange
+    ).toBe(false)
+  })
+
+  it('offers the files of evidence the api makes: two once accepted, three once voided, none before', () => {
+    const kinds = (status: FiscalDocumentStatus) => fiscalEvidenceKindsOf({ status })
+    expect(kinds(FiscalDocumentStatus.ACCEPTED)).toEqual([
+      FiscalEvidenceKind.DOCUMENT,
+      FiscalEvidenceKind.RESPONSE
+    ])
+    expect(kinds(FiscalDocumentStatus.VOIDED)).toEqual([
+      FiscalEvidenceKind.DOCUMENT,
+      FiscalEvidenceKind.RESPONSE,
+      FiscalEvidenceKind.VOID_RESPONSE
+    ])
+    for (const status of Object.values(FiscalDocumentStatus)) {
+      if (status === FiscalDocumentStatus.ACCEPTED || status === FiscalDocumentStatus.VOIDED) {
+        continue
+      }
+      expect(kinds(status)).toEqual([])
+    }
+  })
+
+  it('knows the refusal that asks for the confirmation of an issuer change', () => {
+    expect(isIssuerChangedInFlight(FiscalConflictReasons.ISSUER_CHANGED_IN_FLIGHT)).toBe(true)
+    expect(isIssuerChangedInFlight(FiscalConflictReasons.NO_ISSUER_CHANGE)).toBe(false)
+    expect(isIssuerChangedInFlight(null)).toBe(false)
   })
 
   it('knows which voided documents have a replacement among the ones it was given', () => {

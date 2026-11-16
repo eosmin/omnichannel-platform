@@ -12,14 +12,17 @@ import {
 } from '@tanstack/react-query'
 
 import {
+  confirmFiscalIssuerChange,
   fetchFiscalDocument,
   fetchFiscalDocumentPage,
+  fetchFiscalEvidenceUrls,
   fetchFiscalIssuer,
   fetchFiscalProviders,
   type FiscalDocumentFilters,
   type FiscalDocumentPageView,
   type FiscalDocumentView,
   type FiscalIssuerView,
+  type MediaUrlsView,
   type FiscalProviderView,
   patchFiscalReceiver,
   putFiscalIssuer,
@@ -28,7 +31,11 @@ import {
   retryFiscalDocument,
   voidFiscalDocument
 } from '@platform/api-client'
-import type { FiscalReceiverPatchBody, PutFiscalIssuerBody } from '@platform/core/domain'
+import type {
+  FiscalEvidenceKind,
+  FiscalReceiverPatchBody,
+  PutFiscalIssuerBody
+} from '@platform/core/domain'
 
 import { apiClient } from '../api'
 
@@ -136,3 +143,17 @@ export const useVoidFiscalDocument = (
 
 export const useReplaceFiscalDocument = (storeId: string): Write<string, FiscalDocumentView> =>
   useFiscalWrite(id => replaceFiscalDocument(apiClient, storeId, id), true)
+
+export const useConfirmFiscalIssuerChange = (
+  storeId: string
+): Write<{ id: string; reason: string }, void> =>
+  useFiscalWrite(input => confirmFiscalIssuerChange(apiClient, storeId, input.id, input.reason))
+
+// The link of a file of evidence is signed and short-lived (15 minutes): it is asked when the person asks for the file, never kept in the
+// cache, so a link that expired is never opened
+export const useFiscalEvidenceLink = (
+  storeId: string
+): Write<{ id: string; kind: FiscalEvidenceKind }, MediaUrlsView> =>
+  useMutation({
+    mutationFn: input => fetchFiscalEvidenceUrls(apiClient, storeId, input.id, input.kind)
+  })

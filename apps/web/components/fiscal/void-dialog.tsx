@@ -118,6 +118,7 @@ function VoidForm({
         <p className="font-medium">{t('effectTitle')}</p>
         <ul className="text-muted-foreground list-disc pl-5">
           <li>{t('effect.authority', { total: money(document.totalCents) })}</li>
+          <li>{t('effect.consult')}</li>
           <li>{t('effect.irreversible')}</li>
           <li>{t('effect.replace')}</li>
         </ul>

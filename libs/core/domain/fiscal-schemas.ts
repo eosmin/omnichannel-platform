@@ -102,7 +102,14 @@ export const fiscalReceiverPatchSchema = z
   .refine(value => Object.keys(value).length > 0, { message: 'nothing to change' })
 export type FiscalReceiverPatchBody = z.output<typeof fiscalReceiverPatchSchema>
 
-export const voidFiscalDocumentSchema = z
+// A person's reason for a decision they sign (a void, an issuer change): one line, the same rule and the same limit for both
+const fiscalReasonBodySchema = z
   .object({ reason: text(FiscalLimits.VOID_REASON_MAX_LENGTH) })
   .strict()
+
+export const voidFiscalDocumentSchema = fiscalReasonBodySchema
 export type VoidFiscalDocumentBody = z.output<typeof voidFiscalDocumentSchema>
+
+// What the person checked with the authority of the first issuer: that the document is not there
+export const confirmFiscalIssuerChangeSchema = fiscalReasonBodySchema
+export type ConfirmFiscalIssuerChangeBody = z.output<typeof confirmFiscalIssuerChangeSchema>

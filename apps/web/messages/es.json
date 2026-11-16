@@ -7415,14 +7415,22 @@
         "replaceConfirm": "Hacer el documento de nuevo",
         "replaced": "El documento nuevo se hizo y quedó en cola.",
         "void": "Anular el documento",
-        "cancel": "Cancelar"
+        "cancel": "Cancelar",
+        "confirmIssuerChange": "El emisor cambió",
+        "replaceNoteConfirmTitle": "¿Hacer de nuevo esta nota de crédito?",
+        "replaceNoteConfirmDescription": "Se hace una nota de crédito nueva, con otro número, para la misma devolución, contra el documento de venta vigente, y se envía a la autoridad. No se puede deshacer.",
+        "replacedNote": "La nota de crédito nueva se hizo y quedó en cola."
       },
       "conflicts": {
         "has_credit_notes": "Este documento tiene notas de crédito que no están anuladas. Anula primero las notas.",
         "already_replaced": "Esta venta ya tiene un documento que la reemplaza.",
         "credit_note_receiver": "El receptor de una nota de crédito es el del documento que cancela: corrígelo allí.",
         "original_voided": "El documento de venta de esta nota de crédito fue anulado y aún no tiene reemplazo.",
-        "return_inconsistent": "Las unidades de la devolución todavía no encajan con la venta de la que vienen."
+        "return_inconsistent": "Las unidades de la devolución todavía no encajan con la venta de la que vienen.",
+        "no_issuer_change": "El emisor de este documento es con el que se hizo: envíalo de nuevo.",
+        "issuer_changed_in_flight": "Este documento puede estar en el emisor con el que se hizo, que cambió después. Confirma que no está allí para hacerlo de nuevo con el emisor nuevo.",
+        "note_not_voided": "Solo una nota de crédito anulada se puede hacer de nuevo.",
+        "note_already_replaced": "La devolución de esta nota de crédito ya tiene una nota de crédito vigente."
       },
       "receiver": {
         "title": "Corregir el receptor del documento N.º {number}",
@@ -7463,12 +7471,14 @@
         "effect": {
           "authority": "El documento de {total} se invalida ante la autoridad por medio del proveedor.",
           "irreversible": "Un documento anulado no se puede restaurar.",
-          "replace": "Para facturar la venta otra vez, haz de nuevo el documento de venta cuando esté anulado."
+          "replace": "Para facturar la venta otra vez, haz de nuevo el documento de venta cuando esté anulado.",
+          "consult": "Antes de enviarla, se pregunta a la autoridad si el documento ya está anulado; si lo está, se guarda su respuesta y nada se envía dos veces."
         },
         "reason": "Motivo",
         "problems": {
           "required": "Escribe el motivo.",
-          "tooLong": "El motivo es demasiado largo."
+          "tooLong": "El motivo es demasiado largo.",
+          "invalid": "Escribe el motivo en una línea, sin caracteres especiales."
         },
         "cancel": "Cancelar",
         "submit": "Anular el documento",
@@ -7536,6 +7546,58 @@
         "submit": "Guardar el emisor",
         "done": "El emisor se guardó.",
         "providerMissing": "El proveedor de este emisor ya no está en esta instalación. Elige otro para guardar."
+      },
+      "issuerChange": {
+        "title": "El emisor cambió: documento N.º {number}",
+        "description": "Este documento puede estar en el emisor con el que se hizo. Confirma solo después de comprobar con esa autoridad que no está allí.",
+        "formLabel": "Confirmar el cambio de emisor",
+        "effectTitle": "Qué pasa",
+        "madeWith": "Hecho con",
+        "now": "Emisor ahora",
+        "issuerLine": "{provider}, {environment}",
+        "nowLoading": "Cargando el emisor…",
+        "nowFailed": "No se pudo cargar el emisor.",
+        "effect": {
+          "again": "El documento se hace de nuevo con el emisor como está ahora y se envía a su autoridad.",
+          "number": "Es un envío nuevo: el documento conserva su número.",
+          "responsibility": "Te toca comprobar, con el contador, qué tiene la primera autoridad: el sistema no puede saberlo.",
+          "irreversible": "La confirmación no se puede deshacer y queda en el registro de auditoría con tu motivo."
+        },
+        "reason": "Lo que comprobaste con la primera autoridad",
+        "problems": {
+          "required": "Escribe lo que comprobaste.",
+          "tooLong": "El texto es demasiado largo.",
+          "invalid": "Escribe el motivo en una línea, sin caracteres especiales."
+        },
+        "cancel": "Cancelar",
+        "submit": "Confirmar el cambio",
+        "confirmTitle": "¿Hacer de nuevo el documento N.º {number} con el emisor nuevo?",
+        "confirmDescription": "Declaras que el documento no está en el primer emisor. Se envía al nuevo y no se puede deshacer. Tu motivo queda en el registro de auditoría.",
+        "confirm": "Confirmar el cambio",
+        "done": "El documento se confirmó y quedó en cola con el emisor nuevo.",
+        "nowNone": "No hay un emisor configurado. Configúralo antes de confirmar."
+      },
+      "evidence": {
+        "title": "Archivos de evidencia",
+        "description": "El sistema guarda estos archivos cuando la autoridad responde. Los enlaces son privados, duran 15 minutos y cada lectura queda en el registro de auditoría.",
+        "get": "Obtener el enlace",
+        "getAgain": "Obtener otro enlace",
+        "open": "Abrir {name}",
+        "missing": "Este archivo no está disponible. Puede que no se haya hecho o que aún no esté revisado.",
+        "kinds": {
+          "document": {
+            "label": "El documento",
+            "hint": "Como se construyó y se envió."
+          },
+          "response": {
+            "label": "Respuesta a la aceptación",
+            "hint": "Lo que respondió la autoridad cuando aceptó el documento."
+          },
+          "void_response": {
+            "label": "Respuesta a la anulación",
+            "hint": "Lo que respondió la autoridad cuando el documento se anuló."
+          }
+        }
       }
     }
   }

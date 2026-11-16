@@ -1,16 +1,16 @@
 import { z } from 'zod'
 
 import {
+  type ConfirmFiscalIssuerChangeBody,
+  confirmFiscalIssuerChangeSchema,
   FiscalEvidenceKind,
   fiscalIdSchema,
   type FiscalReceiverPatchBody,
   fiscalReceiverPatchSchema,
-  FiscalLimits,
   type ListFiscalDocumentsQuery,
   listFiscalDocumentsQuerySchema,
   type PutFiscalIssuerBody,
   putFiscalIssuerSchema,
-  singleLineText,
   type VoidFiscalDocumentBody,
   voidFiscalDocumentSchema
 } from '@platform/core/domain'
@@ -29,8 +29,5 @@ export type VoidDocumentBody = VoidFiscalDocumentBody
 
 export const evidenceKindSchema = z.enum(FiscalEvidenceKind)
 
-// What the person checked with the authority of the first issuer: that the document is not there
-export const confirmIssuerChangeSchema = z
-  .object({ reason: singleLineText(FiscalLimits.VOID_REASON_MAX_LENGTH, 1) })
-  .strict()
-export type ConfirmIssuerChangeBody = z.output<typeof confirmIssuerChangeSchema>
+export const confirmIssuerChangeSchema = confirmFiscalIssuerChangeSchema
+export type ConfirmIssuerChangeBody = ConfirmFiscalIssuerChangeBody

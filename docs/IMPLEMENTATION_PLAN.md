@@ -2110,10 +2110,28 @@ sale rows follow the ledger: a sale is out of a month's book only when its entry
     Step 4B.7b-4. (j) The e2e drives the issuer, the empty list and the read-only person; a case with a real document (a delivered sale, its void, its
     replacement) needs a sealed receiver and the provider's answer, and belongs to the end-to-end case of the month, Step 4B.9b-5. (k) The area is asked of the api through one store of the person (`bestFinanceMembership`); with `fiscal:*` in one store and `finance:*` in another, the pages of the other family may be asked through a store that lacks their permission (the api answers 403): the same limit as 4B.9a-4's, closed with it, Step 7.3. (l) The visual pass,
     Step 7.7.
-    **Step 4B.9b-2b (next, from `main` after #564; it is 4B.7b-2's "4B.9 PR D"):** the links of the evidence files of a document
-    (`fiscal.documents.evidence`), the confirmation dialog of an issuer change (`fiscal.documents.confirmIssuerChange`, HIGH tier) and the re-issue of a
-    voided credit note (the replace button of a note), plus the reason `issuer_changed_in_flight` of a retry. They are not drawn here because their routes
-    were left out to keep this PR under 40 files (they are mapped in the coverage map). **Step 4B.7b-4 (new, server, small):** (b), (c), (e), (g) and (i) above are one server PR: the sealed snapshot in the view, a
+    **Built in PR 4B.9b-2b (web: evidence, issuer change, credit-note re-issue):** the detail of a document (`/finance/fiscal`) now has (1) the
+    evidence files (`fiscal.documents.evidence`): one row per kind the state of the document has (two once accepted, three once voided, none
+    before), each asking the signed link only when the person clicks (a mutation, never cached: the link lives 15 minutes and the files hold the
+    receiver's data), a 404 read as "not ready yet"; there is no upload because the server has no route for it (the system makes the files);
+    (2) the dialog of `fiscal.documents.confirmIssuerChange` (HIGH tier `CONFIRM_FISCAL_ISSUER_CHANGE`): it shows the issuer the document was
+    made with against the issuer now (the ids the api sends, no provider named), what will happen, a typed reason and the second confirmation; it
+    opens by itself when a retry is refused with `issuer_changed_in_flight`, and as a button on a refused document that was sent and was refused
+    for `issuer_changed`; (3) the re-issue of a voided credit note (`replace` of a note) with its own words and the conflicts `note_not_voided`,
+    `note_already_replaced`, `no_issuer_change` and `issuer_changed_in_flight`; (4) the void dialog says that the authority is asked first whether the
+    document is already voided (`consultVoid` runs inside `POST .../void`; it has no route of its own). The body of the confirmation moved to
+    `libs/core/domain/fiscal-schemas.ts`, so its form is tested against the schema of the api.
+    **Decisions of 4B.9b-2b (rule 12):** (1) the confirmation button of an issuer change is shown from what the view says (`rejected`, `attempts > 0`,
+    `issuer_changed`) and from the refusal of a retry, not from a comparison of the issuers (the view carries no sealed snapshot: Step 4B.7b-4);
+    rejected: a button on every refused document, which the api would refuse with `no_issuer_change`; (2) a link is asked on click and shown as a
+    link, not opened by script (a pop-up blocker closes a `window.open` made after an `await`); rejected: opening it by script;
+    (3) the three kinds are offered from the status of the document, because the view has no flag of which files exist (a missing one answers 404).
+    **Left by 4B.9b-2b, each with its owner:** (a) the e2e case with a real document (a refused document, its evidence, the confirmation) needs
+    the sealed receiver and a stored file: Step 4B.9b-5, like the one of 4B.9b-2 (j); the logic is held by `document-rules.spec.ts`,
+    `issuer-change-form.spec.ts`, `fiscal-api.spec.ts` and `fiscal-schemas.spec.ts`; (b) the view should say which evidence files exist and
+    whether a void was recovered from the authority (`evidence` flags and `recoveredFromAuthority`): Step 4B.7b-4; (c) `validateReceiver` on the
+    receiver PATCH is not drawn: the api does not validate it yet (server debt of Step 4B.7b-4); (d) the visual pass: Step 7.7; (e) the button that makes a voided credit note again is shown for every voided note (the view does not say that its return already has a live note; the api answers `note_already_replaced`): closed by `replacedBy` in Step 4B.7b-4; (f) the issuer-change dialog and the void dialog share their reason rule (`void-form.ts`) but not their component: one reason-and-confirm dialog is a refactor for Step 7.7.
+    **Step 4B.7b-4 (new, server, small):** (b), (c), (e), (g) and (i) above are one server PR: the sealed snapshot in the view, a
     period filter, the address fields in the manifest, the `stuck` flag and an exact count, and `allowedActions`.
 - [ ] Every route of 4B.2 to 4B.8 drawn (`frontend-coverage-map`), i18n keys in `es` and `en`, Lucide icons only, no emoji, the mobile layout of the
       common actions (register an expense, receive a purchase), the e2e of the month (register, receive, sell, remit, close)
