@@ -1,7 +1,5 @@
-import { FinanceLimits } from '@platform/core/domain'
+import { dateToDay, dayToDate, FinanceLimits, isIsoDate } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
-
-import { isIsoDate } from './entry-rules'
 
 // The rules of the fiscal periods (TDD_18 §2.4, §5). Calendar months: a fiscal year that is not the calendar year is a
 // template setting later (TDD_18 §2.4, [ACCOUNTANT]), not a change here. Dates are 'YYYY-MM-DD' strings, which sort as
@@ -15,8 +13,7 @@ export interface PeriodBounds {
 }
 
 // An accounting date is a day: 'YYYY-MM-DD' and the DATE column's midnight UTC are one thing, converted in these two places
-export const dayToDate = (day: string): Date => new Date(`${day}T00:00:00Z`)
-export const dateToDay = (date: Date): string => date.toISOString().slice(0, 10)
+export { dateToDay, dayToDate }
 
 const pad = (value: number): string => String(value).padStart(2, '0')
 

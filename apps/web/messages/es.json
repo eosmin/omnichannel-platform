@@ -2951,6 +2951,9 @@
         "taxes": "Impuestos",
         "periods": "Periodos",
         "settings": "Ajustes",
+        "suppliers": "Proveedores",
+        "purchases": "Compras",
+        "payables": "Cuentas por pagar",
         "reconciliation": "Conciliación bancaria"
       }
     },
@@ -6038,6 +6041,317 @@
         "pricesIncludeTax": "Los precios de esta tienda ya incluyen el impuesto",
         "pricesIncludeTaxHint": "Solo cambia cómo se separa el impuesto del precio de lo que se venda desde ahora.",
         "saved": "Preferencia guardada."
+      }
+    },
+    "purchases": {
+      "status": {
+        "draft": "Borrador",
+        "ordered": "Pedida",
+        "partially_received": "Recibida en parte",
+        "received": "Recibida",
+        "closed": "Cerrada",
+        "cancelled": "Cancelada"
+      },
+      "suppliers": {
+        "title": "Proveedores",
+        "description": "A quién le compra el negocio, con las condiciones de pago de cada uno y lo que se le debe.",
+        "new": "Nuevo proveedor",
+        "search": "Buscar por nombre",
+        "includeInactive": "Mostrar proveedores apagados",
+        "empty": "Todavía no hay proveedores. Agrega el primero para empezar una orden de compra.",
+        "noMatch": "Ningún proveedor coincide con ese nombre.",
+        "inactive": "Apagado",
+        "details": "Detalle",
+        "edit": "Editar",
+        "loadMore": "Cargar más"
+      },
+      "supplierDetail": {
+        "title": "Proveedor",
+        "description": "Lo que se le debe a este proveedor y los pagos que se le han hecho.",
+        "terms": "Plazo de pago: {days, plural, one {# día} other {# días}}",
+        "billed": "Facturado",
+        "paid": "Pagado",
+        "open": "Por pagar",
+        "overdue": "Con vencimiento pasado",
+        "edit": "Editar proveedor",
+        "pay": "Registrar un pago",
+        "payments": "Pagos",
+        "noPayments": "No se ha hecho ningún pago a este proveedor.",
+        "voided": "Anulado",
+        "void": "Anular",
+        "loadMore": "Cargar más"
+      },
+      "supplierDialog": {
+        "createTitle": "Nuevo proveedor",
+        "createDescription": "El nombre es lo único obligatorio. El plazo de pago fija el día de vencimiento de cada factura.",
+        "editTitle": "Editar proveedor",
+        "editDescription": "Un cambio vale para lo que se compre desde ahora, nunca para las facturas que ya están en los libros.",
+        "formLabel": "Proveedor",
+        "cancel": "Cancelar",
+        "create": "Crear proveedor",
+        "save": "Guardar cambios",
+        "created": "Proveedor {name} creado.",
+        "saved": "Proveedor guardado.",
+        "fields": {
+          "name": "Nombre",
+          "taxId": "Identificación tributaria (NIT o NRC)",
+          "taxIdHint": "Se escribe como la muestra el documento del proveedor. No se revisa su forma.",
+          "contactName": "Persona de contacto",
+          "email": "Correo",
+          "phone": "Teléfono",
+          "paymentTermsDays": "Plazo de pago (días)",
+          "paymentTermsHint": "Días entre recibir la mercadería y el día de vencimiento de la factura. 0 es pago al recibir.",
+          "payableAccount": "Cuenta de lo que se le debe",
+          "payableAccountHint": "Una cuenta de pasivo. No puede cambiar cuando el proveedor ya tiene facturas.",
+          "payableAccountDefault": "La de la organización",
+          "active": "Activo",
+          "activeHint": "Un proveedor apagado no se ofrece para órdenes nuevas; sus facturas y pagos se quedan."
+        },
+        "problems": {
+          "name": "Escribe el nombre, de hasta 150 caracteres.",
+          "taxId": "La identificación tributaria es demasiado larga.",
+          "contactName": "El nombre del contacto es demasiado largo.",
+          "email": "Eso no es un correo.",
+          "phone": "El teléfono es demasiado largo.",
+          "paymentTermsDays": "Escribe un número entero de días, de 0 a 365."
+        }
+      },
+      "payment": {
+        "title": "Registrar un pago",
+        "description": "Un pago a {supplier}. Se registra en los libros y baja lo que se le debe.",
+        "formLabel": "Pago a un proveedor",
+        "owedInAll": "Se le debe a este proveedor en total: {amount}.",
+        "owedOnBill": "Factura {bill}: quedan {amount} por pagar.",
+        "needsBooks": "Elegir la cuenta de donde sale el dinero necesita el permiso de leer los libros (finance:view). Pídelo a un administrador.",
+        "fields": {
+          "account": "Se paga desde",
+          "accountHint": "Una cuenta de efectivo, banco o billetera.",
+          "pickAccount": "Elige una cuenta…",
+          "amount": "Monto (USD)",
+          "amountHint": "Nunca más de lo que está por pagar.",
+          "paidOn": "Pagado el",
+          "dateHint": "Año-mes-día, por ejemplo 2026-11-16.",
+          "reference": "Referencia (opcional)"
+        },
+        "problems": {
+          "paidFromAccountId": "Elige la cuenta de donde sale el dinero.",
+          "amount": "Escribe un monto mayor que 0 y no mayor que lo que está por pagar, con hasta dos decimales.",
+          "paidOn": "Escribe un día real como año-mes-día.",
+          "reference": "La referencia es demasiado larga."
+        },
+        "cancel": "Cancelar",
+        "submit": "Registrar pago",
+        "done": "Pago a {supplier} registrado.",
+        "accountsFailed": "No se pudieron leer las cuentas. Cierra esto e intenta de nuevo."
+      },
+      "voidPayment": {
+        "title": "Anular este pago",
+        "description": "El pago queda en el diario y se registra un asiento de reverso. La factura vuelve a quedar por pagar.",
+        "reason": "Motivo",
+        "submit": "Anular pago",
+        "confirmTitle": "¿Anular este pago?",
+        "confirmDescription": "No se puede deshacer: el reverso queda en los libros para siempre y la factura vuelve a quedar por pagar.",
+        "confirm": "Anular pago",
+        "done": "Pago anulado."
+      },
+      "reason": {
+        "required": "Escribe el motivo.",
+        "tooLong": "El motivo es demasiado largo.",
+        "cancel": "Cancelar"
+      },
+      "picker": {
+        "search": "Agregar un producto",
+        "chooseVariant": "{name} tiene variantes. Elige la que se compra.",
+        "hint": "Escribe al menos {count} letras del nombre o del SKU.",
+        "failed": "La búsqueda falló. Intenta de nuevo.",
+        "searching": "Buscando…",
+        "none": "Ningún producto coincide."
+      },
+      "lines": {
+        "formLabel": "Líneas de la orden de compra",
+        "saved": "Líneas guardadas.",
+        "empty": "Todavía no hay líneas. Busca un producto para agregar la primera.",
+        "remove": "Quitar {name}",
+        "quantity": "Unidades",
+        "unitCost": "Costo de una unidad (USD)",
+        "taxRate": "Impuesto",
+        "noTax": "Sin impuesto",
+        "wrongQuantity": "Escribe un número entero de unidades, 1 o más.",
+        "wrongCost": "Escribe el costo con hasta dos decimales.",
+        "subtotal": "Subtotal",
+        "tax": "Impuesto",
+        "total": "Total",
+        "taxUnknown": "Al recibir",
+        "save": "Guardar líneas",
+        "percent": "{percent} %",
+        "tooManyLines": "Una orden de compra tiene como máximo {max} líneas."
+      },
+      "newOrder": {
+        "title": "Nueva orden de compra",
+        "description": "Se crea como borrador. Las líneas se eligen en la página siguiente, y nada se le promete al proveedor hasta que la marques como pedida.",
+        "formLabel": "Nueva orden de compra",
+        "fields": {
+          "supplier": "Proveedor",
+          "pickSupplier": "Elige un proveedor…",
+          "warehouse": "Bodega",
+          "pickWarehouse": "Elige una bodega…",
+          "warehouseHint": "Donde se recibirá la mercadería.",
+          "expectedOn": "Se espera el (opcional)",
+          "dateHint": "Año-mes-día, por ejemplo 2026-11-16.",
+          "notes": "Notas (opcional)"
+        },
+        "problems": {
+          "supplierId": "Elige el proveedor.",
+          "warehouseId": "Elige la bodega.",
+          "expectedOn": "Escribe un día real como año-mes-día.",
+          "notes": "Las notas son demasiado largas."
+        },
+        "loadFailed": "No se pudieron leer los proveedores o las bodegas. Cierra esto e intenta de nuevo.",
+        "cancel": "Cancelar",
+        "create": "Crear borrador",
+        "created": "Orden de compra {number} creada."
+      },
+      "orders": {
+        "title": "Compras",
+        "description": "Las órdenes a proveedores, con lo que llegó y lo que se pagó.",
+        "new": "Nueva orden de compra",
+        "filters": {
+          "status": "Estado",
+          "allStatuses": "Todas",
+          "supplier": "Proveedor",
+          "allSuppliers": "Todos"
+        },
+        "empty": "No hay órdenes de compra con este filtro.",
+        "unknownSupplier": "Proveedor desconocido",
+        "summary": "{lines, plural, one {# línea} other {# líneas}} · {date}",
+        "open": "Abrir",
+        "loadMore": "Cargar más"
+      },
+      "order": {
+        "title": "Orden de compra",
+        "back": "Compras",
+        "summary": "{supplier} · hacia {warehouse}",
+        "notOrdered": "Todavía no pedida",
+        "orderedOn": "Pedida el {date}",
+        "expectedOn": "se espera el {date}",
+        "markOrdered": "Marcar como pedida",
+        "markedOrdered": "Marcada como pedida.",
+        "receive": "Recibir mercadería",
+        "close": "Cerrar con faltante",
+        "cancel": "Cancelar orden",
+        "closed": "Orden de compra cerrada.",
+        "cancelled": "Orden de compra cancelada.",
+        "linesTitle": "Líneas",
+        "lineDetail": "{received} de {ordered} recibidas · {cost} c/u · {tax}",
+        "noTax": "sin impuesto",
+        "subtotal": "Subtotal",
+        "tax": "Impuesto",
+        "taxUnknown": "Al recibir",
+        "total": "Total",
+        "billsTitle": "Facturas",
+        "noBills": "Todavía no se ha recibido nada, así que no hay factura.",
+        "noDocument": "Sin documento del proveedor",
+        "billDates": "Recibida el {received} · con vencimiento el {due}",
+        "billMoney": "Subtotal {subtotal} · impuesto {tax} · total {total} · por pagar {open}",
+        "taxNotCredited": "impuesto no acreditado",
+        "pay": "Pagar",
+        "paymentsTitle": "Pagos",
+        "noPayments": "No se ha hecho ningún pago en esta orden.",
+        "voided": "anulado",
+        "loadMore": "Cargar más",
+        "unknownSupplier": "Proveedor desconocido",
+        "unknownWarehouse": "Bodega desconocida",
+        "percent": "{percent} %"
+      },
+      "receive": {
+        "title": "Recibir {number}",
+        "description": "Di cuántas unidades de cada línea llegan ahora. El costo y el impuesto son los de la orden. Esto crea la factura, mete las unidades a la bodega y registra el asiento.",
+        "formLabel": "Recibir mercadería",
+        "progress": "{received} de {ordered} recibidas",
+        "problems": {
+          "receivedOn": "Escribe un día real como año-mes-día.",
+          "supplierDocumentNumber": "El número de documento es demasiado largo.",
+          "quantity": "Escribe un número entero de 0 a {max}.",
+          "nothing": "Escribe las unidades de al menos una línea."
+        },
+        "fields": {
+          "receivedOn": "Recibida el",
+          "dateHint": "Año-mes-día, por ejemplo 2026-11-16.",
+          "document": "Número del documento del proveedor",
+          "documentHint": "El número de la factura o del comprobante de crédito fiscal. El impuesto se acredita solo contra un documento.",
+          "creditTax": "Acreditar el impuesto como IVA de compras",
+          "creditTaxHint": "Con la casilla apagada, o sin número de documento, el impuesto se registra como un costo."
+        },
+        "subtotal": "Subtotal",
+        "tax": "Impuesto",
+        "taxUnknown": "Se calcula al guardar",
+        "total": "Total",
+        "cancel": "Cancelar",
+        "submit": "Recibir",
+        "done": "Mercadería de {number} recibida."
+      },
+      "closeOrder": {
+        "reason": "Motivo (opcional)",
+        "close": {
+          "title": "Cerrar {number} con faltante",
+          "description": "Las unidades que nunca llegaron se dan por perdidas y la orden termina. Lo que se recibió queda en los libros.",
+          "submit": "Cerrar orden"
+        },
+        "cancel": {
+          "title": "Cancelar {number}",
+          "description": "Solo se puede cancelar una orden de la que nunca se recibió nada.",
+          "submit": "Cancelar orden"
+        }
+      },
+      "payables": {
+        "title": "Cuentas por pagar",
+        "description": "Cada factura con algo por pagar, con su día de vencimiento, y lo que se le debe a cada proveedor.",
+        "filters": {
+          "supplier": "Proveedor",
+          "allSuppliers": "Todos",
+          "overdueOnly": "Solo facturas con vencimiento pasado"
+        },
+        "unknownSupplier": "Proveedor",
+        "totals": "Se debe {open} · con vencimiento pasado {overdue}",
+        "empty": "No se debe nada.",
+        "overdueDays": "{days, plural, one {# día} other {# días}} de atraso",
+        "billLine": "Documento {document} · con vencimiento el {due}",
+        "noDocument": "ninguno",
+        "open": "{open} por pagar de {total}",
+        "openOrder": "Abrir orden",
+        "pay": "Pagar"
+      },
+      "conflicts": {
+        "supplier_limit": "La organización llegó al número de proveedores que puede tener.",
+        "supplier_name_in_use": "Otro proveedor ya tiene ese nombre.",
+        "supplier_inactive": "Ese proveedor está apagado. Enciéndelo para comprarle.",
+        "supplier_payable_account_locked": "La cuenta de lo que se le debe no puede cambiar: este proveedor ya tiene facturas o pagos.",
+        "order_not_draft": "Solo un borrador se puede cambiar.",
+        "order_needs_lines": "La orden necesita al menos una línea.",
+        "order_has_receipts": "Una orden de la que ya se recibió mercadería no se puede cancelar.",
+        "purchase_key_reused": "Esta solicitud ya se envió con otro contenido. Cierra el formulario y empieza de nuevo.",
+        "line_reference_invalid": "Un producto, variante o impuesto de una línea no se puede usar (puede estar apagado).",
+        "product_not_tracked": "Una línea nombra un producto cuyo inventario no se lleva: una compra recibe unidades.",
+        "line_store_not_visible": "Una línea es de una tienda a la que no perteneces.",
+        "document_number_in_use": "Ese número de documento del proveedor ya se usó en otra orden.",
+        "payment_exceeds_balance": "El pago es mayor que lo que se le debe a este proveedor.",
+        "payment_exceeds_receipt": "El pago es mayor que lo que está por pagar de esa factura.",
+        "payment_already_voided": "Este pago ya estaba anulado.",
+        "entry_owned_by_purchase": "Este asiento es de una compra: cámbialo desde la compra."
+      },
+      "rules": {
+        "quantity": "Las unidades de una línea no son válidas.",
+        "unit_cost": "El costo de una línea no es válido.",
+        "line_total_too_big": "Una línea pasa del monto mayor que puede tener.",
+        "receipt_total_too_big": "La factura pasa del monto mayor que aceptan los libros.",
+        "no_lines": "No hay nada que recibir.",
+        "tax_rate_inactive": "Un impuesto de una línea está apagado.",
+        "date_in_future": "El día está demasiado adelante.",
+        "creditable_needs_document": "El impuesto se acredita solo con el número del documento del proveedor.",
+        "amount": "El monto no es válido.",
+        "bill_required": "Elige la factura de este pago.",
+        "payable_account_type": "La cuenta de lo que se debe tiene que ser de pasivo.",
+        "from_not_cash": "La cuenta de donde sale el dinero tiene que ser de efectivo, banco o billetera."
       }
     },
     "reconciliation": {
