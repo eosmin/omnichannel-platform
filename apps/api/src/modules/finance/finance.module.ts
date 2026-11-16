@@ -10,11 +10,15 @@ import { FinanceAccountsService } from './finance-accounts.service'
 import { FinanceBankImportsService } from './finance-bank-imports.service'
 import { FinanceBankProfilesService } from './finance-bank-profiles.service'
 import { FinanceBankController } from './finance-bank.controller'
+import { FinanceChainService } from './finance-chain.service'
+import { FinanceCloseService } from './finance-close.service'
 import { FinanceEntriesService } from './finance-entries.service'
 import { FinancePeriodsService } from './finance-periods.service'
 import { FinancePostingListener } from './finance-posting.listener'
 import { FinancePostingQueue } from './finance-posting.queue'
 import { FinanceReconciliationService } from './finance-reconciliation.service'
+import { FinanceReportsController } from './finance-reports.controller'
+import { FinanceReportsService } from './finance-reports.service'
 import { FinanceSettingsService } from './finance-settings.service'
 import { FinanceSetupService } from './finance-setup.service'
 import { FinanceStoreTaxSettingsService } from './finance-store-tax-settings.service'
@@ -29,7 +33,12 @@ import { FinanceController } from './finance.controller'
 // is LedgerService of libs/core/finance; the database, audit and event-bus modules are the global ones of the app.
 @Module({
   imports: [LedgerModule, MediaModule, QueuesPlatformModule, TenancyModule],
-  controllers: [FinanceController, FinanceTransactionsController, FinanceBankController],
+  controllers: [
+    FinanceController,
+    FinanceTransactionsController,
+    FinanceBankController,
+    FinanceReportsController
+  ],
   providers: [
     FinanceSetupService,
     FinanceSettingsService,
@@ -41,6 +50,9 @@ import { FinanceController } from './finance.controller'
     FinanceTransactionsService,
     FinanceTransactionDocumentsService,
     FinanceVatReportService,
+    FinanceCloseService,
+    FinanceReportsService,
+    FinanceChainService,
     FinanceBankProfilesService,
     FinanceBankImportsService,
     FinanceReconciliationService,

@@ -338,3 +338,20 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
       await tx.$executeRawUnsafe(`ALTER TABLE ${table} ENABLE TRIGGER USER`)
   })
 }
+
+// What someone with the owner role of the database could do: edit the ledger with its triggers off, inside one transaction. The chain must
+// see it anyway (TDD_18 §11); the triggers are on again before it commits
+export async function tamperWithLedger(
+  owner: OwnerClient,
+  statements: readonly string[]
+): Promise<void> {
+  const tables = ['journal_entries', 'journal_lines', 'finance_settings']
+  // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+  await owner.$transaction(async tx => {
+    for (const table of tables)
+      await tx.$executeRawUnsafe(`ALTER TABLE ${table} DISABLE TRIGGER USER`)
+    for (const statement of statements) await tx.$executeRawUnsafe(statement)
+    for (const table of tables)
+      await tx.$executeRawUnsafe(`ALTER TABLE ${table} ENABLE TRIGGER USER`)
+  })
+}

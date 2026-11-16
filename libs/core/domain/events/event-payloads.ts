@@ -334,6 +334,15 @@ export interface FinanceEntryPayload {
   actor: ActorRef
 }
 
+// A month was closed or reopened (TDD_18 §5): which one and who did it. The reason of a reopen and the hash it froze stay in the period row
+export interface FinancePeriodPayload {
+  organizationId: string
+  periodId: string
+  year: number
+  month: number
+  actor: ActorRef
+}
+
 // An automatic entry failed (TDD_18 §6.1): the source, the event of it and a reason code, never an amount
 export interface FinancePostingFailedPayload {
   organizationId: string
@@ -614,6 +623,8 @@ export interface DomainEventPayloads {
   [Events.FINANCE_ENTRY_POSTED]: FinanceEntryPayload
   [Events.FINANCE_ENTRY_REVERSED]: FinanceEntryPayload
   [Events.FINANCE_POSTING_FAILED]: FinancePostingFailedPayload
+  [Events.FINANCE_PERIOD_CLOSED]: FinancePeriodPayload
+  [Events.FINANCE_PERIOD_REOPENED]: FinancePeriodPayload
   [Events.PURCHASE_ORDER_RECEIVED]: PurchaseOrderReceivedPayload
   [Events.WEBHOOK_AUTO_DISABLED]: WebhookAutoDisabledPayload
   [Events.PLUGIN_ERROR]: PluginErrorPayload

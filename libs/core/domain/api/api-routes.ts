@@ -183,7 +183,15 @@ export const ApiRoutes = {
     // The VAT report of the organization for a range of days (TDD_18 §7): the JSON, and the same rows as a CSV
     reports: {
       vat: '/finance/reports/vat',
-      vatCsv: '/finance/reports/vat.csv'
+      vatCsv: '/finance/reports/vat.csv',
+      // The trial balance of a period (debits and credits by account), and the ledger of one account with its running balance (Step 4B.8)
+      trialBalance: '/finance/reports/trial-balance',
+      ledger: '/finance/reports/ledger',
+      // What the auditor takes out (TDD_18 §10, §11): CSV files, audited, and the check of the hash chain
+      trialBalanceCsv: '/finance/reports/trial-balance.csv',
+      ledgerCsv: '/finance/reports/ledger.csv',
+      journalCsv: '/finance/reports/journal.csv',
+      verifyChain: '/finance/reports/verify-chain'
     },
     // The tax preferences of the store of X-Store-Id: GET reads them, PATCH changes whether its prices include the tax
     storeTaxSettings: '/finance/store-tax-settings',
@@ -198,7 +206,10 @@ export const ApiRoutes = {
       list: '/finance/periods',
       // POST opens the period of a month before any entry needs it
       open: '/finance/periods',
-      byId: (id: string) => `/finance/periods/${id}`
+      byId: (id: string) => `/finance/periods/${id}`,
+      // POST closes the month (the preconditions of TDD_18 §5.1); POST reopens the latest closed one with a reason (§5.3)
+      close: (id: string) => `/finance/periods/${id}/close`,
+      reopen: (id: string) => `/finance/periods/${id}/reopen`
     },
     entries: {
       list: '/finance/entries',

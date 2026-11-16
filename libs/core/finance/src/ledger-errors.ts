@@ -13,6 +13,13 @@ type Refusal =
   | typeof ErrorCodes.FINANCE_ENTRY_ALREADY_REVERSED
   | typeof ErrorCodes.FINANCE_ENTRY_RECONCILED
   | typeof ErrorCodes.FINANCE_SETUP_REQUIRED
+  | typeof ErrorCodes.FINANCE_CLOSE_PENDING_POSTINGS
+  | typeof ErrorCodes.FINANCE_CLOSE_PREVIOUS_OPEN
+  | typeof ErrorCodes.FINANCE_CLOSE_NOT_ENDED
+  | typeof ErrorCodes.FINANCE_BALANCE_MISMATCHES
+  | typeof ErrorCodes.FINANCE_PERIOD_NOT_CLOSED
+  | typeof ErrorCodes.FINANCE_PERIOD_ALREADY_CLOSED
+  | typeof ErrorCodes.FINANCE_REOPEN_NOT_LATEST
 
 const MESSAGES: Record<Refusal, string> = {
   [ErrorCodes.FINANCE_PERIOD_CLOSED]: 'the period of the entry is closed',
@@ -22,7 +29,16 @@ const MESSAGES: Record<Refusal, string> = {
   [ErrorCodes.FINANCE_ENTRY_ALREADY_REVERSED]: 'the entry was reversed already',
   [ErrorCodes.FINANCE_ENTRY_RECONCILED]:
     'the entry is reconciled with a bank statement: take the match back first',
-  [ErrorCodes.FINANCE_SETUP_REQUIRED]: 'the organization has no finance settings yet'
+  [ErrorCodes.FINANCE_SETUP_REQUIRED]: 'the organization has no finance settings yet',
+  [ErrorCodes.FINANCE_CLOSE_PENDING_POSTINGS]:
+    'a posting is pending or failed: resolve it before closing',
+  [ErrorCodes.FINANCE_CLOSE_PREVIOUS_OPEN]:
+    'the previous period is still open: closes are in order',
+  [ErrorCodes.FINANCE_CLOSE_NOT_ENDED]: 'the period has not ended yet',
+  [ErrorCodes.FINANCE_BALANCE_MISMATCHES]: 'the balances of the period do not match the journal',
+  [ErrorCodes.FINANCE_PERIOD_NOT_CLOSED]: 'the period is not closed',
+  [ErrorCodes.FINANCE_PERIOD_ALREADY_CLOSED]: 'the period is closed already',
+  [ErrorCodes.FINANCE_REOPEN_NOT_LATEST]: 'only the latest closed period can be reopened'
 }
 
 export const financeRefusal = (

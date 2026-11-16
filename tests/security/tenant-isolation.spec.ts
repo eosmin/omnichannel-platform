@@ -1562,7 +1562,11 @@ const resources: IsolationResource[] = [
     scope: 'organization',
     readPath: ApiRoutes.finance.periods.byId,
     listPath: ApiRoutes.finance.periods.list,
-    untouched: () => Promise.resolve(true),
+    // The change a route can try is the close, which must never freeze a month of another organization's books
+    modify: { path: ApiRoutes.finance.periods.close, method: 'post', body: {} },
+    untouched: async (owner, id) =>
+      (await owner.fiscalPeriod.findUniqueOrThrow({ where: { id }, select: { status: true } }))
+        .status === 'open',
     creation: {
       path: ApiRoutes.finance.periods.open,
       body: () => ({ year: nextOpenedYear(), month: 1 }),
