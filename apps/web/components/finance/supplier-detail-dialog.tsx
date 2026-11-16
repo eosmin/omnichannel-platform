@@ -67,7 +67,8 @@ function Detail({
   const locale = useLocale()
   const format = useFormatter()
   const { storeId, can } = useStore()
-  const canPay = can(ClientPermissions.FINANCE_MOVE_MONEY)
+  // Paying needs the chart (the account the money leaves), which is finance:view
+  const canPay = can(ClientPermissions.FINANCE_MOVE_MONEY) && can(ClientPermissions.FINANCE_VIEW)
   const supplier = useSupplier(storeId, supplierId)
   const balance = useSupplierBalance(storeId, supplierId)
   const payments = useSupplierPayments(storeId, supplierId)

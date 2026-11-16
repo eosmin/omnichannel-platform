@@ -1,9 +1,10 @@
 'use client'
 
 import { useLocale, useTranslations } from 'next-intl'
-import { type FormEvent, type ReactElement, useMemo, useState } from 'react'
+import { type FormEvent, type ReactElement, useEffect, useMemo, useState } from 'react'
 
 import { ClientPermissions } from '@platform/core/auth'
+import { PurchaseLimits } from '@platform/core/domain'
 
 import { cashAccountsOf } from '../../lib/finance/account-form'
 import { moneyText } from '../../lib/finance/money'
@@ -54,8 +55,16 @@ export function PaymentDialog({
   onOpenChange: (open: boolean) => void
 }): ReactElement {
   const t = useTranslations('finance.purchases.payment')
+  // A payment on its way is never walked away from: closing the box would lose its answer and its key, and the next try would pay twice
+  const [busy, setBusy] = useState(false)
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={next => {
+        if (!next && busy) return
+        onOpenChange(next)
+      }}
+    >
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{t('title')}</DialogTitle>
@@ -67,6 +76,7 @@ export function PaymentDialog({
           <PaymentForm
             key={target.bill?.receiptId ?? target.supplierId}
             target={target}
+            onBusy={setBusy}
             onDone={() => onOpenChange(false)}
           />
         ) : null}
@@ -77,9 +87,11 @@ export function PaymentDialog({
 
 function PaymentForm({
   target,
+  onBusy,
   onDone
 }: {
   target: PaymentTarget
+  onBusy: (busy: boolean) => void
   onDone: () => void
 }): ReactElement {
   const t = useTranslations('finance.purchases.payment')
@@ -103,6 +115,10 @@ function PaymentForm({
   const [wrong, setWrong] = useState<PaymentField | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
   const pending = payBySupplier.isPending || payByOrder.isPending
+  useEffect(() => {
+    onBusy(pending)
+    return () => onBusy(false)
+  }, [pending, onBusy])
   const choices = useMemo(() => cashAccountsOf(accounts.data ?? [], []), [accounts.data])
 
   const set = (patch: Partial<PaymentDraft>): void => {
@@ -184,7 +200,7 @@ function PaymentForm({
       <TextField
         label={t('fields.reference')}
         value={draft.reference}
-        maxLength={100}
+        maxLength={PurchaseLimits.REFERENCE_MAX_LENGTH}
         disabled={pending}
         problem={problemText('reference')}
         onChange={reference => set({ reference })}

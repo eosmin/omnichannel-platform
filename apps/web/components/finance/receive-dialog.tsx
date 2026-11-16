@@ -1,10 +1,10 @@
 'use client'
 
 import { useLocale, useTranslations } from 'next-intl'
-import { type FormEvent, type ReactElement, useId, useMemo, useState } from 'react'
+import { type FormEvent, type ReactElement, useEffect, useId, useMemo, useState } from 'react'
 
 import type { FinanceTaxRateView, PurchaseOrderView } from '@platform/api-client'
-import { TaxRounding } from '@platform/core/domain'
+import { FinanceLimits, TaxRounding } from '@platform/core/domain'
 
 import { moneyText } from '../../lib/finance/money'
 import {
@@ -52,8 +52,16 @@ export function ReceiveDialog({
   onOpenChange: (open: boolean) => void
 }): ReactElement {
   const t = useTranslations('finance.purchases.receive')
+  // A receipt on its way is never walked away from: closing the box would lose its answer
+  const [busy, setBusy] = useState(false)
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={next => {
+        if (!next && busy) return
+        onOpenChange(next)
+      }}
+    >
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{t('title', { number: order.number })}</DialogTitle>
@@ -65,6 +73,7 @@ export function ReceiveDialog({
             labels={labels}
             taxRates={taxRates}
             rounding={rounding}
+            onBusy={setBusy}
             onDone={() => onOpenChange(false)}
           />
         ) : null}
@@ -78,12 +87,14 @@ function ReceiveForm({
   labels,
   taxRates,
   rounding,
+  onBusy,
   onDone
 }: {
   order: PurchaseOrderView
   labels: ReadonlyMap<string, string>
   taxRates: readonly FinanceTaxRateView[] | null
   rounding: TaxRounding | null
+  onBusy: (busy: boolean) => void
   onDone: () => void
 }): ReactElement {
   const t = useTranslations('finance.purchases.receive')
@@ -101,6 +112,10 @@ function ReceiveForm({
   const [wrong, setWrong] = useState<{ field: ReceiveField; lineId: string | null } | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
 
+  useEffect(() => {
+    onBusy(receive.isPending)
+    return () => onBusy(false)
+  }, [receive.isPending, onBusy])
   const rateOf = useMemo(
     () => new Map((taxRates ?? []).map(rate => [rate.id, rate.rateBps])),
     [taxRates]
@@ -199,7 +214,7 @@ function ReceiveForm({
       <TextField
         label={t('fields.document')}
         value={draft.supplierDocumentNumber}
-        maxLength={100}
+        maxLength={FinanceLimits.DOCUMENT_NUMBER_MAX_LENGTH}
         disabled={receive.isPending}
         hint={t('fields.documentHint')}
         problem={problemText(ReceiveFields.DOCUMENT)}
@@ -209,8 +224,8 @@ function ReceiveForm({
         <input
           type="checkbox"
           className="mt-1"
-          checked={draft.creditTax}
-          disabled={receive.isPending}
+          checked={draft.creditTax && draft.supplierDocumentNumber.trim() !== ''}
+          disabled={receive.isPending || draft.supplierDocumentNumber.trim() === ''}
           onChange={event => set({ creditTax: event.target.checked })}
         />
         <span>

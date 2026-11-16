@@ -1,10 +1,10 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { type FormEvent, type ReactElement, useMemo, useState } from 'react'
+import { type FormEvent, type ReactElement, useEffect, useMemo, useState } from 'react'
 
 import type { FinanceAccountView, SupplierView } from '@platform/api-client'
-import { AccountType } from '@platform/core/domain'
+import { AccountType, PurchaseLimits } from '@platform/core/domain'
 
 import { postableAccountsOf } from '../../lib/finance/account-form'
 import {
@@ -42,8 +42,15 @@ export function SupplierDialog({
   onOpenChange: (open: boolean) => void
 }): ReactElement {
   const t = useTranslations('finance.purchases.supplierDialog')
+  const [busy, setBusy] = useState(false)
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={next => {
+        if (!next && busy) return
+        onOpenChange(next)
+      }}
+    >
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{supplier === null ? t('createTitle') : t('editTitle')}</DialogTitle>
@@ -56,6 +63,7 @@ export function SupplierDialog({
             key={supplier?.id ?? 'new'}
             supplier={supplier}
             accounts={accounts}
+            onBusy={setBusy}
             onDone={() => onOpenChange(false)}
           />
         ) : null}
@@ -67,10 +75,12 @@ export function SupplierDialog({
 function SupplierForm({
   supplier,
   accounts,
+  onBusy,
   onDone
 }: {
   supplier: SupplierView | null
   accounts: readonly FinanceAccountView[] | null
+  onBusy: (busy: boolean) => void
   onDone: () => void
 }): ReactElement {
   const t = useTranslations('finance.purchases.supplierDialog')
@@ -85,6 +95,10 @@ function SupplierForm({
   const [wrong, setWrong] = useState<SupplierField | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
   const pending = create.isPending || update.isPending
+  useEffect(() => {
+    onBusy(pending)
+    return () => onBusy(false)
+  }, [pending, onBusy])
   const valid = supplierProblem(draft) === null
   const changes = supplier === null || !valid ? null : updateSupplierInputOf(supplier, draft)
   const changed = supplier === null || changes === null || Object.keys(changes).length > 0
@@ -149,7 +163,7 @@ function SupplierForm({
       <TextField
         label={t('fields.name')}
         value={draft.name}
-        maxLength={150}
+        maxLength={PurchaseLimits.SUPPLIER_NAME_MAX_LENGTH}
         disabled={pending}
         problem={problemText(SupplierFields.NAME)}
         onChange={name => set({ name })}
@@ -157,7 +171,7 @@ function SupplierForm({
       <TextField
         label={t('fields.taxId')}
         value={draft.taxId}
-        maxLength={50}
+        maxLength={PurchaseLimits.SUPPLIER_TAX_ID_MAX_LENGTH}
         disabled={pending}
         hint={t('fields.taxIdHint')}
         problem={problemText(SupplierFields.TAX_ID)}
@@ -166,7 +180,7 @@ function SupplierForm({
       <TextField
         label={t('fields.contactName')}
         value={draft.contactName}
-        maxLength={150}
+        maxLength={PurchaseLimits.SUPPLIER_CONTACT_MAX_LENGTH}
         disabled={pending}
         problem={problemText(SupplierFields.CONTACT_NAME)}
         onChange={contactName => set({ contactName })}
@@ -174,7 +188,7 @@ function SupplierForm({
       <TextField
         label={t('fields.email')}
         value={draft.email}
-        maxLength={254}
+        maxLength={PurchaseLimits.SUPPLIER_EMAIL_MAX_LENGTH}
         disabled={pending}
         problem={problemText(SupplierFields.EMAIL)}
         onChange={email => set({ email })}
@@ -182,7 +196,7 @@ function SupplierForm({
       <TextField
         label={t('fields.phone')}
         value={draft.phone}
-        maxLength={40}
+        maxLength={PurchaseLimits.SUPPLIER_PHONE_MAX_LENGTH}
         disabled={pending}
         problem={problemText(SupplierFields.PHONE)}
         onChange={phone => set({ phone })}

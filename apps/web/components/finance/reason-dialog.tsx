@@ -1,7 +1,7 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { type FormEvent, type ReactElement, useState } from 'react'
+import { type FormEvent, type ReactElement, useEffect, useState } from 'react'
 
 import { type DestructiveAction, FinanceLimits } from '@platform/core/domain'
 
@@ -41,8 +41,15 @@ export function ReasonDialog({
   // Rejects with the error to show; resolves when it is done
   onSubmit: (reason: string) => Promise<void>
 }): ReactElement {
+  const [busy, setBusy] = useState(false)
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={next => {
+        if (!next && busy) return
+        onOpenChange(next)
+      }}
+    >
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{copy.title}</DialogTitle>
@@ -54,6 +61,7 @@ export function ReasonDialog({
             required={required}
             action={action}
             onSubmit={onSubmit}
+            onBusy={setBusy}
             onDone={() => onOpenChange(false)}
           />
         ) : null}
@@ -67,12 +75,14 @@ function ReasonForm({
   required,
   action,
   onSubmit,
+  onBusy,
   onDone
 }: {
   copy: ReasonDialogCopy
   required: boolean
   action?: DestructiveAction
   onSubmit: (reason: string) => Promise<void>
+  onBusy: (busy: boolean) => void
   onDone: () => void
 }): ReactElement {
   const t = useTranslations('finance.purchases.reason')
@@ -83,6 +93,11 @@ function ReasonForm({
   const [wrong, setWrong] = useState(false)
   const [refusal, setRefusal] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+
+  useEffect(() => {
+    onBusy(pending)
+    return () => onBusy(false)
+  }, [pending, onBusy])
 
   const send = async (): Promise<void> => {
     if (!guard.enter()) return

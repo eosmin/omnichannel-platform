@@ -2,7 +2,16 @@
 
 import { Trash2 } from 'lucide-react'
 import { useLocale, useTranslations } from 'next-intl'
-import { type FormEvent, type ReactElement, type ReactNode, useId, useMemo, useState } from 'react'
+import {
+  type FormEvent,
+  type ReactElement,
+  type ReactNode,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 
 import type { FinanceTaxRateView, PurchaseOrderView } from '@platform/api-client'
 import { TaxRounding } from '@platform/core/domain'
@@ -37,12 +46,15 @@ export function OrderLinesEditor({
   order,
   labels,
   taxRates,
-  rounding
+  rounding,
+  onDirty
 }: {
   order: PurchaseOrderView
   labels: ReadonlyMap<string, string>
   taxRates: readonly FinanceTaxRateView[] | null
   rounding: TaxRounding | null
+  // Whether the lines on screen differ from the saved ones: the page does not mark the order as ordered over unsaved edits
+  onDirty: (dirty: boolean) => void
 }): ReactElement {
   const t = useTranslations('finance.purchases.lines')
   const locale = useLocale()
@@ -55,7 +67,7 @@ export function OrderLinesEditor({
   )
   const [wrong, setWrong] = useState<{ index: number; field: LineField } | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
-  const [counter, setCounter] = useState(0)
+  const counter = useRef(0)
 
   const rateOf = useMemo(
     () => new Map((taxRates ?? []).map(rate => [rate.id, rate.rateBps])),
@@ -78,6 +90,11 @@ export function OrderLinesEditor({
     }))
     return JSON.stringify(saved) !== JSON.stringify(now)
   }, [lines, order.lines])
+
+  useEffect(() => {
+    onDirty(changed)
+    return () => onDirty(false)
+  }, [changed, onDirty])
 
   const money = useMemo(() => {
     const valid = lines.flatMap(line => {
@@ -107,11 +124,12 @@ export function OrderLinesEditor({
     edit(current => current.map(line => (line.key === key ? { ...line, ...change } : line)))
 
   const add = (item: PickedItem): void => {
-    setCounter(value => value + 1)
+    counter.current += 1
+    const key = `new-${String(counter.current)}`
     edit(current => [
       ...current,
       {
-        key: `new-${String(counter)}`,
+        key,
         productId: item.productId,
         variantId: item.variantId ?? '',
         label: item.label,
@@ -156,12 +174,12 @@ export function OrderLinesEditor({
                 className="flex flex-col gap-2 rounded-md border p-3"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <span className="text-sm font-medium">{line.label}</span>
+                  <span className="text-sm font-medium">{labels.get(line.key) ?? line.label}</span>
                   <Button
                     type="button"
                     size="icon"
                     variant="ghost"
-                    aria-label={t('remove', { name: line.label })}
+                    aria-label={t('remove', { name: labels.get(line.key) ?? line.label })}
                     onClick={() => edit(current => current.filter(item => item.key !== line.key))}
                   >
                     <Trash2 aria-hidden />

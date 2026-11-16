@@ -39,6 +39,7 @@ import {
   usePurchaseOrderPayments
 } from '../../lib/finance/use-purchases'
 import { useWarehousesOfStore } from '../../lib/inventory/use-inventory'
+import { useSubmitGuard } from '../../lib/submit-guard'
 import { toast } from '../../lib/toast'
 
 // One purchase order (TDD_18 §2.7): the screen is the step it is at. A draft has its lines edited and is marked ordered; an ordered one is
@@ -61,7 +62,8 @@ function PurchaseOrder(): ReactElement {
   const errorText = usePurchaseErrorText()
   const { storeId, can } = useStore()
   const canReadBooks = can(ClientPermissions.FINANCE_VIEW)
-  const canPay = can(ClientPermissions.FINANCE_MOVE_MONEY)
+  // Paying needs the chart (the account the money leaves), which is finance:view
+  const canPay = can(ClientPermissions.FINANCE_MOVE_MONEY) && canReadBooks
   const order = usePurchaseOrder(storeId, id, true)
   const suppliers = useAllSuppliers(storeId, true)
   const warehouses = useWarehousesOfStore(storeId, true)
@@ -71,6 +73,8 @@ function PurchaseOrder(): ReactElement {
   const markOrdered = useOrderPurchaseOrder(storeId)
   const closeOrder = useClosePurchaseOrder(storeId)
   const cancelOrder = useCancelPurchaseOrder(storeId)
+  const guard = useSubmitGuard()
+  const [dirty, setDirty] = useState(false)
   const [receiving, setReceiving] = useState(false)
   const [closing, setClosing] = useState<'close' | 'cancel' | null>(null)
   const [paying, setPaying] = useState<PaymentTarget | null>(null)
@@ -165,13 +169,15 @@ function PurchaseOrder(): ReactElement {
           <Button
             type="button"
             size="sm"
-            disabled={markOrdered.isPending || view.lines.length === 0}
-            onClick={() =>
+            disabled={markOrdered.isPending || dirty || view.lines.length === 0}
+            onClick={() => {
+              if (!guard.enter()) return
               markOrdered.mutate(view.id, {
                 onSuccess: () => toast.success(t('markedOrdered')),
-                onError: error => toast.error(errorText(error))
+                onError: error => toast.error(errorText(error)),
+                onSettled: guard.leave
               })
-            }
+            }}
           >
             {t('markOrdered')}
           </Button>
@@ -193,7 +199,13 @@ function PurchaseOrder(): ReactElement {
         ) : null}
       </div>
       {has(OrderActions.EDIT) ? (
-        <OrderLinesEditor order={view} labels={labels} taxRates={rates} rounding={rounding} />
+        <OrderLinesEditor
+          order={view}
+          labels={labels}
+          taxRates={rates}
+          rounding={rounding}
+          onDirty={setDirty}
+        />
       ) : (
         <section className="flex flex-col gap-2">
           <h2 className="text-lg font-medium">{t('linesTitle')}</h2>

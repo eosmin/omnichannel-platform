@@ -2,9 +2,10 @@
 
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { type FormEvent, type ReactElement, useState } from 'react'
+import { type FormEvent, type ReactElement, useEffect, useState } from 'react'
 
 import { AppPaths } from '@platform/api-client'
+import { PurchaseLimits } from '@platform/core/domain'
 
 import {
   createOrderInputOf,
@@ -36,20 +37,33 @@ export function NewPurchaseDialog({
   onOpenChange: (open: boolean) => void
 }): ReactElement {
   const t = useTranslations('finance.purchases.newOrder')
+  const [busy, setBusy] = useState(false)
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={next => {
+        if (!next && busy) return
+        onOpenChange(next)
+      }}
+    >
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{t('title')}</DialogTitle>
           <DialogDescription>{t('description')}</DialogDescription>
         </DialogHeader>
-        {open ? <NewPurchaseForm onDone={() => onOpenChange(false)} /> : null}
+        {open ? <NewPurchaseForm onBusy={setBusy} onDone={() => onOpenChange(false)} /> : null}
       </DialogContent>
     </Dialog>
   )
 }
 
-function NewPurchaseForm({ onDone }: { onDone: () => void }): ReactElement {
+function NewPurchaseForm({
+  onBusy,
+  onDone
+}: {
+  onBusy: (busy: boolean) => void
+  onDone: () => void
+}): ReactElement {
   const t = useTranslations('finance.purchases.newOrder')
   const errorText = usePurchaseErrorText()
   const router = useRouter()
@@ -60,6 +74,10 @@ function NewPurchaseForm({ onDone }: { onDone: () => void }): ReactElement {
   const create = useCreatePurchaseOrder(storeId)
   // One key for the life of the form: a double click or a retry after a lost answer is the same order
   const [key] = useState(newIdempotencyKey)
+  useEffect(() => {
+    onBusy(create.isPending)
+    return () => onBusy(false)
+  }, [create.isPending, onBusy])
   const [draft, setDraft] = useState<OrderHeaderDraft>(emptyOrderHeaderDraft)
   const [wrong, setWrong] = useState<OrderHeaderField | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
@@ -138,7 +156,7 @@ function NewPurchaseForm({ onDone }: { onDone: () => void }): ReactElement {
       <TextField
         label={t('fields.notes')}
         value={draft.notes}
-        maxLength={1000}
+        maxLength={PurchaseLimits.NOTES_MAX_LENGTH}
         disabled={create.isPending}
         problem={problemText(OrderHeaderFields.NOTES)}
         onChange={notes => set({ notes })}
