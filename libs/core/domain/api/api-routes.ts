@@ -717,7 +717,10 @@ export const PluginApiRoutes = {
     returns: '/plugin-api/settings/returns',
     // Step 5.6 PR E4a-2: the tag catalog of the store
     tags: '/plugin-api/settings/tags',
-    tagById: (id: string) => `/plugin-api/settings/tags/${id}`
+    tagById: (id: string) => `/plugin-api/settings/tags/${id}`,
+    // Step 5.6 PR E7-2: the canned replies of the store, read only
+    snippets: '/plugin-api/settings/snippets',
+    snippetById: (id: string) => `/plugin-api/settings/snippets/${id}`
   },
 
   // Step 5.6 PR E4a: the catalog and the stock, over the same services as `ApiRoutes.products`, `.inventory` and `.warehouses`. The

@@ -3158,6 +3158,7 @@
         "products:delete": "Borrar productos y variantes",
         "warehouses:read": "Leer las bodegas de la organización",
         "tags:read": "Leer el catálogo de etiquetas de la tienda",
+        "snippets:read": "Leer las respuestas rápidas de la tienda",
         "tags:write": "Crear, cambiar y borrar las etiquetas de la tienda",
         "webhooks:write": "Gestionar las suscripciones de notificaciones de la tienda",
         "analytics:read": "Leer analítica e informes",
