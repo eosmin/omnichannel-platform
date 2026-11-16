@@ -8,7 +8,10 @@ import {
   receiverEditable,
   receiverOf,
   receiverRecord,
-  retryable
+  retryable,
+  saleAddsUp,
+  saleOf,
+  sameIssuer
 } from './fiscal-rules'
 
 describe('the transitions of a fiscal document', () => {
@@ -155,5 +158,93 @@ describe('the receiver', () => {
     expect(maskTaxId('123')).toBe('**3')
     expect(maskTaxId('12')).toBe('**')
     expect(maskTaxId(null)).toBeNull()
+  })
+})
+
+describe('a sale that adds up', () => {
+  const line = (totalCents: number, taxCents: number) => ({
+    description: 'x',
+    quantity: 1,
+    unitPriceCents: totalCents,
+    taxRateBps: 1300,
+    taxCents,
+    totalCents
+  })
+  const sale = (over: Partial<ReturnType<typeof saleOf>> = {}) => ({
+    lines: [line(2260, 260)],
+    shippingCents: 565,
+    shippingTaxCents: 65,
+    discountCents: 0,
+    pricesIncludeTax: true,
+    totalCents: 2825,
+    taxCents: 325,
+    ...over
+  })
+
+  it('accepts the lines plus the shipping when the prices include the tax', () => {
+    expect(saleAddsUp(sale())).toBe(true)
+  })
+
+  it('takes the discount off once, for the whole document', () => {
+    expect(saleAddsUp(sale({ discountCents: 100, totalCents: 2725 }))).toBe(true)
+    expect(saleAddsUp(sale({ discountCents: 100 }))).toBe(false)
+  })
+
+  it('adds the tax to the total when the prices did not include it', () => {
+    expect(saleAddsUp(sale({ pricesIncludeTax: false, totalCents: 3150 }))).toBe(true)
+    expect(saleAddsUp(sale({ pricesIncludeTax: false }))).toBe(false)
+  })
+
+  it('refuses a tax that is not the one of the lines and the shipping, and a total that is not theirs', () => {
+    expect(saleAddsUp(sale({ taxCents: 326 }))).toBe(false)
+    expect(saleAddsUp(sale({ shippingTaxCents: 0 }))).toBe(false)
+    expect(saleAddsUp(sale({ totalCents: 2826 }))).toBe(false)
+  })
+
+  it('reads the parts of the snapshot, and reads a missing or odd one as nothing', () => {
+    expect(
+      saleOf(
+        { totalCents: 10, taxCents: 1 },
+        { lines: [line(10, 1)], shippingCents: 'x', discountCents: 1.5, pricesIncludeTax: false }
+      )
+    ).toEqual({
+      lines: [line(10, 1)],
+      shippingCents: 0,
+      shippingTaxCents: 0,
+      discountCents: 0,
+      pricesIncludeTax: false,
+      totalCents: 10,
+      taxCents: 1
+    })
+    // An order made before the tax columns kept no flag: its prices are read as tax included
+    expect(saleOf({ totalCents: 0, taxCents: 0 }, {}).pricesIncludeTax).toBe(true)
+  })
+})
+
+describe('the issuer a document was made with', () => {
+  const live = {
+    legalName: 'Acme',
+    taxId: 'T-1',
+    registrationId: null,
+    activityCode: null,
+    establishmentCode: 'M001',
+    environment: 'sandbox',
+    address: { line1: 'x', city: 'y' }
+  }
+  const snapshot = { ...live, address: { city: 'y', line1: 'x' } }
+
+  it('is the same when nothing of its identity moved, whatever the order of the address', () => {
+    expect(sameIssuer(snapshot, live)).toBe(true)
+  })
+
+  it.each([
+    ['the tax id', { taxId: 'T-2' }],
+    ['the legal name', { legalName: 'Other' }],
+    ['the registration', { registrationId: 'R-1' }],
+    ['the establishment', { establishmentCode: 'M002' }],
+    ['the environment', { environment: 'production' }],
+    ['the address', { address: { line1: 'z', city: 'y' } }]
+  ])('is not the same when %s changed', (_label, patch) => {
+    expect(sameIssuer(snapshot, { ...live, ...patch })).toBe(false)
   })
 })

@@ -7,6 +7,7 @@ import {
   QueuesPlatformModule,
   VirusScanPlatformModule
 } from '@platform/core/http'
+import { FiscalRuntimeModule } from '@platform/fiscal/runtime'
 import { PluginsModule } from '@platform/plugins/runtime'
 
 import { CarriersWorkerModule } from '../carriers/carriers.module'
@@ -37,6 +38,8 @@ import { UnavailableFileMarker } from './unavailable-file-marker.service'
     InventoryReconcileModule,
     // ... and the automatic entries of the books
     FinancePostingWorkerModule,
+    // ... and the fiscal documents (TDD_18 §8): the lifecycle submits them through the provider of the issuer
+    FiscalRuntimeModule,
     // ... and the nightly retention of a store
     RetentionWorkerModule,
     ShippingWorkerModule,

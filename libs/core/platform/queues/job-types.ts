@@ -147,6 +147,11 @@ export interface FetchOriginMediaJob extends BaseJob {
   originId: string
   slot: OriginMediaSlot
 }
+// The submission of one fiscal document: the id only, the worker reads the row as it is (TDD_18 §8.3)
+export interface SubmitFiscalDocumentJob extends BaseJob {
+  organizationId: string
+  documentId: string
+}
 // The automatic entry of one event of one source (TDD_18 §6.1). The job carries which source and which event, never an amount: the worker
 // reads the rows as they are when it runs, so a late or repeated job posts the same entry (the key makes it one).
 export interface PostFinanceEventJob extends BaseJob {

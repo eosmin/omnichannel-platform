@@ -297,6 +297,8 @@ export const FinanceResourceTypes = {
   PAYMENT_ACCOUNT: 'finance_payment_account',
   PERIOD: 'finance_period',
   ENTRY: 'finance_entry',
+  // What a report or a file taken from the books is audited against (the report is in the metadata)
+  REPORT: 'finance_report',
   POSTING: 'finance_posting',
   TAX_RATE: 'finance_tax_rate',
   // The tax preferences of a store (`finance.pricesIncludeTax`), kept in its preferences
@@ -460,3 +462,60 @@ export const FinanceReportLimits = {
   // Lines of the ledger of one account one request answers (it pages by line)
   LEDGER_PAGE_MAX: 200
 } as const
+
+// The statements and the lists with age (TDD_18 §10, Step 4B.8b). Which accounts a statement reads is the chart of the accountant: it groups
+// by the type of each account and by its parent, never by a code written here (**[ACCOUNTANT]**).
+export enum StatementWarning {
+  // A section the statement needs has no account with activity: the result would look better than it is, or nothing is said at all
+  NO_INCOME = 'no_income',
+  NO_COST_OF_SALES = 'no_cost_of_sales',
+  NO_CASH_ACCOUNTS = 'no_cash_accounts',
+  // An account role the report reads has no account mapped (settings): the report says so instead of choosing an account
+  ROLE_NOT_MAPPED = 'role_not_mapped',
+  // The lines of a role carry no party: they are in the total but in no row
+  LINES_WITHOUT_PARTY = 'lines_without_party',
+  // The identity of the books failed (assets differ from liabilities plus equity plus the result): an incident, the report still answers
+  NOT_BALANCED = 'not_balanced',
+  CASH_FLOW_DOES_NOT_CLOSE = 'cash_flow_does_not_close'
+}
+
+export enum AgingKind {
+  PAYABLES = 'payables',
+  RECEIVABLES = 'receivables'
+}
+
+// The roles each list reads (settings → account roles): the accountant may map them to the accounts of her chart. Both sides are balances
+// by party (a supplier, a carrier connection).
+export const AgingRoles: Readonly<Record<AgingKind, readonly AccountRole[]>> = {
+  [AgingKind.PAYABLES]: [AccountRole.PAYABLE_SUPPLIERS, AccountRole.PAYABLE_CARRIERS],
+  [AgingKind.RECEIVABLES]: [AccountRole.RECEIVABLE_CARRIERS]
+}
+
+// Upper bounds, in days, of the age buckets: 0-30, 31-60, 61-90 and more than 90. **[ACCOUNTANT]** may ask for other cuts; one place to change.
+export const AgingBucketDays: readonly number[] = [30, 60, 90]
+
+// The statements by name: what an audit row and a file say they are
+export enum FinanceReport {
+  INCOME_STATEMENT = 'income_statement',
+  BALANCE_SHEET = 'balance_sheet',
+  CASH_FLOW = 'cash_flow',
+  AGING = 'aging'
+}
+
+// The rows of a statement file that are not an account: the totals, and what the report warns about
+export enum StatementCsvSection {
+  SUMMARY = 'summary',
+  WARNING = 'warning',
+  CASH = 'cash'
+}
+
+export enum StatementTotalLine {
+  TOTAL = 'total',
+  GROSS_MARGIN = 'gross_margin',
+  NET_RESULT = 'net_result',
+  RESULT_NOT_CLOSED = 'result_not_closed',
+  EQUITY_WITH_RESULT = 'equity_with_result',
+  OPENING = 'opening',
+  CLOSING = 'closing',
+  NET = 'net'
+}

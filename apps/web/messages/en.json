@@ -592,6 +592,10 @@
     "FILE_UPLOAD_FAILED": "The file could not be uploaded",
     "INSUFFICIENT_INVENTORY": "There is not enough stock",
     "FINANCE_PERIOD_CLOSED": "The period is closed: no entry can be dated in it",
+    "FISCAL_DOCUMENT_IMMUTABLE": "An accepted fiscal document cannot be changed",
+    "FISCAL_DOCUMENT_INVALID_TRANSITION": "The fiscal document cannot move from its current state",
+    "FISCAL_ISSUER_INVALID": "The issuer does not pass the checks of the provider",
+    "FISCAL_PROVIDER_UNAVAILABLE": "The provider of fiscal documents is not available",
     "FINANCE_ENTRY_UNBALANCED": "The entry does not balance: debits and credits must be equal and positive",
     "FINANCE_ACCOUNT_NOT_POSTABLE": "This account only groups other accounts: choose one that accepts entries",
     "FINANCE_ACCOUNT_INACTIVE": "This account is inactive",
@@ -3293,6 +3297,7 @@
         "finance": {
           "view": "View balances and reports",
           "view_journal": "View the journal",
+          "view_reports": "View the statements and the lists with age",
           "manage_transactions": "Register expenses and incomes",
           "move_money": "Move money",
           "manage_purchases": "Manage suppliers and purchases",
