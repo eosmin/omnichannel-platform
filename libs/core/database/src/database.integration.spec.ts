@@ -68,6 +68,47 @@ describe('database roles', () => {
     })
   })
 
+  // The audit log is append-only for the whole application: the worker may delete (the cold export of a month it has copied) and
+  // nothing else. Until the QA review of 2026-11-16 nothing asserted the worker side, and the worker kept UPDATE. The privileges are
+  // read as the owner (nothing destructive runs as an application role, so a privilege that comes back cannot empty the table), and
+  // one UPDATE is tried on a row of the test, which is removed at the end whatever happens.
+  it.each([
+    ['platform_app', () => urls.app],
+    ['platform_worker', () => urls.worker]
+  ])('lets %s neither change nor empty audit_logs', async (role, url) => {
+    const id = `${AUDIT_ID}-frozen-${role}`
+    try {
+      await withClient(urls.owner, async owner => {
+        const { rows } = await owner.query<Record<string, boolean>>(
+          `SELECT has_table_privilege($1, 'audit_logs', 'UPDATE') AS "update",
+                  has_table_privilege($1, 'audit_logs', 'TRUNCATE') AS "truncate",
+                  has_any_column_privilege($1, 'audit_logs', 'UPDATE') AS "columnUpdate"`,
+          [role]
+        )
+        expect(rows).toEqual([{ update: false, truncate: false, columnUpdate: false }])
+        await owner.query("INSERT INTO audit_logs (id, action) VALUES ($1, 'integration.frozen')", [
+          id
+        ])
+      })
+      await withClient(url(), async client => {
+        await expect(
+          client.query("UPDATE audit_logs SET action = 'tampered' WHERE id = $1", [id])
+        ).rejects.toThrow(/permission denied/)
+      })
+      await withClient(urls.owner, async owner => {
+        const { rows } = await owner.query<{ action: string }>(
+          'SELECT action FROM audit_logs WHERE id = $1',
+          [id]
+        )
+        expect(rows).toEqual([{ action: 'integration.frozen' }])
+      })
+    } finally {
+      await withClient(urls.owner, async owner => {
+        await owner.query('DELETE FROM audit_logs WHERE id = $1', [id])
+      })
+    }
+  })
+
   it('lets platform_worker delete from audit_logs', async () => {
     await withClient(urls.worker, async worker => {
       const result = await worker.query('DELETE FROM audit_logs WHERE id = $1', [AUDIT_ID])
