@@ -1,0 +1,12 @@
+{
+  "name": "fiscal-sdk",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/fiscal/sdk/src",
+  "projectType": "library",
+  "tags": ["scope:fiscal-sdk", "type:lib"],
+  "targets": {
+    "lint": {},
+    "type-check": {},
+    "test": {}
+  }
+}

@@ -236,7 +236,11 @@ export const FiscalDocumentStatusTransitions: Record<
 > = {
   [FiscalDocumentStatus.DRAFT]: [FiscalDocumentStatus.QUEUED],
   [FiscalDocumentStatus.QUEUED]: [FiscalDocumentStatus.SUBMITTED],
-  [FiscalDocumentStatus.SUBMITTED]: [FiscalDocumentStatus.ACCEPTED, FiscalDocumentStatus.REJECTED],
+  [FiscalDocumentStatus.SUBMITTED]: [
+    FiscalDocumentStatus.ACCEPTED,
+    FiscalDocumentStatus.REJECTED,
+    FiscalDocumentStatus.QUEUED
+  ],
   [FiscalDocumentStatus.ACCEPTED]: [FiscalDocumentStatus.VOIDED],
   [FiscalDocumentStatus.REJECTED]: [FiscalDocumentStatus.QUEUED],
   [FiscalDocumentStatus.VOIDED]: []
