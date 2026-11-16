@@ -9,6 +9,7 @@ import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AccountRole,
   FinanceConflicts,
+  FinanceAutoMemo,
   FinanceCountryCodes,
   JournalEntryType,
   PaymentMethod,
@@ -17,6 +18,7 @@ import {
 import { ErrorCodes } from '@platform/core/errors'
 import { financeTemplateFor } from '@platform/core/finance'
 import { verifyChain } from '@platform/core/finance-hash'
+import { LedgerService } from '@platform/core/finance-ledger'
 
 import { day } from '../builders/finance'
 import { actorWithPermissions } from '../helpers/actors'
@@ -75,6 +77,9 @@ const CONFLICT = 409
 
 const START = '2026-01-01'
 const DATE = '2026-11-10'
+// A day some days after (or before) the day of the entries of the suite, so the days of the cases follow it
+const daysFrom = (days: number): string =>
+  new Date(Date.parse(`${DATE}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10)
 
 describe('The books of an organization', () => {
   const prefix = newRunPrefix()
@@ -1185,7 +1190,24 @@ describe('The books of an organization', () => {
       expect(verifyChain(await chainOf(ctx.orgA.id))).toBeNull()
     })
 
-    it('is done once: a second try, whatever it says, is the first reversal and writes nothing', async () => {
+    // A reversal is written once. The same request again (same person, same reason) is the answer to a lost reply; anything else is a
+    // second reversal and is refused with the id of the first, never answered as if it were the person's own
+    const reversalsOf = (entryId: string) =>
+      owner.journalEntry.count({ where: { reversesEntryId: entryId } })
+    const secondPerson = () =>
+      actorWithPermissions(owner, app, {
+        prefix,
+        name: `second-reverser-${randomUUID()}`,
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions: [
+          Permissions.FINANCE_VIEW,
+          Permissions.FINANCE_VIEW_JOURNAL,
+          Permissions.FINANCE_POST_MANUAL
+        ]
+      }).then(actor => api(app, actor, ctx.storeA))
+
+    it('is done once: a second reversal with another reason is a conflict that names the first, and writes nothing', async () => {
       const original = await postEntry(entryBody(RENT, CASH, 80))
       const first = await asAdminA()
         .post(ApiRoutes.finance.entries.reverse(original.id))
@@ -1196,10 +1218,189 @@ describe('The books of an organization', () => {
         .post(ApiRoutes.finance.entries.reverse(original.id))
         .send({ memo: 'Second' })
 
-      expect((again.body as EntryBody).id).toBe((first.body as EntryBody).id)
-      expect((again.body as EntryBody).memo).toBe('First')
+      expect(first.status).toBe(CREATED)
+      expect(again.status).toBe(CONFLICT)
+      expect(errorOf(again).code).toBe(ErrorCodes.FINANCE_ENTRY_ALREADY_REVERSED)
+      expect(errorOf(again).metadata).toMatchObject({
+        entryId: original.id,
+        reversalEntryId: (first.body as EntryBody).id
+      })
       expect(await owner.journalEntry.count({ where: { organizationId: ctx.orgA.id } })).toBe(count)
-      expect(await owner.journalEntry.count({ where: { reversesEntryId: original.id } })).toBe(1)
+      expect(await reversalsOf(original.id)).toBe(1)
+      const stored = await owner.journalEntry.findUniqueOrThrow({
+        where: { id: (first.body as EntryBody).id },
+        select: { memo: true }
+      })
+      expect(stored.memo).toBe('First')
+      // One record of the reversal, the first one's: the refused one leaves none
+      const logged = await waitForAuditEntries(owner, {
+        organizationId: ctx.orgA.id,
+        action: AuditAction.FINANCE_ENTRY_REVERSED,
+        resourceId: original.id
+      })
+      await settle()
+      expect(logged).toHaveLength(1)
+      expect(await auditCount(logged)).toBe(1)
+    })
+
+    it('does not hand a second person the reversal of the first, whatever reason or date they send', async () => {
+      const original = await postEntry(entryBody(RENT, CASH, 81))
+      const first = await asAdminA()
+        .post(ApiRoutes.finance.entries.reverse(original.id))
+        .send({ memo: 'Duplicated payment' })
+      const other = await secondPerson()
+      const count = await owner.journalEntry.count({ where: { organizationId: ctx.orgA.id } })
+
+      const otherReason = await other
+        .post(ApiRoutes.finance.entries.reverse(original.id))
+        .send({ memo: 'Another reason', entryDate: daysFrom(5) })
+      // Even the very same reason is another person's act, not a retry of the first
+      const sameReason = await other
+        .post(ApiRoutes.finance.entries.reverse(original.id))
+        .send({ memo: 'Duplicated payment' })
+
+      expect([otherReason.status, sameReason.status]).toEqual([CONFLICT, CONFLICT])
+      expect(errorOf(otherReason).code).toBe(ErrorCodes.FINANCE_ENTRY_ALREADY_REVERSED)
+      expect(errorOf(sameReason).code).toBe(ErrorCodes.FINANCE_ENTRY_ALREADY_REVERSED)
+      expect(errorOf(otherReason).metadata).toMatchObject({
+        reversalEntryId: (first.body as EntryBody).id
+      })
+      expect(await owner.journalEntry.count({ where: { organizationId: ctx.orgA.id } })).toBe(count)
+      expect(await reversalsOf(original.id)).toBe(1)
+    })
+
+    it('answers the same request again, and only that, with the first reversal', async () => {
+      const original = await postEntry(entryBody(RENT, CASH, 82))
+      const first = await asAdminA()
+        .post(ApiRoutes.finance.entries.reverse(original.id))
+        .send({ memo: 'Once', entryDate: daysFrom(2) })
+      const count = await owner.journalEntry.count({ where: { organizationId: ctx.orgA.id } })
+
+      const same = await asAdminA()
+        .post(ApiRoutes.finance.entries.reverse(original.id))
+        .send({ memo: 'Once', entryDate: daysFrom(2) })
+      const noDate = await asAdminA()
+        .post(ApiRoutes.finance.entries.reverse(original.id))
+        .send({ memo: '  Once  ' })
+      // A date that is not the one it was written on is not the same request (and it says the first one was the caller's own)
+      const anotherDate = await asAdminA()
+        .post(ApiRoutes.finance.entries.reverse(original.id))
+        .send({ memo: 'Once', entryDate: daysFrom(10) })
+
+      expect([same.status, noDate.status]).toEqual([CREATED, CREATED])
+      expect((same.body as EntryBody).id).toBe((first.body as EntryBody).id)
+      expect((noDate.body as EntryBody).id).toBe((first.body as EntryBody).id)
+      expect(anotherDate.status).toBe(CONFLICT)
+      expect(errorOf(anotherDate).metadata).toMatchObject({ byCaller: true })
+      expect(errorOf(anotherDate).code).toBe(ErrorCodes.FINANCE_ENTRY_ALREADY_REVERSED)
+      expect(await owner.journalEntry.count({ where: { organizationId: ctx.orgA.id } })).toBe(count)
+    })
+
+    it('writes one reversal when two people reverse the same entry at the same moment', async () => {
+      const original = await postEntry(entryBody(RENT, CASH, 83))
+      const other = await secondPerson()
+
+      const answers = await Promise.all([
+        asAdminA()
+          .post(ApiRoutes.finance.entries.reverse(original.id))
+          .send({ memo: 'By the first person' }),
+        other.post(ApiRoutes.finance.entries.reverse(original.id)).send({ memo: 'By the second' })
+      ])
+
+      expect(answers.map(answer => answer.status).sort()).toEqual([CREATED, CONFLICT])
+      const refused = answers.find(answer => answer.status === CONFLICT)
+      const written = answers.find(answer => answer.status === CREATED)
+      if (refused === undefined || written === undefined)
+        throw new Error('one of each was expected')
+      expect(errorOf(refused).code).toBe(ErrorCodes.FINANCE_ENTRY_ALREADY_REVERSED)
+      expect(errorOf(refused).metadata).toMatchObject({
+        reversalEntryId: (written.body as EntryBody).id
+      })
+      const logged = await waitForAuditEntries(owner, {
+        organizationId: ctx.orgA.id,
+        action: AuditAction.FINANCE_ENTRY_REVERSED,
+        resourceId: original.id
+      })
+      await settle()
+      expect(await auditCount(logged)).toBe(1)
+      expect(await reversalsOf(original.id)).toBe(1)
+      expect(verifyChain(await chainOf(ctx.orgA.id))).toBeNull()
+    })
+
+    it('asks for the reason before it looks at the reversal that exists', async () => {
+      const original = await postEntry(entryBody(RENT, CASH, 87))
+      await asAdminA().post(ApiRoutes.finance.entries.reverse(original.id)).send({ memo: 'Done' })
+
+      const blank = await asAdminA()
+        .post(ApiRoutes.finance.entries.reverse(original.id))
+        .send({ memo: '   ' })
+
+      expect(blank.status).toBe(BAD_REQUEST)
+    })
+
+    it('writes one reversal and answers the same request sent twice at the same moment with that one', async () => {
+      const original = await postEntry(entryBody(RENT, CASH, 86))
+      const send = () =>
+        asAdminA()
+          .post(ApiRoutes.finance.entries.reverse(original.id))
+          .send({ memo: 'Double click' })
+
+      const answers = await Promise.all([send(), send()])
+
+      expect(answers.map(answer => answer.status)).toEqual([CREATED, CREATED])
+      expect((answers[0]?.body as EntryBody).id).toBe((answers[1]?.body as EntryBody).id)
+      expect(await reversalsOf(original.id)).toBe(1)
+      const logged = await waitForAuditEntries(owner, {
+        organizationId: ctx.orgA.id,
+        action: AuditAction.FINANCE_ENTRY_REVERSED,
+        resourceId: original.id
+      })
+      await settle()
+      expect(await auditCount(logged)).toBe(1)
+    })
+
+    it('answers the system with the reversal that exists, whoever wrote it, and a person with a conflict when the system wrote it', async () => {
+      const ledger = app.get(LedgerService)
+      const reason = FinanceAutoMemo.REMITTANCE_VOID
+      // A person reversed it first: the voided remittance finds its entry reversed and settles, it does not fail a posting
+      const byPerson = await postEntry(entryBody(RENT, CASH, 84))
+      const first = await asAdminA()
+        .post(ApiRoutes.finance.entries.reverse(byPerson.id))
+        .send({ memo: 'By hand' })
+      const system = await ledger.reverse({
+        organizationId: ctx.orgA.id,
+        entryId: byPerson.id,
+        memo: reason,
+        entryDate: daysFrom(21),
+        createdBy: null
+      })
+      expect(system).toMatchObject({ id: (first.body as EntryBody).id, replayed: true })
+      // The system reversed it first: its own retry is the same act whatever day the calendar gives it, and a person is refused
+      const bySystem = await postEntry(entryBody(RENT, CASH, 85))
+      const written = await ledger.reverse({
+        organizationId: ctx.orgA.id,
+        entryId: bySystem.id,
+        memo: reason,
+        entryDate: null,
+        createdBy: null
+      })
+      const retry = await ledger.reverse({
+        organizationId: ctx.orgA.id,
+        entryId: bySystem.id,
+        memo: reason,
+        entryDate: daysFrom(21),
+        createdBy: null
+      })
+      const person = await asAdminA()
+        .post(ApiRoutes.finance.entries.reverse(bySystem.id))
+        .send({ memo: reason })
+
+      expect(written.replayed).toBe(false)
+      expect(retry).toMatchObject({ id: written.id, replayed: true })
+      expect(person.status).toBe(CONFLICT)
+      expect(errorOf(person).code).toBe(ErrorCodes.FINANCE_ENTRY_ALREADY_REVERSED)
+      expect(await reversalsOf(bySystem.id)).toBe(1)
+      expect(await reversalsOf(byPerson.id)).toBe(1)
     })
 
     it('answers a retry of a reversal with the reversal of the first try', async () => {
@@ -1309,7 +1510,7 @@ describe('The books of an organization', () => {
 
     beforeAll(async () => {
       accountsB = await accountIds(ctx.orgB.id)
-      for (const cents of [25, 26]) {
+      for (const cents of [25, 26, 27]) {
         const response = await asAdminB()
           .post(ApiRoutes.finance.entries.manual)
           .send(bodyB('2026-01-15', cents))
@@ -1352,6 +1553,27 @@ describe('The books of an organization', () => {
       // The date of the entry is the first day of the open period: the books of January did not change
       expect((reversal.body as EntryBody).entryDate).toBe('2026-02-01')
       expect((reversal.body as EntryBody).reversesEntryId).toBe(january[0])
+    })
+
+    it('answers a second reversal of an entry of a closed month with a conflict, and its retry with the first one', async () => {
+      const entry = january[2] ?? ''
+      const first = await asAdminB()
+        .post(ApiRoutes.finance.entries.reverse(entry))
+        .send({ memo: 'Back out once' })
+      const retry = await asAdminB()
+        .post(ApiRoutes.finance.entries.reverse(entry))
+        .send({ memo: 'Back out once' })
+      const other = await asAdminB()
+        .post(ApiRoutes.finance.entries.reverse(entry))
+        .send({ memo: 'Back out again', entryDate: '2026-02-25' })
+
+      // The first one went to the open month (the day after the lock); the retry is that same entry, the other request is refused
+      expect((first.body as EntryBody).entryDate).toBe('2026-02-01')
+      expect(retry.status).toBe(CREATED)
+      expect((retry.body as EntryBody).id).toBe((first.body as EntryBody).id)
+      expect(other.status).toBe(CONFLICT)
+      expect(errorOf(other).code).toBe(ErrorCodes.FINANCE_ENTRY_ALREADY_REVERSED)
+      expect(await owner.journalEntry.count({ where: { reversesEntryId: entry } })).toBe(1)
     })
 
     it('takes a reversal on a date the person chose in the open period', async () => {

@@ -456,16 +456,30 @@ export class FinanceTransactionsService {
         conflict: FinanceConflicts.TRANSACTION_ALREADY_VOIDED
       })
     }
-    const reversal = await this.ledger.reverse(
-      {
-        organizationId,
-        entryId: original.entryId,
-        memo: reason,
-        entryDate: null,
-        createdBy: actor.userId
-      },
-      tx
-    )
+    // The reversal found under the entry is another request's (another person or another reason got the lock first): the transaction
+    // was voided already, the typed answer of this route
+    const reversal = await this.ledger
+      .reverse(
+        {
+          organizationId,
+          entryId: original.entryId,
+          memo: reason,
+          entryDate: null,
+          createdBy: actor.userId
+        },
+        tx
+      )
+      .catch((error: unknown) => {
+        if (
+          error instanceof PlatformException &&
+          error.code === ErrorCodes.FINANCE_ENTRY_ALREADY_REVERSED
+        ) {
+          throw resourceConflict('the transaction was voided already', {
+            conflict: FinanceConflicts.TRANSACTION_ALREADY_VOIDED
+          })
+        }
+        throw error
+      })
     // The pointer is set once: a second request that got here after the first committed finds it set and answers it
     const pointed = await tx.financeTransaction.updateMany({
       where: { id, organizationId, voidedByEntryId: null },
