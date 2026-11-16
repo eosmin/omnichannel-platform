@@ -101,7 +101,10 @@ const TITLE_OF_PAGE: Record<string, string> = {
   'finance/suppliers/page.tsx': 'financeSuppliers',
   'finance/purchases/page.tsx': 'financePurchases',
   'finance/purchases/[id]/page.tsx': 'financePurchase',
-  'finance/payables/page.tsx': 'financePayables'
+  'finance/payables/page.tsx': 'financePayables',
+  'finance/statements/page.tsx': 'financeStatements',
+  'finance/aging/page.tsx': 'financeAging',
+  'finance/books/page.tsx': 'financeBooks'
 }
 
 // WCAG 2.4.2: every page has its own title, or all the tabs of a browser read the same (QA F2-T12)

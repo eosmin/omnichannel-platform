@@ -121,6 +121,26 @@ export const FINANCE_SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     href: AppPaths.finance.payables,
     permission: ClientPermissions.FINANCE_MANAGE_PURCHASES,
     or: ClientPermissions.FINANCE_MOVE_MONEY
+  },
+  // The statements, the lists with age and the legal books (Step 4B.9b-3): the api asks for finance:view_reports (and finance:export to
+  // take a file or to read a legal book, which the page of the books says itself)
+  {
+    id: 'statements',
+    labelKey: 'statements',
+    href: AppPaths.finance.statements,
+    permission: ClientPermissions.FINANCE_VIEW_REPORTS
+  },
+  {
+    id: 'aging',
+    labelKey: 'aging',
+    href: AppPaths.finance.aging,
+    permission: ClientPermissions.FINANCE_VIEW_REPORTS
+  },
+  {
+    id: 'books',
+    labelKey: 'books',
+    href: AppPaths.finance.books,
+    permission: ClientPermissions.FINANCE_VIEW_REPORTS
   }
 ]
 

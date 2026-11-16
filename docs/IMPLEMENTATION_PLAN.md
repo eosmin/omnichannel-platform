@@ -2075,11 +2075,16 @@ sale rows follow the ledger: a sale is out of a month's book only when its entry
           `finance.reports.verifyChain`.
     - [ ] **4B.9b-2 (fiscal documents):** `fiscal.*` (the server of 4B.7a-2, #555): the issuer settings, the documents of the sales (list, one,
           the receiver, the retry) and the void of an accepted document (typed reason, the effect shown first), and the document on the order.
-    - [ ] **4B.9b-3 (statements, VAT, aging):** `finance.reports.vat` and its CSV, the legal books (`finance.books.*`, `finance.bookLayouts.*`, `finance.frozenBooks.*`, always with the notice that a book is a draft while it is `unvalidated`), and the routes of Step 4B.8b-1 (#556: the statements and the aging), the box that writes off the difference of a cash-on-delivery remittance (`remittances.writeOff`, shown only with `remittances:manage`, moved here from 4B.9a-4 because the remittance screens of Step 4.14 have no list of differences to hang it on), the receipt file of a payment to a supplier and the name of the supplier in the payables view (small server PRs before it; debts (a) and (f) of 4B.9a-4), the aging buckets, the export and the day filter of the payables;
-          the screens of 4B.7b (credit note), 4B.8b-2 (weekly chain, margin) and 4B.8b-3 (legal books) join it, or follow it as 4B.9b-4, as their
-          servers reach `main`.
-    - [ ] **4B.9b-4 (the month end to end):** the e2e case of the month (register, receive, sell, remit, close) and the permission-gate case of every
-          page of the area; it closes 4B.9.
+    - [x] **4B.9b-3 (statements, aging, legal books):** built, see "Built in PR 4B.9b-3" below: Finance → Statements, Aging and Legal books
+          (`finance.reports.{incomeStatement,balanceSheet,cashFlow,aging}` and their files, `finance.bookLayouts.list`, `finance.books.*`,
+          `finance.frozenBooks.*`, always with the notice that a book is a draft while it is `unvalidated`).
+    - [ ] **4B.9b-4a (the VAT file and the margin):** `finance.reports.vat` and its CSV and the margin of 4B.8b-2 (#561), the weekly check of the
+          chain if it has a screen, and what 4B.9b-3 left (the `fields` of a book column, the layout editor with the accountant's answers of
+          4B.8b-4); with the box that writes off the difference of a cash-on-delivery remittance (`remittances.writeOff`, shown only with
+          `remittances:manage`, moved here from 4B.9a-4), the receipt file of a payment to a supplier and the name of the supplier in the payables
+          view (small server PRs before it; debts (a) and (f) of 4B.9a-4), the aging buckets, the export and the day filter of the payables.
+    - [ ] **4B.9b-5 (the month end to end):** the e2e case of the month (register, receive, sell, remit, close) and the permission-gate case of
+          every page of the area; it closes 4B.9.
 - [ ] Every route of 4B.2 to 4B.8 drawn (`frontend-coverage-map`), i18n keys in `es` and `en`, Lucide icons only, no emoji, the mobile layout of the
       common actions (register an expense, receive a purchase), the e2e of the month (register, receive, sell, remit, close)
 - **Decisions of PR 4B.9a-1 (rule 12):** (1) the books are an area of their own (`/finance`), not a page of Settings or of the organization: they are the
@@ -2209,8 +2214,40 @@ sale rows follow the ledger: a sale is out of a month's book only when its entry
   MB): a streamed save is Step 7.7, with the exports center. (d) The close checklist (the warnings of `TDD_18 §5.1`: unreconciled cash lines, a fiscal
   document still queued) is not drawn before closing: the api only refuses what it blocks and the dialog shows that text; the warnings need a route that
   4B.8b gives, so 4B.9b-3 or 4B.9b-4 draws them. (e) The e2e case of the month (close a month that has ended, reopen it with its reason) needs entries
-  in a past month and is 4B.9b-4; this PR's cases show that a month that has not ended has no close button and the gate of each section; the close and reopen dialogs on a phone (dialog-fit) are measured with that case in 4B.9b-4.
+  in a past month and is 4B.9b-5; this PR's cases show that a month that has not ended has no close button and the gate of each section; the close and reopen dialogs on a phone (dialog-fit) are measured with that case in 4B.9b-4.
   (f) Playwright ran only in CI (not on the shared machine). (g) The three download panels share one flow (guard, refusal, name at the click, save) and the ledger and journal share their range fields, and every period row mounts both dialogs: one `useCsvDownload` hook, one range component and one dialog for the row being asked about are Step 7.7 (the visual and structure pass), and so is a fallback text for an account type the screen does not know (the chart page has the same cast).
+- **Built in PR 4B.9b-3** (Finance → Statements, Aging, Legal books; `finance.reports.{incomeStatement,balanceSheet,cashFlow,aging}` and their four
+  `…Csv` routes, `finance.bookLayouts.list`, `finance.books.{byKind,csvByKind}` and `finance.frozenBooks.{list,byId}`): the income statement and the cash
+  flow of a range of days and the balance sheet of a day, the aging of receivables and payables as of a day, each with its file; a legal book of a kind and a
+  month, with its layout, its warnings, its totals, its file and the list of the books frozen at the close. Read-only: every figure is the api's, nothing
+  is added again on the screen.
+- **Decisions of PR 4B.9b-3 (rule 12):** (1) **[ACCOUNTANT]** a legal book that is `unvalidated` says so above its rows in every state (open month, closed,
+  frozen), in the label of its download and in the name of its file (`-draft`), and is never presented as definitive; the layout is shown read only
+  (rejected: an editor of the layout, because `accountantConfirmed` is somebody's word that the layout is what the law asks, and that is not ours to
+  offer or decide: it waits for the accountant, Step 4B.8b-4); (2) the pages open for `finance:view_reports` and the file button for `finance:export`; the
+  legal books need both, because the api asks both to read one (a book lists supplier names and tax ids); every page also reads the setup, which is
+  `finance:view`, as every page of the area does (rejected: a second gate for the reports, which the api does not have); (3) a statement is asked when the
+  person presses Show, not on every keystroke, and is never refetched in the background (a statement is a read of the whole ledger); (4) when the last day
+  of a report is in closed months the page says it is settled, and says how far the books are closed when only part is (a closed month does not move unless
+  it is reopened, with a reason, and the api writes it down); a closed month's legal book says whether it is the frozen one or is built again (the proposal is
+  never frozen, 4B.8b-3); (5) the sums arrive as strings of digits and are written with `moneyText` (no float); the cells and totals of a book are whole cents
+  (safe integers); (6) a column of a book is drawn as money only when the layout of the same version says its field is a money one, or when its header is
+  the name of a money field: a book carries headers and not fields, so a header the organization renamed is plain text rather than a guessed amount
+  (rejected: guessing money from "is a number", which would format a correlative as dollars); (7) at most 200 rows of a book are drawn and the count says how
+  many the file has; (8) a warning the screen does not know is shown by its code, never dropped; a role the aging list reads that has no account is said by
+  its name, never filled in; (9) the files are the text the api wrote (`responseType: 'text'` of the api client, the same one 4B.9b-1 adds) with the mark of
+  the encoding put back by `saveCsvFile`; (10) the UI knows no country: the kinds of book, the fields and the warnings are the closed lists of
+  `libs/core/domain` and every word is an i18n key.
+- **Left by PR 4B.9b-3, each with its owner:** (a) the VAT file and the margin: the server routes (`finance.reports.vat`, `vatCsv` and the margin) are in PR
+  #561 and not on `main`, so their screens are **4B.9b-4a**; (b) the layout editor (`finance.bookLayouts.byKind`, PUT) and the accountant's confirmation:
+  4B.8b-4 and then its screen, with the accountant's answers; (c) a book carries headers and not the field of each column: a `fields` list on the book is a
+  small server change that would make the money columns certain for any version (today: the latest layout, or a header that is a field name), **4B.9b-4a**;
+  (d) the legal journal and ledger books are 4B.8b-4 on the server; the trial balance, ledger and journal files are 4B.9b-1; (e) the statements cover the whole
+  organization: the slice of one store (`storeId`) is not offered, Step 7.7; (f) no comparison of two ranges, no print or PDF view and no paging of a book beyond
+  its first 200 rows, Step 7.7; (g) the end-to-end case (`apps/web-e2e/specs/finance-statements.spec.ts`) reads books with no entry, so it proves the
+  wiring, the notices and the permissions and not the figures; the figures with data are the end-to-end case of the month (4B.9b-5), and it runs in CI only
+  (Playwright is not run on the shared machine); (h) a person who holds `finance:view_reports` and not `finance:view` cannot open the area (the setup read is
+  `finance:view`): whether the accountant's role should carry both is the owner's call, Step 7.7; (i) the visual pass of these screens is Step 7.7.
 **TDD:** `TDD_18 §12`, `TDD_09`
 **Done when:** the owner runs a month of the business end to end from the screens (a purchase received and paid, orders sold and remitted, an
 expense and a transfer, the statements checked, the month closed).
@@ -3090,7 +3127,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.6 | The automatic entries (sales, remittances, returns, stock) | in progress | 4B.6a machinery, E1 to E3 and E9 (#546); 4B.6b-1 carrier charges, remittance confirmed and voided (E4 to E6; #548); 4B.6b-2 the difference written off, returns and the fee permission (E7, E8, E4 of a return guide; #550); 4B.6b-3 the sweep, its metrics, the failure notice and the close guard (this PR); 4B.6b-4 the prepaid charge model: todo | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | in progress | 4B.7a-1 the libraries and the rule (#552, done); 4B.7a-2 the database, the lifecycle, the queue and the routes (#555, done); 4B.7b-1 the credit note of a return and the replacement of a voided document (#562, done); 4B.7b-2 the evidence as media, the notices, the consultation for `void`, the issuer change a person confirms and the credit note made again (this PR); 4B.7b-3 the customer's fiscal data (this PR) | |
 | 4B.8 | Reports, monthly close and the auditor's export | in progress | 4B.8a (#553); 4B.8b-1 statements and aging (#556); 4B.8b-2 chain job, margin, VAT file (#561); 4B.8b-3 legal books mechanism (#559); 4B.8b-2b and 4B.8b-4 (the accountant's layout): todo | |
-| 4B.9 | Finance interface (web) | in progress | 4B.9a-1 (setup, chart, taxes, settings, periods) #554, 4B.9a-2 (the journal, transactions and receipts; #560), 4B.9a-3 (bank reconciliation by CSV) #557, 4B.9a-4 (suppliers, purchases, payables; #558), 4B.9b-1 (close, reports; #563); 4B.9b-2 to 4B.9b-4: todo | |
+| 4B.9 | Finance interface (web) | in progress | 4B.9a-1 (setup, chart, taxes, settings, periods) #554, 4B.9a-2 (the journal, transactions and receipts; #560), 4B.9a-3 (bank reconciliation by CSV) #557, 4B.9a-4 (suppliers, purchases, payables; #558), 4B.9b-1 (close, reports; #563), 4B.9b-3 (statements, aging, legal books; #565); 4B.9b-2, 4B.9b-4a (VAT file, margin) and 4B.9b-5 (the month end to end): todo | |
 | **Milestone 5: Operations** | | | | |
 | 5.1 | Search | done | #486 (PR A: the server), #488 (PR B: the web), #496 (the click, in Step 5.2 PR C3) | 2026-11-15 |
 | 5.2 | Analytics | done | #485 (PR A: rollups, answer semantics, metrics route), PR B #487 (dashboard, My performance, View analytics), PR C1 #491 (reports and export, server), PR C2 #494 (reports and export, web); PR C3 #496 (search click, passive flag and report) | 2026-11-15 |

@@ -1054,6 +1054,25 @@ export function addFinanceViewer(storeId: string, email: string): Promise<() => 
   })
 }
 
+// A person who may read the books and their statements, with or without the permission to take a file (Step 4B.9b-3): the legal books
+// need both, the statements need only the first and hide the file
+export function addFinanceReportsViewer(
+  storeId: string,
+  email: string,
+  withExport: boolean
+): Promise<() => Promise<void>> {
+  return addUserWithPermissions(storeId, {
+    email,
+    userName: 'Finance Reports Viewer',
+    roleName: `E2E finance reports viewer${withExport ? ' with export' : ''}`,
+    permissions: [
+      Permissions.FINANCE_VIEW,
+      Permissions.FINANCE_VIEW_REPORTS,
+      ...(withExport ? [Permissions.FINANCE_EXPORT] : [])
+    ]
+  })
+}
+
 // A person who may see the inventory and nothing that changes it (the warehouses screen opens and shows, no
 // button changes anything)
 export function addInventoryViewer(storeId: string, email: string): Promise<() => Promise<void>> {

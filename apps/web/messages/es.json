@@ -2972,7 +2972,10 @@
         "reconciliation": "Conciliación bancaria",
         "suppliers": "Proveedores",
         "purchases": "Compras",
-        "payables": "Cuentas por pagar"
+        "payables": "Cuentas por pagar",
+        "statements": "Estados financieros",
+        "aging": "Antigüedad de saldos",
+        "books": "Libros legales"
       }
     },
     "store": {
@@ -7078,6 +7081,222 @@
         "frozenMissing": "falta en la cadena",
         "checkedAt": "Revisado el {time}"
       }
+    },
+    "statementsCommon": {
+      "formLabel": "Elige qué mostrar",
+      "from": "Desde",
+      "to": "Hasta",
+      "asOf": "Al día",
+      "show": "Mostrar",
+      "problems": {
+        "from": "Escribe el primer día como una fecha real.",
+        "to": "Escribe el último día como una fecha real.",
+        "order": "El primer día es posterior al último.",
+        "day": "Escribe una fecha real."
+      },
+      "warningsTitle": "Este reporte no está completo",
+      "warnings": {
+        "noIncome": "Ninguna cuenta de ingresos tuvo movimiento en este rango, así que el resultado puede verse mejor de lo que es.",
+        "noCostOfSales": "Ninguna cuenta de costo de ventas tuvo movimiento en este rango: el margen bruto no cuenta ningún costo.",
+        "noCashAccounts": "Ninguna cuenta de efectivo o banco tuvo movimiento: el flujo de caja no dice nada.",
+        "roleNotMapped": "Un rol de cuenta que este reporte lee no tiene cuenta en los ajustes de Finanzas.",
+        "linesWithoutParty": "Algunas líneas no llevan proveedor ni transportista: están en el total pero en ninguna fila.",
+        "notBalanced": "Los libros no cuadran: los activos difieren de los pasivos más el patrimonio más el resultado. Avisa a un administrador.",
+        "cashFlowDoesNotClose": "El inicio más el flujo neto no es igual al final. Avisa a un administrador."
+      },
+      "closed": {
+        "settled": "Todos los días de este reporte están en meses cerrados: las cifras no cambian a menos que se reabra un mes.",
+        "partly": "Los libros están cerrados hasta el {date}: lo posterior todavía puede cambiar."
+      }
+    },
+    "statements": {
+      "title": "Estados financieros",
+      "description": "El estado de resultados y el flujo de caja de un rango de días, y el balance general de un día, leídos del libro diario.",
+      "tabsLabel": "Estado",
+      "tabs": {
+        "income": "Estado de resultados",
+        "balance": "Balance general",
+        "cash": "Flujo de caja"
+      },
+      "income": {
+        "description": "Lo que entró, lo que costaron las ventas, el margen bruto, los gastos y el resultado del rango.",
+        "pick": "Elige los días y pulsa Mostrar.",
+        "download": "Descargar CSV",
+        "income": "Ingresos",
+        "incomeTotal": "Total de ingresos",
+        "costOfSales": "Costo de ventas",
+        "costOfSalesTotal": "Total del costo de ventas",
+        "grossMargin": "Margen bruto",
+        "expenses": "Gastos",
+        "expensesTotal": "Total de gastos",
+        "netResult": "Resultado neto",
+        "none": "Ninguna cuenta tuvo movimiento en este rango."
+      },
+      "balance": {
+        "description": "Lo que tiene el negocio, lo que debe y lo que es propio, al cierre de un día.",
+        "pick": "Elige el día y pulsa Mostrar.",
+        "download": "Descargar CSV",
+        "assets": "Activos",
+        "assetsTotal": "Total de activos",
+        "liabilities": "Pasivos",
+        "liabilitiesTotal": "Total de pasivos",
+        "equity": "Patrimonio",
+        "equityTotal": "Total del patrimonio",
+        "result": "Resultado desde el inicio de los libros",
+        "resultNote": "Ningún asiento de cierre lo pasa todavía al patrimonio, por eso se muestra aparte.",
+        "equityWithResult": "Patrimonio más resultado",
+        "balanced": "Los activos son iguales a los pasivos más el patrimonio más el resultado.",
+        "notBalanced": "Los activos difieren de los pasivos más el patrimonio más el resultado: avisa a un administrador.",
+        "balancedSlice": "La parte de una sola tienda no tiene por qué cuadrar sola: un asiento puede poner sus líneas en dos tiendas.",
+        "none": "Ninguna cuenta tiene saldo en este día."
+      },
+      "cash": {
+        "description": "El dinero que entró y salió de las cuentas de efectivo y banco, según el tipo de registro que lo movió.",
+        "pick": "Elige los días y pulsa Mostrar.",
+        "download": "Descargar CSV",
+        "opening": "Efectivo al inicio",
+        "closing": "Efectivo al final",
+        "source": "Tipo de registro",
+        "inflow": "Entradas",
+        "outflow": "Salidas",
+        "net": "Neto",
+        "total": "Total",
+        "closes": "El inicio más el flujo neto es igual al final.",
+        "doesNotClose": "El inicio más el flujo neto no es igual al final: avisa a un administrador.",
+        "none": "No se movió dinero en este rango."
+      },
+      "sources": {
+        "order": "Venta",
+        "shipment": "Envío",
+        "remittance": "Remesa de contra entrega",
+        "return": "Devolución",
+        "inventory_movement": "Movimiento de inventario",
+        "purchase_receipt": "Compra recibida",
+        "supplier_payment": "Pago a proveedor",
+        "finance_transaction": "Gasto, ingreso o transferencia",
+        "manual": "Asiento manual"
+      }
+    },
+    "aging": {
+      "title": "Antigüedad de saldos",
+      "description": "Lo que se le debe al negocio y lo que el negocio debe, según la antigüedad de cada saldo, al cierre de un día.",
+      "kind": "Lista",
+      "kinds": {
+        "receivables": "Por cobrar",
+        "payables": "Por pagar"
+      },
+      "pick": "Elige la lista y el día y pulsa Mostrar.",
+      "download": "Descargar CSV",
+      "party": "Proveedor o transportista",
+      "noParty": "Sin proveedor ni transportista",
+      "parties": {
+        "supplier": "Proveedor",
+        "carrier_connection": "Transportista",
+        "customer": "Cliente"
+      },
+      "bucketRange": "{from} a {to} días",
+      "bucketOver": "Más de {days} días",
+      "unapplied": "Sin aplicar",
+      "total": "Total",
+      "totals": "Totales",
+      "none": "No hay saldos al cierre de este día.",
+      "missingRoles": "Estos roles no tienen cuenta en los ajustes de Finanzas, así que esta lista los deja fuera: {roles}."
+    },
+    "books": {
+      "title": "Libros legales",
+      "description": "El libro de ventas a contribuyentes, el de ventas a consumidores finales y el de compras, de un mes a la vez, leídos del libro diario.",
+      "kind": "Libro",
+      "kinds": {
+        "sales_taxpayers": "Ventas a contribuyentes",
+        "sales_consumers": "Ventas a consumidores finales",
+        "purchases": "Compras"
+      },
+      "period": "Mes",
+      "periodPick": "Elige un mes",
+      "pick": "Elige un mes para ver el libro.",
+      "noPeriods": "Todavía no hay meses.",
+      "download": "Descargar CSV",
+      "downloadDraft": "Descargar CSV (borrador)",
+      "draftTag": "borrador",
+      "unvalidated": {
+        "title": "Plantilla propuesta, sin validar por el contador",
+        "body": "Este libro es un borrador. No lo presentes ni lo des por el libro legal definitivo hasta que el contador confirme su formato."
+      },
+      "confirmed": "El formato (versión {version}) fue confirmado por el contador.",
+      "frozen": "Este mes está cerrado: el libro es el que se congeló al cierre, el mismo archivo siempre.",
+      "closedNotFrozen": "Este mes está cerrado, pero no se congeló ningún libro con este formato, así que se arma de nuevo en cada consulta. Una plantilla propuesta nunca se congela.",
+      "openMonth": "Este mes está abierto: el libro cambia conforme se registran asientos.",
+      "warnings": {
+        "title": "Lo que este libro no pudo listar",
+        "salesWithoutTaxSnapshot": "{count, plural, one {# venta no tiene el detalle del impuesto (se hizo antes de guardarlo) y no se lista.} other {# ventas no tienen el detalle del impuesto (se hicieron antes de guardarlo) y no se listan.}}",
+        "salesNotReadable": "{count, plural, one {# venta tiene un detalle de impuesto que no cuadra y no se lista.} other {# ventas tienen un detalle de impuesto que no cuadra y no se listan.}}",
+        "voidedDocuments": "{count, plural, one {# venta cuyo documento fiscal se anuló queda fuera.} other {# ventas cuyo documento fiscal se anuló quedan fuera.}}",
+        "unclassifiedDocuments": "{count, plural, one {# venta tiene un documento de un tipo que este sistema no conoce, o una nota de crédito: se cuenta aparte y no se lista.} other {# ventas tienen un documento de un tipo que este sistema no conoce, o una nota de crédito: se cuentan aparte y no se listan.}}",
+        "returnsNotListed": "{count, plural, one {# devolución del mes no se lista: las notas de crédito todavía no están en los libros.} other {# devoluciones del mes no se listan: las notas de crédito todavía no están en los libros.}}"
+      },
+      "yes": "Sí",
+      "no": "No",
+      "empty": "Este libro no tiene filas en este mes.",
+      "totals": "Totales",
+      "showing": "Se muestran las primeras {shown} de {total} filas: el archivo las tiene todas.",
+      "count": "{count, plural, one {# fila} other {# filas}}",
+      "sha": "SHA-256 del archivo: {sha}",
+      "layout": {
+        "summary": "Formato: versión {version}, {source}",
+        "sources": {
+          "proposal": "propuesto por el sistema, sin validar",
+          "stored": "escrito por la organización"
+        },
+        "confirmedLabel": "Confirmado por el contador",
+        "confirmedYes": "Sí",
+        "confirmedNo": "No",
+        "sortLabel": "Orden",
+        "sorts": {
+          "date": "Por fecha, luego por número de asiento",
+          "document": "Por número de documento, luego por fecha"
+        },
+        "correlativeLabel": "Correlativo",
+        "correlative": "Empieza en {start} y vuelve a empezar cada {restart}",
+        "restarts": {
+          "month": "mes",
+          "year": "año"
+        },
+        "unissuedLabel": "Ventas sin documento fiscal",
+        "unissued": {
+          "consumers": "Se listan en el libro de consumidores finales",
+          "excluded": "Quedan fuera de los dos libros de ventas"
+        },
+        "columnsLabel": "Columnas"
+      },
+      "fields": {
+        "correlative": "Correlativo",
+        "date": "Fecha",
+        "entry_number": "Número de asiento",
+        "document_type": "Tipo de documento",
+        "document_number": "Número de documento",
+        "source_number": "Número de pedido",
+        "base_taxed": "Base gravada",
+        "base_exempt": "Base exenta",
+        "base_not_subject": "Base no sujeta",
+        "base_shipping_untaxed": "Envío sin impuesto",
+        "base": "Base",
+        "tax": "Impuesto",
+        "total": "Total",
+        "supplier_name": "Proveedor",
+        "supplier_tax_id": "Identificación fiscal del proveedor",
+        "tax_creditable": "Impuesto acreditable",
+        "due_date": "Fecha de vencimiento"
+      },
+      "frozenList": {
+        "title": "Libros congelados al cierre",
+        "description": "El archivo de cada libro tal como estaba cuando se cerró el mes, con su hash. Un cambio posterior del formato no lo mueve.",
+        "empty": "No se congeló ningún libro de este mes.",
+        "row": "Formato versión {version}, congelado el {date}",
+        "open": "Abrir",
+        "hide": "Ocultar"
+      },
+      "fieldsUnknown": "Las columnas de dinero de esta versión del formato no se distinguen en pantalla: las cifras son centavos enteros (100 es 1.00). El archivo las trae como las escribió el api.",
+      "totalsAllRows": "Totales (todas las filas)"
     }
   }
 }
