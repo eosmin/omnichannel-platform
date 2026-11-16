@@ -335,6 +335,8 @@ export enum CodStatus {
   PENDING_REMITTANCE = 'pending_remittance',
   REMITTED = 'remitted',
   DISCREPANCY = 'discrepancy',
+  // The difference of a remittance that did not match was written off by a person (TDD_18 §4.2 E7): terminal
+  WRITTEN_OFF = 'written_off',
   VOID = 'void'
 }
 

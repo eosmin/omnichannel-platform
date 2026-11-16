@@ -44,7 +44,8 @@ import { RemittancesApiService } from './remittances.service'
 import type {
   PendingConnectionView,
   RemittanceDetailView,
-  RemittanceView
+  RemittanceView,
+  WrittenOffDifferenceView
 } from './remittances.views'
 
 type Store = ResolvedTenant['store']
@@ -146,6 +147,20 @@ export class RemittancesController {
     @Req() req: AuthenticatedRequest
   ): Promise<RemittanceDetailView> {
     return this.remittances.confirm(store.id, remittanceId, body, actorOf(user, store, req))
+  }
+
+  // Writing off the difference of a guide that did not match its remittance moves money in the books (TDD_18 §4.2 E7): it asks for
+  // remittances:manage and, in the service, for the permission to move money. The amount is not in the request: the books work it out
+  @RequirePermissions(Permissions.REMITTANCES_MANAGE)
+  @Post(ApiRoutes.remittances.writeOff(':shipmentId'))
+  @HttpCode(HttpStatusCodes.OK)
+  writeOff(
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('shipmentId', id()) shipmentId: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<WrittenOffDifferenceView> {
+    return this.remittances.writeOffDifference(store.id, shipmentId, actorOf(user, store, req))
   }
 
   // Voiding a confirmed remittance is a HIGH-tier action (TDD_09 §11.1): the screen asks twice, and the entry says who did it

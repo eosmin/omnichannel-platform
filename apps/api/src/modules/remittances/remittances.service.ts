@@ -7,7 +7,7 @@ import { PrismaService } from '@platform/core/database'
 import {
   ageInDays,
   type AddRemittanceLinesBody,
-  type CodStatus,
+  CodStatus,
   type ConfirmRemittanceBody,
   type CreateRemittanceBody,
   type CursorPage,
@@ -45,7 +45,8 @@ import {
   type RemittanceRow,
   type RemittanceTotalsView,
   type RemittanceView,
-  remittanceViewOf
+  remittanceViewOf,
+  type WrittenOffDifferenceView
 } from './remittances.views'
 
 const ORDER = [{ createdAt: 'desc' }, { id: 'desc' }] as const
@@ -294,7 +295,9 @@ export class RemittancesApiService {
     actor: Actor
   ): Promise<RemittanceDetailView> {
     // Choosing the account of the books the cash goes to is a finance decision: a caller who may only manage remittances does not make it
-    if (body.destinationAccountId !== undefined) await this.assertMayChooseAccount(storeId, actor)
+    if (body.destinationAccountId !== undefined) {
+      await this.assertMayMoveMoney(storeId, actor, 'choosing the account of the books')
+    }
     const done = await this.writes.confirm(storeId, remittanceId, body, refOf(actor))
     this.record(storeId, AuditAction.REMITTANCE_CONFIRMED, remittanceId, actor, {
       connectionId: done.connectionId,
@@ -305,6 +308,27 @@ export class RemittancesApiService {
       feeCents: done.feeCents
     })
     return this.get(storeId, remittanceId)
+  }
+
+  // Writing off a difference moves money in the books (E7): it asks for the permission to move it, on top of managing remittances
+  async writeOffDifference(
+    storeId: string,
+    shipmentId: string,
+    actor: Actor
+  ): Promise<WrittenOffDifferenceView> {
+    await this.assertMayMoveMoney(storeId, actor, 'writing off a difference')
+    const done = await this.writes.writeOffDifference(storeId, shipmentId, refOf(actor))
+    this.audit.log({
+      action: AuditAction.REMITTANCE_DIFFERENCE_WRITTEN_OFF,
+      actor: { userId: actor.userId },
+      storeId,
+      resourceType: ShipmentResourceTypes.SHIPMENT,
+      resourceId: shipmentId,
+      metadata: { connectionId: done.connectionId, remittanceId: done.remittanceId },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
+    return { shipmentId, codStatus: CodStatus.WRITTEN_OFF }
   }
 
   async void(
@@ -324,7 +348,7 @@ export class RemittancesApiService {
 
   // ---------------------------------------------------------------------------------------------- support
 
-  private async assertMayChooseAccount(storeId: string, actor: Actor): Promise<void> {
+  private async assertMayMoveMoney(storeId: string, actor: Actor, what: string): Promise<void> {
     const store = await this.prisma.client.store.findUnique({
       where: { id: storeId },
       select: { organizationId: true }
@@ -344,7 +368,7 @@ export class RemittancesApiService {
     if (!allowed) {
       throw new PlatformException(
         ErrorCodes.PERMISSION_DENIED,
-        'choosing the account of the books needs the permission to move money',
+        `${what} needs the permission to move money`,
         HttpStatusCodes.FORBIDDEN
       )
     }

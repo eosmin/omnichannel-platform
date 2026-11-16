@@ -9,6 +9,9 @@ import {
   CHANNEL_ID_PATTERN,
   ConversationStatus,
   ConversationStatusReasons,
+  FinanceEventKind,
+  FinancePostingFailureReason,
+  FinanceSourceType,
   GuideBalanceAlertLevel,
   idempotencyKeySchema,
   PickupManualReasons,
@@ -206,6 +209,15 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     storeId: id,
     webhookId: id,
     consecutiveFailures: z.number().int().min(1)
+  }),
+  // An automatic entry failed: the source, the event of it and a reason code, never an amount
+  [Events.FINANCE_POSTING_FAILED]: z.object({
+    organizationId: id,
+    sourceType: z.enum(FinanceSourceType),
+    sourceId: id,
+    eventKind: z.enum(FinanceEventKind),
+    reason: z.enum(FinancePostingFailureReason),
+    attempts: z.number().int().min(1)
   }),
   // The webhooks of a plugin turned off: the installation, the plugin and the count, never the address or the response
   [Events.PLUGIN_ERROR]: z.object({

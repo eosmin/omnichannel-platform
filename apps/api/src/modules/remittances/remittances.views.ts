@@ -153,3 +153,9 @@ export interface PendingConnectionView {
   shipments: PendingShipmentView[]
   truncated: boolean
 }
+
+// The answer of writing off the difference of a guide: the guide and the status it has now
+export interface WrittenOffDifferenceView {
+  shipmentId: string
+  codStatus: CodStatus
+}

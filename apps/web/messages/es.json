@@ -108,6 +108,9 @@
         "media": {
           "infected": "Archivo infectado bloqueado",
           "unscannable": "No se pudo analizar un archivo"
+        },
+        "finance": {
+          "posting_failed": "Falló un asiento contable"
         }
       },
       "push": {
@@ -1023,6 +1026,12 @@
     "unknown": {
       "title": "Notificación nueva",
       "body": "Ábrela para ver los detalles."
+    },
+    "finance": {
+      "posting_failed": {
+        "title": "Falló un asiento contable",
+        "body": "Un asiento de los libros no se pudo registrar automáticamente. Abre la lista de asientos fallidos, corrige la causa y regístralo de nuevo: el mes no se puede cerrar hasta entonces."
+      }
     }
   },
   "orders": {

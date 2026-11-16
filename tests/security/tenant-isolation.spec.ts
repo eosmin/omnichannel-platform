@@ -17,6 +17,7 @@ import type { OwnerClient } from '@platform/core/database-testing'
 import {
   CarrierId,
   ChannelIds,
+  CodStatus,
   CountStatus,
   ConversationStatus,
   DeliveryStatus,
@@ -5821,6 +5822,51 @@ describe('Tenant isolation', () => {
       })
 
       expect([count.status, transfer.status, empty.status]).toEqual([404, 404, 400])
+    })
+  })
+
+  // The write-off of the difference of a guide (Step 4B.6b-2, E7) is a store's action on a store's guide that moves money in the books of
+  // its organization: the admin of its sibling store and the admin of another organization reach no guide of it (a 404, as if it did not
+  // exist), and the guide, its status and the books stay as they were; the entry of the books is read by organization, so another
+  // organization's posting job finds nothing.
+  describe('the write-off of the difference of a guide', () => {
+    it('is not reachable from the sibling store or from another organization, and nothing changes', async () => {
+      const guide = await createShipment(owner, {
+        storeId: ctx.storeA.id,
+        status: ShipmentStatus.DELIVERED,
+        codAmountCents: 2515,
+        codStatus: CodStatus.PENDING_REMITTANCE
+      })
+      const author = await owner.membership.findFirstOrThrow({
+        where: { storeId: ctx.storeA.id },
+        select: { userId: true }
+      })
+      const remittance = await owner.codRemittance.create({
+        data: {
+          storeId: ctx.storeA.id,
+          connectionId: guide.connectionId,
+          status: RemittanceStatus.CONFIRMED,
+          createdBy: author.userId,
+          confirmedAt: new Date(),
+          confirmedBy: author.userId
+        },
+        select: { id: true }
+      })
+      await owner.shipment.update({
+        where: { id: guide.id },
+        data: { codStatus: CodStatus.DISCREPANCY, codRemittanceId: remittance.id }
+      })
+      for (const [user, store] of [
+        [ctx.adminA2, ctx.storeA2],
+        [ctx.adminB, ctx.storeB]
+      ] as const) {
+        const attempt = await api(app, user, store).post(ApiRoutes.remittances.writeOff(guide.id))
+        expect(attempt.status).toBe(404)
+      }
+      expect((await owner.shipment.findUniqueOrThrow({ where: { id: guide.id } })).codStatus).toBe(
+        CodStatus.DISCREPANCY
+      )
+      expect(await owner.journalEntry.count({ where: { sourceId: guide.id } })).toBe(0)
     })
   })
 

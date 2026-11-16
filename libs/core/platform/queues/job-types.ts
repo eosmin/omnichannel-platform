@@ -157,6 +157,11 @@ export interface PostFinanceEventJob extends BaseJob {
   // The instant of the event when the source row has no date of its own (ISO)
   occurredAt?: string
 }
+// The daily check of the books of one organization (TDD_18 §6.1, §11): it finds the sources that should have an entry and have none and
+// queues them again (never an amount: the posting job reads the rows), and compares the balances with the lines. It writes no entry.
+export interface ReconcileFinanceJob extends BaseJob {
+  organizationId: string
+}
 // The daily check of the stock of one store against its ledger (TDD_16 §4.8): read only
 export interface ReconcileInventoryJob extends BaseJob {
   storeId: string

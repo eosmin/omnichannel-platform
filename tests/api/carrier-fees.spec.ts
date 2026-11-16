@@ -272,6 +272,66 @@ describe('Settings → Carriers: commission and rates', () => {
       const row = await owner.carrierConnection.findUniqueOrThrow({ where: { id: body.id } })
       expect(row.commissionBps).toBeNull()
     })
+
+    // Step 4B.6b-2: what was agreed with a carrier is read, and agreed, with finance:view_carrier_fees, not with the permission to see
+    // shipping (closes (c3)(i) of Step 4.15)
+    it('shows the commission and the rates only to who may view the carrier fees, and lets only them agree them', async () => {
+      const body = made(
+        await connect(CarrierId.FORZA, {
+          commissionBps: 450,
+          serviceRatesCents: { COLLECTED: 300 }
+        })
+      )
+      expect(body).toMatchObject({ commissionBps: 450, serviceRatesCents: { COLLECTED: 300 } })
+      const as = async (
+        name: string,
+        permissions: readonly (typeof Permissions)[keyof typeof Permissions][]
+      ) =>
+        api(
+          app,
+          await actorWithPermissions(owner, app, {
+            prefix,
+            name,
+            organizationId: ctx.orgA.id,
+            storeId: ctx.storeA.id,
+            permissions
+          }),
+          ctx.storeA
+        )
+      const shipping = await as('fees-shipping', [Permissions.SHIPPING_VIEW])
+      const finance = await as('fees-finance', [
+        Permissions.SHIPPING_VIEW,
+        Permissions.FINANCE_VIEW_CARRIER_FEES
+      ])
+      const manager = await as('fees-manager', [
+        Permissions.SHIPPING_VIEW,
+        Permissions.SETTINGS_MANAGE_CARRIERS
+      ])
+
+      const hidden = { commissionBps: null, serviceRatesCents: {} }
+      expect((await shipping.get(ApiRoutes.carriers.byId(body.id))).body).toMatchObject(hidden)
+      const listed = (await shipping.get(ApiRoutes.carriers.list)).body as {
+        data: { id: string; commissionBps: number | null }[]
+      }
+      expect(listed.data.find(row => row.id === body.id)?.commissionBps).toBeNull()
+      expect((await finance.get(ApiRoutes.carriers.byId(body.id))).body).toMatchObject({
+        commissionBps: 450,
+        serviceRatesCents: { COLLECTED: 300 }
+      })
+
+      // A manager who cannot view the fees edits the rest of the connection and gets it back without them; naming a fee is refused
+      const renamed = await manager
+        .patch(ApiRoutes.carriers.byId(body.id))
+        .send({ displayName: `${prefix}-renamed` })
+      expect(renamed.status).toBe(OK)
+      expect(renamed.body).toMatchObject(hidden)
+      const refused = await manager
+        .patch(ApiRoutes.carriers.byId(body.id))
+        .send({ commissionBps: 100 })
+      expect(refused.status).toBe(FORBIDDEN)
+      const row = await owner.carrierConnection.findUniqueOrThrow({ where: { id: body.id } })
+      expect(row.commissionBps).toBe(450)
+    })
   })
 
   describe('what a guide keeps and what it is expected to bring', () => {

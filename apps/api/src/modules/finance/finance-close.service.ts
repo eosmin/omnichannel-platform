@@ -13,7 +13,7 @@ import {
   periodEnded,
   trialBalanceTotals
 } from '@platform/core/finance'
-import { dayInZone, financeRefusal } from '@platform/core/finance-ledger'
+import { dayInZone, FinanceCloseGuard, financeRefusal } from '@platform/core/finance-ledger'
 
 import type { Actor } from '../tenancy'
 
@@ -31,7 +31,8 @@ export class FinanceCloseService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
-    private readonly events: DomainEvents
+    private readonly events: DomainEvents,
+    private readonly guard: FinanceCloseGuard
   ) {}
 
   async close(
@@ -40,6 +41,7 @@ export class FinanceCloseService {
     actor: Actor,
     now: Date = new Date()
   ): Promise<PeriodView> {
+    await this.requireNothingPending(organizationId, periodId)
     const result = await this.prisma.transaction(async tx => {
       const head = await this.lockSettings(tx, organizationId)
       const period = await tx.fiscalPeriod.findFirst({
@@ -77,8 +79,9 @@ export class FinanceCloseService {
       if (earlierClosed < expectedClosed) {
         throw financeRefusal(ErrorCodes.FINANCE_CLOSE_PREVIOUS_OPEN)
       }
-      // 2. No posting is waiting for a person. A failure holds no source date, so every unresolved one of the organization blocks the close:
-      // the safe side, tracked in the plan (4B.8b narrows it by the date of the source once the sweep of 4B.6b leaves a date on the row)
+      // 2. No posting is waiting for a person. The guard of 4B.6b-3 already ran before the lock (it sweeps for sources with no entry,
+      // and its preview transactions must not wait on the lock held here); this count under the lock is the one a failure recorded in
+      // between cannot slip past. A failure holds no source date, so every unresolved one of the organization blocks the close.
       const failed = await tx.financePostingFailure.count({
         where: { organizationId, resolvedAt: null }
       })
@@ -209,6 +212,19 @@ export class FinanceCloseService {
     })
     if (row === null) throw resourceNotFound('fiscal period')
     return periodView(row)
+  }
+
+  // Sources that should have an entry and have none, or whose entry failed (TDD_18 §5.1). Outside the transaction on purpose: the sweep
+  // runs preview transactions that take the settings row FOR SHARE and would wait for the lock the close holds. A period that does not
+  // exist is left to the transaction, which answers 404.
+  private async requireNothingPending(organizationId: string, periodId: string): Promise<void> {
+    const period = await this.prisma.client.fiscalPeriod.findFirst({
+      where: { id: periodId, organizationId },
+      select: { startsOn: true }
+    })
+    if (period === null) return
+    const blockers = await this.guard.check(organizationId, { since: period.startsOn })
+    if (blockers.blocked) throw financeRefusal(ErrorCodes.FINANCE_CLOSE_PENDING_POSTINGS)
   }
 
   private async lockSettings(

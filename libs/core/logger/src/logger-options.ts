@@ -66,7 +66,14 @@ export const REDACTED_SECRET_KEYS: readonly string[] = [
   'verifyToken',
   'verify_token',
   'webhookSecret',
-  'webhook_secret'
+  'webhook_secret',
+  // Fiscal documents (TDD_18 §9.2): the customer data of a document and the certificate of the issuer. The provider declares the names of
+  // its own credentials in its manifest, so no provider's spelling is listed here.
+  'taxId',
+  'tax_id',
+  'registrationId',
+  'registration_id',
+  'certificate'
 ]
 
 // Never log secrets

@@ -262,6 +262,8 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'remittances.lineById': { step: '4.14' },
   'remittances.confirm': { step: '4.14' },
   'remittances.void': { step: '4.14' },
+  // The button to write off a difference sits with the books' screens (the amount is the ledger's, so it is drawn there)
+  'remittances.writeOff': { step: '4B.9' },
   'remittances.importProfiles': { step: '4.14' },
   'remittances.importProfileById': { step: '4.14' },
   'media.uploadUrl': { step: '3.4' },
