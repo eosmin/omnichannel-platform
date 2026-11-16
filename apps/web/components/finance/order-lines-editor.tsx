@@ -164,80 +164,85 @@ export function OrderLinesEditor({
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-3" aria-label={t('formLabel')}>
-      <PurchaseItemPicker onPick={add} />
-      {lines.length === 0 ? (
-        <p className="text-muted-foreground text-sm">{t('empty')}</p>
-      ) : (
-        <ul className="flex flex-col gap-3" data-testid="order-lines-draft">
-          {lines.map((line, index) => {
-            const problem = wrong?.index === index ? wrong.field : null
-            return (
-              <li
-                key={line.key}
-                data-testid="order-line-draft"
-                className="flex flex-col gap-2 rounded-md border p-3"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <span className="text-sm font-medium">{labels.get(line.key) ?? line.label}</span>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="ghost"
-                    aria-label={t('remove', { name: labels.get(line.key) ?? line.label })}
-                    onClick={() => edit(current => current.filter(item => item.key !== line.key))}
-                  >
-                    <Trash2 aria-hidden />
-                  </Button>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <LineBox
-                    label={t('quantity')}
-                    value={line.quantity}
-                    inputMode="numeric"
-                    problem={problem === LineFields.QUANTITY ? t('wrongQuantity') : null}
-                    onChange={quantity => patch(line.key, { quantity })}
-                  />
-                  <LineBox
-                    label={t('unitCost')}
-                    value={line.unitCost}
-                    inputMode="decimal"
-                    problem={problem === LineFields.UNIT_COST ? t('wrongCost') : null}
-                    onChange={unitCost => patch(line.key, { unitCost })}
-                  />
-                  {taxRates === null ? null : (
-                    <LineSelect
-                      label={t('taxRate')}
-                      value={line.taxRateId}
-                      onChange={taxRateId => patch(line.key, { taxRateId })}
+      {/* Nothing is edited while a save is on its way: what was typed after Save would be lost when the lines are read again */}
+      <fieldset disabled={update.isPending} className="flex min-w-0 flex-col gap-3">
+        <PurchaseItemPicker onPick={add} />
+        {lines.length === 0 ? (
+          <p className="text-muted-foreground text-sm">{t('empty')}</p>
+        ) : (
+          <ul className="flex flex-col gap-3" data-testid="order-lines-draft">
+            {lines.map((line, index) => {
+              const problem = wrong?.index === index ? wrong.field : null
+              return (
+                <li
+                  key={line.key}
+                  data-testid="order-line-draft"
+                  className="flex flex-col gap-2 rounded-md border p-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-sm font-medium">
+                      {labels.get(line.key) ?? line.label}
+                    </span>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      aria-label={t('remove', { name: labels.get(line.key) ?? line.label })}
+                      onClick={() => edit(current => current.filter(item => item.key !== line.key))}
                     >
-                      <option value="">{t('noTax')}</option>
-                      {taxRates
-                        .filter(rate => rate.active || rate.id === line.taxRateId)
-                        .map(rate => (
-                          <option key={rate.id} value={rate.id}>
-                            {rate.name} · {t('percent', { percent: percentOfBps(rate.rateBps) })}
-                          </option>
-                        ))}
-                    </LineSelect>
-                  )}
-                </div>
-              </li>
-            )
-          })}
-        </ul>
-      )}
-      <dl className="grid grid-cols-3 gap-3 text-sm" data-testid="order-lines-totals">
-        <Total label={t('subtotal')} value={moneyText(locale, money.subtotalCents)} />
-        <Total
-          label={t('tax')}
-          value={taxKnown ? moneyText(locale, money.taxCents) : t('taxUnknown')}
-        />
-        <Total
-          label={t('total')}
-          value={taxKnown ? moneyText(locale, money.totalCents) : t('taxUnknown')}
-          strong
-        />
-      </dl>
+                      <Trash2 aria-hidden />
+                    </Button>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <LineBox
+                      label={t('quantity')}
+                      value={line.quantity}
+                      inputMode="numeric"
+                      problem={problem === LineFields.QUANTITY ? t('wrongQuantity') : null}
+                      onChange={quantity => patch(line.key, { quantity })}
+                    />
+                    <LineBox
+                      label={t('unitCost')}
+                      value={line.unitCost}
+                      inputMode="decimal"
+                      problem={problem === LineFields.UNIT_COST ? t('wrongCost') : null}
+                      onChange={unitCost => patch(line.key, { unitCost })}
+                    />
+                    {taxRates === null ? null : (
+                      <LineSelect
+                        label={t('taxRate')}
+                        value={line.taxRateId}
+                        onChange={taxRateId => patch(line.key, { taxRateId })}
+                      >
+                        <option value="">{t('noTax')}</option>
+                        {taxRates
+                          .filter(rate => rate.active || rate.id === line.taxRateId)
+                          .map(rate => (
+                            <option key={rate.id} value={rate.id}>
+                              {rate.name} · {t('percent', { percent: percentOfBps(rate.rateBps) })}
+                            </option>
+                          ))}
+                      </LineSelect>
+                    )}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+        <dl className="grid grid-cols-3 gap-3 text-sm" data-testid="order-lines-totals">
+          <Total label={t('subtotal')} value={moneyText(locale, money.subtotalCents)} />
+          <Total
+            label={t('tax')}
+            value={taxKnown ? moneyText(locale, money.taxCents) : t('taxUnknown')}
+          />
+          <Total
+            label={t('total')}
+            value={taxKnown ? moneyText(locale, money.totalCents) : t('taxUnknown')}
+            strong
+          />
+        </dl>
+      </fieldset>
       {refusal === null ? null : (
         <p role="alert" className="text-destructive text-sm">
           {refusal}

@@ -48,7 +48,8 @@ function Suppliers(): ReactElement {
   const [paying, setPaying] = useState<PaymentTarget | null>(null)
   const [voiding, setVoiding] = useState<SupplierPaymentView | null>(null)
 
-  if (list.isError) return <LoadFailed error={list.error} onRetry={() => void list.refetch()} />
+  if (list.isError && list.data === undefined)
+    return <LoadFailed error={list.error} onRetry={() => void list.refetch()} />
   if (list.data === undefined) return <PageLoading />
   const rows = list.data.pages.flatMap(page => page.data)
   const chart = can(ClientPermissions.FINANCE_VIEW) ? (accounts.data ?? []) : null

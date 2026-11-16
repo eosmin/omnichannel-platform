@@ -105,7 +105,12 @@ function PurchaseOrder(): ReactElement {
   if (failed !== null) {
     return <LoadFailed error={failed.error} onRetry={() => void failed.refetch()} />
   }
-  if (order.data === undefined || payments.data === undefined || payables.data === undefined) {
+  if (
+    order.data === undefined ||
+    payments.data === undefined ||
+    payables.data === undefined ||
+    suppliers.data === undefined
+  ) {
     return <PageLoading />
   }
   const view = order.data

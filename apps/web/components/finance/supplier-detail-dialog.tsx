@@ -72,13 +72,15 @@ function Detail({
   const supplier = useSupplier(storeId, supplierId)
   const balance = useSupplierBalance(storeId, supplierId)
   const payments = useSupplierPayments(storeId, supplierId)
-  const failed = supplier.isError
-    ? supplier
-    : balance.isError
-      ? balance
-      : payments.isError
-        ? payments
-        : null
+  // Only a first load fails the box: an error with the data on screen keeps it
+  const failed =
+    supplier.isError && supplier.data === undefined
+      ? supplier
+      : balance.isError && balance.data === undefined
+        ? balance
+        : payments.isError && payments.data === undefined
+          ? payments
+          : null
   if (failed !== null)
     return <LoadFailed error={failed.error} onRetry={() => void failed.refetch()} />
   if (supplier.data === undefined || balance.data === undefined || payments.data === undefined) {
