@@ -6,10 +6,12 @@ import { PinoLogger } from 'nestjs-pino'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService, type PrismaTransaction } from '@platform/core/database'
+import { isUniqueViolation, PrismaService, type PrismaTransaction } from '@platform/core/database'
 import {
   FinancePostingKey,
+  FiscalConflictReasons,
   FiscalConsultState,
+  FiscalDocumentKind,
   FiscalDocumentStatus,
   type FiscalEnvironment,
   FiscalPendingDocumentType,
@@ -17,7 +19,10 @@ import {
   FiscalLimits,
   FiscalRejectionReasons,
   FiscalResourceTypes,
-  FiscalSubmitOutcome
+  FiscalSubmitOutcome,
+  hasReceivedUnits,
+  OrderReturnStatus,
+  OrderStatus
 } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -30,6 +35,7 @@ import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import type {
   BuiltDocument,
+  FiscalCreditedDocument,
   FiscalDocumentProvider,
   FiscalIssuerInput,
   FiscalReceiver,
@@ -40,9 +46,11 @@ import type { FiscalActor } from './fiscal-issuer.service'
 import { FiscalProviderRegistry } from './fiscal-provider.registry'
 import {
   canTransition,
+  creditNoteSaleOf,
   documentLines,
   isImmutable,
   maskTaxId,
+  originalStateOf,
   receiverEditable,
   receiverOf,
   receiverRecord,
@@ -73,6 +81,12 @@ export interface FiscalDocumentView {
   id: string
   storeId: string
   orderId: string
+  // A sale document, or the credit note of a return; a credit note names its return (null for an order that came back as a whole) and
+  // the sale document it cancels (part of), and a sale document made again names the voided one it replaces
+  kind: FiscalDocumentKind
+  returnId: string | null
+  parentDocumentId: string | null
+  replacesDocumentId: string | null
   journalEntryId: string | null
   sequenceNumber: number
   documentType: string
@@ -103,6 +117,10 @@ const SELECT = {
   id: true,
   storeId: true,
   orderId: true,
+  kind: true,
+  returnId: true,
+  parentDocumentId: true,
+  replacesDocumentId: true,
   journalEntryId: true,
   sequenceNumber: true,
   documentType: true,
@@ -191,20 +209,15 @@ export class FiscalDocumentsService {
         issuer?.issueOn === moment ||
         (moment === FiscalIssueOn.DELIVERED && issuer?.issueOn === FiscalIssueOn.SHIPPED)
       if (issuer === null || !due) return null
-      const existing = await tx.fiscalDocument.findUnique({
-        where: { organizationId_orderId: { organizationId, orderId } },
+      // Any sale document of the order, voided or not: a voided one is replaced by a person (`replace`), never by the next event
+      const existing = await tx.fiscalDocument.findFirst({
+        where: { organizationId, orderId, kind: FiscalDocumentKind.SALE },
         select: { id: true }
       })
       if (existing !== null) return null
       const sale = await this.readSale(tx, organizationId, orderId)
       if (sale === null) return null
-      // The correlative: an atomic increment, so two documents never share a number
-      const taken = await tx.fiscalIssuer.update({
-        where: { organizationId },
-        data: { nextSequence: { increment: 1 } },
-        select: { nextSequence: true }
-      })
-      const sequenceNumber = taken.nextSequence - 1
+      const sequenceNumber = await this.takeSequence(tx, organizationId)
       const entry = await tx.journalEntry.findFirst({
         where: { organizationId, idempotencyKey: FinancePostingKey.ORDER_SALE(orderId) },
         select: { id: true }
@@ -298,6 +311,312 @@ export class FiscalDocumentsService {
     }
   }
 
+  // The correlative: an atomic increment, so two documents never share a number
+  private async takeSequence(tx: PrismaTransaction, organizationId: string): Promise<number> {
+    const taken = await tx.fiscalIssuer.update({
+      where: { organizationId },
+      data: { nextSequence: { increment: 1 } },
+      select: { nextSequence: true }
+    })
+    return taken.nextSequence - 1
+  }
+
+  // The key of the entry of the books a document belongs to: the sale, or the return its credit note is for. The link is made by this key,
+  // never by copying amounts.
+  private entryKeyOf(doc: { kind: string; orderId: string; returnId: string | null }): string {
+    if (doc.kind !== (FiscalDocumentKind.CREDIT_NOTE as string)) {
+      return FinancePostingKey.ORDER_SALE(doc.orderId)
+    }
+    return doc.returnId === null
+      ? FinancePostingKey.ORDER_RETURN(doc.orderId)
+      : FinancePostingKey.RETURN_RESTOCK(doc.returnId)
+  }
+
+  // ---------------------------------------------------------------- a return makes a credit note
+
+  // A return was received: the credit note of its units, linked to the sale document it cancels (part of). No issuer, or no sale document
+  // that is not voided (the sale was never documented), is no credit note: there is nothing to cancel. One credit note per return: asking
+  // twice answers nothing the second time. Returns the id to enqueue, or null.
+  async createCreditNoteForReturn(
+    organizationId: string,
+    returnId: string
+  ): Promise<string | null> {
+    return this.onceOnly(() =>
+      this.prisma.transaction(async tx => {
+        const found = await tx.orderReturn.findFirst({
+          where: { id: returnId, store: { organizationId } },
+          select: { id: true, storeId: true, orderId: true, status: true, receivedAt: true }
+        })
+        if (
+          found === null ||
+          found.receivedAt === null ||
+          !hasReceivedUnits(found.status as OrderReturnStatus)
+        ) {
+          return null
+        }
+        return this.makeCreditNote(tx, organizationId, found.orderId, found.id)
+      })
+    )
+  }
+
+  // An order that came back as a whole with no return row (a parcel that came back, a delivered order an agent put back): every unit is
+  // back. An order whose returns were received has a credit note per return instead, so this makes none for it.
+  async createCreditNoteForOrder(organizationId: string, orderId: string): Promise<string | null> {
+    return this.onceOnly(() => this.makeOrderCreditNote(organizationId, orderId))
+  }
+
+  private makeOrderCreditNote(organizationId: string, orderId: string): Promise<string | null> {
+    return this.prisma.transaction(async tx => {
+      const order = await tx.order.findFirst({
+        where: { id: orderId, store: { organizationId } },
+        select: { id: true, storeId: true, status: true }
+      })
+      // Like the entry of the books: an order that is not returned (the event was late, or came twice) has no credit note
+      if (order === null || order.status !== (OrderStatus.RETURNED as string)) return null
+      const withReturns = await tx.orderReturn.count({
+        where: {
+          storeId: order.storeId,
+          orderId,
+          // The same predicate as the entry of the books, so the note and the entry agree on what the order is
+          status: { in: [OrderReturnStatus.RECEIVED, OrderReturnStatus.COMPLETED] }
+        }
+      })
+      if (withReturns > 0) return null
+      return this.makeCreditNote(tx, organizationId, orderId, null)
+    })
+  }
+
+  // Two events for the same return (a repeated one, or the whole-order one next to a return) race the partial unique indexes: the one that
+  // loses finds the note already made, which is the answer, not a fault
+  private async onceOnly(make: () => Promise<string | null>): Promise<string | null> {
+    try {
+      return await make()
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        // Said, not swallowed: another unique rule of the table would be hidden here otherwise
+        this.logger.warn('a credit note was not made again: the database says it already exists')
+        return null
+      }
+      throw error
+    }
+  }
+
+  // The credit note, in the transaction of its caller. `returnId` null is the order as a whole. A credit note whose units do not fit the
+  // sale is made REJECTED with the reason, so a person sees it and retries it, instead of being dropped in silence.
+  private async makeCreditNote(
+    tx: PrismaTransaction,
+    organizationId: string,
+    orderId: string,
+    returnId: string | null,
+    parentOverride?: { id: string }
+  ): Promise<string | null> {
+    const issuer = await tx.fiscalIssuer.findUnique({ where: { organizationId } })
+    if (issuer === null) return null
+    const parent =
+      parentOverride === undefined
+        ? await tx.fiscalDocument.findFirst({
+            where: {
+              organizationId,
+              orderId,
+              kind: FiscalDocumentKind.SALE,
+              status: { not: FiscalDocumentStatus.VOIDED }
+            },
+            select: { id: true, receiverEncrypted: true }
+          })
+        : await tx.fiscalDocument.findFirst({
+            where: { id: parentOverride.id, organizationId },
+            select: { id: true, receiverEncrypted: true }
+          })
+    if (parent === null) return null
+    const live = await tx.fiscalDocument.findFirst({
+      where: {
+        organizationId,
+        kind: FiscalDocumentKind.CREDIT_NOTE,
+        status: { not: FiscalDocumentStatus.VOIDED },
+        ...(returnId === null ? { orderId, returnId: null } : { returnId })
+      },
+      select: { id: true }
+    })
+    if (live !== null) return null
+    const note = await this.readCreditNote(tx, organizationId, orderId, returnId)
+    if (note === null) return null
+    const sequenceNumber = await this.takeSequence(tx, organizationId)
+    const entry = await tx.journalEntry.findFirst({
+      where: {
+        organizationId,
+        idempotencyKey: this.entryKeyOf({
+          kind: FiscalDocumentKind.CREDIT_NOTE,
+          orderId,
+          returnId
+        })
+      },
+      select: { id: true }
+    })
+    const created = await tx.fiscalDocument.create({
+      data: {
+        organizationId,
+        storeId: note.storeId,
+        orderId,
+        kind: FiscalDocumentKind.CREDIT_NOTE,
+        returnId,
+        parentDocumentId: parent.id,
+        journalEntryId: entry?.id ?? null,
+        sequenceNumber,
+        documentType: FiscalPendingDocumentType,
+        status: note.ok ? FiscalDocumentStatus.QUEUED : FiscalDocumentStatus.REJECTED,
+        rejectionReason: note.ok ? null : FiscalRejectionReasons.RETURN_INCONSISTENT,
+        providerId: issuer.providerId,
+        environment: issuer.environment,
+        issuerSnapshot: toJson(this.issuerInput(issuer)),
+        linesSnapshot: note.linesSnapshot,
+        // The receiver of a credit note is the one of the sale document it cancels
+        receiverEncrypted: new Uint8Array(parent.receiverEncrypted),
+        currency: note.currency,
+        totalCents: note.totalCents,
+        taxCents: note.taxCents
+      },
+      select: { id: true }
+    })
+    if (!note.ok) {
+      this.announce(
+        tx,
+        { id: created.id, organizationId, storeId: note.storeId, orderId },
+        FiscalRejectionReasons.RETURN_INCONSISTENT
+      )
+      return null
+    }
+    return created.id
+  }
+
+  // What the credit note is for, from the order as it is and the returns received before this one (the same running total the books use
+  // for the entry of the return, so the note and the entry agree to the cent). `ok: false` keeps an empty document for a person to see.
+  private async readCreditNote(
+    tx: PrismaTransaction,
+    organizationId: string,
+    orderId: string,
+    returnId: string | null
+  ) {
+    const order = await tx.order.findFirst({
+      where: { id: orderId, store: { organizationId } },
+      select: {
+        storeId: true,
+        orderNumber: true,
+        currency: true,
+        subtotalCents: true,
+        shippingCents: true,
+        discountCents: true,
+        totalCents: true,
+        taxCents: true,
+        pricesIncludeTax: true,
+        items: {
+          orderBy: { id: 'asc' },
+          select: {
+            id: true,
+            productName: true,
+            variantName: true,
+            quantity: true,
+            unitPriceCents: true,
+            taxRateBps: true,
+            taxCents: true
+          }
+        }
+      }
+    })
+    if (order === null) return null
+    // An order made before the tax snapshot has nothing to credit by line: the books cannot reverse it either (TAX_MISSING, listed for a
+    // person there), so no document is made that could never be sent
+    if (
+      order.taxCents === null ||
+      order.pricesIncludeTax === null ||
+      order.items.some(item => item.taxCents === null)
+    ) {
+      this.logger.warn({ orderId }, 'no credit note was made: the order has no tax snapshot')
+      return null
+    }
+    let before = new Map<string, number>()
+    let returned = new Map<string, number>(order.items.map(item => [item.id, item.quantity]))
+    if (returnId !== null) {
+      const found = await tx.orderReturn.findFirst({
+        where: { id: returnId, orderId, storeId: order.storeId },
+        select: {
+          id: true,
+          receivedAt: true,
+          lines: { select: { orderItemId: true, quantity: true } }
+        }
+      })
+      if (found === null || found.receivedAt === null) return null
+      const earlier = await tx.orderReturn.findMany({
+        where: {
+          storeId: order.storeId,
+          orderId,
+          status: { in: [OrderReturnStatus.RECEIVED, OrderReturnStatus.COMPLETED] },
+          receivedAt: { not: null },
+          OR: [
+            { receivedAt: { lt: found.receivedAt } },
+            { receivedAt: found.receivedAt, id: { lt: found.id } }
+          ]
+        },
+        select: { lines: { select: { orderItemId: true, quantity: true } } }
+      })
+      const unitsBy = (lines: readonly { orderItemId: string; quantity: number }[]) => {
+        const units = new Map<string, number>()
+        for (const line of lines) {
+          units.set(line.orderItemId, (units.get(line.orderItemId) ?? 0) + line.quantity)
+        }
+        return units
+      }
+      before = unitsBy(earlier.flatMap(row => row.lines))
+      returned = unitsBy(found.lines)
+    }
+    const credit = creditNoteSaleOf(
+      {
+        subtotalCents: order.subtotalCents,
+        discountCents: order.discountCents,
+        shippingCents: order.shippingCents,
+        totalCents: order.totalCents,
+        taxCents: order.taxCents,
+        pricesIncludeTax: order.pricesIncludeTax,
+        lines: order.items.map(item => ({
+          orderItemId: item.id,
+          productName: item.productName,
+          variantName: item.variantName,
+          quantity: item.quantity,
+          unitPriceCents: item.unitPriceCents,
+          taxRateBps: item.taxRateBps,
+          taxCents: item.taxCents
+        }))
+      },
+      before,
+      returned
+    )
+    const sale = credit.ok
+      ? credit.sale
+      : {
+          lines: [],
+          shippingCents: 0,
+          shippingTaxCents: 0,
+          discountCents: 0,
+          pricesIncludeTax: order.pricesIncludeTax ?? true,
+          totalCents: 0,
+          taxCents: 0
+        }
+    return {
+      ok: credit.ok,
+      storeId: order.storeId,
+      currency: order.currency,
+      totalCents: sale.totalCents,
+      taxCents: sale.taxCents,
+      linesSnapshot: toJson({
+        lines: sale.lines,
+        shippingCents: sale.shippingCents,
+        shippingTaxCents: sale.shippingTaxCents,
+        discountCents: sale.discountCents,
+        pricesIncludeTax: sale.pricesIncludeTax,
+        orderNumber: order.orderNumber
+      })
+    }
+  }
+
   // ---------------------------------------------------------------- the worker submits it
 
   // One attempt, run by the worker. Returns normally when the document reached a state a person or the authority decided (accepted,
@@ -310,7 +629,17 @@ export class FiscalDocumentsService {
       // Another attempt claimed it a moment ago: this job fails so that the backoff of the queue asks again after the lease
       throw new Error('the fiscal document is being submitted by another attempt')
     }
-    const { doc, issuer, provider } = claimed
+    if (claimed === 'waiting') {
+      // A credit note whose sale document has not been accepted yet: nothing was claimed, the queue asks again with its backoff
+      throw new Error('the sale document of this credit note is not accepted yet')
+    }
+    const { doc, issuer, provider, original } = claimed
+    if (original === 'voided') {
+      await this.reject(doc.id, organizationId, FiscalRejectionReasons.ORIGINAL_VOIDED, {
+        beforeSending: true
+      })
+      return
+    }
     // The document was made for a provider and an environment: an issuer that changed since (and has not been remade by a retry) is
     // not the one it was made for, and its credentials are not this document's to use
     if (
@@ -356,8 +685,17 @@ export class FiscalDocumentsService {
       })
       return
     }
+    // A credit note with nothing in it is a return that did not fit its sale (made so on purpose, to be seen): it is never sent
+    if (original !== null && sale.lines.length === 0) {
+      await this.reject(doc.id, organizationId, FiscalRejectionReasons.RETURN_INCONSISTENT, {
+        beforeSending: true
+      })
+      return
+    }
     const built = await this.attempt('build', doc.id, () =>
       provider.build({
+        kind: doc.kind as FiscalDocumentKind,
+        credited: original === null ? null : this.creditedOf(original),
         sequenceNumber: doc.sequenceNumber,
         // Fixed when the document was made: every attempt of every submission builds the same document
         issuedAt: doc.createdAt.toISOString(),
@@ -499,11 +837,46 @@ export class FiscalDocumentsService {
       }
       const issuer = await tx.fiscalIssuer.findUnique({ where: { organizationId } })
       const provider = this.providers.find(doc.providerId)
+      // A credit note goes only after the sale document it cancels was accepted. While that one is on its way the note waits (its job fails
+      // and the queue asks again), and when it was voided the note is refused for a person to retry once the sale is replaced.
+      let original:
+        | { externalNumber: string; issuedAt: Date; documentType: string; providerData: unknown }
+        | null
+        | 'voided' = null
+      let receiverEncrypted: Uint8Array<ArrayBuffer> | undefined
+      if (doc.kind === (FiscalDocumentKind.CREDIT_NOTE as string)) {
+        const parent =
+          doc.parentDocumentId === null
+            ? null
+            : await tx.fiscalDocument.findFirst({
+                where: { id: doc.parentDocumentId, organizationId }
+              })
+        const state =
+          parent === null ? 'voided' : originalStateOf(parent.status as FiscalDocumentStatus)
+        if (state === 'waiting') return 'waiting' as const
+        if (parent === null || state === 'voided') original = 'voided'
+        else if (parent.externalNumber === null || parent.issuedAt === null)
+          return 'waiting' as const
+        else {
+          original = {
+            externalNumber: parent.externalNumber,
+            issuedAt: parent.issuedAt,
+            documentType: parent.documentType,
+            providerData: parent.providerData
+          }
+          // The receiver of the note is the one of the document it cancels, as that document has it now
+          receiverEncrypted = new Uint8Array(parent.receiverEncrypted)
+        }
+      }
       const updated = await tx.fiscalDocument.update({
         where: { id: doc.id },
-        data: { status: FiscalDocumentStatus.SUBMITTED, attempts: { increment: 1 } }
+        data: {
+          status: FiscalDocumentStatus.SUBMITTED,
+          attempts: { increment: 1 },
+          ...(receiverEncrypted === undefined ? {} : { receiverEncrypted })
+        }
       })
-      return { doc: { ...updated, attempts: doc.attempts }, issuer, provider }
+      return { doc: { ...updated, attempts: doc.attempts }, issuer, provider, original }
     })
   }
 
@@ -537,7 +910,7 @@ export class FiscalDocumentsService {
       await tx.$queryRaw`SELECT id FROM fiscal_documents WHERE id = ${documentId} AND organization_id = ${organizationId} FOR UPDATE`
       const doc = await tx.fiscalDocument.findFirstOrThrow({
         where: { id: documentId, organizationId },
-        select: { orderId: true, status: true, createdAt: true }
+        select: { orderId: true, kind: true, returnId: true, status: true, createdAt: true }
       })
       // Another attempt decided first (this one was taken over): what is decided is not decided twice
       if (doc.status !== (FiscalDocumentStatus.SUBMITTED as string)) {
@@ -549,7 +922,7 @@ export class FiscalDocumentsService {
       }
       // The sale entry may have posted after the document was made: the link is made now, never by copying its amounts
       const entry = await tx.journalEntry.findFirst({
-        where: { organizationId, idempotencyKey: FinancePostingKey.ORDER_SALE(doc.orderId) },
+        where: { organizationId, idempotencyKey: this.entryKeyOf(doc) },
         select: { id: true }
       })
       await tx.fiscalDocument.update({
@@ -676,6 +1049,15 @@ export class FiscalDocumentsService {
       if (!receiverEditable(doc.status as FiscalDocumentStatus, doc.attempts)) {
         throw this.immutable(doc.status as FiscalDocumentStatus)
       }
+      // The receiver of a credit note is the one of the document it cancels: it is fixed there, and the note takes it when it is sent
+      if (doc.kind === (FiscalDocumentKind.CREDIT_NOTE as string)) {
+        throw new PlatformException(
+          ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+          'the receiver of a credit note is the one of the document it cancels',
+          HttpStatusCodes.CONFLICT,
+          { reason: FiscalConflictReasons.CREDIT_NOTE_RECEIVER }
+        )
+      }
       const current = this.openReceiver(doc.receiverEncrypted)
       const next: FiscalReceiver = {
         name: 'name' in patch ? (patch.name ?? null) : current.name,
@@ -732,16 +1114,52 @@ export class FiscalDocumentsService {
             HttpStatusCodes.CONFLICT
           )
         }
+        const isNote = doc.kind === (FiscalDocumentKind.CREDIT_NOTE as string)
+        // A credit note names the sale document that is live now: the one it was made for may have been voided and replaced since
+        let parentDocumentId = doc.parentDocumentId
+        if (isNote) {
+          const live = await tx.fiscalDocument.findFirst({
+            where: {
+              organizationId,
+              orderId: doc.orderId,
+              kind: FiscalDocumentKind.SALE,
+              status: { not: FiscalDocumentStatus.VOIDED }
+            },
+            select: { id: true }
+          })
+          if (live === null) {
+            throw new PlatformException(
+              ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+              'the sale document of this credit note was voided and has no replacement yet',
+              HttpStatusCodes.CONFLICT,
+              { reason: FiscalConflictReasons.ORIGINAL_VOIDED }
+            )
+          }
+          parentDocumentId = live.id
+        }
         // A sale that did not add up is read again from the order: a person may have corrected it since
-        const sale =
-          doc.rejectionReason === FiscalRejectionReasons.SALE_INCONSISTENT
-            ? await this.readSale(tx, organizationId, doc.orderId)
-            : null
+        const inconsistent =
+          doc.rejectionReason === FiscalRejectionReasons.SALE_INCONSISTENT ||
+          doc.rejectionReason === FiscalRejectionReasons.RETURN_INCONSISTENT
+        const sale = !inconsistent
+          ? null
+          : isNote
+            ? await this.readCreditNote(tx, organizationId, doc.orderId, doc.returnId)
+            : await this.readSale(tx, organizationId, doc.orderId)
+        if (isNote && inconsistent && (sale === null || ('ok' in sale && !sale.ok))) {
+          throw new PlatformException(
+            ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+            'the units of this return still do not fit its sale',
+            HttpStatusCodes.CONFLICT,
+            { reason: FiscalConflictReasons.RETURN_INCONSISTENT }
+          )
+        }
         await tx.fiscalDocument.update({
           where: { id },
           data: {
             status: FiscalDocumentStatus.QUEUED,
             rejectionReason: null,
+            parentDocumentId,
             ...(sale === null
               ? {}
               : {
@@ -787,6 +1205,31 @@ export class FiscalDocumentsService {
     if (doc === null) throw resourceNotFound('fiscal document')
     if (doc.status !== (FiscalDocumentStatus.ACCEPTED as string)) {
       throw this.invalid(doc.status as FiscalDocumentStatus)
+    }
+    // A sale document with a credit note that may be at the authority cannot be voided: the note names it, so the notes go first. That is
+    // an accepted one, one being sent, and one that was sent and not answered (back in the queue with an attempt counted: the authority may
+    // have it). A note that never left core (waiting, or refused by core or by the authority, which resets its attempts) is refused when
+    // it is sent for a voided original and a person retries it once the sale is replaced, so it never makes the sale unvoidable.
+    const notes = await this.prisma.client.fiscalDocument.count({
+      where: {
+        organizationId,
+        parentDocumentId: id,
+        OR: [
+          { status: { in: [FiscalDocumentStatus.ACCEPTED, FiscalDocumentStatus.SUBMITTED] } },
+          {
+            status: { in: [FiscalDocumentStatus.QUEUED, FiscalDocumentStatus.REJECTED] },
+            attempts: { gt: 0 }
+          }
+        ]
+      }
+    })
+    if (notes > 0) {
+      throw new PlatformException(
+        ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+        'a document with credit notes that are not voided cannot be voided',
+        HttpStatusCodes.CONFLICT,
+        { reason: FiscalConflictReasons.HAS_CREDIT_NOTES }
+      )
     }
     const issuer = await this.prisma.client.fiscalIssuer.findUnique({ where: { organizationId } })
     const provider = this.providers.find(doc.providerId)
@@ -890,6 +1333,186 @@ export class FiscalDocumentsService {
     return this.get(organizationId, id)
   }
 
+  // The sale document made again after the one before was voided (the invalidation is the authority's, the new document is a new
+  // submission with a new number: a voided document is never edited). It keeps the receiver the voided one had (what a person corrected),
+  // takes the sale as the order is now, and names the document it replaces. The credit notes that were voided with it are made again, to
+  // name the new document: they wait for it to be accepted. Returns the ids to enqueue, the sale document first.
+  async replace(
+    organizationId: string,
+    id: string,
+    actor: FiscalActor
+  ): Promise<{ id: string; creditNoteIds: string[] }> {
+    const made = await this.prisma
+      .transaction(async tx => {
+        const old = await this.lock(tx, organizationId, id)
+        if (
+          old.status !== (FiscalDocumentStatus.VOIDED as string) ||
+          old.kind !== (FiscalDocumentKind.SALE as string)
+        ) {
+          throw this.invalid(old.status as FiscalDocumentStatus)
+        }
+        const issuer = await tx.fiscalIssuer.findUnique({ where: { organizationId } })
+        if (issuer === null || this.providers.find(issuer.providerId) === undefined) {
+          throw new PlatformException(
+            ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
+            'the organization has no issuer set up',
+            HttpStatusCodes.CONFLICT
+          )
+        }
+        // One live sale document per order: the index says it too, this gives the answer a person can read
+        const live = await tx.fiscalDocument.findFirst({
+          where: {
+            organizationId,
+            orderId: old.orderId,
+            kind: FiscalDocumentKind.SALE,
+            status: { not: FiscalDocumentStatus.VOIDED }
+          },
+          select: { id: true }
+        })
+        if (live !== null) {
+          throw new PlatformException(
+            ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+            'the sale already has a live document',
+            HttpStatusCodes.CONFLICT,
+            { reason: FiscalConflictReasons.ALREADY_REPLACED }
+          )
+        }
+        // A document is replaced once, even when its replacement was voided later (a person replaces the last one then)
+        const replacement = await tx.fiscalDocument.findFirst({
+          where: { organizationId, replacesDocumentId: old.id },
+          select: { id: true }
+        })
+        if (replacement !== null) {
+          throw new PlatformException(
+            ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+            'the document was already replaced',
+            HttpStatusCodes.CONFLICT,
+            { reason: FiscalConflictReasons.ALREADY_REPLACED }
+          )
+        }
+        const sale = await this.readSale(tx, organizationId, old.orderId)
+        if (sale === null) throw resourceNotFound('order')
+        const sequenceNumber = await this.takeSequence(tx, organizationId)
+        const entry = await tx.journalEntry.findFirst({
+          where: {
+            organizationId,
+            idempotencyKey: this.entryKeyOf({
+              kind: FiscalDocumentKind.SALE,
+              orderId: old.orderId,
+              returnId: null
+            })
+          },
+          select: { id: true }
+        })
+        const created = await tx.fiscalDocument.create({
+          data: {
+            organizationId,
+            storeId: sale.storeId,
+            orderId: old.orderId,
+            kind: FiscalDocumentKind.SALE,
+            replacesDocumentId: old.id,
+            journalEntryId: entry?.id ?? null,
+            sequenceNumber,
+            documentType: FiscalPendingDocumentType,
+            status: FiscalDocumentStatus.QUEUED,
+            providerId: issuer.providerId,
+            environment: issuer.environment,
+            issuerSnapshot: toJson(this.issuerInput(issuer)),
+            linesSnapshot: sale.linesSnapshot,
+            receiverEncrypted: new Uint8Array(old.receiverEncrypted),
+            currency: sale.currency,
+            totalCents: sale.totalCents,
+            taxCents: sale.taxCents
+          },
+          select: { id: true }
+        })
+        // The notes that never left core (waiting, or refused) and name the voided document follow the replacement: they are the notes of the
+        // same returns, and a person would otherwise retry each one to move it
+        const movable = await tx.fiscalDocument.findMany({
+          where: {
+            organizationId,
+            parentDocumentId: old.id,
+            kind: FiscalDocumentKind.CREDIT_NOTE,
+            status: { in: [FiscalDocumentStatus.QUEUED, FiscalDocumentStatus.REJECTED] },
+            attempts: 0
+          },
+          select: { id: true, status: true }
+        })
+        if (movable.length > 0) {
+          await tx.fiscalDocument.updateMany({
+            where: { id: { in: movable.map(note => note.id) }, organizationId },
+            data: { parentDocumentId: created.id }
+          })
+        }
+        // Every return the order has received needs a note against the sale that is live now: the ones that were voided with the old document,
+        // and the ones whose return was received while the sale had none (no note could be made then). One that already has a live note is
+        // left as it is. An order that came back as a whole with no return row gets its one note.
+        const returns = await tx.orderReturn.findMany({
+          where: {
+            orderId: old.orderId,
+            storeId: old.storeId,
+            status: { in: [OrderReturnStatus.RECEIVED, OrderReturnStatus.COMPLETED] },
+            receivedAt: { not: null }
+          },
+          orderBy: [{ receivedAt: 'asc' }, { id: 'asc' }],
+          select: { id: true }
+        })
+        const order = await tx.order.findFirst({
+          where: { id: old.orderId },
+          select: { status: true }
+        })
+        // The whole-order note follows the rule of `createCreditNoteForOrder`: only an order with no received return at all (by status, as
+        // the books count them)
+        const withReturns = await tx.orderReturn.count({
+          where: {
+            orderId: old.orderId,
+            storeId: old.storeId,
+            status: { in: [OrderReturnStatus.RECEIVED, OrderReturnStatus.COMPLETED] }
+          }
+        })
+        const targets: (string | null)[] = returns.map(row => row.id)
+        if (withReturns === 0 && order?.status === (OrderStatus.RETURNED as string)) {
+          targets.push(null)
+        }
+        // The notes to send once the replacement is accepted: the ones moved that were waiting (their job may be spent) and the new ones
+        const creditNoteIds: string[] = movable
+          .filter(note => note.status === (FiscalDocumentStatus.QUEUED as string))
+          .map(note => note.id)
+        for (const returnId of targets) {
+          const again = await this.makeCreditNote(tx, organizationId, old.orderId, returnId, {
+            id: created.id
+          })
+          if (again !== null) creditNoteIds.push(again)
+        }
+        return { id: created.id, creditNoteIds, moved: movable.length }
+      })
+      // Two requests that race for the same replacement (or a return event that makes its note at the same time) meet a unique index:
+      // the loser is told the document was already replaced, never a fault
+      .catch((error: unknown) => {
+        if (!isUniqueViolation(error)) throw error
+        this.logger.warn({ documentId: id }, 'a replacement met a unique rule of the table')
+        throw new PlatformException(
+          ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+          'the document was already replaced',
+          HttpStatusCodes.CONFLICT,
+          { reason: FiscalConflictReasons.ALREADY_REPLACED }
+        )
+      })
+    this.audit.log({
+      action: AuditAction.FISCAL_DOCUMENT_REPLACED,
+      actor: { userId: actor.userId },
+      organizationId,
+      storeId: actor.storeId,
+      resourceType: FiscalResourceTypes.DOCUMENT,
+      resourceId: made.id,
+      // The notes made again and the notes that now name the replacement: the chain of documents can be read from the audit
+      metadata: { replaces: id, creditNotes: made.creditNoteIds.length, movedNotes: made.moved },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
+    return { id: made.id, creditNoteIds: made.creditNoteIds }
+  }
+
   // ---------------------------------------------------------------- helpers
 
   private async lock(tx: PrismaTransaction, organizationId: string, id: string) {
@@ -969,10 +1592,29 @@ export class FiscalDocumentsService {
     }
   }
 
+  // The sale document a credit note cancels (part of), in the words the provider gave it when it accepted it
+  private creditedOf(original: {
+    externalNumber: string
+    issuedAt: Date
+    documentType: string
+    providerData: unknown
+  }): FiscalCreditedDocument {
+    return {
+      documentType: original.documentType,
+      externalNumber: original.externalNumber,
+      issuedAt: original.issuedAt.toISOString(),
+      providerData: original.providerData === null ? null : record(original.providerData)
+    }
+  }
+
   private view(row: {
     id: string
     storeId: string
     orderId: string
+    kind: string
+    returnId: string | null
+    parentDocumentId: string | null
+    replacesDocumentId: string | null
     journalEntryId: string | null
     sequenceNumber: number
     documentType: string
@@ -996,6 +1638,10 @@ export class FiscalDocumentsService {
       id: row.id,
       storeId: row.storeId,
       orderId: row.orderId,
+      kind: row.kind as FiscalDocumentKind,
+      returnId: row.returnId,
+      parentDocumentId: row.parentDocumentId,
+      replacesDocumentId: row.replacesDocumentId,
       journalEntryId: row.journalEntryId,
       sequenceNumber: row.sequenceNumber,
       documentType: row.documentType,

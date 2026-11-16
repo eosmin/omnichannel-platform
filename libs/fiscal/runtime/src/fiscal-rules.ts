@@ -3,6 +3,7 @@ import {
   FiscalDocumentStatus,
   FiscalDocumentStatusTransitions
 } from '@platform/core/domain'
+import { lineBases, reversalLinesOf } from '@platform/core/finance'
 import type { FiscalLine, FiscalReceiver } from '@platform/fiscal/sdk'
 
 // The pure rules of the lifecycle of a fiscal document (TDD_18 §8.3): no database, no provider.
@@ -118,6 +119,94 @@ export function saleAddsUp(sale: FiscalSale): boolean {
     sale.shippingCents +
     (sale.pricesIncludeTax ? 0 : sale.taxCents)
   return expected === sale.totalCents
+}
+
+export interface CreditNoteOrder {
+  subtotalCents: number
+  discountCents: number
+  shippingCents: number
+  totalCents: number
+  // Null on an order made before the tax columns: such an order has no credit note (what it reverses is not recorded)
+  taxCents: number | null
+  pricesIncludeTax: boolean | null
+  lines: readonly (OrderLineRow & { orderItemId: string })[]
+}
+
+export type CreditNoteSale = { ok: true; sale: FiscalSale } | { ok: false }
+
+// The credit note of the units of a return: the lines that came back, with the revenue and the tax the sale gave them, split the way the
+// books split them when the return was received (`reversalLinesOf`: the running total of units back, so the parts of many returns add up to
+// the sale to the cent). The shipping fee is not credited (nothing says it was given back: [ACCOUNTANT], TDD_18 §13). The discount is what
+// the units had in gross, less what they brought in, so the document adds up like the one of a sale (`saleAddsUp`). A sale that does not
+// add up, or more units back than were sold, is refused and never forced.
+export function creditNoteSaleOf(
+  order: CreditNoteOrder,
+  before: ReadonlyMap<string, number>,
+  returned: ReadonlyMap<string, number>
+): CreditNoteSale {
+  const bases = lineBases({
+    subtotalCents: order.subtotalCents,
+    shippingCents: order.shippingCents,
+    discountCents: order.discountCents,
+    totalCents: order.totalCents,
+    taxCents: order.taxCents,
+    pricesIncludeTax: order.pricesIncludeTax,
+    lines: order.lines.map(line => ({
+      orderItemId: line.orderItemId,
+      quantity: line.quantity,
+      unitPriceCents: line.unitPriceCents,
+      taxCents: line.taxCents
+    }))
+  })
+  if (!bases.ok) return { ok: false }
+  const reversed = reversalLinesOf({ bases: bases.lines, before, returned })
+  if (!reversed.ok || reversed.lines.length === 0) return { ok: false }
+  const includesTax = order.pricesIncludeTax !== false
+  const lines: FiscalLine[] = []
+  let discountCents = 0
+  let taxCents = 0
+  let totalCents = 0
+  for (const back of reversed.lines) {
+    const row = order.lines.find(line => line.orderItemId === back.orderItemId)
+    const described = row === undefined ? undefined : documentLines([row])[0]
+    if (row === undefined || described === undefined) return { ok: false }
+    const gross = back.quantity * row.unitPriceCents
+    const rawBase = back.netCents + (includesTax ? back.vatCents : 0)
+    // The books round the net and the tax of the units back up separately, so together they can pass the gross of the units by one cent
+    // (net 1739 and tax 261 of 2 units sold at 1000: one unit back is 870 + 131 against 1000). That cent is the rounding of the books, not
+    // a discount: the line is credited for what the units were sold for. More than a cent over is not a rounding and is refused.
+    if (rawBase > gross + 1) return { ok: false }
+    const base = Math.min(rawBase, gross)
+    lines.push({
+      ...described,
+      quantity: back.quantity,
+      taxCents: back.vatCents,
+      totalCents: gross
+    })
+    discountCents += gross - base
+    taxCents += back.vatCents
+    totalCents += base + (includesTax ? 0 : back.vatCents)
+  }
+  return {
+    ok: true,
+    sale: {
+      lines,
+      shippingCents: 0,
+      shippingTaxCents: 0,
+      discountCents,
+      pricesIncludeTax: includesTax,
+      totalCents,
+      taxCents
+    }
+  }
+}
+
+// Whether the sale document a credit note cancels (part of) is ready for it: only an accepted document can be credited; a voided one was
+// never a sale (a person replaces it, and the credit note follows the replacement); any other state is the sale document still on its way
+export type OriginalState = 'ready' | 'waiting' | 'voided'
+export const originalStateOf = (status: FiscalDocumentStatus): OriginalState => {
+  if (status === FiscalDocumentStatus.ACCEPTED) return 'ready'
+  return status === FiscalDocumentStatus.VOIDED ? 'voided' : 'waiting'
 }
 
 const ISSUER_IDENTITY = [
