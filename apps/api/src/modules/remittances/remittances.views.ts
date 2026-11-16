@@ -1,4 +1,9 @@
-import type { CodStatus, RemittanceLineOutcome, RemittanceStatus } from '@platform/core/domain'
+import type {
+  CodStatus,
+  RemittanceLineOutcome,
+  RemittanceLineWarning,
+  RemittanceStatus
+} from '@platform/core/domain'
 
 // What the api says of a remittance of cash collected on delivery (TDD_17 §4.15, §6). It carries amounts and guide numbers
 // only: never the recipient, the address or the phone of the order (REMITTANCES_VIEW is not a permission to read customers).
@@ -96,6 +101,8 @@ export interface RemittanceLineView {
   outcome: RemittanceLineOutcome
   excluded: boolean
   note: string | null
+  // What a person should look at before confirming (a fee larger than the money the line reports); never a reason to refuse
+  warnings: RemittanceLineWarning[]
 }
 
 export interface RemittanceDetailView extends RemittanceView {

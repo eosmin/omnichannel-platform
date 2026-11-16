@@ -1,5 +1,6 @@
 'use client'
 
+import { TriangleAlert } from 'lucide-react'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type FormEvent, Fragment, type ReactElement, useState } from 'react'
 
@@ -7,7 +8,11 @@ import type { RemittanceLineView } from '@platform/api-client'
 import { RemittanceLimits } from '@platform/core/domain'
 
 import { centsToInput, formatCents } from '../../lib/products/money'
-import { type LineEditInput, lineEditBody } from '../../lib/remittances/remittance-rules'
+import {
+  knownWarnings,
+  type LineEditInput,
+  lineEditBody
+} from '../../lib/remittances/remittance-rules'
 import { useUpdateRemittanceLine } from '../../lib/remittances/use-remittances'
 import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
@@ -147,11 +152,14 @@ function LineEditor({
 export function RemittanceLines({
   remittanceId,
   lines,
-  canEdit
+  canEdit,
+  showWarnings
 }: {
   remittanceId: string
   lines: readonly RemittanceLineView[]
   canEdit: boolean
+  // Only a draft is about to be confirmed: a settled remittance, or a line left out, has nothing to be warned of
+  showWarnings: boolean
 }): ReactElement {
   const t = useTranslations('remittances.lines')
   const format = useFormatter()
@@ -205,6 +213,15 @@ export function RemittanceLines({
                   {line.note === null ? null : (
                     <p className="text-muted-foreground text-xs">{line.note}</p>
                   )}
+                  {(showWarnings && !line.excluded ? knownWarnings(line) : []).map(warning => (
+                    <p
+                      key={warning}
+                      className="mt-1 flex max-w-64 items-start gap-1 text-xs whitespace-normal text-amber-700 dark:text-amber-400"
+                    >
+                      <TriangleAlert aria-hidden className="mt-0.5 size-3 shrink-0" />
+                      {t(`warnings.${warning}`)}
+                    </p>
+                  ))}
                 </td>
                 <td className="py-2 pr-3 text-sm whitespace-nowrap">{line.orderNumber ?? ''}</td>
                 <td className="py-2 pr-3 text-sm">

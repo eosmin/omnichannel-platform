@@ -16,6 +16,7 @@ import {
   RemittanceLimits,
   type RemittanceLineOutcome,
   RemittanceStatus,
+  lineWarnings,
   remittanceTotals,
   SettlingOutcomes,
   ShipmentResourceTypes,
@@ -113,9 +114,19 @@ export class RemittancesApiService {
         outcome: true,
         excluded: true,
         note: true,
-        shipment: { select: { order: { select: { orderNumber: true } } } }
+        shipment: { select: { codAmountCents: true, order: { select: { orderNumber: true } } } }
       }
     })
+    // Warnings are for the draft about to be confirmed, read from the guide and the connection as they are now; a settled remittance is a record
+    // of what was done and carries none
+    const isDraft = row.status === String(RemittanceStatus.DRAFT)
+    const connection = isDraft
+      ? await this.prisma.client.carrierConnection.findFirst({
+          where: { id: row.connectionId, storeId },
+          select: { remittanceDeductsFee: true }
+        })
+      : null
+    const deductsFee = connection?.remittanceDeductsFee === true
     const views: RemittanceLineView[] = lines.map(line => ({
       id: line.id,
       position: line.position,
@@ -128,7 +139,15 @@ export class RemittancesApiService {
       differenceCents: line.expectedCents === null ? null : line.reportedCents - line.expectedCents,
       outcome: line.outcome as RemittanceLineOutcome,
       excluded: line.excluded,
-      note: line.note
+      note: line.note,
+      warnings: isDraft
+        ? lineWarnings({
+            reportedCents: line.reportedCents,
+            reportedFeeCents: line.reportedFeeCents,
+            grossCents: line.shipment?.codAmountCents ?? null,
+            deductsFee
+          })
+        : []
     }))
     const totals =
       row.status === String(RemittanceStatus.DRAFT)

@@ -4,8 +4,10 @@ import {
   expectedCodCents,
   guideKey,
   lineExpectedCents,
+  lineWarnings,
   type MatchShipment,
-  remittanceTotals
+  remittanceTotals,
+  RemittanceLineWarnings
 } from './remittance-rules'
 import { CodStatus, RemittanceLineOutcome, ShippingPayer } from './status-enums'
 
@@ -224,5 +226,76 @@ describe('guideKey and ageInDays', () => {
     const now = new Date('2026-11-12T12:00:00Z')
     expect(ageInDays(new Date('2026-11-09T13:00:00Z'), now)).toBe(2)
     expect(ageInDays(new Date('2026-11-13T00:00:00Z'), now)).toBe(0)
+  })
+})
+
+describe('lineWarnings (a fee over the money the line reports)', () => {
+  it('warns when the carrier kept more than the line reports, and says nothing otherwise', () => {
+    const warn = [RemittanceLineWarnings.FEE_EXCEEDS_COLLECTED]
+    expect(lineWarnings({ reportedCents: 1000, reportedFeeCents: 1001 })).toEqual(warn)
+    expect(lineWarnings({ reportedCents: 0, reportedFeeCents: 1 })).toEqual(warn)
+    expect(lineWarnings({ reportedCents: 1000, reportedFeeCents: 1000 })).toEqual([])
+    expect(lineWarnings({ reportedCents: 1000, reportedFeeCents: 120 })).toEqual([])
+    expect(lineWarnings({ reportedCents: 0, reportedFeeCents: 0 })).toEqual([])
+  })
+
+  it('says nothing for a line that reports no fee', () => {
+    expect(lineWarnings({ reportedCents: 1000, reportedFeeCents: null })).toEqual([])
+    expect(lineWarnings({ reportedCents: 1000 })).toEqual([])
+  })
+})
+
+describe('lineWarnings with the guide known (a carrier that deducts its fee)', () => {
+  const warn = [RemittanceLineWarnings.FEE_EXCEEDS_COLLECTED]
+  it('adds what it reports to what it kept and compares the total with the gross of the guide', () => {
+    // $10.00 collected, $6.00 kept, $4.00 reported: it adds up, a fee over half the cash is no reason to warn
+    expect(
+      lineWarnings({
+        reportedCents: 400,
+        reportedFeeCents: 600,
+        grossCents: 1000,
+        deductsFee: true
+      })
+    ).toEqual([])
+    // $12.00 kept out of $10.00: it reports nothing and the fee is more than the cash
+    expect(
+      lineWarnings({ reportedCents: 0, reportedFeeCents: 1200, grossCents: 1000, deductsFee: true })
+    ).toEqual(warn)
+    // One cent more than the gross
+    expect(
+      lineWarnings({
+        reportedCents: 401,
+        reportedFeeCents: 600,
+        grossCents: 1000,
+        deductsFee: true
+      })
+    ).toEqual(warn)
+  })
+
+  it('keeps the plain rule for a carrier that does not deduct, and without a guide', () => {
+    expect(
+      lineWarnings({
+        reportedCents: 1000,
+        reportedFeeCents: 1200,
+        grossCents: 1000,
+        deductsFee: false
+      })
+    ).toEqual(warn)
+    expect(
+      lineWarnings({
+        reportedCents: 1000,
+        reportedFeeCents: 200,
+        grossCents: 1000,
+        deductsFee: false
+      })
+    ).toEqual([])
+    expect(
+      lineWarnings({
+        reportedCents: 400,
+        reportedFeeCents: 600,
+        grossCents: null,
+        deductsFee: true
+      })
+    ).toEqual(warn)
   })
 })

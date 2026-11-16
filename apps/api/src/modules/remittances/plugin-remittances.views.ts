@@ -63,7 +63,8 @@ export function pluginRemittanceLineView(line: RemittanceLineView): RemittanceLi
     differenceCents: line.differenceCents,
     outcome: line.outcome,
     excluded: line.excluded,
-    note: line.note
+    note: line.note,
+    warnings: line.warnings
   }
 }
 

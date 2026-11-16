@@ -1,5 +1,6 @@
 'use client'
 
+import { TriangleAlert } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ChangeEvent, type ReactElement, useEffect, useMemo, useRef, useState } from 'react'
@@ -32,6 +33,7 @@ import {
   sameAsProfile,
   sampleOf
 } from '../../lib/remittances/import-mapper'
+import { knownWarnings } from '../../lib/remittances/remittance-rules'
 import {
   useDeleteImportProfile,
   useImportPreview,
@@ -140,6 +142,7 @@ function RowErrors({
 
 function Preview({ form, text }: { form: MapperForm; text: string }): ReactElement {
   const t = useTranslations('remittances.import.preview')
+  const tw = useTranslations('remittances.lines.warnings')
   const format = useFormatter()
   const { storeId } = useStore()
   const mapping = useMemo(() => mappingOf(form), [form])
@@ -216,7 +219,18 @@ function Preview({ form, text }: { form: MapperForm; text: string }): ReactEleme
               {data.lines.map(line => (
                 <tr key={line.row} className="border-b">
                   <td className="py-1 pr-3 whitespace-nowrap">{line.row}</td>
-                  <td className="py-1 pr-3 whitespace-nowrap">{line.guideNumber}</td>
+                  <td className="py-1 pr-3 whitespace-nowrap">
+                    {line.guideNumber}
+                    {knownWarnings(line).map(warning => (
+                      <p
+                        key={warning}
+                        className="mt-1 flex max-w-64 items-start gap-1 text-xs whitespace-normal text-amber-700 dark:text-amber-400"
+                      >
+                        <TriangleAlert aria-hidden className="mt-0.5 size-3 shrink-0" />
+                        {tw(warning)}
+                      </p>
+                    ))}
+                  </td>
                   <td className="py-1 pr-3 text-right whitespace-nowrap">
                     {formatCents(format, line.reportedCents)}
                   </td>

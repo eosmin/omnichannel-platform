@@ -9,6 +9,7 @@ import {
   RemittanceDateFormats,
   RemittanceDecimalSeparators,
   RemittanceDelimiters,
+  RemittanceLineWarnings,
   RemittanceImportErrors,
   RemittanceImportLimits,
   RemittanceLineOutcome,
@@ -254,6 +255,27 @@ describe('Importing the settlement file of a carrier (TDD_17 §4.15, Step 4.13 P
         receivedOn: '2026-11-12'
       })
       expect(await countsOf()).toEqual(before)
+    })
+
+    it('warns, line by line, of a fee larger than what the line reports, and refuses nothing', async () => {
+      const preview = await asAdmin()
+        .post(ApiRoutes.remittances.importPreview)
+        .send({
+          text: 'Guia;Monto;Comision\nW-1;10,00;12,50\nW-2;10,00;1,25\nW-3;10,00;\n',
+          profile: {
+            delimiter: RemittanceDelimiters.SEMICOLON,
+            decimalSeparator: RemittanceDecimalSeparators.COMMA,
+            dateFormat: RemittanceDateFormats.DAY_FIRST_SLASH,
+            columns: { guideNumber: 'Guia', amount: 'Monto', fee: 'Comision' }
+          }
+        })
+      expect(preview.status).toBe(OK)
+      const lines = (preview.body as { lines: { guideNumber: string; warnings: string[] }[] }).lines
+      expect(lines.map(line => [line.guideNumber, line.warnings])).toEqual([
+        ['W-1', [RemittanceLineWarnings.FEE_EXCEEDS_COLLECTED]],
+        ['W-2', []],
+        ['W-3', []]
+      ])
     })
 
     it('refuses a sample larger than a preview takes, a missing mapping and a viewer', async () => {

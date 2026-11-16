@@ -3,14 +3,18 @@ import {
   ProductLimits,
   RemittanceLimits,
   RemittanceLineOutcome,
+  RemittanceLineWarnings,
   RemittanceStatus
 } from '@platform/core/domain'
 
 import {
+  feeWarningCount,
   isOverdue,
   isSettling,
+  knownWarnings,
   lineEditBody,
   mayConfirm,
+  mayPressConfirm,
   outcomeCounts,
   outcomeTone,
   parseAmountInput,
@@ -31,6 +35,7 @@ const line = (overrides: Partial<RemittanceLineView> = {}): RemittanceLineView =
   outcome: RemittanceLineOutcome.MATCHED,
   excluded: false,
   note: null,
+  warnings: [],
   ...overrides
 })
 
@@ -203,5 +208,42 @@ describe('pending', () => {
     expect(isOverdue(7, 7)).toBe(false)
     expect(isOverdue(null, 7)).toBe(false)
     expect(isOverdue(30, null)).toBe(false)
+  })
+})
+
+describe('the fee warning before a confirmation', () => {
+  const warned = (over: Partial<RemittanceLineView> = {}) =>
+    line({ warnings: [RemittanceLineWarnings.FEE_EXCEEDS_COLLECTED], ...over })
+
+  it('counts the lines that are not left out and carry the warning', () => {
+    expect(feeWarningCount(remittance([line(), line()]))).toBe(0)
+    expect(feeWarningCount(remittance([warned(), line(), warned()]))).toBe(2)
+    // A line left out settles nothing: its warning is not asked about
+    expect(feeWarningCount(remittance([warned({ excluded: true }), line()]))).toBe(0)
+  })
+
+  it('does not count a line that settles nothing, whatever it carries', () => {
+    const notFound = warned({ outcome: RemittanceLineOutcome.NOT_FOUND, shipmentId: null })
+    expect(feeWarningCount(remittance([notFound, line()]))).toBe(0)
+    expect(mayPressConfirm(remittance([notFound, line()]), false)).toBe(true)
+  })
+
+  it('draws only the warnings it has a text for', () => {
+    expect(knownWarnings(line({ warnings: ['FEE_EXCEEDS_COLLECTED', 'SOMETHING_NEW'] }))).toEqual([
+      RemittanceLineWarnings.FEE_EXCEEDS_COLLECTED
+    ])
+  })
+
+  it('asks for the "I understand" box only when there is a warning, and then confirms with it checked', () => {
+    const clean = remittance([line()])
+    const withWarning = remittance([warned(), line({ id: 'l2', guideNumber: 'G-2' })])
+    expect(mayPressConfirm(clean, false)).toBe(true)
+    expect(mayPressConfirm(withWarning, false)).toBe(false)
+    expect(mayPressConfirm(withWarning, true)).toBe(true)
+  })
+
+  it('never lets a remittance that cannot be confirmed be pressed, checked or not', () => {
+    expect(mayPressConfirm(remittance([]), true)).toBe(false)
+    expect(mayPressConfirm(remittance([warned()], RemittanceStatus.CONFIRMED), true)).toBe(false)
   })
 })

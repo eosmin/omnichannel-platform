@@ -77,7 +77,8 @@ const lineSchema = z.object({
   differenceCents: z.number().int().nullable(),
   outcome: z.enum(RemittanceLineOutcome),
   excluded: z.boolean(),
-  note: z.string().nullable()
+  note: z.string().nullable(),
+  warnings: z.array(z.string()).default([])
 })
 export type RemittanceLineView = z.output<typeof lineSchema>
 
@@ -170,7 +171,8 @@ const importedLineSchema = z.object({
   guideNumber: z.string(),
   reportedCents: z.number().int(),
   reportedFeeCents: z.number().int().optional(),
-  row: z.number().int()
+  row: z.number().int(),
+  warnings: z.array(z.string()).default([])
 })
 export type ImportedLineView = z.output<typeof importedLineSchema>
 

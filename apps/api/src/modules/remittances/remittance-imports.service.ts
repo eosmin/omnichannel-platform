@@ -10,6 +10,7 @@ import { PrismaService } from '@platform/core/database'
 import {
   type ImportedLine,
   type ImportRowError,
+  lineWarnings,
   MediaStatus,
   parseRemittanceFile,
   RemittanceImportFiles,
@@ -20,6 +21,7 @@ import {
   remittanceImportProfileBodySchema,
   remittanceProfileProblem,
   type RemittanceImportQuery,
+  type RemittanceLineWarning,
   ShipmentResourceTypes
 } from '@platform/core/domain'
 import {
@@ -43,7 +45,7 @@ export interface ImportPreviewView {
   headers: string[]
   // The rows with data that were read, good or bad, and the lines that read well (the first ones)
   rowCount: number
-  lines: ImportedLine[]
+  lines: (ImportedLine & { warnings: RemittanceLineWarning[] })[]
   errors: ImportRowError[]
   errorCount: number
   reference: string | null
@@ -103,7 +105,7 @@ export class RemittanceImportsService {
     return {
       headers: parsed.headers,
       rowCount: parsed.rowCount,
-      lines: parsed.lines,
+      lines: parsed.lines.map(line => ({ ...line, warnings: lineWarnings(line) })),
       errors: parsed.errors,
       errorCount: parsed.errorCount,
       reference: parsed.reference,
