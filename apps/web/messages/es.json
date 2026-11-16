@@ -2940,7 +2940,8 @@
         "accounts": "Cuentas",
         "taxes": "Impuestos",
         "periods": "Periodos",
-        "settings": "Ajustes"
+        "settings": "Ajustes",
+        "reconciliation": "Conciliación bancaria"
       }
     },
     "store": {
@@ -6026,6 +6027,300 @@
         "pricesIncludeTax": "Los precios de esta tienda ya incluyen el impuesto",
         "pricesIncludeTaxHint": "Solo cambia cómo se separa el impuesto del precio de lo que se venda desde ahora.",
         "saved": "Preferencia guardada."
+      }
+    },
+    "reconciliation": {
+      "title": "Conciliación bancaria",
+      "description": "Trae el extracto de una cuenta bancaria como archivo CSV y compáralo con los libros. Las reglas sugieren qué línea de los libros es cada línea del extracto; tú confirmas o rechazas cada sugerencia y nada se concilia solo.",
+      "cancel": "Cancelar",
+      "account": "Cuenta",
+      "accountHint": "Solo las cuentas de efectivo, banco y billetera del catálogo que están activas y reciben asientos.",
+      "noAccounts": "Todavía no hay una cuenta de efectivo, banco o billetera que reciba asientos. Crea una primero en Cuentas.",
+      "conflicts": {
+        "bank_account_not_cash": "Un extracto se lee para una cuenta de efectivo, banco o billetera.",
+        "bank_profile_name_in_use": "Esta cuenta ya tiene un perfil con ese nombre.",
+        "bank_profile_limit": "Esta cuenta tiene el máximo de perfiles que admite. Elimina uno que no uses.",
+        "bank_profile_invalid": "El perfil rompe una regla de los perfiles: ábrelo y corrígelo antes de importar.",
+        "bank_import_nothing_new": "Todas las líneas de este archivo ya se importaron: no hay nada nuevo.",
+        "bank_pair_not_allowed": "Este par no se permite: el monto, el sentido, la cuenta o las fechas no coinciden.",
+        "bank_line_already_matched": "Esta línea del extracto ya está conciliada. Recarga para verla.",
+        "bank_book_line_already_matched": "Esa línea de los libros ya está conciliada con otra línea de un extracto.",
+        "bank_decision_already_undone": "Esa decisión ya se deshizo.",
+        "bank_line_matched": "Esta línea está conciliada: solo una línea sin par se puede registrar como transacción.",
+        "bank_no_closing_balance": "Este extracto no tiene saldo final con el que comparar los libros.",
+        "bank_changed": "Los libros cambiaron en ese mismo momento. Recarga y decide de nuevo."
+      },
+      "status": {
+        "title": "Conciliación del mes",
+        "description": "Cuántas líneas de los libros y de los extractos tienen su par, y cuánto suman las que siguen abiertas.",
+        "month": "Mes",
+        "year": "Año",
+        "problems": {
+          "month": "Escribe un mes del 1 al 12.",
+          "year": "Escribe un año de cuatro cifras."
+        },
+        "reconciled": "Este mes está conciliado: todas las líneas de los libros y de los extractos tienen su par.",
+        "open": "Este mes todavía no está conciliado.",
+        "sides": {
+          "book": "Libros",
+          "statement": "Extractos"
+        },
+        "counts": "{lines, plural, one {# línea} other {# líneas}}: {matched} conciliadas, {unmatched} abiertas",
+        "unmatchedAmount": "Las líneas abiertas suman {amount}"
+      },
+      "imports": {
+        "title": "Extractos",
+        "description": "Los extractos importados para esta cuenta, el más reciente primero. Abre uno para ver sus líneas.",
+        "import": "Importar un extracto",
+        "empty": "Todavía no se ha importado ningún extracto para esta cuenta.",
+        "range": "Del {from} al {to}",
+        "lines": "{count, plural, one {# línea} other {# líneas}}, {added} nuevas",
+        "closing": "termina con {amount} el {date}",
+        "open": "Abrir",
+        "dialog": {
+          "title": "Importar un extracto",
+          "description": "Elige el perfil que lee el archivo de tu banco y el archivo mismo (hasta {megabytes} MB y {rows} filas). Si una sola fila no se puede leer, no se importa nada.",
+          "formLabel": "Importar un extracto",
+          "profile": "Perfil",
+          "chooseProfile": "Elige un perfil…",
+          "noProfile": "Esta cuenta todavía no tiene perfil. Crea uno abajo, con una muestra del archivo de tu banco, y luego importa.",
+          "file": "Archivo del extracto",
+          "fileHint": "Un archivo CSV, TSV o de texto. Se lee con la codificación del perfil.",
+          "fileProblems": {
+            "too_large": "El archivo es más grande de lo que puede ser un extracto.",
+            "empty": "El archivo está vacío.",
+            "not_text": "El archivo no se puede leer como texto con la codificación del perfil. Prueba la otra codificación en el perfil."
+          },
+          "closingBalance": "Saldo final (opcional)",
+          "closingBalanceHint": "El saldo con el que termina el extracto, por ejemplo 1234.56. Permite comparar los libros con él.",
+          "closingOn": "Día del saldo final",
+          "closingOnHint": "Año-mes-día, por ejemplo 2026-11-30. Hace falta junto con el saldo.",
+          "problems": {
+            "profile": "Elige el perfil que lee este archivo.",
+            "file": "Elige el archivo del extracto.",
+            "closingBalance": "Escribe el saldo como un monto, por ejemplo 1234.56.",
+            "closingOn": "Escribe un día real como año-mes-día, por ejemplo 2026-11-30. El saldo y su día van juntos."
+          },
+          "cancel": "Cancelar",
+          "submit": "Importar",
+          "done": "{added, plural, one {Se importó # línea nueva.} other {Se importaron # líneas nuevas.}}"
+        }
+      },
+      "profiles": {
+        "title": "Perfiles",
+        "description": "Cómo se lee el archivo de cada banco: su separador, sus columnas y los días que una línea del extracto puede distar de los libros.",
+        "new": "Nuevo perfil",
+        "empty": "Esta cuenta todavía no tiene perfiles.",
+        "summary": "{delimiter}, {encoding}, ventana de {days, plural, one {# día} other {# días}}",
+        "edit": "Editar",
+        "delete": "Eliminar",
+        "editNamed": "Editar el perfil {name}",
+        "deleteNamed": "Eliminar el perfil {name}",
+        "deleteTitle": "¿Eliminar el perfil {name}?",
+        "deleteDescription": "Los extractos que ya se importaron con él se quedan como están. Para importar otro archivo de este banco hará falta un perfil de nuevo.",
+        "deleted": "Se eliminó el perfil.",
+        "options": {
+          "delimiter": {
+            "tab": "Tabulador",
+            "comma": "Coma",
+            "semicolon": "Punto y coma"
+          },
+          "encoding": {
+            "utf-8": "UTF-8",
+            "windows-1252": "Windows-1252 (Excel)"
+          },
+          "decimal": {
+            "dot": "Punto (1234.56)",
+            "comma": "Coma (1234,56)"
+          },
+          "thousands": {
+            "none": "Ninguno",
+            "comma": "Coma (1,234.56)",
+            "dot": "Punto (1.234,56)",
+            "space": "Espacio (1 234.56)"
+          },
+          "mode": {
+            "signed": "Una columna con el monto y su signo",
+            "split": "Una columna de débitos y otra de créditos"
+          }
+        },
+        "dialog": {
+          "createTitle": "Nuevo perfil",
+          "editTitle": "Editar el perfil",
+          "description": "Indica cómo se lee el CSV del banco. Carga una muestra del archivo para comprobar las columnas antes de guardar.",
+          "formLabel": "Perfil de banco",
+          "fields": {
+            "name": "Nombre",
+            "delimiter": "Separador de columnas",
+            "encoding": "Codificación del archivo",
+            "encodingHint": "Un archivo guardado desde Excel suele ser Windows-1252.",
+            "decimalSeparator": "Separador decimal",
+            "thousandsSeparator": "Separador de miles",
+            "dateFormat": "Formato de la fecha",
+            "window": "Días de diferencia",
+            "windowHint": "Cuántos días puede distar una línea del extracto de los libros y aun así sugerirse.",
+            "hasHeader": "La primera fila nombra las columnas",
+            "hasHeaderHint": "Déjalo apagado cuando el archivo empieza con datos: las columnas se dan entonces por su posición.",
+            "mode": "Cómo se escribe el dinero",
+            "date": "Columna de la fecha",
+            "debit": "Columna de lo que salió",
+            "debitHint": "Los débitos.",
+            "credit": "Columna de lo que entró",
+            "creditHint": "Los créditos.",
+            "amount": "Columna del monto",
+            "amountHint": "El dinero que entra es positivo y el que sale es negativo.",
+            "description": "Columna de la descripción (opcional)",
+            "reference": "Columna de la referencia (opcional)",
+            "referenceHint": "Un número de cheque o un código de transferencia que los libros también pueden tener."
+          },
+          "columns": "Columnas",
+          "columnHintHeader": "Escribe el nombre de la columna tal como lo escribe la primera fila del archivo.",
+          "columnHintPosition": "Escribe la posición de la columna: 0 es la primera.",
+          "problems": {
+            "name": "Ponle al perfil un nombre de hasta 80 caracteres.",
+            "date": "Indica qué columna tiene la fecha.",
+            "description": "Escribe el nombre de una columna, o su posición si el archivo no tiene encabezado.",
+            "reference": "Escribe el nombre de una columna, o su posición si el archivo no tiene encabezado.",
+            "amount": "Indica qué columna tiene el monto.",
+            "debit": "Indica qué columna tiene los débitos.",
+            "credit": "Indica qué columna tiene los créditos.",
+            "dateWindowDays": "Escribe un número entero de días del 0 al 31.",
+            "rule": "Estos ajustes rompen una regla: cada valor necesita su propia columna, el dinero es una columna o una de débito y otra de crédito, y los separadores deben ser distintos."
+          },
+          "sample": {
+            "label": "Muestra del archivo (opcional)",
+            "hint": "Solo se envía el inicio del archivo para leerlo. Probar un mapeo no guarda nada.",
+            "problems": {
+              "too_large": "El archivo es más grande de lo que puede ser un extracto.",
+              "empty": "El archivo está vacío.",
+              "not_text": "El archivo no se puede leer como texto con esta codificación. Prueba la otra."
+            },
+            "headers": "Columnas encontradas: {headers}",
+            "useDetected": "Usar el separador que parece tener el archivo",
+            "preview": "Probar este mapeo"
+          },
+          "cancel": "Cancelar",
+          "create": "Crear el perfil",
+          "save": "Guardar el perfil",
+          "done": "Se guardó el perfil."
+        }
+      },
+      "preview": {
+        "summary": "{rows, plural, one {# fila leída} other {# filas leídas}}, las primeras {shown} como se importarían",
+        "row": "Fila",
+        "date": "Fecha",
+        "description": "Descripción",
+        "reference": "Referencia",
+        "amount": "Monto"
+      },
+      "errors": {
+        "title": "{count, plural, one {# fila no se puede leer} other {# filas no se pueden leer}}",
+        "row": "Fila {row}, {field}: {reason}",
+        "rowWithValue": "Fila {row}, {field}: {reason} (“{value}”)",
+        "more": "{count, plural, one {Y # más.} other {Y # más.}}",
+        "unknown": "no se pudo leer el archivo",
+        "fields": {
+          "date": "fecha",
+          "description": "descripción",
+          "reference": "referencia",
+          "amount": "monto",
+          "debit": "débito",
+          "credit": "crédito"
+        },
+        "column_not_found": "la columna no está en el archivo",
+        "column_ambiguous": "más de una columna tiene ese nombre",
+        "column_reused": "la columna se usa para dos valores",
+        "missing_cell": "la fila no tiene esa celda",
+        "empty_value": "la celda está vacía",
+        "invalid_amount": "el monto no es válido con estos separadores",
+        "invalid_date": "la fecha no coincide con el formato",
+        "invalid_text": "el texto tiene un carácter que no se permite",
+        "ambiguous_direction": "una fila debe llenar el débito o el crédito, no los dos ni ninguno",
+        "zero_amount": "el monto es cero",
+        "too_many_rows": "el archivo tiene más filas de las que puede tener un extracto",
+        "empty_file": "el archivo no tiene filas",
+        "unclosed_quote": "hay una comilla que nunca se cierra",
+        "row_too_wide": "la fila tiene demasiadas columnas",
+        "stray_quote": "hay una comilla fuera de lugar"
+      },
+      "statement": {
+        "title": "Extracto del {from} al {to}",
+        "summary": "{lines, plural, one {# línea} other {# líneas}}, {added} nuevas al importarlo",
+        "noClosing": "Este extracto no tiene saldo final, así que los libros no se comparan con él.",
+        "filterLabel": "Mostrar las líneas",
+        "filters": {
+          "all": "Todas ({count})",
+          "suggested": "Con sugerencias ({count})",
+          "unmatched": "Abiertas ({count})",
+          "matched": "Conciliadas ({count})"
+        },
+        "confirmExact": "Confirmar las coincidencias exactas",
+        "confirmExactTitle": "¿Confirmar las coincidencias exactas?",
+        "confirmExactDescription": "Esto confirma de una vez cada línea cuya sugerencia es la única para ella y una exacta (el mismo día o la misma referencia), hasta {max} líneas. Las líneas con varias sugerencias, o con una que no es exacta, quedan para que decidas. Cada decisión queda en el historial y se puede deshacer una por una.",
+        "confirmExactAction": "Confirmarlas",
+        "confirmExactDone": "{confirmed, plural, one {# línea confirmada} other {# líneas confirmadas}}; {left} quedan para que decidas.",
+        "empty": "No hay líneas que mostrar con este filtro.",
+        "previous": "Anterior",
+        "next": "Siguiente"
+      },
+      "difference": {
+        "title": "Los libros frente al extracto",
+        "statementBalance": "Saldo del extracto el {date}",
+        "bookBalance": "Saldo de los libros ese día",
+        "difference": "Diferencia (extracto menos libros)",
+        "unmatchedStatement": "{count, plural, one {# línea abierta del extracto} other {# líneas abiertas del extracto}}",
+        "unmatchedBook": "{count, plural, one {# línea abierta de los libros} other {# líneas abiertas de los libros}}",
+        "unexplained": "Diferencia que ninguna línea abierta explica",
+        "explained": "Las líneas abiertas explican toda la diferencia.",
+        "unexplainedHint": "Una parte de la diferencia no la explica ninguna línea abierta: busca un extracto que falta, un saldo inicial o un monto equivocado."
+      },
+      "lines": {
+        "reference": "Referencia {reference}",
+        "states": {
+          "matched": "Conciliada",
+          "suggested": "Con sugerencias",
+          "unmatched": "Abierta"
+        },
+        "matchedWith": "Conciliada con el asiento {number} del {date}",
+        "undo": "Deshacer",
+        "undone": "Se deshizo la decisión.",
+        "suggestionsLabel": "Asientos sugeridos",
+        "reasonsLabel": "Por qué se sugiere",
+        "reasons": {
+          "sameAmount": "Mismo monto al centavo",
+          "sameDay": "Mismo día",
+          "daysApart": "{days, plural, one {# día de diferencia} other {# días de diferencia}}",
+          "reference": "La referencia coincide",
+          "exact": "Exacta"
+        },
+        "noSuggestions": "Ningún asiento de los libros tiene este monto cerca de esta fecha.",
+        "register": "Ver cómo se registraría",
+        "entry": "Asiento {number} del {date}",
+        "reject": "Rechazar",
+        "rejectNamed": "Rechazar el asiento {number}",
+        "rejectTitle": "¿Rechazar el asiento {number}?",
+        "rejectDescription": "La sugerencia no se volverá a ofrecer para esta línea. No se puede recuperar desde esta pantalla.",
+        "rejected": "Se rechazó la sugerencia.",
+        "confirm": "Confirmar",
+        "confirmNamed": "Confirmar el asiento {number}",
+        "confirmed": "Se confirmó el par."
+      },
+      "draft": {
+        "title": "Cómo se registraría esta línea",
+        "description": "Los libros no tienen un asiento para esta línea. Esta es la transacción que sería la línea del extracto, ya rellenada; leerla no registra nada.",
+        "close": "Cerrar",
+        "kind": "Tipo",
+        "kinds": {
+          "expense": "Gasto",
+          "income": "Ingreso",
+          "transfer": "Transferencia"
+        },
+        "date": "Fecha",
+        "amount": "Monto",
+        "from": "De la cuenta",
+        "to": "A la cuenta",
+        "document": "Número de documento",
+        "memo": "Nota"
       }
     }
   }
