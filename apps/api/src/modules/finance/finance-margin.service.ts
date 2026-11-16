@@ -322,8 +322,8 @@ export class FinanceMarginService {
   }
 
   // The revenue and the cost of goods the ledger holds for the sale entries of the range, by the accounts the organization mapped to the
-  // two roles, and what the return entries of the same range took back. A role with no account is null: the report is not compared
-  // against zero.
+  // two roles, and what the return entries of the same range took back: of the revenue from the account of SALES_RETURNS (where E8 debits
+  // it) and of the cost from the cost of goods sold. A role with no account is null: the report is not compared against zero.
   private async ledgerFigures(
     organizationId: string,
     query: FlowQuery
@@ -354,7 +354,7 @@ export class FinanceMarginService {
       JOIN account_role_mappings m ON m.account_id = l.account_id AND m.organization_id = l.organization_id
       WHERE l.organization_id = ${organizationId}
         AND e.type IN (${JournalEntryType.SALE}, ${JournalEntryType.SALE_RETURN})
-        AND m.role IN (${AccountRole.SALES_REVENUE}, ${AccountRole.COST_OF_GOODS_SOLD})
+        AND m.role IN (${AccountRole.SALES_REVENUE}, ${AccountRole.COST_OF_GOODS_SOLD}, ${AccountRole.SALES_RETURNS})
         AND e.entry_date >= ${query.from}::date AND e.entry_date <= ${query.to}::date
         AND (${storeId}::text IS NULL OR l.store_id = ${storeId})
       GROUP BY e.type, m.role`
@@ -370,8 +370,10 @@ export class FinanceMarginService {
       cost: costMapped
         ? centsAsNumber(-net(JournalEntryType.SALE, AccountRole.COST_OF_GOODS_SOLD))
         : null,
+      // E8 debits the account of SALES_RETURNS, not the revenue one: that is the role the debit is read under. Without that role no return
+      // entry could have posted, so the figure is a true zero; it is null only when the revenue role is missing (its warning says so)
       returnsRevenue: revenueMapped
-        ? centsAsNumber(-net(JournalEntryType.SALE_RETURN, AccountRole.SALES_REVENUE))
+        ? centsAsNumber(-net(JournalEntryType.SALE_RETURN, AccountRole.SALES_RETURNS))
         : null,
       returnsCost: costMapped
         ? centsAsNumber(net(JournalEntryType.SALE_RETURN, AccountRole.COST_OF_GOODS_SOLD))

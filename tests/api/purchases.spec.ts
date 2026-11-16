@@ -707,6 +707,27 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       })
     })
 
+    it('voids a payment once when two people void it at the same moment with other reasons', async () => {
+      const { supplierId, receipt } = await billed()
+      const paid = await pay(supplierId, { amountCents: 100, purchaseReceiptId: receipt.id })
+      const id = (paid.body as PaymentBody).id
+
+      const answers = await Promise.all(
+        ['First reason', 'Another reason', 'A third one'].map(reason =>
+          asAdminA().post(ApiRoutes.supplierPayments.void(id)).send({ reason })
+        )
+      )
+
+      expect(answers.filter(answer => answer.status === CREATED)).toHaveLength(1)
+      // The others are the typed refusal of the route, never the generic one of the books
+      for (const answer of answers.filter(each => each.status !== CREATED)) {
+        expect(answer.status).toBe(CONFLICT)
+        expect(errorOf(answer).metadata).toMatchObject({
+          conflict: PurchaseConflicts.PAYMENT_ALREADY_VOIDED
+        })
+      }
+    })
+
     it('does not let the generic reversal touch the entry of a receipt or a payment', async () => {
       const { supplierId, receipt } = await billed()
       const paid = await pay(supplierId, { amountCents: 100, purchaseReceiptId: receipt.id })

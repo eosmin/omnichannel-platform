@@ -10,8 +10,9 @@ import {
 } from './analytics-constants'
 
 // What a figure is counted in, so a file can say it and a reader can format it. Times are seconds (the rollup keeps seconds)
-// and money is whole cents of the currency of the store.
-export const MetricUnits = { COUNT: 'count', SECONDS: 'seconds', CENTS: 'cents' } as const
+// and money is whole units of the currency of the store (19.99, never 1999): the rollup writes it that way from its first
+// version, the dashboard reads it that way and every file shows it as it is. The one conversion from cents is the rollup's.
+export const MetricUnits = { COUNT: 'count', SECONDS: 'seconds', CURRENCY: 'currency' } as const
 export type MetricUnit = (typeof MetricUnits)[keyof typeof MetricUnits]
 
 export const RolledUpMetricUnits = {
@@ -28,7 +29,7 @@ export const RolledUpMetricUnits = {
   [AnalyticsMetrics.CONVERSATIONS_ANSWERED_AUTOMATION]: MetricUnits.COUNT,
   [AnalyticsMetrics.CONVERSATIONS_RESOLVED_AUTOMATION]: MetricUnits.COUNT,
   [AnalyticsMetrics.ORDERS_CREATED]: MetricUnits.COUNT,
-  [AnalyticsMetrics.ORDERS_REVENUE]: MetricUnits.CENTS,
+  [AnalyticsMetrics.ORDERS_REVENUE]: MetricUnits.CURRENCY,
   [AnalyticsMetrics.CHANNEL_VOLUME]: MetricUnits.COUNT
 } as const satisfies Record<RolledUpMetric, MetricUnit>
 

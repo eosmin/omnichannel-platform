@@ -1,7 +1,9 @@
 import type { Permission } from '@platform/core/auth'
-import { type AuthorType, MessageLimits, placeTextOf } from '@platform/core/domain'
+import { AuthorType, MessageLimits, MessageType, placeTextOf } from '@platform/core/domain'
 
 import { type Viewer, viewerOf } from '../conversations/conversations.support'
+
+import type { MessageView } from './messages.views'
 
 // A message that a plugin writes through its key (`POST /plugin-api/messages`, TDD_10 §6). The plugin is always on the
 // trace (`Message.authorPluginId`); who the message is FROM is its own choice, and `quiet` is a separate one:
@@ -36,4 +38,40 @@ export function pluginViewerOf(held: readonly Permission[], pluginId?: string): 
 // Null when nothing is left (the plugin's own name is used then).
 export function cleanNickname(nickname: string | undefined | null): string | null {
   return placeTextOf(nickname, MessageLimits.NICKNAME_MAX_LENGTH)
+}
+
+// What a plugin gets back of a message it wrote or sent again (HC-011), held to what its key may read. The route of a write names
+// `messages:write` and `conversations:read`, so it cannot ask for `messages:read`: the controller asks the key, with what it holds.
+//   - the quote (`replyTo`): without `messages:read` the plugin gets the id of the quoted message (`replyToMessageId`, which it sent)
+//     and no detail, because the text of the message of a customer or of a person is a read of messages. With it, an allowlist of the
+//     kind, the author type, the text and `deleted`; never the text of an internal note (which `messages:write` would otherwise show,
+//     because it grants writing notes), never a file and never the id of the member of the team who wrote it;
+//   - the ids of the team that ride on the view (who reacted, who edited, who deleted, who was mentioned) are left out as well: a
+//     plugin learns no id of the team (`PluginRevisionView` leaves `editedById` out for the same reason).
+export function pluginMessageViewOf(message: MessageView, readsMessages: boolean): MessageView {
+  const quote = message.replyTo
+  return {
+    ...message,
+    replyTo:
+      quote === null || !readsMessages
+        ? null
+        : {
+            id: quote.id,
+            type: quote.type,
+            authorType: quote.authorType,
+            authorId: null,
+            content: quote.type === MessageType.INTERNAL_NOTE ? null : quote.content,
+            file: null,
+            deleted: quote.deleted
+          },
+    mentions: [],
+    editedById: null,
+    deletedById: null,
+    // What the customers reacted is theirs to read (`messages:read`); who of the team reacted is never given
+    reactions: readsMessages
+      ? message.reactions.map(reaction =>
+          reaction.authorType === AuthorType.AGENT ? { ...reaction, authorId: null } : reaction
+        )
+      : []
+  }
 }

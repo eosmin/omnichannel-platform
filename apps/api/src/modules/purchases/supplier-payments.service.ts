@@ -14,7 +14,12 @@ import {
   PurchaseIdempotencyKey,
   PurchaseResourceTypes
 } from '@platform/core/domain'
-import { resourceConflict, resourceNotFound } from '@platform/core/errors'
+import {
+  ErrorCodes,
+  PlatformException,
+  resourceConflict,
+  resourceNotFound
+} from '@platform/core/errors'
 import {
   dateToDay,
   dayToDate,
@@ -199,16 +204,28 @@ export class SupplierPaymentsService {
       // The supplier is locked like in a payment: a bill is never read half way between the void and its payments
       await lockScope(tx, `${organizationId}:supplier:${original.supplierId}`)
       if (original.voidedByEntryId !== null) throw this.alreadyVoided()
-      const reversal = await this.ledger.reverse(
-        {
-          organizationId,
-          entryId: original.entryId,
-          memo: body.reason,
-          entryDate: null,
-          createdBy: actor.userId
-        },
-        tx
-      )
+      // The reversal found under the entry is another request's (another person or another reason got the lock first): the payment was
+      // voided already, the typed answer of this route
+      const reversal = await this.ledger
+        .reverse(
+          {
+            organizationId,
+            entryId: original.entryId,
+            memo: body.reason,
+            entryDate: null,
+            createdBy: actor.userId
+          },
+          tx
+        )
+        .catch((error: unknown) => {
+          if (
+            error instanceof PlatformException &&
+            error.code === ErrorCodes.FINANCE_ENTRY_ALREADY_REVERSED
+          ) {
+            throw this.alreadyVoided()
+          }
+          throw error
+        })
       // The pointer is set once: a second request that got here after the first committed finds it set and answers it
       const pointed = await tx.supplierPayment.updateMany({
         where: { id, organizationId, voidedByEntryId: null },

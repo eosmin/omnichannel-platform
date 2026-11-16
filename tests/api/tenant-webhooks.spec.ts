@@ -74,6 +74,19 @@ describe('The webhooks of a store', () => {
   }
 
   describe('making one', () => {
+    it('tells every cache not to keep the answers that carry a secret: the first one and each new one', async () => {
+      const made = await asAdmin()
+        .post(ApiRoutes.settings.webhooks)
+        .send({ url: PUBLIC_URL, events: [Events.ORDER_CREATED] })
+        .expect(CREATED)
+      const rotated = await asAdmin()
+        .post(ApiRoutes.settings.webhookSecret((made.body as { id: string }).id))
+        .expect(OK)
+
+      expect(made.headers['cache-control']).toContain('no-store')
+      expect(rotated.headers['cache-control']).toContain('no-store')
+    })
+
     it('shows the secret once, keeps it sealed, and never gives it back in a read', async () => {
       const made = await create(PUBLIC_URL, [Events.ORDER_CREATED, Events.ORDER_CREATED])
 

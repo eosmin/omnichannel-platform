@@ -217,7 +217,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
     exposed: '/plugin-api/messages/:id/resend-caption'
   },
   'messages.refetchFile': {
-    scope: ['conversations:read', 'messages:write'],
+    scope: ['conversations:read', 'messages:read', 'messages:write'],
     exposed: '/plugin-api/messages/:id/files/:index/refetch'
   },
   'messages.reaction': {
