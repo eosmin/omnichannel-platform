@@ -11,6 +11,12 @@ export enum FinanceEventKind {
   SENT = 'sent',
   // E3: the sale is recognized
   SALE = 'sale',
+  // E4: a delivered guide, what the carrier charges for it
+  CHARGES = 'charges',
+  // E5: a remittance was confirmed
+  REMITTANCE_CONFIRM = 'remittance_confirm',
+  // E6: a confirmed remittance was voided
+  REMITTANCE_VOID = 'remittance_void',
   // E8: a return was received
   RETURN_RESTOCK = 'return_restock',
   // E9: a stock adjustment, a count variance or a transfer write-off
@@ -23,6 +29,9 @@ export const FinanceEventSource: Readonly<Record<FinanceEventKind, FinanceSource
   [FinanceEventKind.PAYMENT]: FinanceSourceType.ORDER,
   [FinanceEventKind.SENT]: FinanceSourceType.ORDER,
   [FinanceEventKind.SALE]: FinanceSourceType.ORDER,
+  [FinanceEventKind.CHARGES]: FinanceSourceType.SHIPMENT,
+  [FinanceEventKind.REMITTANCE_CONFIRM]: FinanceSourceType.REMITTANCE,
+  [FinanceEventKind.REMITTANCE_VOID]: FinanceSourceType.REMITTANCE,
   [FinanceEventKind.RETURN_RESTOCK]: FinanceSourceType.RETURN,
   [FinanceEventKind.ADJUST]: FinanceSourceType.INVENTORY_MOVEMENT
 }
@@ -43,6 +52,9 @@ export const FinancePostingKey = {
   ORDER_PAYMENT: (orderId: string): string => `order:${orderId}:payment`,
   ORDER_SENT: (orderId: string): string => `order:${orderId}:sent`,
   ORDER_SALE: (orderId: string): string => `order:${orderId}:sale`,
+  SHIPMENT_CHARGES: (shipmentId: string): string => `shipment:${shipmentId}:charges`,
+  REMITTANCE_CONFIRM: (remittanceId: string): string => `remittance:${remittanceId}:confirm`,
+  REMITTANCE_VOID: (remittanceId: string): string => `remittance:${remittanceId}:void`,
   RETURN_RESTOCK: (returnId: string): string => `return:${returnId}:restock`,
   MOVEMENT_ADJUST: (movementId: string): string => `movement:${movementId}:adjust`
 } as const
@@ -59,6 +71,9 @@ export const FinanceAutoMemo = {
   PAYMENT: 'auto:payment',
   SENT: 'auto:sent',
   SALE: 'auto:sale',
+  CHARGES: 'auto:carrier_charges',
+  REMITTANCE_CONFIRM: 'auto:remittance_confirm',
+  REMITTANCE_VOID: 'auto:remittance_void',
   RETURN_RESTOCK: 'auto:return_restock',
   ADJUST: 'auto:adjust'
 } as const

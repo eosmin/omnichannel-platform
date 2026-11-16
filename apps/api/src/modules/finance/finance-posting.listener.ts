@@ -7,14 +7,17 @@ import {
   FinanceEventKind,
   FinanceSourceType,
   OrderStatus,
-  PaymentStatus
+  PaymentStatus,
+  ShipmentStatus
 } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import {
   Events,
   type InventoryMovedPayload,
   type OrderPaymentPayload,
-  type OrderStatusChangedPayload
+  type OrderStatusChangedPayload,
+  type RemittanceEventPayload,
+  type ShipmentStatusChangedPayload
 } from '@platform/core/events'
 import { isAdjustmentType } from '@platform/core/finance'
 import { FinancePostingService } from '@platform/core/finance-ledger'
@@ -60,6 +63,32 @@ export class FinancePostingListener {
     ])
   }
 
+  // E4: a guide was delivered, so the carrier's charges for it are owed. The service ignores a return guide (its leg is not a sale's)
+  @OnEvent(Events.SHIPMENT_STATUS_CHANGED)
+  async onShipmentStatus(payload: ShipmentStatusChangedPayload): Promise<void> {
+    if (payload.to !== ShipmentStatus.DELIVERED) return
+    const organizationId = await this.organizationOf(payload.storeId)
+    if (organizationId === null) return
+    await this.enqueue({
+      organizationId,
+      sourceType: FinanceSourceType.SHIPMENT,
+      sourceId: payload.shipmentId,
+      kind: FinanceEventKind.CHARGES,
+      occurredAt: new Date().toISOString()
+    })
+  }
+
+  // E5 and E6: a remittance was confirmed, or a confirmed one was voided
+  @OnEvent(Events.REMITTANCE_CONFIRMED)
+  async onRemittanceConfirmed(payload: RemittanceEventPayload): Promise<void> {
+    await this.enqueueRemittance(payload, FinanceEventKind.REMITTANCE_CONFIRM)
+  }
+
+  @OnEvent(Events.REMITTANCE_VOIDED)
+  async onRemittanceVoided(payload: RemittanceEventPayload): Promise<void> {
+    await this.enqueueRemittance(payload, FinanceEventKind.REMITTANCE_VOID)
+  }
+
   // E9: a stock adjustment or a count variance
   @OnEvent(Events.INVENTORY_MOVED)
   async onMovement(payload: InventoryMovedPayload): Promise<void> {
@@ -91,6 +120,21 @@ export class FinancePostingListener {
         occurredAt
       })
     }
+  }
+
+  private async enqueueRemittance(
+    payload: RemittanceEventPayload,
+    kind: FinanceEventKind
+  ): Promise<void> {
+    const organizationId = await this.organizationOf(payload.storeId)
+    if (organizationId === null) return
+    await this.enqueue({
+      organizationId,
+      sourceType: FinanceSourceType.REMITTANCE,
+      sourceId: payload.remittanceId,
+      kind,
+      occurredAt: new Date().toISOString()
+    })
   }
 
   private async organizationOf(storeId: string): Promise<string | null> {

@@ -16,6 +16,8 @@ import {
   guideKey,
   type MatchShipment,
   RemittanceLimits,
+  RemittanceDestinationProblem,
+  remittanceDestinationProblem,
   RemittanceLineOutcome,
   RemittanceLockScopes,
   ShipmentKind,
@@ -200,6 +202,9 @@ export class RemittancesService {
           `a ${draft.status} remittance cannot be confirmed`
         )
       }
+      if (body.destinationAccountId !== undefined) {
+        await this.assertDestination(tx, storeId, body.destinationAccountId)
+      }
       await this.classifyAll(tx, storeId, draft)
       const lines = await tx.codRemittanceLine.findMany({
         where: { storeId, remittanceId },
@@ -275,7 +280,10 @@ export class RemittancesService {
           ...(body.receivedOn === undefined
             ? {}
             : { receivedOn: new Date(`${body.receivedOn}T00:00:00.000Z`) }),
-          ...(body.note === undefined ? {} : { note: body.note })
+          ...(body.note === undefined ? {} : { note: body.note }),
+          ...(body.destinationAccountId === undefined
+            ? {}
+            : { destinationAccountId: body.destinationAccountId })
         }
       })
       if (confirmed.count === 0) {
@@ -300,6 +308,31 @@ export class RemittancesService {
         feeCents: totals.feeCents
       }
     })
+  }
+
+  // The account the money goes to (TDD_18 §4.2 E5), checked in the transaction of the confirmation: an account of the organization of the
+  // store that the books can post to and that is cash, a bank or a wallet. One of another organization is not found.
+  private async assertDestination(
+    tx: PrismaTransaction,
+    storeId: string,
+    accountId: string
+  ): Promise<void> {
+    const account = await tx.ledgerAccount.findFirst({
+      where: { id: accountId, organization: { stores: { some: { id: storeId } } } },
+      select: { active: true, isPostable: true, cashKind: true }
+    })
+    if (account === null) throw resourceNotFound('account')
+    const problem = remittanceDestinationProblem(account)
+    if (problem === RemittanceDestinationProblem.INACTIVE) {
+      throw refusal(ErrorCodes.FINANCE_ACCOUNT_INACTIVE, 'the account is not active')
+    }
+    if (problem === RemittanceDestinationProblem.NOT_CASH) {
+      throw new PlatformException(
+        ErrorCodes.FINANCE_ACCOUNT_NOT_POSTABLE,
+        'the money of a remittance goes to a cash, bank or wallet account',
+        HttpStatusCodes.BAD_REQUEST
+      )
+    }
   }
 
   // A confirmed remittance can be voided: its shipments go back to waiting for a remittance and it stays as the evidence of what

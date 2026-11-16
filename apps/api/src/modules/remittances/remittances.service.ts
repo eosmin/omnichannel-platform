@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
+import { Permissions } from '@platform/core/auth'
 import { PrismaService } from '@platform/core/database'
 import {
   ageInDays,
@@ -10,6 +11,7 @@ import {
   type ConfirmRemittanceBody,
   type CreateRemittanceBody,
   type CursorPage,
+  MembershipStatus,
   RemittableCodStatuses,
   RemittanceLimits,
   type RemittanceLineOutcome,
@@ -20,7 +22,12 @@ import {
   type UpdateRemittanceLineBody,
   type VoidRemittanceBody
 } from '@platform/core/domain'
-import { resourceNotFound } from '@platform/core/errors'
+import {
+  ErrorCodes,
+  HttpStatusCodes,
+  PlatformException,
+  resourceNotFound
+} from '@platform/core/errors'
 import { RemittancesService as RemittanceWrites } from '@platform/core/shipping'
 import { MediaPurpose } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
@@ -286,6 +293,8 @@ export class RemittancesApiService {
     body: ConfirmRemittanceBody,
     actor: Actor
   ): Promise<RemittanceDetailView> {
+    // Choosing the account of the books the cash goes to is a finance decision: a caller who may only manage remittances does not make it
+    if (body.destinationAccountId !== undefined) await this.assertMayChooseAccount(storeId, actor)
     const done = await this.writes.confirm(storeId, remittanceId, body, refOf(actor))
     this.record(storeId, AuditAction.REMITTANCE_CONFIRMED, remittanceId, actor, {
       connectionId: done.connectionId,
@@ -314,6 +323,32 @@ export class RemittancesApiService {
   }
 
   // ---------------------------------------------------------------------------------------------- support
+
+  private async assertMayChooseAccount(storeId: string, actor: Actor): Promise<void> {
+    const store = await this.prisma.client.store.findUnique({
+      where: { id: storeId },
+      select: { organizationId: true }
+    })
+    const allowed =
+      store !== null &&
+      (await this.prisma.client.membership.count({
+        where: {
+          userId: actor.userId,
+          storeId,
+          organizationId: store.organizationId,
+          status: MembershipStatus.ACTIVE,
+          revokedAt: null,
+          role: { permissions: { some: { name: Permissions.FINANCE_MOVE_MONEY } } }
+        }
+      })) > 0
+    if (!allowed) {
+      throw new PlatformException(
+        ErrorCodes.PERMISSION_DENIED,
+        'choosing the account of the books needs the permission to move money',
+        HttpStatusCodes.FORBIDDEN
+      )
+    }
+  }
 
   private async rowOf(storeId: string, remittanceId: string): Promise<RemittanceRow> {
     const row = await this.prisma.client.codRemittance.findFirst({

@@ -423,3 +423,21 @@ export const FinanceChartProblems = { HAS_CHILDREN: 'has_children' } as const
 export const FinancePaymentMethods: readonly PaymentMethod[] = Object.values(PaymentMethod).filter(
   method => method !== PaymentMethod.CASH_ON_DELIVERY
 )
+
+// Why an account cannot receive the money of a remittance (TDD_18 §4.2 E5): it is off, or it is not an account the books post to that is
+// cash, a bank or a wallet. One rule for the route that confirms, the writer of the confirmation and the posting service, so that they
+// never differ.
+export enum RemittanceDestinationProblem {
+  INACTIVE = 'inactive',
+  NOT_CASH = 'not_cash'
+}
+
+export function remittanceDestinationProblem(account: {
+  active: boolean
+  isPostable: boolean
+  cashKind: string | null
+}): RemittanceDestinationProblem | null {
+  if (!account.active) return RemittanceDestinationProblem.INACTIVE
+  if (!account.isPostable || account.cashKind === null) return RemittanceDestinationProblem.NOT_CASH
+  return null
+}

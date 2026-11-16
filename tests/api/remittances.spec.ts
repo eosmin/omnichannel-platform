@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
+import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   CodStatus,
@@ -16,10 +17,12 @@ import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 
 import {
   createCarrierConnection,
+  createFinanceFixture,
   createInventoryLevel,
   createOrder,
   createShipment
 } from '../builders'
+import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
@@ -430,6 +433,69 @@ describe('COD remittances (TDD_17 §4.15)', () => {
         .post(ApiRoutes.remittances.list)
         .send({ connectionId, storeId: ctx.storeB.id })
       expect(stray.status).toBe(BAD_REQUEST)
+    })
+  })
+
+  describe('the account the money goes to (TDD_18 §4.2 E5)', () => {
+    it('keeps the account the owner chose and refuses one that cannot receive the money', async () => {
+      const books = await createFinanceFixture(owner, ctx.orgA.id)
+      const other = await createFinanceFixture(owner, ctx.orgB.id)
+      const confirm = async (accountId: string) => {
+        const shipment = await pendingShipment(`DA-${accountId.slice(0, 6)}`, 700)
+        const draft = await draftWith([
+          { guideNumber: `DA-${accountId.slice(0, 6)}`, reportedCents: 700 }
+        ])
+        return {
+          draft,
+          answer: await asAdmin()
+            .post(ApiRoutes.remittances.confirm(draft.id))
+            .send({ destinationAccountId: accountId }),
+          shipment
+        }
+      }
+      // Another organization's account is not found, and nothing is confirmed
+      const foreign = await confirm(other.accounts.bank)
+      expect(foreign.answer.status).toBe(HttpStatusCodes.NOT_FOUND)
+      expect(
+        (await owner.codRemittance.findUniqueOrThrow({ where: { id: foreign.draft.id } })).status
+      ).toBe(RemittanceStatus.DRAFT)
+      // An account that is off, one that is a header and one that is not cash, bank or wallet
+      const inactive = await confirm(books.accounts.inactive)
+      expect(inactive.answer.status).toBe(HttpStatusCodes.CONFLICT)
+      expect(errorCode(inactive.answer.body)).toBe(ErrorCodes.FINANCE_ACCOUNT_INACTIVE)
+      for (const account of [books.accounts.header, books.accounts.revenue]) {
+        const refused = await confirm(account)
+        expect(refused.answer.status).toBe(HttpStatusCodes.BAD_REQUEST)
+        expect(errorCode(refused.answer.body)).toBe(ErrorCodes.FINANCE_ACCOUNT_NOT_POSTABLE)
+      }
+      // Choosing the account is a finance decision: remittances:manage alone does not make it, and says nothing about the account
+      const limited = api(
+        app,
+        await actorWithPermissions(owner, app, {
+          prefix,
+          name: 'remit-only',
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA.id,
+          permissions: [Permissions.REMITTANCES_MANAGE]
+        }),
+        ctx.storeA
+      )
+      await pendingShipment('DA-LIM', 700)
+      const limitedDraft = await draftWith([{ guideNumber: 'DA-LIM', reportedCents: 700 }])
+      const denied = await limited
+        .post(ApiRoutes.remittances.confirm(limitedDraft.id))
+        .send({ destinationAccountId: books.accounts.bank })
+      expect(denied.status).toBe(HttpStatusCodes.FORBIDDEN)
+      expect(
+        (await owner.codRemittance.findUniqueOrThrow({ where: { id: limitedDraft.id } })).status
+      ).toBe(RemittanceStatus.DRAFT)
+      // A bank account is kept on the remittance
+      const good = await confirm(books.accounts.bank)
+      expect(good.answer.status).toBe(OK)
+      expect(
+        (await owner.codRemittance.findUniqueOrThrow({ where: { id: good.draft.id } }))
+          .destinationAccountId
+      ).toBe(books.accounts.bank)
     })
   })
 
