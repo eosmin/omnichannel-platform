@@ -7,6 +7,8 @@ import {
   FiscalEvidenceKind,
   FiscalIssueOn,
   FiscalLimits,
+  FiscalSweepKind,
+  FiscalSweepLimits,
   singleLineText
 } from '@platform/core/domain'
 
@@ -55,6 +57,19 @@ export const listDocumentsQuerySchema = z.object({
     .default(FiscalLimits.LIST_PAGE_SIZE)
 })
 export type ListDocumentsQuery = z.output<typeof listDocumentsQuerySchema>
+
+// The dry run of the daily check: one kind of finding, a page at a time (the cursor is the id the last page ended at)
+export const reconciliationQuerySchema = z.object({
+  kind: z.enum(FiscalSweepKind),
+  cursor: z.uuid().optional(),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(FiscalSweepLimits.PAGE_SIZE_MAX)
+    .default(FiscalSweepLimits.PAGE_SIZE_DEFAULT)
+})
+export type ReconciliationQuery = z.output<typeof reconciliationQuerySchema>
 
 // Fields sent as null are removed from the receiver; a field left out stays
 export const receiverPatchSchema = z

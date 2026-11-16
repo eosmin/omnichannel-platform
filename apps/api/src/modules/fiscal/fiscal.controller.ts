@@ -25,7 +25,9 @@ import {
   FiscalDocumentsService,
   type FiscalDocumentView,
   FiscalIssuerService,
-  type FiscalIssuerView
+  type FiscalIssuerView,
+  type FiscalFindingsPage,
+  FiscalSweepService
 } from '@platform/fiscal/runtime'
 
 import {
@@ -48,6 +50,8 @@ import {
   listDocumentsQuerySchema,
   type PutIssuerBody,
   putIssuerSchema,
+  type ReconciliationQuery,
+  reconciliationQuerySchema,
   type ReceiverPatchBody,
   receiverPatchSchema,
   type VoidDocumentBody,
@@ -68,6 +72,7 @@ export class FiscalController {
   constructor(
     private readonly issuer: FiscalIssuerService,
     private readonly documents: FiscalDocumentsService,
+    private readonly sweep: FiscalSweepService,
     private readonly queue: FiscalSubmissionQueue,
     private readonly evidenceUrls: FiscalEvidenceUrlsService,
     private readonly logger: PinoLogger
@@ -99,6 +104,20 @@ export class FiscalController {
     @Req() req: AuthenticatedRequest
   ): Promise<{ data: FiscalIssuerView }> {
     return { data: await this.issuer.upsert(organization.id, body, actorOf(user, store, req)) }
+  }
+
+  // The dry run of the daily check of the documents: what the night would ask the queue for, and the documents that disagree with their
+  // entry. It reads only, by the organization of the store, and shows ids and statuses, never the receiver's data.
+  @RequirePermissions(Permissions.FISCAL_VIEW)
+  @Get(ApiRoutes.fiscal.reconciliation)
+  reconciliation(
+    @CurrentOrganization() organization: Organization,
+    @Query(new ZodValidationPipe(reconciliationQuerySchema)) query: ReconciliationQuery
+  ): Promise<FiscalFindingsPage> {
+    return this.sweep.find(organization.id, query.kind, {
+      cursor: query.cursor,
+      limit: query.limit
+    })
   }
 
   @RequirePermissions(Permissions.FISCAL_VIEW)

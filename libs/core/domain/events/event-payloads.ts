@@ -369,6 +369,14 @@ export interface FiscalDocumentRejectedPayload {
   reason: string
 }
 
+// The daily check found sale documents that disagree with their entry (Step 4B.8b-2b): the organization, the first of them and how many,
+// never an amount or the receiver's data
+export interface FiscalEntryMismatchPayload {
+  organizationId: string
+  documentId: string
+  count: number
+}
+
 // A fiscal document ran out of attempts while it was waiting for the provider (Step 4B.7b-2): ids and the count, never the receiver's data
 export interface FiscalDocumentStuckPayload {
   organizationId: string
@@ -651,6 +659,7 @@ export interface DomainEventPayloads {
   [Events.FINANCE_CHAIN_BROKEN]: FinanceChainBrokenPayload
   [Events.FISCAL_DOCUMENT_REJECTED]: FiscalDocumentRejectedPayload
   [Events.FISCAL_DOCUMENT_STUCK]: FiscalDocumentStuckPayload
+  [Events.FISCAL_ENTRY_MISMATCH]: FiscalEntryMismatchPayload
   [Events.FINANCE_PERIOD_CLOSED]: FinancePeriodPayload
   [Events.FINANCE_PERIOD_REOPENED]: FinancePeriodPayload
   [Events.PURCHASE_ORDER_RECEIVED]: PurchaseOrderReceivedPayload

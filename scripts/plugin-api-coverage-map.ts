@@ -462,6 +462,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'finance.postingRetry': { none: FINANCE },
   'fiscal.providers': { none: FINANCE },
   'fiscal.issuer': { none: FINANCE },
+  'fiscal.reconciliation': { none: FINANCE },
   'fiscal.documents.list': { none: FINANCE },
   'fiscal.documents.byId': { none: FINANCE },
   'fiscal.documents.receiver': { none: FINANCE },

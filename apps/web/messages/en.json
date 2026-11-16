@@ -115,7 +115,8 @@
         },
         "fiscal": {
           "document_rejected": "Fiscal document refused",
-          "document_stuck": "Fiscal document stuck"
+          "document_stuck": "Fiscal document stuck",
+          "entry_mismatch": "Fiscal document disagrees with the books"
         }
       },
       "push": {
@@ -1056,6 +1057,10 @@
       "document_stuck": {
         "title": "A fiscal document is stuck",
         "body": "A fiscal document ran out of attempts while the provider did not answer. Open the fiscal documents and send it again."
+      },
+      "entry_mismatch": {
+        "title": "A fiscal document disagrees with the books",
+        "body": "The daily check found a sale whose fiscal document has a different total or tax than its entry of the books. Open the fiscal documents and have the accountant decide which one is right: nothing is corrected by itself."
       }
     }
   },
