@@ -72,4 +72,17 @@ export class PluginIconService {
     await this.storage.put(key, png, PluginIconLimits.CONTENT_TYPE)
     return key
   }
+
+  // The picture goes with the plugin. A failure leaves an orphan file under a key nothing points to and is not worth failing the
+  // deletion, which already stands; it is logged without the key's content.
+  async remove(pluginId: string): Promise<void> {
+    try {
+      await this.storage.delete(pluginIconKey(pluginId))
+    } catch (error) {
+      this.logger.warn(
+        { errorName: error instanceof Error ? error.name : 'unknown' },
+        'the icon of a deleted plugin could not be removed'
+      )
+    }
+  }
 }

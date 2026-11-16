@@ -14,6 +14,7 @@ import { apiClient } from '../api'
 
 import { ChannelKeys } from './channel-keys'
 import {
+  deletePlugin,
   fetchPluginConsent,
   fetchPluginDetail,
   installIntegrationPlugin,
@@ -61,6 +62,23 @@ export function usePluginDetail(
   return useQuery({
     queryKey: ChannelKeys.pluginDetail(storeId, pluginId),
     queryFn: ({ signal }) => fetchPluginDetail(apiClient, storeId, pluginId, signal)
+  })
+}
+
+export interface DeletePluginRequest {
+  pluginId: string
+  confirmation: string
+}
+
+// Also on failure: a refusal because a store still holds it means the catalog the owner is looking at is not the one the api has
+export function useDeletePlugin(
+  storeId: string
+): UseMutationResult<undefined, Error, DeletePluginRequest> {
+  const refresh = useRefreshPlugins(storeId)
+  return useMutation({
+    mutationFn: ({ pluginId, confirmation }: DeletePluginRequest) =>
+      deletePlugin(apiClient, storeId, pluginId, confirmation),
+    onSettled: refresh
   })
 }
 

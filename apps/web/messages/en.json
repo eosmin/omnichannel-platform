@@ -661,6 +661,8 @@
     "PLUGIN_CHALLENGE_FAILED": "The plugin address did not answer the check",
     "PLUGIN_CONSENT_MISMATCH": "The plugin asks for different access than the one you reviewed",
     "PLUGIN_SETUP_CODE_INVALID": "The setup code is not valid",
+    "PLUGIN_DELETE_NOT_CONFIRMED": "Type the name of the plugin exactly as shown to delete it",
+    "PLUGIN_IN_USE": "The plugin is still installed in a store of the organization, or is still being closed. Revoke it everywhere, wait a moment and try again",
     "PLUGIN_REVOKE_NOT_CONFIRMED": "Type REVOKE exactly as shown to revoke this plugin",
     "PLUGIN_NOT_FOUND": "The plugin does not exist",
     "PLUGIN_NOT_INSTALLED": "The plugin is not installed",
@@ -3066,6 +3068,13 @@
         },
         "asksForMore": "{count, plural, one {A newer version asks for # more access. It is not granted until you authorize it.} other {A newer version asks for # more accesses. They are not granted until you authorize them.}}",
         "reauthorize": "Review and authorize again"
+      },
+      "delete": {
+        "action": "Delete",
+        "title": "Delete {name}?",
+        "description": "{name} leaves the plugins of your organization, in every store, and its registration is gone. Its history stays: the messages it wrote and the audit log. To use it again you must register it again. Revoked installations are removed with it.",
+        "confirm": "Delete plugin",
+        "done": "{name} was deleted."
       },
       "revoke": {
         "action": "Revoke",

@@ -1307,7 +1307,9 @@ const resources: IsolationResource[] = [
     scope: 'organization',
     readPath: ApiRoutes.plugins.byId,
     listPath: ApiRoutes.plugins.available,
-    // No route changes a plugin row except registering a newer version (covered by "a private plugin" below)
+    // The only route that changes the row of a plugin is its deletion (a newer manifest is covered by "a private plugin" below): with
+    // no name typed it must be refused for a stranger exactly as for a plugin that is not there
+    modify: { path: ApiRoutes.plugins.byId, method: 'delete', body: {} },
     untouched: async (owner, id) =>
       (await owner.plugin.findUnique({ where: { id }, select: { name: true } }))?.name ===
       'Isolation plugin'

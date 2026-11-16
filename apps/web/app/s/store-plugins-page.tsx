@@ -27,6 +27,7 @@ import {
   usePluginCatalog,
   useUninstallPlugin
 } from '../../lib/settings/use-channels'
+import { useDeletePlugin } from '../../lib/settings/use-plugins'
 import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 
@@ -34,6 +35,8 @@ import { useErrorText } from '../../lib/use-error-text'
 const UNINSTALL_ACTION: DestructiveAction = 'DISCONNECT_CHANNEL'
 // Revoking an integration plugin takes its key away and cannot be undone: the critical tier, with the word typed (TDD_10 §6.6)
 const REVOKE_ACTION: DestructiveAction = 'REVOKE_ALL_PLUGIN_ACCESS'
+// Deleting a plugin of the organization takes it out of every store's catalog: the critical tier, with its name typed (Step 5.6 PR W1-2)
+const DELETE_ACTION: DestructiveAction = 'DELETE_PLUGIN'
 
 // Settings → Store → Plugins (TDD_09 §13, D19): the catalog of plugins this store may install, and
 // install and uninstall per store, and (Step 5.6 PR W1) registering a plugin of the organization by its manifest, the consent screen of an
@@ -109,6 +112,7 @@ function PluginRow({ entry }: { entry: PluginCatalogEntryView }): ReactElement {
   const run = useDestructiveAction()
   const install = useInstallPlugin(storeId)
   const uninstall = useUninstallPlugin(storeId)
+  const deletion = useDeletePlugin(storeId)
   const [consenting, setConsenting] = useState(false)
   const [viewing, setViewing] = useState(false)
   const canManage = can(ClientPermissions.SETTINGS_MANAGE_PLUGINS)
@@ -161,6 +165,23 @@ function PluginRow({ entry }: { entry: PluginCatalogEntryView }): ReactElement {
         : t('uninstall.description', { count: entry.activeConnections }),
       confirmLabel: t('uninstall.confirm'),
       onConfirm: () => done()
+    })
+  }
+
+  const askToDelete = (): void => {
+    run(DELETE_ACTION, {
+      title: t('delete.title', { name: entry.name }),
+      description: t('delete.description', { name: entry.name }),
+      confirmLabel: t('delete.confirm'),
+      phrase: entry.name,
+      onConfirm: async () => {
+        try {
+          await deletion.mutateAsync({ pluginId: entry.id, confirmation: entry.name })
+          toast.success(t('delete.done', { name: entry.name }))
+        } catch (error) {
+          toast.error(errorText(error))
+        }
+      }
     })
   }
 
@@ -232,6 +253,18 @@ function PluginRow({ entry }: { entry: PluginCatalogEntryView }): ReactElement {
           ) : (
             <span className="text-muted-foreground text-sm">{t('comingLater')}</span>
           )}
+          {entry.registered && !holds ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={deletion.isPending}
+              onClick={askToDelete}
+            >
+              {t('delete.action')}
+              <span className="sr-only"> {entry.name}</span>
+            </Button>
+          ) : null}
         </div>
       ) : null}
       {consenting ? (

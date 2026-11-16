@@ -97,6 +97,8 @@ export const catalogEntrySchema = z.object({
   authorName: z.string(),
   type: z.string(),
   isOfficial: z.boolean(),
+  // The organization registered it with its own manifest: the owner may delete it (a server that does not say: not deletable)
+  registered: z.boolean().catch(false),
   installed: z.boolean(),
   // Where the installation stands: `pending_setup` is an integration plugin that has not set itself up yet. A server that does not
   // say is taken as never installed.

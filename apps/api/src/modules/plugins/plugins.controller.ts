@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Req, Res } from '@nestjs/common'
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Req, Res } from '@nestjs/common'
 import type { Response } from 'express'
 
 import { ApiRoutes } from '@platform/core/api'
@@ -15,6 +15,7 @@ import {
   PluginCommandSecretService,
   type RotatedCommandSecret
 } from './plugin-command-secret.service'
+import { PluginDeletionService } from './plugin-deletion.service'
 import {
   type PluginCatalogEntry,
   type PluginDetail,
@@ -28,6 +29,8 @@ import {
   type RegisteredPlugin
 } from './plugin-registration.service'
 import {
+  type DeletePluginBody,
+  deletePluginSchema,
   type InstallPluginBody,
   installPluginSchema,
   pluginIdSchema,
@@ -47,7 +50,8 @@ export class PluginsController {
   constructor(
     private readonly installations: PluginInstallationsService,
     private readonly registration: PluginRegistrationService,
-    private readonly commandSecrets: PluginCommandSecretService
+    private readonly commandSecrets: PluginCommandSecretService,
+    private readonly deletion: PluginDeletionService
   ) {}
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)
@@ -66,6 +70,21 @@ export class PluginsController {
     @Param('id', new ZodValidationPipe(pluginLookupSchema)) pluginId: string
   ): Promise<PluginDetail> {
     return this.installations.detail(store, pluginId)
+  }
+
+  // Removes a plugin the organization registered, with the name typed (the id is the plugin's): only one with no live installation
+  // anywhere in the organization; 409 `PLUGIN_IN_USE` otherwise
+  @RequirePermissions(Permissions.SETTINGS_MANAGE_PLUGINS)
+  @Delete(ApiRoutes.plugins.byId(':id'))
+  @HttpCode(HttpStatusCodes.NO_CONTENT)
+  async remove(
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', new ZodValidationPipe(pluginLookupSchema)) pluginId: string,
+    @Req() req: AuthenticatedRequest,
+    @Body(new ZodValidationPipe(deletePluginSchema)) body?: DeletePluginBody
+  ): Promise<void> {
+    await this.deletion.delete(store, pluginId, body?.confirmation, actorOf(user, store, req))
   }
 
   @RequirePermissions(Permissions.SETTINGS_MANAGE_PLUGINS)

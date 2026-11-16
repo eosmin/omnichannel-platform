@@ -887,6 +887,17 @@ an official channel, the shipping plugin, one the registry runs, or one another 
 one's own plugin replaces the manifest; an installation keeps the scopes it was installed with until the owner approves the new
 ones in a consent screen (Step 5.6, install flow).
 
+**Deleting a registered plugin (Step 5.6, PR W1-2).** `DELETE /plugins/:id` (`SETTINGS_MANAGE_PLUGINS`, a body `{ confirmation }` with the
+name of the plugin as registered, typed as the person sees it: the case counts, the space around it does not) removes a plugin the
+organization registered. A plugin of another organization, an official one and one that does not exist answer the same 404, before the
+name is looked at. It is refused with 409 `PLUGIN_IN_USE` while any store of the organization holds an installation that is not
+revoked, a revoked one that still has its webhook endpoint or secret (the last `plugin.revoked` delivery has not been sent), or one that
+still has channel connections (the history of a channel: its conversations stay). When none does, the plugin row and the rows of its
+revoked installations (with their delivery log) go in one transaction, under the same lock of the organization as a registration, and the
+action `plugin.deleted` is audited with the plugin id, its type and the number of installations removed (nothing of a key or a secret,
+which a revoked installation no longer has). What the plugin wrote (messages, reactions, audit entries) stays, named by its id. The id is
+free again for the organization (and for another one).
+
 ### 6.2 Scopes
 
 ```typescript
