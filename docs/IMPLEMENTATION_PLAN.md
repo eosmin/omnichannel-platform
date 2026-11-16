@@ -1993,9 +1993,14 @@ sale rows follow the ledger: a sale is out of a month's book only when its entry
         failed (read and try again). Routes drawn: `finance.setup`, `finance.settings`, `finance.accounts.*`, `finance.accountRoles.*`,
         `finance.taxRates.*`, `finance.storeTaxSettings`, `finance.paymentAccounts.*`, `finance.periods.list`, `finance.periods.open`,
         `finance.balances`, `finance.postings`, `finance.postingRetry`.
-  - [ ] **4B.9a-2 (the journal, expenses, incomes, transfers and receipts):** `finance.entries.*`, `finance.transactions.*` (record, void, replace,
-        receipt upload and download), manual entries and reversals; the mobile form to register an expense; the entry to the journal for who holds
-        `finance:view_journal`.
+  - [x] **4B.9a-2 (the journal, expenses, incomes, transfers and receipts):** two pages of the finance area, `/finance/journal` and
+        `/finance/transactions`, both read with `finance:view_journal`. The journal lists the entries newest first (filters by type, account and
+        dates, "show more"), opens one with its lines, writes an entry by hand (balanced lines, `finance:post_manual`) and reverses one. The
+        transactions list the expenses, incomes and transfers (filters, voided ones on request), register one (the form of a phone: date, amount
+        in dollars, the accounts each field accepts, the tax rate with the tax the api will compute, the document number, an optional receipt),
+        void one with a reason, replace one, and attach or open the receipt. Routes drawn: `finance.entries.list`, `finance.entries.byId`,
+        `finance.entries.manual`, `finance.entries.reverse`, `finance.transactions.list`, `finance.transactions.byId`,
+        `finance.transactions.record`, `finance.transactions.void`, `finance.transactions.replace`, `finance.transactions.document` (both verbs).
   - [x] **4B.9a-3 (bank reconciliation by CSV):** `finance.bank.*`: the profiles and their mapper, the import, the suggestions and the confirmations.
         **Built in PR 4B.9a-3** (Finance → Bank reconciliation, `/finance/reconciliation`, `AppPaths.finance.reconciliation`, entry of the side navigation
         for who holds `finance:view` and `finance:reconcile`): the account to choose (only the cash, bank and wallet accounts that post and are on: the ones
@@ -2040,6 +2045,35 @@ sale rows follow the ledger: a sale is out of a month's book only when its entry
   kind of cash (which kind a method takes is the accountant's call, TDD_18 §3), but the other roles take any account that posts: whether a role may take an account of a given type is the api's rule, and a stricter one
   (the tax role on a liability) is a change of the server for Step 4B.9b with the reports, where the chart is read as a whole; (i) a posting setting, a role,
   a payment account and the tax preference of the store are saved without a confirmation: the owner may ask for one in the QA after 4B.9.
+- **Decisions of PR 4B.9a-2 (rule 12):** (1) the journal and the transactions are two pages, because the first is the books as the accountant reads
+  them and the second is what a bookkeeper types; both are read with `finance:view_journal` (the api's rule) and each write takes the permission of its
+  action: `finance:post_manual` for an entry by hand and a reversal, and the one of the KIND for a transaction (`manage_transactions` for an expense or an
+  income, `move_money` for a transfer; the screen offers a kind only to who holds its permission) (rejected: one page with tabs, which would hide the
+  list a bookkeeper needs behind the form of the accountant); (2) a `select` of accounts offers only the accounts the api accepts in that field (lesson of
+  #554): money (cash, bank, wallet) for a source and a destination, an expense account for the category of an expense, an income account for an
+  income, an account that posts for a line of an entry by hand (rejected: the whole chart and let the api refuse); (3) an amount is typed as
+  dollars with at most two decimals and sent as whole cents read from the digits (`positiveCentsOfDecimalText`), never through a float, and the tax shown is
+  computed by the same function as the api (`taxOfAmount` of `@platform/core/finance`) with the rounding setting, and is never sent; (4) the key of a form
+  (`idempotencyKey`) is kept on a retry and changed when the content changes, because the api refuses one key for two contents
+  (`TRANSACTION_KEY_REUSED`); (5) the writes of the HIGH tier (`POST_MANUAL_ENTRY`, `REVERSE_ENTRY`, `VOID_FINANCE_TRANSACTION`, which also asks a
+  replacement) go through `useDestructiveAction`, so the store's safety setting decides whether a dialog asks; (6) a receipt is chosen in the form and sent
+  after the transaction exists (record, signed upload, wait for the scan, attach): a receipt that fails leaves the transaction registered and says so,
+  and the person attaches it from the detail; the signed links of an attached receipt are asked when the detail opens and read again after five minutes;
+  (7) an entry offers "reverse" only when the api can do it: not a reversal, not one already reversed and not one that belongs to a transaction (that
+  one is voided through the transaction); (8) `tests/contracts/finance-web-forms.spec.ts` parses what each form builds with the schema of the route it
+  goes to, so a form cannot drift from the api (the web cannot import the api).
+- **Left by PR 4B.9a-2, each with its owner:** (a) the store of a transaction and of a line (`storeId`, the dimension of the reports) is not offered
+  by the forms: the books of the organization carry no store until the reports of 4B.9b read it; (b) a bookkeeper who holds `finance:manage_transactions`
+  and not `finance:view_journal` cannot open the page (the list needs the permission): the owner decides in the QA after 4B.9 whether the presets
+  carry both, and Step 7.7 settles the navigation; (c) the transaction that replaces another does not carry its receipt (the api's debt (a) of 4B.4b-1): the
+  form takes a new file and the old one stays on the voided transaction; (d) the journal filters by type, account and dates only (no text search, no
+  period filter) and shows "show more", with no total: the volume decides (Step 7.7); (e) an entry names its source in words and does not link to the
+  order, shipment or remittance: Step 7.7 with the links between screens; (f) the reconciled state of an entry and "take the reconciliation back
+  first" (`FINANCE_ENTRY_RECONCILED`, the code's text shows) are 4B.9a-3; (g) "up to a day ahead" is checked against the clock of the browser and the api
+  decides with its own: a person across the date line sees the api's refusal; (h) the end-to-end cases added to
+  `apps/web-e2e/specs/finance-books.spec.ts` run in CI only; (i) the visual pass of these screens is Step 7.7; (j) an accounting date is drawn as the day the books keep ('2026-11-16'), not
+  localized, as in the periods page: the accountant reads that form, and a localized one is Step 7.7 if the owner asks; (k) the signed links of a receipt
+  are read again every ten minutes while the detail is open, and a link clicked after the tab slept is read again by reloading the detail.
 - **Decisions of PR 4B.9a-3 (rule 12):** (1) nothing is reconciled by itself and nothing is decided in bulk without a question: a suggestion is confirmed or
   rejected one by one, and the bulk action (`confirm-exact`) opens a dialog that says what it does before it runs (rejected: a new tier of
   `DestructiveActionTiers`, which is for what cannot be taken back, while every confirmation here can be undone); (2) rejecting also asks first, because
@@ -2976,7 +3010,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.6 | The automatic entries (sales, remittances, returns, stock) | in progress | 4B.6a machinery, E1 to E3 and E9 (#546); 4B.6b-1 carrier charges, remittance confirmed and voided (E4 to E6; #548); 4B.6b-2 the difference written off, returns and the fee permission (E7, E8, E4 of a return guide; #550); 4B.6b-3 the sweep, its metrics, the failure notice and the close guard (this PR); 4B.6b-4 the prepaid charge model: todo | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | in progress | 4B.7a-1 the libraries and the rule (this PR); 4B.7a-2 the database, the lifecycle, the queue and the routes (this PR); 4B.7b credit notes, evidence as media and the customer's fiscal data: todo | |
 | 4B.8 | Reports, monthly close and the auditor's export | in progress | 4B.8a (#553); 4B.8b-1 statements and aging (#556); 4B.8b-3 legal books mechanism (this PR); 4B.8b-2 and 4B.8b-4 (the accountant's layout): todo | |
-| 4B.9 | Finance interface (web) | in progress | 4B.9a-1 (setup, chart, taxes, settings, periods) #554, 4B.9a-3 (bank reconciliation by CSV) #557, 4B.9a-4 (suppliers, purchases, payables; the number is in the PR) | | |
+| 4B.9 | Finance interface (web) | in progress | 4B.9a-1 (setup, chart, taxes, settings, periods) #554, 4B.9a-2 (the journal, transactions and receipts; #560), 4B.9a-3 (bank reconciliation by CSV) #557, 4B.9a-4 (suppliers, purchases, payables; #558); 4B.9b: todo | |
 | **Milestone 5: Operations** | | | | |
 | 5.1 | Search | done | #486 (PR A: the server), #488 (PR B: the web), #496 (the click, in Step 5.2 PR C3) | 2026-11-15 |
 | 5.2 | Analytics | done | #485 (PR A: rollups, answer semantics, metrics route), PR B #487 (dashboard, My performance, View analytics), PR C1 #491 (reports and export, server), PR C2 #494 (reports and export, web); PR C3 #496 (search click, passive flag and report) | 2026-11-15 |

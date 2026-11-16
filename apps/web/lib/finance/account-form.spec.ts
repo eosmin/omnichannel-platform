@@ -10,6 +10,7 @@ import {
   emptyAccountDraft,
   parentOptionsOf,
   postableAccountsOf,
+  accountLabelsOf,
   updateAccountInputOf
 } from './account-form'
 
@@ -168,5 +169,18 @@ describe('the choices of accounts', () => {
   it('offers the accounts that post and are on, and keeps the one already chosen even if it was turned off', () => {
     expect(postableAccountsOf(list, []).map(item => item.id)).toEqual(['p'])
     expect(postableAccountsOf(list, ['off']).map(item => item.id)).toEqual(['p', 'off'])
+  })
+})
+
+describe('accountLabelsOf', () => {
+  const label = accountLabelsOf([account({ id: 'a1', code: '1101', name: 'Cash' })])
+
+  it('names an account by its code and its name', () => {
+    expect(label('a1')).toBe('1101 · Cash')
+  })
+
+  it('shows an id that is not in the chart as itself, and nothing for no account', () => {
+    expect(label('zz')).toBe('zz')
+    expect(label(null)).toBe('')
   })
 })
