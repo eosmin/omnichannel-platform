@@ -191,7 +191,16 @@ export const ApiRoutes = {
       trialBalanceCsv: '/finance/reports/trial-balance.csv',
       ledgerCsv: '/finance/reports/ledger.csv',
       journalCsv: '/finance/reports/journal.csv',
-      verifyChain: '/finance/reports/verify-chain'
+      verifyChain: '/finance/reports/verify-chain',
+      // The statements and the lists with age (Step 4B.8b), by store when asked, as of a date or over a range, with their CSV files
+      incomeStatement: '/finance/reports/income-statement',
+      balanceSheet: '/finance/reports/balance-sheet',
+      cashFlow: '/finance/reports/cash-flow',
+      aging: '/finance/reports/aging',
+      incomeStatementCsv: '/finance/reports/income-statement.csv',
+      balanceSheetCsv: '/finance/reports/balance-sheet.csv',
+      cashFlowCsv: '/finance/reports/cash-flow.csv',
+      agingCsv: '/finance/reports/aging.csv'
     },
     // The tax preferences of the store of X-Store-Id: GET reads them, PATCH changes whether its prices include the tax
     storeTaxSettings: '/finance/store-tax-settings',
@@ -256,6 +265,22 @@ export const ApiRoutes = {
     postings: '/finance/postings',
     // POST posts the entry of a failed source again, now: the person fixed what failed (a mapping, an account)
     postingRetry: (id: string) => `/finance/postings/${id}/retry`
+  },
+
+  // Fiscal documents (TDD_18 §8, §12): the issuer of the ORGANIZATION and the documents of its sales
+  fiscal: {
+    // What the deployment's providers declare (document types, the fields they need), never a credential
+    providers: '/fiscal/providers',
+    // GET the issuer without credentials; PUT sets it (credentials are written, never read)
+    issuer: '/fiscal/issuer',
+    documents: {
+      list: '/fiscal/documents',
+      byId: (id: string) => `/fiscal/documents/${id}`,
+      // PATCH the receiver of a document that is queued or rejected: a person fixes the data the authority refused
+      receiver: (id: string) => `/fiscal/documents/${id}/receiver`,
+      retry: (id: string) => `/fiscal/documents/${id}/retry`,
+      void: (id: string) => `/fiscal/documents/${id}/void`
+    }
   },
 
   // Suppliers and what is owed to them (TDD_18 §2.7, §12): organization-scoped like the books they post to. A route is a leaf of

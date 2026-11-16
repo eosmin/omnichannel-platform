@@ -2,7 +2,7 @@ import type { ManualFinanceEntryInput } from '@platform/api-client'
 import { FinanceLimits, JournalEntryType } from '@platform/core/domain'
 
 import { isCalendarDay } from './dates'
-import { centsOfDecimalText } from './money'
+import { positiveCentsOfDecimalText } from './money'
 
 // The form of an entry a person writes (TDD_18 §4.2, E13): free lines that balance, and the reason. The amounts are typed as dollars
 // and sent as whole cents; a line takes one side, so a line with both sides filled is a mistake the form names, not one it fixes.
@@ -58,7 +58,9 @@ export const emptyManualEntryDraft = (today: string, keys: [string, string]): Ma
 // The cents of one side of a line: nothing typed is 0, a typed amount that is not one is null
 // An empty side and a typed zero ("0", "0.00") are both nothing: a person fills one side and may write 0 on the other
 const sideOf = (text: string): number | null =>
-  text.trim() === '' || /^0+(?:[.,]0{1,2})?$/.test(text.trim()) ? 0 : centsOfDecimalText(text)
+  text.trim() === '' || /^0+(?:[.,]0{1,2})?$/.test(text.trim())
+    ? 0
+    : positiveCentsOfDecimalText(text)
 
 // The request schema of the api counts a memo in UTF-16 units (zod `max`), which is stricter than the database's code points: the
 // form takes the stricter, so a memo the form accepts is one the api accepts

@@ -44,12 +44,19 @@ export function bpsOfPercentText(text: string): number | null {
   return whole * 100 + rest
 }
 
-// What a person types as an amount, in whole cents and by the digits (never through a float): "12" -> 1200, "12.5" -> 1250,
-// "12,50" -> 1250, "0.05" -> 5. More than two decimals, a sign, a thousands separator, a letter, zero or more than a line of the
-// books can hold is not an amount (null).
-export function centsOfDecimalText(text: string): number | null {
-  const match = /^(\d{1,10})(?:[.,](\d{1,2}))?$/.exec(text.trim())
+// "1234.56" -> 123456, "-0,5" -> -50: what a person types as an amount, in whole cents. No thousands separator, no more than two decimals
+// and nothing that does not fit the 32 bits of an amount of the books is an amount (null); the arithmetic is on whole numbers.
+export function centsOfDecimalText(input: string, maxCents = 2_147_483_647): number | null {
+  const match = /^(-?)(\d{1,10})(?:[.,](\d{1,2}))?$/.exec(input.trim())
   if (match === null) return null
-  const cents = Number(match[1]) * 100 + Number((match[2] ?? '').padEnd(2, '0'))
-  return cents >= 1 && cents <= FinanceLimits.MAX_LINE_CENTS ? cents : null
+  const cents = Number(match[2]) * 100 + Number((match[3] ?? '').padEnd(2, '0'))
+  if (!Number.isSafeInteger(cents) || cents > maxCents) return null
+  return match[1] === '-' && cents !== 0 ? -cents : cents
+}
+
+// What a person types as an amount of a transaction or a line: the same reading, but only above zero and within a line of the books
+// ("12" -> 1200, "0.05" -> 5); a sign, zero or more than a line can hold is not an amount (null).
+export function positiveCentsOfDecimalText(input: string): number | null {
+  const cents = centsOfDecimalText(input, FinanceLimits.MAX_LINE_CENTS)
+  return cents !== null && cents >= 1 ? cents : null
 }

@@ -1,6 +1,11 @@
 import { z } from 'zod'
 
-import { FinanceLimits, FinanceReportLimits, singleLineText } from '@platform/core/domain'
+import {
+  AgingKind,
+  FinanceLimits,
+  FinanceReportLimits,
+  singleLineText
+} from '@platform/core/domain'
 import { isIsoDate } from '@platform/core/finance'
 
 // A calendar day, not only a string that looks like one (no 31 of February)
@@ -64,6 +69,20 @@ export const ledgerCsvQuerySchema = z
   })
 export const trialBalanceCsvQuerySchema = trialBalanceQuerySchema
 
+// The statements: a range of days (any length, they are sums and not files of rows) or one day, optionally of one store
+export const flowQuerySchema = z
+  .strictObject({ from: day, to: day, storeId: z.uuid().optional() })
+  .refine(value => value.from <= value.to, { message: 'from is after to' })
+export const balanceSheetQuerySchema = z.strictObject({ asOf: day, storeId: z.uuid().optional() })
+export const agingQuerySchema = z.strictObject({
+  kind: z.enum(AgingKind),
+  asOf: day,
+  storeId: z.uuid().optional()
+})
+
+export type FlowQuery = z.infer<typeof flowQuerySchema>
+export type BalanceSheetQuery = z.infer<typeof balanceSheetQuerySchema>
+export type AgingQuery = z.infer<typeof agingQuerySchema>
 export type ReopenPeriodBody = z.infer<typeof reopenPeriodSchema>
 export type TrialBalanceQuery = z.infer<typeof trialBalanceQuerySchema>
 export type LedgerQuery = z.infer<typeof ledgerQuerySchema>

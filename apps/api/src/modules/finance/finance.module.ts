@@ -21,6 +21,8 @@ import { FinanceReportsController } from './finance-reports.controller'
 import { FinanceReportsService } from './finance-reports.service'
 import { FinanceSettingsService } from './finance-settings.service'
 import { FinanceSetupService } from './finance-setup.service'
+import { FinanceStatementsController } from './finance-statements.controller'
+import { FinanceStatementsService } from './finance-statements.service'
 import { FinanceStoreTaxSettingsService } from './finance-store-tax-settings.service'
 import { FinanceTaxRatesService } from './finance-tax-rates.service'
 import { FinanceTransactionDocumentsService } from './finance-transaction-documents.service'
@@ -37,7 +39,8 @@ import { FinanceController } from './finance.controller'
     FinanceController,
     FinanceTransactionsController,
     FinanceBankController,
-    FinanceReportsController
+    FinanceReportsController,
+    FinanceStatementsController
   ],
   providers: [
     FinanceSetupService,
@@ -52,6 +55,7 @@ import { FinanceController } from './finance.controller'
     FinanceVatReportService,
     FinanceCloseService,
     FinanceReportsService,
+    FinanceStatementsService,
     FinanceChainService,
     FinanceBankProfilesService,
     FinanceBankImportsService,

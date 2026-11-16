@@ -25,6 +25,7 @@ import type {
   LedgerQuery,
   TrialBalanceQuery
 } from './finance-reports.schemas'
+import { centsAsNumber } from './finance.support'
 import { isoDay } from './finance.views'
 
 export interface TrialBalanceRowView {
@@ -105,14 +106,6 @@ interface JournalRow extends LedgerRow {
   account_code: string
   account_name: string
   tax_rate_id: string | null
-}
-
-// A cent amount of a CSV is a number: a text that starts with a minus sign would be written as a formula guard
-const asNumber = (value: bigint): number => {
-  if (value > BigInt(Number.MAX_SAFE_INTEGER) || value < BigInt(Number.MIN_SAFE_INTEGER)) {
-    throw new RangeError('an amount does not fit a spreadsheet cell')
-  }
-  return Number(value)
 }
 
 const tooLarge = (): PlatformException =>
@@ -284,9 +277,9 @@ export class FinanceReportsService {
       code: row.code,
       name: row.name,
       type: row.type,
-      debitCents: asNumber(BigInt(row.debitCents)),
-      creditCents: asNumber(BigInt(row.creditCents)),
-      balanceCents: asNumber(BigInt(row.balanceCents))
+      debitCents: centsAsNumber(BigInt(row.debitCents)),
+      creditCents: centsAsNumber(BigInt(row.creditCents)),
+      balanceCents: centsAsNumber(BigInt(row.balanceCents))
     }))
     this.auditExport(organizationId, actor, 'trial_balance', {
       periodId: query.periodId,
@@ -412,9 +405,9 @@ export class FinanceReportsService {
           storeId: line.storeId,
           partyType: line.partyType,
           partyId: line.partyId,
-          debitCents: asNumber(BigInt(line.debitCents)),
-          creditCents: asNumber(BigInt(line.creditCents)),
-          runningCents: asNumber(BigInt(line.runningCents))
+          debitCents: centsAsNumber(BigInt(line.debitCents)),
+          creditCents: centsAsNumber(BigInt(line.creditCents)),
+          runningCents: centsAsNumber(BigInt(line.runningCents))
         })
       }
       if (!page.hasMore || page.nextCursor === null) break

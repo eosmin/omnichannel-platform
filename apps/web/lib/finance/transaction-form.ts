@@ -15,7 +15,7 @@ import { taxOfAmount } from '@platform/core/finance'
 
 import { cashAccountsOf, postableAccountsOf } from './account-form'
 import { isCalendarDay } from './dates'
-import { centsOfDecimalText, decimalOfCents } from './money'
+import { positiveCentsOfDecimalText, decimalOfCents } from './money'
 
 // The form of an expense, an income or a transfer registered by hand (TDD_18 §4.3). The amount is what was paid or received, tax
 // included, typed as dollars and sent as whole cents; the tax is the api's to compute (the screen shows the same sum, never sends it).
@@ -133,7 +133,7 @@ export function taxPreviewOf(
   rates: readonly FinanceTaxRateView[],
   rounding: string
 ): number | null {
-  const cents = centsOfDecimalText(draft.amount)
+  const cents = positiveCentsOfDecimalText(draft.amount)
   const rate = rates.find(candidate => candidate.id === draft.taxRateId)
   if (cents === null || rate === undefined || !takesTax(draft.kind)) return null
   return taxOfAmount({
@@ -154,7 +154,7 @@ export function transactionProblem(
   if (!isCalendarDay(draft.occurredOn) || draft.occurredOn > latestDay) {
     return TransactionFields.DATE
   }
-  if (centsOfDecimalText(draft.amount) === null) return TransactionFields.AMOUNT
+  if (positiveCentsOfDecimalText(draft.amount) === null) return TransactionFields.AMOUNT
   if (takesSource(draft.kind) && draft.fromAccountId === '') return TransactionFields.FROM
   if (takesDestination(draft.kind) && draft.toAccountId === '') return TransactionFields.TO
   if (
@@ -170,7 +170,7 @@ export function transactionProblem(
   // A rate that was switched off since is refused by the api (it stays in the list only so that the select shows its value)
   if (rates.some(rate => rate.id === draft.taxRateId && !rate.active)) return TransactionFields.TAX
   const tax = taxPreviewOf(draft, rates, rounding)
-  const cents = centsOfDecimalText(draft.amount)
+  const cents = positiveCentsOfDecimalText(draft.amount)
   // The net that is left after the tax is a positive amount, because a line of the entry takes it
   if (tax !== null && cents !== null && tax > 0 && tax >= cents) return TransactionFields.TAX
   if (draft.documentNumber.trim().length > FinanceLimits.DOCUMENT_NUMBER_MAX_LENGTH) {
@@ -186,7 +186,7 @@ export function recordTransactionInputOf(
   draft: TransactionDraft,
   idempotencyKey: string
 ): RecordFinanceTransactionInput {
-  const cents = centsOfDecimalText(draft.amount)
+  const cents = positiveCentsOfDecimalText(draft.amount)
   if (cents === null) throw new Error('the amount of a transaction was not checked')
   const input: RecordFinanceTransactionInput = {
     idempotencyKey,

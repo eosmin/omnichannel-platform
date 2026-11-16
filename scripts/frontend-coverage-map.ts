@@ -95,8 +95,9 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'products.inventory': { step: '4.2' },
   // The books of the organization (TDD_18 §12): Step 4B.9 draws the finance screens, in the PRs its box in the plan lists. 4B.9a-1 drew
   // the setup, the settings, the chart, the roles, the tax rates, the payment accounts, the store tax settings, the periods (read and
-  // open), the balances and the postings; the rest of these waits for 4B.9a-2 (entries, transactions), 4B.9a-3 (bank), 4B.9a-4
-  // (suppliers, purchase orders) and 4B.9b (reports). A route stays on '4B.9' until the whole step is done
+  // open), the balances and the postings; 4B.9a-3 drew the bank reconciliation by CSV (every `finance.bank.*` route, on Finance → Bank
+  // reconciliation); the rest of these waits for 4B.9a-2 (entries, transactions), 4B.9a-4 (suppliers, purchase orders) and 4B.9b
+  // (reports). A route stays on '4B.9' until the whole step is done
   'finance.setup': { step: '4B.9' },
   'finance.settings': { step: '4B.9' },
   'finance.accounts.list': { step: '4B.9' },
@@ -119,6 +120,14 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'finance.reports.ledgerCsv': { step: '4B.9' },
   'finance.reports.journalCsv': { step: '4B.9' },
   'finance.reports.verifyChain': { step: '4B.9' },
+  'finance.reports.incomeStatement': { step: '4B.9' },
+  'finance.reports.balanceSheet': { step: '4B.9' },
+  'finance.reports.cashFlow': { step: '4B.9' },
+  'finance.reports.aging': { step: '4B.9' },
+  'finance.reports.incomeStatementCsv': { step: '4B.9' },
+  'finance.reports.balanceSheetCsv': { step: '4B.9' },
+  'finance.reports.cashFlowCsv': { step: '4B.9' },
+  'finance.reports.agingCsv': { step: '4B.9' },
   'finance.periods.close': { step: '4B.9' },
   'finance.periods.reopen': { step: '4B.9' },
   'finance.storeTaxSettings': { step: '4B.9' },
@@ -154,6 +163,13 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'finance.balances': { step: '4B.9' },
   'finance.postings': { step: '4B.9' },
   'finance.postingRetry': { step: '4B.9' },
+  'fiscal.providers': { step: '4B.9' },
+  'fiscal.issuer': { step: '4B.9' },
+  'fiscal.documents.list': { step: '4B.9' },
+  'fiscal.documents.byId': { step: '4B.9' },
+  'fiscal.documents.receiver': { step: '4B.9' },
+  'fiscal.documents.retry': { step: '4B.9' },
+  'fiscal.documents.void': { step: '4B.9' },
   'suppliers.list': { step: '4B.9' },
   'suppliers.create': { step: '4B.9' },
   'suppliers.byId': { step: '4B.9' },

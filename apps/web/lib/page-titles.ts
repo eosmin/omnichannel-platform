@@ -62,6 +62,7 @@ export const PageTitles = {
   financeTransactions: ['settings.nav.finance.transactions', 'settings.nav.finance.title'],
   financeTaxes: ['settings.nav.finance.taxes', 'settings.nav.finance.title'],
   financePeriods: ['settings.nav.finance.periods', 'settings.nav.finance.title'],
+  financeReconciliation: ['settings.nav.finance.reconciliation', 'settings.nav.finance.title'],
   financeSettings: ['settings.nav.finance.settings', 'settings.nav.finance.title']
 } as const satisfies Record<string, readonly string[]>
 
