@@ -1,4 +1,11 @@
-import { FiscalDocumentStatus } from '@platform/core/domain'
+import {
+  FiscalDocumentStatus,
+  FiscalEnvironment,
+  FiscalOperationCondition,
+  PaymentMethod,
+  PaymentStatus,
+  TaxTreatment
+} from '@platform/core/domain'
 
 import {
   canTransition,
@@ -6,7 +13,12 @@ import {
   creditNoteSaleOf,
   documentDetailOf,
   documentLines,
+  fiscalDocumentUuid,
+  fiscalSequenceKey,
   isImmutable,
+  operationConditionOf,
+  paymentOfSnapshot,
+  paymentsOf,
   maskedCustomerFiscalData,
   maskTaxId,
   originalStateOf,
@@ -83,7 +95,8 @@ describe('the lines of a document', () => {
         quantity: 2,
         unitPriceCents: 1000,
         taxRateBps: 1300,
-        taxCents: 230
+        taxCents: 230,
+        taxTreatment: TaxTreatment.TAXED
       },
       {
         productName: 'Old order line',
@@ -91,7 +104,17 @@ describe('the lines of a document', () => {
         quantity: 1,
         unitPriceCents: 500,
         taxRateBps: null,
-        taxCents: null
+        taxCents: null,
+        taxTreatment: null
+      },
+      {
+        productName: 'Exempt line',
+        variantName: null,
+        quantity: 1,
+        unitPriceCents: 700,
+        taxRateBps: null,
+        taxCents: 0,
+        taxTreatment: TaxTreatment.EXEMPT
       },
       {
         productName: 'Partial snapshot',
@@ -99,19 +122,21 @@ describe('the lines of a document', () => {
         quantity: 1,
         unitPriceCents: 100,
         taxRateBps: 1300,
-        taxCents: null
+        taxCents: null,
+        taxTreatment: TaxTreatment.TAXED
       }
     ])
     // A rate with no tax amount says no rate: never a rate beside a zero tax
-    expect(lines[2]?.taxRateBps).toBeNull()
-    expect(lines.slice(0, 2)).toEqual([
+    expect(lines[3]?.taxRateBps).toBeNull()
+    expect(lines.slice(0, 3)).toEqual([
       {
         description: 'Shirt (M)',
         quantity: 2,
         unitPriceCents: 1000,
         taxRateBps: 1300,
         taxCents: 230,
-        totalCents: 2000
+        totalCents: 2000,
+        taxTreatment: TaxTreatment.TAXED
       },
       {
         description: 'Old order line',
@@ -119,7 +144,18 @@ describe('the lines of a document', () => {
         unitPriceCents: 500,
         taxRateBps: null,
         taxCents: 0,
-        totalCents: 500
+        totalCents: 500,
+        // An order that predates the snapshot has no treatment: core does not invent one
+        taxTreatment: null
+      },
+      {
+        description: 'Exempt line',
+        quantity: 1,
+        unitPriceCents: 700,
+        taxRateBps: null,
+        taxCents: 0,
+        totalCents: 700,
+        taxTreatment: TaxTreatment.EXEMPT
       }
     ])
   })
@@ -145,8 +181,24 @@ describe('the receiver', () => {
       email: null,
       phone: null,
       taxpayerType: null,
-      economicActivity: null
+      economicActivity: null,
+      documentType: null
     })
+  })
+
+  it('keeps the kind of identity document the way it keeps the other fields of the receiver', () => {
+    const base = {
+      name: null,
+      taxId: '123',
+      registrationId: null,
+      address: null,
+      email: null,
+      phone: null
+    }
+    const record = receiverRecord({ ...base, documentType: ' passport ' })
+    expect(record['documentType']).toBe('passport')
+    expect(receiverOf(record).documentType).toBe('passport')
+    expect(receiverRecord({ ...base, documentType: '  ' })['documentType']).toBeUndefined()
   })
 
   it('stores an address the way it reads it back: trimmed, with no empty value, and none when nothing is left', () => {
@@ -177,7 +229,8 @@ describe('a sale that adds up', () => {
     unitPriceCents: totalCents,
     taxRateBps: 1300,
     taxCents,
-    totalCents
+    totalCents,
+    taxTreatment: TaxTreatment.TAXED
   })
   const sale = (over: Partial<ReturnType<typeof saleOf>> = {}) => ({
     lines: [line(2260, 260)],
@@ -252,6 +305,8 @@ describe('the issuer a document was made with', () => {
     registrationId: null,
     activityCode: null,
     establishmentCode: 'M001',
+    establishmentType: null,
+    pointOfSaleCode: null,
     environment: 'sandbox',
     address: { line1: 'x', city: 'y' }
   }
@@ -267,9 +322,226 @@ describe('the issuer a document was made with', () => {
     ['the registration', { registrationId: 'R-1' }],
     ['the establishment', { establishmentCode: 'M002' }],
     ['the environment', { environment: 'production' }],
-    ['the address', { address: { line1: 'z', city: 'y' } }]
+    ['the address', { address: { line1: 'z', city: 'y' } }],
+    ['the kind of establishment', { establishmentType: 'branch' }],
+    ['the point of sale', { pointOfSaleCode: 'P001' }]
   ])('is not the same when %s changed', (_label, patch) => {
     expect(sameIssuer(snapshot, { ...live, ...patch })).toBe(false)
+  })
+})
+
+describe('an issuer made before the contact and the point of sale existed', () => {
+  // The snapshot of a document made before these fields have no key for them: that is the same issuer as one that has them empty, so
+  // a document in flight is not refused as "issuer changed" by a deploy
+  const live = {
+    legalName: 'Acme',
+    taxId: 'T-1',
+    registrationId: null,
+    activityCode: null,
+    establishmentCode: null,
+    establishmentType: null,
+    pointOfSaleCode: null,
+    environment: 'sandbox',
+    address: {}
+  }
+  const old = {
+    legalName: 'Acme',
+    taxId: 'T-1',
+    environment: 'sandbox',
+    address: {}
+  }
+
+  it('is the same issuer as one that has them empty', () => {
+    expect(sameIssuer(old, live)).toBe(true)
+  })
+
+  it('is another issuer once one of them is set', () => {
+    expect(sameIssuer(old, { ...live, pointOfSaleCode: 'P001' })).toBe(false)
+  })
+
+  it('does not count the contact of the issuer as its identity: fixing a typo in it refuses no document in flight', () => {
+    const withContact = { ...live, phone: '2222-0000', email: 'a@b.test' }
+    expect(sameIssuer({ ...old, phone: 'old', email: 'old@b.test' }, withContact)).toBe(true)
+  })
+})
+
+describe('the series of a correlative', () => {
+  const base = {
+    providerId: 'p',
+    environment: FiscalEnvironment.SANDBOX,
+    documentType: 'invoice',
+    establishmentCode: 'M001',
+    pointOfSaleCode: 'P001'
+  }
+
+  it('has no series of its own when the manifest declares no scope: the organization counts them all', () => {
+    expect(fiscalSequenceKey(undefined, base)).toBeNull()
+    expect(fiscalSequenceKey({}, base)).toBeNull()
+    expect(
+      fiscalSequenceKey(
+        { perDocumentType: false, perEstablishment: false, perPointOfSale: false },
+        base
+      )
+    ).toBeNull()
+  })
+
+  it('is one series for what the manifest declares and no more', () => {
+    const byType = fiscalSequenceKey({ perDocumentType: true }, base)
+    expect(byType).not.toBeNull()
+    // The establishment and the point of sale are not part of this series: changing them does not move it
+    expect(
+      fiscalSequenceKey(
+        { perDocumentType: true },
+        { ...base, establishmentCode: 'M002', pointOfSaleCode: 'P009' }
+      )
+    ).toBe(byType)
+    expect(
+      fiscalSequenceKey({ perDocumentType: true }, { ...base, documentType: 'credit' })
+    ).not.toBe(byType)
+  })
+
+  it.each([
+    ['perDocumentType', { documentType: 'credit' }],
+    ['perEstablishment', { establishmentCode: 'M002' }],
+    ['perPointOfSale', { pointOfSaleCode: 'P009' }]
+  ] as const)('moves with %s only when the manifest declares it', (flag, change) => {
+    const declared = fiscalSequenceKey({ [flag]: true }, base)
+    expect(fiscalSequenceKey({ [flag]: true }, { ...base, ...change })).not.toBe(declared)
+  })
+
+  it('never shares a series across providers or environments', () => {
+    const scope = { perDocumentType: true }
+    const key = fiscalSequenceKey(scope, base)
+    expect(fiscalSequenceKey(scope, { ...base, providerId: 'q' })).not.toBe(key)
+    expect(
+      fiscalSequenceKey(scope, { ...base, environment: FiscalEnvironment.PRODUCTION })
+    ).not.toBe(key)
+  })
+
+  it('cannot be confused by the parts of the key running into each other', () => {
+    const scope = { perEstablishment: true, perPointOfSale: true }
+    expect(
+      fiscalSequenceKey(scope, { ...base, establishmentCode: 'a|b', pointOfSaleCode: 'c' })
+    ).not.toBe(
+      fiscalSequenceKey(scope, { ...base, establishmentCode: 'a', pointOfSaleCode: 'b|c' })
+    )
+    expect(
+      fiscalSequenceKey(scope, { ...base, establishmentCode: null, pointOfSaleCode: 'x' })
+    ).not.toBe(fiscalSequenceKey(scope, { ...base, establishmentCode: 'x', pointOfSaleCode: null }))
+  })
+
+  it('is short whatever the parts are, so it fits the column', () => {
+    const key = fiscalSequenceKey(
+      { perDocumentType: true, perEstablishment: true, perPointOfSale: true },
+      { ...base, documentType: 'x'.repeat(500) }
+    )
+    expect(key?.length).toBeLessThanOrEqual(200)
+  })
+})
+
+describe('the stable identifier of a document', () => {
+  const V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+
+  it('has the shape of a random UUID version 4', () => {
+    expect(fiscalDocumentUuid('org-1', 'doc-1')).toMatch(V4)
+  })
+
+  it('is the same for the same document, whenever it is asked', () => {
+    expect(fiscalDocumentUuid('org-1', 'doc-1')).toBe(fiscalDocumentUuid('org-1', 'doc-1'))
+  })
+
+  it('is another for another document or another organization', () => {
+    const one = fiscalDocumentUuid('org-1', 'doc-1')
+    expect(fiscalDocumentUuid('org-1', 'doc-2')).not.toBe(one)
+    expect(fiscalDocumentUuid('org-2', 'doc-1')).not.toBe(one)
+    // The pair is not a concatenation that two pairs could share
+    expect(fiscalDocumentUuid('a', 'bc')).not.toBe(fiscalDocumentUuid('ab', 'c'))
+  })
+})
+
+describe('how a sale was paid', () => {
+  it('is one payment for the whole order, with the reference the person recorded', () => {
+    expect(paymentsOf(PaymentMethod.TRANSFER, ' T-9 ', 5000)).toEqual([
+      { method: PaymentMethod.TRANSFER, amountCents: 5000, reference: 'T-9' }
+    ])
+    expect(paymentsOf(PaymentMethod.CASH, null, 100)[0]?.reference).toBeNull()
+    expect(paymentsOf(PaymentMethod.CARD, '  ', 100)[0]?.reference).toBeNull()
+  })
+
+  it('reads a payment that is completed as immediate and anything else as deferred', () => {
+    expect(operationConditionOf(PaymentStatus.COMPLETED)).toBe(FiscalOperationCondition.IMMEDIATE)
+    for (const status of [PaymentStatus.PENDING, PaymentStatus.FAILED, PaymentStatus.REFUNDED]) {
+      expect(operationConditionOf(status)).toBe(FiscalOperationCondition.DEFERRED)
+    }
+    // A status core does not know is not paid
+    expect(operationConditionOf('SOMETHING_ELSE')).toBe(FiscalOperationCondition.DEFERRED)
+  })
+})
+
+describe('the payment a document kept', () => {
+  it('is read from the snapshot: the method, the reference, and the condition from the status', () => {
+    expect(
+      paymentOfSnapshot(
+        { paymentMethod: 'TRANSFER', paymentReference: 'T-1', paymentStatus: 'COMPLETED' },
+        900
+      )
+    ).toEqual({
+      payments: [{ method: PaymentMethod.TRANSFER, amountCents: 900, reference: 'T-1' }],
+      condition: FiscalOperationCondition.IMMEDIATE
+    })
+  })
+
+  it('carries no payment on a credit note: what it gives back is not a payment of its own', () => {
+    const parts = { paymentMethod: 'CASH', paymentStatus: 'COMPLETED' }
+    expect(paymentOfSnapshot(parts, 900, true).payments).toEqual([])
+    expect(paymentOfSnapshot(parts, 900, true).condition).toBe(FiscalOperationCondition.IMMEDIATE)
+  })
+
+  it('says no payment, and not paid, for a snapshot that predates it or a method this version does not know', () => {
+    const none = { payments: [], condition: FiscalOperationCondition.DEFERRED }
+    expect(paymentOfSnapshot({}, 900)).toEqual(none)
+    expect(
+      paymentOfSnapshot({ paymentMethod: 'BITCOIN', paymentStatus: 'COMPLETED' }, 900).payments
+    ).toEqual([])
+  })
+})
+
+describe('the lines of a snapshot', () => {
+  it('read a snapshot made before the tax treatment was kept as having none', () => {
+    const sale = saleOf(
+      { totalCents: 100, taxCents: 0 },
+      {
+        lines: [
+          {
+            description: 'old',
+            quantity: 1,
+            unitPriceCents: 100,
+            taxRateBps: null,
+            taxCents: 0,
+            totalCents: 100
+          },
+          {
+            description: 'new',
+            quantity: 1,
+            unitPriceCents: 100,
+            taxRateBps: null,
+            taxCents: 0,
+            totalCents: 100,
+            taxTreatment: 'exempt'
+          },
+          {
+            description: 'odd',
+            quantity: 1,
+            unitPriceCents: 100,
+            taxRateBps: null,
+            taxCents: 0,
+            totalCents: 100,
+            taxTreatment: 'weird'
+          }
+        ]
+      }
+    )
+    expect(sale.lines.map(line => line.taxTreatment)).toEqual([null, TaxTreatment.EXEMPT, null])
   })
 })
 
@@ -290,7 +562,8 @@ describe('the credit note of a return', () => {
         quantity: 2,
         unitPriceCents: 1130,
         taxRateBps: 1300,
-        taxCents: 235
+        taxCents: 235,
+        taxTreatment: TaxTreatment.TAXED
       },
       {
         orderItemId: 'b',
@@ -299,7 +572,8 @@ describe('the credit note of a return', () => {
         quantity: 1,
         unitPriceCents: 565,
         taxRateBps: 1300,
-        taxCents: 59
+        taxCents: 59,
+        taxTreatment: TaxTreatment.TAXED
       }
     ]
   }
@@ -377,7 +651,8 @@ describe('the rounding of the books in a credit note', () => {
         quantity: 2,
         unitPriceCents: 1000,
         taxRateBps: 1500,
-        taxCents: 261
+        taxCents: 261,
+        taxTreatment: TaxTreatment.TAXED
       }
     ]
   }
@@ -436,7 +711,8 @@ describe('the fiscal data of a customer', () => {
       email: 'contact@example.com',
       phone: '+10000000000',
       taxpayerType: 'company',
-      economicActivity: 'retail'
+      economicActivity: 'retail',
+      documentType: null
     })
   })
 
@@ -481,6 +757,7 @@ describe('the fiscal data of a customer', () => {
       registrationId: '******-7',
       taxpayerType: 'company',
       economicActivity: 'retail',
+      documentType: null,
       addressSet: true
     })
     expect(JSON.stringify(view)).not.toContain('Shipping street')

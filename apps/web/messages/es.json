@@ -7418,6 +7418,7 @@
         "provider_answer_invalid": "El proveedor respondió de una forma que no puede tomarse como una aceptación.",
         "original_voided": "El documento de venta que cancela esta nota fue anulado. Reemplaza primero el documento de venta y luego envía esta nota de nuevo.",
         "return_inconsistent": "Las unidades de la devolución no encajan con la venta de la que vienen, así que no se envió nada.",
+        "sequence_exhausted": "La serie en la que se numera este documento no tiene más números, así que no se envió nada.",
         "provider": "Motivo dado por el proveedor: {code}"
       },
       "actions": {

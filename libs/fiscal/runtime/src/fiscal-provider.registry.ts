@@ -25,6 +25,27 @@ export class FiscalProviderRegistry {
       ) {
         throw new Error(`the document types of the fiscal provider ${provider.id} are not valid`)
       }
+      // A provider that numbers by document type is asked for the type before `build`: one that cannot answer would never be numbered
+      if (
+        provider.manifest.sequence?.perDocumentType === true &&
+        provider.resolveDocumentType === undefined
+      ) {
+        throw new Error(
+          `the fiscal provider ${provider.id} numbers by document type and has no resolveDocumentType`
+        )
+      }
+      // A series by establishment or by point of sale needs that code from the issuer: the manifest must say so (the settings screen reads
+      // `requiredIssuerFields`), and a document of an issuer that still lacks it is refused when it is numbered (`correlativeOf`)
+      const sequence = provider.manifest.sequence
+      const required = provider.manifest.requiredIssuerFields
+      if (
+        (sequence?.perEstablishment === true && !required.includes('establishmentCode')) ||
+        (sequence?.perPointOfSale === true && !required.includes('pointOfSaleCode'))
+      ) {
+        throw new Error(
+          `the fiscal provider ${provider.id} numbers by establishment or point of sale and does not require that code of the issuer`
+        )
+      }
       // A second provider under the same id would take the documents of the first one's issuer
       if (byId.has(provider.id)) throw new Error(`two fiscal providers share the id ${provider.id}`)
       byId.set(provider.id, provider)

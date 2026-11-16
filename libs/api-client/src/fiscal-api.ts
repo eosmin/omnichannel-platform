@@ -116,7 +116,15 @@ const providerSchema = z.object({
     requiredIssuerFields: z.array(z.string()),
     // The names of the credentials the provider reads, never their values
     credentialKeys: z.array(z.string()),
-    environments: z.array(z.enum(FiscalEnvironment))
+    environments: z.array(z.enum(FiscalEnvironment)),
+    // The series the provider numbers its documents in; none declared is one series for the organization
+    sequence: z
+      .object({
+        perDocumentType: z.boolean().optional(),
+        perEstablishment: z.boolean().optional(),
+        perPointOfSale: z.boolean().optional()
+      })
+      .optional()
   }),
   // What the provider does while the authority is down, in its own words
   contingency: z.string().nullable()
@@ -131,6 +139,10 @@ const issuerSchema = z.object({
   address: z.record(z.string(), z.unknown()),
   activityCode: z.string().nullable(),
   establishmentCode: z.string().nullable(),
+  establishmentType: z.string().nullable(),
+  pointOfSaleCode: z.string().nullable(),
+  phone: z.string().nullable(),
+  email: z.string().nullable(),
   environment: z.enum(FiscalEnvironment),
   issueOn: z.enum(FiscalIssueOn),
   nextSequence: z.number().int(),

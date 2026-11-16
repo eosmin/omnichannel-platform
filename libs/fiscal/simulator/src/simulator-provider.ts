@@ -16,6 +16,7 @@ import type {
   FiscalReceiver,
   FiscalReceiverField,
   FiscalReceiverProblem,
+  FiscalTypeInput,
   IssuerCheck,
   ProviderContext,
   StoredFiscalDocument,
@@ -102,20 +103,25 @@ export class SimulatorProvider implements FiscalDocumentProvider {
       : []
   }
 
+  // The type of a sale or a credit note: a credit note, a business when the receiver has a tax id, a consumer otherwise. The simulator
+  // numbers by the correlative of the organization (it declares no series), so core never asks it; it answers like `build` for the contract suite.
+  resolveDocumentType(input: FiscalTypeInput): string {
+    if (input.kind === FiscalDocumentKind.CREDIT_NOTE) return SimulatorDocumentTypes.CREDIT_NOTE
+    const business = input.receiver.taxId !== null && input.receiver.taxId.trim() !== ''
+    return business ? SimulatorDocumentTypes.BUSINESS : SimulatorDocumentTypes.CONSUMER
+  }
+
   build(input: FiscalBuildInput): Promise<BuiltDocument> {
     const business = input.receiver.taxId !== null && input.receiver.taxId.trim() !== ''
-    const creditNote = input.kind === FiscalDocumentKind.CREDIT_NOTE
-    let documentType: string = business
-      ? SimulatorDocumentTypes.BUSINESS
-      : SimulatorDocumentTypes.CONSUMER
-    if (creditNote) documentType = SimulatorDocumentTypes.CREDIT_NOTE
+    const documentType = this.resolveDocumentType(input)
     const missing: FiscalReceiverField[] = []
     if (business && (input.receiver.name === null || input.receiver.name.trim() === '')) {
       missing.push('name')
     }
     const payload = {
       type: documentType,
-      number: input.sequenceNumber,
+      number: input.correlative,
+      documentUuid: input.documentUuid,
       issuedAt: input.issuedAt,
       orderNumber: input.orderNumber,
       // A credit note names the document it cancels (part of); a sale names none

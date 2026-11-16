@@ -1,8 +1,11 @@
 import {
   FiscalDocumentKind,
   FiscalEnvironment,
+  FiscalOperationCondition,
   FiscalSubmitOutcome,
-  FiscalVoidConsultState
+  FiscalVoidConsultState,
+  PaymentMethod,
+  TaxTreatment
 } from '@platform/core/domain'
 import type {
   FiscalBuildInput,
@@ -42,6 +45,10 @@ const baseInput = (
   kind: FiscalDocumentKind.SALE,
   credited: null,
   sequenceNumber,
+  // Counted in the series the manifest names; the contract builds with the number of the organization, which is what a provider with no
+  // series of its own writes
+  correlative: sequenceNumber + 1000,
+  documentUuid: `00000000-0000-4000-8000-${String(sequenceNumber).padStart(12, '0')}`,
   issuedAt: '2026-11-16T12:00:00.000Z',
   orderNumber: `ORD-${sequenceNumber}`,
   currency: 'USD',
@@ -54,14 +61,17 @@ const baseInput = (
       unitPriceCents: 1130,
       taxRateBps: 1300,
       taxCents: 260,
-      totalCents: 2260
+      totalCents: 2260,
+      taxTreatment: TaxTreatment.TAXED
     }
   ],
   shippingCents: 565,
   shippingTaxCents: 65,
   discountCents: 0,
   totalCents: 2825,
-  taxCents: 325
+  taxCents: 325,
+  payments: [{ method: PaymentMethod.TRANSFER, amountCents: 2825, reference: 'T-1' }],
+  condition: FiscalOperationCondition.IMMEDIATE
 })
 
 export function testFiscalProviderContract(
@@ -137,6 +147,58 @@ export function testFiscalProviderContract(
         expect(typeof problem.code).toBe('string')
         expect(JSON.stringify(problem)).not.toContain('ZQ9')
       }
+    })
+  })
+
+  describe('the number and the identifier a document carries', () => {
+    it('are the ones core hands it: another correlative or another identifier builds another document', async () => {
+      const provider = makeProvider()
+      const input = baseInput(fixtures, fixtures.receivers.plain, 5)
+      const first = await provider.build(input)
+      const otherNumber = await provider.build({ ...input, correlative: input.correlative + 1 })
+      expect(otherNumber.payload).not.toEqual(first.payload)
+      const otherUuid = await provider.build({
+        ...input,
+        documentUuid: '11111111-1111-4111-8111-111111111111'
+      })
+      expect(otherUuid.payload).not.toEqual(first.payload)
+    })
+  })
+
+  describe('the series of the correlative', () => {
+    it('can say the type of a document before it builds it, and says what build says', async () => {
+      const provider = makeProvider()
+      const declared = provider.manifest.sequence
+      const resolve = provider.resolveDocumentType?.bind(provider)
+      if (declared?.perDocumentType === true) expect(resolve).toBeDefined()
+      if (resolve === undefined) return
+      for (const key of ['plain', 'incomplete'] as const) {
+        const input = baseInput(fixtures, fixtures.receivers[key], 2)
+        const built = await provider.build(input)
+        expect(resolve({ kind: input.kind, receiver: input.receiver })).toBe(built.documentType)
+      }
+      const note = baseInput(fixtures, fixtures.receivers.plain, 3)
+      const credit = {
+        ...note,
+        kind: FiscalDocumentKind.CREDIT_NOTE,
+        credited: {
+          documentType: 'any',
+          externalNumber: 'EXT-1',
+          issuedAt: '2026-11-15T12:00:00.000Z',
+          providerData: null
+        }
+      }
+      expect(resolve({ kind: credit.kind, receiver: credit.receiver })).toBe(
+        (await provider.build(credit)).documentType
+      )
+    })
+
+    it('answers the same for the same sale however often it is asked (it is pure)', () => {
+      const resolve = makeProvider().resolveDocumentType?.bind(makeProvider())
+      if (resolve === undefined) return
+      const input = baseInput(fixtures, fixtures.receivers.plain, 4)
+      const ask = () => resolve({ kind: input.kind, receiver: input.receiver })
+      expect(ask()).toBe(ask())
     })
   })
 

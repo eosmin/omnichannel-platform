@@ -35,6 +35,14 @@ export enum FiscalEvidenceKind {
   VOID_RESPONSE = 'void_response'
 }
 
+// How the sale was paid, in core's words, for a provider whose document says it (the provider maps it to its own catalog). Core derives
+// it from the payment status of the order: a payment that is COMPLETED is immediate, anything else is deferred. **[ACCOUNTANT]** A sale
+// paid on delivery, or in parts, may be another condition in a country that has one: the provider reads the payments to say so.
+export enum FiscalOperationCondition {
+  IMMEDIATE = 'immediate',
+  DEFERRED = 'deferred'
+}
+
 export const FiscalLimits = {
   // A file of evidence larger than this is not made (the sealed copy in the row stays, which is what the document is): a provider whose
   // document is this big is a fault to read in the logs
@@ -59,6 +67,8 @@ export const FiscalLimits = {
   PROVIDER_CALL_TIMEOUT_MS: 60 * 1000,
   // The check of an issuer reads fields and a certificate and runs while the row of the issuer is locked: it never takes long
   ISSUER_CHECK_TIMEOUT_MS: 5 * 1000,
+  // The correlative of a document is an INTEGER of the database: a scope that reaches it stops (it never wraps to a number already used)
+  MAX_CORRELATIVE: 2_000_000_000,
   LIST_PAGE_SIZE: 25,
   LIST_MAX_PAGE_SIZE: 100
 } as const
@@ -108,7 +118,9 @@ export const FiscalRejectionReasons = {
   // A credit note whose original document was voided: a person retries it and it names the document that replaced the original
   ORIGINAL_VOIDED: 'original_voided',
   // The units of a return do not fit the sale they came from (more units back than were sold): no provider is asked to sign it
-  RETURN_INCONSISTENT: 'return_inconsistent'
+  RETURN_INCONSISTENT: 'return_inconsistent',
+  // The series the provider numbers this document in has no number left: no document is sent that could carry a repeated one
+  SEQUENCE_EXHAUSTED: 'sequence_exhausted'
 } as const
 
 // Why a person's action on a document is refused with a conflict (`details.reason`), for the interface to tell them apart

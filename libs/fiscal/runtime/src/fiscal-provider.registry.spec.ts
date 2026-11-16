@@ -40,6 +40,57 @@ describe('the manifest of a provider', () => {
   })
 })
 
+describe('the series a provider numbers by', () => {
+  const numbering = (
+    sequence: { perDocumentType?: boolean; perEstablishment?: boolean; perPointOfSale?: boolean },
+    answers: boolean,
+    requires: string[] = []
+  ) => {
+    const provider = simulatorProvider()
+    return {
+      id: provider.id,
+      countryCode: provider.countryCode,
+      manifest: {
+        ...provider.manifest,
+        requiredIssuerFields: [...provider.manifest.requiredIssuerFields, ...requires],
+        sequence
+      },
+      ...(answers ? { resolveDocumentType: () => 'a' } : {})
+    } as unknown as ReturnType<typeof simulatorProvider>
+  }
+
+  it('is refused when it is by document type and the provider cannot say which type a document is', () => {
+    expect(() => new FiscalProviderRegistry([numbering({ perDocumentType: true }, false)])).toThrow(
+      /resolveDocumentType/
+    )
+  })
+
+  it('is refused when it is by establishment or point of sale and the manifest does not require that code of the issuer', () => {
+    expect(
+      () => new FiscalProviderRegistry([numbering({ perEstablishment: true }, false)])
+    ).toThrow(/does not require/)
+    expect(() => new FiscalProviderRegistry([numbering({ perPointOfSale: true }, false)])).toThrow(
+      /does not require/
+    )
+    expect(
+      () =>
+        new FiscalProviderRegistry([
+          numbering({ perEstablishment: true, perPointOfSale: true }, false, [
+            'establishmentCode',
+            'pointOfSaleCode'
+          ])
+        ])
+    ).not.toThrow()
+  })
+
+  it('is accepted when the provider can say it, and when no type is asked for', () => {
+    expect(
+      () => new FiscalProviderRegistry([numbering({ perDocumentType: true }, true)])
+    ).not.toThrow()
+    expect(() => new FiscalProviderRegistry([numbering({}, false)])).not.toThrow()
+  })
+})
+
 describe('the providers of a deployment', () => {
   it('registers the simulator in development and test only: staging, production and an unset environment never get it', () => {
     expect(officialFiscalProviders('development')).toHaveLength(1)
