@@ -36,6 +36,8 @@ export const ClientPermissions = {
   FINANCE_VIEW_CARRIER_FEES: 'finance:view_carrier_fees',
   FINANCE_VIEW_JOURNAL: 'finance:view_journal',
   FINANCE_VIEW_REPORTS: 'finance:view_reports',
+  FISCAL_MANAGE: 'fiscal:manage',
+  FISCAL_VIEW: 'fiscal:view',
   INVENTORY_ADJUST: 'inventory:adjust',
   INVENTORY_APPLY_COUNTS: 'inventory:apply_counts',
   INVENTORY_MANAGE_COUNTS: 'inventory:manage_counts',

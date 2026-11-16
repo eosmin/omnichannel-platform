@@ -91,6 +91,8 @@ export const AppPaths = {
     purchase: (id: string): string => `/finance/purchases/${id}`,
     payables: '/finance/payables',
     reconciliation: '/finance/reconciliation',
+    fiscal: '/finance/fiscal',
+    fiscalIssuer: '/finance/fiscal/issuer',
     statements: '/finance/statements',
     aging: '/finance/aging',
     vat: '/finance/vat',

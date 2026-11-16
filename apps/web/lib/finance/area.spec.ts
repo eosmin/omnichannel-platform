@@ -56,6 +56,20 @@ describe('the finance area', () => {
     ).toBeUndefined()
   })
 
+  it('opens the area for fiscal:view alone, with only the two fiscal pages', () => {
+    expect(mayOpenFinance(holding(Permissions.FISCAL_VIEW))).toBe(true)
+    expect(
+      visibleEntries(FINANCE_SETTINGS_ENTRIES, holding(Permissions.FISCAL_VIEW)).map(
+        entry => entry.id
+      )
+    ).toEqual(['fiscal', 'fiscalIssuer'])
+    expect(firstVisibleHref(FINANCE_SETTINGS_ENTRIES, holding(Permissions.FISCAL_VIEW))).toBe(
+      '/finance/fiscal'
+    )
+    // Managing without reading opens nothing: the pages read first
+    expect(mayOpenFinance(holding(Permissions.FISCAL_MANAGE))).toBe(false)
+  })
+
   it('adds the bank reconciliation for who also holds finance:reconcile, and never for who holds only that', () => {
     expect(
       visibleEntries(

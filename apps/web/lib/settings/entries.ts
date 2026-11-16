@@ -122,6 +122,19 @@ export const FINANCE_SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     permission: ClientPermissions.FINANCE_MANAGE_PURCHASES,
     or: ClientPermissions.FINANCE_MOVE_MONEY
   },
+  // Fiscal documents (Step 4B.9b-2): the api's own routes, which ask fiscal:view, not the books
+  {
+    id: 'fiscal',
+    labelKey: 'fiscal',
+    href: AppPaths.finance.fiscal,
+    permission: ClientPermissions.FISCAL_VIEW
+  },
+  {
+    id: 'fiscalIssuer',
+    labelKey: 'fiscalIssuer',
+    href: AppPaths.finance.fiscalIssuer,
+    permission: ClientPermissions.FISCAL_VIEW
+  },
   // The statements, the lists with age and the legal books (Step 4B.9b-3): the api asks for finance:view_reports (and finance:export to
   // take a file or to read a legal book, which the page of the books says itself)
   {
