@@ -359,6 +359,11 @@ export const QueryKeys = {
     balances: (storeId: string, periodId: string | null) =>
       ['finance', storeId, 'balances', periodId] as const,
     postings: (storeId: string) => ['finance', storeId, 'postings'] as const,
+    trialBalance: (storeId: string, periodId: string) =>
+      ['finance', storeId, 'reports', 'trial-balance', periodId] as const,
+    // The ledger of one account in a range (its pages are the pages of one infinite query)
+    ledger: (storeId: string, accountId: string, from: string, to: string) =>
+      ['finance', storeId, 'reports', 'ledger', accountId, from, to] as const,
     transactions: (storeId: string, filters: Record<string, string>) =>
       ['finance', storeId, 'transactions', filters] as const,
     transaction: (storeId: string, id: string) => ['finance', storeId, 'transactions', id] as const,

@@ -137,4 +137,23 @@ describe('createApiClient', () => {
       client.request('/x', { method: 'DELETE', schema: z.undefined() })
     ).resolves.toBeUndefined()
   })
+
+  it('reads the body as text when asked, and parses that text', async () => {
+    const csv = 'a,b\r\n1,2\r\n'
+    const { client } = setup([
+      new Response(csv, { status: 200, headers: { 'content-type': 'text/csv' } })
+    ])
+    await expect(client.request('/x', { schema: z.string(), responseType: 'text' })).resolves.toBe(
+      csv
+    )
+  })
+
+  it('still reads the error of a text request as the api error', async () => {
+    const { client } = setup([json(403, errorBody(ErrorCodes.PERMISSION_DENIED))])
+    await expect(
+      client.request('/x', { schema: z.string(), responseType: 'text' })
+    ).rejects.toMatchObject({
+      status: 403
+    })
+  })
 })

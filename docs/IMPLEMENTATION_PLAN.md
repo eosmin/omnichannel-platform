@@ -2021,11 +2021,23 @@ sale rows follow the ledger: a sale is out of a month's book only when its entry
         unit, tax), mark it ordered, receive it on a phone in as many deliveries as needed, close it short, cancel it, read its bills and its payments.
         Payables: every bill with something open, its due day and the days past it, what each supplier is owed, and pay a bill. Routes drawn:
         `suppliers.*`, `supplierPayments.void`, `purchaseOrders.*`.
-  - [ ] **4B.9b (reports, close, fiscal documents):** `finance.reports.*` (the VAT report and its CSV), the legal books (`finance.books.*`, `finance.bookLayouts.*`,
-        `finance.frozenBooks.*`, always with the notice that a book is a draft while it is `unvalidated`), close and reopen a month and the checklist (Step 4B.8),
-        the exports, the fiscal documents on the order and the issuer settings (Step 4B.7); the box that writes off the difference of a cash-on-delivery
-        remittance (`remittances.writeOff`, shown only with `remittances:manage`, moved here from 4B.9a-4: the remittance screens of Step 4.14 have no list of
-        differences to hang it on, so it comes with the screen that lists them); the end-to-end case of the month.
+  - [ ] **4B.9b (reports, close, fiscal documents),** cut in four PRs on 2026-11-16 (rule 12: close, reports, fiscal documents and the statements
+        have their servers in different PRs, and one review of about 75 files is not one review; each starts from a `main` that has the one
+        before it):
+    - [x] **4B.9b-1 (close and reopen a month, trial balance, ledger, the auditor's files, the check of the chain):** Finance → Periods
+          closes the open month (typed `YYYY-MM`, the effect read first) and reopens the latest closed one (the reason typed), and Finance → Reports
+          (`/finance/reports`, `finance:view`) draws the trial balance of a month with its CSV, the ledger of an account by page with its CSV
+          (`finance:view_journal`, the file also `finance:export`), the journal file for the auditor and the check of the chain
+          (`finance:export`). Routes drawn: `finance.periods.close`, `finance.periods.reopen`, `finance.reports.trialBalance`,
+          `finance.reports.trialBalanceCsv`, `finance.reports.ledger`, `finance.reports.ledgerCsv`, `finance.reports.journalCsv`,
+          `finance.reports.verifyChain`.
+    - [ ] **4B.9b-2 (fiscal documents):** `fiscal.*` (the server of 4B.7a-2, #555): the issuer settings, the documents of the sales (list, one,
+          the receiver, the retry) and the void of an accepted document (typed reason, the effect shown first), and the document on the order.
+    - [ ] **4B.9b-3 (statements, VAT, aging):** `finance.reports.vat` and its CSV, the legal books (`finance.books.*`, `finance.bookLayouts.*`, `finance.frozenBooks.*`, always with the notice that a book is a draft while it is `unvalidated`), and the routes of Step 4B.8b-1 (#556: the statements and the aging), the box that writes off the difference of a cash-on-delivery remittance (`remittances.writeOff`, shown only with `remittances:manage`, moved here from 4B.9a-4 because the remittance screens of Step 4.14 have no list of differences to hang it on), the receipt file of a payment to a supplier and the name of the supplier in the payables view (small server PRs before it; debts (a) and (f) of 4B.9a-4), the aging buckets, the export and the day filter of the payables;
+          the screens of 4B.7b (credit note), 4B.8b-2 (weekly chain, margin) and 4B.8b-3 (legal books) join it, or follow it as 4B.9b-4, as their
+          servers reach `main`.
+    - [ ] **4B.9b-4 (the month end to end):** the e2e case of the month (register, receive, sell, remit, close) and the permission-gate case of every
+          page of the area; it closes 4B.9.
 - [ ] Every route of 4B.2 to 4B.8 drawn (`frontend-coverage-map`), i18n keys in `es` and `en`, Lucide icons only, no emoji, the mobile layout of the
       common actions (register an expense, receive a purchase), the e2e of the month (register, receive, sell, remit, close)
 - **Decisions of PR 4B.9a-1 (rule 12):** (1) the books are an area of their own (`/finance`), not a page of Settings or of the organization: they are the
@@ -2135,6 +2147,28 @@ sale rows follow the ledger: a sale is out of a month's book only when its entry
   which lists them: Step 7.7; (i) the visual pass of these screens is Step 7.7, and the end-to-end case `apps/web-e2e/specs/finance-purchases.spec.ts` runs in
   CI only (Playwright is not run on the shared machine); (k) an order page reads every supplier and the open bills of its supplier to resolve one name and the open amounts of its bills, and again after every write: a supplier by id and the open amount on the order view of the api, Step 7.3; (l) cancelling a purchase order (terminal) asks for a reason and no more: it has no tier in `DestructiveActionTiers`, so no typed or dialog confirmation; whether it needs one is the owner's call, Step 7.7; (j) the receive form does not say how a tax that is not credited is booked (a cost, by the role
   `UNCATEGORIZED_EXPENSE`): the wording is the accountant's [ACCOUNTANT].
+- **Decisions of PR 4B.9b-1 (rule 12):** (1) a file of the books is read by the api client as text (`responseType: 'text'`) and saved by the page
+  (`saveCsvFile`), with the mark of the encoding put back, because `Response.text()` takes it off and the file must be the one the api wrote, byte
+  for byte (an auditor compares it with the head of the chain); rejected: a link to the address of the file, which cannot carry the token of the
+  session, and a stored export with a signed address, which needs an organization-scoped export (debt (e) of 4B.8a). (2) Closing and reopening a month
+  have a dialog of their own and not `useDestructiveAction`: the shared dialog neither shows the answer of the api nor takes a reason, and it is the
+  store's switch that may turn a high-tier confirmation off; a month is frozen or reopened with the effect read and the person's own typing every
+  time (the month as `YYYY-MM` to close, the reason to reopen); rejected: the shared dialog with a phrase, which loses the refusal text of the rules
+  (the month has not ended, the one before is open, a posting is waiting, the books do not balance). (3) Reopening is offered on the latest closed
+  month only (the api refuses any other), closing on the open months that are over (by the UTC day; the api names which other rule stops it, in order, and the dialog shows that text; the mutation lives in the dialog and a close is ignored while it runs, so the answer is never lost). (4) The ledger offers the accounts
+  that take entries (a header only groups the others) and each section of the reports is drawn for the permission the api asks of its route, so a
+  person never reaches a section that answers 403. (5) The longest range of a file (`FinanceReportLimits.CSV_MAX_RANGE_DAYS`) is a constant of
+  `libs/core`; the api keeps its own literal until a PR that touches it moves it, and `tests/contracts/finance-reports-web-payloads.spec.ts` runs every
+  payload of the forms through the schemas of the api so the two cannot drift. (6) The chain's reasons are drawn from the five the api names and any
+  other reason with a generic text, never as a raw code.
+- **Left by PR 4B.9b-1, each with its owner:** (a) the `storeId` filter of the trial balance and the ledger is not drawn (the api narrows by it; the
+  reports are the organization's): 4B.9b-3 with the statements. (b) The period filter and the sum of a header in the chart (debt (c) of 4B.9a-1) and a
+  link from a month to its trial balance: 4B.9b-3. (c) A file is read whole in the browser before it is saved (a journal of 200,000 rows is some tens of
+  MB): a streamed save is Step 7.7, with the exports center. (d) The close checklist (the warnings of `TDD_18 §5.1`: unreconciled cash lines, a fiscal
+  document still queued) is not drawn before closing: the api only refuses what it blocks and the dialog shows that text; the warnings need a route that
+  4B.8b gives, so 4B.9b-3 or 4B.9b-4 draws them. (e) The e2e case of the month (close a month that has ended, reopen it with its reason) needs entries
+  in a past month and is 4B.9b-4; this PR's cases show that a month that has not ended has no close button and the gate of each section; the close and reopen dialogs on a phone (dialog-fit) are measured with that case in 4B.9b-4.
+  (f) Playwright ran only in CI (not on the shared machine). (g) The three download panels share one flow (guard, refusal, name at the click, save) and the ledger and journal share their range fields, and every period row mounts both dialogs: one `useCsvDownload` hook, one range component and one dialog for the row being asked about are Step 7.7 (the visual and structure pass), and so is a fallback text for an account type the screen does not know (the chart page has the same cast).
 **TDD:** `TDD_18 §12`, `TDD_09`
 **Done when:** the owner runs a month of the business end to end from the screens (a purchase received and paid, orders sold and remitted, an
 expense and a transfer, the statements checked, the month closed).
@@ -3014,7 +3048,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.6 | The automatic entries (sales, remittances, returns, stock) | in progress | 4B.6a machinery, E1 to E3 and E9 (#546); 4B.6b-1 carrier charges, remittance confirmed and voided (E4 to E6; #548); 4B.6b-2 the difference written off, returns and the fee permission (E7, E8, E4 of a return guide; #550); 4B.6b-3 the sweep, its metrics, the failure notice and the close guard (this PR); 4B.6b-4 the prepaid charge model: todo | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | in progress | 4B.7a-1 the libraries and the rule (#552, done); 4B.7a-2 the database, the lifecycle, the queue and the routes (#555, done); 4B.7b-1 the credit note of a return and the replacement of a voided document (this PR); 4B.7b-2 evidence as media, the customer's fiscal data, the notification and the debts of the port: todo | |
 | 4B.8 | Reports, monthly close and the auditor's export | in progress | 4B.8a (#553); 4B.8b-1 statements and aging (#556); 4B.8b-3 legal books mechanism (this PR); 4B.8b-2 and 4B.8b-4 (the accountant's layout): todo | |
-| 4B.9 | Finance interface (web) | in progress | 4B.9a-1 (setup, chart, taxes, settings, periods) #554, 4B.9a-2 (the journal, transactions and receipts; #560), 4B.9a-3 (bank reconciliation by CSV) #557, 4B.9a-4 (suppliers, purchases, payables; #558); 4B.9b: todo | |
+| 4B.9 | Finance interface (web) | in progress | 4B.9a-1 (setup, chart, taxes, settings, periods) #554, 4B.9a-2 (the journal, transactions and receipts; #560), 4B.9a-3 (bank reconciliation by CSV) #557, 4B.9a-4 (suppliers, purchases, payables; #558), 4B.9b-1 (close, reports; #563); 4B.9b-2 to 4B.9b-4: todo | |
 | **Milestone 5: Operations** | | | | |
 | 5.1 | Search | done | #486 (PR A: the server), #488 (PR B: the web), #496 (the click, in Step 5.2 PR C3) | 2026-11-15 |
 | 5.2 | Analytics | done | #485 (PR A: rollups, answer semantics, metrics route), PR B #487 (dashboard, My performance, View analytics), PR C1 #491 (reports and export, server), PR C2 #494 (reports and export, web); PR C3 #496 (search click, passive flag and report) | 2026-11-15 |

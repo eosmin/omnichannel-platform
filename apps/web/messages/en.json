@@ -2944,6 +2944,7 @@
         "accounts": "Accounts",
         "taxes": "Taxes",
         "periods": "Periods",
+        "reports": "Reports",
         "settings": "Settings",
         "journal": "Journal",
         "transactions": "Transactions",
@@ -5943,6 +5944,44 @@
           "month": "Write a month from 1 to 12.",
           "year": "Write a year from 2000 to 2200."
         }
+      },
+      "closedOn": "Closed on {date}",
+      "close": {
+        "action": "Close {month}",
+        "submitShort": "Close month",
+        "title": "Close {month}",
+        "description": "Closing freezes the month. Read what it does before you agree.",
+        "formLabel": "Close a month",
+        "effects": {
+          "locked": "No entry can be dated on or before {date} any more.",
+          "reports": "The reports of the month stop moving: they will say tomorrow what they say today.",
+          "reopen": "It can be reopened only while it is the latest closed month, with a reason that stays in the audit trail."
+        },
+        "phraseLabel": "Type {phrase} to close this month",
+        "cancel": "Keep it open",
+        "submit": "Close month",
+        "done": "{month} is closed."
+      },
+      "reopen": {
+        "action": "Reopen {month}",
+        "submitShort": "Reopen month",
+        "title": "Reopen {month}",
+        "description": "Reopening lets the books of this month change again. Only the latest closed month can be reopened.",
+        "formLabel": "Reopen a month",
+        "effects": {
+          "entries": "Entries can be dated in this month again, and its reports will move.",
+          "audit": "Who reopened it, when and why is kept in the audit trail."
+        },
+        "reason": "Reason",
+        "reasonHint": "Say why the month is reopened. It cannot be left empty.",
+        "cancel": "Keep it closed",
+        "submit": "Reopen month",
+        "done": "{month} is open again.",
+        "problems": {
+          "empty": "Write the reason.",
+          "tooLong": "The reason is too long: 500 characters at most.",
+          "invalid": "The reason has a character that cannot be saved. Write it on one line, in plain text."
+        }
       }
     },
     "postings": {
@@ -6919,6 +6958,102 @@
         "bill_required": "Choose the bill this payment is for.",
         "payable_account_type": "The account for what is owed must be a liability account.",
         "from_not_cash": "The account the money leaves must be one of cash, a bank or a wallet."
+      }
+    },
+    "reports": {
+      "title": "Reports",
+      "description": "The trial balance of a month, the ledger of an account, the files for an auditor and the check of the books.",
+      "trialBalance": {
+        "title": "Trial balance",
+        "description": "Every account with entries in the month: what it was debited and credited, and its balance on the side where it normally sits.",
+        "noPeriods": "There are no months yet.",
+        "period": "Month",
+        "download": "Download CSV",
+        "loading": "Loading the trial balance…",
+        "empty": "This month has no entries.",
+        "caption": "Trial balance of {period}",
+        "columns": {
+          "account": "Account",
+          "type": "Type",
+          "debit": "Debit",
+          "credit": "Credit",
+          "balance": "Balance"
+        },
+        "totals": "Totals",
+        "balanced": "The month balances: debits equal credits.",
+        "unbalanced": "The month does not balance: debits and credits differ. Tell the accountant before closing it."
+      },
+      "ledger": {
+        "title": "Ledger",
+        "description": "The lines of one account in date order, with its balance after each line.",
+        "formLabel": "Ledger of an account",
+        "account": "Account",
+        "choose": "Choose an account",
+        "from": "From (optional)",
+        "to": "To (optional)",
+        "dayHint": "A day as YYYY-MM-DD.",
+        "show": "Show ledger",
+        "download": "Download CSV",
+        "downloadHint": "The file needs both days and covers at most 366 days.",
+        "loading": "Loading the ledger…",
+        "opening": "{account}: balance before the first line shown, {amount}",
+        "empty": "The account has no lines in this range.",
+        "caption": "Ledger of {account}",
+        "columns": {
+          "date": "Date",
+          "entry": "Entry",
+          "memo": "Memo",
+          "debit": "Debit",
+          "credit": "Credit",
+          "running": "Balance"
+        },
+        "more": "Show more lines",
+        "problems": {
+          "from": "Write a real day as YYYY-MM-DD.",
+          "to": "Write a real day as YYYY-MM-DD.",
+          "order": "The first day is after the last one.",
+          "length": "The range is longer than 366 days. Choose a shorter one."
+        },
+        "stale": "The table shows the account and range you last asked for. Press Show ledger to update it."
+      },
+      "journal": {
+        "title": "Journal file for the auditor",
+        "description": "One row for each line of the journal, with every field that the hash of its entry covers, so a person who holds only the file can check the chain.",
+        "formLabel": "Journal file",
+        "from": "From",
+        "to": "To",
+        "dayHint": "A day as YYYY-MM-DD.",
+        "download": "Download CSV",
+        "problems": {
+          "from": "Write a real day as YYYY-MM-DD.",
+          "to": "Write a real day as YYYY-MM-DD.",
+          "order": "The first day is after the last one.",
+          "length": "The range is longer than 366 days. Choose a shorter one."
+        }
+      },
+      "chain": {
+        "title": "Check of the books",
+        "description": "Walks the whole journal and checks that no entry was changed, removed or put out of order. Each check is recorded in the audit trail.",
+        "verify": "Check the chain",
+        "ok": "{count, plural, one {# entry checked: the chain is sound.} other {# entries checked: the chain is sound.}}",
+        "broken": "The chain is broken. Do not close any month and tell the accountant.",
+        "breakAt": "It breaks at entry {number}:",
+        "breakOutside": "The chain does not match what was recorded:",
+        "reasons": {
+          "number_gap": "an entry number is missing.",
+          "prev_hash_mismatch": "an entry does not follow the one before it.",
+          "hash_mismatch": "the content of an entry changed.",
+          "head_mismatch": "the last entry is not the one that was recorded.",
+          "frozen_head_missing": "the last entry of a closed month is no longer in the chain.",
+          "unknown": "the check found a problem this screen does not know."
+        },
+        "noHead": "The journal has no entries yet.",
+        "headNumber": "Last entry",
+        "headHash": "Its hash",
+        "frozen": "The last entry that each closed month froze",
+        "frozenPresent": "still in the chain",
+        "frozenMissing": "missing from the chain",
+        "checkedAt": "Checked on {time}"
       }
     }
   }
