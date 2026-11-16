@@ -137,6 +137,9 @@ export const Events = {
   // A fiscal document was refused by the provider or the authority and a person must fix it (TDD_18 §8.3). Api and worker only:
   // ids and a reason code, never the receiver's data.
   FISCAL_DOCUMENT_REJECTED: 'fiscal.document_rejected',
+  // A fiscal document ran out of attempts while it was still waiting for the provider: nobody is retrying it any more and a person must
+  // (Step 4B.7b-2). Api and worker only: ids and the count, never the receiver's data.
+  FISCAL_DOCUMENT_STUCK: 'fiscal.document_stuck',
   // A month was closed, and the latest closed one was reopened (TDD_18 §5, Step 4B.8). Api only; ids and the month, never an amount or the reason.
   FINANCE_PERIOD_CLOSED: 'finance.period_closed',
   FINANCE_PERIOD_REOPENED: 'finance.period_reopened',
@@ -274,7 +277,10 @@ export const BridgedEvents = [
   // The worker says it once when an automatic entry of the books fails; the api tells whoever can fix it
   Events.FINANCE_POSTING_FAILED,
   // The worker says it once when the weekly check opens an incident of the chain; the api tells whoever closes the months
-  Events.FINANCE_CHAIN_BROKEN
+  Events.FINANCE_CHAIN_BROKEN,
+  // The worker says it when a fiscal document was refused or ran out of attempts; the api tells whoever can act on it
+  Events.FISCAL_DOCUMENT_REJECTED,
+  Events.FISCAL_DOCUMENT_STUCK
 ] as const satisfies readonly EventName[]
 
 export type BridgedEvent = (typeof BridgedEvents)[number]

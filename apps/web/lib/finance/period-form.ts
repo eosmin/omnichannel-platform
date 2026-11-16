@@ -36,6 +36,10 @@ export const openPeriodInputOf = (draft: OpenPeriodDraft): { year: number; month
   month: Number(draft.month)
 })
 
+// A month has ended once its last day is over, by the UTC day (the api reads it the same way and says so when it refuses)
+export const periodHasEnded = (period: Pick<FinancePeriodView, 'endsOn'>, now: Date): boolean =>
+  now.toISOString().slice(0, 10) > period.endsOn
+
 // 'YYYY-MM', which is also the order of the periods: the newest first
 export const periodKeyOf = (period: Pick<FinancePeriodView, 'year' | 'month'>): string =>
   `${String(period.year)}-${String(period.month).padStart(2, '0')}`

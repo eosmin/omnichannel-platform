@@ -471,6 +471,17 @@ export function remittanceDestinationProblem(account: {
   return null
 }
 
+// Why the check of the hash chain says it is broken (TDD_18 §11): the three the walk finds and the two that only the places outside the
+// chain can tell. The screen reads this list; the api still writes them as literals until Step 4B.8b makes them constants (debt (q) of 4B.8a)
+export const FinanceChainProblems = [
+  'number_gap',
+  'prev_hash_mismatch',
+  'hash_mismatch',
+  'head_mismatch',
+  'frozen_head_missing'
+] as const
+export type FinanceChainProblem = (typeof FinanceChainProblems)[number]
+
 // The reports and the auditor's files (TDD_18 §10, §11, Step 4B.8)
 export const FinanceReportLimits = {
   // Lines a CSV of the journal or the ledger carries: a file that would be larger is refused with the range to narrow (EXPORT_TOO_LARGE),
@@ -483,7 +494,10 @@ export const FinanceReportLimits = {
   // Lines of the ledger of one account one request answers (it pages by line)
   LEDGER_PAGE_MAX: 200,
   // Sale entries (and so orders) the margin report reads at once: it walks the range in pages and never holds the orders of a month
-  MARGIN_PAGE_SIZE: 500
+  MARGIN_PAGE_SIZE: 500,
+  // The range of days a CSV of the journal or the ledger may cover: a year and a leap day, so a fiscal year always fits. The api
+  // refuses a longer one; the screen says so first (a spec compares both)
+  CSV_MAX_RANGE_DAYS: 366
 } as const
 
 // The statements and the lists with age (TDD_18 §10, Step 4B.8b). Which accounts a statement reads is the chart of the accountant: it groups

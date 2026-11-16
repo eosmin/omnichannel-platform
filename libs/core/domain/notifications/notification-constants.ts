@@ -51,6 +51,9 @@ export const NotificationTypes = {
   FINANCE_POSTING_FAILED: 'finance.posting_failed',
   // The weekly check found the journal altered: nobody can close a month until the chain verifies again (TDD_18 §11)
   FINANCE_CHAIN_BROKEN: 'finance.chain_broken',
+  // A fiscal document was refused, or ran out of attempts, and a person must act on it (TDD_18 §8.3, Step 4B.7b-2)
+  FISCAL_DOCUMENT_REJECTED: 'fiscal.document_rejected',
+  FISCAL_DOCUMENT_STUCK: 'fiscal.document_stuck',
   EXPORT_READY: 'export.ready',
   EXPORT_FAILED: 'export.failed',
   MEDIA_INFECTED: 'media.infected',
@@ -146,6 +149,8 @@ export const NotificationDefaults: Record<NotificationType, NotificationDefault>
   [NotificationTypes.PLUGIN_ERROR]: { severity: ERROR, channels: [IN_APP] },
   [NotificationTypes.FINANCE_POSTING_FAILED]: { severity: ERROR, channels: [IN_APP, EMAIL] },
   [NotificationTypes.FINANCE_CHAIN_BROKEN]: { severity: ERROR, channels: [IN_APP, EMAIL] },
+  [NotificationTypes.FISCAL_DOCUMENT_REJECTED]: { severity: ERROR, channels: [IN_APP, EMAIL] },
+  [NotificationTypes.FISCAL_DOCUMENT_STUCK]: { severity: ERROR, channels: [IN_APP, EMAIL] },
   [NotificationTypes.EXPORT_READY]: { severity: SUCCESS, channels: [IN_APP] },
   [NotificationTypes.EXPORT_FAILED]: { severity: ERROR, channels: [IN_APP] },
   [NotificationTypes.MEDIA_INFECTED]: { severity: WARNING, channels: [IN_APP, PUSH] },
@@ -215,6 +220,8 @@ export const NotificationGroupTypes: Record<NotificationGroup, readonly Notifica
     NotificationTypes.PLUGIN_ERROR,
     NotificationTypes.FINANCE_POSTING_FAILED,
     NotificationTypes.FINANCE_CHAIN_BROKEN,
+    NotificationTypes.FISCAL_DOCUMENT_REJECTED,
+    NotificationTypes.FISCAL_DOCUMENT_STUCK,
     NotificationTypes.EXPORT_READY,
     NotificationTypes.EXPORT_FAILED,
     NotificationTypes.MEDIA_INFECTED,
