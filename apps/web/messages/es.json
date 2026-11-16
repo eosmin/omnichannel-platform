@@ -661,7 +661,7 @@
     "PLUGIN_CHALLENGE_FAILED": "La dirección del plugin no respondió la verificación",
     "PLUGIN_CONSENT_MISMATCH": "El plugin pide un acceso distinto al que revisaste",
     "PLUGIN_DELETE_NOT_CONFIRMED": "Escribe el nombre del plugin tal como se muestra para eliminarlo",
-    "PLUGIN_IN_USE": "El plugin sigue instalado en una tienda de la organización, o todavía cierra sus webhooks. Revócalo en todas, espera un momento e inténtalo de nuevo",
+    "PLUGIN_IN_USE": "El plugin sigue instalado en una tienda de la organización, o todavía se está cerrando. Revócalo en todas, espera un momento e inténtalo de nuevo",
     "PLUGIN_REVOKE_NOT_CONFIRMED": "Escribe REVOKE tal como se muestra para revocar este plugin",
     "PLUGIN_SETUP_CODE_INVALID": "El código de configuración no es válido",
     "PLUGIN_NOT_FOUND": "El plugin no existe",

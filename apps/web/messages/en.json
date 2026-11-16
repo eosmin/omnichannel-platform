@@ -662,7 +662,7 @@
     "PLUGIN_CONSENT_MISMATCH": "The plugin asks for different access than the one you reviewed",
     "PLUGIN_SETUP_CODE_INVALID": "The setup code is not valid",
     "PLUGIN_DELETE_NOT_CONFIRMED": "Type the name of the plugin exactly as shown to delete it",
-    "PLUGIN_IN_USE": "The plugin is still installed in a store of the organization, or is still closing its webhooks. Revoke it everywhere, wait a moment and try again",
+    "PLUGIN_IN_USE": "The plugin is still installed in a store of the organization, or is still being closed. Revoke it everywhere, wait a moment and try again",
     "PLUGIN_REVOKE_NOT_CONFIRMED": "Type REVOKE exactly as shown to revoke this plugin",
     "PLUGIN_NOT_FOUND": "The plugin does not exist",
     "PLUGIN_NOT_INSTALLED": "The plugin is not installed",
