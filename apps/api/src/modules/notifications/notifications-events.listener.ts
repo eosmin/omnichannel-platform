@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { OnEvent } from '@nestjs/event-emitter'
+import type { Counter } from '@prometheus-io/client'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
@@ -14,6 +15,7 @@ import {
   ConversationStatus,
   ConversationStatusReasons,
   CountResourceTypes,
+  FinanceResourceTypes,
   formatBpsAsPercent,
   GuideBalanceAlertLevel,
   MembershipStatus,
@@ -44,6 +46,7 @@ import {
   type CountSubmittedPayload,
   type ExportSettledPayload,
   Events,
+  type FinancePostingFailedPayload,
   type InventoryLowPayload,
   type MessageChangedPayload,
   type MessageMentionPayload,
@@ -62,6 +65,8 @@ import {
 } from '@platform/core/events'
 import { ExportStatus, ExportTypePermissions, type ExportType } from '@platform/core/exports'
 import { conversationReaders, isHiddenStatus } from '@platform/core/messaging'
+import { MetricNames } from '@platform/core/metrics'
+import { InjectMetric } from '@platform/core/metrics-module'
 import { type NotificationType, NotificationTypes } from '@platform/core/notifications'
 import { readOrderPreferences } from '@platform/core/store-preferences'
 
@@ -78,7 +83,9 @@ export class NotificationsEventsListener {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    @InjectMetric(MetricNames.FINANCE_POSTING_FAILURES)
+    private readonly postingFailures: Counter<string>
   ) {}
 
   // Only to the person mentioned, and only if they may still open the conversation and read its notes
@@ -459,6 +466,47 @@ export class NotificationsEventsListener {
       this.logger.error(
         { webhookId, err: String(error) },
         'a disabled webhook could not be notified'
+      )
+    }
+  }
+
+  // An automatic entry of the books failed (TDD_18 §6.1). The worker says it once for each new, reopened or changed failure; the people who
+  // can fix it (the permission of "post again") are told, once for each source until they read it, and only while they still hold the
+  // permission in a store of the organization. The text names no amount and no source: the list of failures does.
+  @OnEvent(Events.FINANCE_POSTING_FAILED)
+  async onFinancePostingFailed(payload: FinancePostingFailedPayload): Promise<void> {
+    const { organizationId, sourceId, eventKind, reason } = payload
+    this.postingFailures.inc({ reason })
+    try {
+      const members = await this.prisma.client.membership.findMany({
+        where: {
+          organizationId,
+          status: MembershipStatus.ACTIVE,
+          revokedAt: null,
+          role: { permissions: { some: { name: Permissions.FINANCE_MANAGE_ACCOUNTS } } }
+        },
+        select: { userId: true, storeId: true },
+        orderBy: [{ storeId: 'asc' }, { userId: 'asc' }]
+      })
+      // A person is told once, in the first store they can fix it in (the failure belongs to the organization, not to a store)
+      const storeOf = new Map<string, string>()
+      for (const member of members) {
+        if (!storeOf.has(member.userId)) storeOf.set(member.userId, member.storeId)
+      }
+      for (const [userId, storeId] of storeOf) {
+        await this.notifications.sendToUsersOnce([userId], {
+          storeId,
+          type: NotificationTypes.FINANCE_POSTING_FAILED,
+          params: {},
+          resourceType: FinanceResourceTypes.POSTING,
+          // One notice for each event of a source: an order whose sale and whose shipment both failed has two things to fix
+          resourceId: `${eventKind}:${sourceId}`
+        })
+      }
+    } catch (error) {
+      this.logger.error(
+        { organizationId, sourceId, err: String(error) },
+        'a failed posting of the books could not be notified'
       )
     }
   }

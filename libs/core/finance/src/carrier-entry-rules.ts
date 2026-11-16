@@ -127,6 +127,14 @@ export function settleRemittanceLine(line: RemittanceLineFacts): RemittanceLineS
   }
 }
 
+// Whether a line of an earlier remittance kept a fee for its guide, so that the payable E4 posted is cleared once: the file's own figure,
+// else the estimate for a connection that deducts its fee. The one rule E5 and E7 share.
+export const keptAFee = (
+  reportedFeeCents: number | null,
+  estimateCents: number,
+  deductsFee: boolean
+): boolean => (reportedFeeCents ?? (deductsFee ? estimateCents : 0)) > 0
+
 export function remittanceLines(input: {
   accounts: RoleAccounts
   // The account the owner chose on the confirm screen (already checked), or null for the role BANK_DEFAULT

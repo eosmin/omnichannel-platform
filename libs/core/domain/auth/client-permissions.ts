@@ -24,6 +24,7 @@ export const ClientPermissions = {
   CUSTOMERS_FLAG_CAUTION: 'customers:flag_caution',
   CUSTOMERS_MERGE: 'customers:merge',
   CUSTOMERS_VIEW: 'customers:view',
+  FINANCE_VIEW_CARRIER_FEES: 'finance:view_carrier_fees',
   INVENTORY_ADJUST: 'inventory:adjust',
   INVENTORY_APPLY_COUNTS: 'inventory:apply_counts',
   INVENTORY_MANAGE_COUNTS: 'inventory:manage_counts',

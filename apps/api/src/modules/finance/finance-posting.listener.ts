@@ -16,7 +16,9 @@ import {
   type InventoryMovedPayload,
   type OrderPaymentPayload,
   type OrderStatusChangedPayload,
+  type RemittanceDifferenceWrittenOffPayload,
   type RemittanceEventPayload,
+  type ReturnEventPayload,
   type ShipmentStatusChangedPayload
 } from '@platform/core/events'
 import { isAdjustmentType } from '@platform/core/finance'
@@ -51,10 +53,30 @@ export class FinancePostingListener {
     ])
   }
 
+  // E8: a return was received (its units are back, and the books give back their share of the sale)
+  @OnEvent(Events.RETURN_RECEIVED)
+  async onReturnReceived(payload: ReturnEventPayload): Promise<void> {
+    const organizationId = await this.organizationOf(payload.storeId)
+    if (organizationId === null) return
+    await this.enqueue({
+      organizationId,
+      sourceType: FinanceSourceType.RETURN,
+      sourceId: payload.returnId,
+      kind: FinanceEventKind.RETURN_RESTOCK,
+      occurredAt: new Date().toISOString()
+    })
+  }
+
   // E2 and E3: the goods left, the order was delivered. Shipping asks for both: the service decides which of the two the setting of the
-  // organization wants at that moment, and an event that has not come yet posts nothing
+  // organization wants at that moment, and an event that has not come yet posts nothing. E8: an order put back as a whole (a parcel that
+  // came back, or an order an agent returned with no return row) asks for its own entry; an order whose returns were received has none,
+  // each return posts its part
   @OnEvent(Events.ORDER_STATUS_CHANGED)
   async onOrderStatus(payload: OrderStatusChangedPayload): Promise<void> {
+    if (payload.to === OrderStatus.RETURNED) {
+      await this.enqueueOrder(payload.storeId, payload.orderId, [FinanceEventKind.ORDER_RETURN])
+      return
+    }
     if (payload.to !== OrderStatus.SHIPPED && payload.to !== OrderStatus.DELIVERED) return
     // Delivery asks for SENT again in case the shipping event was missed: the key makes it one entry
     await this.enqueueOrder(payload.storeId, payload.orderId, [
@@ -63,7 +85,7 @@ export class FinancePostingListener {
     ])
   }
 
-  // E4: a guide was delivered, so the carrier's charges for it are owed. The service ignores a return guide (its leg is not a sale's)
+  // E4: a guide was delivered, so the carrier's charges for it are owed (the guide of the way out and the guide of a return)
   @OnEvent(Events.SHIPMENT_STATUS_CHANGED)
   async onShipmentStatus(payload: ShipmentStatusChangedPayload): Promise<void> {
     if (payload.to !== ShipmentStatus.DELIVERED) return
@@ -87,6 +109,20 @@ export class FinancePostingListener {
   @OnEvent(Events.REMITTANCE_VOIDED)
   async onRemittanceVoided(payload: RemittanceEventPayload): Promise<void> {
     await this.enqueueRemittance(payload, FinanceEventKind.REMITTANCE_VOID)
+  }
+
+  // E7: a person wrote off the difference of a guide
+  @OnEvent(Events.REMITTANCE_DIFFERENCE_WRITTEN_OFF)
+  async onDifferenceWrittenOff(payload: RemittanceDifferenceWrittenOffPayload): Promise<void> {
+    const organizationId = await this.organizationOf(payload.storeId)
+    if (organizationId === null) return
+    await this.enqueue({
+      organizationId,
+      sourceType: FinanceSourceType.SHIPMENT,
+      sourceId: payload.shipmentId,
+      kind: FinanceEventKind.COD_WRITE_OFF,
+      occurredAt: new Date().toISOString()
+    })
   }
 
   // E9: a stock adjustment or a count variance

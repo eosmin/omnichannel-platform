@@ -20,6 +20,7 @@ describe('HeavyProcessingProcessor', () => {
   const evaluatePickups = jest.fn().mockResolvedValue(null)
   const enforceRetention = jest.fn().mockResolvedValue(undefined)
   const postFinance = jest.fn().mockResolvedValue({ outcome: 'posted' })
+  const reconcileFinance = jest.fn().mockResolvedValue(undefined)
   const support = {
     run: (_queue: string, current: ProcessorJob, work: (job: ProcessorJob) => Promise<void>) =>
       work(current)
@@ -37,7 +38,8 @@ describe('HeavyProcessingProcessor', () => {
     { run: runPickup } as never, // the pickup sync: what it is handed is what is tested
     { run: evaluatePickups } as never, // the pickup evaluation: what it is handed is what is tested
     { enforce: enforceRetention } as never, // the nightly retention of a store: what it is handed is what is tested
-    { post: postFinance } as never // the automatic entries of the books: what it is handed is what is tested
+    { post: postFinance } as never, // the automatic entries of the books: what it is handed is what is tested
+    { reconcile: reconcileFinance } as never // the daily check of the books: what it is handed is what is tested
   )
 
   const base = {
@@ -143,6 +145,33 @@ describe('HeavyProcessingProcessor', () => {
         })
       ).rejects.toBeInstanceOf(UnrecoverableError)
       expect(postFinance).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('reconcile-finance jobs', () => {
+    const ORG_ID = '8d88e80f-cecb-408a-bd99-9da2db20a7da'
+    const reconcile = (data: unknown): Promise<void> =>
+      processor.process({
+        name: JobNames.RECONCILE_FINANCE,
+        data: JSON.parse(JSON.stringify(data)) as unknown,
+        attemptsMade: 0,
+        opts: { attempts: 5 }
+      } as unknown as ProcessorJob)
+
+    it('hands the organization to the check of the books, nothing else', async () => {
+      reconcileFinance.mockClear()
+      await reconcile({ organizationId: ORG_ID })
+      expect(reconcileFinance).toHaveBeenCalledWith(ORG_ID)
+    })
+
+    it.each([
+      ['an organization that is not an id', { organizationId: 'mine' }],
+      ['no organization', {}],
+      ['a store instead of an organization', { storeId: ORG_ID }]
+    ])('refuses %s, and does not ask again', async (_label, data) => {
+      reconcileFinance.mockClear()
+      await expect(reconcile(data)).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(reconcileFinance).not.toHaveBeenCalled()
     })
   })
 

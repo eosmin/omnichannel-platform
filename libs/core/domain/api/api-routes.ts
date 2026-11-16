@@ -361,6 +361,8 @@ export const ApiRoutes = {
     lineById: (id: string, lineId: string) => `/remittances/${id}/lines/${lineId}`,
     confirm: (id: string) => `/remittances/${id}/confirm`,
     void: (id: string) => `/remittances/${id}/void`,
+    // Writes off the difference of a guide that did not match its remittance (by the id of the guide); the books work out the amount
+    writeOff: (shipmentId: string) => `/remittances/discrepancies/${shipmentId}/write-off`,
     // A table pasted or a sample of a file, read with the mapping being tried: writes nothing (the mapper's preview)
     importPreview: '/remittances/imports/preview',
     importProfiles: '/remittances/import-profiles',
