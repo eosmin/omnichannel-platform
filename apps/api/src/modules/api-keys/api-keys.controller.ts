@@ -4,7 +4,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import {
@@ -32,6 +32,8 @@ export class ApiKeysController {
     return this.keys.list(store.id)
   }
 
+  // The answer holds the key, once: nothing may keep a copy of it
+  @NoStore()
   @RequirePermissions(Permissions.SETTINGS_MANAGE_API_KEYS)
   @Post(ApiRoutes.settings.apiKeys)
   @HttpCode(HttpStatusCodes.CREATED)

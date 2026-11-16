@@ -105,6 +105,18 @@ describe('The API keys of a store', () => {
   }
 
   describe('making and listing', () => {
+    it('tells every cache not to keep the answer that carries the key', async () => {
+      const response = await asAdmin()
+        .post(ApiRoutes.settings.apiKeys)
+        .send({ name: 'ERP', scopes: [Permissions.CUSTOMERS_VIEW] })
+        .expect(CREATED)
+
+      expect(response.headers['cache-control']).toContain('no-store')
+      // The list never holds the key, so it has nothing to hide
+      const list = await asAdmin().get(ApiRoutes.settings.apiKeys).expect(OK)
+      expect(JSON.stringify(list.body)).not.toContain((response.body as Made).key)
+    })
+
     it('shows the key once and keeps only its prefix and its hash', async () => {
       const made = await make()
 

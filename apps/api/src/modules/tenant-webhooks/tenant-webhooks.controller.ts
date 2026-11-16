@@ -15,7 +15,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
@@ -52,6 +52,8 @@ export class TenantWebhooksController {
     return this.webhooks.list(store.id)
   }
 
+  // The answer holds the secret, once: nothing may keep a copy of it
+  @NoStore()
   @RequirePermissions(Permissions.SETTINGS_MANAGE_WEBHOOKS)
   @Post(ApiRoutes.settings.webhooks)
   @HttpCode(HttpStatusCodes.CREATED)
@@ -94,6 +96,8 @@ export class TenantWebhooksController {
     return this.webhooks.remove(store.id, webhookId, actorOf(user, store, req))
   }
 
+  // The answer holds the new secret, once: nothing may keep a copy of it
+  @NoStore()
   @RequirePermissions(Permissions.SETTINGS_MANAGE_WEBHOOKS)
   @Post(ApiRoutes.settings.webhookSecret(':id'))
   @HttpCode(HttpStatusCodes.OK)
