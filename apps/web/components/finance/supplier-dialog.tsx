@@ -219,7 +219,9 @@ function SupplierForm({
           disabled={pending}
           onChange={defaultPayableAccountId => set({ defaultPayableAccountId })}
         >
-          <option value="">{t('fields.payableAccountDefault')}</option>
+          {supplier?.defaultPayableAccountId ? null : (
+            <option value="">{t('fields.payableAccountDefault')}</option>
+          )}
           {payable.map(account => (
             <option key={account.id} value={account.id}>
               {account.code} · {account.name}

@@ -21,6 +21,7 @@ import {
   centsOfText,
   type LineDraft,
   type LineField,
+  LineFields,
   lineDraftOf,
   lineInputsOf,
   linesProblem,
@@ -84,7 +85,7 @@ export function OrderLinesEditor({
     const now = lines.map(line => ({
       productId: line.productId,
       variantId: line.variantId,
-      quantity: line.quantity.trim(),
+      quantity: String(wholeOfText(line.quantity) ?? line.quantity.trim()),
       cost: centsOfText(line.unitCost),
       taxRateId: line.taxRateId
     }))
@@ -152,14 +153,13 @@ export function OrderLinesEditor({
       return
     }
     if (!changed || !guard.enter()) return
-    update.mutate(
-      { id: order.id, changes: { lines: lineInputsOf(lines) } },
-      {
-        onSuccess: () => toast.success(t('saved')),
-        onError: error => setRefusal(errorText(error)),
-        onSettled: guard.leave
-      }
-    )
+    // `mutateAsync`: the editor starts again from the saved lines the moment the order is read again, so callbacks of the
+    // component would never run; the promise does
+    update
+      .mutateAsync({ id: order.id, changes: { lines: lineInputsOf(lines) } })
+      .then(() => toast.success(t('saved')))
+      .catch((error: unknown) => setRefusal(errorText(error)))
+      .finally(guard.leave)
   }
 
   return (
@@ -194,14 +194,14 @@ export function OrderLinesEditor({
                     label={t('quantity')}
                     value={line.quantity}
                     inputMode="numeric"
-                    problem={problem === 'quantity' ? t('wrongQuantity') : null}
+                    problem={problem === LineFields.QUANTITY ? t('wrongQuantity') : null}
                     onChange={quantity => patch(line.key, { quantity })}
                   />
                   <LineBox
                     label={t('unitCost')}
                     value={line.unitCost}
                     inputMode="decimal"
-                    problem={problem === 'unitCost' ? t('wrongCost') : null}
+                    problem={problem === LineFields.UNIT_COST ? t('wrongCost') : null}
                     onChange={unitCost => patch(line.key, { unitCost })}
                   />
                   {taxRates === null ? null : (

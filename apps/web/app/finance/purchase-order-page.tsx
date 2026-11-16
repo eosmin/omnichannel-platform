@@ -82,7 +82,7 @@ function PurchaseOrder(): ReactElement {
 
   const rates = canReadBooks ? (taxRates.data ?? null) : null
   const rounding =
-    canReadBooks && settings.data !== undefined ? (settings.data.taxRounding as TaxRounding) : null
+    canReadBooks && settings.data !== undefined ? roundingOf(settings.data.taxRounding) : null
   const rateOf = useMemo(() => new Map((rates ?? []).map(rate => [rate.id, rate])), [rates])
   // What is still open on each bill is the api's own figure (the payables), never a sum made here over a page of payments
   const payables = usePayables(
@@ -378,6 +378,11 @@ function PurchaseOrder(): ReactElement {
       />
     </section>
   )
+}
+
+// The rule the organization rounds tax by, or null for a text this page does not know (never a guess)
+function roundingOf(text: string): TaxRounding | null {
+  return Object.values(TaxRounding).find(value => String(value) === text) ?? null
 }
 
 function CloseOrCancelDialog({
