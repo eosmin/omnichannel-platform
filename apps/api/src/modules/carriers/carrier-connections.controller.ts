@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query, Req } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
-import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
+import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import {
   type ConnectCarrierBody,
@@ -14,7 +14,13 @@ import { HttpStatusCodes } from '@platform/core/errors'
 import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
-import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
+import {
+  actorOf,
+  CurrentPermissions,
+  CurrentStore,
+  RequirePermissions,
+  type ResolvedTenant
+} from '../tenancy'
 
 import {
   connectionIdSchema,
@@ -31,6 +37,7 @@ import type {
   CarrierTestResult,
   ConnectedCarrierView
 } from './carrier-connections.views'
+import { assertMayAgreeFees, withFeesFor } from './carrier-fees-access'
 
 type Store = ResolvedTenant['store']
 
@@ -52,11 +59,13 @@ export class CarrierConnectionsController {
 
   @RequirePermissions(Permissions.SHIPPING_VIEW)
   @Get(ApiRoutes.carriers.list)
-  list(
+  async list(
     @CurrentStore() store: Store,
+    @CurrentPermissions() permissions: readonly Permission[],
     @Query(new ZodValidationPipe(listCarriersQuerySchema)) query: ListCarriersQuery
   ): Promise<CursorPage<CarrierConnectionView>> {
-    return this.connections.list(store.id, query)
+    const page = await this.connections.list(store.id, query)
+    return { ...page, data: page.data.map(view => withFeesFor(view, permissions)) }
   }
 
   // The places the carrier lists for the address of a guide, under one parent or at the top (the dialog of a guide of a carrier that
@@ -73,11 +82,12 @@ export class CarrierConnectionsController {
 
   @RequirePermissions(Permissions.SHIPPING_VIEW)
   @Get(ApiRoutes.carriers.byId(':id'))
-  get(
+  async get(
     @CurrentStore() store: Store,
+    @CurrentPermissions() permissions: readonly Permission[],
     @Param('id', id()) connectionId: string
   ): Promise<CarrierConnectionView> {
-    return this.connections.get(store.id, connectionId)
+    return withFeesFor(await this.connections.get(store.id, connectionId), permissions)
   }
 
   // The answer holds the secret of the webhook, once: nothing may keep a copy of it
@@ -85,26 +95,36 @@ export class CarrierConnectionsController {
   @RequirePermissions(Permissions.SETTINGS_MANAGE_CARRIERS)
   @Post(ApiRoutes.carriers.create)
   @HttpCode(HttpStatusCodes.CREATED)
-  connect(
+  async connect(
     @CurrentStore() store: Store,
     @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() permissions: readonly Permission[],
     @Body(new ZodValidationPipe(connectCarrierSchema)) body: ConnectCarrierBody,
     @Req() req: AuthenticatedRequest
   ): Promise<ConnectedCarrierView> {
-    return this.connections.connect(store.id, body, actorOf(user, store, req))
+    assertMayAgreeFees(body, permissions)
+    return withFeesFor(
+      await this.connections.connect(store.id, body, actorOf(user, store, req)),
+      permissions
+    )
   }
 
   @RequirePermissions(Permissions.SETTINGS_MANAGE_CARRIERS)
   @Patch(ApiRoutes.carriers.byId(':id'))
   @HttpCode(HttpStatusCodes.OK)
-  update(
+  async update(
     @CurrentStore() store: Store,
     @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() permissions: readonly Permission[],
     @Param('id', id()) connectionId: string,
     @Body(new ZodValidationPipe(updateCarrierSchema)) body: UpdateCarrierBody,
     @Req() req: AuthenticatedRequest
   ): Promise<CarrierConnectionView> {
-    return this.connections.update(store.id, connectionId, body, actorOf(user, store, req))
+    assertMayAgreeFees(body, permissions)
+    return withFeesFor(
+      await this.connections.update(store.id, connectionId, body, actorOf(user, store, req)),
+      permissions
+    )
   }
 
   @RequirePermissions(Permissions.SETTINGS_MANAGE_CARRIERS)
@@ -134,12 +154,16 @@ export class CarrierConnectionsController {
   @RequirePermissions(Permissions.SETTINGS_MANAGE_CARRIERS)
   @Post(ApiRoutes.carriers.disconnect(':id'))
   @HttpCode(HttpStatusCodes.OK)
-  disconnect(
+  async disconnect(
     @CurrentStore() store: Store,
     @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() permissions: readonly Permission[],
     @Param('id', id()) connectionId: string,
     @Req() req: AuthenticatedRequest
   ): Promise<CarrierConnectionView> {
-    return this.connections.disconnect(store.id, connectionId, actorOf(user, store, req))
+    return withFeesFor(
+      await this.connections.disconnect(store.id, connectionId, actorOf(user, store, req)),
+      permissions
+    )
   }
 }

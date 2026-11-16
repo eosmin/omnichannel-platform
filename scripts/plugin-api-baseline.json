@@ -18,6 +18,7 @@
     "remittances.lineById",
     "remittances.lines",
     "remittances.void",
+    "remittances.writeOff",
     "returns.approve",
     "returns.cancel",
     "returns.complete",

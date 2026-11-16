@@ -4,6 +4,7 @@ import type { OwnerClient } from '@platform/core/database-testing'
 import {
   CodStatus,
   ShipmentEventSource,
+  ShipmentKind,
   ShipmentStatus,
   ShippingPayer
 } from '@platform/core/domain'
@@ -28,6 +29,8 @@ export interface ShipmentInput {
   commissionBps?: number
   shippingPayer?: ShippingPayer
   deliveredAt?: Date
+  // The guide of a return (TDD_17 §4.11): it belongs to the order of that return
+  returnOf?: { returnId: string; orderId: string }
 }
 
 // A shipment of a store with its order, its `local` connection and the first row of its history, written as the owner: the
@@ -40,7 +43,10 @@ export async function createShipment(
   if (input.codStatus !== undefined && input.codAmountCents === undefined) {
     throw new Error('createShipment: codStatus needs codAmountCents')
   }
-  const order = await createOrder(owner, { storeId: input.storeId, status: 'CONFIRMED' })
+  const order =
+    input.returnOf === undefined
+      ? await createOrder(owner, { storeId: input.storeId, status: 'CONFIRMED' })
+      : { id: input.returnOf.orderId }
   const connection =
     input.connectionId === undefined
       ? await createCarrierConnection(owner, {
@@ -57,6 +63,9 @@ export async function createShipment(
       orderId: order.id,
       connectionId: connection.id,
       serviceCode: connection.serviceCode,
+      ...(input.returnOf === undefined
+        ? {}
+        : { kind: ShipmentKind.RETURN, returnId: input.returnOf.returnId }),
       shippingPayer: input.shippingPayer ?? ShippingPayer.SENDER,
       ...(input.codAmountCents === undefined
         ? {}

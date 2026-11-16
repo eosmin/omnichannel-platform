@@ -4,6 +4,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { type PrismaTransaction, PrismaService } from '@platform/core/database'
 import {
   AccountRole,
+  CodStatus,
   EntryOrigin,
   FinanceAutoMemo,
   FinanceEventKind,
@@ -13,9 +14,11 @@ import {
   FinancePostingKey,
   FinancePostingOutcome,
   FinanceSourceType,
+  hasReceivedUnits,
   InventoryMovementType,
   InventoryReferenceType,
   JournalEntryType,
+  OrderReturnStatus,
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
@@ -45,6 +48,7 @@ import {
 import {
   chargeAmounts,
   chargeLines,
+  keptAFee,
   remittanceLines,
   type RemittanceLineSettlement,
   settleRemittanceLine
@@ -52,6 +56,16 @@ import {
 import type { DraftLine } from './entry-rules'
 import { LedgerService } from './ledger.service'
 import { automaticEntryDate, dateToDay } from './period-rules'
+import {
+  lineBases,
+  openReceivableCents,
+  restockCost,
+  returnLines,
+  type ReturnSettlement,
+  reversalOf,
+  type SettledLine,
+  writeOffLines
+} from './return-entry-rules'
 
 export interface PostSourceInput {
   organizationId: string
@@ -101,8 +115,12 @@ const keyOf = (input: PostSourceInput): string => {
       return FinancePostingKey.REMITTANCE_CONFIRM(input.sourceId)
     case FinanceEventKind.REMITTANCE_VOID:
       return FinancePostingKey.REMITTANCE_VOID(input.sourceId)
+    case FinanceEventKind.COD_WRITE_OFF:
+      return FinancePostingKey.SHIPMENT_WRITE_OFF(input.sourceId)
     case FinanceEventKind.RETURN_RESTOCK:
       return FinancePostingKey.RETURN_RESTOCK(input.sourceId)
+    case FinanceEventKind.ORDER_RETURN:
+      return FinancePostingKey.ORDER_RETURN(input.sourceId)
     case FinanceEventKind.ADJUST:
       return FinancePostingKey.MOVEMENT_ADJUST(input.sourceId)
   }
@@ -381,8 +399,13 @@ export class FinancePostingService {
         return this.loadCharges(tx, input)
       case FinanceEventKind.REMITTANCE_CONFIRM:
         return this.loadRemittanceConfirm(tx, input, dateToDay(settings.accountingStartDate))
+      case FinanceEventKind.COD_WRITE_OFF:
+        return this.loadWriteOff(tx, input, dateToDay(settings.accountingStartDate))
+      case FinanceEventKind.RETURN_RESTOCK:
+        return this.loadReturn(tx, input, settings)
+      case FinanceEventKind.ORDER_RETURN:
+        return this.loadOrderReturn(tx, input, settings)
       default:
-        // The return (E8) has no loader yet: nothing is posted, and nothing is claimed as posted
         return NOTHING
     }
   }
@@ -428,7 +451,7 @@ export class FinancePostingService {
         shippedAt: true,
         deliveredAt: true,
         store: { select: { timezone: true } },
-        items: { select: { quantity: true, unitPriceCents: true, taxCents: true } }
+        items: { select: { id: true, quantity: true, unitPriceCents: true, taxCents: true } }
       }
     })
   }
@@ -627,6 +650,366 @@ export class FinancePostingService {
     }
   }
 
+  // E7: a person wrote off the difference of a guide that did not match its remittance. The amount is what the books still hold as owed by
+  // the carrier for the guide: what it had to collect less what each confirmed remittance cleared (the same settlement E5 made), so the
+  // entry follows the books and not a figure typed by a person. A surplus is written the other way round.
+  private async loadWriteOff(
+    tx: PrismaTransaction,
+    input: PostSourceInput,
+    accountingStartDate: string
+  ): Promise<Candidate> {
+    const shipment = await tx.shipment.findFirst({
+      where: { id: input.sourceId, store: { organizationId: input.organizationId } },
+      select: {
+        storeId: true,
+        orderId: true,
+        connectionId: true,
+        codStatus: true,
+        codAmountCents: true,
+        deliveredAt: true,
+        shippingPayer: true,
+        carrierCostCents: true,
+        carrierRateCents: true,
+        commissionBps: true,
+        store: { select: { timezone: true } },
+        connection: { select: { remittanceDeductsFee: true } }
+      }
+    })
+    if (
+      shipment === null ||
+      shipment.codStatus !== (CodStatus.WRITTEN_OFF as string) ||
+      shipment.codAmountCents === null
+    ) {
+      return NOTHING
+    }
+    // The receivable is there only when E3 put it there (or the guide was delivered before the books began, and the opening balance
+    // holds it): a sale that is not posted yet makes this wait, it never clears a receivable that does not exist
+    const deliveredDay =
+      shipment.deliveredAt === null
+        ? null
+        : dayInZone(shipment.deliveredAt, shipment.store.timezone)
+    if (deliveredDay === null || deliveredDay >= accountingStartDate) {
+      const sale = await this.entryOf(
+        tx,
+        input.organizationId,
+        FinancePostingKey.ORDER_SALE(shipment.orderId)
+      )
+      if (sale === null) return failed(FinancePostingFailureReason.SOURCE_NOT_READY)
+    }
+    const lines = await tx.codRemittanceLine.findMany({
+      where: {
+        shipmentId: input.sourceId,
+        storeId: shipment.storeId,
+        excluded: false,
+        outcome: { in: [...SettlingOutcomes] },
+        remittance: { storeId: shipment.storeId, status: RemittanceStatus.CONFIRMED }
+      },
+      orderBy: [{ remittance: { confirmedAt: 'asc' } }, { remittanceId: 'asc' }],
+      select: { remittanceId: true, reportedCents: true, reportedFeeCents: true }
+    })
+    // What each remittance cleared is in its entry: one that is not posted yet makes this wait
+    for (const remittanceId of new Set(lines.map(line => line.remittanceId))) {
+      const posted = await this.entryOf(
+        tx,
+        input.organizationId,
+        FinancePostingKey.REMITTANCE_CONFIRM(remittanceId)
+      )
+      if (posted === null) return failed(FinancePostingFailureReason.SOURCE_NOT_READY)
+    }
+    const charged = await this.entryOf(
+      tx,
+      input.organizationId,
+      FinancePostingKey.SHIPMENT_CHARGES(input.sourceId)
+    )
+    const estimate = this.estimateOf(
+      charged?.totalCents,
+      accountingStartDate,
+      shipment,
+      shipment.store.timezone
+    )
+    if (estimate === null) return failed(FinancePostingFailureReason.SOURCE_NOT_READY)
+    const deducts = shipment.connection.remittanceDeductsFee
+    const settled: SettledLine[] = []
+    let feeAlreadySettled = false
+    for (const line of lines) {
+      const settlement = settleRemittanceLine({
+        reportedCents: line.reportedCents,
+        reportedFeeCents: line.reportedFeeCents,
+        estimateCents: estimate,
+        deductsFee: deducts,
+        feeAlreadySettled
+      })
+      settled.push({ reportedCents: settlement.reportedCents, keptCents: settlement.keptCents })
+      if (keptAFee(line.reportedFeeCents, estimate, deducts)) feeAlreadySettled = true
+    }
+    const accounts = await this.accountsOf(tx, input.organizationId)
+    return {
+      kind: 'entry',
+      sourceDay: this.dayOfJob(input, shipment.store.timezone),
+      type: JournalEntryType.COD_WRITE_OFF,
+      sourceType: FinanceSourceType.SHIPMENT,
+      key: FinancePostingKey.SHIPMENT_WRITE_OFF(input.sourceId),
+      memo: FinanceAutoMemo.COD_WRITE_OFF,
+      result: writeOffLines({
+        accounts,
+        carrierConnectionId: shipment.connectionId,
+        openCents: openReceivableCents(shipment.codAmountCents, settled),
+        storeId: shipment.storeId
+      })
+    }
+  }
+
+  // The day the job says the event happened (the action of a person has no date column of its own), else today
+  private dayOfJob(input: PostSourceInput, timeZone: string): string {
+    const when = input.occurredAt === undefined ? new Date() : new Date(input.occurredAt)
+    return dayInZone(Number.isNaN(when.getTime()) ? new Date() : when, timeZone)
+  }
+
+  // E8: a return was received. What the units that came back give back of the sale (revenue and tax, in proportion), and the cost of
+  // the units put back on the shelf. The returns of an order are posted in the order they were received, so the running total of units
+  // back makes the parts add up to the sale to the cent.
+  private async loadReturn(
+    tx: PrismaTransaction,
+    input: PostSourceInput,
+    settings: { accountingStartDate: Date; recognizeSaleOn: string }
+  ): Promise<Candidate> {
+    const found = await tx.orderReturn.findFirst({
+      where: { id: input.sourceId, store: { organizationId: input.organizationId } },
+      select: {
+        id: true,
+        storeId: true,
+        orderId: true,
+        status: true,
+        receivedAt: true,
+        lines: { select: { orderItemId: true, quantity: true } },
+        store: { select: { timezone: true } }
+      }
+    })
+    if (
+      found === null ||
+      found.receivedAt === null ||
+      !hasReceivedUnits(found.status as OrderReturnStatus)
+    ) {
+      return NOTHING
+    }
+    const earlier = await tx.orderReturn.findMany({
+      where: {
+        storeId: found.storeId,
+        orderId: found.orderId,
+        status: { in: [OrderReturnStatus.RECEIVED, OrderReturnStatus.COMPLETED] },
+        receivedAt: { not: null },
+        OR: [
+          { receivedAt: { lt: found.receivedAt } },
+          { receivedAt: found.receivedAt, id: { lt: found.id } }
+        ]
+      },
+      select: { lines: { select: { orderItemId: true, quantity: true } } }
+    })
+    return this.returnEntry(tx, input, settings, {
+      orderId: found.orderId,
+      returned: this.unitsBy(found.lines),
+      before: this.unitsBy(earlier.flatMap(row => row.lines)),
+      restock: { type: InventoryReferenceType.RETURN, id: found.id },
+      sourceDay: dayInZone(found.receivedAt, found.store.timezone),
+      key: FinancePostingKey.RETURN_RESTOCK(found.id),
+      memo: FinanceAutoMemo.RETURN_RESTOCK,
+      sourceType: FinanceSourceType.RETURN
+    })
+  }
+
+  // E8, the order as a whole: a parcel that came back, or a delivered order an agent put back, with no return row. Every unit is back.
+  // An order that has received returns is theirs (each posts its own part), so this posts nothing for it.
+  private async loadOrderReturn(
+    tx: PrismaTransaction,
+    input: PostSourceInput,
+    settings: { accountingStartDate: Date; recognizeSaleOn: string }
+  ): Promise<Candidate> {
+    const order = await this.orderOf(tx, input.organizationId, input.sourceId)
+    if (order === null || order.status !== (OrderStatus.RETURNED as string)) return NOTHING
+    const withReturns = await tx.orderReturn.count({
+      where: {
+        storeId: order.storeId,
+        orderId: order.id,
+        status: { in: [OrderReturnStatus.RECEIVED, OrderReturnStatus.COMPLETED] }
+      }
+    })
+    if (withReturns > 0) return NOTHING
+    return this.returnEntry(tx, input, settings, {
+      orderId: order.id,
+      returned: new Map(order.items.map(item => [item.id, item.quantity])),
+      before: new Map(),
+      restock: { type: InventoryReferenceType.ORDER, id: order.id },
+      sourceDay: this.dayOfJob(input, order.store.timezone),
+      key: FinancePostingKey.ORDER_RETURN(order.id),
+      memo: FinanceAutoMemo.ORDER_RETURN,
+      sourceType: FinanceSourceType.ORDER
+    })
+  }
+
+  private unitsBy(
+    lines: readonly { orderItemId: string; quantity: number }[]
+  ): Map<string, number> {
+    const units = new Map<string, number>()
+    for (const line of lines)
+      units.set(line.orderItemId, (units.get(line.orderItemId) ?? 0) + line.quantity)
+    return units
+  }
+
+  private async returnEntry(
+    tx: PrismaTransaction,
+    input: PostSourceInput,
+    settings: { accountingStartDate: Date; recognizeSaleOn: string },
+    facts: {
+      orderId: string
+      returned: ReadonlyMap<string, number>
+      before: ReadonlyMap<string, number>
+      restock: { type: InventoryReferenceType; id: string }
+      sourceDay: string
+      key: string
+      memo: string
+      sourceType: FinanceSourceType
+    }
+  ): Promise<Candidate> {
+    const order = await this.orderOf(tx, input.organizationId, facts.orderId)
+    if (order === null) return NOTHING
+    const startDay = dateToDay(settings.accountingStartDate)
+    const onShipped = settings.recognizeSaleOn === (SaleRecognition.SHIPPED as string)
+    const recognizedAt = onShipped ? order.shippedAt : order.deliveredAt
+    const recognized = recognizedAt !== null
+    const saleExists =
+      (await this.entryOf(tx, input.organizationId, FinancePostingKey.ORDER_SALE(order.id))) !==
+      null
+    // What the return reverses must be there: a sale of the books that is not posted yet makes this wait; a sale from before the books
+    // began is in the opening balance, and its return reverses against it
+    if (recognized && !saleExists && dayInZone(recognizedAt, order.store.timezone) >= startDay) {
+      return failed(FinancePostingFailureReason.SOURCE_NOT_READY)
+    }
+    // Before the sale the goods are in transit (E2): the same wait for it, unless they left before the books began
+    if (!recognized) {
+      const sentExists =
+        (await this.entryOf(tx, input.organizationId, FinancePostingKey.ORDER_SENT(order.id))) !==
+        null
+      const shippedBefore =
+        order.shippedAt === null || dayInZone(order.shippedAt, order.store.timezone) < startDay
+      if (order.shippedAt !== null && !sentExists && !shippedBefore) {
+        return failed(FinancePostingFailureReason.SOURCE_NOT_READY)
+      }
+    }
+
+    let reversal: { netCents: number; vatCents: number } | null = null
+    let shipping: { netCents: number; vatCents: number } | null = null
+    if (recognized) {
+      const bases = lineBases({
+        subtotalCents: order.subtotalCents,
+        shippingCents: order.shippingCents,
+        discountCents: order.discountCents,
+        totalCents: order.totalCents,
+        taxCents: order.taxCents,
+        pricesIncludeTax: order.pricesIncludeTax,
+        lines: order.items.map(item => ({
+          orderItemId: item.id,
+          quantity: item.quantity,
+          unitPriceCents: item.unitPriceCents,
+          taxCents: item.taxCents
+        }))
+      })
+      if (!bases.ok) return failed(bases.reason)
+      const reversed = reversalOf({
+        bases: bases.lines,
+        before: facts.before,
+        returned: facts.returned
+      })
+      if (!reversed.ok) return failed(reversed.reason)
+      reversal = reversed.reversal
+      // The shipping fee goes with the receivable of a guide that will never be remitted, once the order is back in full
+      const backInFull = order.items.every(
+        item =>
+          (facts.before.get(item.id) ?? 0) + (facts.returned.get(item.id) ?? 0) >= item.quantity
+      )
+      const sale = saleAmounts({
+        subtotalCents: order.subtotalCents,
+        shippingCents: order.shippingCents,
+        discountCents: order.discountCents,
+        totalCents: order.totalCents,
+        taxCents: order.taxCents,
+        pricesIncludeTax: order.pricesIncludeTax,
+        lines: order.items
+      })
+      if (!sale.ok) return failed(sale.reason)
+      if (backInFull) {
+        const lineTax = order.items.reduce((sum, item) => sum + (item.taxCents ?? 0), 0)
+        shipping = {
+          netCents: sale.amounts.shippingNetCents,
+          vatCents: sale.amounts.vatCents - lineTax
+        }
+      }
+    }
+
+    // The units put back on the shelf, at the cost their movements carry (a unit that came back with no cost cannot be valued)
+    const movements = await tx.inventoryMovement.findMany({
+      where: {
+        storeId: order.storeId,
+        type: InventoryMovementType.RETURN_IN,
+        referenceType: facts.restock.type,
+        referenceId: facts.restock.id
+      },
+      select: { productId: true, variantId: true, quantity: true, unitCostCents: true }
+    })
+    // A unit that comes back is stored with no cost (the engine values it at the level's average): it is valued at what the sale took it
+    // out at, the cost of the ISSUE movements of the order
+    const issued =
+      movements.some(move => move.unitCostCents === null) && movements.length > 0
+        ? await tx.inventoryMovement.findMany({
+            where: {
+              storeId: order.storeId,
+              type: InventoryMovementType.ISSUE,
+              referenceType: InventoryReferenceType.ORDER,
+              referenceId: order.id
+            },
+            select: { productId: true, variantId: true, quantity: true, unitCostCents: true }
+          })
+        : []
+    const cost = restockCost(movements, issued)
+    if (!cost.ok) return failed(cost.reason)
+
+    // Who owes the money back: the carrier's debt is cancelled when a guide that will never be remitted was sold cash on delivery; in
+    // every other case it is the customer's advance, the refund the business owes until a person pays it out
+    let settlement: ReturnSettlement = { kind: 'advance' }
+    if (recognized && order.paymentMethod === (PaymentMethod.CASH_ON_DELIVERY as string)) {
+      const guide = await tx.shipment.findFirst({
+        where: {
+          orderId: order.id,
+          storeId: order.storeId,
+          kind: ShipmentKind.OUTBOUND,
+          status: { notIn: [...ShipmentInactiveStatuses] }
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { connectionId: true, codStatus: true }
+      })
+      if (guide !== null && guide.codStatus === (CodStatus.VOID as string)) {
+        settlement = { kind: 'carrier', carrierConnectionId: guide.connectionId }
+      }
+    }
+    const accounts = await this.accountsOf(tx, input.organizationId)
+    return {
+      kind: 'entry',
+      sourceDay: facts.sourceDay,
+      type: JournalEntryType.SALE_RETURN,
+      sourceType: facts.sourceType,
+      key: facts.key,
+      memo: facts.memo,
+      result: returnLines({
+        accounts,
+        reversal,
+        shipping: settlement.kind === 'carrier' ? shipping : null,
+        settlement,
+        restockCostCents: cost.costCents,
+        costAgainst: recognized ? 'cost_of_goods_sold' : 'transit',
+        storeId: order.storeId
+      })
+    }
+  }
+
   // E9: an adjustment, a count variance
   private async loadAdjustment(tx: PrismaTransaction, input: PostSourceInput): Promise<Candidate> {
     const movement = await tx.inventoryMovement.findFirst({
@@ -688,7 +1071,7 @@ export class FinancePostingService {
     })
   }
 
-  // E4: what the carrier charges for a guide that was delivered. Posted as the TDD writes it: gross, no input VAT [ACCOUNTANT], and
+  // E4: what the carrier charges for a guide that was delivered (of the way out or of a return, Step 4B.6b-2). Posted as the TDD writes it: gross, no input VAT [ACCOUNTANT], and
   // the same for every charge model of the connection (the model is the owner's information to confirm, debt of the plan)
   private async loadCharges(tx: PrismaTransaction, input: PostSourceInput): Promise<Candidate> {
     const shipment = await tx.shipment.findFirst({
@@ -708,8 +1091,11 @@ export class FinancePostingService {
       }
     })
     if (shipment === null || shipment.deliveredAt === null) return NOTHING
+    // The guide of the way out and the guide of a return (E8's leg: the units come back by one): both are charged when they arrive. A
+    // return guide collects no cash, so it has no commission; its cost is the sender's only when the sender pays it
+    const charged: readonly string[] = [ShipmentKind.OUTBOUND, ShipmentKind.RETURN]
     if (
-      shipment.kind !== (ShipmentKind.OUTBOUND as string) ||
+      !charged.includes(shipment.kind) ||
       shipment.status !== (ShipmentStatus.DELIVERED as string)
     ) {
       return NOTHING
@@ -845,8 +1231,7 @@ export class FinancePostingService {
       // difference); one whose file said the carrier kept nothing did not, and this one may
       const feeAlreadySettled = earlier.some(
         row =>
-          row.shipmentId === line.shipmentId &&
-          (row.reportedFeeCents ?? (deducts ? estimate : 0)) > 0
+          row.shipmentId === line.shipmentId && keptAFee(row.reportedFeeCents, estimate, deducts)
       )
       settlements.push(
         settleRemittanceLine({
