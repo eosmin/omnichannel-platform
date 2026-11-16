@@ -1890,7 +1890,13 @@ as one (`CLAUDE.md`, "One PR per step"): the close and the chain are the high-ri
       the head each closed period froze)
 - [ ] **4B.8b-2** `VERIFY_LEDGER_CHAIN` weekly as a job (a break notifies and blocks the close until a person clears it), `RECONCILE_FINANCE` daily (balances against the lines, inventory against its value, receivables
       against the open shipments, each fiscal document against its entry), their metrics and alerts, and "late postings" in the period view
-- [ ] **4B.8b-3** The legal books and the VAT return data in the layout the accountant confirms (debt (b)); the fiscal year if not the calendar one
+- [x] **4B.8b-3** The legal books as a MECHANISM (**[ACCOUNTANT]**: the legal layout is the accountant's and the law's, not the design's): the book of sales to
+      taxpayers, of sales to final consumers and of purchases as read-only reports over the ledger of a fiscal period (`finance/books/:kind`, `.../csv`), laid
+      out by a versioned, append-only layout of the organization (`finance/book-layouts`: columns from a closed catalog, order, correlative start and restart),
+      with a PROPOSAL of the code that every answer marks `unvalidated` until an accountant-confirmed layout is written; the book of a closed month is frozen the
+      first time it is asked for and served from its snapshot (`finance/frozen-books`), the same bytes for ever
+- [ ] **4B.8b-4** (owner: the accountant's answers, `TDD_18 §13` rows 6 and 9) The legal layout itself (replace the proposal with the confirmed layout), the journal and the
+      ledger as legal books, the monthly VAT return data in the confirmed layout, and the fiscal year if it is not the calendar one
 - [x] Tests: the close refuses a month that has not ended, one out of order and one with a failed posting; a closed month's trial balance does not move when
       a late entry arrives; the reopen is for the latest month only and records who, when and why; the chain detects a tampered row (the owner role with the
       triggers off, a figure and a memo); the CSV of the journal verifies against the chain with no other input; the CSV has no formula injection;
@@ -1941,6 +1947,45 @@ reading of `TDD_18 §9.1` as the trial balance of 4B.8a (debt (n)); a per-store 
 written like every finance audit row, not awaited (debt (k) of 4B.8a). (f) `finance:view_reports` is not yet in a role preset other than
 Admin: owners of custom roles grant it by hand, and 4B.9 lists it in the matrix of the screen.
 
+**Decisions of PR 4B.8b-3 (rule 12):** (1) the format of a legal book is **[ACCOUNTANT]** and is not decided here: a book is a report whose columns (from a closed
+catalog, `LegalBookField`), order, correlative start and restart (month or year) and the rule for a sale with no document are the organization's own data, and the
+layout of the code is a PROPOSAL that says so in the code (`PROPOSED_BOOK_COLUMNS`), in every answer (`unvalidated`, `X-Book-Unvalidated`) and here (rejected:
+shipping a Salvadoran layout as if it were the law, or reading a layout from a file of the repository, which would make a change of format a deploy); (2) a layout
+is versioned and append-only (a trigger refuses an update or a delete), and a book names the version it used, so the book of a month can be asked for again with
+the layout it was written with (rejected: editing a layout in place, which would silently change a closed month); (3) the book of a CLOSED period is frozen the first
+time it is asked for after the close and served from that snapshot for ever (`finance_book_snapshots`, keyed by the closing it was taken at, so a month reopened and
+closed again takes a new one): the ledger is immutable but the name and tax id of a supplier are not, and "the same bytes" needs more than the ledger (rejected:
+rebuilding the book every time and trusting the sources, and a checksum that would only detect the change); the CSV is a pure function of the stored book, with no
+clock or user in it; (4) the sales books are built from the sale entry of each order (the entry decides the month and is immutable), the tax snapshot of the order
+(fixed at creation) and the fiscal document the sale had **at the end of the month of the entry**, so a document made later does not move a sale between books;
+(5) which book a document belongs to is read from what its provider declares of the type (a type that asks for the receiver's tax identity is a sale to a taxpayer,
+any other to a final consumer, a credit note to neither), never from the name of a type, so core knows no country or provider (`validate:fiscal-agnostic`);
+(6) no customer data is in a book: the catalog has no buyer field, and the purchases book carries the supplier's name and tax id, which are the business's own
+records; (7) no new permission: a book lists supplier names and tax ids, so it is read (JSON, the frozen list and the file alike) with `finance:view_reports` AND `finance:export`, the layouts with `finance:view_reports`, and a layout is written with
+`finance:manage_accounts` (the settings of the books); (8) the file is a direct download with the cap of the other finance files (`MAX_CSV_ROWS`, refused, never
+cut), audited with `FINANCE_EXPORTED` (the digest of the file is in the row), as 4B.8a's files are.
+**Left by PR 4B.8b-3 (rule 12):** (a) The legal layout itself, the journal and the ledger as legal books (the files of 4B.8a serve until the accountant gives the
+format), the monthly VAT return data and the fiscal year: Step 4B.8b-4, with the accountant's answers (`TDD_18 §13` rows 6, 9, 10); until then every book is
+`unvalidated` unless a layout was written with `accountantConfirmed`. (b) A book carries no buyer identity: a sales book to taxpayers usually names the buyer, which needs
+the receiver of the fiscal document (sealed, customer data) read for the book and the accountant's list of the fields each book may show (`TDD_18 §13` row 7): owner
+4B.8b-4, as a field of the catalog that decrypts for the book and is audited. (c) The credit notes of a return are not listed (`warnings.returnsNotListed` counts the
+returns of the period): they are documents of Step 4B.7b, which adds them to the sales books. (d) A sale whose document is voided before the month ends is left out
+(`warnings.voidedDocuments`) and one with no tax snapshot or an unreadable one is counted and not guessed (`salesWithoutTaxSnapshot`, `salesNotReadable`): how the
+accountant wants an annulled document written in the book is **[ACCOUNTANT]**. (e) A purchase whose entry was reversed after the fact is still listed (the reversal
+is not a row): the accountant says whether it is shown with a negative row. (f) A sale with no document is listed with the consumers by default (`unissuedSales`), and
+a sale made in a month but documented in the next appears in the month of the entry as unissued: the accountant's rule on when a sale is documented
+(`TDD_18 §13` row 3) may move it. (g) The book is not stored as a signed file with a retention (4B.8a debt (e)): the frozen snapshot is the evidence; a stored export per
+organization is still owned by 4B.8b-2. (h) The screens (the layout editor, the book per month, the list of frozen books, a notice while `unvalidated`) are 4B.9b; the
+visual pass is Step 7.7. (i) A closed month's book is frozen by the first request after the close, not by the close itself, so a supplier renamed between the close and
+that first request is in the frozen book: the close taking the three snapshots is a change of the close service (4B.8b-2). (j) The integration suite
+`tests/api/finance-books.spec.ts` and the two isolation cases (`financeBookLayout`, `financeBookSnapshot`) run in CI and on the owner's turn (not on the shared machine). (k) A year-restart layout reads every sale of the year up to the period into memory before the cap is checked (the cap counts the whole window): a keyset-paged read with
+one count first is 4B.8b-2 when an organization nears the cap. (l) `accountantConfirmed` is a flag any holder of `finance:manage_accounts` can set (it is audited, with the
+user): whether confirming a layout needs its own permission or a second person is the owner's call with the accountant (**[ACCOUNTANT]**), then 4B.8b-4. (m) A sale documented
+after the end of its month is listed in that month as unissued and no warning counts it (see (f)); a counter for it comes with the accountant's rule. (n) A layout cannot order by
+document and restart the correlative every year (the number of a row would depend on the month asked for): refused by the layout rules. (o) The default book of a closed month is the
+layout version frozen first; the next version is reached by naming it, and a request that names a version with no snapshot is built and not kept (only the default request freezes). (q) The CSV writer of every export prefixes a quote to a text that starts with `=`, `+`, `-` or `@`: a document number such as `-0042` is written as `'-0042` (the guard of the other exports; the frozen file keeps it), and the accountant's reader strips it as 4B.8a debt (j) says; a book-specific rule is 4B.8b-4. (r) A sale or purchase reversed, or a document voided, in a LATER month than its entry stays in the month of its entry and nothing in the later month's book cancels it (the reversal is not a row): the accountant says how it is written (**[ACCOUNTANT]**), 4B.8b-4. (s) An unvalidated proposal is never frozen (it is a draft): the first default request after a layout exists freezes the month. (t) The review of this PR ran three `/code-review` passes on the service, the pure rules, the controller and the suites (10 findings each, the cap bound each time): the real defects were fixed, the rest is in these debts. (p) The
+sale rows follow the ledger: a sale is out of a month's book only when its entry was reversed in that same month; the status of the order is not read.
+
 ### Step 4B.9 — Finance interface (web)
 - [ ] Delivered in PRs (decided 2026-11-16, rule 12: about 75 routes with money on them are too many for one review, and the web had no finance
       client at all). Each one starts from a `main` that has the one before it; every route stays mapped to `4B.9` in `frontend-coverage-map` until
@@ -1988,7 +2033,7 @@ Admin: owners of custom roles grant it by hand, and 4B.9 lists it in the matrix 
           `finance.reports.verifyChain`.
     - [ ] **4B.9b-2 (fiscal documents):** `fiscal.*` (the server of 4B.7a-2, #555): the issuer settings, the documents of the sales (list, one,
           the receiver, the retry) and the void of an accepted document (typed reason, the effect shown first), and the document on the order.
-    - [ ] **4B.9b-3 (statements, VAT, aging):** `finance.reports.vat` and its CSV, and the routes of Step 4B.8b-1 (#556: the statements and the aging), the box that writes off the difference of a cash-on-delivery remittance (`remittances.writeOff`, shown only with `remittances:manage`, moved here from 4B.9a-4 because the remittance screens of Step 4.14 have no list of differences to hang it on), the receipt file of a payment to a supplier and the name of the supplier in the payables view (small server PRs before it; debts (a) and (f) of 4B.9a-4), the aging buckets, the export and the day filter of the payables;
+    - [ ] **4B.9b-3 (statements, VAT, aging):** `finance.reports.vat` and its CSV, the legal books (`finance.books.*`, `finance.bookLayouts.*`, `finance.frozenBooks.*`, always with the notice that a book is a draft while it is `unvalidated`), and the routes of Step 4B.8b-1 (#556: the statements and the aging), the box that writes off the difference of a cash-on-delivery remittance (`remittances.writeOff`, shown only with `remittances:manage`, moved here from 4B.9a-4 because the remittance screens of Step 4.14 have no list of differences to hang it on), the receipt file of a payment to a supplier and the name of the supplier in the payables view (small server PRs before it; debts (a) and (f) of 4B.9a-4), the aging buckets, the export and the day filter of the payables;
           the screens of 4B.7b (credit note), 4B.8b-2 (weekly chain, margin) and 4B.8b-3 (legal books) join it, or follow it as 4B.9b-4, as their
           servers reach `main`.
     - [ ] **4B.9b-4 (the month end to end):** the e2e case of the month (register, receive, sell, remit, close) and the permission-gate case of every
@@ -3002,7 +3047,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.5 | Suppliers and purchase orders | done | #542 | 2026-11-15 |
 | 4B.6 | The automatic entries (sales, remittances, returns, stock) | in progress | 4B.6a machinery, E1 to E3 and E9 (#546); 4B.6b-1 carrier charges, remittance confirmed and voided (E4 to E6; #548); 4B.6b-2 the difference written off, returns and the fee permission (E7, E8, E4 of a return guide; #550); 4B.6b-3 the sweep, its metrics, the failure notice and the close guard (this PR); 4B.6b-4 the prepaid charge model: todo | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | in progress | 4B.7a-1 the libraries and the rule (#552, done); 4B.7a-2 the database, the lifecycle, the queue and the routes (#555, done); 4B.7b-1 the credit note of a return and the replacement of a voided document (this PR); 4B.7b-2 evidence as media, the customer's fiscal data, the notification and the debts of the port: todo | |
-| 4B.8 | Reports, monthly close and the auditor's export | in progress | 4B.8a (#553); 4B.8b-1 statements and aging (#556); 4B.8b-2 and 4B.8b-3: todo | |
+| 4B.8 | Reports, monthly close and the auditor's export | in progress | 4B.8a (#553); 4B.8b-1 statements and aging (#556); 4B.8b-3 legal books mechanism (this PR); 4B.8b-2 and 4B.8b-4 (the accountant's layout): todo | |
 | 4B.9 | Finance interface (web) | in progress | 4B.9a-1 (setup, chart, taxes, settings, periods) #554, 4B.9a-2 (the journal, transactions and receipts; #560), 4B.9a-3 (bank reconciliation by CSV) #557, 4B.9a-4 (suppliers, purchases, payables; #558), 4B.9b-1 (close, reports; #563); 4B.9b-2 to 4B.9b-4: todo | |
 | **Milestone 5: Operations** | | | | |
 | 5.1 | Search | done | #486 (PR A: the server), #488 (PR B: the web), #496 (the click, in Step 5.2 PR C3) | 2026-11-15 |
