@@ -53,12 +53,13 @@ export function LedgerPanel(): ReactElement {
   const canExport = can(ClientPermissions.FINANCE_EXPORT)
   const csvProblem = reportRangeProblem(draft, { bothEnds: true })
   // The file is of what the table shows: the form may have moved on since Show, and then the button waits for a new Show
+  const query = chosen === undefined ? null : ledgerQueryOf(chosen.id, draft)
   const inSync =
     applied !== null &&
-    chosen !== undefined &&
-    applied.accountId === chosen.id &&
-    applied.from === (draft.from.trim() === '' ? null : draft.from.trim()) &&
-    applied.to === (draft.to.trim() === '' ? null : draft.to.trim())
+    query !== null &&
+    applied.accountId === query.accountId &&
+    applied.from === query.from &&
+    applied.to === query.to
 
   const show = (event: FormEvent): void => {
     event.preventDefault()
@@ -93,7 +94,14 @@ export function LedgerPanel(): ReactElement {
         aria-label={t('formLabel')}
       >
         <div className="sm:col-span-2">
-          <SelectField label={t('account')} value={accountId} onChange={setAccountId}>
+          <SelectField
+            label={t('account')}
+            value={accountId}
+            onChange={next => {
+              setAccountId(next)
+              setRefusal(null)
+            }}
+          >
             <option value="">{t('choose')}</option>
             {postable.map(account => (
               <option key={account.id} value={account.id}>
@@ -113,6 +121,7 @@ export function LedgerPanel(): ReactElement {
           onChange={from => {
             setDraft(current => ({ ...current, from }))
             setWrong(null)
+            setRefusal(null)
           }}
         />
         <TextField
@@ -120,16 +129,11 @@ export function LedgerPanel(): ReactElement {
           hint={t('dayHint')}
           value={draft.to}
           maxLength={10}
-          problem={
-            wrong === 'to'
-              ? t('problems.to')
-              : csvProblem === 'length' && draft.to.trim() !== ''
-                ? t('problems.length')
-                : null
-          }
+          problem={wrong === 'to' ? t('problems.to') : null}
           onChange={to => {
             setDraft(current => ({ ...current, to }))
             setWrong(null)
+            setRefusal(null)
           }}
         />
         <div className="flex flex-wrap gap-2 sm:col-span-2">
@@ -161,7 +165,9 @@ export function LedgerPanel(): ReactElement {
           ) : null}
         </div>
         {canExport ? (
-          <p className="text-muted-foreground text-xs sm:col-span-2">{t('downloadHint')}</p>
+          <p className="text-muted-foreground text-xs sm:col-span-2">
+            {csvProblem === 'length' ? t('problems.length') : t('downloadHint')}
+          </p>
         ) : null}
       </form>
       {refusal === null ? null : (
@@ -169,6 +175,11 @@ export function LedgerPanel(): ReactElement {
           {refusal}
         </p>
       )}
+      {applied !== null && !inSync ? (
+        <p role="note" className="text-muted-foreground text-sm" data-testid="finance-ledger-stale">
+          {t('stale')}
+        </p>
+      ) : null}
       {applied === null ? null : ledger.isError && first === undefined ? (
         <LoadFailed error={ledger.error} onRetry={() => void ledger.refetch()} />
       ) : first === undefined ? (
@@ -220,7 +231,7 @@ export function LedgerPanel(): ReactElement {
                     >
                       <td className="px-3 py-2 whitespace-nowrap">{line.entryDate}</td>
                       <td className="px-3 py-2 font-mono text-xs">{line.number}</td>
-                      <td className="px-3 py-2">{line.lineMemo ?? line.entryMemo ?? ''}</td>
+                      <td className="px-3 py-2">{line.lineMemo || line.entryMemo || ''}</td>
                       <td className="px-3 py-2 text-right tabular-nums">
                         {money(line.debitCents)}
                       </td>

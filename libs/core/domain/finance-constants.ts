@@ -448,6 +448,17 @@ export function remittanceDestinationProblem(account: {
   return null
 }
 
+// Why the check of the hash chain says it is broken (TDD_18 §11): the three the walk finds and the two that only the places outside the
+// chain can tell. The screen reads this list; the api still writes them as literals until Step 4B.8b makes them constants (debt (q) of 4B.8a)
+export const FinanceChainProblems = [
+  'number_gap',
+  'prev_hash_mismatch',
+  'hash_mismatch',
+  'head_mismatch',
+  'frozen_head_missing'
+] as const
+export type FinanceChainProblem = (typeof FinanceChainProblems)[number]
+
 // The reports and the auditor's files (TDD_18 §10, §11, Step 4B.8)
 export const FinanceReportLimits = {
   // Lines a CSV of the journal or the ledger carries: a file that would be larger is refused with the range to narrow (EXPORT_TOO_LARGE),

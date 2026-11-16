@@ -78,6 +78,7 @@ export function JournalExportPanel(): ReactElement {
           onChange={from => {
             setDraft(current => ({ ...current, from }))
             setWrong(null)
+            setRefusal(null)
           }}
         />
         <TextField
@@ -92,6 +93,7 @@ export function JournalExportPanel(): ReactElement {
           onChange={to => {
             setDraft(current => ({ ...current, to }))
             setWrong(null)
+            setRefusal(null)
           }}
         />
         <div className="sm:col-span-2">

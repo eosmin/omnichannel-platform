@@ -6124,7 +6124,8 @@
           "to": "Escribe un día real como AAAA-MM-DD.",
           "order": "El primer día es posterior al último.",
           "length": "El rango es de más de 366 días. Elige uno más corto."
-        }
+        },
+        "stale": "La tabla muestra la cuenta y el rango que pediste por última vez. Pulsa Ver libro mayor para actualizarla."
       },
       "journal": {
         "title": "Archivo del libro diario para el auditor",
@@ -6161,7 +6162,8 @@
         "headHash": "Su hash",
         "frozen": "El último asiento que congeló cada mes cerrado",
         "frozenPresent": "sigue en la cadena",
-        "frozenMissing": "falta en la cadena"
+        "frozenMissing": "falta en la cadena",
+        "checkedAt": "Revisado el {time}"
       }
     }
   }

@@ -109,7 +109,7 @@ function PeriodRow({
   return (
     <li
       data-testid="finance-period-row"
-      data-period={`${String(period.year)}-${String(period.month).padStart(2, '0')}`}
+      data-period={periodKeyOf(period)}
       className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
     >
       <span className="flex flex-col gap-0.5">

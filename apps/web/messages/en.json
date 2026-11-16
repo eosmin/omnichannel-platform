@@ -6124,7 +6124,8 @@
           "to": "Write a real day as YYYY-MM-DD.",
           "order": "The first day is after the last one.",
           "length": "The range is longer than 366 days. Choose a shorter one."
-        }
+        },
+        "stale": "The table shows the account and range you last asked for. Press Show ledger to update it."
       },
       "journal": {
         "title": "Journal file for the auditor",
@@ -6161,7 +6162,8 @@
         "headHash": "Its hash",
         "frozen": "The last entry that each closed month froze",
         "frozenPresent": "still in the chain",
-        "frozenMissing": "missing from the chain"
+        "frozenMissing": "missing from the chain",
+        "checkedAt": "Checked on {time}"
       }
     }
   }

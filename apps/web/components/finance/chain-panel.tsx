@@ -1,7 +1,7 @@
 'use client'
 
 import { ShieldCheck } from 'lucide-react'
-import { useTranslations } from 'next-intl'
+import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 
 import { knownChainReason } from '../../lib/finance/chain-reasons'
@@ -19,6 +19,9 @@ export function ChainPanel(): ReactElement {
   const { storeId } = useStore()
   const verify = useVerifyFinanceChain(storeId)
   const [refusal, setRefusal] = useState<string | null>(null)
+  // The verdict is of the moment of the check: the books move after it, so the screen says when it was
+  const [checkedAt, setCheckedAt] = useState<Date | null>(null)
+  const format = useFormatter()
   const result = verify.data
   const found = result?.break ?? null
   const reason = found === null ? null : knownChainReason(found.reason)
@@ -42,7 +45,10 @@ export function ChainPanel(): ReactElement {
           busy={verify.isPending}
           onClick={() => {
             setRefusal(null)
-            verify.mutate(undefined, { onError: error => setRefusal(errorText(error)) })
+            verify.mutate(undefined, {
+              onSuccess: () => setCheckedAt(new Date()),
+              onError: error => setRefusal(errorText(error))
+            })
           }}
         >
           <ShieldCheck aria-hidden />
@@ -66,6 +72,13 @@ export function ChainPanel(): ReactElement {
           >
             {result.ok ? t('ok', { count: result.entriesChecked }) : t('broken')}
           </p>
+          {checkedAt === null ? null : (
+            <p className="text-muted-foreground" data-testid="finance-chain-checked-at">
+              {t('checkedAt', {
+                time: format.dateTime(checkedAt, { dateStyle: 'medium', timeStyle: 'medium' })
+              })}
+            </p>
+          )}
           {result.break === null ? null : (
             <p>
               {t('breakAt', { number: result.break.number })}{' '}

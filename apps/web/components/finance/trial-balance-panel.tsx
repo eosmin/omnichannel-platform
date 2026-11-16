@@ -40,7 +40,12 @@ export function TrialBalancePanel(): ReactElement {
   const sorted = [...(periods.data ?? [])].sort((a, b) =>
     periodKeyOf(b).localeCompare(periodKeyOf(a))
   )
-  const period = sorted.find(item => item.id === chosen) ?? sorted[0]
+  // The month the person chose, else the newest that has started (a month opened ahead of time has nothing in it yet)
+  const today = new Date().toISOString().slice(0, 10)
+  const period =
+    sorted.find(item => item.id === chosen) ??
+    sorted.find(item => item.startsOn <= today) ??
+    sorted[0]
   const report = useFinanceTrialBalance(storeId, period?.id ?? null, true)
 
   if (periods.isError) {
@@ -66,7 +71,14 @@ export function TrialBalancePanel(): ReactElement {
         <>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="sm:w-64">
-              <SelectField label={t('period')} value={period.id} onChange={setChosen}>
+              <SelectField
+                label={t('period')}
+                value={period.id}
+                onChange={next => {
+                  setChosen(next)
+                  setRefusal(null)
+                }}
+              >
                 {sorted.map(item => (
                   <option key={item.id} value={item.id}>
                     {periodKeyOf(item)}
