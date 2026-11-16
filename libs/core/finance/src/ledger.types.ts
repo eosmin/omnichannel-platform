@@ -39,5 +39,6 @@ export interface ReverseEntryInput {
   memo: string
   // 'YYYY-MM-DD', or null for the date of the original (the first day of the open period when that one is closed)
   entryDate: string | null
-  createdBy: string
+  // The person who reverses; null for the system (an automatic reversal, TDD_18 §4.2 E6: the origin is then `system`)
+  createdBy: string | null
 }

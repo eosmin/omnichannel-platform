@@ -19,9 +19,12 @@ import {
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
+  RemittanceStatus,
   SaleRecognition,
+  SettlingOutcomes,
   ShipmentInactiveStatuses,
-  ShipmentKind
+  ShipmentKind,
+  ShipmentStatus
 } from '@platform/core/domain'
 import { errorName, PlatformException } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
@@ -37,6 +40,13 @@ import {
   saleLines,
   sentLines
 } from './auto-entry-rules'
+import {
+  chargeAmounts,
+  chargeLines,
+  remittanceLines,
+  type RemittanceLineSettlement,
+  settleRemittanceLine
+} from './carrier-entry-rules'
 import type { DraftLine } from './entry-rules'
 import { LedgerService } from './ledger.service'
 import { automaticEntryDate, dateToDay } from './period-rules'
@@ -83,6 +93,12 @@ const keyOf = (input: PostSourceInput): string => {
       return FinancePostingKey.ORDER_SENT(input.sourceId)
     case FinanceEventKind.SALE:
       return FinancePostingKey.ORDER_SALE(input.sourceId)
+    case FinanceEventKind.CHARGES:
+      return FinancePostingKey.SHIPMENT_CHARGES(input.sourceId)
+    case FinanceEventKind.REMITTANCE_CONFIRM:
+      return FinancePostingKey.REMITTANCE_CONFIRM(input.sourceId)
+    case FinanceEventKind.REMITTANCE_VOID:
+      return FinancePostingKey.REMITTANCE_VOID(input.sourceId)
     case FinanceEventKind.RETURN_RESTOCK:
       return FinancePostingKey.RETURN_RESTOCK(input.sourceId)
     case FinanceEventKind.ADJUST:
@@ -164,17 +180,9 @@ export class FinancePostingService {
       const refused = result
       result = await this.prisma.transaction(async tx => {
         await this.lockSource(tx, input)
-        const exists = await tx.journalEntry.findUnique({
-          where: {
-            organizationId_idempotencyKey: {
-              organizationId: input.organizationId,
-              idempotencyKey: keyOf(input)
-            }
-          },
-          select: { id: true }
-        })
+        const existsId = await this.entryUnderKey(tx, input)
         const settled =
-          exists === null ? refused : this.done(FinancePostingOutcome.REPLAYED, exists.id)
+          existsId === null ? refused : this.done(FinancePostingOutcome.REPLAYED, existsId)
         await this.settle(tx, input, settled)
         return settled
       }, POST_TRANSACTION)
@@ -195,6 +203,14 @@ export class FinancePostingService {
         )
       }
     }
+    // E4 is what a remittance of the guide waits for (its payable is the estimate the remittance settles): once it is posted, the
+    // remittances that settled the guide and could not post are asked again
+    if (
+      input.kind === FinanceEventKind.CHARGES &&
+      result.outcome === FinancePostingOutcome.POSTED
+    ) {
+      await this.repostRemittancesOf(input)
+    }
     return result
   }
 
@@ -214,15 +230,7 @@ export class FinancePostingService {
         },
         select: { id: true }
       })
-      const posted = await tx.journalEntry.findUnique({
-        where: {
-          organizationId_idempotencyKey: {
-            organizationId: input.organizationId,
-            idempotencyKey: keyOf(input)
-          }
-        },
-        select: { id: true }
-      })
+      const posted = await this.entryUnderKey(tx, input)
       if (open !== null || posted !== null) return
       await this.recordFailure(tx, input, FinancePostingFailureReason.NOT_QUEUED)
     }, POST_TRANSACTION)
@@ -239,17 +247,16 @@ export class FinancePostingService {
     }
     // An entry under the key is the answer, whatever the books look like now (an account unmapped since, an order returned since): a
     // job that comes late must not turn a posted entry into a failure
-    const posted = await tx.journalEntry.findUnique({
-      where: {
-        organizationId_idempotencyKey: {
-          organizationId: input.organizationId,
-          idempotencyKey: keyOf(input)
-        }
-      },
-      select: { id: true }
-    })
-    if (posted !== null) return this.done(FinancePostingOutcome.REPLAYED, posted.id)
-    const candidate = await this.load(tx, input, settings.recognizeSaleOn)
+    const postedId = await this.entryUnderKey(tx, input)
+    if (postedId !== null) return this.done(FinancePostingOutcome.REPLAYED, postedId)
+    // E6 is not a new entry built from rows: it reverses the one E5 wrote
+    if (input.kind === FinanceEventKind.REMITTANCE_VOID) {
+      return this.reverseRemittance(tx, input, {
+        accountingStartDate: dateToDay(settings.accountingStartDate),
+        lockedThrough: settings.lockedThrough === null ? null : dateToDay(settings.lockedThrough)
+      })
+    }
+    const candidate = await this.load(tx, input, settings)
     if (candidate.kind === 'nothing') return this.done(FinancePostingOutcome.NOTHING_TO_POST)
     if (candidate.kind === 'failed') {
       return { outcome: FinancePostingOutcome.FAILED, entryId: null, reason: candidate.reason }
@@ -354,8 +361,9 @@ export class FinancePostingService {
   private async load(
     tx: PrismaTransaction,
     input: PostSourceInput,
-    recognizeSaleOn: string
+    settings: { accountingStartDate: Date; recognizeSaleOn: string }
   ): Promise<Candidate> {
+    const recognizeSaleOn = settings.recognizeSaleOn
     switch (input.kind) {
       case FinanceEventKind.PAYMENT:
         return this.loadPayment(tx, input)
@@ -365,8 +373,12 @@ export class FinancePostingService {
         return this.loadSale(tx, input, recognizeSaleOn)
       case FinanceEventKind.ADJUST:
         return this.loadAdjustment(tx, input)
+      case FinanceEventKind.CHARGES:
+        return this.loadCharges(tx, input)
+      case FinanceEventKind.REMITTANCE_CONFIRM:
+        return this.loadRemittanceConfirm(tx, input, dateToDay(settings.accountingStartDate))
       default:
-        // The kinds of 4B.6b (a return, a remittance) have no loader yet: nothing is posted, and nothing is claimed as posted
+        // The return (E8) has no loader yet: nothing is posted, and nothing is claimed as posted
         return NOTHING
     }
   }
@@ -635,6 +647,314 @@ export class FinancePostingService {
       key: FinancePostingKey.MOVEMENT_ADJUST(input.sourceId),
       memo: FinanceAutoMemo.ADJUST,
       result: adjustmentLines({ accounts, movement, storeId: movement.storeId })
+    }
+  }
+
+  // The entry an event already left: the one under its key, or, for the voiding of a remittance (which reverses E5 under the
+  // ledger's own key), the reversal of the entry of the confirmation
+  private async entryUnderKey(
+    tx: PrismaTransaction,
+    input: PostSourceInput
+  ): Promise<string | null> {
+    if (input.kind === FinanceEventKind.REMITTANCE_VOID) {
+      const confirmed = await this.entryOf(
+        tx,
+        input.organizationId,
+        FinancePostingKey.REMITTANCE_CONFIRM(input.sourceId)
+      )
+      if (confirmed === null) return null
+      const reversal = await tx.journalEntry.findFirst({
+        where: { organizationId: input.organizationId, reversesEntryId: confirmed.id },
+        select: { id: true }
+      })
+      return reversal?.id ?? null
+    }
+    const entry = await this.entryOf(tx, input.organizationId, keyOf(input))
+    return entry?.id ?? null
+  }
+
+  private async entryOf(
+    tx: PrismaTransaction,
+    organizationId: string,
+    idempotencyKey: string
+  ): Promise<{ id: string; totalCents: number; entryDate: Date } | null> {
+    return tx.journalEntry.findUnique({
+      where: { organizationId_idempotencyKey: { organizationId, idempotencyKey } },
+      select: { id: true, totalCents: true, entryDate: true }
+    })
+  }
+
+  // E4: what the carrier charges for a guide that was delivered. Posted as the TDD writes it: gross, no input VAT [ACCOUNTANT], and
+  // the same for every charge model of the connection (the model is the owner's information to confirm, debt of the plan)
+  private async loadCharges(tx: PrismaTransaction, input: PostSourceInput): Promise<Candidate> {
+    const shipment = await tx.shipment.findFirst({
+      where: { id: input.sourceId, store: { organizationId: input.organizationId } },
+      select: {
+        storeId: true,
+        connectionId: true,
+        kind: true,
+        status: true,
+        deliveredAt: true,
+        shippingPayer: true,
+        codAmountCents: true,
+        carrierCostCents: true,
+        carrierRateCents: true,
+        commissionBps: true,
+        store: { select: { timezone: true } }
+      }
+    })
+    if (shipment === null || shipment.deliveredAt === null) return NOTHING
+    if (
+      shipment.kind !== (ShipmentKind.OUTBOUND as string) ||
+      shipment.status !== (ShipmentStatus.DELIVERED as string)
+    ) {
+      return NOTHING
+    }
+    const amounts = chargeAmounts(shipment)
+    if (amounts.freightCents + amounts.commissionCents === 0) return NOTHING
+    const accounts = await this.accountsOf(tx, input.organizationId)
+    return {
+      kind: 'entry',
+      sourceDay: dayInZone(shipment.deliveredAt, shipment.store.timezone),
+      type: JournalEntryType.SALE_SHIPMENT,
+      sourceType: FinanceSourceType.SHIPMENT,
+      key: FinancePostingKey.SHIPMENT_CHARGES(input.sourceId),
+      memo: FinanceAutoMemo.CHARGES,
+      result: chargeLines({
+        accounts,
+        carrierConnectionId: shipment.connectionId,
+        amounts,
+        storeId: shipment.storeId
+      })
+    }
+  }
+
+  // E5: a remittance that was confirmed. The loader reads the lines as the confirmation settled them and, for each guide, what E4
+  // posted for it: the payable the carrier settles by keeping its fee.
+  private async loadRemittanceConfirm(
+    tx: PrismaTransaction,
+    input: PostSourceInput,
+    accountingStartDate: string
+  ): Promise<Candidate> {
+    const remittance = await tx.codRemittance.findFirst({
+      where: { id: input.sourceId, store: { organizationId: input.organizationId } },
+      select: {
+        id: true,
+        storeId: true,
+        connectionId: true,
+        status: true,
+        confirmedAt: true,
+        destinationAccountId: true,
+        connection: { select: { remittanceDeductsFee: true } },
+        store: { select: { timezone: true } }
+      }
+    })
+    // A remittance that is not confirmed (a draft, or voided before its entry was posted) has nothing to post
+    if (
+      remittance === null ||
+      remittance.confirmedAt === null ||
+      remittance.status !== (RemittanceStatus.CONFIRMED as string)
+    ) {
+      return NOTHING
+    }
+    // The money went to the account the owner chose: it must still be one the books can post to, and a cash, bank or wallet account
+    let destinationAccountId: string | null = null
+    if (remittance.destinationAccountId !== null) {
+      const account = await tx.ledgerAccount.findFirst({
+        where: { id: remittance.destinationAccountId, organizationId: input.organizationId },
+        select: { id: true, cashKind: true, active: true, isPostable: true }
+      })
+      if (account === null || !account.active || !account.isPostable || account.cashKind === null) {
+        return failed(FinancePostingFailureReason.ACCOUNT_INACTIVE)
+      }
+      destinationAccountId = account.id
+    }
+    const lines = await tx.codRemittanceLine.findMany({
+      where: {
+        remittanceId: remittance.id,
+        storeId: remittance.storeId,
+        excluded: false,
+        shipmentId: { not: null },
+        outcome: { in: [...SettlingOutcomes] }
+      },
+      orderBy: { position: 'asc' },
+      select: {
+        shipmentId: true,
+        reportedCents: true,
+        reportedFeeCents: true,
+        shipment: {
+          select: {
+            deliveredAt: true,
+            shippingPayer: true,
+            codAmountCents: true,
+            carrierCostCents: true,
+            carrierRateCents: true,
+            commissionBps: true
+          }
+        }
+      }
+    })
+    const settlements: RemittanceLineSettlement[] = []
+    for (const line of lines) {
+      if (line.shipmentId === null || line.shipment === null) continue
+      const estimate = await this.estimateOf(tx, input.organizationId, accountingStartDate, {
+        shipmentId: line.shipmentId,
+        shipment: line.shipment,
+        timeZone: remittance.store.timezone
+      })
+      if (estimate === null) return failed(FinancePostingFailureReason.SOURCE_NOT_READY)
+      // An earlier confirmed remittance that settled the guide took its fee already (a guide settled again after a difference)
+      const earlier = await tx.codRemittanceLine.findFirst({
+        where: {
+          shipmentId: line.shipmentId,
+          excluded: false,
+          outcome: { in: [...SettlingOutcomes] },
+          remittance: {
+            status: RemittanceStatus.CONFIRMED,
+            OR: [
+              { confirmedAt: { lt: remittance.confirmedAt } },
+              { confirmedAt: remittance.confirmedAt, id: { lt: remittance.id } }
+            ]
+          }
+        },
+        select: { id: true }
+      })
+      settlements.push(
+        settleRemittanceLine({
+          reportedCents: line.reportedCents,
+          reportedFeeCents: line.reportedFeeCents,
+          estimateCents: estimate,
+          deductsFee: remittance.connection.remittanceDeductsFee,
+          feeAlreadySettled: earlier !== null
+        })
+      )
+    }
+    const accounts = await this.accountsOf(tx, input.organizationId)
+    return {
+      kind: 'entry',
+      sourceDay: dayInZone(remittance.confirmedAt, remittance.store.timezone),
+      type: JournalEntryType.COD_REMITTANCE,
+      sourceType: FinanceSourceType.REMITTANCE,
+      key: FinancePostingKey.REMITTANCE_CONFIRM(remittance.id),
+      memo: FinanceAutoMemo.REMITTANCE_CONFIRM,
+      result: remittanceLines({
+        accounts,
+        destinationAccountId,
+        carrierConnectionId: remittance.connectionId,
+        storeId: remittance.storeId,
+        lines: settlements
+      })
+    }
+  }
+
+  // What E4 posted as payable for a guide. A guide delivered before the start of the books has no E4 (its charges are in the
+  // opening balance), so the estimate is read from the guide; one delivered after it whose E4 has not been posted yet (a failure, a
+  // lost job) makes the remittance wait: null. A guide with nothing to charge has an estimate of zero.
+  private async estimateOf(
+    tx: PrismaTransaction,
+    organizationId: string,
+    accountingStartDate: string,
+    input: {
+      shipmentId: string
+      timeZone: string
+      shipment: {
+        deliveredAt: Date | null
+        shippingPayer: string
+        codAmountCents: number | null
+        carrierCostCents: number | null
+        carrierRateCents: number | null
+        commissionBps: number | null
+      }
+    }
+  ): Promise<number | null> {
+    const amounts = chargeAmounts(input.shipment)
+    const wanted = amounts.freightCents + amounts.commissionCents
+    if (wanted === 0) return 0
+    const entry = await this.entryOf(
+      tx,
+      organizationId,
+      FinancePostingKey.SHIPMENT_CHARGES(input.shipmentId)
+    )
+    if (entry !== null) return entry.totalCents
+    const deliveredDay =
+      input.shipment.deliveredAt === null
+        ? null
+        : dayInZone(input.shipment.deliveredAt, input.timeZone)
+    return deliveredDay !== null && deliveredDay < accountingStartDate ? wanted : null
+  }
+
+  // E6: the confirmed remittance was voided: the entry of E5 is reversed by a reversing entry of the system (the journal is never
+  // edited). The reversal is dated the day it was voided, or the first day of the open period when that day is closed; never before
+  // the entry it reverses.
+  private async reverseRemittance(
+    tx: PrismaTransaction,
+    input: PostSourceInput,
+    calendar: { accountingStartDate: string; lockedThrough: string | null }
+  ): Promise<PostSourceResult> {
+    const remittance = await tx.codRemittance.findFirst({
+      where: { id: input.sourceId, store: { organizationId: input.organizationId } },
+      select: { status: true, voidedAt: true, store: { select: { timezone: true } } }
+    })
+    if (
+      remittance === null ||
+      remittance.voidedAt === null ||
+      remittance.status !== (RemittanceStatus.VOIDED as string)
+    ) {
+      return this.done(FinancePostingOutcome.NOTHING_TO_POST)
+    }
+    const confirmed = await this.entryOf(
+      tx,
+      input.organizationId,
+      FinancePostingKey.REMITTANCE_CONFIRM(input.sourceId)
+    )
+    // Voided before the confirmation was ever posted: there is nothing to undo
+    if (confirmed === null) return this.done(FinancePostingOutcome.NOTHING_TO_POST)
+    const voidDay = dayInZone(remittance.voidedAt, remittance.store.timezone)
+    const date = automaticEntryDate(voidDay, calendar)
+    const original = dateToDay(confirmed.entryDate)
+    const reversed = await this.ledger.reverse(
+      {
+        organizationId: input.organizationId,
+        entryId: confirmed.id,
+        memo: FinanceAutoMemo.REMITTANCE_VOID,
+        entryDate: date.post && date.entryDate >= original ? date.entryDate : null,
+        createdBy: null
+      },
+      tx
+    )
+    return this.done(
+      reversed.replayed ? FinancePostingOutcome.REPLAYED : FinancePostingOutcome.POSTED,
+      reversed.id
+    )
+  }
+
+  // The confirmed remittances that settled a guide and whose entry waited for its E4: asked again, each one under its own failure row
+  private async repostRemittancesOf(input: PostSourceInput): Promise<void> {
+    const lines = await this.prisma.client.codRemittanceLine.findMany({
+      where: {
+        shipmentId: input.sourceId,
+        remittance: {
+          status: RemittanceStatus.CONFIRMED,
+          store: { organizationId: input.organizationId }
+        }
+      },
+      select: { remittanceId: true }
+    })
+    for (const remittanceId of new Set(lines.map(line => line.remittanceId))) {
+      try {
+        await this.post({
+          organizationId: input.organizationId,
+          sourceType: FinanceSourceType.REMITTANCE,
+          sourceId: remittanceId,
+          kind: FinanceEventKind.REMITTANCE_CONFIRM
+        })
+      } catch (error) {
+        // E4 is committed and stays the answer of this job: the remittance has its own job and its own failure row
+        this.logger.warn(
+          { remittanceId, errorName: errorName(error) },
+          'a remittance that waited for a carrier charge could not be posted'
+        )
+      }
     }
   }
 

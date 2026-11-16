@@ -275,7 +275,10 @@ export class RemittancesService {
           ...(body.receivedOn === undefined
             ? {}
             : { receivedOn: new Date(`${body.receivedOn}T00:00:00.000Z`) }),
-          ...(body.note === undefined ? {} : { note: body.note })
+          ...(body.note === undefined ? {} : { note: body.note }),
+          ...(body.destinationAccountId === undefined
+            ? {}
+            : { destinationAccountId: body.destinationAccountId })
         }
       })
       if (confirmed.count === 0) {

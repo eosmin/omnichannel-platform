@@ -1666,19 +1666,28 @@ need nothing from the carriers' side; **4B.6b** is everything that waits on the 
 - [x] **4B.6a:** tests with exact amounts (a COD sale, a prepaid sale, the cost cleared once whichever entry came first, a missing mapping,
       no tax recorded, no cost, a payment method without an account, sale recognized at shipping, before the start of the books, a
       closed period, each adjustment, the same event twice), isolation between organizations, the job's schema
-- [ ] **4B.6b:** E4 (carrier charges) and E5 to E7 (remittance confirmed, voided, a discrepancy written off) with the destination account
-      on the remittance confirm (a field added to `TDD_17 §4.15`'s confirm route, default `BANK_DEFAULT`) and the "write off the
-      difference" action; E8 (returns, before and after delivery, with the refund destination)
-- [ ] **4B.6b:** `RECONCILE_FINANCE` (daily and before a close): the sweep of unposted sources (it is what heals an event that was never
+The rest of 4B.6 is cut in three PRs (rule 12; a session, a PR; the cut is the coordinator's approval of the session's proposal, because the
+three parts each need their own owner or accountant decision and the money code is reviewed in small batches): **4B.6b-1** the entries
+that follow from a carrier's guide and remittance, **4B.6b-2** the entries that need a new action or a refund decision, **4B.6b-3** the
+sweep and the charge model.
+- [x] **4B.6b-1:** E4 (the carrier's charges of a delivered outbound guide: `shipment:<id>:charges`, from the guide's own cost or rate and
+      its commission), E5 (`remittance:<id>:confirm`, one entry per confirmed remittance) and E6 (`remittance:<id>:void`, the reversal of
+      E5 by an entry of the system), the destination account of the money on the confirm of a remittance (`destinationAccountId` on the
+      confirm body, default `BANK_DEFAULT`; migration `finance_remittance_destination` with its rollback)
+- [ ] **4B.6b-2:** E7 (write off the difference of a discrepancy: the action, its permission `FINANCE_MOVE_MONEY`, its status on the
+      shipment) and E8 (returns, before and after delivery, with the refund destination); **`FINANCE_VIEW_CARRIER_FEES`** (below)
+- [ ] **4B.6b-3:** the sweep, its metrics, the notification of a failure, the close that refuses, and the charge model of a carrier
+      connection (below)
+- [ ] **4B.6b (moved to 4B.6b-3):** `RECONCILE_FINANCE` (daily and before a close): the sweep of unposted sources (it is what heals an event that was never
       queued), balance recomputation, inventory and carrier-receivable comparisons; the metrics and the notification of
       `FINANCE_POSTING_FAILED` to who can fix it; the close refusing while a failure is open
-- [ ] **4B.6b:** **`FINANCE_VIEW_CARRIER_FEES`** gates the commission and the rates of a carrier connection (closes (c3)(i) of Step 4.15:
+- [ ] **4B.6b (moved to 4B.6b-2):** **`FINANCE_VIEW_CARRIER_FEES`** gates the commission and the rates of a carrier connection (closes (c3)(i) of Step 4.15:
       `shipping:view` stops showing them; the web of Settings → Carriers shows the boxes only with it)
-- [ ] **4B.6b:** the charge model of a carrier connection (`prepaid` | `collected in the remittance` | `invoiced`, `TDD_18 §4.2` note on E4,
+- [ ] **4B.6b (moved to 4B.6b-3):** the charge model of a carrier connection (`prepaid` | `collected in the remittance` | `invoiced`, `TDD_18 §4.2` note on E4,
       owner's information to confirm with the accountant, `TDD_18 §13` rows 2 and 5) decides the entry of E4/E5 and the input VAT of a
       carrier charge; with 4B.5 for the purchase of prepaid guides. Not built by 4B.3 or 4B.6a
-- [ ] **4B.6b:** tests of those entries (a remittance that matches, one that differs, one voided; a return before and after delivery), a
-      lost event recovered by the sweep, a failure that blocks the close
+- [ ] **4B.6b (partly done in 4B.6b-1: a remittance that matches, one that differs, one voided):** tests of those entries (a return before
+      and after delivery), a lost event recovered by the sweep, a failure that blocks the close
 - [ ] Debt (rule 12): the cent of a carrier that rounds otherwise (4.15 (c2)(i)) and the real fee column (4.15 (c2)(iii)) are decided by the
       real C807 file; the entries follow what the remittance confirm recorded
 **TDD:** `TDD_18 §4.2`, `§6`, `§11`, `TDD_17 §4.15`, `TDD_16 §4`, `TDD_07`
@@ -1735,6 +1744,32 @@ goes at the 7.7 cleanup. (p) The settings are read before the ledger takes its o
 4.5 debt). (f) The queued job's de-duplication id is not used on purpose (one id per source would swallow the second event of the same
 order); the keys make a repeat harmless. (g) The posting runs after the commit of the source and the sweep (4B.6b) is what heals a lost
 queue: until it exists a lost event costs an entry until someone presses "post again" on nothing, so 4B.6b must not slip past 4B.8.
+
+**Decisions of PR 4B.6b-1 (rule 12):** (1) **E4 follows the TDD as written for every charge model**: gross, no input VAT, freight only when the
+sender pays, the commission over the cash collected whoever pays (`commissionCents`, the function that estimates the expected amount of the
+remittance, so the two never differ by a cent). The charge model of a connection (prepaid, collected in the remittance, invoiced) is NOT built
+here: its prepaid case needs an account role that does not exist (the advance of guides) and the accountant chooses the account, so it is 4B.6b-3
+with the purchase of prepaid guides, configurable and marked [ACCOUNTANT]; nothing is invented. (2) **E5 per line:** the cash is what the carrier
+reported; what it kept is the file's own figure when the file has one, else the estimate E4 posted (only for a connection that deducts its fee,
+`remittanceDeductsFee`); the receivable is cleared for reported plus kept; the payable E4 posted is settled when the carrier kept a fee; the
+difference between what was kept and the estimate goes to `CARRIER_COMMISSION_EXPENSE` (a debit when more, a credit when less: the file
+replaces the estimate, TDD_17 §4.15). A line that differs clears only what the carrier reported and kept, the rest stays open on the receivable.
+Rejected: clearing the receivable by the guide's amount (it would hide a shortfall). (3) **The payable of a guide is settled once:** a guide that an
+earlier confirmed (not voided) remittance already settled takes only the figure of its own file in a later one. (4) **E5 waits for E4:** a guide
+delivered after the start of the books whose E4 is not posted yet makes the remittance a `SOURCE_NOT_READY` failure (not an alarm), and the
+posting of E4 asks the remittances of the guide again; a guide delivered before the start has no E4 (its charges are in the opening balance)
+and uses the estimate read from the guide. (5) **E6 reverses E5 with an entry of the system** (`LedgerService.reverse` takes `createdBy: null`,
+origin `system`), dated the day it was voided or the first day of the open period, never before the entry it reverses; a bank-reconciled E5 is
+refused by the ledger and shows as a failure until the match is taken back. A remittance voided before its E5 was posted posts nothing, and a
+late job to confirm a voided one posts nothing. (6) The destination account is checked twice: by the confirm route (an account of the
+organization of the store, active, postable, cash-kind: another organization's is a 404) and by the posting service, because the account may be
+switched off after the confirmation.
+**Debts of PR 4B.6b-1:** (q) the charge model of a connection and its prepaid case (decision 1): 4B.6b-3. (r) E7, E8 and `FINANCE_VIEW_CARRIER_FEES`:
+4B.6b-2. (s) The sweep of confirmed and voided remittances and of delivered guides with no E4/E5/E6: 4B.6b-3 (the listener queues them now, a lost
+event waits for it). (t) A guide delivered before the start of the books that is remitted after it clears a payable the opening balance must hold:
+the accountant's opening entry has to include the carriers' payable and receivable (owner and accountant, before the first remittance after the
+start). (u) A remittance that is confirmed with a destination account and then voided keeps the column (the evidence of the choice); the reversal
+uses the lines of E5, never the column. (v) E4 is posted for the guide of the outbound leg only; the charges of a return guide are 4B.6b-2 with E8.
 
 ### Step 4B.7 — Fiscal documents (DTE), against a simulator first
 - [ ] `libs/fiscal/sdk` (the provider port, manifest, contract suite), `libs/fiscal/simulator` (development and test only); the
@@ -2643,7 +2678,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.3 | VAT and the tax snapshot | done | #520 (4B.3a), 4B.3b (this PR) | 2026-11-15 |
 | 4B.4 | Expenses, incomes, transfers and bank reconciliation | done | 4B.4a transactions (#527); 4B.4b-1 receipts (#531); 4B.4b-2 bank reconciliation (#537) | 2026-11-15 |
 | 4B.5 | Suppliers and purchase orders | done | #542 | 2026-11-15 |
-| 4B.6 | The automatic entries (sales, remittances, returns, stock) | in progress | 4B.6a machinery, E1 to E3 and E9 (#546); 4B.6b remittance, returns, carriers and the sweep: todo | |
+| 4B.6 | The automatic entries (sales, remittances, returns, stock) | in progress | 4B.6a machinery, E1 to E3 and E9 (#546); 4B.6b-1 carrier charges, remittance confirmed and voided (E4 to E6; this PR); 4B.6b-2 and 4B.6b-3: todo | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | todo | | |
 | 4B.8 | Reports, monthly close and the auditor's export | todo | | |
 | 4B.9 | Finance interface (web) | todo | | |

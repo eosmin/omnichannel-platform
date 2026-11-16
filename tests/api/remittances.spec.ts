@@ -16,6 +16,7 @@ import { ErrorCodes, HttpStatusCodes } from '@platform/core/errors'
 
 import {
   createCarrierConnection,
+  createFinanceFixture,
   createInventoryLevel,
   createOrder,
   createShipment
@@ -430,6 +431,48 @@ describe('COD remittances (TDD_17 §4.15)', () => {
         .post(ApiRoutes.remittances.list)
         .send({ connectionId, storeId: ctx.storeB.id })
       expect(stray.status).toBe(BAD_REQUEST)
+    })
+  })
+
+  describe('the account the money goes to (TDD_18 §4.2 E5)', () => {
+    it('keeps the account the owner chose and refuses one that cannot receive the money', async () => {
+      const books = await createFinanceFixture(owner, ctx.orgA.id)
+      const other = await createFinanceFixture(owner, ctx.orgB.id)
+      const confirm = async (accountId: string) => {
+        const shipment = await pendingShipment(`DA-${accountId.slice(0, 6)}`, 700)
+        const draft = await draftWith([
+          { guideNumber: `DA-${accountId.slice(0, 6)}`, reportedCents: 700 }
+        ])
+        return {
+          draft,
+          answer: await asAdmin()
+            .post(ApiRoutes.remittances.confirm(draft.id))
+            .send({ destinationAccountId: accountId }),
+          shipment
+        }
+      }
+      // Another organization's account is not found, and nothing is confirmed
+      const foreign = await confirm(other.accounts.bank)
+      expect(foreign.answer.status).toBe(HttpStatusCodes.NOT_FOUND)
+      expect(
+        (await owner.codRemittance.findUniqueOrThrow({ where: { id: foreign.draft.id } })).status
+      ).toBe(RemittanceStatus.DRAFT)
+      // An account that is off, one that is a header and one that is not cash, bank or wallet
+      const inactive = await confirm(books.accounts.inactive)
+      expect(inactive.answer.status).toBe(HttpStatusCodes.CONFLICT)
+      expect(errorCode(inactive.answer.body)).toBe(ErrorCodes.FINANCE_ACCOUNT_INACTIVE)
+      for (const account of [books.accounts.header, books.accounts.revenue]) {
+        const refused = await confirm(account)
+        expect(refused.answer.status).toBe(HttpStatusCodes.BAD_REQUEST)
+        expect(errorCode(refused.answer.body)).toBe(ErrorCodes.FINANCE_ACCOUNT_NOT_POSTABLE)
+      }
+      // A bank account is kept on the remittance
+      const good = await confirm(books.accounts.bank)
+      expect(good.answer.status).toBe(OK)
+      expect(
+        (await owner.codRemittance.findUniqueOrThrow({ where: { id: good.draft.id } }))
+          .destinationAccountId
+      ).toBe(books.accounts.bank)
     })
   })
 

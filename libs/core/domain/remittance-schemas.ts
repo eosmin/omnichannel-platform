@@ -66,7 +66,10 @@ export type UpdateRemittanceLineBody = z.output<typeof updateRemittanceLineSchem
 export const confirmRemittanceSchema = z.strictObject({
   reference: singleLineText(RemittanceLimits.REFERENCE_MAX_LENGTH, 1).optional(),
   receivedOn: isoDaySchema.optional(),
-  note: noteSchema.optional()
+  note: noteSchema.optional(),
+  // The account of the books the money went to (TDD_18 §4.2 E5): left out, the account of the role BANK_DEFAULT. It is checked against
+  // the chart of accounts of the organization before the remittance is confirmed.
+  destinationAccountId: uuidSchema.optional()
 })
 export type ConfirmRemittanceBody = z.output<typeof confirmRemittanceSchema>
 

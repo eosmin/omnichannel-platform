@@ -29,19 +29,21 @@ export type AutoLinesResult =
 // `ok` with no lines is "nothing to post" (an order of zero total with no cost), which is not a failure
 export type AutoEntry = AutoLinesResult
 
-const missing = (role: AccountRole): AutoLinesResult => ({
+export const missing = (role: AccountRole): AutoLinesResult => ({
   ok: false,
   reason: FinancePostingFailureReason.ROLE_NOT_MAPPED,
   role
 })
 
-interface Side {
+export interface Side {
   role: AccountRole
   cents: number
+  // The subledger party of the line (a carrier connection), when the account is one
+  party?: { partyType: PartyType; partyId: string }
 }
 
 // Debit and credit sides by role, zero amounts dropped (a free shipping fee has no line), one dimension on every line
-function linesOf(
+export function linesOf(
   accounts: RoleAccounts,
   debits: readonly Side[],
   credits: readonly Side[],
@@ -60,7 +62,8 @@ function linesOf(
         accountId,
         debitCents: side === 'debit' ? entry.cents : 0,
         creditCents: side === 'credit' ? entry.cents : 0,
-        storeId: dimension.storeId
+        storeId: dimension.storeId,
+        ...(entry.party === undefined ? {} : entry.party)
       })
     }
   }

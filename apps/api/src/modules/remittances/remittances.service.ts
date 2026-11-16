@@ -20,7 +20,12 @@ import {
   type UpdateRemittanceLineBody,
   type VoidRemittanceBody
 } from '@platform/core/domain'
-import { resourceNotFound } from '@platform/core/errors'
+import {
+  ErrorCodes,
+  HttpStatusCodes,
+  PlatformException,
+  resourceNotFound
+} from '@platform/core/errors'
 import { RemittancesService as RemittanceWrites } from '@platform/core/shipping'
 import { MediaPurpose } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
@@ -286,6 +291,9 @@ export class RemittancesApiService {
     body: ConfirmRemittanceBody,
     actor: Actor
   ): Promise<RemittanceDetailView> {
+    if (body.destinationAccountId !== undefined) {
+      await this.assertDestination(storeId, body.destinationAccountId)
+    }
     const done = await this.writes.confirm(storeId, remittanceId, body, refOf(actor))
     this.record(storeId, AuditAction.REMITTANCE_CONFIRMED, remittanceId, actor, {
       connectionId: done.connectionId,
@@ -314,6 +322,37 @@ export class RemittancesApiService {
   }
 
   // ---------------------------------------------------------------------------------------------- support
+
+  // The account the money of a remittance goes to (TDD_18 §4.2 E5): an account of the organization's chart that the books can post
+  // to and that is cash, a bank or a wallet. One of another organization is a 404, never a hint that it exists.
+  private async assertDestination(storeId: string, accountId: string): Promise<void> {
+    const store = await this.prisma.client.store.findUnique({
+      where: { id: storeId },
+      select: { organizationId: true }
+    })
+    const account =
+      store === null
+        ? null
+        : await this.prisma.client.ledgerAccount.findFirst({
+            where: { id: accountId, organizationId: store.organizationId },
+            select: { active: true, isPostable: true, cashKind: true }
+          })
+    if (account === null) throw resourceNotFound('account')
+    if (!account.active) {
+      throw new PlatformException(
+        ErrorCodes.FINANCE_ACCOUNT_INACTIVE,
+        'the account is not active',
+        HttpStatusCodes.CONFLICT
+      )
+    }
+    if (!account.isPostable || account.cashKind === null) {
+      throw new PlatformException(
+        ErrorCodes.FINANCE_ACCOUNT_NOT_POSTABLE,
+        'the money of a remittance goes to a cash, bank or wallet account',
+        HttpStatusCodes.BAD_REQUEST
+      )
+    }
+  }
 
   private async rowOf(storeId: string, remittanceId: string): Promise<RemittanceRow> {
     const row = await this.prisma.client.codRemittance.findFirst({

@@ -206,7 +206,8 @@ export class LedgerService {
         sourceDate: original.sourceDate === null ? null : isoDay(original.sourceDate),
         idempotencyKey: FinanceIdempotencyKey.REVERSAL(original.id),
         memo: input.memo,
-        origin: EntryOrigin.USER,
+        // A reversal made by a person names them; one the books make by themselves (a voided remittance) names nobody
+        origin: input.createdBy === null ? EntryOrigin.SYSTEM : EntryOrigin.USER,
         createdBy: input.createdBy,
         lines: reverseLines(
           original.lines.map(line => ({
