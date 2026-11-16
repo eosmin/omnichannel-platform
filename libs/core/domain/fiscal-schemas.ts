@@ -52,7 +52,8 @@ export const putFiscalIssuerSchema = z
     activityCode: text(FiscalFieldLimits.CODE).nullable().default(null),
     establishmentCode: text(FiscalFieldLimits.CODE).nullable().default(null),
     environment: z.enum(FiscalEnvironment),
-    issueOn: z.enum(FiscalIssueOn).default(FiscalIssueOn.DELIVERED),
+    // Absent keeps the one stored (a new issuer starts at delivered): a change that does not name it must not change when the documents are made
+    issueOn: z.enum(FiscalIssueOn).optional(),
     // The correlative of the next document; it only moves forward
     nextSequence: z.number().int().min(1).max(FiscalLimits.MAX_SEQUENCE).optional(),
     // Written, never read back

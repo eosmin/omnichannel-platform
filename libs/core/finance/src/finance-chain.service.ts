@@ -142,6 +142,9 @@ export class FinanceChainVerifier {
         }))
         const broken = verifyChain(entries, from)
         if (broken !== null) {
+          // `head` stays the last entry of the last page that was whole; the count adds the sound entries of this one (the head is where the
+          // walk could say the chain was sound to, the count is how many entries were read and found sound). What was read and found sound before the break counts as checked: a break in the first page of the walk is not zero entries
+          entriesChecked += entries.filter(entry => entry.number < broken.number).length
           found = {
             entryId: broken.entryId,
             number: broken.number.toString(),

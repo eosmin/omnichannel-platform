@@ -129,6 +129,13 @@ export function saleAddsUp(sale: FiscalSale): boolean {
   return expected === sale.totalCents
 }
 
+// The tax of the shipping is part of the fee and never more than it, as the entry of the sale reads it (E3) and the VAT report too: the
+// difference between the tax of the order and the tax of its lines is not the tax of a shipping that is not there. Asked when a SALE is
+// built for the provider, not of the detail of a document that was already sent (that one keeps what it was sealed with) and not of a credit note.
+export function shippingTaxFits(sale: FiscalSale): boolean {
+  return sale.shippingTaxCents >= 0 && sale.shippingTaxCents <= sale.shippingCents
+}
+
 export interface CreditNoteOrder {
   subtotalCents: number
   discountCents: number
