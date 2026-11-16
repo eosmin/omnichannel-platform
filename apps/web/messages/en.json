@@ -110,7 +110,8 @@
           "unscannable": "File could not be scanned"
         },
         "finance": {
-          "posting_failed": "Entry of the books failed"
+          "posting_failed": "Entry of the books failed",
+          "chain_broken": "The books look altered"
         },
         "fiscal": {
           "document_rejected": "Fiscal document refused",
@@ -611,6 +612,7 @@
     "FINANCE_ENTRY_RECONCILED": "This entry is reconciled with a bank statement: take the reconciliation back first",
     "FINANCE_ENTRY_ALREADY_REVERSED": "This entry was already reversed",
     "FINANCE_REOPEN_NOT_LATEST": "Only the latest closed period can be reopened",
+    "FINANCE_CLOSE_CHAIN_BROKEN": "The check of the books found the journal altered: it cannot be closed until the chain verifies again",
     "FINANCE_CLOSE_PENDING_POSTINGS": "There are postings pending or failed in this period: resolve them first",
     "FINANCE_CLOSE_PREVIOUS_OPEN": "The previous period is still open: close periods in order",
     "FINANCE_CLOSE_NOT_ENDED": "The period has not ended yet: a month is not closed before its last day",
@@ -1039,6 +1041,10 @@
       "posting_failed": {
         "title": "Entry of the books failed",
         "body": "An entry of the books could not be posted automatically. Open the list of failed postings, fix its cause and post it again: the month cannot be closed until then."
+      },
+      "chain_broken": {
+        "title": "The books look altered",
+        "body": "The weekly check of the books found that the journal does not verify against its hash chain. No month can be closed until the chain verifies again: have the accountant look at the check of the chain and find out why."
       }
     },
     "fiscal": {

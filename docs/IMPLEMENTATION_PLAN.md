@@ -1885,14 +1885,22 @@ as one (`CLAUDE.md`, "One PR per step"): the close and the chain are the high-ri
       (as of a day, with the result of the periods not yet moved to equity shown inside it), cash flow (the cash-kind accounts by the source of the entry,
       opening plus movement equals closing), payables and receivables by party with age (`finance/reports/income-statement`, `balance-sheet`, `cash-flow`,
       `aging`); a CSV of each, audited like the 4B.8a files, behind the new permission `finance:view_reports` (migration with its rollback)
-- [ ] **4B.8b-2** Margin by product reconciled with the ledger (from the order lines net of tax and the `ISSUE` movement costs), the CSV of the VAT report
-      through the audited path, and the exports through `GENERATE_EXPORT` if the owner wants them as stored files (debt (e) of 4B.8a)
+- [x] **4B.8b-2** Margin by product and store reconciled with the ledger (from the order lines net of tax and the `ISSUE` movement costs; the totals are
+      compared with the revenue and the cost of goods of the same sale entries and the difference is shown) behind `finance:view_reports`, with its CSV, and the
+      CSV of the VAT report through the audited path (`finance:export`, the cap, `FINANCE_EXPORTED`). The exports through `GENERATE_EXPORT` as stored files
+      stay with the owner's answer (debt (e) of 4B.8a, now debt (g) of 4B.8b-2)
 - [x] **4B.8a** Close and reopen (`TDD_18 §5`): the preconditions (in order, ended, no failed posting, the period balances from its lines and from the
       balances the database keeps), the lock, the frozen hash head, who/when/why of a reopen, the events `FINANCE_PERIOD_CLOSED` and
       `FINANCE_PERIOD_REOPENED`; the check of the chain on demand (`finance/reports/verify-chain`: every hash, every `prevHash`, the head of the settings,
       the head each closed period froze)
-- [ ] **4B.8b-2** `VERIFY_LEDGER_CHAIN` weekly as a job (a break notifies and blocks the close until a person clears it), `RECONCILE_FINANCE` daily (balances against the lines, inventory against its value, receivables
-      against the open shipments, each fiscal document against its entry), their metrics and alerts, and "late postings" in the period view
+- [x] **4B.8b-2** `VERIFY_LEDGER_CHAIN` weekly as a job (`'0 5 * * 0'`): one open incident per organization (`finance_chain_incidents`), told once
+      (`FINANCE_CHAIN_BROKEN`, notification `finance.chain_broken`), the gauge `platform_finance_chain_breaks`, and the close refused with
+      `FINANCE_CLOSE_CHAIN_BROKEN` until a check passes again; the walk moved from the api to `libs/core/finance` so the api (on demand) and the worker (weekly) run
+      the same code. `RECONCILE_FINANCE` daily with the sweep and the balances was 4B.6b-3
+- [ ] **4B.8b-2b** The rest of `RECONCILE_FINANCE` (`TDD_18 §11`): the inventory accounts against `InventoryLevel.valueCents` and the goods in carrier hands, the
+      carrier receivable against the open COD shipments, each fiscal document against its entry, the sweeps of the fiscal documents (sales with no document, documents left
+      `QUEUED` or `SUBMITTED`, debts of 4B.7a-2), "late postings" in the period view, the open items kept by party (debt (a) of 4B.8b-1) and the warnings of `TDD_18 §5.1`
+      (cash with unreconciled lines, a fiscal document queued or rejected in the period)
 - [x] **4B.8b-3** The legal books as a MECHANISM (**[ACCOUNTANT]**: the legal layout is the accountant's and the law's, not the design's): the book of sales to
       taxpayers, of sales to final consumers and of purchases as read-only reports over the ledger of a fiscal period (`finance/books/:kind`, `.../csv`), laid
       out by a versioned, append-only layout of the organization (`finance/book-layouts`: columns from a closed catalog, order, correlative start and restart),
@@ -1950,6 +1958,34 @@ reading of `TDD_18 §9.1` as the trial balance of 4B.8a (debt (n)); a per-store 
 written like every finance audit row, not awaited (debt (k) of 4B.8a). (f) `finance:view_reports` is not yet in a role preset other than
 Admin: owners of custom roles grant it by hand, and 4B.9 lists it in the matrix of the screen.
 
+**Built in PR 4B.8b-2 (the weekly check of the chain, the margin by product and the VAT file; very high risk: the hash chain and the close of the books):** the
+walk of the chain (`FinanceChainVerifier`) and what a check leaves behind (`FinanceChainMonitor`) in `libs/core/finance`, shared by the api and the worker; the table
+`finance_chain_incidents` (migration `20270107100000` with its rollback; a partial unique index keeps ONE open incident per organization); the job
+`VERIFY_LEDGER_CHAIN` on the heavy queue with its weekly scheduler (`FinanceChainScheduler`, the same shape as the daily one: a lock, one job per organization and
+day, retries) and its processor branch (`FinanceChainChecker`, which sets `platform_finance_chain_breaks`); the event `FINANCE_CHAIN_BROKEN` (bridged to the api)
+and the notification to whoever holds `finance:close_periods`; `FinanceCloseGuard` and the close refuse with `FINANCE_CLOSE_CHAIN_BROKEN` while an incident is
+open; the margin by product (`finance/reports/margin` and `margin.csv`, `finance:view_reports`, plus `finance:export` for the file, audited), the pure rules in
+`margin-rules.ts`; the VAT CSV now needs `finance:export` and leaves a `FINANCE_EXPORTED` row. The coverage maps of both kinds carry the two new routes.
+**Decisions of PR 4B.8b-2 (rule 12):** (1) **A break is an incident, not a flag on the settings:** a table of its own (rejected: columns on `finance_settings`, whose
+row every posting locks and which a job would then contend for), with the first sight, the last sight and the day it was cleared kept as the record. (2) **A check
+that passes closes the incident, whoever ran it** (the weekly job or the auditor's request): the only way to clear it is for the chain to verify again, so nobody
+clears it by clicking (rejected: a "dismiss" route, which would let a person silence an alteration; the accountant may ask for one with a reason, owner 4B.9b). (3)
+**The on-demand check also opens the incident** (rejected: only the job opens it, which would let an auditor's own finding leave the close open until Sunday). (4) **The
+gauge is 1 or 0, not a counter** (the TDD says `_total`; the balance gauge of 4B.6b-3 set the precedent): an alert clears itself when the books are sound. (5) **The margin
+follows the sale entries**: the orders are the sources of the sale entries dated in the range, so the report moves with the date the ledger recognized the sale, and its
+revenue is split line by line with the same rules as the entry (`saleAmounts`, an order that does not add up is counted as not readable, never forced). (6) **A report
+never compares against a missing role:** the figure is `null` and the warning names the role. (7) **No new permission:** the margin reads the one of 4B.8b-1; the VAT file
+asks the permission of every other file. (8) **The incident table has its isolation case** (`financeChainIncident` in `tenant-isolation.spec.ts`, through `chain-status`) and the guard is covered by `tests/api/finance-chain-job.spec.ts` (an incident of A never blocks B, with the mutant of dropping the organization from the
+guard) and the margin by `tests/api/finance-margin.spec.ts` (B's products never show in A's report, and A cannot ask for B's store).
+**Left by PR 4B.8b-2 (rule 12):** (a) `RECONCILE_FINANCE` is not finished: row 4B.8b-2b above lists what remains. (b) The margin is gross of returns by product: the
+returns of the range are shown as one figure from the ledger (`returns`), not split by product (a return would need its own lines per product: **[ACCOUNTANT]** says whether
+the margin wants them net); a sale entry that was reversed is not excluded (nothing reverses an automatic sale entry today). (c) The margin reads the sale entries of the
+range in pages of 500 and the orders of each page: at the owner's volume it is fast, at a hundred thousand orders it is a job or a table the posting keeps (Step 7.3).
+(d) A product renamed after the sale shows its current name (the report reads the product, not the snapshot of the line). (e) The incident is read by `finance/reports/chain-status` (`finance:view_reports`); 4B.9b draws it in the period view. (f) The notification goes to
+the holders of `finance:close_periods`; the accountant's own preference of channel is the matrix of notifications. (g) The CSV files of the books are still direct downloads, not
+stored files with a signed link and a retention (debt (e) of 4B.8a): an organization-scoped `Export` needs the owner's confirmation. (h) A weekly check reads the whole
+journal of every organization with books: at the owner's volume it is seconds; a journal of millions of lines wants a check by ranges since the last frozen head (Step 7.3).
+(i) A check does not tell who tampered, only that the chain does not verify: the answer is a person's (the owner with the accountant), outside the product. (j) The gauge is set by the process that ran the check: with several worker replicas or an api and a worker each keeps its own last value, so the alert reads the maximum and an incident cleared in one process clears in the others at their next check; a gauge computed at scrape time from the table is Step 7.3. (k) The application roles can update only the columns a check moves and can neither delete nor truncate an incident (`REVOKE` and a column `GRANT` in the migration); a privilege assertion for it in `finance-schema.spec.ts` needs the app-role client and comes with 4B.8b-2b. (m) The margin reads the whole organization narrowed by `storeId`, as the other reports do (debt (n) of 4B.8a, (j) of 4B.8b-1), and its range is at most a year. (l) The walk goes on from the head when postings land during it (a few rounds); a ledger that posts faster than a walk reads would end in `head_mismatch` after the rounds, which at the owner's volume cannot happen.
 **Decisions of PR 4B.8b-3 (rule 12):** (1) the format of a legal book is **[ACCOUNTANT]** and is not decided here: a book is a report whose columns (from a closed
 catalog, `LegalBookField`), order, correlative start and restart (month or year) and the rule for a sale with no document are the organization's own data, and the
 layout of the code is a PROPOSAL that says so in the code (`PROPOSED_BOOK_COLUMNS`), in every answer (`unvalidated`, `X-Book-Unvalidated`) and here (rejected:
@@ -3085,7 +3121,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.5 | Suppliers and purchase orders | done | #542 | 2026-11-15 |
 | 4B.6 | The automatic entries (sales, remittances, returns, stock) | in progress | 4B.6a machinery, E1 to E3 and E9 (#546); 4B.6b-1 carrier charges, remittance confirmed and voided (E4 to E6; #548); 4B.6b-2 the difference written off, returns and the fee permission (E7, E8, E4 of a return guide; #550); 4B.6b-3 the sweep, its metrics, the failure notice and the close guard (this PR); 4B.6b-4 the prepaid charge model: todo | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | in progress | 4B.7a-1 the libraries and the rule (#552, done); 4B.7a-2 the database, the lifecycle, the queue and the routes (#555, done); 4B.7b-1 the credit note of a return and the replacement of a voided document (#562, done); 4B.7b-2 the evidence as media, the notices, the consultation for `void`, the issuer change a person confirms and the credit note made again (this PR); 4B.7b-3 the customer's fiscal data: todo | |
-| 4B.8 | Reports, monthly close and the auditor's export | in progress | 4B.8a (#553); 4B.8b-1 statements and aging (#556); 4B.8b-3 legal books mechanism (this PR); 4B.8b-2 and 4B.8b-4 (the accountant's layout): todo | |
+| 4B.8 | Reports, monthly close and the auditor's export | in progress | 4B.8a (#553); 4B.8b-1 statements and aging (#556); 4B.8b-2 chain job, margin, VAT file (#561); 4B.8b-3 legal books mechanism (#559); 4B.8b-2b and 4B.8b-4 (the accountant's layout): todo | |
 | 4B.9 | Finance interface (web) | in progress | 4B.9a-1 (setup, chart, taxes, settings, periods) #554, 4B.9a-2 (the journal, transactions and receipts; #560), 4B.9a-3 (bank reconciliation by CSV) #557, 4B.9a-4 (suppliers, purchases, payables; #558), 4B.9b-1 (close, reports; #563); 4B.9b-2 to 4B.9b-4: todo | |
 | **Milestone 5: Operations** | | | | |
 | 5.1 | Search | done | #486 (PR A: the server), #488 (PR B: the web), #496 (the click, in Step 5.2 PR C3) | 2026-11-15 |

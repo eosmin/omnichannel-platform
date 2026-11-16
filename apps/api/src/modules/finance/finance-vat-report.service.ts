@@ -1,19 +1,27 @@
 import { Injectable } from '@nestjs/common'
 
+import { AuditAction } from '@platform/core/audit'
+import { AuditService } from '@platform/core/audit-module'
 import { PrismaService } from '@platform/core/database'
 import {
   AccountRole,
   FinanceCurrency,
+  FinanceReport,
+  FinanceReportLimits,
+  FinanceResourceTypes,
   OrderStatus,
   SaleRecognition,
   VatLineKind,
   VatSide
 } from '@platform/core/domain'
-import { ErrorCodes } from '@platform/core/errors'
+import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import { ExportLimits } from '@platform/core/exports'
 import { vatLinesOfOrder } from '@platform/core/finance'
 import { financeRefusal } from '@platform/core/finance-ledger'
 
+import type { Actor } from '../tenancy'
+
+import { vatReportCsv } from './finance-vat-report.csv'
 import type { VatReportQuery } from './finance.schemas'
 import { isoDay, type VatMonthView, type VatReportView, type VatRowView } from './finance.views'
 
@@ -33,7 +41,46 @@ interface Bucket {
 // taxpayers, purchases) wait for the accountant's format (**[ACCOUNTANT]**, Step 4B.8).
 @Injectable()
 export class FinanceVatReportService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService
+  ) {}
+
+  // The same report as a file taken out (TDD_18 §7, §10): held to the cap of every other file (never cut short, a cut file looks whole to
+  // an accountant) and audited with the range and the row count, never the rows. The figures are cents and the texts go through the writer
+  // of the other exports, so a text that starts like a formula is written as text. The audit row is written the way every finance audit
+  // row is (not awaited, debt (k) of 4B.8a).
+  async csv(organizationId: string, query: VatReportQuery, actor: Actor): Promise<string> {
+    const report = await this.report(organizationId, query)
+    // One row for each line of the report, the balance of each month and each warning with a count
+    const rows =
+      report.rows.length +
+      report.months.length +
+      [
+        report.ordersWithoutTaxSnapshot,
+        report.ordersNotReadable,
+        report.returnedOrdersIncluded
+      ].filter(count => count > 0).length
+    if (rows > FinanceReportLimits.MAX_CSV_ROWS) {
+      throw new PlatformException(
+        ErrorCodes.EXPORT_TOO_LARGE,
+        'the file would be larger than one export: narrow the dates',
+        HttpStatusCodes.BAD_REQUEST
+      )
+    }
+    this.audit.log({
+      action: AuditAction.FINANCE_EXPORTED,
+      actor: { userId: actor.userId },
+      organizationId,
+      storeId: actor.storeId,
+      resourceType: FinanceResourceTypes.REPORT,
+      resourceId: organizationId,
+      metadata: { report: FinanceReport.VAT, from: report.from, to: report.to, rows },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
+    return vatReportCsv(report)
+  }
 
   async report(organizationId: string, query: VatReportQuery): Promise<VatReportView> {
     const db = this.prisma.client

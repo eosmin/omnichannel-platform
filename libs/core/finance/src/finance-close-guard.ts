@@ -12,6 +12,9 @@ export interface CloseBlockers {
   pendingSources: number
   // The sweep stopped at its cap: there may be more than `pendingSources` says, so the close is refused too
   truncated: boolean
+  // The weekly check of the hash chain found the journal altered and no check has passed since: no month closes over a chain that does
+  // not verify (TDD_18 §11). It is the whole organization's, never one period's.
+  chainBroken: boolean
   // True when the month cannot be closed: a close that left a source out would be moved by a late posting (TDD_18 §5.1)
   blocked: boolean
 }
@@ -43,6 +46,21 @@ export class FinanceCloseGuard {
       .map(row => ({ reason: row.reason, count: row._count._all }))
       .sort((a, b) => a.reason.localeCompare(b.reason))
     const failureCount = failures.reduce((sum, row) => sum + row.count, 0)
+    const chainBroken =
+      (await this.prisma.client.financeChainIncident.count({
+        where: { organizationId, resolvedAt: null }
+      })) > 0
+    // An altered chain refuses the close whatever else is pending, so the sweep (one preview transaction per source with no entry) is not paid
+    if (chainBroken) {
+      return {
+        failures,
+        failureCount,
+        pendingSources: 0,
+        truncated: false,
+        chainBroken,
+        blocked: true
+      }
+    }
     const swept = await this.sweep.sweep(organizationId, new Date(), options)
     const pendingSources = swept.toQueue.length
     return {
@@ -50,7 +68,8 @@ export class FinanceCloseGuard {
       failureCount,
       pendingSources,
       truncated: swept.truncated,
-      blocked: failureCount > 0 || pendingSources > 0 || swept.truncated
+      chainBroken,
+      blocked: failureCount > 0 || pendingSources > 0 || swept.truncated || chainBroken
     }
   }
 }

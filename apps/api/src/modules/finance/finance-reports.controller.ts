@@ -30,7 +30,11 @@ import {
   type ResolvedTenant
 } from '../tenancy'
 
-import { type ChainVerification, FinanceChainService } from './finance-chain.service'
+import {
+  type ChainStatusView,
+  type ChainVerification,
+  FinanceChainService
+} from './finance-chain.service'
 import { FinanceCloseService } from './finance-close.service'
 import { journalCsvHeader, journalCsvRows, ledgerCsv, trialBalanceCsv } from './finance-reports.csv'
 import {
@@ -182,6 +186,13 @@ export class FinanceReportsController {
       for await (const page of pages) yield journalCsvRows(page)
     }
     return new StreamableFile(Readable.from(chunks()))
+  }
+
+  // Whether the weekly check left the chain flagged: the incident that stops a close, read without scanning the journal
+  @RequirePermissions(Permissions.FINANCE_VIEW_REPORTS)
+  @Get(ApiRoutes.finance.reports.chainStatus)
+  chainStatus(@CurrentOrganization() organization: Organization): Promise<ChainStatusView> {
+    return this.chain.status(organization.id)
   }
 
   // The check of the hash chain, on demand for the auditor (TDD_18 §11): the verdict, the head, and whether every frozen head is still there

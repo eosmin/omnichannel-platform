@@ -192,6 +192,8 @@ export const ApiRoutes = {
       ledgerCsv: '/finance/reports/ledger.csv',
       journalCsv: '/finance/reports/journal.csv',
       verifyChain: '/finance/reports/verify-chain',
+      // The incident of the chain the weekly check left open, or none (Step 4B.8b-2)
+      chainStatus: '/finance/reports/chain-status',
       // The statements and the lists with age (Step 4B.8b), by store when asked, as of a date or over a range, with their CSV files
       incomeStatement: '/finance/reports/income-statement',
       balanceSheet: '/finance/reports/balance-sheet',
@@ -200,7 +202,10 @@ export const ApiRoutes = {
       incomeStatementCsv: '/finance/reports/income-statement.csv',
       balanceSheetCsv: '/finance/reports/balance-sheet.csv',
       cashFlowCsv: '/finance/reports/cash-flow.csv',
-      agingCsv: '/finance/reports/aging.csv'
+      agingCsv: '/finance/reports/aging.csv',
+      // The margin by product and store, read against the ledger's revenue and cost of goods (Step 4B.8b-2)
+      margin: '/finance/reports/margin',
+      marginCsv: '/finance/reports/margin.csv'
     },
     // The legal books (TDD_18 §7, Step 4B.8b-3): the layout of each kind of book is the organization's (PUT writes a new version), a book is
     // read for a period, as JSON and as a CSV, and a closed period's book is frozen and listed

@@ -21,6 +21,7 @@ describe('HeavyProcessingProcessor', () => {
   const enforceRetention = jest.fn().mockResolvedValue(undefined)
   const postFinance = jest.fn().mockResolvedValue({ outcome: 'posted' })
   const reconcileFinance = jest.fn().mockResolvedValue(undefined)
+  const checkChain = jest.fn().mockResolvedValue(undefined)
   const submitFiscal = jest.fn().mockResolvedValue(undefined)
   const support = {
     run: (_queue: string, current: ProcessorJob, work: (job: ProcessorJob) => Promise<void>) =>
@@ -41,6 +42,7 @@ describe('HeavyProcessingProcessor', () => {
     { enforce: enforceRetention } as never, // the nightly retention of a store: what it is handed is what is tested
     { post: postFinance } as never, // the automatic entries of the books: what it is handed is what is tested
     { reconcile: reconcileFinance } as never, // the daily check of the books: what it is handed is what is tested
+    { check: checkChain } as never, // the weekly check of the chain: what it is handed is what is tested
     { submit: submitFiscal } as never // the fiscal documents: what it is handed is what is tested
   )
 
@@ -221,6 +223,33 @@ describe('HeavyProcessingProcessor', () => {
       reconcileFinance.mockClear()
       await expect(reconcile(data)).rejects.toBeInstanceOf(UnrecoverableError)
       expect(reconcileFinance).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('verify-ledger-chain jobs', () => {
+    const ORG_ID = '8d88e80f-cecb-408a-bd99-9da2db20a7da'
+    const verify = (data: unknown): Promise<void> =>
+      processor.process({
+        name: JobNames.VERIFY_LEDGER_CHAIN,
+        data: JSON.parse(JSON.stringify(data)) as unknown,
+        attemptsMade: 0,
+        opts: { attempts: 3 }
+      } as unknown as ProcessorJob)
+
+    it('hands the organization to the check of the chain, nothing else', async () => {
+      checkChain.mockClear()
+      await verify({ organizationId: ORG_ID })
+      expect(checkChain).toHaveBeenCalledWith(ORG_ID)
+    })
+
+    it.each([
+      ['an organization that is not an id', { organizationId: 'mine' }],
+      ['no organization', {}],
+      ['a store instead of an organization', { storeId: ORG_ID }]
+    ])('refuses %s, and does not ask again', async (_label, data) => {
+      checkChain.mockClear()
+      await expect(verify(data)).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(checkChain).not.toHaveBeenCalled()
     })
   })
 

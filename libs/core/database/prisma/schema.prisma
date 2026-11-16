@@ -43,6 +43,7 @@ model Organization {
   journalLines          JournalLine[]
   periodBalances        AccountPeriodBalance[]
   postingFailures       FinancePostingFailure[]
+  chainIncidents        FinanceChainIncident[]
   bankProfiles          BankImportProfile[]
   bankImports           BankStatementImport[]
   bankLines             BankStatementLine[]
@@ -2893,6 +2894,26 @@ model FinancePostingFailure {
   @@unique([organizationId, sourceType, sourceId, eventKind])
   @@index([organizationId, resolvedAt])
   @@map("finance_posting_failures")
+}
+
+// An alteration of the hash chain of the journal that the weekly check found (TDD_18 §11, Step 4B.8b-2). One OPEN row per organization at
+// most (a partial unique index in the migration, which Prisma cannot express): a later check that still finds the break only moves
+// `last_seen_at`; a check that passes closes it. While a row is open the close of a month is refused. It is the record of an incident,
+// not a fix: the journal is never touched from here.
+model FinanceChainIncident {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  reason         String // ChainProblem: a code, never free text
+  entryNumber    String?   @map("entry_number") // the number of the last entry the walk trusted, or of the broken one
+  entriesChecked Int       @map("entries_checked")
+  detectedAt     DateTime  @default(now()) @map("detected_at")
+  lastSeenAt     DateTime  @map("last_seen_at")
+  resolvedAt     DateTime? @map("resolved_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, resolvedAt])
+  @@map("finance_chain_incidents")
 }
 
 // ============================================================================================================

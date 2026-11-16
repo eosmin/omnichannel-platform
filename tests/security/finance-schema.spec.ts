@@ -11,6 +11,7 @@ import {
   BankStatementEncodings,
   BankThousandsSeparators,
   CashKind,
+  ChainProblem,
   EntryOrigin,
   FinanceSourceType,
   JournalEntryType,
@@ -1276,12 +1277,43 @@ describe('The tables of the ledger', () => {
       ['chk_journal_lines_party', PartyType],
       ['chk_finance_settings_recognize', SaleRecognition],
       ['chk_finance_posting_failures_source_type', FinanceSourceType],
+      ['chk_finance_chain_incidents_reason', ChainProblem],
       ['chk_reconciliation_status', ReconciliationMatchStatus],
       ['chk_bank_profiles_thousands', BankThousandsSeparators],
       ['chk_bank_profiles_encoding', BankStatementEncodings],
       ['chk_bank_profiles_date_format', RemittanceDateFormats]
     ])('hold exactly the values of the enum in %s', async (constraint, values) => {
       expect(await listedIn(constraint)).toEqual(Object.values(values).sort())
+    })
+  })
+
+  describe('the incidents of the chain', () => {
+    const incident = (organizationId: string, reason = ChainProblem.HASH_MISMATCH) => ({
+      organizationId,
+      reason,
+      entryNumber: '1',
+      entriesChecked: 3,
+      lastSeenAt: new Date()
+    })
+
+    it('keep one open incident for each organization, and as many closed ones as there were', async () => {
+      const first = await owner.financeChainIncident.create({ data: incident(orgA.id) })
+      await expect(owner.financeChainIncident.create({ data: incident(orgA.id) })).rejects.toThrow()
+      // Another organization has its own
+      await owner.financeChainIncident.create({ data: incident(orgB.id) })
+      await owner.financeChainIncident.update({
+        where: { id: first.id },
+        data: { resolvedAt: new Date() }
+      })
+      await owner.financeChainIncident.create({ data: incident(orgA.id) })
+      expect(await owner.financeChainIncident.count({ where: { organizationId: orgA.id } })).toBe(2)
+    })
+
+    it('refuse a reason that is not a code of the check', async () => {
+      await expect(
+        owner.$executeRaw`INSERT INTO finance_chain_incidents (id, organization_id, reason, entries_checked, last_seen_at)
+          VALUES (${crypto.randomUUID()}, ${orgB.id}, 'because I said so', 1, now())`
+      ).rejects.toThrow()
     })
   })
 

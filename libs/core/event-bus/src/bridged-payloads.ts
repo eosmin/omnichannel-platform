@@ -7,6 +7,7 @@ import {
   BulkLabelJobStatus,
   CarrierStatusLimits,
   CHANNEL_ID_PATTERN,
+  ChainProblem,
   ConversationStatus,
   ConversationStatusReasons,
   FinanceEventKind,
@@ -220,6 +221,8 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     reason: z.enum(FinancePostingFailureReason),
     attempts: z.number().int().min(1)
   }),
+  // The weekly check of the chain opened an incident: the organization and the code of what broke
+  [Events.FINANCE_CHAIN_BROKEN]: z.object({ organizationId: id, reason: z.enum(ChainProblem) }),
   // A fiscal document was refused: ids and the reason code, never the receiver's data
   [Events.FISCAL_DOCUMENT_REJECTED]: z.object({
     organizationId: id,
