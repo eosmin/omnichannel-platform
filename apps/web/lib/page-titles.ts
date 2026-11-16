@@ -58,6 +58,8 @@ export const PageTitles = {
   orgCounts: ['settings.nav.org.counts', 'settings.nav.org.title'],
   finance: ['settings.nav.finance.title'],
   financeAccounts: ['settings.nav.finance.accounts', 'settings.nav.finance.title'],
+  financeJournal: ['settings.nav.finance.journal', 'settings.nav.finance.title'],
+  financeTransactions: ['settings.nav.finance.transactions', 'settings.nav.finance.title'],
   financeTaxes: ['settings.nav.finance.taxes', 'settings.nav.finance.title'],
   financePeriods: ['settings.nav.finance.periods', 'settings.nav.finance.title'],
   financeReports: ['settings.nav.finance.reports', 'settings.nav.finance.title'],

@@ -167,3 +167,15 @@ export function cashAccountsOf(
       (account.cashKind !== null && (kinds === undefined || kinds.includes(account.cashKind)))
   )
 }
+
+// "1101 · Cash": how an account is named wherever a list or a line shows it; an id that is not in the chart (never expected) shows as itself
+export function accountLabelsOf(
+  accounts: readonly FinanceAccountView[]
+): (accountId: string | null) => string {
+  const byId = new Map(accounts.map(account => [account.id, account]))
+  return accountId => {
+    if (accountId === null) return ''
+    const account = byId.get(accountId)
+    return account === undefined ? accountId : `${account.code} · ${account.name}`
+  }
+}

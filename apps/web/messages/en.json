@@ -2946,10 +2946,12 @@
         "periods": "Periods",
         "reports": "Reports",
         "settings": "Settings",
+        "journal": "Journal",
+        "transactions": "Transactions",
+        "reconciliation": "Bank reconciliation",
         "suppliers": "Suppliers",
         "purchases": "Purchases",
-        "payables": "Payables",
-        "reconciliation": "Bank reconciliation"
+        "payables": "Payables"
       }
     },
     "store": {
@@ -6076,6 +6078,577 @@
         "saved": "Preference saved."
       }
     },
+    "journal": {
+      "title": "Journal",
+      "description": "Every entry of the books, the newest first. An entry is never edited or erased: a mistake is reversed by another entry.",
+      "new": "Write an entry",
+      "empty": "There are no entries yet.",
+      "emptyFiltered": "No entry matches these filters.",
+      "loadMore": "Show more entries",
+      "loadFailed": "The entries could not be read.",
+      "filters": {
+        "label": "Filter the journal",
+        "type": "Type",
+        "allTypes": "All types",
+        "account": "Account",
+        "allAccounts": "All accounts",
+        "from": "From",
+        "to": "To",
+        "clear": "Clear filters"
+      },
+      "row": {
+        "number": "Entry {number}",
+        "reversed": "Reversed",
+        "reversal": "Reversal",
+        "automatic": "Automatic",
+        "noMemo": "No description"
+      }
+    },
+    "entryTypes": {
+      "manual": "Manual entry",
+      "opening_balance": "Opening balance",
+      "expense": "Expense",
+      "income": "Income",
+      "transfer": "Transfer",
+      "sale": "Sale",
+      "sale_shipment": "Shipping of a sale",
+      "sale_return": "Return of a sale",
+      "cod_remittance": "Cash on delivery remittance",
+      "cod_write_off": "Cash on delivery write-off",
+      "purchase_receipt": "Purchase received",
+      "supplier_payment": "Supplier payment",
+      "inventory_adjustment": "Inventory adjustment",
+      "reversal": "Reversal"
+    },
+    "entry": {
+      "title": "Entry {number}",
+      "description": "Dated {date}.",
+      "close": "Close",
+      "fields": {
+        "date": "Date",
+        "type": "Type",
+        "memo": "Description",
+        "origin": "Origin",
+        "source": "Source",
+        "createdAt": "Registered"
+      },
+      "origins": {
+        "user": "A person",
+        "system": "Posted automatically"
+      },
+      "sources": {
+        "order": "An order",
+        "shipment": "A shipment",
+        "remittance": "A remittance",
+        "return": "A return",
+        "inventory_movement": "A stock movement",
+        "purchase_receipt": "A purchase received",
+        "supplier_payment": "A supplier payment",
+        "finance_transaction": "An expense, income or transfer",
+        "manual": "An entry written by hand"
+      },
+      "lines": {
+        "label": "Lines of the entry",
+        "account": "Account",
+        "debit": "Debit",
+        "credit": "Credit",
+        "memo": "Note",
+        "total": "Total"
+      },
+      "reversed": "This entry was reversed by another entry.",
+      "reverses": "This entry reverses another entry.",
+      "belongsToTransaction": "This entry belongs to an expense, income or transfer. Void it from Transactions to reverse it.",
+      "reverse": {
+        "action": "Reverse this entry",
+        "title": "Reverse entry {number}",
+        "description": "Writes a new entry with the debits and credits swapped. The entry stays in the journal for good.",
+        "formLabel": "Reverse an entry",
+        "memo": "Reason",
+        "date": "Date of the reversal (optional)",
+        "dateHint": "Leave it empty to reverse it on the date of the entry. A closed month is reversed in an open one.",
+        "submit": "Reverse",
+        "cancel": "Cancel",
+        "confirmTitle": "Reverse entry {number}?",
+        "confirmDescription": "A reversal cannot be undone or erased. It stays in the journal next to the entry.",
+        "confirm": "Reverse entry",
+        "done": "Entry reversed.",
+        "problems": {
+          "memo": "Write the reason for the reversal.",
+          "date": "Write a date that exists, as year-month-day."
+        }
+      },
+      "titleLoading": "Entry",
+      "loading": "Loading the entry…",
+      "belongsToPurchase": "This entry belongs to a purchase or a supplier payment. Undo it from the purchase."
+    },
+    "manual": {
+      "title": "Write an entry",
+      "description": "An entry written by hand needs at least two lines and the debits must equal the credits. It cannot be edited afterwards, only reversed.",
+      "formLabel": "Entry by hand",
+      "date": "Date",
+      "type": "Kind of entry",
+      "memo": "Description",
+      "memoHint": "What this entry is for: the accountant reads it.",
+      "types": {
+        "manual": "Manual entry",
+        "opening_balance": "Opening balance"
+      },
+      "lines": "Lines",
+      "line": "Line {number}",
+      "account": "Account {number}",
+      "pickAccount": "Pick an account",
+      "debit": "Debit {number}",
+      "credit": "Credit {number}",
+      "lineMemo": "Note {number} (optional)",
+      "addLine": "Add a line",
+      "removeLine": "Remove line {number}",
+      "totals": {
+        "debit": "Debits",
+        "credit": "Credits",
+        "difference": "Difference",
+        "balanced": "The entry balances."
+      },
+      "problems": {
+        "date": "Write a date that exists, as year-month-day.",
+        "memo": "Write what this entry is for.",
+        "lines": "An entry needs at least two lines.",
+        "line": "Line {number}: pick an account and write an amount on only one side, with at most two decimals.",
+        "balance": "The debits and the credits are not equal.",
+        "total": "The total of the entry is more than the books can hold."
+      },
+      "submit": "Post entry",
+      "cancel": "Cancel",
+      "confirmTitle": "Post this entry?",
+      "confirmDescription": "An entry written by hand cannot be edited or erased afterwards, only reversed by another entry.",
+      "confirm": "Post entry",
+      "done": "Entry {number} posted."
+    },
+    "transactions": {
+      "title": "Transactions",
+      "description": "The expenses, incomes and transfers between accounts that are registered by hand. A mistake is voided or replaced, never edited.",
+      "new": "Register a transaction",
+      "empty": "There are no transactions yet.",
+      "emptyFiltered": "No transaction matches these filters.",
+      "loadMore": "Show more transactions",
+      "loadFailed": "The transactions could not be read.",
+      "kinds": {
+        "expense": "Expense",
+        "income": "Income",
+        "transfer": "Transfer"
+      },
+      "filters": {
+        "label": "Filter the transactions",
+        "kind": "Kind",
+        "allKinds": "All kinds",
+        "account": "Account",
+        "allAccounts": "All accounts",
+        "from": "From",
+        "to": "To",
+        "includeVoided": "Show voided transactions",
+        "clear": "Clear filters"
+      },
+      "row": {
+        "voided": "Voided",
+        "replaces": "Replaces another",
+        "noMemo": "No description",
+        "receipt": "Receipt attached"
+      },
+      "detail": {
+        "title": "Transaction",
+        "description": "{kind} dated {date}.",
+        "close": "Close",
+        "amount": "Amount",
+        "tax": "Tax included",
+        "date": "Date",
+        "kind": "Kind",
+        "from": "From",
+        "to": "To",
+        "category": "Category",
+        "document": "Document number",
+        "memo": "Description",
+        "status": "Status",
+        "active": "In the books",
+        "voided": "Voided: a reversing entry was posted.",
+        "replaces": "This transaction replaces another one that was voided.",
+        "entry": "Entry in the journal",
+        "entryNumber": "Entry {number}",
+        "loadFailed": "The transaction could not be read.",
+        "loading": "Loading the transaction…"
+      },
+      "form": {
+        "formLabel": "Transaction",
+        "createTitle": "Register a transaction",
+        "createDescription": "What was paid or received, with the tax included. The tax is worked out from the rate.",
+        "replaceTitle": "Replace this transaction",
+        "replaceDescription": "Voids this transaction and registers the one you write here, in one step.",
+        "kind": "Kind",
+        "date": "Date",
+        "amount": "Amount (US$)",
+        "amountHint": "What was paid or received, tax included. For example 12.50.",
+        "expenseFrom": "Paid from",
+        "incomeTo": "Received in",
+        "transferFrom": "From account",
+        "transferTo": "To account",
+        "pickAccount": "Pick an account",
+        "expenseCategory": "Expense account",
+        "incomeCategory": "Income account",
+        "pickCategory": "Pick the account it is classified under",
+        "taxRate": "Tax rate",
+        "noTax": "No tax",
+        "taxCreditable": "The tax can be credited",
+        "taxCreditableHint": "Only with a valid document of the supplier. If it is not credited, the tax is booked as part of the cost.",
+        "taxPreview": "Tax inside the amount: {amount}",
+        "documentNumber": "Document number (optional)",
+        "memo": "Description (optional)",
+        "reason": "Reason for replacing it",
+        "problems": {
+          "date": "Write a date that exists, as year-month-day, and no more than a day ahead.",
+          "amount": "Write an amount greater than zero, with at most two decimals.",
+          "from": "Pick the account the money comes from.",
+          "to": "Pick the account the money goes to, different from the one it comes from.",
+          "category": "Pick the account it is classified under.",
+          "tax": "Pick a tax rate when the tax can be credited; the tax cannot be the whole amount.",
+          "documentNumber": "The document number is too long.",
+          "memo": "The description is too long.",
+          "reason": "Write the reason."
+        },
+        "submit": "Register",
+        "submitReplace": "Replace",
+        "cancel": "Cancel",
+        "created": "Transaction registered.",
+        "replaced": "Transaction replaced.",
+        "receiptNotSaved": "The transaction was registered, but its receipt could not be attached. Open the transaction to try again.",
+        "confirmReplaceTitle": "Replace this transaction?",
+        "confirmReplaceDescription": "The transaction is voided with a reversing entry that stays in the journal for good, and the new one is registered.",
+        "confirmReplace": "Replace transaction",
+        "rateOption": "{name} ({percent} %)"
+      },
+      "void": {
+        "action": "Void",
+        "title": "Void this transaction",
+        "description": "Posts a reversing entry. The transaction and its entry stay in the books, marked as voided.",
+        "reason": "Reason",
+        "submit": "Void transaction",
+        "cancel": "Cancel",
+        "confirmTitle": "Void this transaction?",
+        "confirmDescription": "A voided transaction is not voided again, and the reversing entry stays in the journal for good.",
+        "confirm": "Void transaction",
+        "done": "Transaction voided.",
+        "problems": {
+          "reason": "Write the reason for voiding it."
+        }
+      },
+      "replace": {
+        "action": "Replace"
+      },
+      "receipt": {
+        "title": "Receipt",
+        "none": "No receipt is attached.",
+        "view": "Open the receipt",
+        "choose": "Attach a file",
+        "checking": "Checking the file…",
+        "remove": "Remove {name}",
+        "hint": "A photo or a PDF of up to {size} MB. It is checked before it is attached, and it cannot be replaced later.",
+        "attached": "Receipt attached.",
+        "loadFailed": "The receipt could not be opened.",
+        "pending": "Opening the receipt…",
+        "attach": "Attach this file"
+      }
+    },
+    "reconciliation": {
+      "title": "Bank reconciliation",
+      "description": "Bring in the statement of a bank account as a CSV file and check it against the books. The rules suggest which line of the books each line of the statement is; you confirm or reject every suggestion, and nothing is reconciled on its own.",
+      "cancel": "Cancel",
+      "account": "Account",
+      "accountHint": "Only the cash, bank and wallet accounts of the chart that are on and post entries.",
+      "noAccounts": "There is no cash, bank or wallet account that posts entries yet. Make one in Accounts first.",
+      "conflicts": {
+        "bank_account_not_cash": "A statement is read for a cash, bank or wallet account.",
+        "bank_profile_name_in_use": "This account already has a profile with that name.",
+        "bank_profile_limit": "This account has the most profiles it can hold. Delete one you do not use.",
+        "bank_profile_invalid": "The profile breaks a rule of the profiles: open it and fix it before importing.",
+        "bank_import_nothing_new": "Every line of this file was imported already: there is nothing new in it.",
+        "bank_pair_not_allowed": "This pair is not allowed: the amount, the direction, the account or the dates do not agree.",
+        "bank_line_already_matched": "This line of the statement is already matched. Reload to see it.",
+        "bank_book_line_already_matched": "That line of the books is already matched with another line of a statement.",
+        "bank_decision_already_undone": "That decision was already taken back.",
+        "bank_line_matched": "This line is matched: only a line with no match can be recorded as a transaction.",
+        "bank_no_closing_balance": "This statement has no closing balance to compare the books with.",
+        "bank_changed": "The books changed in the same moment. Reload and decide again."
+      },
+      "status": {
+        "title": "Reconciliation of the month",
+        "description": "How many lines of the books and of the statements have their pair, and what the open ones add up to.",
+        "month": "Month",
+        "year": "Year",
+        "problems": {
+          "month": "Write a month from 1 to 12.",
+          "year": "Write a year of four digits."
+        },
+        "reconciled": "This month is reconciled: every line of the books and of the statements has its pair.",
+        "open": "This month is not reconciled yet.",
+        "sides": {
+          "book": "Books",
+          "statement": "Statements"
+        },
+        "counts": "{lines, plural, one {# line} other {# lines}}: {matched} matched, {unmatched} open",
+        "unmatchedAmount": "Open lines add up to {amount}"
+      },
+      "imports": {
+        "title": "Statements",
+        "description": "The statements imported for this account, the newest first. Open one to see its lines.",
+        "import": "Import a statement",
+        "empty": "No statement has been imported for this account yet.",
+        "range": "From {from} to {to}",
+        "lines": "{count, plural, one {# line} other {# lines}}, {added} new",
+        "closing": "ends with {amount} on {date}",
+        "open": "Open",
+        "dialog": {
+          "title": "Import a statement",
+          "description": "Choose the profile that reads the file of your bank and the file itself (up to {megabytes} MB and {rows} rows). If a single row cannot be read, nothing is imported.",
+          "formLabel": "Import a statement",
+          "profile": "Profile",
+          "chooseProfile": "Choose a profile…",
+          "noProfile": "This account has no profile yet. Make one below, with a sample of the file of your bank, and then import.",
+          "file": "Statement file",
+          "fileHint": "A CSV, TSV or text file. It is read with the encoding of the profile.",
+          "fileProblems": {
+            "too_large": "The file is larger than a statement can be.",
+            "empty": "The file is empty.",
+            "not_text": "The file is not readable as text with the encoding of the profile. Try the other encoding in the profile."
+          },
+          "closingBalance": "Closing balance (optional)",
+          "closingBalanceHint": "The balance the statement ends with, like 1234.56. It lets the books be compared with it.",
+          "closingOn": "Day of the closing balance",
+          "closingOnHint": "Year-month-day, like 2026-11-30. Needed with the balance.",
+          "problems": {
+            "profile": "Choose the profile that reads this file.",
+            "file": "Choose the file of the statement.",
+            "closingBalance": "Write the balance as an amount, like 1234.56.",
+            "closingOn": "Write a real day as year-month-day, like 2026-11-30. The balance and its day go together."
+          },
+          "cancel": "Cancel",
+          "submit": "Import",
+          "done": "{added, plural, one {# new line imported.} other {# new lines imported.}}"
+        }
+      },
+      "profiles": {
+        "title": "Profiles",
+        "description": "How the file of each bank is read: its separator, its columns and the days a line of the statement may be apart from the books.",
+        "new": "New profile",
+        "empty": "This account has no profile yet.",
+        "summary": "{delimiter}, {encoding}, window of {days, plural, one {# day} other {# days}}",
+        "edit": "Edit",
+        "delete": "Delete",
+        "editNamed": "Edit the profile {name}",
+        "deleteNamed": "Delete the profile {name}",
+        "deleteTitle": "Delete the profile {name}?",
+        "deleteDescription": "The statements already imported with it stay as they are. A file of this bank needs a profile again to be imported.",
+        "deleted": "The profile was deleted.",
+        "options": {
+          "delimiter": {
+            "tab": "Tab",
+            "comma": "Comma",
+            "semicolon": "Semicolon"
+          },
+          "encoding": {
+            "utf-8": "UTF-8",
+            "windows-1252": "Windows-1252 (Excel)"
+          },
+          "decimal": {
+            "dot": "Dot (1234.56)",
+            "comma": "Comma (1234,56)"
+          },
+          "thousands": {
+            "none": "None",
+            "comma": "Comma (1,234.56)",
+            "dot": "Dot (1.234,56)",
+            "space": "Space (1 234.56)"
+          },
+          "mode": {
+            "signed": "One column with the amount and its sign",
+            "split": "One column for debits and one for credits"
+          }
+        },
+        "dialog": {
+          "createTitle": "New profile",
+          "editTitle": "Edit the profile",
+          "description": "Say how the CSV of the bank is read. Load a sample of the file to check the columns before saving.",
+          "formLabel": "Bank profile",
+          "fields": {
+            "name": "Name",
+            "delimiter": "Separator of the columns",
+            "encoding": "Encoding of the file",
+            "encodingHint": "A file saved from Excel is usually Windows-1252.",
+            "decimalSeparator": "Decimal separator",
+            "thousandsSeparator": "Thousands separator",
+            "dateFormat": "Format of the date",
+            "window": "Days apart",
+            "windowHint": "How many days a line of the statement may be apart from the books and still be suggested.",
+            "hasHeader": "The first row names the columns",
+            "hasHeaderHint": "Leave it off when the file starts with data: the columns are then given by position.",
+            "mode": "How the money is written",
+            "date": "Column of the date",
+            "debit": "Column of what went out",
+            "debitHint": "The debits.",
+            "credit": "Column of what came in",
+            "creditHint": "The credits.",
+            "amount": "Column of the amount",
+            "amountHint": "Money in is positive and money out is negative.",
+            "description": "Column of the description (optional)",
+            "reference": "Column of the reference (optional)",
+            "referenceHint": "A check number or a transfer code the books may also have."
+          },
+          "columns": "Columns",
+          "columnHintHeader": "Write the name of the column as the first row of the file spells it.",
+          "columnHintPosition": "Write the position of the column: 0 is the first one.",
+          "problems": {
+            "name": "Give the profile a name of up to 80 characters.",
+            "date": "Say which column has the date.",
+            "description": "Write a column name, or its position when the file has no header.",
+            "reference": "Write a column name, or its position when the file has no header.",
+            "amount": "Say which column has the amount.",
+            "debit": "Say which column has the debits.",
+            "credit": "Say which column has the credits.",
+            "dateWindowDays": "Write a whole number of days from 0 to 31.",
+            "rule": "These settings break a rule: each value needs a column of its own, the money is one column or a debit and a credit column, and the separators must differ."
+          },
+          "sample": {
+            "label": "Sample of the file (optional)",
+            "hint": "Only the start of the file is sent to be read. Nothing is saved by trying a mapping.",
+            "problems": {
+              "too_large": "The file is larger than a statement can be.",
+              "empty": "The file is empty.",
+              "not_text": "The file is not readable as text with this encoding. Try the other one."
+            },
+            "headers": "Columns found: {headers}",
+            "useDetected": "Use the separator the file seems to have",
+            "preview": "Try this mapping"
+          },
+          "cancel": "Cancel",
+          "create": "Create the profile",
+          "save": "Save the profile",
+          "done": "The profile was saved."
+        }
+      },
+      "preview": {
+        "summary": "{rows, plural, one {# row read} other {# rows read}}, the first {shown} as they would be imported",
+        "row": "Row",
+        "date": "Date",
+        "description": "Description",
+        "reference": "Reference",
+        "amount": "Amount"
+      },
+      "errors": {
+        "title": "{count, plural, one {# row cannot be read} other {# rows cannot be read}}",
+        "row": "Row {row}, {field}: {reason}",
+        "rowWithValue": "Row {row}, {field}: {reason} (“{value}”)",
+        "more": "{count, plural, one {And # more.} other {And # more.}}",
+        "unknown": "the file could not be read",
+        "fields": {
+          "date": "date",
+          "description": "description",
+          "reference": "reference",
+          "amount": "amount",
+          "debit": "debit",
+          "credit": "credit"
+        },
+        "column_not_found": "the column is not in the file",
+        "column_ambiguous": "more than one column has that name",
+        "column_reused": "the column is used for two values",
+        "missing_cell": "the row has no such cell",
+        "empty_value": "the cell is empty",
+        "invalid_amount": "the amount is not valid with these separators",
+        "invalid_date": "the date does not match the format",
+        "invalid_text": "the text has a character that is not allowed",
+        "ambiguous_direction": "a row must fill the debit or the credit, not both and not neither",
+        "zero_amount": "the amount is zero",
+        "too_many_rows": "the file has more rows than a statement can have",
+        "empty_file": "the file has no rows",
+        "unclosed_quote": "a quote is never closed",
+        "row_too_wide": "the row has too many columns",
+        "stray_quote": "a quote is in the wrong place"
+      },
+      "statement": {
+        "title": "Statement from {from} to {to}",
+        "summary": "{lines, plural, one {# line} other {# lines}}, {added} new when it was imported",
+        "noClosing": "This statement has no closing balance, so the books are not compared with it.",
+        "filterLabel": "Show the lines",
+        "filters": {
+          "all": "All ({count})",
+          "suggested": "With suggestions ({count})",
+          "unmatched": "Open ({count})",
+          "matched": "Matched ({count})"
+        },
+        "confirmExact": "Confirm the exact matches",
+        "confirmExactTitle": "Confirm the exact matches?",
+        "confirmExactDescription": "This confirms, at once, every line whose suggestion is the only one for it and an exact one (the same day or the same reference), up to {max} lines. Lines with several suggestions, or one that is not exact, stay for you to decide. Every decision stays in the history and can be taken back one by one.",
+        "confirmExactAction": "Confirm them",
+        "confirmExactDone": "{confirmed, plural, one {# line confirmed} other {# lines confirmed}}; {left} left for you to decide.",
+        "empty": "No line to show with this filter.",
+        "previous": "Previous",
+        "next": "Next"
+      },
+      "difference": {
+        "title": "The books against the statement",
+        "statementBalance": "Balance of the statement on {date}",
+        "bookBalance": "Balance of the books on that day",
+        "difference": "Difference (statement minus books)",
+        "unmatchedStatement": "{count, plural, one {# open line of the statement} other {# open lines of the statement}}",
+        "unmatchedBook": "{count, plural, one {# open line of the books} other {# open lines of the books}}",
+        "unexplained": "Difference no open line explains",
+        "explained": "The open lines explain the whole difference.",
+        "unexplainedHint": "Part of the difference is not explained by any open line: look for a missing statement, an opening balance or a wrong amount."
+      },
+      "lines": {
+        "reference": "Reference {reference}",
+        "states": {
+          "matched": "Matched",
+          "suggested": "Has suggestions",
+          "unmatched": "Open"
+        },
+        "matchedWith": "Matched with the entry {number} of {date}",
+        "undo": "Undo",
+        "undone": "The decision was taken back.",
+        "suggestionsLabel": "Suggested entries",
+        "reasonsLabel": "Why it is suggested",
+        "reasons": {
+          "sameAmount": "Same amount to the cent",
+          "sameDay": "Same day",
+          "daysApart": "{days, plural, one {# day apart} other {# days apart}}",
+          "reference": "The reference agrees",
+          "exact": "Exact"
+        },
+        "noSuggestions": "No entry of the books has this amount near this date.",
+        "register": "See how it would be recorded",
+        "entry": "Entry {number} of {date}",
+        "reject": "Reject",
+        "rejectNamed": "Reject the entry {number}",
+        "rejectTitle": "Reject the entry {number}?",
+        "rejectDescription": "The suggestion will not be offered again for this line. It cannot be brought back from this screen.",
+        "rejected": "The suggestion was rejected.",
+        "confirm": "Confirm",
+        "confirmNamed": "Confirm the entry {number}",
+        "confirmed": "The pair was confirmed."
+      },
+      "draft": {
+        "title": "How this line would be recorded",
+        "description": "The books have no entry for this line. This is the transaction the statement line would be, prefilled; reading it records nothing.",
+        "close": "Close",
+        "kind": "Kind",
+        "kinds": {
+          "expense": "Expense",
+          "income": "Income",
+          "transfer": "Transfer"
+        },
+        "date": "Date",
+        "amount": "Amount",
+        "from": "From the account",
+        "to": "To the account",
+        "document": "Document number",
+        "memo": "Memo"
+      }
+    },
     "purchases": {
       "status": {
         "draft": "Draft",
@@ -6385,300 +6958,6 @@
         "bill_required": "Choose the bill this payment is for.",
         "payable_account_type": "The account for what is owed must be a liability account.",
         "from_not_cash": "The account the money leaves must be one of cash, a bank or a wallet."
-      }
-    },
-    "reconciliation": {
-      "title": "Bank reconciliation",
-      "description": "Bring in the statement of a bank account as a CSV file and check it against the books. The rules suggest which line of the books each line of the statement is; you confirm or reject every suggestion, and nothing is reconciled on its own.",
-      "cancel": "Cancel",
-      "account": "Account",
-      "accountHint": "Only the cash, bank and wallet accounts of the chart that are on and post entries.",
-      "noAccounts": "There is no cash, bank or wallet account that posts entries yet. Make one in Accounts first.",
-      "conflicts": {
-        "bank_account_not_cash": "A statement is read for a cash, bank or wallet account.",
-        "bank_profile_name_in_use": "This account already has a profile with that name.",
-        "bank_profile_limit": "This account has the most profiles it can hold. Delete one you do not use.",
-        "bank_profile_invalid": "The profile breaks a rule of the profiles: open it and fix it before importing.",
-        "bank_import_nothing_new": "Every line of this file was imported already: there is nothing new in it.",
-        "bank_pair_not_allowed": "This pair is not allowed: the amount, the direction, the account or the dates do not agree.",
-        "bank_line_already_matched": "This line of the statement is already matched. Reload to see it.",
-        "bank_book_line_already_matched": "That line of the books is already matched with another line of a statement.",
-        "bank_decision_already_undone": "That decision was already taken back.",
-        "bank_line_matched": "This line is matched: only a line with no match can be recorded as a transaction.",
-        "bank_no_closing_balance": "This statement has no closing balance to compare the books with.",
-        "bank_changed": "The books changed in the same moment. Reload and decide again."
-      },
-      "status": {
-        "title": "Reconciliation of the month",
-        "description": "How many lines of the books and of the statements have their pair, and what the open ones add up to.",
-        "month": "Month",
-        "year": "Year",
-        "problems": {
-          "month": "Write a month from 1 to 12.",
-          "year": "Write a year of four digits."
-        },
-        "reconciled": "This month is reconciled: every line of the books and of the statements has its pair.",
-        "open": "This month is not reconciled yet.",
-        "sides": {
-          "book": "Books",
-          "statement": "Statements"
-        },
-        "counts": "{lines, plural, one {# line} other {# lines}}: {matched} matched, {unmatched} open",
-        "unmatchedAmount": "Open lines add up to {amount}"
-      },
-      "imports": {
-        "title": "Statements",
-        "description": "The statements imported for this account, the newest first. Open one to see its lines.",
-        "import": "Import a statement",
-        "empty": "No statement has been imported for this account yet.",
-        "range": "From {from} to {to}",
-        "lines": "{count, plural, one {# line} other {# lines}}, {added} new",
-        "closing": "ends with {amount} on {date}",
-        "open": "Open",
-        "dialog": {
-          "title": "Import a statement",
-          "description": "Choose the profile that reads the file of your bank and the file itself (up to {megabytes} MB and {rows} rows). If a single row cannot be read, nothing is imported.",
-          "formLabel": "Import a statement",
-          "profile": "Profile",
-          "chooseProfile": "Choose a profile…",
-          "noProfile": "This account has no profile yet. Make one below, with a sample of the file of your bank, and then import.",
-          "file": "Statement file",
-          "fileHint": "A CSV, TSV or text file. It is read with the encoding of the profile.",
-          "fileProblems": {
-            "too_large": "The file is larger than a statement can be.",
-            "empty": "The file is empty.",
-            "not_text": "The file is not readable as text with the encoding of the profile. Try the other encoding in the profile."
-          },
-          "closingBalance": "Closing balance (optional)",
-          "closingBalanceHint": "The balance the statement ends with, like 1234.56. It lets the books be compared with it.",
-          "closingOn": "Day of the closing balance",
-          "closingOnHint": "Year-month-day, like 2026-11-30. Needed with the balance.",
-          "problems": {
-            "profile": "Choose the profile that reads this file.",
-            "file": "Choose the file of the statement.",
-            "closingBalance": "Write the balance as an amount, like 1234.56.",
-            "closingOn": "Write a real day as year-month-day, like 2026-11-30. The balance and its day go together."
-          },
-          "cancel": "Cancel",
-          "submit": "Import",
-          "done": "{added, plural, one {# new line imported.} other {# new lines imported.}}"
-        }
-      },
-      "profiles": {
-        "title": "Profiles",
-        "description": "How the file of each bank is read: its separator, its columns and the days a line of the statement may be apart from the books.",
-        "new": "New profile",
-        "empty": "This account has no profile yet.",
-        "summary": "{delimiter}, {encoding}, window of {days, plural, one {# day} other {# days}}",
-        "edit": "Edit",
-        "delete": "Delete",
-        "editNamed": "Edit the profile {name}",
-        "deleteNamed": "Delete the profile {name}",
-        "deleteTitle": "Delete the profile {name}?",
-        "deleteDescription": "The statements already imported with it stay as they are. A file of this bank needs a profile again to be imported.",
-        "deleted": "The profile was deleted.",
-        "options": {
-          "delimiter": {
-            "tab": "Tab",
-            "comma": "Comma",
-            "semicolon": "Semicolon"
-          },
-          "encoding": {
-            "utf-8": "UTF-8",
-            "windows-1252": "Windows-1252 (Excel)"
-          },
-          "decimal": {
-            "dot": "Dot (1234.56)",
-            "comma": "Comma (1234,56)"
-          },
-          "thousands": {
-            "none": "None",
-            "comma": "Comma (1,234.56)",
-            "dot": "Dot (1.234,56)",
-            "space": "Space (1 234.56)"
-          },
-          "mode": {
-            "signed": "One column with the amount and its sign",
-            "split": "One column for debits and one for credits"
-          }
-        },
-        "dialog": {
-          "createTitle": "New profile",
-          "editTitle": "Edit the profile",
-          "description": "Say how the CSV of the bank is read. Load a sample of the file to check the columns before saving.",
-          "formLabel": "Bank profile",
-          "fields": {
-            "name": "Name",
-            "delimiter": "Separator of the columns",
-            "encoding": "Encoding of the file",
-            "encodingHint": "A file saved from Excel is usually Windows-1252.",
-            "decimalSeparator": "Decimal separator",
-            "thousandsSeparator": "Thousands separator",
-            "dateFormat": "Format of the date",
-            "window": "Days apart",
-            "windowHint": "How many days a line of the statement may be apart from the books and still be suggested.",
-            "hasHeader": "The first row names the columns",
-            "hasHeaderHint": "Leave it off when the file starts with data: the columns are then given by position.",
-            "mode": "How the money is written",
-            "date": "Column of the date",
-            "debit": "Column of what went out",
-            "debitHint": "The debits.",
-            "credit": "Column of what came in",
-            "creditHint": "The credits.",
-            "amount": "Column of the amount",
-            "amountHint": "Money in is positive and money out is negative.",
-            "description": "Column of the description (optional)",
-            "reference": "Column of the reference (optional)",
-            "referenceHint": "A check number or a transfer code the books may also have."
-          },
-          "columns": "Columns",
-          "columnHintHeader": "Write the name of the column as the first row of the file spells it.",
-          "columnHintPosition": "Write the position of the column: 0 is the first one.",
-          "problems": {
-            "name": "Give the profile a name of up to 80 characters.",
-            "date": "Say which column has the date.",
-            "description": "Write a column name, or its position when the file has no header.",
-            "reference": "Write a column name, or its position when the file has no header.",
-            "amount": "Say which column has the amount.",
-            "debit": "Say which column has the debits.",
-            "credit": "Say which column has the credits.",
-            "dateWindowDays": "Write a whole number of days from 0 to 31.",
-            "rule": "These settings break a rule: each value needs a column of its own, the money is one column or a debit and a credit column, and the separators must differ."
-          },
-          "sample": {
-            "label": "Sample of the file (optional)",
-            "hint": "Only the start of the file is sent to be read. Nothing is saved by trying a mapping.",
-            "problems": {
-              "too_large": "The file is larger than a statement can be.",
-              "empty": "The file is empty.",
-              "not_text": "The file is not readable as text with this encoding. Try the other one."
-            },
-            "headers": "Columns found: {headers}",
-            "useDetected": "Use the separator the file seems to have",
-            "preview": "Try this mapping"
-          },
-          "cancel": "Cancel",
-          "create": "Create the profile",
-          "save": "Save the profile",
-          "done": "The profile was saved."
-        }
-      },
-      "preview": {
-        "summary": "{rows, plural, one {# row read} other {# rows read}}, the first {shown} as they would be imported",
-        "row": "Row",
-        "date": "Date",
-        "description": "Description",
-        "reference": "Reference",
-        "amount": "Amount"
-      },
-      "errors": {
-        "title": "{count, plural, one {# row cannot be read} other {# rows cannot be read}}",
-        "row": "Row {row}, {field}: {reason}",
-        "rowWithValue": "Row {row}, {field}: {reason} (“{value}”)",
-        "more": "{count, plural, one {And # more.} other {And # more.}}",
-        "unknown": "the file could not be read",
-        "fields": {
-          "date": "date",
-          "description": "description",
-          "reference": "reference",
-          "amount": "amount",
-          "debit": "debit",
-          "credit": "credit"
-        },
-        "column_not_found": "the column is not in the file",
-        "column_ambiguous": "more than one column has that name",
-        "column_reused": "the column is used for two values",
-        "missing_cell": "the row has no such cell",
-        "empty_value": "the cell is empty",
-        "invalid_amount": "the amount is not valid with these separators",
-        "invalid_date": "the date does not match the format",
-        "invalid_text": "the text has a character that is not allowed",
-        "ambiguous_direction": "a row must fill the debit or the credit, not both and not neither",
-        "zero_amount": "the amount is zero",
-        "too_many_rows": "the file has more rows than a statement can have",
-        "empty_file": "the file has no rows",
-        "unclosed_quote": "a quote is never closed",
-        "row_too_wide": "the row has too many columns",
-        "stray_quote": "a quote is in the wrong place"
-      },
-      "statement": {
-        "title": "Statement from {from} to {to}",
-        "summary": "{lines, plural, one {# line} other {# lines}}, {added} new when it was imported",
-        "noClosing": "This statement has no closing balance, so the books are not compared with it.",
-        "filterLabel": "Show the lines",
-        "filters": {
-          "all": "All ({count})",
-          "suggested": "With suggestions ({count})",
-          "unmatched": "Open ({count})",
-          "matched": "Matched ({count})"
-        },
-        "confirmExact": "Confirm the exact matches",
-        "confirmExactTitle": "Confirm the exact matches?",
-        "confirmExactDescription": "This confirms, at once, every line whose suggestion is the only one for it and an exact one (the same day or the same reference), up to {max} lines. Lines with several suggestions, or one that is not exact, stay for you to decide. Every decision stays in the history and can be taken back one by one.",
-        "confirmExactAction": "Confirm them",
-        "confirmExactDone": "{confirmed, plural, one {# line confirmed} other {# lines confirmed}}; {left} left for you to decide.",
-        "empty": "No line to show with this filter.",
-        "previous": "Previous",
-        "next": "Next"
-      },
-      "difference": {
-        "title": "The books against the statement",
-        "statementBalance": "Balance of the statement on {date}",
-        "bookBalance": "Balance of the books on that day",
-        "difference": "Difference (statement minus books)",
-        "unmatchedStatement": "{count, plural, one {# open line of the statement} other {# open lines of the statement}}",
-        "unmatchedBook": "{count, plural, one {# open line of the books} other {# open lines of the books}}",
-        "unexplained": "Difference no open line explains",
-        "explained": "The open lines explain the whole difference.",
-        "unexplainedHint": "Part of the difference is not explained by any open line: look for a missing statement, an opening balance or a wrong amount."
-      },
-      "lines": {
-        "reference": "Reference {reference}",
-        "states": {
-          "matched": "Matched",
-          "suggested": "Has suggestions",
-          "unmatched": "Open"
-        },
-        "matchedWith": "Matched with the entry {number} of {date}",
-        "undo": "Undo",
-        "undone": "The decision was taken back.",
-        "suggestionsLabel": "Suggested entries",
-        "reasonsLabel": "Why it is suggested",
-        "reasons": {
-          "sameAmount": "Same amount to the cent",
-          "sameDay": "Same day",
-          "daysApart": "{days, plural, one {# day apart} other {# days apart}}",
-          "reference": "The reference agrees",
-          "exact": "Exact"
-        },
-        "noSuggestions": "No entry of the books has this amount near this date.",
-        "register": "See how it would be recorded",
-        "entry": "Entry {number} of {date}",
-        "reject": "Reject",
-        "rejectNamed": "Reject the entry {number}",
-        "rejectTitle": "Reject the entry {number}?",
-        "rejectDescription": "The suggestion will not be offered again for this line. It cannot be brought back from this screen.",
-        "rejected": "The suggestion was rejected.",
-        "confirm": "Confirm",
-        "confirmNamed": "Confirm the entry {number}",
-        "confirmed": "The pair was confirmed."
-      },
-      "draft": {
-        "title": "How this line would be recorded",
-        "description": "The books have no entry for this line. This is the transaction the statement line would be, prefilled; reading it records nothing.",
-        "close": "Close",
-        "kind": "Kind",
-        "kinds": {
-          "expense": "Expense",
-          "income": "Income",
-          "transfer": "Transfer"
-        },
-        "date": "Date",
-        "amount": "Amount",
-        "from": "From the account",
-        "to": "To the account",
-        "document": "Document number",
-        "memo": "Memo"
       }
     },
     "reports": {

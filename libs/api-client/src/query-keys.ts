@@ -367,6 +367,9 @@ export const QueryKeys = {
     transactions: (storeId: string, filters: Record<string, string>) =>
       ['finance', storeId, 'transactions', filters] as const,
     transaction: (storeId: string, id: string) => ['finance', storeId, 'transactions', id] as const,
+    // The signed links of the receipt of a transaction: they expire, so they are asked when the file is opened
+    transactionDocument: (storeId: string, id: string) =>
+      ['finance', storeId, 'transactions', id, 'document'] as const,
     // The bank reconciliation by CSV (Step 4B.9a-3): every key sits under `bank`, so a decision makes the lines, the status and the
     // difference stale together with one prefix
     bank: {
