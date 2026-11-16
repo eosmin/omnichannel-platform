@@ -37,6 +37,8 @@ model Organization {
   fiscalPeriods         FiscalPeriod[]
   fiscalIssuer          FiscalIssuer?
   fiscalDocuments       FiscalDocument[]
+  financeBookLayouts    FinanceBookLayout[]
+  financeBookSnapshots  FinanceBookSnapshot[]
   journalEntries        JournalEntry[]
   journalLines          JournalLine[]
   periodBalances        AccountPeriodBalance[]
@@ -2531,9 +2533,10 @@ model FiscalPeriod {
   closingHash    String?   @map("closing_hash") // the head of the entry chain when it closed (TDD_18 §5.1)
   createdAt      DateTime  @default(now()) @map("created_at")
 
-  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  entries      JournalEntry[]
-  balances     AccountPeriodBalance[]
+  organization  Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  entries       JournalEntry[]
+  balances      AccountPeriodBalance[]
+  bookSnapshots FinanceBookSnapshot[]
 
   @@unique([organizationId, year, month])
   @@unique([organizationId, id])
@@ -3024,6 +3027,53 @@ model FiscalIssuer {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
   @@map("fiscal_issuers")
+}
+
+// The layout of a legal book of the organization (TDD_18 §7, §13 row 6; Step 4B.8b-3). **[ACCOUNTANT]** The format of a legal book is the
+// accountant's and the law's: a layout is the organization's own data (columns, order, correlative), versioned and never changed in
+// place, so the book of a closed month can be asked for again with the version it was written with and give the same bytes. A kind with
+// no row uses the proposal of the code, which nobody has validated.
+model FinanceBookLayout {
+  id                  String   @id @default(uuid())
+  organizationId      String   @map("organization_id")
+  bookKind            String   @map("book_kind") // LegalBookKind
+  version             Int
+  columns             Json // [{ field: LegalBookField, label: string | null }]
+  sort                String // LegalBookSort
+  correlativeStart    Int      @map("correlative_start")
+  correlativeRestart  String   @map("correlative_restart") // LegalBookCorrelativeRestart
+  unissuedSales       String   @map("unissued_sales") // LegalBookUnissuedSales
+  accountantConfirmed Boolean  @default(false) @map("accountant_confirmed") // somebody with the accountant's word says this is the layout the law asks for
+  createdBy           String   @map("created_by")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, bookKind, version])
+  @@map("finance_book_layouts")
+}
+
+// A legal book of a CLOSED period as it was the first time it was asked for (Step 4B.8b-3): the book of a closed month is served from
+// here from then on, byte for byte, even if a supplier was renamed since (the name of a supplier is not in the ledger). Keyed by the
+// closing it was taken at, so a month reopened and closed again takes a new one. Never changed or deleted.
+model FinanceBookSnapshot {
+  id             String   @id @default(uuid())
+  organizationId String   @map("organization_id")
+  periodId       String   @map("period_id")
+  bookKind       String   @map("book_kind") // LegalBookKind
+  layoutVersion  Int      @map("layout_version") // 0 = the proposal of the code
+  closedAt       DateTime @map("closed_at") // the closing of the period this was taken at
+  book           Json // the book as the pure builder made it (header, rows, totals, warnings): the CSV is a function of it
+  contentSha256  String   @map("content_sha256")
+  createdBy      String   @map("created_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  period       FiscalPeriod @relation(fields: [organizationId, periodId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, periodId, bookKind, layoutVersion, closedAt], map: "finance_book_snapshots_key")
+  @@index([organizationId, createdAt])
+  @@map("finance_book_snapshots")
 }
 
 model FiscalDocument {

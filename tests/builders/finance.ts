@@ -268,6 +268,8 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
       OR EXISTS (SELECT 1 FROM purchase_orders WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM fiscal_documents WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM fiscal_issuers WHERE organization_id = ANY(${organizationIds}))
+      OR EXISTS (SELECT 1 FROM finance_book_layouts WHERE organization_id = ANY(${organizationIds}))
+      OR EXISTS (SELECT 1 FROM finance_book_snapshots WHERE organization_id = ANY(${organizationIds}))
     ) AS touched`
   const touched = found?.touched === true
   if (!touched) return
@@ -276,6 +278,8 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     // The triggers of the four tables that refuse a delete are off for the length of this transaction, and on again before it
     // commits (an error rolls the whole transaction back, the switch included)
     const guarded = [
+      'finance_book_snapshots',
+      'finance_book_layouts',
       'fiscal_documents',
       'reconciliation_matches',
       'bank_statement_lines',
@@ -301,6 +305,9 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     })
     await tx.$executeRawUnsafe('ALTER TABLE media ENABLE TRIGGER trg_media_fiscal_evidence_keeps')
     // A fiscal document names its order, its store and the sale entry: it goes before all of them
+    // The frozen books and the layouts of the legal books name the organization and the period: they go before the periods
+    await tx.financeBookSnapshot.deleteMany({ where })
+    await tx.financeBookLayout.deleteMany({ where })
     await tx.fiscalDocument.deleteMany({ where })
     await tx.fiscalIssuer.deleteMany({ where })
     await tx.supplierPayment.deleteMany({ where })
