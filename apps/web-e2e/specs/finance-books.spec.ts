@@ -15,7 +15,8 @@ import { expect, test } from '../support/test'
 const finance = en.finance
 const nav = en.settings.nav.finance
 
-// Finance (Step 4B.9a-1): the setup of the books, the chart, the tax rates, the months and the settings, through the screens. Its own
+// Finance (Steps 4B.9a-1 and 4B.9a-2): the setup of the books, the chart, the tax rates, the months, the settings, the transactions and the
+// journal, through the screens. Its own
 // organization, so the books that the cases make are nobody else's. The cases run in order: the first one sets the books up.
 test.describe('Finance → the books of the organization', () => {
   test.describe.configure({ mode: 'serial' })
@@ -115,6 +116,133 @@ test.describe('Finance → the books of the organization', () => {
     ).toHaveCount(1)
   })
 
+  test('an owner registers an expense, finds it in the transactions and voids it', async ({
+    page
+  }) => {
+    await signIn(page, ownerEmail)
+    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.goto(AppPaths.finance.transactions)
+    await expect(
+      page.getByRole('heading', { name: finance.transactions.title, level: 1 })
+    ).toBeVisible()
+    const list = page.getByTestId('finance-transactions')
+    await expect(list).toHaveCount(0)
+
+    // An empty form is refused first, and the dialog fits a phone
+    await page.getByRole('button', { name: finance.transactions.new, exact: true }).click()
+    const form = page.getByRole('dialog', {
+      name: finance.transactions.form.createTitle,
+      exact: true
+    })
+    await form.getByRole('button', { name: finance.transactions.form.submit, exact: true }).click()
+    await expect(form.getByRole('alert').first()).toBeVisible()
+    await expectDialogFitsThePhoneWidth(page, form)
+
+    // An expense paid from a cash account, classified under an expense account
+    await form.getByLabel(finance.transactions.form.amount, { exact: true }).fill('11.30')
+    await form
+      .getByLabel(finance.transactions.form.expenseFrom, { exact: true })
+      .selectOption({ index: 1 })
+    await form
+      .getByLabel(finance.transactions.form.expenseCategory, { exact: true })
+      .selectOption({ index: 1 })
+    await form.getByLabel(finance.transactions.form.memo, { exact: true }).fill('E2E rent')
+    await form.getByRole('button', { name: finance.transactions.form.submit, exact: true }).click()
+    await expect(form).toHaveCount(0)
+    const row = list.locator('[data-testid="finance-transaction-row"][data-kind="expense"]')
+    await expect(row).toHaveCount(1)
+    await expect(row).toHaveAttribute('data-voided', 'false')
+    await expect(row).toContainText('E2E rent')
+    await expect(row).toContainText('11.30')
+
+    // Its detail shows the entry it posted; a void asks for the reason and then for the confirmation
+    await row.click()
+    const detail = page.getByRole('dialog', {
+      name: finance.transactions.detail.title,
+      exact: true
+    })
+    await expect(detail.getByTestId('finance-transaction-detail')).toBeVisible()
+    // The entry it posted carries the amount typed
+    await expect(detail.getByTestId('finance-entry-lines')).toContainText('11.30')
+    await detail
+      .getByRole('button', { name: finance.transactions.void.action, exact: true })
+      .click()
+    await detail
+      .getByRole('button', { name: finance.transactions.void.submit, exact: true })
+      .click()
+    await expect(detail.getByRole('alert').first()).toBeVisible()
+    await detail
+      .getByLabel(finance.transactions.void.reason, { exact: true })
+      .fill('E2E typed twice')
+    await detail
+      .getByRole('button', { name: finance.transactions.void.submit, exact: true })
+      .click()
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: finance.transactions.void.confirm, exact: true })
+      .click()
+    await expect(detail).toHaveCount(0)
+
+    // A voided transaction leaves the list, and comes back when asked for
+    await expect(page.getByText(finance.transactions.empty)).toBeVisible()
+    await page
+      .getByLabel(finance.transactions.filters.includeVoided, { exact: true })
+      .setChecked(true)
+    await expect(
+      page.locator('[data-testid="finance-transaction-row"][data-voided="true"]')
+    ).toHaveCount(1)
+  })
+
+  test('an owner writes an entry by hand, which must balance, and finds it in the journal', async ({
+    page
+  }) => {
+    await signIn(page, ownerEmail)
+    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.goto(AppPaths.finance.journal)
+    await expect(page.getByRole('heading', { name: finance.journal.title, level: 1 })).toBeVisible()
+    // The expense and the reversal of the void are already in it
+    const rows = page.getByTestId('finance-entries').getByTestId('finance-entry-row')
+    await expect(rows).toHaveCount(2)
+
+    await page.getByRole('button', { name: finance.journal.new, exact: true }).click()
+    const form = page.getByRole('dialog', { name: finance.manual.title, exact: true })
+    await expectDialogFitsThePhoneWidth(page, form)
+    await form.getByLabel(finance.manual.memo, { exact: true }).fill('E2E opening')
+    await form
+      .getByLabel(finance.manual.account.replace('{number}', '1'), { exact: true })
+      .selectOption({ index: 1 })
+    await form.getByLabel(finance.manual.debit.replace('{number}', '1'), { exact: true }).fill('5')
+    await form
+      .getByLabel(finance.manual.account.replace('{number}', '2'), { exact: true })
+      .selectOption({ index: 2 })
+    await form.getByLabel(finance.manual.credit.replace('{number}', '2'), { exact: true }).fill('4')
+    await form.getByRole('button', { name: finance.manual.submit, exact: true }).click()
+    await expect(form.getByRole('alert').getByText(finance.manual.problems.balance)).toBeVisible()
+    await form.getByLabel(finance.manual.credit.replace('{number}', '2'), { exact: true }).fill('5')
+    await form.getByRole('button', { name: finance.manual.submit, exact: true }).click()
+    await page
+      .getByRole('alertdialog')
+      .getByRole('button', { name: finance.manual.confirm, exact: true })
+      .click()
+    await expect(form).toHaveCount(0)
+    await expect(rows).toHaveCount(3)
+
+    // The new entry is the one with the description typed; its lines, and the way to reverse it
+    const mine = rows.filter({ hasText: 'E2E opening' })
+    await expect(mine).toHaveCount(1)
+    const number = await mine.getAttribute('data-number')
+    await mine.click()
+    const detail = page.getByRole('dialog', {
+      name: finance.entry.title.replace('{number}', number ?? ''),
+      exact: true
+    })
+    await expect(detail.getByTestId('finance-entry-line')).toHaveCount(2)
+    await expect(detail.getByTestId('finance-entry-lines')).toContainText('5.00')
+    await expect(
+      detail.getByRole('button', { name: finance.entry.reverse.action, exact: true })
+    ).toBeVisible()
+  })
+
   test('a posting setting survives a reload', async ({ page }) => {
     await signIn(page, ownerEmail)
     await page.waitForURL(/\/s\/[^/]+\//)
@@ -148,6 +276,10 @@ test.describe('Finance → the books of the organization', () => {
     await expect(page.getByRole('button', { name: finance.accounts.new, exact: true })).toHaveCount(
       0
     )
+    // The journal is another permission: it has no entry in the navigation of who only reads the books
+    await expect(page.getByRole('link', { name: nav.accounts, exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: nav.journal, exact: true })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: nav.transactions, exact: true })).toHaveCount(0)
     await expect(
       page.getByRole('button', { name: finance.accounts.edit, exact: true })
     ).toHaveCount(0)

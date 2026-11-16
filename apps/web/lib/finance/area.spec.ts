@@ -30,6 +30,23 @@ describe('the finance area', () => {
     }
   })
 
+  it('shows the journal and the transactions to who may read the journal, and only to them', () => {
+    expect(
+      visibleEntries(
+        FINANCE_SETTINGS_ENTRIES,
+        holding(Permissions.FINANCE_VIEW, Permissions.FINANCE_VIEW_JOURNAL)
+      ).map(entry => entry.id)
+    ).toEqual(['accounts', 'journal', 'transactions', 'taxes', 'periods', 'settings'])
+  })
+
+  it('lists the journal for the journal permission alone, while the area itself still needs finance:view', () => {
+    // The area guard (the link and the store the books are asked through) is finance:view; the navigation only shows what each page needs
+    expect(mayOpenFinance(holding(Permissions.FINANCE_VIEW_JOURNAL))).toBe(false)
+    expect(
+      bestFinanceMembership([{ id: 's', permissions: [Permissions.FINANCE_VIEW_JOURNAL] }])
+    ).toBeUndefined()
+  })
+
   it('adds the bank reconciliation for who also holds finance:reconcile, and never for who holds only that', () => {
     expect(
       visibleEntries(
@@ -77,6 +94,19 @@ describe('bestFinanceMembership', () => {
       store('manager', Permissions.FINANCE_VIEW, Permissions.FINANCE_MANAGE_ACCOUNTS)
     ])
     expect(best?.id).toBe('manager')
+  })
+
+  it('counts the journal and the registering of transactions among what a store gives', () => {
+    const best = bestFinanceMembership([
+      store('manager', Permissions.FINANCE_VIEW, Permissions.FINANCE_MANAGE_ACCOUNTS),
+      store(
+        'bookkeeper',
+        Permissions.FINANCE_VIEW,
+        Permissions.FINANCE_VIEW_JOURNAL,
+        Permissions.FINANCE_MANAGE_TRANSACTIONS
+      )
+    ])
+    expect(best?.id).toBe('bookkeeper')
   })
 
   it('takes a store where the person manages purchases even when they cannot read the books', () => {
