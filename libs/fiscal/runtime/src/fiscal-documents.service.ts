@@ -855,7 +855,8 @@ export class FiscalDocumentsService {
         shippingTaxCents: sale.shippingTaxCents,
         discountCents: sale.discountCents,
         totalCents: sale.totalCents,
-        taxCents: sale.taxCents
+        taxCents: sale.taxCents,
+        pricesIncludeTax: sale.pricesIncludeTax
       })
     )
     if (built === null) {
@@ -1111,8 +1112,16 @@ export class FiscalDocumentsService {
       }
       return answer
     } catch (error) {
+      // A provider that refuses with a coded error (`code`, a short text of its own that never carries a value) has it logged: it is what an
+      // operator reads to tell one refusal from another
+      const code = (error as { code?: unknown } | null)?.code
       this.logger.warn(
-        { documentId, operation, err: errorName(error) },
+        {
+          documentId,
+          operation,
+          err: errorName(error),
+          ...(typeof code === 'string' && code.length <= 64 ? { providerCode: code } : {})
+        },
         'a fiscal provider call failed'
       )
       return null

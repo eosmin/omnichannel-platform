@@ -51,6 +51,7 @@
       "@platform/carriers/local": ["libs/carriers/local/src/index.ts"],
       "@platform/fiscal/sdk": ["libs/fiscal/sdk/src/index.ts"],
       "@platform/fiscal/simulator": ["libs/fiscal/simulator/src/index.ts"],
+      "@platform/fiscal/sv": ["libs/fiscal/sv/src/index.ts"],
       "@platform/fiscal/runtime": ["libs/fiscal/runtime/src/index.ts"],
       "@platform/channels/connections": ["libs/channels/connections/src/index.ts"],
       "@platform/channels/connection-health": [
