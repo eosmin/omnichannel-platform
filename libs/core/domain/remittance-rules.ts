@@ -129,6 +129,33 @@ export function classifyLine(input: LineInput, deductsFee: boolean): LineResult 
   }
 }
 
+// What a person should look at before a line is settled, said by the server and never a reason to refuse it: the file may be right and the
+// carrier may have kept that much. A warning is a code of its own, so a screen has its text and a plugin can read it.
+export const RemittanceLineWarnings = { FEE_EXCEEDS_COLLECTED: 'FEE_EXCEEDS_COLLECTED' } as const
+export type RemittanceLineWarning =
+  (typeof RemittanceLineWarnings)[keyof typeof RemittanceLineWarnings]
+
+// The warnings of one line. Where the guide and the connection are known (a draft) the rule is the one the books bound the fee by: a carrier
+// that deducts its fee from the cash reports the net, so what it reports plus what it kept is the gross it collected, and a total over the gross
+// of the guide means the fee is more than the cash that was there (E5 settles it within what was collected and owes the rest on the payable).
+// Where they are not (the preview of a file, a line with no guide, a carrier that does not deduct, which reports the gross) the fee is compared
+// with the money the line reports: a fee larger than that is worth a look in any file.
+export function lineWarnings(line: {
+  reportedCents: number
+  reportedFeeCents?: number | null
+  // The gross the guide collected and whether the connection deducts its fee from the cash; both only when a shipment is held
+  grossCents?: number | null
+  deductsFee?: boolean
+}): RemittanceLineWarning[] {
+  const fee = line.reportedFeeCents ?? null
+  if (fee === null) return []
+  const exceeds =
+    line.deductsFee === true && line.grossCents !== undefined && line.grossCents !== null
+      ? line.reportedCents + fee > line.grossCents
+      : fee > line.reportedCents
+  return exceeds ? [RemittanceLineWarnings.FEE_EXCEEDS_COLLECTED] : []
+}
+
 // The outcomes that move a shipment when the remittance is confirmed
 export const SettlingOutcomes: readonly RemittanceLineOutcome[] = [
   RemittanceLineOutcome.MATCHED,

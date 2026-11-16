@@ -1,5 +1,6 @@
 'use client'
 
+import { TriangleAlert } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useState } from 'react'
@@ -8,7 +9,14 @@ import { AppPaths, type RemittanceDetailView } from '@platform/api-client'
 import { type ConfirmRemittanceBody, RemittanceLimits } from '@platform/core/domain'
 
 import { formatCents } from '../../lib/products/money'
-import { isSettling, mayConfirm, unsettledCount } from '../../lib/remittances/remittance-rules'
+import {
+  feeWarningCount,
+  isSettling,
+  knownWarnings,
+  mayConfirm,
+  mayPressConfirm,
+  unsettledCount
+} from '../../lib/remittances/remittance-rules'
 import {
   useConfirmRemittance,
   useDiscardRemittance,
@@ -54,13 +62,22 @@ export function ConfirmPanel({ remittance }: { remittance: RemittanceDetailView 
   const [receivedOn, setReceivedOn] = useState(remittance.receivedOn ?? '')
   const [note, setNote] = useState(remittance.note ?? '')
   const [asking, setAsking] = useState(false)
+  // The box is ticked for the warnings that are on the screen: the key says which lines and which figures, so a change of either asks again
+  const [acknowledged, setAcknowledged] = useState<string | null>(null)
   const settles = remittance.lines.filter(isSettling).length
   const unsettled = unsettledCount(remittance)
   const ready = mayConfirm(remittance)
+  const warned = feeWarningCount(remittance)
+  const warnedKey = remittance.lines
+    .filter(line => isSettling(line) && knownWarnings(line).length > 0)
+    .map(line => `${line.id}:${line.reportedCents}:${line.reportedFeeCents ?? ''}`)
+    .join(',')
+  const understood = acknowledged === warnedKey
+  const mayPress = mayPressConfirm(remittance, understood)
 
   const ask = (event: FormEvent): void => {
     event.preventDefault()
-    if (ready) setAsking(true)
+    if (mayPress) setAsking(true)
   }
 
   return (
@@ -107,13 +124,39 @@ export function ConfirmPanel({ remittance }: { remittance: RemittanceDetailView 
             {t('unsettled', { count: unsettled })}
           </p>
         ) : null}
+        {warned > 0 ? (
+          <div
+            role="group"
+            aria-labelledby="remittance-fee-warning"
+            className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100"
+          >
+            <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
+            <div className="flex flex-col gap-2">
+              <p id="remittance-fee-warning">{t('feeWarning', { count: warned })}</p>
+              <label className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={understood}
+                  onChange={event => setAcknowledged(event.target.checked ? warnedKey : null)}
+                />
+                <span>{t('understood')}</span>
+              </label>
+            </div>
+          </div>
+        ) : null}
         {ready ? null : <p className="text-muted-foreground text-sm">{t('nothingToSettle')}</p>}
         {confirm.isError ? (
           <p role="alert" className="text-destructive text-sm">
             {errorText(confirm.error)}
           </p>
         ) : null}
-        <Button type="submit" className="self-start" disabled={!ready || confirm.isPending}>
+        <Button
+          type="submit"
+          className="self-start"
+          disabled={!mayPress || confirm.isPending}
+          aria-describedby={warned > 0 && !understood ? 'remittance-fee-warning' : undefined}
+        >
           {t('action')}
         </Button>
       </form>
@@ -132,10 +175,12 @@ export function ConfirmPanel({ remittance }: { remittance: RemittanceDetailView 
           <AlertDialogFooter>
             <AlertDialogCancel disabled={confirm.isPending}>{t('dialog.cancel')}</AlertDialogCancel>
             <AlertDialogAction
-              disabled={confirm.isPending}
+              disabled={confirm.isPending || !mayPress}
               onClick={event => {
                 // The dialog closes once the work is done, not on the press
                 event.preventDefault()
+                // The warnings may have changed since the dialog opened: the box asks again before anything is sent
+                if (!mayPress) return
                 confirm.mutate(confirmBody(reference, receivedOn, note), {
                   onSuccess: () => {
                     setAsking(false)

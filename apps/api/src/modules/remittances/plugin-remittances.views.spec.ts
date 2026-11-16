@@ -79,13 +79,16 @@ describe('the remittances a plugin reads', () => {
           differenceCents: null,
           outcome: 'not_found',
           excluded: false,
-          note: null
+          note: null,
+          warnings: ['FEE_EXCEEDS_COLLECTED']
         }
       ] as RemittanceDetailView['lines']
     }
     const out = pluginRemittanceDetailView(detail)
 
     expect(out.lines).toHaveLength(1)
+    // The warning is derived from the line's own amounts and carries nothing of the customer: it passes through
+    expect(out.lines[0]?.warnings).toEqual(['FEE_EXCEEDS_COLLECTED'])
     expect('createdBy' in out).toBe(false)
   })
 

@@ -7,6 +7,8 @@ import {
   RemittanceLimits,
   SettlingOutcomes,
   RemittanceLineOutcome,
+  type RemittanceLineWarning,
+  RemittanceLineWarnings,
   RemittanceStatus,
   type UpdateRemittanceLineBody
 } from '@platform/core/domain'
@@ -55,6 +57,24 @@ export function isDraft(remittance: Pick<RemittanceDetailView, 'status'>): boole
 // REMITTANCE_NOTHING_TO_SETTLE; saying it before the press saves a round trip)
 export function mayConfirm(remittance: RemittanceDetailView): boolean {
   return isDraft(remittance) && remittance.lines.some(isSettling)
+}
+
+// The warnings of a line that this screen has a text for (a code the api adds later is not drawn, never a missing text)
+export function knownWarnings(line: Pick<RemittanceLineView, 'warnings'>): RemittanceLineWarning[] {
+  const known: readonly string[] = Object.values(RemittanceLineWarnings)
+  return line.warnings.filter((code): code is RemittanceLineWarning => known.includes(code))
+}
+
+// The lines that would settle a shipment and carry a warning of the server (a fee larger than the cash that was there): a person reads them,
+// and ticks "I understand", before confirming. A line left out, or one that settles nothing, moves no money, so its warning is not asked about.
+export function feeWarningCount(remittance: Pick<RemittanceDetailView, 'lines'>): number {
+  return remittance.lines.filter(line => isSettling(line) && knownWarnings(line).length > 0).length
+}
+
+// The confirm button: the draft can be confirmed, and when it has warnings the box was ticked. The server does not ask for it (it warns and
+// never refuses): this is the screen making sure a person saw them.
+export function mayPressConfirm(remittance: RemittanceDetailView, acknowledged: boolean): boolean {
+  return mayConfirm(remittance) && (feeWarningCount(remittance) === 0 || acknowledged)
 }
 
 // The lines that are not left out and that settle nothing: shown as a count before the confirmation, so a person reads them
