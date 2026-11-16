@@ -24,6 +24,8 @@ import {
   PaymentStatus,
   RemittanceDestinationProblem,
   remittanceDestinationProblem,
+  ReturnCostAgainst,
+  ReturnSettlementKind,
   RemittanceStatus,
   SaleRecognition,
   SettlingOutcomes,
@@ -61,6 +63,7 @@ import {
   openReceivableCents,
   restockCost,
   returnLines,
+  type ReturnReversal,
   type ReturnSettlement,
   reversalOf,
   type SettledLine,
@@ -96,6 +99,9 @@ type Candidate =
     }
   | { kind: 'nothing' }
   | { kind: 'failed'; reason: FinancePostingFailureReason }
+
+// What the posting reads of the settings of the books
+type PostingSettings = { accountingStartDate: Date; recognizeSaleOn: string }
 
 const NOTHING: Candidate = { kind: 'nothing' }
 const failed = (reason: FinancePostingFailureReason): Candidate => ({ kind: 'failed', reason })
@@ -400,7 +406,12 @@ export class FinancePostingService {
       case FinanceEventKind.REMITTANCE_CONFIRM:
         return this.loadRemittanceConfirm(tx, input, dateToDay(settings.accountingStartDate))
       case FinanceEventKind.COD_WRITE_OFF:
-        return this.loadWriteOff(tx, input, dateToDay(settings.accountingStartDate))
+        return this.loadWriteOff(
+          tx,
+          input,
+          dateToDay(settings.accountingStartDate),
+          recognizeSaleOn
+        )
       case FinanceEventKind.RETURN_RESTOCK:
         return this.loadReturn(tx, input, settings)
       case FinanceEventKind.ORDER_RETURN:
@@ -656,7 +667,8 @@ export class FinancePostingService {
   private async loadWriteOff(
     tx: PrismaTransaction,
     input: PostSourceInput,
-    accountingStartDate: string
+    accountingStartDate: string,
+    recognizeSaleOn: string
   ): Promise<Candidate> {
     const shipment = await tx.shipment.findFirst({
       where: { id: input.sourceId, store: { organizationId: input.organizationId } },
@@ -684,10 +696,18 @@ export class FinancePostingService {
     }
     // The receivable is there only when E3 put it there (or the guide was delivered before the books began, and the opening balance
     // holds it): a sale that is not posted yet makes this wait, it never clears a receivable that does not exist
+    // The sale of the order is recognized when the setting says (shipping or delivery): a sale from before the books began is in the
+    // opening balance whatever the day of the guide
+    const order = await tx.order.findFirst({
+      where: { id: shipment.orderId, storeId: shipment.storeId },
+      select: { shippedAt: true, deliveredAt: true }
+    })
+    const recognizedAt =
+      recognizeSaleOn === (SaleRecognition.SHIPPED as string)
+        ? (order?.shippedAt ?? null)
+        : (order?.deliveredAt ?? shipment.deliveredAt)
     const deliveredDay =
-      shipment.deliveredAt === null
-        ? null
-        : dayInZone(shipment.deliveredAt, shipment.store.timezone)
+      recognizedAt === null ? null : dayInZone(recognizedAt, shipment.store.timezone)
     if (deliveredDay === null || deliveredDay >= accountingStartDate) {
       const sale = await this.entryOf(
         tx,
@@ -771,7 +791,7 @@ export class FinancePostingService {
   private async loadReturn(
     tx: PrismaTransaction,
     input: PostSourceInput,
-    settings: { accountingStartDate: Date; recognizeSaleOn: string }
+    settings: PostingSettings
   ): Promise<Candidate> {
     const found = await tx.orderReturn.findFirst({
       where: { id: input.sourceId, store: { organizationId: input.organizationId } },
@@ -822,7 +842,7 @@ export class FinancePostingService {
   private async loadOrderReturn(
     tx: PrismaTransaction,
     input: PostSourceInput,
-    settings: { accountingStartDate: Date; recognizeSaleOn: string }
+    settings: PostingSettings
   ): Promise<Candidate> {
     const order = await this.orderOf(tx, input.organizationId, input.sourceId)
     if (order === null || order.status !== (OrderStatus.RETURNED as string)) return NOTHING
@@ -858,7 +878,7 @@ export class FinancePostingService {
   private async returnEntry(
     tx: PrismaTransaction,
     input: PostSourceInput,
-    settings: { accountingStartDate: Date; recognizeSaleOn: string },
+    settings: PostingSettings,
     facts: {
       orderId: string
       returned: ReadonlyMap<string, number>
@@ -896,8 +916,8 @@ export class FinancePostingService {
       }
     }
 
-    let reversal: { netCents: number; vatCents: number } | null = null
-    let shipping: { netCents: number; vatCents: number } | null = null
+    let reversal: ReturnReversal | null = null
+    let shipping: ReturnReversal | null = null
     if (recognized) {
       const bases = lineBases({
         subtotalCents: order.subtotalCents,
@@ -974,20 +994,19 @@ export class FinancePostingService {
 
     // Who owes the money back: the carrier's debt is cancelled when a guide that will never be remitted was sold cash on delivery; in
     // every other case it is the customer's advance, the refund the business owes until a person pays it out
-    let settlement: ReturnSettlement = { kind: 'advance' }
+    let settlement: ReturnSettlement = { kind: ReturnSettlementKind.ADVANCE }
     if (recognized && order.paymentMethod === (PaymentMethod.CASH_ON_DELIVERY as string)) {
+      // The guide of a parcel that came back is RETURNED and its cash void: the latest guide of the way out, whatever its status
       const guide = await tx.shipment.findFirst({
-        where: {
-          orderId: order.id,
-          storeId: order.storeId,
-          kind: ShipmentKind.OUTBOUND,
-          status: { notIn: [...ShipmentInactiveStatuses] }
-        },
+        where: { orderId: order.id, storeId: order.storeId, kind: ShipmentKind.OUTBOUND },
         orderBy: { createdAt: 'desc' },
         select: { connectionId: true, codStatus: true }
       })
       if (guide !== null && guide.codStatus === (CodStatus.VOID as string)) {
-        settlement = { kind: 'carrier', carrierConnectionId: guide.connectionId }
+        settlement = {
+          kind: ReturnSettlementKind.CARRIER,
+          carrierConnectionId: guide.connectionId
+        }
       }
     }
     const accounts = await this.accountsOf(tx, input.organizationId)
@@ -1001,10 +1020,10 @@ export class FinancePostingService {
       result: returnLines({
         accounts,
         reversal,
-        shipping: settlement.kind === 'carrier' ? shipping : null,
+        shipping: settlement.kind === ReturnSettlementKind.CARRIER ? shipping : null,
         settlement,
         restockCostCents: cost.costCents,
-        costAgainst: recognized ? 'cost_of_goods_sold' : 'transit',
+        costAgainst: recognized ? ReturnCostAgainst.COST_OF_GOODS_SOLD : ReturnCostAgainst.TRANSIT,
         storeId: order.storeId
       })
     }

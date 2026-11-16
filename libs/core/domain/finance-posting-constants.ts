@@ -105,3 +105,16 @@ export const FinanceLockScopes = {
   POSTING: (organizationId: string, sourceType: string, sourceId: string): string =>
     `finance_post:${organizationId}:${sourceType}:${sourceId}`
 } as const
+
+// Who is owed what a return gives back (E8): the customer, as an advance the business owes until a person pays it out, or nobody but the
+// carrier's receivable, cancelled, when the carrier will never remit the guide
+export enum ReturnSettlementKind {
+  ADVANCE = 'advance',
+  CARRIER = 'carrier'
+}
+
+// What the cost of the units put back clears (E8): inventory in transit before the sale, the cost of goods sold after it
+export enum ReturnCostAgainst {
+  TRANSIT = 'transit',
+  COST_OF_GOODS_SOLD = 'cost_of_goods_sold'
+}

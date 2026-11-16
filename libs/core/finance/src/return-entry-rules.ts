@@ -1,4 +1,10 @@
-import { AccountRole, FinancePostingFailureReason, PartyType } from '@platform/core/domain'
+import {
+  AccountRole,
+  FinancePostingFailureReason,
+  PartyType,
+  ReturnCostAgainst,
+  ReturnSettlementKind
+} from '@platform/core/domain'
 
 import { type AutoEntry, linesOf, type RoleAccounts, type SaleOrderRow } from './auto-entry-rules'
 import { allocateByWeight } from './tax-rules'
@@ -161,11 +167,18 @@ export function restockCost(
   issued: readonly StockMove[]
 ): RestockCostResult {
   let costCents = 0
+  // The units with no cost of their own are valued by product and variant on their total, not move by move: rounding each move would
+  // leave a cent of the cost of goods sold behind when a product comes back in several pieces
+  const uncosted = new Map<string, { move: StockMove; quantity: number }>()
   for (const move of back) {
     if (move.unitCostCents !== null) {
       costCents += move.quantity * move.unitCostCents
       continue
     }
+    const key = `${move.productId}:${move.variantId ?? ''}`
+    uncosted.set(key, { move, quantity: (uncosted.get(key)?.quantity ?? 0) + move.quantity })
+  }
+  for (const { move, quantity } of uncosted.values()) {
     const same = issued.filter(
       row => row.productId === move.productId && row.variantId === move.variantId
     )
@@ -174,7 +187,7 @@ export function restockCost(
       return { ok: false, reason: FinancePostingFailureReason.COST_MISSING }
     }
     const total = same.reduce((sum, row) => sum + row.quantity * (row.unitCostCents ?? 0), 0)
-    costCents += prorate(total, move.quantity, units)
+    costCents += prorate(total, quantity, units)
   }
   return { ok: true, costCents }
 }
@@ -183,7 +196,8 @@ export function restockCost(
 // other case it is the customer's advance, the refund the business owes until a person pays it out (a transfer or an expense by hand,
 // `finance:move_money`), so the books never invent a cash movement.
 export type ReturnSettlement =
-  { kind: 'advance' } | { kind: 'carrier'; carrierConnectionId: string }
+  | { kind: ReturnSettlementKind.ADVANCE }
+  | { kind: ReturnSettlementKind.CARRIER; carrierConnectionId: string }
 
 export function returnLines(input: {
   accounts: RoleAccounts
@@ -196,7 +210,7 @@ export function returnLines(input: {
   // What the restocked units cost, at the cost the movements carry
   restockCostCents: number
   // Before the sale the cost went back from inventory in transit; after it, from the cost of goods sold
-  costAgainst: 'transit' | 'cost_of_goods_sold'
+  costAgainst: ReturnCostAgainst
   storeId: string
 }): AutoEntry {
   const { reversal, settlement } = input
@@ -205,7 +219,7 @@ export function returnLines(input: {
   const vat = (reversal?.vatCents ?? 0) + (input.shipping?.vatCents ?? 0)
   const owed = net + shippingNet + vat
   const party =
-    settlement.kind === 'carrier'
+    settlement.kind === ReturnSettlementKind.CARRIER
       ? { partyType: PartyType.CARRIER_CONNECTION, partyId: settlement.carrierConnectionId }
       : undefined
   const debits = [
@@ -217,7 +231,7 @@ export function returnLines(input: {
   const credits = [
     {
       role:
-        settlement.kind === 'carrier'
+        settlement.kind === ReturnSettlementKind.CARRIER
           ? AccountRole.RECEIVABLE_CARRIERS
           : AccountRole.CUSTOMER_ADVANCES,
       cents: owed,
@@ -225,7 +239,7 @@ export function returnLines(input: {
     },
     {
       role:
-        input.costAgainst === 'transit'
+        input.costAgainst === ReturnCostAgainst.TRANSIT
           ? AccountRole.INVENTORY_IN_TRANSIT
           : AccountRole.COST_OF_GOODS_SOLD,
       cents: input.restockCostCents

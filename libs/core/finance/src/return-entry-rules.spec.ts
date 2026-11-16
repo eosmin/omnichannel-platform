@@ -1,4 +1,10 @@
-import { AccountRole, FinancePostingFailureReason, PartyType } from '@platform/core/domain'
+import {
+  AccountRole,
+  FinancePostingFailureReason,
+  PartyType,
+  ReturnCostAgainst,
+  ReturnSettlementKind
+} from '@platform/core/domain'
 
 import {
   type DraftLine,
@@ -202,9 +208,9 @@ describe('returnLines (E8)', () => {
     const result = returnLines({
       accounts,
       reversal,
-      settlement: { kind: 'advance' },
+      settlement: { kind: ReturnSettlementKind.ADVANCE },
       restockCostCents: 1200,
-      costAgainst: 'cost_of_goods_sold',
+      costAgainst: ReturnCostAgainst.COST_OF_GOODS_SOLD,
       storeId: STORE
     })
     expect(result.ok).toBe(true)
@@ -222,9 +228,9 @@ describe('returnLines (E8)', () => {
     const result = returnLines({
       accounts,
       reversal,
-      settlement: { kind: 'carrier', carrierConnectionId: CARRIER },
+      settlement: { kind: ReturnSettlementKind.CARRIER, carrierConnectionId: CARRIER },
       restockCostCents: 0,
-      costAgainst: 'cost_of_goods_sold',
+      costAgainst: ReturnCostAgainst.COST_OF_GOODS_SOLD,
       storeId: STORE
     })
     expect(result.ok).toBe(true)
@@ -241,9 +247,9 @@ describe('returnLines (E8)', () => {
     const result = returnLines({
       accounts,
       reversal: null,
-      settlement: { kind: 'advance' },
+      settlement: { kind: ReturnSettlementKind.ADVANCE },
       restockCostCents: 1200,
-      costAgainst: 'transit',
+      costAgainst: ReturnCostAgainst.TRANSIT,
       storeId: STORE
     })
     expect(result.ok).toBe(true)
@@ -259,9 +265,9 @@ describe('returnLines (E8)', () => {
       returnLines({
         accounts,
         reversal: null,
-        settlement: { kind: 'advance' },
+        settlement: { kind: ReturnSettlementKind.ADVANCE },
         restockCostCents: 0,
-        costAgainst: 'transit',
+        costAgainst: ReturnCostAgainst.TRANSIT,
         storeId: STORE
       })
     ).toEqual({ ok: true, lines: [] })
@@ -270,9 +276,9 @@ describe('returnLines (E8)', () => {
       returnLines({
         accounts: none,
         reversal,
-        settlement: { kind: 'advance' },
+        settlement: { kind: ReturnSettlementKind.ADVANCE },
         restockCostCents: 0,
-        costAgainst: 'cost_of_goods_sold',
+        costAgainst: ReturnCostAgainst.COST_OF_GOODS_SOLD,
         storeId: STORE
       })
     ).toEqual({
@@ -305,6 +311,29 @@ describe('restockCost (E8)', () => {
     ).toEqual({ ok: true, costCents: 1210 })
   })
 
+  it('leaves no cent behind when a product comes back in several pieces', () => {
+    const piece = { productId: 'p', variantId: null, quantity: 1, unitCostCents: null }
+    // 1000 cents of cost for 3 units: three pieces of one unit are the whole 1000, not 3 x 333
+    expect(
+      restockCost(
+        [piece, piece, piece],
+        [{ productId: 'p', variantId: null, quantity: 3, unitCostCents: null }]
+      )
+    ).toEqual({
+      ok: false,
+      reason: FinancePostingFailureReason.COST_MISSING
+    })
+    expect(
+      restockCost(
+        [piece, piece, piece],
+        [
+          { productId: 'p', variantId: null, quantity: 1, unitCostCents: 334 },
+          { productId: 'p', variantId: null, quantity: 2, unitCostCents: 333 }
+        ]
+      )
+    ).toEqual({ ok: true, costCents: 1000 })
+  })
+
   it('refuses a unit with no cost of its own and none from its sale, never a cost of zero', () => {
     expect(
       restockCost([{ productId: 'q', variantId: null, quantity: 1, unitCostCents: null }], issued)
@@ -325,9 +354,9 @@ describe('returnLines with the shipping fee (E8)', () => {
       accounts,
       reversal: { netCents: 2000, vatCents: 260 },
       shipping: { netCents: 500, vatCents: 65 },
-      settlement: { kind: 'carrier', carrierConnectionId: CARRIER },
+      settlement: { kind: ReturnSettlementKind.CARRIER, carrierConnectionId: CARRIER },
       restockCostCents: 0,
-      costAgainst: 'cost_of_goods_sold',
+      costAgainst: ReturnCostAgainst.COST_OF_GOODS_SOLD,
       storeId: STORE
     })
     expect(result.ok).toBe(true)

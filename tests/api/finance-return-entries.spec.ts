@@ -429,6 +429,7 @@ describe('The entries of a difference written off and of a return (Step 4B.6b-2)
         totalCents: 2825,
         taxCents: 325,
         pricesIncludeTax: true,
+        ...(input.connectionId === undefined ? {} : { carrierConnectionId: input.connectionId }),
         paymentMethod: 'CASH_ON_DELIVERY',
         paymentStatus: 'PENDING',
         shippedAt: NOON(day),
@@ -596,7 +597,8 @@ describe('The entries of a difference written off and of a return (Step 4B.6b-2)
       const guide = await createShipment(owner, {
         storeId: ctx.storeA.id,
         connectionId,
-        status: ShipmentStatus.DELIVERED,
+        // The parcel came back: its guide is returned and the carrier will never remit it
+        status: ShipmentStatus.RETURNED,
         codAmountCents: 2825,
         codStatus: CodStatus.VOID
       })
