@@ -21,6 +21,8 @@ export const MetricNames = {
   FINANCE_UNPOSTED_SOURCES: 'platform_finance_unposted_sources',
   FINANCE_POSTING_FAILURES: 'platform_finance_posting_failures_total',
   FINANCE_BALANCE_MISMATCHES: 'platform_finance_balance_mismatches',
+  // What the daily check of the fiscal documents found, by kind: a gauge of how many there are now, so it goes back to zero when they are fixed
+  FINANCE_FISCAL_FINDINGS: 'platform_finance_fiscal_findings',
   // 1 while the last weekly check of the hash chain found the journal altered, 0 once a check passes again (a gauge, like the one above,
   // so an alert clears itself when the books are sound again)
   FINANCE_CHAIN_BREAKS: 'platform_finance_chain_breaks',

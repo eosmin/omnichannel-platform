@@ -87,6 +87,11 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
     help: 'Automatic entries the books could not post and a person must fix',
     labels: ['reason']
   },
+  [MetricNames.FINANCE_FISCAL_FINDINGS]: {
+    kind: 'gauge',
+    help: 'What the last daily check of the fiscal documents left, by kind: sales with no document or credit notes the lifecycle could not make, documents left in the queue and documents that disagree with their entry',
+    labels: ['organization_id', 'kind']
+  },
   [MetricNames.FINANCE_BALANCE_MISMATCHES]: {
     kind: 'gauge',
     help: 'Balances by account and period that do not match the sum of their lines in the last daily check: any non-zero value is an incident',

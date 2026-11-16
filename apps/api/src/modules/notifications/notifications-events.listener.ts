@@ -51,6 +51,7 @@ import {
   type FinancePostingFailedPayload,
   type FiscalDocumentRejectedPayload,
   type FiscalDocumentStuckPayload,
+  type FiscalEntryMismatchPayload,
   type InventoryLowPayload,
   type MessageChangedPayload,
   type MessageMentionPayload,
@@ -533,6 +534,17 @@ export class NotificationsEventsListener {
       payload.organizationId,
       payload.documentId,
       NotificationTypes.FISCAL_DOCUMENT_STUCK
+    )
+  }
+
+  // The daily check found a sale document that disagrees with its entry. The person who manages the fiscal documents is told once until
+  // they read it; the text names no amount and no receiver, the fiscal screens say which.
+  @OnEvent(Events.FISCAL_ENTRY_MISMATCH)
+  async onFiscalEntryMismatch(payload: FiscalEntryMismatchPayload): Promise<void> {
+    await this.tellFiscalManagers(
+      payload.organizationId,
+      payload.documentId,
+      NotificationTypes.FISCAL_ENTRY_MISMATCH
     )
   }
 

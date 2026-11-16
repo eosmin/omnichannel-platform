@@ -12,6 +12,7 @@ import { FiscalDocumentsService } from './fiscal-documents.service'
 import { FiscalEvidenceService } from './fiscal-evidence.service'
 import { FiscalIssuerService } from './fiscal-issuer.service'
 import { FISCAL_PROVIDERS, FiscalProviderRegistry } from './fiscal-provider.registry'
+import { FiscalSweepService } from './fiscal-sweep.service'
 import { officialFiscalProviders } from './official-providers'
 
 // The fiscal documents of the organization for the api and for the worker: the providers this deployment has, the issuer and the
@@ -28,14 +29,16 @@ import { officialFiscalProviders } from './official-providers'
     FiscalIssuerService,
     FiscalEvidenceService,
     FiscalDocumentsService,
-    FiscalCustomerDataService
+    FiscalCustomerDataService,
+    FiscalSweepService
   ],
   exports: [
     FiscalDocumentsService,
     FiscalEvidenceService,
     FiscalIssuerService,
     FiscalCustomerDataService,
-    FiscalProviderRegistry
+    FiscalProviderRegistry,
+    FiscalSweepService
   ]
 })
 export class FiscalRuntimeModule {}

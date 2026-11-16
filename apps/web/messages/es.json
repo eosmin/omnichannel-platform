@@ -115,7 +115,8 @@
         },
         "fiscal": {
           "document_rejected": "Documento fiscal rechazado",
-          "document_stuck": "Documento fiscal detenido"
+          "document_stuck": "Documento fiscal detenido",
+          "entry_mismatch": "Un documento fiscal no coincide con los libros"
         }
       },
       "push": {
@@ -1056,6 +1057,10 @@
       "document_stuck": {
         "title": "Un documento fiscal quedó detenido",
         "body": "Un documento fiscal agotó sus intentos mientras el proveedor no respondía. Abre los documentos fiscales y envíalo de nuevo."
+      },
+      "entry_mismatch": {
+        "title": "Un documento fiscal no coincide con los libros",
+        "body": "La revisión diaria encontró una venta cuyo documento fiscal tiene un total o un impuesto distinto al de su asiento en los libros. Abre los documentos fiscales y pide al contador que decida cuál es el correcto: nada se corrige solo."
       }
     }
   },

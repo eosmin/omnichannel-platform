@@ -239,6 +239,12 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     orderId: id,
     attempts: z.number().int().min(1)
   }),
+  // A sale document disagrees with its entry: the organization, one document and how many
+  [Events.FISCAL_ENTRY_MISMATCH]: z.object({
+    organizationId: id,
+    documentId: id,
+    count: z.number().int().min(1)
+  }),
   // The webhooks of a plugin turned off: the installation, the plugin and the count, never the address or the response
   [Events.PLUGIN_ERROR]: z.object({
     storeId: id,

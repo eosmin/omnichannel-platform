@@ -89,6 +89,20 @@ describe('the notice of a fiscal document that needs a person', () => {
     expect(JSON.stringify(sent)).not.toContain('receiver_incomplete')
   })
 
+  it('says a document that disagrees with its entry with its own type, and names no amount', async () => {
+    const { listener, sent } = build([{ userId: 'u1', storeId: 's1' }])
+    await listener.onFiscalEntryMismatch({ organizationId: ORG, documentId: DOCUMENT, count: 3 })
+    expect(sent).toHaveLength(1)
+    expect(sent[0]?.input).toMatchObject({
+      type: NotificationTypes.FISCAL_ENTRY_MISMATCH,
+      resourceType: FiscalResourceTypes.DOCUMENT,
+      resourceId: DOCUMENT,
+      params: {}
+    })
+    // The count is the check's, not the notice's: the text says no number
+    expect(JSON.stringify(sent)).not.toContain('3')
+  })
+
   it('tells nobody when nobody can act, and never throws to the bus', async () => {
     const empty = build([])
     await empty.listener.onFiscalDocumentRejected(rejected)
