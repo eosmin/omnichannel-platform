@@ -1,4 +1,4 @@
-import { isIsoDate } from '@platform/core/finance'
+import { isIsoDate } from '@platform/core/domain'
 
 // An accounting date is a day, 'YYYY-MM-DD', and a real one (no 31 of February): the api refuses anything else, and the form says so first
 export const isCalendarDay = isIsoDate

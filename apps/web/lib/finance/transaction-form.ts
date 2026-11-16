@@ -9,9 +9,9 @@ import {
   AccountType,
   FinanceLimits,
   FinanceTransactionKind,
-  type TaxRounding
+  type TaxRounding,
+  taxOfAmount
 } from '@platform/core/domain'
-import { taxOfAmount } from '@platform/core/finance'
 
 import { cashAccountsOf, postableAccountsOf } from './account-form'
 import { isCalendarDay } from './dates'

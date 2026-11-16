@@ -1,67 +1,12 @@
-import { FinanceTaxLimits, TaxRounding, TaxTreatment } from '@platform/core/domain'
+import { taxOfAmount, type TaxRounding, TaxTreatment } from '@platform/core/domain'
 
 // The tax math of an order (TDD_18 §7), pure: whole cents in, whole cents out, no float anywhere. A rate is basis points (13 % is
 // 1300). The tax of a line is computed on that line, after its share of the discount; the tax of the order is the sum of its
 // lines (and of the shipping fee), so the order, the entry that books it and the fiscal document agree to the cent (§6.4).
 
-export const isRateBps = (value: unknown): value is number =>
-  typeof value === 'number' &&
-  Number.isInteger(value) &&
-  value >= FinanceTaxLimits.MIN_RATE_BPS &&
-  value <= FinanceTaxLimits.MAX_RATE_BPS
-
-// numerator / denominator, both whole and non-negative, to a whole number by the rounding the books chose. Done on the
-// quotient and the remainder, never on a float, so no amount of the range of an order can be off by a cent.
-export function roundedQuotient(
-  numerator: number,
-  denominator: number,
-  rounding: TaxRounding
-): number {
-  if (
-    !Number.isSafeInteger(numerator) ||
-    !Number.isSafeInteger(denominator) ||
-    numerator < 0 ||
-    denominator <= 0
-  ) {
-    throw new RangeError(
-      'roundedQuotient takes a whole non-negative numerator and a positive denominator'
-    )
-  }
-  // The remainder of whole numbers is exact, and so is the quotient taken from it: no float division decides a cent
-  const remainder = numerator % denominator
-  const quotient = (numerator - remainder) / denominator
-  if (remainder === 0) return quotient
-  switch (rounding) {
-    case TaxRounding.DOWN:
-      return quotient
-    case TaxRounding.UP:
-      return quotient + 1
-    case TaxRounding.HALF_EVEN: {
-      const twice = remainder * 2
-      if (twice === denominator) return quotient % 2 === 0 ? quotient : quotient + 1
-      return twice > denominator ? quotient + 1 : quotient
-    }
-    case TaxRounding.HALF_UP:
-      return remainder * 2 >= denominator ? quotient + 1 : quotient
-  }
-}
-
-// The tax inside an amount that already includes it (`tax = round(amount x rate / (10000 + rate))`), or on top of an amount
-// that does not (`tax = round(amount x rate / 10000)`). A rate of zero is no tax.
-export function taxOfAmount(input: {
-  amountCents: number
-  rateBps: number
-  includesTax: boolean
-  rounding: TaxRounding
-}): number {
-  const { amountCents, rateBps, includesTax, rounding } = input
-  if (!isRateBps(rateBps)) throw new RangeError('the tax rate is not a rate in basis points')
-  if (rateBps === 0 || amountCents === 0) return 0
-  const denominator = includesTax
-    ? FinanceTaxLimits.BPS_DENOMINATOR + rateBps
-    : FinanceTaxLimits.BPS_DENOMINATOR
-  return roundedQuotient(amountCents * rateBps, denominator, rounding)
-}
+// The rate check, the rounded quotient and the tax of an amount are pure and a screen needs them to show the tax before it is sent,
+// so they live in `@platform/core/domain` (the web imports no other core library) and are re-exported here for the api.
+export { isRateBps, roundedQuotient, taxOfAmount } from '@platform/core/domain'
 
 // A whole amount shared in proportion to weights, by the largest remainder: the parts add up to the amount exactly, a tie goes
 // to the earlier part, and the same input always gives the same parts. BigInt, because amount x weight passes 2^53 in range.

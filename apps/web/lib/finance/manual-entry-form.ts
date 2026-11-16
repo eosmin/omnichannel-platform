@@ -22,7 +22,10 @@ export interface ManualEntryDraft {
   lines: ManualLineDraft[]
 }
 
-export const ManualEntryEntryTypes = [JournalEntryType.MANUAL, JournalEntryType.OPENING_BALANCE]
+export const ManualEntryEntryTypes = [
+  JournalEntryType.MANUAL,
+  JournalEntryType.OPENING_BALANCE
+] as const
 
 export const ManualEntryFields = {
   DATE: 'date',

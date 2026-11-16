@@ -2,6 +2,7 @@ import {
   EntryOrigin,
   FinanceCurrency,
   FinanceLimits,
+  isIsoDate,
   JournalEntryType,
   type FinanceSourceType,
   type PartyType
@@ -68,17 +69,8 @@ export interface EntryProblem {
   rule: EntryRuleName
 }
 
-const DATE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/
-
-// A calendar date, not only a shape that looks like one (no 31 of February)
-export function isIsoDate(value: string): boolean {
-  if (!DATE.test(value)) return false
-  const [year = 0, month = 0, day = 0] = value.split('-').map(Number)
-  const date = new Date(Date.UTC(year, month - 1, day))
-  return (
-    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
-  )
-}
+// A calendar date, not only a shape that looks like one (no 31 of February): the rule lives in `@platform/core/domain` for the screens
+export { isIsoDate } from '@platform/core/domain'
 
 const isWholeCents = (value: number): boolean =>
   Number.isSafeInteger(value) && value >= 0 && value <= FinanceLimits.MAX_LINE_CENTS
