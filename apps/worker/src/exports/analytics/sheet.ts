@@ -30,11 +30,12 @@ export interface SheetTexts {
 
 const CENTS_PER_UNIT = 100
 
-// What a spreadsheet or a CSV holds for a figure: money in whole units (the rollup keeps cents), a time in seconds, a count as
-// it is. The document formats it for a person on its own (`formatCell`), from the same raw figure.
+// What a spreadsheet or a CSV holds for a figure: money in whole units of the currency (the rollup already keeps it that way, so it is
+// not divided again), a time in seconds, a count as it is. Money is cut to the cent here and only here, from the four decimals the
+// rollup stores (the rollup sums whole cents and divides once, so a figure is always a whole number of cents: no half cent exists to round). The document formats it for a person on its own (`formatCell`), from the same raw figure.
 export function displayValue(value: number | null, unit: MetricUnit): number | null {
   if (value === null) return null
-  return unit === MetricUnits.CENTS ? Math.round(value) / CENTS_PER_UNIT : value
+  return unit === MetricUnits.CURRENCY ? Math.round(value * CENTS_PER_UNIT) / CENTS_PER_UNIT : value
 }
 
 export function sheetOf(table: ReportTable, texts: SheetTexts): ReportSheet {

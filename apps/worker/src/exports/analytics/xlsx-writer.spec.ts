@@ -7,11 +7,11 @@ const sheet: ReportSheet = {
   title: 'Weekly',
   subtitle: 'From 2026-11-02 to 2026-11-09',
   headers: ['Day', 'Orders', 'Revenue (USD)'],
-  units: ['count', 'cents'],
+  units: ['count', 'currency'],
   rows: [
-    { label: '2026-11-02', values: [3, 12_050], total: false },
+    { label: '2026-11-02', values: [3, 120.5], total: false },
     { label: '2026-11-03', values: [null, 0], total: false },
-    { label: 'Total', values: [3, 12_050], total: true }
+    { label: 'Total', values: [3, 120.5], total: true }
   ]
 }
 
@@ -34,7 +34,7 @@ describe('buildXlsx', () => {
   it('writes numbers as numbers and an empty figure as no cell', () => {
     const xml = sheetXml(buildXlsx(sheet))
     expect(xml).toContain('<c r="B5"><v>3</v></c>')
-    // Money is in whole units: the rollup keeps cents
+    // Money is in whole units of the currency, as the rollup keeps it: no division, no early rounding
     expect(xml).toContain('<c r="C5"><v>120.5</v></c>')
     expect(xml).not.toContain('r="B6"')
   })

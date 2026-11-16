@@ -36,7 +36,9 @@ describe('pdfText', () => {
 describe('formatCell', () => {
   it('formats each unit for a person', () => {
     expect(formatCell(1250, 'count')).toBe('1250')
-    expect(formatCell(12_050, 'cents')).toBe('120.50')
+    expect(formatCell(120.5, 'currency')).toBe('120.50')
+    expect(formatCell(19.99, 'currency')).toBe('19.99')
+    expect(formatCell(0.01, 'currency')).toBe('0.01')
     expect(formatCell(222, 'seconds')).toBe('3 min 42 s')
     expect(formatCell(null, 'count')).toBe('-')
     expect(formatCell(Number.NaN, 'count')).toBe('-')
