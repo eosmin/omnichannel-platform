@@ -172,6 +172,7 @@ function Detail({ remittance }: { remittance: RemittanceDetailView }): ReactElem
         remittanceId={remittance.id}
         lines={remittance.lines}
         canEdit={draft && canManage}
+        showWarnings={draft}
       />
       {draft && canManage ? <ConfirmPanel remittance={remittance} /> : null}
       {remittance.status === RemittanceStatus.CONFIRMED && canManage ? (

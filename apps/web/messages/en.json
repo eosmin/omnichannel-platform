@@ -5393,6 +5393,9 @@
         "excluded": "Leave this line out of the confirmation",
         "save": "Save line",
         "cancel": "Cancel"
+      },
+      "warnings": {
+        "FEE_EXCEEDS_COLLECTED": "The fee and the amount do not fit in what was collected: check them."
       }
     },
     "confirm": {
@@ -5409,7 +5412,9 @@
         "description": "{count, plural, one {# shipment} other {# shipments}} of {carrier} will be marked as remitted, for {amount} reported. Only voiding the remittance can undo this.",
         "cancel": "Go back",
         "confirm": "Confirm"
-      }
+      },
+      "feeWarning": "{count, plural, one {# line has a fee larger than the cash it covers} other {# lines have a fee larger than the cash they cover}}. Check them above: confirming settles the lines as they are.",
+      "understood": "I understand and want to confirm anyway"
     },
     "void": {
       "title": "Void the remittance",

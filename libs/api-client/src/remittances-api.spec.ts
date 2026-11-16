@@ -67,7 +67,8 @@ const line = {
   differenceCents: -100,
   outcome: RemittanceLineOutcome.AMOUNT_DIFFERS,
   excluded: false,
-  note: null
+  note: null,
+  warnings: []
 }
 const detail = { ...view, lines: [line] }
 
@@ -145,7 +146,7 @@ describe('remittances api', () => {
     const preview = {
       headers: ['Guide', 'Amount'],
       rowCount: 1,
-      lines: [{ guideNumber: 'G-1', reportedCents: 1400, row: 2 }],
+      lines: [{ guideNumber: 'G-1', reportedCents: 1400, row: 2, warnings: [] }],
       errors: [{ row: 3, field: 'amount', code: 'invalid_amount', value: 'abc' }],
       errorCount: 1,
       reference: null,

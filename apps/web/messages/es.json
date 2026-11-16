@@ -5393,6 +5393,9 @@
         "excluded": "Dejar esta línea fuera de la confirmación",
         "save": "Guardar línea",
         "cancel": "Cancelar"
+      },
+      "warnings": {
+        "FEE_EXCEEDS_COLLECTED": "La comisión y el monto no caben en lo cobrado: revísalos."
       }
     },
     "confirm": {
@@ -5409,7 +5412,9 @@
         "description": "Se marcará como remesado: {count, plural, one {# envío} other {# envíos}} de {carrier}, por {amount} reportados. Solo anular la remesa puede deshacerlo.",
         "cancel": "Volver",
         "confirm": "Confirmar"
-      }
+      },
+      "feeWarning": "{count, plural, one {# línea tiene una comisión mayor que el dinero que cubre} other {# líneas tienen una comisión mayor que el dinero que cubren}}. Revísalas arriba: al confirmar, las líneas se liquidan como están.",
+      "understood": "Lo entiendo y quiero confirmar de todos modos"
     },
     "void": {
       "title": "Anular la remesa",

@@ -9,6 +9,7 @@ import {
   PaymentMethod,
   RemittanceLimits,
   RemittanceLineOutcome,
+  RemittanceLineWarnings,
   RemittanceStatus,
   ShipmentStatus,
   ShippingPayer
@@ -41,6 +42,7 @@ const ADDRESS = { line1: 'Calle 1 #23', city: 'San Salvador', state: 'San Salvad
 
 interface LineBody {
   guideNumber: string
+  warnings: string[]
   outcome: RemittanceLineOutcome
   expectedCents: number | null
   differenceCents: number | null
@@ -329,6 +331,80 @@ describe('COD remittances (TDD_17 §4.15)', () => {
       }
       expect(lineOf(body, 'RATE-LATE').outcome).toBe(RemittanceLineOutcome.MATCHED)
       expect(lineOf(body, 'RATE-LATE').expectedCents).toBe(9250)
+    })
+
+    it('warns on the line whose fee is larger than what it reports, in the draft and after a change, and confirms it all the same', async () => {
+      await pendingShipment('FW-BIG', 1000)
+      await pendingShipment('FW-OK', 1000)
+      await pendingShipment('FW-EQ', 1000)
+      const made = await asAdmin()
+        .post(ApiRoutes.remittances.list)
+        .send({
+          connectionId,
+          lines: [
+            { guideNumber: 'FW-BIG', reportedCents: 300, reportedFeeCents: 500 },
+            { guideNumber: 'FW-OK', reportedCents: 1000, reportedFeeCents: 100 },
+            // A fee equal to what the line reports is not larger
+            { guideNumber: 'FW-EQ', reportedCents: 400, reportedFeeCents: 400 }
+          ]
+        })
+      expect(made.status).toBe(CREATED)
+      const draft = made.body as RemittanceBody
+      const warn = [RemittanceLineWarnings.FEE_EXCEEDS_COLLECTED]
+      expect(lineOf(draft, 'FW-BIG').warnings).toEqual(warn)
+      expect(lineOf(draft, 'FW-OK').warnings).toEqual([])
+      expect(lineOf(draft, 'FW-EQ').warnings).toEqual([])
+      const read = async () =>
+        (await asAdmin().get(ApiRoutes.remittances.byId(draft.id))).body as RemittanceBody
+      expect(lineOf(await read(), 'FW-BIG').warnings).toEqual(warn)
+      // A change of the line moves the warning with it, in both directions
+      const fixed = await asAdmin()
+        .patch(ApiRoutes.remittances.lineById(draft.id, lineOf(draft, 'FW-BIG').id))
+        .send({ reportedFeeCents: 100 })
+      expect(fixed.status).toBe(OK)
+      expect(lineOf(await read(), 'FW-BIG').warnings).toEqual([])
+      await asAdmin()
+        .patch(ApiRoutes.remittances.lineById(draft.id, lineOf(draft, 'FW-OK').id))
+        .send({ reportedFeeCents: 1500 })
+      expect(lineOf(await read(), 'FW-OK').warnings).toEqual(warn)
+      // The server warns and does not stop: the confirmation goes through, with the warning on it
+      const done = await asAdmin().post(ApiRoutes.remittances.confirm(draft.id)).send({})
+      expect(done.status).toBe(OK)
+      expect((done.body as RemittanceBody).status).toBe(RemittanceStatus.CONFIRMED)
+      // Once settled it is a record: it carries no warning, whatever the guide and the connection say later
+      expect(lineOf(await read(), 'FW-OK').warnings).toEqual([])
+    })
+
+    it('judges the fee of a carrier that deducts it against the gross of the guide: the net it reports plus the fee', async () => {
+      await owner.carrierConnection.update({
+        where: { id: connectionId },
+        data: { remittanceDeductsFee: true }
+      })
+      try {
+        await pendingShipment('FW-DED-OK', 1000)
+        await pendingShipment('FW-DED-OVER', 1000)
+        const made = await asAdmin()
+          .post(ApiRoutes.remittances.list)
+          .send({
+            connectionId,
+            lines: [
+              // $10.00 collected, $6.00 kept, $4.00 reported: more than half the cash, and it adds up
+              { guideNumber: 'FW-DED-OK', reportedCents: 400, reportedFeeCents: 600 },
+              // $12.00 kept out of $10.00: it reports nothing
+              { guideNumber: 'FW-DED-OVER', reportedCents: 0, reportedFeeCents: 1200 }
+            ]
+          })
+        const draft = made.body as RemittanceBody
+        expect(lineOf(draft, 'FW-DED-OK').warnings).toEqual([])
+        expect(lineOf(draft, 'FW-DED-OVER').warnings).toEqual([
+          RemittanceLineWarnings.FEE_EXCEEDS_COLLECTED
+        ])
+      } finally {
+        await owner.carrierConnection.update({
+          where: { id: connectionId },
+          data: { remittanceDeductsFee: false }
+        })
+      }
     })
 
     it('lets the second line of a guide count when the first one is left out', async () => {
