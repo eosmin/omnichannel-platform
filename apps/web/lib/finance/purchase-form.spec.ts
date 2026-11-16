@@ -1,15 +1,16 @@
 import type { PurchaseOrderLineView, PurchaseOrderView, SupplierView } from '@platform/api-client'
-import { PurchaseOrderStatus, TaxRounding } from '@platform/core/domain'
 import {
   closePurchaseOrderSchema,
   createPurchaseOrderSchema,
   createSupplierSchema,
+  PurchaseOrderStatus,
   receivePurchaseOrderSchema,
   recordPaymentSchema,
+  TaxRounding,
   updatePurchaseOrderSchema,
   updateSupplierSchema,
   voidPaymentSchema
-} from '@platform/core/finance'
+} from '@platform/core/domain'
 
 import {
   centsOfText,

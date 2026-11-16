@@ -1,6 +1,5 @@
 import { ApiError } from '@platform/api-client'
-import { PurchaseConflicts } from '@platform/core/domain'
-import { PaymentRule, PurchaseRule } from '@platform/core/finance'
+import { PaymentRule, PurchaseConflicts, PurchaseRule } from '@platform/core/domain'
 
 // What the api says about a purchase that its error code alone does not: why a valid request was refused by the state of the purchase
 // (`metadata.conflict`, one of PurchaseConflicts) and which rule of purchases a request broke (`metadata.problems`, the names of

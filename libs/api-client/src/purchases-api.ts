@@ -1,17 +1,18 @@
 import { z } from 'zod'
 
 import { ApiRoutes } from '@platform/core/api'
-import { PaginationLimits, PurchaseOrderStatus } from '@platform/core/domain'
-import type {
-  closePurchaseOrderSchema,
-  createPurchaseOrderSchema,
-  createSupplierSchema,
-  receivePurchaseOrderSchema,
-  recordPaymentSchema,
-  updatePurchaseOrderSchema,
-  updateSupplierSchema,
-  voidPaymentSchema
-} from '@platform/core/finance'
+import {
+  type closePurchaseOrderSchema,
+  type createPurchaseOrderSchema,
+  type createSupplierSchema,
+  PaginationLimits,
+  PurchaseOrderStatus,
+  type receivePurchaseOrderSchema,
+  type recordPaymentSchema,
+  type updatePurchaseOrderSchema,
+  type updateSupplierSchema,
+  type voidPaymentSchema
+} from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
 

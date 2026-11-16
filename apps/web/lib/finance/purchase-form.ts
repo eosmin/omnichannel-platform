@@ -13,12 +13,14 @@ import type {
 } from '@platform/api-client'
 import {
   FinanceLimits,
+  isIsoDate,
   PurchaseLimits,
   PurchaseOrderStatus,
   PurchaseOrderStatusTransitions,
+  type ReceiptMoney,
+  receiptMoney,
   type TaxRounding
 } from '@platform/core/domain'
-import { isIsoDate, receiptMoney, type ReceiptMoney } from '@platform/core/finance'
 
 import { decimalOfCents } from './money'
 

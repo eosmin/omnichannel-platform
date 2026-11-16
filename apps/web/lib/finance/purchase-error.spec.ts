@@ -1,6 +1,5 @@
 import { ApiError } from '@platform/api-client'
-import { PurchaseConflicts } from '@platform/core/domain'
-import { PaymentRule, PurchaseRule } from '@platform/core/finance'
+import { PaymentRule, PurchaseConflicts, PurchaseRule } from '@platform/core/domain'
 
 import messages from '../../messages/en.json'
 import esMessages from '../../messages/es.json'

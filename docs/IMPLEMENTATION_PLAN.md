@@ -2023,9 +2023,12 @@ Admin: owners of custom roles grant it by hand, and 4B.9 lists it in the matrix 
   `finance:view`: they are the api's own routes, and a buyer who does not read the books must still buy; what a form needs of the chart (the account the
   money leaves, the tax rates, the rounding rule) is read only by who holds `finance:view`, and each form says so when the person does not (rejected: gate
   every purchase page on `finance:view`, which shuts out the buyer; rejected: a server change to read the chart with the purchase permission); (2) the bodies
-  of the purchase routes moved from the api to `libs/core/finance/src/purchase-schemas.ts`, which the api imports under its old names, so that a spec of the
-  web checks what every form sends against the very schema the api validates with (rejected: a copy of the schemas in the web, which drifts; rejected: a
-  relative import of the api from a web spec, which the project boundaries forbid): the only change to the server, with no change of behavior;
+  of the purchase routes, the purchase rules (`receiptMoney`, `PurchaseRule`, `PaymentRule`) and the tax rules moved to `libs/core/domain`
+  (`purchase-schemas.ts`, `purchase-rules.ts`, `tax-rules.ts`, `ledger-days.ts`), and `libs/core/finance` keeps its old paths as re-exports, so the api
+  is untouched and a spec of the web checks what every form sends against the very schema the api validates with (rejected: a copy of the schemas in
+  the web, which drifts; rejected: the web importing `libs/core/finance`, which the module boundaries forbid because that lib carries the database
+  client; rejected: a relative import of the api from a web spec): the only change to the server side, with no change of behavior. The api-client types
+  its request bodies as the `z.input` of those same schemas;
   (3) the money a form shows (the tax of a line, the totals of an order and of a delivery) is made with `receiptMoney`, the same function the api posts with,
   so the screen and the bill agree to the cent; for who cannot read the chart the tax is not shown ("at receipt") instead of a guess; (4) an order is made
   as a draft with no lines and its lines are chosen on its own page, saved whole (the api replaces the list); (5) what is still open on a bill is the
