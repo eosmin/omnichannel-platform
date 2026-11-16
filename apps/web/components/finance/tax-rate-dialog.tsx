@@ -5,13 +5,14 @@ import { type FormEvent, type ReactElement, useState } from 'react'
 
 import type { FinanceAccountView, FinanceTaxRateView } from '@platform/api-client'
 
-import { postableAccountsOf } from '../../lib/finance/account-form'
 import {
   emptyTaxRateDraft,
   createTaxRateInputOf,
   type TaxRateDraft,
   type TaxRateField,
   TaxRateFields,
+  TaxAccountSides,
+  taxAccountsOf,
   taxRateDraftOf,
   taxRateProblem,
   updateTaxRateInputOf
@@ -87,7 +88,6 @@ function TaxRateForm({
   const valid = taxRateProblem(draft) === null
   const changes = rate === null || !valid ? null : updateTaxRateInputOf(rate, draft)
   const changed = rate === null || changes === null || Object.keys(changes).length > 0
-  const options = postableAccountsOf(accounts, [draft.outputAccountId, draft.inputAccountId])
 
   const set = (patch: Partial<TaxRateDraft>): void => {
     setDraft(current => ({ ...current, ...patch }))
@@ -134,6 +134,7 @@ function TaxRateForm({
 
   const accountSelect = (
     field: 'outputAccountId' | 'inputAccountId',
+    options: readonly FinanceAccountView[],
     label: string,
     hint: string,
     problem: TaxRateField
@@ -190,12 +191,14 @@ function TaxRateForm({
       />
       {accountSelect(
         'outputAccountId',
+        taxAccountsOf(accounts, TaxAccountSides.OUTPUT, [draft.outputAccountId]),
         t('fields.outputAccount'),
         t('fields.outputHint'),
         TaxRateFields.OUTPUT_ACCOUNT
       )}
       {accountSelect(
         'inputAccountId',
+        taxAccountsOf(accounts, TaxAccountSides.INPUT, [draft.inputAccountId]),
         t('fields.inputAccount'),
         t('fields.inputHint'),
         TaxRateFields.INPUT_ACCOUNT

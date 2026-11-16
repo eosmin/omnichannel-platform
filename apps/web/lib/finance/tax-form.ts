@@ -1,10 +1,12 @@
 import type {
   CreateFinanceTaxRateInput,
+  FinanceAccountView,
   FinanceTaxRateView,
   UpdateFinanceTaxRateInput
 } from '@platform/api-client'
-import { FinanceTaxLimits } from '@platform/core/domain'
+import { AccountType, FinanceTaxLimits } from '@platform/core/domain'
 
+import { postableAccountsOf } from './account-form'
 import { bpsOfPercentText, percentOfBps } from './money'
 
 // The form of a tax rate (TDD_18 §7). The rate is typed as a percent and sent as basis points, by whole numbers only.
@@ -90,4 +92,20 @@ export function updateTaxRateInputOf(
   if (draft.inputAccountId !== rate.inputAccountId) changes.inputAccountId = draft.inputAccountId
   if (draft.isDefault && !rate.isDefault) changes.isDefault = true
   return changes
+}
+
+// The tax owed on sales is a liability and the tax to credit on purchases is an asset (the server refuses any other pair), so each
+// select offers only its own type; the account already chosen stays, as in `postableAccountsOf`.
+export const TaxAccountSides = { OUTPUT: 'output', INPUT: 'input' } as const
+export type TaxAccountSide = (typeof TaxAccountSides)[keyof typeof TaxAccountSides]
+
+export function taxAccountsOf(
+  accounts: readonly FinanceAccountView[],
+  side: TaxAccountSide,
+  keep: readonly string[]
+): FinanceAccountView[] {
+  const type = side === TaxAccountSides.OUTPUT ? AccountType.LIABILITY : AccountType.ASSET
+  return postableAccountsOf(accounts, keep).filter(
+    account => account.type === String(type) || keep.includes(account.id)
+  )
 }

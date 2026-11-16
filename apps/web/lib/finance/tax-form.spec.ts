@@ -1,8 +1,10 @@
-import type { FinanceTaxRateView } from '@platform/api-client'
+import type { FinanceAccountView, FinanceTaxRateView } from '@platform/api-client'
 
 import {
   createTaxRateInputOf,
   emptyTaxRateDraft,
+  TaxAccountSides,
+  taxAccountsOf,
   taxRateDraftOf,
   taxRateProblem,
   updateTaxRateInputOf
@@ -88,5 +90,41 @@ describe('the input of a tax rate', () => {
     expect(updateTaxRateInputOf(current, { ...taxRateDraftOf(current), isDefault: false })).toEqual(
       {}
     )
+  })
+})
+
+describe('taxAccountsOf', () => {
+  const acct = (
+    id: string,
+    type: string,
+    over: Partial<FinanceAccountView> = {}
+  ): FinanceAccountView =>
+    ({
+      id,
+      code: id,
+      name: id,
+      type,
+      isPostable: true,
+      active: true,
+      cashKind: null,
+      ...over
+    }) as FinanceAccountView
+  const list = [
+    acct('2100', 'liability'),
+    acct('1100', 'asset'),
+    acct('4000', 'revenue'),
+    acct('2200', 'liability', { isPostable: false })
+  ]
+
+  it('offers the tax owed only liabilities and the tax to credit only assets, so the pair is never the same account', () => {
+    expect(taxAccountsOf(list, TaxAccountSides.OUTPUT, []).map(a => a.id)).toEqual(['2100'])
+    expect(taxAccountsOf(list, TaxAccountSides.INPUT, []).map(a => a.id)).toEqual(['1100'])
+  })
+
+  it('keeps the account already chosen', () => {
+    expect(taxAccountsOf(list, TaxAccountSides.INPUT, ['4000']).map(a => a.id)).toEqual([
+      '1100',
+      '4000'
+    ])
   })
 })
