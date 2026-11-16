@@ -7423,6 +7423,7 @@
         "provider_answer_invalid": "The provider answered in a way that cannot be taken as an acceptance.",
         "original_voided": "The sale document this credit note cancels was voided. Replace the sale document first, then send this note again.",
         "return_inconsistent": "The units of the return do not fit the sale they came from, so nothing was sent.",
+        "sequence_exhausted": "The series this document is numbered in has no number left, so nothing was sent.",
         "provider": "Reason given by the provider: {code}"
       },
       "actions": {

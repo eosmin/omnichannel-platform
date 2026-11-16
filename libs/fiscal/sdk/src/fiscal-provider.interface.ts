@@ -2,8 +2,11 @@ import type {
   FiscalConsultState,
   FiscalDocumentKind,
   FiscalEnvironment,
+  FiscalOperationCondition,
   FiscalSubmitOutcome,
-  FiscalVoidConsultState
+  FiscalVoidConsultState,
+  PaymentMethod,
+  TaxTreatment
 } from '@platform/core/domain'
 
 // The port of a provider of fiscal documents (TDD_18 §8.1). Core owns the lifecycle, the queue and the link to the ledger; a provider
@@ -31,6 +34,7 @@ export type FiscalReceiverField =
   | 'phone'
   | 'taxpayerType'
   | 'economicActivity'
+  | 'documentType'
 
 // What a provider finds wrong in the fiscal data of a customer: the field and a code of the provider's own, never the value
 export interface FiscalReceiverProblem {
@@ -39,7 +43,26 @@ export interface FiscalReceiverProblem {
 }
 
 export type FiscalIssuerField =
-  'legalName' | 'taxId' | 'registrationId' | 'address' | 'activityCode' | 'establishmentCode'
+  | 'legalName'
+  | 'taxId'
+  | 'registrationId'
+  | 'address'
+  | 'activityCode'
+  | 'establishmentCode'
+  | 'establishmentType'
+  | 'pointOfSaleCode'
+  | 'phone'
+  | 'email'
+
+// What a correlative counts, declared by the provider (the law of a country says whether a document type, an establishment or a point of
+// sale has a series of its own). Core keeps one counter per distinct combination of what is declared here, of the provider and of the
+// environment, and hands the next number to `build`; a manifest that declares nothing has one counter for the organization, which is
+// how documents were numbered before this existed. Core never reads what the numbers mean: no format, no year, no padding.
+export interface FiscalSequenceDeclaration {
+  readonly perDocumentType?: boolean
+  readonly perEstablishment?: boolean
+  readonly perPointOfSale?: boolean
+}
 
 export interface FiscalProviderManifest {
   readonly documentTypes: readonly FiscalDocumentTypeDeclaration[]
@@ -47,6 +70,9 @@ export interface FiscalProviderManifest {
   // The names of the credentials the provider reads (never their values), so the settings screen and the log redaction know them
   readonly credentialKeys: readonly string[]
   readonly environments: readonly FiscalEnvironment[]
+  // The scope of the correlative (see `FiscalSequenceDeclaration`). A provider that declares `perDocumentType` must implement
+  // `resolveDocumentType`: core asks for the type before it takes the number, and the registry refuses a provider that does not.
+  readonly sequence?: FiscalSequenceDeclaration
 }
 
 // What core hands a provider about the issuer. Credentials are decrypted for the provider's call only and never leave it.
@@ -57,6 +83,13 @@ export interface FiscalIssuerInput {
   readonly address: Readonly<Record<string, unknown>>
   readonly activityCode: string | null
   readonly establishmentCode: string | null
+  // The kind of establishment and the code of the point of sale the document is made at, in the words of the provider's own manifest
+  // (core stores them and never reads them), and the contact of the issuer. Null until the owner sets them: what a provider needs of them
+  // is declared in `requiredIssuerFields`.
+  readonly establishmentType: string | null
+  readonly pointOfSaleCode: string | null
+  readonly phone: string | null
+  readonly email: string | null
   readonly environment: FiscalEnvironment
 }
 
@@ -81,6 +114,8 @@ export interface FiscalReceiver {
   // Optional: a receiver made before they existed, or for a provider that does not ask for them, leaves them out.
   readonly taxpayerType?: string | null
   readonly economicActivity?: string | null
+  // The kind of the identity document of `taxId` (a tax number, a national id, a passport ...), in the words of the provider's manifest
+  readonly documentType?: string | null
 }
 
 export interface FiscalLine {
@@ -91,6 +126,21 @@ export interface FiscalLine {
   readonly taxRateBps: number | null
   readonly taxCents: number
   readonly totalCents: number
+  // How the line was taxed when the order was made (the snapshot of the order): taxed, exempt or not subject. Null on a line of an order
+  // that predates the snapshot, which carries no tax: the provider decides what that means for its document.
+  readonly taxTreatment: TaxTreatment | null
+  // What the line is and its unit of measure, in the words of the provider's own manifest. Optional and null until the catalog of the
+  // store keeps them: a provider falls back on the default it declares (a unit, goods or services).
+  readonly itemKind?: string | null
+  readonly unit?: string | null
+}
+
+// How the order was paid, in core's words: the provider maps the method to the catalog of its own
+export interface FiscalPayment {
+  readonly method: PaymentMethod
+  readonly amountCents: number
+  // The number of a transfer or a deposit recorded by hand
+  readonly reference: string | null
 }
 
 // The accepted document that a credit note cancels (part of): what the provider needs to name it, in the words the provider gave it
@@ -108,7 +158,17 @@ export interface FiscalBuildInput {
   readonly kind: FiscalDocumentKind
   // Set for a credit note, null for the document of a sale
   readonly credited: FiscalCreditedDocument | null
+  // The correlative of the organization (the order the documents were made in). Never the number a legal document carries unless the
+  // provider declares no scope of its own: see `correlative`.
   readonly sequenceNumber: number
+  // The number the provider writes in the document: from the counter its manifest's `sequence` scope names (the next number of that
+  // series, kept for this document across every attempt and every submission, so a document refused and corrected keeps its number),
+  // or `sequenceNumber` when the manifest declares no scope.
+  readonly correlative: number
+  // A stable identifier of the document, in the shape of a random UUID (version 4, lowercase), derived from the organization and the
+  // document: the same on every attempt, every submission and every build of it, so a document sent again after a refusal is the same
+  // document for the authority. A provider that needs another casing or another shape derives it from this one.
+  readonly documentUuid: string
   readonly issuedAt: string
   readonly orderNumber: string
   readonly currency: string
@@ -121,6 +181,17 @@ export interface FiscalBuildInput {
   readonly discountCents: number
   readonly totalCents: number
   readonly taxCents: number
+  // How it was paid: one entry for the whole order today (the order records one method). The condition is core's reading of the status
+  // of the payment, which a provider may refine from `payments`.
+  readonly payments: readonly FiscalPayment[]
+  readonly condition: FiscalOperationCondition
+}
+
+// What a provider needs to say which type of document a sale or a credit note is: the choice never depends on anything else, so core
+// can ask for it before it takes the number of the series of that type
+export interface FiscalTypeInput {
+  readonly kind: FiscalDocumentKind
+  readonly receiver: FiscalReceiver
 }
 
 export interface BuiltDocument {
@@ -213,6 +284,9 @@ export interface FiscalDocumentProvider {
   // of taxpayer may take). Core calls it when a person saves the data of a customer, so the format of a country is never core's. A
   // provider without it accepts any value within core's limits.
   validateReceiver?(receiver: FiscalReceiver): readonly FiscalReceiverProblem[]
+  // Pure, required when the manifest declares `sequence.perDocumentType`: the id of the type `build` will pick for this sale. It must
+  // answer exactly what `build` puts in `BuiltDocument.documentType` for the same kind and receiver (the contract suite checks it).
+  resolveDocumentType?(input: FiscalTypeInput): string
   // Pure: the sale and the issuer become the document (the choice of the type is the provider's rule)
   build(input: FiscalBuildInput): Promise<BuiltDocument>
   // Sign, send, return the answer. The same ProviderContext.idempotencyKey never makes two documents.

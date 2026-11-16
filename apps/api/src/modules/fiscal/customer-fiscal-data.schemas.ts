@@ -27,6 +27,7 @@ export const customerFiscalDataSchema = z
     registrationId: text(FiscalCustomerDataLimits.ID_MAX_LENGTH).nullable(),
     taxpayerType: text(FiscalCustomerDataLimits.ID_MAX_LENGTH).nullable(),
     economicActivity: text(FiscalCustomerDataLimits.VALUE_MAX_LENGTH).nullable(),
+    documentType: text(FiscalCustomerDataLimits.ID_MAX_LENGTH).nullable(),
     address: addressSchema.nullable()
   })
   .partial()

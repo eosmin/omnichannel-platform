@@ -14,6 +14,10 @@ testFiscalProviderContract(() => simulatorProvider(), {
     address: { line1: 'Calle 1', city: 'Ciudad' },
     activityCode: null,
     establishmentCode: null,
+    establishmentType: null,
+    pointOfSaleCode: null,
+    phone: null,
+    email: null,
     environment: FiscalEnvironment.SANDBOX
   },
   credentials: { signingKey: SIGNING_KEY },

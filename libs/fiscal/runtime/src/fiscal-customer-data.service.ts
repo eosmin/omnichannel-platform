@@ -34,7 +34,10 @@ const canonical = (record: Record<string, unknown>): string =>
 
 // What a person may send: a field left out stays, a field sent as null is removed (the same rule as the receiver of a document)
 export type CustomerFiscalDataPatch = Partial<
-  Record<'name' | 'taxId' | 'registrationId' | 'taxpayerType' | 'economicActivity', string | null>
+  Record<
+    'name' | 'taxId' | 'registrationId' | 'taxpayerType' | 'economicActivity' | 'documentType',
+    string | null
+  >
 > & { address?: Record<string, string> | null }
 
 // The fiscal data of a customer (TDD_18 §8, Step 4B.7b-3): who the store invoices, held apart from the customer's contact data. It is
@@ -103,7 +106,9 @@ export class FiscalCustomerDataService {
         economicActivity:
           'economicActivity' in patch
             ? (patch.economicActivity ?? null)
-            : (current.economicActivity ?? null)
+            : (current.economicActivity ?? null),
+        documentType:
+          'documentType' in patch ? (patch.documentType ?? null) : (current.documentType ?? null)
       }
       const stored = receiverRecord(next)
       const before = receiverRecord(current)

@@ -32,6 +32,11 @@ export interface FiscalIssuerBody {
   address: Record<string, string>
   activityCode: string | null
   establishmentCode: string | null
+  // Absent keeps the stored one, null clears it (Step 4B.7c-1)
+  establishmentType?: string | null
+  pointOfSaleCode?: string | null
+  phone?: string | null
+  email?: string | null
   environment: FiscalEnvironment
   // Absent keeps the stored one; a new issuer starts at delivered (the column's default)
   issueOn?: FiscalIssueOn
@@ -50,6 +55,10 @@ export interface FiscalIssuerView {
   address: Record<string, unknown>
   activityCode: string | null
   establishmentCode: string | null
+  establishmentType: string | null
+  pointOfSaleCode: string | null
+  phone: string | null
+  email: string | null
   environment: FiscalEnvironment
   issueOn: FiscalIssueOn
   nextSequence: number
@@ -83,6 +92,10 @@ export class FiscalIssuerService {
       address: record(row.address),
       activityCode: row.activityCode,
       establishmentCode: row.establishmentCode,
+      establishmentType: row.establishmentType,
+      pointOfSaleCode: row.pointOfSaleCode,
+      phone: row.phone,
+      email: row.email,
       environment: row.environment as FiscalEnvironment,
       issueOn: row.issueOn as FiscalIssueOn,
       nextSequence: row.nextSequence,
@@ -126,15 +139,6 @@ export class FiscalIssuerService {
         { problems: ['environment'] }
       )
     }
-    const input: FiscalIssuerInput = {
-      legalName: body.legalName,
-      taxId: body.taxId,
-      registrationId: body.registrationId,
-      address: body.address,
-      activityCode: body.activityCode,
-      establishmentCode: body.establishmentCode,
-      environment: body.environment
-    }
     // Everything that depends on what is stored (the credentials to keep, the guards, the correlative) is read under the lock of the
     // row, which every document also takes when it takes a number: a request that rotates the credentials and one that does not can
     // never overwrite each other with what each read before the other committed
@@ -152,9 +156,29 @@ export class FiscalIssuerService {
             credentialsEncrypted: true,
             providerId: true,
             environment: true,
-            nextSequence: true
+            nextSequence: true,
+            establishmentType: true,
+            pointOfSaleCode: true,
+            phone: true,
+            email: true
           }
         })
+        // What the provider is told is what will be stored: the value sent, or the one kept when the request leaves it out
+        const kept = <T>(sentValue: T | undefined, stored: T | undefined): T | null =>
+          sentValue !== undefined ? sentValue : (stored ?? null)
+        const input: FiscalIssuerInput = {
+          legalName: body.legalName,
+          taxId: body.taxId,
+          registrationId: body.registrationId,
+          address: body.address,
+          activityCode: body.activityCode,
+          establishmentCode: body.establishmentCode,
+          establishmentType: kept(body.establishmentType, existing?.establishmentType),
+          pointOfSaleCode: kept(body.pointOfSaleCode, existing?.pointOfSaleCode),
+          phone: kept(body.phone, existing?.phone),
+          email: kept(body.email, existing?.email),
+          environment: body.environment
+        }
         if (
           body.nextSequence !== undefined &&
           existing !== null &&
@@ -210,6 +234,13 @@ export class FiscalIssuerService {
           address: toJson(body.address),
           activityCode: body.activityCode,
           establishmentCode: body.establishmentCode,
+          // Absent keeps the stored one, null clears it
+          ...(body.establishmentType === undefined
+            ? {}
+            : { establishmentType: body.establishmentType }),
+          ...(body.pointOfSaleCode === undefined ? {} : { pointOfSaleCode: body.pointOfSaleCode }),
+          ...(body.phone === undefined ? {} : { phone: body.phone }),
+          ...(body.email === undefined ? {} : { email: body.email }),
           environment: body.environment,
           ...(body.issueOn === undefined ? {} : { issueOn: body.issueOn }),
           ...(body.nextSequence === undefined ? {} : { nextSequence: body.nextSequence }),

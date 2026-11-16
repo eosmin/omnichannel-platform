@@ -268,6 +268,7 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
       OR EXISTS (SELECT 1 FROM purchase_orders WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM fiscal_documents WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM fiscal_issuers WHERE organization_id = ANY(${organizationIds}))
+      OR EXISTS (SELECT 1 FROM fiscal_sequences WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM finance_chain_incidents WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM finance_book_layouts WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM finance_book_snapshots WHERE organization_id = ANY(${organizationIds}))
@@ -276,12 +277,13 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
   if (!touched) return
   // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
   await owner.$transaction(async tx => {
-    // The triggers of the four tables that refuse a delete are off for the length of this transaction, and on again before it
+    // The triggers of the tables that refuse a delete are off for the length of this transaction, and on again before it
     // commits (an error rolls the whole transaction back, the switch included)
     const guarded = [
       'finance_book_snapshots',
       'finance_book_layouts',
       'fiscal_documents',
+      'fiscal_sequences',
       'reconciliation_matches',
       'bank_statement_lines',
       'bank_statement_imports',
@@ -310,6 +312,7 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     await tx.financeBookSnapshot.deleteMany({ where })
     await tx.financeBookLayout.deleteMany({ where })
     await tx.fiscalDocument.deleteMany({ where })
+    await tx.fiscalSequence.deleteMany({ where })
     await tx.fiscalIssuer.deleteMany({ where })
     await tx.supplierPayment.deleteMany({ where })
     await tx.purchaseReceiptLine.deleteMany({ where })

@@ -1,10 +1,22 @@
+import { createHash } from 'node:crypto'
+
 import {
   FiscalDocumentImmutableStatuses,
   FiscalDocumentStatus,
-  FiscalDocumentStatusTransitions
+  FiscalDocumentStatusTransitions,
+  FiscalOperationCondition,
+  type FiscalEnvironment,
+  PaymentMethod,
+  PaymentStatus,
+  TaxTreatment
 } from '@platform/core/domain'
 import { lineBases, reversalLinesOf } from '@platform/core/finance'
-import type { FiscalLine, FiscalReceiver } from '@platform/fiscal/sdk'
+import type {
+  FiscalLine,
+  FiscalPayment,
+  FiscalReceiver,
+  FiscalSequenceDeclaration
+} from '@platform/fiscal/sdk'
 
 // The pure rules of the lifecycle of a fiscal document (TDD_18 §8.3): no database, no provider.
 
@@ -31,6 +43,8 @@ export interface OrderLineRow {
   unitPriceCents: number
   taxRateBps: number | null
   taxCents: number | null
+  // The treatment snapshot of the order item: null on an order made before it
+  taxTreatment: string | null
 }
 
 // The lines of the document from the lines of the order and the tax snapshot of Step 4B.3b: the amounts are the order's, never
@@ -47,8 +61,127 @@ export function documentLines(rows: readonly OrderLineRow[]): FiscalLine[] {
     // A rate with no tax amount is a partial snapshot: the line says no rate rather than a rate with no tax
     taxRateBps: row.taxCents === null ? null : row.taxRateBps,
     taxCents: row.taxCents ?? 0,
-    totalCents: row.quantity * row.unitPriceCents
+    totalCents: row.quantity * row.unitPriceCents,
+    taxTreatment: taxTreatmentOf(row.taxTreatment)
   }))
+}
+
+const TAX_TREATMENTS: readonly string[] = Object.values(TaxTreatment)
+
+// The treatment the order kept, or null for none or for a value this version does not know: core never invents one
+function taxTreatmentOf(value: string | null): TaxTreatment | null {
+  return value !== null && TAX_TREATMENTS.includes(value) ? (value as TaxTreatment) : null
+}
+
+// How the order was paid, for the provider that says it in its document: one payment for the whole order, because that is what the order
+// records. A reference of only blanks is none.
+export function paymentsOf(
+  method: PaymentMethod,
+  reference: string | null,
+  totalCents: number
+): FiscalPayment[] {
+  const kept = reference === null || reference.trim() === '' ? null : reference.trim()
+  return [{ method, amountCents: totalCents, reference: kept }]
+}
+
+const PAYMENT_METHODS: readonly string[] = Object.values(PaymentMethod)
+
+// How the order was paid as the document kept it in its snapshot (`paymentMethod`, `paymentReference`, `paymentStatus`): what the provider
+// gets in `FiscalBuildInput`. A snapshot made before these were kept (or with a method this version does not know) says no payment and
+// nothing was paid: the condition is deferred, never a claim that the sale was paid.
+export function paymentOfSnapshot(
+  parts: Readonly<Record<string, unknown>>,
+  totalCents: number,
+  // A credit note gives back part of a sale: what it gives back is not a payment of its own, so it carries none (the provider reads the
+  // payment of the document it cancels). Its condition is the one of the order's payment status.
+  isCreditNote = false
+): { payments: FiscalPayment[]; condition: FiscalOperationCondition } {
+  const method = parts['paymentMethod']
+  const reference = parts['paymentReference']
+  const status = parts['paymentStatus']
+  return {
+    payments:
+      !isCreditNote && typeof method === 'string' && PAYMENT_METHODS.includes(method)
+        ? paymentsOf(
+            method as PaymentMethod,
+            typeof reference === 'string' ? reference : null,
+            totalCents
+          )
+        : [],
+    condition: operationConditionOf(typeof status === 'string' ? status : '')
+  }
+}
+
+// A payment that is completed was made at the sale; anything else (pending, failed, refunded, a status this version does not know) was not
+export function operationConditionOf(paymentStatus: string): FiscalOperationCondition {
+  return paymentStatus === (PaymentStatus.COMPLETED as string)
+    ? FiscalOperationCondition.IMMEDIATE
+    : FiscalOperationCondition.DEFERRED
+}
+
+export interface FiscalSequenceParts {
+  providerId: string
+  environment: FiscalEnvironment
+  documentType: string
+  establishmentCode: string | null
+  pointOfSaleCode: string | null
+}
+
+// Whether the manifest asks for a series of its own: a scope with nothing declared is the correlative of the organization
+export function declaresSequence(scope: FiscalSequenceDeclaration | undefined): boolean {
+  return (
+    scope?.perDocumentType === true ||
+    scope?.perEstablishment === true ||
+    scope?.perPointOfSale === true
+  )
+}
+
+// The key of the series a document's correlative is counted in (see `FiscalSequenceDeclaration`), or null when the manifest declares no
+// scope and the organization counts them all. One series per distinct provider, environment and declared parts: a sandbox number and a
+// production one never meet, and neither do two providers. The parts go through a JSON array before they are hashed, so none of them can
+// run into the next ("a|b" + "c" is not "a" + "b|c", and an empty code is not a missing one). A hash, because the type id of a provider has no
+// length limit core could rely on and the key is a column.
+export function fiscalSequenceKey(
+  scope: FiscalSequenceDeclaration | undefined,
+  parts: FiscalSequenceParts
+): string | null {
+  if (scope === undefined || !declaresSequence(scope)) return null
+  const key = [
+    parts.providerId,
+    parts.environment,
+    scope.perDocumentType === true ? parts.documentType : undefined,
+    scope.perEstablishment === true ? parts.establishmentCode : undefined,
+    scope.perPointOfSale === true ? parts.pointOfSaleCode : undefined
+  ]
+  // `undefined` becomes null in a JSON array, so the declared-but-empty and the not-declared would meet: the flags go in as well
+  const flags = [
+    scope.perDocumentType === true,
+    scope.perEstablishment === true,
+    scope.perPointOfSale === true
+  ]
+  return createHash('sha256')
+    .update(JSON.stringify([key, flags]))
+    .digest('hex')
+}
+
+// A stable identifier of a document in the shape of a random UUID version 4, derived from the organization and the document: the same
+// every time it is asked, so every attempt and every submission of a document names it the same way
+export function fiscalDocumentUuid(organizationId: string, documentId: string): string {
+  const bytes = createHash('sha256')
+    .update(JSON.stringify([organizationId, documentId]))
+    .digest()
+    .subarray(0, 16)
+  // Version 4 and the variant of RFC 4122, like a random one
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80
+  const hex = Buffer.from(bytes).toString('hex')
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20)
+  ].join('-')
 }
 
 const RECEIVER_FIELDS = [
@@ -58,7 +191,8 @@ const RECEIVER_FIELDS = [
   'email',
   'phone',
   'taxpayerType',
-  'economicActivity'
+  'economicActivity',
+  'documentType'
 ] as const
 
 // What is stored of the receiver, as a plain record of strings (customer data: it is encrypted before it is kept)
@@ -104,7 +238,19 @@ export function saleOf(
   parts: Readonly<Record<string, unknown>>
 ): FiscalSale {
   return {
-    lines: Array.isArray(parts['lines']) ? (parts['lines'] as FiscalLine[]) : [],
+    // A snapshot made before the treatment was kept has no `taxTreatment` on its lines: it reads as none, never as a guess
+    lines: Array.isArray(parts['lines'])
+      ? (parts['lines'] as unknown[]).map(raw => {
+          // What is not a line stays as it is: the detail reads a malformed snapshot as an empty line, never a crash
+          if (typeof raw !== 'object' || raw === null || Array.isArray(raw))
+            return raw as FiscalLine
+          const line = raw as FiscalLine
+          return {
+            ...line,
+            taxTreatment: taxTreatmentOf(line.taxTreatment ?? null)
+          }
+        })
+      : [],
     shippingCents: amount(parts['shippingCents']),
     shippingTaxCents: amount(parts['shippingTaxCents']),
     discountCents: amount(parts['discountCents']),
@@ -230,6 +376,10 @@ const ISSUER_IDENTITY = [
   'registrationId',
   'activityCode',
   'establishmentCode',
+  // The kind of establishment and the point of sale are part of the identity (they name the series a document is numbered in). The
+  // contact (phone, email) is not: it is read from the snapshot the document keeps, so fixing a typo in it never refuses a document in flight.
+  'establishmentType',
+  'pointOfSaleCode',
   'environment'
 ] as const
 
@@ -243,6 +393,8 @@ export function sameIssuer(
     registrationId: string | null
     activityCode: string | null
     establishmentCode: string | null
+    establishmentType: string | null
+    pointOfSaleCode: string | null
     environment: string
     address: unknown
   }
@@ -278,7 +430,8 @@ export function receiverOf(record: Readonly<Record<string, unknown>>): FiscalRec
     email: text('email'),
     phone: text('phone'),
     taxpayerType: text('taxpayerType'),
-    economicActivity: text('economicActivity')
+    economicActivity: text('economicActivity'),
+    documentType: text('documentType')
   }
 }
 
@@ -299,7 +452,8 @@ export function receiverWithFiscalData(
     email: sale.email,
     phone: sale.phone,
     taxpayerType: fiscal.taxpayerType ?? sale.taxpayerType ?? null,
-    economicActivity: fiscal.economicActivity ?? sale.economicActivity ?? null
+    economicActivity: fiscal.economicActivity ?? sale.economicActivity ?? null,
+    documentType: fiscal.documentType ?? sale.documentType ?? null
   }
 }
 
@@ -312,6 +466,7 @@ export interface MaskedCustomerFiscalData {
   registrationId: string | null
   taxpayerType: string | null
   economicActivity: string | null
+  documentType: string | null
   addressSet: boolean
 }
 
@@ -322,6 +477,7 @@ export function maskedCustomerFiscalData(receiver: FiscalReceiver): MaskedCustom
     registrationId: maskTaxId(receiver.registrationId),
     taxpayerType: receiver.taxpayerType ?? null,
     economicActivity: receiver.economicActivity ?? null,
+    documentType: receiver.documentType ?? null,
     addressSet: receiver.address !== null
   }
 }
@@ -434,7 +590,11 @@ export function documentDetailOf(
     shippingCents: sale.shippingCents,
     shippingTaxCents: sale.shippingTaxCents,
     discountCents: sale.discountCents,
-    consistent: saleAddsUp({ ...sale, lines }),
+    // The treatment does not take part in the sum of the amounts: the check reads the amounts of the lines as they were sealed
+    consistent: saleAddsUp({
+      ...sale,
+      lines: lines.map(line => ({ ...line, taxTreatment: null }))
+    }),
     taxBreakdown: [...groups.values()].sort((a, b) => (a.taxRateBps ?? -1) - (b.taxRateBps ?? -1)),
     issuer: {
       legalName: textOf(issuer['legalName']),
