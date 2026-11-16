@@ -20,6 +20,7 @@ import {
   createPluginKey,
   createProduct,
   createProductVariant,
+  createSnippet,
   createTag
 } from '../builders'
 import { createTestApp } from '../helpers/app'
@@ -525,6 +526,67 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
         expect(entry?.userId).toBeNull()
         expect(JSON.stringify(entry?.metadata)).not.toContain('secret')
       }
+    })
+  })
+
+  describe('the canned replies, read only', () => {
+    it('lists and reads the snippets of its own store with the fields of the composer and nothing else, and none of another store', async () => {
+      const mine = await createSnippet(owner, { storeId: ctx.storeA.id })
+      const theirs = await createSnippet(owner, { storeId: ctx.storeB.id })
+      const reader = await createPluginKey(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${prefix}-snippetreader`,
+        scopes: [PluginScopes.SNIPPETS_READ]
+      })
+
+      const list = await call('get', PluginApiRoutes.settings.snippets, reader.key).expect(OK)
+      const one = await call(
+        'get',
+        PluginApiRoutes.settings.snippetById(mine.id),
+        reader.key
+      ).expect(OK)
+      const foreign = await call('get', PluginApiRoutes.settings.snippetById(theirs.id), reader.key)
+
+      const ids = (list.body as Row[]).map(snippet => snippet.id)
+      expect(ids).toContain(mine.id)
+      expect(ids).not.toContain(theirs.id)
+      expect(Object.keys(one.body as object).sort()).toEqual([
+        'content',
+        'id',
+        'shortcut',
+        'title',
+        'updatedAt'
+      ])
+      expect(foreign.status).toBe(NOT_FOUND)
+    })
+
+    it('does not write one, and does not read one without its scope', async () => {
+      const mine = await createSnippet(owner, { storeId: ctx.storeA.id })
+      const reader = await createPluginKey(owner, {
+        storeId: ctx.storeA.id,
+        pluginId: `${prefix}-snippetreader2`,
+        scopes: [PluginScopes.SNIPPETS_READ, PluginScopes.TAGS_WRITE]
+      })
+
+      const writes = [
+        await call('post', PluginApiRoutes.settings.snippets, reader.key).send({
+          shortcut: 'x',
+          title: 'x',
+          content: 'x'
+        }),
+        await call('patch', PluginApiRoutes.settings.snippetById(mine.id), reader.key).send({
+          title: 'x'
+        }),
+        await call('delete', PluginApiRoutes.settings.snippetById(mine.id), reader.key)
+      ]
+      const withoutScope = await call('get', PluginApiRoutes.settings.snippets, tagReader.key)
+
+      for (const response of writes) expect([404, 405]).toContain(response.status)
+      expect(withoutScope.status).toBe(FORBIDDEN)
+      expect(codeOf(withoutScope.body)).toBe(ErrorCodes.PLUGIN_SCOPE_DENIED)
+      expect((await owner.snippet.findUniqueOrThrow({ where: { id: mine.id } })).title).toBe(
+        'Greeting'
+      )
     })
   })
 

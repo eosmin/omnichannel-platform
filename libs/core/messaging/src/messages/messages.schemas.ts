@@ -63,7 +63,7 @@ const templateVariable = z
 
 // A file with its text under it: one message, one key. The text is the caption and may be missing.
 // The files are uploaded and scanned before this request (`POST /media/confirm-upload`).
-const mediaMessageFields = {
+export const mediaMessageFields = {
   conversationId: uuidSchema,
   mediaIds: z
     .array(uuidSchema.transform(id => id.toLowerCase()))
