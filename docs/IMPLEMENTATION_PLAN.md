@@ -1916,12 +1916,19 @@ grows the balance opens an item dated by its entry and the other side settles th
 `unapplied`. The buckets (0-30, 31-60, 61-90, over 90) are `AgingBucketDays` and the roles each list reads are `AgingRoles`; a role with no account is
 named in `missingRoles` and warned, never guessed. (5) `finance:view_reports` is its own permission (the plan of 4B.8 asked for it): the trial balance of 4B.8a
 keeps `finance:view`; a file needs `finance:export` besides. (6) The files go out by direct download with an audit row, as in 4B.8a.
-**Left by PR 4B.8b-1 (rule 12):** (a) the lists with age read their lines into memory (capped at `FinanceReportLimits.MAX_CSV_ROWS`, then refused with the
-store to narrow to): a running balance by party kept by a trigger is 4B.8b-2 if the volume asks for it. (b) The age is by the date of the entry, not by the due
+**Left by PR 4B.8b-1 (rule 12):** (a) the lists with age read every line of their accounts since the books started into memory (capped at `FinanceReportLimits.MAX_CSV_ROWS`, then
+refused for good: the store narrows only an organization with several): open items kept by party (a table a trigger maintains) is 4B.8b-2 and must land before the
+history of a party reaches the cap. (b) The age is by the date of the entry, not by the due
 date of a purchase (`Supplier.paymentTermsDays` is not applied): the accountant says which one the list wants (**[ACCOUNTANT]**), then 4B.8b-3. (c) The
 statements have no comparison with another period and no percentages; 4B.9 draws them from two calls. (d) The cash flow classifies by the source of the entry
 (an order, a remittance, a manual entry), not into operating, investing and financing: that grouping is the accountant's (**[ACCOUNTANT]**). (e) The report
-names of 4B.8a (debt (q)) stay string literals there; this PR's are the `FinanceReport` enum. (f) `finance:view_reports` is not yet in a role preset other than
+names of 4B.8a (debt (q)) stay string literals there; this PR's are the `FinanceReport` enum. (g) The aging list names carrier connections and the income statement the commission accounts, and `finance:view_carrier_fees` is not asked for either: the
+ledger already shows the same figures under `finance:view_journal`; whether the statements need that permission too is the owner's and the accountant's call,
+and one `@RequirePermissions` line changes it. (h) A statement of one store is a slice by the store of the lines: it carries no `balanced` verdict (an entry may
+put its lines in two stores or in none); the whole-organization sheet does. The audit rows of the statements use the `finance_report` resource type, the
+4B.8a files still use `finance_entry` (moved with the report constants of debt (q) of 4B.8a). (i) A payment dated before its invoice pays it (the unapplied
+amount settles against what is open at the end), but an age by the invoice date and the payment date of each pair, not FIFO, is the accountant's (b).
+(f) `finance:view_reports` is not yet in a role preset other than
 Admin: owners of custom roles grant it by hand, and 4B.9 lists it in the matrix of the screen.
 
 ### Step 4B.9 — Finance interface (web)

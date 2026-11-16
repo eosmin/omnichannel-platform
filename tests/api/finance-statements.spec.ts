@@ -42,7 +42,7 @@ interface SheetBody {
   equity: Section
   resultCents: string
   equityWithResultCents: string
-  balanced: boolean
+  balanced: boolean | null
 }
 interface FlowBody {
   sources: { source: string; inflowCents: string; outflowCents: string }[]
@@ -65,6 +65,7 @@ const OK = 200
 const CREATED = 201
 const BAD_REQUEST = 400
 const FORBIDDEN = 403
+const NOT_FOUND = 404
 
 const START = '2026-01-01'
 const CASH = '1101'
@@ -257,6 +258,18 @@ describe('The statements and the lists with age', () => {
       expect((response.body as IncomeBody).income.totalCents).toBe('0')
     })
 
+    it('refuses a store that is not one of the organization, as any resource that is not there', async () => {
+      const foreign = await asAdminA()
+        .get(ApiRoutes.finance.reports.incomeStatement)
+        .query({ from: '2026-01-01', to: '2026-01-31', storeId: ctx.storeB.id })
+      const unknown = await asAdminA()
+        .get(ApiRoutes.finance.reports.balanceSheet)
+        .query({ asOf: '2026-01-31', storeId: randomUUID() })
+
+      expect(foreign.status).toBe(NOT_FOUND)
+      expect(unknown.status).toBe(NOT_FOUND)
+    })
+
     it('refuses a range that is upside down or a date that does not exist', async () => {
       const backwards = await asAdminA()
         .get(ApiRoutes.finance.reports.incomeStatement)
@@ -284,6 +297,14 @@ describe('The statements and the lists with age', () => {
       expect(body.resultCents).toBe('2500')
       expect(body.equityWithResultCents).toBe('7500')
       expect(body.balanced).toBe(true)
+    })
+
+    it('does not claim the books are unbalanced for the slice of one store', async () => {
+      const response = await asAdminA()
+        .get(ApiRoutes.finance.reports.balanceSheet)
+        .query({ asOf: '2026-03-31', storeId: ctx.storeA.id })
+
+      expect((response.body as SheetBody).balanced).toBeNull()
     })
 
     it('reads the books as they were on an earlier day', async () => {

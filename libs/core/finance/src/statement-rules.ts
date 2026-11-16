@@ -34,6 +34,9 @@ export interface StatementSection {
   totalCents: bigint
 }
 
+// The same order on every server: a plain comparison, never the locale of the machine
+const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
+
 const normalIsDebit = (type: AccountType): boolean => NormalSideOfType[type] === NormalSide.DEBIT
 
 // The accounts of one type, ordered by code, each with the balance on its normal side and the rollup of its children. The total adds each
@@ -44,7 +47,7 @@ export function statementSection(
 ): StatementSection {
   const own = accounts
     .filter(account => account.type === type)
-    .toSorted((a, b) => a.code.localeCompare(b.code))
+    .toSorted((a, b) => byText(a.code, b.code))
   const balance = new Map<string, bigint>()
   for (const account of own) balance.set(account.id, normalBalance(account, normalIsDebit(type)))
   const childrenOf = new Map<string, string[]>()
@@ -172,7 +175,7 @@ export function cashFlow(
 ): CashFlow {
   const rows = sources
     .map(row => ({ ...row, netCents: row.inflowCents - row.outflowCents }))
-    .toSorted((a, b) => a.source.localeCompare(b.source))
+    .toSorted((a, b) => byText(a.source, b.source))
   let inflowCents = 0n
   let outflowCents = 0n
   for (const row of rows) {
@@ -212,6 +215,20 @@ export interface Aging {
   totalCents: bigint
 }
 
+// Settles `cents` against the open items, oldest first; returns what was left over
+function settleOldest(open: { date: string; cents: bigint }[], cents: bigint): bigint {
+  let settle = cents
+  while (settle > 0n) {
+    const oldest = open[0]
+    if (oldest === undefined) break
+    const used = oldest.cents < settle ? oldest.cents : settle
+    oldest.cents -= used
+    settle -= used
+    if (oldest.cents === 0n) open.shift()
+  }
+  return settle
+}
+
 const DAY_MS = 86_400_000
 const daysBetween = (from: string, to: string): number =>
   Math.floor((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS)
@@ -233,17 +250,10 @@ export function agingOf(
       open.push({ date: line.entryDate, cents: net })
       continue
     }
-    let settle = -net
-    while (settle > 0n && open.length > 0) {
-      const oldest = open[0]
-      if (oldest === undefined) break
-      const used = oldest.cents < settle ? oldest.cents : settle
-      oldest.cents -= used
-      settle -= used
-      if (oldest.cents === 0n) open.shift()
-    }
-    unappliedCents += settle
+    unappliedCents += settleOldest(open, -net)
   }
+  // A payment dated before the item it pays (an advance, or a date typed earlier) waited as unapplied: it pays what is open now
+  unappliedCents = settleOldest(open, unappliedCents)
   const bucketsCents: bigint[] = Array.from({ length: cuts.length + 1 }, () => 0n)
   let openCents = 0n
   for (const item of open) {

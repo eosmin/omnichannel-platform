@@ -17,7 +17,12 @@ import {
   StatementTotalLine,
   StatementWarning
 } from '@platform/core/domain'
-import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
+import {
+  ErrorCodes,
+  HttpStatusCodes,
+  PlatformException,
+  resourceNotFound
+} from '@platform/core/errors'
 import {
   type Aging,
   agingOf,
@@ -35,6 +40,7 @@ import type { Actor } from '../tenancy'
 
 import type { AgingQuery, BalanceSheetQuery, FlowQuery } from './finance-reports.schemas'
 import type { AgingCsvRow, StatementCsvRow } from './finance-statements.csv'
+import { centsAsNumber } from './finance.support'
 
 export interface StatementRowView {
   accountId: string
@@ -71,7 +77,8 @@ export interface BalanceSheetView {
   equity: StatementSectionView
   resultCents: string
   equityWithResultCents: string
-  balanced: boolean
+  // null for the slice of one store: an entry may put its lines in two stores or in none, so a store's lines need not balance by themselves
+  balanced: boolean | null
   warnings: StatementWarning[]
 }
 
@@ -141,14 +148,6 @@ const view = (section: StatementSection): StatementSectionView => ({
   }))
 })
 
-// A cent amount of a CSV is a number: a text that starts with a minus sign would be written with a formula guard
-const asNumber = (value: bigint): number => {
-  if (value > BigInt(Number.MAX_SAFE_INTEGER) || value < BigInt(Number.MIN_SAFE_INTEGER)) {
-    throw new RangeError('an amount does not fit a spreadsheet cell')
-  }
-  return Number(value)
-}
-
 const isoDay = (date: Date): string => date.toISOString().slice(0, 10)
 
 // The statements and the lists with age of the books (TDD_18 §10): income statement, balance sheet, cash flow, payables and receivables by
@@ -164,21 +163,24 @@ export class FinanceStatementsService {
   ) {}
 
   async incomeStatement(organizationId: string, query: FlowQuery): Promise<IncomeStatementView> {
+    await this.requireStore(organizationId, query.storeId)
     const accounts = await this.sums(organizationId, query.storeId ?? null, query.from, query.to)
     return this.incomeView(query, incomeStatement(accounts))
   }
 
   async balanceSheet(organizationId: string, query: BalanceSheetQuery): Promise<BalanceSheetView> {
+    await this.requireStore(organizationId, query.storeId)
     const accounts = await this.sums(organizationId, query.storeId ?? null, null, query.asOf)
     return this.balanceView(query, balanceSheet(accounts))
   }
 
   async cashFlow(organizationId: string, query: FlowQuery): Promise<CashFlowView> {
+    await this.requireStore(organizationId, query.storeId)
     const storeId = query.storeId ?? null
-    const [{ cash }] = await this.prisma.client.$queryRaw<[{ cash: bigint }]>`
+    const cashAccounts = this.prisma.client.$queryRaw<[{ cash: bigint }]>`
       SELECT COUNT(*)::bigint AS cash FROM ledger_accounts
       WHERE organization_id = ${organizationId} AND cash_kind IS NOT NULL`
-    const moved = await this.prisma.client.$queryRaw<
+    const movedRows = this.prisma.client.$queryRaw<
       { source: string; inflow: bigint; outflow: bigint }[]
     >`
       SELECT COALESCE(e.source_type, ${FinanceSourceType.MANUAL}) AS source,
@@ -190,8 +192,12 @@ export class FinanceStatementsService {
         AND e.entry_date >= ${query.from}::date AND e.entry_date <= ${query.to}::date
         AND (${storeId}::text IS NULL OR l.store_id = ${storeId})
       GROUP BY 1`
-    const opening = await this.cashBalance(organizationId, storeId, query.from, true)
-    const closing = await this.cashBalance(organizationId, storeId, query.to, false)
+    const [[{ cash }], moved, opening, closing] = await Promise.all([
+      cashAccounts,
+      movedRows,
+      this.cashBalance(organizationId, storeId, query.from, true),
+      this.cashBalance(organizationId, storeId, query.to, false)
+    ])
     const flow = cashFlow(
       moved.map(row => ({
         source: row.source,
@@ -206,6 +212,7 @@ export class FinanceStatementsService {
   }
 
   async aging(organizationId: string, query: AgingQuery): Promise<AgingView> {
+    await this.requireStore(organizationId, query.storeId)
     const storeId = query.storeId ?? null
     const roles = AgingRoles[query.kind]
     const mapped = await this.prisma.client.accountRoleMapping.findMany({
@@ -296,9 +303,11 @@ export class FinanceStatementsService {
       summary(StatementTotalLine.NET_RESULT, statement.netResultCents),
       ...warningRows(statement.warnings)
     ]
+    capRows(rows)
     this.auditExport(organizationId, actor, FinanceReport.INCOME_STATEMENT, {
       from: query.from,
       to: query.to,
+      storeId: query.storeId ?? '',
       rows: rows.length
     })
     return rows
@@ -319,8 +328,10 @@ export class FinanceStatementsService {
       summary(StatementTotalLine.EQUITY_WITH_RESULT, sheet.equityWithResultCents),
       ...warningRows(sheet.warnings)
     ]
+    capRows(rows)
     this.auditExport(organizationId, actor, FinanceReport.BALANCE_SHEET, {
       asOf: query.asOf,
+      storeId: query.storeId ?? '',
       rows: rows.length
     })
     return rows
@@ -337,7 +348,7 @@ export class FinanceStatementsService {
         section: StatementCsvSection.CASH,
         code: source.source,
         name: source.source,
-        amountCents: asNumber(BigInt(source.netCents)),
+        amountCents: centsAsNumber(BigInt(source.netCents)),
         rollupCents: null
       })),
       summary(StatementTotalLine.OPENING, BigInt(flow.openingCents)),
@@ -348,6 +359,7 @@ export class FinanceStatementsService {
     this.auditExport(organizationId, actor, FinanceReport.CASH_FLOW, {
       from: query.from,
       to: query.to,
+      storeId: query.storeId ?? '',
       rows: rows.length
     })
     return rows
@@ -363,16 +375,24 @@ export class FinanceStatementsService {
       partyType: row.partyType,
       partyId: row.partyId,
       partyName: row.partyName,
-      bucketsCents: row.bucketsCents.map(cents => asNumber(BigInt(cents))),
-      unappliedCents: asNumber(BigInt(row.unappliedCents)),
-      totalCents: asNumber(BigInt(row.totalCents))
+      bucketsCents: row.bucketsCents.map(cents => centsAsNumber(BigInt(cents))),
+      unappliedCents: centsAsNumber(BigInt(row.unappliedCents)),
+      totalCents: centsAsNumber(BigInt(row.totalCents))
     }))
     this.auditExport(organizationId, actor, FinanceReport.AGING, {
       kind: query.kind,
       asOf: query.asOf,
+      storeId: query.storeId ?? '',
       rows: rows.length
     })
     return rows
+  }
+
+  // A store named in a query is a store of this organization, or the answer is the one of any resource that is not there
+  private async requireStore(organizationId: string, storeId: string | undefined): Promise<void> {
+    if (storeId === undefined) return
+    const found = await this.prisma.client.store.count({ where: { id: storeId, organizationId } })
+    if (found === 0) throw resourceNotFound('store')
   }
 
   // Every account of the organization with the sums of its lines in a range of days (`from` null = since the books started): the sections
@@ -519,8 +539,8 @@ export class FinanceStatementsService {
       equity: view(sheet.equity),
       resultCents: sheet.resultCents.toString(),
       equityWithResultCents: sheet.equityWithResultCents.toString(),
-      balanced: sheet.balanced,
-      warnings: sheet.warnings
+      balanced: query.storeId === undefined ? sheet.balanced : null,
+      warnings: query.storeId === undefined ? sheet.warnings : []
     }
   }
 
@@ -556,12 +576,23 @@ export class FinanceStatementsService {
       actor: { userId: actor.userId },
       organizationId,
       storeId: actor.storeId,
-      resourceType: FinanceResourceTypes.ENTRY,
+      resourceType: FinanceResourceTypes.REPORT,
       resourceId: organizationId,
       metadata: { report, ...metadata },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
+  }
+}
+
+// A chart is not bounded here, so a statement file is held to the same cap as every other file
+function capRows(rows: readonly unknown[]): void {
+  if (rows.length > FinanceReportLimits.MAX_CSV_ROWS) {
+    throw new PlatformException(
+      ErrorCodes.EXPORT_TOO_LARGE,
+      'the file would be larger than one export',
+      HttpStatusCodes.BAD_REQUEST
+    )
   }
 }
 
@@ -571,14 +602,14 @@ function sectionRows(type: AccountType, section: StatementSection): StatementCsv
       section: type,
       code: row.code,
       name: row.name,
-      amountCents: asNumber(row.balanceCents),
-      rollupCents: asNumber(row.rollupCents)
+      amountCents: centsAsNumber(row.balanceCents),
+      rollupCents: centsAsNumber(row.rollupCents)
     })),
     {
       section: type,
       code: null,
       name: StatementTotalLine.TOTAL,
-      amountCents: asNumber(section.totalCents),
+      amountCents: centsAsNumber(section.totalCents),
       rollupCents: null
     }
   ]
@@ -588,7 +619,7 @@ const summary = (line: StatementTotalLine, cents: bigint): StatementCsvRow => ({
   section: StatementCsvSection.SUMMARY,
   code: null,
   name: line,
-  amountCents: asNumber(cents),
+  amountCents: centsAsNumber(cents),
   rollupCents: null
 })
 

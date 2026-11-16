@@ -297,6 +297,8 @@ export const FinanceResourceTypes = {
   PAYMENT_ACCOUNT: 'finance_payment_account',
   PERIOD: 'finance_period',
   ENTRY: 'finance_entry',
+  // What a report or a file taken from the books is audited against (the report is in the metadata)
+  REPORT: 'finance_report',
   POSTING: 'finance_posting',
   TAX_RATE: 'finance_tax_rate',
   // The tax preferences of a store (`finance.pricesIncludeTax`), kept in its preferences

@@ -167,6 +167,18 @@ describe('agingOf', () => {
     expect(aging.totalCents).toBe(-50n)
   })
 
+  it('lets a payment dated before its invoice pay it', () => {
+    const aging = agingOf(
+      [debit('2026-11-01', 100n), credit('2026-11-05', 300n)],
+      '2026-11-15',
+      true,
+      AgingBucketDays
+    )
+    expect(aging.bucketsCents).toEqual([200n, 0n, 0n, 0n])
+    expect(aging.unappliedCents).toBe(0n)
+    expect(aging.totalCents).toBe(200n)
+  })
+
   it('ages a receivable by its debits', () => {
     const aging = agingOf([debit('2026-11-14', 80n)], '2026-11-15', false, AgingBucketDays)
     expect(aging.bucketsCents).toEqual([80n, 0n, 0n, 0n])
