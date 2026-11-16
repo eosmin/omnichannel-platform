@@ -3292,6 +3292,7 @@
         "finance": {
           "view": "Ver saldos e informes",
           "view_journal": "Ver el libro diario",
+          "view_reports": "Ver los estados financieros y las antigüedades",
           "manage_transactions": "Registrar gastos e ingresos",
           "move_money": "Mover dinero",
           "manage_purchases": "Gestionar proveedores y compras",

@@ -3292,6 +3292,7 @@
         "finance": {
           "view": "View balances and reports",
           "view_journal": "View the journal",
+          "view_reports": "View the statements and the lists with age",
           "manage_transactions": "Register expenses and incomes",
           "move_money": "Move money",
           "manage_purchases": "Manage suppliers and purchases",
