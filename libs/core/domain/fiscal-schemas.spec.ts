@@ -60,4 +60,16 @@ describe('the fiscal schemas', () => {
     expect(listFiscalDocumentsQuerySchema.parse({}).limit).toBe(FiscalLimits.LIST_PAGE_SIZE)
     expect(listFiscalDocumentsQuerySchema.safeParse({ cursor: 'abc' }).success).toBe(false)
   })
+
+  it('takes a period of ISO instants, open at either end, and refuses one that ends before it starts or is not a date', () => {
+    const parse = (query: Record<string, string>) => listFiscalDocumentsQuerySchema.safeParse(query)
+    expect(parse({}).success).toBe(true)
+    expect(parse({ from: '2026-01-01T00:00:00.000Z' }).success).toBe(true)
+    expect(parse({ to: '2026-01-31T23:59:59-06:00' }).success).toBe(true)
+    expect(parse({ from: '2026-01-31T00:00:00Z', to: '2026-01-31T00:00:00Z' }).success).toBe(true)
+    expect(parse({ from: '2026-02-01T00:00:00Z', to: '2026-01-01T00:00:00Z' }).success).toBe(false)
+    expect(parse({ from: '2026-01-01' }).success).toBe(false)
+    expect(parse({ to: 'tomorrow' }).success).toBe(false)
+    expect(parse({ from: '2026-13-01T00:00:00Z' }).success).toBe(false)
+  })
 })

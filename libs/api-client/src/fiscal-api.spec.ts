@@ -36,6 +36,35 @@ const callOf = (fetchImpl: jest.Mock<Promise<Response>, [string, RequestInit]>) 
   return { url, init, headers: new Headers(init.headers) }
 }
 
+const detail = {
+  orderNumber: 'ORD-1',
+  pricesIncludeTax: true,
+  lines: [
+    {
+      description: 'Widget',
+      quantity: 1,
+      unitPriceCents: 1130,
+      taxRateBps: 1300,
+      taxCents: 130,
+      totalCents: 1130
+    }
+  ],
+  shippingCents: 0,
+  shippingTaxCents: 0,
+  discountCents: 0,
+  taxBreakdown: [{ taxRateBps: 1300, baseCents: 1000, taxCents: 130 }],
+  consistent: true,
+  issuer: {
+    legalName: 'Shop',
+    taxId: 'T-1',
+    registrationId: null,
+    address: { line1: 'Street 1' },
+    activityCode: null,
+    establishmentCode: null,
+    environment: 'sandbox'
+  }
+}
+
 const document = {
   id: 'd1',
   storeId: 's1',
@@ -98,9 +127,26 @@ describe('the fiscal documents', () => {
   })
 
   it('reads one document from its envelope', async () => {
-    const { client, fetchImpl } = setup(json(200, { data: document }))
-    expect((await fetchFiscalDocument(client, 's', 'd1')).receiver.taxIdMasked).toBe('****1234')
+    const { client, fetchImpl } = setup(json(200, { data: { ...document, detail } }))
+    const read = await fetchFiscalDocument(client, 's', 'd1')
+    expect(read.receiver.taxIdMasked).toBe('****1234')
+    expect(read.detail.lines[0]?.description).toBe('Widget')
     expect(callOf(fetchImpl).url).toContain('/fiscal/documents/d1')
+  })
+
+  it('refuses a detail with no sealed snapshot, and sends the period of the list', async () => {
+    const bad = setup(json(200, { data: document }))
+    await expect(fetchFiscalDocument(bad.client, 's', 'd1')).rejects.toThrow()
+    const page = setup(json(200, { data: [], nextCursor: null, hasMore: false }))
+    await fetchFiscalDocumentPage(
+      page.client,
+      's',
+      { from: '2026-01-01T00:00:00.000Z', to: '' },
+      null
+    )
+    const { url } = callOf(page.fetchImpl)
+    expect(url).toContain('from=2026-01-01T00%3A00%3A00.000Z')
+    expect(url).not.toContain('to=')
   })
 
   it('fixes a receiver with the body as given, and never reads a full tax id back', async () => {

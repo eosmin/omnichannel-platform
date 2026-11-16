@@ -4,6 +4,7 @@ import {
   canTransition,
   type CreditNoteOrder,
   creditNoteSaleOf,
+  documentDetailOf,
   documentLines,
   isImmutable,
   maskedCustomerFiscalData,
@@ -468,5 +469,87 @@ describe('the fiscal data of a customer', () => {
     })
     expect(JSON.stringify(view)).not.toContain('Shipping street')
     expect(maskedCustomerFiscalData({ ...sale, address: null }).addressSet).toBe(false)
+  })
+})
+
+describe('the detail of a sealed document', () => {
+  const doc = { totalCents: 4000, taxCents: 390 }
+  const lines = [
+    {
+      description: 'A',
+      quantity: 1,
+      unitPriceCents: 1130,
+      taxRateBps: 1300,
+      taxCents: 130,
+      totalCents: 1130
+    },
+    {
+      description: 'B',
+      quantity: 2,
+      unitPriceCents: 1130,
+      taxRateBps: 1300,
+      taxCents: 260,
+      totalCents: 2260
+    },
+    {
+      description: 'C',
+      quantity: 1,
+      unitPriceCents: 500,
+      taxRateBps: null,
+      taxCents: 0,
+      totalCents: 500
+    }
+  ]
+
+  it('groups the tax by rate, with the base without the tax when the prices include it', () => {
+    const detail = documentDetailOf(doc, { lines, pricesIncludeTax: true }, {})
+    expect(detail.taxBreakdown).toEqual([
+      { taxRateBps: null, baseCents: 500, taxCents: 0 },
+      { taxRateBps: 1300, baseCents: 3000, taxCents: 390 }
+    ])
+    expect(documentDetailOf(doc, { lines, pricesIncludeTax: false }, {}).taxBreakdown[1]).toEqual({
+      taxRateBps: 1300,
+      baseCents: 3390,
+      taxCents: 390
+    })
+  })
+
+  it('says whether the sealed parts add up to the totals of the document', () => {
+    // 1130 + 2260 + 500 = 3890; plus 110 of shipping with 0 tax: 4000, tax 390
+    const sound = { lines, pricesIncludeTax: true, shippingCents: 110, shippingTaxCents: 0 }
+    expect(documentDetailOf(doc, sound, {}).consistent).toBe(true)
+    expect(documentDetailOf({ ...doc, taxCents: 391 }, sound, {}).consistent).toBe(false)
+    expect(documentDetailOf(doc, { lines: 'x' }, {}).consistent).toBe(false)
+  })
+
+  it('copies fields by name: a credential or a provider field in a snapshot never reaches the view', () => {
+    const detail = documentDetailOf(
+      doc,
+      { lines: [{ ...lines[0], providerData: 'raw' }], orderNumber: 'N-1', secret: 'x' },
+      {
+        legalName: 'Issuer',
+        taxId: 'T',
+        address: { line1: 'Street', nested: { a: 1 }, empty: '' },
+        credentials: { signingKey: 'k' },
+        environment: 'sandbox'
+      }
+    )
+    const text = JSON.stringify(detail)
+    for (const leaked of ['providerData', 'raw', 'secret', 'credentials', 'signingKey', 'nested']) {
+      expect(text).not.toContain(leaked)
+    }
+    expect(detail.issuer.address).toEqual({ line1: 'Street' })
+    expect(detail.orderNumber).toBe('N-1')
+  })
+
+  it('reads a snapshot that is empty or malformed as an empty detail, never a crash', () => {
+    for (const bad of [null, 'text', 7, [], { lines: 'x' }]) {
+      const detail = documentDetailOf(doc, bad, bad)
+      expect(detail.lines).toEqual([])
+      expect(detail.taxBreakdown).toEqual([])
+      expect(detail.issuer.legalName).toBe('')
+    }
+    const odd = documentDetailOf(doc, { lines: [null, { quantity: 'many', taxRateBps: 1.5 }] }, {})
+    expect(odd.lines[1]).toMatchObject({ quantity: 0, taxRateBps: null, description: '' })
   })
 })

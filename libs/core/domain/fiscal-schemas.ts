@@ -66,22 +66,34 @@ export const putFiscalIssuerSchema = z
   .strict()
 export type PutFiscalIssuerBody = z.output<typeof putFiscalIssuerSchema>
 
-export const listFiscalDocumentsQuerySchema = z.object({
-  status: z.enum(FiscalDocumentStatus).optional(),
-  orderId: z.uuid().optional(),
-  // The correlative of the last document of the previous page
-  cursor: z
-    .string()
-    .regex(/^\d{1,10}$/)
-    .refine(value => Number(value) <= FiscalLimits.MAX_SEQUENCE, { message: 'not a correlative' })
-    .optional(),
-  limit: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(FiscalLimits.LIST_MAX_PAGE_SIZE)
-    .default(FiscalLimits.LIST_PAGE_SIZE)
-})
+export const listFiscalDocumentsQuerySchema = z
+  .object({
+    status: z.enum(FiscalDocumentStatus).optional(),
+    orderId: z.uuid().optional(),
+    // The correlative of the last document of the previous page
+    cursor: z
+      .string()
+      .regex(/^\d{1,10}$/)
+      .refine(value => Number(value) <= FiscalLimits.MAX_SEQUENCE, { message: 'not a correlative' })
+      .optional(),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(FiscalLimits.LIST_MAX_PAGE_SIZE)
+      .default(FiscalLimits.LIST_PAGE_SIZE),
+    // The period of the creation of the document, both ends included, as ISO instants (the screen sends the start and the end of the day
+    // of the person's own time zone)
+    from: z.iso.datetime({ offset: true }).optional(),
+    to: z.iso.datetime({ offset: true }).optional()
+  })
+  .refine(
+    value =>
+      value.from === undefined ||
+      value.to === undefined ||
+      new Date(value.from).getTime() <= new Date(value.to).getTime(),
+    { message: 'the period ends before it starts', path: ['to'] }
+  )
 export type ListFiscalDocumentsQuery = z.output<typeof listFiscalDocumentsQuerySchema>
 
 // Fields sent as null are removed from the receiver; a field left out stays

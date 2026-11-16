@@ -55,6 +55,45 @@ export type FiscalDocumentView = z.output<typeof documentSchema>
 
 const documentEnvelopeSchema = z.object({ data: documentSchema })
 
+// What the document was sealed with, read by its own route only: the lines, the tax by rate and the issuer as it was
+const detailSchema = z.object({
+  orderNumber: z.string(),
+  pricesIncludeTax: z.boolean(),
+  lines: z.array(
+    z.object({
+      description: z.string(),
+      quantity: z.number().int(),
+      unitPriceCents: z.number().int(),
+      taxRateBps: z.number().int().nullable(),
+      taxCents: z.number().int(),
+      totalCents: z.number().int()
+    })
+  ),
+  shippingCents: z.number().int(),
+  shippingTaxCents: z.number().int(),
+  discountCents: z.number().int(),
+  taxBreakdown: z.array(
+    z.object({
+      taxRateBps: z.number().int().nullable(),
+      baseCents: z.number().int(),
+      taxCents: z.number().int()
+    })
+  ),
+  issuer: z.object({
+    legalName: z.string(),
+    taxId: z.string(),
+    registrationId: z.string().nullable(),
+    address: z.record(z.string(), z.string()),
+    activityCode: z.string().nullable(),
+    establishmentCode: z.string().nullable(),
+    environment: z.enum(FiscalEnvironment)
+  }),
+  consistent: z.boolean()
+})
+const documentDetailSchema = documentSchema.extend({ detail: detailSchema })
+export type FiscalDocumentDetailView = z.output<typeof documentDetailSchema>
+const documentDetailEnvelopeSchema = z.object({ data: documentDetailSchema })
+
 const documentPageSchema = z.object({
   data: z.array(documentSchema),
   nextCursor: z.string().nullable(),
@@ -110,6 +149,9 @@ const queuedEnvelopeSchema = z.object({ data: z.object({ queued: z.literal(true)
 export interface FiscalDocumentFilters {
   status?: FiscalDocumentStatus
   orderId?: string
+  // The period of the creation of the document, ISO instants, both ends included
+  from?: string
+  to?: string
 }
 
 export async function fetchFiscalProviders(
@@ -165,6 +207,8 @@ export function fetchFiscalDocumentPage(
   if (filters.orderId !== undefined && filters.orderId !== '') {
     search.set('orderId', filters.orderId)
   }
+  if (filters.from !== undefined && filters.from !== '') search.set('from', filters.from)
+  if (filters.to !== undefined && filters.to !== '') search.set('to', filters.to)
   if (cursor !== null) search.set('cursor', cursor)
   const text = search.toString()
   return client.request(
@@ -178,9 +222,9 @@ export async function fetchFiscalDocument(
   storeId: string,
   id: string,
   signal?: AbortSignal
-): Promise<FiscalDocumentView> {
+): Promise<FiscalDocumentDetailView> {
   const answer = await client.request(ApiRoutes.fiscal.documents.byId(encodeURIComponent(id)), {
-    schema: documentEnvelopeSchema,
+    schema: documentDetailEnvelopeSchema,
     storeId,
     signal
   })
