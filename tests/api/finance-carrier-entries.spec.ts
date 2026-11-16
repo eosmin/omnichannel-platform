@@ -225,6 +225,18 @@ describe('The entries that depend on a carrier (Step 4B.6b-1)', () => {
       ).toBe(1)
     })
 
+    it('asks the waiting remittance again even when the charges were already posted', async () => {
+      const shipment = await delivered()
+      await post(FinanceSourceType.SHIPMENT, shipment.id, FinanceEventKind.CHARGES)
+      const remittanceId = await confirmed(shipment.connectionId, [
+        { shipmentId: shipment.id, reported: 2102 }
+      ])
+      // The charges were posted (the job that did it died before asking the remittance again): the retry is a replay and still asks
+      const again = await post(FinanceSourceType.SHIPMENT, shipment.id, FinanceEventKind.CHARGES)
+      expect(again.outcome).toBe(FinancePostingOutcome.REPLAYED)
+      expect(await entryOf(FinancePostingKey.REMITTANCE_CONFIRM(remittanceId))).not.toBeNull()
+    })
+
     it('posts nothing for a guide that was not delivered, or that has nothing to charge', async () => {
       const onTheWay = await delivered({ status: ShipmentStatus.IN_TRANSIT })
       expect(
@@ -696,6 +708,25 @@ describe('The entries that depend on a carrier (Step 4B.6b-1)', () => {
         FinanceEventKind.REMITTANCE_CONFIRM
       )
       expect(late.outcome).toBe(FinancePostingOutcome.NOTHING_TO_POST)
+    })
+
+    it('closes the failure of a confirmation that never posted when the remittance is voided', async () => {
+      const shipment = await delivered()
+      // No E4 yet: the confirmation waits and leaves a failure
+      const remittanceId = await confirmed(shipment.connectionId, [
+        { shipmentId: shipment.id, reported: 2102 }
+      ])
+      await post(FinanceSourceType.REMITTANCE, remittanceId, FinanceEventKind.REMITTANCE_CONFIRM)
+      const open = await owner.financePostingFailure.findFirstOrThrow({
+        where: { organizationId: ctx.orgA.id, sourceId: remittanceId }
+      })
+      expect(open.resolvedAt).toBeNull()
+      await voided(remittanceId)
+      await post(FinanceSourceType.REMITTANCE, remittanceId, FinanceEventKind.REMITTANCE_VOID)
+      const closed = await owner.financePostingFailure.findFirstOrThrow({
+        where: { id: open.id }
+      })
+      expect(closed.resolvedAt).not.toBeNull()
     })
 
     it('never reverses the entry of another organization', async () => {

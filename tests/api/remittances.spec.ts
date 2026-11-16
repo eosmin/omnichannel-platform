@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
+import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   CodStatus,
@@ -21,6 +22,7 @@ import {
   createOrder,
   createShipment
 } from '../builders'
+import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
@@ -466,6 +468,27 @@ describe('COD remittances (TDD_17 §4.15)', () => {
         expect(refused.answer.status).toBe(HttpStatusCodes.BAD_REQUEST)
         expect(errorCode(refused.answer.body)).toBe(ErrorCodes.FINANCE_ACCOUNT_NOT_POSTABLE)
       }
+      // Choosing the account is a finance decision: remittances:manage alone does not make it, and says nothing about the account
+      const limited = api(
+        app,
+        await actorWithPermissions(owner, app, {
+          prefix,
+          name: 'remit-only',
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA.id,
+          permissions: [Permissions.REMITTANCES_MANAGE]
+        }),
+        ctx.storeA
+      )
+      await pendingShipment('DA-LIM', 700)
+      const limitedDraft = await draftWith([{ guideNumber: 'DA-LIM', reportedCents: 700 }])
+      const denied = await limited
+        .post(ApiRoutes.remittances.confirm(limitedDraft.id))
+        .send({ destinationAccountId: books.accounts.bank })
+      expect(denied.status).toBe(HttpStatusCodes.FORBIDDEN)
+      expect(
+        (await owner.codRemittance.findUniqueOrThrow({ where: { id: limitedDraft.id } })).status
+      ).toBe(RemittanceStatus.DRAFT)
       // A bank account is kept on the remittance
       const good = await confirm(books.accounts.bank)
       expect(good.answer.status).toBe(OK)

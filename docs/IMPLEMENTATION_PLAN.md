@@ -1772,11 +1772,15 @@ the accountant's opening entry has to include the carriers' payable and receivab
 start). (u) A remittance that is confirmed with a destination account and then voided keeps the column (the evidence of the choice); the reversal
 uses the lines of E5, never the column. (v) E4 is posted for the guide of the outbound leg only; the charges of a return guide are 4B.6b-2 with E8. (w) Voiding an EARLIER remittance
 of a guide that a LATER one settled again re-opens the payable the earlier one cleared, and the later entry (immutable, written knowing the
-earlier one cleared it) does not clear it: the carriers' payable is overstated until an adjustment by hand. The recomputation of payables of
-4B.6b-3's sweep flags it; the accountant adjusts. (x) The destination account of a confirmed remittance cannot be changed after the
+earlier one cleared it) does not clear it: the carriers' payable is overstated until an adjustment by hand (and the same two remittances give different payables depending on whether
+the later one posted before or after the void). The recomputation of payables of 4B.6b-3's sweep flags it; the accountant adjusts. (x) The destination account of a confirmed remittance cannot be changed after the
 confirmation: one switched off afterwards leaves E5 a failure ("account inactive" or "not cash") until it is reactivated; a route to re-point
 it is 4B.6b-3. (y) The payable of a guide whose carrier kept less than the estimate stays open until the carrier's invoice is paid by hand
-(`FinanceTransaction` expense): there is no payment of a carrier's payable in the MVP (4B.6b-3, with the charge model).
+(`FinanceTransaction` expense): there is no payment of a carrier's payable in the MVP (4B.6b-3, with the charge model). (z) A guide delivered before E4 existed (before this PR deployed) has no E4 and nothing queues it: its remittance waits (`SOURCE_NOT_READY`)
+until the sweep of 4B.6b-3 posts the missing E4 (as it does the E3 of every order delivered before 4B.6a). (aa) The refusal of a void for a
+bank-reconciled E5 is the ledger's (tested in its spec); a spec of it through E6 and of the dating when E5's day is in a closed period goes with the
+sweep's specs (debt (m) of 4B.6a), 4B.6b-3. (ab) Choosing the destination account asks `finance:move_money` (the permission's own comment says so) on top
+of `remittances:manage`; the web (4B.9) shows the box only with it.
 
 ### Step 4B.7 — Fiscal documents (DTE), against a simulator first
 - [ ] `libs/fiscal/sdk` (the provider port, manifest, contract suite), `libs/fiscal/simulator` (development and test only); the

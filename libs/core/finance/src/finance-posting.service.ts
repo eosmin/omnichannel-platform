@@ -207,9 +207,11 @@ export class FinancePostingService {
     }
     // E4 is what a remittance of the guide waits for (its payable is the estimate the remittance settles): once it is posted, the
     // remittances that settled the guide and could not post are asked again
+    // (also when the entry was already there: a job that died after the commit and before this re-ask is retried and must still do it)
     if (
       input.kind === FinanceEventKind.CHARGES &&
-      result.outcome === FinancePostingOutcome.POSTED
+      (result.outcome === FinancePostingOutcome.POSTED ||
+        result.outcome === FinancePostingOutcome.REPLAYED)
     ) {
       await this.repostRemittancesOf(input)
     }
@@ -890,10 +892,11 @@ export class FinancePostingService {
     },
     timeZone: string
   ): number | null {
+    // What the books carry wins over what the guide says now (a commission edited since): the payable is the entry's
+    if (posted !== undefined) return posted
     const amounts = chargeAmounts(shipment)
     const wanted = amounts.freightCents + amounts.commissionCents
     if (wanted === 0) return 0
-    if (posted !== undefined) return posted
     const deliveredDay =
       shipment.deliveredAt === null ? null : dayInZone(shipment.deliveredAt, timeZone)
     return deliveredDay !== null && deliveredDay < accountingStartDate ? wanted : null
@@ -923,8 +926,21 @@ export class FinancePostingService {
       input.organizationId,
       FinancePostingKey.REMITTANCE_CONFIRM(input.sourceId)
     )
-    // Voided before the confirmation was ever posted: there is nothing to undo
-    if (confirmed === null) return this.done(FinancePostingOutcome.NOTHING_TO_POST)
+    // Voided before the confirmation was ever posted: there is nothing to undo, and the failure of that confirmation (a mapping, a guide
+    // that waited) is no longer anyone's to fix: it is closed, so that it does not hold anything back for a remittance that posts nothing
+    if (confirmed === null) {
+      await tx.financePostingFailure.updateMany({
+        where: {
+          organizationId: input.organizationId,
+          sourceType: FinanceSourceType.REMITTANCE,
+          sourceId: input.sourceId,
+          eventKind: FinanceEventKind.REMITTANCE_CONFIRM,
+          resolvedAt: null
+        },
+        data: { resolvedAt: new Date() }
+      })
+      return this.done(FinancePostingOutcome.NOTHING_TO_POST)
+    }
     const voidDay = dayInZone(remittance.voidedAt, remittance.store.timezone)
     const date = automaticEntryDate(voidDay, calendar)
     const original = dateToDay(confirmed.entryDate)
