@@ -15,6 +15,7 @@ type Refusal =
   | typeof ErrorCodes.FINANCE_SETUP_REQUIRED
   | typeof ErrorCodes.FINANCE_CLOSE_PENDING_POSTINGS
   | typeof ErrorCodes.FINANCE_CLOSE_PREVIOUS_OPEN
+  | typeof ErrorCodes.FINANCE_CLOSE_CHAIN_BROKEN
   | typeof ErrorCodes.FINANCE_CLOSE_NOT_ENDED
   | typeof ErrorCodes.FINANCE_BALANCE_MISMATCHES
   | typeof ErrorCodes.FINANCE_PERIOD_NOT_CLOSED
@@ -34,6 +35,8 @@ const MESSAGES: Record<Refusal, string> = {
     'a posting is pending or failed: resolve it before closing',
   [ErrorCodes.FINANCE_CLOSE_PREVIOUS_OPEN]:
     'the previous period is still open: closes are in order',
+  [ErrorCodes.FINANCE_CLOSE_CHAIN_BROKEN]:
+    'the hash chain of the journal does not verify: find out why before closing',
   [ErrorCodes.FINANCE_CLOSE_NOT_ENDED]: 'the period has not ended yet',
   [ErrorCodes.FINANCE_BALANCE_MISMATCHES]: 'the balances of the period do not match the journal',
   [ErrorCodes.FINANCE_PERIOD_NOT_CLOSED]: 'the period is not closed',

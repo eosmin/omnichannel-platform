@@ -22,6 +22,7 @@ export const Schedules = {
   COLLECT_QUEUE_METRICS: '*/15 * * * * *', // Every 15 seconds (6-field cron, @nestjs/schedule)
   RECONCILE_INVENTORY: '0 4 * * *', // 04:00 UTC daily, one job per store (TDD_16 §4.8)
   RECONCILE_FINANCE: '30 4 * * *', // 04:30 UTC daily, one job per organization with books (TDD_18 §11)
+  VERIFY_LEDGER_CHAIN: '0 5 * * 0', // 05:00 UTC on Sundays, one job per organization with books (TDD_18 §3, §11)
   EVALUATE_PICKUPS: '* * * * *', // Every minute; the job decides which connections are due (TDD_17 §4.10)
   POLL_SHIPMENT_STATUS: '*/10 * * * *', // The job applies each connection's own interval
   CLEAN_BULK_LABELS: '30 3 * * *',

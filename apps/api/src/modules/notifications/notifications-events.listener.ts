@@ -47,6 +47,7 @@ import {
   type CountSubmittedPayload,
   type ExportSettledPayload,
   Events,
+  type FinanceChainBrokenPayload,
   type FinancePostingFailedPayload,
   type FiscalDocumentRejectedPayload,
   type FiscalDocumentStuckPayload,
@@ -577,6 +578,45 @@ export class NotificationsEventsListener {
       this.logger.error(
         { organizationId, documentId, err: String(error) },
         'a fiscal document notice could not be sent'
+      )
+    }
+  }
+
+  // The weekly check of the hash chain opened an incident (TDD_18 §11). The worker says it once, when it opens it; whoever closes the months
+  // is told (the incident stops that very close), once until they read it, and only while they still hold the permission in a store of the
+  // organization. The text names no entry: the check of the chain says which.
+  @OnEvent(Events.FINANCE_CHAIN_BROKEN)
+  async onFinanceChainBroken(payload: FinanceChainBrokenPayload): Promise<void> {
+    const { organizationId } = payload
+    try {
+      const members = await this.prisma.client.membership.findMany({
+        where: {
+          organizationId,
+          status: MembershipStatus.ACTIVE,
+          revokedAt: null,
+          role: { permissions: { some: { name: Permissions.FINANCE_CLOSE_PERIODS } } }
+        },
+        select: { userId: true, storeId: true },
+        orderBy: [{ storeId: 'asc' }, { userId: 'asc' }]
+      })
+      // The incident belongs to the organization: a person is told once, in the first store they can close in
+      const storeOf = new Map<string, string>()
+      for (const member of members) {
+        if (!storeOf.has(member.userId)) storeOf.set(member.userId, member.storeId)
+      }
+      for (const [userId, storeId] of storeOf) {
+        await this.notifications.sendToUsersOnce([userId], {
+          storeId,
+          type: NotificationTypes.FINANCE_CHAIN_BROKEN,
+          params: {},
+          resourceType: FinanceResourceTypes.ENTRY,
+          resourceId: organizationId
+        })
+      }
+    } catch (error) {
+      this.logger.error(
+        { organizationId, err: String(error) },
+        'an incident of the chain of the books could not be notified'
       )
     }
   }

@@ -92,6 +92,11 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
     help: 'Balances by account and period that do not match the sum of their lines in the last daily check: any non-zero value is an incident',
     labels: ['organization_id']
   },
+  [MetricNames.FINANCE_CHAIN_BREAKS]: {
+    kind: 'gauge',
+    help: 'One while the last weekly check of the hash chain found the journal altered, zero when it passes: any non-zero value is an incident',
+    labels: ['organization_id']
+  },
 
   [MetricNames.SHIPMENTS_CREATED_TOTAL]: {
     kind: 'counter',

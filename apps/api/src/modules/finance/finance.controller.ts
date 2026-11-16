@@ -37,7 +37,6 @@ import { FinanceSettingsService } from './finance-settings.service'
 import { FinanceSetupService } from './finance-setup.service'
 import { FinanceStoreTaxSettingsService } from './finance-store-tax-settings.service'
 import { FinanceTaxRatesService } from './finance-tax-rates.service'
-import { vatReportCsv } from './finance-vat-report.csv'
 import { FinanceVatReportService } from './finance-vat-report.service'
 import {
   balancesQuerySchema,
@@ -293,22 +292,26 @@ export class FinanceController {
     return this.vatReport.report(organization.id, query)
   }
 
-  @RequirePermissions(Permissions.FINANCE_VIEW)
+  // Taking the file out needs finance:export besides, like every other financial file, and leaves an audit row (FINANCE_EXPORTED)
+  @RequirePermissions(Permissions.FINANCE_VIEW, Permissions.FINANCE_EXPORT)
   @Get(ApiRoutes.finance.reports.vatCsv)
   async vatCsv(
     @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
     @Query(new ZodValidationPipe(vatReportQuerySchema)) query: VatReportQuery,
+    @Req() req: AuthenticatedRequest,
     @Res({ passthrough: true }) res: Response
   ): Promise<string> {
-    const report = await this.vatReport.report(organization.id, query)
+    const file = await this.vatReport.csv(organization.id, query, actorOf(user, store, req))
     res.setHeader('Content-Type', ExportContentTypes.CSV)
     res.setHeader(
       'Content-Disposition',
-      `attachment; filename="vat-${report.from}-${report.to}.${ExportFileExtensions.CSV}"`
+      `attachment; filename="vat-${query.from}-${query.to}.${ExportFileExtensions.CSV}"`
     )
     // A financial file is not kept by a shared cache
     res.setHeader('Cache-Control', 'no-store')
-    return vatReportCsv(report)
+    return file
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW)

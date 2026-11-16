@@ -268,6 +268,7 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
       OR EXISTS (SELECT 1 FROM purchase_orders WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM fiscal_documents WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM fiscal_issuers WHERE organization_id = ANY(${organizationIds}))
+      OR EXISTS (SELECT 1 FROM finance_chain_incidents WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM finance_book_layouts WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM finance_book_snapshots WHERE organization_id = ANY(${organizationIds}))
     ) AS touched`
@@ -340,6 +341,7 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     await tx.journalEntry.deleteMany({ where })
     await tx.accountPeriodBalance.deleteMany({ where })
     await tx.financePostingFailure.deleteMany({ where })
+    await tx.financeChainIncident.deleteMany({ where })
     await tx.accountRoleMapping.deleteMany({ where })
     await tx.paymentMethodAccount.deleteMany({ where })
     // A product names its tax rate and the rate names accounts: the products let go first, then the rates, then the accounts
