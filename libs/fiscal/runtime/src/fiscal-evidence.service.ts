@@ -96,13 +96,16 @@ export class FiscalEvidenceService {
     kind: FiscalEvidenceKind,
     row: { id: string; key: string; status: string }
   ): Promise<{ mediaId: string } | null> {
-    const verdictGiven =
-      row.status === String(MediaStatus.INFECTED) || row.status === String(MediaStatus.UNSCANNABLE)
-    if (verdictGiven || (await this.storage.head(row.key)) === null) {
+    // A file the scan found infected is not written again: it is the platform's own JSON, so a virus in it is a fault to look into, and
+    // rewriting it on every request would make a scan for each one
+    if (row.status === String(MediaStatus.INFECTED)) return { mediaId: row.id }
+    const unscannable = row.status === String(MediaStatus.UNSCANNABLE)
+    if (unscannable || (await this.storage.head(row.key)) === null) {
       const bytes = await this.bytesOf(organizationId, documentId, kind)
-      if (bytes === null) return { mediaId: row.id }
+      // Nothing to write (the sealed copy cannot be opened, or it is larger than what is kept as a file): there is no evidence to serve
+      if (bytes === null) return null
       await this.storage.put(row.key, bytes, FiscalEvidenceContentType)
-      if (verdictGiven) {
+      if (unscannable) {
         await this.prisma.client.media.updateMany({
           where: { id: row.id, status: row.status },
           data: { status: MediaStatus.PENDING, scannedAt: null, scanResult: DatabaseNull }

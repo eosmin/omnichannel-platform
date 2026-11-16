@@ -352,6 +352,9 @@ export class OrphanMediaCleaner {
     const stuck = await this.prisma.client.media.findMany({
       where: {
         status: MediaStatus.PENDING,
+        // The evidence of a fiscal document is never dropped (the database says so) and is repaired and scanned again when it is asked for,
+        // so it never fills the batch of this sweep
+        purpose: { not: MediaPurpose.FISCAL_EVIDENCE },
         createdAt: { lt: new Date(now.getTime() - UploadLimits.STUCK_SCAN_MINUTES * MINUTE_MS) },
         ...ownedBy(scope)
       },

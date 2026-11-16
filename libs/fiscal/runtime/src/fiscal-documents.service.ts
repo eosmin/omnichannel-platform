@@ -77,6 +77,10 @@ interface IssuerRow {
   environment: string
 }
 
+// The attempt did not run because another one holds the document or its sale document is not accepted yet: a claim that is alive may still
+// decide the document, so the exhaustion of this job is not the exhaustion of the document
+export class FiscalDocumentBusyError extends Error {}
+
 // An acceptance has a number: what a provider returns is not trusted to
 const hasNumber = (value: unknown): value is string =>
   typeof value === 'string' && value.trim() !== ''
@@ -632,11 +636,11 @@ export class FiscalDocumentsService {
     if (claimed === null) return
     if (claimed === 'busy') {
       // Another attempt claimed it a moment ago: this job fails so that the backoff of the queue asks again after the lease
-      throw new Error('the fiscal document is being submitted by another attempt')
+      throw new FiscalDocumentBusyError('the fiscal document is being submitted by another attempt')
     }
     if (claimed === 'waiting') {
       // A credit note whose sale document has not been accepted yet: nothing was claimed, the queue asks again with its backoff
-      throw new Error('the sale document of this credit note is not accepted yet')
+      throw new FiscalDocumentBusyError('the sale document of this credit note is not accepted yet')
     }
     const { doc, issuer, provider, original } = claimed
     if (original === 'voided') {
@@ -789,9 +793,13 @@ export class FiscalDocumentsService {
   // The last attempt of the job failed and the document is still waiting for the provider (QUEUED or SUBMITTED): nobody retries it any
   // more, so a person is told (Step 4B.7b-2). A document that was decided, or that is gone, says nothing. Safe to repeat: the notice is
   // deduplicated until it is read.
-  async reportExhausted(organizationId: string, documentId: string): Promise<void> {
+  async reportExhausted(
+    organizationId: string,
+    documentId: string,
+    claimMayBeAlive = false
+  ): Promise<void> {
     try {
-      await this.reportExhaustedOnce(organizationId, documentId)
+      await this.reportExhaustedOnce(organizationId, documentId, claimMayBeAlive)
     } catch (error) {
       // Said in the log, never thrown: the error that matters is the one of the attempt that failed
       this.logger.error(
@@ -801,20 +809,27 @@ export class FiscalDocumentsService {
     }
   }
 
-  private async reportExhaustedOnce(organizationId: string, documentId: string): Promise<void> {
+  private async reportExhaustedOnce(
+    organizationId: string,
+    documentId: string,
+    claimMayBeAlive: boolean
+  ): Promise<void> {
     await this.prisma.transaction(async tx => {
       const doc = await tx.fiscalDocument.findFirst({
         where: {
           id: documentId,
           organizationId,
-          OR: [
-            { status: FiscalDocumentStatus.QUEUED },
-            // A claim that is alive (less than the lease ago) is an attempt that may still decide the document: it is not stuck
-            {
-              status: FiscalDocumentStatus.SUBMITTED,
-              updatedAt: { lt: new Date(Date.now() - FiscalLimits.CLAIM_LEASE_MS) }
-            }
-          ]
+          status: { in: [FiscalDocumentStatus.QUEUED, FiscalDocumentStatus.SUBMITTED] },
+          // The job failed because another attempt holds the claim: a claim that is alive (less than the lease ago) may still decide the
+          // document, so it is not stuck. Any other failure of the last attempt leaves a claim that nobody will take over.
+          ...(claimMayBeAlive
+            ? {
+                OR: [
+                  { status: FiscalDocumentStatus.QUEUED },
+                  { updatedAt: { lt: new Date(Date.now() - FiscalLimits.CLAIM_LEASE_MS) } }
+                ]
+              }
+            : {})
         },
         select: { id: true, organizationId: true, storeId: true, orderId: true, attempts: true }
       })
@@ -1265,17 +1280,24 @@ export class FiscalDocumentsService {
       const moved =
         issuer !== null &&
         (issuer.providerId !== doc.providerId || !sameIssuer(record(doc.issuerSnapshot), issuer))
-      if (
-        doc.status !== (FiscalDocumentStatus.REJECTED as string) ||
-        doc.attempts === 0 ||
-        issuer === null ||
-        !moved
-      ) {
+      // Three different answers: the document is not refused (or never reached the issuer: a retry is what it needs), the issuer did not
+      // change, or the issuer it would go to is not one this deployment has (the confirmation would be spent on a document that cannot go)
+      if (doc.status !== (FiscalDocumentStatus.REJECTED as string) || doc.attempts === 0) {
+        throw this.invalid(doc.status as FiscalDocumentStatus)
+      }
+      if (issuer === null || !moved) {
         throw new PlatformException(
           ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
-          'the document is not waiting for the confirmation of an issuer change',
+          'the issuer of the document is the one it was made with',
           HttpStatusCodes.CONFLICT,
           { reason: FiscalConflictReasons.NO_ISSUER_CHANGE }
+        )
+      }
+      if (this.providers.find(issuer.providerId) === undefined) {
+        throw new PlatformException(
+          ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
+          'the provider of the issuer is not available',
+          HttpStatusCodes.CONFLICT
         )
       }
       // A credit note names the sale document that is live now
@@ -1745,6 +1767,14 @@ export class FiscalDocumentsService {
             'the return already has a live credit note',
             HttpStatusCodes.CONFLICT,
             { reason: FiscalConflictReasons.NOTE_ALREADY_REPLACED }
+          )
+        }
+        const issuer = await tx.fiscalIssuer.findUnique({ where: { organizationId } })
+        if (issuer === null || this.providers.find(issuer.providerId) === undefined) {
+          throw new PlatformException(
+            ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
+            'the organization has no issuer set up',
+            HttpStatusCodes.CONFLICT
           )
         }
         const created = await this.makeCreditNote(tx, organizationId, old.orderId, old.returnId, {
