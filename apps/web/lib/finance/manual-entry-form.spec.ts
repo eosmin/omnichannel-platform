@@ -75,12 +75,14 @@ describe('manualEntryProblem', () => {
       ]
     }
     expect(manualEntryProblem(huge)).toBeNull()
+    // Every line is a line the api takes; only the sum of one side passes what a line can hold
     const over = {
       ...draft,
       lines: [
         { ...first, debit: '21474836.47' },
         { ...first, key: 'c', debit: '0.01' },
-        { ...second, credit: '21474836.48' }
+        { ...second, credit: '21474836.47' },
+        { ...second, key: 'd', credit: '0.01' }
       ]
     }
     expect(manualEntryProblem(over)).toEqual({ field: ManualEntryFields.TOTAL, index: null })

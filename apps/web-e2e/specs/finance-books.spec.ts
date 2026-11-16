@@ -130,7 +130,10 @@ test.describe('Finance → the books of the organization', () => {
 
     // An empty form is refused first, and the dialog fits a phone
     await page.getByRole('button', { name: finance.transactions.new, exact: true }).click()
-    const form = page.getByRole('dialog', { name: finance.transactions.form.createTitle })
+    const form = page.getByRole('dialog', {
+      name: finance.transactions.form.createTitle,
+      exact: true
+    })
     await form.getByRole('button', { name: finance.transactions.form.submit, exact: true }).click()
     await expect(form.getByRole('alert').first()).toBeVisible()
     await expectDialogFitsThePhoneWidth(page, form)
@@ -149,12 +152,18 @@ test.describe('Finance → the books of the organization', () => {
     const row = list.locator('[data-testid="finance-transaction-row"][data-kind="expense"]')
     await expect(row).toHaveCount(1)
     await expect(row).toHaveAttribute('data-voided', 'false')
+    await expect(row).toContainText('E2E rent')
+    await expect(row).toContainText('11.30')
 
     // Its detail shows the entry it posted; a void asks for the reason and then for the confirmation
     await row.click()
-    const detail = page.getByRole('dialog', { name: finance.transactions.detail.title })
+    const detail = page.getByRole('dialog', {
+      name: finance.transactions.detail.title,
+      exact: true
+    })
     await expect(detail.getByTestId('finance-transaction-detail')).toBeVisible()
-    await expect(detail.getByTestId('finance-entry-lines')).toBeVisible()
+    // The entry it posted carries the amount typed
+    await expect(detail.getByTestId('finance-entry-lines')).toContainText('11.30')
     await detail
       .getByRole('button', { name: finance.transactions.void.action, exact: true })
       .click()
@@ -196,7 +205,7 @@ test.describe('Finance → the books of the organization', () => {
     await expect(rows).toHaveCount(2)
 
     await page.getByRole('button', { name: finance.journal.new, exact: true }).click()
-    const form = page.getByRole('dialog', { name: finance.manual.title })
+    const form = page.getByRole('dialog', { name: finance.manual.title, exact: true })
     await expectDialogFitsThePhoneWidth(page, form)
     await form.getByLabel(finance.manual.memo, { exact: true }).fill('E2E opening')
     await form
@@ -218,10 +227,17 @@ test.describe('Finance → the books of the organization', () => {
     await expect(form).toHaveCount(0)
     await expect(rows).toHaveCount(3)
 
-    // Its lines, and the way to reverse it
-    await rows.first().click()
-    const detail = page.getByRole('dialog', { name: /./ })
+    // The new entry is the one with the description typed; its lines, and the way to reverse it
+    const mine = rows.filter({ hasText: 'E2E opening' })
+    await expect(mine).toHaveCount(1)
+    const number = await mine.getAttribute('data-number')
+    await mine.click()
+    const detail = page.getByRole('dialog', {
+      name: finance.entry.title.replace('{number}', number ?? ''),
+      exact: true
+    })
     await expect(detail.getByTestId('finance-entry-line')).toHaveCount(2)
+    await expect(detail.getByTestId('finance-entry-lines')).toContainText('5.00')
     await expect(
       detail.getByRole('button', { name: finance.entry.reverse.action, exact: true })
     ).toBeVisible()
@@ -261,7 +277,9 @@ test.describe('Finance → the books of the organization', () => {
       0
     )
     // The journal is another permission: it has no entry in the navigation of who only reads the books
+    await expect(page.getByRole('link', { name: nav.accounts, exact: true })).toBeVisible()
     await expect(page.getByRole('link', { name: nav.journal, exact: true })).toHaveCount(0)
+    await expect(page.getByRole('link', { name: nav.transactions, exact: true })).toHaveCount(0)
     await expect(
       page.getByRole('button', { name: finance.accounts.edit, exact: true })
     ).toHaveCount(0)

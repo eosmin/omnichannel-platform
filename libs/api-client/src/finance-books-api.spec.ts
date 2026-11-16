@@ -126,7 +126,11 @@ describe('the journal', () => {
 
     const reversed = setup(json(201, { ...entry, lines: [line] }))
     await reverseFinanceEntry(reversed.client, 's', 'e1', { memo: 'Wrong month' })
-    expect(callOf(reversed.fetchImpl).url).toContain('/finance/entries/e1/reverse')
+    const reverse = callOf(reversed.fetchImpl)
+    expect(reverse.url).toContain('/finance/entries/e1/reverse')
+    expect(reverse.init.method).toBe('POST')
+    expect(JSON.parse(reverse.init.body as string)).toEqual({ memo: 'Wrong month' })
+    expect(reverse.headers.get('X-Store-Id')).toBe('s')
   })
 })
 
@@ -151,7 +155,11 @@ describe('the transactions', () => {
     }
     const record = setup(json(201, transaction))
     await recordFinanceTransaction(record.client, 's', input)
-    expect(callOf(record.fetchImpl).url).toMatch(/\/finance\/transactions$/)
+    const recorded = callOf(record.fetchImpl)
+    expect(recorded.url).toMatch(/\/finance\/transactions$/)
+    expect(recorded.init.method).toBe('POST')
+    expect(JSON.parse(recorded.init.body as string)).toEqual(input)
+    expect(recorded.headers.get('X-Store-Id')).toBe('s')
 
     const voided = setup(json(201, { ...transaction, voided: true, voidedByEntryId: 'e2' }))
     const view = await voidFinanceTransaction(voided.client, 's', 't1', 'Typed twice')
@@ -166,7 +174,13 @@ describe('the transactions', () => {
       reason: 'Amount',
       replacement: input
     })
-    expect(callOf(replaced.fetchImpl).url).toContain('/finance/transactions/t1/replace')
+    const replace = callOf(replaced.fetchImpl)
+    expect(replace.url).toContain('/finance/transactions/t1/replace')
+    expect(replace.init.method).toBe('POST')
+    expect(JSON.parse(replace.init.body as string)).toEqual({
+      reason: 'Amount',
+      replacement: input
+    })
 
     const attached = setup(json(201, { ...transaction, documentMediaId: 'm1' }))
     const withReceipt = await attachFinanceTransactionDocument(attached.client, 's', 't1', 'm1')

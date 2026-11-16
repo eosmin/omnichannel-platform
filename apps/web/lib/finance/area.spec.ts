@@ -39,6 +39,14 @@ describe('the finance area', () => {
     ).toEqual(['accounts', 'journal', 'transactions', 'taxes', 'periods', 'settings'])
   })
 
+  it('lists the journal for the journal permission alone, while the area itself still needs finance:view', () => {
+    // The area guard (the link and the store the books are asked through) is finance:view; the navigation only shows what each page needs
+    expect(mayOpenFinance(holding(Permissions.FINANCE_VIEW_JOURNAL))).toBe(false)
+    expect(
+      bestFinanceMembership([{ id: 's', permissions: [Permissions.FINANCE_VIEW_JOURNAL] }])
+    ).toBeUndefined()
+  })
+
   it('shows the pages of the books to who holds finance:view, and none to who holds only another permission', () => {
     expect(
       visibleEntries(FINANCE_SETTINGS_ENTRIES, holding(Permissions.FINANCE_VIEW)).map(

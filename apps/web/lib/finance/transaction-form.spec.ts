@@ -94,10 +94,13 @@ describe('transactionProblem', () => {
     ).toBe(field)
   })
 
-  it('accepts a day ahead and refuses the same day of the next month', () => {
+  it('accepts the last day the api takes and refuses the same day of the next month', () => {
     expect(
       transactionProblem(expense({ occurredOn: '2026-11-17' }), LATEST, [], 'half_up')
     ).toBeNull()
+    expect(transactionProblem(expense({ occurredOn: '2026-12-17' }), LATEST, [], 'half_up')).toBe(
+      TransactionFields.DATE
+    )
   })
 
   it('asks a transfer for two different accounts of money and no category', () => {
