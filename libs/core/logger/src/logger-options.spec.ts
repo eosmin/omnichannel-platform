@@ -65,6 +65,10 @@ describe('redaction', () => {
   it('lists the generic spellings of an app secret, and no provider by name', () => {
     expect(REDACTED_SECRET_KEYS).toContain('appSecret')
     expect(REDACTED_SECRET_KEYS).toContain('app_secret')
+    // The customer data of a fiscal document and the certificate of the issuer
+    for (const key of ['taxId', 'registrationId', 'receiver', 'certificate']) {
+      expect(REDACTED_SECRET_KEYS).toContain(key)
+    }
     expect(
       REDACTED_SECRET_KEYS.filter(name => /instagram|meta|whatsapp|messenger/i.test(name))
     ).toEqual([])

@@ -1,0 +1,12 @@
+{
+  "name": "fiscal-runtime",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/fiscal/runtime/src",
+  "projectType": "library",
+  "tags": ["scope:fiscal-runtime", "type:lib"],
+  "targets": {
+    "lint": {},
+    "type-check": {},
+    "test": {}
+  }
+}

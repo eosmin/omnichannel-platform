@@ -173,7 +173,9 @@ export default defineConfig([
                 'scope:plugins-sdk',
                 'scope:channels',
                 'scope:remote-channels',
-                'scope:shipping'
+                'scope:shipping',
+                'scope:fiscal-runtime',
+                'scope:fiscal-sdk'
               ]
             },
             {
@@ -185,7 +187,29 @@ export default defineConfig([
                 'scope:plugins-sdk',
                 'scope:channels',
                 'scope:remote-channels',
-                'scope:shipping'
+                'scope:shipping',
+                'scope:fiscal-runtime',
+                'scope:fiscal-sdk'
+              ]
+            },
+            {
+              // The fiscal documents (TDD_18 §8): the port knows only the domain; a provider package sees the port and the domain, like a
+              // carrier sees the SDK; the runtime (lifecycle, registry, the composition root of the providers) joins the port, the
+              // providers and core. Core never reaches any of them.
+              sourceTag: 'scope:fiscal-sdk',
+              onlyDependOnLibsWithTags: ['scope:core-domain']
+            },
+            {
+              sourceTag: 'scope:fiscal',
+              onlyDependOnLibsWithTags: ['scope:fiscal-sdk', 'scope:core-domain']
+            },
+            {
+              sourceTag: 'scope:fiscal-runtime',
+              onlyDependOnLibsWithTags: [
+                'scope:core',
+                'scope:core-domain',
+                'scope:fiscal-sdk',
+                'scope:fiscal'
               ]
             },
             {

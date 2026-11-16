@@ -352,7 +352,7 @@ Transition tables (enforced inside the owning service, like `OrderStatusTransiti
 - Purchase order: `DRAFT → ORDERED | CANCELLED`; `ORDERED → PARTIALLY_RECEIVED | RECEIVED | CANCELLED`;
   `PARTIALLY_RECEIVED → RECEIVED | CLOSED` (closing with a short quantity); `RECEIVED → CLOSED`; `CLOSED` and
   `CANCELLED` terminal. A purchase with a receipt cannot be cancelled, only closed.
-- Fiscal document: `DRAFT → QUEUED → SUBMITTED → ACCEPTED | REJECTED`; `REJECTED → QUEUED` (retry after a fix);
+- Fiscal document: `DRAFT → QUEUED → SUBMITTED → ACCEPTED | REJECTED`; `SUBMITTED → QUEUED` (the provider could not answer: the authority is down, the queue tries again); `REJECTED → QUEUED` (retry after a fix);
   `ACCEPTED → VOIDED` (the invalidation event of the provider); `VOIDED` terminal.
 
 **`AccountRole`** (the keys of `AccountRoleMapping`; the template maps each to a starter account, §3.1):
@@ -620,6 +620,14 @@ so no core file ever names a provider or a country's document.
 timeouts and an invalidation). The whole step (lifecycle, queue, immutability, credit notes, screens, contract
 suite) is built and tested against it **before** the owner has any credential; the real provider package only has to
 pass the same provider contract suite. The simulator is registered in development and test only, never in production.
+
+**As built (Step 4B.7a-1).** The port gained `consult` (the state of a document the provider may have received, asked before a second
+submission so a lost answer never makes two documents) and every call carries an idempotency key. Core talks to the port only
+through `libs/fiscal/runtime` (the lifecycle, the registry and the one composition root, `official-providers.ts`); the port is
+`libs/fiscal/sdk` and a provider package is `libs/fiscal/<provider>`. `validate:fiscal-agnostic` enforces the rule proposed above
+(the sentence of rule 13 in `CLAUDE.md` is still the owner's to add). `Build` is told the receiver and decides the document type;
+what the receiver lacks for that type comes back as `missingReceiverFields`, and the document is refused for it with a code a
+person can act on.
 
 ### 8.2 Data
 

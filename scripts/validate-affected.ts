@@ -100,6 +100,7 @@ const STEPS: AffectedStep[] = [
   { name: 'validate:frontend', command: ['validate:frontend'] },
   { name: 'validate:channel-agnostic', command: ['validate:channel-agnostic'] },
   { name: 'validate:carrier-agnostic', command: ['validate:carrier-agnostic'] },
+  { name: 'validate:fiscal-agnostic', command: ['validate:fiscal-agnostic'] },
   { name: 'validate:plugin-api', command: ['validate:plugin-api'] },
   { name: 'validate:replica', command: ['validate:replica'] },
   { name: 'validate:image-hosts', command: ['validate:image-hosts'] },
