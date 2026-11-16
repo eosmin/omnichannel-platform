@@ -424,6 +424,23 @@ describe('The credit notes of the fiscal documents (Step 4B.7b)', () => {
       expect(note?.status).toBe(FiscalDocumentStatus.QUEUED)
     })
 
+    it('moves the notes that never left core to the replacement, and refuses to replace a document twice even when its replacement was voided', async () => {
+      const order = await sale(true)
+      const waiting = await noteOf(await receivedReturn(order, 1))
+      await asAdminA()
+        .post(ApiRoutes.fiscal.documents.void(order.documentId))
+        .send({ reason: 'redo' })
+      const replaced = await asAdminA().post(ApiRoutes.fiscal.documents.replace(order.documentId))
+      const newId = (replaced.body as { data: { id: string } }).data.id
+      const moved = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: waiting?.id } })
+      expect(moved.parentDocumentId).toBe(newId)
+      await documents.submit(ctx.orgA.id, newId)
+      await asAdminA().post(ApiRoutes.fiscal.documents.void(newId)).send({ reason: 'again' })
+      // The note is the only one: voiding the replacement is refused while it is there only if it was sent; it was not, so this went through
+      const second = await asAdminA().post(ApiRoutes.fiscal.documents.replace(order.documentId))
+      expect(second.status).toBe(CONFLICT)
+    })
+
     it('makes the sale document again with a new number, keeps the receiver, and makes the voided credit notes again against it', async () => {
       const order = await sale(true)
       await asAdminA()

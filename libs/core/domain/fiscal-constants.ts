@@ -104,7 +104,11 @@ export const FiscalConflictReasons = {
   // A voided sale document that already has the document that replaces it
   ALREADY_REPLACED: 'already_replaced',
   // The receiver of a credit note is the one of the document it cancels: it is fixed there
-  CREDIT_NOTE_RECEIVER: 'credit_note_receiver'
+  CREDIT_NOTE_RECEIVER: 'credit_note_receiver',
+  // A credit note whose sale document was voided and has no replacement yet
+  ORIGINAL_VOIDED: 'original_voided',
+  // The units of a return still do not fit its sale
+  RETURN_INCONSISTENT: 'return_inconsistent'
 } as const
 
 // The type of a document that has not been built yet: the provider picks the real one when it builds (its rule, not core's)
