@@ -33,7 +33,8 @@ export interface FiscalIssuerBody {
   activityCode: string | null
   establishmentCode: string | null
   environment: FiscalEnvironment
-  issueOn: FiscalIssueOn
+  // Absent keeps the stored one; a new issuer starts at delivered (the column's default)
+  issueOn?: FiscalIssueOn
   // The correlative the next document takes. It only moves forward (a number is never used twice); absent keeps the stored one, and a new
   // issuer starts at 1. The format of a legal correlative is the provider's and the accountant's, not core's.
   nextSequence?: number
@@ -210,7 +211,7 @@ export class FiscalIssuerService {
           activityCode: body.activityCode,
           establishmentCode: body.establishmentCode,
           environment: body.environment,
-          issueOn: body.issueOn,
+          ...(body.issueOn === undefined ? {} : { issueOn: body.issueOn }),
           ...(body.nextSequence === undefined ? {} : { nextSequence: body.nextSequence }),
           credentialsEncrypted: sealed
         }

@@ -16,6 +16,7 @@ import {
   receiverWithFiscalData,
   retryable,
   saleAddsUp,
+  shippingTaxFits,
   saleOf,
   sameIssuer
 } from './fiscal-rules'
@@ -207,6 +208,21 @@ describe('a sale that adds up', () => {
     expect(saleAddsUp(sale({ taxCents: 326 }))).toBe(false)
     expect(saleAddsUp(sale({ shippingTaxCents: 0 }))).toBe(false)
     expect(saleAddsUp(sale({ totalCents: 2826 }))).toBe(false)
+  })
+
+  it('says whether the tax of the shipping fits in the fee, and leaves the sum check alone', () => {
+    // 2 x $11.30 with 13 % in the price and no shipping: the order says $3.10 of tax, the lines carry $2.60
+    const noShipping = { shippingCents: 0, totalCents: 2260 }
+    expect(shippingTaxFits(sale({ ...noShipping, shippingTaxCents: 0, taxCents: 260 }))).toBe(true)
+    expect(shippingTaxFits(sale({ ...noShipping, shippingTaxCents: 50, taxCents: 310 }))).toBe(
+      false
+    )
+    // never more than the fee, never negative; the whole fee is allowed
+    expect(shippingTaxFits(sale({ shippingCents: 565, shippingTaxCents: 566 }))).toBe(false)
+    expect(shippingTaxFits(sale({ shippingCents: 565, shippingTaxCents: 565 }))).toBe(true)
+    expect(shippingTaxFits(sale({ shippingTaxCents: -5 }))).toBe(false)
+    // a sealed document that was already sent keeps adding up as before: the sum check does not ask it
+    expect(saleAddsUp(sale({ ...noShipping, shippingTaxCents: 50, taxCents: 310 }))).toBe(true)
   })
 
   it('reads the parts of the snapshot, and reads a missing or odd one as nothing', () => {
