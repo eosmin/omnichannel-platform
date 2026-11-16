@@ -54,6 +54,7 @@ import {
   receiverEditable,
   receiverOf,
   receiverRecord,
+  receiverWithFiscalData,
   retryable,
   saleAddsUp,
   saleOf,
@@ -263,6 +264,7 @@ export class FiscalDocumentsService {
         taxCents: true,
         pricesIncludeTax: true,
         shippingAddress: true,
+        customerId: true,
         customer: { select: { name: true, email: true, phone: true } },
         items: {
           orderBy: { id: 'asc' },
@@ -285,7 +287,7 @@ export class FiscalDocumentsService {
     for (const [key, value] of Object.entries(record(order.shippingAddress))) {
       if (typeof value === 'string' && value !== '') address[key] = value
     }
-    const receiver: FiscalReceiver = {
+    const contact: FiscalReceiver = {
       name: order.customer.name,
       taxId: null,
       registrationId: null,
@@ -293,6 +295,12 @@ export class FiscalDocumentsService {
       email: order.customer.email,
       phone: order.customer.phone
     }
+    // The fiscal data of the customer, as it is at this moment, is copied into the receiver: the document keeps its own sealed copy and a
+    // later change of the customer's data never reaches it
+    const receiver = receiverWithFiscalData(
+      contact,
+      await this.customerFiscalReceiver(tx, order.storeId, order.customerId)
+    )
     return {
       storeId: order.storeId,
       currency: order.currency,
@@ -308,6 +316,30 @@ export class FiscalDocumentsService {
         pricesIncludeTax: order.pricesIncludeTax ?? true,
         orderNumber: order.orderNumber
       })
+    }
+  }
+
+  // The fiscal data of a customer of the store, opened. What cannot be opened (a key that changed) stops the document: made without it, a
+  // customer who has a tax id would be invoiced as a consumer, a legal document that says less than the customer asked for.
+  private async customerFiscalReceiver(
+    tx: PrismaTransaction,
+    storeId: string,
+    customerId: string
+  ): Promise<FiscalReceiver | null> {
+    const row = await tx.customerFiscalData.findFirst({
+      where: { storeId, customerId },
+      select: { dataEncrypted: true }
+    })
+    if (row === null) return null
+    try {
+      return receiverOf(this.cipher.open(row.dataEncrypted))
+    } catch {
+      throw new PlatformException(
+        ErrorCodes.FISCAL_CUSTOMER_DATA_INVALID,
+        'the fiscal data of the customer cannot be read: write it again',
+        HttpStatusCodes.CONFLICT,
+        { reason: 'unreadable' }
+      )
     }
   }
 
@@ -1038,7 +1070,16 @@ export class FiscalDocumentsService {
     organizationId: string,
     id: string,
     patch: Partial<
-      Record<'name' | 'taxId' | 'registrationId' | 'email' | 'phone', string | null>
+      Record<
+        | 'name'
+        | 'taxId'
+        | 'registrationId'
+        | 'email'
+        | 'phone'
+        | 'taxpayerType'
+        | 'economicActivity',
+        string | null
+      >
     > & {
       address?: Record<string, string> | null
     },
@@ -1066,7 +1107,13 @@ export class FiscalDocumentsService {
           'registrationId' in patch ? (patch.registrationId ?? null) : current.registrationId,
         email: 'email' in patch ? (patch.email ?? null) : current.email,
         phone: 'phone' in patch ? (patch.phone ?? null) : current.phone,
-        address: 'address' in patch ? (patch.address ?? null) : current.address
+        address: 'address' in patch ? (patch.address ?? null) : current.address,
+        taxpayerType:
+          'taxpayerType' in patch ? (patch.taxpayerType ?? null) : (current.taxpayerType ?? null),
+        economicActivity:
+          'economicActivity' in patch
+            ? (patch.economicActivity ?? null)
+            : (current.economicActivity ?? null)
       }
       await tx.fiscalDocument.update({
         where: { id },

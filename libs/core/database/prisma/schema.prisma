@@ -83,6 +83,7 @@ model Store {
   customers                Customer[]
   customerIdentities       CustomerIdentity[]
   customerMerges           CustomerMerge[]
+  customerFiscalData       CustomerFiscalData[]
   orders                   Order[]
   products                 Product[]
   inventoryMovements       InventoryMovement[]
@@ -392,21 +393,43 @@ model Customer {
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  store         Store              @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  store         Store               @relation(fields: [storeId], references: [id], onDelete: Cascade)
   identities    CustomerIdentity[]
   conversations Conversation[]
   orders        Order[]
   addresses     Address[]
   notes         CustomerNote[]
   consents      ConsentRecord[]
-  tags          Tag[]              @relation("CustomerTags")
+  tags          Tag[]               @relation("CustomerTags")
   media         Media[]
+  fiscalData    CustomerFiscalData?
 
   @@index([storeId])
   @@index([storeId, phoneNormalized])
   @@index([storeId, email])
   @@index([storeId, mergedIntoId])
   @@map("customers")
+}
+
+// The fiscal data of a customer (Step 4B.7b-3, TDD_18 §8): what the store needs to invoice the person (tax id, registration, kind of
+// taxpayer, economic activity, fiscal name and address). One row per customer, sealed like the receiver of a document (the tax id is
+// personal and tax data), so the table holds no readable value. What a value must look like is the issuer's provider's rule, applied
+// when a person saves it; the document takes a COPY when it is made, so a change here never reaches a document already made. The row goes
+// with the customer (CASCADE: a customer with orders is never deleted, so a document's snapshot never depends on this row).
+model CustomerFiscalData {
+  id            String   @id @default(uuid())
+  storeId       String   @map("store_id")
+  customerId    String   @unique @map("customer_id")
+  dataEncrypted Bytes    @map("data_encrypted")
+  updatedBy     String?  @map("updated_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  store    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@map("customer_fiscal_data")
 }
 
 // One row per (store, channel, handle). The SAME phone number in two stores is two

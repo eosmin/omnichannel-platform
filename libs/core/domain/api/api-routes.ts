@@ -296,6 +296,12 @@ export const ApiRoutes = {
       void: (id: string) => `/fiscal/documents/${id}/void`,
       // POST makes the sale document again after the one before was voided (and the credit notes that were voided with it)
       replace: (id: string) => `/fiscal/documents/${id}/replace`
+    },
+    // The fiscal data of a customer of the store of X-Store-Id: GET masked, PUT replaces what is sent, DELETE clears it
+    customerData: {
+      get: (customerId: string) => `/customers/${customerId}/fiscal`,
+      put: (customerId: string) => `/customers/${customerId}/fiscal`,
+      clear: (customerId: string) => `/customers/${customerId}/fiscal`
     }
   },
 

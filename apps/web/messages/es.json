@@ -595,6 +595,7 @@
     "FISCAL_DOCUMENT_IMMUTABLE": "Un documento fiscal aceptado no se puede cambiar",
     "FISCAL_DOCUMENT_INVALID_TRANSITION": "El documento fiscal no puede pasar de su estado actual",
     "FISCAL_ISSUER_INVALID": "El emisor no pasa las comprobaciones del proveedor",
+    "FISCAL_CUSTOMER_DATA_INVALID": "Los datos fiscales del cliente no pasan las comprobaciones del proveedor",
     "FISCAL_PROVIDER_UNAVAILABLE": "El proveedor de documentos fiscales no está disponible",
     "FINANCE_ENTRY_UNBALANCED": "El asiento no cuadra: los débitos y los créditos deben ser iguales y positivos",
     "FINANCE_ACCOUNT_NOT_POSTABLE": "Esta cuenta solo agrupa otras cuentas: elige una que acepte asientos",
@@ -3315,7 +3316,9 @@
         },
         "fiscal": {
           "view": "Ver documentos fiscales",
-          "manage": "Gestionar documentos fiscales"
+          "manage": "Gestionar documentos fiscales",
+          "view_customer_data": "Ver los datos fiscales de los clientes (enmascarados)",
+          "manage_customer_data": "Editar los datos fiscales de los clientes"
         },
         "carriers": {
           "view_guide_balance": "Ver saldo de guías y beneficio de reintegro",

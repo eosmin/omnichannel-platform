@@ -51,14 +51,22 @@ export function documentLines(rows: readonly OrderLineRow[]): FiscalLine[] {
   }))
 }
 
-const RECEIVER_FIELDS = ['name', 'taxId', 'registrationId', 'email', 'phone'] as const
+const RECEIVER_FIELDS = [
+  'name',
+  'taxId',
+  'registrationId',
+  'email',
+  'phone',
+  'taxpayerType',
+  'economicActivity'
+] as const
 
 // What is stored of the receiver, as a plain record of strings (customer data: it is encrypted before it is kept)
 export function receiverRecord(receiver: FiscalReceiver): Record<string, unknown> {
   const record: Record<string, unknown> = {}
   for (const field of RECEIVER_FIELDS) {
     const value = receiver[field]
-    if (value !== null && value.trim() !== '') record[field] = value.trim()
+    if (value !== undefined && value !== null && value.trim() !== '') record[field] = value.trim()
   }
   const address = cleanAddress(receiver.address)
   if (address !== null) record['address'] = address
@@ -261,7 +269,52 @@ export function receiverOf(record: Readonly<Record<string, unknown>>): FiscalRec
         ? cleanAddress(address as Record<string, unknown>)
         : null,
     email: text('email'),
-    phone: text('phone')
+    phone: text('phone'),
+    taxpayerType: text('taxpayerType'),
+    economicActivity: text('economicActivity')
+  }
+}
+
+// The fiscal data of a customer over the contact data the sale already has: what the customer's fiscal record says wins over the order's
+// own name and shipping address (a person who has a fiscal name and address is invoiced with them), and a field it leaves empty keeps what
+// the sale had. The result is the receiver the document is made with, a copy that nothing later changes.
+export function receiverWithFiscalData(
+  sale: FiscalReceiver,
+  fiscal: FiscalReceiver | null
+): FiscalReceiver {
+  if (fiscal === null) return sale
+  return {
+    name: fiscal.name ?? sale.name,
+    taxId: fiscal.taxId ?? sale.taxId,
+    registrationId: fiscal.registrationId ?? sale.registrationId,
+    address: fiscal.address ?? sale.address,
+    // The contact of the document stays the sale's: the fiscal record does not hold an email or a phone
+    email: sale.email,
+    phone: sale.phone,
+    taxpayerType: fiscal.taxpayerType ?? sale.taxpayerType ?? null,
+    economicActivity: fiscal.economicActivity ?? sale.economicActivity ?? null
+  }
+}
+
+// The fiscal data of a customer as a person sees it: identifiers masked (the last characters only), the rest of the fields said to be
+// set or not, never read back whole. A person who has to change a value sends the new one; nothing here can be copied into another form.
+export interface MaskedCustomerFiscalData {
+  name: string | null
+  taxId: string | null
+  registrationId: string | null
+  taxpayerType: string | null
+  economicActivity: string | null
+  addressSet: boolean
+}
+
+export function maskedCustomerFiscalData(receiver: FiscalReceiver): MaskedCustomerFiscalData {
+  return {
+    name: receiver.name,
+    taxId: maskTaxId(receiver.taxId),
+    registrationId: maskTaxId(receiver.registrationId),
+    taxpayerType: receiver.taxpayerType ?? null,
+    economicActivity: receiver.economicActivity ?? null,
+    addressSet: receiver.address !== null
   }
 }
 

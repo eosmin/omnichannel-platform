@@ -60,6 +60,29 @@ export async function createCustomerIdentity(
   return { id: identity.id, customerId }
 }
 
+// Remembers whose each row of fiscal data is: the route that reaches it names the customer
+export const customerOfFiscalData = new Map<string, string>()
+
+// The fiscal data of a customer, as the owner. The sealed value is a fixture no key opens: the isolation case reaches the row by the route
+// that changes it, and what a refused request must leave is the row as it was (`updatedBy` untouched)
+export async function createCustomerFiscalData(
+  owner: OwnerClient,
+  input: { storeId: string; customerId?: string }
+): Promise<{ id: string; customerId: string }> {
+  const customerId = input.customerId ?? (await createCustomer(owner, input)).id
+  const row = await owner.customerFiscalData.create({
+    data: {
+      storeId: input.storeId,
+      customerId,
+      dataEncrypted: Buffer.from('isolation-fixture'),
+      updatedBy: 'isolation-fixture'
+    },
+    select: { id: true }
+  })
+  customerOfFiscalData.set(row.id, customerId)
+  return { id: row.id, customerId }
+}
+
 // Remembers the survivor of each merge: the route that undoes it names the survivor
 export const survivorOfMerge = new Map<string, string>()
 

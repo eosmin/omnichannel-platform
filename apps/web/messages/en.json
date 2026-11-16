@@ -595,6 +595,7 @@
     "FISCAL_DOCUMENT_IMMUTABLE": "An accepted fiscal document cannot be changed",
     "FISCAL_DOCUMENT_INVALID_TRANSITION": "The fiscal document cannot move from its current state",
     "FISCAL_ISSUER_INVALID": "The issuer does not pass the checks of the provider",
+    "FISCAL_CUSTOMER_DATA_INVALID": "The fiscal data of the customer does not pass the checks of the provider",
     "FISCAL_PROVIDER_UNAVAILABLE": "The provider of fiscal documents is not available",
     "FINANCE_ENTRY_UNBALANCED": "The entry does not balance: debits and credits must be equal and positive",
     "FINANCE_ACCOUNT_NOT_POSTABLE": "This account only groups other accounts: choose one that accepts entries",
@@ -3315,7 +3316,9 @@
         },
         "fiscal": {
           "view": "View fiscal documents",
-          "manage": "Manage fiscal documents"
+          "manage": "Manage fiscal documents",
+          "view_customer_data": "View the fiscal data of customers (masked)",
+          "manage_customer_data": "Edit the fiscal data of customers"
         },
         "carriers": {
           "view_guide_balance": "View guide balance and refund benefit",

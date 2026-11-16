@@ -22,7 +22,20 @@ export interface FiscalDocumentTypeDeclaration {
 }
 
 export type FiscalReceiverField =
-  'name' | 'taxId' | 'registrationId' | 'address' | 'email' | 'phone'
+  | 'name'
+  | 'taxId'
+  | 'registrationId'
+  | 'address'
+  | 'email'
+  | 'phone'
+  | 'taxpayerType'
+  | 'economicActivity'
+
+// What a provider finds wrong in the fiscal data of a customer: the field and a code of the provider's own, never the value
+export interface FiscalReceiverProblem {
+  readonly field: FiscalReceiverField
+  readonly code: string
+}
 
 export type FiscalIssuerField =
   'legalName' | 'taxId' | 'registrationId' | 'address' | 'activityCode' | 'establishmentCode'
@@ -63,6 +76,10 @@ export interface FiscalReceiver {
   readonly address: Readonly<Record<string, string>> | null
   readonly email: string | null
   readonly phone: string | null
+  // The kind of taxpayer and the economic activity, in the words of the provider's own manifest (core stores them and never reads them).
+  // Optional: a receiver made before they existed, or for a provider that does not ask for them, leaves them out.
+  readonly taxpayerType?: string | null
+  readonly economicActivity?: string | null
 }
 
 export interface FiscalLine {
@@ -185,6 +202,10 @@ export interface FiscalDocumentProvider {
     issuer: FiscalIssuerInput,
     credentials: FiscalIssuerCredentials
   ): Promise<IssuerCheck>
+  // Pure, optional: what is wrong in the fiscal data of a customer, by the rules of the provider (the format of a tax id, the values a kind
+  // of taxpayer may take). Core calls it when a person saves the data of a customer, so the format of a country is never core's. A
+  // provider without it accepts any value within core's limits.
+  validateReceiver?(receiver: FiscalReceiver): readonly FiscalReceiverProblem[]
   // Pure: the sale and the issuer become the document (the choice of the type is the provider's rule)
   build(input: FiscalBuildInput): Promise<BuiltDocument>
   // Sign, send, return the answer. The same ProviderContext.idempotencyKey never makes two documents.

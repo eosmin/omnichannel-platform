@@ -70,6 +70,8 @@ const SEARCH_REPORT =
   'The report of what people searched in the store, for the dashboard: a plugin has no screen for it and reads the metrics of the store'
 const FINANCE =
   'The books of the organization (TDD_18 §14): finance is not exposed to plugins in the MVP, so no scope reaches the ledger, the chart or the periods'
+const FISCAL_CUSTOMER_DATA =
+  'The tax data of a customer (tax id, registration, activity, fiscal address, Step 4B.7b-3): personal and tax data that no plugin scope reaches, and the customer views of plugins never carry it'
 const BELL_AND_SEARCH =
   'Search over what the person sees in the app bar; a plugin lists with the filters of each resource'
 
@@ -463,6 +465,9 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'fiscal.documents.retry': { none: FINANCE },
   'fiscal.documents.void': { none: FINANCE },
   'fiscal.documents.replace': { none: FINANCE },
+  'fiscal.customerData.get': { none: FISCAL_CUSTOMER_DATA },
+  'fiscal.customerData.put': { none: FISCAL_CUSTOMER_DATA },
+  'fiscal.customerData.clear': { none: FISCAL_CUSTOMER_DATA },
   'suppliers.list': { none: FINANCE },
   'suppliers.create': { none: FINANCE },
   'suppliers.byId': { none: FINANCE },

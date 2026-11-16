@@ -73,6 +73,11 @@ export const REDACTED_SECRET_KEYS: readonly string[] = [
   'tax_id',
   'registrationId',
   'registration_id',
+  // The kind of taxpayer and the economic activity of a customer (Step 4B.7b-3): tax data of a person, kept out of logs like the tax id
+  'taxpayerType',
+  'taxpayer_type',
+  'economicActivity',
+  'economic_activity',
   'certificate'
 ]
 
