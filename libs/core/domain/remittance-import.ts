@@ -261,6 +261,29 @@ const DATE_PATTERNS: Record<
   [RemittanceDateFormats.DAY_FIRST_DASH]: { pattern: /^(\d{2})-(\d{2})-(\d{4})$/, order: [3, 2, 1] }
 }
 
+// How a day that is written with a slash says whether the order of its day and its month is the one of the profile. Two formats differ
+// only in that order (dd/MM/yyyy and MM/dd/yyyy), so "03/11/2026" reads in both and says nothing, while "25/11/2026" can only be a
+// day first. null for any other format or a text that is not a slash date.
+export type DayOrderEvidence = 'decisive' | 'ambiguous' | 'neutral'
+const SLASH_DAY = /^(\d{2})\/(\d{2})\/(\d{4})$/
+export function dayOrderEvidence(
+  cell: string,
+  format: RemittanceDateFormat
+): DayOrderEvidence | null {
+  if (
+    format !== RemittanceDateFormats.DAY_FIRST_SLASH &&
+    format !== RemittanceDateFormats.MONTH_FIRST_SLASH
+  ) {
+    return null
+  }
+  const match = SLASH_DAY.exec(cell.trim())
+  if (match === null) return null
+  const first = Number(match[1])
+  const second = Number(match[2])
+  if (first > 12 || second > 12) return 'decisive'
+  return first === second ? 'neutral' : 'ambiguous'
+}
+
 // A day that exists, in the format of the profile, as 'yyyy-MM-dd'; null otherwise ('31/02/2026' is not a day)
 export function parseImportDay(cell: string, format: RemittanceDateFormat): string | null {
   const rule = DATE_PATTERNS[format]
@@ -284,7 +307,8 @@ function cleanText(cell: string, maxLength: number): string | null {
   const text = plainName(cell)
   if (
     text === '' ||
-    text.length > maxLength ||
+    // In characters, not in UTF-16 units: an emoji is one character of the person's text and two units of the string
+    Array.from(text).length > maxLength ||
     CONTROL_OR_INVISIBLE.test(text) ||
     hasMisleadingCharacters(text)
   ) {

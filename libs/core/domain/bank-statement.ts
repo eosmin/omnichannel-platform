@@ -2,10 +2,12 @@ import { FinanceLimits } from './finance-constants'
 import {
   cleanImportText as cleanText,
   headerKey,
+  dayOrderEvidence,
   parseImportDay,
   resolveImportColumn as resolveColumn,
   shownImportValue as shown,
   widthOfMostImportRows as widthOfMostRows,
+  RemittanceDateFormats,
   type RemittanceDateFormat,
   type RemittanceDecimalSeparator,
   type RemittanceDelimiter,
@@ -101,7 +103,10 @@ export const BankStatementErrors = {
   EMPTY_FILE: 'empty_file',
   UNCLOSED_QUOTE: 'unclosed_quote',
   ROW_TOO_WIDE: 'row_too_wide',
-  STRAY_QUOTE: 'stray_quote'
+  STRAY_QUOTE: 'stray_quote',
+  // The profile says the file has a header and maps its columns by position, and the first row is a movement (its date reads): a
+  // movement would be read as the header and lost without a word
+  HEADER_LOOKS_LIKE_DATA: 'header_looks_like_data'
 } as const
 export type BankStatementError = (typeof BankStatementErrors)[keyof typeof BankStatementErrors]
 
@@ -153,6 +158,9 @@ export interface ParsedBankStatement {
   errors: BankRowError[]
   errorCount: number
   rowCount: number
+  // The dates are written with a slash and every one of them reads in both orders of the day and the month (03/11/2026): the format of
+  // the profile is a guess the file cannot confirm, and a person says it before the statement is kept
+  dateFormatUndecided: boolean
 }
 
 // The rules a profile keeps, written once (the schemas refuse a profile that breaks one, the service checks the one a change would
@@ -193,6 +201,9 @@ export function bankProfileProblem(value: {
 }
 
 // ------------------------------------------------------------------------------------------------------ the cells
+
+// What banks put between the lines of a memo (and tabs and separators): one space of the description
+const LINE_BREAKS = /[\r\n\t\v\f\u0085\u2028\u2029]+/g
 
 const escapeForPattern = (character: string): string =>
   character.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -257,7 +268,14 @@ export function parseBankStatement(
       errors.push({ row, field, code, value })
     }
   }
-  const empty: ParsedBankStatement = { headers: [], lines: [], errors, errorCount: 0, rowCount: 0 }
+  const empty: ParsedBankStatement = {
+    headers: [],
+    lines: [],
+    errors,
+    errorCount: 0,
+    rowCount: 0,
+    dateFormatUndecided: false
+  }
   const {
     rows,
     lines: startLines,
@@ -333,14 +351,38 @@ export function parseBankStatement(
       } else columns[field] = index
     }
   }
+  // A file with no header, read by a profile that says it has one and maps by position, would take its first movement for the header
+  // and drop it: a first row whose date reads is a movement, never a header
+  const dateColumn = columns.date
+  if (profile.hasHeader && dateColumn !== undefined) {
+    const headerDate = headerRow[dateColumn]
+    // Under any of the formats a bank may use, not only the profile's: a file whose dates the profile cannot read is refused for its
+    // dates, but its first row must never be taken for a header because of it
+    if (
+      headerDate !== undefined &&
+      Object.values(RemittanceDateFormats).some(
+        format => parseImportDay(headerDate, format) !== null
+      )
+    ) {
+      fail(
+        headerLine,
+        BankStatementFields.DATE,
+        BankStatementErrors.HEADER_LOOKS_LIKE_DATA,
+        shown(headerDate)
+      )
+      return { ...empty, headers: headerRow, errorCount }
+    }
+  }
   const lines: ParsedBankLine[] = []
   let rowCount = 0
+  let sawAmbiguousDay = false
+  let sawDecisiveDay = false
   const split = profile.columns.amount === undefined
   const moneyMissing = split
     ? columns.debit === undefined || columns.credit === undefined
     : columns.amount === undefined
   if (errorCount > 0 && (columns.date === undefined || moneyMissing)) {
-    return { headers: headerRow, lines, errors, errorCount, rowCount }
+    return { headers: headerRow, lines, errors, errorCount, rowCount, dateFormatUndecided: false }
   }
   const seen = new Map<string, number>()
   for (const { cells, line: row, index: at } of data.slice(0, maxRows)) {
@@ -376,6 +418,10 @@ export function parseBankStatement(
       postedOn = parseImportDay(dateCell, profile.dateFormat)
       if (postedOn === null) {
         fail(row, BankStatementFields.DATE, BankStatementErrors.INVALID_DATE, shown(dateCell))
+      } else {
+        const evidence = dayOrderEvidence(dateCell, profile.dateFormat)
+        if (evidence === 'ambiguous') sawAmbiguousDay = true
+        if (evidence === 'decisive') sawDecisiveDay = true
       }
     }
     let amount: number | null = null
@@ -438,10 +484,10 @@ export function parseBankStatement(
     let description: string | null = null
     const descriptionCell = cell(BankStatementFields.DESCRIPTION)
     if (descriptionCell !== undefined && descriptionCell.trim() !== '') {
-      // The description is information, not what the money is: a long memo (banks join the text of a transfer) is cut, never a reason to
-      // refuse the statement
+      // The description is information, not what the money is: a long memo (banks join the text of a transfer) is cut, and one that
+      // spans lines (banks do that too) is read as one line, never a reason to refuse the statement
       description = cleanText(
-        Array.from(descriptionCell.trim())
+        Array.from(descriptionCell.replace(LINE_BREAKS, ' ').trim())
           .slice(0, BankStatementLimits.DESCRIPTION_MAX_LENGTH)
           .join(''),
         BankStatementLimits.DESCRIPTION_MAX_LENGTH
@@ -475,7 +521,14 @@ export function parseBankStatement(
       lines.push({ postedOn, amountCents: amount, description, reference, row, occurrence })
     }
   }
-  return { headers: headerRow, lines, errors, errorCount, rowCount }
+  return {
+    headers: headerRow,
+    lines,
+    errors,
+    errorCount,
+    rowCount,
+    dateFormatUndecided: sawAmbiguousDay && !sawDecisiveDay
+  }
 }
 
 // ------------------------------------------------------------------------------------------------------ the matching

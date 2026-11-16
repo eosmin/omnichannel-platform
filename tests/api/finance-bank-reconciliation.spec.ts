@@ -8,6 +8,7 @@ import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
+  BankStatementLimits,
   FinanceConflicts,
   FinanceCountryCodes,
   FinanceResourceTypes,
@@ -449,6 +450,112 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
         '&closingBalanceCents=&closingOn=2022-05-11'
       )
       expect(response.status).toBe(BAD_REQUEST)
+    })
+
+    it('reads a closing balance that is a whole number of cents and nothing else', async () => {
+      const before = await owner.bankStatementImport.count({
+        where: { organizationId: ctx.orgA.id }
+      })
+      for (const bad of ['%20', '%20%20', '1e3', '0x10', '12.5', '%2B5', '1%2C000', 'abc']) {
+        const response = await send(
+          `${HEADER}\n${day(-71)},Strict ${randomUUID()},,1.00\n`,
+          profile.id,
+          `&closingBalanceCents=${bad}&closingOn=2022-05-11`
+        )
+        expect([bad, response.status]).toEqual([bad, BAD_REQUEST])
+      }
+      expect(
+        await owner.bankStatementImport.count({ where: { organizationId: ctx.orgA.id } })
+      ).toBe(before)
+      const ok = await send(
+        `${HEADER}\n${day(-71)},Strict ${randomUUID()},,1.00\n`,
+        profile.id,
+        '&closingBalanceCents=-5000&closingOn=2022-05-11'
+      )
+      expect(ok.status).toBe(CREATED)
+      expect(ok.body).toMatchObject({ closingBalanceCents: -5000, closingOn: '2022-05-11' })
+    })
+
+    it('reads a description that spans lines as one line and keeps the reference strict', async () => {
+      const text = `Line one\nLine two ${randomUUID().slice(0, 8)}`
+      const made = await imported([`${day(-72)},"${text}",,3.00`])
+      const stored = await owner.bankStatementLine.findFirstOrThrow({
+        where: { importId: made.id }
+      })
+      expect(stored.description).toBe(text.replace('\n', ' '))
+      const refused = await send(`${HEADER}\n${day(-72)},A,"R\n1",3.00\n`)
+      expect(refused.status).toBe(BAD_REQUEST)
+      expect(codeOf(refused.body)).toBe(ErrorCodes.BANK_STATEMENT_INVALID)
+    })
+
+    it('counts the length of a description in characters: an emoji is one', async () => {
+      const text = `${'x'.repeat(BankStatementLimits.DESCRIPTION_MAX_LENGTH - 9)}${randomUUID().slice(0, 8)}\u{1F600}`
+      const made = await imported([`${day(-73)},${text},,4.00`])
+      const stored = await owner.bankStatementLine.findFirstOrThrow({
+        where: { importId: made.id }
+      })
+      expect(stored.description).toBe(text)
+    })
+
+    it('never takes the first movement of a file with no header for the header', async () => {
+      const byPosition = await makeProfile(accounts[BANK] ?? '', 'position', {
+        columns: { date: 0, description: 1, reference: 2, amount: 3 }
+      })
+      const before = await owner.bankStatementLine.count({ where: { organizationId: ctx.orgA.id } })
+      const movements = `${day(-74)},First ${randomUUID()},,6.00\n${day(-74)},Second ${randomUUID()},,7.00\n`
+      const refused = await send(movements, byPosition.id)
+      expect(refused.status).toBe(BAD_REQUEST)
+      expect(codeOf(refused.body)).toBe(ErrorCodes.BANK_STATEMENT_INVALID)
+      const metadata = (refused.body as ErrorBody).error.metadata as {
+        errors: { row: number; code: string; field: string }[]
+      }
+      expect(metadata.errors[0]).toMatchObject({
+        row: 1,
+        field: 'date',
+        code: 'header_looks_like_data'
+      })
+      expect(await owner.bankStatementLine.count({ where: { organizationId: ctx.orgA.id } })).toBe(
+        before
+      )
+      const ok = await send(`${HEADER}\n${movements}`, byPosition.id)
+      expect(ok.status).toBe(CREATED)
+      expect(ok.body).toMatchObject({ lineCount: 2, newLineCount: 2 })
+    })
+
+    it('asks the person to confirm the order of the day and the month when every date reads in both', async () => {
+      const dayFirst = await makeProfile(accounts[BANK] ?? '', 'dayfirst', {
+        dateFormat: 'dd/MM/yyyy'
+      })
+      const before = await owner.bankStatementLine.count({ where: { organizationId: ctx.orgA.id } })
+      const file = `${HEADER}\n03/11/2021,Ambiguous ${randomUUID()},,8.00\n05/11/2021,Ambiguous ${randomUUID()},,9.00\n`
+      const asked = await send(file, dayFirst.id)
+      expect(asked.status).toBe(CONFLICT)
+      expect(conflictOf(asked.body)).toBe(FinanceConflicts.BANK_DATE_FORMAT_UNCONFIRMED)
+      expect((asked.body as ErrorBody).error.metadata).toMatchObject({
+        dateFormat: 'dd/MM/yyyy',
+        firstDay: '2021-11-03',
+        lastDay: '2021-11-05'
+      })
+      expect(await owner.bankStatementLine.count({ where: { organizationId: ctx.orgA.id } })).toBe(
+        before
+      )
+      const confirmed = await send(file, dayFirst.id, '&dateFormatConfirmed=true')
+      expect(confirmed.status).toBe(CREATED)
+      expect(confirmed.body).toMatchObject({ firstDay: '2021-11-03', lastDay: '2021-11-05' })
+      const decided = await send(
+        `${HEADER}\n03/11/2021,Decided ${randomUUID()},,8.00\n25/11/2021,Decided ${randomUUID()},,9.00\n`,
+        dayFirst.id
+      )
+      expect(decided.status).toBe(CREATED)
+      const wrongOrder = await makeProfile(accounts[BANK] ?? '', 'monthfirst', {
+        dateFormat: 'MM/dd/yyyy'
+      })
+      const refused = await send(
+        `${HEADER}\n03/11/2021,Other ${randomUUID()},,8.00\n25/11/2021,Other ${randomUUID()},,9.00\n`,
+        wrongOrder.id
+      )
+      expect(refused.status).toBe(BAD_REQUEST)
+      expect(codeOf(refused.body)).toBe(ErrorCodes.BANK_STATEMENT_INVALID)
     })
 
     it('keeps a cell that starts with a formula character as text', async () => {

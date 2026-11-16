@@ -45,6 +45,7 @@ export interface BankPreviewView {
   lines: ParsedBankLine[]
   errors: BankRowError[]
   errorCount: number
+  dateFormatUndecided: boolean
 }
 
 export interface BankImportView {
@@ -155,7 +156,8 @@ export class FinanceBankImportsService {
       rowCount: parsed.rowCount,
       lines: parsed.lines,
       errors: parsed.errors,
-      errorCount: parsed.errorCount
+      errorCount: parsed.errorCount,
+      dateFormatUndecided: parsed.dateFormatUndecided
     }
   }
 
@@ -224,6 +226,17 @@ export class FinanceBankImportsService {
     if (known === hashed.length) {
       throw resourceConflict('every line of the file was imported before', {
         conflict: FinanceConflicts.BANK_IMPORT_NOTHING_NEW
+      })
+    }
+
+    // A statement is never changed once it is kept, and a day written 03/11/2026 reads as 3 November or 11 March: when no date of the file
+    // can say which, the person says it (the screen shows the days that were read) instead of the profile being trusted in silence
+    if (parsed.dateFormatUndecided && query.dateFormatConfirmed !== true) {
+      throw resourceConflict('the order of the day and the month of the file is not confirmed', {
+        conflict: FinanceConflicts.BANK_DATE_FORMAT_UNCONFIRMED,
+        dateFormat: profile.dateFormat,
+        firstDay,
+        lastDay
       })
     }
 
@@ -327,6 +340,8 @@ export class FinanceBankImportsService {
           profileId: profile.id,
           lines: hashed.length,
           newLines: created.newLineCount,
+          // The person said the order of the day and the month, when every date of the file read in both
+          dateFormatConfirmed: parsed.dateFormatUndecided,
           mediaId
         },
         ipAddress: actor.ipAddress,

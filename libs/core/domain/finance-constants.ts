@@ -434,7 +434,10 @@ export const FinanceConflicts = {
   // The statement said no closing balance, so there is nothing to compare the books with
   BANK_NO_CLOSING_BALANCE: 'bank_no_closing_balance',
   // The books moved between the read and the decision (an entry reversed, two decisions that took turns badly): read again
-  BANK_CHANGED: 'bank_changed'
+  BANK_CHANGED: 'bank_changed',
+  // Every date of the file reads in both orders of the day and the month (03/11/2026): the person confirms the order of the profile
+  // before the statement, which is never changed, is kept
+  BANK_DATE_FORMAT_UNCONFIRMED: 'bank_date_format_unconfirmed'
 } as const
 
 // What the database says when it refuses a decision of the reconciliation, by the prefix of the message its trigger raises (the LAST

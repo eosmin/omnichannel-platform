@@ -79,7 +79,9 @@ const previewSchema = z.object({
   rowCount: z.number().int(),
   lines: z.array(parsedLineSchema),
   errors: z.array(rowErrorSchema),
-  errorCount: z.number().int()
+  errorCount: z.number().int(),
+  // Every date reads in both orders of the day and the month: the file cannot confirm the format of the profile
+  dateFormatUndecided: z.boolean()
 })
 export type BankPreviewView = z.output<typeof previewSchema>
 
@@ -271,6 +273,8 @@ export interface ImportBankFileInput {
   contentType: string
   // The balance the statement ends with and the day it is of: both or neither (the api refuses one alone)
   closing?: { cents: number; on: string }
+  // The person said the order of the day and the month is the profile's (asked when every date of the file reads in both orders)
+  dateFormatConfirmed?: boolean
 }
 
 // The file itself is the body. A file with a row that cannot be read answers 400 BANK_STATEMENT_INVALID with every error and
@@ -285,6 +289,7 @@ export function importBankStatement(
     search.set('closingBalanceCents', String(input.closing.cents))
     search.set('closingOn', input.closing.on)
   }
+  if (input.dateFormatConfirmed === true) search.set('dateFormatConfirmed', 'true')
   return client.request(`${ApiRoutes.finance.bank.imports}?${search.toString()}`, {
     method: 'POST',
     fileBody: { bytes: input.bytes, contentType: input.contentType },

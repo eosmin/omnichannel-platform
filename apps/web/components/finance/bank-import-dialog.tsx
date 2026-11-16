@@ -15,6 +15,7 @@ import {
   type BankImportDraft,
   type BankImportField,
   BankImportFields,
+  bankDateFormatPromptOf,
   bankImportErrorsOf,
   emptyImportDraft,
   importInputOf
@@ -105,6 +106,8 @@ function BankImportForm({
   const [wrong, setWrong] = useState<BankImportField | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
   const [rowErrors, setRowErrors] = useState<ReturnType<typeof bankImportErrorsOf>>(null)
+  // Every date of the file reads in both orders of the day and the month: the person says the order of the profile is the right one
+  const [datePrompt, setDatePrompt] = useState<ReturnType<typeof bankDateFormatPromptOf>>(null)
 
   const profile = profiles.data?.find(candidate => candidate.id === draft.profileId)
   // The profile says how the bytes become text
@@ -116,6 +119,11 @@ function BankImportForm({
     setWrong(null)
     setRefusal(null)
     setRowErrors(null)
+  }
+  // Another profile or another file is another reading: what was confirmed for the last one does not carry over
+  const reread = (patch: Partial<BankImportDraft>): void => {
+    setDatePrompt(null)
+    set({ ...patch, dateFormatConfirmed: false })
   }
 
   const submit = (event: FormEvent): void => {
@@ -146,9 +154,13 @@ function BankImportForm({
         onImported(imported)
       },
       onError: error => {
+        const prompt = bankDateFormatPromptOf(error)
+        setDatePrompt(prompt)
+        // The box is only on screen with the question: what was ticked for a refusal that is not the question is forgotten
+        if (prompt === null) setDraft(current => ({ ...current, dateFormatConfirmed: false }))
         const issues = bankImportErrorsOf(error)
         setRowErrors(issues)
-        setRefusal(issues === null ? errorText(error) : null)
+        setRefusal(issues === null && prompt === null ? errorText(error) : null)
         if (issues !== null) {
           // The file is refused whole: it is fixed and chosen again, so the old bytes are forgotten and the input is empty
           file.reset()
@@ -191,7 +203,7 @@ function BankImportForm({
         value={draft.profileId}
         disabled={importing.isPending || profiles.data === undefined}
         problem={problem(BankImportFields.PROFILE)}
-        onChange={profileId => set({ profileId })}
+        onChange={profileId => reread({ profileId })}
       >
         <option value="">{t('chooseProfile')}</option>
         {(profiles.data ?? []).map(option => (
@@ -211,7 +223,7 @@ function BankImportForm({
           disabled={importing.isPending}
           onChange={event => {
             file.onChange(event)
-            set({})
+            reread({})
           }}
         />
         <p className="text-muted-foreground text-xs">{t('fileHint')}</p>
@@ -247,6 +259,31 @@ function BankImportForm({
           onChange={closingOn => set({ closingOn })}
         />
       </div>
+      {datePrompt === null ? null : (
+        <div
+          role="alert"
+          className="flex flex-col gap-2 rounded-md border p-3"
+          data-testid="bank-date-format"
+        >
+          <p className="text-sm font-medium">{t('dateFormat.title')}</p>
+          <p className="text-muted-foreground text-sm">
+            {t('dateFormat.hint', {
+              format: datePrompt.dateFormat,
+              from: datePrompt.firstDay,
+              to: datePrompt.lastDay
+            })}
+          </p>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={draft.dateFormatConfirmed === true}
+              disabled={importing.isPending}
+              onChange={event => set({ dateFormatConfirmed: event.target.checked })}
+            />
+            {t('dateFormat.confirm')}
+          </label>
+        </div>
+      )}
       {rowErrors === null ? null : (
         <BankRowErrors errors={rowErrors.errors} count={rowErrors.count} />
       )}

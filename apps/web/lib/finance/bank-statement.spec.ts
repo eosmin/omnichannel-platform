@@ -4,6 +4,7 @@ import { BankStatementLimits, RemittanceImportLimits } from '@platform/core/doma
 import {
   bankAccountsOf,
   bankConflictOf,
+  bankDateFormatPromptOf,
   bankImportErrorsOf,
   emptyImportDraft,
   importInputOf,
@@ -145,6 +146,58 @@ describe('the answers of the api', () => {
   it('is not about another error', () => {
     expect(bankImportErrorsOf(new ApiError(400, 'VALIDATION_FAILED', 'x', 'c', {}))).toBeNull()
     expect(bankImportErrorsOf(new Error('x'))).toBeNull()
+  })
+
+  it('sends that the person confirmed the order of the day and the month, only when they did', () => {
+    const file = { bytes: new ArrayBuffer(4), contentType: 'text/csv' }
+    expect(importInputOf({ ...emptyImportDraft('p1') }, file)).toEqual({
+      ok: true,
+      value: { profileId: 'p1', ...file }
+    })
+    expect(importInputOf({ ...emptyImportDraft('p1'), dateFormatConfirmed: true }, file)).toEqual({
+      ok: true,
+      value: { profileId: 'p1', ...file, dateFormatConfirmed: true }
+    })
+    const withBalance = importInputOf(
+      { profileId: 'p1', closingBalance: '10', closingOn: '2026-11-30', dateFormatConfirmed: true },
+      file
+    )
+    expect(withBalance).toEqual({
+      ok: true,
+      value: {
+        profileId: 'p1',
+        ...file,
+        closing: { cents: 1000, on: '2026-11-30' },
+        dateFormatConfirmed: true
+      }
+    })
+  })
+
+  it('reads the format and the days of the 409 that asks for the order of the day and the month', () => {
+    const asked = new ApiError(409, 'RESOURCE_CONFLICT', 'x', 'c', {
+      conflict: 'bank_date_format_unconfirmed',
+      dateFormat: 'dd/MM/yyyy',
+      firstDay: '2026-11-03',
+      lastDay: '2026-11-05'
+    })
+    expect(bankDateFormatPromptOf(asked)).toEqual({
+      dateFormat: 'dd/MM/yyyy',
+      firstDay: '2026-11-03',
+      lastDay: '2026-11-05'
+    })
+    expect(
+      bankDateFormatPromptOf(
+        new ApiError(409, 'RESOURCE_CONFLICT', 'x', 'c', {
+          conflict: 'bank_date_format_unconfirmed'
+        })
+      )
+    ).toBeNull()
+    expect(
+      bankDateFormatPromptOf(
+        new ApiError(409, 'RESOURCE_CONFLICT', 'x', 'c', { conflict: 'bank_changed' })
+      )
+    ).toBeNull()
+    expect(bankDateFormatPromptOf(new Error('x'))).toBeNull()
   })
 
   it('reads the kind of a conflict, and nothing else', () => {
