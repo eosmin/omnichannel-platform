@@ -1,7 +1,7 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { type FormEvent, type ReactElement, type ReactNode, useState } from 'react'
+import { type FormEvent, type ReactElement, type ReactNode, useRef, useState } from 'react'
 
 import type {
   FinanceAccountView,
@@ -50,7 +50,10 @@ export function TransactionDetailDialog({
   onOpenChange: (open: boolean) => void
 }): ReactElement {
   const { storeId } = useStore()
-  const transaction = useFinanceTransaction(storeId, transactionId)
+  // The last id is kept while the dialog closes, so the content does not flip to loading during the animation
+  const lastId = useRef(transactionId)
+  if (transactionId !== null) lastId.current = transactionId
+  const transaction = useFinanceTransaction(storeId, transactionId ?? lastId.current)
   const t = useTranslations('finance.transactions.detail')
   return (
     <Dialog open={transactionId !== null} onOpenChange={onOpenChange}>
@@ -101,7 +104,8 @@ function TransactionBody({
   const [voiding, setVoiding] = useState(false)
   const [replacing, setReplacing] = useState(false)
   const label = accountLabelsOf(accounts)
-  const mayChange = can(permissionOfKind(transaction.kind)) && !transaction.voided
+  const mayWrite = can(permissionOfKind(transaction.kind))
+  const mayChange = mayWrite && !transaction.voided
   const rate = rates.find(candidate => candidate.id === transaction.taxRateId)
 
   return (
@@ -173,7 +177,8 @@ function TransactionBody({
           ) : null}
         </div>
       )}
-      {mayChange ? (
+      {/* Mounted for who may write, voided or not: replacing voids the transaction, and its receipt travels after that */}
+      {mayWrite ? (
         <TransactionFormDialog
           replace={replacing ? transaction : null}
           kinds={[transaction.kind]}
@@ -207,6 +212,8 @@ function ReceiptPanel({ transaction }: { transaction: FinanceTransactionView }):
   const hasReceipt = transaction.documentMediaId !== null
   const urls = useFinanceReceiptUrls(storeId, transaction.id, hasReceipt)
   const upload = useFinanceReceiptUpload(storeId)
+  // Held until the person says so: the receipt is set once and cannot be changed
+  const [file, setFile] = useState<File | null>(null)
   const mayAttach =
     !hasReceipt &&
     !transaction.voided &&
@@ -234,17 +241,25 @@ function ReceiptPanel({ transaction }: { transaction: FinanceTransactionView }):
         </>
       ) : mayAttach ? (
         <>
-          <ReceiptFileField
-            file={null}
-            busy={upload.isPending}
-            onChange={file => {
-              if (file === null) return
-              upload.mutate(
-                { transactionId: transaction.id, file },
-                { onSuccess: () => toast.success(t('attached')) }
-              )
-            }}
-          />
+          <ReceiptFileField file={file} busy={upload.isPending} onChange={setFile} />
+          {file === null ? null : (
+            <div>
+              <Button
+                type="button"
+                size="sm"
+                disabled={upload.isPending}
+                busy={upload.isPending}
+                onClick={() =>
+                  upload.mutate(
+                    { transactionId: transaction.id, file },
+                    { onSuccess: () => toast.success(t('attached')) }
+                  )
+                }
+              >
+                {t('attach')}
+              </Button>
+            </div>
+          )}
           {upload.error === null ? null : (
             <p role="alert" className="text-destructive text-sm">
               {errorText(upload.error)}

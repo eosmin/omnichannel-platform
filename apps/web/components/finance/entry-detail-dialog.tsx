@@ -1,7 +1,7 @@
 'use client'
 
 import { useFormatter, useTranslations } from 'next-intl'
-import { type FormEvent, type ReactElement, type ReactNode, useState } from 'react'
+import { type FormEvent, type ReactElement, type ReactNode, useRef, useState } from 'react'
 
 import type { FinanceAccountView, FinanceEntryDetailView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
@@ -33,7 +33,10 @@ export function EntryDetailDialog({
   onOpenChange: (open: boolean) => void
 }): ReactElement {
   const { storeId } = useStore()
-  const entry = useFinanceEntry(storeId, entryId)
+  // The last id is kept while the dialog closes, so the content does not flip to loading during the animation
+  const lastId = useRef(entryId)
+  if (entryId !== null) lastId.current = entryId
+  const entry = useFinanceEntry(storeId, entryId ?? lastId.current)
   const t = useTranslations('finance.entry')
   return (
     <Dialog open={entryId !== null} onOpenChange={onOpenChange}>
@@ -75,8 +78,16 @@ function EntryBody({
   const isReversal = entry.type === String(JournalEntryType.REVERSAL)
   const reversed = entry.reversedByEntryId !== null
   const ownedByTransaction = entry.sourceType === String(FinanceSourceType.FINANCE_TRANSACTION)
+  // An entry of a purchase receipt or of a supplier payment is undone through the purchase, like a transaction's through the transaction
+  const ownedByPurchase =
+    entry.sourceType === String(FinanceSourceType.PURCHASE_RECEIPT) ||
+    entry.sourceType === String(FinanceSourceType.SUPPLIER_PAYMENT)
   const canReverse =
-    can(ClientPermissions.FINANCE_POST_MANUAL) && !isReversal && !reversed && !ownedByTransaction
+    can(ClientPermissions.FINANCE_POST_MANUAL) &&
+    !isReversal &&
+    !reversed &&
+    !ownedByTransaction &&
+    !ownedByPurchase
 
   return (
     <>
@@ -100,6 +111,9 @@ function EntryBody({
       {entry.reversesEntryId === null ? null : <p className="text-sm">{t('reverses')}</p>}
       {ownedByTransaction && !reversed ? (
         <p className="text-muted-foreground text-sm">{t('belongsToTransaction')}</p>
+      ) : null}
+      {ownedByPurchase && !reversed ? (
+        <p className="text-muted-foreground text-sm">{t('belongsToPurchase')}</p>
       ) : null}
       {reversing ? (
         <ReverseForm entry={entry} onDone={onClose} onCancel={() => setReversing(false)} />

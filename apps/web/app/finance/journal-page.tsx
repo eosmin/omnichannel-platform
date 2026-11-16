@@ -16,6 +16,7 @@ import { useStore } from '../../components/providers/store-context'
 import { LoadFailed, PageLoading, PermissionDenied } from '../../components/settings/states'
 import { Button } from '../../components/ui/button'
 import { accountLabelsOf } from '../../lib/finance/account-form'
+import { isCalendarDay } from '../../lib/finance/dates'
 import { useFinanceAccounts, useFinanceEntries } from '../../lib/finance/use-finance'
 import { useMoney } from '../../lib/finance/use-money'
 
@@ -42,16 +43,25 @@ function Journal(): ReactElement {
   const allowed = can(ClientPermissions.FINANCE_VIEW_JOURNAL)
   const accounts = useFinanceAccounts(storeId, allowed)
   const [filters, setFilters] = useState<Filters>(NO_FILTERS)
-  const entries = useFinanceEntries(storeId, filters, allowed)
+  // A date that is not a day is not asked of the api (it answers 400 and the page would be left on an error): it is no filter until it is one
+  const entries = useFinanceEntries(
+    storeId,
+    {
+      ...filters,
+      from: isCalendarDay(filters.from) ? filters.from : '',
+      to: isCalendarDay(filters.to) ? filters.to : ''
+    },
+    allowed
+  )
   const [openId, setOpenId] = useState<string | null>(null)
   const [writing, setWriting] = useState(false)
   if (!allowed) return <PermissionDenied permission={ClientPermissions.FINANCE_VIEW_JOURNAL} />
-  if (entries.isError && entries.data === undefined) {
-    return <LoadFailed error={entries.error} onRetry={() => void entries.refetch()} />
+  if (accounts.isError) {
+    return <LoadFailed error={accounts.error} onRetry={() => void accounts.refetch()} />
   }
-  if (entries.data === undefined || accounts.data === undefined) return <PageLoading />
+  if (accounts.data === undefined) return <PageLoading />
   const chart = accounts.data
-  const rows = entries.data.pages.flatMap(page => page.data)
+  const rows = entries.data?.pages.flatMap(page => page.data) ?? []
   const filtered = Object.values(filters).some(value => value !== '')
   const set = (patch: Partial<Filters>): void => setFilters(current => ({ ...current, ...patch }))
   const label = accountLabelsOf(chart)
@@ -126,7 +136,11 @@ function Journal(): ReactElement {
           </div>
         ) : null}
       </form>
-      {rows.length === 0 ? (
+      {entries.isError && entries.data === undefined ? (
+        <LoadFailed error={entries.error} onRetry={() => void entries.refetch()} />
+      ) : entries.data === undefined ? (
+        <PageLoading />
+      ) : rows.length === 0 ? (
         <p className="text-muted-foreground text-sm">
           {filtered ? t('emptyFiltered') : t('empty')}
         </p>

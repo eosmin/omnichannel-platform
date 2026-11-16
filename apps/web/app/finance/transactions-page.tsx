@@ -15,6 +15,7 @@ import { useStore } from '../../components/providers/store-context'
 import { LoadFailed, PageLoading, PermissionDenied } from '../../components/settings/states'
 import { Button } from '../../components/ui/button'
 import { accountLabelsOf } from '../../lib/finance/account-form'
+import { isCalendarDay } from '../../lib/finance/dates'
 import { KINDS_IN_ORDER, permissionOfKind } from '../../lib/finance/transaction-form'
 import {
   useFinanceAccounts,
@@ -46,18 +47,27 @@ function Transactions({ rounding }: { rounding: string }): ReactElement {
   const accounts = useFinanceAccounts(storeId, allowed)
   const rates = useFinanceTaxRates(storeId, allowed)
   const [filters, setFilters] = useState<Filters>(NO_FILTERS)
-  const transactions = useFinanceTransactions(storeId, filters, allowed)
+  const transactions = useFinanceTransactions(
+    storeId,
+    {
+      ...filters,
+      from: isCalendarDay(filters.from) ? filters.from : '',
+      to: isCalendarDay(filters.to) ? filters.to : ''
+    },
+    allowed
+  )
   const [openId, setOpenId] = useState<string | null>(null)
   const [registering, setRegistering] = useState(false)
   if (!allowed) return <PermissionDenied permission={ClientPermissions.FINANCE_VIEW_JOURNAL} />
-  if (transactions.isError && transactions.data === undefined) {
-    return <LoadFailed error={transactions.error} onRetry={() => void transactions.refetch()} />
+  if (accounts.isError) {
+    return <LoadFailed error={accounts.error} onRetry={() => void accounts.refetch()} />
   }
-  if (transactions.data === undefined || accounts.data === undefined || rates.data === undefined) {
-    return <PageLoading />
+  if (rates.isError) {
+    return <LoadFailed error={rates.error} onRetry={() => void rates.refetch()} />
   }
+  if (accounts.data === undefined || rates.data === undefined) return <PageLoading />
   const chart = accounts.data
-  const rows = transactions.data.pages.flatMap(page => page.data)
+  const rows = transactions.data?.pages.flatMap(page => page.data) ?? []
   const filtered = Object.values(filters).some(value => value !== '' && value !== false)
   const set = (patch: Partial<Filters>): void => setFilters(current => ({ ...current, ...patch }))
   const label = accountLabelsOf(chart)
@@ -141,7 +151,11 @@ function Transactions({ rounding }: { rounding: string }): ReactElement {
           </div>
         ) : null}
       </form>
-      {rows.length === 0 ? (
+      {transactions.isError && transactions.data === undefined ? (
+        <LoadFailed error={transactions.error} onRetry={() => void transactions.refetch()} />
+      ) : transactions.data === undefined ? (
+        <PageLoading />
+      ) : rows.length === 0 ? (
         <p className="text-muted-foreground text-sm">
           {filtered ? t('emptyFiltered') : t('empty')}
         </p>

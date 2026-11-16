@@ -8,6 +8,7 @@ import type {
   FinanceTaxRateView,
   FinanceTransactionView
 } from '@platform/api-client'
+import { ClientPermissions } from '@platform/core/auth'
 import { FinanceTransactionKind } from '@platform/core/domain'
 
 import { accountLabelsOf } from '../../lib/finance/account-form'
@@ -75,7 +76,12 @@ export function TransactionFormDialog({
   const t = useTranslations('finance.transactions.form')
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
+      {/* Only Cancel closes it: a request in flight is never left without its form (and its key) */}
+      <DialogContent
+        className="sm:max-w-xl"
+        onInteractOutside={event => event.preventDefault()}
+        onEscapeKeyDown={event => event.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>{replace === null ? t('createTitle') : t('replaceTitle')}</DialogTitle>
           <DialogDescription>
@@ -124,7 +130,7 @@ function TransactionForm({
   const t = useTranslations('finance.transactions')
   const errorText = useErrorText()
   const money = useMoney()
-  const { storeId } = useStore()
+  const { storeId, can } = useStore()
   const guard = useSubmitGuard()
   const run = useDestructiveAction()
   const record = useRecordFinanceTransaction(storeId)
@@ -330,7 +336,7 @@ function TransactionForm({
           <option value="">{t('form.noTax')}</option>
           {rateOptions.map(rate => (
             <option key={rate.id} value={rate.id}>
-              {rate.name} ({percentOfBps(rate.rateBps)} %)
+              {t('form.rateOption', { name: rate.name, percent: percentOfBps(rate.rateBps) })}
             </option>
           ))}
         </SelectField>
@@ -373,7 +379,9 @@ function TransactionForm({
         problem={problemText(TransactionFields.MEMO)}
         onChange={memo => set({ memo })}
       />
-      <ReceiptFileField file={file} onChange={setFile} disabled={saving} />
+      {can(ClientPermissions.MEDIA_UPLOAD) ? (
+        <ReceiptFileField file={file} onChange={setFile} disabled={saving} />
+      ) : null}
       {replace === null ? null : (
         <TextField
           label={t('form.reason')}

@@ -6130,7 +6130,8 @@
         }
       },
       "titleLoading": "Entry",
-      "loading": "Loading the entry…"
+      "loading": "Loading the entry…",
+      "belongsToPurchase": "This entry belongs to a purchase or a supplier payment. Undo it from the purchase."
     },
     "manual": {
       "title": "Write an entry",
@@ -6146,11 +6147,11 @@
       },
       "lines": "Lines",
       "line": "Line {number}",
-      "account": "Account",
+      "account": "Account {number}",
       "pickAccount": "Pick an account",
-      "debit": "Debit",
-      "credit": "Credit",
-      "lineMemo": "Note (optional)",
+      "debit": "Debit {number}",
+      "credit": "Credit {number}",
+      "lineMemo": "Note {number} (optional)",
       "addLine": "Add a line",
       "removeLine": "Remove line {number}",
       "totals": {
@@ -6271,7 +6272,8 @@
         "receiptNotSaved": "The transaction was registered, but its receipt could not be attached. Open the transaction to try again.",
         "confirmReplaceTitle": "Replace this transaction?",
         "confirmReplaceDescription": "The transaction is voided with a reversing entry that stays in the journal for good, and the new one is registered.",
-        "confirmReplace": "Replace transaction"
+        "confirmReplace": "Replace transaction",
+        "rateOption": "{name} ({percent} %)"
       },
       "void": {
         "action": "Void",
@@ -6301,7 +6303,8 @@
         "hint": "A photo or a PDF of up to {size} MB. It is checked before it is attached, and it cannot be replaced later.",
         "attached": "Receipt attached.",
         "loadFailed": "The receipt could not be opened.",
-        "pending": "Opening the receipt…"
+        "pending": "Opening the receipt…",
+        "attach": "Attach this file"
       }
     }
   }

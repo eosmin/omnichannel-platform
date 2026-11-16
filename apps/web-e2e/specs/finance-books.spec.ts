@@ -199,13 +199,17 @@ test.describe('Finance → the books of the organization', () => {
     const form = page.getByRole('dialog', { name: finance.manual.title })
     await expectDialogFitsThePhoneWidth(page, form)
     await form.getByLabel(finance.manual.memo, { exact: true }).fill('E2E opening')
-    await form.getByLabel(`${finance.manual.account} 1`, { exact: true }).selectOption({ index: 1 })
-    await form.getByLabel(`${finance.manual.debit} 1`, { exact: true }).fill('5')
-    await form.getByLabel(`${finance.manual.account} 2`, { exact: true }).selectOption({ index: 2 })
-    await form.getByLabel(`${finance.manual.credit} 2`, { exact: true }).fill('4')
+    await form
+      .getByLabel(finance.manual.account.replace('{number}', '1'), { exact: true })
+      .selectOption({ index: 1 })
+    await form.getByLabel(finance.manual.debit.replace('{number}', '1'), { exact: true }).fill('5')
+    await form
+      .getByLabel(finance.manual.account.replace('{number}', '2'), { exact: true })
+      .selectOption({ index: 2 })
+    await form.getByLabel(finance.manual.credit.replace('{number}', '2'), { exact: true }).fill('4')
     await form.getByRole('button', { name: finance.manual.submit, exact: true }).click()
     await expect(form.getByRole('alert').getByText(finance.manual.problems.balance)).toBeVisible()
-    await form.getByLabel(`${finance.manual.credit} 2`, { exact: true }).fill('5')
+    await form.getByLabel(finance.manual.credit.replace('{number}', '2'), { exact: true }).fill('5')
     await form.getByRole('button', { name: finance.manual.submit, exact: true }).click()
     await page
       .getByRole('alertdialog')

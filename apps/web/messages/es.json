@@ -6130,7 +6130,8 @@
         }
       },
       "titleLoading": "Asiento",
-      "loading": "Cargando el asiento…"
+      "loading": "Cargando el asiento…",
+      "belongsToPurchase": "Este asiento pertenece a una compra o a un pago a proveedor. Deshazlo desde la compra."
     },
     "manual": {
       "title": "Escribir un asiento",
@@ -6146,11 +6147,11 @@
       },
       "lines": "Líneas",
       "line": "Línea {number}",
-      "account": "Cuenta",
+      "account": "Cuenta {number}",
       "pickAccount": "Elige una cuenta",
-      "debit": "Debe",
-      "credit": "Haber",
-      "lineMemo": "Nota (opcional)",
+      "debit": "Debe {number}",
+      "credit": "Haber {number}",
+      "lineMemo": "Nota {number} (opcional)",
       "addLine": "Agregar una línea",
       "removeLine": "Quitar la línea {number}",
       "totals": {
@@ -6271,7 +6272,8 @@
         "receiptNotSaved": "El movimiento se registró, pero no se pudo adjuntar su comprobante. Abre el movimiento para intentarlo de nuevo.",
         "confirmReplaceTitle": "¿Reemplazar este movimiento?",
         "confirmReplaceDescription": "El movimiento se anula con un asiento de reversión que queda en el libro diario para siempre, y se registra el nuevo.",
-        "confirmReplace": "Reemplazar movimiento"
+        "confirmReplace": "Reemplazar movimiento",
+        "rateOption": "{name} ({percent} %)"
       },
       "void": {
         "action": "Anular",
@@ -6301,7 +6303,8 @@
         "hint": "Una foto o un PDF de hasta {size} MB. Se revisa antes de adjuntarse y no se puede reemplazar después.",
         "attached": "Comprobante adjunto.",
         "loadFailed": "No se pudo abrir el comprobante.",
-        "pending": "Abriendo el comprobante…"
+        "pending": "Abriendo el comprobante…",
+        "attach": "Adjuntar este archivo"
       }
     }
   }

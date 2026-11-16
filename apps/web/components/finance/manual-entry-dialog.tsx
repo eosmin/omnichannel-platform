@@ -47,7 +47,12 @@ export function ManualEntryDialog({
   const t = useTranslations('finance.manual')
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      {/* Only Cancel closes it: a request in flight is never left without its form (and its key) */}
+      <DialogContent
+        className="sm:max-w-2xl"
+        onInteractOutside={event => event.preventDefault()}
+        onEscapeKeyDown={event => event.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>{t('title')}</DialogTitle>
           <DialogDescription>{t('description')}</DialogDescription>
@@ -203,7 +208,7 @@ function ManualEntryForm({
               ) : null}
             </div>
             <SelectField
-              label={`${t('account')} ${String(index + 1)}`}
+              label={t('account', { number: index + 1 })}
               value={line.accountId}
               disabled={saving}
               problem={
@@ -222,7 +227,7 @@ function ManualEntryForm({
             </SelectField>
             <div className="grid grid-cols-2 gap-3">
               <TextField
-                label={`${t('debit')} ${String(index + 1)}`}
+                label={t('debit', { number: index + 1 })}
                 value={line.debit}
                 inputMode="decimal"
                 maxLength={13}
@@ -230,7 +235,7 @@ function ManualEntryForm({
                 onChange={debit => setLine(index, { debit })}
               />
               <TextField
-                label={`${t('credit')} ${String(index + 1)}`}
+                label={t('credit', { number: index + 1 })}
                 value={line.credit}
                 inputMode="decimal"
                 maxLength={13}
@@ -239,7 +244,7 @@ function ManualEntryForm({
               />
             </div>
             <TextField
-              label={`${t('lineMemo')} ${String(index + 1)}`}
+              label={t('lineMemo', { number: index + 1 })}
               value={line.memo}
               maxLength={500}
               disabled={saving}

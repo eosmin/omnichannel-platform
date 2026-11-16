@@ -1977,7 +1977,9 @@ balance includes the balance before the range, which the ledger JSON reports as 
   order, shipment or remittance: Step 7.7 with the links between screens; (f) the reconciled state of an entry and "take the reconciliation back
   first" (`FINANCE_ENTRY_RECONCILED`, the code's text shows) are 4B.9a-3; (g) "up to a day ahead" is checked against the clock of the browser and the api
   decides with its own: a person across the date line sees the api's refusal; (h) the end-to-end cases added to
-  `apps/web-e2e/specs/finance-books.spec.ts` run in CI only; (i) the visual pass of these screens is Step 7.7.
+  `apps/web-e2e/specs/finance-books.spec.ts` run in CI only; (i) the visual pass of these screens is Step 7.7; (j) an accounting date is drawn as the day the books keep ('2026-11-16'), not
+  localized, as in the periods page: the accountant reads that form, and a localized one is Step 7.7 if the owner asks; (k) the signed links of a receipt
+  are read again every ten minutes while the detail is open, and a link clicked after the tab slept is read again by reloading the detail.
 **TDD:** `TDD_18 §12`, `TDD_09`
 **Done when:** the owner runs a month of the business end to end from the screens (a purchase received and paid, orders sold and remitted, an
 expense and a transfer, the statements checked, the month closed).
