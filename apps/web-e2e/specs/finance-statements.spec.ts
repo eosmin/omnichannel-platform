@@ -66,12 +66,14 @@ test.describe('Finance → statements, aging and legal books', () => {
       page.getByRole('heading', { name: finance.statements.title, level: 1 })
     ).toBeVisible()
 
-    // A day that is not on the calendar is refused before the api is asked
+    // A range that ends before it starts is refused before the api is asked. (A day that is not on the calendar cannot be typed into a
+    // date field, so that rule is proved by the unit spec of `statement-form` and by the contract spec against the schema of the api)
     const form = page.getByRole('form', { name: finance.statementsCommon.formLabel })
-    await form.getByLabel(finance.statementsCommon.from, { exact: true }).fill('2026-02-30')
+    await form.getByLabel(finance.statementsCommon.from, { exact: true }).fill('2026-02-10')
+    await form.getByLabel(finance.statementsCommon.to, { exact: true }).fill('2026-02-01')
     await form.getByRole('button', { name: finance.statementsCommon.show, exact: true }).click()
     await expect(
-      page.getByRole('alert').getByText(finance.statementsCommon.problems.from, { exact: true })
+      page.getByRole('alert').getByText(finance.statementsCommon.problems.order, { exact: true })
     ).toBeVisible()
     await form.getByLabel(finance.statementsCommon.from, { exact: true }).fill('2026-01-01')
     await form.getByLabel(finance.statementsCommon.to, { exact: true }).fill('2026-01-31')
