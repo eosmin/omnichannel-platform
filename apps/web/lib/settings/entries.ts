@@ -73,10 +73,36 @@ export const FINANCE_SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     permission: ClientPermissions.FINANCE_VIEW
   },
   {
+    id: 'reconciliation',
+    labelKey: 'reconciliation',
+    href: AppPaths.finance.reconciliation,
+    permission: ClientPermissions.FINANCE_RECONCILE
+  },
+  {
     id: 'settings',
     labelKey: 'settings',
     href: AppPaths.finance.settings,
     permission: ClientPermissions.FINANCE_VIEW
+  },
+  // Purchases (Step 4B.9a-4): the api's own routes, which ask finance:manage_purchases (and finance:move_money to pay), not the books
+  {
+    id: 'suppliers',
+    labelKey: 'suppliers',
+    href: AppPaths.finance.suppliers,
+    permission: ClientPermissions.FINANCE_MANAGE_PURCHASES
+  },
+  {
+    id: 'purchases',
+    labelKey: 'purchases',
+    href: AppPaths.finance.purchases,
+    permission: ClientPermissions.FINANCE_MANAGE_PURCHASES
+  },
+  {
+    id: 'payables',
+    labelKey: 'payables',
+    href: AppPaths.finance.payables,
+    permission: ClientPermissions.FINANCE_MANAGE_PURCHASES,
+    or: ClientPermissions.FINANCE_MOVE_MONEY
   }
 ]
 

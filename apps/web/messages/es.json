@@ -2944,7 +2944,11 @@
         "accounts": "Cuentas",
         "taxes": "Impuestos",
         "periods": "Periodos",
-        "settings": "Ajustes"
+        "settings": "Ajustes",
+        "suppliers": "Proveedores",
+        "purchases": "Compras",
+        "payables": "Cuentas por pagar",
+        "reconciliation": "Conciliación bancaria"
       }
     },
     "store": {
@@ -3296,6 +3300,7 @@
         "finance": {
           "view": "Ver saldos e informes",
           "view_journal": "Ver el libro diario",
+          "view_reports": "Ver los estados financieros y las antigüedades",
           "manage_transactions": "Registrar gastos e ingresos",
           "move_money": "Mover dinero",
           "manage_purchases": "Gestionar proveedores y compras",
@@ -6030,6 +6035,611 @@
         "pricesIncludeTax": "Los precios de esta tienda ya incluyen el impuesto",
         "pricesIncludeTaxHint": "Solo cambia cómo se separa el impuesto del precio de lo que se venda desde ahora.",
         "saved": "Preferencia guardada."
+      }
+    },
+    "purchases": {
+      "status": {
+        "draft": "Borrador",
+        "ordered": "Pedida",
+        "partially_received": "Recibida en parte",
+        "received": "Recibida",
+        "closed": "Cerrada",
+        "cancelled": "Cancelada"
+      },
+      "suppliers": {
+        "title": "Proveedores",
+        "description": "A quién le compra el negocio, con las condiciones de pago de cada uno y lo que se le debe.",
+        "new": "Nuevo proveedor",
+        "search": "Buscar por nombre",
+        "includeInactive": "Mostrar proveedores apagados",
+        "empty": "Todavía no hay proveedores. Agrega el primero para empezar una orden de compra.",
+        "noMatch": "Ningún proveedor coincide con ese nombre.",
+        "inactive": "Apagado",
+        "details": "Detalle",
+        "edit": "Editar",
+        "loadMore": "Cargar más"
+      },
+      "supplierDetail": {
+        "title": "Proveedor",
+        "description": "Lo que se le debe a este proveedor y los pagos que se le han hecho.",
+        "terms": "Plazo de pago: {days, plural, one {# día} other {# días}}",
+        "billed": "Facturado",
+        "paid": "Pagado",
+        "open": "Por pagar",
+        "overdue": "Con vencimiento pasado",
+        "edit": "Editar proveedor",
+        "pay": "Registrar un pago",
+        "payments": "Pagos",
+        "noPayments": "No se ha hecho ningún pago a este proveedor.",
+        "voided": "Anulado",
+        "void": "Anular",
+        "loadMore": "Cargar más"
+      },
+      "supplierDialog": {
+        "createTitle": "Nuevo proveedor",
+        "createDescription": "El nombre es lo único obligatorio. El plazo de pago fija el día de vencimiento de cada factura.",
+        "editTitle": "Editar proveedor",
+        "editDescription": "Un cambio vale para lo que se compre desde ahora, nunca para las facturas que ya están en los libros.",
+        "formLabel": "Proveedor",
+        "cancel": "Cancelar",
+        "create": "Crear proveedor",
+        "save": "Guardar cambios",
+        "created": "Proveedor {name} creado.",
+        "saved": "Proveedor guardado.",
+        "fields": {
+          "name": "Nombre",
+          "taxId": "Identificación tributaria (NIT o NRC)",
+          "taxIdHint": "Se escribe como la muestra el documento del proveedor. No se revisa su forma.",
+          "contactName": "Persona de contacto",
+          "email": "Correo",
+          "phone": "Teléfono",
+          "paymentTermsDays": "Plazo de pago (días)",
+          "paymentTermsHint": "Días entre recibir la mercadería y el día de vencimiento de la factura. 0 es pago al recibir.",
+          "payableAccount": "Cuenta de lo que se le debe",
+          "payableAccountHint": "Una cuenta de pasivo. No puede cambiar cuando el proveedor ya tiene facturas.",
+          "payableAccountDefault": "La de la organización",
+          "active": "Activo",
+          "activeHint": "Un proveedor apagado no se ofrece para órdenes nuevas; sus facturas y pagos se quedan."
+        },
+        "problems": {
+          "name": "Escribe el nombre, de hasta 150 caracteres.",
+          "taxId": "La identificación tributaria es demasiado larga.",
+          "contactName": "El nombre del contacto es demasiado largo.",
+          "email": "Eso no es un correo.",
+          "phone": "El teléfono es demasiado largo.",
+          "paymentTermsDays": "Escribe un número entero de días, de 0 a 365."
+        }
+      },
+      "payment": {
+        "title": "Registrar un pago",
+        "description": "Un pago a {supplier}. Se registra en los libros y baja lo que se le debe.",
+        "formLabel": "Pago a un proveedor",
+        "owedInAll": "Se le debe a este proveedor en total: {amount}.",
+        "owedOnBill": "Factura {bill}: quedan {amount} por pagar.",
+        "needsBooks": "Elegir la cuenta de donde sale el dinero necesita el permiso de leer los libros (finance:view). Pídelo a un administrador.",
+        "fields": {
+          "account": "Se paga desde",
+          "accountHint": "Una cuenta de efectivo, banco o billetera.",
+          "pickAccount": "Elige una cuenta…",
+          "amount": "Monto (USD)",
+          "amountHint": "Nunca más de lo que está por pagar.",
+          "paidOn": "Pagado el",
+          "dateHint": "Año-mes-día, por ejemplo 2026-11-16.",
+          "reference": "Referencia (opcional)"
+        },
+        "problems": {
+          "paidFromAccountId": "Elige la cuenta de donde sale el dinero.",
+          "amount": "Escribe un monto mayor que 0 y no mayor que lo que está por pagar, con hasta dos decimales.",
+          "paidOn": "Escribe un día real como año-mes-día.",
+          "reference": "La referencia es demasiado larga."
+        },
+        "cancel": "Cancelar",
+        "submit": "Registrar pago",
+        "done": "Pago a {supplier} registrado.",
+        "accountsFailed": "No se pudieron leer las cuentas. Cierra esto e intenta de nuevo."
+      },
+      "voidPayment": {
+        "title": "Anular este pago",
+        "description": "El pago queda en el diario y se registra un asiento de reverso. La factura vuelve a quedar por pagar.",
+        "reason": "Motivo",
+        "submit": "Anular pago",
+        "confirmTitle": "¿Anular este pago?",
+        "confirmDescription": "No se puede deshacer: el reverso queda en los libros para siempre y la factura vuelve a quedar por pagar.",
+        "confirm": "Anular pago",
+        "done": "Pago anulado."
+      },
+      "reason": {
+        "required": "Escribe el motivo.",
+        "tooLong": "El motivo es demasiado largo.",
+        "cancel": "Cancelar"
+      },
+      "picker": {
+        "search": "Agregar un producto",
+        "chooseVariant": "{name} tiene variantes. Elige la que se compra.",
+        "hint": "Escribe al menos {count} letras del nombre o del SKU.",
+        "failed": "La búsqueda falló. Intenta de nuevo.",
+        "searching": "Buscando…",
+        "none": "Ningún producto coincide."
+      },
+      "lines": {
+        "formLabel": "Líneas de la orden de compra",
+        "saved": "Líneas guardadas.",
+        "empty": "Todavía no hay líneas. Busca un producto para agregar la primera.",
+        "remove": "Quitar {name}",
+        "quantity": "Unidades",
+        "unitCost": "Costo de una unidad (USD)",
+        "taxRate": "Impuesto",
+        "noTax": "Sin impuesto",
+        "wrongQuantity": "Escribe un número entero de unidades, 1 o más.",
+        "wrongCost": "Escribe el costo con hasta dos decimales.",
+        "subtotal": "Subtotal",
+        "tax": "Impuesto",
+        "total": "Total",
+        "taxUnknown": "Al recibir",
+        "save": "Guardar líneas",
+        "percent": "{percent} %",
+        "tooManyLines": "Una orden de compra tiene como máximo {max} líneas."
+      },
+      "newOrder": {
+        "title": "Nueva orden de compra",
+        "description": "Se crea como borrador. Las líneas se eligen en la página siguiente, y nada se le promete al proveedor hasta que la marques como pedida.",
+        "formLabel": "Nueva orden de compra",
+        "fields": {
+          "supplier": "Proveedor",
+          "pickSupplier": "Elige un proveedor…",
+          "warehouse": "Bodega",
+          "pickWarehouse": "Elige una bodega…",
+          "warehouseHint": "Donde se recibirá la mercadería.",
+          "expectedOn": "Se espera el (opcional)",
+          "dateHint": "Año-mes-día, por ejemplo 2026-11-16.",
+          "notes": "Notas (opcional)"
+        },
+        "problems": {
+          "supplierId": "Elige el proveedor.",
+          "warehouseId": "Elige la bodega.",
+          "expectedOn": "Escribe un día real como año-mes-día.",
+          "notes": "Las notas son demasiado largas."
+        },
+        "loadFailed": "No se pudieron leer los proveedores o las bodegas. Cierra esto e intenta de nuevo.",
+        "cancel": "Cancelar",
+        "create": "Crear borrador",
+        "created": "Orden de compra {number} creada."
+      },
+      "orders": {
+        "title": "Compras",
+        "description": "Las órdenes a proveedores, con lo que llegó y lo que se pagó.",
+        "new": "Nueva orden de compra",
+        "filters": {
+          "status": "Estado",
+          "allStatuses": "Todas",
+          "supplier": "Proveedor",
+          "allSuppliers": "Todos"
+        },
+        "empty": "No hay órdenes de compra con este filtro.",
+        "unknownSupplier": "Proveedor desconocido",
+        "summary": "{lines, plural, one {# línea} other {# líneas}} · {date}",
+        "open": "Abrir",
+        "loadMore": "Cargar más"
+      },
+      "order": {
+        "title": "Orden de compra",
+        "back": "Compras",
+        "summary": "{supplier} · hacia {warehouse}",
+        "notOrdered": "Todavía no pedida",
+        "orderedOn": "Pedida el {date}",
+        "expectedOn": "se espera el {date}",
+        "markOrdered": "Marcar como pedida",
+        "markedOrdered": "Marcada como pedida.",
+        "receive": "Recibir mercadería",
+        "close": "Cerrar con faltante",
+        "cancel": "Cancelar orden",
+        "closed": "Orden de compra cerrada.",
+        "cancelled": "Orden de compra cancelada.",
+        "linesTitle": "Líneas",
+        "lineDetail": "{received} de {ordered} recibidas · {cost} c/u · {tax}",
+        "noTax": "sin impuesto",
+        "subtotal": "Subtotal",
+        "tax": "Impuesto",
+        "taxUnknown": "Al recibir",
+        "total": "Total",
+        "billsTitle": "Facturas",
+        "noBills": "Todavía no se ha recibido nada, así que no hay factura.",
+        "noDocument": "Sin documento del proveedor",
+        "billDates": "Recibida el {received} · con vencimiento el {due}",
+        "billMoney": "Subtotal {subtotal} · impuesto {tax} · total {total} · por pagar {open}",
+        "taxNotCredited": "impuesto no acreditado",
+        "pay": "Pagar",
+        "paymentsTitle": "Pagos",
+        "noPayments": "No se ha hecho ningún pago en esta orden.",
+        "voided": "anulado",
+        "loadMore": "Cargar más",
+        "unknownSupplier": "Proveedor desconocido",
+        "unknownWarehouse": "Bodega desconocida",
+        "percent": "{percent} %"
+      },
+      "receive": {
+        "title": "Recibir {number}",
+        "description": "Di cuántas unidades de cada línea llegan ahora. El costo y el impuesto son los de la orden. Esto crea la factura, mete las unidades a la bodega y registra el asiento.",
+        "formLabel": "Recibir mercadería",
+        "progress": "{received} de {ordered} recibidas",
+        "problems": {
+          "receivedOn": "Escribe un día real como año-mes-día.",
+          "supplierDocumentNumber": "El número de documento es demasiado largo.",
+          "quantity": "Escribe un número entero de 0 a {max}.",
+          "nothing": "Escribe las unidades de al menos una línea."
+        },
+        "fields": {
+          "receivedOn": "Recibida el",
+          "dateHint": "Año-mes-día, por ejemplo 2026-11-16.",
+          "document": "Número del documento del proveedor",
+          "documentHint": "El número de la factura o del comprobante de crédito fiscal. El impuesto se acredita solo contra un documento.",
+          "creditTax": "Acreditar el impuesto como IVA de compras",
+          "creditTaxHint": "Con la casilla apagada, o sin número de documento, el impuesto se registra como un costo."
+        },
+        "subtotal": "Subtotal",
+        "tax": "Impuesto",
+        "taxUnknown": "Se calcula al guardar",
+        "total": "Total",
+        "cancel": "Cancelar",
+        "submit": "Recibir",
+        "done": "Mercadería de {number} recibida."
+      },
+      "closeOrder": {
+        "reason": "Motivo (opcional)",
+        "close": {
+          "title": "Cerrar {number} con faltante",
+          "description": "Las unidades que nunca llegaron se dan por perdidas y la orden termina. Lo que se recibió queda en los libros.",
+          "submit": "Cerrar orden"
+        },
+        "cancel": {
+          "title": "Cancelar {number}",
+          "description": "Solo se puede cancelar una orden de la que nunca se recibió nada.",
+          "submit": "Cancelar orden"
+        }
+      },
+      "payables": {
+        "title": "Cuentas por pagar",
+        "description": "Cada factura con algo por pagar, con su día de vencimiento, y lo que se le debe a cada proveedor.",
+        "filters": {
+          "supplier": "Proveedor",
+          "allSuppliers": "Todos",
+          "overdueOnly": "Solo facturas con vencimiento pasado"
+        },
+        "unknownSupplier": "Proveedor",
+        "totals": "Se debe {open} · con vencimiento pasado {overdue}",
+        "empty": "No se debe nada.",
+        "overdueDays": "{days, plural, one {# día} other {# días}} de atraso",
+        "billLine": "Documento {document} · con vencimiento el {due}",
+        "noDocument": "ninguno",
+        "open": "{open} por pagar de {total}",
+        "openOrder": "Abrir orden",
+        "pay": "Pagar"
+      },
+      "conflicts": {
+        "supplier_limit": "La organización llegó al número de proveedores que puede tener.",
+        "supplier_name_in_use": "Otro proveedor ya tiene ese nombre.",
+        "supplier_inactive": "Ese proveedor está apagado. Enciéndelo para comprarle.",
+        "supplier_payable_account_locked": "La cuenta de lo que se le debe no puede cambiar: este proveedor ya tiene facturas o pagos.",
+        "order_not_draft": "Solo un borrador se puede cambiar.",
+        "order_needs_lines": "La orden necesita al menos una línea.",
+        "order_has_receipts": "Una orden de la que ya se recibió mercadería no se puede cancelar.",
+        "purchase_key_reused": "Esta solicitud ya se envió con otro contenido. Cierra el formulario y empieza de nuevo.",
+        "line_reference_invalid": "Un producto, variante o impuesto de una línea no se puede usar (puede estar apagado).",
+        "product_not_tracked": "Una línea nombra un producto cuyo inventario no se lleva: una compra recibe unidades.",
+        "line_store_not_visible": "Una línea es de una tienda a la que no perteneces.",
+        "document_number_in_use": "Ese número de documento del proveedor ya se usó en otra orden.",
+        "payment_exceeds_balance": "El pago es mayor que lo que se le debe a este proveedor.",
+        "payment_exceeds_receipt": "El pago es mayor que lo que está por pagar de esa factura.",
+        "payment_already_voided": "Este pago ya estaba anulado.",
+        "entry_owned_by_purchase": "Este asiento es de una compra: cámbialo desde la compra."
+      },
+      "rules": {
+        "quantity": "Las unidades de una línea no son válidas.",
+        "unit_cost": "El costo de una línea no es válido.",
+        "line_total_too_big": "Una línea pasa del monto mayor que puede tener.",
+        "receipt_total_too_big": "La factura pasa del monto mayor que aceptan los libros.",
+        "no_lines": "No hay nada que recibir.",
+        "tax_rate_inactive": "Un impuesto de una línea está apagado.",
+        "date_in_future": "El día está demasiado adelante.",
+        "creditable_needs_document": "El impuesto se acredita solo con el número del documento del proveedor.",
+        "amount": "El monto no es válido.",
+        "bill_required": "Elige la factura de este pago.",
+        "payable_account_type": "La cuenta de lo que se debe tiene que ser de pasivo.",
+        "from_not_cash": "La cuenta de donde sale el dinero tiene que ser de efectivo, banco o billetera."
+      }
+    },
+    "reconciliation": {
+      "title": "Conciliación bancaria",
+      "description": "Trae el extracto de una cuenta bancaria como archivo CSV y compáralo con los libros. Las reglas sugieren qué línea de los libros es cada línea del extracto; tú confirmas o rechazas cada sugerencia y nada se concilia solo.",
+      "cancel": "Cancelar",
+      "account": "Cuenta",
+      "accountHint": "Solo las cuentas de efectivo, banco y billetera del catálogo que están activas y reciben asientos.",
+      "noAccounts": "Todavía no hay una cuenta de efectivo, banco o billetera que reciba asientos. Crea una primero en Cuentas.",
+      "conflicts": {
+        "bank_account_not_cash": "Un extracto se lee para una cuenta de efectivo, banco o billetera.",
+        "bank_profile_name_in_use": "Esta cuenta ya tiene un perfil con ese nombre.",
+        "bank_profile_limit": "Esta cuenta tiene el máximo de perfiles que admite. Elimina uno que no uses.",
+        "bank_profile_invalid": "El perfil rompe una regla de los perfiles: ábrelo y corrígelo antes de importar.",
+        "bank_import_nothing_new": "Todas las líneas de este archivo ya se importaron: no hay nada nuevo.",
+        "bank_pair_not_allowed": "Este par no se permite: el monto, el sentido, la cuenta o las fechas no coinciden.",
+        "bank_line_already_matched": "Esta línea del extracto ya está conciliada. Recarga para verla.",
+        "bank_book_line_already_matched": "Esa línea de los libros ya está conciliada con otra línea de un extracto.",
+        "bank_decision_already_undone": "Esa decisión ya se deshizo.",
+        "bank_line_matched": "Esta línea está conciliada: solo una línea sin par se puede registrar como transacción.",
+        "bank_no_closing_balance": "Este extracto no tiene saldo final con el que comparar los libros.",
+        "bank_changed": "Los libros cambiaron en ese mismo momento. Recarga y decide de nuevo."
+      },
+      "status": {
+        "title": "Conciliación del mes",
+        "description": "Cuántas líneas de los libros y de los extractos tienen su par, y cuánto suman las que siguen abiertas.",
+        "month": "Mes",
+        "year": "Año",
+        "problems": {
+          "month": "Escribe un mes del 1 al 12.",
+          "year": "Escribe un año de cuatro cifras."
+        },
+        "reconciled": "Este mes está conciliado: todas las líneas de los libros y de los extractos tienen su par.",
+        "open": "Este mes todavía no está conciliado.",
+        "sides": {
+          "book": "Libros",
+          "statement": "Extractos"
+        },
+        "counts": "{lines, plural, one {# línea} other {# líneas}}: {matched} conciliadas, {unmatched} abiertas",
+        "unmatchedAmount": "Las líneas abiertas suman {amount}"
+      },
+      "imports": {
+        "title": "Extractos",
+        "description": "Los extractos importados para esta cuenta, el más reciente primero. Abre uno para ver sus líneas.",
+        "import": "Importar un extracto",
+        "empty": "Todavía no se ha importado ningún extracto para esta cuenta.",
+        "range": "Del {from} al {to}",
+        "lines": "{count, plural, one {# línea} other {# líneas}}, {added} nuevas",
+        "closing": "termina con {amount} el {date}",
+        "open": "Abrir",
+        "dialog": {
+          "title": "Importar un extracto",
+          "description": "Elige el perfil que lee el archivo de tu banco y el archivo mismo (hasta {megabytes} MB y {rows} filas). Si una sola fila no se puede leer, no se importa nada.",
+          "formLabel": "Importar un extracto",
+          "profile": "Perfil",
+          "chooseProfile": "Elige un perfil…",
+          "noProfile": "Esta cuenta todavía no tiene perfil. Crea uno abajo, con una muestra del archivo de tu banco, y luego importa.",
+          "file": "Archivo del extracto",
+          "fileHint": "Un archivo CSV, TSV o de texto. Se lee con la codificación del perfil.",
+          "fileProblems": {
+            "too_large": "El archivo es más grande de lo que puede ser un extracto.",
+            "empty": "El archivo está vacío.",
+            "not_text": "El archivo no se puede leer como texto con la codificación del perfil. Prueba la otra codificación en el perfil."
+          },
+          "closingBalance": "Saldo final (opcional)",
+          "closingBalanceHint": "El saldo con el que termina el extracto, por ejemplo 1234.56. Permite comparar los libros con él.",
+          "closingOn": "Día del saldo final",
+          "closingOnHint": "Año-mes-día, por ejemplo 2026-11-30. Hace falta junto con el saldo.",
+          "problems": {
+            "profile": "Elige el perfil que lee este archivo.",
+            "file": "Elige el archivo del extracto.",
+            "closingBalance": "Escribe el saldo como un monto, por ejemplo 1234.56.",
+            "closingOn": "Escribe un día real como año-mes-día, por ejemplo 2026-11-30. El saldo y su día van juntos."
+          },
+          "cancel": "Cancelar",
+          "submit": "Importar",
+          "done": "{added, plural, one {Se importó # línea nueva.} other {Se importaron # líneas nuevas.}}"
+        }
+      },
+      "profiles": {
+        "title": "Perfiles",
+        "description": "Cómo se lee el archivo de cada banco: su separador, sus columnas y los días que una línea del extracto puede distar de los libros.",
+        "new": "Nuevo perfil",
+        "empty": "Esta cuenta todavía no tiene perfiles.",
+        "summary": "{delimiter}, {encoding}, ventana de {days, plural, one {# día} other {# días}}",
+        "edit": "Editar",
+        "delete": "Eliminar",
+        "editNamed": "Editar el perfil {name}",
+        "deleteNamed": "Eliminar el perfil {name}",
+        "deleteTitle": "¿Eliminar el perfil {name}?",
+        "deleteDescription": "Los extractos que ya se importaron con él se quedan como están. Para importar otro archivo de este banco hará falta un perfil de nuevo.",
+        "deleted": "Se eliminó el perfil.",
+        "options": {
+          "delimiter": {
+            "tab": "Tabulador",
+            "comma": "Coma",
+            "semicolon": "Punto y coma"
+          },
+          "encoding": {
+            "utf-8": "UTF-8",
+            "windows-1252": "Windows-1252 (Excel)"
+          },
+          "decimal": {
+            "dot": "Punto (1234.56)",
+            "comma": "Coma (1234,56)"
+          },
+          "thousands": {
+            "none": "Ninguno",
+            "comma": "Coma (1,234.56)",
+            "dot": "Punto (1.234,56)",
+            "space": "Espacio (1 234.56)"
+          },
+          "mode": {
+            "signed": "Una columna con el monto y su signo",
+            "split": "Una columna de débitos y otra de créditos"
+          }
+        },
+        "dialog": {
+          "createTitle": "Nuevo perfil",
+          "editTitle": "Editar el perfil",
+          "description": "Indica cómo se lee el CSV del banco. Carga una muestra del archivo para comprobar las columnas antes de guardar.",
+          "formLabel": "Perfil de banco",
+          "fields": {
+            "name": "Nombre",
+            "delimiter": "Separador de columnas",
+            "encoding": "Codificación del archivo",
+            "encodingHint": "Un archivo guardado desde Excel suele ser Windows-1252.",
+            "decimalSeparator": "Separador decimal",
+            "thousandsSeparator": "Separador de miles",
+            "dateFormat": "Formato de la fecha",
+            "window": "Días de diferencia",
+            "windowHint": "Cuántos días puede distar una línea del extracto de los libros y aun así sugerirse.",
+            "hasHeader": "La primera fila nombra las columnas",
+            "hasHeaderHint": "Déjalo apagado cuando el archivo empieza con datos: las columnas se dan entonces por su posición.",
+            "mode": "Cómo se escribe el dinero",
+            "date": "Columna de la fecha",
+            "debit": "Columna de lo que salió",
+            "debitHint": "Los débitos.",
+            "credit": "Columna de lo que entró",
+            "creditHint": "Los créditos.",
+            "amount": "Columna del monto",
+            "amountHint": "El dinero que entra es positivo y el que sale es negativo.",
+            "description": "Columna de la descripción (opcional)",
+            "reference": "Columna de la referencia (opcional)",
+            "referenceHint": "Un número de cheque o un código de transferencia que los libros también pueden tener."
+          },
+          "columns": "Columnas",
+          "columnHintHeader": "Escribe el nombre de la columna tal como lo escribe la primera fila del archivo.",
+          "columnHintPosition": "Escribe la posición de la columna: 0 es la primera.",
+          "problems": {
+            "name": "Ponle al perfil un nombre de hasta 80 caracteres.",
+            "date": "Indica qué columna tiene la fecha.",
+            "description": "Escribe el nombre de una columna, o su posición si el archivo no tiene encabezado.",
+            "reference": "Escribe el nombre de una columna, o su posición si el archivo no tiene encabezado.",
+            "amount": "Indica qué columna tiene el monto.",
+            "debit": "Indica qué columna tiene los débitos.",
+            "credit": "Indica qué columna tiene los créditos.",
+            "dateWindowDays": "Escribe un número entero de días del 0 al 31.",
+            "rule": "Estos ajustes rompen una regla: cada valor necesita su propia columna, el dinero es una columna o una de débito y otra de crédito, y los separadores deben ser distintos."
+          },
+          "sample": {
+            "label": "Muestra del archivo (opcional)",
+            "hint": "Solo se envía el inicio del archivo para leerlo. Probar un mapeo no guarda nada.",
+            "problems": {
+              "too_large": "El archivo es más grande de lo que puede ser un extracto.",
+              "empty": "El archivo está vacío.",
+              "not_text": "El archivo no se puede leer como texto con esta codificación. Prueba la otra."
+            },
+            "headers": "Columnas encontradas: {headers}",
+            "useDetected": "Usar el separador que parece tener el archivo",
+            "preview": "Probar este mapeo"
+          },
+          "cancel": "Cancelar",
+          "create": "Crear el perfil",
+          "save": "Guardar el perfil",
+          "done": "Se guardó el perfil."
+        }
+      },
+      "preview": {
+        "summary": "{rows, plural, one {# fila leída} other {# filas leídas}}, las primeras {shown} como se importarían",
+        "row": "Fila",
+        "date": "Fecha",
+        "description": "Descripción",
+        "reference": "Referencia",
+        "amount": "Monto"
+      },
+      "errors": {
+        "title": "{count, plural, one {# fila no se puede leer} other {# filas no se pueden leer}}",
+        "row": "Fila {row}, {field}: {reason}",
+        "rowWithValue": "Fila {row}, {field}: {reason} (“{value}”)",
+        "more": "{count, plural, one {Y # más.} other {Y # más.}}",
+        "unknown": "no se pudo leer el archivo",
+        "fields": {
+          "date": "fecha",
+          "description": "descripción",
+          "reference": "referencia",
+          "amount": "monto",
+          "debit": "débito",
+          "credit": "crédito"
+        },
+        "column_not_found": "la columna no está en el archivo",
+        "column_ambiguous": "más de una columna tiene ese nombre",
+        "column_reused": "la columna se usa para dos valores",
+        "missing_cell": "la fila no tiene esa celda",
+        "empty_value": "la celda está vacía",
+        "invalid_amount": "el monto no es válido con estos separadores",
+        "invalid_date": "la fecha no coincide con el formato",
+        "invalid_text": "el texto tiene un carácter que no se permite",
+        "ambiguous_direction": "una fila debe llenar el débito o el crédito, no los dos ni ninguno",
+        "zero_amount": "el monto es cero",
+        "too_many_rows": "el archivo tiene más filas de las que puede tener un extracto",
+        "empty_file": "el archivo no tiene filas",
+        "unclosed_quote": "hay una comilla que nunca se cierra",
+        "row_too_wide": "la fila tiene demasiadas columnas",
+        "stray_quote": "hay una comilla fuera de lugar"
+      },
+      "statement": {
+        "title": "Extracto del {from} al {to}",
+        "summary": "{lines, plural, one {# línea} other {# líneas}}, {added} nuevas al importarlo",
+        "noClosing": "Este extracto no tiene saldo final, así que los libros no se comparan con él.",
+        "filterLabel": "Mostrar las líneas",
+        "filters": {
+          "all": "Todas ({count})",
+          "suggested": "Con sugerencias ({count})",
+          "unmatched": "Abiertas ({count})",
+          "matched": "Conciliadas ({count})"
+        },
+        "confirmExact": "Confirmar las coincidencias exactas",
+        "confirmExactTitle": "¿Confirmar las coincidencias exactas?",
+        "confirmExactDescription": "Esto confirma de una vez cada línea cuya sugerencia es la única para ella y una exacta (el mismo día o la misma referencia), hasta {max} líneas. Las líneas con varias sugerencias, o con una que no es exacta, quedan para que decidas. Cada decisión queda en el historial y se puede deshacer una por una.",
+        "confirmExactAction": "Confirmarlas",
+        "confirmExactDone": "{confirmed, plural, one {# línea confirmada} other {# líneas confirmadas}}; {left} quedan para que decidas.",
+        "empty": "No hay líneas que mostrar con este filtro.",
+        "previous": "Anterior",
+        "next": "Siguiente"
+      },
+      "difference": {
+        "title": "Los libros frente al extracto",
+        "statementBalance": "Saldo del extracto el {date}",
+        "bookBalance": "Saldo de los libros ese día",
+        "difference": "Diferencia (extracto menos libros)",
+        "unmatchedStatement": "{count, plural, one {# línea abierta del extracto} other {# líneas abiertas del extracto}}",
+        "unmatchedBook": "{count, plural, one {# línea abierta de los libros} other {# líneas abiertas de los libros}}",
+        "unexplained": "Diferencia que ninguna línea abierta explica",
+        "explained": "Las líneas abiertas explican toda la diferencia.",
+        "unexplainedHint": "Una parte de la diferencia no la explica ninguna línea abierta: busca un extracto que falta, un saldo inicial o un monto equivocado."
+      },
+      "lines": {
+        "reference": "Referencia {reference}",
+        "states": {
+          "matched": "Conciliada",
+          "suggested": "Con sugerencias",
+          "unmatched": "Abierta"
+        },
+        "matchedWith": "Conciliada con el asiento {number} del {date}",
+        "undo": "Deshacer",
+        "undone": "Se deshizo la decisión.",
+        "suggestionsLabel": "Asientos sugeridos",
+        "reasonsLabel": "Por qué se sugiere",
+        "reasons": {
+          "sameAmount": "Mismo monto al centavo",
+          "sameDay": "Mismo día",
+          "daysApart": "{days, plural, one {# día de diferencia} other {# días de diferencia}}",
+          "reference": "La referencia coincide",
+          "exact": "Exacta"
+        },
+        "noSuggestions": "Ningún asiento de los libros tiene este monto cerca de esta fecha.",
+        "register": "Ver cómo se registraría",
+        "entry": "Asiento {number} del {date}",
+        "reject": "Rechazar",
+        "rejectNamed": "Rechazar el asiento {number}",
+        "rejectTitle": "¿Rechazar el asiento {number}?",
+        "rejectDescription": "La sugerencia no se volverá a ofrecer para esta línea. No se puede recuperar desde esta pantalla.",
+        "rejected": "Se rechazó la sugerencia.",
+        "confirm": "Confirmar",
+        "confirmNamed": "Confirmar el asiento {number}",
+        "confirmed": "Se confirmó el par."
+      },
+      "draft": {
+        "title": "Cómo se registraría esta línea",
+        "description": "Los libros no tienen un asiento para esta línea. Esta es la transacción que sería la línea del extracto, ya rellenada; leerla no registra nada.",
+        "close": "Cerrar",
+        "kind": "Tipo",
+        "kinds": {
+          "expense": "Gasto",
+          "income": "Ingreso",
+          "transfer": "Transferencia"
+        },
+        "date": "Fecha",
+        "amount": "Monto",
+        "from": "De la cuenta",
+        "to": "A la cuenta",
+        "document": "Número de documento",
+        "memo": "Nota"
       }
     }
   }

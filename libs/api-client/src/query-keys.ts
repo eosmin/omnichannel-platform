@@ -316,6 +316,27 @@ export const QueryKeys = {
     // The one store of the General page; under `stores`, so a create, rename or delete refreshes it
     store: (storeId: string, id: string) => ['organizations', storeId, 'stores', id] as const
   },
+  // Suppliers, purchase orders and what is owed (TDD_18 §2.7, Step 4B.9a-4). They sit under the `finance` root on purpose: a purchase writes
+  // entries, so `finance.root` makes them stale with the rest of the books
+  purchases: {
+    suppliers: (storeId: string, filters: Record<string, string>) =>
+      ['finance', storeId, 'purchases', 'suppliers', filters] as const,
+    allSuppliers: (storeId: string) =>
+      ['finance', storeId, 'purchases', 'suppliers', 'all'] as const,
+    supplier: (storeId: string, id: string) =>
+      ['finance', storeId, 'purchases', 'supplier', id] as const,
+    supplierBalance: (storeId: string, id: string) =>
+      ['finance', storeId, 'purchases', 'supplier', id, 'balance'] as const,
+    supplierPayments: (storeId: string, id: string) =>
+      ['finance', storeId, 'purchases', 'supplier', id, 'payments'] as const,
+    payables: (storeId: string, filters: Record<string, string>) =>
+      ['finance', storeId, 'purchases', 'payables', filters] as const,
+    orders: (storeId: string, filters: Record<string, string>) =>
+      ['finance', storeId, 'purchases', 'orders', filters] as const,
+    order: (storeId: string, id: string) => ['finance', storeId, 'purchases', 'order', id] as const,
+    orderPayments: (storeId: string, id: string) =>
+      ['finance', storeId, 'purchases', 'order', id, 'payments'] as const
+  },
   // Keyed by the store of the request, like the warehouses: the books belong to the organization, so a mutation makes the ROOT
   // stale and every store's cache reads again (TDD_18 §3)
   finance: {
@@ -340,7 +361,29 @@ export const QueryKeys = {
     postings: (storeId: string) => ['finance', storeId, 'postings'] as const,
     transactions: (storeId: string, filters: Record<string, string>) =>
       ['finance', storeId, 'transactions', filters] as const,
-    transaction: (storeId: string, id: string) => ['finance', storeId, 'transactions', id] as const
+    transaction: (storeId: string, id: string) => ['finance', storeId, 'transactions', id] as const,
+    // The bank reconciliation by CSV (Step 4B.9a-3): every key sits under `bank`, so a decision makes the lines, the status and the
+    // difference stale together with one prefix
+    bank: {
+      all: (storeId: string) => ['finance', storeId, 'bank'] as const,
+      profiles: (storeId: string, accountId: string) =>
+        ['finance', storeId, 'bank', 'profiles', accountId] as const,
+      imports: (storeId: string, accountId: string) =>
+        ['finance', storeId, 'bank', 'imports', accountId] as const,
+      import: (storeId: string, importId: string) =>
+        ['finance', storeId, 'bank', 'import', importId] as const,
+      lines: (storeId: string, importId: string, filter: string, after: number | null) =>
+        ['finance', storeId, 'bank', 'lines', importId, filter, after] as const,
+      difference: (storeId: string, importId: string) =>
+        ['finance', storeId, 'bank', 'difference', importId] as const,
+      draft: (storeId: string, lineId: string) =>
+        ['finance', storeId, 'bank', 'draft', lineId] as const,
+      // The mapper's preview of a sample: outside the family a decision makes stale (it reads nothing of the books)
+      preview: (storeId: string, request: unknown) =>
+        ['finance', storeId, 'bank-preview', request] as const,
+      status: (storeId: string, accountId: string, year: number, month: number) =>
+        ['finance', storeId, 'bank', 'status', accountId, year, month] as const
+    }
   },
   // The person's own account: no store in the key, because it belongs to the person
   account: {
@@ -351,3 +394,9 @@ export const QueryKeys = {
 
   session: ['session'] as const
 } as const
+
+// Whether a query key belongs to the bank reconciliation of any store: the shape of the key lives here, next to the keys
+export function isFinanceBankKey(key: readonly unknown[]): boolean {
+  const family = QueryKeys.finance.bank.all('')
+  return key[0] === family[0] && key[2] === family[2]
+}

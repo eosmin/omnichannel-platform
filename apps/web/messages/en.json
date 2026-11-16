@@ -2944,7 +2944,11 @@
         "accounts": "Accounts",
         "taxes": "Taxes",
         "periods": "Periods",
-        "settings": "Settings"
+        "settings": "Settings",
+        "suppliers": "Suppliers",
+        "purchases": "Purchases",
+        "payables": "Payables",
+        "reconciliation": "Bank reconciliation"
       }
     },
     "store": {
@@ -3296,6 +3300,7 @@
         "finance": {
           "view": "View balances and reports",
           "view_journal": "View the journal",
+          "view_reports": "View the statements and the lists with age",
           "manage_transactions": "Register expenses and incomes",
           "move_money": "Move money",
           "manage_purchases": "Manage suppliers and purchases",
@@ -6030,6 +6035,611 @@
         "pricesIncludeTax": "The prices of this store already include the tax",
         "pricesIncludeTaxHint": "It only changes how the tax is separated from the price of what is sold from now on.",
         "saved": "Preference saved."
+      }
+    },
+    "purchases": {
+      "status": {
+        "draft": "Draft",
+        "ordered": "Ordered",
+        "partially_received": "Partly received",
+        "received": "Received",
+        "closed": "Closed",
+        "cancelled": "Cancelled"
+      },
+      "suppliers": {
+        "title": "Suppliers",
+        "description": "Who the business buys from, with the payment terms of each and what is owed to them.",
+        "new": "New supplier",
+        "search": "Search by name",
+        "includeInactive": "Show suppliers that are switched off",
+        "empty": "There are no suppliers yet. Add the first one to start a purchase order.",
+        "noMatch": "No supplier matches that name.",
+        "inactive": "Switched off",
+        "details": "Details",
+        "edit": "Edit",
+        "loadMore": "Load more"
+      },
+      "supplierDetail": {
+        "title": "Supplier",
+        "description": "What is owed to this supplier and the payments made to it.",
+        "terms": "Payment terms: {days, plural, one {# day} other {# days}}",
+        "billed": "Billed",
+        "paid": "Paid",
+        "open": "Owed",
+        "overdue": "Past due",
+        "edit": "Edit supplier",
+        "pay": "Register a payment",
+        "payments": "Payments",
+        "noPayments": "No payment has been made to this supplier.",
+        "voided": "Voided",
+        "void": "Void",
+        "loadMore": "Load more"
+      },
+      "supplierDialog": {
+        "createTitle": "New supplier",
+        "createDescription": "The name is the only required field. The payment terms set the due day of each bill.",
+        "editTitle": "Edit supplier",
+        "editDescription": "A change applies to what is bought from now on, never to the bills already in the books.",
+        "formLabel": "Supplier",
+        "cancel": "Cancel",
+        "create": "Create supplier",
+        "save": "Save changes",
+        "created": "Supplier {name} created.",
+        "saved": "Supplier saved.",
+        "fields": {
+          "name": "Name",
+          "taxId": "Tax ID (NIT or NRC)",
+          "taxIdHint": "Written as the supplier's document shows it. Nothing is checked about its shape.",
+          "contactName": "Contact person",
+          "email": "Email",
+          "phone": "Phone",
+          "paymentTermsDays": "Payment terms (days)",
+          "paymentTermsHint": "Days between receiving the goods and the day the bill is due. 0 is paid on receipt.",
+          "payableAccount": "Account for what is owed",
+          "payableAccountHint": "A liability account. It cannot change once the supplier has bills.",
+          "payableAccountDefault": "The one of the organization",
+          "active": "Active",
+          "activeHint": "A supplier that is switched off is not offered for new purchase orders; its bills and payments stay."
+        },
+        "problems": {
+          "name": "Write the name, up to 150 characters.",
+          "taxId": "The tax ID is too long.",
+          "contactName": "The name of the contact is too long.",
+          "email": "That is not an email address.",
+          "phone": "The phone is too long.",
+          "paymentTermsDays": "Write a whole number of days, from 0 to 365."
+        }
+      },
+      "payment": {
+        "title": "Register a payment",
+        "description": "A payment to {supplier}. It posts to the books and lowers what is owed.",
+        "formLabel": "Payment to a supplier",
+        "owedInAll": "Owed to this supplier in all: {amount}.",
+        "owedOnBill": "Bill {bill}: {amount} still open.",
+        "needsBooks": "Choosing the account the money leaves needs permission to read the books (finance:view). Ask an administrator.",
+        "fields": {
+          "account": "Paid from",
+          "accountHint": "An account of cash, a bank or a wallet.",
+          "pickAccount": "Choose an account…",
+          "amount": "Amount (USD)",
+          "amountHint": "Never more than what is open.",
+          "paidOn": "Paid on",
+          "dateHint": "Year-month-day, for example 2026-11-16.",
+          "reference": "Reference (optional)"
+        },
+        "problems": {
+          "paidFromAccountId": "Choose the account the money leaves.",
+          "amount": "Write an amount above 0 and not above what is open, with at most two decimals.",
+          "paidOn": "Write a real day as year-month-day.",
+          "reference": "The reference is too long."
+        },
+        "cancel": "Cancel",
+        "submit": "Register payment",
+        "done": "Payment to {supplier} registered.",
+        "accountsFailed": "The accounts could not be read. Close this and try again."
+      },
+      "voidPayment": {
+        "title": "Void this payment",
+        "description": "The payment stays in the journal and a reversing entry is posted. The bill is owed again.",
+        "reason": "Reason",
+        "submit": "Void payment",
+        "confirmTitle": "Void this payment?",
+        "confirmDescription": "This cannot be undone: the reversal stays in the books for good and the bill is owed again.",
+        "confirm": "Void payment",
+        "done": "Payment voided."
+      },
+      "reason": {
+        "required": "Write the reason.",
+        "tooLong": "The reason is too long.",
+        "cancel": "Cancel"
+      },
+      "picker": {
+        "search": "Add a product",
+        "chooseVariant": "{name} has variants. Choose the one bought.",
+        "hint": "Type at least {count} letters of the name or the SKU.",
+        "failed": "The search failed. Try again.",
+        "searching": "Searching…",
+        "none": "No product matches."
+      },
+      "lines": {
+        "formLabel": "Lines of the purchase order",
+        "saved": "Lines saved.",
+        "empty": "No lines yet. Search for a product to add the first one.",
+        "remove": "Remove {name}",
+        "quantity": "Units",
+        "unitCost": "Cost of one unit (USD)",
+        "taxRate": "Tax",
+        "noTax": "No tax",
+        "wrongQuantity": "Write a whole number of units, 1 or more.",
+        "wrongCost": "Write the cost with at most two decimals.",
+        "subtotal": "Subtotal",
+        "tax": "Tax",
+        "total": "Total",
+        "taxUnknown": "At receipt",
+        "save": "Save lines",
+        "percent": "{percent} %",
+        "tooManyLines": "A purchase order has at most {max} lines."
+      },
+      "newOrder": {
+        "title": "New purchase order",
+        "description": "It is made as a draft. You choose its lines on the next page, and nothing is promised to the supplier until you mark it as ordered.",
+        "formLabel": "New purchase order",
+        "fields": {
+          "supplier": "Supplier",
+          "pickSupplier": "Choose a supplier…",
+          "warehouse": "Warehouse",
+          "pickWarehouse": "Choose a warehouse…",
+          "warehouseHint": "Where the goods will be received.",
+          "expectedOn": "Expected on (optional)",
+          "dateHint": "Year-month-day, for example 2026-11-16.",
+          "notes": "Notes (optional)"
+        },
+        "problems": {
+          "supplierId": "Choose the supplier.",
+          "warehouseId": "Choose the warehouse.",
+          "expectedOn": "Write a real day as year-month-day.",
+          "notes": "The notes are too long."
+        },
+        "loadFailed": "The suppliers or the warehouses could not be read. Close this and try again.",
+        "cancel": "Cancel",
+        "create": "Create draft",
+        "created": "Purchase order {number} created."
+      },
+      "orders": {
+        "title": "Purchases",
+        "description": "The orders to suppliers, with what arrived and what was paid.",
+        "new": "New purchase order",
+        "filters": {
+          "status": "Status",
+          "allStatuses": "All",
+          "supplier": "Supplier",
+          "allSuppliers": "All"
+        },
+        "empty": "There are no purchase orders for this filter.",
+        "unknownSupplier": "Unknown supplier",
+        "summary": "{lines, plural, one {# line} other {# lines}} · {date}",
+        "open": "Open",
+        "loadMore": "Load more"
+      },
+      "order": {
+        "title": "Purchase order",
+        "back": "Purchases",
+        "summary": "{supplier} · to {warehouse}",
+        "notOrdered": "Not ordered yet",
+        "orderedOn": "Ordered on {date}",
+        "expectedOn": "expected on {date}",
+        "markOrdered": "Mark as ordered",
+        "markedOrdered": "Marked as ordered.",
+        "receive": "Receive goods",
+        "close": "Close short",
+        "cancel": "Cancel order",
+        "closed": "Purchase order closed.",
+        "cancelled": "Purchase order cancelled.",
+        "linesTitle": "Lines",
+        "lineDetail": "{received} of {ordered} received · {cost} each · {tax}",
+        "noTax": "no tax",
+        "subtotal": "Subtotal",
+        "tax": "Tax",
+        "taxUnknown": "At receipt",
+        "total": "Total",
+        "billsTitle": "Bills",
+        "noBills": "Nothing has been received yet, so there is no bill.",
+        "noDocument": "No supplier document",
+        "billDates": "Received {received} · due {due}",
+        "billMoney": "Subtotal {subtotal} · tax {tax} · total {total} · open {open}",
+        "taxNotCredited": "tax not credited",
+        "pay": "Pay",
+        "paymentsTitle": "Payments",
+        "noPayments": "No payment has been made on this order.",
+        "voided": "voided",
+        "loadMore": "Load more",
+        "unknownSupplier": "Unknown supplier",
+        "unknownWarehouse": "Unknown warehouse",
+        "percent": "{percent} %"
+      },
+      "receive": {
+        "title": "Receive {number}",
+        "description": "Say how many units of each line arrive now. The cost and the tax are the ones of the order. This makes the bill, puts the units in the warehouse and posts the entry.",
+        "formLabel": "Receive goods",
+        "progress": "{received} of {ordered} received",
+        "problems": {
+          "receivedOn": "Write a real day as year-month-day.",
+          "supplierDocumentNumber": "The document number is too long.",
+          "quantity": "Write a whole number from 0 to {max}.",
+          "nothing": "Write the units of at least one line."
+        },
+        "fields": {
+          "receivedOn": "Received on",
+          "dateHint": "Year-month-day, for example 2026-11-16.",
+          "document": "Supplier document number",
+          "documentHint": "The number of the invoice or the tax credit document. The tax is credited only against a document.",
+          "creditTax": "Credit the tax as input VAT",
+          "creditTaxHint": "With the box off, or with no document number, the tax is booked as a cost."
+        },
+        "subtotal": "Subtotal",
+        "tax": "Tax",
+        "taxUnknown": "Computed on save",
+        "total": "Total",
+        "cancel": "Cancel",
+        "submit": "Receive",
+        "done": "Goods of {number} received."
+      },
+      "closeOrder": {
+        "reason": "Reason (optional)",
+        "close": {
+          "title": "Close {number} short",
+          "description": "The units that never arrived are given up and the order is finished. What was received stays in the books.",
+          "submit": "Close order"
+        },
+        "cancel": {
+          "title": "Cancel {number}",
+          "description": "Only an order that was never received can be cancelled.",
+          "submit": "Cancel order"
+        }
+      },
+      "payables": {
+        "title": "Payables",
+        "description": "Every bill with something open, with its due day, and what each supplier is owed.",
+        "filters": {
+          "supplier": "Supplier",
+          "allSuppliers": "All",
+          "overdueOnly": "Only bills past their due day"
+        },
+        "unknownSupplier": "Supplier",
+        "totals": "Owed {open} · past due {overdue}",
+        "empty": "Nothing is owed.",
+        "overdueDays": "{days, plural, one {# day} other {# days}} past due",
+        "billLine": "Document {document} · due {due}",
+        "noDocument": "none",
+        "open": "{open} open of {total}",
+        "openOrder": "Open order",
+        "pay": "Pay"
+      },
+      "conflicts": {
+        "supplier_limit": "The organization has reached the number of suppliers it may have.",
+        "supplier_name_in_use": "Another supplier already has that name.",
+        "supplier_inactive": "That supplier is switched off. Switch it on to buy from it.",
+        "supplier_payable_account_locked": "The account for what is owed cannot change: this supplier already has bills or payments.",
+        "order_not_draft": "Only a draft can be changed.",
+        "order_needs_lines": "The order needs at least one line.",
+        "order_has_receipts": "An order with goods received cannot be cancelled.",
+        "purchase_key_reused": "This request was already sent with other content. Close the form and start again.",
+        "line_reference_invalid": "A product, variant or tax of a line is not usable (it may be switched off).",
+        "product_not_tracked": "A line names a product whose stock is not tracked: a purchase receives units.",
+        "line_store_not_visible": "A line belongs to a store you do not belong to.",
+        "document_number_in_use": "That supplier document number is already used on another order.",
+        "payment_exceeds_balance": "The payment is above what is owed to this supplier.",
+        "payment_exceeds_receipt": "The payment is above what is open on that bill.",
+        "payment_already_voided": "This payment was already voided.",
+        "entry_owned_by_purchase": "This entry belongs to a purchase: change it from the purchase."
+      },
+      "rules": {
+        "quantity": "The units of a line are not valid.",
+        "unit_cost": "The cost of a line is not valid.",
+        "line_total_too_big": "A line is above the largest amount a line may hold.",
+        "receipt_total_too_big": "The bill is above the largest amount the books take.",
+        "no_lines": "There is nothing to receive.",
+        "tax_rate_inactive": "A tax of a line is switched off.",
+        "date_in_future": "The day is too far ahead.",
+        "creditable_needs_document": "The tax is credited only with the supplier's document number.",
+        "amount": "The amount is not valid.",
+        "bill_required": "Choose the bill this payment is for.",
+        "payable_account_type": "The account for what is owed must be a liability account.",
+        "from_not_cash": "The account the money leaves must be one of cash, a bank or a wallet."
+      }
+    },
+    "reconciliation": {
+      "title": "Bank reconciliation",
+      "description": "Bring in the statement of a bank account as a CSV file and check it against the books. The rules suggest which line of the books each line of the statement is; you confirm or reject every suggestion, and nothing is reconciled on its own.",
+      "cancel": "Cancel",
+      "account": "Account",
+      "accountHint": "Only the cash, bank and wallet accounts of the chart that are on and post entries.",
+      "noAccounts": "There is no cash, bank or wallet account that posts entries yet. Make one in Accounts first.",
+      "conflicts": {
+        "bank_account_not_cash": "A statement is read for a cash, bank or wallet account.",
+        "bank_profile_name_in_use": "This account already has a profile with that name.",
+        "bank_profile_limit": "This account has the most profiles it can hold. Delete one you do not use.",
+        "bank_profile_invalid": "The profile breaks a rule of the profiles: open it and fix it before importing.",
+        "bank_import_nothing_new": "Every line of this file was imported already: there is nothing new in it.",
+        "bank_pair_not_allowed": "This pair is not allowed: the amount, the direction, the account or the dates do not agree.",
+        "bank_line_already_matched": "This line of the statement is already matched. Reload to see it.",
+        "bank_book_line_already_matched": "That line of the books is already matched with another line of a statement.",
+        "bank_decision_already_undone": "That decision was already taken back.",
+        "bank_line_matched": "This line is matched: only a line with no match can be recorded as a transaction.",
+        "bank_no_closing_balance": "This statement has no closing balance to compare the books with.",
+        "bank_changed": "The books changed in the same moment. Reload and decide again."
+      },
+      "status": {
+        "title": "Reconciliation of the month",
+        "description": "How many lines of the books and of the statements have their pair, and what the open ones add up to.",
+        "month": "Month",
+        "year": "Year",
+        "problems": {
+          "month": "Write a month from 1 to 12.",
+          "year": "Write a year of four digits."
+        },
+        "reconciled": "This month is reconciled: every line of the books and of the statements has its pair.",
+        "open": "This month is not reconciled yet.",
+        "sides": {
+          "book": "Books",
+          "statement": "Statements"
+        },
+        "counts": "{lines, plural, one {# line} other {# lines}}: {matched} matched, {unmatched} open",
+        "unmatchedAmount": "Open lines add up to {amount}"
+      },
+      "imports": {
+        "title": "Statements",
+        "description": "The statements imported for this account, the newest first. Open one to see its lines.",
+        "import": "Import a statement",
+        "empty": "No statement has been imported for this account yet.",
+        "range": "From {from} to {to}",
+        "lines": "{count, plural, one {# line} other {# lines}}, {added} new",
+        "closing": "ends with {amount} on {date}",
+        "open": "Open",
+        "dialog": {
+          "title": "Import a statement",
+          "description": "Choose the profile that reads the file of your bank and the file itself (up to {megabytes} MB and {rows} rows). If a single row cannot be read, nothing is imported.",
+          "formLabel": "Import a statement",
+          "profile": "Profile",
+          "chooseProfile": "Choose a profile…",
+          "noProfile": "This account has no profile yet. Make one below, with a sample of the file of your bank, and then import.",
+          "file": "Statement file",
+          "fileHint": "A CSV, TSV or text file. It is read with the encoding of the profile.",
+          "fileProblems": {
+            "too_large": "The file is larger than a statement can be.",
+            "empty": "The file is empty.",
+            "not_text": "The file is not readable as text with the encoding of the profile. Try the other encoding in the profile."
+          },
+          "closingBalance": "Closing balance (optional)",
+          "closingBalanceHint": "The balance the statement ends with, like 1234.56. It lets the books be compared with it.",
+          "closingOn": "Day of the closing balance",
+          "closingOnHint": "Year-month-day, like 2026-11-30. Needed with the balance.",
+          "problems": {
+            "profile": "Choose the profile that reads this file.",
+            "file": "Choose the file of the statement.",
+            "closingBalance": "Write the balance as an amount, like 1234.56.",
+            "closingOn": "Write a real day as year-month-day, like 2026-11-30. The balance and its day go together."
+          },
+          "cancel": "Cancel",
+          "submit": "Import",
+          "done": "{added, plural, one {# new line imported.} other {# new lines imported.}}"
+        }
+      },
+      "profiles": {
+        "title": "Profiles",
+        "description": "How the file of each bank is read: its separator, its columns and the days a line of the statement may be apart from the books.",
+        "new": "New profile",
+        "empty": "This account has no profile yet.",
+        "summary": "{delimiter}, {encoding}, window of {days, plural, one {# day} other {# days}}",
+        "edit": "Edit",
+        "delete": "Delete",
+        "editNamed": "Edit the profile {name}",
+        "deleteNamed": "Delete the profile {name}",
+        "deleteTitle": "Delete the profile {name}?",
+        "deleteDescription": "The statements already imported with it stay as they are. A file of this bank needs a profile again to be imported.",
+        "deleted": "The profile was deleted.",
+        "options": {
+          "delimiter": {
+            "tab": "Tab",
+            "comma": "Comma",
+            "semicolon": "Semicolon"
+          },
+          "encoding": {
+            "utf-8": "UTF-8",
+            "windows-1252": "Windows-1252 (Excel)"
+          },
+          "decimal": {
+            "dot": "Dot (1234.56)",
+            "comma": "Comma (1234,56)"
+          },
+          "thousands": {
+            "none": "None",
+            "comma": "Comma (1,234.56)",
+            "dot": "Dot (1.234,56)",
+            "space": "Space (1 234.56)"
+          },
+          "mode": {
+            "signed": "One column with the amount and its sign",
+            "split": "One column for debits and one for credits"
+          }
+        },
+        "dialog": {
+          "createTitle": "New profile",
+          "editTitle": "Edit the profile",
+          "description": "Say how the CSV of the bank is read. Load a sample of the file to check the columns before saving.",
+          "formLabel": "Bank profile",
+          "fields": {
+            "name": "Name",
+            "delimiter": "Separator of the columns",
+            "encoding": "Encoding of the file",
+            "encodingHint": "A file saved from Excel is usually Windows-1252.",
+            "decimalSeparator": "Decimal separator",
+            "thousandsSeparator": "Thousands separator",
+            "dateFormat": "Format of the date",
+            "window": "Days apart",
+            "windowHint": "How many days a line of the statement may be apart from the books and still be suggested.",
+            "hasHeader": "The first row names the columns",
+            "hasHeaderHint": "Leave it off when the file starts with data: the columns are then given by position.",
+            "mode": "How the money is written",
+            "date": "Column of the date",
+            "debit": "Column of what went out",
+            "debitHint": "The debits.",
+            "credit": "Column of what came in",
+            "creditHint": "The credits.",
+            "amount": "Column of the amount",
+            "amountHint": "Money in is positive and money out is negative.",
+            "description": "Column of the description (optional)",
+            "reference": "Column of the reference (optional)",
+            "referenceHint": "A check number or a transfer code the books may also have."
+          },
+          "columns": "Columns",
+          "columnHintHeader": "Write the name of the column as the first row of the file spells it.",
+          "columnHintPosition": "Write the position of the column: 0 is the first one.",
+          "problems": {
+            "name": "Give the profile a name of up to 80 characters.",
+            "date": "Say which column has the date.",
+            "description": "Write a column name, or its position when the file has no header.",
+            "reference": "Write a column name, or its position when the file has no header.",
+            "amount": "Say which column has the amount.",
+            "debit": "Say which column has the debits.",
+            "credit": "Say which column has the credits.",
+            "dateWindowDays": "Write a whole number of days from 0 to 31.",
+            "rule": "These settings break a rule: each value needs a column of its own, the money is one column or a debit and a credit column, and the separators must differ."
+          },
+          "sample": {
+            "label": "Sample of the file (optional)",
+            "hint": "Only the start of the file is sent to be read. Nothing is saved by trying a mapping.",
+            "problems": {
+              "too_large": "The file is larger than a statement can be.",
+              "empty": "The file is empty.",
+              "not_text": "The file is not readable as text with this encoding. Try the other one."
+            },
+            "headers": "Columns found: {headers}",
+            "useDetected": "Use the separator the file seems to have",
+            "preview": "Try this mapping"
+          },
+          "cancel": "Cancel",
+          "create": "Create the profile",
+          "save": "Save the profile",
+          "done": "The profile was saved."
+        }
+      },
+      "preview": {
+        "summary": "{rows, plural, one {# row read} other {# rows read}}, the first {shown} as they would be imported",
+        "row": "Row",
+        "date": "Date",
+        "description": "Description",
+        "reference": "Reference",
+        "amount": "Amount"
+      },
+      "errors": {
+        "title": "{count, plural, one {# row cannot be read} other {# rows cannot be read}}",
+        "row": "Row {row}, {field}: {reason}",
+        "rowWithValue": "Row {row}, {field}: {reason} (“{value}”)",
+        "more": "{count, plural, one {And # more.} other {And # more.}}",
+        "unknown": "the file could not be read",
+        "fields": {
+          "date": "date",
+          "description": "description",
+          "reference": "reference",
+          "amount": "amount",
+          "debit": "debit",
+          "credit": "credit"
+        },
+        "column_not_found": "the column is not in the file",
+        "column_ambiguous": "more than one column has that name",
+        "column_reused": "the column is used for two values",
+        "missing_cell": "the row has no such cell",
+        "empty_value": "the cell is empty",
+        "invalid_amount": "the amount is not valid with these separators",
+        "invalid_date": "the date does not match the format",
+        "invalid_text": "the text has a character that is not allowed",
+        "ambiguous_direction": "a row must fill the debit or the credit, not both and not neither",
+        "zero_amount": "the amount is zero",
+        "too_many_rows": "the file has more rows than a statement can have",
+        "empty_file": "the file has no rows",
+        "unclosed_quote": "a quote is never closed",
+        "row_too_wide": "the row has too many columns",
+        "stray_quote": "a quote is in the wrong place"
+      },
+      "statement": {
+        "title": "Statement from {from} to {to}",
+        "summary": "{lines, plural, one {# line} other {# lines}}, {added} new when it was imported",
+        "noClosing": "This statement has no closing balance, so the books are not compared with it.",
+        "filterLabel": "Show the lines",
+        "filters": {
+          "all": "All ({count})",
+          "suggested": "With suggestions ({count})",
+          "unmatched": "Open ({count})",
+          "matched": "Matched ({count})"
+        },
+        "confirmExact": "Confirm the exact matches",
+        "confirmExactTitle": "Confirm the exact matches?",
+        "confirmExactDescription": "This confirms, at once, every line whose suggestion is the only one for it and an exact one (the same day or the same reference), up to {max} lines. Lines with several suggestions, or one that is not exact, stay for you to decide. Every decision stays in the history and can be taken back one by one.",
+        "confirmExactAction": "Confirm them",
+        "confirmExactDone": "{confirmed, plural, one {# line confirmed} other {# lines confirmed}}; {left} left for you to decide.",
+        "empty": "No line to show with this filter.",
+        "previous": "Previous",
+        "next": "Next"
+      },
+      "difference": {
+        "title": "The books against the statement",
+        "statementBalance": "Balance of the statement on {date}",
+        "bookBalance": "Balance of the books on that day",
+        "difference": "Difference (statement minus books)",
+        "unmatchedStatement": "{count, plural, one {# open line of the statement} other {# open lines of the statement}}",
+        "unmatchedBook": "{count, plural, one {# open line of the books} other {# open lines of the books}}",
+        "unexplained": "Difference no open line explains",
+        "explained": "The open lines explain the whole difference.",
+        "unexplainedHint": "Part of the difference is not explained by any open line: look for a missing statement, an opening balance or a wrong amount."
+      },
+      "lines": {
+        "reference": "Reference {reference}",
+        "states": {
+          "matched": "Matched",
+          "suggested": "Has suggestions",
+          "unmatched": "Open"
+        },
+        "matchedWith": "Matched with the entry {number} of {date}",
+        "undo": "Undo",
+        "undone": "The decision was taken back.",
+        "suggestionsLabel": "Suggested entries",
+        "reasonsLabel": "Why it is suggested",
+        "reasons": {
+          "sameAmount": "Same amount to the cent",
+          "sameDay": "Same day",
+          "daysApart": "{days, plural, one {# day apart} other {# days apart}}",
+          "reference": "The reference agrees",
+          "exact": "Exact"
+        },
+        "noSuggestions": "No entry of the books has this amount near this date.",
+        "register": "See how it would be recorded",
+        "entry": "Entry {number} of {date}",
+        "reject": "Reject",
+        "rejectNamed": "Reject the entry {number}",
+        "rejectTitle": "Reject the entry {number}?",
+        "rejectDescription": "The suggestion will not be offered again for this line. It cannot be brought back from this screen.",
+        "rejected": "The suggestion was rejected.",
+        "confirm": "Confirm",
+        "confirmNamed": "Confirm the entry {number}",
+        "confirmed": "The pair was confirmed."
+      },
+      "draft": {
+        "title": "How this line would be recorded",
+        "description": "The books have no entry for this line. This is the transaction the statement line would be, prefilled; reading it records nothing.",
+        "close": "Close",
+        "kind": "Kind",
+        "kinds": {
+          "expense": "Expense",
+          "income": "Income",
+          "transfer": "Transfer"
+        },
+        "date": "Date",
+        "amount": "Amount",
+        "from": "From the account",
+        "to": "To the account",
+        "document": "Document number",
+        "memo": "Memo"
       }
     }
   }

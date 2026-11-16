@@ -1,5 +1,4 @@
-import { PartyType, PurchaseOrderStatus, TaxRounding } from '@platform/core/domain'
-
+import { PartyType, PurchaseOrderStatus, TaxRounding } from './finance-constants'
 import {
   billBalances,
   canTransition,
