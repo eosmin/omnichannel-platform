@@ -1,3 +1,5 @@
+import { FinanceLimits } from '@platform/core/domain'
+
 // The money of the books is whole cents of US dollars and never a float (TDD_18 §2). A sum that can pass the 32 bits of a line
 // arrives as a string of digits, so the text of an amount is made from the digits and not from a number.
 
@@ -50,4 +52,11 @@ export function centsOfDecimalText(input: string, maxCents = 2_147_483_647): num
   const cents = Number(match[2]) * 100 + Number((match[3] ?? '').padEnd(2, '0'))
   if (!Number.isSafeInteger(cents) || cents > maxCents) return null
   return match[1] === '-' && cents !== 0 ? -cents : cents
+}
+
+// What a person types as an amount of a transaction or a line: the same reading, but only above zero and within a line of the books
+// ("12" -> 1200, "0.05" -> 5); a sign, zero or more than a line can hold is not an amount (null).
+export function positiveCentsOfDecimalText(input: string): number | null {
+  const cents = centsOfDecimalText(input, FinanceLimits.MAX_LINE_CENTS)
+  return cents !== null && cents >= 1 ? cents : null
 }

@@ -16,7 +16,8 @@ export function TextField({
   maxLength,
   disabled = false,
   inputMode,
-  autoCapitalize
+  autoCapitalize,
+  type = 'text'
 }: {
   label: string
   value: string
@@ -27,6 +28,8 @@ export function TextField({
   disabled?: boolean
   inputMode?: 'numeric' | 'decimal' | 'text'
   autoCapitalize?: string
+  // A day is picked with the browser's own control on a phone; the value is always 'YYYY-MM-DD'
+  type?: 'text' | 'date'
 }): ReactElement {
   const id = useId()
   return (
@@ -34,6 +37,7 @@ export function TextField({
       <Label htmlFor={id}>{label}</Label>
       <Input
         id={id}
+        type={type}
         value={value}
         maxLength={maxLength}
         disabled={disabled}

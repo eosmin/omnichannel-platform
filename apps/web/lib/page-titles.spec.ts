@@ -91,6 +91,8 @@ const TITLE_OF_PAGE: Record<string, string> = {
   'org/counts/[countId]/page.tsx': 'orgCounts',
   'finance/page.tsx': 'finance',
   'finance/accounts/page.tsx': 'financeAccounts',
+  'finance/journal/page.tsx': 'financeJournal',
+  'finance/transactions/page.tsx': 'financeTransactions',
   'finance/taxes/page.tsx': 'financeTaxes',
   'finance/periods/page.tsx': 'financePeriods',
   'finance/reconciliation/page.tsx': 'financeReconciliation',
