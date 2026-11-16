@@ -155,6 +155,13 @@ function PaymentForm({
     wrong === field ? t(`problems.${field}`) : null
 
   if (!canReadBooks) return <p className="text-muted-foreground text-sm">{t('needsBooks')}</p>
+  if (accounts.isError) {
+    return (
+      <p role="alert" className="text-destructive text-sm">
+        {t('accountsFailed')}
+      </p>
+    )
+  }
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-3" aria-label={t('formLabel')}>

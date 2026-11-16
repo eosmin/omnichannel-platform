@@ -6091,7 +6091,9 @@
           "paymentTermsHint": "Days between receiving the goods and the day the bill is due. 0 is paid on receipt.",
           "payableAccount": "Account for what is owed",
           "payableAccountHint": "A liability account. It cannot change once the supplier has bills.",
-          "payableAccountDefault": "The one of the organization"
+          "payableAccountDefault": "The one of the organization",
+          "active": "Active",
+          "activeHint": "A supplier that is switched off is not offered for new purchase orders; its bills and payments stay."
         },
         "problems": {
           "name": "Write the name, up to 150 characters.",
@@ -6127,7 +6129,8 @@
         },
         "cancel": "Cancel",
         "submit": "Register payment",
-        "done": "Payment to {supplier} registered."
+        "done": "Payment to {supplier} registered.",
+        "accountsFailed": "The accounts could not be read. Close this and try again."
       },
       "voidPayment": {
         "title": "Void this payment",
@@ -6167,7 +6170,9 @@
         "tax": "Tax",
         "total": "Total",
         "taxUnknown": "At receipt",
-        "save": "Save lines"
+        "save": "Save lines",
+        "percent": "{percent} %",
+        "tooManyLines": "A purchase order has at most {max} lines."
       },
       "newOrder": {
         "title": "New purchase order",
@@ -6243,7 +6248,8 @@
         "voided": "voided",
         "loadMore": "Load more",
         "unknownSupplier": "Unknown supplier",
-        "unknownWarehouse": "Unknown warehouse"
+        "unknownWarehouse": "Unknown warehouse",
+        "percent": "{percent} %"
       },
       "receive": {
         "title": "Receive {number}",

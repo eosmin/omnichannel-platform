@@ -185,6 +185,10 @@ describe('the supplier form', () => {
       paymentTermsDays: 45
     })
     expect(updateSupplierSchema.safeParse(changes).success).toBe(true)
+    // Switching a supplier off or on is a change of its own
+    const off = updateSupplierInputOf(supplier, { ...draft, active: false })
+    expect(off).toEqual({ active: false })
+    expect(updateSupplierSchema.safeParse(off).success).toBe(true)
     expect(updateSupplierSchema.safeParse({}).success).toBe(false)
   })
 })

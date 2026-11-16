@@ -200,6 +200,8 @@ function PurchaseOrder(): ReactElement {
       </div>
       {has(OrderActions.EDIT) ? (
         <OrderLinesEditor
+          // Saving makes new line ids: the editor starts again from what was saved, with the names of the new lines
+          key={view.lines.map(line => line.id).join(',')}
           order={view}
           labels={labels}
           taxRates={rates}
@@ -227,7 +229,9 @@ function PurchaseOrder(): ReactElement {
                     tax:
                       line.taxRateId === null
                         ? t('noTax')
-                        : `${percentOfBps(rateOf.get(line.taxRateId)?.rateBps ?? 0)} %`
+                        : t('percent', {
+                            percent: percentOfBps(rateOf.get(line.taxRateId)?.rateBps ?? 0)
+                          })
                   })}
                 </span>
               </li>
@@ -388,7 +392,10 @@ function CloseOrCancelDialog({
   onSubmit: (kind: 'close' | 'cancel', reason: string) => Promise<void>
 }): ReactElement {
   const t = useTranslations('finance.purchases.closeOrder')
-  const which = kind ?? 'close'
+  // The words of the last one asked stay while the box fades out
+  const [last, setLast] = useState<'close' | 'cancel'>('close')
+  if (kind !== null && kind !== last) setLast(kind)
+  const which = kind ?? last
   return (
     <ReasonDialog
       open={kind !== null}

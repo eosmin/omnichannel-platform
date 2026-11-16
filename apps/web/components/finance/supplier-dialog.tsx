@@ -227,6 +227,21 @@ function SupplierForm({
           ))}
         </SelectField>
       )}
+      {supplier === null ? null : (
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={draft.active}
+            disabled={pending}
+            onChange={event => set({ active: event.target.checked })}
+          />
+          <span>
+            {t('fields.active')}
+            <span className="text-muted-foreground block text-xs">{t('fields.activeHint')}</span>
+          </span>
+        </label>
+      )}
       {refusal === null ? null : (
         <p role="alert" className="text-destructive text-sm">
           {refusal}

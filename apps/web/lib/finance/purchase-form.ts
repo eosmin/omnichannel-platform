@@ -62,6 +62,7 @@ export interface SupplierDraft {
   phone: string
   paymentTermsDays: string
   defaultPayableAccountId: string
+  active: boolean
 }
 
 export const SupplierFields = {
@@ -81,7 +82,8 @@ export const emptySupplierDraft = (): SupplierDraft => ({
   email: '',
   phone: '',
   paymentTermsDays: '0',
-  defaultPayableAccountId: ''
+  defaultPayableAccountId: '',
+  active: true
 })
 
 export const supplierDraftOf = (supplier: SupplierView): SupplierDraft => ({
@@ -91,7 +93,8 @@ export const supplierDraftOf = (supplier: SupplierView): SupplierDraft => ({
   email: supplier.email ?? '',
   phone: supplier.phone ?? '',
   paymentTermsDays: String(supplier.paymentTermsDays),
-  defaultPayableAccountId: supplier.defaultPayableAccountId ?? ''
+  defaultPayableAccountId: supplier.defaultPayableAccountId ?? '',
+  active: supplier.active
 })
 
 export function supplierProblem(draft: SupplierDraft): SupplierField | null {
@@ -171,6 +174,7 @@ export function updateSupplierInputOf(
   ) {
     changes.defaultPayableAccountId = draft.defaultPayableAccountId
   }
+  if (draft.active !== supplier.active) changes.active = draft.active
   return changes
 }
 

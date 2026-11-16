@@ -14,7 +14,7 @@ import {
 } from 'react'
 
 import type { FinanceTaxRateView, PurchaseOrderView } from '@platform/api-client'
-import { TaxRounding } from '@platform/core/domain'
+import { PurchaseLimits, TaxRounding } from '@platform/core/domain'
 
 import { moneyText, percentOfBps } from '../../lib/finance/money'
 import {
@@ -124,6 +124,10 @@ export function OrderLinesEditor({
     edit(current => current.map(line => (line.key === key ? { ...line, ...change } : line)))
 
   const add = (item: PickedItem): void => {
+    if (lines.length >= PurchaseLimits.MAX_LINES_PER_ORDER) {
+      setRefusal(t('tooManyLines', { max: PurchaseLimits.MAX_LINES_PER_ORDER }))
+      return
+    }
     counter.current += 1
     const key = `new-${String(counter.current)}`
     edit(current => [
@@ -211,7 +215,7 @@ export function OrderLinesEditor({
                         .filter(rate => rate.active || rate.id === line.taxRateId)
                         .map(rate => (
                           <option key={rate.id} value={rate.id}>
-                            {rate.name} · {percentOfBps(rate.rateBps)} %
+                            {rate.name} · {t('percent', { percent: percentOfBps(rate.rateBps) })}
                           </option>
                         ))}
                     </LineSelect>
@@ -261,7 +265,7 @@ function LineBox({
   problem: string | null
   onChange: (value: string) => void
 }): ReactElement {
-  const id = `${label}-${useId()}`
+  const id = useId()
   return (
     <div className="grid gap-1.5">
       <Label htmlFor={id}>{label}</Label>
@@ -292,7 +296,7 @@ function LineSelect({
   onChange: (value: string) => void
   children: ReactNode
 }): ReactElement {
-  const id = `${label}-${useId()}`
+  const id = useId()
   return (
     <div className="grid gap-1.5">
       <Label htmlFor={id}>{label}</Label>

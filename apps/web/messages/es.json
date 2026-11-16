@@ -6091,7 +6091,9 @@
           "paymentTermsHint": "Días entre recibir la mercadería y el día de vencimiento de la factura. 0 es pago al recibir.",
           "payableAccount": "Cuenta de lo que se le debe",
           "payableAccountHint": "Una cuenta de pasivo. No puede cambiar cuando el proveedor ya tiene facturas.",
-          "payableAccountDefault": "La de la organización"
+          "payableAccountDefault": "La de la organización",
+          "active": "Activo",
+          "activeHint": "Un proveedor apagado no se ofrece para órdenes nuevas; sus facturas y pagos se quedan."
         },
         "problems": {
           "name": "Escribe el nombre, de hasta 150 caracteres.",
@@ -6127,7 +6129,8 @@
         },
         "cancel": "Cancelar",
         "submit": "Registrar pago",
-        "done": "Pago a {supplier} registrado."
+        "done": "Pago a {supplier} registrado.",
+        "accountsFailed": "No se pudieron leer las cuentas. Cierra esto e intenta de nuevo."
       },
       "voidPayment": {
         "title": "Anular este pago",
@@ -6167,7 +6170,9 @@
         "tax": "Impuesto",
         "total": "Total",
         "taxUnknown": "Al recibir",
-        "save": "Guardar líneas"
+        "save": "Guardar líneas",
+        "percent": "{percent} %",
+        "tooManyLines": "Una orden de compra tiene como máximo {max} líneas."
       },
       "newOrder": {
         "title": "Nueva orden de compra",
@@ -6243,7 +6248,8 @@
         "voided": "anulado",
         "loadMore": "Cargar más",
         "unknownSupplier": "Proveedor desconocido",
-        "unknownWarehouse": "Bodega desconocida"
+        "unknownWarehouse": "Bodega desconocida",
+        "percent": "{percent} %"
       },
       "receive": {
         "title": "Recibir {number}",

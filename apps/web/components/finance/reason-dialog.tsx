@@ -90,7 +90,7 @@ function ReasonForm({
   const run = useDestructiveAction()
   const guard = useSubmitGuard()
   const [reason, setReason] = useState('')
-  const [wrong, setWrong] = useState(false)
+  const [wrong, setWrong] = useState<'required' | 'tooLong' | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
@@ -116,8 +116,12 @@ function ReasonForm({
   const submit = (event: FormEvent): void => {
     event.preventDefault()
     const text = reason.trim()
-    if ((required && text === '') || text.length > FinanceLimits.MEMO_MAX_LENGTH) {
-      setWrong(true)
+    if (text.length > FinanceLimits.MEMO_MAX_LENGTH) {
+      setWrong('tooLong')
+      return
+    }
+    if (required && text === '') {
+      setWrong('required')
       return
     }
     if (action !== undefined && copy.confirm !== undefined) {
@@ -134,10 +138,10 @@ function ReasonForm({
         value={reason}
         maxLength={FinanceLimits.MEMO_MAX_LENGTH}
         disabled={pending}
-        problem={wrong ? t(required ? 'required' : 'tooLong') : null}
+        problem={wrong === null ? null : t(wrong)}
         onChange={value => {
           setReason(value)
-          setWrong(false)
+          setWrong(null)
           setRefusal(null)
         }}
       />
