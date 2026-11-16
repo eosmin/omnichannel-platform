@@ -111,8 +111,8 @@ test.describe('Finance → a sale, its fiscal document and its entry', () => {
     await accepted.click()
     const dialog = page.getByRole('dialog')
     const facts = dialog.getByTestId('fiscal-detail')
-    await expect(facts).toContainText(/\$22\.60\b/)
-    await expect(facts).toContainText(/\$2\.60\b/)
+    await expect(facts).toContainText(/\$22\.60(?!\d)/)
+    await expect(facts).toContainText(/\$2\.60(?!\d)/)
     // A sale to a customer with no fiscal data is a consumer document: no receiver is asked for
     await expect(facts).toContainText('Simulated consumer document')
     await expect(dialog.getByTestId('fiscal-receiver')).toBeVisible()
@@ -144,7 +144,7 @@ test.describe('Finance → a sale, its fiscal document and its entry', () => {
     await form.getByRole('button', { name: finance.statementsCommon.show, exact: true }).click()
     await expect(
       page.getByTestId('finance-income-statement').getByTestId('finance-statement-net-result')
-    ).toContainText(/\$20\.00\b/)
+    ).toContainText(/\$20\.00(?!\d)/)
   })
 
   test('the VAT of the month holds the $2.60 of the sale', async ({ page }) => {
@@ -152,7 +152,7 @@ test.describe('Finance → a sale, its fiscal document and its entry', () => {
     await page.waitForURL(/\/s\/[^/]+\//)
     await page.goto(AppPaths.finance.vat)
     await expect(page.getByRole('heading', { name: finance.vat.title, level: 1 })).toBeVisible()
-    await expect(page.getByTestId('finance-vat')).toContainText(/\$2\.60\b/)
+    await expect(page.getByTestId('finance-vat')).toContainText(/\$2\.60(?!\d)/)
   })
 
   test('the accepted document is voided with its reason and made again', async ({ page }) => {
