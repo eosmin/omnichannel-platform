@@ -7,6 +7,16 @@ export const FINANCE_AREA_PERMISSIONS = [
   ClientPermissions.FINANCE_VIEW
 ] as const satisfies readonly Permission[]
 
+// What else the books give a person to do once the area is open: the pages and the writes of the later steps of 4B.9 add theirs here.
+// They do not open the area (reading the books is `finance:view`); they only weigh in choosing the store the books are asked through.
+const FINANCE_WORKING_PERMISSIONS = [
+  ClientPermissions.FINANCE_MANAGE_ACCOUNTS,
+  ClientPermissions.FINANCE_VIEW_JOURNAL,
+  ClientPermissions.FINANCE_MANAGE_TRANSACTIONS,
+  ClientPermissions.FINANCE_MOVE_MONEY,
+  ClientPermissions.FINANCE_POST_MANUAL
+] as const satisfies readonly Permission[]
+
 export const mayOpenFinance = (can: (permission: Permission) => boolean): boolean =>
   FINANCE_AREA_PERMISSIONS.some(permission => can(permission))
 
@@ -19,8 +29,9 @@ export function bestFinanceMembership<T extends { permissions: readonly string[]
   const opens = (membership: T): boolean =>
     FINANCE_AREA_PERMISSIONS.some(permission => membership.permissions.includes(permission))
   const score = (membership: T): number =>
-    FINANCE_AREA_PERMISSIONS.filter(permission => membership.permissions.includes(permission))
-      .length + (membership.permissions.includes(ClientPermissions.FINANCE_MANAGE_ACCOUNTS) ? 1 : 0)
+    [...FINANCE_AREA_PERMISSIONS, ...FINANCE_WORKING_PERMISSIONS].filter(permission =>
+      membership.permissions.includes(permission)
+    ).length
   let best: T | undefined
   for (const membership of memberships) {
     // A store where the area opens nothing (only the permission to change, not to read) is never the one the books are asked through

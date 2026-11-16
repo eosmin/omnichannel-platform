@@ -1,19 +1,32 @@
 'use client'
 
 import {
+  type InfiniteData,
+  keepPreviousData,
+  useInfiniteQuery,
+  type UseInfiniteQueryResult,
   useMutation,
   type UseMutationResult,
   useQuery,
   useQueryClient,
   type UseQueryResult
 } from '@tanstack/react-query'
+import { useEffect, useRef } from 'react'
 
 import {
+  attachFinanceTransactionDocument,
+  confirmUpload,
   type CreateFinanceAccountInput,
   type CreateFinanceTaxRateInput,
   createFinanceAccount,
   createFinanceTaxRate,
   fetchAllFinanceAccounts,
+  fetchFinanceEntry,
+  fetchFinanceEntryPage,
+  fetchFinanceTransaction,
+  fetchFinanceTransactionDocumentUrls,
+  fetchFinanceTransactionPage,
+  fetchMediaUrls,
   fetchAllFinancePeriods,
   fetchFinanceAccountRoles,
   fetchFinanceBalances,
@@ -25,6 +38,9 @@ import {
   fetchFinanceTaxRates,
   type FinanceAccountView,
   type FinanceBalanceView,
+  type FinanceEntryDetailView,
+  type FinanceEntryFilters,
+  type FinanceEntryPageView,
   type FinancePaymentAccountView,
   type FinancePeriodView,
   type FinancePostingPageView,
@@ -33,9 +49,20 @@ import {
   type FinanceSetupView,
   type FinanceStoreTaxSettingsView,
   type FinanceTaxRateView,
+  type FinanceTransactionFilters,
+  type FinanceTransactionPageView,
+  type FinanceTransactionView,
+  type ManualFinanceEntryInput,
+  type MediaUrlsView,
   mapFinanceAccountRole,
   openFinancePeriod,
+  postManualFinanceEntry,
   QueryKeys,
+  recordFinanceTransaction,
+  type RecordFinanceTransactionInput,
+  replaceFinanceTransaction,
+  requestUploadUrl,
+  reverseFinanceEntry,
   removeFinancePaymentAccount,
   retryFinancePosting,
   setFinanceAccountActive,
@@ -48,10 +75,14 @@ import {
   updateFinanceAccount,
   updateFinanceSettings,
   updateFinanceStoreTaxSettings,
-  updateFinanceTaxRate
+  updateFinanceTaxRate,
+  voidFinanceTransaction
 } from '@platform/api-client'
+import { MediaPurpose } from '@platform/core/storage'
 
 import { apiClient } from '../api'
+import { uploadToUrl } from '../media/upload-to-url'
+import { waitUntilClean } from '../media/wait-until-clean'
 
 // The hooks of the finance screens (Step 4B.9a-1). Reading is for finance:view and `enabled` keeps a page from asking for what its
 // person may not read; every write makes the whole `finance` root stale, because the books belong to the organization and any store
@@ -251,3 +282,158 @@ export const useOpenFinancePeriod = (
 
 export const useRetryFinancePosting = (storeId: string): Write<string, void> =>
   useFinanceWrite(id => retryFinancePosting(apiClient, storeId, id))
+
+// The journal and the transactions (Step 4B.9a-2). Read by `finance:view_journal`; a page is the newest first, and the next one is
+// asked with the cursor of the last. The filters are part of the key, so another filter is another list.
+const keyOfFilters = (
+  filters: Record<string, string | boolean | undefined>
+): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(filters)
+      .filter(([, value]) => value !== undefined && value !== '' && value !== false)
+      .map(([key, value]) => [key, String(value)])
+  )
+
+export function useFinanceEntries(
+  storeId: string,
+  filters: FinanceEntryFilters,
+  enabled: boolean
+): UseInfiniteQueryResult<InfiniteData<FinanceEntryPageView, string | null>> {
+  return useInfiniteQuery({
+    queryKey: QueryKeys.finance.entries(storeId, keyOfFilters({ ...filters })),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) =>
+      fetchFinanceEntryPage(apiClient, storeId, filters, pageParam, signal),
+    getNextPageParam: last => (last.hasMore ? last.nextCursor : undefined),
+    placeholderData: keepPreviousData,
+    enabled
+  })
+}
+
+export function useFinanceEntry(
+  storeId: string,
+  id: string | null
+): UseQueryResult<FinanceEntryDetailView> {
+  return useQuery({
+    queryKey: QueryKeys.finance.entry(storeId, id ?? ''),
+    queryFn: ({ signal }) => fetchFinanceEntry(apiClient, storeId, id ?? '', signal),
+    enabled: id !== null
+  })
+}
+
+export function useFinanceTransactions(
+  storeId: string,
+  filters: FinanceTransactionFilters,
+  enabled: boolean
+): UseInfiniteQueryResult<InfiniteData<FinanceTransactionPageView, string | null>> {
+  return useInfiniteQuery({
+    queryKey: QueryKeys.finance.transactions(storeId, keyOfFilters({ ...filters })),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) =>
+      fetchFinanceTransactionPage(apiClient, storeId, filters, pageParam, signal),
+    getNextPageParam: last => (last.hasMore ? last.nextCursor : undefined),
+    placeholderData: keepPreviousData,
+    enabled
+  })
+}
+
+export function useFinanceTransaction(
+  storeId: string,
+  id: string | null
+): UseQueryResult<FinanceTransactionView> {
+  return useQuery({
+    queryKey: QueryKeys.finance.transaction(storeId, id ?? ''),
+    queryFn: ({ signal }) => fetchFinanceTransaction(apiClient, storeId, id ?? '', signal),
+    enabled: id !== null
+  })
+}
+
+// The signed links of a receipt expire in 15 minutes: they are asked when the transaction is open and read again after 5
+export function useFinanceReceiptUrls(
+  storeId: string,
+  transactionId: string,
+  enabled: boolean
+): UseQueryResult<MediaUrlsView> {
+  return useQuery({
+    queryKey: QueryKeys.finance.transactionDocument(storeId, transactionId),
+    queryFn: ({ signal }) =>
+      fetchFinanceTransactionDocumentUrls(apiClient, storeId, transactionId, signal),
+    staleTime: 5 * 60_000,
+    enabled
+  })
+}
+
+export const usePostManualFinanceEntry = (
+  storeId: string
+): Write<ManualFinanceEntryInput, FinanceEntryDetailView> =>
+  useFinanceWrite(input => postManualFinanceEntry(apiClient, storeId, input))
+
+export const useReverseFinanceEntry = (
+  storeId: string
+): Write<{ id: string; memo: string; entryDate?: string }, FinanceEntryDetailView> =>
+  useFinanceWrite(input =>
+    reverseFinanceEntry(apiClient, storeId, input.id, {
+      memo: input.memo,
+      ...(input.entryDate === undefined ? {} : { entryDate: input.entryDate })
+    })
+  )
+
+export const useRecordFinanceTransaction = (
+  storeId: string
+): Write<RecordFinanceTransactionInput, FinanceTransactionView> =>
+  useFinanceWrite(input => recordFinanceTransaction(apiClient, storeId, input))
+
+export const useVoidFinanceTransaction = (
+  storeId: string
+): Write<{ id: string; reason: string }, FinanceTransactionView> =>
+  useFinanceWrite(input => voidFinanceTransaction(apiClient, storeId, input.id, input.reason))
+
+export const useReplaceFinanceTransaction = (
+  storeId: string
+): Write<
+  { id: string; reason: string; replacement: RecordFinanceTransactionInput },
+  FinanceTransactionView
+> =>
+  useFinanceWrite(input =>
+    replaceFinanceTransaction(apiClient, storeId, input.id, {
+      reason: input.reason,
+      replacement: input.replacement
+    })
+  )
+
+// A receipt for a transaction by the flow of every upload: a signed url, the bytes straight to the bucket, a confirmation with the
+// purpose `finance_document` naming the transaction, the wait for the scan (the api only takes a file that was found clean), and then
+// the receipt is attached. Leaving the page stops the wait; the transaction is already registered, so a failure here leaves it with no
+// receipt and the person tries again from its detail.
+export function useFinanceReceiptUpload(
+  storeId: string
+): Write<{ transactionId: string; file: File }, FinanceTransactionView> {
+  const queryClient = useQueryClient()
+  const controller = useRef<AbortController>(new AbortController())
+  // One signal per mount of the effect: StrictMode mounts, cleans up and mounts again
+  useEffect(() => {
+    const current = new AbortController()
+    controller.current = current
+    return () => current.abort()
+  }, [])
+  return useMutation({
+    mutationFn: async ({ transactionId, file }) => {
+      const info = { filename: file.name, contentType: file.type, fileSizeBytes: file.size }
+      const target = { purpose: MediaPurpose.FINANCE_DOCUMENT, parentId: transactionId } as const
+      const { signal } = controller.current
+      const signed = await requestUploadUrl(apiClient, storeId, info, target)
+      await uploadToUrl(signed.uploadUrl, file, file.type, () => undefined, signal)
+      await confirmUpload(
+        apiClient,
+        storeId,
+        { ...info, mediaId: signed.mediaId, key: signed.key },
+        target
+      )
+      await waitUntilClean(() => fetchMediaUrls(apiClient, storeId, signed.mediaId, signal), {
+        signal
+      })
+      return attachFinanceTransactionDocument(apiClient, storeId, transactionId, signed.mediaId)
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: QueryKeys.finance.root })
+  })
+}

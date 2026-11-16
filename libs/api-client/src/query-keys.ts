@@ -340,7 +340,10 @@ export const QueryKeys = {
     postings: (storeId: string) => ['finance', storeId, 'postings'] as const,
     transactions: (storeId: string, filters: Record<string, string>) =>
       ['finance', storeId, 'transactions', filters] as const,
-    transaction: (storeId: string, id: string) => ['finance', storeId, 'transactions', id] as const
+    transaction: (storeId: string, id: string) => ['finance', storeId, 'transactions', id] as const,
+    // The signed links of the receipt of a transaction: they expire, so they are asked when the file is opened
+    transactionDocument: (storeId: string, id: string) =>
+      ['finance', storeId, 'transactions', id, 'document'] as const
   },
   // The person's own account: no store in the key, because it belongs to the person
   account: {

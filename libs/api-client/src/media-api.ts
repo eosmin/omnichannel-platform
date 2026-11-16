@@ -23,7 +23,7 @@ export type ConfirmedMediaView = z.infer<typeof confirmedMediaSchema>
 
 // The signed links of a clean file. They expire (15 minutes), so they are asked when the file is
 // drawn and never stored. A variant is null when the file has none (everything but an image).
-const mediaUrlsSchema = z.object({
+export const mediaUrlsSchema = z.object({
   url: z.url(),
   filename: z.string(),
   contentType: z.string(),

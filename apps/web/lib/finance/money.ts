@@ -1,3 +1,5 @@
+import { FinanceLimits } from '@platform/core/domain'
+
 // The money of the books is whole cents of US dollars and never a float (TDD_18 §2). A sum that can pass the 32 bits of a line
 // arrives as a string of digits, so the text of an amount is made from the digits and not from a number.
 
@@ -40,4 +42,14 @@ export function bpsOfPercentText(text: string): number | null {
   const whole = Number(match[1])
   const rest = Number((match[2] ?? '').padEnd(2, '0'))
   return whole * 100 + rest
+}
+
+// What a person types as an amount, in whole cents and by the digits (never through a float): "12" -> 1200, "12.5" -> 1250,
+// "12,50" -> 1250, "0.05" -> 5. More than two decimals, a sign, a thousands separator, a letter, zero or more than a line of the
+// books can hold is not an amount (null).
+export function centsOfDecimalText(text: string): number | null {
+  const match = /^(\d{1,10})(?:[.,](\d{1,2}))?$/.exec(text.trim())
+  if (match === null) return null
+  const cents = Number(match[1]) * 100 + Number((match[2] ?? '').padEnd(2, '0'))
+  return cents >= 1 && cents <= FinanceLimits.MAX_LINE_CENTS ? cents : null
 }

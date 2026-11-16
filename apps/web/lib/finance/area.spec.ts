@@ -30,6 +30,15 @@ describe('the finance area', () => {
     }
   })
 
+  it('shows the journal and the transactions to who may read the journal, and only to them', () => {
+    expect(
+      visibleEntries(
+        FINANCE_SETTINGS_ENTRIES,
+        holding(Permissions.FINANCE_VIEW, Permissions.FINANCE_VIEW_JOURNAL)
+      ).map(entry => entry.id)
+    ).toEqual(['accounts', 'journal', 'transactions', 'taxes', 'periods', 'settings'])
+  })
+
   it('shows the pages of the books to who holds finance:view, and none to who holds only another permission', () => {
     expect(
       visibleEntries(FINANCE_SETTINGS_ENTRIES, holding(Permissions.FINANCE_VIEW)).map(
@@ -55,6 +64,19 @@ describe('bestFinanceMembership', () => {
       store('manager', Permissions.FINANCE_VIEW, Permissions.FINANCE_MANAGE_ACCOUNTS)
     ])
     expect(best?.id).toBe('manager')
+  })
+
+  it('counts the journal and the registering of transactions among what a store gives', () => {
+    const best = bestFinanceMembership([
+      store('manager', Permissions.FINANCE_VIEW, Permissions.FINANCE_MANAGE_ACCOUNTS),
+      store(
+        'bookkeeper',
+        Permissions.FINANCE_VIEW,
+        Permissions.FINANCE_VIEW_JOURNAL,
+        Permissions.FINANCE_MANAGE_TRANSACTIONS
+      )
+    ])
+    expect(best?.id).toBe('bookkeeper')
   })
 
   it('never takes a store where the person can change the books but not read them', () => {

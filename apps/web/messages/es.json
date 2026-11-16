@@ -2940,7 +2940,9 @@
         "accounts": "Cuentas",
         "taxes": "Impuestos",
         "periods": "Periodos",
-        "settings": "Ajustes"
+        "settings": "Ajustes",
+        "journal": "Libro diario",
+        "transactions": "Movimientos"
       }
     },
     "store": {
@@ -6026,6 +6028,279 @@
         "pricesIncludeTax": "Los precios de esta tienda ya incluyen el impuesto",
         "pricesIncludeTaxHint": "Solo cambia cómo se separa el impuesto del precio de lo que se venda desde ahora.",
         "saved": "Preferencia guardada."
+      }
+    },
+    "journal": {
+      "title": "Libro diario",
+      "description": "Todos los asientos de los libros, del más reciente al más antiguo. Un asiento nunca se edita ni se borra: un error se corrige con otro asiento que lo revierte.",
+      "new": "Escribir un asiento",
+      "empty": "Aún no hay asientos.",
+      "emptyFiltered": "Ningún asiento coincide con estos filtros.",
+      "loadMore": "Mostrar más asientos",
+      "loadFailed": "No se pudieron leer los asientos.",
+      "filters": {
+        "label": "Filtrar el libro diario",
+        "type": "Tipo",
+        "allTypes": "Todos los tipos",
+        "account": "Cuenta",
+        "allAccounts": "Todas las cuentas",
+        "from": "Desde",
+        "to": "Hasta",
+        "clear": "Quitar filtros"
+      },
+      "row": {
+        "number": "Asiento {number}",
+        "reversed": "Revertido",
+        "reversal": "Reversión",
+        "automatic": "Automático",
+        "noMemo": "Sin descripción"
+      }
+    },
+    "entryTypes": {
+      "manual": "Asiento manual",
+      "opening_balance": "Saldo de apertura",
+      "expense": "Gasto",
+      "income": "Ingreso",
+      "transfer": "Transferencia",
+      "sale": "Venta",
+      "sale_shipment": "Envío de una venta",
+      "sale_return": "Devolución de una venta",
+      "cod_remittance": "Remesa de contra entrega",
+      "cod_write_off": "Baja de contra entrega",
+      "purchase_receipt": "Compra recibida",
+      "supplier_payment": "Pago a proveedor",
+      "inventory_adjustment": "Ajuste de inventario",
+      "reversal": "Reversión"
+    },
+    "entry": {
+      "title": "Asiento {number}",
+      "description": "Con fecha {date}.",
+      "close": "Cerrar",
+      "fields": {
+        "date": "Fecha",
+        "type": "Tipo",
+        "memo": "Descripción",
+        "origin": "Origen",
+        "source": "Origen del movimiento",
+        "createdAt": "Registrado"
+      },
+      "origins": {
+        "user": "Una persona",
+        "system": "Registrado automáticamente"
+      },
+      "sources": {
+        "order": "Un pedido",
+        "shipment": "Un envío",
+        "remittance": "Una remesa",
+        "return": "Una devolución",
+        "inventory_movement": "Un movimiento de inventario",
+        "purchase_receipt": "Una compra recibida",
+        "supplier_payment": "Un pago a proveedor",
+        "finance_transaction": "Un gasto, ingreso o transferencia",
+        "manual": "Un asiento escrito a mano"
+      },
+      "lines": {
+        "label": "Líneas del asiento",
+        "account": "Cuenta",
+        "debit": "Debe",
+        "credit": "Haber",
+        "memo": "Nota",
+        "total": "Total"
+      },
+      "reversed": "Este asiento fue revertido por otro asiento.",
+      "reverses": "Este asiento revierte a otro asiento.",
+      "belongsToTransaction": "Este asiento pertenece a un gasto, ingreso o transferencia. Anúlalo desde Movimientos para revertirlo.",
+      "reverse": {
+        "action": "Revertir este asiento",
+        "title": "Revertir el asiento {number}",
+        "description": "Escribe un asiento nuevo con el debe y el haber invertidos. El asiento queda en el libro diario para siempre.",
+        "formLabel": "Revertir un asiento",
+        "memo": "Motivo",
+        "date": "Fecha de la reversión (opcional)",
+        "dateHint": "Déjala vacía para revertirlo en la fecha del asiento. Un mes cerrado se revierte en uno abierto.",
+        "submit": "Revertir",
+        "cancel": "Cancelar",
+        "confirmTitle": "¿Revertir el asiento {number}?",
+        "confirmDescription": "Una reversión no se puede deshacer ni borrar. Queda en el libro diario junto al asiento.",
+        "confirm": "Revertir asiento",
+        "done": "Asiento revertido.",
+        "problems": {
+          "memo": "Escribe el motivo de la reversión.",
+          "date": "Escribe una fecha que exista, como año-mes-día."
+        }
+      },
+      "titleLoading": "Asiento",
+      "loading": "Cargando el asiento…"
+    },
+    "manual": {
+      "title": "Escribir un asiento",
+      "description": "Un asiento escrito a mano necesita al menos dos líneas y el debe tiene que ser igual al haber. No se puede editar después, solo revertir.",
+      "formLabel": "Asiento a mano",
+      "date": "Fecha",
+      "type": "Tipo de asiento",
+      "memo": "Descripción",
+      "memoHint": "Para qué es este asiento: lo lee el contador.",
+      "types": {
+        "manual": "Asiento manual",
+        "opening_balance": "Saldo de apertura"
+      },
+      "lines": "Líneas",
+      "line": "Línea {number}",
+      "account": "Cuenta",
+      "pickAccount": "Elige una cuenta",
+      "debit": "Debe",
+      "credit": "Haber",
+      "lineMemo": "Nota (opcional)",
+      "addLine": "Agregar una línea",
+      "removeLine": "Quitar la línea {number}",
+      "totals": {
+        "debit": "Debe",
+        "credit": "Haber",
+        "difference": "Diferencia",
+        "balanced": "El asiento cuadra."
+      },
+      "problems": {
+        "date": "Escribe una fecha que exista, como año-mes-día.",
+        "memo": "Escribe para qué es este asiento.",
+        "lines": "Un asiento necesita al menos dos líneas.",
+        "line": "Línea {number}: elige una cuenta y escribe un monto en un solo lado, con a lo más dos decimales.",
+        "balance": "El debe y el haber no son iguales."
+      },
+      "submit": "Registrar asiento",
+      "cancel": "Cancelar",
+      "confirmTitle": "¿Registrar este asiento?",
+      "confirmDescription": "Un asiento escrito a mano no se puede editar ni borrar después, solo revertir con otro asiento.",
+      "confirm": "Registrar asiento",
+      "done": "Asiento {number} registrado."
+    },
+    "transactions": {
+      "title": "Movimientos",
+      "description": "Los gastos, ingresos y transferencias entre cuentas que se registran a mano. Un error se anula o se reemplaza, nunca se edita.",
+      "new": "Registrar un movimiento",
+      "empty": "Aún no hay movimientos.",
+      "emptyFiltered": "Ningún movimiento coincide con estos filtros.",
+      "loadMore": "Mostrar más movimientos",
+      "loadFailed": "No se pudieron leer los movimientos.",
+      "kinds": {
+        "expense": "Gasto",
+        "income": "Ingreso",
+        "transfer": "Transferencia"
+      },
+      "filters": {
+        "label": "Filtrar los movimientos",
+        "kind": "Tipo",
+        "allKinds": "Todos los tipos",
+        "account": "Cuenta",
+        "allAccounts": "Todas las cuentas",
+        "from": "Desde",
+        "to": "Hasta",
+        "includeVoided": "Mostrar los movimientos anulados",
+        "clear": "Quitar filtros"
+      },
+      "row": {
+        "voided": "Anulado",
+        "replaces": "Reemplaza a otro",
+        "noMemo": "Sin descripción",
+        "receipt": "Con comprobante"
+      },
+      "detail": {
+        "title": "Movimiento",
+        "description": "{kind} con fecha {date}.",
+        "close": "Cerrar",
+        "amount": "Monto",
+        "tax": "Impuesto incluido",
+        "date": "Fecha",
+        "kind": "Tipo",
+        "from": "Desde",
+        "to": "Hacia",
+        "category": "Categoría",
+        "document": "Número de documento",
+        "memo": "Descripción",
+        "status": "Estado",
+        "active": "En los libros",
+        "voided": "Anulado: se registró un asiento de reversión.",
+        "replaces": "Este movimiento reemplaza a otro que se anuló.",
+        "entry": "Asiento en el libro diario",
+        "entryNumber": "Asiento {number}",
+        "loadFailed": "No se pudo leer el movimiento.",
+        "loading": "Cargando el movimiento…"
+      },
+      "form": {
+        "formLabel": "Movimiento",
+        "createTitle": "Registrar un movimiento",
+        "createDescription": "Lo que se pagó o se recibió, con el impuesto incluido. El impuesto se calcula con la tasa.",
+        "replaceTitle": "Reemplazar este movimiento",
+        "replaceDescription": "Anula este movimiento y registra el que escribas aquí, en un solo paso.",
+        "kind": "Tipo",
+        "date": "Fecha",
+        "amount": "Monto (US$)",
+        "amountHint": "Lo que se pagó o se recibió, con el impuesto incluido. Por ejemplo 12.50.",
+        "expenseFrom": "Pagado desde",
+        "incomeTo": "Recibido en",
+        "transferFrom": "Cuenta de origen",
+        "transferTo": "Cuenta de destino",
+        "pickAccount": "Elige una cuenta",
+        "expenseCategory": "Cuenta de gasto",
+        "incomeCategory": "Cuenta de ingreso",
+        "pickCategory": "Elige la cuenta donde se clasifica",
+        "taxRate": "Tasa de impuesto",
+        "noTax": "Sin impuesto",
+        "taxCreditable": "El impuesto se puede acreditar",
+        "taxCreditableHint": "Solo con un documento válido del proveedor. Si no se acredita, el impuesto se registra como parte del costo.",
+        "taxPreview": "Impuesto dentro del monto: {amount}",
+        "documentNumber": "Número de documento (opcional)",
+        "memo": "Descripción (opcional)",
+        "reason": "Motivo del reemplazo",
+        "problems": {
+          "date": "Escribe una fecha que exista, como año-mes-día, y a lo más un día adelante.",
+          "amount": "Escribe un monto mayor que cero, con a lo más dos decimales.",
+          "from": "Elige la cuenta de la que sale el dinero.",
+          "to": "Elige la cuenta a la que entra el dinero, distinta de la de origen.",
+          "category": "Elige la cuenta donde se clasifica.",
+          "tax": "Elige una tasa de impuesto cuando el impuesto se puede acreditar; el impuesto no puede ser todo el monto.",
+          "documentNumber": "El número de documento es demasiado largo.",
+          "memo": "La descripción es demasiado larga.",
+          "reason": "Escribe el motivo."
+        },
+        "submit": "Registrar",
+        "submitReplace": "Reemplazar",
+        "cancel": "Cancelar",
+        "created": "Movimiento registrado.",
+        "replaced": "Movimiento reemplazado.",
+        "receiptNotSaved": "El movimiento se registró, pero no se pudo adjuntar su comprobante. Abre el movimiento para intentarlo de nuevo.",
+        "confirmReplaceTitle": "¿Reemplazar este movimiento?",
+        "confirmReplaceDescription": "El movimiento se anula con un asiento de reversión que queda en el libro diario para siempre, y se registra el nuevo.",
+        "confirmReplace": "Reemplazar movimiento"
+      },
+      "void": {
+        "action": "Anular",
+        "title": "Anular este movimiento",
+        "description": "Registra un asiento de reversión. El movimiento y su asiento quedan en los libros, marcados como anulados.",
+        "reason": "Motivo",
+        "submit": "Anular movimiento",
+        "cancel": "Cancelar",
+        "confirmTitle": "¿Anular este movimiento?",
+        "confirmDescription": "Un movimiento anulado no se vuelve a anular, y el asiento de reversión queda en el libro diario para siempre.",
+        "confirm": "Anular movimiento",
+        "done": "Movimiento anulado.",
+        "problems": {
+          "reason": "Escribe el motivo de la anulación."
+        }
+      },
+      "replace": {
+        "action": "Reemplazar"
+      },
+      "receipt": {
+        "title": "Comprobante",
+        "none": "No hay comprobante adjunto.",
+        "view": "Abrir el comprobante",
+        "choose": "Adjuntar un archivo",
+        "checking": "Revisando el archivo…",
+        "remove": "Quitar {name}",
+        "hint": "Una foto o un PDF de hasta {size} MB. Se revisa antes de adjuntarse y no se puede reemplazar después.",
+        "attached": "Comprobante adjunto.",
+        "loadFailed": "No se pudo abrir el comprobante.",
+        "pending": "Abriendo el comprobante…"
       }
     }
   }

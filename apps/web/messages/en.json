@@ -2940,7 +2940,9 @@
         "accounts": "Accounts",
         "taxes": "Taxes",
         "periods": "Periods",
-        "settings": "Settings"
+        "settings": "Settings",
+        "journal": "Journal",
+        "transactions": "Transactions"
       }
     },
     "store": {
@@ -6026,6 +6028,279 @@
         "pricesIncludeTax": "The prices of this store already include the tax",
         "pricesIncludeTaxHint": "It only changes how the tax is separated from the price of what is sold from now on.",
         "saved": "Preference saved."
+      }
+    },
+    "journal": {
+      "title": "Journal",
+      "description": "Every entry of the books, the newest first. An entry is never edited or erased: a mistake is reversed by another entry.",
+      "new": "Write an entry",
+      "empty": "There are no entries yet.",
+      "emptyFiltered": "No entry matches these filters.",
+      "loadMore": "Show more entries",
+      "loadFailed": "The entries could not be read.",
+      "filters": {
+        "label": "Filter the journal",
+        "type": "Type",
+        "allTypes": "All types",
+        "account": "Account",
+        "allAccounts": "All accounts",
+        "from": "From",
+        "to": "To",
+        "clear": "Clear filters"
+      },
+      "row": {
+        "number": "Entry {number}",
+        "reversed": "Reversed",
+        "reversal": "Reversal",
+        "automatic": "Automatic",
+        "noMemo": "No description"
+      }
+    },
+    "entryTypes": {
+      "manual": "Manual entry",
+      "opening_balance": "Opening balance",
+      "expense": "Expense",
+      "income": "Income",
+      "transfer": "Transfer",
+      "sale": "Sale",
+      "sale_shipment": "Shipping of a sale",
+      "sale_return": "Return of a sale",
+      "cod_remittance": "Cash on delivery remittance",
+      "cod_write_off": "Cash on delivery write-off",
+      "purchase_receipt": "Purchase received",
+      "supplier_payment": "Supplier payment",
+      "inventory_adjustment": "Inventory adjustment",
+      "reversal": "Reversal"
+    },
+    "entry": {
+      "title": "Entry {number}",
+      "description": "Dated {date}.",
+      "close": "Close",
+      "fields": {
+        "date": "Date",
+        "type": "Type",
+        "memo": "Description",
+        "origin": "Origin",
+        "source": "Source",
+        "createdAt": "Registered"
+      },
+      "origins": {
+        "user": "A person",
+        "system": "Posted automatically"
+      },
+      "sources": {
+        "order": "An order",
+        "shipment": "A shipment",
+        "remittance": "A remittance",
+        "return": "A return",
+        "inventory_movement": "A stock movement",
+        "purchase_receipt": "A purchase received",
+        "supplier_payment": "A supplier payment",
+        "finance_transaction": "An expense, income or transfer",
+        "manual": "An entry written by hand"
+      },
+      "lines": {
+        "label": "Lines of the entry",
+        "account": "Account",
+        "debit": "Debit",
+        "credit": "Credit",
+        "memo": "Note",
+        "total": "Total"
+      },
+      "reversed": "This entry was reversed by another entry.",
+      "reverses": "This entry reverses another entry.",
+      "belongsToTransaction": "This entry belongs to an expense, income or transfer. Void it from Transactions to reverse it.",
+      "reverse": {
+        "action": "Reverse this entry",
+        "title": "Reverse entry {number}",
+        "description": "Writes a new entry with the debits and credits swapped. The entry stays in the journal for good.",
+        "formLabel": "Reverse an entry",
+        "memo": "Reason",
+        "date": "Date of the reversal (optional)",
+        "dateHint": "Leave it empty to reverse it on the date of the entry. A closed month is reversed in an open one.",
+        "submit": "Reverse",
+        "cancel": "Cancel",
+        "confirmTitle": "Reverse entry {number}?",
+        "confirmDescription": "A reversal cannot be undone or erased. It stays in the journal next to the entry.",
+        "confirm": "Reverse entry",
+        "done": "Entry reversed.",
+        "problems": {
+          "memo": "Write the reason for the reversal.",
+          "date": "Write a date that exists, as year-month-day."
+        }
+      },
+      "titleLoading": "Entry",
+      "loading": "Loading the entry…"
+    },
+    "manual": {
+      "title": "Write an entry",
+      "description": "An entry written by hand needs at least two lines and the debits must equal the credits. It cannot be edited afterwards, only reversed.",
+      "formLabel": "Entry by hand",
+      "date": "Date",
+      "type": "Kind of entry",
+      "memo": "Description",
+      "memoHint": "What this entry is for: the accountant reads it.",
+      "types": {
+        "manual": "Manual entry",
+        "opening_balance": "Opening balance"
+      },
+      "lines": "Lines",
+      "line": "Line {number}",
+      "account": "Account",
+      "pickAccount": "Pick an account",
+      "debit": "Debit",
+      "credit": "Credit",
+      "lineMemo": "Note (optional)",
+      "addLine": "Add a line",
+      "removeLine": "Remove line {number}",
+      "totals": {
+        "debit": "Debits",
+        "credit": "Credits",
+        "difference": "Difference",
+        "balanced": "The entry balances."
+      },
+      "problems": {
+        "date": "Write a date that exists, as year-month-day.",
+        "memo": "Write what this entry is for.",
+        "lines": "An entry needs at least two lines.",
+        "line": "Line {number}: pick an account and write an amount on only one side, with at most two decimals.",
+        "balance": "The debits and the credits are not equal."
+      },
+      "submit": "Post entry",
+      "cancel": "Cancel",
+      "confirmTitle": "Post this entry?",
+      "confirmDescription": "An entry written by hand cannot be edited or erased afterwards, only reversed by another entry.",
+      "confirm": "Post entry",
+      "done": "Entry {number} posted."
+    },
+    "transactions": {
+      "title": "Transactions",
+      "description": "The expenses, incomes and transfers between accounts that are registered by hand. A mistake is voided or replaced, never edited.",
+      "new": "Register a transaction",
+      "empty": "There are no transactions yet.",
+      "emptyFiltered": "No transaction matches these filters.",
+      "loadMore": "Show more transactions",
+      "loadFailed": "The transactions could not be read.",
+      "kinds": {
+        "expense": "Expense",
+        "income": "Income",
+        "transfer": "Transfer"
+      },
+      "filters": {
+        "label": "Filter the transactions",
+        "kind": "Kind",
+        "allKinds": "All kinds",
+        "account": "Account",
+        "allAccounts": "All accounts",
+        "from": "From",
+        "to": "To",
+        "includeVoided": "Show voided transactions",
+        "clear": "Clear filters"
+      },
+      "row": {
+        "voided": "Voided",
+        "replaces": "Replaces another",
+        "noMemo": "No description",
+        "receipt": "Receipt attached"
+      },
+      "detail": {
+        "title": "Transaction",
+        "description": "{kind} dated {date}.",
+        "close": "Close",
+        "amount": "Amount",
+        "tax": "Tax included",
+        "date": "Date",
+        "kind": "Kind",
+        "from": "From",
+        "to": "To",
+        "category": "Category",
+        "document": "Document number",
+        "memo": "Description",
+        "status": "Status",
+        "active": "In the books",
+        "voided": "Voided: a reversing entry was posted.",
+        "replaces": "This transaction replaces another one that was voided.",
+        "entry": "Entry in the journal",
+        "entryNumber": "Entry {number}",
+        "loadFailed": "The transaction could not be read.",
+        "loading": "Loading the transaction…"
+      },
+      "form": {
+        "formLabel": "Transaction",
+        "createTitle": "Register a transaction",
+        "createDescription": "What was paid or received, with the tax included. The tax is worked out from the rate.",
+        "replaceTitle": "Replace this transaction",
+        "replaceDescription": "Voids this transaction and registers the one you write here, in one step.",
+        "kind": "Kind",
+        "date": "Date",
+        "amount": "Amount (US$)",
+        "amountHint": "What was paid or received, tax included. For example 12.50.",
+        "expenseFrom": "Paid from",
+        "incomeTo": "Received in",
+        "transferFrom": "From account",
+        "transferTo": "To account",
+        "pickAccount": "Pick an account",
+        "expenseCategory": "Expense account",
+        "incomeCategory": "Income account",
+        "pickCategory": "Pick the account it is classified under",
+        "taxRate": "Tax rate",
+        "noTax": "No tax",
+        "taxCreditable": "The tax can be credited",
+        "taxCreditableHint": "Only with a valid document of the supplier. If it is not credited, the tax is booked as part of the cost.",
+        "taxPreview": "Tax inside the amount: {amount}",
+        "documentNumber": "Document number (optional)",
+        "memo": "Description (optional)",
+        "reason": "Reason for replacing it",
+        "problems": {
+          "date": "Write a date that exists, as year-month-day, and no more than a day ahead.",
+          "amount": "Write an amount greater than zero, with at most two decimals.",
+          "from": "Pick the account the money comes from.",
+          "to": "Pick the account the money goes to, different from the one it comes from.",
+          "category": "Pick the account it is classified under.",
+          "tax": "Pick a tax rate when the tax can be credited; the tax cannot be the whole amount.",
+          "documentNumber": "The document number is too long.",
+          "memo": "The description is too long.",
+          "reason": "Write the reason."
+        },
+        "submit": "Register",
+        "submitReplace": "Replace",
+        "cancel": "Cancel",
+        "created": "Transaction registered.",
+        "replaced": "Transaction replaced.",
+        "receiptNotSaved": "The transaction was registered, but its receipt could not be attached. Open the transaction to try again.",
+        "confirmReplaceTitle": "Replace this transaction?",
+        "confirmReplaceDescription": "The transaction is voided with a reversing entry that stays in the journal for good, and the new one is registered.",
+        "confirmReplace": "Replace transaction"
+      },
+      "void": {
+        "action": "Void",
+        "title": "Void this transaction",
+        "description": "Posts a reversing entry. The transaction and its entry stay in the books, marked as voided.",
+        "reason": "Reason",
+        "submit": "Void transaction",
+        "cancel": "Cancel",
+        "confirmTitle": "Void this transaction?",
+        "confirmDescription": "A voided transaction is not voided again, and the reversing entry stays in the journal for good.",
+        "confirm": "Void transaction",
+        "done": "Transaction voided.",
+        "problems": {
+          "reason": "Write the reason for voiding it."
+        }
+      },
+      "replace": {
+        "action": "Replace"
+      },
+      "receipt": {
+        "title": "Receipt",
+        "none": "No receipt is attached.",
+        "view": "Open the receipt",
+        "choose": "Attach a file",
+        "checking": "Checking the file…",
+        "remove": "Remove {name}",
+        "hint": "A photo or a PDF of up to {size} MB. It is checked before it is attached, and it cannot be replaced later.",
+        "attached": "Receipt attached.",
+        "loadFailed": "The receipt could not be opened.",
+        "pending": "Opening the receipt…"
       }
     }
   }

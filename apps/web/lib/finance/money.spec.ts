@@ -1,4 +1,10 @@
-import { bpsOfPercentText, decimalOfCents, moneyText, percentOfBps } from './money'
+import {
+  bpsOfPercentText,
+  centsOfDecimalText,
+  decimalOfCents,
+  moneyText,
+  percentOfBps
+} from './money'
 
 describe('decimalOfCents', () => {
   it.each([
@@ -66,4 +72,24 @@ describe('rates in basis points', () => {
       expect(bpsOfPercentText(percentOfBps(bps))).toBe(bps)
     }
   })
+})
+
+describe('centsOfDecimalText', () => {
+  it.each([
+    ['12', 1200],
+    ['12.5', 1250],
+    ['12,50', 1250],
+    ['0.05', 5],
+    ['  7.00 ', 700],
+    ['21474836.47', 2147483647]
+  ])('reads %s as %i cents', (text, cents) => {
+    expect(centsOfDecimalText(text)).toBe(cents)
+  })
+
+  it.each(['', '0', '0.00', '-5', '+5', '1.234', '1,000.00', '12 USD', '1e3', '.5', '21474836.48'])(
+    'is not an amount: "%s"',
+    text => {
+      expect(centsOfDecimalText(text)).toBeNull()
+    }
+  )
 })

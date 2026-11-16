@@ -80,6 +80,8 @@ export const AppPaths = {
   finance: {
     home: '/finance',
     accounts: '/finance/accounts',
+    journal: '/finance/journal',
+    transactions: '/finance/transactions',
     taxes: '/finance/taxes',
     settings: '/finance/settings',
     periods: '/finance/periods'
