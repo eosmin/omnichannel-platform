@@ -50,6 +50,7 @@ import { ChannelHealthScheduler } from './schedulers/channel-health.scheduler'
 import { DeletedMessagePurgeScheduler } from './schedulers/deleted-message-purge.scheduler'
 import { EmailDigestScheduler } from './schedulers/email-digest.scheduler'
 import { ExpiredExportsScheduler } from './schedulers/expired-exports.scheduler'
+import { FinanceReconcileScheduler } from './schedulers/finance-reconcile.scheduler'
 import { InventoryReconcileScheduler } from './schedulers/inventory-reconcile.scheduler'
 import { LeaderLockService } from './schedulers/leader-lock.service'
 import { OrphanMediaScheduler } from './schedulers/orphan-media.scheduler'
@@ -129,6 +130,7 @@ import { WebhooksWorkerModule } from './webhooks/webhooks.module'
     SnoozeWakeScheduler,
     AutoArchiveScheduler,
     InventoryReconcileScheduler,
+    FinanceReconcileScheduler,
     AnalyticsRollupScheduler,
     ShipmentPollScheduler,
     RemittanceCheckScheduler,

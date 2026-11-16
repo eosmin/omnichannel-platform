@@ -235,6 +235,14 @@ describe('bridgedPayload', () => {
       pluginId: 'acme-pos',
       consecutiveFailures: 20
     },
+    [Events.FINANCE_POSTING_FAILED]: {
+      organizationId: randomUUID(),
+      sourceType: 'order',
+      sourceId: randomUUID(),
+      eventKind: 'sale',
+      reason: 'role_not_mapped',
+      attempts: 2
+    },
     [Events.BULK_LABELS_PROGRESS]: {
       storeId: randomUUID(),
       jobId: randomUUID(),

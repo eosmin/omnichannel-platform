@@ -16,6 +16,12 @@ export const MetricNames = {
   // Inventory (TDD_16 §3)
   INVENTORY_RECONCILIATION_MISMATCHES: 'platform_inventory_reconciliation_mismatches_total',
 
+  // Finance (TDD_18 §3): the sources the sweep found with no entry (a gauge per run), the failures of the books that a person must
+  // fix, and the balances that disagree with their lines (any non-zero value is an incident: nothing fixes itself)
+  FINANCE_UNPOSTED_SOURCES: 'platform_finance_unposted_sources',
+  FINANCE_POSTING_FAILURES: 'platform_finance_posting_failures_total',
+  FINANCE_BALANCE_MISMATCHES: 'platform_finance_balance_mismatches_total',
+
   // Shipping (TDD_17 §3); labels of the carrier errors: carrier, code
   SHIPMENTS_CREATED_TOTAL: 'platform_shipments_created_total',
   SHIPMENT_CARRIER_ERRORS_TOTAL: 'platform_shipment_carrier_errors_total',

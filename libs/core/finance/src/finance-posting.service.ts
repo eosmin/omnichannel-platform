@@ -243,6 +243,21 @@ export class FinancePostingService {
     return result
   }
 
+  // What an event WOULD do now, with nothing written: PENDING when its entry would be posted (it has none yet), FAILED with its reason when
+  // the books cannot post it, and the same answers as `post` for the rest (replayed, nothing to post, before the start). The sweep asks
+  // this before it queues a source, so that what it counts as unposted is exactly what a job would post or fail on. It takes no lock and
+  // records nothing: it never touches a failure row either.
+  async preview(input: PostSourceInput): Promise<PostSourceResult> {
+    return this.prisma.transaction(async tx => {
+      const settings = await tx.financeSettings.findUnique({
+        where: { organizationId: input.organizationId },
+        select: { accountingStartDate: true, lockedThrough: true, recognizeSaleOn: true }
+      })
+      if (settings === null) return this.done(FinancePostingOutcome.NOTHING_TO_POST)
+      return this.decide(tx, input, settings, true)
+    }, POST_TRANSACTION)
+  }
+
   // For a job that ran out of attempts on an error of the infrastructure: the source is put on the list of failures, so that it is not
   // lost in the dead-letter queue where no person looks
   async markUnposted(input: PostSourceInput): Promise<void> {
@@ -268,7 +283,8 @@ export class FinancePostingService {
   private async decide(
     tx: PrismaTransaction,
     input: PostSourceInput,
-    settings: { accountingStartDate: Date; lockedThrough: Date | null; recognizeSaleOn: string }
+    settings: { accountingStartDate: Date; lockedThrough: Date | null; recognizeSaleOn: string },
+    dryRun = false
   ): Promise<PostSourceResult> {
     // A job that pairs an event with a source of another kind has nothing to read: nothing is posted under a wrong key
     if (FinanceEventSource[input.kind] !== input.sourceType) {
@@ -280,10 +296,15 @@ export class FinancePostingService {
     if (postedId !== null) return this.done(FinancePostingOutcome.REPLAYED, postedId)
     // E6 is not a new entry built from rows: it reverses the one E5 wrote
     if (input.kind === FinanceEventKind.REMITTANCE_VOID) {
-      return this.reverseRemittance(tx, input, {
-        accountingStartDate: dateToDay(settings.accountingStartDate),
-        lockedThrough: settings.lockedThrough === null ? null : dateToDay(settings.lockedThrough)
-      })
+      return this.reverseRemittance(
+        tx,
+        input,
+        {
+          accountingStartDate: dateToDay(settings.accountingStartDate),
+          lockedThrough: settings.lockedThrough === null ? null : dateToDay(settings.lockedThrough)
+        },
+        dryRun
+      )
     }
     const candidate = await this.load(tx, input, settings)
     if (candidate.kind === 'nothing') return this.done(FinancePostingOutcome.NOTHING_TO_POST)
@@ -299,10 +320,17 @@ export class FinancePostingService {
     }
     const lines = candidate.result.lines
     if (lines.length === 0) return this.done(FinancePostingOutcome.NOTHING_TO_POST)
-    return this.write(tx, input, candidate, lines, {
-      accountingStartDate: dateToDay(settings.accountingStartDate),
-      lockedThrough: settings.lockedThrough === null ? null : dateToDay(settings.lockedThrough)
-    })
+    return this.write(
+      tx,
+      input,
+      candidate,
+      lines,
+      {
+        accountingStartDate: dateToDay(settings.accountingStartDate),
+        lockedThrough: settings.lockedThrough === null ? null : dateToDay(settings.lockedThrough)
+      },
+      dryRun
+    )
   }
 
   private async settle(
@@ -333,7 +361,8 @@ export class FinancePostingService {
     input: PostSourceInput,
     candidate: Extract<Candidate, { kind: 'entry' }>,
     lines: DraftLine[],
-    calendar: { accountingStartDate: string; lockedThrough: string | null }
+    calendar: { accountingStartDate: string; lockedThrough: string | null },
+    dryRun = false
   ): Promise<PostSourceResult> {
     // The key may already hold the entry, dated when it was first posted: a retry after a close must not be refused for a date that
     // moved. What is compared is the content the key stands for, and another content is a bug that is never overwritten.
@@ -362,6 +391,8 @@ export class FinancePostingService {
 
     const date = automaticEntryDate(candidate.sourceDay, calendar)
     if (!date.post) return this.done(FinancePostingOutcome.BEFORE_START)
+    // A preview stops where the entry would be written
+    if (dryRun) return this.done(FinancePostingOutcome.PENDING)
     const posted = await this.ledger.post(
       {
         organizationId: input.organizationId,
@@ -1325,7 +1356,8 @@ export class FinancePostingService {
   private async reverseRemittance(
     tx: PrismaTransaction,
     input: PostSourceInput,
-    calendar: { accountingStartDate: string; lockedThrough: string | null }
+    calendar: { accountingStartDate: string; lockedThrough: string | null },
+    dryRun = false
   ): Promise<PostSourceResult> {
     const remittance = await tx.codRemittance.findFirst({
       where: { id: input.sourceId, store: { organizationId: input.organizationId } },
@@ -1346,6 +1378,7 @@ export class FinancePostingService {
     // Voided before the confirmation was ever posted: there is nothing to undo, and the failure of that confirmation (a mapping, a guide
     // that waited) is no longer anyone's to fix: it is closed, so that it does not hold anything back for a remittance that posts nothing
     if (confirmed === null) {
+      if (dryRun) return this.done(FinancePostingOutcome.NOTHING_TO_POST)
       await tx.financePostingFailure.updateMany({
         where: {
           organizationId: input.organizationId,
@@ -1361,6 +1394,7 @@ export class FinancePostingService {
     const voidDay = dayInZone(remittance.voidedAt, remittance.store.timezone)
     const date = automaticEntryDate(voidDay, calendar)
     const original = dateToDay(confirmed.entryDate)
+    if (dryRun) return this.done(FinancePostingOutcome.PENDING)
     const reversed = await this.ledger.reverse(
       {
         organizationId: input.organizationId,

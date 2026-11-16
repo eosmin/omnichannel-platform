@@ -56,6 +56,8 @@ export const JobNames = {
   RECONCILE_INVENTORY: 'reconcile-inventory',
   // The automatic entry of one event of one source (TDD_18 §6.1): the worker loads the current rows and posts it under its key
   POST_FINANCE_EVENT: 'post-finance-event',
+  // The daily check of the books of one organization (TDD_18 §6.1, §11): the sweep of sources with no entry and the balances
+  RECONCILE_FINANCE: 'reconcile-finance',
   CREATE_SHIPMENTS: 'create-shipments', // One batch
   BULK_LABELS_MERGE: 'bulk-labels-merge',
   CANCEL_SHIPMENT: 'cancel-shipment',
@@ -117,6 +119,10 @@ export const scheduledReportJobId = (reportId: string, day: string): string =>
 
 export const reconcileInventoryJobId = (storeId: string, day: string): string =>
   `${JobNames.RECONCILE_INVENTORY}-${storeId}-${day}`
+
+// One check of the books per organization and UTC day: the schedule run twice (two replicas, a restart) asks for the same job
+export const reconcileFinanceJobId = (organizationId: string, day: string): string =>
+  `${JobNames.RECONCILE_FINANCE}-${organizationId}-${day}`
 
 // One retention run per store and local day: the hourly scheduler run twice in the same hour (or the store's hour of
 // 03:00 seen twice around a change of the clock) asks for the same job (dashes, no colon)

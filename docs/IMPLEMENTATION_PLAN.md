@@ -1676,18 +1676,18 @@ sweep and the charge model.
       confirm body, default `BANK_DEFAULT`; migration `finance_remittance_destination` with its rollback)
 - [x] **4B.6b-2:** E7 (write off the difference of a discrepancy: the action, its permission `FINANCE_MOVE_MONEY`, its status on the
       shipment) and E8 (returns, before and after delivery, with the refund destination); **`FINANCE_VIEW_CARRIER_FEES`** (below)
-- [ ] **4B.6b-3:** the sweep, its metrics, the notification of a failure, the close that refuses, and the charge model of a carrier
-      connection (below)
-- [ ] **4B.6b (moved to 4B.6b-3):** `RECONCILE_FINANCE` (daily and before a close): the sweep of unposted sources (it is what heals an event that was never
-      queued), balance recomputation, inventory and carrier-receivable comparisons; the metrics and the notification of
-      `FINANCE_POSTING_FAILED` to who can fix it; the close refusing while a failure is open
+- [x] **4B.6b-3:** the sweep, its metrics, the notification of a failure and the guard of the close (below); the charge model of a carrier
+      connection is **4B.6b-4** (it needs an account role the accountant chooses)
+- [x] **4B.6b (done in 4B.6b-3, except the comparisons of inventory and carrier receivables, debt (ar)):** `RECONCILE_FINANCE` (daily): the sweep of unposted
+      sources (it is what heals an event that was never queued), the recomputation of the balances; the metrics and the notification of
+      `FINANCE_POSTING_FAILED` to who can fix it; `FinanceCloseGuard`, which the close of 4B.8 asks before it locks a month
 - [x] **4B.6b (moved to 4B.6b-2):** **`FINANCE_VIEW_CARRIER_FEES`** gates the commission and the rates of a carrier connection (closes (c3)(i) of Step 4.15:
       `shipping:view` stops showing them; the web of Settings → Carriers shows the boxes only with it)
-- [ ] **4B.6b (moved to 4B.6b-3):** the charge model of a carrier connection (`prepaid` | `collected in the remittance` | `invoiced`, `TDD_18 §4.2` note on E4,
+- [ ] **4B.6b (moved to 4B.6b-4):** the charge model of a carrier connection (`prepaid` | `collected in the remittance` | `invoiced`, `TDD_18 §4.2` note on E4,
       owner's information to confirm with the accountant, `TDD_18 §13` rows 2 and 5) decides the entry of E4/E5 and the input VAT of a
       carrier charge; with 4B.5 for the purchase of prepaid guides. Not built by 4B.3 or 4B.6a
-- [ ] **4B.6b (done in 4B.6b-1 and 4B.6b-2: a remittance that matches, one that differs, one voided, a difference written off, a return before and after the
-      sale):** a lost event recovered by the sweep, a failure that blocks the close (4B.6b-3)
+- [x] **4B.6b (done in 4B.6b-1, -2 and -3: a remittance that matches, one that differs, one voided, a difference written off, a return before and after the
+      sale, a lost event recovered by the sweep, a failure that blocks the close)**
 - [ ] Debt (rule 12): the cent of a carrier that rounds otherwise (4.15 (c2)(i)) and the real fee column (4.15 (c2)(iii)) are decided by the
       real C807 file; the entries follow what the remittance confirm recorded
 **TDD:** `TDD_18 §4.2`, `§6`, `§11`, `TDD_17 §4.15`, `TDD_16 §4`, `TDD_07`
@@ -1814,6 +1814,33 @@ unvoidable; a route that reverses both is 4B.6b-3 or 4B.9. (ag) A movement that 
 put back posts nothing (the goods are lost in transit): the loss entry is the accountant's, 4B.6b-3. (ai) The button of the write-off and the fee boxes' message
 for who cannot see them are 4B.9; the plugin route of the write-off waits for PR E6-2 (the plugin actor). (aj) The guide of a return is charged when it arrives:
 a return guide of a prepaid model (consumes the advance) is 4B.6b-3 with the charge model.
+
+**Decisions of PR 4B.6b-3 (rule 12):** (1) **The sweep asks, the job posts:** `RECONCILE_FINANCE` (heavy queue, one job per organization with books, 04:30 UTC,
+job id by organization and day) finds the sources that should have an entry and have none and queues `POST_FINANCE_EVENT` for each; it never posts and never writes
+outside the idempotency of that job. Rejected: posting inline from the sweep (a backlog would run in one night, in one worker, with no retry per source). (2) **A candidate
+is classified by `FinancePostingService.preview`**, the same decision the job takes with nothing written (no lock, no failure row touched): a source the entry of which
+would be written is queued; one the books cannot post and nobody was told of is queued so that the job records the failure a person reads; one already listed is left to the
+person and counted. So the gauge counts what a job would post or fail on, not every delivered order. (3) **The window is 120 days back or the start of the books**, whichever is
+later, oldest first, at most 500 sources per run (`FinanceSweepLimits`): a backlog drains over the days. (4) **E1 (a payment) is NOT swept:** an order has no date of its
+payment, and dating a late E1 by the last change of the order could post an advance that the opening balance already holds (a prepaid order from before the books, updated
+since). A payment event that never reached the queue is on the list of failures (the listener marks it) and a person presses "post again". (5) **The balances are recomputed
+from the lines** for every (account, store dimension, period) and compared with `account_period_balances`; a difference raises `FINANCE_BALANCE_MISMATCHES` and an error log and
+**nothing corrects it** (the journal is the truth; a correction is a person's decision). (6) **The failure notice** (`finance.posting_failed`, in-app and email) goes to whoever
+holds `finance:manage_accounts` (the permission of "post again") in a store of the organization, once per person and source until read, in the first store they hold it in; it
+names no amount and no source (the list of failures does), and a source that only waits (`SOURCE_NOT_READY`) is no alarm and no notice. The event crosses from the worker to the
+api through the bridge. (7) **`FinanceCloseGuard.check`** answers what stands in the way of a close: open failures by reason, sources the sweep would queue, whether it was
+truncated; any of them blocks. It is about the whole organization, not one period (a failure row carries no date of its source). 4B.8's close calls it; it reads and never posts.
+**Debts of PR 4B.6b-3:** (am) The close itself is 4B.8: the guard is there for it, nothing refuses a close until that step exists. (an) A failure row carries no date of its
+source, so the guard also stops an earlier close for a later period's failure: a `sourceDate` column, 4B.8. (ao) E1 healing needs a payment date on the order (a column
+and its migration, Step 4.3's owner): until then a lost payment event is a failure a person posts again. (ap) The sweep reads by `updatedAt`/`deliveredAt` with
+Prisma pages, not an anti-join: fine for the MVP's volume, a raw `NOT EXISTS` on `journal_entries.idempotency_key` when an organization has tens of thousands of orders in
+the window: Step 7.3. (aq) A write-off swept late is dated by the shipment's last change, not by the action's day (the action leaves no date of its own): [ACCOUNTANT], the
+first open day anyway. (ar) The comparisons of `INVENTORY` with `InventoryLevel.valueCents` (with the tolerance of debt (h) of 4B.6a) and of `RECEIVABLE_CARRIERS` with
+the open guides (the carriers' receivable is gross, the guide's expected amount is net of the fee) are not built: they need the tolerance and the owner's rule for what a
+difference means; 4B.6b-4 or 4B.8. (as) The metric `FINANCE_POSTING_FAILURES` counts the events the api receives; a second api instance counts its own, as the other bridged
+counters do. (at) Specs still to write: the sweep's cap with several kinds of source, and E6's dating in a closed period (debt (aa) of 4B.6b-1). (au) **4B.6b-4:** the charge
+model of a connection and the prepaid purchase and consumption of guides: an account role for the advance of guides that the accountant chooses, off by default and marked
+[ACCOUNTANT]; with debts (ac), (ae), (aj) of 4B.6b-2.
 
 ### Step 4B.7 — Fiscal documents (DTE), against a simulator first
 - [ ] `libs/fiscal/sdk` (the provider port, manifest, contract suite), `libs/fiscal/simulator` (development and test only); the
@@ -2725,7 +2752,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.3 | VAT and the tax snapshot | done | #520 (4B.3a), 4B.3b (this PR) | 2026-11-15 |
 | 4B.4 | Expenses, incomes, transfers and bank reconciliation | done | 4B.4a transactions (#527); 4B.4b-1 receipts (#531); 4B.4b-2 bank reconciliation (#537) | 2026-11-15 |
 | 4B.5 | Suppliers and purchase orders | done | #542 | 2026-11-15 |
-| 4B.6 | The automatic entries (sales, remittances, returns, stock) | in progress | 4B.6a machinery, E1 to E3 and E9 (#546); 4B.6b-1 carrier charges, remittance confirmed and voided (E4 to E6; #548); 4B.6b-2 the difference written off, returns and the fee permission (E7, E8, E4 of a return guide; this PR); 4B.6b-3: todo | |
+| 4B.6 | The automatic entries (sales, remittances, returns, stock) | in progress | 4B.6a machinery, E1 to E3 and E9 (#546); 4B.6b-1 carrier charges, remittance confirmed and voided (E4 to E6; #548); 4B.6b-2 the difference written off, returns and the fee permission (E7, E8, E4 of a return guide; #550); 4B.6b-3 the sweep, its metrics, the failure notice and the close guard (this PR); 4B.6b-4 the prepaid charge model: todo | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | todo | | |
 | 4B.8 | Reports, monthly close and the auditor's export | todo | | |
 | 4B.9 | Finance interface (web) | todo | | |
