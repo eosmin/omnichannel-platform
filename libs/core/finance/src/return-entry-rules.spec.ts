@@ -33,14 +33,21 @@ describe('openReceivableCents (E7)', () => {
     // 100.00 to collect; a first remittance reported 80.00 and kept 5.00, a second one reported 10.00 and kept nothing
     expect(
       openReceivableCents(10000, [
-        { reportedCents: 8000, keptCents: 500 },
-        { reportedCents: 1000, keptCents: 0 }
+        { reportedCents: 8000, deductedCents: 500 },
+        { reportedCents: 1000, deductedCents: 0 }
       ])
     ).toBe(500)
   })
 
   it('is negative when the carrier paid more than the guide was worth', () => {
-    expect(openReceivableCents(10000, [{ reportedCents: 10100, keptCents: 0 }])).toBe(-100)
+    expect(openReceivableCents(10000, [{ reportedCents: 10100, deductedCents: 0 }])).toBe(-100)
+  })
+})
+
+describe('openReceivableCents with a fee larger than the cash (E7, HC-001)', () => {
+  it('counts only what the remittance took out of the cash, so a fee above it leaves no surplus behind', () => {
+    // 25.99 to collect; the carrier reported nothing and its 30.00 fee took the whole 25.99 out of the cash: nothing is open, nothing is over
+    expect(openReceivableCents(2599, [{ reportedCents: 0, deductedCents: 2599 }])).toBe(0)
   })
 })
 

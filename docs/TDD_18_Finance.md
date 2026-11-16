@@ -442,6 +442,11 @@ the operational rows, never from the client. Where the order is delivered, `reco
 | E12 | **Expense, income, transfer** registered by a person (§2.6) | Expense: Dr the category account · Dr `VAT_INPUT` (if creditable) · Cr the source account. Income: Dr the destination account · Cr the category account · Cr `VAT_OUTPUT` (if the income carries tax). Transfer: Dr the destination · Cr the source (both cash-kind accounts, distinct). |
 | E13 | **Manual entry** (an accountant's adjustment, opening balances) | Free lines, at least two, balanced, with a required memo; permission `FINANCE_POST_MANUAL`; HIGH-tier confirmation. |
 
+**E5, what the carrier can take out of the cash (fix `remittance-fee-guard`).** The receivable of a guide is cleared for what the carrier reported plus what it took out of the
+cash it collected, and that is at most what was left of the gross after the earlier remittances and the reported amount: `max(0, gross - cleared before - reported)`. A charge
+above that is still the whole expense the file (or E4) says, but the part the cash could not cover is owed to the carrier (a credit on `PAYABLE_CARRIERS`, netted with the debit that
+settles E4's payable), never cleared from the receivable. A carrier that reports more than it collected is a surplus that E7 writes off, with nothing taken out of the cash for its fee.
+
 **E7 and E8 as built (Step 4B.6b-2).** E7: the amount is what the books still hold as owed by the carrier for the guide (what it had to collect less what
 every confirmed remittance cleared), never a figure in the request; a surplus is written the other way round; the guide takes the terminal status
 `written_off` and its remittance can no longer be voided. E8: a return posts its share of the revenue and the tax in proportion to the units back (running

@@ -117,7 +117,7 @@ describe('The entries of a difference written off and of a return (Step 4B.6b-2)
   // A guide of the store delivered before the books began, in discrepancy with a confirmed remittance that reported `reported` and
   // whose entry (E5) is posted: $25.15 collected, the cost $3.00 and 4.5 % of commission, so the carrier kept the estimate $4.13
   async function discrepancy(
-    input: { reported?: number; storeId?: string; postRemittance?: boolean } = {}
+    input: { reported?: number; fee?: number; storeId?: string; postRemittance?: boolean } = {}
   ) {
     const storeId = input.storeId ?? ctx.storeA.id
     const shipment = await createShipment(owner, {
@@ -158,6 +158,7 @@ describe('The entries of a difference written off and of a return (Step 4B.6b-2)
         shipmentId: shipment.id,
         guideNumber: `G-${remittance.id.slice(0, 8)}`,
         reportedCents: reported,
+        ...(input.fee === undefined ? {} : { reportedFeeCents: input.fee }),
         expectedCents: 2102,
         outcome: RemittanceLineOutcome.AMOUNT_DIFFERS
       }
@@ -260,7 +261,8 @@ describe('The entries of a difference written off and of a return (Step 4B.6b-2)
     })
 
     it('writes a surplus off the other way round', async () => {
-      // The carrier reported $26.00 and kept $4.13: $5.98 more than the guide was worth
+      // The carrier reported $26.00 on a guide of $25.15: no cash was left for it to keep its $4.13 out of, and the $0.85 over is what the
+      // guide was not worth (HC-001: before, the $4.13 was cleared too and the surplus was $4.98)
       const guide = await discrepancy({ reported: 2600 })
       expect((await asAdminA().post(ApiRoutes.remittances.writeOff(guide.shipmentId))).status).toBe(
         OK
@@ -269,10 +271,25 @@ describe('The entries of a difference written off and of a return (Step 4B.6b-2)
       const entry = await entryOf(FinancePostingKey.SHIPMENT_WRITE_OFF(guide.shipmentId))
       expect(linesOf(entry as NonNullable<typeof entry>)).toEqual(
         sorted([
-          [code(AccountRole.RECEIVABLE_CARRIERS), 498, 0],
-          [code(AccountRole.COD_DIFFERENCES), 0, 498]
+          [code(AccountRole.RECEIVABLE_CARRIERS), 85, 0],
+          [code(AccountRole.COD_DIFFERENCES), 0, 85]
         ])
       )
+    })
+
+    it('counts only what the cash covered: a fee above the cash leaves nothing to write off (HC-001)', async () => {
+      // $25.15 collected, the carrier reported nothing and says it kept $30.00: E5 cleared the $25.15 and owes the rest, so nothing is open
+      const guide = await discrepancy({ reported: 0, fee: 3000 })
+      expect((await asAdminA().post(ApiRoutes.remittances.writeOff(guide.shipmentId))).status).toBe(
+        OK
+      )
+      const done = await post(
+        FinanceSourceType.SHIPMENT,
+        guide.shipmentId,
+        FinanceEventKind.COD_WRITE_OFF
+      )
+      expect(done.outcome).toBe(FinancePostingOutcome.NOTHING_TO_POST)
+      expect(await entryOf(FinancePostingKey.SHIPMENT_WRITE_OFF(guide.shipmentId))).toBeNull()
     })
 
     it('waits for the entry of the remittance and never clears a receivable it has not seen cleared', async () => {

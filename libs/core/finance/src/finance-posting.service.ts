@@ -51,9 +51,9 @@ import {
 import {
   chargeAmounts,
   chargeLines,
-  keptAFee,
   remittanceLines,
   type RemittanceLineSettlement,
+  replaySettlements,
   settleRemittanceLine
 } from './carrier-entry-rules'
 import type { DraftLine } from './entry-rules'
@@ -782,19 +782,15 @@ export class FinancePostingService {
     )
     if (estimate === null) return failed(FinancePostingFailureReason.SOURCE_NOT_READY)
     const deducts = shipment.connection.remittanceDeductsFee
-    const settled: SettledLine[] = []
-    let feeAlreadySettled = false
-    for (const line of lines) {
-      const settlement = settleRemittanceLine({
-        reportedCents: line.reportedCents,
-        reportedFeeCents: line.reportedFeeCents,
-        estimateCents: estimate,
-        deductsFee: deducts,
-        feeAlreadySettled
-      })
-      settled.push({ reportedCents: settlement.reportedCents, keptCents: settlement.keptCents })
-      if (keptAFee(line.reportedFeeCents, estimate, deducts)) feeAlreadySettled = true
-    }
+    const replay = replaySettlements(lines, {
+      estimateCents: estimate,
+      deductsFee: deducts,
+      grossCents: shipment.codAmountCents
+    })
+    const settled: SettledLine[] = replay.settlements.map(settlement => ({
+      reportedCents: settlement.reportedCents,
+      deductedCents: settlement.deductedCents
+    }))
     const accounts = await this.accountsOf(tx, input.organizationId)
     return {
       kind: 'entry',
@@ -1277,8 +1273,21 @@ export class FinancePostingService {
           ]
         }
       },
-      select: { shipmentId: true, reportedFeeCents: true }
+      // In the order the remittances were confirmed: what each one cleared depends on what the ones before it left
+      orderBy: [{ remittance: { confirmedAt: 'asc' } }, { remittanceId: 'asc' }],
+      select: { shipmentId: true, reportedCents: true, reportedFeeCents: true }
     })
+    // Each guide's earlier lines, grouped once: a file can carry thousands of guides and this runs under the lock of the books
+    const earlierOf = new Map<
+      string,
+      { reportedCents: number; reportedFeeCents: number | null }[]
+    >()
+    for (const row of earlier) {
+      if (row.shipmentId === null) continue
+      const rows = earlierOf.get(row.shipmentId) ?? []
+      rows.push({ reportedCents: row.reportedCents, reportedFeeCents: row.reportedFeeCents })
+      earlierOf.set(row.shipmentId, rows)
+    }
     const deducts = remittance.connection.remittanceDeductsFee
     const settlements: RemittanceLineSettlement[] = []
     for (const line of lines) {
@@ -1291,18 +1300,22 @@ export class FinancePostingService {
       )
       if (estimate === null) return failed(FinancePostingFailureReason.SOURCE_NOT_READY)
       // An earlier confirmed remittance that kept a fee for the guide cleared its payable already (a guide settled again after a
-      // difference); one whose file said the carrier kept nothing did not, and this one may
-      const feeAlreadySettled = earlier.some(
-        row =>
-          row.shipmentId === line.shipmentId && keptAFee(row.reportedFeeCents, estimate, deducts)
-      )
+      // difference); one whose file said the carrier kept nothing did not, and this one may. The same walk gives what they cleared of the
+      // receivable, which is what is left for this one to be taken out of.
+      const before = replaySettlements(earlierOf.get(line.shipmentId) ?? [], {
+        estimateCents: estimate,
+        deductsFee: deducts,
+        grossCents: line.shipment.codAmountCents
+      })
       settlements.push(
         settleRemittanceLine({
           reportedCents: line.reportedCents,
           reportedFeeCents: line.reportedFeeCents,
           estimateCents: estimate,
           deductsFee: deducts,
-          feeAlreadySettled
+          grossCents: line.shipment.codAmountCents,
+          clearedBeforeCents: before.clearedCents,
+          feeAlreadySettled: before.feeSettled
         })
       )
     }

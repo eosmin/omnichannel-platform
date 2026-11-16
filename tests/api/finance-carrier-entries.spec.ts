@@ -13,6 +13,7 @@ import {
   FinancePostingOutcome,
   FinanceSourceType,
   JournalEntryType,
+  PartyType,
   RemittanceLineOutcome,
   RemittanceStatus,
   ShipmentStatus,
@@ -83,13 +84,14 @@ describe('The entries that depend on a carrier (Step 4B.6b-1)', () => {
       day?: string
       commissionBps?: number | null
       cost?: number
+      cod?: number
     } = {}
   ) {
     const built = await createShipment(owner, {
       storeId: ctx.storeA.id,
       status: input.status ?? ShipmentStatus.DELIVERED,
       shippingPayer: input.payer ?? ShippingPayer.SENDER,
-      codAmountCents: 2515,
+      codAmountCents: input.cod ?? 2515,
       codStatus: CodStatus.PENDING_REMITTANCE,
       codExpectedCents: 2102,
       carrierCostCents: input.cost ?? 300,
@@ -400,6 +402,158 @@ describe('The entries that depend on a carrier (Step 4B.6b-1)', () => {
           [code(AccountRole.RECEIVABLE_CARRIERS), 0, 2315]
         ])
       )
+    })
+
+    // What the carrier takes out of the cash is bounded by the cash it collected (HC-001, AUT-523/529/530/531): a fee above it is still the
+    // expense the file says, but the part the cash could not cover is owed to the carrier, never cleared from the receivable
+    describe('a fee the cash could not cover', () => {
+      // The receivable the remittances of a guide leave: what the entries credited it less what they debited
+      async function receivableOf(connectionId: string): Promise<number> {
+        const rows = await owner.journalLine.findMany({
+          where: {
+            organizationId: ctx.orgA.id,
+            partyType: PartyType.CARRIER_CONNECTION,
+            partyId: connectionId,
+            account: { code: code(AccountRole.RECEIVABLE_CARRIERS) }
+          },
+          select: { debitCents: true, creditCents: true }
+        })
+        return rows.reduce((sum, row) => sum + row.debitCents - row.creditCents, 0)
+      }
+      async function payableOf(connectionId: string): Promise<number> {
+        const rows = await owner.journalLine.findMany({
+          where: {
+            organizationId: ctx.orgA.id,
+            partyType: PartyType.CARRIER_CONNECTION,
+            partyId: connectionId,
+            account: { code: code(AccountRole.PAYABLE_CARRIERS) }
+          },
+          select: { debitCents: true, creditCents: true }
+        })
+        return rows.reduce((sum, row) => sum + row.creditCents - row.debitCents, 0)
+      }
+
+      it('a file fee larger than the cash: the receivable of the guide is cleared for the cash and the rest of the fee is owed', async () => {
+        const shipment = await delivered()
+        await post(FinanceSourceType.SHIPMENT, shipment.id, FinanceEventKind.CHARGES)
+        // $25.15 collected, E4 owes the carrier $4.13; the file says it kept $30.00 and remitted nothing
+        const remittanceId = await confirmed(shipment.connectionId, [
+          { shipmentId: shipment.id, reported: 0, fee: 3000 }
+        ])
+        const result = await post(
+          FinanceSourceType.REMITTANCE,
+          remittanceId,
+          FinanceEventKind.REMITTANCE_CONFIRM
+        )
+        expect(result.outcome).toBe(FinancePostingOutcome.POSTED)
+        const entry = await entryOf(FinancePostingKey.REMITTANCE_CONFIRM(remittanceId))
+        // All of the $30.00 is expense ($4.13 of it already posted by E4: $25.87 here); the $25.15 the cash covered clears the receivable; the
+        // $4.85 it could not cover is owed (the payable E4 left, $4.13, is settled and $4.85 owed again: a credit of $0.72)
+        expect(linesOf(entry as NonNullable<typeof entry>)).toEqual(
+          sorted([
+            [code(AccountRole.CARRIER_COMMISSION_EXPENSE), 2587, 0],
+            [code(AccountRole.PAYABLE_CARRIERS), 0, 72],
+            [code(AccountRole.RECEIVABLE_CARRIERS), 0, 2515]
+          ])
+        )
+        // The receivable of the connection never went above what it collected, and the carrier is owed the $4.85 of its fee
+        expect(await receivableOf(shipment.connectionId)).toBe(-2515)
+        expect(await payableOf(shipment.connectionId)).toBe(485)
+      })
+
+      it('a cash on delivery smaller than the guide: the carrier keeps the cash and the rest of the guide is owed', async () => {
+        // $2.00 to collect and a guide of $3.50 the sender pays: nothing to remit, $1.50 owed
+        const shipment = await delivered({ cod: 200, cost: 350, commissionBps: null })
+        await post(FinanceSourceType.SHIPMENT, shipment.id, FinanceEventKind.CHARGES)
+        const remittanceId = await confirmed(shipment.connectionId, [
+          { shipmentId: shipment.id, reported: 0 }
+        ])
+        await post(FinanceSourceType.REMITTANCE, remittanceId, FinanceEventKind.REMITTANCE_CONFIRM)
+        const entry = await entryOf(FinancePostingKey.REMITTANCE_CONFIRM(remittanceId))
+        expect(linesOf(entry as NonNullable<typeof entry>)).toEqual(
+          sorted([
+            [code(AccountRole.PAYABLE_CARRIERS), 200, 0],
+            [code(AccountRole.RECEIVABLE_CARRIERS), 0, 200]
+          ])
+        )
+        expect(await receivableOf(shipment.connectionId)).toBe(-200)
+        expect(await payableOf(shipment.connectionId)).toBe(150)
+      })
+
+      it('a fee equal to the cash takes all of it, and a cent more leaves that cent owed', async () => {
+        for (const [fee, owed] of [
+          [2515, 0],
+          [2516, 1]
+        ] as const) {
+          const shipment = await delivered({ cost: 0, commissionBps: null })
+          await post(FinanceSourceType.SHIPMENT, shipment.id, FinanceEventKind.CHARGES)
+          const remittanceId = await confirmed(shipment.connectionId, [
+            { shipmentId: shipment.id, reported: 0, fee }
+          ])
+          await post(
+            FinanceSourceType.REMITTANCE,
+            remittanceId,
+            FinanceEventKind.REMITTANCE_CONFIRM
+          )
+          // E4 posted nothing (no cost, no commission): the whole fee is expense, and what the cash could not cover is owed
+          expect(await receivableOf(shipment.connectionId)).toBe(-2515)
+          expect(await payableOf(shipment.connectionId)).toBe(owed)
+        }
+      })
+
+      it('a carrier that does not deduct its fee but lists it with the whole cash remitted: nothing is cleared above the cash', async () => {
+        const shipment = await delivered({ deductsFee: false })
+        await post(FinanceSourceType.SHIPMENT, shipment.id, FinanceEventKind.CHARGES)
+        const remittanceId = await confirmed(shipment.connectionId, [
+          { shipmentId: shipment.id, reported: 2515, fee: 413 }
+        ])
+        await post(FinanceSourceType.REMITTANCE, remittanceId, FinanceEventKind.REMITTANCE_CONFIRM)
+        const entry = await entryOf(FinancePostingKey.REMITTANCE_CONFIRM(remittanceId))
+        // The $4.13 E4 owes stays owed: it was not taken out of the cash
+        expect(linesOf(entry as NonNullable<typeof entry>)).toEqual(
+          sorted([
+            [code(AccountRole.BANK_DEFAULT), 2515, 0],
+            [code(AccountRole.RECEIVABLE_CARRIERS), 0, 2515]
+          ])
+        )
+        expect(await receivableOf(shipment.connectionId)).toBe(-2515)
+        expect(await payableOf(shipment.connectionId)).toBe(413)
+      })
+
+      it('a guide remitted in parts has only what the earlier remittances left to take the fee out of', async () => {
+        const shipment = await delivered()
+        await post(FinanceSourceType.SHIPMENT, shipment.id, FinanceEventKind.CHARGES)
+        const first = await confirmed(
+          shipment.connectionId,
+          [{ shipmentId: shipment.id, reported: 2400 }],
+          { confirmedAt: new Date(Date.now() - 60_000) }
+        )
+        const second = await confirmed(shipment.connectionId, [
+          { shipmentId: shipment.id, reported: 0, fee: 50 }
+        ])
+        await post(FinanceSourceType.REMITTANCE, first, FinanceEventKind.REMITTANCE_CONFIRM)
+        await post(FinanceSourceType.REMITTANCE, second, FinanceEventKind.REMITTANCE_CONFIRM)
+        // The first one reported $24.00 of $25.15: only $1.15 was left for the carrier to keep, so the $4.13 E4 owes is settled for $1.15 and
+        // $2.98 of it stays owed; it cleared all $25.15
+        const entry = await entryOf(FinancePostingKey.REMITTANCE_CONFIRM(first))
+        expect(linesOf(entry as NonNullable<typeof entry>)).toEqual(
+          sorted([
+            [code(AccountRole.BANK_DEFAULT), 2400, 0],
+            [code(AccountRole.PAYABLE_CARRIERS), 115, 0],
+            [code(AccountRole.RECEIVABLE_CARRIERS), 0, 2515]
+          ])
+        )
+        // The second remittance finds nothing left to take its $0.50 out of: it is all expense and all owed, and clears nothing
+        const later = await entryOf(FinancePostingKey.REMITTANCE_CONFIRM(second))
+        expect(linesOf(later as NonNullable<typeof later>)).toEqual(
+          sorted([
+            [code(AccountRole.CARRIER_COMMISSION_EXPENSE), 50, 0],
+            [code(AccountRole.PAYABLE_CARRIERS), 0, 50]
+          ])
+        )
+        expect(await receivableOf(shipment.connectionId)).toBe(-2515)
+        expect(await payableOf(shipment.connectionId)).toBe(348)
+      })
     })
 
     it('settles the payable once when a guide with a difference is remitted again', async () => {
