@@ -40,6 +40,7 @@ import { FiscalDocumentBusyError, FiscalDocumentsService } from '@platform/fisca
 import { CarrierEventReplay } from '../carriers/carrier-event-replay.service'
 import { FinanceChainChecker } from '../finance/finance-chain-checker.service'
 import { FinanceReconciler } from '../finance/finance-reconciler.service'
+import { FiscalReconciler } from '../finance/fiscal-reconciler.service'
 import { InventoryReconciler } from '../inventory/inventory-reconciler.service'
 import { InboundMediaFetcher } from '../media/inbound-media-fetcher.service'
 import { MediaPipeline } from '../media/media-pipeline.service'
@@ -198,6 +199,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     private readonly financePosting: FinancePostingService,
     private readonly financeReconciler: FinanceReconciler,
     private readonly financeChain: FinanceChainChecker,
+    private readonly fiscalReconciler: FiscalReconciler,
     private readonly fiscalDocuments: FiscalDocumentsService
   ) {
     super(QueueNames.HEAVY_PROCESSING, support)
@@ -227,7 +229,25 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       if (!reconcile.success) {
         throw new UnrecoverableError('the finance reconcile job does not fit its schema')
       }
-      await this.financeReconciler.reconcile(reconcile.data.organizationId)
+      // The two checks do not hide each other: each runs whatever the other did, and the first failure rejects the job so the queue asks
+      // again (both are idempotent)
+      const failures: Error[] = []
+      for (const check of [this.financeReconciler, this.fiscalReconciler]) {
+        try {
+          await check.reconcile(reconcile.data.organizationId)
+        } catch (error) {
+          failures.push(error instanceof Error ? error : new Error(String(error)))
+        }
+      }
+      // One failure is itself; two are both, so neither cause is lost
+      const [only] = failures
+      if (only !== undefined && failures.length === 1) throw only
+      if (failures.length > 1) {
+        throw new AggregateError(
+          failures,
+          'the checks of the books and of the fiscal documents failed'
+        )
+      }
       return
     }
     if (job.name === JobNames.VERIFY_LEDGER_CHAIN) {

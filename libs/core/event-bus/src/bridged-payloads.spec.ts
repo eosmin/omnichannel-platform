@@ -258,6 +258,11 @@ describe('bridgedPayload', () => {
       orderId: randomUUID(),
       attempts: 6
     },
+    [Events.FISCAL_ENTRY_MISMATCH]: {
+      organizationId: randomUUID(),
+      documentId: randomUUID(),
+      count: 3
+    },
     [Events.BULK_LABELS_PROGRESS]: {
       storeId: randomUUID(),
       jobId: randomUUID(),

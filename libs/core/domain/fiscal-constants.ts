@@ -165,3 +165,40 @@ export const FiscalCustomerDataLimits = {
   ADDRESS_MAX_FIELDS: 12,
   ADDRESS_KEY_MAX_LENGTH: 40
 } as const
+
+// The daily check of the fiscal documents (TDD_18 §8.3, §11; Step 4B.8b-2b). It finds what the lifecycle lost and asks the queue for it; it
+// never submits a document itself, and the simulator or the provider the issuer names is the only thing that ever emits one.
+export enum FiscalSweepKind {
+  // A sale the issuer's setting says must have a document, and none was ever made (the listener runs in process and logs its failure)
+  SALE_WITHOUT_DOCUMENT = 'sale_without_document',
+  // A document left QUEUED (the attempts of its job ran out) or SUBMITTED (the worker died after the claim): the job is asked again
+  STALLED_DOCUMENT = 'stalled_document',
+  // A return that was received on a documented sale and has no credit note
+  CREDIT_NOTE_MISSING = 'credit_note_missing',
+  // A sale document whose total or tax differs from the entry of the books that holds the same sale: only a person looks at it
+  ENTRY_MISMATCH = 'entry_mismatch'
+}
+
+// What differs between a sale document and its entry
+export enum FiscalEntryMismatchField {
+  TOTAL = 'total',
+  TAX = 'tax'
+}
+
+export const FiscalSweepLimits = {
+  // How far back the check looks for a sale or a return with no document, never before the first sale document of the organization
+  LOOKBACK_DAYS: 120,
+  // The size of a page of findings the check reads (the report asks for at most `PAGE_SIZE_MAX`)
+  RUN_PAGE_SIZE: 200,
+  // The entry check reads documents this many at a time, and at most `ENTRY_SCAN_MAX` of them in one call (a call that stops there says where to go on)
+  ENTRY_SCAN_PAGE: 200,
+  ENTRY_SCAN_MAX: 2_000,
+  // Pages of that size one run reads for each kind: the pages go on past findings nobody can act on, so they cannot starve the ones behind
+  MAX_PAGES_PER_KIND: 25,
+  // The dry run (the report of the findings): rows one page gives
+  PAGE_SIZE_DEFAULT: 50,
+  PAGE_SIZE_MAX: 200,
+  // A document is "left" when it did not move for this long: a retry with backoff waits for less, and a claim lives five minutes
+  QUEUED_STALL_MINUTES: 60,
+  SUBMITTED_STALL_MINUTES: 15
+} as const

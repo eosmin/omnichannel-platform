@@ -4,6 +4,7 @@ import { FiscalDocumentsService, FiscalProviderRegistry } from '@platform/fiscal
 
 import { FinanceChainChecker } from './finance/finance-chain-checker.service'
 import { FinanceReconciler } from './finance/finance-reconciler.service'
+import { FiscalReconciler } from './finance/fiscal-reconciler.service'
 import { AnalyticsProcessor } from './processors/analytics.processor'
 import { CustomerProfileProcessor } from './processors/customer-profile.processor'
 import { NotificationsProcessor } from './processors/notifications.processor'
@@ -32,6 +33,8 @@ describe('WorkerModule', () => {
     expect(moduleRef.get(FinanceChainChecker, { strict: false })).toBeInstanceOf(
       FinanceChainChecker
     )
+    // The daily check of the fiscal documents asks the heavy queue and the metrics, and the lifecycle: built with them, or the worker would not start
+    expect(moduleRef.get(FiscalReconciler, { strict: false })).toBeInstanceOf(FiscalReconciler)
     // The fiscal documents are submitted by the heavy processor: the lifecycle must be built with the providers of the deployment, and the
     // simulator is one of them in test (it is never one in production)
     expect(moduleRef.get(FiscalDocumentsService, { strict: false })).toBeInstanceOf(

@@ -21,6 +21,7 @@ describe('HeavyProcessingProcessor', () => {
   const enforceRetention = jest.fn().mockResolvedValue(undefined)
   const postFinance = jest.fn().mockResolvedValue({ outcome: 'posted' })
   const reconcileFinance = jest.fn().mockResolvedValue(undefined)
+  const reconcileFiscal = jest.fn().mockResolvedValue(undefined)
   const checkChain = jest.fn().mockResolvedValue(undefined)
   const submitFiscal = jest.fn().mockResolvedValue(undefined)
   const support = {
@@ -43,6 +44,7 @@ describe('HeavyProcessingProcessor', () => {
     { post: postFinance } as never, // the automatic entries of the books: what it is handed is what is tested
     { reconcile: reconcileFinance } as never, // the daily check of the books: what it is handed is what is tested
     { check: checkChain } as never, // the weekly check of the chain: what it is handed is what is tested
+    { reconcile: reconcileFiscal } as never, // the daily check of the fiscal documents: what it is handed is what is tested
     { submit: submitFiscal } as never // the fiscal documents: what it is handed is what is tested
   )
 
@@ -213,6 +215,52 @@ describe('HeavyProcessingProcessor', () => {
       reconcileFinance.mockClear()
       await reconcile({ organizationId: ORG_ID })
       expect(reconcileFinance).toHaveBeenCalledWith(ORG_ID)
+    })
+
+    it('checks the fiscal documents of the same organization after the books, and only then', async () => {
+      const order: string[] = []
+      reconcileFinance.mockImplementationOnce(() => {
+        order.push('books')
+        return Promise.resolve(undefined)
+      })
+      reconcileFiscal.mockImplementationOnce(() => {
+        order.push('fiscal')
+        return Promise.resolve(undefined)
+      })
+      await reconcile({ organizationId: ORG_ID })
+      expect(order).toEqual(['books', 'fiscal'])
+      expect(reconcileFiscal).toHaveBeenLastCalledWith(ORG_ID)
+    })
+
+    it('checks the fiscal documents even when the books failed, and rejects the job so the queue asks again', async () => {
+      reconcileFiscal.mockClear()
+      reconcileFinance.mockRejectedValueOnce(new Error('the database blinked'))
+      await expect(reconcile({ organizationId: ORG_ID })).rejects.toThrow('the database blinked')
+      expect(reconcileFiscal).toHaveBeenCalledWith(ORG_ID)
+    })
+
+    it('checks the books even when the fiscal documents failed, and rejects the job', async () => {
+      reconcileFinance.mockClear()
+      reconcileFiscal.mockRejectedValueOnce(new Error('the queue blinked'))
+      await expect(reconcile({ organizationId: ORG_ID })).rejects.toThrow('the queue blinked')
+      expect(reconcileFinance).toHaveBeenCalledWith(ORG_ID)
+    })
+
+    it('keeps both causes when the books and the fiscal documents both failed', async () => {
+      reconcileFinance.mockRejectedValueOnce(new Error('the database blinked'))
+      reconcileFiscal.mockRejectedValueOnce(new Error('the queue blinked'))
+      const error = await reconcile({ organizationId: ORG_ID }).catch((caught: unknown) => caught)
+      expect(error).toBeInstanceOf(AggregateError)
+      expect((error as AggregateError).errors.map((cause: Error) => cause.message)).toEqual([
+        'the database blinked',
+        'the queue blinked'
+      ])
+    })
+
+    it('does not check the fiscal documents of an organization the schema refused', async () => {
+      reconcileFiscal.mockClear()
+      await expect(reconcile({ organizationId: 'mine' })).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(reconcileFiscal).not.toHaveBeenCalled()
     })
 
     it.each([
