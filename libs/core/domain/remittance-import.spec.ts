@@ -1,4 +1,5 @@
 import {
+  cleanImportText,
   parseImportDay,
   parseMoneyCents,
   parseRemittanceFile,
@@ -426,5 +427,13 @@ describe('parseRemittanceFile', () => {
     )
     expect(result.reference).toBeNull()
     expect(result.receivedOn).toBeNull()
+  })
+})
+
+describe('the length of a text of an import file', () => {
+  it('is counted in characters: an emoji is one, not two UTF-16 units', () => {
+    expect(cleanImportText('\u{1F600}'.repeat(50), 50)).toBe('\u{1F600}'.repeat(50))
+    expect(cleanImportText('\u{1F600}'.repeat(51), 50)).toBeNull()
+    expect(cleanImportText('x'.repeat(51), 50)).toBeNull()
   })
 })

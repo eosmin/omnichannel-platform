@@ -6410,7 +6410,8 @@
         "bank_decision_already_undone": "Esa decisión ya se deshizo.",
         "bank_line_matched": "Esta línea está conciliada: solo una línea sin par se puede registrar como transacción.",
         "bank_no_closing_balance": "Este extracto no tiene saldo final con el que comparar los libros.",
-        "bank_changed": "Los libros cambiaron en ese mismo momento. Recarga y decide de nuevo."
+        "bank_changed": "Los libros cambiaron en ese mismo momento. Recarga y decide de nuevo.",
+        "bank_date_format_unconfirmed": "El orden del día y el mes de las fechas de este archivo no está confirmado: confírmalo antes de importar."
       },
       "status": {
         "title": "Conciliación del mes",
@@ -6457,6 +6458,11 @@
           "closingBalanceHint": "El saldo con el que termina el extracto, por ejemplo 1234.56. Permite comparar los libros con él.",
           "closingOn": "Día del saldo final",
           "closingOnHint": "Año-mes-día, por ejemplo 2026-11-30. Hace falta junto con el saldo.",
+          "dateFormat": {
+            "title": "Confirma el orden de las fechas",
+            "hint": "Todas las fechas de este archivo se pueden leer de dos maneras (por ejemplo 03/11/2026), así que el archivo no dice cuál es. El perfil las lee como {format}: del {from} al {to}.",
+            "confirm": "Sí, las fechas se leen así"
+          },
           "problems": {
             "profile": "Elige el perfil que lee este archivo.",
             "file": "Elige el archivo del extracto.",
@@ -6603,7 +6609,8 @@
         "empty_file": "el archivo no tiene filas",
         "unclosed_quote": "hay una comilla que nunca se cierra",
         "row_too_wide": "la fila tiene demasiadas columnas",
-        "stray_quote": "hay una comilla fuera de lugar"
+        "stray_quote": "hay una comilla fuera de lugar",
+        "header_looks_like_data": "la primera fila es un movimiento, no una cabecera: el perfil dice que el archivo tiene cabecera"
       },
       "statement": {
         "title": "Extracto del {from} al {to}",

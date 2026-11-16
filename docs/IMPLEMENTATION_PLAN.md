@@ -1616,6 +1616,19 @@ in the database; the limit is `BankStatementLimits.MAX_ROWS`. (h) The audit row 
 is (4B.4a (p)). (i) The CSV export of unmatched lines for the accountant, with the formula guard, comes with the reports of 4B.8. (k) The body reader of the import (`readImportBody`) still lives in the remittances module and the bank import takes it with an options bag (code and encoding); moving it to a shared module with the content types as a parameter is a refactor of both imports, owner Step 7.7 (hardening). (j) A statement in a currency other than USD is not read
 (TDD_18 §2.8); the amount of a line is whole USD cents.
 
+Fix of the reading of a bank statement (PR `fix/bank-csv-safe-parse`, rule 12, QA PUR-032/026/046/038/110): a statement is never changed once it is kept, so nothing is
+dropped or guessed in silence. Decisions: (1) a profile that says the file has a header and maps its columns by position refuses a file whose first row has a
+date that reads (`header_looks_like_data`, with the line of the file where the row is): the movement would have been taken for the header and lost; rejected: a
+warning only (the statement would still be kept incomplete). (2) A description that spans lines (banks join the memo of a transfer) is read as one line (a run of
+line breaks, tabs and line separators is one space) instead of refusing the whole file; the reference stays strict because it is what matches a book line, and any
+other control character still refuses the row. (3) A slash date reads in two orders (03/11/2026); a file whose every date reads in both (no date with a number above 12,
+and not all the same day and month) answers `409 bank_date_format_unconfirmed` with the format and the days that were read, and is kept only when the person confirms
+(`dateFormatConfirmed=true`; the import screen shows the days and a box); a date that can only be read in the other order is still `invalid_date`. Rejected: refusing
+every such file (a statement of the first twelve days of a month is legitimate) and guessing from the order of the lines. (4) The length of a description and of a
+reference is counted in characters, not UTF-16 units (an emoji is one). (5) `closingBalanceCents` is a whole number of cents and nothing else (a blank no longer reads
+as 0 and `1e3` or `0x10` are refused). No data model changed. The count in characters is shared by the remittance import (its guide numbers and references count characters too). One date that can only be read in the order of the profile confirms the order for the whole file, by design (a file that mixes orders is the bank's, and every date that cannot be read is still `invalid_date`); the confirmation is audited (`dateFormatConfirmed`). **Debt:** many-to-one deposits and net-of-fee deposits stay the accountant's decision ([ACCOUNTANT], debt c of
+4B.4b-2); the preview of the profile mapper does not yet show the `dateFormatUndecided` warning (the import asks): Step 7.7.
+
 Review of 4B.4a (rule 12): the generic `POST finance/entries/:id/reverse` now refuses the entry of a transaction
 (`FinanceConflicts.ENTRY_OWNED_BY_TRANSACTION`), because it would leave the transaction looking live and skip its kind's permission and audit row.
 

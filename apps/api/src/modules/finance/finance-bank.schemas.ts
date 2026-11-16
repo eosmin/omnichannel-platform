@@ -114,17 +114,23 @@ export type BankPreviewBody = z.output<typeof bankPreviewSchema>
 export const bankImportQuerySchema = z
   .strictObject({
     profileId: z.uuid(),
-    // An empty value is no balance (it would be read as 0.00, a balance nobody said)
+    // An empty value is no balance (it would be read as 0.00, a balance nobody said). The cents are written as a whole number and
+    // nothing else: `Number()` would read a blank as 0, "1e3" as 1000 and "0x10" as 16
     closingBalanceCents: z.preprocess(
       value => (value === '' ? undefined : value),
-      z.coerce
-        .number()
-        .int()
-        .min(-FinanceLimits.MAX_LINE_CENTS)
-        .max(FinanceLimits.MAX_LINE_CENTS)
+      z
+        .string()
+        .regex(/^(?:0|-?[1-9]\d{0,9})$/)
+        .transform(Number)
+        .pipe(z.number().int().min(-FinanceLimits.MAX_LINE_CENTS).max(FinanceLimits.MAX_LINE_CENTS))
         .optional()
     ),
-    closingOn: day.optional()
+    closingOn: day.optional(),
+    // The person said the order of the day and the month of the file is the profile's, when every date reads in both orders
+    dateFormatConfirmed: z
+      .enum(['true', 'false'])
+      .transform(value => value === 'true')
+      .optional()
   })
   .refine(query => (query.closingBalanceCents === undefined) === (query.closingOn === undefined), {
     message: 'the closing balance and its day come together'

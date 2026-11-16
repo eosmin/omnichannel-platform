@@ -148,7 +148,14 @@ describe('finance bank api', () => {
 
   it('previews a sample with the mapping being tried', async () => {
     const { client, fetchImpl } = setup(
-      json(200, { headers: ['Date'], rowCount: 1, lines: [], errors: [], errorCount: 0 })
+      json(200, {
+        headers: ['Date'],
+        rowCount: 1,
+        lines: [],
+        errors: [],
+        errorCount: 0,
+        dateFormatUndecided: false
+      })
     )
 
     await previewBankProfile(client, 's1', {

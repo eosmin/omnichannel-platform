@@ -306,6 +306,162 @@ describe('parseBankStatement', () => {
   })
 })
 
+describe('a statement is never read in silence', () => {
+  const byPosition: BankStatementProfileShape = {
+    ...signed,
+    columns: { date: 0, description: 1, reference: 2, amount: 3 }
+  }
+  const movements = '2026-11-02,Deposit,R-1,100.00\n2026-11-03,Fee,,-1.50\n'
+
+  it('refuses a file with no header when the profile says it has one and maps by position: the first movement is not dropped', () => {
+    const parsed = parseBankStatement(movements, byPosition)
+    expect(parsed.errorCount).toBeGreaterThan(0)
+    expect(parsed.errors[0]).toMatchObject({
+      row: 1,
+      field: 'date',
+      code: BankStatementErrors.HEADER_LOOKS_LIKE_DATA,
+      value: '2026-11-02'
+    })
+    expect(parsed.lines).toEqual([])
+  })
+
+  it('points at the line of the file where the first row is, after blank lines and a BOM', () => {
+    const parsed = parseBankStatement(`\uFEFF\n\n${movements}`, byPosition)
+    expect(parsed.errors[0]).toMatchObject({
+      row: 3,
+      code: BankStatementErrors.HEADER_LOOKS_LIKE_DATA
+    })
+  })
+
+  it('reads a file that has the header the profile says, by position', () => {
+    const parsed = parseBankStatement(`Date,Description,Ref,Amount\n${movements}`, byPosition)
+    expect(parsed.errorCount).toBe(0)
+    expect(parsed.lines).toHaveLength(2)
+    expect(parsed.lines[0]).toMatchObject({ postedOn: '2026-11-02', amountCents: 10000, row: 2 })
+  })
+
+  it('reads a file with no header when the profile says so, and still refuses a header read as a movement', () => {
+    const headerless: BankStatementProfileShape = { ...byPosition, hasHeader: false }
+    const ok = parseBankStatement(movements, headerless)
+    expect(ok.errorCount).toBe(0)
+    expect(ok.lines).toHaveLength(2)
+    expect(ok.lines[0]).toMatchObject({ row: 1 })
+    const withHeader = parseBankStatement(`Date,Description,Ref,Amount\n${movements}`, headerless)
+    expect(withHeader.errors[0]).toMatchObject({ row: 1, code: BankStatementErrors.INVALID_DATE })
+  })
+
+  it('keeps a line break, a tab or a line separator inside a description as one space and numbers the rows after it by the file', () => {
+    const parsed = parseBankStatement(
+      'Date,Description,Ref,Amount\n2026-11-02,"Line 1\nLine 2\r\nLine\t3 4",R-1,1.00\n2026-11-03,Next,,abc\n',
+      signed
+    )
+    expect(parsed.lines[0]?.description).toBe('Line 1 Line 2 Line 3 4')
+    expect(parsed.lines[0]?.row).toBe(2)
+    expect(parsed.errors).toEqual([
+      { row: 5, field: 'amount', code: BankStatementErrors.INVALID_AMOUNT, value: 'abc' }
+    ])
+  })
+
+  it('still refuses a line break in a reference, and any other control character in a description', () => {
+    const reference = parseBankStatement(
+      'Date,Description,Ref,Amount\n2026-11-02,A,"R\n1",1.00\n',
+      signed
+    )
+    expect(reference.errors[0]).toMatchObject({
+      field: 'reference',
+      code: BankStatementErrors.INVALID_TEXT
+    })
+    const control = parseBankStatement(
+      'Date,Description,Ref,Amount\n2026-11-02,A\u0000B,,1.00\n',
+      signed
+    )
+    expect(control.errors[0]).toMatchObject({
+      field: 'description',
+      code: BankStatementErrors.INVALID_TEXT
+    })
+  })
+
+  it('counts the length of a description and a reference in characters, not in UTF-16 units', () => {
+    const limit = BankStatementLimits.DESCRIPTION_MAX_LENGTH
+    const exact = `${'x'.repeat(limit - 1)}\u{1F600}`
+    const whole = parseBankStatement(
+      `Date,Description,Ref,Amount\n2026-11-02,${exact},,1.00\n`,
+      signed
+    )
+    expect(whole.errorCount).toBe(0)
+    expect(whole.lines[0]?.description).toBe(exact)
+    const cut = parseBankStatement(
+      `Date,Description,Ref,Amount\n2026-11-02,${'\u{1F600}'.repeat(limit + 40)},,1.00\n`,
+      signed
+    )
+    expect(cut.errorCount).toBe(0)
+    expect(Array.from(cut.lines[0]?.description ?? '')).toHaveLength(limit)
+    const referenceLimit = BankStatementLimits.REFERENCE_MAX_LENGTH
+    const fits = parseBankStatement(
+      `Date,Description,Ref,Amount\n2026-11-02,A,${'\u{1F600}'.repeat(referenceLimit)},1.00\n`,
+      signed
+    )
+    expect(fits.errorCount).toBe(0)
+    const over = parseBankStatement(
+      `Date,Description,Ref,Amount\n2026-11-02,A,${'\u{1F600}'.repeat(referenceLimit + 1)},1.00\n`,
+      signed
+    )
+    expect(over.errors[0]).toMatchObject({
+      field: 'reference',
+      code: BankStatementErrors.INVALID_TEXT
+    })
+  })
+
+  describe('the order of the day and the month', () => {
+    const dayFirst: BankStatementProfileShape = {
+      ...signed,
+      dateFormat: RemittanceDateFormats.DAY_FIRST_SLASH
+    }
+    const monthFirst: BankStatementProfileShape = {
+      ...signed,
+      dateFormat: RemittanceDateFormats.MONTH_FIRST_SLASH
+    }
+    const file = (...days: string[]): string =>
+      `Date,Description,Ref,Amount\n${days.map(day => `${day},A,,1.00`).join('\n')}\n`
+
+    it('says the order is undecided when every date reads in both orders', () => {
+      expect(
+        parseBankStatement(file('03/11/2026', '05/11/2026'), dayFirst).dateFormatUndecided
+      ).toBe(true)
+      expect(
+        parseBankStatement(file('03/11/2026', '05/11/2026'), monthFirst).dateFormatUndecided
+      ).toBe(true)
+    })
+
+    it('says it is decided when one date can only be read in the order of the profile', () => {
+      expect(
+        parseBankStatement(file('03/11/2026', '25/11/2026'), dayFirst).dateFormatUndecided
+      ).toBe(false)
+      expect(
+        parseBankStatement(file('03/11/2026', '11/25/2026'), monthFirst).dateFormatUndecided
+      ).toBe(false)
+    })
+
+    it('has nothing to decide when the day and the month are the same number, or the format has one order', () => {
+      expect(parseBankStatement(file('05/05/2026'), dayFirst).dateFormatUndecided).toBe(false)
+      expect(parseBankStatement(file('2026-11-03'), signed).dateFormatUndecided).toBe(false)
+      expect(
+        parseBankStatement(file('03-11-2026'), {
+          ...signed,
+          dateFormat: RemittanceDateFormats.DAY_FIRST_DASH
+        }).dateFormatUndecided
+      ).toBe(false)
+    })
+
+    it('still refuses a date that cannot be read in the order of the profile', () => {
+      const parsed = parseBankStatement(file('03/11/2026', '25/11/2026'), monthFirst)
+      expect(parsed.errors).toEqual([
+        { row: 3, field: 'date', code: BankStatementErrors.INVALID_DATE, value: '25/11/2026' }
+      ])
+    })
+  })
+})
+
 describe('matching', () => {
   const line = (
     id: string,
