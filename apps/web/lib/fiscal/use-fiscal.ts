@@ -78,13 +78,6 @@ export function useFiscalDocuments(
     queryFn: ({ pageParam, signal }) =>
       fetchFiscalDocumentPage(apiClient, storeId, filters, pageParam, signal),
     getNextPageParam: last => (last.hasMore ? (last.nextCursor ?? undefined) : undefined),
-    // The rows of the last list stand in while the next loads only when it is the same list (same store, same filters): rows of another
-    // status under a filter that says otherwise would be opened and sent again as if they were the ones asked for
-    placeholderData: (previous, previousQuery) =>
-      previousQuery?.queryKey[1] === storeId &&
-      JSON.stringify(previousQuery.queryKey[3]) === JSON.stringify(keyOfFilters(filters))
-        ? previous
-        : undefined,
     enabled
   })
 }
@@ -104,8 +97,11 @@ export function useFiscalDocument(
 
 type Write<TInput, TResult> = UseMutationResult<TResult, Error, TInput>
 
+// `books`: the write moves the books too (a void or a replacement), so the finance queries are read again as well; the others touch the
+// documents and the issuer only. The providers of a deployment never change with a write.
 function useFiscalWrite<TInput, TResult>(
-  write: (input: TInput) => Promise<TResult>
+  write: (input: TInput) => Promise<TResult>,
+  books = false
 ): Write<TInput, TResult> {
   const queryClient = useQueryClient()
   return useMutation({
@@ -113,8 +109,11 @@ function useFiscalWrite<TInput, TResult>(
     // Returned, so the mutation settles after the lists have been read again: a dialog closes on fresh data, not on the old
     onSuccess: () =>
       Promise.all([
-        queryClient.invalidateQueries({ queryKey: QueryKeys.fiscal.root }),
-        queryClient.invalidateQueries({ queryKey: QueryKeys.finance.root })
+        queryClient.invalidateQueries({
+          queryKey: QueryKeys.fiscal.root,
+          predicate: query => query.queryKey[2] !== 'providers'
+        }),
+        ...(books ? [queryClient.invalidateQueries({ queryKey: QueryKeys.finance.root })] : [])
       ])
   })
 }
@@ -133,7 +132,7 @@ export const useRetryFiscalDocument = (storeId: string): Write<string, void> =>
 export const useVoidFiscalDocument = (
   storeId: string
 ): Write<{ id: string; reason: string }, FiscalDocumentView> =>
-  useFiscalWrite(input => voidFiscalDocument(apiClient, storeId, input.id, input.reason))
+  useFiscalWrite(input => voidFiscalDocument(apiClient, storeId, input.id, input.reason), true)
 
 export const useReplaceFiscalDocument = (storeId: string): Write<string, FiscalDocumentView> =>
-  useFiscalWrite(id => replaceFiscalDocument(apiClient, storeId, id))
+  useFiscalWrite(id => replaceFiscalDocument(apiClient, storeId, id), true)

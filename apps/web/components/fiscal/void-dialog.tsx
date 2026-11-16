@@ -80,6 +80,7 @@ function VoidForm({
 
   const send = async (): Promise<void> => {
     if (!guard.enter()) return
+    setRefusal(null)
     setPending(true)
     try {
       await voiding.mutateAsync({ id: document.id, reason: reason.trim() })

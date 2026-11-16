@@ -45,18 +45,6 @@ function Fiscal(): ReactElement {
     [documents.data]
   )
   const replacedIds = useMemo(() => replacedIdsOf(rows), [rows])
-  if (documents.isError && documents.data === undefined) {
-    return <LoadFailed error={documents.error} onRetry={() => void documents.refetch()} />
-  }
-  if (issuer.isError && issuer.data === undefined) {
-    return <LoadFailed error={issuer.error} onRetry={() => void issuer.refetch()} />
-  }
-  if (providers.isError && providers.data === undefined) {
-    return <LoadFailed error={providers.error} onRetry={() => void providers.refetch()} />
-  }
-  if (documents.data === undefined || issuer.data === undefined || providers.data === undefined) {
-    return <PageLoading />
-  }
   return (
     <section className="flex max-w-4xl flex-col gap-4">
       <header className="flex flex-col gap-1">
@@ -100,7 +88,11 @@ function Fiscal(): ReactElement {
           ))}
         </select>
       </div>
-      {rows.length === 0 ? (
+      {documents.isError && documents.data === undefined ? (
+        <LoadFailed error={documents.error} onRetry={() => void documents.refetch()} />
+      ) : documents.data === undefined ? (
+        <PageLoading />
+      ) : rows.length === 0 ? (
         <p className="text-muted-foreground text-sm" data-testid="fiscal-empty">
           {t('empty')}
         </p>
@@ -129,7 +121,7 @@ function Fiscal(): ReactElement {
       ) : null}
       <DocumentDetailDialog
         documentId={openId}
-        providers={providers.data}
+        providers={providers.data ?? []}
         replacedIds={replacedIds}
         onOpenChange={open => {
           if (!open) setOpenId(null)

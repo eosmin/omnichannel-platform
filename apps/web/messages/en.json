@@ -7110,7 +7110,9 @@
         "stuck": "{count, plural, one {# document ran out of attempts and is stuck in the queue.} other {# documents ran out of attempts and are stuck in the queue.}}",
         "show": "Show the refused",
         "stuckMore": "More than {count} queued documents were checked and some have run out of attempts.",
-        "showStuck": "Show the queued ones"
+        "showStuck": "Show the queued ones",
+        "unread": "Could not check for refused or stuck documents.",
+        "retry": "Try again"
       },
       "detail": {
         "titleLoading": "Fiscal document",
@@ -7251,7 +7253,8 @@
         "value": "Value",
         "remove": "Remove line {number}",
         "add": "Add a line",
-        "requiredMark": "(asked by the provider)"
+        "requiredMark": "(asked by the provider)",
+        "rowLabel": "Line {number}"
       },
       "issuer": {
         "title": "Fiscal issuer",

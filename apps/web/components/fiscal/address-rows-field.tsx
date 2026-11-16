@@ -45,6 +45,8 @@ export function AddressRowsField({
       {rows.map((row, index) => (
         <div
           key={row.id}
+          role="group"
+          aria-label={t('rowLabel', { number: index + 1 })}
           data-testid="fiscal-address-row"
           className="grid grid-cols-[1fr_1fr_auto] items-end gap-2"
         >

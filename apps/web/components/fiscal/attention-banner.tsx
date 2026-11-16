@@ -31,39 +31,68 @@ export function AttentionBanner({
   const stuck =
     queuedPage?.data.filter(document => fiscalAttentionOf(document) === FiscalAttention.STUCK)
       .length ?? 0
-  if (refused === 0 && stuck === 0) return null
-  return (
-    <div
-      role="status"
-      data-testid="fiscal-banner"
-      className="border-destructive/40 bg-destructive/5 flex flex-col gap-2 rounded-md border p-3 text-sm sm:flex-row sm:items-center sm:justify-between"
-    >
-      <div className="flex items-start gap-2">
-        <TriangleAlert aria-hidden className="text-destructive mt-0.5 size-4 shrink-0" />
-        <div className="flex flex-col gap-0.5">
-          {refused === 0 ? null : (
-            <p data-testid="fiscal-banner-rejected">
-              {t(rejectedPage?.hasMore === true ? 'rejectedMore' : 'rejected', { count: refused })}
-            </p>
-          )}
-          {stuck === 0 ? null : (
-            <p data-testid="fiscal-banner-stuck">
-              {t(queuedPage?.hasMore === true ? 'stuckMore' : 'stuck', { count: stuck })}
-            </p>
-          )}
+  const unread =
+    (rejected.isError && rejected.data === undefined) ||
+    (queued.isError && queued.data === undefined)
+  // The live region is always there, so a notice that arrives later is announced
+  if (refused === 0 && stuck === 0 && !unread) return <div role="status" />
+  if (refused === 0 && stuck === 0) {
+    return (
+      <div role="status">
+        <div
+          data-testid="fiscal-banner-unread"
+          className="flex flex-wrap items-center gap-2 rounded-md border p-3 text-sm"
+        >
+          <p>{t('unread')}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              void rejected.refetch()
+              void queued.refetch()
+            }}
+          >
+            {t('retry')}
+          </Button>
         </div>
       </div>
-      <div className="flex flex-wrap gap-2">
-        {refused === 0 ? null : (
-          <Button variant="outline" size="sm" onClick={onShowRejected}>
-            {t('show')}
-          </Button>
-        )}
-        {stuck === 0 ? null : (
-          <Button variant="outline" size="sm" onClick={onShowStuck}>
-            {t('showStuck')}
-          </Button>
-        )}
+    )
+  }
+  return (
+    <div role="status">
+      <div
+        data-testid="fiscal-banner"
+        className="border-destructive/40 bg-destructive/5 flex flex-col gap-2 rounded-md border p-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+      >
+        <div className="flex items-start gap-2">
+          <TriangleAlert aria-hidden className="text-destructive mt-0.5 size-4 shrink-0" />
+          <div className="flex flex-col gap-0.5">
+            {refused === 0 ? null : (
+              <p data-testid="fiscal-banner-rejected">
+                {t(rejectedPage?.hasMore === true ? 'rejectedMore' : 'rejected', {
+                  count: refused
+                })}
+              </p>
+            )}
+            {stuck === 0 ? null : (
+              <p data-testid="fiscal-banner-stuck">
+                {t(queuedPage?.hasMore === true ? 'stuckMore' : 'stuck', { count: stuck })}
+              </p>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {refused === 0 ? null : (
+            <Button variant="outline" size="sm" onClick={onShowRejected}>
+              {t('show')}
+            </Button>
+          )}
+          {stuck === 0 ? null : (
+            <Button variant="outline" size="sm" onClick={onShowStuck}>
+              {t('showStuck')}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   )

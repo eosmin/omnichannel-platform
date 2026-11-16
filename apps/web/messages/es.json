@@ -7110,7 +7110,9 @@
         "stuck": "{count, plural, one {# documento agotó sus intentos y está atascado en la cola.} other {# documentos agotaron sus intentos y están atascados en la cola.}}",
         "show": "Ver los rechazados",
         "stuckMore": "Se revisaron los documentos en espera y algunos agotaron sus intentos (más de {count} en cola).",
-        "showStuck": "Ver los que están en espera"
+        "showStuck": "Ver los que están en espera",
+        "unread": "No se pudo revisar si hay documentos rechazados o atascados.",
+        "retry": "Intentar de nuevo"
       },
       "detail": {
         "titleLoading": "Documento fiscal",
@@ -7251,7 +7253,8 @@
         "value": "Valor",
         "remove": "Quitar la línea {number}",
         "add": "Agregar una línea",
-        "requiredMark": "(lo pide el proveedor)"
+        "requiredMark": "(lo pide el proveedor)",
+        "rowLabel": "Línea {number}"
       },
       "issuer": {
         "title": "Emisor fiscal",
