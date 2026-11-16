@@ -1,6 +1,6 @@
 import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable } from '@nestjs/common'
-import type { Gauge, Counter } from '@prometheus-io/client'
+import type { Gauge } from '@prometheus-io/client'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
@@ -8,7 +8,12 @@ import { financePostingJobOptions } from '@platform/core/domain'
 import { FinanceSweepService } from '@platform/core/finance-ledger'
 import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
-import { JobNames, type PostFinanceEventJob, QueueNames } from '@platform/core/queues'
+import {
+  JobNames,
+  type PostFinanceEventJob,
+  postFinanceEventJobId,
+  QueueNames
+} from '@platform/core/queues'
 
 export interface FinanceReconcileReport {
   examined: number
@@ -30,20 +35,25 @@ export class FinanceReconciler {
     @InjectQueue(QueueNames.HEAVY_PROCESSING) private readonly queue: Queue<PostFinanceEventJob>,
     @InjectMetric(MetricNames.FINANCE_UNPOSTED_SOURCES) private readonly unposted: Gauge<string>,
     @InjectMetric(MetricNames.FINANCE_BALANCE_MISMATCHES)
-    private readonly mismatches: Counter<string>,
+    private readonly mismatches: Gauge<string>,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(FinanceReconciler.name)
   }
 
-  async reconcile(organizationId: string): Promise<FinanceReconcileReport> {
-    const swept = await this.sweep.sweep(organizationId)
+  async reconcile(organizationId: string, now: Date = new Date()): Promise<FinanceReconcileReport> {
+    const swept = await this.sweep.sweep(organizationId, now)
+    const day = now.toISOString().slice(0, 10)
     if (swept.toQueue.length > 0) {
       await this.queue.addBulk(
         swept.toQueue.map(job => ({
           name: JobNames.POST_FINANCE_EVENT,
           data: job,
-          opts: financePostingJobOptions()
+          // One job for each source and event per day: a retried check, or a backlog that drains over several nights, never piles up copies
+          opts: {
+            ...financePostingJobOptions(),
+            jobId: postFinanceEventJobId(job.kind, job.sourceId, day)
+          }
         }))
       )
     }
@@ -54,9 +64,10 @@ export class FinanceReconciler {
       this.logger.warn({ organizationId }, 'the check of the books stopped at its cap')
     }
     const balanceMismatches = await this.sweep.balanceMismatches(organizationId)
+    // How many there are now, so that it goes back to zero when someone fixes them
+    this.mismatches.set({ organization_id: organizationId }, balanceMismatches)
     if (balanceMismatches > 0) {
       // Never fixed from here: the journal is the truth and a correction is a person's decision
-      this.mismatches.inc({ organization_id: organizationId }, balanceMismatches)
       this.logger.error(
         { organizationId, balanceMismatches },
         'the balances of the books disagree with their lines'

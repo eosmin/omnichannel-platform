@@ -120,6 +120,11 @@ export const scheduledReportJobId = (reportId: string, day: string): string =>
 export const reconcileInventoryJobId = (storeId: string, day: string): string =>
   `${JobNames.RECONCILE_INVENTORY}-${storeId}-${day}`
 
+// One posting job per source and event for each UTC day when it is the sweep that asks (dashes, no colon): the sweep run twice, or
+// retried, asks for the same job
+export const postFinanceEventJobId = (kind: string, sourceId: string, day: string): string =>
+  `${JobNames.POST_FINANCE_EVENT}-${kind}-${sourceId}-${day}`
+
 // One check of the books per organization and UTC day: the schedule run twice (two replicas, a restart) asks for the same job
 export const reconcileFinanceJobId = (organizationId: string, day: string): string =>
   `${JobNames.RECONCILE_FINANCE}-${organizationId}-${day}`

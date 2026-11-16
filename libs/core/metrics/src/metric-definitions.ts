@@ -88,8 +88,8 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
     labels: ['reason']
   },
   [MetricNames.FINANCE_BALANCE_MISMATCHES]: {
-    kind: 'counter',
-    help: 'Balances by account and period that did not match the sum of their lines in the daily check: an incident',
+    kind: 'gauge',
+    help: 'Balances by account and period that do not match the sum of their lines in the last daily check: any non-zero value is an incident',
     labels: ['organization_id']
   },
 

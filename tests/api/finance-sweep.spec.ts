@@ -13,7 +13,8 @@ import {
   FinancePostingKey,
   FinanceSourceType,
   InventoryMovementType,
-  ShipmentStatus
+  ShipmentStatus,
+  ShippingPayer
 } from '@platform/core/domain'
 import {
   FinanceCloseGuard,
@@ -341,8 +342,51 @@ describe('The sweep of the books and the guard of the close', () => {
       const older = await deliveredOrder({ day: '2026-01-05' })
       await withCarrier(older)
       const result = await sweep.sweep(ctx.orgA.id, new Date(), { maxCandidates: 1 })
-      expect(result.examined).toBe(1)
+      // The work that a job would do stops at the cap (a batch of previews may go a little over it), and the run says it stopped
+      expect(result.toQueue.length).toBeGreaterThanOrEqual(1)
       expect(result.truncated).toBe(true)
+    })
+
+    it('finds the charges of a delivered guide, of any kind, and not a guide with nothing to charge', async () => {
+      const charged = await createShipment(owner, {
+        storeId: ctx.storeA.id,
+        status: ShipmentStatus.DELIVERED,
+        codAmountCents: 2515,
+        carrierCostCents: 300,
+        commissionBps: 450,
+        deliveredAt: NOON(TODAY)
+      })
+      const free = await createShipment(owner, {
+        storeId: ctx.storeA.id,
+        status: ShipmentStatus.DELIVERED,
+        shippingPayer: ShippingPayer.RECIPIENT,
+        deliveredAt: NOON(TODAY)
+      })
+      expect((await queuedOf(charged.id)).map(job => job.kind)).toEqual([FinanceEventKind.CHARGES])
+      expect(await queuedOf(free.id)).toEqual([])
+    })
+
+    it('closes the failure of a source that waited once the source needs nothing any more', async () => {
+      const id = await deliveredOrder()
+      await withCarrier(id)
+      // Listed as not queued, then cancelled: the sweep still asks the job, which closes the row
+      await owner.financePostingFailure.create({
+        data: {
+          organizationId: ctx.orgA.id,
+          sourceType: FinanceSourceType.ORDER,
+          sourceId: id,
+          eventKind: FinanceEventKind.SALE,
+          reason: FinancePostingFailureReason.NOT_QUEUED
+        }
+      })
+      await owner.order.update({ where: { id }, data: { status: 'CANCELLED' } })
+      const jobs = (await sweep.sweep(ctx.orgA.id)).toQueue.filter(job => job.sourceId === id)
+      expect(jobs.map(job => job.kind)).toContain(FinanceEventKind.SALE)
+      for (const job of jobs) await posting.post(job)
+      const row = await owner.financePostingFailure.findFirstOrThrow({
+        where: { organizationId: ctx.orgA.id, sourceId: id, eventKind: FinanceEventKind.SALE }
+      })
+      expect(row.resolvedAt).not.toBeNull()
     })
 
     it('has nothing to look at for an organization that has not set up its books', async () => {
@@ -516,7 +560,7 @@ describe('The sweep of the books and the guard of the close', () => {
           set: (labels: Record<string, string>, value: number) => gauge.push({ labels, value })
         } as never,
         {
-          inc: (labels: Record<string, string>, value: number) => counter.push({ labels, value })
+          set: (labels: Record<string, string>, value: number) => counter.push({ labels, value })
         } as never,
         logger
       )
@@ -531,7 +575,8 @@ describe('The sweep of the books and the guard of the close', () => {
       )
       expect(report.queued).toBeGreaterThanOrEqual(2)
       expect(gauge).toEqual([{ labels: { organization_id: ctx.orgA.id }, value: report.unposted }])
-      expect(counter).toEqual([])
+      // The mismatches gauge is set to how many there are now, zero included, so that it goes back to zero when they are fixed
+      expect(counter).toEqual([{ labels: { organization_id: ctx.orgA.id }, value: 0 }])
       expect(report.balanceMismatches).toBe(0)
     })
 
@@ -543,7 +588,7 @@ describe('The sweep of the books and the guard of the close', () => {
         sweep,
         heavy as never,
         { set: () => undefined } as never,
-        { inc: () => undefined } as never,
+        { set: () => undefined } as never,
         logger
       )
       await reconciler.reconcile(ctx.orgA.id)

@@ -1821,11 +1821,11 @@ outside the idempotency of that job. Rejected: posting inline from the sweep (a 
 is classified by `FinancePostingService.preview`**, the same decision the job takes with nothing written (no lock, no failure row touched): a source the entry of which
 would be written is queued; one the books cannot post and nobody was told of is queued so that the job records the failure a person reads; one already listed is left to the
 person and counted. So the gauge counts what a job would post or fail on, not every delivered order. (3) **The window is 120 days back or the start of the books**, whichever is
-later, oldest first, at most 500 sources per run (`FinanceSweepLimits`): a backlog drains over the days. (4) **E1 (a payment) is NOT swept:** an order has no date of its
-payment, and dating a late E1 by the last change of the order could post an advance that the opening balance already holds (a prepaid order from before the books, updated
-since). A payment event that never reached the queue is on the list of failures (the listener marks it) and a person presses "post again". (5) **The balances are recomputed
-from the lines** for every (account, store dimension, period) and compared with `account_period_balances`; a difference raises `FINANCE_BALANCE_MISMATCHES` and an error log and
-**nothing corrects it** (the journal is the truth; a correction is a person's decision). (6) **The failure notice** (`finance.posting_failed`, in-app and email) goes to whoever
+later, oldest first, at most 500 sources per run (`FinanceSweepLimits`): a backlog drains over the days. (4) **E1 (a payment), E7 (a write-off) and the E8 of an order returned with no return row are NOT swept:** none has a date of its own (the job dates it by the day it
+runs), and dating a late one by the last change of the row could post an entry that the opening balance already holds (a prepaid order from before the books, updated
+since). The one that never reached the queue is on the list of failures (the listener marks it) and a person presses "post again". (5) **The balances are recomputed
+from the lines** for every (account, store dimension, period) and compared with `account_period_balances`; a difference sets the gauge `FINANCE_BALANCE_MISMATCHES` (to how many there are now, so it goes back to zero when fixed; the TDD named a `_total` counter, a gauge is the right type
+for a current count) and logs an error, and **nothing corrects it** (the journal is the truth; a correction is a person's decision). (6) **The failure notice** (`finance.posting_failed`, in-app and email) goes to whoever
 holds `finance:manage_accounts` (the permission of "post again") in a store of the organization, once per person and source until read, in the first store they hold it in; it
 names no amount and no source (the list of failures does), and a source that only waits (`SOURCE_NOT_READY`) is no alarm and no notice. The event crosses from the worker to the
 api through the bridge. (7) **`FinanceCloseGuard.check`** answers what stands in the way of a close: open failures by reason, sources the sweep would queue, whether it was

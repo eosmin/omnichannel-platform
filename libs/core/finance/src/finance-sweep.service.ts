@@ -3,7 +3,6 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { PrismaService } from '@platform/core/database'
 import {
-  CodStatus,
   FinanceEventKind,
   FinancePostingFailureReason,
   FinancePostingKey,
@@ -14,12 +13,12 @@ import {
   OrderStatus,
   RemittanceStatus,
   SaleRecognition,
-  ShipmentKind,
   ShipmentStatus
 } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 
 import { isAdjustmentType } from './auto-entry-rules'
+import { chargeAmounts } from './carrier-entry-rules'
 import { FinancePostingService, type PostSourceInput } from './finance-posting.service'
 import { dateToDay } from './period-rules'
 
@@ -28,10 +27,12 @@ import { dateToDay } from './period-rules'
 // list, or a manual entry): the sweep is for the lost event of last week, not for the history of the business.
 export const FINANCE_SWEEP_LOOKBACK_DAYS = 120
 const DAY_MS = 86_400_000
-// Rows one page of a source table reads, and the rows of all the tables one run reads at most (a run that reaches it says it was
+// Rows one page of a source table reads, and the rows one table gives at most to a run (a table that has more says the run was
 // truncated, and the close is refused: it cannot say the books are complete)
 const PAGE_SIZE = 500
 const SCAN_MAX = 20_000
+// Previews that run side by side (each is a transaction of its own, read only)
+const PREVIEW_BATCH = 5
 
 // The reasons of an open failure that pass with time: the sweep looks at them again (a source that waited for another one, an event that
 // never reached the queue). Every other reason (a mapping, an account, a period) waits for a person, who fixes it and presses "post
@@ -107,7 +108,7 @@ export class FinanceSweepService {
     const openReason = new Map(
       open.map(row => [`${row.sourceType}:${row.sourceId}:${row.eventKind}`, row.reason])
     )
-    const scan = { rows: 0, truncated: false }
+    const scan = { truncated: false }
     const candidates = await this.candidates(
       organizationId,
       since,
@@ -117,34 +118,84 @@ export class FinanceSweepService {
       cap
     )
 
+    // The open failures that pass with time are looked at as candidates too, whether or not their source is one any more (a cancelled
+    // order, a source posted another way): the job that a preview of "nothing to post" or "already posted" asks for is the one that
+    // closes the row
+    const seen = new Set(
+      candidates.map(
+        candidate =>
+          `${candidate.input.sourceType}:${candidate.input.sourceId}:${candidate.input.kind}`
+      )
+    )
+    for (const row of open) {
+      const key = `${row.sourceType}:${row.sourceId}:${row.eventKind}`
+      if (!RETRIED_REASONS.has(row.reason) || seen.has(key)) continue
+      candidates.push({
+        key,
+        at: new Date(0),
+        input: {
+          organizationId,
+          sourceType: row.sourceType as FinanceSourceType,
+          sourceId: row.sourceId,
+          kind: row.eventKind as FinanceEventKind
+        }
+      })
+    }
+
     const toQueue: PostSourceInput[] = []
-    let examined = 0
+    // What counts against the cap is the work a job would do (a source to post, or a failure to record); the previews of sources that
+    // turn out to have nothing to post are bounded apart, so they cannot starve the ones that do
+    let actionable = 0
+    let previewed = 0
     let truncated = scan.truncated
-    for (const candidate of candidates) {
-      if (examined >= cap) {
+    const previewMax = cap * 4
+    for (let from = 0; from < candidates.length; from += PREVIEW_BATCH) {
+      if (actionable >= cap || previewed >= previewMax) {
         truncated = true
         break
       }
-      examined += 1
-      try {
-        const preview = await this.posting.preview(candidate.input)
+      const batch = candidates.slice(from, from + PREVIEW_BATCH)
+      previewed += batch.length
+      const answers = await Promise.all(
+        batch.map(async candidate => {
+          try {
+            return await this.posting.preview(candidate.input)
+          } catch (error) {
+            // One source that cannot be previewed (a lock timeout) is logged and the rest goes on: tomorrow looks at it again
+            this.logger.warn(
+              {
+                organizationId,
+                sourceType: candidate.input.sourceType,
+                errorName: errorName(error)
+              },
+              'a source could not be checked by the sweep'
+            )
+            return null
+          }
+        })
+      )
+      batch.forEach((candidate, index) => {
+        const preview = answers[index]
+        if (preview === null || preview === undefined) return
         const listed = openReason.has(
           `${candidate.input.sourceType}:${candidate.input.sourceId}:${candidate.input.kind}`
         )
+        const retried = candidate.at.getTime() === 0
         if (preview.outcome === FinancePostingOutcome.PENDING) {
           toQueue.push(candidate.input)
+          actionable += 1
         } else if (preview.outcome === FinancePostingOutcome.FAILED && !listed) {
           // The books cannot post it and nobody has been told: the job records the failure, which is what a person reads
           toQueue.push(candidate.input)
+          actionable += 1
+        } else if (retried && preview.outcome !== FinancePostingOutcome.FAILED) {
+          // A failure that waited and has nothing left to wait for (the source posted another way, was cancelled, is before the books):
+          // the job closes its row
+          toQueue.push(candidate.input)
         }
-      } catch (error) {
-        // One source that cannot be previewed (a lock timeout) is logged and the rest goes on: tomorrow looks at it again
-        this.logger.warn(
-          { organizationId, sourceType: candidate.input.sourceType, errorName: errorName(error) },
-          'a source could not be checked by the sweep'
-        )
-      }
+      })
     }
+    const examined = previewed
     // A source that is queued and listed (it waited and now would post) is one source
     const queuedKeys = new Set(toQueue.map(job => `${job.sourceType}:${job.sourceId}:${job.kind}`))
     const stillOpen = open.filter(
@@ -202,13 +253,14 @@ export class FinanceSweepService {
     return found
   }
 
-  // Pages through one table of sources and keeps the candidates that have no entry yet and no failure a person must fix first. It
-  // stops at `cap` candidates (the rest is for the next run) and at the rows of the run (`SCAN_MAX`), and says it did.
+  // Pages through one table of sources and keeps the candidates that have no entry yet and no failure a person must fix first. It stops at
+  // `cap` candidates (the rest is for the next run) and at the rows this table gives a run (`SCAN_MAX`), and says it did only when
+  // there were more rows to read.
   private async collect<T extends { id: string }>(
     input: {
       organizationId: string
       openReason: ReadonlyMap<string, string>
-      scan: { rows: number; truncated: boolean }
+      scan: { truncated: boolean }
       cap: number
       page: (after: string | undefined, take: number) => Promise<T[]>
       // The candidates of one row (a row can be the source of several events)
@@ -220,15 +272,14 @@ export class FinanceSweepService {
   ): Promise<void> {
     let after: string | undefined
     let collected = 0
+    let read = 0
     for (;;) {
-      if (input.scan.rows >= SCAN_MAX || collected >= input.cap) {
-        input.scan.truncated = true
-        return
-      }
-      const rows = await input.page(after, PAGE_SIZE)
-      if (rows.length === 0) return
-      input.scan.rows += rows.length
-      const mine = rows
+      // One row more than the page, to know whether anything is left
+      const rows = await input.page(after, PAGE_SIZE + 1)
+      const more = rows.length > PAGE_SIZE
+      const page = more ? rows.slice(0, PAGE_SIZE) : rows
+      read += page.length
+      const mine = page
         .flatMap(row => input.of(row))
         .filter(candidate => {
           const reason = input.openReason.get(
@@ -249,8 +300,12 @@ export class FinanceSweepService {
       const missing = await keep(mine)
       out.push(...missing)
       collected += missing.length
-      if (rows.length < PAGE_SIZE) return
-      after = rows.at(-1)?.id
+      if (!more) return
+      if (read >= SCAN_MAX || collected >= input.cap) {
+        input.scan.truncated = true
+        return
+      }
+      after = page.at(-1)?.id
     }
   }
 
@@ -261,7 +316,7 @@ export class FinanceSweepService {
     since: Date,
     recognizeSaleOn: string,
     openReason: ReadonlyMap<string, string>,
-    scan: { rows: number; truncated: boolean },
+    scan: { truncated: boolean },
     cap: number
   ): Promise<Candidate[]> {
     const db = this.prisma.client
@@ -284,7 +339,8 @@ export class FinanceSweepService {
         ...(occurredAt === undefined ? {} : { occurredAt: occurredAt.toISOString() })
       }
     })
-    const common = { organizationId, openReason, scan, cap }
+    // One table gives a run at most as many candidates as the sweep may preview several times over
+    const common = { organizationId, openReason, scan, cap: cap * 4 }
     const cursor = (after: string | undefined): { cursor?: { id: string }; skip?: number } =>
       after === undefined ? {} : { cursor: { id: after }, skip: 1 }
     const onShipped = recognizeSaleOn === (SaleRecognition.SHIPPED as string)
@@ -341,7 +397,19 @@ export class FinanceSweepService {
               FinancePostingKey.ORDER_SENT(order.id),
               order.shippedAt ?? since
             )
-          ]
+          ],
+          // Nothing to post for the goods that left when the sale entry already took their cost out of the inventory itself
+          keep: async candidates => {
+            const done = await this.existingKeys(organizationId, [
+              ...candidates.map(candidate => candidate.key),
+              ...candidates.map(candidate => FinancePostingKey.ORDER_SALE(candidate.input.sourceId))
+            ])
+            return candidates.filter(
+              candidate =>
+                !done.has(candidate.key) &&
+                !done.has(FinancePostingKey.ORDER_SALE(candidate.input.sourceId))
+            )
+          }
         },
         out
       )
@@ -351,52 +419,42 @@ export class FinanceSweepService {
     // since). A payment event that never reached the queue is listed as a failure by the listener and a person presses "post again"
     // (debt of the plan: a payment date on the order, then the sweep heals E1 too).
 
-    // E4 and E7: a guide delivered, a guide written off
+    // E4: a guide delivered (an outbound guide or the guide of a return) with something to charge. A guide with nothing to charge posts
+    // nothing, so it is not a candidate. E7 (a write-off) is NOT swept: the action leaves no date of its own, and dating a late one by the
+    // last change of the guide could post a write-off that the opening balance already holds (a guide written off before the books and
+    // touched since); a write-off that never reached the queue is listed by the listener and a person presses "post again".
     await this.collect(
       {
         ...common,
         page: (after, take) =>
           db.shipment.findMany({
-            where: {
-              ...storeOf,
-              kind: ShipmentKind.OUTBOUND,
-              OR: [
-                { status: ShipmentStatus.DELIVERED, deliveredAt: { gte: since } },
-                { codStatus: CodStatus.WRITTEN_OFF, updatedAt: { gte: since } }
-              ]
+            where: { ...storeOf, status: ShipmentStatus.DELIVERED, deliveredAt: { gte: since } },
+            select: {
+              id: true,
+              deliveredAt: true,
+              updatedAt: true,
+              shippingPayer: true,
+              codAmountCents: true,
+              carrierCostCents: true,
+              carrierRateCents: true,
+              commissionBps: true
             },
-            select: { id: true, status: true, codStatus: true, deliveredAt: true, updatedAt: true },
             orderBy: { id: 'asc' },
             take,
             ...cursor(after)
           }),
         of: shipment => {
-          const list: Candidate[] = []
-          if (shipment.status === (ShipmentStatus.DELIVERED as string)) {
-            list.push(
-              make(
-                FinanceSourceType.SHIPMENT,
-                shipment.id,
-                FinanceEventKind.CHARGES,
-                FinancePostingKey.SHIPMENT_CHARGES(shipment.id),
-                shipment.deliveredAt ?? shipment.updatedAt
-              )
+          const amounts = chargeAmounts(shipment)
+          if (amounts.freightCents + amounts.commissionCents === 0) return []
+          return [
+            make(
+              FinanceSourceType.SHIPMENT,
+              shipment.id,
+              FinanceEventKind.CHARGES,
+              FinancePostingKey.SHIPMENT_CHARGES(shipment.id),
+              shipment.deliveredAt ?? shipment.updatedAt
             )
-          }
-          if (shipment.codStatus === (CodStatus.WRITTEN_OFF as string)) {
-            // The action leaves no date of its own: the last change of the guide stands for it (debt of the plan)
-            list.push(
-              make(
-                FinanceSourceType.SHIPMENT,
-                shipment.id,
-                FinanceEventKind.COD_WRITE_OFF,
-                FinancePostingKey.SHIPMENT_WRITE_OFF(shipment.id),
-                shipment.updatedAt,
-                shipment.updatedAt
-              )
-            )
-          }
-          return list
+          ]
         }
       },
       out
@@ -502,30 +560,8 @@ export class FinanceSweepService {
       },
       out
     )
-    // E8: an order that came back as a whole with no return row
-    await this.collect(
-      {
-        ...common,
-        page: (after, take) =>
-          db.order.findMany({
-            where: { ...storeOf, status: OrderStatus.RETURNED, updatedAt: { gte: since } },
-            select: { id: true, updatedAt: true },
-            orderBy: { id: 'asc' },
-            take,
-            ...cursor(after)
-          }),
-        of: order => [
-          make(
-            FinanceSourceType.ORDER,
-            order.id,
-            FinanceEventKind.ORDER_RETURN,
-            FinancePostingKey.ORDER_RETURN(order.id),
-            order.updatedAt
-          )
-        ]
-      },
-      out
-    )
+    // E8 of an order that came back as a whole with no return row is NOT swept, for the reason E7 is not: its day is the day of the job.
+
     // E9: an adjustment or a count variance
     await this.collect(
       {
