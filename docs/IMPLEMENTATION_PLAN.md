@@ -1874,16 +1874,19 @@ as one (`CLAUDE.md`, "One PR per step"): the close and the chain are the high-ri
 - [x] **4B.8a** The trial balance of a period (by store too) and the ledger of an account with a running balance, paged (`finance/reports/trial-balance`,
       `finance/reports/ledger`); the CSV files of the journal (a row per line with everything the hash covers), of the ledger and of the trial balance
       (`finance/reports/*.csv`), audited (`FINANCE_EXPORTED`), with the formula guard of the other exports
-- [ ] **4B.8b** The reports of `TDD_18 §10` still to come: income statement and balance sheet by store, cash flow, payables and receivables with age,
-      margin by product reconciled with the ledger, the CSV of the VAT report through the audited path; and the CSV exports through `GENERATE_EXPORT`
-      if the owner wants them as stored files
+- [x] **4B.8b-1** The statements of `TDD_18 §10` over the lines of the journal, by store when asked: income statement (a range of days), balance sheet
+      (as of a day, with the result of the periods not yet moved to equity shown inside it), cash flow (the cash-kind accounts by the source of the entry,
+      opening plus movement equals closing), payables and receivables by party with age (`finance/reports/income-statement`, `balance-sheet`, `cash-flow`,
+      `aging`); a CSV of each, audited like the 4B.8a files, behind the new permission `finance:view_reports` (migration with its rollback)
+- [ ] **4B.8b-2** Margin by product reconciled with the ledger (from the order lines net of tax and the `ISSUE` movement costs), the CSV of the VAT report
+      through the audited path, and the exports through `GENERATE_EXPORT` if the owner wants them as stored files (debt (e) of 4B.8a)
 - [x] **4B.8a** Close and reopen (`TDD_18 §5`): the preconditions (in order, ended, no failed posting, the period balances from its lines and from the
       balances the database keeps), the lock, the frozen hash head, who/when/why of a reopen, the events `FINANCE_PERIOD_CLOSED` and
       `FINANCE_PERIOD_REOPENED`; the check of the chain on demand (`finance/reports/verify-chain`: every hash, every `prevHash`, the head of the settings,
       the head each closed period froze)
-- [ ] **4B.8b** `VERIFY_LEDGER_CHAIN` weekly as a job, `RECONCILE_FINANCE` daily (balances against the lines, inventory against its value, receivables
+- [ ] **4B.8b-2** `VERIFY_LEDGER_CHAIN` weekly as a job (a break notifies and blocks the close until a person clears it), `RECONCILE_FINANCE` daily (balances against the lines, inventory against its value, receivables
       against the open shipments, each fiscal document against its entry), their metrics and alerts, and "late postings" in the period view
-- [ ] **4B.8b** The legal books and the VAT return data in the layout the accountant confirms (debt (b)); the fiscal year if not the calendar one
+- [ ] **4B.8b-3** The legal books and the VAT return data in the layout the accountant confirms (debt (b)); the fiscal year if not the calendar one
 - [x] Tests: the close refuses a month that has not ended, one out of order and one with a failed posting; a closed month's trial balance does not move when
       a late entry arrives; the reopen is for the latest month only and records who, when and why; the chain detects a tampered row (the owner role with the
       triggers off, a figure and a memo); the CSV of the journal verifies against the chain with no other input; the CSV has no formula injection;
@@ -1907,6 +1910,32 @@ blocks, of `TDD_18 §5.1`: a cash account with unreconciled lines and a fiscal d
 (owner 4B.8b with the owner's confirmation that the direct download is not enough). (f) The ledger CSV has no opening-balance row: its first running
 balance includes the balance before the range, which the ledger JSON reports as `openingCents`. (g) The `finance:` prefix stays in
 `PermissionsOfUnbuiltAreas`: `FINANCE_CLOSE_PERIODS` and `FINANCE_EXPORT` are read now, the rest by 4B.9 at the latest. (h) The screens (the close checklist, the reports) are 4B.9. (i) A CSV that fails mid-stream (a lost connection) is a cut file behind a 200, and the pages are read without one snapshot, so a posting between pages can make the ledger CSV's running balance jump: owner 4B.8b (one repeatable-read read and a closing row with the total); until then the audit row's `rows` is what the auditor compares. (j) The rule of the formula guard is reversible only for a text that does not itself start with a quote: a verification script strips one leading quote when the rest starts with `=`, `+`, `-`, `@`, a tab or a return (owner 4B.8b with the auditor's script). (k) The audit row of a close or reopen is written after the commit, like every other finance audit row; the domain event and the period row (who, when, why) are the durable record meanwhile. (l) The frozen head check proves the hash is still an entry's, not where it sits; 4B.8b adds the position. (n) The reports and files are for the whole organization, as `TDD_18 §9.1` says (a member who holds the permission in one store reads the organization's ledger); the `storeId` filter narrows, it is not a bound. (o) The one-check-at-a-time guard of the chain scan is per process; a lock across replicas comes with the weekly job (4B.8b). (p) "Today" for the close is the day of the store furthest behind (all stores, active or not): an organization zone setting replaces it (owner and accountant). (q) The report names and chain reasons are string literals of this PR (`trial_balance`, `journal`, `ledger`, `head_mismatch`, `frozen_head_missing`); 4B.8b makes them constants when the job and the screens read them. (m) Closed in this PR: the close asks `FinanceCloseGuard` (4B.6b-3) before it takes the lock (the sweep's preview transactions take the settings row FOR SHARE and would wait on the lock) and keeps the count of unresolved failures under the lock, so a failure recorded in between still refuses. The guard looks at the whole organization (a failure carries no source date) and reads back from the start of the period; narrowing it by date waits for the row to carry one (debt of 4B.6b-3).
+
+**Decisions of PR 4B.8b-1 (rule 12):** (1) the statements read the lines of the journal, not `AccountPeriodBalance`, so any range of days and any store is exact
+(rejected: the period balances, which only answer whole months; the daily reconciliation compares the two). (2) A section is the type of each account and a
+subtotal is its parent in the accountant's chart: no code is written in the code, and a section with no activity is warned (`no_income`, `no_cost_of_sales`)
+instead of drawn as zero. (3) The balance sheet shows the result of every period not yet moved to equity inside equity, because the books carry no closing
+entry; the cut by fiscal year waits for the accountant's answer (`TDD_18 §13` row 9). (4) Payables and receivables age first in, first out: the side that
+grows the balance opens an item dated by its entry and the other side settles the oldest first; a payment larger than what was open is shown apart as
+`unapplied`. The buckets (0-30, 31-60, 61-90, over 90) are `AgingBucketDays` and the roles each list reads are `AgingRoles`; a role with no account is
+named in `missingRoles` and warned, never guessed. (5) `finance:view_reports` is its own permission (the plan of 4B.8 asked for it): the trial balance of 4B.8a
+keeps `finance:view`; a file needs `finance:export` besides. (6) The files go out by direct download with an audit row, as in 4B.8a.
+**Left by PR 4B.8b-1 (rule 12):** (a) the lists with age read every line of their accounts since the books started into memory (capped at `FinanceReportLimits.MAX_CSV_ROWS`, then
+refused for good: the store narrows only an organization with several): open items kept by party (a table a trigger maintains) is 4B.8b-2 and must land before the
+history of a party reaches the cap. (b) The age is by the date of the entry, not by the due
+date of a purchase (`Supplier.paymentTermsDays` is not applied): the accountant says which one the list wants (**[ACCOUNTANT]**), then 4B.8b-3. (c) The
+statements have no comparison with another period and no percentages; 4B.9 draws them from two calls. (d) The cash flow classifies by the source of the entry
+(an order, a remittance, a manual entry), not into operating, investing and financing: that grouping is the accountant's (**[ACCOUNTANT]**). (e) The report
+names of 4B.8a (debt (q)) stay string literals there; this PR's are the `FinanceReport` enum. (g) The aging list names carrier connections and the income statement the commission accounts, and `finance:view_carrier_fees` is not asked for either: the
+ledger already shows the same figures under `finance:view_journal`; whether the statements need that permission too is the owner's and the accountant's call,
+and one `@RequirePermissions` line changes it. (h) A statement of one store is a slice by the store of the lines: it carries no `balanced` verdict (an entry may
+put its lines in two stores or in none); the whole-organization sheet does. The audit rows of the statements use the `finance_report` resource type, the
+4B.8a files still use `finance_entry` (moved with the report constants of debt (q) of 4B.8a). (i) A payment dated before its invoice pays it (the unapplied
+amount settles against what is open at the end), but an age by the invoice date and the payment date of each pair, not FIFO, is the accountant's (b).
+(j) The `storeId` of a statement narrows to any store of the organization (`requireStore` checks the organization, not the caller's role in that store): the same
+reading of `TDD_18 §9.1` as the trial balance of 4B.8a (debt (n)); a per-store bound comes with the per-store accounts of the Phase 2. The audit row of a file is
+written like every finance audit row, not awaited (debt (k) of 4B.8a). (f) `finance:view_reports` is not yet in a role preset other than
+Admin: owners of custom roles grant it by hand, and 4B.9 lists it in the matrix of the screen.
 
 ### Step 4B.9 — Finance interface (web)
 - [ ] Delivered in PRs (decided 2026-11-16, rule 12: about 75 routes with money on them are too many for one review, and the web had no finance
@@ -2828,7 +2857,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.5 | Suppliers and purchase orders | done | #542 | 2026-11-15 |
 | 4B.6 | The automatic entries (sales, remittances, returns, stock) | in progress | 4B.6a machinery, E1 to E3 and E9 (#546); 4B.6b-1 carrier charges, remittance confirmed and voided (E4 to E6; #548); 4B.6b-2 the difference written off, returns and the fee permission (E7, E8, E4 of a return guide; #550); 4B.6b-3 the sweep, its metrics, the failure notice and the close guard (this PR); 4B.6b-4 the prepaid charge model: todo | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | in progress | 4B.7a-1 the libraries and the rule (this PR); 4B.7a-2 the database, the lifecycle, the queue and the routes (this PR); 4B.7b credit notes, evidence as media and the customer's fiscal data: todo | |
-| 4B.8 | Reports, monthly close and the auditor's export | in progress | 4B.8a | |
+| 4B.8 | Reports, monthly close and the auditor's export | in progress | 4B.8a (#553); 4B.8b-1 statements and aging (this PR); 4B.8b-2 and 4B.8b-3: todo | |
 | 4B.9 | Finance interface (web) | in progress | 4B.9a-1 (setup, chart, taxes, settings, periods; the number is in the PR) | |
 | **Milestone 5: Operations** | | | | |
 | 5.1 | Search | done | #486 (PR A: the server), #488 (PR B: the web), #496 (the click, in Step 5.2 PR C3) | 2026-11-15 |

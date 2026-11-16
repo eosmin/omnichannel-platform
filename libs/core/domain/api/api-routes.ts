@@ -191,7 +191,16 @@ export const ApiRoutes = {
       trialBalanceCsv: '/finance/reports/trial-balance.csv',
       ledgerCsv: '/finance/reports/ledger.csv',
       journalCsv: '/finance/reports/journal.csv',
-      verifyChain: '/finance/reports/verify-chain'
+      verifyChain: '/finance/reports/verify-chain',
+      // The statements and the lists with age (Step 4B.8b), by store when asked, as of a date or over a range, with their CSV files
+      incomeStatement: '/finance/reports/income-statement',
+      balanceSheet: '/finance/reports/balance-sheet',
+      cashFlow: '/finance/reports/cash-flow',
+      aging: '/finance/reports/aging',
+      incomeStatementCsv: '/finance/reports/income-statement.csv',
+      balanceSheetCsv: '/finance/reports/balance-sheet.csv',
+      cashFlowCsv: '/finance/reports/cash-flow.csv',
+      agingCsv: '/finance/reports/aging.csv'
     },
     // The tax preferences of the store of X-Store-Id: GET reads them, PATCH changes whether its prices include the tax
     storeTaxSettings: '/finance/store-tax-settings',

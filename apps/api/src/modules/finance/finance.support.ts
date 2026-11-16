@@ -115,3 +115,16 @@ export function requireTransactionPermission(
     )
   }
 }
+
+// A cent amount of a CSV is a number: a text that starts with a minus sign would be written with a formula guard. One that does not fit a
+// spreadsheet cell is refused with the answer of a file too large, not left as a bare error.
+export const centsAsNumber = (value: bigint): number => {
+  if (value > BigInt(Number.MAX_SAFE_INTEGER) || value < BigInt(Number.MIN_SAFE_INTEGER)) {
+    throw new PlatformException(
+      ErrorCodes.EXPORT_TOO_LARGE,
+      'an amount does not fit a spreadsheet cell',
+      HttpStatusCodes.BAD_REQUEST
+    )
+  }
+  return Number(value)
+}
