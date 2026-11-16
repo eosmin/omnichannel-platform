@@ -2,7 +2,6 @@
 
 import {
   type InfiniteData,
-  keepPreviousData,
   useInfiniteQuery,
   type UseInfiniteQueryResult,
   useMutation,
@@ -305,7 +304,8 @@ export function useFinanceEntries(
     queryFn: ({ pageParam, signal }) =>
       fetchFinanceEntryPage(apiClient, storeId, filters, pageParam, signal),
     getNextPageParam: last => (last.hasMore ? last.nextCursor : undefined),
-    placeholderData: keepPreviousData,
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === storeId ? previous : undefined,
     enabled
   })
 }
@@ -332,7 +332,8 @@ export function useFinanceTransactions(
     queryFn: ({ pageParam, signal }) =>
       fetchFinanceTransactionPage(apiClient, storeId, filters, pageParam, signal),
     getNextPageParam: last => (last.hasMore ? last.nextCursor : undefined),
-    placeholderData: keepPreviousData,
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === storeId ? previous : undefined,
     enabled
   })
 }
@@ -359,6 +360,8 @@ export function useFinanceReceiptUrls(
     queryFn: ({ signal }) =>
       fetchFinanceTransactionDocumentUrls(apiClient, storeId, transactionId, signal),
     staleTime: 5 * 60_000,
+    // An open detail keeps working links: they die at 15 minutes
+    refetchInterval: 10 * 60_000,
     enabled
   })
 }

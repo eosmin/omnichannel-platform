@@ -86,9 +86,9 @@ describe('manualEntryProblem', () => {
     expect(manualEntryProblem(over)).toEqual({ field: ManualEntryFields.TOTAL, index: null })
   })
 
-  it('counts a memo in code points like the api', () => {
-    expect(manualEntryProblem({ ...balanced(), memo: '😀'.repeat(300) })).toBeNull()
-    expect(manualEntryProblem({ ...balanced(), memo: '😀'.repeat(501) })?.field).toBe(
+  it('counts a memo in UTF-16 units like the request schema of the api', () => {
+    expect(manualEntryProblem({ ...balanced(), memo: '😀'.repeat(250) })).toBeNull()
+    expect(manualEntryProblem({ ...balanced(), memo: '😀'.repeat(251) })?.field).toBe(
       ManualEntryFields.MEMO
     )
   })

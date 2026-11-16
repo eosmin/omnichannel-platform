@@ -173,11 +173,10 @@ export function transactionProblem(
   const cents = centsOfDecimalText(draft.amount)
   // The net that is left after the tax is a positive amount, because a line of the entry takes it
   if (tax !== null && cents !== null && tax > 0 && tax >= cents) return TransactionFields.TAX
-  if (Array.from(draft.documentNumber.trim()).length > FinanceLimits.DOCUMENT_NUMBER_MAX_LENGTH) {
+  if (draft.documentNumber.trim().length > FinanceLimits.DOCUMENT_NUMBER_MAX_LENGTH) {
     return TransactionFields.DOCUMENT_NUMBER
   }
-  if (Array.from(draft.memo.trim()).length > FinanceLimits.MEMO_MAX_LENGTH)
-    return TransactionFields.MEMO
+  if (draft.memo.trim().length > FinanceLimits.MEMO_MAX_LENGTH) return TransactionFields.MEMO
   return null
 }
 

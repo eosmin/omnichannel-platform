@@ -60,8 +60,9 @@ export const emptyManualEntryDraft = (today: string, keys: [string, string]): Ma
 const sideOf = (text: string): number | null =>
   text.trim() === '' || /^0+(?:[.,]0{1,2})?$/.test(text.trim()) ? 0 : centsOfDecimalText(text)
 
-// The api counts a memo in code points, not in UTF-16 units: an emoji is one
-const lengthOf = (text: string): number => Array.from(text).length
+// The request schema of the api counts a memo in UTF-16 units (zod `max`), which is stricter than the database's code points: the
+// form takes the stricter, so a memo the form accepts is one the api accepts
+const lengthOf = (text: string): number => text.length
 
 export interface ManualEntryTotals {
   debitCents: number
