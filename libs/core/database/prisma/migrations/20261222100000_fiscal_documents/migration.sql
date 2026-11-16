@@ -48,6 +48,7 @@ CREATE TABLE "fiscal_documents" (
     "void_reason" TEXT,
     "voided_by" TEXT,
     "voided_at" TIMESTAMP(3),
+    "void_response" JSONB,
     "issued_at" TIMESTAMP(3),
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,

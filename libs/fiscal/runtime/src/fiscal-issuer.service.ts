@@ -88,6 +88,20 @@ export class FiscalIssuerService {
     }
   }
 
+  private storedCredentials(sealed: Uint8Array | null): Record<string, unknown> {
+    if (sealed === null) return {}
+    try {
+      return this.cipher.open(sealed)
+    } catch {
+      throw new PlatformException(
+        ErrorCodes.FISCAL_ISSUER_INVALID,
+        'the stored credentials cannot be read: send them again',
+        HttpStatusCodes.BAD_REQUEST,
+        { problems: ['credentials'] }
+      )
+    }
+  }
+
   async upsert(
     organizationId: string,
     body: FiscalIssuerBody,
@@ -103,7 +117,12 @@ export class FiscalIssuerService {
     }
     const existing = await this.prisma.client.fiscalIssuer.findUnique({
       where: { organizationId },
-      select: { credentialsEncrypted: true, providerId: true, nextSequence: true }
+      select: {
+        credentialsEncrypted: true,
+        providerId: true,
+        environment: true,
+        nextSequence: true
+      }
     })
     if (
       body.nextSequence !== undefined &&
@@ -117,24 +136,23 @@ export class FiscalIssuerService {
         { problems: ['nextSequence'] }
       )
     }
-    // Credentials of another provider are not the new one's: switching provider asks for the new ones
+    // Credentials of another provider, or of another environment, are not the new one's: a sandbox key is never kept as the key of
+    // production, so a change of either asks for the new ones
     if (
       body.credentials === undefined &&
       existing !== null &&
-      existing.providerId !== body.providerId
+      (existing.providerId !== body.providerId ||
+        (existing.environment as FiscalEnvironment) !== body.environment)
     ) {
       throw new PlatformException(
         ErrorCodes.FISCAL_ISSUER_INVALID,
-        'a new provider needs its own credentials',
+        'a new provider or a new environment needs its own credentials',
         HttpStatusCodes.BAD_REQUEST,
         { problems: ['credentials'] }
       )
     }
     const credentials =
-      body.credentials ??
-      (existing?.credentialsEncrypted == null
-        ? {}
-        : this.cipher.open(existing.credentialsEncrypted))
+      body.credentials ?? this.storedCredentials(existing?.credentialsEncrypted ?? null)
     const input: FiscalIssuerInput = {
       legalName: body.legalName,
       taxId: body.taxId,
@@ -152,7 +170,13 @@ export class FiscalIssuerService {
         { problems: ['environment'] }
       )
     }
-    const check = await provider.validateIssuer(input, { credentials })
+    // A provider that throws, or credentials that cannot be opened, are an issuer that does not pass: never a 500
+    const check = await Promise.resolve()
+      .then(() => provider.validateIssuer(input, { credentials }))
+      .catch(() => ({
+        ok: false,
+        problems: ['provider_error']
+      }))
     if (!check.ok) {
       // The problems are codes the provider chose (a field, a certificate), never a value
       throw new PlatformException(

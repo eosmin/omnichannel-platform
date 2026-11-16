@@ -3048,6 +3048,7 @@ model FiscalDocument {
   voidReason            String?   @map("void_reason")
   voidedBy              String?   @map("voided_by")
   voidedAt              DateTime? @map("voided_at")
+  voidResponse          Json?     @map("void_response") // what the authority answered to the invalidation: the evidence of the void, kept apart because the accepted row cannot change
   issuedAt              DateTime? @map("issued_at")
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")

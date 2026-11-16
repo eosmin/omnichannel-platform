@@ -120,6 +120,43 @@ export function saleAddsUp(sale: FiscalSale): boolean {
   return expected === sale.totalCents
 }
 
+const ISSUER_IDENTITY = [
+  'legalName',
+  'taxId',
+  'registrationId',
+  'activityCode',
+  'establishmentCode',
+  'environment'
+] as const
+
+// Whether the issuer as it is now is the one a document was made with: the same identity, the same environment, the same address. The
+// provider is compared by the caller (it is a column of the document). A document is never signed in the name of another issuer.
+export function sameIssuer(
+  snapshot: Readonly<Record<string, unknown>>,
+  live: {
+    legalName: string
+    taxId: string
+    registrationId: string | null
+    activityCode: string | null
+    establishmentCode: string | null
+    environment: string
+    address: unknown
+  }
+): boolean {
+  const same = (a: unknown, b: unknown): boolean => (a ?? null) === (b ?? null)
+  return (
+    ISSUER_IDENTITY.every(key => same(snapshot[key], live[key])) &&
+    JSON.stringify(sorted(snapshot['address'])) === JSON.stringify(sorted(live.address))
+  )
+}
+
+function sorted(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return value ?? null
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b))
+  )
+}
+
 export function receiverOf(record: Readonly<Record<string, unknown>>): FiscalReceiver {
   const text = (key: string): string | null => {
     const value = record[key]

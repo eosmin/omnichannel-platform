@@ -33,6 +33,9 @@ export const FiscalLimits = {
   MAX_SEQUENCE: 2_000_000_000,
   // A submission that was claimed less than this ago is alive: another attempt is working on it. Older, its worker died and it is taken over.
   CLAIM_LEASE_MS: 5 * 60 * 1000,
+  // A call to a provider that does not answer in this time counts as no answer: well under the lease, so a slow provider never outlives
+  // the claim of its attempt
+  PROVIDER_CALL_TIMEOUT_MS: 60 * 1000,
   LIST_PAGE_SIZE: 25,
   LIST_MAX_PAGE_SIZE: 100
 } as const

@@ -187,6 +187,23 @@ describe('The fiscal documents (Step 4B.7)', () => {
       ).toBeGreaterThanOrEqual(5000)
     })
 
+    it('asks for new credentials when the environment or the provider changes: a sandbox key is never kept as the key of production', async () => {
+      expect((await asAdminA().put(ApiRoutes.fiscal.issuer).send(ISSUER)).status).toBe(OK)
+      // Sent with no credentials (undefined is left out of the JSON)
+      const withoutCredentials = { ...ISSUER, credentials: undefined }
+      const changed = await asAdminA()
+        .put(ApiRoutes.fiscal.issuer)
+        .send({ ...withoutCredentials, environment: FiscalEnvironment.PRODUCTION })
+      expect(changed.status).toBe(BAD_REQUEST)
+      expect((changed.body as { error: { code: string } }).error.code).toBe(
+        ErrorCodes.FISCAL_ISSUER_INVALID
+      )
+      // The same environment and provider keep the stored credentials
+      expect((await asAdminA().put(ApiRoutes.fiscal.issuer).send(withoutCredentials)).status).toBe(
+        OK
+      )
+    })
+
     it('does not touch another organization: its issuer is its own', async () => {
       const other = await api(app, ctx.adminB, ctx.storeB).get(ApiRoutes.fiscal.issuer)
       expect(other.status).toBe(OK)
@@ -510,6 +527,50 @@ describe('The fiscal documents (Step 4B.7)', () => {
           data: { environment: FiscalEnvironment.SANDBOX }
         })
       }
+    })
+
+    it('refuses to sign in the name of an issuer whose identity changed after the document was made', async () => {
+      const { documentId } = await sale()
+      await patchReceiver(documentId, { taxId: '12345-6', name: 'Ana' })
+      await owner.fiscalIssuer.update({
+        where: { organizationId: ctx.orgA.id },
+        data: { taxId: 'ANOTHER-TAX-ID' }
+      })
+      try {
+        await documents.submit(ctx.orgA.id, documentId)
+        const refused = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+        expect(refused.status).toBe(FiscalDocumentStatus.REJECTED)
+        expect(refused.rejectionReason).toBe(FiscalRejectionReasons.ISSUER_CHANGED)
+        expect(refused.builtPayloadEncrypted).toBeNull()
+      } finally {
+        await owner.fiscalIssuer.update({
+          where: { organizationId: ctx.orgA.id },
+          data: { taxId: ISSUER.taxId }
+        })
+      }
+    })
+
+    it('builds every attempt with the time the document was made, and keeps that time as its issue date', async () => {
+      const { documentId } = await sale()
+      await patchReceiver(documentId, { taxId: SimulatorRules.LOST, name: 'Ana' })
+      await expect(documents.submit(ctx.orgA.id, documentId)).rejects.toThrow(/did not answer/)
+      await documents.submit(ctx.orgA.id, documentId)
+      const row = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+      expect(row.status).toBe(FiscalDocumentStatus.ACCEPTED)
+      expect(row.issuedAt?.toISOString()).toBe(row.createdAt.toISOString())
+    })
+
+    it('keeps what the authority answered to the invalidation as its own evidence', async () => {
+      const { documentId } = await sale()
+      await documents.submit(ctx.orgA.id, documentId)
+      const voided = await asAdminA()
+        .post(ApiRoutes.fiscal.documents.void(documentId))
+        .send({ reason: 'wrong customer' })
+      expect(voided.status).toBe(OK)
+      const row = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+      expect(row.voidResponse).toEqual({ voided: true })
+      // The response to the acceptance is the one that was kept when it was accepted
+      expect(row.response).toEqual({ accepted: true })
     })
 
     it('does not invalidate with an issuer that is not the one that accepted the document', async () => {

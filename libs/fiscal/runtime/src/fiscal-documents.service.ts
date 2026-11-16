@@ -1,4 +1,7 @@
+import { randomUUID } from 'node:crypto'
+
 import { Injectable } from '@nestjs/common'
+import { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
@@ -18,6 +21,7 @@ import {
 } from '@platform/core/domain'
 import {
   ErrorCodes,
+  errorName,
   HttpStatusCodes,
   PlatformException,
   resourceNotFound
@@ -44,9 +48,11 @@ import {
   receiverRecord,
   retryable,
   saleAddsUp,
-  saleOf
+  saleOf,
+  sameIssuer
 } from './fiscal-rules'
 import { cappedResponse, type Json, record, toJson } from './json'
+import { withTimeout } from './with-timeout'
 
 // The fields of an issuer that a provider is told about (the row of the issuer and the snapshot a document keeps of it)
 interface IssuerRow {
@@ -121,8 +127,11 @@ export class FiscalDocumentsService {
     private readonly audit: AuditService,
     private readonly events: DomainEvents,
     private readonly cipher: CredentialCipher,
-    private readonly providers: FiscalProviderRegistry
-  ) {}
+    private readonly providers: FiscalProviderRegistry,
+    private readonly logger: PinoLogger
+  ) {
+    this.logger.setContext(FiscalDocumentsService.name)
+  }
 
   // ---------------------------------------------------------------- reads
 
@@ -289,7 +298,7 @@ export class FiscalDocumentsService {
       issuer === null ||
       provider === undefined ||
       issuer.providerId !== doc.providerId ||
-      issuer.environment !== doc.environment
+      !sameIssuer(record(doc.issuerSnapshot), issuer)
     ) {
       await this.reject(
         doc.id,
@@ -323,10 +332,11 @@ export class FiscalDocumentsService {
       await this.reject(doc.id, organizationId, FiscalRejectionReasons.SALE_INCONSISTENT)
       return
     }
-    const built = await this.attempt(() =>
+    const built = await this.attempt('build', doc.id, () =>
       provider.build({
         sequenceNumber: doc.sequenceNumber,
-        issuedAt: new Date().toISOString(),
+        // Fixed when the document was made: every attempt of every submission builds the same document
+        issuedAt: doc.createdAt.toISOString(),
         orderNumber: typeof parts['orderNumber'] === 'string' ? parts['orderNumber'] : '',
         currency: doc.currency,
         issuer: issuerInput,
@@ -352,7 +362,9 @@ export class FiscalDocumentsService {
     // An earlier attempt of this submission may have reached the authority before it was cut short: ask before sending a second document.
     // A consultation that gets no answer is not "never received": the document goes back to the queue and the consultation is asked again.
     if (doc.attempts > 0) {
-      const consulted = await this.attempt(() => provider.consult(built, context))
+      const consulted = await this.attempt('consult', doc.id, () =>
+        provider.consult(built, context)
+      )
       if (consulted === null) {
         return this.requeueAndFail(doc.id, 'the fiscal provider did not answer the consultation')
       }
@@ -369,7 +381,9 @@ export class FiscalDocumentsService {
         return
       }
     }
-    const result = (await this.attempt(() => provider.submit(built, context))) ?? {
+    const result = (await this.attempt('submit', doc.id, () =>
+      provider.submit(built, context)
+    )) ?? {
       outcome: FiscalSubmitOutcome.UNAVAILABLE as const
     }
     if (result.outcome === FiscalSubmitOutcome.ACCEPTED) {
@@ -399,10 +413,24 @@ export class FiscalDocumentsService {
 
   // A call to a provider, awaited inside the try: a provider may throw before it returns a promise as well as reject it. What it throws
   // is not kept (it may carry the receiver's data); the caller reads null as "no answer".
-  private async attempt<T>(call: () => Promise<T>): Promise<T | null> {
+  // Only the name of the error is logged (never its message, which may carry the receiver), with the document and the call, so that a
+  // fault of a provider can be found. A call that does not answer in time is no answer either.
+  private async attempt<T>(
+    operation: string,
+    documentId: string,
+    call: () => Promise<T>
+  ): Promise<T | null> {
     try {
-      return await call()
-    } catch {
+      const answer = await withTimeout(call, FiscalLimits.PROVIDER_CALL_TIMEOUT_MS)
+      if (answer === null) {
+        this.logger.warn({ documentId, operation }, 'a fiscal provider did not answer in time')
+      }
+      return answer
+    } catch (error) {
+      this.logger.warn(
+        { documentId, operation, err: errorName(error) },
+        'a fiscal provider call failed'
+      )
       return null
     }
   }
@@ -456,17 +484,23 @@ export class FiscalDocumentsService {
     }
   ): Promise<void> {
     const providerData =
-      result.providerData === undefined ? undefined : this.safeJson(result.providerData)
+      result.providerData === undefined ? undefined : this.safeResponse(result.providerData)
     const response = result.response === undefined ? undefined : this.safeResponse(result.response)
     const sealedPayload = this.sealPayload(built.payload)
     await this.prisma.transaction(async tx => {
       await tx.$queryRaw`SELECT id FROM fiscal_documents WHERE id = ${documentId} AND organization_id = ${organizationId} FOR UPDATE`
       const doc = await tx.fiscalDocument.findFirstOrThrow({
         where: { id: documentId, organizationId },
-        select: { orderId: true, status: true }
+        select: { orderId: true, status: true, createdAt: true }
       })
       // Another attempt decided first (this one was taken over): what is decided is not decided twice
-      if (doc.status !== (FiscalDocumentStatus.SUBMITTED as string)) return
+      if (doc.status !== (FiscalDocumentStatus.SUBMITTED as string)) {
+        this.logger.warn(
+          { documentId },
+          'the acceptance of a fiscal document was skipped: it was not being submitted'
+        )
+        return
+      }
       // The sale entry may have posted after the document was made: the link is made now, never by copying its amounts
       const entry = await tx.journalEntry.findFirst({
         where: { organizationId, idempotencyKey: FinancePostingKey.ORDER_SALE(doc.orderId) },
@@ -482,7 +516,7 @@ export class FiscalDocumentsService {
           builtPayloadEncrypted: sealedPayload,
           response,
           rejectionReason: null,
-          issuedAt: new Date(),
+          issuedAt: doc.createdAt,
           ...(entry === null ? {} : { journalEntryId: entry.id })
         }
       })
@@ -524,7 +558,13 @@ export class FiscalDocumentsService {
         where: { id: documentId, organizationId }
       })
       // Another attempt decided first (this one was taken over): what is decided is not decided twice
-      if (doc.status !== (FiscalDocumentStatus.SUBMITTED as string)) return
+      if (doc.status !== (FiscalDocumentStatus.SUBMITTED as string)) {
+        this.logger.warn(
+          { documentId },
+          'the rejection of a fiscal document was skipped: it was not being submitted'
+        )
+        return
+      }
       const kept = reason.slice(0, FiscalLimits.REASON_MAX_LENGTH)
       await tx.fiscalDocument.update({
         where: { id: documentId },
@@ -669,7 +709,7 @@ export class FiscalDocumentsService {
       issuer === null ||
       provider === undefined ||
       issuer.providerId !== doc.providerId ||
-      issuer.environment !== doc.environment
+      !sameIssuer(record(doc.issuerSnapshot), issuer)
     ) {
       throw new PlatformException(
         ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
@@ -686,7 +726,7 @@ export class FiscalDocumentsService {
         HttpStatusCodes.CONFLICT
       )
     }
-    const outcome = await this.attempt(() =>
+    const outcome = await this.attempt('void', id, () =>
       provider.void(
         {
           documentType: doc.documentType,
@@ -701,7 +741,9 @@ export class FiscalDocumentsService {
         {
           issuer: this.issuerOfSnapshot(doc.issuerSnapshot),
           credentials,
-          idempotencyKey: `${organizationId}:${id}:void`,
+          // A new key for each invalidation: one that was refused and is asked again with another reason is not the one the provider
+          // remembers
+          idempotencyKey: `${organizationId}:${id}:void:${randomUUID()}`,
           attempt: 1
         }
       )
@@ -732,7 +774,11 @@ export class FiscalDocumentsService {
           status: FiscalDocumentStatus.VOIDED,
           voidReason: reason.slice(0, FiscalLimits.VOID_REASON_MAX_LENGTH),
           voidedBy: actor.userId,
-          voidedAt: new Date()
+          voidedAt: new Date(),
+          // What the authority answered to the invalidation: the evidence of the void, apart from the response to the acceptance (that row
+          // cannot change any more)
+          voidResponse:
+            outcome.response === undefined ? undefined : this.safeResponse(outcome.response)
         }
       })
     })

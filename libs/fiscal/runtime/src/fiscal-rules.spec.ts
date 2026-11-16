@@ -10,7 +10,8 @@ import {
   receiverRecord,
   retryable,
   saleAddsUp,
-  saleOf
+  saleOf,
+  sameIssuer
 } from './fiscal-rules'
 
 describe('the transitions of a fiscal document', () => {
@@ -217,5 +218,33 @@ describe('a sale that adds up', () => {
     })
     // An order made before the tax columns kept no flag: its prices are read as tax included
     expect(saleOf({ totalCents: 0, taxCents: 0 }, {}).pricesIncludeTax).toBe(true)
+  })
+})
+
+describe('the issuer a document was made with', () => {
+  const live = {
+    legalName: 'Acme',
+    taxId: 'T-1',
+    registrationId: null,
+    activityCode: null,
+    establishmentCode: 'M001',
+    environment: 'sandbox',
+    address: { line1: 'x', city: 'y' }
+  }
+  const snapshot = { ...live, address: { city: 'y', line1: 'x' } }
+
+  it('is the same when nothing of its identity moved, whatever the order of the address', () => {
+    expect(sameIssuer(snapshot, live)).toBe(true)
+  })
+
+  it.each([
+    ['the tax id', { taxId: 'T-2' }],
+    ['the legal name', { legalName: 'Other' }],
+    ['the registration', { registrationId: 'R-1' }],
+    ['the establishment', { establishmentCode: 'M002' }],
+    ['the environment', { environment: 'production' }],
+    ['the address', { address: { line1: 'z', city: 'y' } }]
+  ])('is not the same when %s changed', (_label, patch) => {
+    expect(sameIssuer(snapshot, { ...live, ...patch })).toBe(false)
   })
 })
