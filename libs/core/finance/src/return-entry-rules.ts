@@ -131,20 +131,59 @@ export function reversalOf(input: {
   before: ReadonlyMap<string, number>
   returned: ReadonlyMap<string, number>
 }): ReturnReversalResult {
-  let netCents = 0
-  let vatCents = 0
-  for (const [orderItemId, back] of input.returned) {
-    const basis = input.bases.find(line => line.orderItemId === orderItemId)
-    const earlier = input.before.get(orderItemId) ?? 0
-    // A unit that is not on the order, or more units back than were sold: the books refuse it, they never invent a reversal
-    if (basis === undefined || earlier + back > basis.quantity) {
+  // The total is the sum of the lines (`reversalLinesOf`, the one split of the books, which the credit note of Step 4B.7b also reads)
+  const split = reversalLinesOf(input)
+  if (!split.ok) return split
+  return {
+    ok: true,
+    reversal: {
+      netCents: split.lines.reduce((sum, line) => sum + line.netCents, 0),
+      vatCents: split.lines.reduce((sum, line) => sum + line.vatCents, 0)
+    }
+  }
+}
+
+export interface ReversedLine {
+  orderItemId: string
+  // The units of this line that are back in this return
+  quantity: number
+  netCents: number
+  vatCents: number
+}
+
+export type ReversedLinesResult =
+  { ok: true; lines: ReversedLine[] } | { ok: false; reason: FinancePostingFailureReason }
+
+// The same running-total split as `reversalOf`, kept line by line (the credit note of a return, Step 4B.7b, names each line). The lines come
+// out in the order of `bases`, so two runs name them the same way, and the sum of the parts is what `reversalOf` gives for the same input.
+export function reversalLinesOf(input: {
+  bases: readonly LineBasis[]
+  before: ReadonlyMap<string, number>
+  returned: ReadonlyMap<string, number>
+}): ReversedLinesResult {
+  const lines: ReversedLine[] = []
+  for (const basis of input.bases) {
+    const back = input.returned.get(basis.orderItemId) ?? 0
+    if (back === 0) continue
+    const earlier = input.before.get(basis.orderItemId) ?? 0
+    if (earlier + back > basis.quantity) {
       return { ok: false, reason: FinancePostingFailureReason.AMOUNTS_DISAGREE }
     }
     const upTo = (cents: number, units: number): number => prorate(cents, units, basis.quantity)
-    netCents += upTo(basis.netCents, earlier + back) - upTo(basis.netCents, earlier)
-    vatCents += upTo(basis.vatCents, earlier + back) - upTo(basis.vatCents, earlier)
+    lines.push({
+      orderItemId: basis.orderItemId,
+      quantity: back,
+      netCents: upTo(basis.netCents, earlier + back) - upTo(basis.netCents, earlier),
+      vatCents: upTo(basis.vatCents, earlier + back) - upTo(basis.vatCents, earlier)
+    })
   }
-  return { ok: true, reversal: { netCents, vatCents } }
+  // A unit that is not on the order is refused, never ignored
+  for (const orderItemId of input.returned.keys()) {
+    if (!input.bases.some(basis => basis.orderItemId === orderItemId)) {
+      return { ok: false, reason: FinancePostingFailureReason.AMOUNTS_DISAGREE }
+    }
+  }
+  return { ok: true, lines }
 }
 
 export interface StockMove {

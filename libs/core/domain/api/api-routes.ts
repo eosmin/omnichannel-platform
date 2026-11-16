@@ -279,7 +279,9 @@ export const ApiRoutes = {
       // PATCH the receiver of a document that is queued or rejected: a person fixes the data the authority refused
       receiver: (id: string) => `/fiscal/documents/${id}/receiver`,
       retry: (id: string) => `/fiscal/documents/${id}/retry`,
-      void: (id: string) => `/fiscal/documents/${id}/void`
+      void: (id: string) => `/fiscal/documents/${id}/void`,
+      // POST makes the sale document again after the one before was voided (and the credit notes that were voided with it)
+      replace: (id: string) => `/fiscal/documents/${id}/replace`
     }
   },
 

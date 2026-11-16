@@ -217,6 +217,7 @@ export const AuditAction = {
   FISCAL_DOCUMENT_RETRIED: 'fiscal.document_retried',
   FISCAL_DOCUMENT_RECEIVER_CHANGED: 'fiscal.document_receiver_changed',
   FISCAL_DOCUMENT_VOIDED: 'fiscal.document_voided',
+  FISCAL_DOCUMENT_REPLACED: 'fiscal.document_replaced',
   FINANCE_TRANSACTION_RECORDED: 'finance.transaction_recorded',
   FINANCE_TRANSACTION_VOIDED: 'finance.transaction_voided',
   FINANCE_TRANSACTION_DOCUMENT_ATTACHED: 'finance.transaction_document_attached',

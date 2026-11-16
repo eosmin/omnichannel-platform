@@ -12,6 +12,7 @@ import {
   openReceivableCents,
   returnLines,
   restockCost,
+  reversalLinesOf,
   reversalOf,
   type RoleAccounts,
   saleAmounts,
@@ -198,6 +199,45 @@ describe('reversalOf (E8)', () => {
       ok: false,
       reason: FinancePostingFailureReason.AMOUNTS_DISAGREE
     })
+  })
+})
+
+describe('reversalLinesOf (E8, line by line)', () => {
+  const bases = (() => {
+    const result = lineBases(order)
+    if (!result.ok) throw new Error('fixture')
+    return result.lines
+  })()
+
+  it('adds up to what reversalOf gives, in the order of the bases', () => {
+    const input = {
+      bases,
+      before: new Map([['a', 1]]),
+      returned: new Map([
+        ['b', 1],
+        ['a', 2]
+      ])
+    }
+    const lines = reversalLinesOf(input)
+    const total = reversalOf(input)
+    expect(lines.ok && total.ok).toBe(true)
+    if (!lines.ok || !total.ok) return
+    expect(lines.lines.map(line => line.orderItemId)).toEqual(
+      bases.map(basis => basis.orderItemId).filter(id => id === 'a' || id === 'b')
+    )
+    expect(lines.lines.reduce((sum, line) => sum + line.netCents, 0)).toBe(total.reversal.netCents)
+    expect(lines.lines.reduce((sum, line) => sum + line.vatCents, 0)).toBe(total.reversal.vatCents)
+    expect(lines.lines.find(line => line.orderItemId === 'a')?.quantity).toBe(2)
+  })
+
+  it('refuses more units back than were sold and a unit that is not on the order', () => {
+    const refused = { ok: false, reason: FinancePostingFailureReason.AMOUNTS_DISAGREE }
+    expect(
+      reversalLinesOf({ bases, before: new Map([['b', 1]]), returned: new Map([['b', 1]]) })
+    ).toEqual(refused)
+    expect(reversalLinesOf({ bases, before: new Map(), returned: new Map([['zzz', 1]]) })).toEqual(
+      refused
+    )
   })
 })
 
