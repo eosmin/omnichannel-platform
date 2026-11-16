@@ -517,6 +517,9 @@ export class FinancePostingService {
   private async loadPayment(tx: PrismaTransaction, input: PostSourceInput): Promise<Candidate> {
     const order = await this.orderOf(tx, input.organizationId, input.sourceId)
     if (order === null) return NOTHING
+    // No money came in (a replacement covered by a credit, a full discount): there is no payment to record and no account to receive it,
+    // so an unmapped or inactive account of the method is not a failure of this order
+    if (order.totalCents === 0) return NOTHING
     if (
       order.paymentStatus !== (PaymentStatus.COMPLETED as string) ||
       order.paymentMethod === (PaymentMethod.CASH_ON_DELIVERY as string) ||
@@ -622,7 +625,15 @@ export class FinancePostingService {
 
     const isCod = order.paymentMethod === (PaymentMethod.CASH_ON_DELIVERY as string)
     let collection: Parameters<typeof saleLines>[0]['collection']
-    if (isCod) {
+    if (amounts.amounts.totalCents === 0) {
+      // Nothing to collect (the replacement of an exchange whose credit covers it, an order with a full discount): no money is owed by a
+      // customer or a carrier, E1 had nothing to receive and wrote no entry, so there is no advance to clear, no receivable to open and
+      // no credit sale to refuse. The debit of the sale is zero and the entry holds the cost of what left, the only figure such an order
+      // has (revenue, shipping and tax add up to the total, so they are zero). Waiting for an E1 that can never exist left the sale as
+      // source_not_ready for good and the close of the period blocked (QA HC-138). The treatment of an exchange as such is the
+      // accountant's, see the plan.
+      collection = { kind: 'advance' }
+    } else if (isCod) {
       const shipment = await tx.shipment.findFirst({
         where: {
           orderId: order.id,
