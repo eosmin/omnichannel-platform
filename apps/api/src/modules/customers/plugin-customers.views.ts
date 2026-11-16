@@ -1,7 +1,36 @@
 import { CustomerTimelineTypes } from '@platform/core/domain'
 
 import type { TimelineEntry, TimelinePage } from './customer-timeline.service'
+import type { CreatedCustomer, CustomerDetail } from './customers.views'
 import type { NoteView } from './notes.service'
+
+// The reason of a caution flag is text a member of the team wrote about a person (TDD_17 §4.16) and it is for the team: a plugin
+// sees THAT the customer is flagged (`isCaution`) and never why, whatever scope it holds. The routes that set or clear the flag
+// answer what the plugin itself sent, never what the team wrote.
+// Field by field, so that a field the profile gains later (another text of the team) reaches a plugin only when someone adds it here.
+export type PluginCustomerDetail = Omit<CustomerDetail, 'cautionReason'>
+export type PluginCreatedCustomer = Omit<CreatedCustomer, 'cautionReason'>
+
+export function pluginCustomerDetail(customer: CustomerDetail): PluginCustomerDetail {
+  return {
+    id: customer.id,
+    name: customer.name,
+    email: customer.email,
+    phone: customer.phone,
+    nationalPhone: customer.nationalPhone,
+    locale: customer.locale,
+    isCaution: customer.isCaution,
+    identities: customer.identities,
+    addresses: customer.addresses,
+    tags: customer.tags,
+    createdAt: customer.createdAt,
+    updatedAt: customer.updatedAt
+  }
+}
+
+export function pluginCreatedCustomer(customer: CreatedCustomer): PluginCreatedCustomer {
+  return { ...pluginCustomerDetail(customer), possibleDuplicates: customer.possibleDuplicates }
+}
 
 // What a plugin sees of a note: the text and when, never who wrote it. The author is a member of the team (a user id and, in the
 // timeline, a name), personal data of the staff that no scope grants (Step 5.6 PR E2).

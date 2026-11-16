@@ -47,6 +47,24 @@ export const CurrentPluginInstallation = createParamDecorator(
   }
 )
 
+// Whether the key HOLDS a scope the route does not name: the route stays open to whoever holds its own scopes, and what it answers
+// of another kind of data (the identity of a customer on an order or on a message) is added only for a key that was also granted
+// the scope that guards that data. It never lends a permission: the guard and `CurrentPluginViewer` still look at the scopes of the
+// route alone. Reads the frozen copy of the granted scopes that PluginApiKeyGuard left on the request.
+export const PluginHoldsScope = createParamDecorator(
+  (scope: PluginScope, context: ExecutionContext): boolean => {
+    const { pluginInstallation } = context.switchToHttp().getRequest<AuthenticatedRequest>()
+    if (pluginInstallation === undefined) {
+      throw new PlatformException(
+        ErrorCodes.INTERNAL_ERROR,
+        'the route reads the scopes of the plugin but PluginApiKeyGuard did not run for it',
+        HttpStatusCodes.INTERNAL_SERVER_ERROR
+      )
+    }
+    return pluginInstallation.scopes.includes(scope)
+  }
+)
+
 // The viewer the services of the inbox answer for (`plugin:<installation id>`), holding the permissions of the scopes THE ROUTE
 // names and not of every scope the key holds: a route declared `conversations:read` must not show what `messages:read` guards
 // (the preview of the last message) because the same key happens to have both. The guard already checked that the key holds them.

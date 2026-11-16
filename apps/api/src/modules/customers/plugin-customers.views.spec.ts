@@ -1,7 +1,13 @@
 import { CustomerTimelineTypes } from '@platform/core/domain'
 
 import type { TimelinePage } from './customer-timeline.service'
-import { pluginNote, pluginTimeline } from './plugin-customers.views'
+import type { CustomerDetail } from './customers.views'
+import {
+  pluginCreatedCustomer,
+  pluginCustomerDetail,
+  pluginNote,
+  pluginTimeline
+} from './plugin-customers.views'
 
 const at = new Date('2026-01-01T00:00:00Z')
 
@@ -57,5 +63,48 @@ describe('what a plugin sees of the team in a profile', () => {
     }
     expect(view.data[1]).toMatchObject({ id: 'n1', content: 'hi' })
     expect(view.data[2]).toMatchObject({ id: 'm1', absorbedId: 'c2' })
+  })
+})
+
+describe('what a plugin sees of the caution flag of a customer', () => {
+  const detail: CustomerDetail = {
+    id: 'c1',
+    name: 'Ana',
+    email: null,
+    phone: null,
+    nationalPhone: null,
+    locale: null,
+    isCaution: true,
+    cautionReason: 'text the team wrote about the person',
+    identities: [],
+    addresses: [],
+    tags: [],
+    createdAt: at,
+    updatedAt: at
+  }
+
+  it('keeps the flag and drops the reason from the profile', () => {
+    const view = pluginCustomerDetail(detail)
+
+    expect(view.isCaution).toBe(true)
+    expect(Object.keys(view)).not.toContain('cautionReason')
+    expect(JSON.stringify(view)).not.toContain('text the team wrote')
+  })
+
+  it('drops the reason from the answer of a creation and keeps its possible duplicates', () => {
+    const view = pluginCreatedCustomer({ ...detail, possibleDuplicates: [] })
+
+    expect(Object.keys(view)).not.toContain('cautionReason')
+    expect(view.possibleDuplicates).toEqual([])
+  })
+
+  it('names every field it lets through: a field added to the profile stays out until it is added here', () => {
+    const expected = Object.keys(detail)
+      .filter(key => key !== 'cautionReason')
+      .sort()
+
+    expect(
+      Object.keys(pluginCustomerDetail({ ...detail, extra: 'x' } as CustomerDetail)).sort()
+    ).toEqual(expected)
   })
 })
