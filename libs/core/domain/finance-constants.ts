@@ -458,5 +458,8 @@ export const FinanceReportLimits = {
   // Lines the CSV of the journal reads from the database per round trip: the file is written as it is read, never held
   CSV_PAGE_SIZE: 1000,
   // Lines of the ledger of one account one request answers (it pages by line)
-  LEDGER_PAGE_MAX: 200
+  LEDGER_PAGE_MAX: 200,
+  // The range of days a CSV of the journal or the ledger may cover: a year and a leap day, so a fiscal year always fits. The api
+  // refuses a longer one; the screen says so first (a spec compares both)
+  CSV_MAX_RANGE_DAYS: 366
 } as const

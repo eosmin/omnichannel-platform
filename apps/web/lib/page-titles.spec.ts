@@ -93,6 +93,7 @@ const TITLE_OF_PAGE: Record<string, string> = {
   'finance/accounts/page.tsx': 'financeAccounts',
   'finance/taxes/page.tsx': 'financeTaxes',
   'finance/periods/page.tsx': 'financePeriods',
+  'finance/reports/page.tsx': 'financeReports',
   'finance/settings/page.tsx': 'financeSettings'
 }
 

@@ -2944,6 +2944,7 @@
         "accounts": "Cuentas",
         "taxes": "Impuestos",
         "periods": "Periodos",
+        "reports": "Reportes",
         "settings": "Ajustes"
       }
     },
@@ -5936,6 +5937,44 @@
           "month": "Escribe un mes de 1 a 12.",
           "year": "Escribe un año de 2000 a 2200."
         }
+      },
+      "closedOn": "Cerrado el {date}",
+      "close": {
+        "action": "Cerrar {month}",
+        "submitShort": "Cerrar mes",
+        "title": "Cerrar {month}",
+        "description": "Cerrar congela el mes. Lee lo que hace antes de aceptar.",
+        "formLabel": "Cerrar un mes",
+        "effects": {
+          "locked": "Ningún asiento podrá fecharse en {date} ni antes.",
+          "reports": "Los reportes del mes dejan de moverse: mañana dirán lo mismo que hoy.",
+          "reopen": "Solo puede reabrirse mientras sea el último mes cerrado, con un motivo que queda en la bitácora de auditoría."
+        },
+        "phraseLabel": "Escribe {phrase} para cerrar este mes",
+        "cancel": "Dejarlo abierto",
+        "submit": "Cerrar mes",
+        "done": "{month} está cerrado."
+      },
+      "reopen": {
+        "action": "Reabrir {month}",
+        "submitShort": "Reabrir mes",
+        "title": "Reabrir {month}",
+        "description": "Reabrir permite que los libros de este mes vuelvan a cambiar. Solo puede reabrirse el último mes cerrado.",
+        "formLabel": "Reabrir un mes",
+        "effects": {
+          "entries": "Los asientos pueden volver a fecharse en este mes y sus reportes se moverán.",
+          "audit": "Quién lo reabrió, cuándo y por qué queda en la bitácora de auditoría."
+        },
+        "reason": "Motivo",
+        "reasonHint": "Di por qué se reabre el mes. No puede quedar vacío.",
+        "cancel": "Dejarlo cerrado",
+        "submit": "Reabrir mes",
+        "done": "{month} está abierto otra vez.",
+        "problems": {
+          "empty": "Escribe el motivo.",
+          "tooLong": "El motivo es demasiado largo: 500 caracteres como máximo.",
+          "invalid": "El motivo tiene un carácter que no se puede guardar. Escríbelo en una sola línea, en texto simple."
+        }
       }
     },
     "postings": {
@@ -6030,6 +6069,98 @@
         "pricesIncludeTax": "Los precios de esta tienda ya incluyen el impuesto",
         "pricesIncludeTaxHint": "Solo cambia cómo se separa el impuesto del precio de lo que se venda desde ahora.",
         "saved": "Preferencia guardada."
+      }
+    },
+    "reports": {
+      "title": "Reportes",
+      "description": "La balanza de comprobación de un mes, el libro mayor de una cuenta, los archivos para un auditor y la revisión de los libros.",
+      "trialBalance": {
+        "title": "Balanza de comprobación",
+        "description": "Cada cuenta con asientos en el mes: lo que se cargó y se abonó, y su saldo en el lado donde normalmente está.",
+        "noPeriods": "Aún no hay meses.",
+        "period": "Mes",
+        "download": "Descargar CSV",
+        "loading": "Cargando la balanza…",
+        "empty": "Este mes no tiene asientos.",
+        "caption": "Balanza de comprobación de {period}",
+        "columns": {
+          "account": "Cuenta",
+          "type": "Tipo",
+          "debit": "Cargo",
+          "credit": "Abono",
+          "balance": "Saldo"
+        },
+        "totals": "Totales",
+        "balanced": "El mes cuadra: los cargos igualan a los abonos.",
+        "unbalanced": "El mes no cuadra: cargos y abonos son distintos. Avisa a la contadora antes de cerrarlo."
+      },
+      "ledger": {
+        "title": "Libro mayor",
+        "description": "Las líneas de una cuenta en orden de fecha, con su saldo después de cada línea.",
+        "formLabel": "Libro mayor de una cuenta",
+        "account": "Cuenta",
+        "choose": "Elige una cuenta",
+        "from": "Desde (opcional)",
+        "to": "Hasta (opcional)",
+        "dayHint": "Un día como AAAA-MM-DD.",
+        "show": "Ver libro mayor",
+        "download": "Descargar CSV",
+        "downloadHint": "El archivo pide los dos días y cubre 366 días como máximo.",
+        "loading": "Cargando el libro mayor…",
+        "opening": "{account}: saldo antes de la primera línea que se muestra, {amount}",
+        "empty": "La cuenta no tiene líneas en este rango.",
+        "caption": "Libro mayor de {account}",
+        "columns": {
+          "date": "Fecha",
+          "entry": "Asiento",
+          "memo": "Concepto",
+          "debit": "Cargo",
+          "credit": "Abono",
+          "running": "Saldo"
+        },
+        "more": "Ver más líneas",
+        "problems": {
+          "from": "Escribe un día real como AAAA-MM-DD.",
+          "to": "Escribe un día real como AAAA-MM-DD.",
+          "order": "El primer día es posterior al último."
+        }
+      },
+      "journal": {
+        "title": "Archivo del libro diario para el auditor",
+        "description": "Una fila por cada línea del libro diario, con todos los campos que cubre el hash de su asiento, para que quien tenga solo el archivo pueda comprobar la cadena.",
+        "formLabel": "Archivo del libro diario",
+        "from": "Desde",
+        "to": "Hasta",
+        "dayHint": "Un día como AAAA-MM-DD.",
+        "download": "Descargar CSV",
+        "problems": {
+          "from": "Escribe un día real como AAAA-MM-DD.",
+          "to": "Escribe un día real como AAAA-MM-DD.",
+          "order": "El primer día es posterior al último.",
+          "length": "El rango es de más de 366 días. Elige uno más corto."
+        }
+      },
+      "chain": {
+        "title": "Revisión de los libros",
+        "description": "Recorre todo el libro diario y comprueba que ningún asiento se cambió, se quitó o quedó fuera de orden. Cada revisión queda en la bitácora de auditoría.",
+        "verify": "Revisar la cadena",
+        "ok": "{count, plural, one {# asiento revisado: la cadena está íntegra.} other {# asientos revisados: la cadena está íntegra.}}",
+        "broken": "La cadena está rota. No cierres ningún mes y avisa a la contadora.",
+        "breakAt": "Se rompe en el asiento {number}:",
+        "reasons": {
+          "number_gap": "falta un número de asiento.",
+          "prev_hash_mismatch": "un asiento no sigue al anterior.",
+          "hash_mismatch": "cambió el contenido de un asiento.",
+          "head_mismatch": "el último asiento no es el que se registró.",
+          "frozen_head_missing": "el último asiento de un mes cerrado ya no está en la cadena.",
+          "unknown": "la revisión encontró un problema que esta pantalla no conoce."
+        },
+        "noHead": "El libro diario aún no tiene asientos.",
+        "headNumber": "Último asiento",
+        "headHash": "Su hash",
+        "frozen": "El último asiento que congeló cada mes cerrado",
+        "frozenPresent": "sigue en la cadena",
+        "frozenMissing": "falta en la cadena"
       }
     }
   }

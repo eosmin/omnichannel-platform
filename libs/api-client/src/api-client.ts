@@ -19,6 +19,8 @@ export interface RequestOptions<T> {
   storeId?: string
   // Every answer is parsed with it; z.undefined() for a 204
   schema: z.ZodType<T>
+  // 'text' reads the body as it comes (a CSV the api writes as a file) and `schema` parses that text; JSON by default
+  responseType?: 'json' | 'text'
   signal?: AbortSignal
   // false for the public routes (magic link request, invitation preview), which send no token
   authenticated?: boolean
@@ -89,8 +91,9 @@ export function createApiClient({
         ? ApiError.fromBody(response.status, body.data)
         : ApiError.unreadable(response.status)
     }
+    if (response.status === HttpStatusCodes.NO_CONTENT) return options.schema.parse(undefined)
     return options.schema.parse(
-      response.status === HttpStatusCodes.NO_CONTENT ? undefined : await response.json()
+      options.responseType === 'text' ? await response.text() : await response.json()
     )
   }
 

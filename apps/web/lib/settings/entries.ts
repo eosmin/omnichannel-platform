@@ -73,6 +73,12 @@ export const FINANCE_SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     permission: ClientPermissions.FINANCE_VIEW
   },
   {
+    id: 'reports',
+    labelKey: 'reports',
+    href: AppPaths.finance.reports,
+    permission: ClientPermissions.FINANCE_VIEW
+  },
+  {
     id: 'settings',
     labelKey: 'settings',
     href: AppPaths.finance.settings,

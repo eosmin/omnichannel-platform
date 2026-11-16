@@ -35,7 +35,7 @@ describe('the finance area', () => {
       visibleEntries(FINANCE_SETTINGS_ENTRIES, holding(Permissions.FINANCE_VIEW)).map(
         entry => entry.id
       )
-    ).toEqual(['accounts', 'taxes', 'periods', 'settings'])
+    ).toEqual(['accounts', 'taxes', 'periods', 'reports', 'settings'])
     expect(
       visibleEntries(FINANCE_SETTINGS_ENTRIES, holding(Permissions.FINANCE_MOVE_MONEY))
     ).toEqual([])
