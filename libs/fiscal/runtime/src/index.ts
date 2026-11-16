@@ -1,5 +1,6 @@
 export * from './fiscal-customer-data.service'
 export * from './fiscal-documents.service'
+export * from './fiscal-evidence.service'
 export * from './fiscal-issuer.service'
 export * from './fiscal-provider.registry'
 export * from './fiscal-rules'

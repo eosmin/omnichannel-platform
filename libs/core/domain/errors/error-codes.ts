@@ -251,6 +251,8 @@ export const ErrorCodes = {
   FINANCE_REOPEN_NOT_LATEST: 'FINANCE_REOPEN_NOT_LATEST',
   FINANCE_CLOSE_PENDING_POSTINGS: 'FINANCE_CLOSE_PENDING_POSTINGS',
   FINANCE_CLOSE_PREVIOUS_OPEN: 'FINANCE_CLOSE_PREVIOUS_OPEN',
+  // The weekly check found the journal altered and nobody has restored it: no month closes over a chain that does not verify (TDD_18 §11)
+  FINANCE_CLOSE_CHAIN_BROKEN: 'FINANCE_CLOSE_CHAIN_BROKEN',
   // The period has not ended yet: a month is not closed before its last day (TDD_18 §5.1)
   FINANCE_CLOSE_NOT_ENDED: 'FINANCE_CLOSE_NOT_ENDED',
   // The trial balance of the period does not balance: an incident, never closed over (TDD_18 §5.1, §11)

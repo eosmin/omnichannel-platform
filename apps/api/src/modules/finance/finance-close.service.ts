@@ -44,6 +44,12 @@ export class FinanceCloseService {
     await this.requireNothingPending(organizationId, periodId)
     const result = await this.prisma.transaction(async tx => {
       const head = await this.lockSettings(tx, organizationId)
+      // The incident is read again under the lock: one that opened after the check above (the weekly job does not take this lock) still stops
+      // the close, so a month is never frozen over a chain found altered a moment before
+      const incident = await tx.financeChainIncident.count({
+        where: { organizationId, resolvedAt: null }
+      })
+      if (incident > 0) throw financeRefusal(ErrorCodes.FINANCE_CLOSE_CHAIN_BROKEN)
       const period = await tx.fiscalPeriod.findFirst({
         where: { id: periodId, organizationId },
         select: { id: true, year: true, month: true, endsOn: true, status: true }
@@ -224,6 +230,8 @@ export class FinanceCloseService {
     })
     if (period === null) return
     const blockers = await this.guard.check(organizationId, { since: period.startsOn })
+    // An altered chain is its own refusal: it is not fixed by posting again, a person must find out why (TDD_18 §11)
+    if (blockers.chainBroken) throw financeRefusal(ErrorCodes.FINANCE_CLOSE_CHAIN_BROKEN)
     if (blockers.blocked) throw financeRefusal(ErrorCodes.FINANCE_CLOSE_PENDING_POSTINGS)
   }
 

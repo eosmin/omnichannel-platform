@@ -32,11 +32,13 @@ import {
   type ReconcileInventoryJob,
   type ReprocessCarrierEventsJob,
   type ScanFileJob,
-  type SyncPickupJob
+  type SyncPickupJob,
+  type VerifyLedgerChainJob
 } from '@platform/core/queues'
-import { FiscalDocumentsService } from '@platform/fiscal/runtime'
+import { FiscalDocumentBusyError, FiscalDocumentsService } from '@platform/fiscal/runtime'
 
 import { CarrierEventReplay } from '../carriers/carrier-event-replay.service'
+import { FinanceChainChecker } from '../finance/finance-chain-checker.service'
 import { FinanceReconciler } from '../finance/finance-reconciler.service'
 import { InventoryReconciler } from '../inventory/inventory-reconciler.service'
 import { InboundMediaFetcher } from '../media/inbound-media-fetcher.service'
@@ -59,6 +61,7 @@ type HeavyJob =
   | FetchOriginMediaJob
   | ReconcileInventoryJob
   | ReconcileFinanceJob
+  | VerifyLedgerChainJob
   | PollShipmentStatusJob
   | ReprocessCarrierEventsJob
   | BulkLabelsMergeJob
@@ -112,6 +115,9 @@ const reconcileJobSchema = exactly<ReconcileInventoryJob>()(
   z.object({ storeId: z.uuid(), correlationId: z.string().optional() })
 )
 const reconcileFinanceJobSchema = exactly<ReconcileFinanceJob>()(
+  z.object({ organizationId: z.uuid(), correlationId: z.string().optional() })
+)
+const verifyLedgerChainJobSchema = exactly<VerifyLedgerChainJob>()(
   z.object({ organizationId: z.uuid(), correlationId: z.string().optional() })
 )
 const postFinanceJobSchema = exactly<PostFinanceEventJob>()(
@@ -191,6 +197,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     private readonly retention: StoreRetentionEnforcer,
     private readonly financePosting: FinancePostingService,
     private readonly financeReconciler: FinanceReconciler,
+    private readonly financeChain: FinanceChainChecker,
     private readonly fiscalDocuments: FiscalDocumentsService
   ) {
     super(QueueNames.HEAVY_PROCESSING, support)
@@ -223,11 +230,33 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       await this.financeReconciler.reconcile(reconcile.data.organizationId)
       return
     }
+    if (job.name === JobNames.VERIFY_LEDGER_CHAIN) {
+      const verify = verifyLedgerChainJobSchema.safeParse(job.data)
+      if (!verify.success) {
+        throw new UnrecoverableError('the chain check job does not fit its schema')
+      }
+      // A break is an incident the check records and returns; only an error of the infrastructure rejects, and the queue asks again
+      await this.financeChain.check(verify.data.organizationId)
+      return
+    }
     if (job.name === JobNames.SUBMIT_FISCAL_DOCUMENT) {
       const submit = submitFiscalJobSchema.safeParse(job.data)
       if (!submit.success) throw new UnrecoverableError('the fiscal job does not fit its schema')
       // Throws when the provider did not answer, so the queue tries again with its backoff; a decision (accepted, rejected) returns
-      await this.fiscalDocuments.submit(submit.data.organizationId, submit.data.documentId)
+      try {
+        await this.fiscalDocuments.submit(submit.data.organizationId, submit.data.documentId)
+      } catch (error) {
+        // The last attempt: nobody retries it after this, so a person is told. The original error stays the one the queue sees.
+        if (isLastAttempt(job)) {
+          // Never throws (it logs its own failure): the original error stays the one the queue sees
+          await this.fiscalDocuments.reportExhausted(
+            submit.data.organizationId,
+            submit.data.documentId,
+            error instanceof FiscalDocumentBusyError
+          )
+        }
+        throw error
+      }
       return
     }
     if (job.name === JobNames.POST_FINANCE_EVENT) {

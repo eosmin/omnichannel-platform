@@ -127,6 +127,24 @@ export enum VatSide {
   INPUT = 'input'
 }
 
+// Why the hash chain of the journal does not verify (TDD_18 §11): the three the walk finds in the rows, and the two that only the places
+// outside the walk can tell (the head the settings keep, the head a closed period froze). The migration's CHECK lists the same codes.
+export enum ChainProblem {
+  NUMBER_GAP = 'number_gap',
+  PREV_HASH_MISMATCH = 'prev_hash_mismatch',
+  HASH_MISMATCH = 'hash_mismatch',
+  HEAD_MISMATCH = 'head_mismatch',
+  FROZEN_HEAD_MISSING = 'frozen_head_missing'
+}
+
+// What a check of the chain did to the incident of the organization (TDD_18 §11): it is the audit value and the answer of the monitor
+export enum ChainIncidentChange {
+  OPENED = 'opened',
+  STILL_OPEN = 'still_open',
+  RESOLVED = 'resolved',
+  NONE = 'none'
+}
+
 // What a CSV of the report says beside its rows: the monthly balance and the orders the report could not read or counted apart
 export enum VatCsvSide {
   BALANCE = 'balance',
@@ -453,6 +471,17 @@ export function remittanceDestinationProblem(account: {
   return null
 }
 
+// Why the check of the hash chain says it is broken (TDD_18 §11): the three the walk finds and the two that only the places outside the
+// chain can tell. The screen reads this list; the api still writes them as literals until Step 4B.8b makes them constants (debt (q) of 4B.8a)
+export const FinanceChainProblems = [
+  'number_gap',
+  'prev_hash_mismatch',
+  'hash_mismatch',
+  'head_mismatch',
+  'frozen_head_missing'
+] as const
+export type FinanceChainProblem = (typeof FinanceChainProblems)[number]
+
 // The reports and the auditor's files (TDD_18 §10, §11, Step 4B.8)
 export const FinanceReportLimits = {
   // Lines a CSV of the journal or the ledger carries: a file that would be larger is refused with the range to narrow (EXPORT_TOO_LARGE),
@@ -463,7 +492,12 @@ export const FinanceReportLimits = {
   // Lines the CSV of the journal reads from the database per round trip: the file is written as it is read, never held
   CSV_PAGE_SIZE: 1000,
   // Lines of the ledger of one account one request answers (it pages by line)
-  LEDGER_PAGE_MAX: 200
+  LEDGER_PAGE_MAX: 200,
+  // Sale entries (and so orders) the margin report reads at once: it walks the range in pages and never holds the orders of a month
+  MARGIN_PAGE_SIZE: 500,
+  // The range of days a CSV of the journal or the ledger may cover: a year and a leap day, so a fiscal year always fits. The api
+  // refuses a longer one; the screen says so first (a spec compares both)
+  CSV_MAX_RANGE_DAYS: 366
 } as const
 
 // The statements and the lists with age (TDD_18 §10, Step 4B.8b). Which accounts a statement reads is the chart of the accountant: it groups
@@ -502,7 +536,29 @@ export enum FinanceReport {
   INCOME_STATEMENT = 'income_statement',
   BALANCE_SHEET = 'balance_sheet',
   CASH_FLOW = 'cash_flow',
-  AGING = 'aging'
+  AGING = 'aging',
+  MARGIN = 'margin',
+  VAT = 'vat'
+}
+
+// What the margin by product says beside its rows (TDD_18 §10, Step 4B.8b-2): the rows themselves, the totals, the comparison with the
+// ledger and what the report could not use. A warning is a count, never a guess.
+export enum MarginCsvSection {
+  PRODUCT = 'product',
+  TOTAL = 'total',
+  LEDGER = 'ledger',
+  RETURNS = 'returns',
+  WARNING = 'warning'
+}
+
+export enum MarginWarning {
+  // The organization has not mapped the role: the report says so and compares against nothing, never against zero
+  REVENUE_ROLE_NOT_MAPPED = 'revenue_role_not_mapped',
+  COST_ROLE_NOT_MAPPED = 'cost_role_not_mapped',
+  // A sale entry whose order the report could not read, or that does not add up the way the books required
+  ORDERS_NOT_READABLE = 'orders_not_readable',
+  // Units that left with no cost on the movement: their cost is unknown and is not in the figures
+  UNVALUED_UNITS = 'unvalued_units'
 }
 
 // The rows of a statement file that are not an account: the totals, and what the report warns about

@@ -43,6 +43,7 @@ model Organization {
   journalLines          JournalLine[]
   periodBalances        AccountPeriodBalance[]
   postingFailures       FinancePostingFailure[]
+  chainIncidents        FinanceChainIncident[]
   bankProfiles          BankImportProfile[]
   bankImports           BankStatementImport[]
   bankLines             BankStatementLine[]
@@ -1234,6 +1235,8 @@ model Media {
   productId            String?   @map("product_id")
   orderId              String?   @map("order_id")
   financeTransactionId String?   @map("finance_transaction_id") // The transaction of the books a receipt is for (purpose finance_document)
+  fiscalDocumentId     String?   @map("fiscal_document_id") // The fiscal document a file of evidence is for (purpose fiscal_evidence)
+  fiscalEvidenceKind   String?   @map("fiscal_evidence_kind") // FiscalEvidenceKind: the document, the answer to its acceptance, the answer to its void
   uploadedBy           String?   @map("uploaded_by") // User id; null for inbound channel media
   key                  String    @unique // S3 object key, built by storage-keys.ts
   filename             String
@@ -1265,6 +1268,7 @@ model Media {
   order              Order?               @relation(fields: [orderId], references: [id], onDelete: SetNull)
   financeTransaction FinanceTransaction?  @relation("TransactionDocuments", fields: [financeTransactionId], references: [id], onDelete: Restrict)
   documentOf         FinanceTransaction?  @relation("TransactionDocument")
+  fiscalDocument     FiscalDocument?      @relation("FiscalEvidence", fields: [fiscalDocumentId], references: [id], onDelete: Restrict)
   bankImport         BankStatementImport? @relation("BankImportFile")
   reactions          MessageReaction[]
 
@@ -1276,6 +1280,7 @@ model Media {
   @@index([storeId, channelMessageId])
   @@index([productId, storeId])
   @@index([financeTransactionId])
+  @@index([fiscalDocumentId])
   @@map("media")
 }
 
@@ -2914,6 +2919,26 @@ model FinancePostingFailure {
   @@map("finance_posting_failures")
 }
 
+// An alteration of the hash chain of the journal that the weekly check found (TDD_18 §11, Step 4B.8b-2). One OPEN row per organization at
+// most (a partial unique index in the migration, which Prisma cannot express): a later check that still finds the break only moves
+// `last_seen_at`; a check that passes closes it. While a row is open the close of a month is refused. It is the record of an incident,
+// not a fix: the journal is never touched from here.
+model FinanceChainIncident {
+  id             String    @id @default(uuid())
+  organizationId String    @map("organization_id")
+  reason         String // ChainProblem: a code, never free text
+  entryNumber    String?   @map("entry_number") // the number of the last entry the walk trusted, or of the broken one
+  entriesChecked Int       @map("entries_checked")
+  detectedAt     DateTime  @default(now()) @map("detected_at")
+  lastSeenAt     DateTime  @map("last_seen_at")
+  resolvedAt     DateTime? @map("resolved_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, resolvedAt])
+  @@map("finance_chain_incidents")
+}
+
 // ============================================================================================================
 // Bank reconciliation by CSV (TDD_18 §2.7, §4.4), Step 4B.4b-2. No connection to a bank: a person imports the CSV the bank gives, read with
 // a saved profile; the lines are suggested against the journal lines of the cash account and a PERSON confirms or rejects each. The
@@ -3141,6 +3166,7 @@ model FiscalDocument {
   creditNotes  FiscalDocument[] @relation("FiscalCreditNotes")
   replaces     FiscalDocument?  @relation("FiscalReplacement", fields: [replacesDocumentId], references: [id], onDelete: NoAction)
   replacedBy   FiscalDocument[] @relation("FiscalReplacement")
+  evidence     Media[]          @relation("FiscalEvidence")
 
   // At most one live sale document per order, one live credit note per return and one per order that came back with no return row: the
   // partial unique indexes of the migration say it (Prisma cannot), a voided document leaves room for the one that replaces it

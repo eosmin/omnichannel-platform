@@ -268,6 +268,7 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
       OR EXISTS (SELECT 1 FROM purchase_orders WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM fiscal_documents WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM fiscal_issuers WHERE organization_id = ANY(${organizationIds}))
+      OR EXISTS (SELECT 1 FROM finance_chain_incidents WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM finance_book_layouts WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM finance_book_snapshots WHERE organization_id = ANY(${organizationIds}))
     ) AS touched`
@@ -297,6 +298,13 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
       await tx.$executeRawUnsafe(`ALTER TABLE ${table} DISABLE TRIGGER USER`)
     // The purchases name the entries, the accounts, the stores and the products: they go first (a payment names a bill, a bill its
     // order and its supplier). The lines of an order go with it (cascade)
+    // The evidence of a fiscal document names it (and restricts its deletion): the files go first. Only the trigger that keeps evidence
+    // for ever is off, for these statements alone; the other triggers of `media` stay on
+    await tx.$executeRawUnsafe('ALTER TABLE media DISABLE TRIGGER trg_media_fiscal_evidence_keeps')
+    await tx.media.deleteMany({
+      where: { purpose: 'fiscal_evidence', store: { organizationId: { in: organizationIds } } }
+    })
+    await tx.$executeRawUnsafe('ALTER TABLE media ENABLE TRIGGER trg_media_fiscal_evidence_keeps')
     // A fiscal document names its order, its store and the sale entry: it goes before all of them
     // The frozen books and the layouts of the legal books name the organization and the period: they go before the periods
     await tx.financeBookSnapshot.deleteMany({ where })
@@ -333,6 +341,7 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     await tx.journalEntry.deleteMany({ where })
     await tx.accountPeriodBalance.deleteMany({ where })
     await tx.financePostingFailure.deleteMany({ where })
+    await tx.financeChainIncident.deleteMany({ where })
     await tx.accountRoleMapping.deleteMany({ where })
     await tx.paymentMethodAccount.deleteMany({ where })
     // A product names its tax rate and the rate names accounts: the products let go first, then the rates, then the accounts

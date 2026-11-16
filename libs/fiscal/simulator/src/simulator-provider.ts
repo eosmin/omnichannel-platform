@@ -3,7 +3,8 @@ import {
   FiscalDocumentKind,
   FiscalEnvironment,
   FiscalLimits,
-  FiscalSubmitOutcome
+  FiscalSubmitOutcome,
+  FiscalVoidConsultState
 } from '@platform/core/domain'
 import type {
   BuiltDocument,
@@ -19,6 +20,7 @@ import type {
   ProviderContext,
   StoredFiscalDocument,
   SubmitResult,
+  VoidConsultResult,
   VoidResult
 } from '@platform/fiscal/sdk'
 
@@ -28,6 +30,7 @@ import type {
 //   REJECT          the authority refuses the document
 //   UNAVAILABLE     the authority is down on the first attempt (UNAVAILABLE-2: on the first two), then answers
 //   LOST            the submission is received but the answer is lost: the next consult finds it accepted
+//   VOID_LOST       the invalidation is received but the answer is lost (the call fails): asked again, the authority has it voided
 export const SIMULATOR_PROVIDER_ID = 'simulator'
 export const SimulatorDocumentTypes = {
   CONSUMER: 'simulated_consumer',
@@ -38,6 +41,7 @@ export const SimulatorRules = {
   REJECT: 'REJECT',
   UNAVAILABLE: 'UNAVAILABLE',
   LOST: 'LOST',
+  VOID_LOST: 'VOID_LOST',
   REJECT_REASON: 'simulated_rejection',
   VOID_REFUSED_REASON: 'simulated_void_refused',
   TAX_ID_WITH_SPACES: 'simulated_tax_id_has_spaces'
@@ -172,7 +176,23 @@ export class SimulatorProvider implements FiscalDocumentProvider {
     })
   }
 
+  // Stateless like the rest: a VOID_LOST document was invalidated by its first attempt (its answer never arrived), so it is voided for any
+  // consultation after it (attempt 2); before the first attempt it is not
+  consultVoid(doc: StoredFiscalDocument, ctx: ProviderContext): Promise<VoidConsultResult> {
+    if (this.taxIdOfStored(doc) === SimulatorRules.VOID_LOST && ctx.attempt >= 2) {
+      return Promise.resolve({
+        state: FiscalVoidConsultState.VOIDED,
+        response: { voided: true, recovered: true }
+      })
+    }
+    return Promise.resolve({ state: FiscalVoidConsultState.NOT_VOIDED })
+  }
+
   void(doc: StoredFiscalDocument, reason: string): Promise<VoidResult> {
+    // The answer of the authority is lost: the call fails, the invalidation was received
+    if (this.taxIdOfStored(doc) === SimulatorRules.VOID_LOST) {
+      return Promise.reject(new Error('simulated void timeout'))
+    }
     // Refused without a reason or for a document that never had a number from the authority
     if (reason.trim() === '' || doc.externalNumber === null) {
       return Promise.resolve({ voided: false, reason: SimulatorRules.VOID_REFUSED_REASON })
@@ -194,7 +214,11 @@ export class SimulatorProvider implements FiscalDocumentProvider {
     }
   }
 
-  private taxIdOf(built: BuiltDocument): string {
+  private taxIdOfStored(doc: StoredFiscalDocument): string {
+    return this.taxIdOf({ payload: doc.payload })
+  }
+
+  private taxIdOf(built: { payload: Readonly<Record<string, unknown>> }): string {
     const receiver = built.payload['receiver']
     if (typeof receiver === 'object' && receiver !== null && 'taxId' in receiver) {
       const taxId = receiver.taxId

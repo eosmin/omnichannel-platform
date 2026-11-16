@@ -4,12 +4,14 @@ import {
   FiscalCustomerDataLimits,
   FiscalDocumentStatus,
   FiscalEnvironment,
+  FiscalEvidenceKind,
   FiscalIssueOn,
   FiscalLimits,
   singleLineText
 } from '@platform/core/domain'
 
 export const idSchema = z.uuid()
+export const evidenceKindSchema = z.enum(FiscalEvidenceKind)
 
 const text = (max: number) => singleLineText(max, 1)
 // What a provider reads from an address: short lines of text keyed by the provider's own field names
@@ -75,3 +77,9 @@ export const voidDocumentSchema = z
   .object({ reason: text(FiscalLimits.VOID_REASON_MAX_LENGTH) })
   .strict()
 export type VoidDocumentBody = z.output<typeof voidDocumentSchema>
+
+// What the person checked with the authority of the first issuer: that the document is not there
+export const confirmIssuerChangeSchema = z
+  .object({ reason: text(FiscalLimits.VOID_REASON_MAX_LENGTH) })
+  .strict()
+export type ConfirmIssuerChangeBody = z.output<typeof confirmIssuerChangeSchema>

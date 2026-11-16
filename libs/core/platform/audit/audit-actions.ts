@@ -223,6 +223,8 @@ export const AuditAction = {
   // The fiscal data of a customer (field names only, never the values), and every read of it by a person
   FISCAL_CUSTOMER_DATA_CHANGED: 'fiscal.customer_data_changed',
   FISCAL_CUSTOMER_DATA_CLEARED: 'fiscal.customer_data_cleared',
+  FISCAL_EVIDENCE_READ: 'fiscal.evidence_read',
+  FISCAL_ISSUER_CHANGE_CONFIRMED: 'fiscal.issuer_change_confirmed',
   FINANCE_TRANSACTION_RECORDED: 'finance.transaction_recorded',
   FINANCE_TRANSACTION_VOIDED: 'finance.transaction_voided',
   FINANCE_TRANSACTION_DOCUMENT_ATTACHED: 'finance.transaction_document_attached',

@@ -157,10 +157,8 @@ export const PermissionsOfUnbuiltAreas: readonly string[] = [
   'remittances:',
   'analytics:',
   'org:',
-  // Finance is read now (Step 4B.9a-1); three of its permissions have no route yet: close and reopen a period and the exports
-  // (Step 4B.8), and the carrier fees (Step 4B.6b-2). Each step takes its own out of this list
-  'finance:close_periods',
-  'finance:export',
+  // Finance is read now (Steps 4B.8a and 4B.9); one of its permissions has no route yet: the carrier fees (Step 4B.6b-2). Each
+  // step takes its own out of this list
   'finance:view_carrier_fees'
 ]
 
