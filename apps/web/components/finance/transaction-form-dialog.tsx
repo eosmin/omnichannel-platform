@@ -13,7 +13,6 @@ import { FinanceTransactionKind } from '@platform/core/domain'
 
 import { accountLabelsOf } from '../../lib/finance/account-form'
 import { dayOfClock, dayOfUtcClock, nextDay } from '../../lib/finance/dates'
-import { percentOfBps } from '../../lib/finance/money'
 import {
   categoryAccountsOf,
   emptyTransactionDraft,
@@ -37,7 +36,7 @@ import {
   useReplaceFinanceTransaction,
   useFinanceReceiptUpload
 } from '../../lib/finance/use-finance'
-import { useMoney } from '../../lib/finance/use-money'
+import { usePercentFigure, useMoney } from '../../lib/finance/use-money'
 import { useSubmitGuard } from '../../lib/submit-guard'
 import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
@@ -128,6 +127,7 @@ function TransactionForm({
   onCancel: () => void
 }): ReactElement {
   const t = useTranslations('finance.transactions')
+  const percentFigure = usePercentFigure()
   const errorText = useErrorText()
   const money = useMoney()
   const { storeId, can } = useStore()
@@ -336,7 +336,7 @@ function TransactionForm({
           <option value="">{t('form.noTax')}</option>
           {rateOptions.map(rate => (
             <option key={rate.id} value={rate.id}>
-              {t('form.rateOption', { name: rate.name, percent: percentOfBps(rate.rateBps) })}
+              {t('form.rateOption', { name: rate.name, percent: percentFigure(rate.rateBps) })}
             </option>
           ))}
         </SelectField>

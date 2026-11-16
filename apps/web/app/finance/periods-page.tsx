@@ -116,7 +116,7 @@ function PeriodRow({
       className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
     >
       <span className="flex flex-col gap-0.5">
-        <span className="font-medium capitalize">{month}</span>
+        <span className="block font-medium first-letter:uppercase">{month}</span>
         <span className="text-muted-foreground text-xs">
           {day(period.startsOn)} – {day(period.endsOn)}
         </span>

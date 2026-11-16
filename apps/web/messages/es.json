@@ -5396,7 +5396,8 @@
       },
       "warnings": {
         "FEE_EXCEEDS_COLLECTED": "La comisión y el monto no caben en lo cobrado: revísalos."
-      }
+      },
+      "noGuide": "Sin guía"
     },
     "confirm": {
       "title": "Confirmar la remesa",
@@ -6442,7 +6443,7 @@
         "import": "Importar un extracto",
         "empty": "Todavía no se ha importado ningún extracto para esta cuenta.",
         "range": "Del {from} al {to}",
-        "lines": "{count, plural, one {# línea} other {# líneas}}, {added} nuevas",
+        "lines": "{count, plural, one {# línea} other {# líneas}}, {added, plural, one {# nueva} other {# nuevas}}",
         "closing": "termina con {amount} el {date}",
         "open": "Abrir",
         "dialog": {
@@ -6619,7 +6620,7 @@
       },
       "statement": {
         "title": "Extracto del {from} al {to}",
-        "summary": "{lines, plural, one {# línea} other {# líneas}}, {added} nuevas al importarlo",
+        "summary": "{lines, plural, one {# línea} other {# líneas}}, {added, plural, one {# nueva} other {# nuevas}} al importarlo",
         "noClosing": "Este extracto no tiene saldo final, así que los libros no se comparan con él.",
         "filterLabel": "Mostrar las líneas",
         "filters": {
@@ -7642,7 +7643,10 @@
         "output": "Total cobrado",
         "input": "Total pagado"
       },
-      "kind": "Tipo de venta",
+      "kind": {
+        "output": "Tipo de venta",
+        "input": "Tipo de compra"
+      },
       "rate": "Tasa",
       "base": "Base gravada",
       "tax": "Impuesto",
@@ -7661,7 +7665,11 @@
         "carriedForward": "Lo pagado supera lo cobrado: esto se arrastra.",
         "even": "Lo cobrado y lo pagado son iguales."
       },
-      "otherSide": "Una línea de un lado desconocido ({side}, {kind}):"
+      "otherSide": "Una línea de un lado desconocido ({side}, {kind}):",
+      "recognized": {
+        "delivered": "entregadas",
+        "shipped": "enviadas"
+      }
     },
     "margin": {
       "title": "Margen por producto",

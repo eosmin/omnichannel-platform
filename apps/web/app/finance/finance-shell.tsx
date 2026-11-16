@@ -47,7 +47,8 @@ function FinanceNavigation({ children }: { children: ReactNode }): ReactElement 
       area={SettingsAreas.FINANCE}
       entries={visibleEntries(FINANCE_SETTINGS_ENTRIES, can)}
     >
-      {children}
+      {/* A name, a description or a reference typed by a person has no spaces to break at: it wraps at the edge of its box instead of pushing the page wide */}
+      <div className="min-w-0 break-words">{children}</div>
     </SettingsFrame>
   )
 }
