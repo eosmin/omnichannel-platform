@@ -76,6 +76,87 @@ function cleanAddress(
   return Object.keys(clean).length > 0 ? clean : null
 }
 
+// The sale as it was kept in the document at the moment it was made (the lines snapshot) with the amounts the document is for
+export interface FiscalSale {
+  lines: FiscalLine[]
+  shippingCents: number
+  shippingTaxCents: number
+  discountCents: number
+  pricesIncludeTax: boolean
+  totalCents: number
+  taxCents: number
+}
+
+const amount = (value: unknown): number =>
+  typeof value === 'number' && Number.isSafeInteger(value) ? value : 0
+
+export function saleOf(
+  doc: { totalCents: number; taxCents: number },
+  parts: Readonly<Record<string, unknown>>
+): FiscalSale {
+  return {
+    lines: Array.isArray(parts['lines']) ? (parts['lines'] as FiscalLine[]) : [],
+    shippingCents: amount(parts['shippingCents']),
+    shippingTaxCents: amount(parts['shippingTaxCents']),
+    discountCents: amount(parts['discountCents']),
+    pricesIncludeTax: parts['pricesIncludeTax'] !== false,
+    totalCents: doc.totalCents,
+    taxCents: doc.taxCents
+  }
+}
+
+// What the order took must be what the document is for (the provider never sees an inconsistent sale): the tax of the lines and of the
+// shipping is the tax of the order, and the lines less the discount plus the shipping (plus the tax when the prices did not include it)
+// is its total. The amounts are the order's own; this only checks them against each other.
+export function saleAddsUp(sale: FiscalSale): boolean {
+  const linesTax = sale.lines.reduce((sum, line) => sum + line.taxCents, 0)
+  if (linesTax + sale.shippingTaxCents !== sale.taxCents) return false
+  const linesTotal = sale.lines.reduce((sum, line) => sum + line.totalCents, 0)
+  const expected =
+    linesTotal -
+    sale.discountCents +
+    sale.shippingCents +
+    (sale.pricesIncludeTax ? 0 : sale.taxCents)
+  return expected === sale.totalCents
+}
+
+const ISSUER_IDENTITY = [
+  'legalName',
+  'taxId',
+  'registrationId',
+  'activityCode',
+  'establishmentCode',
+  'environment'
+] as const
+
+// Whether the issuer as it is now is the one a document was made with: the same identity, the same environment, the same address. The
+// provider is compared by the caller (it is a column of the document). A document is never signed in the name of another issuer.
+export function sameIssuer(
+  snapshot: Readonly<Record<string, unknown>>,
+  live: {
+    legalName: string
+    taxId: string
+    registrationId: string | null
+    activityCode: string | null
+    establishmentCode: string | null
+    environment: string
+    address: unknown
+  }
+): boolean {
+  const same = (a: unknown, b: unknown): boolean => (a ?? null) === (b ?? null)
+  return (
+    ISSUER_IDENTITY.every(key => same(snapshot[key], live[key])) &&
+    JSON.stringify(sorted(snapshot['address'])) === JSON.stringify(sorted(live.address))
+  )
+}
+
+function sorted(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return value ?? null
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b))
+  )
+}
+
 export function receiverOf(record: Readonly<Record<string, unknown>>): FiscalReceiver {
   const text = (key: string): string | null => {
     const value = record[key]

@@ -258,6 +258,22 @@ export const ApiRoutes = {
     postingRetry: (id: string) => `/finance/postings/${id}/retry`
   },
 
+  // Fiscal documents (TDD_18 §8, §12): the issuer of the ORGANIZATION and the documents of its sales
+  fiscal: {
+    // What the deployment's providers declare (document types, the fields they need), never a credential
+    providers: '/fiscal/providers',
+    // GET the issuer without credentials; PUT sets it (credentials are written, never read)
+    issuer: '/fiscal/issuer',
+    documents: {
+      list: '/fiscal/documents',
+      byId: (id: string) => `/fiscal/documents/${id}`,
+      // PATCH the receiver of a document that is queued or rejected: a person fixes the data the authority refused
+      receiver: (id: string) => `/fiscal/documents/${id}/receiver`,
+      retry: (id: string) => `/fiscal/documents/${id}/retry`,
+      void: (id: string) => `/fiscal/documents/${id}/void`
+    }
+  },
+
   // Suppliers and what is owed to them (TDD_18 §2.7, §12): organization-scoped like the books they post to. A route is a leaf of
   // its own (the same path with another verb is another leaf), because each one is mapped to the step that draws it.
   suppliers: {
