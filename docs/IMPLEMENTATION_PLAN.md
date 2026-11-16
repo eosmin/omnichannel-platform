@@ -1960,8 +1960,13 @@ Admin: owners of custom roles grant it by hand, and 4B.9 lists it in the matrix 
         on each: confirm, reject, undo; the exact matches in bulk, behind a confirmation; the difference of the books against the statement's closing balance;
         the transaction an open line would be, read-only. Every one of the 13 routes `finance.bank.*` is drawn here (they stay on `'4B.9'` in
         `frontend-coverage-map` until the step is done). `QueryKeys.finance.bank.*`, `finance-bank-api.ts`, `ClientErrorCodes.BANK_STATEMENT_INVALID`. No server change.
-  - [ ] **4B.9a-4 (suppliers and purchases):** `suppliers.*`, `supplierPayments.*`, `purchaseOrders.*`, the receive screen on a phone, the box that
-        shows only with `remittances:manage`.
+  - [x] **4B.9a-4 (suppliers and purchases):** the pages Finance → Suppliers, Purchases and Payables (`/finance/suppliers`, `/finance/purchases`,
+        `/finance/purchases/[id]`, `/finance/payables`), opened by `finance:manage_purchases` (the payables also by `finance:move_money`; a payment is
+        `finance:move_money`). Suppliers: list with search, make, edit, and a detail with what is owed and the payments (register one, void one with its
+        reason and the confirmation of its tier). Purchase orders: make a draft, choose its lines (search of the catalog, variant, units, cost of one
+        unit, tax), mark it ordered, receive it on a phone in as many deliveries as needed, close it short, cancel it, read its bills and its payments.
+        Payables: every bill with something open, its due day and the days past it, what each supplier is owed, and pay a bill. Routes drawn:
+        `suppliers.*`, `supplierPayments.void`, `purchaseOrders.*`.
   - [ ] **4B.9b (reports, close, fiscal documents),** cut in four PRs on 2026-11-16 (rule 12: close, reports, fiscal documents and the statements
         have their servers in different PRs, and one review of about 75 files is not one review; each starts from a `main` that has the one
         before it):
@@ -1974,7 +1979,7 @@ Admin: owners of custom roles grant it by hand, and 4B.9 lists it in the matrix 
           `finance.reports.verifyChain`.
     - [ ] **4B.9b-2 (fiscal documents):** `fiscal.*` (the server of 4B.7a-2, #555): the issuer settings, the documents of the sales (list, one,
           the receiver, the retry) and the void of an accepted document (typed reason, the effect shown first), and the document on the order.
-    - [ ] **4B.9b-3 (statements, VAT, aging):** `finance.reports.vat` and its CSV, and the routes of Step 4B.8b-1 (#556: the statements and the aging);
+    - [ ] **4B.9b-3 (statements, VAT, aging):** `finance.reports.vat` and its CSV, and the routes of Step 4B.8b-1 (#556: the statements and the aging), the box that writes off the difference of a cash-on-delivery remittance (`remittances.writeOff`, shown only with `remittances:manage`, moved here from 4B.9a-4 because the remittance screens of Step 4.14 have no list of differences to hang it on), the receipt file of a payment to a supplier and the name of the supplier in the payables view (small server PRs before it; debts (a) and (f) of 4B.9a-4), the aging buckets, the export and the day filter of the payables;
           the screens of 4B.7b (credit note), 4B.8b-2 (weekly chain, margin) and 4B.8b-3 (legal books) join it, or follow it as 4B.9b-4, as their
           servers reach `main`.
     - [ ] **4B.9b-4 (the month end to end):** the e2e case of the month (register, receive, sell, remit, close) and the permission-gate case of every
@@ -2027,6 +2032,38 @@ Admin: owners of custom roles grant it by hand, and 4B.9 lists it in the matrix 
   need the database run in CI only (Playwright is not run on the shared machine). (j) found by the third `/code-review` pass and left on purpose: the file decoder is the remittance mapper's (the two limits are held equal by a spec) and not one of its own; the
   decision hooks are made in each line row and not lifted to the statement; a failed read after a filter change shows the retry screen and not an inline error; dates are shown as the
   ISO day, like the other finance screens: all of it is the visual and hardening pass of **Step 7.7**.
+- **Decisions of PR 4B.9a-4 (rule 12):** (1) the purchase pages open for `finance:manage_purchases` (payables also for `finance:move_money`) and not for
+  `finance:view`: they are the api's own routes, and a buyer who does not read the books must still buy; what a form needs of the chart (the account the
+  money leaves, the tax rates, the rounding rule) is read only by who holds `finance:view`, and each form says so when the person does not (rejected: gate
+  every purchase page on `finance:view`, which shuts out the buyer; rejected: a server change to read the chart with the purchase permission); (2) the bodies
+  of the purchase routes, the purchase rules (`receiptMoney`, `PurchaseRule`, `PaymentRule`) and the tax rules moved to `libs/core/domain`
+  (`purchase-schemas.ts`, `purchase-rules.ts`, `tax-rules.ts`, `ledger-days.ts`), and `libs/core/finance` keeps its old paths as re-exports, so the api
+  is untouched and a spec of the web checks what every form sends against the very schema the api validates with (rejected: a copy of the schemas in
+  the web, which drifts; rejected: the web importing `libs/core/finance`, which the module boundaries forbid because that lib carries the database
+  client; rejected: a relative import of the api from a web spec): the only change to the server side, with no change of behavior. The api-client types
+  its request bodies as the `z.input` of those same schemas;
+  (3) the money a form shows (the tax of a line, the totals of an order and of a delivery) is made with `receiptMoney`, the same function the api posts with,
+  so the screen and the bill agree to the cent; for who cannot read the chart the tax is not shown ("at receipt") instead of a guess; (4) an order is made
+  as a draft with no lines and its lines are chosen on its own page, saved whole (the api replaces the list); (5) what is still open on a bill is the
+  api's figure (the payables), never a sum of a page of payments made on the screen; (6) the tax of a line starts as "no tax" and is chosen: whether a
+  supplier bill credits input VAT is the accountant's call [ACCOUNTANT], so the receive form only offers to turn the credit off (left on, the api credits the
+  tax when the supplier's document number is given); (7) a payment key and an order key are made once per form, so a double click or a retry after a lost
+  answer is one payment or one order; (8) voiding a payment asks for its reason and then for the confirmation of its tier (HIGH);
+  (9) the supplier's tax id is a free text with a length limit: nothing about NIT or NRC is checked or invented, the shape is the accountant's call.
+- **Left by PR 4B.9a-4, each with its owner:** (a) a payment to a supplier has no receipt file: the receipt of Step 4B.4b-1 belongs to the transactions of the
+  books and `supplier_payments` has no column for one, so there is no route to draw; a column and its two routes on the server, then the box here, are Step
+  4B.9b (a small server PR before it); (b) the products and the warehouses of a purchase are those of the store the area works through
+  (`bestFinanceMembership`), so a buyer of several stores cannot choose another: Step 7.7 with the store choice of 4B.9a-1 (g); (c) the select of
+  suppliers reads every supplier (up to 6000, 60 pages) and the select of a line searches the catalog by text: a typed search for suppliers when the volume
+  asks, Step 7.7; (d) the names of the lines of an order are read one product at a time from the catalog (the order carries ids), and a product of another
+  store the person does not read shows a short id: a route that names the lines, Step 7.3; (e) the header of a draft (supplier, warehouse, day, notes) is
+  fixed when it is made and only its lines are edited from the page (`purchaseOrders.update` is drawn for the lines): changing the supplier is cancelling and
+  making another, Step 7.7; (f) the payables page names the suppliers through the supplier list, which is for who manages purchases: who only pays sees
+  "Supplier" (the api's payables view carries no name): a name in the view is a small server change in Step 4B.9b; (g) there are no aging buckets, no export
+  and no filter by day on the payables: they come with the reports, Step 4B.9b; (h) a payment is voided from the supplier's detail, not from the order page,
+  which lists them: Step 7.7; (i) the visual pass of these screens is Step 7.7, and the end-to-end case `apps/web-e2e/specs/finance-purchases.spec.ts` runs in
+  CI only (Playwright is not run on the shared machine); (k) an order page reads every supplier and the open bills of its supplier to resolve one name and the open amounts of its bills, and again after every write: a supplier by id and the open amount on the order view of the api, Step 7.3; (l) cancelling a purchase order (terminal) asks for a reason and no more: it has no tier in `DestructiveActionTiers`, so no typed or dialog confirmation; whether it needs one is the owner's call, Step 7.7; (j) the receive form does not say how a tax that is not credited is booked (a cost, by the role
+  `UNCATEGORIZED_EXPENSE`): the wording is the accountant's [ACCOUNTANT].
 - **Decisions of PR 4B.9b-1 (rule 12):** (1) a file of the books is read by the api client as text (`responseType: 'text'`) and saved by the page
   (`saveCsvFile`), with the mark of the encoding put back, because `Response.text()` takes it off and the file must be the one the api wrote, byte
   for byte (an auditor compares it with the head of the chain); rejected: a link to the address of the file, which cannot carry the token of the
@@ -2927,8 +2964,8 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.5 | Suppliers and purchase orders | done | #542 | 2026-11-15 |
 | 4B.6 | The automatic entries (sales, remittances, returns, stock) | in progress | 4B.6a machinery, E1 to E3 and E9 (#546); 4B.6b-1 carrier charges, remittance confirmed and voided (E4 to E6; #548); 4B.6b-2 the difference written off, returns and the fee permission (E7, E8, E4 of a return guide; #550); 4B.6b-3 the sweep, its metrics, the failure notice and the close guard (this PR); 4B.6b-4 the prepaid charge model: todo | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | in progress | 4B.7a-1 the libraries and the rule (this PR); 4B.7a-2 the database, the lifecycle, the queue and the routes (this PR); 4B.7b credit notes, evidence as media and the customer's fiscal data: todo | |
-| 4B.8 | Reports, monthly close and the auditor's export | in progress | 4B.8a (#553); 4B.8b-1 statements and aging (this PR); 4B.8b-2 and 4B.8b-3: todo | |
-| 4B.9 | Finance interface (web) | in progress | 4B.9a-1 (setup, chart, taxes, settings, periods; the number is in the PR), 4B.9a-3 (bank reconciliation by CSV; the number is in the PR), 4B.9b-1 (close, reports; the number is in the PR) | |
+| 4B.8 | Reports, monthly close and the auditor's export | in progress | 4B.8a (#553); 4B.8b-1 statements and aging (#556); 4B.8b-2 and 4B.8b-3: todo | |
+| 4B.9 | Finance interface (web) | in progress | 4B.9a-1 (setup, chart, taxes, settings, periods) #554, 4B.9a-3 (bank reconciliation by CSV) #557, 4B.9a-4 (suppliers, purchases, payables; the number is in the PR), 4B.9b-1 (close, reports; the number is in the PR) | | |
 | **Milestone 5: Operations** | | | | |
 | 5.1 | Search | done | #486 (PR A: the server), #488 (PR B: the web), #496 (the click, in Step 5.2 PR C3) | 2026-11-15 |
 | 5.2 | Analytics | done | #485 (PR A: rollups, answer semantics, metrics route), PR B #487 (dashboard, My performance, View analytics), PR C1 #491 (reports and export, server), PR C2 #494 (reports and export, web); PR C3 #496 (search click, passive flag and report) | 2026-11-15 |
