@@ -32,7 +32,7 @@ export function reportTexts(
     header: metric => {
       const unit = RolledUpMetricUnits[metric]
       if (unit === MetricUnits.SECONDS) return `${metricLabel(metric)} (${t('unitSeconds')})`
-      if (unit === MetricUnits.CENTS) return `${metricLabel(metric)} (${t('unitCents')})`
+      if (unit === MetricUnits.CURRENCY) return `${metricLabel(metric)} (${t('unitCurrency')})`
       return metricLabel(metric)
     }
   }

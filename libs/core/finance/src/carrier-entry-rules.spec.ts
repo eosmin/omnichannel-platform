@@ -6,6 +6,7 @@ import {
   type DraftLine,
   remittanceLines,
   type RemittanceLineFacts,
+  replaySettlements,
   type RoleAccounts,
   settleRemittanceLine
 } from './index'
@@ -129,6 +130,9 @@ const facts = (over: Partial<RemittanceLineFacts> = {}): RemittanceLineFacts => 
   reportedFeeCents: null,
   estimateCents: 513,
   deductsFee: true,
+  // 26.00 to collect: the figures below leave room for the fee of each case
+  grossCents: 2600,
+  clearedBeforeCents: 0,
   feeAlreadySettled: false,
   ...over
 })
@@ -138,6 +142,8 @@ describe('settleRemittanceLine (E5)', () => {
     expect(settleRemittanceLine(facts())).toEqual({
       reportedCents: 2000,
       keptCents: 513,
+      deductedCents: 513,
+      owedCents: 0,
       payableCents: 513,
       expenseCents: 0,
       clearedCents: 2513
@@ -149,6 +155,8 @@ describe('settleRemittanceLine (E5)', () => {
     expect(settleRemittanceLine(facts({ reportedFeeCents: 540 }))).toEqual({
       reportedCents: 2000,
       keptCents: 540,
+      deductedCents: 540,
+      owedCents: 0,
       payableCents: 513,
       expenseCents: 27,
       clearedCents: 2540
@@ -166,6 +174,8 @@ describe('settleRemittanceLine (E5)', () => {
     expect(settleRemittanceLine(facts({ deductsFee: false }))).toEqual({
       reportedCents: 2000,
       keptCents: 0,
+      deductedCents: 0,
+      owedCents: 0,
       payableCents: 0,
       expenseCents: 0,
       clearedCents: 2000
@@ -188,6 +198,8 @@ describe('settleRemittanceLine (E5)', () => {
     expect(settleRemittanceLine(facts({ feeAlreadySettled: true, reportedCents: 300 }))).toEqual({
       reportedCents: 300,
       keptCents: 0,
+      deductedCents: 0,
+      owedCents: 0,
       payableCents: 0,
       expenseCents: 0,
       clearedCents: 300
@@ -332,5 +344,309 @@ describe('remittanceLines (E5)', () => {
       reason: FinancePostingFailureReason.ROLE_NOT_MAPPED,
       role: AccountRole.BANK_DEFAULT
     })
+  })
+})
+
+// A fee the cash could not cover (HC-001, AUT-523/529/530/531). What a carrier takes out of the cash it collected is bounded by that cash:
+// the receivable of a guide is never cleared for more than it reported plus what was left to take out, and the part of the charge the cash
+// could not cover stays owed to the carrier (a credit on the payable), while all of the charge is still the expense the file says.
+describe('a fee larger than the cash the carrier collected (E5)', () => {
+  const settle = (over: Partial<RemittanceLineFacts> = {}) => settleRemittanceLine(facts(over))
+  const entry = (lines: ReturnType<typeof settleRemittanceLine>[]) => {
+    const result = remittanceLines({
+      accounts,
+      destinationAccountId: null,
+      carrierConnectionId: CARRIER,
+      storeId: STORE,
+      lines
+    })
+    if (!result.ok) throw new Error('expected lines')
+    return result.lines
+  }
+  const shape = (lines: readonly DraftLine[]): [string, number, number][] =>
+    lines
+      .map((line): [string, number, number] => [
+        line.accountId.replace('acc-', ''),
+        line.debitCents,
+        line.creditCents
+      ])
+      .sort((a, b) => a[0].localeCompare(b[0]) || a[1] - b[1])
+
+  // 25.99 to collect, E4 estimated 4.54 (freight 3.50 and commission 1.04, the sender pays), the carrier reported nothing and says it kept 30.00
+  it('keeps the receivable at what the carrier collected and owes it the rest of its fee', () => {
+    const settlement = settle({
+      grossCents: 2599,
+      reportedCents: 0,
+      reportedFeeCents: 3000,
+      estimateCents: 454
+    })
+    expect(settlement).toEqual({
+      reportedCents: 0,
+      keptCents: 3000,
+      deductedCents: 2599,
+      owedCents: 401,
+      payableCents: 454,
+      expenseCents: 2546,
+      clearedCents: 2599
+    })
+    const lines = entry([settlement])
+    expect(shape(lines)).toEqual(
+      shape([
+        {
+          accountId: `acc-${AccountRole.CARRIER_COMMISSION_EXPENSE}`,
+          debitCents: 2546,
+          creditCents: 0
+        },
+        { accountId: `acc-${AccountRole.PAYABLE_CARRIERS}`, debitCents: 53, creditCents: 0 },
+        { accountId: `acc-${AccountRole.RECEIVABLE_CARRIERS}`, debitCents: 0, creditCents: 2599 }
+      ])
+    )
+    expect(sum(lines, 'debitCents')).toBe(sum(lines, 'creditCents'))
+    // E4 credited the payable 4.54 and this debits 0.53: 4.01 stays owed to the carrier, exactly the fee the cash could not cover
+    expect(454 - 53).toBe(settlement.owedCents)
+  })
+
+  it('nets the payable into a credit when the part owed is more than the estimate settled', () => {
+    // a cash on delivery of 2.00 and a guide of 3.50 the sender pays: the carrier keeps the 2.00 it collected, 1.50 stays owed
+    const settlement = settle({
+      grossCents: 200,
+      reportedCents: 0,
+      reportedFeeCents: null,
+      estimateCents: 350
+    })
+    expect(settlement).toMatchObject({
+      keptCents: 350,
+      deductedCents: 200,
+      owedCents: 150,
+      payableCents: 350,
+      expenseCents: 0,
+      clearedCents: 200
+    })
+    const lines = entry([settlement])
+    expect(shape(lines)).toEqual(
+      shape([
+        { accountId: `acc-${AccountRole.PAYABLE_CARRIERS}`, debitCents: 200, creditCents: 0 },
+        { accountId: `acc-${AccountRole.RECEIVABLE_CARRIERS}`, debitCents: 0, creditCents: 200 }
+      ])
+    )
+    // E4 credited 3.50, this debits 2.00: 1.50 stays owed, exactly the part the cash could not cover
+    expect(350 - 200).toBe(settlement.owedCents)
+  })
+
+  it('credits the payable when the part owed is more than what it settles', () => {
+    // E4 had nothing posted for the guide (estimate 0) and the file says the carrier kept 30.00 of a 25.99 collected
+    const settlement = settle({
+      grossCents: 2599,
+      reportedCents: 0,
+      reportedFeeCents: 3000,
+      estimateCents: 0
+    })
+    expect(settlement).toMatchObject({
+      keptCents: 3000,
+      deductedCents: 2599,
+      owedCents: 401,
+      payableCents: 0,
+      expenseCents: 3000,
+      clearedCents: 2599
+    })
+    const lines = entry([settlement])
+    expect(shape(lines)).toEqual(
+      shape([
+        {
+          accountId: `acc-${AccountRole.CARRIER_COMMISSION_EXPENSE}`,
+          debitCents: 3000,
+          creditCents: 0
+        },
+        { accountId: `acc-${AccountRole.PAYABLE_CARRIERS}`, debitCents: 0, creditCents: 401 },
+        { accountId: `acc-${AccountRole.RECEIVABLE_CARRIERS}`, debitCents: 0, creditCents: 2599 }
+      ])
+    )
+  })
+
+  it.each([
+    // fee, expected deducted, expected owed
+    ['the fee is the whole cash', 2599, 2599, 0],
+    ['the fee is a cent over the cash', 2600, 2599, 1],
+    ['the fee is a cent under the cash', 2598, 2598, 0]
+  ])('%s', (_name, fee, deducted, owed) => {
+    const settlement = settle({
+      grossCents: 2599,
+      reportedCents: 0,
+      reportedFeeCents: fee,
+      estimateCents: 454
+    })
+    expect(settlement).toMatchObject({
+      keptCents: fee,
+      deductedCents: deducted,
+      owedCents: owed,
+      clearedCents: deducted
+    })
+  })
+
+  it('does not clear more than the cash when the carrier does not deduct its fee but lists it with the whole cash remitted', () => {
+    // the file lists a fee of 1.04 and the carrier remitted the whole 25.99: nothing was taken out of the cash, the fee stays owed
+    const settlement = settle({
+      grossCents: 2599,
+      reportedCents: 2599,
+      reportedFeeCents: 104,
+      estimateCents: 104,
+      deductsFee: false
+    })
+    expect(settlement).toMatchObject({
+      keptCents: 104,
+      deductedCents: 0,
+      owedCents: 104,
+      payableCents: 104,
+      expenseCents: 0,
+      clearedCents: 2599
+    })
+    const lines = entry([settlement])
+    // no line of the payable: the 1.04 E4 posted is still owed
+    expect(shape(lines)).toEqual(
+      shape([
+        { accountId: `acc-${AccountRole.BANK_DEFAULT}`, debitCents: 2599, creditCents: 0 },
+        { accountId: `acc-${AccountRole.RECEIVABLE_CARRIERS}`, debitCents: 0, creditCents: 2599 }
+      ])
+    )
+  })
+
+  it('leaves the surplus of a carrier that reported more than it collected to the write-off, as it was', () => {
+    // reported 26.00 on a guide of 25.15: nothing was left to take out of the cash, the 0.85 over is what E7 writes off
+    const settlement = settle({
+      grossCents: 2515,
+      reportedCents: 2600,
+      reportedFeeCents: null,
+      estimateCents: 413
+    })
+    expect(settlement).toMatchObject({ deductedCents: 0, owedCents: 413, clearedCents: 2600 })
+  })
+
+  it('bounds what is left to take out by what earlier remittances of the guide already cleared', () => {
+    // a first remittance cleared 24.00 of 25.99; the second reports 0.50 and a fee of 1.00: only 1.49 was left, 0.50 of it reported
+    const settlement = settle({
+      grossCents: 2599,
+      clearedBeforeCents: 2400,
+      reportedCents: 50,
+      reportedFeeCents: 100,
+      estimateCents: 0,
+      feeAlreadySettled: true
+    })
+    expect(settlement).toMatchObject({
+      keptCents: 100,
+      deductedCents: 100,
+      owedCents: 0,
+      clearedCents: 150
+    })
+    const over = settle({
+      grossCents: 2599,
+      clearedBeforeCents: 2400,
+      reportedCents: 150,
+      reportedFeeCents: 100,
+      estimateCents: 0,
+      feeAlreadySettled: true
+    })
+    // 2,599 − 2,400 − 150 = 49 left: only 0.49 of the 1.00 comes out of the cash
+    expect(over).toMatchObject({ deductedCents: 49, owedCents: 51, clearedCents: 199 })
+  })
+
+  it('takes nothing out of the cash of a guide with no amount to collect: the whole charge is owed', () => {
+    expect(settle({ grossCents: null, reportedFeeCents: 3000 })).toMatchObject({
+      deductedCents: 0,
+      owedCents: 3000
+    })
+  })
+
+  it('never reads a negative reported amount as more room', () => {
+    expect(settle({ grossCents: 2599, reportedCents: -500, reportedFeeCents: 3000 })).toMatchObject(
+      {
+        deductedCents: 2599,
+        owedCents: 401
+      }
+    )
+  })
+
+  // The table: for every guide, with the sender or the recipient paying (the estimate of E4 is 4.54 or 1.04) and the carrier
+  // deducting or not, the entry balances, the receivable is never cleared for more than the larger of what was collected and what
+  // was reported, and the whole charge is the expense and the payable it is settled against.
+  it.each(
+    [2599, 200].flatMap(gross =>
+      [0, 1, gross - 1, gross, gross + 1, 5000]
+        .filter(reported => reported >= 0)
+        .flatMap(reported =>
+          [null, 0, gross - 1, gross, gross + 1, 3000]
+            .filter(fee => fee === null || fee >= 0)
+            .flatMap(fee =>
+              [0, 104, 454].flatMap(estimate =>
+                [true, false].map(deductsFee => ({ gross, reported, fee, estimate, deductsFee }))
+              )
+            )
+        )
+    )
+  )(
+    'keeps the receivable bounded and the entry balanced (gross $gross reported $reported fee $fee estimate $estimate deducts $deductsFee)',
+    input => {
+      const settlement = settle({
+        grossCents: input.gross,
+        reportedCents: input.reported,
+        reportedFeeCents: input.fee,
+        estimateCents: input.estimate,
+        deductsFee: input.deductsFee
+      })
+      expect(settlement.deductedCents + settlement.owedCents).toBe(settlement.keptCents)
+      expect(settlement.deductedCents).toBeGreaterThanOrEqual(0)
+      expect(settlement.owedCents).toBeGreaterThanOrEqual(0)
+      // never cleared above what was collected, unless the carrier itself reported more than that
+      expect(settlement.clearedCents).toBeLessThanOrEqual(Math.max(input.gross, input.reported))
+      const result = remittanceLines({
+        accounts,
+        destinationAccountId: null,
+        carrierConnectionId: CARRIER,
+        storeId: STORE,
+        lines: [settlement]
+      })
+      if (!result.ok) throw new Error('expected lines')
+      expect(sum(result.lines, 'debitCents')).toBe(sum(result.lines, 'creditCents'))
+      // the receivable of a guide is credited exactly what the line clears
+      expect(lineOf(result.lines, `acc-${AccountRole.RECEIVABLE_CARRIERS}`)?.creditCents ?? 0).toBe(
+        settlement.clearedCents
+      )
+    }
+  )
+})
+
+// What E5 and E7 both replay: the lines of one guide in the order their remittances were confirmed
+describe('replaySettlements', () => {
+  const guide = { estimateCents: 413, deductsFee: true, grossCents: 2515 }
+
+  it('walks the remittances of a guide in order: each clears what the ones before it left', () => {
+    // $24.00 reported leaves only $1.15 to keep a fee out of; the second one finds nothing left and settles no payable again
+    const replay = replaySettlements(
+      [
+        { reportedCents: 2400, reportedFeeCents: null },
+        { reportedCents: 0, reportedFeeCents: 50 }
+      ],
+      guide
+    )
+    expect(
+      replay.settlements.map(line => [line.deductedCents, line.owedCents, line.clearedCents])
+    ).toEqual([
+      [115, 298, 2515],
+      [0, 50, 0]
+    ])
+    expect(replay.clearedCents).toBe(2515)
+    expect(replay.feeSettled).toBe(true)
+  })
+
+  it('says nothing was cleared or settled for a guide with no earlier remittance', () => {
+    expect(replaySettlements([], guide)).toEqual({
+      settlements: [],
+      clearedCents: 0,
+      feeSettled: false
+    })
+  })
+
+  it('does not count a fee of nothing as the payable settled, so a later remittance may settle it', () => {
+    const replay = replaySettlements([{ reportedCents: 1000, reportedFeeCents: 0 }], guide)
+    expect(replay).toMatchObject({ clearedCents: 1000, feeSettled: false })
   })
 })

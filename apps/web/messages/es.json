@@ -529,7 +529,7 @@
       "dayHeader": "Día",
       "totalLabel": "Total del periodo",
       "unitSeconds": "segundos",
-      "unitCents": "USD",
+      "unitCurrency": "USD",
       "periodLine": "Del {from} al {to} (sin incluir este último día), días en UTC",
       "metrics": {
         "conversations_created": "Conversaciones nuevas",

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
 import { UnrecoverableError } from 'bullmq'
+import { strFromU8, unzipSync } from 'fflate'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { AnalyticsMetrics, ReportFrequency, ReportLimits } from '@platform/core/analytics'
@@ -16,13 +17,15 @@ import { DomainEvents } from '@platform/core/event-bus'
 import { ExportStatus, ExportTypes, JobNames, QueueNames } from '@platform/core/queues'
 import { StorageService } from '@platform/core/storage-module'
 
+import { AnalyticsRollupService } from '../../apps/worker/src/analytics/analytics-rollup.service'
+import { RollupGranularities } from '../../apps/worker/src/analytics/rollup-periods'
 import { AnalyticsExportWriter } from '../../apps/worker/src/exports/analytics/analytics-export.writer'
 import { ScheduledReportRunner } from '../../apps/worker/src/exports/analytics/scheduled-report.runner'
 import { CsvExportWriter } from '../../apps/worker/src/exports/csv-export-writer'
 import { ExportGenerator } from '../../apps/worker/src/exports/export-generator.service'
 import { ZipExportWriter } from '../../apps/worker/src/exports/zip-export-writer'
 import { ReportDispatchScheduler } from '../../apps/worker/src/schedulers/report-dispatch.scheduler'
-import { createRole } from '../builders'
+import { createOrder, createRole } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
@@ -323,7 +326,8 @@ describe('Analytics reports and export', () => {
     it('writes the days of the period with their totals, from the rollup of its own store only', async () => {
       await day(ctx.storeA.id, '2026-11-01', AnalyticsMetrics.ORDERS_CREATED, 3)
       await day(ctx.storeA.id, '2026-11-03', AnalyticsMetrics.ORDERS_CREATED, 2)
-      await day(ctx.storeA.id, '2026-11-03', AnalyticsMetrics.ORDERS_REVENUE, 12_345)
+      // The rollup keeps money in whole units of the currency (dollars), as the dashboard reads it
+      await day(ctx.storeA.id, '2026-11-03', AnalyticsMetrics.ORDERS_REVENUE, 123.45)
       // Another store's figures, and a day outside the period, never enter the file
       await day(ctx.storeB.id, '2026-11-01', AnalyticsMetrics.ORDERS_CREATED, 999)
       await day(ctx.storeA.id, '2026-11-04', AnalyticsMetrics.ORDERS_CREATED, 777)
@@ -602,6 +606,92 @@ describe('Analytics reports and export', () => {
         orderBy: { createdAt: 'desc' }
       })
       keys.push(made.key ?? '')
+    })
+  })
+  // One revenue, one unit (HC-010): the rollup keeps `orders.revenue` in dollars, the dashboard reads it as dollars, and every file
+  // the worker makes from it must say the same figure. Before, the files divided it by 100 again and rounded first: 19.99 came out as
+  // 0.2 and one cent as 0. The two specs that held each half (the rollup said dollars, this one seeded cents) never met.
+  describe('the revenue of one order, on every surface', () => {
+    const REVENUE_FROM = '2026-11-02'
+    const REVENUE_TO = '2026-11-04'
+    async function seedRevenue(): Promise<void> {
+      const rollups = new AnalyticsRollupService(app.get(PrismaService, { strict: false }))
+      // 1999 cents on the first day and one single cent on the second
+      const first = await createOrder(owner, { storeId: ctx.storeA.id })
+      const second = await createOrder(owner, { storeId: ctx.storeA.id })
+      await owner.order.update({
+        where: { id: first.id },
+        data: { createdAt: new Date('2026-11-02T10:00:00.000Z') }
+      })
+      await owner.order.update({
+        where: { id: second.id },
+        data: { createdAt: new Date('2026-11-03T10:00:00.000Z'), totalCents: 1 }
+      })
+      for (const date of [REVENUE_FROM, '2026-11-03']) {
+        const start = new Date(`${date}T00:00:00.000Z`)
+        await rollups.rollup(RollupGranularities.DAILY, ctx.storeA.id, {
+          start,
+          end: new Date(start.getTime() + 24 * HOUR)
+        })
+      }
+    }
+
+    const exportOf = async (format: 'csv' | 'excel' | 'pdf'): Promise<Buffer> => {
+      const row = await owner.export.create({
+        data: {
+          storeId: ctx.storeA.id,
+          requestedBy: ctx.adminA.id,
+          type: ExportTypes.ANALYTICS,
+          format,
+          filters: {
+            metrics: [AnalyticsMetrics.ORDERS_REVENUE],
+            from: REVENUE_FROM,
+            to: REVENUE_TO
+          },
+          status: ExportStatus.PENDING,
+          expiresAt: new Date(Date.now() + 24 * HOUR)
+        }
+      })
+      return (await fileOf(row.id)).bytes
+    }
+
+    it('says 19.99 and 0.01 in the metrics of the api, the csv, the spreadsheet and the pdf', async () => {
+      await seedRevenue()
+
+      // The api: what the dashboard draws
+      const metrics = await asAdmin()
+        .get(ApiRoutes.analytics.metrics)
+        .query({
+          metric: AnalyticsMetrics.ORDERS_REVENUE,
+          from: `${REVENUE_FROM}T00:00:00.000Z`,
+          to: `${REVENUE_TO}T00:00:00.000Z`,
+          granularity: 'day'
+        })
+      expect(metrics.status).toBe(OK)
+      const points = (metrics.body as { series: { points: { value: number }[] }[] }).series[0]
+        ?.points
+      expect(points?.map(point => point.value)).toEqual([19.99, 0.01])
+
+      // The csv: a day for each row, then the total of the period
+      const csv = (await exportOf('csv')).toString('utf8').replace('﻿', '')
+      const lines = csv.split('\r\n').filter(Boolean)
+      expect(lines[1]).toBe('2026-11-02,19.99')
+      expect(lines[2]).toBe('2026-11-03,0.01')
+      expect(Number(lines[3]?.split(',')[1])).toBeCloseTo(20, 2)
+
+      // The spreadsheet: numbers, in the same unit
+      const xml = strFromU8(
+        unzipSync(new Uint8Array(await exportOf('excel')))['xl/worksheets/sheet1.xml'] ??
+          new Uint8Array()
+      )
+      expect(xml).toContain('<v>19.99</v>')
+      expect(xml).toContain('<v>0.01</v>')
+      expect(xml).not.toContain('<v>0.2</v>')
+
+      // The document: text a person reads, with two decimals
+      const pdf = (await exportOf('pdf')).toString('latin1')
+      expect(pdf).toContain('(19.99)')
+      expect(pdf).toContain('(0.01)')
     })
   })
 })
