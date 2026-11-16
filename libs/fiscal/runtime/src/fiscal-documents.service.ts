@@ -63,6 +63,7 @@ import {
   receiverWithFiscalData,
   retryable,
   saleAddsUp,
+  shippingTaxFits,
   saleOf,
   sameIssuer
 } from './fiscal-rules'
@@ -770,7 +771,9 @@ export class FiscalDocumentsService {
     const parts = record(doc.linesSnapshot)
     const sale = saleOf(doc, parts)
     // The provider never sees a sale whose parts do not add up to what the order took
-    if (!saleAddsUp(sale)) {
+    // The bound of the tax of the shipping is asked only of a sale that was never sent: one that may already be at the authority is consulted
+    // below and is not refused here for a rule it was not built under
+    if (!saleAddsUp(sale) || (original === null && doc.attempts === 0 && !shippingTaxFits(sale))) {
       await this.reject(doc.id, organizationId, FiscalRejectionReasons.SALE_INCONSISTENT, {
         beforeSending: true
       })

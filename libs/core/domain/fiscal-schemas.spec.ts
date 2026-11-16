@@ -18,7 +18,11 @@ const issuer = {
 describe('the fiscal schemas', () => {
   it('takes an issuer with the defaults the api gives it', () => {
     const parsed = putFiscalIssuerSchema.parse(issuer)
-    expect(parsed.issueOn).toBe(FiscalIssueOn.DELIVERED)
+    // Not named, not changed: the service keeps the stored one and a new issuer starts at delivered
+    expect(parsed.issueOn).toBeUndefined()
+    expect(putFiscalIssuerSchema.parse({ ...issuer, issueOn: FiscalIssueOn.SHIPPED }).issueOn).toBe(
+      FiscalIssueOn.SHIPPED
+    )
     expect(parsed.registrationId).toBeNull()
   })
 

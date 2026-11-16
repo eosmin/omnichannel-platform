@@ -6,7 +6,7 @@ import {
   type FinanceAccountView,
   type ImportBankFileInput
 } from '@platform/api-client'
-import { BankLineFilters, FinanceLimits } from '@platform/core/domain'
+import { BankLineFilters, FinanceConflicts, FinanceLimits } from '@platform/core/domain'
 import { ClientErrorCodes } from '@platform/core/errors'
 
 import { cashAccountsOf } from './account-form'
@@ -33,6 +33,8 @@ export interface BankImportDraft {
   // The balance the statement ends with, as typed, and the day it is of: both or neither
   closingBalance: string
   closingOn: string
+  // The person confirmed the order of the day and the month of the file (asked when every date of it reads in both orders)
+  dateFormatConfirmed?: boolean
 }
 
 export const emptyImportDraft = (profileId = ''): BankImportDraft => ({
@@ -62,13 +64,17 @@ export function importInputOf(
   if (file === null) return { ok: false, field: BankImportFields.FILE }
   const balance = draft.closingBalance.trim()
   const day = draft.closingOn.trim()
+  const confirmed = draft.dateFormatConfirmed === true ? { dateFormatConfirmed: true } : {}
   if (balance === '' && day === '') {
-    return { ok: true, value: { profileId: draft.profileId, ...file } }
+    return { ok: true, value: { profileId: draft.profileId, ...file, ...confirmed } }
   }
   const cents = centsOfDecimalText(balance, FinanceLimits.MAX_LINE_CENTS)
   if (cents === null) return { ok: false, field: BankImportFields.CLOSING_BALANCE }
   if (!isCalendarDay(day)) return { ok: false, field: BankImportFields.CLOSING_ON }
-  return { ok: true, value: { profileId: draft.profileId, ...file, closing: { cents, on: day } } }
+  return {
+    ok: true,
+    value: { profileId: draft.profileId, ...file, closing: { cents, on: day }, ...confirmed }
+  }
 }
 
 // ------------------------------------------------------------------------------------------------------ the answers
@@ -96,6 +102,20 @@ export function bankImportErrorsOf(
   })
   const count = error.metadata.errorCount
   return { errors, count: typeof count === 'number' ? count : errors.length }
+}
+
+// The 409 that asks the person to confirm the order of the day and the month: the format of the profile and the days that were read
+export function bankDateFormatPromptOf(
+  error: unknown
+): { dateFormat: string; firstDay: string; lastDay: string } | null {
+  if (bankConflictOf(error) !== FinanceConflicts.BANK_DATE_FORMAT_UNCONFIRMED) return null
+  const metadata = (error as ApiError).metadata
+  const { dateFormat, firstDay, lastDay } = metadata
+  return typeof dateFormat === 'string' &&
+    typeof firstDay === 'string' &&
+    typeof lastDay === 'string'
+    ? { dateFormat, firstDay, lastDay }
+    : null
 }
 
 // The kind of refusal of a 409 of the reconciliation (`metadata.conflict`, a lower-case word the api keeps in a closed list), or null
