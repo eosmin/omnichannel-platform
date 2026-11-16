@@ -28,7 +28,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { SelectField, TextField } from './fields'
 
 // Making and editing a supplier (TDD_18 §2.7). `supplier` is null to make one. The tax id is written as the supplier's document shows it
-// (NIT or NRC): nothing is checked about its shape, because the format is the accountant's call, so only its length is. The account
+// (whatever its country uses): nothing is checked about its shape, because the format is the accountant's call, so only its length is. The account
 // the bills of a supplier are owed on is a liability that takes entries; `accounts` is null for who cannot read the chart.
 export function SupplierDialog({
   supplier,
