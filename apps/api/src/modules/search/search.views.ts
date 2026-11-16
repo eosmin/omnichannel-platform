@@ -32,6 +32,33 @@ export interface OrderSearchHit {
   customerName: string | null
 }
 
+// What a plugin sees of a hit when its key does not hold `customers:read`: the identity of the customer (who the order or the
+// message belongs to) is what that scope guards (TDD_10 §6, plugin orders allowlist), so a hit carries none of it
+export type PluginOrderSearchHit = Omit<OrderSearchHit, 'customerId' | 'customerName'>
+export type PluginMessageSearchHit = Omit<MessageSearchHit, 'customerId' | 'customerName'>
+
+// Field by field, so that a field added to a hit later reaches a plugin only when someone adds it here
+export function withoutOrderCustomer(hit: OrderSearchHit): PluginOrderSearchHit {
+  return {
+    id: hit.id,
+    orderNumber: hit.orderNumber,
+    status: hit.status,
+    totalCents: hit.totalCents,
+    currency: hit.currency,
+    createdAt: hit.createdAt
+  }
+}
+
+export function withoutMessageCustomer(hit: MessageSearchHit): PluginMessageSearchHit {
+  return {
+    id: hit.id,
+    conversationId: hit.conversationId,
+    type: hit.type,
+    createdAt: hit.createdAt,
+    snippet: hit.snippet
+  }
+}
+
 // `hasMore`: the page came back full, so there may be more under the same text
 export interface SearchResult<T> {
   query: string

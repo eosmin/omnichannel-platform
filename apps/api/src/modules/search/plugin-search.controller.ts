@@ -6,7 +6,7 @@ import { ZodValidationPipe } from '@platform/core/http'
 import type { Viewer } from '@platform/core/messaging'
 import { PluginScopes } from '@platform/plugins/sdk'
 
-import { CurrentPluginViewer, PluginApi } from '../plugins/plugin-api.decorators'
+import { CurrentPluginViewer, PluginApi, PluginHoldsScope } from '../plugins/plugin-api.decorators'
 import type { ProductSuggestions } from '../products/products.views'
 import { CurrentStore, RequirePermissions } from '../tenancy'
 
@@ -18,11 +18,15 @@ import {
   type SearchQuery,
   searchQuerySchema
 } from './search.schemas'
-import type {
-  CustomerSearchHit,
-  MessageSearchHit,
-  OrderSearchHit,
-  SearchResult
+import {
+  type CustomerSearchHit,
+  type MessageSearchHit,
+  type OrderSearchHit,
+  type PluginMessageSearchHit,
+  type PluginOrderSearchHit,
+  type SearchResult,
+  withoutMessageCustomer,
+  withoutOrderCustomer
 } from './search.views'
 
 // What a plugin searches is not what the team looked for: the report of searches does not count it
@@ -36,16 +40,20 @@ const PASSIVE = true
 export class PluginSearchController {
   constructor(private readonly runner: SearchRunner) {}
 
-  // Conversations AND messages, as for a person
+  // Conversations AND messages, as for a person. The id and the name of the customer are answered only to a key that
+  // also holds `customers:read` (what the conversation of a hit says of its customer is the open question of the plan, "Left by PR
+  // plugin-search-redact" (a)).
   @PluginApi(PluginScopes.CONVERSATIONS_READ, PluginScopes.MESSAGES_READ)
   @RequirePermissions(...MessageSearchPermissions)
   @Get(PluginApiRoutes.search.messages)
-  messages(
+  async messages(
     @CurrentStore() store: { id: string },
     @CurrentPluginViewer() viewer: Viewer,
+    @PluginHoldsScope(PluginScopes.CUSTOMERS_READ) holdsCustomers: boolean,
     @Query(new ZodValidationPipe(searchMessagesQuerySchema)) query: SearchMessagesQuery
-  ): Promise<SearchResult<MessageSearchHit>> {
-    return this.runner.messages(store.id, viewer, query, PASSIVE)
+  ): Promise<SearchResult<MessageSearchHit | PluginMessageSearchHit>> {
+    const result = await this.runner.messages(store.id, viewer, query, PASSIVE)
+    return holdsCustomers ? result : { ...result, hits: result.hits.map(withoutMessageCustomer) }
   }
 
   @PluginApi(PluginScopes.CUSTOMERS_READ)
@@ -58,14 +66,18 @@ export class PluginSearchController {
     return this.runner.customers(store.id, query, PASSIVE)
   }
 
+  // An order is found by its number. Who it is for (the name and the phone of the customer, and the id and the name in the hit)
+  // is what `customers:read` guards, as in the orders of the plugin API: a key without it neither searches by those nor gets them.
   @PluginApi(PluginScopes.ORDERS_READ)
   @RequirePermissions(Permissions.ORDERS_VIEW)
   @Get(PluginApiRoutes.search.orders)
-  orders(
+  async orders(
     @CurrentStore() store: { id: string },
+    @PluginHoldsScope(PluginScopes.CUSTOMERS_READ) holdsCustomers: boolean,
     @Query(new ZodValidationPipe(searchQuerySchema)) query: SearchQuery
-  ): Promise<SearchResult<OrderSearchHit>> {
-    return this.runner.orders(store.id, query, PASSIVE)
+  ): Promise<SearchResult<OrderSearchHit | PluginOrderSearchHit>> {
+    const result = await this.runner.orders(store.id, query, PASSIVE, holdsCustomers)
+    return holdsCustomers ? result : { ...result, hits: result.hits.map(withoutOrderCustomer) }
   }
 
   @PluginApi(PluginScopes.PRODUCTS_READ)

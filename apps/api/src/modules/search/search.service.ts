@@ -190,16 +190,20 @@ export class SearchService {
 
   // Orders by their number (a part of it) and by who they are for: the name of the customer, with no accents, or a run
   // of digits of their phone. The newest first among the ones that match the number the same way.
+  // `byCustomer` false (a plugin whose key lacks `customers:read`): the order is found by its number only, and the name and the
+  // phone of the customer are not even compared, so the answer cannot tell who an order is for
   async searchOrders(
     storeId: string,
-    params: { q: string; limit: number }
+    params: { q: string; limit: number },
+    // Required on purpose: the caller says whether the customer may be searched; there is no default that opens it
+    byCustomer: boolean
   ): Promise<SearchResult<OrderSearchHit>> {
     const folded = await foldInDatabase(this.prisma.client, params.q)
     if (folded === '') return pageOf(params.q, [], params.limit)
     const escaped = escapeLike(folded)
     const contains = `%${escaped}%`
     const digits = phoneDigitsOf(params.q)
-    const byPhone = digits !== ''
+    const byPhone = byCustomer && digits !== ''
     const rows = await this.prisma.client.$queryRaw<unknown[]>`
       SELECT
         o.id, o.order_number, o.status, o.total_cents, o.currency, o.created_at,
@@ -210,7 +214,7 @@ export class SearchService {
       WHERE o.store_id = ${storeId}
         AND (
           o.order_number ILIKE ${contains} ESCAPE '\\'
-          OR (cust.erased_at IS NULL AND cust.name_search LIKE ${contains} ESCAPE '\\')
+          OR (${byCustomer}::boolean AND cust.erased_at IS NULL AND cust.name_search LIKE ${contains} ESCAPE '\\')
           OR (${byPhone}::boolean AND cust.erased_at IS NULL AND cust.phone_normalized LIKE ${`%${digits}%`} ESCAPE '\\')
         )
       ORDER BY

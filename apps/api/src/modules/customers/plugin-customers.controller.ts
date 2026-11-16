@@ -75,21 +75,18 @@ import {
   updateCustomerSchema
 } from './customers.schemas'
 import { CustomersService } from './customers.service'
-import type {
-  AddressView,
-  CreatedCustomer,
-  CustomerDetail,
-  CustomerPage,
-  IdentityView,
-  TagView
-} from './customers.views'
+import type { AddressView, CustomerPage, IdentityView, TagView } from './customers.views'
 import { IdentitiesService } from './identities.service'
 import { NotesService } from './notes.service'
 import {
   type PluginNoteView,
   pluginNote,
   pluginTimeline,
-  type PluginTimelineEntry
+  type PluginTimelineEntry,
+  type PluginCreatedCustomer,
+  type PluginCustomerDetail,
+  pluginCreatedCustomer,
+  pluginCustomerDetail
 } from './plugin-customers.views'
 
 const id = () => new ZodValidationPipe(idSchema)
@@ -144,10 +141,10 @@ export class PluginCustomersController {
   create(
     @CurrentStore() store: Store,
     @Body(new ZodValidationPipe(createCustomerSchema)) body: CreateCustomerBody
-  ): Promise<WithAnonymousIdentities<CreatedCustomer>> {
+  ): Promise<WithAnonymousIdentities<PluginCreatedCustomer>> {
     return this.customers
       .create(store.id, body, true)
-      .then(created => withAnonymousIdentities(this.anonymity, created))
+      .then(created => withAnonymousIdentities(this.anonymity, pluginCreatedCustomer(created)))
   }
 
   @PluginApi(READ)
@@ -156,10 +153,10 @@ export class PluginCustomersController {
   get(
     @CurrentStore() store: Store,
     @Param('id', id()) customerId: string
-  ): Promise<WithAnonymousIdentities<CustomerDetail>> {
+  ): Promise<WithAnonymousIdentities<PluginCustomerDetail>> {
     return this.customers
       .get(store.id, customerId)
-      .then(customer => withAnonymousIdentities(this.anonymity, customer))
+      .then(customer => withAnonymousIdentities(this.anonymity, pluginCustomerDetail(customer)))
   }
 
   @PluginApi(READ, WRITE)
@@ -169,10 +166,10 @@ export class PluginCustomersController {
     @CurrentStore() store: Store,
     @Param('id', id()) customerId: string,
     @Body(new ZodValidationPipe(updateCustomerSchema)) body: UpdateCustomerBody
-  ): Promise<WithAnonymousIdentities<CustomerDetail>> {
+  ): Promise<WithAnonymousIdentities<PluginCustomerDetail>> {
     return this.customers
       .update(store.id, customerId, body)
-      .then(customer => withAnonymousIdentities(this.anonymity, customer))
+      .then(customer => withAnonymousIdentities(this.anonymity, pluginCustomerDetail(customer)))
   }
 
   // Only a customer with no conversations and no orders can go (the service refuses the rest with a 409)
