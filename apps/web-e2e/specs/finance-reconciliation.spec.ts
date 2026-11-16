@@ -199,8 +199,9 @@ test.describe('Finance → bank reconciliation', () => {
       .getByRole('button', { name: imports.open, exact: true })
       .click()
     const statement = page.getByTestId('bank-statement')
-    const row = (lineNo: number) =>
-      statement.locator(`[data-testid="bank-line-row"][data-line-no="${String(lineNo)}"]`)
+    // The api numbers the rows of the file, and the header is row 1: the first line of data is 2
+    const row = (position: number) =>
+      statement.locator(`[data-testid="bank-line-row"][data-line-no="${String(position + 1)}"]`)
 
     // The first line: the same amount to the cent, the same day and the same reference, so it is an exact suggestion
     const first = row(1)
@@ -260,7 +261,7 @@ test.describe('Finance → bank reconciliation', () => {
       .getByRole('button', { name: imports.open, exact: true })
       .click()
     const statement = page.getByTestId('bank-statement')
-    const first = statement.locator('[data-testid="bank-line-row"][data-line-no="1"]')
+    const first = statement.locator('[data-testid="bank-line-row"][data-line-no="2"]')
     await expect(first).toHaveAttribute('data-state', 'suggested')
 
     await statement.getByTestId('bank-confirm-exact').click()
