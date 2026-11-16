@@ -14,7 +14,9 @@ export class FiscalProviderRegistry {
   constructor(@Inject(FISCAL_PROVIDERS) providers: readonly FiscalDocumentProvider[]) {
     const byId = new Map<string, FiscalDocumentProvider>()
     for (const provider of providers) {
-      if (provider.id.trim() === '') throw new Error('a fiscal provider has no id')
+      if (provider.id === '' || provider.id !== provider.id.trim()) {
+        throw new Error('a fiscal provider has an empty id, or one with spaces around it')
+      }
       const types = provider.manifest.documentTypes.map(type => type.id)
       // A type id is the provider's own, but it is never empty, never repeated and never the placeholder core keeps until a document is built
       if (

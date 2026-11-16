@@ -1,4 +1,9 @@
-import { FiscalConsultState, FiscalEnvironment, FiscalSubmitOutcome } from '@platform/core/domain'
+import {
+  FiscalConsultState,
+  FiscalEnvironment,
+  FiscalLimits,
+  FiscalSubmitOutcome
+} from '@platform/core/domain'
 import type {
   BuiltDocument,
   ConsultResult,
@@ -121,7 +126,7 @@ export class SimulatorProvider implements FiscalDocumentProvider {
       })
     }
     // Down for the first N attempts of the submission, then answering
-    if (taxId.startsWith(SimulatorRules.UNAVAILABLE) && ctx.attempt <= this.unavailableFor(taxId)) {
+    if (this.unavailableFor(taxId) >= ctx.attempt) {
       return Promise.resolve({ outcome: FiscalSubmitOutcome.UNAVAILABLE })
     }
     // LOST: the authority has it from the first attempt, and its answer never arrived
@@ -176,9 +181,13 @@ export class SimulatorProvider implements FiscalDocumentProvider {
     return ''
   }
 
+  // How many attempts the authority is down for: UNAVAILABLE is 1, UNAVAILABLE-3 is 3 (at most one less than the attempts of the queue,
+  // so the document is always answered in the end); any other tax id is never unavailable
   private unavailableFor(taxId: string): number {
-    const count = Number(taxId.split('-')[1])
-    return Number.isInteger(count) && count > 0 ? count : 1
+    const found = /^UNAVAILABLE(?:-(\d{1,2}))?$/.exec(taxId)
+    if (found === null) return 0
+    const count = found[1] === undefined ? 1 : Number(found[1])
+    return Math.min(Math.max(count, 1), FiscalLimits.MAX_ATTEMPTS - 1)
   }
 }
 

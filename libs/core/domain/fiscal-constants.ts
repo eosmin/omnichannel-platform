@@ -26,6 +26,7 @@ export const FiscalLimits = {
   BACKOFF_MS: 60_000,
   REASON_MAX_LENGTH: 500,
   VOID_REASON_MAX_LENGTH: 500,
+  FAILED_JOB_KEEP_SECONDS: 7 * 24 * 60 * 60,
   LIST_PAGE_SIZE: 25,
   LIST_MAX_PAGE_SIZE: 100
 } as const
@@ -42,10 +43,13 @@ export const fiscalJobOptions = (): {
   attempts: number
   backoff: { type: 'exponential'; delay: number }
   removeOnComplete: true
+  removeOnFail: { age: number }
 } => ({
   attempts: FiscalLimits.MAX_ATTEMPTS,
   backoff: { type: 'exponential', delay: FiscalLimits.BACKOFF_MS },
-  removeOnComplete: true
+  removeOnComplete: true,
+  // A failed submission is kept a week for whoever looks into it, then goes: the document row is what lasts
+  removeOnFail: { age: FiscalLimits.FAILED_JOB_KEEP_SECONDS }
 })
 
 export const FiscalResourceTypes = {

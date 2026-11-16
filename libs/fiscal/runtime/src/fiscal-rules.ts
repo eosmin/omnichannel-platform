@@ -38,7 +38,9 @@ export interface OrderLineRow {
 export function documentLines(rows: readonly OrderLineRow[]): FiscalLine[] {
   return rows.map(row => ({
     description:
-      row.variantName === null ? row.productName : `${row.productName} (${row.variantName})`,
+      row.variantName === null || row.variantName.trim() === ''
+        ? row.productName
+        : `${row.productName} (${row.variantName.trim()})`,
     quantity: row.quantity,
     unitPriceCents: row.unitPriceCents,
     // A rate with no tax amount is a partial snapshot: the line says no rate rather than a rate with no tax
@@ -96,7 +98,8 @@ export function receiverOf(record: Readonly<Record<string, unknown>>): FiscalRec
 // The tax id as the screens and the audit see it: the last characters only (a third of it at most), so a person can tell two receivers apart
 export function maskTaxId(taxId: string | null): string | null {
   if (taxId === null) return null
+  const id = taxId.trim()
   // A third of it at most, and never more than four characters: a short id shows almost nothing
-  const shown = Math.min(4, Math.floor(taxId.length / 3))
-  return `${'*'.repeat(taxId.length - shown)}${shown === 0 ? '' : taxId.slice(-shown)}`
+  const shown = Math.min(4, Math.floor(id.length / 3))
+  return `${'*'.repeat(id.length - shown)}${shown === 0 ? '' : id.slice(-shown)}`
 }
