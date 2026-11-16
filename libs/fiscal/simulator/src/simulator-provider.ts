@@ -1,5 +1,6 @@
 import {
   FiscalConsultState,
+  FiscalDocumentKind,
   FiscalEnvironment,
   FiscalLimits,
   FiscalSubmitOutcome
@@ -89,9 +90,11 @@ export class SimulatorProvider implements FiscalDocumentProvider {
 
   build(input: FiscalBuildInput): Promise<BuiltDocument> {
     const business = input.receiver.taxId !== null && input.receiver.taxId.trim() !== ''
-    const documentType = business
+    const creditNote = input.kind === FiscalDocumentKind.CREDIT_NOTE
+    let documentType: string = business
       ? SimulatorDocumentTypes.BUSINESS
       : SimulatorDocumentTypes.CONSUMER
+    if (creditNote) documentType = SimulatorDocumentTypes.CREDIT_NOTE
     const missing: FiscalReceiverField[] = []
     if (business && (input.receiver.name === null || input.receiver.name.trim() === '')) {
       missing.push('name')
@@ -101,6 +104,15 @@ export class SimulatorProvider implements FiscalDocumentProvider {
       number: input.sequenceNumber,
       issuedAt: input.issuedAt,
       orderNumber: input.orderNumber,
+      // A credit note names the document it cancels (part of); a sale names none
+      credits:
+        input.credited === null
+          ? null
+          : {
+              type: input.credited.documentType,
+              number: input.credited.externalNumber,
+              issuedAt: input.credited.issuedAt
+            },
       currency: input.currency,
       issuer: { legalName: input.issuer.legalName, taxId: input.issuer.taxId },
       receiver: { name: input.receiver.name, taxId: input.receiver.taxId },

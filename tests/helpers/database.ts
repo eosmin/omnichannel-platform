@@ -90,9 +90,8 @@ export async function cleanUp(owner: OwnerClient, prefix: string): Promise<void>
   await owner.codRemittance.deleteMany({ where: ofRun })
   // A profile is pointed at by the remittances an import made, so it goes after them
   await owner.remittanceImportProfile.deleteMany({ where: ofRun })
-  await owner.orderReturn.deleteMany({ where: ofRun })
-  await owner.pickupRequest.deleteMany({ where: ofRun })
-  // The books of an organization restrict its deletion, and the journal is append-only even for the owner
+  // The books of an organization restrict its deletion, and the journal is append-only even for the owner. They go before the returns:
+  // the credit note of a return (a fiscal document) restricts the deletion of the return it is for.
   const organizations = await owner.organization.findMany({
     where: { slug: { startsWith: prefix } },
     select: { id: true }
@@ -101,6 +100,8 @@ export async function cleanUp(owner: OwnerClient, prefix: string): Promise<void>
     owner,
     organizations.map(row => row.id)
   )
+  await owner.orderReturn.deleteMany({ where: ofRun })
+  await owner.pickupRequest.deleteMany({ where: ofRun })
   // An order is not deleted with its store (it is kept for the tax window), so the owner removes the
   // ones of the run first
   await owner.order.deleteMany({

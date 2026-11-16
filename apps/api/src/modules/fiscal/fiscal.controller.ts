@@ -10,11 +10,12 @@ import {
   Query,
   Req
 } from '@nestjs/common'
+import { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
-import { HttpStatusCodes } from '@platform/core/errors'
+import { errorName, HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import {
@@ -60,8 +61,11 @@ export class FiscalController {
   constructor(
     private readonly issuer: FiscalIssuerService,
     private readonly documents: FiscalDocumentsService,
-    private readonly queue: FiscalSubmissionQueue
-  ) {}
+    private readonly queue: FiscalSubmissionQueue,
+    private readonly logger: PinoLogger
+  ) {
+    this.logger.setContext(FiscalController.name)
+  }
 
   @RequirePermissions(Permissions.FISCAL_VIEW)
   @Get(ApiRoutes.fiscal.providers)
@@ -166,5 +170,37 @@ export class FiscalController {
         actorOf(user, store, req)
       )
     }
+  }
+
+  // The sale document made again after the one before was voided (and its credit notes): a new document with a new number, queued
+  @RequirePermissions(Permissions.FISCAL_MANAGE)
+  @Post(ApiRoutes.fiscal.documents.replace(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  async replace(
+    @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) documentId: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<{ data: FiscalDocumentView }> {
+    const made = await this.documents.replace(
+      organization.id,
+      documentId,
+      actorOf(user, store, req)
+    )
+    // The sale document first; each credit note waits for it (its job asks again until the sale is accepted)
+    // The documents are committed: one that cannot be queued (the queue blinked) does not stop the others and does not fail the request,
+    // which a repeat would refuse. It stays QUEUED and a person retries it from its route.
+    for (const created of [made.id, ...made.creditNoteIds]) {
+      try {
+        await this.queue.enqueue(organization.id, created, 1)
+      } catch (error) {
+        this.logger.error(
+          { err: errorName(error), documentId: created },
+          'a fiscal document was made and could not be queued'
+        )
+      }
+    }
+    return { data: await this.documents.get(organization.id, made.id) }
   }
 }
