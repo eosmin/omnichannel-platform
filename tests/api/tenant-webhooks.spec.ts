@@ -24,6 +24,7 @@ import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { standalone } from '../helpers/leaks'
 import { type CapturedQueue, queueOf } from '../helpers/queue'
 
 const OK = 200
@@ -480,6 +481,8 @@ describe('The webhooks of a store', () => {
     })
 
     it('never sends the text of a message, whatever an emitter put in the payload', async () => {
+      // The whole sensitive text, never a short number: a job is full of random uuids that now and then hold "4111" by chance
+      const sensitivePreview = 'my card number is 4111'
       const follows = await create(PUBLIC_URL, [Events.MESSAGE_RECEIVED])
       const dispatcher = app.get(
         (await import('../../apps/api/src/modules/tenant-webhooks/webhook-dispatcher'))
@@ -489,12 +492,13 @@ describe('The webhooks of a store', () => {
       await dispatcher.dispatch(Events.MESSAGE_RECEIVED, {
         storeId: ctx.storeA.id,
         messageId: randomUUID(),
-        contentPreview: 'my card number is 4111',
+        contentPreview: sensitivePreview,
         firstMessageContent: 'and my address is'
       })
 
       const [job] = mine(follows.id)
-      expect(JSON.stringify(job?.data)).not.toContain('4111')
+      expect(JSON.stringify(job?.data)).not.toContain(sensitivePreview)
+      expect(JSON.stringify(job?.data)).not.toMatch(standalone('4111'))
       expect(JSON.stringify(job?.data)).not.toContain('my address')
     })
 

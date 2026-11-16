@@ -39,6 +39,7 @@ import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { standalone } from '../helpers/leaks'
 
 const OK = 200
 const CREATED = 201
@@ -655,13 +656,15 @@ describe('Settings → Carriers: the connections of a store', () => {
         expect(auth.status).toBe(BAD_REQUEST)
         expect(codeOf(auth.body)).toBe(ErrorCodes.SHIPPING_CARRIER_CREDENTIALS_INVALID)
         expect((auth.body as ErrorBody).error.metadata?.reason).toBe(CarrierHealthReasons.AUTH)
-        expect(JSON.stringify(auth.body)).not.toContain('abc')
+        expect(JSON.stringify(auth.body)).not.toContain('token abc is revoked')
+        expect(JSON.stringify(auth.body)).not.toMatch(standalone('abc'))
 
         fake.plugin.connect = () =>
           Promise.reject(new CarrierRejectedError('account 4411 suspended'))
         const rejected = await external()
         expect(rejected.status).toBe(BAD_REQUEST)
-        expect(JSON.stringify(rejected.body)).not.toContain('4411')
+        expect(JSON.stringify(rejected.body)).not.toContain('account 4411 suspended')
+        expect(JSON.stringify(rejected.body)).not.toMatch(standalone('4411'))
 
         fake.plugin.connect = () => Promise.reject(new CarrierUnavailableError('502 from host'))
         const down = await external()
