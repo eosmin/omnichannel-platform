@@ -42,9 +42,10 @@ export function isScanned(file: string): boolean {
 
 // The authorities and the documents of the countries a provider could serve, by name (the acronyms are case-sensitive: `nit` is an
 // ordinary word in English), and the package or folder of a provider: @platform/fiscal/<provider>, libs/fiscal/<provider>.
-const AUTHORITIES = /\b(?:hacienda|dgii|dian|afip|sunat|sii\.cl)\b/i
-const ACRONYMS = /\b(?:DTE|NRC|NIT|DUI|CCF)\b/
-const PROVIDER_PATH = /(?:@platform\/fiscal|libs\/fiscal)\/(?!sdk\b|runtime\b)[a-z0-9-]+/
+const AUTHORITIES = /\b(?:hacienda|dgii|afip|sunat|sii\.cl)\b/i
+const ACRONYMS = /\b(?:DTE|NRC|NIT|DUI|CCF|DIAN)\b/
+const PROVIDER_PATH =
+  /(?:@platform\/fiscal|libs\/fiscal)\/(?!(?:sdk|runtime)(?![a-z0-9-]))[a-z0-9-]+/
 // The simulator is a provider like the others: its id, quoted, or its package
 const SIMULATOR_ID = /['"`]simulator['"`]|SIMULATOR_PROVIDER_ID|SimulatorProvider|simulatorProvider/
 

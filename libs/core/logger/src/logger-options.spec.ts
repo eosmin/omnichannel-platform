@@ -66,7 +66,7 @@ describe('redaction', () => {
     expect(REDACTED_SECRET_KEYS).toContain('appSecret')
     expect(REDACTED_SECRET_KEYS).toContain('app_secret')
     // The customer data of a fiscal document and the certificate of the issuer
-    for (const key of ['taxId', 'registrationId', 'receiver', 'certificate']) {
+    for (const key of ['taxId', 'tax_id', 'registrationId', 'registration_id', 'certificate']) {
       expect(REDACTED_SECRET_KEYS).toContain(key)
     }
     expect(

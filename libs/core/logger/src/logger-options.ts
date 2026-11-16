@@ -70,8 +70,9 @@ export const REDACTED_SECRET_KEYS: readonly string[] = [
   // Fiscal documents (TDD_18 §9.2): the customer data of a document and the certificate of the issuer. The provider declares the names of
   // its own credentials in its manifest, so no provider's spelling is listed here.
   'taxId',
+  'tax_id',
   'registrationId',
-  'receiver',
+  'registration_id',
   'certificate'
 ]
 

@@ -34,6 +34,11 @@ describe('isScanned', () => {
   it('has one composition root, with its reason in writing', () => {
     expect(Object.keys(ALLOWED_FILES)).toEqual(['libs/fiscal/runtime/src/official-providers.ts'])
     expect(isScanned('libs/fiscal/runtime/src/official-providers.ts')).toBe(false)
+    // The roots of the other plugins are scanned too, and the runtime's other files with them
+    expect(isScanned('libs/channels/whatsapp/src/plugin.ts')).toBe(true)
+    expect(isScanned('libs/carriers/local/src/local-carrier.plugin.ts')).toBe(true)
+    expect(isScanned('libs/plugins/sdk/src/plugin-scopes.ts')).toBe(true)
+    expect(isScanned('libs/fiscal/runtime/src/fiscal-rules.ts')).toBe(true)
     for (const reason of Object.values(ALLOWED_FILES)) expect(reason.length).toBeGreaterThan(20)
   })
 })
@@ -48,6 +53,11 @@ describe('namesFiscalProvider', () => {
   })
 
   it('leaves the port and the runtime, and ordinary words, alone', () => {
+    expect(namesFiscalProvider("import { x } from '@platform/fiscal/sdk-sv'")).toBe(true)
+    expect(namesFiscalProvider("import { x } from '@platform/fiscal/runtime-x'")).toBe(true)
+    expect(namesFiscalProvider('// Dian called about the order')).toBe(false)
+    expect(namesFiscalProvider('// the DIAN of Colombia')).toBe(true)
+    expect(namesFiscalProvider('siiXcl')).toBe(false)
     expect(namesFiscalProvider("import { x } from '@platform/fiscal/sdk'")).toBe(false)
     expect(namesFiscalProvider("import { x } from '@platform/fiscal/runtime'")).toBe(false)
     expect(namesFiscalProvider('const nit = 1 // a nit about the document')).toBe(false)

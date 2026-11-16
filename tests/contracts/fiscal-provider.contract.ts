@@ -19,11 +19,13 @@ export interface FiscalContractFixtures {
   // Receivers: `plain` is accepted; the others are optional
   receivers: {
     plain: { name: string | null; taxId: string | null }
-    refused?: { name: string | null; taxId: string | null }
-    unavailable?: { name: string | null; taxId: string | null }
-    lostAnswer?: { name: string | null; taxId: string | null }
-    // What makes the type of the document ask for data the receiver lacks
-    incomplete?: { name: string | null; taxId: string | null }
+    // What a sandbox of the provider answers by: a receiver it refuses, one whose authority is down on the first attempt, one whose answer
+    // is lost after the document was received, and one that lacks what the type of its document needs. A provider with no way to
+    // provoke one of them has not shown that it handles it, so none is optional.
+    refused: { name: string | null; taxId: string | null }
+    unavailable: { name: string | null; taxId: string | null }
+    lostAnswer: { name: string | null; taxId: string | null }
+    incomplete: { name: string | null; taxId: string | null }
   }
 }
 
@@ -124,7 +126,6 @@ export function testFiscalProviderContract(
     })
 
     it('says what the receiver lacks instead of building a document that would be refused', async () => {
-      if (fixtures.receivers.incomplete === undefined) return
       const built = await makeProvider().build(
         baseInput(fixtures, fixtures.receivers.incomplete, 2)
       )
@@ -142,11 +143,11 @@ export function testFiscalProviderContract(
       expect(again.outcome).toBe(FiscalSubmitOutcome.ACCEPTED)
       // The type says an accepted answer has its number; the repeated key gives the same one
       expect(acceptedOf(again).externalNumber).toBe(acceptedOf(first).externalNumber)
+      expect(acceptedOf(again).providerData).toEqual(acceptedOf(first).providerData)
       noSecrets(first)
     })
 
     it('refuses with a code that is not customer data', async () => {
-      if (fixtures.receivers.refused === undefined) return
       const provider = makeProvider()
       const built = await provider.build(baseInput(fixtures, fixtures.receivers.refused, 4))
       const result = await provider.submit(built, contextOf('contract-refuse'))
@@ -157,7 +158,6 @@ export function testFiscalProviderContract(
     })
 
     it('answers UNAVAILABLE while the authority is down and accepts when it is back', async () => {
-      if (fixtures.receivers.unavailable === undefined) return
       const provider = makeProvider()
       const built = await provider.build(baseInput(fixtures, fixtures.receivers.unavailable, 5))
       const down = await provider.submit(built, contextOf('contract-down'))
@@ -173,7 +173,6 @@ export function testFiscalProviderContract(
         contextOf('contract-never-sent')
       )
       expect(unknown.state).toBe('unknown')
-      if (fixtures.receivers.lostAnswer === undefined) return
       const built = await provider.build(baseInput(fixtures, fixtures.receivers.lostAnswer, 7))
       const lost = await provider.submit(built, contextOf('contract-lost'))
       expect(lost.outcome).toBe(FiscalSubmitOutcome.UNAVAILABLE)
@@ -193,8 +192,8 @@ export function testFiscalProviderContract(
         providerData: acceptedOf(accepted).providerData ?? null,
         payload: built.payload
       }
-      expect((await provider.void(stored, '', contextOf('contract-void'))).voided).toBe(false)
-      const voided = await provider.void(stored, 'wrong customer', contextOf('contract-void'))
+      expect((await provider.void(stored, '', contextOf('contract-void-op'))).voided).toBe(false)
+      const voided = await provider.void(stored, 'wrong customer', contextOf('contract-void-op'))
       expect(voided.voided).toBe(true)
       noSecrets(voided)
     })

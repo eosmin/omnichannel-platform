@@ -36,6 +36,11 @@ for (const file of files) {
 
 const baseline = JSON.parse(readFileSync(BASELINE_FILE, 'utf8')) as Baseline
 
+if (files.length === 0) {
+  console.error('fiscal-agnostic: no file to scan; run it from the root of the repository')
+  exit(1)
+}
+
 if (argv.includes('--update-down')) {
   try {
     const lowered = lowerBaseline(baseline, current)
@@ -51,11 +56,6 @@ if (argv.includes('--update-down')) {
     )
     exit(1)
   }
-}
-
-if (files.length === 0) {
-  console.error('fiscal-agnostic: no file to scan; run it from the root of the repository')
-  exit(1)
 }
 
 // The baseline file itself cannot be raised to make a check pass: it is compared with the one of
