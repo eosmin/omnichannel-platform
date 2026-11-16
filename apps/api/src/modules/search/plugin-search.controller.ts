@@ -40,9 +40,9 @@ const PASSIVE = true
 export class PluginSearchController {
   constructor(private readonly runner: SearchRunner) {}
 
-  // Conversations AND messages, as for a person. The id and the name of the customer are answered only to a key that
-  // also holds `customers:read` (what the conversation of a hit says of its customer is the open question of the plan, "Left by PR
-  // plugin-search-redact" (a)).
+  // Conversations AND messages, as for a person. The id and the name of the customer are answered only to a key that also holds
+  // `customers:read`. The conversation of a hit tells a key without it the id of the customer and nothing else of them (PR
+  // plugin-conversations-identity), so the id is not a secret between the two routes: the name, the handle and the photo are.
   @PluginApi(PluginScopes.CONVERSATIONS_READ, PluginScopes.MESSAGES_READ)
   @RequirePermissions(...MessageSearchPermissions)
   @Get(PluginApiRoutes.search.messages)
