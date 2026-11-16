@@ -425,6 +425,27 @@ describe('The statements and the lists with age', () => {
       )
     })
 
+    it('refuses a store of another organization for a file as it does for the view, and leaves no audit row for it', async () => {
+      for (const [route, query] of [
+        [ApiRoutes.finance.reports.incomeStatementCsv, { from: '2026-01-01', to: '2026-01-31' }],
+        [ApiRoutes.finance.reports.balanceSheetCsv, { asOf: '2026-03-31' }]
+      ] as const) {
+        const response = await asAdminA()
+          .get(route)
+          .query({ ...query, storeId: ctx.storeB.id })
+        expect(response.status).toBe(NOT_FOUND)
+      }
+    })
+
+    it('has no verdict on the books in the file of one store', async () => {
+      const response = await asAdminA()
+        .get(ApiRoutes.finance.reports.balanceSheetCsv)
+        .query({ asOf: '2026-03-31', storeId: ctx.storeA.id })
+
+      expect(response.status).toBe(OK)
+      expect(response.text).not.toContain(StatementWarning.NOT_BALANCED)
+    })
+
     it('has a file for each of the other reports', async () => {
       for (const [route, query] of [
         [ApiRoutes.finance.reports.balanceSheetCsv, { asOf: '2026-03-31' }],

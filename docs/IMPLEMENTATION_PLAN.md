@@ -1928,7 +1928,9 @@ and one `@RequirePermissions` line changes it. (h) A statement of one store is a
 put its lines in two stores or in none); the whole-organization sheet does. The audit rows of the statements use the `finance_report` resource type, the
 4B.8a files still use `finance_entry` (moved with the report constants of debt (q) of 4B.8a). (i) A payment dated before its invoice pays it (the unapplied
 amount settles against what is open at the end), but an age by the invoice date and the payment date of each pair, not FIFO, is the accountant's (b).
-(f) `finance:view_reports` is not yet in a role preset other than
+(j) The `storeId` of a statement narrows to any store of the organization (`requireStore` checks the organization, not the caller's role in that store): the same
+reading of `TDD_18 §9.1` as the trial balance of 4B.8a (debt (n)); a per-store bound comes with the per-store accounts of the Phase 2. The audit row of a file is
+written like every finance audit row, not awaited (debt (k) of 4B.8a). (f) `finance:view_reports` is not yet in a role preset other than
 Admin: owners of custom roles grant it by hand, and 4B.9 lists it in the matrix of the screen.
 
 ### Step 4B.9 — Finance interface (web)

@@ -153,8 +153,8 @@ const isoDay = (date: Date): string => date.toISOString().slice(0, 10)
 // The statements and the lists with age of the books (TDD_18 §10): income statement, balance sheet, cash flow, payables and receivables by
 // party. They read the lines of the journal for the organization of the request, by store when asked, and write nothing. What each one
 // groups is the type and the parent of the accounts of the accountant's chart, and the account roles of the settings; a section or a
-// role that is missing is warned, never filled in with a guess. A file taken out leaves an audit row (FINANCE_EXPORTED) after its rows
-// are built and before the first byte.
+// role that is missing is warned, never filled in with a guess. A file taken out leaves an audit row (FINANCE_EXPORTED) once its rows
+// are built, written the way every finance audit row is (not awaited, debt (k) of 4B.8a).
 @Injectable()
 export class FinanceStatementsService {
   constructor(
@@ -177,36 +177,39 @@ export class FinanceStatementsService {
   async cashFlow(organizationId: string, query: FlowQuery): Promise<CashFlowView> {
     await this.requireStore(organizationId, query.storeId)
     const storeId = query.storeId ?? null
-    const cashAccounts = this.prisma.client.$queryRaw<[{ cash: bigint }]>`
+    const cashAccounts = await this.prisma.client.$queryRaw<[{ cash: bigint }]>`
       SELECT COUNT(*)::bigint AS cash FROM ledger_accounts
       WHERE organization_id = ${organizationId} AND cash_kind IS NOT NULL`
-    const movedRows = this.prisma.client.$queryRaw<
-      { source: string; inflow: bigint; outflow: bigint }[]
+    // One statement, so the movements, the opening and the closing are read from the same snapshot: three reads could see a posting
+    // that commits between them and report a cash flow that does not close on perfectly good books
+    const rows = await this.prisma.client.$queryRaw<
+      { source: string; inflow: bigint; outflow: bigint; opening: bigint; closing: bigint }[]
     >`
       SELECT COALESCE(e.source_type, ${FinanceSourceType.MANUAL}) AS source,
-             SUM(l.debit_cents)::bigint AS inflow, SUM(l.credit_cents)::bigint AS outflow
+             COALESCE(SUM(l.debit_cents) FILTER (WHERE e.entry_date >= ${query.from}::date), 0)::bigint AS inflow,
+             COALESCE(SUM(l.credit_cents) FILTER (WHERE e.entry_date >= ${query.from}::date), 0)::bigint AS outflow,
+             COALESCE(SUM(l.debit_cents - l.credit_cents) FILTER (WHERE e.entry_date < ${query.from}::date), 0)::bigint AS opening,
+             COALESCE(SUM(l.debit_cents - l.credit_cents), 0)::bigint AS closing
       FROM journal_lines l
       JOIN journal_entries e ON e.id = l.entry_id AND e.organization_id = l.organization_id
       JOIN ledger_accounts a ON a.id = l.account_id AND a.organization_id = l.organization_id
       WHERE l.organization_id = ${organizationId} AND a.cash_kind IS NOT NULL
-        AND e.entry_date >= ${query.from}::date AND e.entry_date <= ${query.to}::date
+        AND e.entry_date <= ${query.to}::date
         AND (${storeId}::text IS NULL OR l.store_id = ${storeId})
       GROUP BY 1`
-    const [[{ cash }], moved, opening, closing] = await Promise.all([
-      cashAccounts,
-      movedRows,
-      this.cashBalance(organizationId, storeId, query.from, true),
-      this.cashBalance(organizationId, storeId, query.to, false)
-    ])
+    let opening = 0n
+    let closing = 0n
+    for (const row of rows) {
+      opening += row.opening
+      closing += row.closing
+    }
     const flow = cashFlow(
-      moved.map(row => ({
-        source: row.source,
-        inflowCents: row.inflow,
-        outflowCents: row.outflow
-      })),
+      rows
+        .filter(row => row.inflow !== 0n || row.outflow !== 0n)
+        .map(row => ({ source: row.source, inflowCents: row.inflow, outflowCents: row.outflow })),
       opening,
       closing,
-      cash > 0n
+      (cashAccounts[0]?.cash ?? 0n) > 0n
     )
     return this.cashView(query, flow)
   }
@@ -293,6 +296,7 @@ export class FinanceStatementsService {
     query: FlowQuery,
     actor: Actor
   ): Promise<StatementCsvRow[]> {
+    await this.requireStore(organizationId, query.storeId)
     const accounts = await this.sums(organizationId, query.storeId ?? null, query.from, query.to)
     const statement = incomeStatement(accounts)
     const rows = [
@@ -318,6 +322,7 @@ export class FinanceStatementsService {
     query: BalanceSheetQuery,
     actor: Actor
   ): Promise<StatementCsvRow[]> {
+    await this.requireStore(organizationId, query.storeId)
     const accounts = await this.sums(organizationId, query.storeId ?? null, null, query.asOf)
     const sheet = balanceSheet(accounts)
     const rows = [
@@ -326,7 +331,8 @@ export class FinanceStatementsService {
       ...sectionRows(AccountType.EQUITY, sheet.equity),
       summary(StatementTotalLine.RESULT_NOT_CLOSED, sheet.resultCents),
       summary(StatementTotalLine.EQUITY_WITH_RESULT, sheet.equityWithResultCents),
-      ...warningRows(sheet.warnings)
+      // The slice of one store carries no verdict, as in the view
+      ...warningRows(query.storeId === undefined ? sheet.warnings : [])
     ]
     capRows(rows)
     this.auditExport(organizationId, actor, FinanceReport.BALANCE_SHEET, {
@@ -429,34 +435,6 @@ export class FinanceStatementsService {
       debitCents: row.debit,
       creditCents: row.credit
     }))
-  }
-
-  // What the cash-kind accounts hold before a day (the opening) or up to it (the closing), debit side. Two statements, not one with a
-  // flag: a parameter that only chooses a branch has no type for the database
-  private async cashBalance(
-    organizationId: string,
-    storeId: string | null,
-    day: string,
-    before: boolean
-  ): Promise<bigint> {
-    const rows = before
-      ? await this.prisma.client.$queryRaw<{ balance: bigint }[]>`
-          SELECT COALESCE(SUM(l.debit_cents - l.credit_cents), 0)::bigint AS balance
-          FROM journal_lines l
-          JOIN journal_entries e ON e.id = l.entry_id AND e.organization_id = l.organization_id
-          JOIN ledger_accounts a ON a.id = l.account_id AND a.organization_id = l.organization_id
-          WHERE l.organization_id = ${organizationId} AND a.cash_kind IS NOT NULL
-            AND e.entry_date < ${day}::date
-            AND (${storeId}::text IS NULL OR l.store_id = ${storeId})`
-      : await this.prisma.client.$queryRaw<{ balance: bigint }[]>`
-          SELECT COALESCE(SUM(l.debit_cents - l.credit_cents), 0)::bigint AS balance
-          FROM journal_lines l
-          JOIN journal_entries e ON e.id = l.entry_id AND e.organization_id = l.organization_id
-          JOIN ledger_accounts a ON a.id = l.account_id AND a.organization_id = l.organization_id
-          WHERE l.organization_id = ${organizationId} AND a.cash_kind IS NOT NULL
-            AND e.entry_date <= ${day}::date
-            AND (${storeId}::text IS NULL OR l.store_id = ${storeId})`
-    return rows[0]?.balance ?? 0n
   }
 
   // The lines of the accounts of one list, in the order of the ledger inside each party. A list longer than a file is refused: it is read

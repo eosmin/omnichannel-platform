@@ -56,12 +56,19 @@ export function statementSection(
       childrenOf.set(account.parentId, [...(childrenOf.get(account.parentId) ?? []), account.id])
     }
   }
-  const rollup = (id: string, seen: ReadonlySet<string>): bigint => {
-    // A parent loop cannot happen (the chart refuses it), but a report must never spin on one
-    if (seen.has(id)) return 0n
-    const next = new Set(seen).add(id)
+  // Each account's rollup once, whatever order the rows come in; a parent loop cannot happen (the chart refuses it), but a report must
+  // never spin on one: an account met again on its own path counts as zero
+  const memo = new Map<string, bigint>()
+  const visiting = new Set<string>()
+  const rollup = (id: string): bigint => {
+    const known = memo.get(id)
+    if (known !== undefined) return known
+    if (visiting.has(id)) return 0n
+    visiting.add(id)
     let sum = balance.get(id) ?? 0n
-    for (const child of childrenOf.get(id) ?? []) sum += rollup(child, next)
+    for (const child of childrenOf.get(id) ?? []) sum += rollup(child)
+    visiting.delete(id)
+    memo.set(id, sum)
     return sum
   }
   let totalCents = 0n
@@ -75,7 +82,7 @@ export function statementSection(
       parentId: account.parentId,
       isPostable: account.isPostable,
       balanceCents,
-      rollupCents: rollup(account.id, new Set())
+      rollupCents: rollup(account.id)
     }
   })
   return { rows, totalCents }
@@ -215,17 +222,20 @@ export interface Aging {
   totalCents: bigint
 }
 
-// Settles `cents` against the open items, oldest first; returns what was left over
+// Settles `cents` against the open items, oldest first, and returns what was left over. The settled items are dropped from the front in
+// one move, not one at a time.
 function settleOldest(open: { date: string; cents: bigint }[], cents: bigint): bigint {
   let settle = cents
+  let settled = 0
   while (settle > 0n) {
-    const oldest = open[0]
+    const oldest = open[settled]
     if (oldest === undefined) break
     const used = oldest.cents < settle ? oldest.cents : settle
     oldest.cents -= used
     settle -= used
-    if (oldest.cents === 0n) open.shift()
+    if (oldest.cents === 0n) settled += 1
   }
+  open.splice(0, settled)
   return settle
 }
 
