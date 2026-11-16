@@ -83,7 +83,8 @@ export const AppPaths = {
     taxes: '/finance/taxes',
     settings: '/finance/settings',
     periods: '/finance/periods',
-    reports: '/finance/reports'
+    reports: '/finance/reports',
+    reconciliation: '/finance/reconciliation'
   },
   account: {
     profile: '/account/profile',

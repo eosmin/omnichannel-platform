@@ -108,6 +108,7 @@ export const Permissions = {
   // inventory ones, and only the Admin preset holds them (RolePresets[ADMIN] is every permission). Custom roles may
   // mix them, so a bookkeeper can register and not move money, and the one who pays suppliers need not close months.
   FINANCE_VIEW: 'finance:view', // balances, reports, the periods: no entry detail
+  FINANCE_VIEW_REPORTS: 'finance:view_reports', // the statements and the lists with age: income, balance sheet, cash flow, payables, receivables
   FINANCE_VIEW_JOURNAL: 'finance:view_journal', // the journal, the ledger of an account, one entry with its lines
   FINANCE_MANAGE_TRANSACTIONS: 'finance:manage_transactions', // expenses and incomes
   FINANCE_MOVE_MONEY: 'finance:move_money', // transfers, supplier payments, write-offs, the remittance destination

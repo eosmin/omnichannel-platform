@@ -95,9 +95,10 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'products.inventory': { step: '4.2' },
   // The books of the organization (TDD_18 §12): Step 4B.9 draws the finance screens, in the PRs its box in the plan lists. 4B.9a-1 drew
   // the setup, the settings, the chart, the roles, the tax rates, the payment accounts, the store tax settings, the periods (read and
-  // open), the balances and the postings; the rest of these waits for 4B.9a-2 (entries, transactions), 4B.9a-3 (bank), 4B.9a-4
-  // (suppliers, purchase orders) and 4B.9b (4B.9b-1 drew the close, the trial balance, the ledger, the three files and the check of the
-  // chain; 4B.9b-2 to 4B.9b-4 draw the fiscal documents, the VAT and the statements). A route stays on '4B.9' until the whole step is done
+  // open), the balances and the postings; 4B.9a-3 drew the bank reconciliation by CSV (every `finance.bank.*` route, on Finance → Bank
+  // reconciliation); 4B.9b-1 drew the close, the trial balance, the ledger, the three files and the check of the chain; the rest of
+  // these waits for 4B.9a-2 (entries, transactions), 4B.9a-4 (suppliers, purchase orders) and 4B.9b-2 to 4B.9b-4 (fiscal documents,
+  // VAT, statements). A route stays on '4B.9' until the whole step is done
   'finance.setup': { step: '4B.9' },
   'finance.settings': { step: '4B.9' },
   'finance.accounts.list': { step: '4B.9' },
@@ -120,6 +121,14 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'finance.reports.ledgerCsv': { step: '4B.9' },
   'finance.reports.journalCsv': { step: '4B.9' },
   'finance.reports.verifyChain': { step: '4B.9' },
+  'finance.reports.incomeStatement': { step: '4B.9' },
+  'finance.reports.balanceSheet': { step: '4B.9' },
+  'finance.reports.cashFlow': { step: '4B.9' },
+  'finance.reports.aging': { step: '4B.9' },
+  'finance.reports.incomeStatementCsv': { step: '4B.9' },
+  'finance.reports.balanceSheetCsv': { step: '4B.9' },
+  'finance.reports.cashFlowCsv': { step: '4B.9' },
+  'finance.reports.agingCsv': { step: '4B.9' },
   'finance.periods.close': { step: '4B.9' },
   'finance.periods.reopen': { step: '4B.9' },
   'finance.storeTaxSettings': { step: '4B.9' },

@@ -30,6 +30,17 @@ describe('the finance area', () => {
     }
   })
 
+  it('adds the bank reconciliation for who also holds finance:reconcile, and never for who holds only that', () => {
+    expect(
+      visibleEntries(
+        FINANCE_SETTINGS_ENTRIES,
+        holding(Permissions.FINANCE_VIEW, Permissions.FINANCE_RECONCILE)
+      ).map(entry => entry.id)
+    ).toEqual(['accounts', 'taxes', 'periods', 'reports', 'reconciliation', 'settings'])
+    // finance:reconcile alone opens no area: the page reads the chart to offer its accounts, which is finance:view
+    expect(mayOpenFinance(holding(Permissions.FINANCE_RECONCILE))).toBe(false)
+  })
+
   it('shows the pages of the books to who holds finance:view, and none to who holds only another permission', () => {
     expect(
       visibleEntries(FINANCE_SETTINGS_ENTRIES, holding(Permissions.FINANCE_VIEW)).map(
