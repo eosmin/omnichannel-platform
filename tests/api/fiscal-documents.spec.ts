@@ -204,6 +204,15 @@ describe('The fiscal documents (Step 4B.7)', () => {
       )
     })
 
+    it('does not wipe the stored credentials when they are sent empty', async () => {
+      expect((await asAdminA().put(ApiRoutes.fiscal.issuer).send(ISSUER)).status).toBe(OK)
+      const empty = await asAdminA()
+        .put(ApiRoutes.fiscal.issuer)
+        .send({ ...ISSUER, credentials: {} })
+      expect(empty.status).toBe(OK)
+      expect((empty.body as { data: { credentialsSet: boolean } }).data.credentialsSet).toBe(true)
+    })
+
     it('does not touch another organization: its issuer is its own', async () => {
       const other = await api(app, ctx.adminB, ctx.storeB).get(ApiRoutes.fiscal.issuer)
       expect(other.status).toBe(OK)
@@ -625,6 +634,25 @@ describe('The fiscal documents (Step 4B.7)', () => {
         FiscalDocumentStatus.ACCEPTED,
         'EXT-9',
         { key: 'v' }
+      ])
+    })
+
+    it('does not keep as an acceptance an answer with no number', async () => {
+      const provider = app.get(FiscalProviderRegistry).find(SIMULATOR_PROVIDER_ID)
+      if (provider === undefined) throw new Error('the simulator is registered in test')
+      const { documentId } = await sale()
+      await patchReceiver(documentId, { taxId: '12345-6', name: 'Ana' })
+      const spy = jest.spyOn(provider, 'submit').mockResolvedValue({ outcome: 'accepted' as never })
+      try {
+        await documents.submit(ctx.orgA.id, documentId)
+      } finally {
+        spy.mockRestore()
+      }
+      const row = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+      expect([row.status, row.rejectionReason, row.externalNumber]).toEqual([
+        FiscalDocumentStatus.REJECTED,
+        FiscalRejectionReasons.PROVIDER_ANSWER_INVALID,
+        null
       ])
     })
 

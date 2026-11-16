@@ -65,6 +65,10 @@ interface IssuerRow {
   environment: string
 }
 
+// An acceptance has a number: what a provider returns is not trusted to
+const hasNumber = (value: unknown): value is string =>
+  typeof value === 'string' && value.trim() !== ''
+
 export interface FiscalDocumentView {
   id: string
   storeId: string
@@ -389,9 +393,17 @@ export class FiscalDocumentsService {
         provider.consult(built, context)
       )
       if (consulted === null) {
-        return this.requeueAndFail(doc.id, 'the fiscal provider did not answer the consultation')
+        return this.requeueAndFail(
+          organizationId,
+          doc.id,
+          'the fiscal provider did not answer the consultation'
+        )
       }
       if (consulted?.state === FiscalConsultState.ACCEPTED) {
+        if (!hasNumber(consulted.externalNumber)) {
+          await this.reject(doc.id, organizationId, FiscalRejectionReasons.PROVIDER_ANSWER_INVALID)
+          return
+        }
         await this.accept(doc.id, organizationId, built, consulted)
         return
       }
@@ -410,6 +422,11 @@ export class FiscalDocumentsService {
       outcome: FiscalSubmitOutcome.UNAVAILABLE as const
     }
     if (result.outcome === FiscalSubmitOutcome.ACCEPTED) {
+      // An acceptance with no number could never be invalidated: it is not kept as one
+      if (!hasNumber(result.externalNumber)) {
+        await this.reject(doc.id, organizationId, FiscalRejectionReasons.PROVIDER_ANSWER_INVALID)
+        return
+      }
       await this.accept(doc.id, organizationId, built, result)
       return
     }
@@ -417,18 +434,22 @@ export class FiscalDocumentsService {
       await this.reject(
         doc.id,
         organizationId,
-        result.reason.trim() === '' ? FiscalRejectionReasons.PROVIDER_UNAVAILABLE : result.reason,
+        typeof result.reason === 'string' ? result.reason : '',
         { built, response: result.response, byAuthority: true }
       )
       return
     }
     // The authority did not answer: back to the queue, and the job fails so that the backoff of the queue spaces the next attempt
-    await this.requeueAndFail(doc.id, 'the fiscal provider did not answer')
+    await this.requeueAndFail(organizationId, doc.id, 'the fiscal provider did not answer')
   }
 
-  private async requeueAndFail(documentId: string, message: string): Promise<never> {
+  private async requeueAndFail(
+    organizationId: string,
+    documentId: string,
+    message: string
+  ): Promise<never> {
     await this.prisma.client.fiscalDocument.updateMany({
-      where: { id: documentId, status: FiscalDocumentStatus.SUBMITTED },
+      where: { id: documentId, organizationId, status: FiscalDocumentStatus.SUBMITTED },
       data: { status: FiscalDocumentStatus.QUEUED }
     })
     throw new Error(message)

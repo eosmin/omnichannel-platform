@@ -80,7 +80,8 @@ ALTER TABLE "fiscal_documents" ADD CONSTRAINT chk_fiscal_documents_void CHECK ((
 
 -- An accepted document is the legal evidence (TDD_18 §8.3): once accepted, nothing in it changes but the status to voided and the void
 -- fields, and a document is never deleted. The service refuses first (FISCAL_DOCUMENT_IMMUTABLE); this is the floor under it.
-CREATE FUNCTION fiscal_document_guard() RETURNS trigger AS $$
+CREATE FUNCTION fiscal_document_guard() RETURNS trigger
+SET search_path = public, pg_temp AS $$
 BEGIN
   IF TG_OP = 'DELETE' THEN
     RAISE EXCEPTION 'a fiscal document is never deleted' USING ERRCODE = 'integrity_constraint_violation';
@@ -125,7 +126,8 @@ CREATE TRIGGER trg_fiscal_documents_guard
 BEFORE UPDATE OR DELETE ON fiscal_documents
 FOR EACH ROW EXECUTE FUNCTION fiscal_document_guard();
 
-CREATE FUNCTION forbid_fiscal_document_truncate() RETURNS trigger AS $$
+CREATE FUNCTION forbid_fiscal_document_truncate() RETURNS trigger
+SET search_path = public, pg_temp AS $$
 BEGIN
   RAISE EXCEPTION 'the fiscal documents are never truncated' USING ERRCODE = 'integrity_constraint_violation';
 END;
@@ -136,7 +138,8 @@ BEFORE TRUNCATE ON fiscal_documents
 FOR EACH STATEMENT EXECUTE FUNCTION forbid_fiscal_document_truncate();
 
 -- The store of a document is a store of its organization, and so is the order's
-CREATE FUNCTION check_fiscal_document_scope() RETURNS trigger AS $$
+CREATE FUNCTION check_fiscal_document_scope() RETURNS trigger
+SET search_path = public, pg_temp AS $$
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM orders o JOIN stores s ON s.id = o.store_id

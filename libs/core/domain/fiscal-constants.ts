@@ -39,6 +39,8 @@ export const FiscalLimits = {
   // A call to a provider that does not answer in this time counts as no answer: well under the lease, so a slow provider never outlives
   // the claim of its attempt
   PROVIDER_CALL_TIMEOUT_MS: 60 * 1000,
+  // The check of an issuer reads fields and a certificate and runs while the row of the issuer is locked: it never takes long
+  ISSUER_CHECK_TIMEOUT_MS: 5 * 1000,
   LIST_PAGE_SIZE: 25,
   LIST_MAX_PAGE_SIZE: 100
 } as const
@@ -79,7 +81,9 @@ export const FiscalRejectionReasons = {
   SALE_INCONSISTENT: 'sale_inconsistent',
   // The issuer was changed (its provider or its environment) after this document was made: a person retries it and it is made again
   // with the issuer as it is now
-  ISSUER_CHANGED: 'issuer_changed'
+  ISSUER_CHANGED: 'issuer_changed',
+  // A provider answered "accepted" with no number, or in a shape the port does not allow: nothing is kept of it as an acceptance
+  PROVIDER_ANSWER_INVALID: 'provider_answer_invalid'
 } as const
 
 // The type of a document that has not been built yet: the provider picks the real one when it builds (its rule, not core's)
