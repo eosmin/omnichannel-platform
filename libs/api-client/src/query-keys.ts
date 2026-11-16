@@ -400,6 +400,17 @@ export const QueryKeys = {
     sessions: ['account', 'sessions'] as const
   },
 
+  // The fiscal documents (TDD_18 §8, Step 4B.9b-2): the organization's, asked through the store of the request like the books. A write
+  // makes the ROOT stale; the lists carry their filters in the key.
+  fiscal: {
+    root: ['fiscal'] as const,
+    providers: (storeId: string) => ['fiscal', storeId, 'providers'] as const,
+    issuer: (storeId: string) => ['fiscal', storeId, 'issuer'] as const,
+    documents: (storeId: string, filters: Record<string, string>) =>
+      ['fiscal', storeId, 'documents', filters] as const,
+    document: (storeId: string, id: string) => ['fiscal', storeId, 'document', id] as const
+  },
+
   session: ['session'] as const
 } as const
 

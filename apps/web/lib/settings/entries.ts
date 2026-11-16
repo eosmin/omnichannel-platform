@@ -121,6 +121,19 @@ export const FINANCE_SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     href: AppPaths.finance.payables,
     permission: ClientPermissions.FINANCE_MANAGE_PURCHASES,
     or: ClientPermissions.FINANCE_MOVE_MONEY
+  },
+  // Fiscal documents (Step 4B.9b-2): the api's own routes, which ask fiscal:view, not the books
+  {
+    id: 'fiscal',
+    labelKey: 'fiscal',
+    href: AppPaths.finance.fiscal,
+    permission: ClientPermissions.FISCAL_VIEW
+  },
+  {
+    id: 'fiscalIssuer',
+    labelKey: 'fiscalIssuer',
+    href: AppPaths.finance.fiscalIssuer,
+    permission: ClientPermissions.FISCAL_VIEW
   }
 ]
 
