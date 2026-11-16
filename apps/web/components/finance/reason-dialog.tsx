@@ -1,0 +1,148 @@
+'use client'
+
+import { useTranslations } from 'next-intl'
+import { type FormEvent, type ReactElement, useState } from 'react'
+
+import { type DestructiveAction, FinanceLimits } from '@platform/core/domain'
+
+import { usePurchaseErrorText } from '../../lib/finance/use-purchase-error-text'
+import { useSubmitGuard } from '../../lib/submit-guard'
+import { useDestructiveAction } from '../shared/destructive-action'
+import { Button } from '../ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
+
+import { TextField } from './fields'
+
+// What a person is asked before a purchase is closed, cancelled or a payment voided: the reason, which is written in the audit log (and,
+// for a payment, is the memo of the reversal in the books). A destructive action also asks to confirm, as its tier says (TDD_09 §11).
+export interface ReasonDialogCopy {
+  title: string
+  description: string
+  label: string
+  submit: string
+  // The confirmation of a destructive action, already translated
+  confirm?: { title: string; description: string; confirmLabel: string }
+}
+
+export function ReasonDialog({
+  copy,
+  required,
+  action,
+  open,
+  onOpenChange,
+  onSubmit
+}: {
+  copy: ReasonDialogCopy
+  required: boolean
+  // The destructive action this is, when it is one: its tier decides how the confirmation is asked
+  action?: DestructiveAction
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  // Rejects with the error to show; resolves when it is done
+  onSubmit: (reason: string) => Promise<void>
+}): ReactElement {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{copy.title}</DialogTitle>
+          <DialogDescription>{copy.description}</DialogDescription>
+        </DialogHeader>
+        {open ? (
+          <ReasonForm
+            copy={copy}
+            required={required}
+            action={action}
+            onSubmit={onSubmit}
+            onDone={() => onOpenChange(false)}
+          />
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ReasonForm({
+  copy,
+  required,
+  action,
+  onSubmit,
+  onDone
+}: {
+  copy: ReasonDialogCopy
+  required: boolean
+  action?: DestructiveAction
+  onSubmit: (reason: string) => Promise<void>
+  onDone: () => void
+}): ReactElement {
+  const t = useTranslations('finance.purchases.reason')
+  const errorText = usePurchaseErrorText()
+  const run = useDestructiveAction()
+  const guard = useSubmitGuard()
+  const [reason, setReason] = useState('')
+  const [wrong, setWrong] = useState(false)
+  const [refusal, setRefusal] = useState<string | null>(null)
+  const [pending, setPending] = useState(false)
+
+  const send = async (): Promise<void> => {
+    if (!guard.enter()) return
+    setPending(true)
+    try {
+      await onSubmit(reason.trim())
+      onDone()
+    } catch (error) {
+      setRefusal(errorText(error))
+    } finally {
+      setPending(false)
+      guard.leave()
+    }
+  }
+
+  const submit = (event: FormEvent): void => {
+    event.preventDefault()
+    const text = reason.trim()
+    if ((required && text === '') || text.length > FinanceLimits.MEMO_MAX_LENGTH) {
+      setWrong(true)
+      return
+    }
+    if (action !== undefined && copy.confirm !== undefined) {
+      run(action, { ...copy.confirm, onConfirm: send })
+      return
+    }
+    void send()
+  }
+
+  return (
+    <form onSubmit={submit} noValidate className="flex flex-col gap-3" aria-label={copy.title}>
+      <TextField
+        label={copy.label}
+        value={reason}
+        maxLength={FinanceLimits.MEMO_MAX_LENGTH}
+        disabled={pending}
+        problem={wrong ? t(required ? 'required' : 'tooLong') : null}
+        onChange={value => {
+          setReason(value)
+          setWrong(false)
+          setRefusal(null)
+        }}
+      />
+      {refusal === null ? null : (
+        <p role="alert" className="text-destructive text-sm">
+          {refusal}
+        </p>
+      )}
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="outline" onClick={onDone} disabled={pending}>
+          {t('cancel')}
+        </Button>
+        <Button
+          type="submit"
+          variant={action === undefined ? 'default' : 'destructive'}
+          disabled={pending}
+        >
+          {copy.submit}
+        </Button>
+      </div>
+    </form>
+  )
+}

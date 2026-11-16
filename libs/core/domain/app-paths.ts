@@ -82,7 +82,11 @@ export const AppPaths = {
     accounts: '/finance/accounts',
     taxes: '/finance/taxes',
     settings: '/finance/settings',
-    periods: '/finance/periods'
+    periods: '/finance/periods',
+    suppliers: '/finance/suppliers',
+    purchases: '/finance/purchases',
+    purchase: (id: string): string => `/finance/purchases/${id}`,
+    payables: '/finance/payables'
   },
   account: {
     profile: '/account/profile',

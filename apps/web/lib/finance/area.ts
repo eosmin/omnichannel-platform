@@ -4,7 +4,10 @@ import { type Permission, ClientPermissions } from '@platform/core/auth'
 // `finance:view_journal`, the transactions for `finance:manage_transactions`, ...) together with its page, so the link of the area
 // never leads to an area with nothing in it.
 export const FINANCE_AREA_PERMISSIONS = [
-  ClientPermissions.FINANCE_VIEW
+  ClientPermissions.FINANCE_VIEW,
+  // The purchases open for these, with no need to read the books (Step 4B.9a-4)
+  ClientPermissions.FINANCE_MANAGE_PURCHASES,
+  ClientPermissions.FINANCE_MOVE_MONEY
 ] as const satisfies readonly Permission[]
 
 export const mayOpenFinance = (can: (permission: Permission) => boolean): boolean =>
