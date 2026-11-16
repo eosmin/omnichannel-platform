@@ -2977,7 +2977,9 @@
         "aging": "Antigüedad de saldos",
         "books": "Libros legales",
         "fiscal": "Documentos fiscales",
-        "fiscalIssuer": "Emisor fiscal"
+        "fiscalIssuer": "Emisor fiscal",
+        "vat": "IVA",
+        "margin": "Margen"
       }
     },
     "store": {
@@ -7094,7 +7096,8 @@
         "from": "Escribe el primer día como una fecha real.",
         "to": "Escribe el último día como una fecha real.",
         "order": "El primer día es posterior al último.",
-        "day": "Escribe una fecha real."
+        "day": "Escribe una fecha real.",
+        "tooLong": "El rango no puede ser de más de {days} días."
       },
       "warningsTitle": "Este reporte no está completo",
       "warnings": {
@@ -7537,6 +7540,98 @@
         "done": "El emisor se guardó.",
         "providerMissing": "El proveedor de este emisor ya no está en esta instalación. Elige otro para guardar."
       }
+    },
+    "vat": {
+      "title": "IVA de un período",
+      "description": "El impuesto cobrado en las ventas y el pagado en las compras, mes a mes y por tasa, y lo que se debe o se arrastra.",
+      "pick": "Elige el primer y el último día y pulsa Mostrar.",
+      "download": "Descargar CSV",
+      "none": "No hay movimiento de IVA en este rango.",
+      "basis": "Las ventas cuentan el día en que se reconocen: {recognizedOn}. Los libros empiezan el {start}; el lado de ventas se lee de los pedidos sin importar esa fecha.",
+      "notices": {
+        "withoutSnapshot": "{count, plural, one {# pedido se hizo antes de que los pedidos guardaran su impuesto y no está en este reporte.} other {# pedidos se hicieron antes de que los pedidos guardaran su impuesto y no están en este reporte.}}",
+        "notReadable": "{count, plural, one {# pedido tiene un impuesto que no cuadra y no está en este reporte.} other {# pedidos tienen un impuesto que no cuadra y no están en este reporte.}}",
+        "returned": "{count, plural, one {# pedido devuelto sigue contado en el lado de ventas.} other {# pedidos devueltos siguen contados en el lado de ventas.}} El impuesto de las devoluciones todavía no se descuenta aquí."
+      },
+      "sides": {
+        "output": "Impuesto cobrado en ventas",
+        "input": "Impuesto pagado en compras"
+      },
+      "totals": {
+        "output": "Total cobrado",
+        "input": "Total pagado"
+      },
+      "kind": "Tipo de venta",
+      "rate": "Tasa",
+      "base": "Base gravada",
+      "tax": "Impuesto",
+      "documents": "Documentos",
+      "noRate": "Sin tasa",
+      "noLines": "Sin líneas este mes.",
+      "kinds": {
+        "taxed": "Gravada",
+        "exempt": "Exenta",
+        "not_subject": "No sujeta",
+        "shipping_not_taxed": "Envío, sin impuesto"
+      },
+      "balance": "Saldo del mes",
+      "balanceKinds": {
+        "toPay": "Lo cobrado supera lo pagado: esto es lo que se debe.",
+        "carriedForward": "Lo pagado supera lo cobrado: esto se arrastra.",
+        "even": "Lo cobrado y lo pagado son iguales."
+      },
+      "otherSide": "Una línea de un lado desconocido ({side}, {kind}):"
+    },
+    "margin": {
+      "title": "Margen por producto",
+      "description": "Lo que ganó cada producto en un rango de días, por tienda: el ingreso de las ventas menos el costo que llevaba el inventario, junto a lo que dicen los libros.",
+      "pick": "Elige el primer y el último día y pulsa Mostrar.",
+      "download": "Descargar CSV",
+      "none": "No se reconoció ninguna venta en este rango.",
+      "product": "Producto",
+      "unnamedProduct": "Producto sin nombre",
+      "units": "Unidades",
+      "revenue": "Ingreso",
+      "cost": "Costo",
+      "margin": "Margen",
+      "marginPercent": "Margen %",
+      "noPercent": "Sin ingreso",
+      "totals": "Totales",
+      "warningsTitle": "Este reporte no está completo",
+      "warnings": {
+        "revenue_role_not_mapped": "El rol de ingresos no tiene cuenta en los ajustes de finanzas, así que el reporte no tiene nada en los libros con qué comparar su ingreso.",
+        "cost_role_not_mapped": "El rol de costo de ventas no tiene cuenta en los ajustes de finanzas, así que el reporte no tiene nada en los libros con qué comparar su costo.",
+        "orders_not_readable": "Algunas ventas no se pudieron leer de su pedido o no cuadran: se dejaron fuera.",
+        "unvalued_units": "Algunas unidades salieron sin costo registrado: su costo no está en estas cifras."
+      },
+      "counts": {
+        "ordersUsed": "{count, plural, one {# pedido leído} other {# pedidos leídos}}",
+        "ordersNotReadable": "{count, plural, one {# pedido no legible} other {# pedidos no legibles}}",
+        "unvaluedUnits": "{count, plural, one {# unidad sin costo} other {# unidades sin costo}}"
+      },
+      "ledger": {
+        "title": "Comparado con los libros",
+        "description": "Los productos se cuentan antes de las devoluciones. La diferencia se muestra tal cual y nunca se lleva a cero.",
+        "line": "Línea",
+        "report": "Este reporte",
+        "books": "En los libros",
+        "difference": "Diferencia",
+        "returned": "Devuelto por devoluciones",
+        "notMapped": "Cuenta sin definir",
+        "lines": {
+          "revenue": "Ingreso",
+          "cost": "Costo de ventas"
+        }
+      }
+    },
+    "chainIncident": {
+      "title": "La revisión de los libros encontró un problema",
+      "blocksClose": "No se puede cerrar ningún mes hasta que la revisión vuelva a pasar.",
+      "found": "La revisión semanal encontró que {reason}",
+      "atEntry": "Primer asiento afectado: {number}.",
+      "seen": "{checked, plural, one {# asiento revisado} other {# asientos revisados}}. Visto por primera vez {first}, por última vez {last}.",
+      "whatToDo": "Avisa a un administrador: hay que revisar el libro diario antes de cerrar cualquier otra cosa.",
+      "unreadable": "No se pudo leer el estado de la revisión semanal de los libros. Un cierre aún puede ser rechazado si encontró un problema."
     }
   }
 }

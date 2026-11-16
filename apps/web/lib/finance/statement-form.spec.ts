@@ -2,6 +2,9 @@ import { AgingKind } from '@platform/core/domain'
 
 import {
   agingQueryOf,
+  BoundedRanges,
+  boundedRangeMaxDays,
+  boundedRangeProblem,
   balanceSheetQueryOf,
   dayFileName,
   defaultRange,
@@ -62,5 +65,38 @@ describe('the names of the files', () => {
       'cash-flow-2026-03-01-2026-03-31.csv'
     )
     expect(dayFileName('receivables-aging', '2026-03-31')).toBe('receivables-aging-2026-03-31.csv')
+  })
+})
+
+describe('the range of the VAT report and of the margin', () => {
+  it('takes one day less than the limit for the VAT and up to the limit for the margin', () => {
+    // 365 days after the first day is the 366th day of the range: the api takes it for the VAT (< 366) and for the margin (<= 366)
+    expect(
+      boundedRangeProblem({ from: '2026-01-01', to: '2027-01-01' }, BoundedRanges.VAT)
+    ).toBeNull()
+    // 366 days after: the VAT refuses it, the margin still takes it
+    expect(boundedRangeProblem({ from: '2026-01-01', to: '2027-01-02' }, BoundedRanges.VAT)).toBe(
+      'tooLong'
+    )
+    expect(
+      boundedRangeProblem({ from: '2026-01-01', to: '2027-01-02' }, BoundedRanges.MARGIN)
+    ).toBeNull()
+    expect(
+      boundedRangeProblem({ from: '2026-01-01', to: '2027-01-03' }, BoundedRanges.MARGIN)
+    ).toBe('tooLong')
+  })
+
+  it('names a wrong end before the length', () => {
+    expect(boundedRangeProblem({ from: '2026-02-30', to: '2026-03-01' }, BoundedRanges.VAT)).toBe(
+      'from'
+    )
+    expect(
+      boundedRangeProblem({ from: '2026-03-02', to: '2026-03-01' }, BoundedRanges.MARGIN)
+    ).toBe('order')
+  })
+
+  it('says the longest range in days, as the form counts them', () => {
+    expect(boundedRangeMaxDays(BoundedRanges.VAT)).toBe(366)
+    expect(boundedRangeMaxDays(BoundedRanges.MARGIN)).toBe(367)
   })
 })
