@@ -55,6 +55,9 @@ export const PluginScopes = {
   // offers (CONVERSATIONS_VIEW); creating, renaming, recoloring and deleting one is SETTINGS_EDIT, a scope of its own.
   TAGS_READ: 'tags:read',
   TAGS_WRITE: 'tags:write',
+  // The canned replies of the store, read only (Step 5.6 PR E7-2): what the composer offers as /shortcut (CONVERSATIONS_VIEW). Creating,
+  // changing and deleting one is the owner's (SETTINGS_EDIT) and has no scope.
+  SNIPPETS_READ: 'snippets:read',
   // The exports centre of the key (Step 5.6 PR E7): the files THIS installation asked for, never a person's. `exports:write` is the right to
   // take data out of the platform (ANALYTICS_EXPORT, MEDIA_DOWNLOAD_ALL), asked together with the scope that reads what is exported, as a person
   // needs both; the other kinds of export (conversations, customers, orders) join it with their routes (PR E7-2).
@@ -147,6 +150,7 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.COUNTS_WRITE]: [Permissions.INVENTORY_MANAGE_COUNTS],
   [PluginScopes.COUNTS_APPLY]: [Permissions.INVENTORY_APPLY_COUNTS],
   [PluginScopes.TAGS_READ]: [Permissions.CONVERSATIONS_VIEW],
+  [PluginScopes.SNIPPETS_READ]: [Permissions.CONVERSATIONS_VIEW],
   [PluginScopes.TAGS_WRITE]: [Permissions.SETTINGS_EDIT],
   [PluginScopes.EXPORTS_READ]: [],
   [PluginScopes.EXPORTS_WRITE]: [Permissions.ANALYTICS_EXPORT, Permissions.MEDIA_DOWNLOAD_ALL],
