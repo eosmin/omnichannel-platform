@@ -7,6 +7,7 @@ import {
   BulkLabelJobStatus,
   CarrierStatusLimits,
   CHANNEL_ID_PATTERN,
+  ChainProblem,
   ConversationStatus,
   ConversationStatusReasons,
   FinanceEventKind,
@@ -219,6 +220,8 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     reason: z.enum(FinancePostingFailureReason),
     attempts: z.number().int().min(1)
   }),
+  // The weekly check of the chain opened an incident: the organization and the code of what broke
+  [Events.FINANCE_CHAIN_BROKEN]: z.object({ organizationId: id, reason: z.enum(ChainProblem) }),
   // The webhooks of a plugin turned off: the installation, the plugin and the count, never the address or the response
   [Events.PLUGIN_ERROR]: z.object({
     storeId: id,

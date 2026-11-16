@@ -4,6 +4,7 @@ import type {
   AttentionReason,
   AuthorType,
   BulkLabelJobStatus,
+  ChainProblem,
   ChannelId,
   ConversationStatus,
   ConversationStatusReason,
@@ -353,6 +354,12 @@ export interface FinancePostingFailedPayload {
   attempts: number
 }
 
+// The check of the hash chain opened an incident (TDD_18 §11): the organization and the code of what broke, never an entry or an amount
+export interface FinanceChainBrokenPayload {
+  organizationId: string
+  reason: ChainProblem
+}
+
 // A fiscal document was refused (TDD_18 §8.3): ids and a reason code, never the receiver's data
 export interface FiscalDocumentRejectedPayload {
   organizationId: string
@@ -632,6 +639,7 @@ export interface DomainEventPayloads {
   [Events.FINANCE_ENTRY_POSTED]: FinanceEntryPayload
   [Events.FINANCE_ENTRY_REVERSED]: FinanceEntryPayload
   [Events.FINANCE_POSTING_FAILED]: FinancePostingFailedPayload
+  [Events.FINANCE_CHAIN_BROKEN]: FinanceChainBrokenPayload
   [Events.FISCAL_DOCUMENT_REJECTED]: FiscalDocumentRejectedPayload
   [Events.FINANCE_PERIOD_CLOSED]: FinancePeriodPayload
   [Events.FINANCE_PERIOD_REOPENED]: FinancePeriodPayload

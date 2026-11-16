@@ -73,6 +73,11 @@ export const trialBalanceCsvQuerySchema = trialBalanceQuerySchema
 export const flowQuerySchema = z
   .strictObject({ from: day, to: day, storeId: z.uuid().optional() })
   .refine(value => value.from <= value.to, { message: 'from is after to' })
+// The margin walks the sale entries and the orders of its range in one request, so its range is bounded like the one of the VAT report
+export const marginQuerySchema = flowQuerySchema.refine(
+  value => rangeLength(value) <= FinanceLimits.VAT_REPORT_MAX_DAYS,
+  { message: `the range is longer than ${String(FinanceLimits.VAT_REPORT_MAX_DAYS)} days` }
+)
 export const balanceSheetQuerySchema = z.strictObject({ asOf: day, storeId: z.uuid().optional() })
 export const agingQuerySchema = z.strictObject({
   kind: z.enum(AgingKind),

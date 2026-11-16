@@ -243,6 +243,7 @@ describe('bridgedPayload', () => {
       reason: 'role_not_mapped',
       attempts: 2
     },
+    [Events.FINANCE_CHAIN_BROKEN]: { organizationId: randomUUID(), reason: 'hash_mismatch' },
     [Events.BULK_LABELS_PROGRESS]: {
       storeId: randomUUID(),
       jobId: randomUUID(),

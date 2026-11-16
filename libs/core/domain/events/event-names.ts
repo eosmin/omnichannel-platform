@@ -131,6 +131,9 @@ export const Events = {
   FINANCE_ENTRY_REVERSED: 'finance.entry_reversed',
   // An automatic entry could not be posted and a person must fix it (TDD_18 §6.1). Api and worker only, ids and a reason code.
   FINANCE_POSTING_FAILED: 'finance.posting_failed',
+  // The weekly check of the hash chain found the journal altered, and no check has passed since (TDD_18 §11). Api and worker only: ids and
+  // a reason code, never an entry.
+  FINANCE_CHAIN_BROKEN: 'finance.chain_broken',
   // A fiscal document was refused by the provider or the authority and a person must fix it (TDD_18 §8.3). Api and worker only:
   // ids and a reason code, never the receiver's data.
   FISCAL_DOCUMENT_REJECTED: 'fiscal.document_rejected',
@@ -269,7 +272,9 @@ export const BridgedEvents = [
   // The worker turns the webhooks of a plugin off after too many failures in a row: the admins are told in the api
   Events.PLUGIN_ERROR,
   // The worker says it once when an automatic entry of the books fails; the api tells whoever can fix it
-  Events.FINANCE_POSTING_FAILED
+  Events.FINANCE_POSTING_FAILED,
+  // The worker says it once when the weekly check opens an incident of the chain; the api tells whoever closes the months
+  Events.FINANCE_CHAIN_BROKEN
 ] as const satisfies readonly EventName[]
 
 export type BridgedEvent = (typeof BridgedEvents)[number]

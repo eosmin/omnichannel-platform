@@ -49,6 +49,8 @@ export const NotificationTypes = {
   PLUGIN_ERROR: 'plugin.error',
   // An automatic entry of the books failed and a person must fix its cause (TDD_18 §6.1)
   FINANCE_POSTING_FAILED: 'finance.posting_failed',
+  // The weekly check found the journal altered: nobody can close a month until the chain verifies again (TDD_18 §11)
+  FINANCE_CHAIN_BROKEN: 'finance.chain_broken',
   EXPORT_READY: 'export.ready',
   EXPORT_FAILED: 'export.failed',
   MEDIA_INFECTED: 'media.infected',
@@ -143,6 +145,7 @@ export const NotificationDefaults: Record<NotificationType, NotificationDefault>
   [NotificationTypes.WEBHOOK_AUTO_DISABLED]: { severity: ERROR, channels: [IN_APP, EMAIL] },
   [NotificationTypes.PLUGIN_ERROR]: { severity: ERROR, channels: [IN_APP] },
   [NotificationTypes.FINANCE_POSTING_FAILED]: { severity: ERROR, channels: [IN_APP, EMAIL] },
+  [NotificationTypes.FINANCE_CHAIN_BROKEN]: { severity: ERROR, channels: [IN_APP, EMAIL] },
   [NotificationTypes.EXPORT_READY]: { severity: SUCCESS, channels: [IN_APP] },
   [NotificationTypes.EXPORT_FAILED]: { severity: ERROR, channels: [IN_APP] },
   [NotificationTypes.MEDIA_INFECTED]: { severity: WARNING, channels: [IN_APP, PUSH] },
@@ -211,6 +214,7 @@ export const NotificationGroupTypes: Record<NotificationGroup, readonly Notifica
     NotificationTypes.WEBHOOK_AUTO_DISABLED,
     NotificationTypes.PLUGIN_ERROR,
     NotificationTypes.FINANCE_POSTING_FAILED,
+    NotificationTypes.FINANCE_CHAIN_BROKEN,
     NotificationTypes.EXPORT_READY,
     NotificationTypes.EXPORT_FAILED,
     NotificationTypes.MEDIA_INFECTED,

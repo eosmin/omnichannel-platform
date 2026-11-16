@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing'
 
 import { FiscalDocumentsService, FiscalProviderRegistry } from '@platform/fiscal/runtime'
 
+import { FinanceChainChecker } from './finance/finance-chain-checker.service'
 import { FinanceReconciler } from './finance/finance-reconciler.service'
 import { AnalyticsProcessor } from './processors/analytics.processor'
 import { CustomerProfileProcessor } from './processors/customer-profile.processor'
@@ -27,6 +28,10 @@ describe('WorkerModule', () => {
     expect(moduleRef.get(AnalyticsProcessor, { strict: false })).toBeInstanceOf(AnalyticsProcessor)
     // The daily check of the books asks the heavy queue and the metrics: it must be built with them (it broke the worker once)
     expect(moduleRef.get(FinanceReconciler, { strict: false })).toBeInstanceOf(FinanceReconciler)
+    // The weekly check of the chain needs the monitor of the books and its gauge: built with them, or the worker would not start
+    expect(moduleRef.get(FinanceChainChecker, { strict: false })).toBeInstanceOf(
+      FinanceChainChecker
+    )
     // The fiscal documents are submitted by the heavy processor: the lifecycle must be built with the providers of the deployment, and the
     // simulator is one of them in test (it is never one in production)
     expect(moduleRef.get(FiscalDocumentsService, { strict: false })).toBeInstanceOf(

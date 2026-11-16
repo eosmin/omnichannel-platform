@@ -110,7 +110,8 @@
           "unscannable": "No se pudo analizar un archivo"
         },
         "finance": {
-          "posting_failed": "Falló un asiento contable"
+          "posting_failed": "Falló un asiento contable",
+          "chain_broken": "Los libros parecen alterados"
         }
       },
       "push": {
@@ -607,6 +608,7 @@
     "FINANCE_ENTRY_RECONCILED": "Este asiento está conciliado con un extracto bancario: deshaz primero la conciliación",
     "FINANCE_ENTRY_ALREADY_REVERSED": "Este asiento ya fue reversado",
     "FINANCE_REOPEN_NOT_LATEST": "Solo se puede reabrir el último periodo cerrado",
+    "FINANCE_CLOSE_CHAIN_BROKEN": "La revisión de los libros encontró el diario alterado: no se puede cerrar hasta que la cadena verifique de nuevo",
     "FINANCE_CLOSE_PENDING_POSTINGS": "Hay asientos pendientes o fallidos en este periodo: resuélvelos primero",
     "FINANCE_CLOSE_PREVIOUS_OPEN": "El periodo anterior sigue abierto: cierra los periodos en orden",
     "FINANCE_CLOSE_NOT_ENDED": "El periodo aún no termina: no se cierra un mes antes de su último día",
@@ -1035,6 +1037,10 @@
       "posting_failed": {
         "title": "Falló un asiento contable",
         "body": "Un asiento de los libros no se pudo registrar automáticamente. Abre la lista de asientos fallidos, corrige la causa y regístralo de nuevo: el mes no se puede cerrar hasta entonces."
+      },
+      "chain_broken": {
+        "title": "Los libros parecen alterados",
+        "body": "La revisión semanal de los libros encontró que el diario no verifica contra su cadena de hash. No se puede cerrar ningún mes hasta que la cadena verifique de nuevo: pide al contador que revise la cadena y averigüe por qué."
       }
     }
   },

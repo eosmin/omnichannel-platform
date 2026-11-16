@@ -13,6 +13,8 @@ import { FinanceBankController } from './finance-bank.controller'
 import { FinanceChainService } from './finance-chain.service'
 import { FinanceCloseService } from './finance-close.service'
 import { FinanceEntriesService } from './finance-entries.service'
+import { FinanceMarginController } from './finance-margin.controller'
+import { FinanceMarginService } from './finance-margin.service'
 import { FinancePeriodsService } from './finance-periods.service'
 import { FinancePostingListener } from './finance-posting.listener'
 import { FinancePostingQueue } from './finance-posting.queue'
@@ -40,7 +42,8 @@ import { FinanceController } from './finance.controller'
     FinanceTransactionsController,
     FinanceBankController,
     FinanceReportsController,
-    FinanceStatementsController
+    FinanceStatementsController,
+    FinanceMarginController
   ],
   providers: [
     FinanceSetupService,
@@ -56,6 +59,7 @@ import { FinanceController } from './finance.controller'
     FinanceCloseService,
     FinanceReportsService,
     FinanceStatementsService,
+    FinanceMarginService,
     FinanceChainService,
     FinanceBankProfilesService,
     FinanceBankImportsService,

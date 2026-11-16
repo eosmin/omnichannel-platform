@@ -2050,6 +2050,38 @@ const resources: IsolationResource[] = [
     },
     untouched: () => Promise.resolve(true)
   },
+  // The incident the weekly check of the chain left open (TDD_18 §11): one open row per organization, read through the store of the request
+  {
+    name: 'financeChainIncident',
+    create: async (owner, { storeId }) => {
+      await booksOfStore(owner, storeId)
+      return { id: storeId }
+    },
+    scope: 'organization',
+    readPath: () => ApiRoutes.finance.reports.chainStatus,
+    own: {
+      set: async (owner, storeId, marker) => {
+        const organizationId = await organizationOfStore(owner, storeId)
+        await owner.financeChainIncident.deleteMany({ where: { organizationId } })
+        await owner.financeChainIncident.create({
+          data: {
+            organizationId,
+            reason: 'hash_mismatch',
+            entryNumber: `marker-${marker}`,
+            entriesChecked: 1,
+            lastSeenAt: new Date()
+          }
+        })
+      },
+      markerIn: body => {
+        type Open = { entryNumber?: string } | null
+        const shape = body as { open?: Open; data?: { open?: Open } }
+        const open = shape.open ?? shape.data?.open
+        return open?.entryNumber?.slice(-1) ?? null
+      }
+    },
+    untouched: () => Promise.resolve(true)
+  },
   {
     name: 'financePostingFailure',
     create: async (owner, { storeId }) => {
