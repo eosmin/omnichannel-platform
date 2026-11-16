@@ -3,7 +3,8 @@ import type {
   FiscalBuildInput,
   FiscalDocumentProvider,
   FiscalIssuerInput,
-  ProviderContext
+  ProviderContext,
+  SubmitResult
 } from '@platform/fiscal/sdk'
 
 // The contract every provider of fiscal documents passes (TDD_18 §8.1): the simulator today, the real provider of a country when the
@@ -42,7 +43,6 @@ const baseInput = (
       description: 'Shirt (M)',
       quantity: 2,
       unitPriceCents: 1130,
-      discountCents: 0,
       taxRateBps: 1300,
       taxCents: 260,
       totalCents: 2260
@@ -50,6 +50,7 @@ const baseInput = (
   ],
   shippingCents: 565,
   shippingTaxCents: 65,
+  discountCents: 0,
   totalCents: 2825,
   taxCents: 325
 })
@@ -64,6 +65,13 @@ export function testFiscalProviderContract(
     idempotencyKey: key,
     attempt
   })
+  // The answer of an accepted submission, or a failure that says what came instead
+  const acceptedOf = (result: SubmitResult) => {
+    if (result.outcome !== FiscalSubmitOutcome.ACCEPTED) {
+      throw new Error(`expected an accepted answer, got ${result.outcome}`)
+    }
+    return result
+  }
   const noSecrets = (value: unknown): void => {
     const text = JSON.stringify(value)
     for (const secret of fixtures.secrets) expect(text).not.toContain(secret)
@@ -130,10 +138,10 @@ export function testFiscalProviderContract(
       const built = await provider.build(baseInput(fixtures, fixtures.receivers.plain, 3))
       const first = await provider.submit(built, contextOf('contract-accept'))
       expect(first.outcome).toBe(FiscalSubmitOutcome.ACCEPTED)
-      expect(first.externalNumber).toBeDefined()
       const again = await provider.submit(built, contextOf('contract-accept', 2))
       expect(again.outcome).toBe(FiscalSubmitOutcome.ACCEPTED)
-      expect(again.externalNumber).toBe(first.externalNumber)
+      // The type says an accepted answer has its number; the repeated key gives the same one
+      expect(acceptedOf(again).externalNumber).toBe(acceptedOf(first).externalNumber)
       noSecrets(first)
     })
 
@@ -143,7 +151,7 @@ export function testFiscalProviderContract(
       const built = await provider.build(baseInput(fixtures, fixtures.receivers.refused, 4))
       const result = await provider.submit(built, contextOf('contract-refuse'))
       expect(result.outcome).toBe(FiscalSubmitOutcome.REJECTED)
-      expect(typeof result.reason).toBe('string')
+      if (result.outcome !== FiscalSubmitOutcome.REJECTED) return
       expect(result.reason).not.toContain(fixtures.receivers.refused.taxId ?? '\0')
       noSecrets(result)
     })
@@ -181,8 +189,8 @@ export function testFiscalProviderContract(
       const accepted = await provider.submit(built, contextOf('contract-void'))
       const stored = {
         documentType: built.documentType,
-        externalNumber: accepted.externalNumber ?? null,
-        providerData: accepted.providerData ?? null,
+        externalNumber: acceptedOf(accepted).externalNumber,
+        providerData: acceptedOf(accepted).providerData ?? null,
         payload: built.payload
       }
       expect((await provider.void(stored, '', contextOf('contract-void'))).voided).toBe(false)

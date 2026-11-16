@@ -63,3 +63,15 @@ export const FiscalRejectionReasons = {
 
 // The type of a document that has not been built yet: the provider picks the real one when it builds (its rule, not core's)
 export const FiscalPendingDocumentType = 'pending'
+
+// What a provider says about a document it may have received (the answer to a consultation)
+export enum FiscalConsultState {
+  ACCEPTED = 'accepted',
+  REJECTED = 'rejected',
+  // The provider has no such document: it was never received
+  UNKNOWN = 'unknown'
+}
+
+// The environments in which a provider that signs nothing real (a simulator) may be registered: closed by default, so a staging
+// deployment or a process whose NODE_ENV is not set never gets one
+export const FiscalSimulatorEnvironments: readonly string[] = ['development', 'test']

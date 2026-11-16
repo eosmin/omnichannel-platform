@@ -11,7 +11,13 @@ export class FiscalProviderRegistry {
   private readonly byId: Map<string, FiscalDocumentProvider>
 
   constructor(@Inject(FISCAL_PROVIDERS) providers: readonly FiscalDocumentProvider[]) {
-    this.byId = new Map(providers.map(provider => [provider.id, provider]))
+    const byId = new Map<string, FiscalDocumentProvider>()
+    for (const provider of providers) {
+      // A second provider under the same id would take the documents of the first one's issuer
+      if (byId.has(provider.id)) throw new Error(`two fiscal providers share the id ${provider.id}`)
+      byId.set(provider.id, provider)
+    }
+    this.byId = byId
   }
 
   find(id: string): FiscalDocumentProvider | undefined {

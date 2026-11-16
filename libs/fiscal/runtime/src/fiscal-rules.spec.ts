@@ -34,10 +34,12 @@ describe('the transitions of a fiscal document', () => {
     expect(isImmutable(S.ACCEPTED)).toBe(true)
     expect(isImmutable(S.VOIDED)).toBe(true)
     expect(isImmutable(S.REJECTED)).toBe(false)
-    expect(receiverEditable(S.QUEUED)).toBe(true)
-    expect(receiverEditable(S.REJECTED)).toBe(true)
-    expect(receiverEditable(S.SUBMITTED)).toBe(false)
-    expect(receiverEditable(S.ACCEPTED)).toBe(false)
+    expect(receiverEditable(S.QUEUED, 0)).toBe(true)
+    expect(receiverEditable(S.REJECTED, 2)).toBe(true)
+    // Back in the queue after an attempt: it may already be at the authority
+    expect(receiverEditable(S.QUEUED, 1)).toBe(false)
+    expect(receiverEditable(S.SUBMITTED, 1)).toBe(false)
+    expect(receiverEditable(S.ACCEPTED, 1)).toBe(false)
     expect(retryable(S.REJECTED)).toBe(true)
     expect(retryable(S.ACCEPTED)).toBe(false)
   })
@@ -68,7 +70,6 @@ describe('the lines of a document', () => {
         description: 'Shirt (M)',
         quantity: 2,
         unitPriceCents: 1000,
-        discountCents: 0,
         taxRateBps: 1300,
         taxCents: 230,
         totalCents: 2000
@@ -77,7 +78,6 @@ describe('the lines of a document', () => {
         description: 'Old order line',
         quantity: 1,
         unitPriceCents: 500,
-        discountCents: 0,
         taxRateBps: null,
         taxCents: 0,
         totalCents: 500
@@ -97,7 +97,7 @@ describe('the receiver', () => {
       phone: ''
     }
     const record = receiverRecord(receiver)
-    expect(record).toEqual({ name: 'Ana', taxId: '12345678-9', address: { city: 'X', line1: '' } })
+    expect(record).toEqual({ name: 'Ana', taxId: '12345678-9', address: { city: 'X' } })
     expect(receiverOf(record)).toEqual({
       name: 'Ana',
       taxId: '12345678-9',
@@ -108,9 +108,23 @@ describe('the receiver', () => {
     })
   })
 
-  it('masks a tax id except for its last four characters', () => {
-    expect(maskTaxId('12345678-9')).toBe('******78-9')
-    expect(maskTaxId('123')).toBe('***')
+  it('stores an address the way it reads it back: trimmed, with no empty value, and none when nothing is left', () => {
+    const base = { name: null, taxId: null, registrationId: null, email: null, phone: null }
+    expect(receiverRecord({ ...base, address: { line1: '   ', city: '' } })).toEqual({})
+    expect(
+      receiverOf(receiverRecord({ ...base, address: { line1: ' Calle 1 ' } })).address
+    ).toEqual({
+      line1: 'Calle 1'
+    })
+    expect(receiverOf({ address: { line1: '' } }).address).toBeNull()
+  })
+
+  it('masks a tax id: a third of it at most, four characters at most', () => {
+    expect(maskTaxId('0614-010101-101-1')).toBe(`${'*'.repeat(13)}01-1`)
+    expect(maskTaxId('12345678-9')).toBe('*******8-9')
+    expect(maskTaxId('12345')).toBe('****5')
+    expect(maskTaxId('123')).toBe('**3')
+    expect(maskTaxId('12')).toBe('**')
     expect(maskTaxId(null)).toBeNull()
   })
 })

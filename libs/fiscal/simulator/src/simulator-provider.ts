@@ -1,4 +1,4 @@
-import { FiscalEnvironment, FiscalSubmitOutcome } from '@platform/core/domain'
+import { FiscalConsultState, FiscalEnvironment, FiscalSubmitOutcome } from '@platform/core/domain'
 import type {
   BuiltDocument,
   ConsultResult,
@@ -30,17 +30,14 @@ export const SimulatorRules = {
   REJECT: 'REJECT',
   UNAVAILABLE: 'UNAVAILABLE',
   LOST: 'LOST',
-  REJECT_REASON: 'simulated_rejection'
+  REJECT_REASON: 'simulated_rejection',
+  VOID_REFUSED_REASON: 'simulated_void_refused'
 } as const
 
 const FAKE_KEY = 'simulator-key-not-a-secret'
 
-// What the simulator "received", by idempotency key: a repeated key answers the first answer
-interface Received {
-  externalNumber: string
-  voided: boolean
-}
-
+// No state: every answer is a function of the receiver and of the key and the attempt of the call, so a worker that restarts, or another
+// process, answers what the first one would have. The authority "received" a LOST document on its first attempt and knows it from then on.
 export class SimulatorProvider implements FiscalDocumentProvider {
   readonly id = SIMULATOR_PROVIDER_ID
   readonly countryCode = 'XX'
@@ -70,9 +67,6 @@ export class SimulatorProvider implements FiscalDocumentProvider {
   readonly contingency = {
     description: 'The simulator keeps the document queued and answers on a later attempt.'
   }
-
-  private readonly received = new Map<string, Received>()
-  private readonly unavailableLeft = new Map<string, number>()
 
   validateIssuer(
     issuer: FiscalIssuerInput,
@@ -106,6 +100,7 @@ export class SimulatorProvider implements FiscalDocumentProvider {
       receiver: { name: input.receiver.name, taxId: input.receiver.taxId },
       lines: input.lines.map(line => ({ ...line })),
       shippingCents: input.shippingCents,
+      discountCents: input.discountCents,
       totalCents: input.totalCents,
       taxCents: input.taxCents,
       // A fake signature: a hash of nothing a real authority would accept
@@ -115,8 +110,6 @@ export class SimulatorProvider implements FiscalDocumentProvider {
   }
 
   submit(built: BuiltDocument, ctx: ProviderContext): Promise<SubmitResult> {
-    const known = this.received.get(ctx.idempotencyKey)
-    if (known !== undefined) return Promise.resolve(this.accepted(known.externalNumber))
     const taxId = this.taxIdOf(built)
     if (taxId === SimulatorRules.REJECT) {
       return Promise.resolve({
@@ -125,39 +118,41 @@ export class SimulatorProvider implements FiscalDocumentProvider {
         response: { accepted: false }
       })
     }
-    if (taxId.startsWith(SimulatorRules.UNAVAILABLE)) {
-      const left = this.unavailableLeft.get(ctx.idempotencyKey) ?? this.unavailableFor(taxId)
-      if (left > 0) {
-        this.unavailableLeft.set(ctx.idempotencyKey, left - 1)
-        return Promise.resolve({ outcome: FiscalSubmitOutcome.UNAVAILABLE })
-      }
-    }
-    const externalNumber = `SIM-${ctx.idempotencyKey.slice(-12)}`
-    this.received.set(ctx.idempotencyKey, { externalNumber, voided: false })
-    // LOST: the authority has it, the answer never arrived
-    if (taxId === SimulatorRules.LOST)
+    // Down for the first N attempts of the submission, then answering
+    if (taxId.startsWith(SimulatorRules.UNAVAILABLE) && ctx.attempt <= this.unavailableFor(taxId)) {
       return Promise.resolve({ outcome: FiscalSubmitOutcome.UNAVAILABLE })
-    return Promise.resolve(this.accepted(externalNumber))
+    }
+    // LOST: the authority has it from the first attempt, and its answer never arrived
+    if (taxId === SimulatorRules.LOST && ctx.attempt === 1) {
+      return Promise.resolve({ outcome: FiscalSubmitOutcome.UNAVAILABLE })
+    }
+    return Promise.resolve(this.accepted(this.numberOf(ctx)))
   }
 
-  consult(_built: BuiltDocument, ctx: ProviderContext): Promise<ConsultResult> {
-    const known = this.received.get(ctx.idempotencyKey)
-    if (known === undefined) return Promise.resolve({ state: 'unknown' })
+  consult(built: BuiltDocument, ctx: ProviderContext): Promise<ConsultResult> {
+    // Only a LOST document is at the authority without an answer; any other was never received or was answered
+    if (this.taxIdOf(built) !== SimulatorRules.LOST || ctx.attempt === 1) {
+      return Promise.resolve({ state: FiscalConsultState.UNKNOWN })
+    }
+    const externalNumber = this.numberOf(ctx)
     return Promise.resolve({
-      state: 'accepted',
-      externalNumber: known.externalNumber,
-      providerData: { seal: `sim-seal-${known.externalNumber}` },
+      state: FiscalConsultState.ACCEPTED,
+      externalNumber,
+      providerData: { seal: `sim-seal-${externalNumber}` },
       response: { accepted: true }
     })
   }
 
-  void(doc: StoredFiscalDocument, reason: string, ctx: ProviderContext): Promise<VoidResult> {
-    const known = this.received.get(ctx.idempotencyKey)
-    if (known !== undefined) known.voided = true
+  void(doc: StoredFiscalDocument, reason: string): Promise<VoidResult> {
+    // Refused without a reason or for a document that never had a number from the authority
     if (reason.trim() === '' || doc.externalNumber === null) {
-      return Promise.resolve({ voided: false, reason: 'simulated_void_refused' })
+      return Promise.resolve({ voided: false, reason: SimulatorRules.VOID_REFUSED_REASON })
     }
     return Promise.resolve({ voided: true, response: { voided: true } })
+  }
+
+  private numberOf(ctx: ProviderContext): string {
+    return `SIM-${ctx.idempotencyKey.slice(-12)}`
   }
 
   private accepted(externalNumber: string): SubmitResult {

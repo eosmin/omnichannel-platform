@@ -13,9 +13,11 @@ export const canTransition = (from: FiscalDocumentStatus, to: FiscalDocumentStat
 export const isImmutable = (status: FiscalDocumentStatus): boolean =>
   FiscalDocumentImmutableStatuses.includes(status)
 
-// A person may fix the receiver while the document is waiting or was refused, never after the authority accepted it
-export const receiverEditable = (status: FiscalDocumentStatus): boolean =>
-  status === FiscalDocumentStatus.QUEUED || status === FiscalDocumentStatus.REJECTED
+// A person may fix the receiver of a document that was refused or has never been sent. A document that went back to the queue after an
+// attempt may already be at the authority (an answer that was lost): it stays as it was built until the provider has been asked about it.
+export const receiverEditable = (status: FiscalDocumentStatus, attempts: number): boolean =>
+  status === FiscalDocumentStatus.REJECTED ||
+  (status === FiscalDocumentStatus.QUEUED && attempts === 0)
 
 // Retried from a refusal, or from the queue when the job was lost (the attempts ran out while the authority was down)
 export const retryable = (status: FiscalDocumentStatus): boolean =>
@@ -31,15 +33,14 @@ export interface OrderLineRow {
 }
 
 // The lines of the document from the lines of the order and the tax snapshot of Step 4B.3b: the amounts are the order's, never
-// recomputed here. A line of an order that predates the tax snapshot (null) carries no tax. `lineTotalCents` is the line before its
-// share of the order's discount, which the document carries once, in `discountCents` of the first line that can hold it.
+// recomputed here. A line of an order that predates the tax snapshot (null) carries no tax. `totalCents` is the line before its share of
+// the order's discount, which travels once, as `discountCents` of the whole document (`FiscalBuildInput`).
 export function documentLines(rows: readonly OrderLineRow[]): FiscalLine[] {
   return rows.map(row => ({
     description:
       row.variantName === null ? row.productName : `${row.productName} (${row.variantName})`,
     quantity: row.quantity,
     unitPriceCents: row.unitPriceCents,
-    discountCents: 0,
     taxRateBps: row.taxRateBps,
     taxCents: row.taxCents ?? 0,
     totalCents: row.quantity * row.unitPriceCents
@@ -55,10 +56,21 @@ export function receiverRecord(receiver: FiscalReceiver): Record<string, unknown
     const value = receiver[field]
     if (value !== null && value.trim() !== '') record[field] = value.trim()
   }
-  if (receiver.address !== null && Object.keys(receiver.address).length > 0) {
-    record['address'] = receiver.address
-  }
+  const address = cleanAddress(receiver.address)
+  if (address !== null) record['address'] = address
   return record
+}
+
+// The address as it is stored and as it is read: values trimmed, the empty ones gone, nothing left is no address
+function cleanAddress(
+  address: Readonly<Record<string, unknown>> | null
+): Record<string, string> | null {
+  if (address === null) return null
+  const clean: Record<string, string> = {}
+  for (const [key, value] of Object.entries(address)) {
+    if (typeof value === 'string' && value.trim() !== '') clean[key] = value.trim()
+  }
+  return Object.keys(clean).length > 0 ? clean : null
 }
 
 export function receiverOf(record: Readonly<Record<string, unknown>>): FiscalReceiver {
@@ -67,25 +79,23 @@ export function receiverOf(record: Readonly<Record<string, unknown>>): FiscalRec
     return typeof value === 'string' && value !== '' ? value : null
   }
   const address = record['address']
-  const clean: Record<string, string> = {}
-  if (typeof address === 'object' && address !== null) {
-    for (const [key, value] of Object.entries(address)) {
-      if (typeof value === 'string' && value !== '') clean[key] = value
-    }
-  }
   return {
     name: text('name'),
     taxId: text('taxId'),
     registrationId: text('registrationId'),
-    address: Object.keys(clean).length > 0 ? clean : null,
+    address:
+      typeof address === 'object' && address !== null
+        ? cleanAddress(address as Record<string, unknown>)
+        : null,
     email: text('email'),
     phone: text('phone')
   }
 }
 
-// The tax id as the screens and the audit see it: the last characters only, so a person can tell two receivers apart
+// The tax id as the screens and the audit see it: the last characters only (a third of it at most), so a person can tell two receivers apart
 export function maskTaxId(taxId: string | null): string | null {
   if (taxId === null) return null
-  if (taxId.length <= 4) return '*'.repeat(taxId.length)
-  return `${'*'.repeat(taxId.length - 4)}${taxId.slice(-4)}`
+  // A third of it at most, and never more than four characters: a short id shows almost nothing
+  const shown = Math.min(4, Math.floor(taxId.length / 3))
+  return `${'*'.repeat(taxId.length - shown)}${shown === 0 ? '' : taxId.slice(-shown)}`
 }
