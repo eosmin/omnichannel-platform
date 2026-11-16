@@ -26,9 +26,7 @@ import {
   type AttachTagBody,
   attachTagSchema,
   type ChangeStatusBody,
-  type ConversationCounts,
   type ConversationDetail,
-  type ConversationPage,
   ConversationsService,
   type ListConversationsQuery,
   listConversationsQuerySchema,
@@ -47,7 +45,8 @@ import {
 import {
   CurrentPluginInstallation,
   CurrentPluginViewer,
-  PluginApi
+  PluginApi,
+  PluginHoldsScope
 } from '../plugins/plugin-api.decorators'
 import { CurrentStore, pluginActorOf, RequirePermissions } from '../tenancy'
 
@@ -64,8 +63,21 @@ import {
   type StartConversationBody,
   startConversationSchema
 } from './plugin-conversations.schemas'
+import {
+  detailForKey,
+  pageForKey,
+  type PluginConversationCounts,
+  type PluginConversationDetail,
+  type PluginConversationPage,
+  withoutAgentLoad
+} from './plugin-conversations.views'
 
 const id = () => new ZodValidationPipe(uuidSchema)
+
+// A conversation as a key is told it: with or without who the customer is
+type Answer = WithAnonymous<ConversationDetail | PluginConversationDetail>
+
+type ListAnswer = WithAnonymousPage<PluginConversationPage>
 
 type Installation = { id: string; pluginId: string }
 type Store = { id: string }
@@ -93,8 +105,9 @@ export class PluginConversationsController {
     @Inject(CHANNEL_ANONYMITY) private readonly anonymity: ChannelAnonymitySource
   ) {}
 
-  private marked(detail: ConversationDetail): WithAnonymous<ConversationDetail> {
-    return withAnonymousCustomers(this.anonymity, detail)
+  // The identity of the customer is the key's to see only with `customers:read` (see plugin-conversations.views.ts)
+  private marked(detail: ConversationDetail, holdsCustomers: boolean): Answer {
+    return withAnonymousCustomers(this.anonymity, detailForKey(detail, holdsCustomers))
   }
 
   // countsOnly=true answers the numbers beside the filters instead of a page
@@ -104,13 +117,14 @@ export class PluginConversationsController {
   list(
     @CurrentStore() store: Store,
     @CurrentPluginViewer() viewer: Viewer,
+    @PluginHoldsScope(PluginScopes.CUSTOMERS_READ) holdsCustomers: boolean,
     @Query(new ZodValidationPipe(listConversationsQuerySchema)) query: ListConversationsQuery
-  ): Promise<WithAnonymousPage<ConversationPage> | ConversationCounts> {
+  ): Promise<ListAnswer | PluginConversationCounts> {
     return query.countsOnly
-      ? this.counts.counts(store.id, viewer)
+      ? this.counts.counts(store.id, viewer).then(withoutAgentLoad)
       : this.conversations
           .list(store.id, query, viewer)
-          .then(page => withAnonymousPage(this.anonymity, page))
+          .then(page => withAnonymousPage(this.anonymity, pageForKey(page, holdsCustomers)))
   }
 
   // The first route that starts a conversation (Q6): the handle of a customer on an account of the store. `conversations:write`
@@ -121,12 +135,16 @@ export class PluginConversationsController {
   async start(
     @CurrentStore() store: Store,
     @CurrentPluginViewer() viewer: Viewer,
+    @PluginHoldsScope(PluginScopes.CUSTOMERS_READ) holdsCustomers: boolean,
     @Body(new ZodValidationPipe(startConversationSchema)) body: StartConversationBody,
     @Res({ passthrough: true }) response: Response
-  ): Promise<{ created: boolean; conversation: WithAnonymous<ConversationDetail> }> {
+  ): Promise<{ created: boolean; conversation: Answer }> {
     const started = await this.starter.start(store.id, body, viewer)
     response.status(started.created ? HttpStatusCodes.CREATED : HttpStatusCodes.OK)
-    return { created: started.created, conversation: this.marked(started.conversation) }
+    return {
+      created: started.created,
+      conversation: this.marked(started.conversation, holdsCustomers)
+    }
   }
 
   // Declared before the `:id` routes, or "bulk" would be read as an id. Not the CSV and not "assign to me" (see the schema).
@@ -150,11 +168,12 @@ export class PluginConversationsController {
   get(
     @CurrentStore() store: Store,
     @CurrentPluginViewer() viewer: Viewer,
+    @PluginHoldsScope(PluginScopes.CUSTOMERS_READ) holdsCustomers: boolean,
     @Param('id', id()) conversationId: string
-  ): Promise<WithAnonymous<ConversationDetail>> {
+  ): Promise<Answer> {
     return this.conversations
       .get(store.id, conversationId, viewer)
-      .then(detail => this.marked(detail))
+      .then(detail => this.marked(detail, holdsCustomers))
   }
 
   // The ads and posts the customer came from: the messages are read too, as for a person
@@ -176,13 +195,14 @@ export class PluginConversationsController {
     @CurrentStore() store: Store,
     @CurrentPluginInstallation() installation: Installation,
     @CurrentPluginViewer() viewer: Viewer,
+    @PluginHoldsScope(PluginScopes.CUSTOMERS_READ) holdsCustomers: boolean,
     @Param('id', id()) conversationId: string,
     @Body(new ZodValidationPipe(pluginChangeStatusSchema)) body: ChangeStatusBody,
     @Req() req: AuthenticatedRequest
-  ): Promise<WithAnonymous<ConversationDetail>> {
+  ): Promise<Answer> {
     return this.statusChange
       .change(store.id, conversationId, body, viewer, pluginActorOf(installation, store, req))
-      .then(detail => this.marked(detail))
+      .then(detail => this.marked(detail, holdsCustomers))
   }
 
   @PluginApi(READ, WRITE)
@@ -192,12 +212,13 @@ export class PluginConversationsController {
   snooze(
     @CurrentStore() store: Store,
     @CurrentPluginViewer() viewer: Viewer,
+    @PluginHoldsScope(PluginScopes.CUSTOMERS_READ) holdsCustomers: boolean,
     @Param('id', id()) conversationId: string,
     @Body(new ZodValidationPipe(snoozeSchema)) body: SnoozeBody
-  ): Promise<WithAnonymous<ConversationDetail>> {
+  ): Promise<Answer> {
     return this.conversations
       .snooze(store.id, conversationId, body.until, viewer, body.note ?? null)
-      .then(detail => this.marked(detail))
+      .then(detail => this.marked(detail, holdsCustomers))
   }
 
   // To a person of the store, or to nobody (null). The service checks that the person is a member and that the plugin may assign.
@@ -207,12 +228,13 @@ export class PluginConversationsController {
   assign(
     @CurrentStore() store: Store,
     @CurrentPluginViewer() viewer: Viewer,
+    @PluginHoldsScope(PluginScopes.CUSTOMERS_READ) holdsCustomers: boolean,
     @Param('id', id()) conversationId: string,
     @Body(new ZodValidationPipe(assignSchema)) body: AssignBody
-  ): Promise<WithAnonymous<ConversationDetail>> {
+  ): Promise<Answer> {
     return this.conversations
       .assign(store.id, conversationId, body.userId, viewer)
-      .then(detail => this.marked(detail))
+      .then(detail => this.marked(detail, holdsCustomers))
   }
 
   // Writes what the whole team sees (the unread count). Unlike the inbox, no read receipt goes to the customer's channel: an
@@ -224,10 +246,11 @@ export class PluginConversationsController {
   async read(
     @CurrentStore() store: Store,
     @CurrentPluginViewer() viewer: Viewer,
+    @PluginHoldsScope(PluginScopes.CUSTOMERS_READ) holdsCustomers: boolean,
     @Param('id', id()) conversationId: string
-  ): Promise<WithAnonymous<ConversationDetail>> {
+  ): Promise<Answer> {
     const detail = await this.conversations.markRead(store.id, conversationId, viewer)
-    return this.marked(detail)
+    return this.marked(detail, holdsCustomers)
   }
 
   @PluginApi(READ, WRITE)
@@ -237,11 +260,12 @@ export class PluginConversationsController {
   unread(
     @CurrentStore() store: Store,
     @CurrentPluginViewer() viewer: Viewer,
+    @PluginHoldsScope(PluginScopes.CUSTOMERS_READ) holdsCustomers: boolean,
     @Param('id', id()) conversationId: string
-  ): Promise<WithAnonymous<ConversationDetail>> {
+  ): Promise<Answer> {
     return this.conversations
       .markUnread(store.id, conversationId, viewer)
-      .then(detail => this.marked(detail))
+      .then(detail => this.marked(detail, holdsCustomers))
   }
 
   @PluginApi(READ, WRITE)
