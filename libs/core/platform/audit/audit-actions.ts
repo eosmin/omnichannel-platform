@@ -208,6 +208,8 @@ export const AuditAction = {
   FINANCE_PERIOD_CLOSED: 'finance.period_closed',
   FINANCE_PERIOD_REOPENED: 'finance.period_reopened',
   FINANCE_EXPORTED: 'finance.exported',
+  FINANCE_BOOK_LAYOUT_CHANGED: 'finance.book_layout_changed',
+  FINANCE_BOOK_FROZEN: 'finance.book_frozen',
   FINANCE_CHAIN_VERIFIED: 'finance.chain_verified',
   FINANCE_ENTRY_POSTED_MANUAL: 'finance.entry_posted_manual',
   FINANCE_ENTRY_REVERSED: 'finance.entry_reversed',
