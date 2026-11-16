@@ -1,0 +1,69 @@
+import { bpsOfPercentText, decimalOfCents, moneyText, percentOfBps } from './money'
+
+describe('decimalOfCents', () => {
+  it.each([
+    [0, '0.00'],
+    [5, '0.05'],
+    [100, '1.00'],
+    [12345, '123.45'],
+    ['-5', '-0.05'],
+    ['-12345', '-123.45'],
+    ['0', '0.00'],
+    ['-0', '0.00'],
+    ['9007199254740993', '90071992547409.93']
+  ])('writes %s as %s, from the digits', (cents, text) => {
+    expect(decimalOfCents(cents)).toBe(text)
+  })
+
+  it.each(['1.5', '', 'abc', '1e3', ' 5'])('refuses %j: an amount is whole cents', value => {
+    expect(() => decimalOfCents(value)).toThrow()
+  })
+
+  it('refuses a float', () => {
+    expect(() => decimalOfCents(1.5)).toThrow()
+  })
+})
+
+describe('moneyText', () => {
+  it('writes dollars with two decimals in the language of the person', () => {
+    expect(moneyText('en', 1550)).toBe('$15.50')
+    expect(moneyText('en', '-5')).toBe('-$0.05')
+  })
+
+  it('keeps the cents of a sum a float would lose', () => {
+    expect(moneyText('en', '9007199254740993')).toBe('$90,071,992,547,409.93')
+  })
+})
+
+describe('rates in basis points', () => {
+  it.each([
+    [1300, '13'],
+    [1250, '12.5'],
+    [125, '1.25'],
+    [1, '0.01'],
+    [0, '0'],
+    [10000, '100']
+  ])('writes %i as %s %%', (bps, text) => {
+    expect(percentOfBps(bps)).toBe(text)
+  })
+
+  it.each([
+    ['13', 1300],
+    ['12.5', 1250],
+    ['12,5', 1250],
+    ['0.01', 1],
+    [' 7 ', 700]
+  ])('reads %j as %i basis points', (text, bps) => {
+    expect(bpsOfPercentText(text)).toBe(bps)
+  })
+
+  it.each(['', '-1', '1.234', 'abc', '13%', '1e2', '.5'])('does not read %j as a rate', text => {
+    expect(bpsOfPercentText(text)).toBeNull()
+  })
+
+  it('round trips every rate of the api', () => {
+    for (let bps = 0; bps <= 10_000; bps += 1) {
+      expect(bpsOfPercentText(percentOfBps(bps))).toBe(bps)
+    }
+  })
+})

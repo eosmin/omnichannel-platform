@@ -1912,7 +1912,8 @@
       "shipments": "Envíos",
       "pickups": "Recolecciones",
       "analytics": "Analítica",
-      "analyticsReports": "Reportes programados"
+      "analyticsReports": "Reportes programados",
+      "finance": "Finanzas"
     },
     "notifications": {
       "open": "Notificaciones",
@@ -2932,6 +2933,14 @@
         "preferences": "Preferencias",
         "notifications": "Notificaciones",
         "security": "Seguridad"
+      },
+      "finance": {
+        "label": "Finanzas",
+        "title": "Finanzas",
+        "accounts": "Cuentas",
+        "taxes": "Impuestos",
+        "periods": "Periodos",
+        "settings": "Ajustes"
       }
     },
     "store": {
@@ -5768,6 +5777,255 @@
         "orders": "Pedidos",
         "products": "Productos",
         "messages": "Mensajes"
+      }
+    }
+  },
+  "finance": {
+    "setup": {
+      "title": "Configurar la contabilidad",
+      "description": "La contabilidad de tu organización empieza aquí: elige el país para partir de su catálogo de cuentas y el día desde el que se registran los movimientos.",
+      "askAdmin": "La contabilidad aún no está configurada. Pide a quien gestiona las cuentas de tu organización que la configure.",
+      "noCountries": "No hay un catálogo de cuentas para empezar. Contacta con soporte.",
+      "formLabel": "Configurar la contabilidad",
+      "country": "País",
+      "countryHint": "Decide el catálogo de cuentas y los impuestos con los que empiezan los libros. Puedes cambiarlos después.",
+      "startsOn": "Primer día de los libros",
+      "startsOnHint": "Escríbelo como año-mes-día, por ejemplo 2026-11-01. Si lo dejas vacío, es el primer día de este mes.",
+      "startsOnProblem": "Escribe una fecha real como año-mes-día, por ejemplo 2026-11-01.",
+      "submit": "Configurar la contabilidad",
+      "done": "La contabilidad está lista."
+    },
+    "accounts": {
+      "title": "Cuentas",
+      "description": "El catálogo de cuentas de la organización y el saldo de cada cuenta en todos los periodos.",
+      "new": "Nueva cuenta",
+      "empty": "Aún no hay cuentas.",
+      "balancesFailed": "No se pudieron leer los saldos. Se muestran las cuentas sin ellos.",
+      "edit": "Editar",
+      "deactivate": "Desactivar",
+      "reactivate": "Activar",
+      "deactivated": "Cuenta desactivada.",
+      "reactivated": "Cuenta activada.",
+      "badges": {
+        "header": "Encabezado",
+        "system": "Del sistema",
+        "inactive": "Inactiva"
+      },
+      "types": {
+        "asset": "Activo",
+        "liability": "Pasivo",
+        "equity": "Patrimonio",
+        "income": "Ingreso",
+        "cost_of_sales": "Costo de ventas",
+        "expense": "Gasto"
+      },
+      "cashKinds": {
+        "cash": "Efectivo",
+        "bank": "Banco",
+        "wallet": "Billetera"
+      },
+      "fields": {
+        "code": "Código",
+        "codeHint": "Letras, números y los signos . _ - , hasta 20 caracteres.",
+        "name": "Nombre",
+        "type": "Tipo",
+        "parent": "Dentro de",
+        "noParent": "Ninguna (nivel superior)",
+        "cashKind": "Clase de dinero",
+        "cashKindHint": "Solo un activo puede ser efectivo, una cuenta de banco o una billetera.",
+        "notCash": "No es dinero",
+        "postable": "Se pueden registrar asientos en ella",
+        "postableHint": "Déjala desactivada si la cuenta solo agrupa otras."
+      },
+      "problems": {
+        "code": "Escribe un código con letras, números o . _ - (hasta 20 caracteres).",
+        "name": "Escribe un nombre de hasta 150 caracteres.",
+        "cashKind": "Solo un activo puede ser efectivo, una cuenta de banco o una billetera."
+      },
+      "dialog": {
+        "createTitle": "Nueva cuenta",
+        "createDescription": "Agrega una cuenta al catálogo. Solo se pueden registrar asientos en cuentas que no son encabezados.",
+        "editTitle": "Editar cuenta",
+        "editDescription": "Una cuenta con asientos no puede cambiar de tipo.",
+        "formLabel": "Cuenta",
+        "cancel": "Cancelar",
+        "create": "Crear cuenta",
+        "save": "Guardar cambios",
+        "created": "Cuenta {name} creada.",
+        "saved": "Cuenta guardada."
+      }
+    },
+    "taxes": {
+      "title": "Impuestos",
+      "description": "Las tasas de impuesto de la organización, cuál es la predeterminada y las cuentas a las que registra cada una.",
+      "new": "Nueva tasa",
+      "empty": "Aún no hay tasas de impuesto.",
+      "edit": "Editar",
+      "makeDefault": "Hacer predeterminada",
+      "madeDefault": "{name} es ahora la tasa predeterminada.",
+      "deactivate": "Desactivar",
+      "reactivate": "Activar",
+      "deactivated": "Tasa desactivada.",
+      "reactivated": "Tasa activada.",
+      "percent": "{percent} %",
+      "accounts": "Impuesto de ventas a {output} · impuesto de compras a {input}",
+      "badges": {
+        "default": "Predeterminada",
+        "inactive": "Inactiva"
+      },
+      "fields": {
+        "code": "Código",
+        "name": "Nombre",
+        "percent": "Tasa (%)",
+        "percentHint": "Hasta dos decimales, por ejemplo 13 o 12.5.",
+        "outputAccount": "Cuenta del impuesto de ventas",
+        "outputHint": "Donde se registra el impuesto cobrado a los clientes.",
+        "inputAccount": "Cuenta del impuesto de compras",
+        "inputHint": "Donde se registra el impuesto pagado a los proveedores.",
+        "pickAccount": "Elige una cuenta",
+        "isDefaultNow": "Esta es la tasa predeterminada. Haz predeterminada otra tasa para cambiarla.",
+        "makeDefault": "Hacerla la tasa predeterminada",
+        "makeDefaultHint": "La tasa que es predeterminada ahora deja de serlo."
+      },
+      "problems": {
+        "code": "Escribe un código con letras, números o . _ - (hasta 20 caracteres).",
+        "name": "Escribe un nombre de hasta 100 caracteres.",
+        "percent": "Escribe una tasa de 0 a 100, con máximo dos decimales.",
+        "outputAccount": "Elige la cuenta del impuesto de ventas.",
+        "inputAccount": "Elige la cuenta del impuesto de compras."
+      },
+      "dialog": {
+        "createTitle": "Nueva tasa de impuesto",
+        "createDescription": "La tasa se escribe como porcentaje. Las cuentas son a las que se registra su impuesto.",
+        "editTitle": "Editar tasa de impuesto",
+        "editDescription": "Un cambio de la tasa vale para lo que se registre desde ahora, nunca para lo que ya está en los libros.",
+        "formLabel": "Tasa de impuesto",
+        "cancel": "Cancelar",
+        "create": "Crear tasa",
+        "save": "Guardar cambios",
+        "created": "Tasa {name} creada.",
+        "saved": "Tasa guardada."
+      },
+      "noAccount": "sin cuenta"
+    },
+    "periods": {
+      "title": "Periodos",
+      "description": "Los meses de los libros y si cada uno está abierto.",
+      "lockedThrough": "Cerrado hasta el {date}: ningún asiento puede fecharse en ese día ni antes.",
+      "empty": "Aún no hay periodos. Se abren cuando el primer asiento necesita uno.",
+      "status": {
+        "open": "Abierto",
+        "closed": "Cerrado"
+      },
+      "reopenReason": "Reabierto: {reason}",
+      "open": {
+        "action": "Abrir un mes",
+        "title": "Abrir un mes",
+        "description": "Abre el periodo de un mes antes de que un asiento lo necesite. Un mes que ya está abierto queda como está.",
+        "formLabel": "Abrir un mes",
+        "month": "Mes (1 a 12)",
+        "year": "Año",
+        "cancel": "Cancelar",
+        "submit": "Abrir mes",
+        "done": "Mes abierto.",
+        "problems": {
+          "month": "Escribe un mes de 1 a 12.",
+          "year": "Escribe un año de 2000 a 2200."
+        }
+      }
+    },
+    "postings": {
+      "title": "Asientos que no se pudieron registrar",
+      "description": "Una venta, una compra o una remesa que los libros no pudieron registrar. Corrige la causa, como una cuenta que falta para un rol, y vuelve a intentarlo.",
+      "empty": "Todo se registró.",
+      "failed": "No se pudieron leer los asientos que no se registraron.",
+      "more": "Hay más. Corrige estos y se mostrarán los siguientes.",
+      "event": "{kind} de {source}",
+      "attempts": "{count, plural, one {# intento} other {# intentos}}",
+      "retry": "Reintentar",
+      "queued": "Se volverá a registrar en un momento."
+    },
+    "settings": {
+      "title": "Ajustes",
+      "description": "Cómo registran los libros, la cuenta que usa cada rol y cada forma de pago, y la preferencia de impuestos de esta tienda.",
+      "posting": {
+        "title": "Cómo se registran las ventas",
+        "description": "Estas opciones cambian lo que se registra desde ahora, nunca lo que ya está en los libros.",
+        "formLabel": "Ajustes de registro",
+        "recognizeSaleOn": "Una venta cuenta cuando está",
+        "recognizeSaleOnHint": "El momento del pedido que registra la venta en los libros.",
+        "recognize": {
+          "delivered": "Entregada",
+          "shipped": "Enviada"
+        },
+        "taxRounding": "Redondeo del impuesto",
+        "taxRoundingHint": "Cómo se coloca una fracción de centavo de impuesto.",
+        "rounding": {
+          "half_up": "Mitad hacia arriba (0.5 sube)",
+          "half_even": "Mitad al par",
+          "down": "Siempre hacia abajo",
+          "up": "Siempre hacia arriba"
+        },
+        "roundingAccount": "Cuenta de redondeo",
+        "roundingAccountHint": "Un centavo que no se puede colocar va aquí. Se puede cambiar, no quitar.",
+        "noneYet": "Ninguna aún",
+        "shippingTaxed": "El costo de envío lleva impuesto",
+        "shippingTaxedHint": "Desactívalo si el costo de envío está exento o no sujeto al impuesto.",
+        "save": "Guardar cambios",
+        "saved": "Ajustes guardados.",
+        "readOnly": "Puedes ver estos ajustes. Para cambiarlos necesitas gestionar las cuentas."
+      },
+      "roles": {
+        "title": "Cuenta de cada rol",
+        "description": "Un rol es lo que necesita un asiento de los libros: las ventas, el impuesto, el inventario, lo que se debe. Un rol sin cuenta detiene los asientos que lo necesitan.",
+        "notMapped": "Sin cuenta aún",
+        "saved": "Cuenta de {role} guardada.",
+        "names": {
+          "cash_default": "Efectivo",
+          "bank_default": "Banco",
+          "inventory": "Inventario",
+          "inventory_in_transit": "Inventario en tránsito",
+          "receivable_carriers": "Por cobrar a transportistas",
+          "customer_advances": "Anticipos de clientes",
+          "payable_suppliers": "Por pagar a proveedores",
+          "payable_carriers": "Por pagar a transportistas",
+          "vat_output": "IVA de ventas (débito fiscal)",
+          "vat_input": "IVA de compras (crédito fiscal)",
+          "sales_revenue": "Ingresos por ventas",
+          "shipping_revenue": "Ingresos por envíos",
+          "sales_discounts": "Descuentos sobre ventas",
+          "sales_returns": "Devoluciones sobre ventas",
+          "cost_of_goods_sold": "Costo de ventas",
+          "inventory_loss": "Pérdida de inventario",
+          "inventory_gain": "Ganancia de inventario",
+          "carrier_freight_expense": "Gasto de flete de transportistas",
+          "carrier_commission_expense": "Gasto de comisión de transportistas",
+          "cod_differences": "Diferencias de contra entrega",
+          "opening_equity": "Patrimonio de apertura",
+          "rounding": "Redondeo",
+          "uncategorized_expense": "Gasto sin categoría"
+        }
+      },
+      "payments": {
+        "title": "Cuenta de cada forma de pago",
+        "description": "Donde cae el dinero de cada forma de pago. La organización tiene una elección; una tienda que lleva su propio efectivo o banco puede tener la suya.",
+        "organization": "{method}: organización",
+        "thisStore": "{method}: {store}",
+        "notChosen": "Sin cuenta aún",
+        "followsOrganization": "Igual que la organización",
+        "saved": "Cuenta de pago guardada.",
+        "methods": {
+          "CASH": "Efectivo",
+          "TRANSFER": "Transferencia",
+          "CARD": "Tarjeta",
+          "OTHER": "Otro"
+        }
+      },
+      "storeTax": {
+        "title": "Impuestos de esta tienda",
+        "pricesIncludeTax": "Los precios de esta tienda ya incluyen el impuesto",
+        "pricesIncludeTaxHint": "Solo cambia cómo se separa el impuesto del precio de lo que se venda desde ahora.",
+        "saved": "Preferencia guardada."
       }
     }
   }

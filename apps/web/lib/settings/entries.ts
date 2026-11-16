@@ -7,7 +7,12 @@ import { type SettingsEntry, visibleEntries as visibleStoreEntries } from './sto
 // store loads, does not carry the organization and account lists with it
 export { type SettingsEntry, storeSettingsEntries } from './store-entries'
 
-export const SettingsAreas = { STORE: 'store', ORG: 'org', ACCOUNT: 'account' } as const
+export const SettingsAreas = {
+  STORE: 'store',
+  ORG: 'org',
+  ACCOUNT: 'account',
+  FINANCE: 'finance'
+} as const
 export type SettingsArea = (typeof SettingsAreas)[keyof typeof SettingsAreas]
 
 export const ORG_SETTINGS_ENTRIES: readonly SettingsEntry[] = [
@@ -44,6 +49,34 @@ export const ORG_SETTINGS_ENTRIES: readonly SettingsEntry[] = [
     labelKey: 'profile',
     href: AppPaths.org.profile,
     permission: ClientPermissions.SETTINGS_VIEW
+  }
+]
+
+// The books of the organization (TDD_18 §12), an area of their own. Each later page of Step 4B.9 adds its entry with its permission.
+export const FINANCE_SETTINGS_ENTRIES: readonly SettingsEntry[] = [
+  {
+    id: 'accounts',
+    labelKey: 'accounts',
+    href: AppPaths.finance.accounts,
+    permission: ClientPermissions.FINANCE_VIEW
+  },
+  {
+    id: 'taxes',
+    labelKey: 'taxes',
+    href: AppPaths.finance.taxes,
+    permission: ClientPermissions.FINANCE_VIEW
+  },
+  {
+    id: 'periods',
+    labelKey: 'periods',
+    href: AppPaths.finance.periods,
+    permission: ClientPermissions.FINANCE_VIEW
+  },
+  {
+    id: 'settings',
+    labelKey: 'settings',
+    href: AppPaths.finance.settings,
+    permission: ClientPermissions.FINANCE_VIEW
   }
 ]
 

@@ -93,8 +93,10 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'products.variantById': { step: '4.1' },
   'products.search': { step: '4.1' },
   'products.inventory': { step: '4.2' },
-  // The books of the organization (TDD_18 §12): Step 4B.9 draws the finance screens; the setup wizard, the chart, the journal and
-  // the periods read and write these
+  // The books of the organization (TDD_18 §12): Step 4B.9 draws the finance screens, in the PRs its box in the plan lists. 4B.9a-1 drew
+  // the setup, the settings, the chart, the roles, the tax rates, the payment accounts, the store tax settings, the periods (read and
+  // open), the balances and the postings; the rest of these waits for 4B.9a-2 (entries, transactions), 4B.9a-3 (bank), 4B.9a-4
+  // (suppliers, purchase orders) and 4B.9b (reports). A route stays on '4B.9' until the whole step is done
   'finance.setup': { step: '4B.9' },
   'finance.settings': { step: '4B.9' },
   'finance.accounts.list': { step: '4B.9' },

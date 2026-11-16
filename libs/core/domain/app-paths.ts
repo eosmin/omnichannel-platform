@@ -76,6 +76,14 @@ export const AppPaths = {
     auditLog: '/org/audit-log',
     compliance: '/org/compliance'
   },
+  // The books of the organization (TDD_18 §12): one area of their own, shown by the permissions `finance:*` and never by a store setting
+  finance: {
+    home: '/finance',
+    accounts: '/finance/accounts',
+    taxes: '/finance/taxes',
+    settings: '/finance/settings',
+    periods: '/finance/periods'
+  },
   account: {
     profile: '/account/profile',
     preferences: '/account/preferences',
