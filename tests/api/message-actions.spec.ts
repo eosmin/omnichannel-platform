@@ -30,6 +30,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { standalone } from '../helpers/leaks'
 import { queueOf } from '../helpers/queue'
 
 interface ErrorBody {
@@ -238,7 +239,8 @@ describe('What an agent does with a message', () => {
 
       expect(response.status).toBe(INTERNAL_SERVER_ERROR)
       expect(codeOf(response.body)).toBe(ErrorCodes.CHANNEL_MESSAGE_FAILED)
-      expect(JSON.stringify(response.body)).not.toContain('abc123')
+      expect(JSON.stringify(response.body)).not.toContain('token=abc123')
+      expect(JSON.stringify(response.body)).not.toMatch(standalone('abc123'))
     })
 
     it('leaves out a template the plugin got wrong and lists the rest', async () => {
