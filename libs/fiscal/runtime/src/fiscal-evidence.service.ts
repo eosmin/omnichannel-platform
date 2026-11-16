@@ -208,7 +208,7 @@ export class FiscalEvidenceService {
       }
       await this.heavyQueue.add(JobNames.SCAN_FILE, { mediaId }, { jobId })
     } catch (error) {
-      // A queue that blinks leaves a pending file: asked for again, it is queued again, and the sweep of stuck scans does it too
+      // A queue that blinks leaves a pending file: asked for again, it is queued again (the sweep of Step 4B.8 does it too)
       this.logger.warn(
         { mediaId, err: errorName(error) },
         'the scan of a fiscal evidence file was not queued'

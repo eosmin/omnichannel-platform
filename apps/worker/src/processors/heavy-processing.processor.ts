@@ -232,13 +232,12 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       } catch (error) {
         // The last attempt: nobody retries it after this, so a person is told. The original error stays the one the queue sees.
         if (isLastAttempt(job)) {
-          await this.fiscalDocuments
-            .reportExhausted(
-              submit.data.organizationId,
-              submit.data.documentId,
-              error instanceof FiscalDocumentBusyError
-            )
-            .catch(() => undefined)
+          // Never throws (it logs its own failure): the original error stays the one the queue sees
+          await this.fiscalDocuments.reportExhausted(
+            submit.data.organizationId,
+            submit.data.documentId,
+            error instanceof FiscalDocumentBusyError
+          )
         }
         throw error
       }
