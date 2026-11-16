@@ -8,6 +8,7 @@ import type { FinancePeriodView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
 import { PeriodStatus } from '@platform/core/domain'
 
+import { ChainIncidentNotice } from '../../components/finance/chain-incident-notice'
 import { ClosePeriodDialog } from '../../components/finance/close-period-dialog'
 import { FinanceGate } from '../../components/finance/finance-gate'
 import { OpenPeriodDialog } from '../../components/finance/open-period-dialog'
@@ -45,6 +46,8 @@ function Periods({ lockedThrough }: { lockedThrough: string | null }): ReactElem
     .at(-1)
   return (
     <section className="flex max-w-3xl flex-col gap-6">
+      {/* An open incident of the weekly check stops every close: it is said here, where the close is */}
+      <ChainIncidentNotice />
       <div className="flex flex-col gap-4">
         <header className="flex items-start justify-between gap-3">
           <div className="flex flex-col gap-1">

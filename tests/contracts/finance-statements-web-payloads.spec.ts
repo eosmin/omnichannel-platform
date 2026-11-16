@@ -7,10 +7,14 @@ import {
 import {
   agingQuerySchema,
   balanceSheetQuerySchema,
-  flowQuerySchema
+  flowQuerySchema,
+  marginQuerySchema
 } from '../../apps/api/src/modules/finance/finance-reports.schemas'
+import { vatReportQuerySchema } from '../../apps/api/src/modules/finance/finance.schemas'
 import {
   agingQueryOf,
+  BoundedRanges,
+  boundedRangeProblem,
   balanceSheetQueryOf,
   flowQueryOf,
   statementDayProblem,
@@ -74,5 +78,30 @@ describe('the legal books', () => {
         layoutVersion: ''
       }).success
     ).toBe(true)
+  })
+})
+
+// The VAT report and the margin walk rows, so their range has a length limit the sums do not: the form holds the same line as the api for
+// each (the two differ by a day on purpose), on both sides of it (Step 4B.9b-4a)
+const BOUNDED_RANGES = [
+  ...RANGES,
+  { from: '2026-01-01', to: '2027-01-01' },
+  { from: '2026-01-01', to: '2027-01-02' },
+  { from: '2026-01-01', to: '2027-01-03' },
+  { from: '2024-01-01', to: '2024-12-31' },
+  { from: '2024-01-01', to: '2025-01-01' }
+]
+
+describe('the VAT report of a range', () => {
+  it.each(BOUNDED_RANGES)('agrees with the api on the range "$from" – "$to"', range => {
+    const formSays = boundedRangeProblem(range, BoundedRanges.VAT) === null
+    expect(vatReportQuerySchema.safeParse(flowQueryOf(range)).success).toBe(formSays)
+  })
+})
+
+describe('the margin of a range', () => {
+  it.each(BOUNDED_RANGES)('agrees with the api on the range "$from" – "$to"', range => {
+    const formSays = boundedRangeProblem(range, BoundedRanges.MARGIN) === null
+    expect(marginQuerySchema.safeParse(flowQueryOf(range)).success).toBe(formSays)
   })
 })
