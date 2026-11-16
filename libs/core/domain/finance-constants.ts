@@ -327,7 +327,10 @@ export const FinanceResourceTypes = {
   BANK_PROFILE: 'finance_bank_profile',
   BANK_IMPORT: 'finance_bank_import',
   BANK_LINE: 'finance_bank_line',
-  RECONCILIATION_MATCH: 'finance_reconciliation_match'
+  RECONCILIATION_MATCH: 'finance_reconciliation_match',
+  // The legal books (TDD_18 §7): the layout of a kind of book, and a closed period's book as it was frozen
+  BOOK_LAYOUT: 'finance_book_layout',
+  BOOK_SNAPSHOT: 'finance_book_snapshot'
 } as const
 
 // Why a posting failed, kept in FinancePostingFailure.reason (a code, never free text: the interface translates it)
@@ -561,3 +564,122 @@ export enum StatementTotalLine {
   CLOSING = 'closing',
   NET = 'net'
 }
+
+// The legal books (TDD_18 §7, §13 row 6; Step 4B.8b-3). **[ACCOUNTANT]** The exact layout of a legal book is the accountant's and the
+// law's, not the design's: what ships is the mechanism (a book is a read-only report over the ledger whose columns, order and
+// correlative are the organization's own data) and a PROPOSAL that nobody has validated. A book says which one it is.
+export enum LegalBookKind {
+  SALES_TAXPAYERS = 'sales_taxpayers',
+  SALES_CONSUMERS = 'sales_consumers',
+  PURCHASES = 'purchases'
+}
+
+// The columns a book can show: a closed list, so a layout can never ask for a field that is not meant to leave the system (no
+// customer data, no credential). A kind of book accepts the subset of `LegalBookFieldsOfKind`.
+export enum LegalBookField {
+  CORRELATIVE = 'correlative',
+  DATE = 'date',
+  ENTRY_NUMBER = 'entry_number',
+  DOCUMENT_TYPE = 'document_type',
+  DOCUMENT_NUMBER = 'document_number',
+  SOURCE_NUMBER = 'source_number',
+  BASE_TAXED = 'base_taxed',
+  BASE_EXEMPT = 'base_exempt',
+  BASE_NOT_SUBJECT = 'base_not_subject',
+  BASE_SHIPPING_UNTAXED = 'base_shipping_untaxed',
+  BASE = 'base',
+  TAX = 'tax',
+  TOTAL = 'total',
+  SUPPLIER_NAME = 'supplier_name',
+  SUPPLIER_TAX_ID = 'supplier_tax_id',
+  TAX_CREDITABLE = 'tax_creditable',
+  DUE_DATE = 'due_date'
+}
+
+const SALES_FIELDS = [
+  LegalBookField.CORRELATIVE,
+  LegalBookField.DATE,
+  LegalBookField.ENTRY_NUMBER,
+  LegalBookField.DOCUMENT_TYPE,
+  LegalBookField.DOCUMENT_NUMBER,
+  LegalBookField.SOURCE_NUMBER,
+  LegalBookField.BASE_TAXED,
+  LegalBookField.BASE_EXEMPT,
+  LegalBookField.BASE_NOT_SUBJECT,
+  LegalBookField.BASE_SHIPPING_UNTAXED,
+  LegalBookField.TAX,
+  LegalBookField.TOTAL
+] as const
+
+export const LegalBookFieldsOfKind: Readonly<Record<LegalBookKind, readonly LegalBookField[]>> = {
+  [LegalBookKind.SALES_TAXPAYERS]: SALES_FIELDS,
+  [LegalBookKind.SALES_CONSUMERS]: SALES_FIELDS,
+  [LegalBookKind.PURCHASES]: [
+    LegalBookField.CORRELATIVE,
+    LegalBookField.DATE,
+    LegalBookField.ENTRY_NUMBER,
+    LegalBookField.DOCUMENT_NUMBER,
+    LegalBookField.SUPPLIER_NAME,
+    LegalBookField.SUPPLIER_TAX_ID,
+    LegalBookField.BASE,
+    LegalBookField.TAX,
+    LegalBookField.TOTAL,
+    LegalBookField.TAX_CREDITABLE,
+    LegalBookField.DUE_DATE
+  ]
+}
+
+// The columns that hold whole cents: the ones a book totals
+export const LegalBookMoneyFields: readonly LegalBookField[] = [
+  LegalBookField.BASE_TAXED,
+  LegalBookField.BASE_EXEMPT,
+  LegalBookField.BASE_NOT_SUBJECT,
+  LegalBookField.BASE_SHIPPING_UNTAXED,
+  LegalBookField.BASE,
+  LegalBookField.TAX,
+  LegalBookField.TOTAL
+]
+
+// The fields of the receiver of a fiscal document that name a tax identity: a document type that asks for one of them is a sale to a
+// taxpayer (the names are the ones the fiscal port gives the fields of a receiver)
+export const TaxIdentityReceiverFields: readonly string[] = ['taxId', 'registrationId']
+
+export enum LegalBookSort {
+  // By the accounting date, then by the number of the entry: the order the books were written in
+  DATE = 'date',
+  // By the number of the document, then the date and the entry (the order some books are kept in) **[ACCOUNTANT]**
+  DOCUMENT = 'document'
+}
+
+// When the correlative of a book starts again at its first number: every month or every year **[ACCOUNTANT]**
+export enum LegalBookCorrelativeRestart {
+  MONTH = 'month',
+  YEAR = 'year'
+}
+
+// How a sale with no fiscal document of its own is listed: in the book of the final consumers or left out of both sale books, which
+// the accountant decides **[ACCOUNTANT]**
+export enum LegalBookUnissuedSales {
+  CONSUMERS = 'consumers',
+  EXCLUDED = 'excluded'
+}
+
+// Who vouches for a layout: the proposal ships with the code and nobody has validated it; a stored layout is the organization's own and
+// says whether its accountant confirmed it
+export enum LegalBookLayoutSource {
+  PROPOSAL = 'proposal',
+  STORED = 'stored'
+}
+
+// The headers that travel beside a book's CSV (the file carries only rows) and the key of its audit rows
+export const LegalBookHeaders = {
+  UNVALIDATED: 'X-Book-Unvalidated',
+  SHA256: 'X-Book-Sha256'
+} as const
+export const legalBookReport = (kind: LegalBookKind): string => `book_${kind}`
+
+export const LegalBookLimits = {
+  MAX_COLUMNS: 24,
+  LABEL_MAX_LENGTH: 64,
+  CORRELATIVE_START_MAX: 1_000_000_000
+} as const

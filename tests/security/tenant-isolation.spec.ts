@@ -1641,6 +1641,121 @@ const resources: IsolationResource[] = [
         })
       ).legalName !== 'hacked'
   },
+  // The layout of a legal book (TDD_18 §7; Step 4B.8b-3): the layouts of an organization, read through the store of the request and never
+  // by an id; a change is a new version of the organization's own, and an earlier version never changes.
+  {
+    name: 'financeBookLayout',
+    create: async (owner, { storeId }) => {
+      await booksOfStore(owner, storeId)
+      return { id: storeId }
+    },
+    scope: 'organization',
+    readPath: () => ApiRoutes.finance.bookLayouts.list,
+    own: {
+      set: async (owner, storeId, marker) => {
+        const organizationId = await organizationOfStore(owner, storeId)
+        const latest = await owner.financeBookLayout.aggregate({
+          where: { organizationId, bookKind: 'purchases' },
+          _max: { version: true }
+        })
+        await owner.financeBookLayout.create({
+          data: {
+            organizationId,
+            bookKind: 'purchases',
+            version: (latest._max.version ?? 0) + 1,
+            columns: [{ field: 'total', label: `iso-layout-${marker}` }],
+            sort: 'date',
+            correlativeStart: 1,
+            correlativeRestart: 'month',
+            unissuedSales: 'consumers',
+            createdBy: 'isolation-suite'
+          }
+        })
+      },
+      markerIn: body => {
+        const raw = (body as { data?: unknown }).data ?? body
+        const layouts = Array.isArray(raw)
+          ? (raw as { kind?: string; columns?: { label?: string | null }[] }[])
+          : []
+        const label = layouts.find(layout => layout.kind === 'purchases')?.columns?.[0]?.label
+        return label === 'iso-layout-A' ? 'A' : label === 'iso-layout-B' ? 'B' : null
+      }
+    },
+    modify: {
+      path: () => ApiRoutes.finance.bookLayouts.byKind('purchases'),
+      method: 'put',
+      body: {
+        columns: [{ field: 'total', label: 'hacked' }],
+        sort: 'date',
+        correlativeStart: 1,
+        correlativeRestart: 'month',
+        unissuedSales: 'consumers',
+        accountantConfirmed: false
+      }
+    },
+    untouched: async (owner, storeId) => {
+      const latest = await owner.financeBookLayout.findFirst({
+        where: {
+          organizationId: await organizationOfStore(owner, storeId),
+          bookKind: 'purchases'
+        },
+        orderBy: { version: 'desc' },
+        select: { columns: true }
+      })
+      return JSON.stringify(latest?.columns ?? []).includes('hacked') === false
+    }
+  },
+  // A legal book frozen at the close of a period: read in its organization by id and in a list, never another's; no route changes it
+  {
+    name: 'financeBookSnapshot',
+    create: async (owner, { storeId }) => {
+      const organizationId = await organizationOfStore(owner, storeId)
+      await booksOf(owner, organizationId)
+      const periodId = await createPeriod(owner, organizationId, nextPeriodYear(), 1)
+      const row = await owner.financeBookSnapshot.create({
+        data: {
+          organizationId,
+          periodId,
+          bookKind: 'purchases',
+          layoutVersion: 0,
+          closedAt: new Date(),
+          book: {
+            kind: 'purchases',
+            period: {
+              id: periodId,
+              year: 2100,
+              month: 1,
+              from: '2100-01-01',
+              to: '2100-01-31',
+              status: 'closed'
+            },
+            layout: { version: 0, source: 'stored', accountantConfirmed: false },
+            unvalidated: true,
+            header: [],
+            rows: [],
+            totals: {},
+            warnings: {},
+            contentSha256: 'a'.repeat(64),
+            csv: ''
+          },
+          contentSha256: 'a'.repeat(64),
+          createdBy: 'isolation-suite'
+        },
+        select: { id: true }
+      })
+      return row
+    },
+    scope: 'organization',
+    readPath: ApiRoutes.finance.frozenBooks.byId,
+    listPath: ApiRoutes.finance.frozenBooks.list,
+    untouched: async (owner, id) =>
+      (
+        await owner.financeBookSnapshot.findUnique({
+          where: { id },
+          select: { contentSha256: true }
+        })
+      )?.contentSha256 === 'a'.repeat(64)
+  },
   // A fiscal document is the row of a sale of a store of the organization: every store of it reads it with FISCAL_VIEW, another
   // organization never does. No route makes one (the sale does); the changes a person can try are the receiver, a retry and a void.
   {
