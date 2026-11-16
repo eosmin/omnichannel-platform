@@ -2202,6 +2202,7 @@ model OrderReturn {
   shipments        Shipment[]            @relation("ShipmentReturn")
   lines            OrderReturnLine[]
   receptionItems   ReturnReceptionItem[]
+  fiscalDocuments  FiscalDocument[]
 
   @@unique([storeId, id])
   @@index([orderId])
@@ -3026,6 +3027,10 @@ model FiscalDocument {
   organizationId        String    @map("organization_id")
   storeId               String    @map("store_id")
   orderId               String    @map("order_id")
+  kind                  String    @default("sale") // FiscalDocumentKind: the document of a sale, or the credit note of a return
+  returnId              String?   @map("return_id") // a credit note of one return; null for the credit note of an order that came back as a whole
+  parentDocumentId      String?   @map("parent_document_id") // a credit note: the sale document it cancels (part of)
+  replacesDocumentId    String?   @map("replaces_document_id") // a sale document made again after the one before was voided
   journalEntryId        String?   @map("journal_entry_id") // the sale entry it belongs to; linked, never copied amounts
   sequenceNumber        Int       @map("sequence_number") // the correlative of the organization
   documentType          String    @map("document_type") // a type the manifest of the provider declares
@@ -3053,14 +3058,24 @@ model FiscalDocument {
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  store        Store         @relation(fields: [storeId], references: [id], onDelete: Restrict)
-  order        Order         @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  entry        JournalEntry? @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  store        Store            @relation(fields: [storeId], references: [id], onDelete: Restrict)
+  order        Order            @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  entry        JournalEntry?    @relation(fields: [journalEntryId], references: [id], onDelete: Restrict)
+  orderReturn  OrderReturn?     @relation(fields: [returnId], references: [id], onDelete: Restrict)
+  // NoAction (checked when the statement ends), so a statement that removes a document and the ones that name it works in one go
+  parent       FiscalDocument?  @relation("FiscalCreditNotes", fields: [parentDocumentId], references: [id], onDelete: NoAction)
+  creditNotes  FiscalDocument[] @relation("FiscalCreditNotes")
+  replaces     FiscalDocument?  @relation("FiscalReplacement", fields: [replacesDocumentId], references: [id], onDelete: NoAction)
+  replacedBy   FiscalDocument[] @relation("FiscalReplacement")
 
-  // One document per sale: the credit note of a return (Step 4B.7b) is another kind of row
-  @@unique([organizationId, orderId])
+  // At most one live sale document per order, one live credit note per return and one per order that came back with no return row: the
+  // partial unique indexes of the migration say it (Prisma cannot), a voided document leaves room for the one that replaces it
   @@unique([organizationId, sequenceNumber])
+  @@index([organizationId, orderId])
+  @@index([returnId])
+  @@index([parentDocumentId])
+  @@index([replacesDocumentId])
   @@index([organizationId, status])
   @@index([storeId])
   @@map("fiscal_documents")

@@ -1,4 +1,4 @@
-import { FiscalEnvironment, FiscalSubmitOutcome } from '@platform/core/domain'
+import { FiscalDocumentKind, FiscalEnvironment, FiscalSubmitOutcome } from '@platform/core/domain'
 import type {
   FiscalBuildInput,
   FiscalDocumentProvider,
@@ -34,6 +34,8 @@ const baseInput = (
   receiver: { name: string | null; taxId: string | null },
   sequenceNumber: number
 ): FiscalBuildInput => ({
+  kind: FiscalDocumentKind.SALE,
+  credited: null,
   sequenceNumber,
   issuedAt: '2026-11-16T12:00:00.000Z',
   orderNumber: `ORD-${sequenceNumber}`,
@@ -123,6 +125,29 @@ export function testFiscalProviderContract(
       expect(provider.manifest.documentTypes.map(type => type.id)).toContain(first.documentType)
       expect(first.missingReceiverFields).toEqual([])
       noSecrets(first)
+    })
+
+    it('builds the credit note of a sale with a type its manifest marks as a credit note, and names the document it cancels', async () => {
+      const provider = makeProvider()
+      const note = await provider.build({
+        ...baseInput(fixtures, fixtures.receivers.plain, 7),
+        kind: FiscalDocumentKind.CREDIT_NOTE,
+        credited: {
+          documentType: 'any',
+          externalNumber: 'EXT-1',
+          issuedAt: '2026-11-15T12:00:00.000Z',
+          providerData: null
+        }
+      })
+      const declared = provider.manifest.documentTypes.find(type => type.id === note.documentType)
+      expect(declared?.creditNote).toBe(true)
+      expect(JSON.stringify(note.payload)).toContain('EXT-1')
+      noSecrets(note)
+      // The document of a sale is never a credit note
+      const sale = await provider.build(baseInput(fixtures, fixtures.receivers.plain, 8))
+      expect(
+        provider.manifest.documentTypes.find(type => type.id === sale.documentType)?.creditNote
+      ).not.toBe(true)
     })
 
     it('says what the receiver lacks instead of building a document that would be refused', async () => {

@@ -1,5 +1,6 @@
 import type {
   FiscalConsultState,
+  FiscalDocumentKind,
   FiscalEnvironment,
   FiscalSubmitOutcome
 } from '@platform/core/domain'
@@ -15,7 +16,8 @@ export interface FiscalDocumentTypeDeclaration {
   readonly label: string
   // The fields of the receiver this type cannot be built without
   readonly requiredReceiverFields: readonly FiscalReceiverField[]
-  // A document of this type cancels another one (a credit note): reserved for the credit notes of a return (Step 4B.7b)
+  // A document of this type cancels (part of) another one: it is the type of the credit note of a return, which `build` picks when it is
+  // told the document is one (`FiscalBuildInput.kind`)
   readonly creditNote?: boolean
 }
 
@@ -73,7 +75,21 @@ export interface FiscalLine {
   readonly totalCents: number
 }
 
+// The accepted document that a credit note cancels (part of): what the provider needs to name it, in the words the provider gave it
+export interface FiscalCreditedDocument {
+  readonly documentType: string
+  readonly externalNumber: string
+  readonly issuedAt: string
+  // Opaque to core: what the provider kept when it accepted the original (generation code, seal ...)
+  readonly providerData: Readonly<Record<string, unknown>> | null
+}
+
 export interface FiscalBuildInput {
+  // The sale, or the credit note of a return: the provider picks the type of document by its own rule (a credit note has the type its
+  // manifest marks as `creditNote`)
+  readonly kind: FiscalDocumentKind
+  // Set for a credit note, null for the document of a sale
+  readonly credited: FiscalCreditedDocument | null
   readonly sequenceNumber: number
   readonly issuedAt: string
   readonly orderNumber: string

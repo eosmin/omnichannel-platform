@@ -9,6 +9,13 @@ export const FiscalDocumentImmutableStatuses: readonly FiscalDocumentStatus[] = 
   FiscalDocumentStatus.VOIDED
 ]
 
+// What a document is for: the document of a sale, or the credit note of a return, which cancels part (or all) of the sale document it
+// names. A provider's own document types (`FiscalDocumentTypeDeclaration`) stay the provider's; this is core's word for the relation.
+export enum FiscalDocumentKind {
+  SALE = 'sale',
+  CREDIT_NOTE = 'credit_note'
+}
+
 export enum FiscalEnvironment {
   SANDBOX = 'sandbox',
   PRODUCTION = 'production'
@@ -83,7 +90,21 @@ export const FiscalRejectionReasons = {
   // with the issuer as it is now
   ISSUER_CHANGED: 'issuer_changed',
   // A provider answered "accepted" with no number, or in a shape the port does not allow: nothing is kept of it as an acceptance
-  PROVIDER_ANSWER_INVALID: 'provider_answer_invalid'
+  PROVIDER_ANSWER_INVALID: 'provider_answer_invalid',
+  // A credit note whose original document was voided: a person retries it and it names the document that replaced the original
+  ORIGINAL_VOIDED: 'original_voided',
+  // The units of a return do not fit the sale they came from (more units back than were sold): no provider is asked to sign it
+  RETURN_INCONSISTENT: 'return_inconsistent'
+} as const
+
+// Why a person's action on a document is refused with a conflict (`details.reason`), for the interface to tell them apart
+export const FiscalConflictReasons = {
+  // A sale document with credit notes that are not voided: the notes go first
+  HAS_CREDIT_NOTES: 'has_credit_notes',
+  // A voided sale document that already has the document that replaces it
+  ALREADY_REPLACED: 'already_replaced',
+  // The receiver of a credit note is the one of the document it cancels: it is fixed there
+  CREDIT_NOTE_RECEIVER: 'credit_note_receiver'
 } as const
 
 // The type of a document that has not been built yet: the provider picks the real one when it builds (its rule, not core's)
