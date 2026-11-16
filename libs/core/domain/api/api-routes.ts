@@ -202,6 +202,20 @@ export const ApiRoutes = {
       cashFlowCsv: '/finance/reports/cash-flow.csv',
       agingCsv: '/finance/reports/aging.csv'
     },
+    // The legal books (TDD_18 §7, Step 4B.8b-3): the layout of each kind of book is the organization's (PUT writes a new version), a book is
+    // read for a period, as JSON and as a CSV, and a closed period's book is frozen and listed
+    bookLayouts: {
+      list: '/finance/book-layouts',
+      byKind: (kind: string) => `/finance/book-layouts/${kind}`
+    },
+    books: {
+      byKind: (kind: string) => `/finance/books/${kind}`,
+      csvByKind: (kind: string) => `/finance/books/${kind}/csv`
+    },
+    frozenBooks: {
+      list: '/finance/frozen-books',
+      byId: (id: string) => `/finance/frozen-books/${id}`
+    },
     // The tax preferences of the store of X-Store-Id: GET reads them, PATCH changes whether its prices include the tax
     storeTaxSettings: '/finance/store-tax-settings',
     paymentAccounts: {
