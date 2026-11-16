@@ -227,7 +227,17 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       const submit = submitFiscalJobSchema.safeParse(job.data)
       if (!submit.success) throw new UnrecoverableError('the fiscal job does not fit its schema')
       // Throws when the provider did not answer, so the queue tries again with its backoff; a decision (accepted, rejected) returns
-      await this.fiscalDocuments.submit(submit.data.organizationId, submit.data.documentId)
+      try {
+        await this.fiscalDocuments.submit(submit.data.organizationId, submit.data.documentId)
+      } catch (error) {
+        // The last attempt: nobody retries it after this, so a person is told. The original error stays the one the queue sees.
+        if (isLastAttempt(job)) {
+          await this.fiscalDocuments
+            .reportExhausted(submit.data.organizationId, submit.data.documentId)
+            .catch(() => undefined)
+        }
+        throw error
+      }
       return
     }
     if (job.name === JobNames.POST_FINANCE_EVENT) {

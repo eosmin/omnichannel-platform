@@ -173,6 +173,8 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'fiscal.documents.retry': { step: '4B.9' },
   'fiscal.documents.void': { step: '4B.9' },
   'fiscal.documents.replace': { step: '4B.9' },
+  'fiscal.documents.evidence': { step: '4B.9' },
+  'fiscal.documents.confirmIssuerChange': { step: '4B.9' },
   'suppliers.list': { step: '4B.9' },
   'suppliers.create': { step: '4B.9' },
   'suppliers.byId': { step: '4B.9' },

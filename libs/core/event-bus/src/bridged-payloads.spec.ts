@@ -243,6 +243,20 @@ describe('bridgedPayload', () => {
       reason: 'role_not_mapped',
       attempts: 2
     },
+    [Events.FISCAL_DOCUMENT_REJECTED]: {
+      organizationId: randomUUID(),
+      storeId: randomUUID(),
+      documentId: randomUUID(),
+      orderId: randomUUID(),
+      reason: 'receiver_incomplete'
+    },
+    [Events.FISCAL_DOCUMENT_STUCK]: {
+      organizationId: randomUUID(),
+      storeId: randomUUID(),
+      documentId: randomUUID(),
+      orderId: randomUUID(),
+      attempts: 6
+    },
     [Events.BULK_LABELS_PROGRESS]: {
       storeId: randomUUID(),
       jobId: randomUUID(),

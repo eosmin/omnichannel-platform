@@ -352,6 +352,7 @@ export class OrphanMediaCleaner {
     const stuck = await this.prisma.client.media.findMany({
       where: {
         status: MediaStatus.PENDING,
+        // The evidence of a fiscal document is never dropped (the database refuses it): its scan is asked again like any other
         createdAt: { lt: new Date(now.getTime() - UploadLimits.STUCK_SCAN_MINUTES * MINUTE_MS) },
         ...ownedBy(scope)
       },
@@ -381,7 +382,11 @@ export class OrphanMediaCleaner {
           requeued += 1
         } else if (row.createdAt.getTime() < dropBefore) {
           await this.prisma.client.media.deleteMany({
-            where: { id: row.id, status: MediaStatus.PENDING }
+            where: {
+              id: row.id,
+              status: MediaStatus.PENDING,
+              purpose: { not: MediaPurpose.FISCAL_EVIDENCE }
+            }
           })
           dropped += 1
         }

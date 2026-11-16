@@ -27,7 +27,18 @@ export enum FiscalIssueOn {
   SHIPPED = 'shipped'
 }
 
+// The files of evidence a document keeps (Step 4B.7b-2): what was built, what the authority answered to the acceptance, and what it
+// answered to the invalidation. One file of each kind at most, for ever (the database says it).
+export enum FiscalEvidenceKind {
+  DOCUMENT = 'document',
+  RESPONSE = 'response',
+  VOID_RESPONSE = 'void_response'
+}
+
 export const FiscalLimits = {
+  // A file of evidence larger than this is not made (the sealed copy in the row stays, which is what the document is): a provider whose
+  // document is this big is a fault to read in the logs
+  EVIDENCE_MAX_BYTES: 4 * 1024 * 1024,
   // Attempts of the job; the provider's own contingency decides what an attempt does while the authority is down
   MAX_ATTEMPTS: 6,
   BACKOFF_MS: 60_000,
@@ -78,6 +89,8 @@ export const FiscalResourceTypes = {
   DOCUMENT: 'fiscal_document'
 } as const
 
+export const FiscalEvidenceContentType = 'application/json'
+
 // The reasons core itself gives for a rejection (a provider's own are codes of its own, kept as they come)
 export const FiscalRejectionReasons = {
   RECEIVER_INCOMPLETE: 'receiver_incomplete',
@@ -108,7 +121,15 @@ export const FiscalConflictReasons = {
   // A credit note whose sale document was voided and has no replacement yet
   ORIGINAL_VOIDED: FiscalRejectionReasons.ORIGINAL_VOIDED,
   // The units of a return still do not fit its sale
-  RETURN_INCONSISTENT: FiscalRejectionReasons.RETURN_INCONSISTENT
+  RETURN_INCONSISTENT: FiscalRejectionReasons.RETURN_INCONSISTENT,
+  // The issuer of the document is the one it was made with: there is no change to confirm (a retry does it)
+  NO_ISSUER_CHANGE: 'no_issuer_change',
+  // The document may be at the issuer it was made with, which was changed since: a person confirms that it is not there
+  ISSUER_CHANGED_IN_FLIGHT: 'issuer_changed_in_flight',
+  // A credit note that is not voided, or that is not the one of its return
+  NOTE_NOT_VOIDED: 'note_not_voided',
+  // The return of a credit note has a live note already
+  NOTE_ALREADY_REPLACED: 'note_already_replaced'
 } as const
 
 // The type of a document that has not been built yet: the provider picks the real one when it builds (its rule, not core's)
@@ -119,6 +140,15 @@ export enum FiscalConsultState {
   ACCEPTED = 'accepted',
   REJECTED = 'rejected',
   // The provider has no such document: it was never received
+  UNKNOWN = 'unknown'
+}
+
+// What a provider says about the invalidation of an accepted document (the answer to a void consultation, Step 4B.7b-2)
+export enum FiscalVoidConsultState {
+  // The authority has the document invalidated: a void whose answer was lost, or one made elsewhere
+  VOIDED = 'voided',
+  NOT_VOIDED = 'not_voided',
+  // The provider cannot tell
   UNKNOWN = 'unknown'
 }
 
