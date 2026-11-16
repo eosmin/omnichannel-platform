@@ -21,7 +21,10 @@ import { isIsoDate } from '@platform/core/finance'
 const day = z.string().refine(isIsoDate, { message: 'not a calendar date (YYYY-MM-DD)' })
 
 // A column of the file: the text of its header, or its position (0 is the first column)
-const columnRef = z.union([singleLineText(80, 1), z.number().int().min(0).max(200)])
+const columnRef = z.union([
+  singleLineText(BankStatementLimits.COLUMN_HEADER_MAX_LENGTH, 1),
+  z.number().int().min(0).max(BankStatementLimits.COLUMN_POSITION_MAX)
+])
 
 export const bankMappingSchema = z.strictObject({
   date: columnRef,

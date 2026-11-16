@@ -15,6 +15,9 @@ export interface RequestOptions<T> {
   // A file or pasted table sent as it is, with its own content type (the import of a settlement file): the api reads it as text and
   // not as JSON. It replaces `body`, never goes with it.
   textBody?: { text: string; contentType: string }
+  // A file sent byte for byte, with its own content type: the api decodes it with the encoding a profile names (a bank file saved as
+  // Windows-1252 must not travel as text, which the browser would turn into UTF-8). It replaces `body`, never goes with it.
+  fileBody?: { bytes: ArrayBuffer; contentType: string }
   // The store the request is about: the api reads it from X-Store-Id and nowhere else
   storeId?: string
   // Every answer is parsed with it; z.undefined() for a 204
@@ -48,8 +51,13 @@ export function createApiClient({
     options: RequestOptions<T>,
     token: string | null
   ): Promise<Response> => {
+    const payloads = [options.body, options.textBody, options.fileBody].filter(
+      value => value !== undefined
+    )
+    if (payloads.length > 1) throw new Error('a request has one body: body, textBody or fileBody')
     const headers: Record<string, string> = {}
     if (options.textBody !== undefined) headers['content-type'] = options.textBody.contentType
+    else if (options.fileBody !== undefined) headers['content-type'] = options.fileBody.contentType
     else if (options.body !== undefined) headers['content-type'] = 'application/json'
     if (token !== null) headers.authorization = `Bearer ${token}`
     if (options.storeId !== undefined) headers[TenantHeaders.STORE_ID] = options.storeId
@@ -60,9 +68,11 @@ export function createApiClient({
         body:
           options.textBody !== undefined
             ? options.textBody.text
-            : options.body === undefined
-              ? undefined
-              : JSON.stringify(options.body),
+            : options.fileBody !== undefined
+              ? options.fileBody.bytes
+              : options.body === undefined
+                ? undefined
+                : JSON.stringify(options.body),
         signal: options.signal
       })
     } catch (error) {

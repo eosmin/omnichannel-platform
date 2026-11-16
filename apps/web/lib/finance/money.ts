@@ -41,3 +41,13 @@ export function bpsOfPercentText(text: string): number | null {
   const rest = Number((match[2] ?? '').padEnd(2, '0'))
   return whole * 100 + rest
 }
+
+// "1234.56" -> 123456, "-0,5" -> -50: what a person types as an amount, in whole cents. No thousands separator, no more than two decimals
+// and nothing that does not fit the 32 bits of an amount of the books is an amount (null); the arithmetic is on whole numbers.
+export function centsOfDecimalText(input: string, maxCents = 2_147_483_647): number | null {
+  const match = /^(-?)(\d{1,10})(?:[.,](\d{1,2}))?$/.exec(input.trim())
+  if (match === null) return null
+  const cents = Number(match[2]) * 100 + Number((match[3] ?? '').padEnd(2, '0'))
+  if (!Number.isSafeInteger(cents) || cents > maxCents) return null
+  return match[1] === '-' && cents !== 0 ? -cents : cents
+}

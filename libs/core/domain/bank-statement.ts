@@ -36,6 +36,9 @@ export const BankStatementLimits = {
   // A reference shorter than this says nothing ("1" is inside every number): it never makes a match "exact"
   REFERENCE_MIN_MATCH_LENGTH: 4,
   MAX_PROFILES_PER_ACCOUNT: 20,
+  // A column of a profile: the text of its header, or its position (0 is the first column)
+  COLUMN_HEADER_MAX_LENGTH: 80,
+  COLUMN_POSITION_MAX: 200,
   PROFILE_NAME_MAX_LENGTH: 80,
   // A page of statement lines, and how many suggestions one line shows
   MAX_SUGGESTIONS_PER_LINE: 5,

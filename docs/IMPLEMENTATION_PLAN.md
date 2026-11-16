@@ -1951,7 +1951,15 @@ Admin: owners of custom roles grant it by hand, and 4B.9 lists it in the matrix 
   - [ ] **4B.9a-2 (the journal, expenses, incomes, transfers and receipts):** `finance.entries.*`, `finance.transactions.*` (record, void, replace,
         receipt upload and download), manual entries and reversals; the mobile form to register an expense; the entry to the journal for who holds
         `finance:view_journal`.
-  - [ ] **4B.9a-3 (bank reconciliation by CSV):** `finance.bank.*`: the profiles and their mapper, the import, the suggestions and the confirmations.
+  - [x] **4B.9a-3 (bank reconciliation by CSV):** `finance.bank.*`: the profiles and their mapper, the import, the suggestions and the confirmations.
+        **Built in PR 4B.9a-3** (Finance → Bank reconciliation, `/finance/reconciliation`, `AppPaths.finance.reconciliation`, entry of the side navigation
+        for who holds `finance:view` and `finance:reconcile`): the account to choose (only the cash, bank and wallet accounts that post and are on: the ones
+        the api takes), the status of the account in a month, the statements imported (newest first) and the one opened with its lines in the order of the file,
+        the profiles with their mapper (a sample of the file read with the mapping being tried, writes nothing), the import (file, profile, closing balance and
+        its day), the suggestions with their reasons (the same amount to the cent, the same day or the days apart, the reference, and "exact") and the decision
+        on each: confirm, reject, undo; the exact matches in bulk, behind a confirmation; the difference of the books against the statement's closing balance;
+        the transaction an open line would be, read-only. Every one of the 13 routes `finance.bank.*` is drawn here (they stay on `'4B.9'` in
+        `frontend-coverage-map` until the step is done). `QueryKeys.finance.bank.*`, `finance-bank-api.ts`, `ClientErrorCodes.BANK_STATEMENT_INVALID`. No server change.
   - [ ] **4B.9a-4 (suppliers and purchases):** `suppliers.*`, `supplierPayments.*`, `purchaseOrders.*`, the receive screen on a phone, the box that
         shows only with `remittances:manage`.
   - [ ] **4B.9b (reports, close, fiscal documents):** `finance.reports.*` (the VAT report and its CSV), close and reopen a month and the checklist (Step 4B.8),
@@ -1979,6 +1987,31 @@ Admin: owners of custom roles grant it by hand, and 4B.9 lists it in the matrix 
   kind of cash (which kind a method takes is the accountant's call, TDD_18 §3), but the other roles take any account that posts: whether a role may take an account of a given type is the api's rule, and a stricter one
   (the tax role on a liability) is a change of the server for Step 4B.9b with the reports, where the chart is read as a whole; (i) a posting setting, a role,
   a payment account and the tax preference of the store are saved without a confirmation: the owner may ask for one in the QA after 4B.9.
+- **Decisions of PR 4B.9a-3 (rule 12):** (1) nothing is reconciled by itself and nothing is decided in bulk without a question: a suggestion is confirmed or
+  rejected one by one, and the bulk action (`confirm-exact`) opens a dialog that says what it does before it runs (rejected: a new tier of
+  `DestructiveActionTiers`, which is for what cannot be taken back, while every confirmation here can be undone); (2) rejecting also asks first, because
+  the api does not list rejections, so a rejected suggestion cannot be brought back from the screen (see (a) below); (3) the screen never decodes the
+  money of the file: the sample goes as text to the preview route and the file goes as it is to the import route, and every amount shown is whole cents
+  written by `moneyText`; the closing balance is typed and turned into cents by whole-number arithmetic on the text (`centsOfDecimalText`), never through a
+  float; (4) the select of accounts offers only what the api accepts (a cash, bank or wallet account that posts and is on: `bankAccountsOf`), so the
+  409 `bank_account_not_cash` cannot come from the screen; (5) the payloads of the forms are held against the strict schemas of the api in
+  `tests/contracts/finance-bank-form-payloads.spec.ts`, the one place where the web function and the api schema meet (rejected: copying the schemas to
+  the web, which would let them drift); (6) the file is decoded in the browser with the encoding of the profile (a file saved from Excel is Windows-1252)
+  and the screen reuses the decoding and the sampling of the remittance mapper, which share the limits of the api (a spec holds the two limits equal);
+  (7) the 409s of the reconciliation carry their kind in `metadata.conflict` and each kind has its own sentence (`finance.reconciliation.conflicts.*`).
+- **Left by PR 4B.9a-3, each with its owner:** (a) a rejected suggestion cannot be undone from the screen: the line view of the api has no rejection id, so (k) The encoding is decided by the server: it decodes the body bytes with the encoding of the profile (`readImportBody`). The browser decodes the file with that same encoding only to validate it and to show the sample and preview; the import sends the original bytes (`fileBody`), never the browser text, so a Windows-1252 file keeps its accents. A mismatch between what the browser shows and what the server reads (a profile whose encoding does not fit the file) is not detected on the client: **Step 7.7** adds an end-to-end check with a Windows-1252 file against the real server.
+  the `undo` route can only take back a confirmed pair; listing the rejections of a line (and undoing one) is a change of the api: **Step 7.7**;
+  (b) the transaction an open line would be is shown, not recorded: recording it is the form of the transactions of **4B.9a-2**, which takes the same draft;
+  (c) the page asks for `finance:view` as well as `finance:reconcile` (the accounts of the chart are read with the first), so a person who holds only
+  the second sees the page denied: an api route for the bank accounts of the reconciliation, or the permission of the chart read with it, is **Step 7.7**
+  with the review of the permissions; (d) the lines are read a page at a time with Previous and Next (50 each) and the list of statements is the newest
+  100 only: paging and a search by amount or text are **Step 7.7**; (e) the status of an account is read for the month typed; a grid of the months of
+  the year per account is **Step 7.7**; (f) the original file of a statement is kept by the api (`mediaId`) but no route gives it back: **Step 7.7**;
+  (g) the preview of the mapper runs on a button, not as the person types, and shows the first 20 rows: enough to check the columns; (h) the visual pass
+  (spacing, the lines on a wide screen) is **Step 7.7**; (i) the end-to-end case `apps/web-e2e/specs/finance-reconciliation.spec.ts` and the specs that
+  need the database run in CI only (Playwright is not run on the shared machine). (j) found by the third `/code-review` pass and left on purpose: the file decoder is the remittance mapper's (the two limits are held equal by a spec) and not one of its own; the
+  decision hooks are made in each line row and not lifted to the statement; a failed read after a filter change shows the retry screen and not an inline error; dates are shown as the
+  ISO day, like the other finance screens: all of it is the visual and hardening pass of **Step 7.7**.
 **TDD:** `TDD_18 §12`, `TDD_09`
 **Done when:** the owner runs a month of the business end to end from the screens (a purchase received and paid, orders sold and remitted, an
 expense and a transfer, the statements checked, the month closed).
@@ -2858,7 +2891,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.6 | The automatic entries (sales, remittances, returns, stock) | in progress | 4B.6a machinery, E1 to E3 and E9 (#546); 4B.6b-1 carrier charges, remittance confirmed and voided (E4 to E6; #548); 4B.6b-2 the difference written off, returns and the fee permission (E7, E8, E4 of a return guide; #550); 4B.6b-3 the sweep, its metrics, the failure notice and the close guard (this PR); 4B.6b-4 the prepaid charge model: todo | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | in progress | 4B.7a-1 the libraries and the rule (this PR); 4B.7a-2 the database, the lifecycle, the queue and the routes (this PR); 4B.7b credit notes, evidence as media and the customer's fiscal data: todo | |
 | 4B.8 | Reports, monthly close and the auditor's export | in progress | 4B.8a (#553); 4B.8b-1 statements and aging (this PR); 4B.8b-2 and 4B.8b-3: todo | |
-| 4B.9 | Finance interface (web) | in progress | 4B.9a-1 (setup, chart, taxes, settings, periods; the number is in the PR) | |
+| 4B.9 | Finance interface (web) | in progress | 4B.9a-1 (setup, chart, taxes, settings, periods; the number is in the PR), 4B.9a-3 (bank reconciliation by CSV; the number is in the PR) | |
 | **Milestone 5: Operations** | | | | |
 | 5.1 | Search | done | #486 (PR A: the server), #488 (PR B: the web), #496 (the click, in Step 5.2 PR C3) | 2026-11-15 |
 | 5.2 | Analytics | done | #485 (PR A: rollups, answer semantics, metrics route), PR B #487 (dashboard, My performance, View analytics), PR C1 #491 (reports and export, server), PR C2 #494 (reports and export, web); PR C3 #496 (search click, passive flag and report) | 2026-11-15 |
