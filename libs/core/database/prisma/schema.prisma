@@ -1211,6 +1211,8 @@ model Media {
   productId            String?   @map("product_id")
   orderId              String?   @map("order_id")
   financeTransactionId String?   @map("finance_transaction_id") // The transaction of the books a receipt is for (purpose finance_document)
+  fiscalDocumentId     String?   @map("fiscal_document_id") // The fiscal document a file of evidence is for (purpose fiscal_evidence)
+  fiscalEvidenceKind   String?   @map("fiscal_evidence_kind") // FiscalEvidenceKind: the document, the answer to its acceptance, the answer to its void
   uploadedBy           String?   @map("uploaded_by") // User id; null for inbound channel media
   key                  String    @unique // S3 object key, built by storage-keys.ts
   filename             String
@@ -1242,6 +1244,7 @@ model Media {
   order              Order?               @relation(fields: [orderId], references: [id], onDelete: SetNull)
   financeTransaction FinanceTransaction?  @relation("TransactionDocuments", fields: [financeTransactionId], references: [id], onDelete: Restrict)
   documentOf         FinanceTransaction?  @relation("TransactionDocument")
+  fiscalDocument     FiscalDocument?      @relation("FiscalEvidence", fields: [fiscalDocumentId], references: [id], onDelete: Restrict)
   bankImport         BankStatementImport? @relation("BankImportFile")
   reactions          MessageReaction[]
 
@@ -1253,6 +1256,7 @@ model Media {
   @@index([storeId, channelMessageId])
   @@index([productId, storeId])
   @@index([financeTransactionId])
+  @@index([fiscalDocumentId])
   @@map("media")
 }
 
@@ -3118,6 +3122,7 @@ model FiscalDocument {
   creditNotes  FiscalDocument[] @relation("FiscalCreditNotes")
   replaces     FiscalDocument?  @relation("FiscalReplacement", fields: [replacesDocumentId], references: [id], onDelete: NoAction)
   replacedBy   FiscalDocument[] @relation("FiscalReplacement")
+  evidence     Media[]          @relation("FiscalEvidence")
 
   // At most one live sale document per order, one live credit note per return and one per order that came back with no return row: the
   // partial unique indexes of the migration say it (Prisma cannot), a voided document leaves room for the one that replaces it

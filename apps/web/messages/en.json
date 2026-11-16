@@ -111,6 +111,10 @@
         },
         "finance": {
           "posting_failed": "Entry of the books failed"
+        },
+        "fiscal": {
+          "document_rejected": "Fiscal document refused",
+          "document_stuck": "Fiscal document stuck"
         }
       },
       "push": {
@@ -1035,6 +1039,16 @@
       "posting_failed": {
         "title": "Entry of the books failed",
         "body": "An entry of the books could not be posted automatically. Open the list of failed postings, fix its cause and post it again: the month cannot be closed until then."
+      }
+    },
+    "fiscal": {
+      "document_rejected": {
+        "title": "A fiscal document was refused",
+        "body": "The provider or the authority refused a fiscal document. Open the fiscal documents, fix the receiver's data and send it again."
+      },
+      "document_stuck": {
+        "title": "A fiscal document is stuck",
+        "body": "A fiscal document ran out of attempts while the provider did not answer. Open the fiscal documents and send it again."
       }
     }
   },

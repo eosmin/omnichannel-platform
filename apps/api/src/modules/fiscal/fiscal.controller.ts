@@ -13,11 +13,13 @@ import {
 import { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
-import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
+import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
+import type { FiscalEvidenceKind } from '@platform/core/domain'
 import { errorName, HttpStatusCodes } from '@platform/core/errors'
 import { ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
+import type { MediaUrls } from '@platform/core/storage'
 import {
   type FiscalDocumentPage,
   FiscalDocumentsService,
@@ -29,13 +31,18 @@ import {
 import {
   actorOf,
   CurrentOrganization,
+  CurrentPermissions,
   CurrentStore,
   RequirePermissions,
   type ResolvedTenant
 } from '../tenancy'
 
+import { FiscalEvidenceUrlsService } from './fiscal-evidence-urls.service'
 import { FiscalSubmissionQueue } from './fiscal-submission.queue'
 import {
+  type ConfirmIssuerChangeBody,
+  confirmIssuerChangeSchema,
+  evidenceKindSchema,
   idSchema,
   type ListDocumentsQuery,
   listDocumentsQuerySchema,
@@ -62,6 +69,7 @@ export class FiscalController {
     private readonly issuer: FiscalIssuerService,
     private readonly documents: FiscalDocumentsService,
     private readonly queue: FiscalSubmissionQueue,
+    private readonly evidenceUrls: FiscalEvidenceUrlsService,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(FiscalController.name)
@@ -111,6 +119,30 @@ export class FiscalController {
     return { data: await this.documents.get(organization.id, documentId) }
   }
 
+  // The signed link of one file of evidence (the document as it was built, the answer to its acceptance or to its void). The files hold the
+  // receiver's data: a short-lived link, clean files only, audited.
+  @RequirePermissions(Permissions.FISCAL_VIEW)
+  @Get(ApiRoutes.fiscal.documents.evidence(':id', ':kind'))
+  async evidence(
+    @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() granted: readonly Permission[],
+    @Param('id', id()) documentId: string,
+    @Param('kind', new ZodValidationPipe(evidenceKindSchema)) kind: FiscalEvidenceKind,
+    @Req() req: AuthenticatedRequest
+  ): Promise<{ data: MediaUrls }> {
+    return {
+      data: await this.evidenceUrls.urls(
+        organization.id,
+        documentId,
+        kind,
+        actorOf(user, store, req),
+        granted
+      )
+    }
+  }
+
   @RequirePermissions(Permissions.FISCAL_MANAGE)
   @Patch(ApiRoutes.fiscal.documents.receiver(':id'))
   async receiver(
@@ -147,6 +179,30 @@ export class FiscalController {
       actorOf(user, store, req)
     )
     await this.queue.enqueue(organization.id, documentId, retried.submission)
+    return { data: { queued: true } }
+  }
+
+  // A document that may be at the issuer it was made with, which was changed since: a person who checked with the authority that it is
+  // not there says so, with the reason, and it is made again with the issuer as it is now. HIGH tier like the void: the interface asks
+  // for the confirmation before it sends this.
+  @RequirePermissions(Permissions.FISCAL_MANAGE)
+  @Post(ApiRoutes.fiscal.documents.confirmIssuerChange(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  async confirmIssuerChange(
+    @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) documentId: string,
+    @Body(new ZodValidationPipe(confirmIssuerChangeSchema)) body: ConfirmIssuerChangeBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<{ data: { queued: true } }> {
+    const confirmed = await this.documents.confirmIssuerChange(
+      organization.id,
+      documentId,
+      body.reason,
+      actorOf(user, store, req)
+    )
+    await this.queue.enqueue(organization.id, documentId, confirmed.submission)
     return { data: { queued: true } }
   }
 

@@ -295,7 +295,12 @@ export const ApiRoutes = {
       retry: (id: string) => `/fiscal/documents/${id}/retry`,
       void: (id: string) => `/fiscal/documents/${id}/void`,
       // POST makes the sale document again after the one before was voided (and the credit notes that were voided with it)
-      replace: (id: string) => `/fiscal/documents/${id}/replace`
+      replace: (id: string) => `/fiscal/documents/${id}/replace`,
+      // GET the signed link of one file of evidence of a document (`document`, `response`, `void_response`): short-lived, clean files only
+      evidence: (id: string, kind: string) => `/fiscal/documents/${id}/evidence/${kind}`,
+      // POST: a person confirms that a document that may be at the issuer it was made with is not there, so it is made again with the
+      // issuer as it is now (the authority's answer is the person's, with the accountant)
+      confirmIssuerChange: (id: string) => `/fiscal/documents/${id}/confirm-issuer-change`
     }
   },
 

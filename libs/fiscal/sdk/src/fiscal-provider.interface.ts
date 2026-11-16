@@ -2,7 +2,8 @@ import type {
   FiscalConsultState,
   FiscalDocumentKind,
   FiscalEnvironment,
-  FiscalSubmitOutcome
+  FiscalSubmitOutcome,
+  FiscalVoidConsultState
 } from '@platform/core/domain'
 
 // The port of a provider of fiscal documents (TDD_18 §8.1). Core owns the lifecycle, the queue and the link to the ledger; a provider
@@ -164,6 +165,12 @@ export type ConsultResult =
     }
   | { readonly state: FiscalConsultState.UNKNOWN }
 
+export interface VoidConsultResult {
+  readonly state: FiscalVoidConsultState
+  // What the authority answered: kept as the evidence of the void when the state is VOIDED
+  readonly response?: Readonly<Record<string, unknown>>
+}
+
 export interface StoredFiscalDocument {
   readonly documentType: string
   readonly externalNumber: string | null
@@ -193,5 +200,9 @@ export interface FiscalDocumentProvider {
   consult(built: BuiltDocument, ctx: ProviderContext): Promise<ConsultResult>
   // The invalidation event of an accepted document
   void(doc: StoredFiscalDocument, reason: string, ctx: ProviderContext): Promise<VoidResult>
+  // Whether the authority has an accepted document invalidated already: asked before a void is sent (the invalidation may have been made
+  // elsewhere, or by an earlier request whose answer was lost) and after a void that got no answer. Optional: a provider that cannot tell
+  // leaves it out and core goes by the answer of `void` alone.
+  consultVoid?(doc: StoredFiscalDocument, ctx: ProviderContext): Promise<VoidConsultResult>
   readonly contingency?: ContingencyPolicy
 }

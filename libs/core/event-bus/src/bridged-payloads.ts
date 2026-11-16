@@ -12,6 +12,7 @@ import {
   FinanceEventKind,
   FinancePostingFailureReason,
   FinanceSourceType,
+  FiscalLimits,
   GuideBalanceAlertLevel,
   idempotencyKeySchema,
   PickupManualReasons,
@@ -217,6 +218,22 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     sourceId: id,
     eventKind: z.enum(FinanceEventKind),
     reason: z.enum(FinancePostingFailureReason),
+    attempts: z.number().int().min(1)
+  }),
+  // A fiscal document was refused: ids and the reason code, never the receiver's data
+  [Events.FISCAL_DOCUMENT_REJECTED]: z.object({
+    organizationId: id,
+    storeId: id,
+    documentId: id,
+    orderId: id,
+    reason: z.string().max(FiscalLimits.REASON_MAX_LENGTH)
+  }),
+  // A fiscal document ran out of attempts while it waited for the provider: ids and the count
+  [Events.FISCAL_DOCUMENT_STUCK]: z.object({
+    organizationId: id,
+    storeId: id,
+    documentId: id,
+    orderId: id,
     attempts: z.number().int().min(1)
   }),
   // The webhooks of a plugin turned off: the installation, the plugin and the count, never the address or the response

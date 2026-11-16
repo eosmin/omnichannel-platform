@@ -16,6 +16,7 @@ import {
   ConversationStatusReasons,
   CountResourceTypes,
   FinanceResourceTypes,
+  FiscalResourceTypes,
   formatBpsAsPercent,
   GuideBalanceAlertLevel,
   MembershipStatus,
@@ -47,6 +48,8 @@ import {
   type ExportSettledPayload,
   Events,
   type FinancePostingFailedPayload,
+  type FiscalDocumentRejectedPayload,
+  type FiscalDocumentStuckPayload,
   type InventoryLowPayload,
   type MessageChangedPayload,
   type MessageMentionPayload,
@@ -507,6 +510,73 @@ export class NotificationsEventsListener {
       this.logger.error(
         { organizationId, sourceId, err: String(error) },
         'a failed posting of the books could not be notified'
+      )
+    }
+  }
+
+  // A fiscal document was refused, or ran out of attempts while the provider did not answer (TDD_18 §8.3). The people who manage the
+  // fiscal documents of the organization are told, once for each document until they read it, and only while they still hold the
+  // permission in a store of the organization. The text names no receiver, no amount and no reason: the document does.
+  @OnEvent(Events.FISCAL_DOCUMENT_REJECTED)
+  async onFiscalDocumentRejected(payload: FiscalDocumentRejectedPayload): Promise<void> {
+    await this.tellFiscalManagers(
+      payload.organizationId,
+      payload.documentId,
+      NotificationTypes.FISCAL_DOCUMENT_REJECTED
+    )
+  }
+
+  @OnEvent(Events.FISCAL_DOCUMENT_STUCK)
+  async onFiscalDocumentStuck(payload: FiscalDocumentStuckPayload): Promise<void> {
+    await this.tellFiscalManagers(
+      payload.organizationId,
+      payload.documentId,
+      NotificationTypes.FISCAL_DOCUMENT_STUCK
+    )
+  }
+
+  private async tellFiscalManagers(
+    organizationId: string,
+    documentId: string,
+    type: NotificationType
+  ): Promise<void> {
+    try {
+      const members = await this.prisma.client.membership.findMany({
+        where: {
+          organizationId,
+          status: MembershipStatus.ACTIVE,
+          revokedAt: null,
+          role: { permissions: { some: { name: Permissions.FISCAL_MANAGE } } }
+        },
+        select: { userId: true, storeId: true },
+        orderBy: [{ storeId: 'asc' }, { userId: 'asc' }]
+      })
+      // The document belongs to the organization: a person is told once, in the first store they can act in
+      const storeOf = new Map<string, string>()
+      for (const member of members) {
+        if (!storeOf.has(member.userId)) storeOf.set(member.userId, member.storeId)
+      }
+      for (const [userId, storeId] of storeOf) {
+        // One person whose notice fails does not leave the next ones untold
+        try {
+          await this.notifications.sendToUsersOnce([userId], {
+            storeId,
+            type,
+            params: {},
+            resourceType: FiscalResourceTypes.DOCUMENT,
+            resourceId: documentId
+          })
+        } catch (error) {
+          this.logger.error(
+            { organizationId, documentId, err: String(error) },
+            'a fiscal document notice could not be sent to a person'
+          )
+        }
+      }
+    } catch (error) {
+      this.logger.error(
+        { organizationId, documentId, err: String(error) },
+        'a fiscal document notice could not be sent'
       )
     }
   }
