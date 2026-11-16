@@ -19,6 +19,7 @@ import { createTestApp } from '../helpers/app'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { standalone } from '../helpers/leaks'
 
 interface Heard {
   event: string
@@ -502,7 +503,10 @@ describe('The domain events of the services', () => {
           channelType: ChannelIds.WHATSAPP
         }
       ])
-      expect(JSON.stringify(heard)).not.toContain('7444')
+      // The whole handle and its digits alone, never "7444": the events are full of random uuids
+      expect(JSON.stringify(heard)).not.toContain('7444-0001')
+      expect(JSON.stringify(heard)).not.toContain('74440001')
+      expect(JSON.stringify(heard)).not.toMatch(standalone('7444'))
     })
 
     it('announces a merge and the undoing of it', async () => {

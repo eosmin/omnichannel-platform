@@ -38,6 +38,7 @@ import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { standalone } from '../helpers/leaks'
 import { type CapturedQueue, queueOf } from '../helpers/queue'
 
 const OK = 200
@@ -166,6 +167,8 @@ describe('The webhooks of an integration plugin and its revocation', () => {
     return { id, setup }
   }
   const dispatcher = () => app.get(WebhookDispatcher)
+  // The whole sensitive text, never a short number: a job is full of random uuids that now and then hold "4111" by chance
+  const SENSITIVE_PREVIEW = 'my card number is 4111'
   const messageReceived = (storeId: string) => ({
     storeId,
     conversationId: randomUUID(),
@@ -173,7 +176,7 @@ describe('The webhooks of an integration plugin and its revocation', () => {
     customerId: randomUUID(),
     channelType: 'web',
     authorType: 'customer',
-    contentPreview: 'my card number is 4111',
+    contentPreview: SENSITIVE_PREVIEW,
     receivedAt: '2026-11-15T10:00:00.000Z',
     visibility: { hidden: false, assignedTo: randomUUID() }
   })
@@ -262,7 +265,8 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       })
       const text = JSON.stringify(data)
       expect(text).not.toContain(event.customerId)
-      expect(text).not.toContain('4111')
+      expect(text).not.toContain(SENSITIVE_PREVIEW)
+      expect(text).not.toMatch(standalone('4111'))
       expect(text).not.toContain(event.visibility.assignedTo)
     })
 
@@ -278,7 +282,8 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       expect((job?.data as TriggerPluginWebhookJob).payload).toMatchObject({
         customerId: event.customerId
       })
-      expect(JSON.stringify(job?.data)).not.toContain('4111')
+      expect(JSON.stringify(job?.data)).not.toContain(SENSITIVE_PREVIEW)
+      expect(JSON.stringify(job?.data)).not.toMatch(standalone('4111'))
     })
 
     it('queues nothing for a plugin that does not hold the scope of the event, or does not follow it', async () => {
