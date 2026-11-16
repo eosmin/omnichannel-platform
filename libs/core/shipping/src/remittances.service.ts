@@ -50,6 +50,12 @@ export interface RemittanceSettlement {
   feeCents: number
 }
 
+export interface DifferenceWrittenOff {
+  shipmentId: string
+  connectionId: string
+  remittanceId: string
+}
+
 export interface RemittanceVoided {
   remittanceId: string
   connectionId: string
@@ -356,6 +362,25 @@ export class RemittancesService {
           `a ${row.status} remittance cannot be voided`
         )
       }
+      // The write-off of a guide cleared what this remittance left open: voiding the remittance would open it again with the guide gone
+      // from the list of what can be remitted, so it is refused until the write-off is undone by hand (a reversal of the accountant)
+      // (any guide a line of this remittance settled, not only the one that names it: an earlier remittance of a guide written off later
+      // cleared part of what the write-off worked out)
+      const writtenOff = await tx.codRemittanceLine.count({
+        where: {
+          remittanceId,
+          storeId,
+          excluded: false,
+          outcome: { in: [...SettlingOutcomes] },
+          shipment: { codStatus: CodStatus.WRITTEN_OFF }
+        }
+      })
+      if (writtenOff > 0) {
+        throw refusal(
+          ErrorCodes.REMITTANCE_INVALID_STATUS_TRANSITION,
+          'a remittance with a written-off difference cannot be voided'
+        )
+      }
       const restored = await tx.shipment.updateMany({
         where: {
           storeId,
@@ -390,6 +415,59 @@ export class RemittancesService {
         actor
       })
       return { remittanceId, connectionId: row.connectionId, restored: restored.count }
+    })
+  }
+
+  // The difference of a guide that did not match its remittance is written off: the guide is closed with a status of its own and the
+  // books clear what the carrier still owes for it (TDD_18 §4.2 E7, posted by the finance listener from the event). Only a guide in
+  // discrepancy, only once: the update is conditional, so two people clicking write off once.
+  async writeOffDifference(
+    storeId: string,
+    shipmentId: string,
+    actor: ActorRef
+  ): Promise<DifferenceWrittenOff> {
+    return this.prisma.transaction(async tx => {
+      await lockStoreForWrite(tx, storeId)
+      const shipment = await tx.shipment.findFirst({
+        where: { id: shipmentId, storeId, kind: ShipmentKind.OUTBOUND },
+        select: { connectionId: true, codStatus: true, codRemittanceId: true }
+      })
+      if (shipment === null) throw resourceNotFound('shipment')
+      if (
+        shipment.codStatus !== String(CodStatus.DISCREPANCY) ||
+        shipment.codRemittanceId === null
+      ) {
+        throw refusal(
+          ErrorCodes.REMITTANCE_INVALID_STATUS_TRANSITION,
+          'only a guide in discrepancy can have its difference written off'
+        )
+      }
+      const done = await tx.shipment.updateMany({
+        where: {
+          id: shipmentId,
+          storeId,
+          codStatus: CodStatus.DISCREPANCY,
+          codRemittanceId: shipment.codRemittanceId
+        },
+        data: { codStatus: CodStatus.WRITTEN_OFF }
+      })
+      if (done.count === 0) {
+        throw refusal(
+          ErrorCodes.REMITTANCE_INVALID_STATUS_TRANSITION,
+          'the guide changed while its difference was being written off'
+        )
+      }
+      this.events.publish(tx, Events.REMITTANCE_DIFFERENCE_WRITTEN_OFF, {
+        storeId,
+        shipmentId,
+        connectionId: shipment.connectionId,
+        actor
+      })
+      return {
+        shipmentId,
+        connectionId: shipment.connectionId,
+        remittanceId: shipment.codRemittanceId
+      }
     })
   }
 

@@ -150,6 +150,14 @@ export interface ShipmentEventPayload {
   actor: ActorRef
 }
 
+// The guide whose difference was written off, and who did it
+export interface RemittanceDifferenceWrittenOffPayload {
+  storeId: string
+  shipmentId: string
+  connectionId: string
+  actor: ActorRef
+}
+
 // A remittance of cash collected on delivery that was confirmed or voided (TDD_17 §4.15): the totals are in the remittance, the
 // event only says which one and who did it
 export interface RemittanceEventPayload {
@@ -601,6 +609,7 @@ export interface DomainEventPayloads {
   [Events.SHIPMENT_CANCEL_FAILED]: ShipmentEventPayload
   [Events.REMITTANCE_CONFIRMED]: RemittanceEventPayload
   [Events.REMITTANCE_VOIDED]: RemittanceEventPayload
+  [Events.REMITTANCE_DIFFERENCE_WRITTEN_OFF]: RemittanceDifferenceWrittenOffPayload
   [Events.REMITTANCE_OVERDUE]: RemittanceOverduePayload
   [Events.FINANCE_ENTRY_POSTED]: FinanceEntryPayload
   [Events.FINANCE_ENTRY_REVERSED]: FinanceEntryPayload

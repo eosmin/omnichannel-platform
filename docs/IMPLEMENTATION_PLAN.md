@@ -1203,7 +1203,7 @@ ships with the `local` carrier and the fake carrier.
   - (b) The fee column of a settlement file replaces the estimate (cost and commission) of that line, for a guide the sender pays, as it replaced the cost before; for a guide the recipient pays the file's fee is ignored and the commission the shipment kept applies. Rejected: stacking the file's fee over the commission (it is the carrier's own figure for everything it kept).
   - (c) Guides made before this PR keep a null rate and a null commission, so their expected amount stays what it was written (gross, or net of a reported cost): nothing is backfilled, because a rate agreed today is not what those guides were made under. Return guides keep none (they collect nothing).
   - (c2) Found by the review, accepted (rule 12), each owned by the real C807 remittance of the owner's first month (Step 4.15 "open", with the real status change): **(i)** the commission rounds half up per guide and the match is exact, so a carrier that rounds otherwise shows a one-cent `AMOUNT_DIFFERS`; a tolerance of a cent per line, or the carrier's rule, is decided when a real settlement shows it; **(ii)** guides already in flight when the owner first sets a commission or a rate kept none, so they are expected gross and differ by the fee (the owner can mark the few lines by hand; a backfill of open guides was rejected because a rate agreed today is not what they were made under); **(iii)** whether the fee column of a real file is the whole deduction (as implemented, replacing cost and commission) or only the cost of the guide is unknown until a real file arrives; **(iv)** a plugin whose `rateServiceOf` throws or answers a code with no rate leaves the guide with no rate, silently: it is the plugin's bug and the rate is only ever read from the table the owner filled for services the carrier declared at registration (the table is validated against the registry's copy), so the worst case is a missing deduction, not a wrong one; a log line there goes with the hardening of Step 7.3.
-  - (c3) Found by the second review, accepted (rule 12): **(i)** the commission and the rates are read by any member with `shipping:view` (the cost of a product is hidden without `view_cost`; these are the owner's agreed prices): a finance permission that hides them from a fulfilment agent goes with the finance module, **Step 4B**, which owns who may read costs; **(ii)** a `PATCH` replaces the whole table of rates, so two people editing from stale forms can overwrite each other (the same as every other setting of the connection; the audit row shows the removal): **Step 7.7**, with an `updatedAt` precondition for all the settings of the connection; **(iii)** the audit row is written after the commit like every audit of the platform, so a crash between them loses the row; the platform-wide fix is Step 7.3.
+  - (c3) Found by the second review, accepted (rule 12): **(i)** (closed by Step 4B.6b-2: `finance:view_carrier_fees`) the commission and the rates are read by any member with `shipping:view` (the cost of a product is hidden without `view_cost`; these are the owner's agreed prices): a finance permission that hides them from a fulfilment agent goes with the finance module, **Step 4B**, which owns who may read costs; **(ii)** a `PATCH` replaces the whole table of rates, so two people editing from stale forms can overwrite each other (the same as every other setting of the connection; the audit row shows the removal): **Step 7.7**, with an `updatedAt` precondition for all the settings of the connection; **(iii)** the audit row is written after the commit like every audit of the platform, so a crash between them loses the row; the platform-wide fix is Step 7.3.
   - (d) The rates are cents of the store currency typed by the owner, and the plugin names no price: Forza's single service `home` is all its documentation lists, and the services of its catalog with their own price are to be added to `ForzaRateServices` when the advisor answers (`docs/CARRIER_ADVISOR_QUESTIONS.md`, owner: the Forza sandbox step).
   - (e) **Step 4B (finance module)** reads these rates and the commission to cost a shipment; until then they only feed the expected amount of a remittance. A carrier that later reports a cost per guide needs no change: the reported cost wins over the rate and the commission is added.
   - (f) PR 6b (web) is the next block.
@@ -1674,20 +1674,20 @@ sweep and the charge model.
       its commission), E5 (`remittance:<id>:confirm`, one entry per confirmed remittance) and E6 (`remittance:<id>:void`, the reversal of
       E5 by an entry of the system), the destination account of the money on the confirm of a remittance (`destinationAccountId` on the
       confirm body, default `BANK_DEFAULT`; migration `finance_remittance_destination` with its rollback)
-- [ ] **4B.6b-2:** E7 (write off the difference of a discrepancy: the action, its permission `FINANCE_MOVE_MONEY`, its status on the
+- [x] **4B.6b-2:** E7 (write off the difference of a discrepancy: the action, its permission `FINANCE_MOVE_MONEY`, its status on the
       shipment) and E8 (returns, before and after delivery, with the refund destination); **`FINANCE_VIEW_CARRIER_FEES`** (below)
 - [ ] **4B.6b-3:** the sweep, its metrics, the notification of a failure, the close that refuses, and the charge model of a carrier
       connection (below)
 - [ ] **4B.6b (moved to 4B.6b-3):** `RECONCILE_FINANCE` (daily and before a close): the sweep of unposted sources (it is what heals an event that was never
       queued), balance recomputation, inventory and carrier-receivable comparisons; the metrics and the notification of
       `FINANCE_POSTING_FAILED` to who can fix it; the close refusing while a failure is open
-- [ ] **4B.6b (moved to 4B.6b-2):** **`FINANCE_VIEW_CARRIER_FEES`** gates the commission and the rates of a carrier connection (closes (c3)(i) of Step 4.15:
+- [x] **4B.6b (moved to 4B.6b-2):** **`FINANCE_VIEW_CARRIER_FEES`** gates the commission and the rates of a carrier connection (closes (c3)(i) of Step 4.15:
       `shipping:view` stops showing them; the web of Settings → Carriers shows the boxes only with it)
 - [ ] **4B.6b (moved to 4B.6b-3):** the charge model of a carrier connection (`prepaid` | `collected in the remittance` | `invoiced`, `TDD_18 §4.2` note on E4,
       owner's information to confirm with the accountant, `TDD_18 §13` rows 2 and 5) decides the entry of E4/E5 and the input VAT of a
       carrier charge; with 4B.5 for the purchase of prepaid guides. Not built by 4B.3 or 4B.6a
-- [ ] **4B.6b (partly done in 4B.6b-1: a remittance that matches, one that differs, one voided):** tests of those entries (a return before
-      and after delivery), a lost event recovered by the sweep, a failure that blocks the close
+- [ ] **4B.6b (done in 4B.6b-1 and 4B.6b-2: a remittance that matches, one that differs, one voided, a difference written off, a return before and after the
+      sale):** a lost event recovered by the sweep, a failure that blocks the close (4B.6b-3)
 - [ ] Debt (rule 12): the cent of a carrier that rounds otherwise (4.15 (c2)(i)) and the real fee column (4.15 (c2)(iii)) are decided by the
       real C807 file; the entries follow what the remittance confirm recorded
 **TDD:** `TDD_18 §4.2`, `§6`, `§11`, `TDD_17 §4.15`, `TDD_16 §4`, `TDD_07`
@@ -1781,6 +1781,39 @@ until the sweep of 4B.6b-3 posts the missing E4 (as it does the E3 of every orde
 bank-reconciled E5 is the ledger's (tested in its spec); a spec of it through E6 and of the dating when E5's day is in a closed period goes with the
 sweep's specs (debt (m) of 4B.6a), 4B.6b-3. (ab) Choosing the destination account asks `finance:move_money` (the permission's own comment says so) on top
 of `remittances:manage`; the web (4B.9) shows the box only with it.
+
+**Built in PR 4B.6b-2:** (E7) `POST /remittances/discrepancies/:shipmentId/write-off` (`remittances:manage` and, in the service, `finance:move_money`): the guide in
+discrepancy gets the terminal `CodStatus.WRITTEN_OFF` (migration `cod_written_off`, which widens two CHECKs, with its rollback), the event
+`REMITTANCE_DIFFERENCE_WRITTEN_OFF` queues the entry `shipment:<id>:write_off`, and the books work out the amount themselves: what the carrier had to
+collect less what each confirmed remittance of the guide cleared (the settlement E5 made, `settleRemittanceLine`), Dr `COD_DIFFERENCES` · Cr
+`RECEIVABLE_CARRIERS` with the carrier as the party (a surplus the other way round); it waits (`SOURCE_NOT_READY`) for the E3 and the E5 it clears
+against. A remittance with a written-off guide cannot be voided. (E8) `return:<id>:restock` on `RETURN_RECEIVED` (the share of the revenue and the tax of
+the units back, by the running total of units so the returns add up to the sale to the cent; Dr `SALES_RETURNS`, Dr `VAT_OUTPUT`, Cr the customer's
+advance, or the carrier's receivable for a COD guide that will never be remitted; Dr `INVENTORY` · Cr `COST_OF_GOODS_SOLD` at the cost of the `RETURN_IN`
+movements) and `order:<id>:return` on an order put back as a whole with no return row (before the sale only Dr `INVENTORY` · Cr
+`INVENTORY_IN_TRANSIT`); E4 now also charges the guide of a return. `FINANCE_VIEW_CARRIER_FEES` (permission, Admin grant and labels existed since 4B.2) now
+gates the commission and the rates of a connection in the answers of the carriers routes (hidden, and not changeable, without it) and the boxes of Settings →
+Carriers; the labels of the roles matrix were checked in both languages (nothing missing).
+
+**Decisions of PR 4B.6b-2 (rule 12):** (1) **The amount of E7 is the ledger's, never the request's:** chosen over a body with the amount (a person could write
+off more than is owed) and over the difference of the shipment's columns (a fee the file reported differently from the estimate makes those columns differ
+while the receivable is cleared). (2) **A written-off guide is terminal and its remittance cannot be voided:** rejected, voiding and letting E6 reopen the
+receivable E7 cleared (the books would hold a receivable the guide cannot be matched to). (3) **The refund of a return is the customer's advance, not a cash
+account:** a refund that pays money out is a person's decision (`finance:move_money`), so the books record what is owed and the payment is a transfer or an
+expense by hand; rejected, picking a cash account for them (it would invent a cash movement). The carrier's receivable is credited only when the guide's COD
+is `void` (the carrier will never remit). (4) **Pro rata on the running total of units**, half up, rejected: rounding each return on its own (the returns of a
+sale would not add up to it). (5) **The shipping fee of a returned order is not reversed** (the order does not say it was given back), **except** when the carrier's receivable is cleared (a COD guide that will never be remitted) and the order is back in full: E3 debited that receivable for the whole total, so the shipping and its tax go with it or the balance would stay for good. (6) The cost put back is the
+cost the `RETURN_IN` movement carries when it has one, else the cost its sale took the unit out at (the engine stores a unit that comes back with no cost, valued at the average of the level), so what E3 took out and E8 puts back match; a unit with neither is `COST_MISSING`; the discard of a damaged unit posts its own E9 loss.
+(7) The write-off day is the day of the action (the job's `occurredAt`), the return's the day it was received.
+**Debts of PR 4B.6b-2:** (ac) The refund benefit of a prepaid guide (Step 4.16: a guide given back, a count, no money) and the purchase and consumption of prepaid guides
+need the account role of the advance of guides and the charge model: 4B.6b-3, with the accountant's choice. (ad) Which account pays out a refund and the entry that
+pays it (Dr `CUSTOMER_ADVANCES` · Cr a cash account), and whether an exchange's credit is used by its replacement order: [ACCOUNTANT] and 4B.9 (the screen that chooses
+it), until then it is a transfer or an expense by hand. (ae) The shipping fee of a returned order is not reversed (decision 5): [ACCOUNTANT], 4B.6b-3. (af) A
+written-off guide cannot be un-written: the accountant's manual reversal of E7 undoes the books but the guide stays `written_off` and its remittance stays
+unvoidable; a route that reverses both is 4B.6b-3 or 4B.9. (ag) A movement that does record a cost for a returned unit wins over the cost of the sale: the difference stays in the cost of goods sold, the sweep of 4B.6b-3 compares it. (ak) E7 and E8 wait (`SOURCE_NOT_READY`) for the E5, the sale or the E2 they work against and nothing asks them again when it posts (E4 does it for the remittance): a person's "post again" or the sweep of 4B.6b-3 heals it. (al) E7 takes what the carrier had to collect from the guide's `codAmountCents`, the same assumption E5 makes; an order edited after its guide leaves a residual the sweep of 4B.6b-3 flags. (an) The shipment and remittance views still answer the cost of a guide and the fee kept (`carrierCostCents`, `codExpectedCents`, `feeCents`) to who holds `shipping:view` or `remittances:view`: `finance:view_carrier_fees` gates what was agreed with a carrier (its commission and rates); hiding what each guide cost is Step 7.7 with the screens of 4B.9. (ao) A return received for some units and then an order put back as a whole is refused by the order (an order with returns holding units cannot be set to returned by hand), so the order's own entry never posts for it. (am) A return of a sale from before the books began reverses against the opening balance (contra-revenue and tax debits, the refund owed to the customer): the accountant's opening entry has to hold those sales' tax and receivable. (ah) An order returned before the sale whose units were not
+put back posts nothing (the goods are lost in transit): the loss entry is the accountant's, 4B.6b-3. (ai) The button of the write-off and the fee boxes' message
+for who cannot see them are 4B.9; the plugin route of the write-off waits for PR E6-2 (the plugin actor). (aj) The guide of a return is charged when it arrives:
+a return guide of a prepaid model (consumes the advance) is 4B.6b-3 with the charge model.
 
 ### Step 4B.7 — Fiscal documents (DTE), against a simulator first
 - [ ] `libs/fiscal/sdk` (the provider port, manifest, contract suite), `libs/fiscal/simulator` (development and test only); the
@@ -2692,7 +2725,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.3 | VAT and the tax snapshot | done | #520 (4B.3a), 4B.3b (this PR) | 2026-11-15 |
 | 4B.4 | Expenses, incomes, transfers and bank reconciliation | done | 4B.4a transactions (#527); 4B.4b-1 receipts (#531); 4B.4b-2 bank reconciliation (#537) | 2026-11-15 |
 | 4B.5 | Suppliers and purchase orders | done | #542 | 2026-11-15 |
-| 4B.6 | The automatic entries (sales, remittances, returns, stock) | in progress | 4B.6a machinery, E1 to E3 and E9 (#546); 4B.6b-1 carrier charges, remittance confirmed and voided (E4 to E6; this PR); 4B.6b-2 and 4B.6b-3: todo | |
+| 4B.6 | The automatic entries (sales, remittances, returns, stock) | in progress | 4B.6a machinery, E1 to E3 and E9 (#546); 4B.6b-1 carrier charges, remittance confirmed and voided (E4 to E6; #548); 4B.6b-2 the difference written off, returns and the fee permission (E7, E8, E4 of a return guide; this PR); 4B.6b-3: todo | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | todo | | |
 | 4B.8 | Reports, monthly close and the auditor's export | todo | | |
 | 4B.9 | Finance interface (web) | todo | | |

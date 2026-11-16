@@ -120,6 +120,8 @@ export const Events = {
   RETURN_RECEIVED: 'return.received',
   REMITTANCE_CONFIRMED: 'remittance.confirmed',
   REMITTANCE_VOIDED: 'remittance.voided',
+  // A person wrote off the difference of a guide that did not match its remittance (TDD_18 §4.2 E7): the books follow
+  REMITTANCE_DIFFERENCE_WRITTEN_OFF: 'remittance.difference_written_off',
   // A carrier has kept cash on delivery for longer than the store allows (the daily check, TDD_17 §4.15)
   REMITTANCE_OVERDUE: 'remittance.overdue',
 

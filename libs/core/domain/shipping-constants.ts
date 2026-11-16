@@ -297,13 +297,19 @@ export const PriceApprovalTransitions: Record<PriceApprovalStatus, readonly Pric
     ]
   }
 
-// NOT_APPLICABLE and VOID are terminal. REMITTED returns to PENDING_REMITTANCE when a remittance
-// is voided.
+// NOT_APPLICABLE, WRITTEN_OFF and VOID are terminal. REMITTED returns to PENDING_REMITTANCE when a remittance
+// is voided; a guide whose difference was written off (Step 4B.6b-2) stays as it is, and the remittance that left the difference
+// cannot be voided (the entry of the write-off cleared what that remittance left open).
 export const CodStatusTransitions: Record<CodStatus, readonly CodStatus[]> = {
   [CodStatus.NOT_APPLICABLE]: [],
   [CodStatus.NOT_DELIVERED]: [CodStatus.PENDING_REMITTANCE, CodStatus.VOID],
   [CodStatus.PENDING_REMITTANCE]: [CodStatus.REMITTED, CodStatus.DISCREPANCY, CodStatus.VOID],
-  [CodStatus.DISCREPANCY]: [CodStatus.REMITTED, CodStatus.PENDING_REMITTANCE],
+  [CodStatus.DISCREPANCY]: [
+    CodStatus.REMITTED,
+    CodStatus.PENDING_REMITTANCE,
+    CodStatus.WRITTEN_OFF
+  ],
+  [CodStatus.WRITTEN_OFF]: [],
   [CodStatus.REMITTED]: [CodStatus.PENDING_REMITTANCE],
   [CodStatus.VOID]: []
 }

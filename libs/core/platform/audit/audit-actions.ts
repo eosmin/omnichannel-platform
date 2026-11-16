@@ -163,6 +163,7 @@ export const AuditAction = {
   REMITTANCE_IMPORTED: 'remittance.imported',
   REMITTANCE_CONFIRMED: 'remittance.confirmed',
   REMITTANCE_VOIDED: 'remittance.voided',
+  REMITTANCE_DIFFERENCE_WRITTEN_OFF: 'remittance.difference_written_off',
   STORE_PREFERENCES_UPDATED: 'store_preferences.updated',
 
   // Security configuration
