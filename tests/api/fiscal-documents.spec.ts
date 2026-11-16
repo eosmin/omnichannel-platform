@@ -70,7 +70,9 @@ describe('The fiscal documents (Step 4B.7)', () => {
   const jobs = () => queueOf(app, QueueNames.HEAVY_PROCESSING).jobs
 
   // A delivered order of store A, with the tax snapshot of Step 4B.3b: 2 x $11.30 with 13 % in the price, $5.65 of shipping
-  async function deliveredOrder(): Promise<{ id: string; storeId: string; orderNumber: string }> {
+  async function deliveredOrder(
+    overrides: { shippingCents?: number; totalCents?: number; taxCents?: number } = {}
+  ): Promise<{ id: string; storeId: string; orderNumber: string }> {
     const made = await createOrder(owner, { storeId: ctx.storeA.id })
     await owner.orderItem.update({
       where: { id: made.itemId },
@@ -91,7 +93,8 @@ describe('The fiscal documents (Step 4B.7)', () => {
         totalCents: 2825,
         taxCents: 325,
         pricesIncludeTax: true,
-        deliveredAt: new Date()
+        deliveredAt: new Date(),
+        ...overrides
       },
       select: { id: true, storeId: true, orderNumber: true }
     })
@@ -99,8 +102,10 @@ describe('The fiscal documents (Step 4B.7)', () => {
   }
 
   // The sale is delivered: the listener makes the document and queues its submission
-  async function sale(): Promise<{ orderId: string; documentId: string }> {
-    const order = await deliveredOrder()
+  async function sale(
+    overrides: { shippingCents?: number; totalCents?: number; taxCents?: number } = {}
+  ): Promise<{ orderId: string; documentId: string }> {
+    const order = await deliveredOrder(overrides)
     await emitter.emitAsync(Events.ORDER_STATUS_CHANGED, {
       storeId: order.storeId,
       orderId: order.id,
@@ -165,6 +170,33 @@ describe('The fiscal documents (Step 4B.7)', () => {
         userId: ctx.adminA.id
       })
       expect(JSON.stringify(entries)).not.toContain(SECRET)
+    })
+
+    it('keeps the moment of issue when a change of the issuer does not name it, and starts at delivered', async () => {
+      await asAdminA()
+        .put(ApiRoutes.fiscal.issuer)
+        .send({ ...ISSUER, issueOn: FiscalIssueOn.SHIPPED })
+      const withoutIssueOn: Record<string, unknown> = { ...ISSUER }
+      delete withoutIssueOn['issueOn']
+      const again = await asAdminA().put(ApiRoutes.fiscal.issuer).send(withoutIssueOn)
+      expect(again.status).toBe(OK)
+      expect((again.body as { data: { issueOn: string } }).data.issueOn).toBe(FiscalIssueOn.SHIPPED)
+      // Said again, it changes; a new issuer that never said it starts at delivered
+      const back = await asAdminA().put(ApiRoutes.fiscal.issuer).send(ISSUER)
+      expect((back.body as { data: { issueOn: string } }).data.issueOn).toBe(
+        FiscalIssueOn.DELIVERED
+      )
+      await owner.fiscalIssuer.deleteMany({ where: { organizationId: ctx.orgB.id } })
+      try {
+        const first = await api(app, ctx.adminB, ctx.storeB)
+          .put(ApiRoutes.fiscal.issuer)
+          .send(withoutIssueOn)
+        expect((first.body as { data: { issueOn: string } }).data.issueOn).toBe(
+          FiscalIssueOn.DELIVERED
+        )
+      } finally {
+        await owner.fiscalIssuer.deleteMany({ where: { organizationId: ctx.orgB.id } })
+      }
     })
 
     it('moves the correlative forward only: a number is never used twice', async () => {
@@ -587,6 +619,17 @@ describe('The fiscal documents (Step 4B.7)', () => {
         where: { id: documentId },
         data: { linesSnapshot: { ...(row.linesSnapshot as object), discountCents: 1 } }
       })
+      await documents.submit(ctx.orgA.id, documentId)
+      const after = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+      expect(after.status).toBe(FiscalDocumentStatus.REJECTED)
+      expect(after.rejectionReason).toBe(FiscalRejectionReasons.SALE_INCONSISTENT)
+      expect(after.builtPayloadEncrypted).toBeNull()
+    })
+
+    it('refuses a sale whose tax is more than its lines and its shipping can carry, as the entry of the sale does', async () => {
+      // No shipping and $0.50 of tax more than the lines carry: the difference is not the tax of a shipping fee that is not there
+      const { documentId } = await sale({ shippingCents: 0, totalCents: 2260, taxCents: 310 })
+      await patchReceiver(documentId, { taxId: '12345-6', name: 'Ana' })
       await documents.submit(ctx.orgA.id, documentId)
       const after = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
       expect(after.status).toBe(FiscalDocumentStatus.REJECTED)

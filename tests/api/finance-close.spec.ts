@@ -50,7 +50,7 @@ interface ChainBody {
   ok: boolean
   entriesChecked: number
   headNumber: string | null
-  break: { reason: string } | null
+  break: { reason: string; number: string } | null
   frozenHeads: { present: boolean }[]
 }
 
@@ -700,6 +700,22 @@ describe('Closing the months, the reports and the auditor files', () => {
       const response = await asAdminA().post(ApiRoutes.finance.reports.verifyChain).send({})
 
       expect((response.body as ChainBody).break?.reason).toBe('hash_mismatch')
+    })
+
+    it('says how many entries it checked before the break, also when the break is in the first page of the walk', async () => {
+      // The memo of the second entry is changed (here, not relied on from another case): the first one is the only one checked and sound
+      await tamperWithLedger(owner, [
+        `UPDATE journal_entries SET memo = 'Rewritten for the count' WHERE organization_id = '${ctx.orgA.id}' AND number = 2`
+      ])
+      const response = await asAdminA().post(ApiRoutes.finance.reports.verifyChain).send({})
+      const result = response.body as ChainBody
+      expect(result.break).toMatchObject({ reason: 'hash_mismatch', number: '2' })
+      expect(result.entriesChecked).toBe(1)
+
+      const status = await asAdminA().get(ApiRoutes.finance.reports.chainStatus)
+      expect(
+        (status.body as { open: { entriesChecked: number } | null }).open?.entriesChecked
+      ).toBe(1)
     })
   })
 })
