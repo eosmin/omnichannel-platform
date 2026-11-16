@@ -51,7 +51,9 @@ import { FiscalProviderRegistry } from './fiscal-provider.registry'
 import {
   canTransition,
   creditNoteSaleOf,
+  documentDetailOf,
   documentLines,
+  type FiscalDocumentDetail,
   isImmutable,
   maskTaxId,
   originalStateOf,
@@ -116,6 +118,12 @@ export interface FiscalDocumentView {
   receiver: { name: string | null; taxIdMasked: string | null; complete: boolean }
 }
 
+// The document with what it was sealed with: the lines, the tax by rate and the issuer as it was (never a credential, never the raw
+// snapshot). Only the detail route returns it; the list and the changes answer the light view.
+export interface FiscalDocumentDetailView extends FiscalDocumentView {
+  detail: FiscalDocumentDetail
+}
+
 export interface FiscalDocumentPage {
   data: FiscalDocumentView[]
   nextCursor: string | null
@@ -169,13 +177,28 @@ export class FiscalDocumentsService {
 
   async list(
     organizationId: string,
-    query: { status?: FiscalDocumentStatus; orderId?: string; cursor?: string; limit: number }
+    query: {
+      status?: FiscalDocumentStatus
+      orderId?: string
+      cursor?: string
+      limit: number
+      from?: string
+      to?: string
+    }
   ): Promise<FiscalDocumentPage> {
     const rows = await this.prisma.client.fiscalDocument.findMany({
       where: {
         organizationId,
         ...(query.status === undefined ? {} : { status: query.status }),
         ...(query.orderId === undefined ? {} : { orderId: query.orderId }),
+        ...(query.from === undefined && query.to === undefined
+          ? {}
+          : {
+              createdAt: {
+                ...(query.from === undefined ? {} : { gte: new Date(query.from) }),
+                ...(query.to === undefined ? {} : { lte: new Date(query.to) })
+              }
+            }),
         ...(query.cursor === undefined ? {} : { sequenceNumber: { lt: Number(query.cursor) } })
       },
       select: SELECT,
@@ -200,6 +223,19 @@ export class FiscalDocumentsService {
     })
     if (row === null) throw resourceNotFound('fiscal document')
     return this.view(row)
+  }
+
+  // The same read with the sealed snapshot: organization-scoped like every read here (another organization's id is a not found)
+  async getDetail(organizationId: string, id: string): Promise<FiscalDocumentDetailView> {
+    const row = await this.prisma.client.fiscalDocument.findFirst({
+      where: { id, organizationId },
+      select: { ...SELECT, linesSnapshot: true, issuerSnapshot: true }
+    })
+    if (row === null) throw resourceNotFound('fiscal document')
+    return {
+      ...this.view(row),
+      detail: documentDetailOf(row, row.linesSnapshot, row.issuerSnapshot)
+    }
   }
 
   // ---------------------------------------------------------------- the sale makes a document

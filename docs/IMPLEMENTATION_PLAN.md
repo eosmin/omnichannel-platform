@@ -2118,6 +2118,28 @@ sale rows follow the ledger: a sale is out of a month's book only when its entry
     voided credit note (the replace button of a note), plus the reason `issuer_changed_in_flight` of a retry. They are not drawn here because their routes
     were left out to keep this PR under 40 files (they are mapped in the coverage map). **Step 4B.7b-4 (new, server, small):** (b), (c), (e), (g) and (i) above are one server PR: the sealed snapshot in the view, a
     period filter, the address fields in the manifest, the `stuck` flag and an exact count, and `allowedActions`.
+  - **Built in PR 4B.7b-4 (server; medium-high risk: fiscal, sealed data):** (b) `GET fiscal/documents/:id` now answers `detail` next to the view: the lines, the
+    tax grouped by rate (the base is without the tax when the prices include it), the shipping, its tax and the discount, the order number and the issuer
+    as the document was made with (`documentDetailOf`, pure, in `fiscal-rules.ts`). The list and every change still answer the light view. (c) The list takes
+    `from` and `to`, ISO instants over `createdAt`, both ends included, either end optional, refused when `to` is before `from` (Zod, in the shared
+    `fiscal-schemas.ts`); the api-client sends them and parses `detail`. No route is new, so both coverage maps and the permission (`fiscal:view`) stand.
+  - **Decisions of PR 4B.7b-4 (rule 12):** (1) **An allowlist, by name and by type**, not the snapshot with fields removed: a field added to a snapshot one day
+    (a provider's data, a credential by mistake) does not reach the interface until someone names it; the best alternative, returning the JSON with keys
+    deleted, fails open. (2) **The detail rides on the existing byId route** instead of a new `/detail` route: one read, one permission, one isolation
+    case, and the list stays light; the cost is that the detail type extends the view. (3) **The issuer tax id is shown as it is**, like the issuer view
+    (`GET fiscal/issuer`) already does for the same permission: it is the organization's own public identifier, not customer data; the receiver stays
+    masked as in 4B.7b-3 and its sealed data is not in the detail. (4) **The period is an instant, not a calendar date**: the person's time zone is the
+    screen's to apply (start and end of the day); the server stores UTC. (5) The tax by rate covers the lines only; the shipping's tax is shown apart because
+    the sealed sale keeps it as one amount without a rate.
+  - **Review of PR 4B.7b-4 (rule 12):** `detail.consistent` (the sealed parts add up to the totals, `saleAddsUp`) was added so a damaged or pre-tax-snapshot
+    snapshot is flagged, not shown as sound; the bases are the lines before the discount and the shipping tax is in no group (documented in the type).
+    The period filter is on `createdAt` (the creation of the document, as asked), not on `issuedAt`. **Debt:** no index on `(organizationId, createdAt)`:
+    the list pages by the correlative, which grows with the creation, so a period stops at the page; a narrow old period on a very large table scans back
+    through the correlatives. A migration (with its rollback) for it is Step 7.7 if a real organization needs it.
+  - **Left by PR 4B.7b-4 (rule 12), with the step that closes each:** (a) the buttons "issue" and "consult" (they need a route and the owner's word) and (e)
+    the address fields in the provider manifest [OWNER] [ACCOUNTANT], (g) the `stuck` flag and the exact count, and (i) `replacedBy`/`allowedActions` in the
+    view stay open: **Step 4B.7b-5** (server, small, after the real provider's manifest is known). The screen still shows no lines: drawing `detail` in
+    the detail dialog and a period filter in the list is the web's, **Step 4B.9b-2b** / **4B.9b-5** (the api-client already carries both).
 - [ ] Every route of 4B.2 to 4B.8 drawn (`frontend-coverage-map`), i18n keys in `es` and `en`, Lucide icons only, no emoji, the mobile layout of the
       common actions (register an expense, receive a purchase), the e2e of the month (register, receive, sell, remit, close)
 - **Decisions of PR 4B.9a-1 (rule 12):** (1) the books are an area of their own (`/finance`), not a page of Settings or of the organization: they are the

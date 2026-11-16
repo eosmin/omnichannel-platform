@@ -21,6 +21,7 @@ import { ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import type { MediaUrls } from '@platform/core/storage'
 import {
+  type FiscalDocumentDetailView,
   type FiscalDocumentPage,
   FiscalDocumentsService,
   type FiscalDocumentView,
@@ -115,8 +116,8 @@ export class FiscalController {
   async byId(
     @CurrentOrganization() organization: Organization,
     @Param('id', id()) documentId: string
-  ): Promise<{ data: FiscalDocumentView }> {
-    return { data: await this.documents.get(organization.id, documentId) }
+  ): Promise<{ data: FiscalDocumentDetailView }> {
+    return { data: await this.documents.getDetail(organization.id, documentId) }
   }
 
   // The signed link of one file of evidence (the document as it was built, the answer to its acceptance or to its void). The files hold the
