@@ -327,3 +327,116 @@ export function maskTaxId(taxId: string | null): string | null {
   const shown = Math.min(4, Math.floor(id.length / 3))
   return `${'*'.repeat(id.length - shown)}${shown === 0 ? '' : id.slice(-shown)}`
 }
+
+// ---------------------------------------------------------------- the detail of a document (the sealed snapshot, read)
+
+export interface FiscalDetailLine {
+  description: string
+  quantity: number
+  unitPriceCents: number
+  taxRateBps: number | null
+  taxCents: number
+  totalCents: number
+}
+
+// The lines of the document that carry the same rate: what the tax is charged on and the tax. A line with no rate is the group `null`.
+export interface FiscalTaxGroup {
+  taxRateBps: number | null
+  baseCents: number
+  taxCents: number
+}
+
+// The issuer as the document kept it when it was made: the identity and the address, never a credential (the snapshot has none)
+export interface FiscalIssuerSnapshotView {
+  legalName: string
+  taxId: string
+  registrationId: string | null
+  address: Record<string, string>
+  activityCode: string | null
+  establishmentCode: string | null
+  environment: string
+}
+
+export interface FiscalDocumentDetail {
+  orderNumber: string
+  pricesIncludeTax: boolean
+  lines: FiscalDetailLine[]
+  shippingCents: number
+  shippingTaxCents: number
+  discountCents: number
+  // The bases are the lines before the discount (the discount travels once, for the whole document, as in the sealed sale); the tax of the
+  // shipping is `shippingTaxCents`, in no group
+  taxBreakdown: FiscalTaxGroup[]
+  // Whether the sealed parts add up to the totals of the document (`saleAddsUp`): false is a snapshot that is damaged or predates the tax
+  // snapshot, and the screen must say so instead of showing its numbers as sound
+  consistent: boolean
+  issuer: FiscalIssuerSnapshotView
+}
+
+const textOf = (value: unknown): string => (typeof value === 'string' ? value : '')
+const textOrNull = (value: unknown): string | null =>
+  typeof value === 'string' && value !== '' ? value : null
+const plainRecord = (value: unknown): Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {}
+
+// Reads the snapshots a document keeps (JSON, written by this service but read back as unknown) into a view with an allowlist of fields:
+// each field is copied by name and checked by type, so nothing else that a snapshot may hold (a provider's data, a future field) reaches
+// the interface. The tax is grouped by rate from the lines as they were sealed; the discount and the shipping are shown apart because
+// their tax is not split by rate in the sealed sale.
+export function documentDetailOf(
+  doc: { totalCents: number; taxCents: number },
+  linesSnapshot: unknown,
+  issuerSnapshot: unknown
+): FiscalDocumentDetail {
+  const parts = plainRecord(linesSnapshot)
+  const sale = saleOf(doc, parts)
+  const lines: FiscalDetailLine[] = sale.lines.map(raw => {
+    const line = plainRecord(raw)
+    const rate = line['taxRateBps']
+    return {
+      description: textOf(line['description']),
+      quantity: amount(line['quantity']),
+      unitPriceCents: amount(line['unitPriceCents']),
+      taxRateBps: typeof rate === 'number' && Number.isSafeInteger(rate) ? rate : null,
+      taxCents: amount(line['taxCents']),
+      totalCents: amount(line['totalCents'])
+    }
+  })
+  const groups = new Map<number | null, FiscalTaxGroup>()
+  for (const line of lines) {
+    const group = groups.get(line.taxRateBps) ?? {
+      taxRateBps: line.taxRateBps,
+      baseCents: 0,
+      taxCents: 0
+    }
+    group.taxCents += line.taxCents
+    group.baseCents += sale.pricesIncludeTax ? line.totalCents - line.taxCents : line.totalCents
+    groups.set(line.taxRateBps, group)
+  }
+  const issuer = plainRecord(issuerSnapshot)
+  const address: Record<string, string> = {}
+  for (const [key, value] of Object.entries(plainRecord(issuer['address']))) {
+    if (typeof value === 'string' && value !== '') address[key] = value
+  }
+  return {
+    orderNumber: textOf(parts['orderNumber']),
+    pricesIncludeTax: sale.pricesIncludeTax,
+    lines,
+    shippingCents: sale.shippingCents,
+    shippingTaxCents: sale.shippingTaxCents,
+    discountCents: sale.discountCents,
+    consistent: saleAddsUp({ ...sale, lines }),
+    taxBreakdown: [...groups.values()].sort((a, b) => (a.taxRateBps ?? -1) - (b.taxRateBps ?? -1)),
+    issuer: {
+      legalName: textOf(issuer['legalName']),
+      taxId: textOf(issuer['taxId']),
+      registrationId: textOrNull(issuer['registrationId']),
+      address,
+      activityCode: textOrNull(issuer['activityCode']),
+      establishmentCode: textOrNull(issuer['establishmentCode']),
+      environment: textOf(issuer['environment'])
+    }
+  }
+}

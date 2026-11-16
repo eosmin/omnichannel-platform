@@ -306,6 +306,149 @@ describe('The fiscal documents (Step 4B.7)', () => {
     })
   })
 
+  describe('the detail and the period of a document (Step 4B.7b-4)', () => {
+    it('reads the lines, the tax by rate and the issuer as they were sealed, and nothing else', async () => {
+      const { documentId } = await sale()
+      // The issuer changes after the document was made: the detail still shows the one it was made with
+      await owner.fiscalDocument.update({
+        where: { id: documentId },
+        data: {
+          issuerSnapshot: {
+            legalName: 'Sealed Issuer',
+            taxId: 'SEALED-TAX-ID',
+            address: { line1: 'Calle 9', city: 'Ciudad', nested: { x: 1 } },
+            environment: 'sandbox',
+            credentials: { signingKey: SECRET }
+          },
+          linesSnapshot: {
+            lines: [
+              {
+                description: 'Widget',
+                quantity: 2,
+                unitPriceCents: 1130,
+                taxRateBps: 1300,
+                taxCents: 260,
+                totalCents: 2260,
+                providerData: 'raw'
+              }
+            ],
+            shippingCents: 565,
+            shippingTaxCents: 65,
+            discountCents: 0,
+            pricesIncludeTax: true,
+            orderNumber: 'ORD-DETAIL'
+          }
+        }
+      })
+      const got = await asAdminA().get(ApiRoutes.fiscal.documents.byId(documentId))
+      expect(got.status).toBe(OK)
+      expect((got.body as { data: { detail: unknown } }).data.detail).toEqual({
+        orderNumber: 'ORD-DETAIL',
+        pricesIncludeTax: true,
+        lines: [
+          {
+            description: 'Widget',
+            quantity: 2,
+            unitPriceCents: 1130,
+            taxRateBps: 1300,
+            taxCents: 260,
+            totalCents: 2260
+          }
+        ],
+        shippingCents: 565,
+        shippingTaxCents: 65,
+        discountCents: 0,
+        taxBreakdown: [{ taxRateBps: 1300, baseCents: 2000, taxCents: 260 }],
+        consistent: true,
+        issuer: {
+          legalName: 'Sealed Issuer',
+          taxId: 'SEALED-TAX-ID',
+          registrationId: null,
+          address: { line1: 'Calle 9', city: 'Ciudad' },
+          activityCode: null,
+          establishmentCode: null,
+          environment: 'sandbox'
+        }
+      })
+      // No credential and no raw field anywhere in the answer
+      const text = JSON.stringify(got.body)
+      expect(text).not.toContain(SECRET)
+      expect(text).not.toContain('providerData')
+      expect(text).not.toContain('receiverEncrypted')
+    })
+
+    it('does not show the detail of another organization: it is a not found', async () => {
+      const { documentId } = await sale()
+      const other = await api(app, ctx.adminB, ctx.storeB).get(
+        ApiRoutes.fiscal.documents.byId(documentId)
+      )
+      expect(other.status).toBe(NOT_FOUND)
+    })
+
+    it('answers the list light, without the detail', async () => {
+      const { documentId } = await sale()
+      const list = await asAdminA().get(ApiRoutes.fiscal.documents.list)
+      const rows = (list.body as { data: { id: string }[] }).data
+      const found = rows.find(row => row.id === documentId)
+      expect(found).toBeDefined()
+      expect(found).not.toHaveProperty('detail')
+    })
+
+    it('filters the list by the period of creation, both ends included, and refuses a bad range', async () => {
+      const early = await sale()
+      const late = await sale()
+      const instants = {
+        early: new Date('2020-03-10T12:00:00.000Z'),
+        late: new Date('2020-05-10T12:00:00.000Z')
+      }
+      await owner.fiscalDocument.update({
+        where: { id: early.documentId },
+        data: { createdAt: instants.early }
+      })
+      await owner.fiscalDocument.update({
+        where: { id: late.documentId },
+        data: { createdAt: instants.late }
+      })
+      const ids = async (query: string): Promise<string[]> => {
+        const answer = await asAdminA().get(`${ApiRoutes.fiscal.documents.list}?${query}`)
+        expect(answer.status).toBe(OK)
+        return (answer.body as { data: { id: string }[] }).data.map(row => row.id)
+      }
+      const march = await ids('from=2020-03-01T00:00:00.000Z&to=2020-03-31T23:59:59.999Z')
+      expect(march).toEqual([early.documentId])
+      const exact = await ids(
+        `from=${instants.early.toISOString()}&to=${instants.late.toISOString()}`
+      )
+      expect(exact).toEqual(expect.arrayContaining([early.documentId, late.documentId]))
+      const onlyTo = await ids('to=2020-04-01T00:00:00.000Z')
+      expect(onlyTo).toContain(early.documentId)
+      expect(onlyTo).not.toContain(late.documentId)
+      const onlyFrom = await ids('from=2020-04-01T00:00:00.000Z')
+      expect(onlyFrom).toContain(late.documentId)
+      expect(onlyFrom).not.toContain(early.documentId)
+
+      for (const bad of [
+        'from=2020-05-01T00:00:00.000Z&to=2020-04-01T00:00:00.000Z',
+        'from=yesterday',
+        'to=2020-13-45T00:00:00.000Z'
+      ]) {
+        const refused = await asAdminA().get(`${ApiRoutes.fiscal.documents.list}?${bad}`)
+        expect(refused.status).toBe(BAD_REQUEST)
+      }
+    })
+
+    it('keeps the period inside the organization: another one sees none of these documents', async () => {
+      const { documentId } = await sale()
+      const answer = await api(app, ctx.adminB, ctx.storeB).get(
+        `${ApiRoutes.fiscal.documents.list}?from=2000-01-01T00:00:00.000Z`
+      )
+      expect(answer.status).toBe(OK)
+      expect((answer.body as { data: { id: string }[] }).data.map(row => row.id)).not.toContain(
+        documentId
+      )
+    })
+  })
+
   describe('the lifecycle against the simulator', () => {
     it('accepts a document and keeps it as the evidence, and a repeated job does nothing', async () => {
       const { documentId } = await sale()
