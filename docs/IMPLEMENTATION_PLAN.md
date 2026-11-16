@@ -1842,6 +1842,43 @@ counters do. (at) Specs still to write: the sweep's cap with several kinds of so
 model of a connection and the prepaid purchase and consumption of guides: an account role for the advance of guides that the accountant chooses, off by default and marked
 [ACCOUNTANT]; with debts (ac), (ae), (aj) of 4B.6b-2.
 
+**Fix PR `remittance-fee-guard` (HC-001 of the QA of 2026-11-16, AUT-523/529/530/531; no step number: a defect of E5 found by reading).** E5 credited the
+receivable of a guide for what the carrier reported plus what it **kept**, and what it kept was the fee of the file (or the estimate of E4) with no bound: a
+file fee of 30.00 on a guide of 25.99 with nothing remitted cleared 30.00 of the 25.99 the carrier had to collect (the receivable ended at -4.01), and the same
+happened for a carrier that does not deduct its fee but lists it next to the whole cash, for a guide remitted in parts, and for a cash on delivery smaller than the
+guide the sender pays (2.00 collected, guide of 3.50). `settleRemittanceLine` now takes the gross the carrier had to collect and what the earlier confirmed
+remittances of the guide already cleared, and splits what the carrier charged (`keptCents`: still all of it expense and payable it settles) into what it could take
+out of the cash (`deductedCents`, at most `max(0, gross - cleared before - reported)`, which is what clears the receivable) and the rest (`owedCents`, a credit on the
+payable of the carrier, netted with the debit that settles E4's payable: one line). E7 reads `deductedCents` too, so the write-off of a guide never counts a fee the cash
+did not cover. Files: `carrier-entry-rules.ts`, `return-entry-rules.ts`, `finance-posting.service.ts` (both call sites), their specs and the two integration suites.
+**Decisions (rule 12):** (1) **The charge is accepted and bounded, not rejected.** Rejected: (A) refuse the confirmation of a remittance whose fee or reported amount is
+above the cash (it breaks the surplus of E7, TDD_18 §4.2 "as built", and a legitimate case: the sender pays a guide larger than a small cash on delivery, which
+`lineExpectedCents` already clamps at zero); (C) A plus a warning in the import preview (same cost, and the line is still unusable). (2) **A surplus by REPORTED amount
+is unchanged:** a carrier that reports more than it had to collect is still written off by E7 (a surplus), but with nothing taken out of the cash for its fee, so the
+surplus in the spec of E7 went from 4.98 to 0.85 (reported 26.00 on a guide of 25.15). (3) What the cash could not cover is owed to the carrier, exactly as a fee the
+carrier did not keep already is (`settleRemittanceLine`, "what it did NOT keep stays owed"): no new account, no invented figure. **Debts and questions (rule 12):**
+(av) **[ACCOUNTANT]** a remittance whose fee is above what the carrier collected: is the excess a payable to the carrier (what is built) or something else? (4B.6b-4,
+with the charge model and TDD_18 §13). (aw) **[OWNER]** AUT-530: a carrier that reports MORE than it collected is a surplus without limit today (a typed 5,000.00 on a
+guide of 25.99 is accepted and left to E7): should the surplus have a ceiling, and what does the import do above it? (4B.6b-4 or 7.3). (ax) The web (Step 4B.9) draws the
+fee of the line from the file; it does not say that part of it was not taken out of the cash: the remittance screen and the carrier statement should show the part owed
+(4B.9).
+(ay) E5 and E7 replay the current rows of a guide's remittances (confirmed ones, in the order they were confirmed) to know what each cleared; they do not read the
+posted entries. A remittance voided or re-confirmed AFTER a later one posted changes what a later write-off replays (the same family as debt (w) of 4B.6b-1): the fix is to
+keep per line what E5 cleared, with the remittance entry; 4B.6b-4 or 4B.8. (az) The bound uses the guide's `codAmountCents` as the gross, the assumption E5 and E7 already
+made (debt (al) of 4B.6b-2); a guide whose cash was edited after E3 or whose receivable E8 credited (a COD guide that will never be remitted) is not bounded by the ledger's
+figure: with (ay), 4B.6b-4. (ba) What the cash could not cover is a credit on `PAYABLE_CARRIERS` with the carrier as the party and no marker of its own (memo or role): a later
+invoice or an E4 correction cannot tell it from the estimate; the accountant's choice of account for it is (av), 4B.6b-4.
+(bb) E5 entries posted BEFORE this fix stay as they were (the journal is immutable): a guide whose fee was cleared above the cash keeps its negative receivable, and an E7 on it
+replays the new rule, so it finds nothing open and posts nothing. The accountant corrects those by hand (a manual entry); this is not repeated for new remittances. (bc) The
+replay of a guide's earlier remittances uses the connection's CURRENT `remittanceDeductsFee`, the current E4 estimate and the current `codAmountCents`, not the values in force when
+each posted: with (ay), a flag flipped between two remittances of one guide changes what a later one or an E7 counts as cleared (4B.6b-4, with the stored per-line figure of (ay)).
+(bd) A guide the carrier remitted in full on a connection that deducts its fee, with no fee column in the file, takes nothing out of the cash (none is left): the estimate stays owed on
+the payable, and the guide counts as having had its fee listed, so a later remittance of it does not settle that payable again; it is paid by hand (debt (y) of 4B.6b-1). The `earlier`
+query reads the full history of each guide in the file under the lock of the books: fine at this volume, to be replaced by the stored per-line figure of (ay) (Step 7.3).
+**Rejected in the review:** to write the part owed as a line of its own next to the payable settled (the entry has one line per account and carrier, not one per guide, so a per-guide
+trace is not in the ledger either way; the replay is where it lives, see (ay)); to mark the payable of a guide as not settled when part of its fee was owed (that part cannot be
+settled by a later remittance, there is no cash left in the receivable to take it out of: a payable the carrier invoices is paid by hand, debt (y) of 4B.6b-1).
+
 ### Step 4B.7 — Fiscal documents (DTE), against a simulator first
 - [x] `libs/fiscal/sdk` (the provider port, manifest, contract suite), `libs/fiscal/simulator` (development and test only); the
       migration with its rollback for `FiscalIssuer` (credentials encrypted like the carrier's) and `FiscalDocument`; the transition table

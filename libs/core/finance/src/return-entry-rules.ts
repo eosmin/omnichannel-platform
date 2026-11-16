@@ -20,16 +20,16 @@ import { allocateByWeight } from './tax-rules'
 // E7: the difference of a guide that did not match its remittance, written off by a person
 
 export interface SettledLine {
-  // What the carrier reported (the cash it remitted) and what it kept, for one confirmed remittance of the guide: together, what that
-  // remittance cleared of the carrier's receivable (`settleRemittanceLine`)
+  // What the carrier reported (the cash it remitted) and what it took out of the cash, for one confirmed remittance of the guide: together,
+  // what that remittance cleared of the carrier's receivable (`settleRemittanceLine`)
   reportedCents: number
-  keptCents: number
+  deductedCents: number
 }
 
 // What is still owed by the carrier for a guide: what it had to collect, less everything the confirmed remittances cleared. Positive is
 // a shortfall (the carrier owes more), negative a surplus (it paid more than the guide was worth).
 export function openReceivableCents(grossCents: number, settled: readonly SettledLine[]): number {
-  const cleared = settled.reduce((sum, line) => sum + line.reportedCents + line.keptCents, 0)
+  const cleared = settled.reduce((sum, line) => sum + line.reportedCents + line.deductedCents, 0)
   return grossCents - cleared
 }
 
