@@ -1,5 +1,4 @@
-import { TaxRounding, TaxTreatment } from '@platform/core/domain'
-
+import { TaxRounding, TaxTreatment } from './finance-constants'
 import {
   allocateByWeight,
   computeOrderTax,
