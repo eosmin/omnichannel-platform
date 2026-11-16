@@ -24,6 +24,14 @@ import {
   receiverRecord
 } from './fiscal-rules'
 
+// The record as text with its keys in order (the address too), so the same data sent in another order is the same data
+const canonical = (record: Record<string, unknown>): string =>
+  JSON.stringify(record, (_key, value: unknown) =>
+    typeof value === 'object' && value !== null && !Array.isArray(value)
+      ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)))
+      : value
+  )
+
 // What a person may send: a field left out stays, a field sent as null is removed (the same rule as the receiver of a document)
 export type CustomerFiscalDataPatch = Partial<
   Record<'name' | 'taxId' | 'registrationId' | 'taxpayerType' | 'economicActivity', string | null>
@@ -61,7 +69,7 @@ export class FiscalCustomerDataService {
     customerId: string,
     patch: CustomerFiscalDataPatch,
     actor: FiscalActor
-  ): Promise<MaskedCustomerFiscalData | null> {
+  ): Promise<{ kept: boolean }> {
     const outcome = await this.prisma.transaction(async tx => {
       // The lock first, and the customer is judged under it: a merge or an erasure that commits meanwhile is seen, never written over
       const locked = await tx.$queryRaw<
@@ -100,13 +108,13 @@ export class FiscalCustomerDataService {
       const stored = receiverRecord(next)
       const before = receiverRecord(current)
       // The same data again changes nothing and leaves no entry
-      if (row !== null && JSON.stringify(stored) === JSON.stringify(before)) {
-        return { kind: 'unchanged' as const, view: maskedCustomerFiscalData(current) }
+      if (row !== null && canonical(stored) === canonical(before)) {
+        return { kind: 'unchanged' as const, kept: true }
       }
       // Nothing left to keep is no row: clearing every field is clearing the data
       if (Object.keys(stored).length === 0) {
         await tx.customerFiscalData.deleteMany({ where: { storeId, customerId } })
-        return { kind: row === null ? ('unchanged' as const) : ('cleared' as const), view: null }
+        return { kind: row === null ? ('unchanged' as const) : ('cleared' as const), kept: false }
       }
       await this.check(tx, organizationId, receiverOf(stored))
       const sealed = new Uint8Array(this.cipher.seal(stored))
@@ -121,7 +129,7 @@ export class FiscalCustomerDataService {
           data: { dataEncrypted: sealed, updatedBy: actor.userId }
         })
       }
-      return { kind: 'changed' as const, view: maskedCustomerFiscalData(receiverOf(stored)) }
+      return { kind: 'changed' as const, kept: true }
     })
     if (outcome.kind !== 'unchanged') {
       this.audit.log({
@@ -139,7 +147,8 @@ export class FiscalCustomerDataService {
         userAgent: actor.userAgent
       })
     }
-    return outcome.view
+    // Whether data is kept, nothing of it: whoever may write is not for that reason allowed to read
+    return { kept: outcome.kept }
   }
 
   // Removes all of it. A fiscal document already made keeps its own copy: it is the legal evidence and this data does not reach it.
@@ -221,7 +230,8 @@ export class FiscalCustomerDataService {
   private open(sealed: Uint8Array): FiscalReceiver {
     try {
       return receiverOf(this.cipher.open(sealed))
-    } catch {
+    } catch (error) {
+      this.logger.error({ err: errorName(error) }, 'the fiscal data of a customer cannot be opened')
       throw new PlatformException(
         ErrorCodes.FISCAL_CUSTOMER_DATA_INVALID,
         'the fiscal data of the customer cannot be read: write it again',

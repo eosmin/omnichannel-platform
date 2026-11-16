@@ -250,7 +250,14 @@ export class FiscalDocumentsService {
 
   // The sale as the order has it now: the lines with the tax snapshot of Step 4B.3b, the amounts of the order and its customer as the
   // receiver. The amounts are the order's own, never recomputed here.
-  private async readSale(tx: PrismaTransaction, organizationId: string, orderId: string) {
+  // `withFiscalData` is false where the receiver is not taken from the sale (a retry keeps the receiver of the document, a replacement the one
+  // of the voided document): the customer's sealed data is not opened for nothing
+  private async readSale(
+    tx: PrismaTransaction,
+    organizationId: string,
+    orderId: string,
+    withFiscalData = true
+  ) {
     const order = await tx.order.findFirst({
       where: { id: orderId, store: { organizationId } },
       select: {
@@ -302,7 +309,7 @@ export class FiscalDocumentsService {
     const receiver = receiverWithFiscalData(
       contact,
       // A customer that was erased or merged into another has no fiscal data to copy: it must not come back in a new document
-      order.customer.erasedAt !== null || order.customer.mergedIntoId !== null
+      !withFiscalData || order.customer.erasedAt !== null || order.customer.mergedIntoId !== null
         ? null
         : await this.customerFiscalReceiver(tx, order.storeId, order.customerId)
     )
@@ -338,7 +345,9 @@ export class FiscalDocumentsService {
     if (row === null) return null
     try {
       return receiverOf(this.cipher.open(row.dataEncrypted))
-    } catch {
+    } catch (error) {
+      // The name of the error only, so a key that no longer opens rows shows in the logs
+      this.logger.error({ err: errorName(error) }, 'the fiscal data of a customer cannot be opened')
       throw new PlatformException(
         ErrorCodes.FISCAL_CUSTOMER_DATA_INVALID,
         'the fiscal data of the customer cannot be read: write it again',
@@ -1197,7 +1206,7 @@ export class FiscalDocumentsService {
           ? null
           : isNote
             ? await this.readCreditNote(tx, organizationId, doc.orderId, doc.returnId)
-            : await this.readSale(tx, organizationId, doc.orderId)
+            : await this.readSale(tx, organizationId, doc.orderId, false)
         if (isNote && inconsistent && (sale === null || ('ok' in sale && !sale.ok))) {
           throw new PlatformException(
             ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
@@ -1442,7 +1451,7 @@ export class FiscalDocumentsService {
             { reason: FiscalConflictReasons.ALREADY_REPLACED }
           )
         }
-        const sale = await this.readSale(tx, organizationId, old.orderId)
+        const sale = await this.readSale(tx, organizationId, old.orderId, false)
         if (sale === null) throw resourceNotFound('order')
         const sequenceNumber = await this.takeSequence(tx, organizationId)
         const entry = await tx.journalEntry.findFirst({

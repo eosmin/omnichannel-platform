@@ -8,7 +8,11 @@ const text = (max: number) => singleLineText(max, 1)
 // applied by the service when the data is saved
 const addressSchema = z
   .record(
-    z.string().min(1).max(FiscalCustomerDataLimits.ADDRESS_KEY_MAX_LENGTH),
+    // A field name of the provider: letters, digits and underscores, starting with a letter (no control character, no `__proto__`)
+    z
+      .string()
+      .max(FiscalCustomerDataLimits.ADDRESS_KEY_MAX_LENGTH)
+      .regex(/^[A-Za-z][A-Za-z0-9_]*$/),
     text(FiscalCustomerDataLimits.VALUE_MAX_LENGTH)
   )
   .refine(value => Object.keys(value).length <= FiscalCustomerDataLimits.ADDRESS_MAX_FIELDS, {

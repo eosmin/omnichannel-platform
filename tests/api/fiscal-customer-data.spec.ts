@@ -109,7 +109,9 @@ describe('The fiscal data of a customer (Step 4B.7b-3)', () => {
         address: ADDRESS
       })
       expect(saved.status).toBe(OK)
-      const data = (saved.body as { data: Record<string, unknown> }).data
+      // The answer of a write says whether data is kept and nothing of it: the permission to write is not the permission to read
+      expect(saved.body).toEqual({ data: { kept: true } })
+      const data = ((await get(id)).body as { data: Record<string, unknown> }).data
       expect(data).toMatchObject({
         name: 'Zq Fiscal Name',
         taxpayerType: 'company',
@@ -146,8 +148,8 @@ describe('The fiscal data of a customer (Step 4B.7b-3)', () => {
     it('merges what is sent over what is stored: a field left out stays, a field sent as null goes', async () => {
       const id = await customerA()
       await put(id, { taxId: TAX_ID, name: 'Zq Name', taxpayerType: 'person' })
-      const merged = await put(id, { name: null, economicActivity: ACTIVITY })
-      const data = (merged.body as { data: Record<string, unknown> }).data
+      expect((await put(id, { name: null, economicActivity: ACTIVITY })).status).toBe(OK)
+      const data = ((await get(id)).body as { data: Record<string, unknown> }).data
       expect(data).toMatchObject({
         name: null,
         taxpayerType: 'person',
@@ -160,7 +162,7 @@ describe('The fiscal data of a customer (Step 4B.7b-3)', () => {
       const id = await customerA()
       await put(id, { taxId: TAX_ID })
       const emptied = await put(id, { taxId: null })
-      expect((emptied.body as { data: unknown }).data).toBeNull()
+      expect(emptied.body).toEqual({ data: { kept: false } })
       expect(await owner.customerFiscalData.count({ where: { customerId: id } })).toBe(0)
 
       await put(id, { taxId: TAX_ID })
@@ -176,6 +178,8 @@ describe('The fiscal data of a customer (Step 4B.7b-3)', () => {
       expect((await put(id, {})).status).toBe(BAD_REQUEST)
       expect((await put(id, { taxId: TAX_ID, storeId: ctx.storeB.id })).status).toBe(BAD_REQUEST)
       expect((await put(id, { taxId: 'a\nb' })).status).toBe(BAD_REQUEST)
+      expect((await put(id, { address: { _hidden: 'a' } })).status).toBe(BAD_REQUEST)
+      expect((await put(id, { address: { '1line': 'a' } })).status).toBe(BAD_REQUEST)
       expect(await owner.customerFiscalData.count({ where: { customerId: id } })).toBe(0)
     })
   })
@@ -300,8 +304,10 @@ describe('The fiscal data of a customer (Step 4B.7b-3)', () => {
   describe('the audit', () => {
     it('records a change once, and the same data again records nothing', async () => {
       const id = await customerA()
+      await put(id, { taxId: TAX_ID, address: { city: 'Zq City', line1: 'Zq Street' } })
       await put(id, { taxId: TAX_ID })
-      await put(id, { taxId: TAX_ID })
+      // The same address with its keys in another order is the same data
+      await put(id, { address: { line1: 'Zq Street', city: 'Zq City' } })
       await put(id, { name: null })
       const entries = await waitForAuditEntries(
         owner,
@@ -402,9 +408,12 @@ describe('The fiscal data of a customer (Step 4B.7b-3)', () => {
       expect((await viewer.delete(ApiRoutes.fiscal.customerData.clear(id))).status).toBe(FORBIDDEN)
 
       const manager = await as('fiscal-data-manager', [Permissions.FISCAL_MANAGE_CUSTOMER_DATA])
-      expect(
-        (await manager.put(ApiRoutes.fiscal.customerData.put(id)).send({ name: 'Zq Name' })).status
-      ).toBe(OK)
+      const written = await manager
+        .put(ApiRoutes.fiscal.customerData.put(id))
+        .send({ name: 'Zq Name' })
+      expect(written.status).toBe(OK)
+      // Whoever may write does not read through the answer
+      expect(written.body).toEqual({ data: { kept: true } })
       expect((await manager.get(ApiRoutes.fiscal.customerData.get(id))).status).toBe(FORBIDDEN)
     })
 

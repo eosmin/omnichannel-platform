@@ -54,7 +54,8 @@ export class CustomerFiscalDataController {
     @Param('customerId', id()) customerId: string,
     @Body(new ZodValidationPipe(customerFiscalDataSchema)) body: CustomerFiscalDataBody,
     @Req() req: AuthenticatedRequest
-  ): Promise<{ data: MaskedCustomerFiscalData | null }> {
+  ): Promise<{ data: { kept: boolean } }> {
+    // The answer says whether data is kept and nothing of it: the permission to write is not the permission to read
     return {
       data: await this.data.put(
         organization.id,
