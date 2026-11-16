@@ -99,6 +99,7 @@ export function LedgerPanel(): ReactElement {
             value={accountId}
             onChange={next => {
               setAccountId(next)
+              setWrong(null)
               setRefusal(null)
             }}
           >

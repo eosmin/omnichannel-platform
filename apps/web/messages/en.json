@@ -6149,6 +6149,7 @@
         "ok": "{count, plural, one {# entry checked: the chain is sound.} other {# entries checked: the chain is sound.}}",
         "broken": "The chain is broken. Do not close any month and tell the accountant.",
         "breakAt": "It breaks at entry {number}:",
+        "breakOutside": "The chain does not match what was recorded:",
         "reasons": {
           "number_gap": "an entry number is missing.",
           "prev_hash_mismatch": "an entry does not follow the one before it.",

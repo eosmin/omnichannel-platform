@@ -6149,6 +6149,7 @@
         "ok": "{count, plural, one {# asiento revisado: la cadena está íntegra.} other {# asientos revisados: la cadena está íntegra.}}",
         "broken": "La cadena está rota. No cierres ningún mes y avisa a la contadora.",
         "breakAt": "Se rompe en el asiento {number}:",
+        "breakOutside": "La cadena no coincide con lo registrado:",
         "reasons": {
           "number_gap": "falta un número de asiento.",
           "prev_hash_mismatch": "un asiento no sigue al anterior.",

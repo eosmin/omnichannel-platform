@@ -7,6 +7,7 @@ import { type ReactElement, useState } from 'react'
 import { knownChainReason } from '../../lib/finance/chain-reasons'
 import { periodKeyOf } from '../../lib/finance/period-form'
 import { useVerifyFinanceChain } from '../../lib/finance/use-finance-reports'
+import { useSubmitGuard } from '../../lib/submit-guard'
 import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
@@ -18,6 +19,7 @@ export function ChainPanel(): ReactElement {
   const errorText = useErrorText()
   const { storeId } = useStore()
   const verify = useVerifyFinanceChain(storeId)
+  const guard = useSubmitGuard()
   const [refusal, setRefusal] = useState<string | null>(null)
   // The verdict is of the moment of the check: the books move after it, so the screen says when it was
   const [checkedAt, setCheckedAt] = useState<Date | null>(null)
@@ -44,10 +46,13 @@ export function ChainPanel(): ReactElement {
           disabled={verify.isPending}
           busy={verify.isPending}
           onClick={() => {
+            // One check at a time: the api refuses a second one while the first runs, and its answer would hide the verdict
+            if (!guard.enter()) return
             setRefusal(null)
             verify.mutate(undefined, {
               onSuccess: () => setCheckedAt(new Date()),
-              onError: error => setRefusal(errorText(error))
+              onError: error => setRefusal(errorText(error)),
+              onSettled: guard.leave
             })
           }}
         >
@@ -81,7 +86,10 @@ export function ChainPanel(): ReactElement {
           )}
           {result.break === null ? null : (
             <p>
-              {t('breakAt', { number: result.break.number })}{' '}
+              {/* A break found outside the chain (the head moved, a frozen head is gone) names no entry of its own */}
+              {result.break.entryId === ''
+                ? t('breakOutside')
+                : t('breakAt', { number: result.break.number })}{' '}
               {reason === null ? t('reasons.unknown') : t(`reasons.${reason}`)}
             </p>
           )}

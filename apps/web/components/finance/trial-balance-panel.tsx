@@ -41,6 +41,7 @@ export function TrialBalancePanel(): ReactElement {
     periodKeyOf(b).localeCompare(periodKeyOf(a))
   )
   // The month the person chose, else the newest that has started (a month opened ahead of time has nothing in it yet)
+  // By the UTC day, like the close: the books have no zone of their own
   const today = new Date().toISOString().slice(0, 10)
   const period =
     sorted.find(item => item.id === chosen) ??
