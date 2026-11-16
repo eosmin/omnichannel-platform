@@ -6164,7 +6164,8 @@
         "memo": "Escribe para qué es este asiento.",
         "lines": "Un asiento necesita al menos dos líneas.",
         "line": "Línea {number}: elige una cuenta y escribe un monto en un solo lado, con a lo más dos decimales.",
-        "balance": "El debe y el haber no son iguales."
+        "balance": "El debe y el haber no son iguales.",
+        "total": "El total del asiento es más de lo que los libros pueden guardar."
       },
       "submit": "Registrar asiento",
       "cancel": "Cancelar",

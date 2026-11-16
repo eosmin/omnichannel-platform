@@ -6164,7 +6164,8 @@
         "memo": "Write what this entry is for.",
         "lines": "An entry needs at least two lines.",
         "line": "Line {number}: pick an account and write an amount on only one side, with at most two decimals.",
-        "balance": "The debits and the credits are not equal."
+        "balance": "The debits and the credits are not equal.",
+        "total": "The total of the entry is more than the books can hold."
       },
       "submit": "Post entry",
       "cancel": "Cancel",

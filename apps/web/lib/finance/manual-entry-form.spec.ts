@@ -55,6 +55,44 @@ describe('manualEntryProblem', () => {
     })
   })
 
+  it('reads a typed zero on the other side as nothing, and refuses a total no line can hold', () => {
+    const draft = balanced()
+    const [first, second] = draft.lines as [ManualLineDraft, ManualLineDraft]
+    expect(
+      manualEntryProblem({
+        ...draft,
+        lines: [
+          { ...first, credit: '0' },
+          { ...second, debit: '0.00' }
+        ]
+      })
+    ).toBeNull()
+    const huge = {
+      ...draft,
+      lines: [
+        { ...first, debit: '21474836.47' },
+        { ...second, credit: '21474836.47' }
+      ]
+    }
+    expect(manualEntryProblem(huge)).toBeNull()
+    const over = {
+      ...draft,
+      lines: [
+        { ...first, debit: '21474836.47' },
+        { ...first, key: 'c', debit: '0.01' },
+        { ...second, credit: '21474836.48' }
+      ]
+    }
+    expect(manualEntryProblem(over)).toEqual({ field: ManualEntryFields.TOTAL, index: null })
+  })
+
+  it('counts a memo in code points like the api', () => {
+    expect(manualEntryProblem({ ...balanced(), memo: '😀'.repeat(300) })).toBeNull()
+    expect(manualEntryProblem({ ...balanced(), memo: '😀'.repeat(501) })?.field).toBe(
+      ManualEntryFields.MEMO
+    )
+  })
+
   it('refuses an entry whose sides differ by one cent', () => {
     const draft = balanced()
     const [first, second] = draft.lines as [ManualLineDraft, ManualLineDraft]

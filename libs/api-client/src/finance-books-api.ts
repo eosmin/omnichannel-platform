@@ -229,6 +229,8 @@ export interface RecordFinanceTransactionInput {
   categoryAccountId?: string
   taxRateId?: string
   taxCreditable?: boolean
+  // The store dimension: kept from the transaction that is replaced
+  storeId?: string
   documentNumber?: string
   memo?: string
 }

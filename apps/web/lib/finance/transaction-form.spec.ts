@@ -52,6 +52,8 @@ const rate = (over: Partial<FinanceTaxRateView> = {}): FinanceTaxRateView =>
   }) as FinanceTaxRateView
 
 const TODAY = '2026-11-16'
+// The last day the api accepts: a day ahead of its own today
+const LATEST = '2026-11-17'
 const expense = (over: Partial<TransactionDraft> = {}): TransactionDraft => ({
   ...emptyTransactionDraft('expense', TODAY),
   amount: '11.30',
@@ -74,24 +76,27 @@ describe('the accounts each field offers', () => {
 
 describe('transactionProblem', () => {
   it('accepts an expense with a source and a category', () => {
-    expect(transactionProblem(expense(), TODAY, [], 'half_up')).toBeNull()
+    expect(transactionProblem(expense(), LATEST, [], 'half_up')).toBeNull()
   })
 
   it.each([
     ['a date that is not a day', { occurredOn: '2026-02-30' }, TransactionFields.DATE],
     ['a date more than a day ahead', { occurredOn: '2026-11-18' }, TransactionFields.DATE],
+    ['a tax rate that was switched off', { taxRateId: 'off' }, TransactionFields.TAX],
     ['no amount', { amount: '' }, TransactionFields.AMOUNT],
     ['an amount of zero', { amount: '0' }, TransactionFields.AMOUNT],
     ['no source', { fromAccountId: '' }, TransactionFields.FROM],
     ['no category', { categoryAccountId: '' }, TransactionFields.CATEGORY],
     ['a creditable tax with no rate', { taxCreditable: true }, TransactionFields.TAX]
   ])('refuses %s', (_name, over, field) => {
-    expect(transactionProblem(expense(over), TODAY, [], 'half_up')).toBe(field)
+    expect(
+      transactionProblem(expense(over), LATEST, [rate({ id: 'off', active: false })], 'half_up')
+    ).toBe(field)
   })
 
   it('accepts a day ahead and refuses the same day of the next month', () => {
     expect(
-      transactionProblem(expense({ occurredOn: '2026-11-17' }), TODAY, [], 'half_up')
+      transactionProblem(expense({ occurredOn: '2026-11-17' }), LATEST, [], 'half_up')
     ).toBeNull()
   })
 
@@ -102,11 +107,11 @@ describe('transactionProblem', () => {
       fromAccountId: 'cash',
       toAccountId: 'bank'
     }
-    expect(transactionProblem(transfer, TODAY, [], 'half_up')).toBeNull()
-    expect(transactionProblem({ ...transfer, toAccountId: 'cash' }, TODAY, [], 'half_up')).toBe(
+    expect(transactionProblem(transfer, LATEST, [], 'half_up')).toBeNull()
+    expect(transactionProblem({ ...transfer, toAccountId: 'cash' }, LATEST, [], 'half_up')).toBe(
       TransactionFields.TO
     )
-    expect(transactionProblem({ ...transfer, toAccountId: '' }, TODAY, [], 'half_up')).toBe(
+    expect(transactionProblem({ ...transfer, toAccountId: '' }, LATEST, [], 'half_up')).toBe(
       TransactionFields.TO
     )
   })
@@ -117,14 +122,19 @@ describe('transactionProblem', () => {
     expect(
       transactionProblem(
         expense({ amount: '0.01', taxRateId: 'vat' }),
-        TODAY,
+        LATEST,
         [everything],
         'half_up'
       )
     ).toBe(TransactionFields.TAX)
     // The same cent rounded down is no tax at all
     expect(
-      transactionProblem(expense({ amount: '0.01', taxRateId: 'vat' }), TODAY, [everything], 'down')
+      transactionProblem(
+        expense({ amount: '0.01', taxRateId: 'vat' }),
+        LATEST,
+        [everything],
+        'down'
+      )
     ).toBeNull()
   })
 })
@@ -223,6 +233,24 @@ describe('transactionDraftOf and permissionOfKind', () => {
     } as never)
     expect(draft.amount).toBe('11.30')
     expect(draft.toAccountId).toBe('')
+  })
+
+  it('keeps the store of the transaction it replaces and sends it', () => {
+    const draft = transactionDraftOf({
+      kind: 'expense',
+      occurredOn: TODAY,
+      amountCents: 100,
+      storeId: 'store-1',
+      fromAccountId: 'cash',
+      toAccountId: null,
+      categoryAccountId: 'rent',
+      taxRateId: null,
+      taxCreditable: false,
+      documentNumber: null,
+      memo: null
+    } as never)
+    expect(recordTransactionInputOf(draft, 'once-per-form').storeId).toBe('store-1')
+    expect(recordTransactionInputOf(expense(), 'once-per-form')).not.toHaveProperty('storeId')
   })
 
   it('asks a transfer for the permission to move money and the other kinds for the bookkeeper', () => {

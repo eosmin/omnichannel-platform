@@ -14,7 +14,7 @@ import {
 import { taxOfAmount } from '@platform/core/finance'
 
 import { cashAccountsOf, postableAccountsOf } from './account-form'
-import { isCalendarDay, nextDay } from './dates'
+import { isCalendarDay } from './dates'
 import { centsOfDecimalText, decimalOfCents } from './money'
 
 // The form of an expense, an income or a transfer registered by hand (TDD_18 §4.3). The amount is what was paid or received, tax
@@ -31,6 +31,8 @@ export interface TransactionDraft {
   taxCreditable: boolean
   documentNumber: string
   memo: string
+  // The store dimension of a transaction written by another client: kept when it is replaced, never chosen here
+  storeId: string
 }
 
 export const TransactionFields = {
@@ -55,7 +57,8 @@ export const emptyTransactionDraft = (kind: string, today: string): TransactionD
   taxRateId: '',
   taxCreditable: false,
   documentNumber: '',
-  memo: ''
+  memo: '',
+  storeId: ''
 })
 
 // The draft of the transaction that replaces another: the same content, to be changed
@@ -69,7 +72,8 @@ export const transactionDraftOf = (transaction: FinanceTransactionView): Transac
   taxRateId: transaction.taxRateId ?? '',
   taxCreditable: transaction.taxCreditable,
   documentNumber: transaction.documentNumber ?? '',
-  memo: transaction.memo ?? ''
+  memo: transaction.memo ?? '',
+  storeId: transaction.storeId ?? ''
 })
 
 // What a kind takes, and so what its form shows
@@ -140,14 +144,14 @@ export function taxPreviewOf(
   })
 }
 
-// The first field that is wrong, or null. `today` is the day of the person's clock: the api accepts up to a day ahead of its own.
+// The first field that is wrong, or null. `latestDay` is the last day the api accepts: a day ahead of ITS today, which is the UTC day.
 export function transactionProblem(
   draft: TransactionDraft,
-  today: string,
+  latestDay: string,
   rates: readonly FinanceTaxRateView[],
   rounding: string
 ): TransactionField | null {
-  if (!isCalendarDay(draft.occurredOn) || draft.occurredOn > nextDay(today)) {
+  if (!isCalendarDay(draft.occurredOn) || draft.occurredOn > latestDay) {
     return TransactionFields.DATE
   }
   if (centsOfDecimalText(draft.amount) === null) return TransactionFields.AMOUNT
@@ -163,14 +167,17 @@ export function transactionProblem(
   if (takesCreditableTax(draft.kind) && draft.taxCreditable && draft.taxRateId === '') {
     return TransactionFields.TAX
   }
+  // A rate that was switched off since is refused by the api (it stays in the list only so that the select shows its value)
+  if (rates.some(rate => rate.id === draft.taxRateId && !rate.active)) return TransactionFields.TAX
   const tax = taxPreviewOf(draft, rates, rounding)
   const cents = centsOfDecimalText(draft.amount)
   // The net that is left after the tax is a positive amount, because a line of the entry takes it
   if (tax !== null && cents !== null && tax > 0 && tax >= cents) return TransactionFields.TAX
-  if (draft.documentNumber.trim().length > FinanceLimits.DOCUMENT_NUMBER_MAX_LENGTH) {
+  if (Array.from(draft.documentNumber.trim()).length > FinanceLimits.DOCUMENT_NUMBER_MAX_LENGTH) {
     return TransactionFields.DOCUMENT_NUMBER
   }
-  if (draft.memo.trim().length > FinanceLimits.MEMO_MAX_LENGTH) return TransactionFields.MEMO
+  if (Array.from(draft.memo.trim()).length > FinanceLimits.MEMO_MAX_LENGTH)
+    return TransactionFields.MEMO
   return null
 }
 
@@ -195,6 +202,7 @@ export function recordTransactionInputOf(
   if (takesCreditableTax(draft.kind) && draft.taxRateId !== '') {
     input.taxCreditable = draft.taxCreditable
   }
+  if (draft.storeId !== '') input.storeId = draft.storeId
   if (draft.documentNumber.trim() !== '') input.documentNumber = draft.documentNumber.trim()
   if (draft.memo.trim() !== '') input.memo = draft.memo.trim()
   return input

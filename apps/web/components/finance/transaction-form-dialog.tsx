@@ -11,7 +11,7 @@ import type {
 import { FinanceTransactionKind } from '@platform/core/domain'
 
 import { accountLabelsOf } from '../../lib/finance/account-form'
-import { dayOfClock } from '../../lib/finance/dates'
+import { dayOfClock, dayOfUtcClock, nextDay } from '../../lib/finance/dates'
 import { percentOfBps } from '../../lib/finance/money'
 import {
   categoryAccountsOf,
@@ -131,6 +131,8 @@ function TransactionForm({
   const replaceTransaction = useReplaceFinanceTransaction(storeId)
   const upload = useFinanceReceiptUpload(storeId)
   const [today] = useState(() => dayOfClock(new Date()))
+  // The api accepts a day ahead of its own today, which is the UTC day
+  const [latestDay] = useState(() => nextDay(dayOfUtcClock(new Date())))
   const [draft, setDraft] = useState<TransactionDraft>(() =>
     replace === null
       ? emptyTransactionDraft(kinds[0] ?? FinanceTransactionKind.EXPENSE, today)
@@ -210,7 +212,7 @@ function TransactionForm({
 
   const submit = (event: FormEvent): void => {
     event.preventDefault()
-    const problem = transactionProblem(draft, today, rates, rounding)
+    const problem = transactionProblem(draft, latestDay, rates, rounding)
     if (problem !== null) {
       setWrong(problem)
       return

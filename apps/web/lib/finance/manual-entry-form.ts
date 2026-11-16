@@ -29,7 +29,8 @@ export const ManualEntryFields = {
   MEMO: 'memo',
   LINES: 'lines',
   LINE: 'line',
-  BALANCE: 'balance'
+  BALANCE: 'balance',
+  TOTAL: 'total'
 } as const
 export type ManualEntryField = (typeof ManualEntryFields)[keyof typeof ManualEntryFields]
 
@@ -55,7 +56,12 @@ export const emptyManualEntryDraft = (today: string, keys: [string, string]): Ma
 })
 
 // The cents of one side of a line: nothing typed is 0, a typed amount that is not one is null
-const sideOf = (text: string): number | null => (text.trim() === '' ? 0 : centsOfDecimalText(text))
+// An empty side and a typed zero ("0", "0.00") are both nothing: a person fills one side and may write 0 on the other
+const sideOf = (text: string): number | null =>
+  text.trim() === '' || /^0+(?:[.,]0{1,2})?$/.test(text.trim()) ? 0 : centsOfDecimalText(text)
+
+// The api counts a memo in code points, not in UTF-16 units: an emoji is one
+const lengthOf = (text: string): number => Array.from(text).length
 
 export interface ManualEntryTotals {
   debitCents: number
@@ -76,7 +82,7 @@ export function manualEntryTotals(lines: readonly ManualLineDraft[]): ManualEntr
 export function manualEntryProblem(draft: ManualEntryDraft): ManualEntryProblem | null {
   if (!isCalendarDay(draft.entryDate)) return { field: ManualEntryFields.DATE, index: null }
   const memo = draft.memo.trim()
-  if (memo === '' || memo.length > FinanceLimits.MEMO_MAX_LENGTH) {
+  if (memo === '' || lengthOf(memo) > FinanceLimits.MEMO_MAX_LENGTH) {
     return { field: ManualEntryFields.MEMO, index: null }
   }
   if (draft.lines.length < 2 || draft.lines.length > FinanceLimits.MAX_LINES_PER_ENTRY) {
@@ -89,7 +95,7 @@ export function manualEntryProblem(draft: ManualEntryDraft): ManualEntryProblem 
     if (
       line.accountId === '' ||
       !oneSide ||
-      line.memo.trim().length > FinanceLimits.MEMO_MAX_LENGTH
+      lengthOf(line.memo.trim()) > FinanceLimits.MEMO_MAX_LENGTH
     ) {
       return { field: ManualEntryFields.LINE, index }
     }
@@ -97,6 +103,10 @@ export function manualEntryProblem(draft: ManualEntryDraft): ManualEntryProblem 
   const totals = manualEntryTotals(draft.lines)
   if (totals.debitCents !== totals.creditCents)
     return { field: ManualEntryFields.BALANCE, index: null }
+  // The api refuses an entry whose total is more than a line can hold (a sum of lines passes the 32 bits of one)
+  if (totals.debitCents > FinanceLimits.MAX_LINE_CENTS) {
+    return { field: ManualEntryFields.TOTAL, index: null }
+  }
   return null
 }
 

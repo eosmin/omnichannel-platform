@@ -13,6 +13,10 @@ export function isCalendarDay(text: string): boolean {
 export const dayOfClock = (clock: Date): string =>
   `${String(clock.getFullYear())}-${String(clock.getMonth() + 1).padStart(2, '0')}-${String(clock.getDate()).padStart(2, '0')}`
 
+// The UTC day of a clock: the day the api reckons its limits from
+export const dayOfUtcClock = (clock: Date): string =>
+  `${String(clock.getUTCFullYear()).padStart(4, '0')}-${String(clock.getUTCMonth() + 1).padStart(2, '0')}-${String(clock.getUTCDate()).padStart(2, '0')}`
+
 // The day after a day, by the calendar (no zone in it); the api accepts a transaction dated up to a day ahead of its own today
 export function nextDay(day: string): string {
   const [year, month, date] = day.split('-').map(Number)
