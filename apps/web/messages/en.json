@@ -2945,6 +2945,9 @@
         "taxes": "Taxes",
         "periods": "Periods",
         "settings": "Settings",
+        "suppliers": "Suppliers",
+        "purchases": "Purchases",
+        "payables": "Payables",
         "reconciliation": "Bank reconciliation"
       }
     },
@@ -6032,6 +6035,317 @@
         "pricesIncludeTax": "The prices of this store already include the tax",
         "pricesIncludeTaxHint": "It only changes how the tax is separated from the price of what is sold from now on.",
         "saved": "Preference saved."
+      }
+    },
+    "purchases": {
+      "status": {
+        "draft": "Draft",
+        "ordered": "Ordered",
+        "partially_received": "Partly received",
+        "received": "Received",
+        "closed": "Closed",
+        "cancelled": "Cancelled"
+      },
+      "suppliers": {
+        "title": "Suppliers",
+        "description": "Who the business buys from, with the payment terms of each and what is owed to them.",
+        "new": "New supplier",
+        "search": "Search by name",
+        "includeInactive": "Show suppliers that are switched off",
+        "empty": "There are no suppliers yet. Add the first one to start a purchase order.",
+        "noMatch": "No supplier matches that name.",
+        "inactive": "Switched off",
+        "details": "Details",
+        "edit": "Edit",
+        "loadMore": "Load more"
+      },
+      "supplierDetail": {
+        "title": "Supplier",
+        "description": "What is owed to this supplier and the payments made to it.",
+        "terms": "Payment terms: {days, plural, one {# day} other {# days}}",
+        "billed": "Billed",
+        "paid": "Paid",
+        "open": "Owed",
+        "overdue": "Past due",
+        "edit": "Edit supplier",
+        "pay": "Register a payment",
+        "payments": "Payments",
+        "noPayments": "No payment has been made to this supplier.",
+        "voided": "Voided",
+        "void": "Void",
+        "loadMore": "Load more"
+      },
+      "supplierDialog": {
+        "createTitle": "New supplier",
+        "createDescription": "The name is the only required field. The payment terms set the due day of each bill.",
+        "editTitle": "Edit supplier",
+        "editDescription": "A change applies to what is bought from now on, never to the bills already in the books.",
+        "formLabel": "Supplier",
+        "cancel": "Cancel",
+        "create": "Create supplier",
+        "save": "Save changes",
+        "created": "Supplier {name} created.",
+        "saved": "Supplier saved.",
+        "fields": {
+          "name": "Name",
+          "taxId": "Tax ID (NIT or NRC)",
+          "taxIdHint": "Written as the supplier's document shows it. Nothing is checked about its shape.",
+          "contactName": "Contact person",
+          "email": "Email",
+          "phone": "Phone",
+          "paymentTermsDays": "Payment terms (days)",
+          "paymentTermsHint": "Days between receiving the goods and the day the bill is due. 0 is paid on receipt.",
+          "payableAccount": "Account for what is owed",
+          "payableAccountHint": "A liability account. It cannot change once the supplier has bills.",
+          "payableAccountDefault": "The one of the organization",
+          "active": "Active",
+          "activeHint": "A supplier that is switched off is not offered for new purchase orders; its bills and payments stay."
+        },
+        "problems": {
+          "name": "Write the name, up to 150 characters.",
+          "taxId": "The tax ID is too long.",
+          "contactName": "The name of the contact is too long.",
+          "email": "That is not an email address.",
+          "phone": "The phone is too long.",
+          "paymentTermsDays": "Write a whole number of days, from 0 to 365."
+        }
+      },
+      "payment": {
+        "title": "Register a payment",
+        "description": "A payment to {supplier}. It posts to the books and lowers what is owed.",
+        "formLabel": "Payment to a supplier",
+        "owedInAll": "Owed to this supplier in all: {amount}.",
+        "owedOnBill": "Bill {bill}: {amount} still open.",
+        "needsBooks": "Choosing the account the money leaves needs permission to read the books (finance:view). Ask an administrator.",
+        "fields": {
+          "account": "Paid from",
+          "accountHint": "An account of cash, a bank or a wallet.",
+          "pickAccount": "Choose an account…",
+          "amount": "Amount (USD)",
+          "amountHint": "Never more than what is open.",
+          "paidOn": "Paid on",
+          "dateHint": "Year-month-day, for example 2026-11-16.",
+          "reference": "Reference (optional)"
+        },
+        "problems": {
+          "paidFromAccountId": "Choose the account the money leaves.",
+          "amount": "Write an amount above 0 and not above what is open, with at most two decimals.",
+          "paidOn": "Write a real day as year-month-day.",
+          "reference": "The reference is too long."
+        },
+        "cancel": "Cancel",
+        "submit": "Register payment",
+        "done": "Payment to {supplier} registered.",
+        "accountsFailed": "The accounts could not be read. Close this and try again."
+      },
+      "voidPayment": {
+        "title": "Void this payment",
+        "description": "The payment stays in the journal and a reversing entry is posted. The bill is owed again.",
+        "reason": "Reason",
+        "submit": "Void payment",
+        "confirmTitle": "Void this payment?",
+        "confirmDescription": "This cannot be undone: the reversal stays in the books for good and the bill is owed again.",
+        "confirm": "Void payment",
+        "done": "Payment voided."
+      },
+      "reason": {
+        "required": "Write the reason.",
+        "tooLong": "The reason is too long.",
+        "cancel": "Cancel"
+      },
+      "picker": {
+        "search": "Add a product",
+        "chooseVariant": "{name} has variants. Choose the one bought.",
+        "hint": "Type at least {count} letters of the name or the SKU.",
+        "failed": "The search failed. Try again.",
+        "searching": "Searching…",
+        "none": "No product matches."
+      },
+      "lines": {
+        "formLabel": "Lines of the purchase order",
+        "saved": "Lines saved.",
+        "empty": "No lines yet. Search for a product to add the first one.",
+        "remove": "Remove {name}",
+        "quantity": "Units",
+        "unitCost": "Cost of one unit (USD)",
+        "taxRate": "Tax",
+        "noTax": "No tax",
+        "wrongQuantity": "Write a whole number of units, 1 or more.",
+        "wrongCost": "Write the cost with at most two decimals.",
+        "subtotal": "Subtotal",
+        "tax": "Tax",
+        "total": "Total",
+        "taxUnknown": "At receipt",
+        "save": "Save lines",
+        "percent": "{percent} %",
+        "tooManyLines": "A purchase order has at most {max} lines."
+      },
+      "newOrder": {
+        "title": "New purchase order",
+        "description": "It is made as a draft. You choose its lines on the next page, and nothing is promised to the supplier until you mark it as ordered.",
+        "formLabel": "New purchase order",
+        "fields": {
+          "supplier": "Supplier",
+          "pickSupplier": "Choose a supplier…",
+          "warehouse": "Warehouse",
+          "pickWarehouse": "Choose a warehouse…",
+          "warehouseHint": "Where the goods will be received.",
+          "expectedOn": "Expected on (optional)",
+          "dateHint": "Year-month-day, for example 2026-11-16.",
+          "notes": "Notes (optional)"
+        },
+        "problems": {
+          "supplierId": "Choose the supplier.",
+          "warehouseId": "Choose the warehouse.",
+          "expectedOn": "Write a real day as year-month-day.",
+          "notes": "The notes are too long."
+        },
+        "loadFailed": "The suppliers or the warehouses could not be read. Close this and try again.",
+        "cancel": "Cancel",
+        "create": "Create draft",
+        "created": "Purchase order {number} created."
+      },
+      "orders": {
+        "title": "Purchases",
+        "description": "The orders to suppliers, with what arrived and what was paid.",
+        "new": "New purchase order",
+        "filters": {
+          "status": "Status",
+          "allStatuses": "All",
+          "supplier": "Supplier",
+          "allSuppliers": "All"
+        },
+        "empty": "There are no purchase orders for this filter.",
+        "unknownSupplier": "Unknown supplier",
+        "summary": "{lines, plural, one {# line} other {# lines}} · {date}",
+        "open": "Open",
+        "loadMore": "Load more"
+      },
+      "order": {
+        "title": "Purchase order",
+        "back": "Purchases",
+        "summary": "{supplier} · to {warehouse}",
+        "notOrdered": "Not ordered yet",
+        "orderedOn": "Ordered on {date}",
+        "expectedOn": "expected on {date}",
+        "markOrdered": "Mark as ordered",
+        "markedOrdered": "Marked as ordered.",
+        "receive": "Receive goods",
+        "close": "Close short",
+        "cancel": "Cancel order",
+        "closed": "Purchase order closed.",
+        "cancelled": "Purchase order cancelled.",
+        "linesTitle": "Lines",
+        "lineDetail": "{received} of {ordered} received · {cost} each · {tax}",
+        "noTax": "no tax",
+        "subtotal": "Subtotal",
+        "tax": "Tax",
+        "taxUnknown": "At receipt",
+        "total": "Total",
+        "billsTitle": "Bills",
+        "noBills": "Nothing has been received yet, so there is no bill.",
+        "noDocument": "No supplier document",
+        "billDates": "Received {received} · due {due}",
+        "billMoney": "Subtotal {subtotal} · tax {tax} · total {total} · open {open}",
+        "taxNotCredited": "tax not credited",
+        "pay": "Pay",
+        "paymentsTitle": "Payments",
+        "noPayments": "No payment has been made on this order.",
+        "voided": "voided",
+        "loadMore": "Load more",
+        "unknownSupplier": "Unknown supplier",
+        "unknownWarehouse": "Unknown warehouse",
+        "percent": "{percent} %"
+      },
+      "receive": {
+        "title": "Receive {number}",
+        "description": "Say how many units of each line arrive now. The cost and the tax are the ones of the order. This makes the bill, puts the units in the warehouse and posts the entry.",
+        "formLabel": "Receive goods",
+        "progress": "{received} of {ordered} received",
+        "problems": {
+          "receivedOn": "Write a real day as year-month-day.",
+          "supplierDocumentNumber": "The document number is too long.",
+          "quantity": "Write a whole number from 0 to {max}.",
+          "nothing": "Write the units of at least one line."
+        },
+        "fields": {
+          "receivedOn": "Received on",
+          "dateHint": "Year-month-day, for example 2026-11-16.",
+          "document": "Supplier document number",
+          "documentHint": "The number of the invoice or the tax credit document. The tax is credited only against a document.",
+          "creditTax": "Credit the tax as input VAT",
+          "creditTaxHint": "With the box off, or with no document number, the tax is booked as a cost."
+        },
+        "subtotal": "Subtotal",
+        "tax": "Tax",
+        "taxUnknown": "Computed on save",
+        "total": "Total",
+        "cancel": "Cancel",
+        "submit": "Receive",
+        "done": "Goods of {number} received."
+      },
+      "closeOrder": {
+        "reason": "Reason (optional)",
+        "close": {
+          "title": "Close {number} short",
+          "description": "The units that never arrived are given up and the order is finished. What was received stays in the books.",
+          "submit": "Close order"
+        },
+        "cancel": {
+          "title": "Cancel {number}",
+          "description": "Only an order that was never received can be cancelled.",
+          "submit": "Cancel order"
+        }
+      },
+      "payables": {
+        "title": "Payables",
+        "description": "Every bill with something open, with its due day, and what each supplier is owed.",
+        "filters": {
+          "supplier": "Supplier",
+          "allSuppliers": "All",
+          "overdueOnly": "Only bills past their due day"
+        },
+        "unknownSupplier": "Supplier",
+        "totals": "Owed {open} · past due {overdue}",
+        "empty": "Nothing is owed.",
+        "overdueDays": "{days, plural, one {# day} other {# days}} past due",
+        "billLine": "Document {document} · due {due}",
+        "noDocument": "none",
+        "open": "{open} open of {total}",
+        "openOrder": "Open order",
+        "pay": "Pay"
+      },
+      "conflicts": {
+        "supplier_limit": "The organization has reached the number of suppliers it may have.",
+        "supplier_name_in_use": "Another supplier already has that name.",
+        "supplier_inactive": "That supplier is switched off. Switch it on to buy from it.",
+        "supplier_payable_account_locked": "The account for what is owed cannot change: this supplier already has bills or payments.",
+        "order_not_draft": "Only a draft can be changed.",
+        "order_needs_lines": "The order needs at least one line.",
+        "order_has_receipts": "An order with goods received cannot be cancelled.",
+        "purchase_key_reused": "This request was already sent with other content. Close the form and start again.",
+        "line_reference_invalid": "A product, variant or tax of a line is not usable (it may be switched off).",
+        "product_not_tracked": "A line names a product whose stock is not tracked: a purchase receives units.",
+        "line_store_not_visible": "A line belongs to a store you do not belong to.",
+        "document_number_in_use": "That supplier document number is already used on another order.",
+        "payment_exceeds_balance": "The payment is above what is owed to this supplier.",
+        "payment_exceeds_receipt": "The payment is above what is open on that bill.",
+        "payment_already_voided": "This payment was already voided.",
+        "entry_owned_by_purchase": "This entry belongs to a purchase: change it from the purchase."
+      },
+      "rules": {
+        "quantity": "The units of a line are not valid.",
+        "unit_cost": "The cost of a line is not valid.",
+        "line_total_too_big": "A line is above the largest amount a line may hold.",
+        "receipt_total_too_big": "The bill is above the largest amount the books take.",
+        "no_lines": "There is nothing to receive.",
+        "tax_rate_inactive": "A tax of a line is switched off.",
+        "date_in_future": "The day is too far ahead.",
+        "creditable_needs_document": "The tax is credited only with the supplier's document number.",
+        "amount": "The amount is not valid.",
+        "bill_required": "Choose the bill this payment is for.",
+        "payable_account_type": "The account for what is owed must be a liability account.",
+        "from_not_cash": "The account the money leaves must be one of cash, a bank or a wallet."
       }
     },
     "reconciliation": {
