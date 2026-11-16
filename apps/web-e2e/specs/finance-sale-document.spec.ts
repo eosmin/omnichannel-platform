@@ -152,7 +152,12 @@ test.describe('Finance → a sale, its fiscal document and its entry', () => {
     await page.waitForURL(/\/s\/[^/]+\//)
     await page.goto(AppPaths.finance.vat)
     await expect(page.getByRole('heading', { name: finance.vat.title, level: 1 })).toBeVisible()
-    await expect(page.getByTestId('finance-vat')).toContainText(/\$2\.60(?!\d)/)
+    const vat = page.getByTestId('finance-vat')
+    const form = vat.getByRole('form', { name: finance.statementsCommon.formLabel })
+    await form.getByLabel(finance.statementsCommon.from, { exact: true }).fill('2026-01-01')
+    await form.getByLabel(finance.statementsCommon.to, { exact: true }).fill(todayIso())
+    await form.getByRole('button', { name: finance.statementsCommon.show, exact: true }).click()
+    await expect(vat).toContainText(/\$2\.60(?!\d)/)
   })
 
   test('the accepted document is voided with its reason and made again', async ({ page }) => {
