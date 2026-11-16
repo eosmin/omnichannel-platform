@@ -1336,7 +1336,7 @@ routes. Never stacked: 4B.2b starts from `main` after 4B.2a is merged.
 `FINANCE_POSTING_FAILED` (4B.6), `PURCHASE_ORDER_RECEIVED` (4B.5) and the fiscal ones (4B.7), the four metrics (4B.6 and 4B.8), the
 audit actions of purchases, taxes, periods, exports and fiscal documents (their steps), the upload purpose `finance_document` (4B.4),
 the entry builders of each event of `TDD_18 §4.2` (4B.6), the `finance:`/`fiscal:` prefixes of `PermissionsOfUnbuiltAreas` (a step
-that reads every permission of one prefix removes it; 4B.9 at the latest), and the `finance.pricesIncludeTax` preference (4B.3).
+that reads every permission of one prefix removes it; `finance:` left in 4B.9a-1, three names stay), and the `finance.pricesIncludeTax` preference (4B.3).
 **Decisions of PR 4B.2a (rule 12):** (1) the hash covers the memo, the key, the author and the origin besides what `TDD_18 §11` lists, so
 an edit behind the application is detected (rejected: the minimal form; costs nothing); (2) the counter and the head of the chain are
 moved by a trigger of the entry (and guarded against any direct change), not by the service, so they cannot drift from the journal
@@ -1868,22 +1868,88 @@ model of a connection and the prepaid purchase and consumption of guides: an acc
 swapping in the real provider needs no change outside `libs/fiscal/sv`.
 
 ### Step 4B.8 — Reports, monthly close and the auditor's export
-- [ ] The reports of `TDD_18 §10` (balances, trial balance, ledger, journal, income statement and balance sheet by store, cash flow,
-      payables and receivables with age, VAT, margin by product reconciled with the ledger) and the CSV exports through `GENERATE_EXPORT`
-      (`FINANCE_JOURNAL`, `FINANCE_LEDGER`, `FINANCE_TRIAL_BALANCE`, `FINANCE_VAT`)
-- [ ] Close and reopen (`TDD_18 §5`): the preconditions, the lock, the frozen hash head, "late postings" in the period view; `VERIFY_LEDGER_CHAIN`
-- [ ] The legal books and the VAT return data in the layout the accountant confirms (debt (b)); the fiscal year if not the calendar one
-- [ ] Tests: statements balance against the trial balance, a closed month does not move when a late posting arrives, the close refuses with
-      pending postings, the chain detects a tampered row (a test that edits the table with the owner role), the export has no formula injection
+Delivered in two PRs: **4B.8a** (close and reopen, the check of the hash chain, the trial balance, the ledger of an account, the auditor's CSV
+files) and **4B.8b** (the statements and the rest of the reports, the daily reconciliation and the weekly job of the chain). A PR too big to review
+as one (`CLAUDE.md`, "One PR per step"): the close and the chain are the high-risk part and go first.
+- [x] **4B.8a** The trial balance of a period (by store too) and the ledger of an account with a running balance, paged (`finance/reports/trial-balance`,
+      `finance/reports/ledger`); the CSV files of the journal (a row per line with everything the hash covers), of the ledger and of the trial balance
+      (`finance/reports/*.csv`), audited (`FINANCE_EXPORTED`), with the formula guard of the other exports
+- [ ] **4B.8b** The reports of `TDD_18 §10` still to come: income statement and balance sheet by store, cash flow, payables and receivables with age,
+      margin by product reconciled with the ledger, the CSV of the VAT report through the audited path; and the CSV exports through `GENERATE_EXPORT`
+      if the owner wants them as stored files
+- [x] **4B.8a** Close and reopen (`TDD_18 §5`): the preconditions (in order, ended, no failed posting, the period balances from its lines and from the
+      balances the database keeps), the lock, the frozen hash head, who/when/why of a reopen, the events `FINANCE_PERIOD_CLOSED` and
+      `FINANCE_PERIOD_REOPENED`; the check of the chain on demand (`finance/reports/verify-chain`: every hash, every `prevHash`, the head of the settings,
+      the head each closed period froze)
+- [ ] **4B.8b** `VERIFY_LEDGER_CHAIN` weekly as a job, `RECONCILE_FINANCE` daily (balances against the lines, inventory against its value, receivables
+      against the open shipments, each fiscal document against its entry), their metrics and alerts, and "late postings" in the period view
+- [ ] **4B.8b** The legal books and the VAT return data in the layout the accountant confirms (debt (b)); the fiscal year if not the calendar one
+- [x] Tests: the close refuses a month that has not ended, one out of order and one with a failed posting; a closed month's trial balance does not move when
+      a late entry arrives; the reopen is for the latest month only and records who, when and why; the chain detects a tampered row (the owner role with the
+      triggers off, a figure and a memo); the CSV of the journal verifies against the chain with no other input; the CSV has no formula injection;
+      cross-organization cases (period, account, file) and the isolation case of the close in `tenant-isolation.spec`
 **TDD:** `TDD_18 §5`, `§10`, `§11`, `TDD_07 §6.6`
 **Done when:** a month is closed and locked, the statements and the VAT report add up, and the auditor's CSVs verify against the chain.
+**Decisions of PR 4B.8a (rule 12):** (1) the settings row is locked `FOR UPDATE` for the whole close and reopen, so the head of the chain read is the
+head frozen and no posting slips in between the checks and the lock (rejected: a serializable transaction, which would restart a close on any posting);
+(2) the balanced check reads the lines themselves and compares them with the balances the database keeps (rejected: only the table a trigger keeps,
+which is the thing the check is for); (3) the files are written from the route as the VAT CSV is, not through `GENERATE_EXPORT`, because the exports
+of `TDD_07` are per store and the books are per organization (the debt below); a file over `FinanceReportLimits.MAX_CSV_ROWS` is refused, never cut;
+(4) the journal CSV carries every field the hash covers, so an auditor holding only the file recomputes the chain (the formula guard puts a quote before
+a text that starts with `=`, `+`, `-` or `@`: a verification script strips that quote first); (5) the on-demand check runs in the request and reads the
+whole journal in pages, acceptable at the owner's volume; (6) "the period has ended" is the UTC day, the organization has no time zone of its own.
+**Left by PR 4B.8a (rule 12, each owned by 4B.8b unless said):** (a) a failed posting holds no source date, so every unresolved failure of the organization
+blocks a close; 4B.8b narrows it by the date of the source and counts a posting still queued (needs the sweep of 4B.6b-3). (b) The weekly job of the
+chain and its metric `FINANCE_CHAIN_BREAKS`, and the daily reconciliation with `FINANCE_BALANCE_MISMATCHES`: the on-demand check is the same code, the job and
+the alert are 4B.8b. (c) "Late postings" in the period view (the entries dated after the close whose source date is inside it). (d) The warnings, not
+blocks, of `TDD_18 §5.1`: a cash account with unreconciled lines and a fiscal document still queued or rejected in the period (the second needs 4B.7).
+(e) The CSV files are not stored with a signed URL and a retention: a stored export of the books per organization needs an organization-scoped `Export`
+(owner 4B.8b with the owner's confirmation that the direct download is not enough). (f) The ledger CSV has no opening-balance row: its first running
+balance includes the balance before the range, which the ledger JSON reports as `openingCents`. (g) The `finance:` prefix stays in
+`PermissionsOfUnbuiltAreas`: `FINANCE_CLOSE_PERIODS` and `FINANCE_EXPORT` are read now, the rest by 4B.9 at the latest. (h) The screens (the close checklist, the reports) are 4B.9. (i) A CSV that fails mid-stream (a lost connection) is a cut file behind a 200, and the pages are read without one snapshot, so a posting between pages can make the ledger CSV's running balance jump: owner 4B.8b (one repeatable-read read and a closing row with the total); until then the audit row's `rows` is what the auditor compares. (j) The rule of the formula guard is reversible only for a text that does not itself start with a quote: a verification script strips one leading quote when the rest starts with `=`, `+`, `-`, `@`, a tab or a return (owner 4B.8b with the auditor's script). (k) The audit row of a close or reopen is written after the commit, like every other finance audit row; the domain event and the period row (who, when, why) are the durable record meanwhile. (l) The frozen head check proves the hash is still an entry's, not where it sits; 4B.8b adds the position. (n) The reports and files are for the whole organization, as `TDD_18 §9.1` says (a member who holds the permission in one store reads the organization's ledger); the `storeId` filter narrows, it is not a bound. (o) The one-check-at-a-time guard of the chain scan is per process; a lock across replicas comes with the weekly job (4B.8b). (p) "Today" for the close is the day of the store furthest behind (all stores, active or not): an organization zone setting replaces it (owner and accountant). (q) The report names and chain reasons are string literals of this PR (`trial_balance`, `journal`, `ledger`, `head_mismatch`, `frozen_head_missing`); 4B.8b makes them constants when the job and the screens read them. (m) Closed in this PR: the close asks `FinanceCloseGuard` (4B.6b-3) before it takes the lock (the sweep's preview transactions take the settings row FOR SHARE and would wait on the lock) and keeps the count of unresolved failures under the lock, so a failure recorded in between still refuses. The guard looks at the whole organization (a failure carries no source date) and reads back from the start of the period; narrowing it by date waits for the row to carry one (debt of 4B.6b-3).
 
 ### Step 4B.9 — Finance interface (web)
-- [ ] Delivered in PRs: **A** setup wizard, accounts, settings, role mappings, taxes; **B** journal, expenses and incomes, transfers, bank
-      reconciliation; **C** suppliers, purchase orders and the receive screen; **D** reports, the close checklist, fiscal documents on the order and
-      the issuer settings; the permission labels and the gating of every control by permission
+- [ ] Delivered in PRs (decided 2026-11-16, rule 12: about 75 routes with money on them are too many for one review, and the web had no finance
+      client at all). Each one starts from a `main` that has the one before it; every route stays mapped to `4B.9` in `frontend-coverage-map` until
+      the step is done, and the PR that draws it says so here:
+  - [x] **4B.9a-1 (setup, chart, taxes, settings, periods):** the finance area `/finance` (its own entry in the top navigation, shown to who holds any
+        `finance:*` permission, and its own side navigation), the permission matrix labels (already there), the api-client (`finance-api.ts`) and the
+        query keys, the setup wizard, the chart of accounts with its balances, the tax rates, the posting settings, the account of each role and of
+        each payment method (organization and store), the tax preference of the store, the periods (read and open a month) and the postings that
+        failed (read and try again). Routes drawn: `finance.setup`, `finance.settings`, `finance.accounts.*`, `finance.accountRoles.*`,
+        `finance.taxRates.*`, `finance.storeTaxSettings`, `finance.paymentAccounts.*`, `finance.periods.list`, `finance.periods.open`,
+        `finance.balances`, `finance.postings`, `finance.postingRetry`.
+  - [ ] **4B.9a-2 (the journal, expenses, incomes, transfers and receipts):** `finance.entries.*`, `finance.transactions.*` (record, void, replace,
+        receipt upload and download), manual entries and reversals; the mobile form to register an expense; the entry to the journal for who holds
+        `finance:view_journal`.
+  - [ ] **4B.9a-3 (bank reconciliation by CSV):** `finance.bank.*`: the profiles and their mapper, the import, the suggestions and the confirmations.
+  - [ ] **4B.9a-4 (suppliers and purchases):** `suppliers.*`, `supplierPayments.*`, `purchaseOrders.*`, the receive screen on a phone, the box that
+        shows only with `remittances:manage`.
+  - [ ] **4B.9b (reports, close, fiscal documents):** `finance.reports.*` (the VAT report and its CSV), close and reopen a month and the checklist (Step 4B.8),
+        the exports, the fiscal documents on the order and the issuer settings (Step 4B.7); the end-to-end case of the month.
 - [ ] Every route of 4B.2 to 4B.8 drawn (`frontend-coverage-map`), i18n keys in `es` and `en`, Lucide icons only, no emoji, the mobile layout of the
       common actions (register an expense, receive a purchase), the e2e of the month (register, receive, sell, remit, close)
+- **Decisions of PR 4B.9a-1 (rule 12):** (1) the books are an area of their own (`/finance`), not a page of Settings or of the organization: they are the
+  organization's and are read through one of the person's stores (like `/org`), and the area is shown by the `finance:*` permissions, never by a store
+  setting (rejected: an entry under Organization, which a person with only finance permissions cannot open); (2) a money amount is the digits the api
+  sends and is written with `Intl` from the decimal text (`lib/finance/money.ts`), never through a float (rejected: `cents / 100`, which is what
+  `formatCents` of the products does and is safe only below 2^53); (3) a rate is typed as a percent with at most two decimals and sent as basis points
+  by whole-number arithmetic on the text; (4) the choice of a role, of a payment method and of the tax preference of the store is saved when it is
+  made, as the other choices of one field do in Settings, and the posting settings have a save button because three of them are one decision;
+  (5) the rounding account and a role cannot be left without an account from the screen (the api does not take it); (6) the permission prefix
+  `finance:` leaves `PermissionsOfUnbuiltAreas` (the debt of 4B.2 "4B.9 at the latest"): the three permissions with no route yet are listed by name there,
+  `finance:close_periods` and `finance:export` for Step 4B.8 and `finance:view_carrier_fees` for Step 4B.6b-2, each of which takes its name out.
+- **Left by PR 4B.9a-1, each with its owner:** (a) closing and reopening a month, and the checklist, are not here (no route until Step 4B.8): 4B.9b;
+  (b) the list of postings that failed shows the newest page only and says there are more: the pages of the list when the volume asks (Step 7.7);
+  (c) the balances of the chart are across all the periods: a period filter and the balance of a header (the sum of what is under it) are 4B.9b with the
+  reports; (d) the visual pass of these screens (spacing, the table on a wide screen, empty states) is Step 7.7; (e) the end-to-end case
+  `apps/web-e2e/specs/finance-books.spec.ts` runs in CI only (Playwright is not run on the shared machine); (f) a role or a payment method cannot be set
+  back to "no account": the api has no route for it for a role and the store choice goes back to the organization's through "same as the organization".
+  (g) a person with finance permissions in several stores works through the one where they hold most (`bestFinanceMembership`) and the "this store" rows
+  name it; choosing the store from the screen is Step 7.7 with the navigation of the organization pages; (h) the screens offer for cash and bank the accounts of that kind of money and for a payment method any account with a
+  kind of cash (which kind a method takes is the accountant's call, TDD_18 §3), but the other roles take any account that posts: whether a role may take an account of a given type is the api's rule, and a stricter one
+  (the tax role on a liability) is a change of the server for Step 4B.9b with the reports, where the chart is read as a whole; (i) a posting setting, a role,
+  a payment account and the tax preference of the store are saved without a confirmation: the owner may ask for one in the QA after 4B.9.
 **TDD:** `TDD_18 §12`, `TDD_09`
 **Done when:** the owner runs a month of the business end to end from the screens (a purchase received and paid, orders sold and remitted, an
 expense and a transfer, the statements checked, the month closed).
@@ -2762,8 +2828,8 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.5 | Suppliers and purchase orders | done | #542 | 2026-11-15 |
 | 4B.6 | The automatic entries (sales, remittances, returns, stock) | in progress | 4B.6a machinery, E1 to E3 and E9 (#546); 4B.6b-1 carrier charges, remittance confirmed and voided (E4 to E6; #548); 4B.6b-2 the difference written off, returns and the fee permission (E7, E8, E4 of a return guide; #550); 4B.6b-3 the sweep, its metrics, the failure notice and the close guard (this PR); 4B.6b-4 the prepaid charge model: todo | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | in progress | 4B.7a-1 the libraries and the rule (this PR); 4B.7a-2 the database, the lifecycle, the queue and the routes (this PR); 4B.7b credit notes, evidence as media and the customer's fiscal data: todo | |
-| 4B.8 | Reports, monthly close and the auditor's export | todo | | |
-| 4B.9 | Finance interface (web) | todo | | |
+| 4B.8 | Reports, monthly close and the auditor's export | in progress | 4B.8a | |
+| 4B.9 | Finance interface (web) | in progress | 4B.9a-1 (setup, chart, taxes, settings, periods; the number is in the PR) | |
 | **Milestone 5: Operations** | | | | |
 | 5.1 | Search | done | #486 (PR A: the server), #488 (PR B: the web), #496 (the click, in Step 5.2 PR C3) | 2026-11-15 |
 | 5.2 | Analytics | done | #485 (PR A: rollups, answer semantics, metrics route), PR B #487 (dashboard, My performance, View analytics), PR C1 #491 (reports and export, server), PR C2 #494 (reports and export, web); PR C3 #496 (search click, passive flag and report) | 2026-11-15 |

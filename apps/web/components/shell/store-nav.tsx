@@ -9,7 +9,9 @@ import { AppPaths } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
 
 import { mayOpenExports } from '../../lib/exports/export-state'
+import { bestFinanceMembership, mayOpenFinance } from '../../lib/finance/area'
 import { mayOpenStoreSettings } from '../../lib/settings/may-open-settings'
+import { useProfile } from '../../lib/use-profile'
 import { cn } from '../../lib/utils'
 import { useStore } from '../providers/store-context'
 
@@ -18,6 +20,7 @@ export function StoreNav(): ReactElement {
   const t = useTranslations('shell.nav')
   const { storeId, can } = useStore()
   const pathname = usePathname()
+  const profile = useProfile()
   const entries = [
     {
       href: AppPaths.store.inbox(storeId),
@@ -73,6 +76,13 @@ export function StoreNav(): ReactElement {
       href: AppPaths.store.exports(storeId),
       label: t('exports'),
       isShown: mayOpenExports(can)
+    },
+    {
+      href: AppPaths.finance.home,
+      label: t('finance'),
+      // The area opens through the store where the person holds most of the finance permissions, not only through this one
+      isShown:
+        mayOpenFinance(can) || bestFinanceMembership(profile.data?.memberships ?? []) !== undefined
     },
     {
       href: AppPaths.store.settings(storeId),

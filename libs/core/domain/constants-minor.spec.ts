@@ -141,6 +141,8 @@ describe('DestructiveActionTiers', () => {
       'DELETE_WEBHOOK',
       'ROTATE_WEBHOOK_SECRET',
       'POST_MANUAL_ENTRY',
+      'CLOSE_FISCAL_PERIOD',
+      'REOPEN_FISCAL_PERIOD',
       'REVERSE_ENTRY',
       'VOID_FINANCE_TRANSACTION',
       'VOID_FISCAL_DOCUMENT',

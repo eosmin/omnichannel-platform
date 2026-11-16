@@ -251,6 +251,13 @@ export const ErrorCodes = {
   FINANCE_REOPEN_NOT_LATEST: 'FINANCE_REOPEN_NOT_LATEST',
   FINANCE_CLOSE_PENDING_POSTINGS: 'FINANCE_CLOSE_PENDING_POSTINGS',
   FINANCE_CLOSE_PREVIOUS_OPEN: 'FINANCE_CLOSE_PREVIOUS_OPEN',
+  // The period has not ended yet: a month is not closed before its last day (TDD_18 §5.1)
+  FINANCE_CLOSE_NOT_ENDED: 'FINANCE_CLOSE_NOT_ENDED',
+  // The trial balance of the period does not balance: an incident, never closed over (TDD_18 §5.1, §11)
+  FINANCE_BALANCE_MISMATCHES: 'FINANCE_BALANCE_MISMATCHES',
+  // Reopening a period that is open, or closing one that is closed already
+  FINANCE_PERIOD_NOT_CLOSED: 'FINANCE_PERIOD_NOT_CLOSED',
+  FINANCE_PERIOD_ALREADY_CLOSED: 'FINANCE_PERIOD_ALREADY_CLOSED',
   FINANCE_CURRENCY_UNSUPPORTED: 'FINANCE_CURRENCY_UNSUPPORTED',
   FINANCE_SETUP_REQUIRED: 'FINANCE_SETUP_REQUIRED',
   // A taxed product has no tax rate of its own and the organization has no default one: an order never guesses a rate (TDD_18 §7)
