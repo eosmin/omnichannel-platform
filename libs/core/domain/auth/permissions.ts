@@ -120,7 +120,11 @@ export const Permissions = {
   FINANCE_EXPORT: 'finance:export', // the CSV of the journal and the ledger
   FINANCE_VIEW_CARRIER_FEES: 'finance:view_carrier_fees', // the commission and the rates of a carrier connection
   FISCAL_VIEW: 'fiscal:view',
-  FISCAL_MANAGE: 'fiscal:manage' // issuer settings and credentials, retry, void
+  FISCAL_MANAGE: 'fiscal:manage', // issuer settings and credentials, retry, void
+  // The fiscal data of a customer (tax id, registration, activity, fiscal address): personal and tax data, held apart from customers:view
+  // so that whoever answers a chat never reads it. View sees it masked; manage writes it. Admin only, like the rest of the area.
+  FISCAL_VIEW_CUSTOMER_DATA: 'fiscal:view_customer_data',
+  FISCAL_MANAGE_CUSTOMER_DATA: 'fiscal:manage_customer_data'
 } as const
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions]

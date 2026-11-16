@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import {
+  FiscalCustomerDataLimits,
   FiscalDocumentStatus,
   FiscalEnvironment,
   FiscalEvidenceKind,
@@ -63,6 +64,8 @@ export const receiverPatchSchema = z
     registrationId: text(40).nullable(),
     email: text(200).nullable(),
     phone: text(40).nullable(),
+    taxpayerType: text(FiscalCustomerDataLimits.ID_MAX_LENGTH).nullable(),
+    economicActivity: text(FiscalCustomerDataLimits.VALUE_MAX_LENGTH).nullable(),
     address: addressSchema.nullable()
   })
   .partial()

@@ -306,6 +306,12 @@ export const ApiRoutes = {
       // POST: a person confirms that a document that may be at the issuer it was made with is not there, so it is made again with the
       // issuer as it is now (the authority's answer is the person's, with the accountant)
       confirmIssuerChange: (id: string) => `/fiscal/documents/${id}/confirm-issuer-change`
+    },
+    // The fiscal data of a customer of the store of X-Store-Id: GET masked, PUT replaces what is sent, DELETE clears it
+    customerData: {
+      get: (customerId: string) => `/customers/${customerId}/fiscal`,
+      put: (customerId: string) => `/customers/${customerId}/fiscal`,
+      clear: (customerId: string) => `/customers/${customerId}/fiscal`
     }
   },
 

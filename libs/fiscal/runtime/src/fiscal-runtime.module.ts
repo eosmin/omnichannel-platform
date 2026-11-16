@@ -7,6 +7,7 @@ import {
   RuntimeEnvironmentPlatformModule
 } from '@platform/core/http'
 
+import { FiscalCustomerDataService } from './fiscal-customer-data.service'
 import { FiscalDocumentsService } from './fiscal-documents.service'
 import { FiscalEvidenceService } from './fiscal-evidence.service'
 import { FiscalIssuerService } from './fiscal-issuer.service'
@@ -26,12 +27,14 @@ import { officialFiscalProviders } from './official-providers'
     FiscalProviderRegistry,
     FiscalIssuerService,
     FiscalEvidenceService,
-    FiscalDocumentsService
+    FiscalDocumentsService,
+    FiscalCustomerDataService
   ],
   exports: [
     FiscalDocumentsService,
     FiscalEvidenceService,
     FiscalIssuerService,
+    FiscalCustomerDataService,
     FiscalProviderRegistry
   ]
 })

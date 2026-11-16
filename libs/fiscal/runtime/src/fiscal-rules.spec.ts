@@ -6,11 +6,13 @@ import {
   creditNoteSaleOf,
   documentLines,
   isImmutable,
+  maskedCustomerFiscalData,
   maskTaxId,
   originalStateOf,
   receiverEditable,
   receiverOf,
   receiverRecord,
+  receiverWithFiscalData,
   retryable,
   saleAddsUp,
   saleOf,
@@ -139,7 +141,9 @@ describe('the receiver', () => {
       registrationId: null,
       address: { city: 'X' },
       email: null,
-      phone: null
+      phone: null,
+      taxpayerType: null,
+      economicActivity: null
     })
   })
 
@@ -381,5 +385,88 @@ describe('the original of a credit note', () => {
     for (const status of [S.DRAFT, S.QUEUED, S.SUBMITTED, S.REJECTED]) {
       expect(originalStateOf(status)).toBe('waiting')
     }
+  })
+})
+
+describe('the fiscal data of a customer', () => {
+  const sale = {
+    name: 'Contact Name',
+    taxId: null,
+    registrationId: null,
+    address: { line1: 'Shipping street' },
+    email: 'contact@example.com',
+    phone: '+10000000000'
+  }
+
+  it('is the receiver of the document when there is none, and wins over the contact when there is', () => {
+    expect(receiverWithFiscalData(sale, null)).toBe(sale)
+    const merged = receiverWithFiscalData(sale, {
+      name: 'Fiscal Name',
+      taxId: 'T-1',
+      registrationId: 'R-1',
+      address: { line1: 'Fiscal street' },
+      email: 'other@example.com',
+      phone: '+19999999999',
+      taxpayerType: 'company',
+      economicActivity: 'retail'
+    })
+    expect(merged).toEqual({
+      name: 'Fiscal Name',
+      taxId: 'T-1',
+      registrationId: 'R-1',
+      address: { line1: 'Fiscal street' },
+      // The contact stays the sale's: the fiscal record holds no email or phone
+      email: 'contact@example.com',
+      phone: '+10000000000',
+      taxpayerType: 'company',
+      economicActivity: 'retail'
+    })
+  })
+
+  it('leaves what the sale had where the fiscal data says nothing', () => {
+    const merged = receiverWithFiscalData(sale, {
+      name: null,
+      taxId: 'T-1',
+      registrationId: null,
+      address: null,
+      email: null,
+      phone: null
+    })
+    expect(merged.name).toBe('Contact Name')
+    expect(merged.address).toEqual({ line1: 'Shipping street' })
+    expect(merged.taxpayerType).toBeNull()
+    expect(merged.economicActivity).toBeNull()
+  })
+
+  it('keeps the kind of taxpayer and the activity in the sealed record and reads them back', () => {
+    const record = receiverRecord({
+      ...sale,
+      taxpayerType: ' company ',
+      economicActivity: ''
+    })
+    expect(record['taxpayerType']).toBe('company')
+    expect('economicActivity' in record).toBe(false)
+    expect(receiverOf(record).taxpayerType).toBe('company')
+    expect(receiverOf(record).economicActivity).toBeNull()
+  })
+
+  it('is shown masked: the identifiers by their last characters, the address only as set or not', () => {
+    const view = maskedCustomerFiscalData({
+      ...sale,
+      taxId: '0614-010101-101-1',
+      registrationId: '123456-7',
+      taxpayerType: 'company',
+      economicActivity: 'retail'
+    })
+    expect(view).toEqual({
+      name: 'Contact Name',
+      taxId: `${'*'.repeat(13)}01-1`,
+      registrationId: '******-7',
+      taxpayerType: 'company',
+      economicActivity: 'retail',
+      addressSet: true
+    })
+    expect(JSON.stringify(view)).not.toContain('Shipping street')
+    expect(maskedCustomerFiscalData({ ...sale, address: null }).addressSet).toBe(false)
   })
 })
