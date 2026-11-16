@@ -2973,6 +2973,9 @@
         "suppliers": "Suppliers",
         "purchases": "Purchases",
         "payables": "Payables",
+        "statements": "Statements",
+        "aging": "Aging",
+        "books": "Legal books",
         "fiscal": "Fiscal documents",
         "fiscalIssuer": "Fiscal issuer"
       }
@@ -7080,6 +7083,222 @@
         "frozenMissing": "missing from the chain",
         "checkedAt": "Checked on {time}"
       }
+    },
+    "statementsCommon": {
+      "formLabel": "Choose what to show",
+      "from": "From",
+      "to": "To",
+      "asOf": "As of",
+      "show": "Show",
+      "problems": {
+        "from": "Write the first day as a real date.",
+        "to": "Write the last day as a real date.",
+        "order": "The first day is after the last day.",
+        "day": "Write a real date."
+      },
+      "warningsTitle": "This report is not complete",
+      "warnings": {
+        "noIncome": "No income account had activity in this range, so the result may look better than it is.",
+        "noCostOfSales": "No cost of sales account had activity in this range: the gross margin counts no cost.",
+        "noCashAccounts": "No cash or bank account had activity: the cash flow says nothing.",
+        "roleNotMapped": "An account role this report reads has no account in the finance settings.",
+        "linesWithoutParty": "Some lines carry no supplier or carrier: they are in the total but in no row.",
+        "notBalanced": "The books do not balance: assets differ from liabilities plus equity plus the result. Tell an administrator.",
+        "cashFlowDoesNotClose": "The start plus the net flow does not equal the end. Tell an administrator."
+      },
+      "closed": {
+        "settled": "Every day of this report is in a closed month: the figures cannot change unless a month is reopened.",
+        "partly": "The books are closed through {date}: what comes after can still change."
+      }
+    },
+    "statements": {
+      "title": "Financial statements",
+      "description": "The income statement and the cash flow of a range of days, and the balance sheet of a day, read from the journal.",
+      "tabsLabel": "Statement",
+      "tabs": {
+        "income": "Income statement",
+        "balance": "Balance sheet",
+        "cash": "Cash flow"
+      },
+      "income": {
+        "description": "What came in, what the sales cost, the gross margin, the expenses and the result of the range.",
+        "pick": "Choose the days and press Show.",
+        "download": "Download CSV",
+        "income": "Income",
+        "incomeTotal": "Total income",
+        "costOfSales": "Cost of sales",
+        "costOfSalesTotal": "Total cost of sales",
+        "grossMargin": "Gross margin",
+        "expenses": "Expenses",
+        "expensesTotal": "Total expenses",
+        "netResult": "Net result",
+        "none": "No account moved in this range."
+      },
+      "balance": {
+        "description": "What the business has, what it owes and what is its own, as of a day.",
+        "pick": "Choose the day and press Show.",
+        "download": "Download CSV",
+        "assets": "Assets",
+        "assetsTotal": "Total assets",
+        "liabilities": "Liabilities",
+        "liabilitiesTotal": "Total liabilities",
+        "equity": "Equity",
+        "equityTotal": "Total equity",
+        "result": "Result since the books started",
+        "resultNote": "No closing entry moves it to equity yet, so it is shown on its own.",
+        "equityWithResult": "Equity plus result",
+        "balanced": "Assets equal liabilities plus equity plus the result.",
+        "notBalanced": "Assets differ from liabilities plus equity plus the result: tell an administrator.",
+        "balancedSlice": "The slice of one store need not balance by itself: an entry can put its lines in two stores.",
+        "none": "No account has a balance on this day."
+      },
+      "cash": {
+        "description": "The money that came into and left the cash and bank accounts, by the kind of record that moved it.",
+        "pick": "Choose the days and press Show.",
+        "download": "Download CSV",
+        "opening": "Cash at the start",
+        "closing": "Cash at the end",
+        "source": "Kind of record",
+        "inflow": "In",
+        "outflow": "Out",
+        "net": "Net",
+        "total": "Total",
+        "closes": "The start plus the net flow equals the end.",
+        "doesNotClose": "The start plus the net flow does not equal the end: tell an administrator.",
+        "none": "No money moved in this range."
+      },
+      "sources": {
+        "order": "Sale",
+        "shipment": "Shipping",
+        "remittance": "Cash on delivery remittance",
+        "return": "Return",
+        "inventory_movement": "Inventory movement",
+        "purchase_receipt": "Purchase received",
+        "supplier_payment": "Supplier payment",
+        "finance_transaction": "Expense, income or transfer",
+        "manual": "Manual entry"
+      }
+    },
+    "aging": {
+      "title": "Aging of balances",
+      "description": "What is owed to the business and what it owes, by the age of each balance, as of a day.",
+      "kind": "List",
+      "kinds": {
+        "receivables": "Owed to the business",
+        "payables": "Owed by the business"
+      },
+      "pick": "Choose the list and the day and press Show.",
+      "download": "Download CSV",
+      "party": "Supplier or carrier",
+      "noParty": "Without a supplier or carrier",
+      "parties": {
+        "supplier": "Supplier",
+        "carrier_connection": "Carrier",
+        "customer": "Customer"
+      },
+      "bucketRange": "{from} to {to} days",
+      "bucketOver": "More than {days} days",
+      "unapplied": "Unapplied",
+      "total": "Total",
+      "totals": "Totals",
+      "none": "Nothing is owed as of this day.",
+      "missingRoles": "These roles have no account in the finance settings, so this list leaves them out: {roles}."
+    },
+    "books": {
+      "title": "Legal books",
+      "description": "The book of sales to taxpayers, of sales to final consumers and of purchases, one month at a time, read from the journal.",
+      "kind": "Book",
+      "kinds": {
+        "sales_taxpayers": "Sales to taxpayers",
+        "sales_consumers": "Sales to final consumers",
+        "purchases": "Purchases"
+      },
+      "period": "Month",
+      "periodPick": "Choose a month",
+      "pick": "Choose a month to see the book.",
+      "noPeriods": "There are no months yet.",
+      "download": "Download CSV",
+      "downloadDraft": "Download draft CSV",
+      "draftTag": "draft",
+      "unvalidated": {
+        "title": "Proposed template, not validated by the accountant",
+        "body": "This book is a draft. Do not file it or present it as the legal book until an accountant confirms its layout."
+      },
+      "confirmed": "The layout (version {version}) was confirmed by the accountant.",
+      "frozen": "This month is closed: the book is the one frozen at the close, the same file every time.",
+      "closedNotFrozen": "This month is closed, but no book was frozen for this layout, so it is built again on every request. A proposed template is never frozen.",
+      "openMonth": "This month is open: the book changes as entries are posted.",
+      "warnings": {
+        "title": "What this book could not list",
+        "salesWithoutTaxSnapshot": "{count, plural, one {# sale has no tax detail (it was made before the detail was kept) and is not listed.} other {# sales have no tax detail (they were made before the detail was kept) and are not listed.}}",
+        "salesNotReadable": "{count, plural, one {# sale has a tax detail that does not add up and is not listed.} other {# sales have a tax detail that does not add up and are not listed.}}",
+        "voidedDocuments": "{count, plural, one {# sale whose fiscal document was voided is left out.} other {# sales whose fiscal document was voided are left out.}}",
+        "unclassifiedDocuments": "{count, plural, one {# sale has a document of a type this system does not know, or a credit note: it is counted apart and not listed.} other {# sales have a document of a type this system does not know, or a credit note: they are counted apart and not listed.}}",
+        "returnsNotListed": "{count, plural, one {# return of the month is not listed: credit notes are not in the books yet.} other {# returns of the month are not listed: credit notes are not in the books yet.}}"
+      },
+      "yes": "Yes",
+      "no": "No",
+      "empty": "This book has no rows in this month.",
+      "totals": "Totals",
+      "showing": "Showing the first {shown} of {total} rows: the file has them all.",
+      "count": "{count, plural, one {# row} other {# rows}}",
+      "sha": "SHA-256 of the file: {sha}",
+      "layout": {
+        "summary": "Layout: version {version}, {source}",
+        "sources": {
+          "proposal": "proposed by the system, not validated",
+          "stored": "written by the organization"
+        },
+        "confirmedLabel": "Confirmed by the accountant",
+        "confirmedYes": "Yes",
+        "confirmedNo": "No",
+        "sortLabel": "Order",
+        "sorts": {
+          "date": "By date, then by entry number",
+          "document": "By document number, then by date"
+        },
+        "correlativeLabel": "Correlative",
+        "correlative": "Starts at {start} and starts again every {restart}",
+        "restarts": {
+          "month": "month",
+          "year": "year"
+        },
+        "unissuedLabel": "Sales with no fiscal document",
+        "unissued": {
+          "consumers": "Listed in the book of final consumers",
+          "excluded": "Left out of both sale books"
+        },
+        "columnsLabel": "Columns"
+      },
+      "fields": {
+        "correlative": "Correlative",
+        "date": "Date",
+        "entry_number": "Entry number",
+        "document_type": "Document type",
+        "document_number": "Document number",
+        "source_number": "Order number",
+        "base_taxed": "Taxed base",
+        "base_exempt": "Exempt base",
+        "base_not_subject": "Base not subject to tax",
+        "base_shipping_untaxed": "Shipping not taxed",
+        "base": "Base",
+        "tax": "Tax",
+        "total": "Total",
+        "supplier_name": "Supplier",
+        "supplier_tax_id": "Supplier tax id",
+        "tax_creditable": "Creditable tax",
+        "due_date": "Due date"
+      },
+      "frozenList": {
+        "title": "Books frozen at the close",
+        "description": "The file of each book as it was when the month was closed, with its hash. A later change of the layout does not move it.",
+        "empty": "No book was frozen for this month.",
+        "row": "Layout version {version}, frozen {date}",
+        "open": "Open",
+        "hide": "Hide"
+      },
+      "fieldsUnknown": "The money columns of this layout version cannot be told apart on screen: the figures are whole cents (100 is 1.00). The file has them as the api wrote them.",
+      "totalsAllRows": "Totals (all rows)"
     },
     "fiscal": {
       "title": "Fiscal documents",

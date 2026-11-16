@@ -350,6 +350,22 @@ export const QueryKeys = {
     taxRates: (storeId: string) => ['finance', storeId, 'tax-rates'] as const,
     vatReport: (storeId: string, from: string, to: string) =>
       ['finance', storeId, 'reports', 'vat', from, to] as const,
+    // The statements and the lists with age (Step 4B.9b-3): one key per report and the range or day it was asked for
+    incomeStatement: (storeId: string, from: string, to: string) =>
+      ['finance', storeId, 'reports', 'income-statement', from, to] as const,
+    balanceSheet: (storeId: string, asOf: string) =>
+      ['finance', storeId, 'reports', 'balance-sheet', asOf] as const,
+    cashFlow: (storeId: string, from: string, to: string) =>
+      ['finance', storeId, 'reports', 'cash-flow', from, to] as const,
+    aging: (storeId: string, kind: string, asOf: string) =>
+      ['finance', storeId, 'reports', 'aging', kind, asOf] as const,
+    // The legal books: the layouts, a book of a month (a layout change or a close makes it stale with the rest of `finance`), the frozen ones
+    bookLayouts: (storeId: string) => ['finance', storeId, 'book-layouts'] as const,
+    book: (storeId: string, kind: string, periodId: string) =>
+      ['finance', storeId, 'books', kind, periodId] as const,
+    frozenBook: (storeId: string, id: string) => ['finance', storeId, 'frozen-book', id] as const,
+    frozenBooks: (storeId: string, periodId: string) =>
+      ['finance', storeId, 'frozen-books', periodId] as const,
     storeTaxSettings: (storeId: string) => ['finance', storeId, 'store-tax-settings'] as const,
     periods: (storeId: string) => ['finance', storeId, 'periods'] as const,
     entries: (storeId: string, filters: Record<string, string>) =>

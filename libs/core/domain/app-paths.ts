@@ -92,7 +92,10 @@ export const AppPaths = {
     payables: '/finance/payables',
     reconciliation: '/finance/reconciliation',
     fiscal: '/finance/fiscal',
-    fiscalIssuer: '/finance/fiscal/issuer'
+    fiscalIssuer: '/finance/fiscal/issuer',
+    statements: '/finance/statements',
+    aging: '/finance/aging',
+    books: '/finance/books'
   },
   account: {
     profile: '/account/profile',

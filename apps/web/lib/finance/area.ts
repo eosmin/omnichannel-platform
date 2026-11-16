@@ -21,7 +21,8 @@ const FINANCE_WORKING_PERMISSIONS = [
   ClientPermissions.FINANCE_MANAGE_TRANSACTIONS,
   ClientPermissions.FINANCE_MOVE_MONEY,
   ClientPermissions.FINANCE_POST_MANUAL,
-  ClientPermissions.FISCAL_MANAGE
+  ClientPermissions.FISCAL_MANAGE,
+  ClientPermissions.FINANCE_VIEW_REPORTS
 ] as const satisfies readonly Permission[]
 
 export const mayOpenFinance = (can: (permission: Permission) => boolean): boolean =>

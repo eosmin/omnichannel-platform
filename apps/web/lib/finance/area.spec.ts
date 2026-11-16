@@ -97,6 +97,31 @@ describe('the finance area', () => {
       '/finance/accounts'
     )
   })
+
+  it('shows the statements, the lists with age and the legal books to who holds finance:view_reports, and to nobody else', () => {
+    expect(
+      visibleEntries(FINANCE_SETTINGS_ENTRIES, holding(Permissions.FINANCE_VIEW_REPORTS)).map(
+        entry => entry.id
+      )
+    ).toEqual(['statements', 'aging', 'books'])
+    expect(
+      visibleEntries(FINANCE_SETTINGS_ENTRIES, holding(Permissions.FINANCE_EXPORT)).map(
+        entry => entry.id
+      )
+    ).toEqual([])
+    // finance:view_reports alone opens no area: every page reads the setup first, which is finance:view
+    expect(mayOpenFinance(holding(Permissions.FINANCE_VIEW_REPORTS))).toBe(false)
+  })
+
+  it('counts the reports among what a store gives, so the books are asked through the store that holds them', () => {
+    const store = (id: string, ...permissions: string[]) => ({ id, permissions })
+    expect(
+      bestFinanceMembership([
+        store('reader', Permissions.FINANCE_VIEW),
+        store('accountant', Permissions.FINANCE_VIEW, Permissions.FINANCE_VIEW_REPORTS)
+      ])?.id
+    ).toBe('accountant')
+  })
 })
 
 describe('bestFinanceMembership', () => {

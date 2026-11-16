@@ -96,8 +96,9 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   // The books of the organization (TDD_18 §12): Step 4B.9 draws the finance screens, in the PRs its box in the plan lists. 4B.9a-1 drew
   // the setup, the settings, the chart, the roles, the tax rates, the payment accounts, the store tax settings, the periods (read and
   // open), the balances and the postings; 4B.9a-3 drew the bank reconciliation by CSV (every `finance.bank.*` route, on Finance → Bank
-  // reconciliation); 4B.9b-1 drew the close, the trial balance, the ledger, the three files and the check of the chain; the rest of
-  // these waits for 4B.9a-2 (entries, transactions) and 4B.9b-2 to 4B.9b-4 (fiscal documents, VAT, statements). 4B.9a-4 drew every route of
+  // reconciliation); 4B.9b-1 drew the close, the trial balance, the ledger, the three files and the check of the chain; 4B.9b-3 drew the
+  // income statement, balance sheet, cash flow and aging with their files, the legal books, their layouts (read) and the frozen books; the
+  // rest of these waits for 4B.9b-2 (fiscal documents) and 4B.9b-4a (the VAT file and the margin). 4B.9a-4 drew every route of
   // suppliers, purchase orders, payables and payments to suppliers: Finance → Suppliers (list, create, edit, detail with the balance and
   // the payments, register and void a payment), Finance → Purchases (the orders, their lines, receiving, closing, cancelling, the bills
   // and the payments of an order) and Finance → Payables. A route stays on '4B.9' until the whole step is done
