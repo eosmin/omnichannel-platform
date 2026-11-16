@@ -192,6 +192,8 @@ export const ApiRoutes = {
       ledgerCsv: '/finance/reports/ledger.csv',
       journalCsv: '/finance/reports/journal.csv',
       verifyChain: '/finance/reports/verify-chain',
+      // The incident of the chain the weekly check left open, or none (Step 4B.8b-2)
+      chainStatus: '/finance/reports/chain-status',
       // The statements and the lists with age (Step 4B.8b), by store when asked, as of a date or over a range, with their CSV files
       incomeStatement: '/finance/reports/income-statement',
       balanceSheet: '/finance/reports/balance-sheet',
@@ -200,7 +202,10 @@ export const ApiRoutes = {
       incomeStatementCsv: '/finance/reports/income-statement.csv',
       balanceSheetCsv: '/finance/reports/balance-sheet.csv',
       cashFlowCsv: '/finance/reports/cash-flow.csv',
-      agingCsv: '/finance/reports/aging.csv'
+      agingCsv: '/finance/reports/aging.csv',
+      // The margin by product and store, read against the ledger's revenue and cost of goods (Step 4B.8b-2)
+      margin: '/finance/reports/margin',
+      marginCsv: '/finance/reports/margin.csv'
     },
     // The legal books (TDD_18 §7, Step 4B.8b-3): the layout of each kind of book is the organization's (PUT writes a new version), a book is
     // read for a period, as JSON and as a CSV, and a closed period's book is frozen and listed
@@ -295,7 +300,12 @@ export const ApiRoutes = {
       retry: (id: string) => `/fiscal/documents/${id}/retry`,
       void: (id: string) => `/fiscal/documents/${id}/void`,
       // POST makes the sale document again after the one before was voided (and the credit notes that were voided with it)
-      replace: (id: string) => `/fiscal/documents/${id}/replace`
+      replace: (id: string) => `/fiscal/documents/${id}/replace`,
+      // GET the signed link of one file of evidence of a document (`document`, `response`, `void_response`): short-lived, clean files only
+      evidence: (id: string, kind: string) => `/fiscal/documents/${id}/evidence/${kind}`,
+      // POST: a person confirms that a document that may be at the issuer it was made with is not there, so it is made again with the
+      // issuer as it is now (the authority's answer is the person's, with the accountant)
+      confirmIssuerChange: (id: string) => `/fiscal/documents/${id}/confirm-issuer-change`
     }
   },
 

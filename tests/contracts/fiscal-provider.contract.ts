@@ -1,4 +1,9 @@
-import { FiscalDocumentKind, FiscalEnvironment, FiscalSubmitOutcome } from '@platform/core/domain'
+import {
+  FiscalDocumentKind,
+  FiscalEnvironment,
+  FiscalSubmitOutcome,
+  FiscalVoidConsultState
+} from '@platform/core/domain'
 import type {
   FiscalBuildInput,
   FiscalDocumentProvider,
@@ -221,6 +226,29 @@ export function testFiscalProviderContract(
       const voided = await provider.void(stored, 'wrong customer', contextOf('contract-void-op'))
       expect(voided.voided).toBe(true)
       noSecrets(voided)
+    })
+
+    // The consultation is optional: a provider that has it answers one of the known states, never says "voided" for a document it
+    // has not been asked to void, and tells nothing secret
+    it('answers a consultation of a void with a known state, when the provider has one', async () => {
+      const provider = makeProvider()
+      if (provider.consultVoid === undefined) return
+      const built = await provider.build(baseInput(fixtures, fixtures.receivers.plain, 9))
+      const accepted = acceptedOf(await provider.submit(built, contextOf('contract-void-consult')))
+      const stored = {
+        documentType: built.documentType,
+        externalNumber: accepted.externalNumber,
+        providerData: accepted.providerData ?? null,
+        payload: built.payload
+      }
+      const before = await provider.consultVoid(stored, contextOf('contract-void-consult-op'))
+      expect(Object.values(FiscalVoidConsultState)).toContain(before.state)
+      expect(before.state).not.toBe(FiscalVoidConsultState.VOIDED)
+      noSecrets(before)
+      await provider.void(stored, 'wrong customer', contextOf('contract-void-consult-op'))
+      const after = await provider.consultVoid(stored, contextOf('contract-void-consult-op', 2))
+      expect(Object.values(FiscalVoidConsultState)).toContain(after.state)
+      noSecrets(after)
     })
   })
 }

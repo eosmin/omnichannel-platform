@@ -20,6 +20,7 @@ import {
   FiscalRejectionReasons,
   FiscalResourceTypes,
   FiscalSubmitOutcome,
+  FiscalVoidConsultState,
   hasReceivedUnits,
   OrderReturnStatus,
   OrderStatus
@@ -39,9 +40,12 @@ import type {
   FiscalDocumentProvider,
   FiscalIssuerInput,
   FiscalReceiver,
-  ProviderContext
+  ProviderContext,
+  StoredFiscalDocument,
+  VoidResult
 } from '@platform/fiscal/sdk'
 
+import { FiscalEvidenceService } from './fiscal-evidence.service'
 import type { FiscalActor } from './fiscal-issuer.service'
 import { FiscalProviderRegistry } from './fiscal-provider.registry'
 import {
@@ -72,6 +76,10 @@ interface IssuerRow {
   establishmentCode: string | null
   environment: string
 }
+
+// The attempt did not run because another one holds the document or its sale document is not accepted yet: a claim that is alive may still
+// decide the document, so the exhaustion of this job is not the exhaustion of the document
+export class FiscalDocumentBusyError extends Error {}
 
 // An acceptance has a number: what a provider returns is not trusted to
 const hasNumber = (value: unknown): value is string =>
@@ -150,6 +158,7 @@ export class FiscalDocumentsService {
     private readonly events: DomainEvents,
     private readonly cipher: CredentialCipher,
     private readonly providers: FiscalProviderRegistry,
+    private readonly evidence: FiscalEvidenceService,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(FiscalDocumentsService.name)
@@ -627,11 +636,11 @@ export class FiscalDocumentsService {
     if (claimed === null) return
     if (claimed === 'busy') {
       // Another attempt claimed it a moment ago: this job fails so that the backoff of the queue asks again after the lease
-      throw new Error('the fiscal document is being submitted by another attempt')
+      throw new FiscalDocumentBusyError('the fiscal document is being submitted by another attempt')
     }
     if (claimed === 'waiting') {
       // A credit note whose sale document has not been accepted yet: nothing was claimed, the queue asks again with its backoff
-      throw new Error('the sale document of this credit note is not accepted yet')
+      throw new FiscalDocumentBusyError('the sale document of this credit note is not accepted yet')
     }
     const { doc, issuer, provider, original } = claimed
     if (original === 'voided') {
@@ -781,6 +790,60 @@ export class FiscalDocumentsService {
     await this.requeueAndFail(organizationId, doc.id, 'the fiscal provider did not answer')
   }
 
+  // The last attempt of the job failed and the document is still waiting for the provider (QUEUED or SUBMITTED): nobody retries it any
+  // more, so a person is told (Step 4B.7b-2). A document that was decided, or that is gone, says nothing. Safe to repeat: the notice is
+  // deduplicated until it is read.
+  async reportExhausted(
+    organizationId: string,
+    documentId: string,
+    claimMayBeAlive = false
+  ): Promise<void> {
+    try {
+      await this.reportExhaustedOnce(organizationId, documentId, claimMayBeAlive)
+    } catch (error) {
+      // Said in the log, never thrown: the error that matters is the one of the attempt that failed
+      this.logger.error(
+        { documentId, err: errorName(error) },
+        'the notice of a fiscal document that ran out of attempts was not made'
+      )
+    }
+  }
+
+  private async reportExhaustedOnce(
+    organizationId: string,
+    documentId: string,
+    claimMayBeAlive: boolean
+  ): Promise<void> {
+    await this.prisma.transaction(async tx => {
+      const doc = await tx.fiscalDocument.findFirst({
+        where: {
+          id: documentId,
+          organizationId,
+          status: { in: [FiscalDocumentStatus.QUEUED, FiscalDocumentStatus.SUBMITTED] },
+          // The job failed because another attempt holds the claim: a claim that is alive (less than the lease ago) may still decide the
+          // document, so it is not stuck. Any other failure of the last attempt leaves a claim that nobody will take over.
+          ...(claimMayBeAlive
+            ? {
+                OR: [
+                  { status: FiscalDocumentStatus.QUEUED },
+                  { updatedAt: { lt: new Date(Date.now() - FiscalLimits.CLAIM_LEASE_MS) } }
+                ]
+              }
+            : {})
+        },
+        select: { id: true, organizationId: true, storeId: true, orderId: true, attempts: true }
+      })
+      if (doc === null) return
+      this.events.publish(tx, Events.FISCAL_DOCUMENT_STUCK, {
+        organizationId: doc.organizationId,
+        storeId: doc.storeId,
+        documentId: doc.id,
+        orderId: doc.orderId,
+        attempts: Math.max(1, doc.attempts)
+      })
+    })
+  }
+
   private async requeueAndFail(
     organizationId: string,
     documentId: string,
@@ -906,7 +969,7 @@ export class FiscalDocumentsService {
         : this.safeResponse(result.providerData, FiscalLimits.PROVIDER_DATA_MAX_CHARS)
     const response = result.response === undefined ? undefined : this.safeResponse(result.response)
     const sealedPayload = this.sealPayload(built.payload)
-    await this.prisma.transaction(async tx => {
+    const accepted = await this.prisma.transaction(async tx => {
       await tx.$queryRaw`SELECT id FROM fiscal_documents WHERE id = ${documentId} AND organization_id = ${organizationId} FOR UPDATE`
       const doc = await tx.fiscalDocument.findFirstOrThrow({
         where: { id: documentId, organizationId },
@@ -918,7 +981,7 @@ export class FiscalDocumentsService {
           { documentId },
           'the acceptance of a fiscal document was skipped: it was not being submitted'
         )
-        return
+        return false
       }
       // The sale entry may have posted after the document was made: the link is made now, never by copying its amounts
       const entry = await tx.journalEntry.findFirst({
@@ -939,7 +1002,10 @@ export class FiscalDocumentsService {
           ...(entry === null ? {} : { journalEntryId: entry.id })
         }
       })
+      return true
     })
+    // The evidence is kept once the acceptance is committed; it never decides the document (`keepAll` swallows its own failures)
+    if (accepted) await this.evidence.keepAll(organizationId, documentId)
   }
 
   private safeResponse(
@@ -1106,12 +1172,14 @@ export class FiscalDocumentsService {
           (issuer.providerId !== doc.providerId || !sameIssuer(record(doc.issuerSnapshot), issuer))
         // A document that may be at the authority (an attempt was sent and not answered) is not moved to another provider, another
         // environment or another identity: the consultation would go to the new one and the same number would be sent there. A person
-        // decides it with the accountant (Step 4B.7b).
+        // decides it with the accountant and confirms it (`confirmIssuerChange`, Step 4B.7b-2).
         if (moved && doc.attempts > 0) {
           throw new PlatformException(
             ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
             'the document may be at the issuer it was made with and cannot move to another',
-            HttpStatusCodes.CONFLICT
+            HttpStatusCodes.CONFLICT,
+            // A person who checked with the authority that it is not there confirms it (`confirmIssuerChange`)
+            { reason: FiscalConflictReasons.ISSUER_CHANGED_IN_FLIGHT }
           )
         }
         const isNote = doc.kind === (FiscalDocumentKind.CREDIT_NOTE as string)
@@ -1193,6 +1261,98 @@ export class FiscalDocumentsService {
     return { id, submission }
   }
 
+  // A refused document that may be at the issuer it was made with (an attempt was sent and not answered) while the issuer was changed
+  // since (its provider, its environment or its identity): `retry` refuses it, because the same number could end up at two authorities. A
+  // person who has checked with the authority of the first issuer (with the accountant) that the document is NOT there says so, with the
+  // reason, and the document is made again with the issuer as it is now: a new submission, a new key, a fresh count of attempts. This is
+  // the person's decision and not core's (core cannot know what the old authority has), so it is a HIGH-tier action with a reason that is
+  // written in the audit trail. Only a document that is in that very situation can be confirmed. The caller enqueues the job.
+  async confirmIssuerChange(
+    organizationId: string,
+    id: string,
+    reason: string,
+    actor: FiscalActor
+  ): Promise<{ id: string; submission: number }> {
+    const submission = await this.prisma.transaction(async tx => {
+      const doc = await this.lock(tx, organizationId, id)
+      const issuer = await tx.fiscalIssuer.findUnique({ where: { organizationId } })
+      // The same test as `retry`: the two routes never disagree about what a moved issuer is
+      const moved =
+        issuer !== null &&
+        (issuer.providerId !== doc.providerId || !sameIssuer(record(doc.issuerSnapshot), issuer))
+      // Three different answers: the document is not refused (or never reached the issuer: a retry is what it needs), the issuer did not
+      // change, or the issuer it would go to is not one this deployment has (the confirmation would be spent on a document that cannot go)
+      if (doc.status !== (FiscalDocumentStatus.REJECTED as string) || doc.attempts === 0) {
+        throw this.invalid(doc.status as FiscalDocumentStatus)
+      }
+      if (issuer === null || !moved) {
+        throw new PlatformException(
+          ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+          'the issuer of the document is the one it was made with',
+          HttpStatusCodes.CONFLICT,
+          { reason: FiscalConflictReasons.NO_ISSUER_CHANGE }
+        )
+      }
+      if (this.providers.find(issuer.providerId) === undefined) {
+        throw new PlatformException(
+          ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
+          'the provider of the issuer is not available',
+          HttpStatusCodes.CONFLICT
+        )
+      }
+      // A credit note names the sale document that is live now
+      let parentDocumentId = doc.parentDocumentId
+      if (doc.kind === (FiscalDocumentKind.CREDIT_NOTE as string)) {
+        const live = await tx.fiscalDocument.findFirst({
+          where: {
+            organizationId,
+            orderId: doc.orderId,
+            kind: FiscalDocumentKind.SALE,
+            status: { not: FiscalDocumentStatus.VOIDED }
+          },
+          select: { id: true }
+        })
+        if (live === null) {
+          throw new PlatformException(
+            ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+            'the sale document of this credit note was voided and has no replacement yet',
+            HttpStatusCodes.CONFLICT,
+            { reason: FiscalConflictReasons.ORIGINAL_VOIDED }
+          )
+        }
+        parentDocumentId = live.id
+      }
+      await tx.fiscalDocument.update({
+        where: { id },
+        data: {
+          status: FiscalDocumentStatus.QUEUED,
+          rejectionReason: null,
+          parentDocumentId,
+          // A new submission for the authority of the new issuer: its own key and a fresh count
+          submission: { increment: 1 },
+          attempts: 0,
+          providerId: issuer.providerId,
+          environment: issuer.environment,
+          issuerSnapshot: toJson(this.issuerInput(issuer))
+        }
+      })
+      return doc.submission + 1
+    })
+    this.audit.log({
+      action: AuditAction.FISCAL_ISSUER_CHANGE_CONFIRMED,
+      actor: { userId: actor.userId },
+      organizationId,
+      storeId: actor.storeId,
+      resourceType: FiscalResourceTypes.DOCUMENT,
+      resourceId: id,
+      // The reason is the person's (it names no receiver: the form asks for what was checked, not for customer data)
+      metadata: { reason: plainText(reason).slice(0, FiscalLimits.VOID_REASON_MAX_LENGTH) },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
+    return { id, submission }
+  }
+
   // The invalidation of an accepted document, through the provider (HIGH-tier: the route asks for the confirmation). The provider
   // decides whether the authority accepts it; only then does the document become VOIDED.
   async void(
@@ -1266,25 +1426,35 @@ export class FiscalDocumentsService {
         HttpStatusCodes.CONFLICT
       )
     }
-    const outcome = await this.attempt('void', id, () =>
-      provider.void(
-        {
-          documentType: doc.documentType,
-          externalNumber: doc.externalNumber,
-          providerData: doc.providerData === null ? null : record(doc.providerData),
-          payload
-        },
-        reason,
-        {
-          issuer: this.issuerOfSnapshot(doc.issuerSnapshot),
-          credentials,
-          // One key per document and reason: a double click, or a request asked again after an answer that was lost, is the same
-          // invalidation for the provider; one that was refused and is asked again with another reason is a new one
-          idempotencyKey: `${organizationId}:${id}:void:${createHash('sha256').update(reason).digest('hex').slice(0, 16)}`,
-          attempt: 1
-        }
-      )
-    )
+    const stored: StoredFiscalDocument = {
+      documentType: doc.documentType,
+      externalNumber: doc.externalNumber,
+      providerData: doc.providerData === null ? null : record(doc.providerData),
+      payload
+    }
+    const contextOf = (attempt: number): ProviderContext => ({
+      issuer: this.issuerOfSnapshot(doc.issuerSnapshot),
+      credentials,
+      // One key per document and reason: a double click, or a request asked again after an answer that was lost, is the same
+      // invalidation for the provider; one that was refused and is asked again with another reason is a new one
+      idempotencyKey: `${organizationId}:${id}:void:${createHash('sha256').update(reason).digest('hex').slice(0, 16)}`,
+      attempt
+    })
+    // The authority may have the document invalidated already (an earlier request whose answer was lost, or a void made elsewhere):
+    // asked first, so that a second invalidation is never sent for it. A provider that cannot tell leaves it to the answer of `void`.
+    // `recovered`: the authority had it invalidated before this request sent anything (or answered only to the consultation); the audit
+    // trail says so, so the act is not read as this person's invalidation alone
+    let recovered = false
+    let outcome: VoidResult | null = await this.consultedVoid(provider, id, stored, contextOf(1))
+    if (outcome !== null) recovered = true
+    else {
+      outcome = await this.attempt('void', id, () => provider.void(stored, reason, contextOf(1)))
+      // No answer to the invalidation: it may have reached the authority, so it is asked once before the person is told to try again
+      if (outcome === null) {
+        outcome = await this.consultedVoid(provider, id, stored, contextOf(2))
+        recovered = outcome !== null
+      }
+    }
     if (outcome === null) {
       throw new PlatformException(
         ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
@@ -1326,11 +1496,30 @@ export class FiscalDocumentsService {
       storeId: actor.storeId,
       resourceType: FiscalResourceTypes.DOCUMENT,
       resourceId: id,
-      metadata: { externalNumber: doc.externalNumber },
+      metadata: { externalNumber: doc.externalNumber, recoveredFromAuthority: recovered },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
+    // The answer to the invalidation is evidence too (the acceptance's was kept when it was accepted, or is made now if it was not). After
+    // the audit entry: a slow bucket never delays or loses the trail of a decision that is made
+    await this.evidence.keepAll(organizationId, id)
     return this.get(organizationId, id)
+  }
+
+  // A void the authority has made already, as a void result; null when the provider cannot tell, does not have it voided or did not answer
+  private async consultedVoid(
+    provider: FiscalDocumentProvider,
+    documentId: string,
+    stored: StoredFiscalDocument,
+    ctx: ProviderContext
+  ): Promise<VoidResult | null> {
+    const consulted = await this.attempt('consult_void', documentId, async () =>
+      provider.consultVoid?.(stored, ctx)
+    )
+    if (consulted?.state !== FiscalVoidConsultState.VOIDED) return null
+    return consulted.response === undefined
+      ? { voided: true }
+      : { voided: true, response: consulted.response }
   }
 
   // The sale document made again after the one before was voided (the invalidation is the authority's, the new document is a new
@@ -1342,6 +1531,14 @@ export class FiscalDocumentsService {
     id: string,
     actor: FiscalActor
   ): Promise<{ id: string; creditNoteIds: string[] }> {
+    // A voided credit note is made again with the same rules, against the sale document that is live now (its sale was not voided)
+    const kind = await this.prisma.client.fiscalDocument.findFirst({
+      where: { id, organizationId },
+      select: { kind: true }
+    })
+    if (kind?.kind === (FiscalDocumentKind.CREDIT_NOTE as string)) {
+      return this.reissueCreditNote(organizationId, id, actor)
+    }
     const made = await this.prisma
       .transaction(async tx => {
         const old = await this.lock(tx, organizationId, id)
@@ -1511,6 +1708,131 @@ export class FiscalDocumentsService {
       userAgent: actor.userAgent
     })
     return { id: made.id, creditNoteIds: made.creditNoteIds }
+  }
+
+  // A credit note that was voided, made again for the same return (or the same order that came back as a whole) against the sale document
+  // that is live now: a new document with a new number, queued by the caller; the voided one is never edited. Before this, a note voided
+  // while its sale stood had no way back (only `replace` of the sale made the notes again). The note is refused while its return has a
+  // live note, while the sale document was voided (replace the sale first) and when the units of the return do not fit the sale.
+  private async reissueCreditNote(
+    organizationId: string,
+    id: string,
+    actor: FiscalActor
+  ): Promise<{ id: string; creditNoteIds: string[] }> {
+    const made = await this.prisma
+      .transaction(async tx => {
+        const old = await this.lock(tx, organizationId, id)
+        if (
+          old.kind !== (FiscalDocumentKind.CREDIT_NOTE as string) ||
+          old.status !== (FiscalDocumentStatus.VOIDED as string)
+        ) {
+          throw new PlatformException(
+            ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+            'only a voided credit note is made again',
+            HttpStatusCodes.CONFLICT,
+            { reason: FiscalConflictReasons.NOTE_NOT_VOIDED }
+          )
+        }
+        const live = await tx.fiscalDocument.findFirst({
+          where: {
+            organizationId,
+            orderId: old.orderId,
+            kind: FiscalDocumentKind.SALE,
+            status: { not: FiscalDocumentStatus.VOIDED }
+          },
+          select: { id: true }
+        })
+        if (live === null) {
+          throw new PlatformException(
+            ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+            'the sale document of this credit note was voided and has no replacement yet',
+            HttpStatusCodes.CONFLICT,
+            { reason: FiscalConflictReasons.ORIGINAL_VOIDED }
+          )
+        }
+        const liveNote = await tx.fiscalDocument.findFirst({
+          where: {
+            organizationId,
+            kind: FiscalDocumentKind.CREDIT_NOTE,
+            status: { not: FiscalDocumentStatus.VOIDED },
+            ...(old.returnId === null
+              ? { orderId: old.orderId, returnId: null }
+              : { returnId: old.returnId })
+          },
+          select: { id: true }
+        })
+        if (liveNote !== null) {
+          throw new PlatformException(
+            ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+            'the return already has a live credit note',
+            HttpStatusCodes.CONFLICT,
+            { reason: FiscalConflictReasons.NOTE_ALREADY_REPLACED }
+          )
+        }
+        const issuer = await tx.fiscalIssuer.findUnique({ where: { organizationId } })
+        if (issuer === null || this.providers.find(issuer.providerId) === undefined) {
+          throw new PlatformException(
+            ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
+            'the organization has no issuer set up',
+            HttpStatusCodes.CONFLICT
+          )
+        }
+        const created = await this.makeCreditNote(tx, organizationId, old.orderId, old.returnId, {
+          id: live.id
+        })
+        // Nothing made, or made REJECTED for units that do not fit the sale (that row is rolled back with the error: a person sees why)
+        if (created === null) {
+          // A request that made the live note between the check and the call is the other answer
+          const raced = await tx.fiscalDocument.findFirst({
+            where: {
+              organizationId,
+              kind: FiscalDocumentKind.CREDIT_NOTE,
+              status: { not: FiscalDocumentStatus.VOIDED },
+              ...(old.returnId === null
+                ? { orderId: old.orderId, returnId: null }
+                : { returnId: old.returnId })
+            },
+            select: { id: true }
+          })
+          if (raced !== null) {
+            throw new PlatformException(
+              ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+              'the return already has a live credit note',
+              HttpStatusCodes.CONFLICT,
+              { reason: FiscalConflictReasons.NOTE_ALREADY_REPLACED }
+            )
+          }
+          throw new PlatformException(
+            ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+            'the units of this return do not fit its sale',
+            HttpStatusCodes.CONFLICT,
+            { reason: FiscalConflictReasons.RETURN_INCONSISTENT }
+          )
+        }
+        return created
+      })
+      // Two requests for the same note meet a unique index: the loser is told the note exists, never a fault
+      .catch((error: unknown) => {
+        if (!isUniqueViolation(error)) throw error
+        throw new PlatformException(
+          ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+          'the return already has a live credit note',
+          HttpStatusCodes.CONFLICT,
+          { reason: FiscalConflictReasons.NOTE_ALREADY_REPLACED }
+        )
+      })
+    this.audit.log({
+      action: AuditAction.FISCAL_DOCUMENT_REPLACED,
+      actor: { userId: actor.userId },
+      organizationId,
+      storeId: actor.storeId,
+      resourceType: FiscalResourceTypes.DOCUMENT,
+      resourceId: made,
+      metadata: { replaces: id, creditNotes: 0, movedNotes: 0 },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
+    return { id: made, creditNoteIds: [] }
   }
 
   // ---------------------------------------------------------------- helpers

@@ -76,7 +76,9 @@ const READ_PERMISSIONS: Record<MediaPurposeType, Permission | null> = {
   // A settlement file holds amounts and guide numbers, no customer: who may read the remittances may read it
   [MediaPurpose.REMITTANCE_FILE]: Permissions.REMITTANCES_VIEW,
   // A receipt or a statement shows what the organization paid, to whom and what its accounts hold: who reads the journal reads it
-  [MediaPurpose.FINANCE_DOCUMENT]: Permissions.FINANCE_VIEW_JOURNAL
+  [MediaPurpose.FINANCE_DOCUMENT]: Permissions.FINANCE_VIEW_JOURNAL,
+  // The evidence of a fiscal document holds the receiver's name, tax id and address: who reads the fiscal documents reads it
+  [MediaPurpose.FISCAL_EVIDENCE]: Permissions.FISCAL_VIEW
 }
 
 export function refuseUnlessMayRead(purpose: string, held: readonly Permission[] | null): void {

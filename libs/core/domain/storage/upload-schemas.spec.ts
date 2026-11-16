@@ -176,7 +176,7 @@ describe('the upload schemas', () => {
     ).toBe(false)
   })
 
-  it.each([MediaPurpose.EXPORT, MediaPurpose.SHIPPING_LABEL])(
+  it.each([MediaPurpose.EXPORT, MediaPurpose.SHIPPING_LABEL, MediaPurpose.FISCAL_EVIDENCE])(
     'refuse the purpose %s: the server writes it or its step has not built it',
     purpose => {
       expect(requestUploadUrlSchema.safeParse({ ...request, purpose }).success).toBe(false)

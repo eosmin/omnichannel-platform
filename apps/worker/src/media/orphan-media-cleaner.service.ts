@@ -352,6 +352,9 @@ export class OrphanMediaCleaner {
     const stuck = await this.prisma.client.media.findMany({
       where: {
         status: MediaStatus.PENDING,
+        // The evidence of a fiscal document is never dropped (the database says so) and is repaired and scanned again when it is asked for,
+        // so it never fills the batch of this sweep
+        purpose: { not: MediaPurpose.FISCAL_EVIDENCE },
         createdAt: { lt: new Date(now.getTime() - UploadLimits.STUCK_SCAN_MINUTES * MINUTE_MS) },
         ...ownedBy(scope)
       },
@@ -380,10 +383,14 @@ export class OrphanMediaCleaner {
           )
           requeued += 1
         } else if (row.createdAt.getTime() < dropBefore) {
-          await this.prisma.client.media.deleteMany({
-            where: { id: row.id, status: MediaStatus.PENDING }
+          const removed = await this.prisma.client.media.deleteMany({
+            where: {
+              id: row.id,
+              status: MediaStatus.PENDING,
+              purpose: { not: MediaPurpose.FISCAL_EVIDENCE }
+            }
           })
-          dropped += 1
+          dropped += removed.count
         }
       } catch (error) {
         this.logger.warn({ errorName: errorName(error) }, 'a stuck scan could not be settled')

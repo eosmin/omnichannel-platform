@@ -84,7 +84,7 @@ export type FinanceTaxRateView = z.output<typeof taxRateSchema>
 const storeTaxSettingsSchema = z.object({ pricesIncludeTax: z.boolean() })
 export type FinanceStoreTaxSettingsView = z.output<typeof storeTaxSettingsSchema>
 
-const periodSchema = z.object({
+export const periodSchema = z.object({
   id: z.string(),
   year: z.number().int(),
   month: z.number().int(),

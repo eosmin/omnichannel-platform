@@ -4,6 +4,7 @@ import type {
   AttentionReason,
   AuthorType,
   BulkLabelJobStatus,
+  ChainProblem,
   ChannelId,
   ConversationStatus,
   ConversationStatusReason,
@@ -353,6 +354,12 @@ export interface FinancePostingFailedPayload {
   attempts: number
 }
 
+// The check of the hash chain opened an incident (TDD_18 §11): the organization and the code of what broke, never an entry or an amount
+export interface FinanceChainBrokenPayload {
+  organizationId: string
+  reason: ChainProblem
+}
+
 // A fiscal document was refused (TDD_18 §8.3): ids and a reason code, never the receiver's data
 export interface FiscalDocumentRejectedPayload {
   organizationId: string
@@ -360,6 +367,15 @@ export interface FiscalDocumentRejectedPayload {
   documentId: string
   orderId: string
   reason: string
+}
+
+// A fiscal document ran out of attempts while it was waiting for the provider (Step 4B.7b-2): ids and the count, never the receiver's data
+export interface FiscalDocumentStuckPayload {
+  organizationId: string
+  storeId: string
+  documentId: string
+  orderId: string
+  attempts: number
 }
 
 // A receipt of a purchase order was posted (TDD_18 §3): ids only, no amount and no cost
@@ -632,7 +648,9 @@ export interface DomainEventPayloads {
   [Events.FINANCE_ENTRY_POSTED]: FinanceEntryPayload
   [Events.FINANCE_ENTRY_REVERSED]: FinanceEntryPayload
   [Events.FINANCE_POSTING_FAILED]: FinancePostingFailedPayload
+  [Events.FINANCE_CHAIN_BROKEN]: FinanceChainBrokenPayload
   [Events.FISCAL_DOCUMENT_REJECTED]: FiscalDocumentRejectedPayload
+  [Events.FISCAL_DOCUMENT_STUCK]: FiscalDocumentStuckPayload
   [Events.FINANCE_PERIOD_CLOSED]: FinancePeriodPayload
   [Events.FINANCE_PERIOD_REOPENED]: FinancePeriodPayload
   [Events.PURCHASE_ORDER_RECEIVED]: PurchaseOrderReceivedPayload

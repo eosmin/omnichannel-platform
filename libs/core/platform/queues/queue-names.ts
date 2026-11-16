@@ -58,6 +58,8 @@ export const JobNames = {
   POST_FINANCE_EVENT: 'post-finance-event',
   // The daily check of the books of one organization (TDD_18 §6.1, §11): the sweep of sources with no entry and the balances
   RECONCILE_FINANCE: 'reconcile-finance',
+  // The weekly check of the hash chain of the journal of one organization (TDD_18 §11): read only, it opens or clears an incident
+  VERIFY_LEDGER_CHAIN: 'verify-ledger-chain',
   // Builds, signs and submits the fiscal document of a sale through the provider of the issuer (TDD_18 §8.3)
   SUBMIT_FISCAL_DOCUMENT: 'submit-fiscal-document',
   CREATE_SHIPMENTS: 'create-shipments', // One batch
@@ -130,6 +132,10 @@ export const postFinanceEventJobId = (kind: string, sourceId: string, day: strin
 // One check of the books per organization and UTC day: the schedule run twice (two replicas, a restart) asks for the same job
 export const reconcileFinanceJobId = (organizationId: string, day: string): string =>
   `${JobNames.RECONCILE_FINANCE}-${organizationId}-${day}`
+
+// One check of the chain per organization and UTC day (the schedule fires on one day a week): asked twice, it is one job
+export const verifyLedgerChainJobId = (organizationId: string, day: string): string =>
+  `${JobNames.VERIFY_LEDGER_CHAIN}-${organizationId}-${day}`
 
 // One submission job per fiscal document and SUBMISSION (the counter of the document): the retries of a submission are one job, and a
 // document that was refused, fixed and sent again is a new one (dashes, no colon)

@@ -111,9 +111,40 @@ test.describe('Finance → the books of the organization', () => {
     await month.getByLabel(finance.periods.open.year, { exact: true }).fill('2030')
     await month.getByRole('button', { name: finance.periods.open.submit, exact: true }).click()
     await expect(month).toHaveCount(0)
+    const future = page.locator('[data-testid="finance-period-row"][data-period="2030-01"]')
+    await expect(future).toHaveCount(1)
+
+    // A month that has not ended is not offered for closing (the api would refuse it): the button is only on the months that are over
+    await expect(future.getByTestId('finance-period-close')).toHaveCount(0)
+  })
+
+  test('the reports: the trial balance, the ledger, the journal file and the check of the chain', async ({
+    page
+  }) => {
+    await signIn(page, ownerEmail)
+    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.goto(AppPaths.finance.reports)
+    await expect(page.getByRole('heading', { name: finance.reports.title, level: 1 })).toBeVisible()
+    await expect(page.getByTestId('finance-trial-balance')).toBeVisible()
+    await expect(page.getByTestId('finance-ledger')).toBeVisible()
+    await expect(page.getByTestId('finance-journal-export')).toBeVisible()
+
+    // A day that does not exist is refused before the api is asked
+    const journal = page.getByTestId('finance-journal-export')
+    await journal.getByLabel(finance.reports.journal.from, { exact: true }).fill('2026-02-30')
+    await journal.getByLabel(finance.reports.journal.to, { exact: true }).fill('2026-03-01')
+    await journal
+      .getByRole('button', { name: finance.reports.journal.download, exact: true })
+      .click()
     await expect(
-      page.locator('[data-testid="finance-period-row"][data-period="2030-01"]')
-    ).toHaveCount(1)
+      journal.getByText(finance.reports.journal.problems.from, { exact: true })
+    ).toBeVisible()
+
+    // The check of the chain on a book with nothing wrong in it
+    const chain = page.getByTestId('finance-chain')
+    await chain.getByRole('button', { name: finance.reports.chain.verify, exact: true }).click()
+    await expect(chain.getByTestId('finance-chain-verdict')).toBeVisible()
+    await expect(chain.getByRole('alert')).toHaveCount(0)
   })
 
   test('an owner registers an expense, finds it in the transactions and voids it', async ({
@@ -283,6 +314,22 @@ test.describe('Finance → the books of the organization', () => {
     await expect(
       page.getByRole('button', { name: finance.accounts.edit, exact: true })
     ).toHaveCount(0)
+  })
+
+  test('a person who may only read the books sees the trial balance and nothing of the ledger, the files or the chain', async ({
+    page
+  }) => {
+    await signIn(page, viewerEmail)
+    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.goto(AppPaths.finance.reports)
+    await expect(page.getByTestId('finance-trial-balance')).toBeVisible()
+    await expect(page.getByTestId('finance-ledger')).toHaveCount(0)
+    await expect(page.getByTestId('finance-journal-export')).toHaveCount(0)
+    await expect(page.getByTestId('finance-chain')).toHaveCount(0)
+    await page.goto(AppPaths.finance.periods)
+    await expect(page.getByRole('heading', { name: finance.periods.title, level: 1 })).toBeVisible()
+    await expect(page.getByTestId('finance-period-close')).toHaveCount(0)
+    await expect(page.getByTestId('finance-period-reopen')).toHaveCount(0)
   })
 
   test('a person with no finance permission has no Finance link and is sent away from the page', async ({
