@@ -299,6 +299,38 @@ export function parseImportDay(cell: string, format: RemittanceDateFormat): stri
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(iso) ? iso : null
 }
 
+// A time of day, to the second ("10:15:30"; the seconds may be left out): hours 0-23, minutes and seconds 00-59
+const CLOCK = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/
+
+// The day of a date that may carry a time after it, as the statements of some banks print them ("12/11/2026 09:05:07"; an ISO day may
+// use a T): where the day ends and the time of day, or null when there is none. Only the bank statements read this; a remittance day
+// stays what `parseImportDay` says.
+export function splitMoment(cell: string): { dayText: string; timeText: string | null } {
+  const text = cell.trim()
+  const cut = text.search(/[\sT]/)
+  return cut === -1
+    ? { dayText: text, timeText: null }
+    : { dayText: text.slice(0, cut), timeText: text.slice(cut + 1).trim() }
+}
+
+// A day that exists, in the format of the profile, and the time after it when there is one ('HH:mm:ss'): null when the day is not one or
+// the text after it is not a time of day that exists. A cell with no time says `time: null`, never midnight.
+export function parseImportMoment(
+  cell: string,
+  format: RemittanceDateFormat
+): { day: string; time: string | null } | null {
+  const { dayText, timeText } = splitMoment(cell)
+  const day = parseImportDay(dayText, format)
+  if (day === null) return null
+  if (timeText === null) return { day, time: null }
+  const clock = CLOCK.exec(timeText)
+  if (clock === null) return null
+  const [hours, minutes, seconds] = [Number(clock[1]), Number(clock[2]), Number(clock[3] ?? '0')]
+  if (hours > 23 || minutes > 59 || seconds > 59) return null
+  const two = (value: number): string => String(value).padStart(2, '0')
+  return { day, time: `${two(hours)}:${two(minutes)}:${two(seconds)}` }
+}
+
 // A guide number or a reference: one visible line. Control characters and invisible ones are refused (a tab or a zero-width
 // space would make two guides that look the same different), and the text is only ever stored, never rendered as markup.
 const CONTROL_OR_INVISIBLE = /[\p{Cc}\p{Cf}\u2028\u2029]/u

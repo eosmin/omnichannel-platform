@@ -37,7 +37,11 @@ export function BankPreviewTable({ preview }: { preview: BankPreviewView }): Rea
               {preview.lines.slice(0, BankStatementLimits.PREVIEW_ROWS).map(line => (
                 <tr key={`${String(line.row)}-${String(line.occurrence)}`} className="border-t">
                   <td className="px-2 py-1">{line.row}</td>
-                  <td className="px-2 py-1">{line.postedOn}</td>
+                  <td className="px-2 py-1">
+                    {line.postedTime === null
+                      ? line.postedOn
+                      : `${line.postedOn} ${line.postedTime}`}
+                  </td>
                   <td className="px-2 py-1">{line.description ?? ''}</td>
                   <td className="px-2 py-1">{line.reference ?? ''}</td>
                   <td className="px-2 py-1 text-right tabular-nums">{money(line.amountCents)}</td>

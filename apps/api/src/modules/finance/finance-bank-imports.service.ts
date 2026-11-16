@@ -17,6 +17,7 @@ import {
   FinanceResourceTypes,
   MediaStatus,
   type ParsedBankLine,
+  bankLineKey,
   parseBankStatement,
   RemittanceDelimiters
 } from '@platform/core/domain'
@@ -106,22 +107,10 @@ export function bankImportView(row: {
   }
 }
 
-// What makes a line of a statement the same line when it comes again: the account, the day, the amount, the reference and the
-// description, and which of the equal ones it is in its file (two identical lines of a statement are two movements). A statement that
-// overlaps the last one therefore never doubles what it repeats.
+// The hash of a line's identity (`bankLineKey`: account, day, time when the row has one, amount, reference, description and which of the
+// equal ones it is). A statement that overlaps the last one therefore never doubles what it repeats.
 export function bankLineHash(accountId: string, line: ParsedBankLine): string {
-  return createHash('sha256')
-    .update(
-      [
-        accountId,
-        line.postedOn,
-        String(line.amountCents),
-        line.reference ?? '',
-        line.description ?? '',
-        String(line.occurrence)
-      ].join('\u0000')
-    )
-    .digest('hex')
+  return createHash('sha256').update(bankLineKey(accountId, line)).digest('hex')
 }
 
 // The import of the CSV a bank gives (TDD_18 §4.4): read with the saved profile of the account, strictly (one bad row refuses the whole

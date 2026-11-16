@@ -1117,6 +1117,72 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
     })
   })
 
+  // The file of a bank that prints a time after the day on most rows, thousands with a comma inside quotes, and no header row
+  // (synthetic: only the shape of a real statement; a day past the 12th, so the order of the day and the month is not asked). Its own account, so the lines of the other cases are not in its way.
+  describe('a statement with a time in its dates and quoted thousands', () => {
+    const rows = {
+      first: [
+        '14/11/2026 10:00:00,Deposit,R1,0.00,"1,234.50"',
+        '14/11/2026 11:00:00,Deposit,R1,0.00,"1,234.50"',
+        '15/11/2026,Fee,R2,2.00,0.00'
+      ],
+      // Starts in the middle of the 14 November: it brings again the 11:00 line, with its time, and the day-only line
+      overlap: [
+        '14/11/2026 11:00:00,Deposit,R1,0.00,"1,234.50"',
+        '15/11/2026,Fee,R2,2.00,0.00',
+        '16/11/2026 08:30:00,Payment,R3,"10,000.00",0.00'
+      ]
+    }
+    let bank: ProfileBody
+    beforeAll(async () => {
+      bank = await makeProfile(accounts[CASH] ?? '', 'timed', {
+        hasHeader: false,
+        thousandsSeparator: 'comma',
+        dateFormat: 'dd/MM/yyyy',
+        columns: { date: 0, description: 1, reference: 2, debit: 3, credit: 4 }
+      })
+    })
+    const post = (lines: string[]) => send(`${lines.join('\n')}\n`, bank.id)
+
+    it('reads the amounts with the comma and the times, and keeps two equal movements of different times as two lines', async () => {
+      const response = await post(rows.first)
+      expect(response.status).toBe(CREATED)
+      const body = response.body as ImportBody
+      expect(body.lineCount).toBe(3)
+      expect(body.newLineCount).toBe(3)
+      const page = await linesOf(body.id)
+      expect(page.items.map(line => line.amountCents).sort((a, b) => a - b)).toEqual([
+        -200, 123450, 123450
+      ])
+    })
+
+    it('does not double the lines that an overlapping statement repeats', async () => {
+      // The first statement is there whichever case ran before (a repeat of it answers 409: nothing new)
+      await post(rows.first)
+      const response = await post(rows.overlap)
+      expect(response.status).toBe(CREATED)
+      const body = response.body as ImportBody
+      expect(body.lineCount).toBe(3)
+      // Only the 16 November payment is new: the 11:00 line has its time and the fee its day alone, both known
+      expect(body.newLineCount).toBe(1)
+      const again = await post(rows.overlap)
+      expect(again.status).toBe(CONFLICT)
+      expect(conflictOf(again.body)).toBe(FinanceConflicts.BANK_IMPORT_NOTHING_NEW)
+    })
+
+    it('refuses a thousands separator that is not quoted, and a time that does not exist, naming the row', async () => {
+      const before = await owner.bankStatementLine.count({ where: { accountId: accounts[CASH] } })
+      const loose = await post([...rows.first, '17/11/2026 09:00:00,Deposit,R9,0.00,1,234.50'])
+      expect(loose.status).toBe(BAD_REQUEST)
+      const late = await post(['17/11/2026 25:00:00,Deposit,R9,0.00,5.00', ...rows.first])
+      expect(late.status).toBe(BAD_REQUEST)
+      // A refused file keeps nothing, not even its good rows
+      expect(await owner.bankStatementLine.count({ where: { accountId: accounts[CASH] } })).toBe(
+        before
+      )
+    })
+  })
+
   async function bookLineOnCash(amountCents: number, occurredOn: string): Promise<string> {
     const response = await asAdmin()
       .post(ApiRoutes.finance.transactions.record)

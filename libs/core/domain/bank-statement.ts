@@ -3,11 +3,13 @@ import {
   cleanImportText as cleanText,
   headerKey,
   dayOrderEvidence,
-  parseImportDay,
+  parseImportMoment,
+  splitMoment,
   resolveImportColumn as resolveColumn,
   shownImportValue as shown,
   widthOfMostImportRows as widthOfMostRows,
   RemittanceDateFormats,
+  RemittanceDelimiters,
   type RemittanceDateFormat,
   type RemittanceDecimalSeparator,
   type RemittanceDelimiter,
@@ -142,6 +144,8 @@ export interface BankRowError {
 export interface ParsedBankLine {
   // 'yyyy-MM-dd'
   postedOn: string
+  // 'HH:mm:ss' when the date of the row had a time, else null (a day alone is not midnight). It is part of the identity of the line.
+  postedTime: string | null
   // Positive: money in (the bank credited the account). Negative: money out.
   amountCents: number
   description: string | null
@@ -191,11 +195,10 @@ export function bankProfileProblem(value: {
     return 'the delimiter and the decimal separator must differ'
   }
   const thousands = THOUSANDS_CHARACTER[value.thousandsSeparator as BankThousandsSeparator]
-  if (thousands !== null && thousands !== undefined) {
-    if (thousands === value.decimalSeparator) {
-      return 'the thousands separator and the decimal separator must differ'
-    }
-    if (thousands === value.delimiter) return 'the thousands separator cannot be the delimiter'
+  // The thousands separator may be the delimiter ("1,234.50" in a comma file): the cell is cut by the delimiter before its amount is read,
+  // so a bank that quotes it is read whole, and one that does not breaks the row into more cells than the file has (a visible error).
+  if (thousands !== null && thousands !== undefined && thousands === value.decimalSeparator) {
+    return 'the thousands separator and the decimal separator must differ'
   }
   return null
 }
@@ -361,7 +364,7 @@ export function parseBankStatement(
     if (
       headerDate !== undefined &&
       Object.values(RemittanceDateFormats).some(
-        format => parseImportDay(headerDate, format) !== null
+        format => parseImportMoment(headerDate, format) !== null
       )
     ) {
       fail(
@@ -392,9 +395,37 @@ export function parseBankStatement(
       fail(row, null, BankStatementErrors.STRAY_QUOTE, null)
       continue
     }
-    if (cells.slice(width).some(extra => extra.trim() !== '')) {
+    // A comma that is both the delimiter and the thousands separator: an unquoted 1,234.50 splits into two cells and would shift every
+    // cell after it, and an empty cell at the end could hide the shift. Every row must then have exactly the cells of the file.
+    const strictWidth =
+      profile.thousandsSeparator === BankThousandsSeparators.COMMA &&
+      profile.delimiter === RemittanceDelimiters.COMMA
+    if (
+      cells.slice(width).some(extra => extra.trim() !== '') ||
+      (strictWidth && cells.length !== width)
+    ) {
       fail(row, null, BankStatementErrors.ROW_TOO_WIDE, String(cells.length))
       continue
+    }
+    // Without a header the width is the one most rows have, so a file whose every row has an unquoted 1,234.50 has the wrong width as its
+    // own and would pass the check above. The mark of the split: an amount cell of one to three digits followed by a cell of exactly
+    // three digits (and decimals). A bank prints its amounts with two decimals, so a real amount is never that.
+    if (strictWidth) {
+      const moneyColumns = [columns.amount, columns.debit, columns.credit]
+      const split = moneyColumns.find(index => {
+        if (index === undefined) return false
+        return (
+          /^\d{1,3}$/.test((cells[index] ?? '').trim()) &&
+          /^\d{3}(?:\.\d{1,2})?$/.test((cells[index + 1] ?? '').trim())
+        )
+      })
+      if (split !== undefined) {
+        const field = (Object.keys(columns) as BankStatementField[]).find(
+          key => columns[key] === split
+        )
+        fail(row, field ?? null, BankStatementErrors.INVALID_AMOUNT, shown(cells[split] ?? ''))
+        continue
+      }
     }
     const cell = (field: BankStatementField): string | undefined => {
       const index = columns[field]
@@ -413,13 +444,16 @@ export function parseBankStatement(
       return value
     }
     let postedOn: string | null = null
+    let postedTime: string | null = null
     const dateCell = required(BankStatementFields.DATE)
     if (dateCell !== null) {
-      postedOn = parseImportDay(dateCell, profile.dateFormat)
-      if (postedOn === null) {
+      const moment = parseImportMoment(dateCell, profile.dateFormat)
+      postedOn = moment?.day ?? null
+      postedTime = moment?.time ?? null
+      if (moment === null) {
         fail(row, BankStatementFields.DATE, BankStatementErrors.INVALID_DATE, shown(dateCell))
       } else {
-        const evidence = dayOrderEvidence(dateCell, profile.dateFormat)
+        const evidence = dayOrderEvidence(splitMoment(dateCell).dayText, profile.dateFormat)
         if (evidence === 'ambiguous') sawAmbiguousDay = true
         if (evidence === 'decisive') sawDecisiveDay = true
       }
@@ -515,10 +549,21 @@ export function parseBankStatement(
       }
     }
     if (errorCount === before && postedOn !== null && amount !== null && amount !== 0) {
-      const key = [postedOn, amount, reference ?? '', description ?? ''].join('\u0000')
+      // Two lines are the same when day, time, amount, reference and description agree; which of the equal ones this is follows file order
+      const key = [postedOn, postedTime ?? '', amount, reference ?? '', description ?? ''].join(
+        '\u0000'
+      )
       const occurrence = seen.get(key) ?? 0
       seen.set(key, occurrence + 1)
-      lines.push({ postedOn, amountCents: amount, description, reference, row, occurrence })
+      lines.push({
+        postedOn,
+        postedTime,
+        amountCents: amount,
+        description,
+        reference,
+        row,
+        occurrence
+      })
     }
   }
   return {
@@ -529,6 +574,24 @@ export function parseBankStatement(
     rowCount,
     dateFormatUndecided: sawAmbiguousDay && !sawDecisiveDay
   }
+}
+
+// What makes a line of a statement the same line when it comes again (the service hashes it): the account, the day, the amount, the
+// reference and the description, and which of the equal ones it is in its file (two identical lines of a statement are two movements).
+// When the date of the row had a time, the time is part of the identity: two equal movements of one day at two times are two lines, and a
+// later statement that starts in the middle of that day and brings only the second one brings it with its own time, so it is known and
+// is never doubled. A line with no time keeps the identity it always had, so what was imported before is still recognised. A movement
+// that one statement prints with a time and another without it is not recognised as the same: a bank prints it one way.
+export function bankLineKey(accountId: string, line: ParsedBankLine): string {
+  return [
+    accountId,
+    line.postedOn,
+    String(line.amountCents),
+    line.reference ?? '',
+    line.description ?? '',
+    String(line.occurrence),
+    ...(line.postedTime === null ? [] : [line.postedTime])
+  ].join('\u0000')
 }
 
 // ------------------------------------------------------------------------------------------------------ the matching

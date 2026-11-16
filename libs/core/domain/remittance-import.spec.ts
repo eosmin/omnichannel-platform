@@ -1,6 +1,7 @@
 import {
   cleanImportText,
   parseImportDay,
+  parseImportMoment,
   parseMoneyCents,
   parseRemittanceFile,
   RemittanceDateFormats,
@@ -92,6 +93,62 @@ describe('parseImportDay', () => {
     expect(parseImportDay('2026-13-01', RemittanceDateFormats.ISO)).toBeNull()
     expect(parseImportDay('12/11/2026', RemittanceDateFormats.ISO)).toBeNull()
     expect(parseImportDay('', RemittanceDateFormats.ISO)).toBeNull()
+  })
+})
+
+describe('parseImportMoment', () => {
+  const dayFirst = RemittanceDateFormats.DAY_FIRST_SLASH
+  it('reads a day alone exactly like parseImportDay, with no time', () => {
+    expect(parseImportMoment('12/11/2026', dayFirst)).toEqual({ day: '2026-11-12', time: null })
+    expect(parseImportMoment(' 2026-11-12 ', RemittanceDateFormats.ISO)).toEqual({
+      day: '2026-11-12',
+      time: null
+    })
+    expect(parseImportMoment('31/02/2026', dayFirst)).toBeNull()
+  })
+  it('reads a time after the day, to the second, and a missing second as :00', () => {
+    expect(parseImportMoment('12/11/2026 09:05:07', dayFirst)).toEqual({
+      day: '2026-11-12',
+      time: '09:05:07'
+    })
+    expect(parseImportMoment('12/11/2026 9:05', dayFirst)).toEqual({
+      day: '2026-11-12',
+      time: '09:05:00'
+    })
+    expect(parseImportMoment('12/11/2026\u00A009:05', dayFirst)).toEqual({
+      day: '2026-11-12',
+      time: '09:05:00'
+    })
+    expect(parseImportMoment('12/11/2026 23:59', dayFirst)).toEqual({
+      day: '2026-11-12',
+      time: '23:59:00'
+    })
+    expect(parseImportMoment('2026-11-12T00:00:00', RemittanceDateFormats.ISO)).toEqual({
+      day: '2026-11-12',
+      time: '00:00:00'
+    })
+    expect(
+      parseImportMoment('12-11-2026   10:00:00', RemittanceDateFormats.DAY_FIRST_DASH)
+    ).toEqual({ day: '2026-11-12', time: '10:00:00' })
+  })
+  it('refuses a time that does not exist, text after it and a day that is wrong', () => {
+    for (const bad of [
+      '12/11/2026 24:00:00',
+      '12/11/2026 10:60:00',
+      '12/11/2026 10:00:60',
+      '12/11/2026 10:00:00 pm',
+      '12/11/2026 10:00:00.5',
+      '12/11/2026 abc',
+      '31/02/2026 10:00:00',
+      '12/11/2026T',
+      '12/11/2026 10:00:00 12/11/2026'
+    ]) {
+      expect(parseImportMoment(bad, dayFirst)).toBeNull()
+    }
+  })
+  it('leaves the day of a remittance exactly as it was: a time is still refused there', () => {
+    expect(parseImportDay('12/11/2026 09:05:07', dayFirst)).toBeNull()
+    expect(parseImportDay('2026-11-12T09:05:07', RemittanceDateFormats.ISO)).toBeNull()
   })
 })
 
