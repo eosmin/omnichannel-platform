@@ -2,7 +2,8 @@ import { type Permission, ClientPermissions } from '@platform/core/auth'
 
 // Who opens the finance area: the permissions that open at least one page of it. Each step of 4B.9 adds its own (the journal for
 // `finance:view_journal`, the transactions for `finance:manage_transactions`, ...) together with its page, so the link of the area
-// never leads to an area with nothing in it.
+// never leads to an area with nothing in it. The bank reconciliation (`finance:reconcile`) is not one of them on its own: its page also
+// reads the chart to offer the accounts (`finance:view`), so it is listed for who holds both.
 export const FINANCE_AREA_PERMISSIONS = [
   ClientPermissions.FINANCE_VIEW,
   // The purchases open for these, with no need to read the books (Step 4B.9a-4)

@@ -1,4 +1,10 @@
-import { bpsOfPercentText, decimalOfCents, moneyText, percentOfBps } from './money'
+import {
+  bpsOfPercentText,
+  centsOfDecimalText,
+  decimalOfCents,
+  moneyText,
+  percentOfBps
+} from './money'
 
 describe('decimalOfCents', () => {
   it.each([
@@ -65,5 +71,31 @@ describe('rates in basis points', () => {
     for (let bps = 0; bps <= 10_000; bps += 1) {
       expect(bpsOfPercentText(percentOfBps(bps))).toBe(bps)
     }
+  })
+})
+
+describe('centsOfDecimalText', () => {
+  it.each([
+    ['1234.56', 123456],
+    ['1234,56', 123456],
+    ['0.5', 50],
+    ['-0,5', -50],
+    ['7', 700],
+    ['  12.30 ', 1230],
+    ['-0', 0]
+  ])('reads %j as %d cents', (text, cents) => {
+    expect(centsOfDecimalText(text)).toBe(cents)
+  })
+
+  it.each(['', '1.234', '1.234,56', '1,234.56', '--1', '1e3', 'abc', '12.', '.5', '99999999999'])(
+    'refuses %j',
+    text => {
+      expect(centsOfDecimalText(text)).toBeNull()
+    }
+  )
+
+  it('refuses what does not fit the 32 bits of an amount of the books', () => {
+    expect(centsOfDecimalText('21474836.47')).toBe(2_147_483_647)
+    expect(centsOfDecimalText('21474836.48')).toBeNull()
   })
 })

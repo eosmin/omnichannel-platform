@@ -131,6 +131,9 @@ export const Events = {
   FINANCE_ENTRY_REVERSED: 'finance.entry_reversed',
   // An automatic entry could not be posted and a person must fix it (TDD_18 §6.1). Api and worker only, ids and a reason code.
   FINANCE_POSTING_FAILED: 'finance.posting_failed',
+  // A fiscal document was refused by the provider or the authority and a person must fix it (TDD_18 §8.3). Api and worker only:
+  // ids and a reason code, never the receiver's data.
+  FISCAL_DOCUMENT_REJECTED: 'fiscal.document_rejected',
   // A month was closed, and the latest closed one was reopened (TDD_18 §5, Step 4B.8). Api only; ids and the month, never an amount or the reason.
   FINANCE_PERIOD_CLOSED: 'finance.period_closed',
   FINANCE_PERIOD_REOPENED: 'finance.period_reopened',

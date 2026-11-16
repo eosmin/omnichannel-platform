@@ -86,7 +86,8 @@ export const AppPaths = {
     suppliers: '/finance/suppliers',
     purchases: '/finance/purchases',
     purchase: (id: string): string => `/finance/purchases/${id}`,
-    payables: '/finance/payables'
+    payables: '/finance/payables',
+    reconciliation: '/finance/reconciliation'
   },
   account: {
     profile: '/account/profile',

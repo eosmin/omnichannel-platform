@@ -1,3 +1,6 @@
+export * from './fiscal-documents.service'
+export * from './fiscal-issuer.service'
 export * from './fiscal-provider.registry'
 export * from './fiscal-rules'
+export * from './fiscal-runtime.module'
 export * from './official-providers'

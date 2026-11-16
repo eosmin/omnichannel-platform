@@ -28,11 +28,13 @@ import {
   type PollShipmentStatusJob,
   type ProcessImageJob,
   type ReconcileFinanceJob,
+  type SubmitFiscalDocumentJob,
   type ReconcileInventoryJob,
   type ReprocessCarrierEventsJob,
   type ScanFileJob,
   type SyncPickupJob
 } from '@platform/core/queues'
+import { FiscalDocumentsService } from '@platform/fiscal/runtime'
 
 import { CarrierEventReplay } from '../carriers/carrier-event-replay.service'
 import { FinanceReconciler } from '../finance/finance-reconciler.service'
@@ -65,6 +67,7 @@ type HeavyJob =
   | EvaluatePickupsJob
   | EnforceRetentionJob
   | PostFinanceEventJob
+  | SubmitFiscalDocumentJob
 
 const bulkLabelsJobSchema = exactly<BulkLabelsMergeJob>()(
   z.object({
@@ -118,6 +121,13 @@ const postFinanceJobSchema = exactly<PostFinanceEventJob>()(
     sourceId: z.uuid(),
     kind: z.enum(FinanceEventKind),
     occurredAt: z.iso.datetime().optional(),
+    correlationId: z.string().optional()
+  })
+)
+const submitFiscalJobSchema = exactly<SubmitFiscalDocumentJob>()(
+  z.object({
+    organizationId: z.uuid(),
+    documentId: z.uuid(),
     correlationId: z.string().optional()
   })
 )
@@ -180,7 +190,8 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     private readonly pickupEvaluator: PickupEvaluator,
     private readonly retention: StoreRetentionEnforcer,
     private readonly financePosting: FinancePostingService,
-    private readonly financeReconciler: FinanceReconciler
+    private readonly financeReconciler: FinanceReconciler,
+    private readonly fiscalDocuments: FiscalDocumentsService
   ) {
     super(QueueNames.HEAVY_PROCESSING, support)
   }
@@ -210,6 +221,13 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
         throw new UnrecoverableError('the finance reconcile job does not fit its schema')
       }
       await this.financeReconciler.reconcile(reconcile.data.organizationId)
+      return
+    }
+    if (job.name === JobNames.SUBMIT_FISCAL_DOCUMENT) {
+      const submit = submitFiscalJobSchema.safeParse(job.data)
+      if (!submit.success) throw new UnrecoverableError('the fiscal job does not fit its schema')
+      // Throws when the provider did not answer, so the queue tries again with its backoff; a decision (accepted, rejected) returns
+      await this.fiscalDocuments.submit(submit.data.organizationId, submit.data.documentId)
       return
     }
     if (job.name === JobNames.POST_FINANCE_EVENT) {

@@ -21,6 +21,7 @@ describe('HeavyProcessingProcessor', () => {
   const enforceRetention = jest.fn().mockResolvedValue(undefined)
   const postFinance = jest.fn().mockResolvedValue({ outcome: 'posted' })
   const reconcileFinance = jest.fn().mockResolvedValue(undefined)
+  const submitFiscal = jest.fn().mockResolvedValue(undefined)
   const support = {
     run: (_queue: string, current: ProcessorJob, work: (job: ProcessorJob) => Promise<void>) =>
       work(current)
@@ -39,7 +40,8 @@ describe('HeavyProcessingProcessor', () => {
     { run: evaluatePickups } as never, // the pickup evaluation: what it is handed is what is tested
     { enforce: enforceRetention } as never, // the nightly retention of a store: what it is handed is what is tested
     { post: postFinance } as never, // the automatic entries of the books: what it is handed is what is tested
-    { reconcile: reconcileFinance } as never // the daily check of the books: what it is handed is what is tested
+    { reconcile: reconcileFinance } as never, // the daily check of the books: what it is handed is what is tested
+    { submit: submitFiscal } as never // the fiscal documents: what it is handed is what is tested
   )
 
   const base = {
@@ -145,6 +147,53 @@ describe('HeavyProcessingProcessor', () => {
         })
       ).rejects.toBeInstanceOf(UnrecoverableError)
       expect(postFinance).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('submit-fiscal-document jobs', () => {
+    const ORG_ID = '8d88e80f-cecb-408a-bd99-9da2db20a7da'
+    const DOCUMENT_ID = '2d307c85-af40-4e6f-9c63-2c3d4e5f6071'
+    const submit = (data: unknown): Promise<void> =>
+      processor.process({
+        name: JobNames.SUBMIT_FISCAL_DOCUMENT,
+        data: JSON.parse(JSON.stringify(data)) as unknown,
+        attemptsMade: 0,
+        opts: { attempts: 6 }
+      } as unknown as ProcessorJob)
+
+    it('hands the organization and the document to the lifecycle, nothing else', async () => {
+      submitFiscal.mockClear()
+      await submit({ organizationId: ORG_ID, documentId: DOCUMENT_ID, correlationId: 'c' })
+      expect(submitFiscal).toHaveBeenCalledWith(ORG_ID, DOCUMENT_ID)
+    })
+
+    it('drops what the job should never carry, an amount or the receiver', async () => {
+      submitFiscal.mockClear()
+      await submit({
+        organizationId: ORG_ID,
+        documentId: DOCUMENT_ID,
+        totalCents: 1,
+        receiver: { taxId: 'x' }
+      })
+      expect(submitFiscal).toHaveBeenCalledWith(ORG_ID, DOCUMENT_ID)
+    })
+
+    it('lets the error of a provider that did not answer reach the queue, which asks again', async () => {
+      submitFiscal.mockRejectedValueOnce(new Error('the fiscal provider did not answer'))
+      await expect(
+        submit({ organizationId: ORG_ID, documentId: DOCUMENT_ID })
+      ).rejects.not.toBeInstanceOf(UnrecoverableError)
+    })
+
+    it.each([
+      ['a document that is not an id', { documentId: 'all' }],
+      ['an organization that is not an id', { organizationId: 'mine' }]
+    ])('refuses %s, and does not ask again', async (_label, patch) => {
+      submitFiscal.mockClear()
+      await expect(
+        submit({ organizationId: ORG_ID, documentId: DOCUMENT_ID, ...patch })
+      ).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(submitFiscal).not.toHaveBeenCalled()
     })
   })
 

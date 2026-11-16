@@ -17,6 +17,7 @@ import { CountsModule } from './modules/counts/counts.module'
 import { CustomersModule } from './modules/customers/customers.module'
 import { ExportsModule } from './modules/exports'
 import { FinanceModule } from './modules/finance/finance.module'
+import { FiscalModule } from './modules/fiscal/fiscal.module'
 import { InventoryModule } from './modules/inventory/inventory.module'
 import { InvitationsModule } from './modules/invitations/invitations.module'
 import { MediaModule } from './modules/media/media.module'
@@ -83,6 +84,7 @@ import { WidgetModule } from './modules/widget/widget.module'
     TransfersModule,
     WarehousesModule,
     FinanceModule,
+    FiscalModule,
     PurchasesModule,
     SettingsModule,
     TenantWebhooksModule,
