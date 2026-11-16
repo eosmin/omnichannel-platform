@@ -5,12 +5,14 @@ import {
   FiscalDocumentKind,
   FiscalDocumentStatus,
   FiscalEnvironment,
+  type FiscalEvidenceKind,
   FiscalIssueOn,
   type FiscalReceiverPatchBody,
   type PutFiscalIssuerBody
 } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
+import { mediaUrlsSchema, type MediaUrlsView } from './media-api'
 
 // The fiscal documents of the organization and their issuer (TDD_18 §8, §12; Step 4B.9b-2). Reading is for fiscal:view; changing the
 // issuer, fixing a receiver, retrying, voiding and replacing a document are for fiscal:manage (the api checks it on every call). The api
@@ -285,4 +287,40 @@ export async function replaceFiscalDocument(
     storeId
   })
   return answer.data
+}
+
+// The link is put in an anchor by hand: only http(s) is a link (a `javascript:` or `data:` url is refused whoever sent it)
+const evidenceEnvelopeSchema = z.object({
+  data: mediaUrlsSchema.extend({ url: z.url({ protocol: /^https?$/ }) })
+})
+
+// The signed link of one file of evidence of a document: the api makes it short-lived (15 minutes) for a clean file of the organization of
+// the document, so it is asked when the person clicks and never kept. The api answers 404 while the file does not exist.
+export async function fetchFiscalEvidenceUrls(
+  client: ApiClient,
+  storeId: string,
+  id: string,
+  kind: FiscalEvidenceKind
+): Promise<MediaUrlsView> {
+  const answer = await client.request(
+    ApiRoutes.fiscal.documents.evidence(encodeURIComponent(id), encodeURIComponent(kind)),
+    { schema: evidenceEnvelopeSchema, storeId }
+  )
+  return answer.data
+}
+
+// A person who checked with the authority of the first issuer that the document is not there says so, with the reason: it is made again with
+// the issuer as it is now and queued. HIGH tier: the interface asks before it sends this.
+export async function confirmFiscalIssuerChange(
+  client: ApiClient,
+  storeId: string,
+  id: string,
+  reason: string
+): Promise<void> {
+  await client.request(ApiRoutes.fiscal.documents.confirmIssuerChange(encodeURIComponent(id)), {
+    method: 'POST',
+    body: { reason },
+    schema: queuedEnvelopeSchema,
+    storeId
+  })
 }

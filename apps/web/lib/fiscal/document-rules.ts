@@ -3,6 +3,7 @@ import {
   FiscalConflictReasons,
   FiscalDocumentKind,
   FiscalDocumentStatus,
+  FiscalEvidenceKind,
   FiscalLimits,
   FiscalRejectionReasons
 } from '@platform/core/domain'
@@ -18,12 +19,15 @@ export interface FiscalDocumentActions {
   retry: boolean
   // The invalidation of an accepted document: irreversible
   void: boolean
-  // A voided sale document that has no replacement among the documents the person has loaded
+  // A voided sale document that has no replacement among the documents the person has loaded, or a voided credit note (its replacement is
+  // the note of its return, which the web cannot see: the api refuses with `note_already_replaced`)
   replace: boolean
+  // A refused document that was sent at least once and whose refusal is that the issuer changed: the person says it is not at the old issuer
+  confirmIssuerChange: boolean
 }
 
 export function fiscalActionsOf(
-  document: Pick<FiscalDocumentView, 'id' | 'kind' | 'status' | 'attempts'>,
+  document: Pick<FiscalDocumentView, 'id' | 'kind' | 'status' | 'attempts' | 'rejectionReason'>,
   replacedIds: ReadonlySet<string>
 ): FiscalDocumentActions {
   const sale = document.kind === FiscalDocumentKind.SALE
@@ -34,7 +38,12 @@ export function fiscalActionsOf(
     retry: refused || queued,
     void: document.status === FiscalDocumentStatus.ACCEPTED,
     replace:
-      sale && document.status === FiscalDocumentStatus.VOIDED && !replacedIds.has(document.id)
+      document.status === FiscalDocumentStatus.VOIDED &&
+      (sale ? !replacedIds.has(document.id) : true),
+    confirmIssuerChange:
+      refused &&
+      document.attempts > 0 &&
+      document.rejectionReason === FiscalRejectionReasons.ISSUER_CHANGED
   }
 }
 
@@ -74,3 +83,24 @@ const CONFLICTS: readonly string[] = Object.values(FiscalConflictReasons)
 // The `reason` the api gives with a refused action, when it is one the screen has words for
 export const conflictReasonOf = (value: unknown): string | null =>
   typeof value === 'string' && CONFLICTS.includes(value) ? value : null
+
+// The files of evidence a document has, by its state (the api makes them when the document is accepted or voided: what was built and the
+// authority's answer to the acceptance from then on, its answer to the invalidation once it is voided)
+export const fiscalEvidenceKindsOf = (
+  document: Pick<FiscalDocumentView, 'status'>
+): readonly FiscalEvidenceKind[] => {
+  if (document.status === FiscalDocumentStatus.VOIDED) {
+    return [
+      FiscalEvidenceKind.DOCUMENT,
+      FiscalEvidenceKind.RESPONSE,
+      FiscalEvidenceKind.VOID_RESPONSE
+    ]
+  }
+  return document.status === FiscalDocumentStatus.ACCEPTED
+    ? [FiscalEvidenceKind.DOCUMENT, FiscalEvidenceKind.RESPONSE]
+    : []
+}
+
+// Whether a refusal of `retry` is the one that asks for the person's confirmation of an issuer change
+export const isIssuerChangedInFlight = (reason: string | null): boolean =>
+  reason === FiscalConflictReasons.ISSUER_CHANGED_IN_FLIGHT

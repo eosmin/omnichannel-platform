@@ -4,15 +4,22 @@ import Link from 'next/link'
 import { useFormatter, useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useRef, useState } from 'react'
 
-import { AppPaths, type FiscalDocumentView, type FiscalProviderView } from '@platform/api-client'
+import {
+  ApiError,
+  AppPaths,
+  type FiscalDocumentView,
+  type FiscalProviderView
+} from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
 import { FiscalDocumentKind } from '@platform/core/domain'
 
 import { useMoney } from '../../lib/finance/use-money'
 import {
+  conflictReasonOf,
   coreRejectionOf,
   fiscalActionsOf,
-  fiscalAttentionOf
+  fiscalAttentionOf,
+  isIssuerChangedInFlight
 } from '../../lib/fiscal/document-rules'
 import {
   useFiscalDocument,
@@ -27,7 +34,9 @@ import { LoadFailed, PageLoading } from '../settings/states'
 import { Button } from '../ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
 
+import { EvidencePanel } from './evidence-panel'
 import { FiscalStatusBadge } from './fiscal-status-badge'
+import { IssuerChangeDialog } from './issuer-change-dialog'
 import { ReceiverDialog } from './receiver-dialog'
 import { VoidDialog } from './void-dialog'
 
@@ -94,6 +103,7 @@ function DocumentBody({
   const { can } = useStore()
   const [editingReceiver, setEditingReceiver] = useState(false)
   const [voiding, setVoiding] = useState(false)
+  const [changingIssuer, setChangingIssuer] = useState(false)
   const actions = fiscalActionsOf(document, replacedIds)
   const canManage = can(ClientPermissions.FISCAL_MANAGE)
   const when = (iso: string | null): string =>
@@ -155,6 +165,7 @@ function DocumentBody({
         </dl>
         <p className="text-muted-foreground text-xs">{t('receiver.minimized')}</p>
       </section>
+      <EvidencePanel document={document} />
       <p className="text-muted-foreground text-xs">{t('immutable')}</p>
       {canManage ? (
         <Actions
@@ -162,6 +173,7 @@ function DocumentBody({
           actions={actions}
           onEditReceiver={() => setEditingReceiver(true)}
           onVoid={() => setVoiding(true)}
+          onConfirmIssuerChange={() => setChangingIssuer(true)}
         />
       ) : null}
       <ReceiverDialog
@@ -171,6 +183,11 @@ function DocumentBody({
         onOpenChange={setEditingReceiver}
       />
       <VoidDialog document={document} open={voiding} onOpenChange={setVoiding} />
+      <IssuerChangeDialog
+        document={document}
+        open={changingIssuer}
+        onOpenChange={setChangingIssuer}
+      />
     </>
   )
 }
@@ -215,12 +232,14 @@ function Actions({
   document,
   actions,
   onEditReceiver,
-  onVoid
+  onVoid,
+  onConfirmIssuerChange
 }: {
   document: FiscalDocumentView
   actions: ReturnType<typeof fiscalActionsOf>
   onEditReceiver: () => void
   onVoid: () => void
+  onConfirmIssuerChange: () => void
 }): ReactElement | null {
   const t = useTranslations('finance.fiscal.actions')
   const errorText = useFiscalErrorText()
@@ -229,16 +248,37 @@ function Actions({
   const retry = useRetryFiscalDocument(storeId)
   const replace = useReplaceFiscalDocument(storeId)
   const [confirmingReplace, setConfirmingReplace] = useState(false)
+  const note = document.kind === FiscalDocumentKind.CREDIT_NOTE
   const [refusal, setRefusal] = useState<string | null>(null)
   const pending = retry.isPending || replace.isPending
-  if (!actions.editReceiver && !actions.retry && !actions.void && !actions.replace) return null
+  if (
+    !actions.editReceiver &&
+    !actions.retry &&
+    !actions.void &&
+    !actions.replace &&
+    !actions.confirmIssuerChange
+  ) {
+    return null
+  }
 
   const send = (work: () => Promise<unknown>, done: string): void => {
     if (!guard.enter()) return
     setRefusal(null)
     work()
       .then(() => toast.success(done))
-      .catch((error: unknown) => setRefusal(errorText(error)))
+      .catch((error: unknown) => {
+        // The api will not move a document that may be at its first issuer: the person confirms that it is not there, which is its own
+        // dialog (and the refusal is not left on the screen behind it)
+        if (
+          error instanceof ApiError &&
+          isIssuerChangedInFlight(conflictReasonOf(error.metadata['reason']))
+        ) {
+          setRefusal(null)
+          onConfirmIssuerChange()
+          return
+        }
+        setRefusal(errorText(error))
+      })
       .finally(guard.leave)
   }
 
@@ -249,8 +289,12 @@ function Actions({
           className="bg-muted/50 flex flex-col gap-2 rounded-md border p-3 text-sm"
           data-testid="fiscal-replace-confirm"
         >
-          <p className="font-medium">{t('replaceConfirmTitle')}</p>
-          <p className="text-muted-foreground">{t('replaceConfirmDescription')}</p>
+          <p className="font-medium">
+            {t(note ? 'replaceNoteConfirmTitle' : 'replaceConfirmTitle')}
+          </p>
+          <p className="text-muted-foreground">
+            {t(note ? 'replaceNoteConfirmDescription' : 'replaceConfirmDescription')}
+          </p>
           <div className="flex flex-wrap justify-end gap-2">
             <Button
               variant="outline"
@@ -264,10 +308,13 @@ function Actions({
               size="sm"
               disabled={pending}
               onClick={() =>
-                send(async () => {
-                  await replace.mutateAsync(document.id)
-                  setConfirmingReplace(false)
-                }, t('replaced'))
+                send(
+                  async () => {
+                    await replace.mutateAsync(document.id)
+                    setConfirmingReplace(false)
+                  },
+                  t(note ? 'replacedNote' : 'replaced')
+                )
               }
             >
               {t('replaceConfirm')}
@@ -289,6 +336,17 @@ function Actions({
               onClick={() => send(() => retry.mutateAsync(document.id), t('retried'))}
             >
               {t('retry')}
+            </Button>
+          ) : null}
+          {actions.confirmIssuerChange ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={pending}
+              data-testid="fiscal-issuer-change-open"
+              onClick={onConfirmIssuerChange}
+            >
+              {t('confirmIssuerChange')}
             </Button>
           ) : null}
           {actions.replace ? (

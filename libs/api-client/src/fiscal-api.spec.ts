@@ -1,9 +1,11 @@
-import { FiscalDocumentStatus } from '@platform/core/domain'
+import { FiscalDocumentStatus, FiscalEvidenceKind } from '@platform/core/domain'
 
 import { createApiClient } from './api-client'
 import {
+  confirmFiscalIssuerChange,
   fetchFiscalDocument,
   fetchFiscalDocumentPage,
+  fetchFiscalEvidenceUrls,
   fetchFiscalIssuer,
   fetchFiscalProviders,
   patchFiscalReceiver,
@@ -250,5 +252,110 @@ describe('the fiscal issuer', () => {
     )
     const providers = await fetchFiscalProviders(client, 's')
     expect(providers[0]?.manifest.credentialKeys).toEqual(['signingKey'])
+  })
+})
+
+describe('the evidence of a document', () => {
+  it('asks the signed link of one kind, for the document named, through the store', async () => {
+    const { client, fetchImpl } = setup(
+      json(200, {
+        data: {
+          url: 'https://files.example.com/e?sig=1',
+          filename: 'response.json',
+          contentType: 'application/json',
+          variants: { full: null, medium: null, thumb: null }
+        }
+      })
+    )
+    const urls = await fetchFiscalEvidenceUrls(
+      client,
+      's1',
+      'd 1',
+      FiscalEvidenceKind.VOID_RESPONSE
+    )
+    expect(urls.url).toContain('sig=1')
+    const { url, init, headers } = callOf(fetchImpl)
+    expect(url).toContain('/fiscal/documents/d%201/evidence/void_response')
+    expect(init.method === undefined || init.method === 'GET').toBe(true)
+    expect(headers.get('x-store-id')).toBe('s1')
+  })
+
+  it('refuses a link that is not an http(s) url', async () => {
+    for (const url of ['javascript:alert(1)', 'data:text/html,x']) {
+      const { client } = setup(
+        json(200, {
+          data: {
+            url,
+            filename: 'a',
+            contentType: 'application/json',
+            variants: { full: null, medium: null, thumb: null }
+          }
+        })
+      )
+      await expect(
+        fetchFiscalEvidenceUrls(client, 's1', 'd1', FiscalEvidenceKind.DOCUMENT)
+      ).rejects.toThrow()
+    }
+  })
+
+  it('refuses a link that is not a url', async () => {
+    const { client } = setup(
+      json(200, {
+        data: {
+          url: 'not a url',
+          filename: 'a',
+          contentType: 'application/json',
+          variants: { full: null, medium: null, thumb: null }
+        }
+      })
+    )
+    await expect(
+      fetchFiscalEvidenceUrls(client, 's1', 'd1', FiscalEvidenceKind.DOCUMENT)
+    ).rejects.toBeDefined()
+  })
+})
+
+describe('confirmFiscalIssuerChange', () => {
+  it('posts the reason to the document and reads that it was queued', async () => {
+    const { client, fetchImpl } = setup(json(200, { data: { queued: true } }))
+    await expect(
+      confirmFiscalIssuerChange(client, 's1', 'd1', 'not at the old authority')
+    ).resolves.toBeUndefined()
+    const { url, init } = callOf(fetchImpl)
+    expect(url).toContain('/fiscal/documents/d1/confirm-issuer-change')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual({ reason: 'not at the old authority' })
+  })
+})
+
+describe('the refusals of the evidence and of the issuer change', () => {
+  const refusal = (status: number, code: string, reason?: string): Response =>
+    json(status, {
+      error: {
+        code,
+        message: 'refused',
+        ...(reason === undefined ? {} : { metadata: { reason } })
+      },
+      correlationId: 'c1'
+    })
+
+  it('keeps the status of a file that is not there', async () => {
+    const { client } = setup(refusal(404, 'RESOURCE_NOT_FOUND'))
+    await expect(
+      fetchFiscalEvidenceUrls(client, 's1', 'd1', FiscalEvidenceKind.RESPONSE)
+    ).rejects.toMatchObject({ status: 404 })
+  })
+
+  it('keeps the reason of a refused confirmation, for the screen to tell them apart', async () => {
+    const { client } = setup(refusal(409, 'FISCAL_DOCUMENT_INVALID_TRANSITION', 'no_issuer_change'))
+    await expect(confirmFiscalIssuerChange(client, 's1', 'd1', 'checked')).rejects.toMatchObject({
+      status: 409,
+      metadata: { reason: 'no_issuer_change' }
+    })
+  })
+
+  it('does not take an answer that says it was not queued', async () => {
+    const { client } = setup(json(200, { data: { queued: false } }))
+    await expect(confirmFiscalIssuerChange(client, 's1', 'd1', 'checked')).rejects.toThrow()
   })
 })

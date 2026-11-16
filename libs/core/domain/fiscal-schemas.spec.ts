@@ -1,5 +1,6 @@
 import { FiscalEnvironment, FiscalIssueOn, FiscalLimits } from './fiscal-constants'
 import {
+  confirmFiscalIssuerChangeSchema,
   fiscalReceiverPatchSchema,
   listFiscalDocumentsQuerySchema,
   putFiscalIssuerSchema,
@@ -40,6 +41,19 @@ describe('the fiscal schemas', () => {
   it('needs a reason to void', () => {
     expect(voidFiscalDocumentSchema.safeParse({ reason: '  ' }).success).toBe(false)
     expect(voidFiscalDocumentSchema.safeParse({ reason: 'wrong receiver' }).success).toBe(true)
+  })
+
+  it('needs a reason to confirm an issuer change, and takes nothing else', () => {
+    expect(confirmFiscalIssuerChangeSchema.safeParse({ reason: '  ' }).success).toBe(false)
+    expect(confirmFiscalIssuerChangeSchema.safeParse({ reason: 'not there' }).success).toBe(true)
+    expect(
+      confirmFiscalIssuerChangeSchema.safeParse({ reason: 'not there', extra: 1 }).success
+    ).toBe(false)
+    expect(
+      confirmFiscalIssuerChangeSchema.safeParse({
+        reason: 'a'.repeat(FiscalLimits.VOID_REASON_MAX_LENGTH + 1)
+      }).success
+    ).toBe(false)
   })
 
   it('lists with a page size by default and a cursor that is a correlative', () => {

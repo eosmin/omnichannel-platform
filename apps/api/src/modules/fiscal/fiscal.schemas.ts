@@ -1,18 +1,18 @@
 import { z } from 'zod'
 
 import {
+  type ConfirmFiscalIssuerChangeBody,
+  confirmFiscalIssuerChangeSchema,
   FiscalEvidenceKind,
   fiscalIdSchema,
   type FiscalReceiverPatchBody,
   fiscalReceiverPatchSchema,
-  FiscalLimits,
   FiscalSweepKind,
   FiscalSweepLimits,
   type ListFiscalDocumentsQuery,
   listFiscalDocumentsQuerySchema,
   type PutFiscalIssuerBody,
   putFiscalIssuerSchema,
-  singleLineText,
   type VoidFiscalDocumentBody,
   voidFiscalDocumentSchema
 } from '@platform/core/domain'
@@ -44,8 +44,5 @@ export const reconciliationQuerySchema = z.object({
 })
 export type ReconciliationQuery = z.output<typeof reconciliationQuerySchema>
 
-// What the person checked with the authority of the first issuer: that the document is not there
-export const confirmIssuerChangeSchema = z
-  .object({ reason: singleLineText(FiscalLimits.VOID_REASON_MAX_LENGTH, 1) })
-  .strict()
-export type ConfirmIssuerChangeBody = z.output<typeof confirmIssuerChangeSchema>
+export const confirmIssuerChangeSchema = confirmFiscalIssuerChangeSchema
+export type ConfirmIssuerChangeBody = ConfirmFiscalIssuerChangeBody
