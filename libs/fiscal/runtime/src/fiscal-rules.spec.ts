@@ -2,9 +2,12 @@ import { FiscalDocumentStatus } from '@platform/core/domain'
 
 import {
   canTransition,
+  type CreditNoteOrder,
+  creditNoteSaleOf,
   documentLines,
   isImmutable,
   maskTaxId,
+  originalStateOf,
   receiverEditable,
   receiverOf,
   receiverRecord,
@@ -246,5 +249,137 @@ describe('the issuer a document was made with', () => {
     ['the address', { address: { line1: 'z', city: 'y' } }]
   ])('is not the same when %s changed', (_label, patch) => {
     expect(sameIssuer(snapshot, { ...live, ...patch })).toBe(false)
+  })
+})
+
+describe('the credit note of a return', () => {
+  // Two shirts at 11.30 and one hat at 5.65, 13% tax included, 2.00 off the order: the books split it line by line
+  const order: CreditNoteOrder = {
+    subtotalCents: 2825,
+    discountCents: 200,
+    shippingCents: 500,
+    totalCents: 3125,
+    taxCents: 322,
+    pricesIncludeTax: true,
+    lines: [
+      {
+        orderItemId: 'a',
+        productName: 'Shirt',
+        variantName: 'M',
+        quantity: 2,
+        unitPriceCents: 1130,
+        taxRateBps: 1300,
+        taxCents: 235
+      },
+      {
+        orderItemId: 'b',
+        productName: 'Hat',
+        variantName: null,
+        quantity: 1,
+        unitPriceCents: 565,
+        taxRateBps: 1300,
+        taxCents: 59
+      }
+    ]
+  }
+  const back = (entries: [string, number][]): Map<string, number> => new Map(entries)
+
+  it('adds up like the document of a sale, so the provider is never told an inconsistent one', () => {
+    const result = creditNoteSaleOf(order, back([]), back([['a', 1]]))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.sale.lines).toHaveLength(1)
+    expect(result.sale.lines[0]).toMatchObject({
+      description: 'Shirt (M)',
+      quantity: 1,
+      unitPriceCents: 1130
+    })
+    expect(result.sale.shippingCents).toBe(0)
+    expect(saleAddsUp(result.sale)).toBe(true)
+  })
+
+  it('credits the whole sale of the goods, to the cent, once every unit has come back in pieces', () => {
+    const first = creditNoteSaleOf(order, back([]), back([['a', 1]]))
+    const second = creditNoteSaleOf(
+      order,
+      back([['a', 1]]),
+      back([
+        ['a', 1],
+        ['b', 1]
+      ])
+    )
+    if (!first.ok || !second.ok) throw new Error('fixture')
+    expect(saleAddsUp(second.sale)).toBe(true)
+    // What the goods brought in, after the discount and without the shipping fee
+    expect(first.sale.totalCents + second.sale.totalCents).toBe(
+      order.totalCents - order.shippingCents
+    )
+    // The tax of the lines (the order's own tax also has the shipping's, which is not credited)
+    expect(first.sale.taxCents + second.sale.taxCents).toBe(235 + 59)
+  })
+
+  it('adds up when the prices did not include the tax', () => {
+    const excluded: CreditNoteOrder = {
+      ...order,
+      pricesIncludeTax: false,
+      totalCents: 3125 + 294
+    }
+    const result = creditNoteSaleOf(excluded, back([]), back([['b', 1]]))
+    expect(result.ok).toBe(true)
+    if (result.ok) expect(saleAddsUp(result.sale)).toBe(true)
+  })
+
+  it('refuses more units back than were sold, a unit that is not on the order, nothing back and an order with no tax snapshot', () => {
+    expect(creditNoteSaleOf(order, back([['b', 1]]), back([['b', 1]])).ok).toBe(false)
+    expect(creditNoteSaleOf(order, back([]), back([['zzz', 1]])).ok).toBe(false)
+    expect(creditNoteSaleOf(order, back([]), back([])).ok).toBe(false)
+    expect(creditNoteSaleOf({ ...order, taxCents: null }, back([]), back([['a', 1]])).ok).toBe(
+      false
+    )
+  })
+})
+
+describe('the rounding of the books in a credit note', () => {
+  // 2 units at 10.00, tax included: net 17.39 and tax 2.61 are odd, so one unit back rounds both up (8.70 + 1.31 against 10.00)
+  const odd: CreditNoteOrder = {
+    subtotalCents: 2000,
+    discountCents: 0,
+    shippingCents: 0,
+    totalCents: 2000,
+    taxCents: 261,
+    pricesIncludeTax: true,
+    lines: [
+      {
+        orderItemId: 'a',
+        productName: 'Shirt',
+        variantName: null,
+        quantity: 2,
+        unitPriceCents: 1000,
+        taxRateBps: 1500,
+        taxCents: 261
+      }
+    ]
+  }
+
+  it('credits a unit for what it was sold for, not a cent more, and adds up', () => {
+    const first = creditNoteSaleOf(odd, new Map(), new Map([['a', 1]]))
+    const second = creditNoteSaleOf(odd, new Map([['a', 1]]), new Map([['a', 1]]))
+    expect(first.ok && second.ok).toBe(true)
+    if (!first.ok || !second.ok) return
+    expect(first.sale.totalCents).toBe(1000)
+    expect(first.sale.discountCents).toBe(0)
+    expect(saleAddsUp(first.sale)).toBe(true)
+    expect(saleAddsUp(second.sale)).toBe(true)
+  })
+})
+
+describe('the original of a credit note', () => {
+  it('is ready only when accepted, gone when voided and still on its way in any other state', () => {
+    const S = FiscalDocumentStatus
+    expect(originalStateOf(S.ACCEPTED)).toBe('ready')
+    expect(originalStateOf(S.VOIDED)).toBe('voided')
+    for (const status of [S.DRAFT, S.QUEUED, S.SUBMITTED, S.REJECTED]) {
+      expect(originalStateOf(status)).toBe('waiting')
+    }
   })
 })

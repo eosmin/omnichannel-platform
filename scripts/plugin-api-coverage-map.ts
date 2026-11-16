@@ -456,6 +456,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'fiscal.documents.receiver': { none: FINANCE },
   'fiscal.documents.retry': { none: FINANCE },
   'fiscal.documents.void': { none: FINANCE },
+  'fiscal.documents.replace': { none: FINANCE },
   'suppliers.list': { none: FINANCE },
   'suppliers.create': { none: FINANCE },
   'suppliers.byId': { none: FINANCE },

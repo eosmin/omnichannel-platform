@@ -677,6 +677,14 @@ copying amounts, and a daily check compares the document's total and tax against
 that is down uses its declared contingency; the platform keeps the document `QUEUED` and retries with backoff
 (`TDD_07`). **What the legal documents need that the platform does not know yet** is §13.
 
+**As built (Step 4B.7b-1).** A credit note is a row of the same table with `kind = credit_note`, the `returnId` it is for (null for an
+order that came back as a whole with no return row) and the `parentDocumentId` of the sale document it cancels (part of). It is made when
+the return is received, only when the sale has a document that is not voided, and it goes to the provider only after that document was
+accepted. Its amounts are the ones the books gave back for the same return (the same split by line and running total of units), the
+shipping fee is not credited **[ACCOUNTANT]**, and its receiver is the one of the original. A sale document made again after a void is a new
+document with `replacesDocumentId` and a new number; the credit notes that were voided with the old one are made again against it. The
+database holds one live sale document per order, one live credit note per return and one live replacement per voided document.
+
 ---
 
 ## 9. Permissions, isolation and audit
