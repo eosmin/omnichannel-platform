@@ -27,6 +27,9 @@ export const FiscalLimits = {
   REASON_MAX_LENGTH: 500,
   // What a provider may hand back of the authority's answer, as text: more is cut (a provider may copy the whole body of the authority)
   RESPONSE_MAX_CHARS: 16_000,
+  // What the provider keeps for the invalidation (the codes and seals of the authority) is needed to void the document and cannot be repaired
+  // once it is accepted: its limit is far above the response's, and a provider that goes over it is a fault to read in the logs
+  PROVIDER_DATA_MAX_CHARS: 256_000,
   VOID_REASON_MAX_LENGTH: 500,
   FAILED_JOB_KEEP_SECONDS: 7 * 24 * 60 * 60,
   // The correlative is an INTEGER of the database

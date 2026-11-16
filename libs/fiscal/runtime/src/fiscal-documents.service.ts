@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
@@ -51,7 +51,7 @@ import {
   saleOf,
   sameIssuer
 } from './fiscal-rules'
-import { cappedResponse, type Json, record, toJson } from './json'
+import { cappedResponse, type Json, plainText, record, toJson } from './json'
 import { withTimeout } from './with-timeout'
 
 // The fields of an issuer that a provider is told about (the row of the issuer and the snapshot a document keeps of it)
@@ -192,49 +192,8 @@ export class FiscalDocumentsService {
         select: { id: true }
       })
       if (existing !== null) return null
-      const order = await tx.order.findFirst({
-        where: { id: orderId, store: { organizationId } },
-        select: {
-          id: true,
-          storeId: true,
-          orderNumber: true,
-          currency: true,
-          shippingCents: true,
-          discountCents: true,
-          totalCents: true,
-          taxCents: true,
-          pricesIncludeTax: true,
-          shippingAddress: true,
-          customer: { select: { name: true, email: true, phone: true } },
-          items: {
-            orderBy: { id: 'asc' },
-            select: {
-              productName: true,
-              variantName: true,
-              quantity: true,
-              unitPriceCents: true,
-              taxRateBps: true,
-              taxCents: true
-            }
-          }
-        }
-      })
-      if (order === null) return null
-      const lines = documentLines(order.items)
-      const orderTax = order.taxCents ?? 0
-      const linesTax = lines.reduce((sum, line) => sum + line.taxCents, 0)
-      const address: Record<string, string> = {}
-      for (const [key, value] of Object.entries(record(order.shippingAddress))) {
-        if (typeof value === 'string' && value !== '') address[key] = value
-      }
-      const receiver: FiscalReceiver = {
-        name: order.customer.name,
-        taxId: null,
-        registrationId: null,
-        address: Object.keys(address).length > 0 ? address : null,
-        email: order.customer.email,
-        phone: order.customer.phone
-      }
+      const sale = await this.readSale(tx, organizationId, orderId)
+      if (sale === null) return null
       // The correlative: an atomic increment, so two documents never share a number
       const taken = await tx.fiscalIssuer.update({
         where: { organizationId },
@@ -249,7 +208,7 @@ export class FiscalDocumentsService {
       const created = await tx.fiscalDocument.create({
         data: {
           organizationId,
-          storeId: order.storeId,
+          storeId: sale.storeId,
           orderId,
           journalEntryId: entry?.id ?? null,
           sequenceNumber,
@@ -259,24 +218,80 @@ export class FiscalDocumentsService {
           providerId: issuer.providerId,
           environment: issuer.environment,
           issuerSnapshot: toJson(this.issuerInput(issuer)),
-          linesSnapshot: toJson({
-            lines,
-            shippingCents: order.shippingCents,
-            shippingTaxCents: Math.max(0, orderTax - linesTax),
-            discountCents: order.discountCents,
-            // null on an order made before the tax columns: its prices are read as tax included, like the order does
-            pricesIncludeTax: order.pricesIncludeTax ?? true,
-            orderNumber: order.orderNumber
-          }),
-          receiverEncrypted: new Uint8Array(this.cipher.seal(receiverRecord(receiver))),
-          currency: order.currency,
-          totalCents: order.totalCents,
-          taxCents: Math.min(orderTax, order.totalCents)
+          linesSnapshot: sale.linesSnapshot,
+          receiverEncrypted: new Uint8Array(this.cipher.seal(receiverRecord(sale.receiver))),
+          currency: sale.currency,
+          totalCents: sale.totalCents,
+          taxCents: sale.taxCents
         },
         select: { id: true }
       })
       return created.id
     })
+  }
+
+  // The sale as the order has it now: the lines with the tax snapshot of Step 4B.3b, the amounts of the order and its customer as the
+  // receiver. The amounts are the order's own, never recomputed here.
+  private async readSale(tx: PrismaTransaction, organizationId: string, orderId: string) {
+    const order = await tx.order.findFirst({
+      where: { id: orderId, store: { organizationId } },
+      select: {
+        id: true,
+        storeId: true,
+        orderNumber: true,
+        currency: true,
+        shippingCents: true,
+        discountCents: true,
+        totalCents: true,
+        taxCents: true,
+        pricesIncludeTax: true,
+        shippingAddress: true,
+        customer: { select: { name: true, email: true, phone: true } },
+        items: {
+          orderBy: { id: 'asc' },
+          select: {
+            productName: true,
+            variantName: true,
+            quantity: true,
+            unitPriceCents: true,
+            taxRateBps: true,
+            taxCents: true
+          }
+        }
+      }
+    })
+    if (order === null) return null
+    const lines = documentLines(order.items)
+    const orderTax = order.taxCents ?? 0
+    const linesTax = lines.reduce((sum, line) => sum + line.taxCents, 0)
+    const address: Record<string, string> = {}
+    for (const [key, value] of Object.entries(record(order.shippingAddress))) {
+      if (typeof value === 'string' && value !== '') address[key] = value
+    }
+    const receiver: FiscalReceiver = {
+      name: order.customer.name,
+      taxId: null,
+      registrationId: null,
+      address: Object.keys(address).length > 0 ? address : null,
+      email: order.customer.email,
+      phone: order.customer.phone
+    }
+    return {
+      storeId: order.storeId,
+      currency: order.currency,
+      totalCents: order.totalCents,
+      taxCents: Math.min(orderTax, order.totalCents),
+      receiver,
+      linesSnapshot: toJson({
+        lines,
+        shippingCents: order.shippingCents,
+        shippingTaxCents: Math.max(0, orderTax - linesTax),
+        discountCents: order.discountCents,
+        // null on an order made before the tax columns: its prices are read as tax included, like the order does
+        pricesIncludeTax: order.pricesIncludeTax ?? true,
+        orderNumber: order.orderNumber
+      })
+    }
   }
 
   // ---------------------------------------------------------------- the worker submits it
@@ -305,14 +320,17 @@ export class FiscalDocumentsService {
         organizationId,
         issuer === null || provider === undefined
           ? FiscalRejectionReasons.PROVIDER_UNAVAILABLE
-          : FiscalRejectionReasons.ISSUER_CHANGED
+          : FiscalRejectionReasons.ISSUER_CHANGED,
+        { beforeSending: true }
       )
       return
     }
     const credentials =
       issuer.credentialsEncrypted === null ? {} : this.openCredentials(issuer.credentialsEncrypted)
     if (credentials === null) {
-      await this.reject(doc.id, organizationId, FiscalRejectionReasons.CREDENTIALS_UNREADABLE)
+      await this.reject(doc.id, organizationId, FiscalRejectionReasons.CREDENTIALS_UNREADABLE, {
+        beforeSending: true
+      })
       return
     }
     // The identity of the issuer is the one the document was made with
@@ -329,7 +347,9 @@ export class FiscalDocumentsService {
     const sale = saleOf(doc, parts)
     // The provider never sees a sale whose parts do not add up to what the order took
     if (!saleAddsUp(sale)) {
-      await this.reject(doc.id, organizationId, FiscalRejectionReasons.SALE_INCONSISTENT)
+      await this.reject(doc.id, organizationId, FiscalRejectionReasons.SALE_INCONSISTENT, {
+        beforeSending: true
+      })
       return
     }
     const built = await this.attempt('build', doc.id, () =>
@@ -350,12 +370,15 @@ export class FiscalDocumentsService {
       })
     )
     if (built === null) {
-      await this.reject(doc.id, organizationId, FiscalRejectionReasons.BUILD_FAILED)
+      await this.reject(doc.id, organizationId, FiscalRejectionReasons.BUILD_FAILED, {
+        beforeSending: true
+      })
       return
     }
     if (built.missingReceiverFields.length > 0) {
       await this.reject(doc.id, organizationId, FiscalRejectionReasons.RECEIVER_INCOMPLETE, {
-        built
+        built,
+        beforeSending: true
       })
       return
     }
@@ -484,7 +507,9 @@ export class FiscalDocumentsService {
     }
   ): Promise<void> {
     const providerData =
-      result.providerData === undefined ? undefined : this.safeResponse(result.providerData)
+      result.providerData === undefined
+        ? undefined
+        : this.safeResponse(result.providerData, FiscalLimits.PROVIDER_DATA_MAX_CHARS)
     const response = result.response === undefined ? undefined : this.safeResponse(result.response)
     const sealedPayload = this.sealPayload(built.payload)
     await this.prisma.transaction(async tx => {
@@ -511,7 +536,7 @@ export class FiscalDocumentsService {
         data: {
           status: FiscalDocumentStatus.ACCEPTED,
           documentType: built.documentType,
-          externalNumber: result.externalNumber,
+          externalNumber: plainText(result.externalNumber),
           providerData,
           builtPayloadEncrypted: sealedPayload,
           response,
@@ -523,9 +548,16 @@ export class FiscalDocumentsService {
     })
   }
 
-  private safeResponse(response: Readonly<Record<string, unknown>>): Json {
+  private safeResponse(
+    response: Readonly<Record<string, unknown>>,
+    max: number = FiscalLimits.RESPONSE_MAX_CHARS
+  ): Json {
     try {
-      return cappedResponse(response)
+      const json = cappedResponse(response, max)
+      if (typeof json === 'object' && !Array.isArray(json) && json['truncated'] === true) {
+        this.logger.error({ max }, 'what a fiscal provider returned is larger than what is kept')
+      }
+      return json
     } catch {
       return { unreadable: true }
     }
@@ -546,6 +578,9 @@ export class FiscalDocumentsService {
       built?: BuiltDocument
       response?: Readonly<Record<string, unknown>>
       byAuthority?: boolean
+      // Refused by core before anything was sent to the provider: the claim of this attempt is given back, so that a document that never
+      // left core never reads as one that may be at the authority
+      beforeSending?: boolean
     } = {}
   ): Promise<void> {
     const sealedPayload =
@@ -565,7 +600,11 @@ export class FiscalDocumentsService {
         )
         return
       }
-      const kept = reason.slice(0, FiscalLimits.REASON_MAX_LENGTH)
+      const clean = plainText(reason).trim()
+      const kept = (clean === '' ? FiscalRejectionReasons.PROVIDER_UNAVAILABLE : clean).slice(
+        0,
+        FiscalLimits.REASON_MAX_LENGTH
+      )
       await tx.fiscalDocument.update({
         where: { id: documentId },
         data: {
@@ -575,7 +614,8 @@ export class FiscalDocumentsService {
             ? {}
             : { documentType: options.built.documentType, builtPayloadEncrypted: sealedPayload }),
           ...(response === undefined ? {} : { response }),
-          ...(options.byAuthority === true ? { submission: { increment: 1 }, attempts: 0 } : {})
+          ...(options.byAuthority === true ? { submission: { increment: 1 }, attempts: 0 } : {}),
+          ...(options.beforeSending === true ? { attempts: { decrement: 1 } } : {})
         }
       })
       this.announce(tx, doc, kept)
@@ -658,11 +698,37 @@ export class FiscalDocumentsService {
       // gets past an issuer that changed after the document was made. A document that is only waiting keeps the issuer it was made with.
       const issuer = await tx.fiscalIssuer.findUnique({ where: { organizationId } })
       if (status === FiscalDocumentStatus.REJECTED) {
+        const moved =
+          issuer !== null &&
+          (issuer.providerId !== doc.providerId || !sameIssuer(record(doc.issuerSnapshot), issuer))
+        // A document that may be at the authority (an attempt was sent and not answered) is not moved to another provider, another
+        // environment or another identity: the consultation would go to the new one and the same number would be sent there. A person
+        // decides it with the accountant (Step 4B.7b).
+        if (moved && doc.attempts > 0) {
+          throw new PlatformException(
+            ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
+            'the document may be at the issuer it was made with and cannot move to another',
+            HttpStatusCodes.CONFLICT
+          )
+        }
+        // A sale that did not add up is read again from the order: a person may have corrected it since
+        const sale =
+          doc.rejectionReason === FiscalRejectionReasons.SALE_INCONSISTENT
+            ? await this.readSale(tx, organizationId, doc.orderId)
+            : null
         await tx.fiscalDocument.update({
           where: { id },
           data: {
             status: FiscalDocumentStatus.QUEUED,
             rejectionReason: null,
+            ...(sale === null
+              ? {}
+              : {
+                  linesSnapshot: sale.linesSnapshot,
+                  currency: sale.currency,
+                  totalCents: sale.totalCents,
+                  taxCents: sale.taxCents
+                }),
             ...(issuer === null
               ? {}
               : {
@@ -726,24 +792,31 @@ export class FiscalDocumentsService {
         HttpStatusCodes.CONFLICT
       )
     }
+    // The document as it was built is what the invalidation is about: a provider is never asked to invalidate an empty one
+    const payload =
+      doc.builtPayloadEncrypted === null ? null : this.openCredentials(doc.builtPayloadEncrypted)
+    if (payload === null || payload['unreadable'] === true) {
+      throw new PlatformException(
+        ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
+        'the evidence of the document cannot be read',
+        HttpStatusCodes.CONFLICT
+      )
+    }
     const outcome = await this.attempt('void', id, () =>
       provider.void(
         {
           documentType: doc.documentType,
           externalNumber: doc.externalNumber,
           providerData: doc.providerData === null ? null : record(doc.providerData),
-          payload:
-            doc.builtPayloadEncrypted === null
-              ? {}
-              : (this.openCredentials(doc.builtPayloadEncrypted) ?? {})
+          payload
         },
         reason,
         {
           issuer: this.issuerOfSnapshot(doc.issuerSnapshot),
           credentials,
-          // A new key for each invalidation: one that was refused and is asked again with another reason is not the one the provider
-          // remembers
-          idempotencyKey: `${organizationId}:${id}:void:${randomUUID()}`,
+          // One key per document and reason: a double click, or a request asked again after an answer that was lost, is the same
+          // invalidation for the provider; one that was refused and is asked again with another reason is a new one
+          idempotencyKey: `${organizationId}:${id}:void:${createHash('sha256').update(reason).digest('hex').slice(0, 16)}`,
           attempt: 1
         }
       )
@@ -772,7 +845,7 @@ export class FiscalDocumentsService {
         where: { id },
         data: {
           status: FiscalDocumentStatus.VOIDED,
-          voidReason: reason.slice(0, FiscalLimits.VOID_REASON_MAX_LENGTH),
+          voidReason: plainText(reason).slice(0, FiscalLimits.VOID_REASON_MAX_LENGTH),
           voidedBy: actor.userId,
           voidedAt: new Date(),
           // What the authority answered to the invalidation: the evidence of the void, apart from the response to the acceptance (that row

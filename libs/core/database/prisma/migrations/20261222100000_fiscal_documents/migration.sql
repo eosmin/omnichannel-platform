@@ -90,6 +90,7 @@ BEGIN
       RAISE EXCEPTION 'a voided fiscal document does not change' USING ERRCODE = 'integrity_constraint_violation';
     END IF;
     IF NEW.status <> 'voided'
+       OR NEW.id IS DISTINCT FROM OLD.id
        OR NEW.organization_id IS DISTINCT FROM OLD.organization_id
        OR NEW.store_id IS DISTINCT FROM OLD.store_id
        OR NEW.order_id IS DISTINCT FROM OLD.order_id
@@ -108,6 +109,8 @@ BEGIN
        OR NEW.currency IS DISTINCT FROM OLD.currency
        OR NEW.total_cents IS DISTINCT FROM OLD.total_cents
        OR NEW.tax_cents IS DISTINCT FROM OLD.tax_cents
+       OR NEW.created_at IS DISTINCT FROM OLD.created_at
+       OR NEW.rejection_reason IS DISTINCT FROM OLD.rejection_reason
        OR NEW.submission IS DISTINCT FROM OLD.submission
        OR NEW.attempts IS DISTINCT FROM OLD.attempts
        OR NEW.issued_at IS DISTINCT FROM OLD.issued_at THEN

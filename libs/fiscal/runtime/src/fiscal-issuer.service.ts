@@ -115,44 +115,14 @@ export class FiscalIssuerService {
         HttpStatusCodes.CONFLICT
       )
     }
-    const existing = await this.prisma.client.fiscalIssuer.findUnique({
-      where: { organizationId },
-      select: {
-        credentialsEncrypted: true,
-        providerId: true,
-        environment: true,
-        nextSequence: true
-      }
-    })
-    if (
-      body.nextSequence !== undefined &&
-      existing !== null &&
-      body.nextSequence < existing.nextSequence
-    ) {
+    if (!provider.manifest.environments.includes(body.environment)) {
       throw new PlatformException(
         ErrorCodes.FISCAL_ISSUER_INVALID,
-        'the correlative only moves forward',
+        'the provider does not work in that environment',
         HttpStatusCodes.BAD_REQUEST,
-        { problems: ['nextSequence'] }
+        { problems: ['environment'] }
       )
     }
-    // Credentials of another provider, or of another environment, are not the new one's: a sandbox key is never kept as the key of
-    // production, so a change of either asks for the new ones
-    if (
-      body.credentials === undefined &&
-      existing !== null &&
-      (existing.providerId !== body.providerId ||
-        (existing.environment as FiscalEnvironment) !== body.environment)
-    ) {
-      throw new PlatformException(
-        ErrorCodes.FISCAL_ISSUER_INVALID,
-        'a new provider or a new environment needs its own credentials',
-        HttpStatusCodes.BAD_REQUEST,
-        { problems: ['credentials'] }
-      )
-    }
-    const credentials =
-      body.credentials ?? this.storedCredentials(existing?.credentialsEncrypted ?? null)
     const input: FiscalIssuerInput = {
       legalName: body.legalName,
       taxId: body.taxId,
@@ -162,59 +132,76 @@ export class FiscalIssuerService {
       establishmentCode: body.establishmentCode,
       environment: body.environment
     }
-    if (!provider.manifest.environments.includes(body.environment)) {
-      throw new PlatformException(
-        ErrorCodes.FISCAL_ISSUER_INVALID,
-        'the provider does not work in that environment',
-        HttpStatusCodes.BAD_REQUEST,
-        { problems: ['environment'] }
-      )
-    }
-    // A provider that throws, or credentials that cannot be opened, are an issuer that does not pass: never a 500
-    const check = await Promise.resolve()
-      .then(() => provider.validateIssuer(input, { credentials }))
-      .catch(() => ({
-        ok: false,
-        problems: ['provider_error']
-      }))
-    if (!check.ok) {
-      // The problems are codes the provider chose (a field, a certificate), never a value
-      throw new PlatformException(
-        ErrorCodes.FISCAL_ISSUER_INVALID,
-        'the issuer does not pass the provider',
-        HttpStatusCodes.BAD_REQUEST,
-        { problems: check.problems }
-      )
-    }
-    const sealed =
-      Object.keys(credentials).length === 0 ? null : new Uint8Array(this.cipher.seal(credentials))
-    const data = {
-      providerId: body.providerId,
-      legalName: body.legalName,
-      taxId: body.taxId,
-      registrationId: body.registrationId,
-      address: toJson(body.address),
-      activityCode: body.activityCode,
-      establishmentCode: body.establishmentCode,
-      environment: body.environment,
-      issueOn: body.issueOn,
-      ...(body.nextSequence === undefined ? {} : { nextSequence: body.nextSequence }),
-      credentialsEncrypted: sealed
-    }
-    // The correlative is checked again under the lock of the row: a document that took a number between the first read and this write
-    // would otherwise be given its number twice (the row is the lock that every document takes when it increments the counter)
+    // Everything that depends on what is stored (the credentials to keep, the guards, the correlative) is read under the lock of the
+    // row, which every document also takes when it takes a number: a request that rotates the credentials and one that does not can
+    // never overwrite each other with what each read before the other committed
     await this.prisma.transaction(async tx => {
-      const locked = await tx.$queryRaw<
-        { next_sequence: number }[]
-      >`SELECT next_sequence FROM fiscal_issuers WHERE organization_id = ${organizationId} FOR UPDATE`
-      const current = locked[0]?.next_sequence
-      if (body.nextSequence !== undefined && current !== undefined && body.nextSequence < current) {
+      await tx.$queryRaw`SELECT organization_id FROM fiscal_issuers WHERE organization_id = ${organizationId} FOR UPDATE`
+      const existing = await tx.fiscalIssuer.findUnique({
+        where: { organizationId },
+        select: {
+          credentialsEncrypted: true,
+          providerId: true,
+          environment: true,
+          nextSequence: true
+        }
+      })
+      if (
+        body.nextSequence !== undefined &&
+        existing !== null &&
+        body.nextSequence < existing.nextSequence
+      ) {
         throw new PlatformException(
           ErrorCodes.FISCAL_ISSUER_INVALID,
           'the correlative only moves forward',
           HttpStatusCodes.BAD_REQUEST,
           { problems: ['nextSequence'] }
         )
+      }
+      // Credentials of another provider, or of another environment, are not the new one's: a sandbox key is never kept as the key of
+      // production, so a change of either asks for the new ones
+      if (
+        body.credentials === undefined &&
+        existing !== null &&
+        (existing.providerId !== body.providerId ||
+          (existing.environment as FiscalEnvironment) !== body.environment)
+      ) {
+        throw new PlatformException(
+          ErrorCodes.FISCAL_ISSUER_INVALID,
+          'a new provider or a new environment needs its own credentials',
+          HttpStatusCodes.BAD_REQUEST,
+          { problems: ['credentials'] }
+        )
+      }
+      const credentials =
+        body.credentials ?? this.storedCredentials(existing?.credentialsEncrypted ?? null)
+      // A provider that throws is an issuer that does not pass: never a 500
+      const check = await Promise.resolve()
+        .then(() => provider.validateIssuer(input, { credentials }))
+        .catch(() => ({ ok: false, problems: ['provider_error'] }))
+      if (!check.ok) {
+        // The problems are codes the provider chose (a field, a certificate), never a value
+        throw new PlatformException(
+          ErrorCodes.FISCAL_ISSUER_INVALID,
+          'the issuer does not pass the provider',
+          HttpStatusCodes.BAD_REQUEST,
+          { problems: check.problems }
+        )
+      }
+      const sealed =
+        Object.keys(credentials).length === 0 ? null : new Uint8Array(this.cipher.seal(credentials))
+      const data = {
+        providerId: body.providerId,
+        legalName: body.legalName,
+        taxId: body.taxId,
+        registrationId: body.registrationId,
+        address: toJson(body.address),
+        activityCode: body.activityCode,
+        establishmentCode: body.establishmentCode,
+        environment: body.environment,
+        issueOn: body.issueOn,
+        ...(body.nextSequence === undefined ? {} : { nextSequence: body.nextSequence }),
+        credentialsEncrypted: sealed
       }
       await tx.fiscalIssuer.upsert({
         where: { organizationId },

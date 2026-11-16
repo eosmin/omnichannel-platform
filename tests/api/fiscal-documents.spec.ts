@@ -513,6 +513,8 @@ describe('The fiscal documents (Step 4B.7)', () => {
         expect(refused.status).toBe(FiscalDocumentStatus.REJECTED)
         expect(refused.rejectionReason).toBe(FiscalRejectionReasons.ISSUER_CHANGED)
         expect(refused.environment).toBe(FiscalEnvironment.SANDBOX)
+        // Nothing was sent: the claim of the attempt is given back
+        expect(refused.attempts).toBe(0)
         // The retry makes it again with the issuer as it is now
         expect((await asAdminA().post(ApiRoutes.fiscal.documents.retry(documentId))).status).toBe(
           OK
@@ -571,6 +573,103 @@ describe('The fiscal documents (Step 4B.7)', () => {
       expect(row.voidResponse).toEqual({ voided: true })
       // The response to the acceptance is the one that was kept when it was accepted
       expect(row.response).toEqual({ accepted: true })
+    })
+
+    it('stores a reason and an external number the database would refuse, cleaned, and a blank reason as a code', async () => {
+      const provider = app.get(FiscalProviderRegistry).find(SIMULATOR_PROVIDER_ID)
+      if (provider === undefined) throw new Error('the simulator is registered in test')
+      const first = await sale()
+      await patchReceiver(first.documentId, { taxId: '12345-6', name: 'Ana' })
+      const reject = jest
+        .spyOn(provider, 'submit')
+        .mockResolvedValue({ outcome: 'rejected' as never, reason: 'bad\u0000id' })
+      try {
+        await documents.submit(ctx.orgA.id, first.documentId)
+      } finally {
+        reject.mockRestore()
+      }
+      expect(
+        (await owner.fiscalDocument.findUniqueOrThrow({ where: { id: first.documentId } }))
+          .rejectionReason
+      ).toBe('badid')
+
+      const second = await sale()
+      await patchReceiver(second.documentId, { taxId: '12345-6', name: 'Ana' })
+      const blank = jest
+        .spyOn(provider, 'submit')
+        .mockResolvedValue({ outcome: 'rejected' as never, reason: '  ' })
+      try {
+        await documents.submit(ctx.orgA.id, second.documentId)
+      } finally {
+        blank.mockRestore()
+      }
+      expect(
+        (await owner.fiscalDocument.findUniqueOrThrow({ where: { id: second.documentId } }))
+          .rejectionReason
+      ).toBe(FiscalRejectionReasons.PROVIDER_UNAVAILABLE)
+
+      const third = await sale()
+      await patchReceiver(third.documentId, { taxId: '12345-6', name: 'Ana' })
+      const accept = jest.spyOn(provider, 'submit').mockResolvedValue({
+        outcome: 'accepted' as never,
+        externalNumber: 'EXT\u0000-9',
+        providerData: { ['k\u0000ey']: 'v' }
+      })
+      try {
+        await documents.submit(ctx.orgA.id, third.documentId)
+      } finally {
+        accept.mockRestore()
+      }
+      const row = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: third.documentId } })
+      expect([row.status, row.externalNumber, row.providerData]).toEqual([
+        FiscalDocumentStatus.ACCEPTED,
+        'EXT-9',
+        { key: 'v' }
+      ])
+    })
+
+    it('reads the sale again from the order when a retry follows a sale that did not add up', async () => {
+      const { documentId, orderId } = await sale()
+      await patchReceiver(documentId, { taxId: '12345-6', name: 'Ana' })
+      const row = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+      // A snapshot that is wrong: the order is right
+      await owner.fiscalDocument.update({
+        where: { id: documentId },
+        data: { linesSnapshot: { ...(row.linesSnapshot as object), discountCents: 1 } }
+      })
+      await documents.submit(ctx.orgA.id, documentId)
+      expect(
+        (await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } }))
+          .rejectionReason
+      ).toBe(FiscalRejectionReasons.SALE_INCONSISTENT)
+      expect((await asAdminA().post(ApiRoutes.fiscal.documents.retry(documentId))).status).toBe(OK)
+      await documents.submit(ctx.orgA.id, documentId)
+      expect(await statusOf(documentId)).toBe(FiscalDocumentStatus.ACCEPTED)
+      expect(orderId).toBeDefined()
+    })
+
+    it('does not move a document that may be at the authority to another issuer', async () => {
+      const { documentId } = await sale()
+      await patchReceiver(documentId, { taxId: SimulatorRules.LOST, name: 'Ana' })
+      await expect(documents.submit(ctx.orgA.id, documentId)).rejects.toThrow(/did not answer/)
+      await owner.fiscalIssuer.update({
+        where: { organizationId: ctx.orgA.id },
+        data: { taxId: 'ANOTHER-TAX-ID' }
+      })
+      try {
+        await documents.submit(ctx.orgA.id, documentId)
+        expect(await statusOf(documentId)).toBe(FiscalDocumentStatus.REJECTED)
+        const retry = await asAdminA().post(ApiRoutes.fiscal.documents.retry(documentId))
+        expect(retry.status).toBe(CONFLICT)
+        expect((retry.body as { error: { code: string } }).error.code).toBe(
+          ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE
+        )
+      } finally {
+        await owner.fiscalIssuer.update({
+          where: { organizationId: ctx.orgA.id },
+          data: { taxId: ISSUER.taxId }
+        })
+      }
     })
 
     it('does not invalidate with an issuer that is not the one that accepted the document', async () => {
