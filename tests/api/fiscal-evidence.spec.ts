@@ -242,6 +242,26 @@ describe('The evidence and the second thoughts of the fiscal documents (Step 4B.
       expect(await evidenceOf(documentId)).toHaveLength(1)
     })
 
+    it('writes the file again from the row when the pipeline deleted it after a verdict, and scans it again', async () => {
+      const { documentId } = await sale({ taxId: RECEIVER_TAX_ID, accept: true })
+      const [file] = await evidenceOf(documentId)
+      if (file === undefined) throw new Error('no evidence was kept')
+      // The pipeline marks the row and deletes the object of a file with no clean verdict
+      await owner.media.update({
+        where: { id: file.id },
+        data: { status: MediaStatus.UNSCANNABLE, scannedAt: new Date() }
+      })
+      await storage.delete(file.key)
+      expect(await storage.head(file.key)).toBeNull()
+
+      const asked = await evidenceUrl(documentId, FiscalEvidenceKind.DOCUMENT)
+      expect(asked.status).toBe(CONFLICT)
+      const after = await owner.media.findUniqueOrThrow({ where: { id: file.id } })
+      expect([after.id, after.key, after.status]).toEqual([file.id, file.key, MediaStatus.PENDING])
+      expect(await storage.head(file.key)).not.toBeNull()
+      expect(await evidenceOf(documentId)).toHaveLength(2)
+    })
+
     it('keeps the answer to the invalidation too, once the document is voided', async () => {
       const { documentId } = await sale({ taxId: RECEIVER_TAX_ID, accept: true })
       const voided = await asAdminA()

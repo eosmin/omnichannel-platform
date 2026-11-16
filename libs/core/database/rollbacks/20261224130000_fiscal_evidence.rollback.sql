@@ -5,7 +5,7 @@
 BEGIN;
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'media' AND column_name = 'fiscal_document_id')
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'media' AND column_name = 'fiscal_document_id')
      AND EXISTS (SELECT 1 FROM media WHERE purpose = 'fiscal_evidence') THEN
     RAISE EXCEPTION 'fiscal evidence exists: export it before rolling back';
   END IF;

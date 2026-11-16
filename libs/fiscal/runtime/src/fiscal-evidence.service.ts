@@ -6,7 +6,7 @@ import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
 import { CredentialCipher } from '@platform/core/crypto'
-import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import { DatabaseNull, isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
   FiscalDocumentStatus,
   FiscalEvidenceContentType,
@@ -29,9 +29,6 @@ const KIND_STATES: Record<FiscalEvidenceKind, readonly FiscalDocumentStatus[]> =
   [FiscalEvidenceKind.RESPONSE]: [FiscalDocumentStatus.ACCEPTED, FiscalDocumentStatus.VOIDED],
   [FiscalEvidenceKind.VOID_RESPONSE]: [FiscalDocumentStatus.VOIDED]
 }
-
-export const isEvidenceKind = (value: string): value is FiscalEvidenceKind =>
-  (Object.values(FiscalEvidenceKind) as string[]).includes(value)
 
 // The evidence of a fiscal document as files of `Media` (TDD_18 §8.3, Step 4B.7b-2): the file is made from the row of the document (which is
 // immutable once accepted, so it is always the same file), put in the bucket, written down once per kind (the database says it) and scanned
@@ -73,41 +70,61 @@ export class FiscalEvidenceService {
     documentId: string,
     kind: FiscalEvidenceKind
   ): Promise<{ mediaId: string } | null> {
-    const doc = await this.prisma.client.fiscalDocument.findFirst({
+    // The cheap read first: the document row (with its sealed payload) is read only when a file has to be made or made again
+    const owned = await this.prisma.client.fiscalDocument.findFirst({
       where: { id: documentId, organizationId },
-      select: {
-        id: true,
-        storeId: true,
-        status: true,
-        sequenceNumber: true,
-        documentType: true,
-        externalNumber: true,
-        providerData: true,
-        builtPayloadEncrypted: true,
-        response: true,
-        voidReason: true,
-        voidedAt: true,
-        voidResponse: true,
-        issuedAt: true
-      }
+      select: { id: true, status: true }
     })
-    if (doc === null || !KIND_STATES[kind].includes(doc.status as FiscalDocumentStatus)) return null
-    const existing = await this.prisma.client.media.findFirst({
-      where: { fiscalDocumentId: doc.id, fiscalEvidenceKind: kind },
-      select: { id: true }
-    })
-    if (existing !== null) return { mediaId: existing.id }
-
-    const content = this.contentOf(kind, doc)
-    if (content === null) return null
-    const bytes = Buffer.from(JSON.stringify(content), 'utf8')
-    if (bytes.byteLength > FiscalLimits.EVIDENCE_MAX_BYTES) {
-      this.logger.error(
-        { documentId, kind, bytes: bytes.byteLength },
-        'the evidence of a fiscal document is larger than what is kept as a file'
-      )
+    if (owned === null || !KIND_STATES[kind].includes(owned.status as FiscalDocumentStatus)) {
       return null
     }
+    const existing = await this.prisma.client.media.findFirst({
+      where: { fiscalDocumentId: owned.id, fiscalEvidenceKind: kind },
+      select: { id: true, key: true, status: true }
+    })
+    if (existing?.status === String(MediaStatus.CLEAN)) return { mediaId: existing.id }
+    if (existing !== null) return this.repair(organizationId, documentId, kind, existing)
+    return this.make(organizationId, documentId, kind)
+  }
+
+  // A file written down that is not served yet. Pending: its object may be missing (a failed put) and its scan may never have been queued,
+  // so both are made sure of. Infected or unscannable: the pipeline deleted the object of the verdict, and the evidence must exist, so the
+  // same object is written again from the row and scanned again. The row keeps its key (the database says it), so nothing else moves.
+  private async repair(
+    organizationId: string,
+    documentId: string,
+    kind: FiscalEvidenceKind,
+    row: { id: string; key: string; status: string }
+  ): Promise<{ mediaId: string } | null> {
+    const verdictGiven =
+      row.status === String(MediaStatus.INFECTED) || row.status === String(MediaStatus.UNSCANNABLE)
+    if (verdictGiven || (await this.storage.head(row.key)) === null) {
+      const bytes = await this.bytesOf(organizationId, documentId, kind)
+      if (bytes === null) return { mediaId: row.id }
+      await this.storage.put(row.key, bytes, FiscalEvidenceContentType)
+      if (verdictGiven) {
+        await this.prisma.client.media.updateMany({
+          where: { id: row.id, status: row.status },
+          data: { status: MediaStatus.PENDING, scannedAt: null, scanResult: DatabaseNull }
+        })
+      }
+    }
+    await this.queueScan(row.id)
+    return { mediaId: row.id }
+  }
+
+  private async make(
+    organizationId: string,
+    documentId: string,
+    kind: FiscalEvidenceKind
+  ): Promise<{ mediaId: string } | null> {
+    const doc = await this.prisma.client.fiscalDocument.findFirst({
+      where: { id: documentId, organizationId },
+      select: { id: true, storeId: true, sequenceNumber: true }
+    })
+    if (doc === null) return null
+    const bytes = await this.bytesOf(organizationId, documentId, kind)
+    if (bytes === null) return null
     const mediaId = randomUUID()
     const filename = `fiscal-${doc.sequenceNumber}-${kind}.json`
     const key = StorageKeys.fiscalEvidence(doc.storeId, doc.id, mediaId, filename)
@@ -138,17 +155,62 @@ export class FiscalEvidenceService {
       })
       return winner === null ? null : { mediaId: winner.id }
     }
-    // Scanned like any file: nobody is given a link before it is clean. A queue that blinks leaves a pending file that the sweep of stuck
-    // scans of the media cleanup asks again.
-    await this.heavyQueue
-      .add(JobNames.SCAN_FILE, { mediaId }, { jobId: `${JobNames.SCAN_FILE}-${mediaId}` })
-      .catch((error: unknown) => {
-        this.logger.warn(
-          { mediaId, err: errorName(error) },
-          'the scan of a fiscal evidence file was not queued'
-        )
-      })
+    await this.queueScan(mediaId)
     return { mediaId }
+  }
+
+  // The bytes of a kind of evidence, made from the row; null when the document has none (or it is larger than what is kept as a file)
+  private async bytesOf(
+    organizationId: string,
+    documentId: string,
+    kind: FiscalEvidenceKind
+  ): Promise<Buffer | null> {
+    const doc = await this.prisma.client.fiscalDocument.findFirst({
+      where: { id: documentId, organizationId },
+      select: {
+        sequenceNumber: true,
+        documentType: true,
+        externalNumber: true,
+        providerData: true,
+        builtPayloadEncrypted: true,
+        response: true,
+        voidReason: true,
+        voidedAt: true,
+        voidResponse: true,
+        issuedAt: true
+      }
+    })
+    if (doc === null) return null
+    const content = this.contentOf(kind, doc)
+    if (content === null) return null
+    const bytes = Buffer.from(JSON.stringify(content), 'utf8')
+    if (bytes.byteLength > FiscalLimits.EVIDENCE_MAX_BYTES) {
+      this.logger.error(
+        { documentId, kind, bytes: bytes.byteLength },
+        'the evidence of a fiscal document is larger than what is kept as a file'
+      )
+      return null
+    }
+    return bytes
+  }
+
+  // Scanned like any file: nobody is given a link before it is clean. The job of a file has one id, so asking again never makes two; a
+  // finished job keeps its id and would swallow the new one, so it is removed first.
+  private async queueScan(mediaId: string): Promise<void> {
+    const jobId = `${JobNames.SCAN_FILE}-${mediaId}`
+    try {
+      const old = await this.heavyQueue.getJob(jobId)
+      if (old !== undefined && ((await old.isCompleted()) || (await old.isFailed()))) {
+        await old.remove()
+      }
+      await this.heavyQueue.add(JobNames.SCAN_FILE, { mediaId }, { jobId })
+    } catch (error) {
+      // A queue that blinks leaves a pending file: asked for again, it is queued again, and the sweep of stuck scans does it too
+      this.logger.warn(
+        { mediaId, err: errorName(error) },
+        'the scan of a fiscal evidence file was not queued'
+      )
+    }
   }
 
   // The content of a kind, read from the row. The built document is sealed in the row (it holds the receiver): it is opened here and

@@ -557,13 +557,21 @@ export class NotificationsEventsListener {
         if (!storeOf.has(member.userId)) storeOf.set(member.userId, member.storeId)
       }
       for (const [userId, storeId] of storeOf) {
-        await this.notifications.sendToUsersOnce([userId], {
-          storeId,
-          type,
-          params: {},
-          resourceType: FiscalResourceTypes.DOCUMENT,
-          resourceId: documentId
-        })
+        // One person whose notice fails does not leave the next ones untold
+        try {
+          await this.notifications.sendToUsersOnce([userId], {
+            storeId,
+            type,
+            params: {},
+            resourceType: FiscalResourceTypes.DOCUMENT,
+            resourceId: documentId
+          })
+        } catch (error) {
+          this.logger.error(
+            { organizationId, documentId, err: String(error) },
+            'a fiscal document notice could not be sent to a person'
+          )
+        }
       }
     } catch (error) {
       this.logger.error(

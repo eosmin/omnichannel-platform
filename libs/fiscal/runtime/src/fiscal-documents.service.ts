@@ -790,12 +790,31 @@ export class FiscalDocumentsService {
   // more, so a person is told (Step 4B.7b-2). A document that was decided, or that is gone, says nothing. Safe to repeat: the notice is
   // deduplicated until it is read.
   async reportExhausted(organizationId: string, documentId: string): Promise<void> {
+    try {
+      await this.reportExhaustedOnce(organizationId, documentId)
+    } catch (error) {
+      // Said in the log, never thrown: the error that matters is the one of the attempt that failed
+      this.logger.error(
+        { documentId, err: errorName(error) },
+        'the notice of a fiscal document that ran out of attempts was not made'
+      )
+    }
+  }
+
+  private async reportExhaustedOnce(organizationId: string, documentId: string): Promise<void> {
     await this.prisma.transaction(async tx => {
       const doc = await tx.fiscalDocument.findFirst({
         where: {
           id: documentId,
           organizationId,
-          status: { in: [FiscalDocumentStatus.QUEUED, FiscalDocumentStatus.SUBMITTED] }
+          OR: [
+            { status: FiscalDocumentStatus.QUEUED },
+            // A claim that is alive (less than the lease ago) is an attempt that may still decide the document: it is not stuck
+            {
+              status: FiscalDocumentStatus.SUBMITTED,
+              updatedAt: { lt: new Date(Date.now() - FiscalLimits.CLAIM_LEASE_MS) }
+            }
+          ]
         },
         select: { id: true, organizationId: true, storeId: true, orderId: true, attempts: true }
       })
@@ -1242,9 +1261,9 @@ export class FiscalDocumentsService {
     const submission = await this.prisma.transaction(async tx => {
       const doc = await this.lock(tx, organizationId, id)
       const issuer = await tx.fiscalIssuer.findUnique({ where: { organizationId } })
+      // The same test as `retry`: the two routes never disagree about what a moved issuer is
       const moved =
         issuer !== null &&
-        this.providers.find(issuer.providerId) !== undefined &&
         (issuer.providerId !== doc.providerId || !sameIssuer(record(doc.issuerSnapshot), issuer))
       if (
         doc.status !== (FiscalDocumentStatus.REJECTED as string) ||
@@ -1401,11 +1420,19 @@ export class FiscalDocumentsService {
     })
     // The authority may have the document invalidated already (an earlier request whose answer was lost, or a void made elsewhere):
     // asked first, so that a second invalidation is never sent for it. A provider that cannot tell leaves it to the answer of `void`.
-    let outcome: VoidResult | null =
-      (await this.consultedVoid(provider, id, stored, contextOf(1))) ??
-      (await this.attempt('void', id, () => provider.void(stored, reason, contextOf(1))))
-    // No answer to the invalidation: it may have reached the authority, so it is asked once before the person is told to try again
-    if (outcome === null) outcome = await this.consultedVoid(provider, id, stored, contextOf(2))
+    // `recovered`: the authority had it invalidated before this request sent anything (or answered only to the consultation); the audit
+    // trail says so, so the act is not read as this person's invalidation alone
+    let recovered = false
+    let outcome: VoidResult | null = await this.consultedVoid(provider, id, stored, contextOf(1))
+    if (outcome !== null) recovered = true
+    else {
+      outcome = await this.attempt('void', id, () => provider.void(stored, reason, contextOf(1)))
+      // No answer to the invalidation: it may have reached the authority, so it is asked once before the person is told to try again
+      if (outcome === null) {
+        outcome = await this.consultedVoid(provider, id, stored, contextOf(2))
+        recovered = outcome !== null
+      }
+    }
     if (outcome === null) {
       throw new PlatformException(
         ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
@@ -1440,8 +1467,6 @@ export class FiscalDocumentsService {
         }
       })
     })
-    // The answer to the invalidation is evidence too (the acceptance's was kept when it was accepted, or is made now if it was not)
-    await this.evidence.keepAll(organizationId, id)
     this.audit.log({
       action: AuditAction.FISCAL_DOCUMENT_VOIDED,
       actor: { userId: actor.userId },
@@ -1449,10 +1474,13 @@ export class FiscalDocumentsService {
       storeId: actor.storeId,
       resourceType: FiscalResourceTypes.DOCUMENT,
       resourceId: id,
-      metadata: { externalNumber: doc.externalNumber },
+      metadata: { externalNumber: doc.externalNumber, recoveredFromAuthority: recovered },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
+    // The answer to the invalidation is evidence too (the acceptance's was kept when it was accepted, or is made now if it was not). After
+    // the audit entry: a slow bucket never delays or loses the trail of a decision that is made
+    await this.evidence.keepAll(organizationId, id)
     return this.get(organizationId, id)
   }
 
@@ -1724,6 +1752,26 @@ export class FiscalDocumentsService {
         })
         // Nothing made, or made REJECTED for units that do not fit the sale (that row is rolled back with the error: a person sees why)
         if (created === null) {
+          // A request that made the live note between the check and the call is the other answer
+          const raced = await tx.fiscalDocument.findFirst({
+            where: {
+              organizationId,
+              kind: FiscalDocumentKind.CREDIT_NOTE,
+              status: { not: FiscalDocumentStatus.VOIDED },
+              ...(old.returnId === null
+                ? { orderId: old.orderId, returnId: null }
+                : { returnId: old.returnId })
+            },
+            select: { id: true }
+          })
+          if (raced !== null) {
+            throw new PlatformException(
+              ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+              'the return already has a live credit note',
+              HttpStatusCodes.CONFLICT,
+              { reason: FiscalConflictReasons.NOTE_ALREADY_REPLACED }
+            )
+          }
           throw new PlatformException(
             ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
             'the units of this return do not fit its sale',
