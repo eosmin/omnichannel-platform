@@ -771,4 +771,238 @@ describe('The messages of the plugin API', () => {
       expect((await post(image(id, [upload.id]), keys.other)).status).toBe(CREATED)
     })
   })
+  // HC-011: the answer to a write names the message that was quoted. What of it a plugin reads is what `messages:read` gives and no
+  // more: without the scope only the id, and with it the kind and the text, never the id of a member of the team and never the text
+  // of an internal note (which `messages:write` alone would otherwise show, because it grants writing notes).
+  describe('the quote in the answer of POST /plugin-api/messages', () => {
+    const SECRET = 'the card of the customer ends in 1234'
+    const NOTE_TEXT = 'internal: the customer is a risk'
+    // `nomedia` (store A2) holds messages:write and conversations:read but not messages:read; `full` (store A) holds all of them
+    const worlds = [
+      {
+        label: 'without messages:read',
+        key: () => keys.nomedia,
+        store: () => ctx.storeA2.id,
+        sees: false
+      },
+      { label: 'with messages:read', key: () => keys.full, store: () => ctx.storeA.id, sees: true }
+    ] as const
+
+    const seed = async (storeId: string, conversationId: string, extra: Record<string, unknown>) =>
+      owner.message.create({
+        data: { storeId, conversationId, type: MessageType.TEXT, ...extra } as never,
+        select: { id: true }
+      })
+
+    describe.each(worlds)('a key $label', world => {
+      const conversationOf = async () => {
+        const { id } = await createConversationOf(owner, { storeId: world.store() })
+        return id
+      }
+      const quoting = (
+        conversationId: string,
+        quoted: string,
+        extra: Record<string, unknown> = {}
+      ) =>
+        post(
+          {
+            type: 'text',
+            conversationId,
+            content: 'answer',
+            idempotencyKey: randomUUID(),
+            replyToMessageId: quoted,
+            ...extra
+          },
+          world.key()
+        )
+
+      it('answers the quote of a message of the customer with its text only when it reads messages', async () => {
+        const id = await conversationOf()
+        const quoted = await seed(world.store(), id, {
+          authorType: AuthorType.CUSTOMER,
+          content: SECRET
+        })
+
+        const response = await quoting(id, quoted.id)
+
+        expect(response.status).toBe(CREATED)
+        const body = response.body as {
+          replyToMessageId: string
+          replyTo: { content: string | null } | null
+        }
+        expect(body.replyToMessageId).toBe(quoted.id)
+        if (world.sees) expect(body.replyTo?.content).toBe(SECRET)
+        else {
+          expect(body.replyTo).toBeNull()
+          expect(JSON.stringify(response.body)).not.toContain(SECRET)
+        }
+      })
+
+      it('never gives the id of the member of the team who wrote the quoted message', async () => {
+        const id = await conversationOf()
+        const member = ctx.agentA.id
+        const quoted = await seed(world.store(), id, {
+          authorType: AuthorType.AGENT,
+          authorId: member,
+          content: 'we will call you'
+        })
+
+        const response = await quoting(id, quoted.id)
+
+        expect(response.status).toBe(CREATED)
+        expect(JSON.stringify(response.body)).not.toContain(member)
+        const body = response.body as { replyTo: { authorId: string | null } | null }
+        if (world.sees)
+          expect(body.replyTo).toMatchObject({ authorId: null, content: 'we will call you' })
+        else expect(body.replyTo).toBeNull()
+      })
+
+      it('never gives the text of an internal note that a note quotes, even with messages:read', async () => {
+        const id = await conversationOf()
+        const quoted = await seed(world.store(), id, {
+          type: MessageType.INTERNAL_NOTE,
+          authorType: AuthorType.AGENT,
+          authorId: ctx.agentA.id,
+          content: NOTE_TEXT
+        })
+
+        const response = await quoting(id, quoted.id, { type: 'note' })
+
+        expect(response.status).toBe(CREATED)
+        expect(JSON.stringify(response.body)).not.toContain(NOTE_TEXT)
+        const body = response.body as {
+          replyToMessageId: string
+          replyTo: { content: string | null; authorId: string | null } | null
+        }
+        expect(body.replyToMessageId).toBe(quoted.id)
+        if (world.sees) expect(body.replyTo).toMatchObject({ content: null, authorId: null })
+        else expect(body.replyTo).toBeNull()
+      })
+
+      it('gives the same answer when the key is repeated (200): the quote is held back on a replay too', async () => {
+        const id = await conversationOf()
+        const quoted = await seed(world.store(), id, {
+          authorType: AuthorType.CUSTOMER,
+          content: SECRET
+        })
+        const key = randomUUID()
+
+        const first = await quoting(id, quoted.id, { idempotencyKey: key })
+        const again = await quoting(id, quoted.id, { idempotencyKey: key })
+
+        expect(first.status).toBe(CREATED)
+        expect(again.status).toBe(OK)
+        if (!world.sees) {
+          expect((again.body as { replyTo: unknown }).replyTo).toBeNull()
+          expect(JSON.stringify(again.body)).not.toContain(SECRET)
+        }
+      })
+
+      it('does not quote a message of another store of the organization or of another organization: 404, and nothing is written', async () => {
+        const id = await conversationOf()
+        const sibling = await createConversationOf(owner, {
+          storeId: world.sees ? ctx.storeA2.id : ctx.storeA.id
+        })
+        const foreign = await createConversationOf(owner, { storeId: ctx.storeB.id })
+        const ofSibling = await seed(world.sees ? ctx.storeA2.id : ctx.storeA.id, sibling.id, {
+          authorType: AuthorType.CUSTOMER,
+          content: SECRET
+        })
+        const ofForeign = await seed(ctx.storeB.id, foreign.id, {
+          authorType: AuthorType.CUSTOMER,
+          content: SECRET
+        })
+
+        for (const quoted of [ofSibling, ofForeign]) {
+          const response = await quoting(id, quoted.id)
+
+          expect(response.status).toBe(NOT_FOUND)
+          expect(JSON.stringify(response.body)).not.toContain(SECRET)
+        }
+        expect(await owner.message.count({ where: { conversationId: id } })).toBe(0)
+      })
+    })
+
+    it('does not hand the message of a customer to a key that does not read messages, through the route that downloads a file again', async () => {
+      const own = await createConversationOf(owner, { storeId: ctx.storeA2.id })
+      const customerMessage = await seed(ctx.storeA2.id, own.id, {
+        authorType: AuthorType.CUSTOMER,
+        content: SECRET
+      })
+
+      const response = await call(
+        'post',
+        PluginApiRoutes.messages.refetchFile(customerMessage.id, 0),
+        keys.nomedia
+      ).send({})
+
+      expect(response.status).toBe(FORBIDDEN)
+      expect(codeOf(response.body)).toBe(ErrorCodes.PLUGIN_SCOPE_DENIED)
+      expect(JSON.stringify(response.body)).not.toContain(SECRET)
+    })
+
+    it('leaves the ids of the team out of the answer: who reacted, who edited and who deleted the message of the plugin', async () => {
+      const own = await createConversationOf(owner, { storeId: ctx.storeA.id })
+      const key = randomUUID()
+      const created = await post({
+        type: 'text',
+        conversationId: own.id,
+        content: 'answer',
+        idempotencyKey: key
+      })
+      const messageId = (created.body as MessageBody).id
+      await owner.messageReaction.create({
+        data: {
+          storeId: ctx.storeA.id,
+          messageId,
+          authorType: AuthorType.AGENT,
+          userId: ctx.agentA.id,
+          emoji: '👍'
+        }
+      })
+      await owner.message.update({
+        where: { id: messageId },
+        data: { editedById: ctx.agentA.id, editedByType: AuthorType.AGENT }
+      })
+
+      const again = await post({
+        type: 'text',
+        conversationId: own.id,
+        content: 'answer',
+        idempotencyKey: key
+      })
+
+      expect(again.status).toBe(OK)
+      expect(JSON.stringify(again.body)).not.toContain(ctx.agentA.id)
+    })
+
+    it('holds the quote back from the answer of a send again, without messages:read', async () => {
+      const own = await createConversationOf(owner, { storeId: ctx.storeA2.id })
+      const quoted = await seed(ctx.storeA2.id, own.id, {
+        authorType: AuthorType.CUSTOMER,
+        content: SECRET
+      })
+      const failed = await seed(ctx.storeA2.id, own.id, {
+        authorType: AuthorType.SYSTEM,
+        authorPluginId: otherPluginId,
+        content: 'answer',
+        deliveryStatus: DeliveryStatus.FAILED,
+        replyToMessageId: quoted.id
+      })
+      await owner.customerIdentity.update({
+        where: { id: own.customerIdentityId },
+        data: { lastInboundAt: new Date() }
+      })
+
+      const response = await call(
+        'post',
+        PluginApiRoutes.messages.resend(failed.id),
+        keys.nomedia
+      ).send({})
+
+      expect(response.status).toBe(OK)
+      expect((response.body as { replyTo: unknown }).replyTo).toBeNull()
+      expect(JSON.stringify(response.body)).not.toContain(SECRET)
+    })
+  })
 })

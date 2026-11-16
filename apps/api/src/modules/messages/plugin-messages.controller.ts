@@ -40,6 +40,7 @@ import {
   type PluginCreateMessageBody,
   pluginCreateMessageSchema,
   pluginMessageOf,
+  pluginMessageViewOf,
   pluginViewerOf,
   type ReactToMessageBody,
   reactToMessageSchema,
@@ -60,7 +61,7 @@ export type PluginRevisionView = Omit<RevisionView, 'editedById' | 'editedByPlug
 interface PluginCaller {
   id: string
   pluginId: string
-  scopes?: readonly string[]
+  scopes: readonly string[]
 }
 
 // What a plugin does with the messages of a conversation of its store, through its key (TDD_10 §6.4). The same services as the
@@ -99,7 +100,7 @@ export class PluginMessagesController {
   ): Promise<MessageView> {
     // A file is the installation's own upload, which asked for `media:write`: a key that lost that scope since sends no file (the route
     // names `messages:write` only, because the same route carries text)
-    if ('mediaIds' in body && installation.scopes?.includes(PluginScopes.MEDIA_WRITE) !== true) {
+    if ('mediaIds' in body && !installation.scopes.includes(PluginScopes.MEDIA_WRITE)) {
       throw new PlatformException(
         ErrorCodes.PLUGIN_SCOPE_DENIED,
         'sending a file needs the scope media:write',
@@ -127,9 +128,10 @@ export class PluginMessagesController {
       channelType => this.registry.limitsOf(channelType),
       origin
     )
+    const answer = this.quoted(installation, created)
     if (!isNew) {
       res.status(HttpStatusCodes.OK)
-      return created
+      return answer
     }
     this.auditPlugin(AuditAction.MESSAGE_PLUGIN_SENT, store.id, created.id, installation, req, {
       conversationId: message.conversationId,
@@ -139,7 +141,7 @@ export class PluginMessagesController {
       ...('mediaIds' in message ? { files: message.mediaIds.length } : {}),
       ...(origin.author === AuthorType.AGENT ? { userId: origin.userId } : {})
     })
-    return created
+    return answer
   }
 
   // The whole new text of a message or note the plugin wrote. A note carries the `version` it was read at (409 with the current text
@@ -166,7 +168,7 @@ export class PluginMessagesController {
     this.auditPlugin(AuditAction.MESSAGE_PLUGIN_CHANGED, store.id, messageId, installation, req, {
       operation: PluginMessageOperations.EDIT
     })
-    return message
+    return this.quoted(installation, message)
   }
 
   // Deletes for everyone a message the plugin wrote, or answers 409 when the channel cannot. Its own scope (`messages:delete`).
@@ -216,7 +218,7 @@ export class PluginMessagesController {
     this.auditPlugin(AuditAction.MESSAGE_PLUGIN_CHANGED, store.id, messageId, installation, req, {
       operation: PluginMessageOperations.RESEND
     })
-    return message
+    return this.quoted(installation, message)
   }
 
   // "Discard" on a reply of the plugin that failed for good and never reached the customer. 409 when it may have gone; twice is once
@@ -296,12 +298,21 @@ export class PluginMessagesController {
     this.auditPlugin(AuditAction.MESSAGE_PLUGIN_CHANGED, store.id, messageId, installation, req, {
       operation: PluginMessageOperations.RESEND_CAPTION
     })
-    return message
+    return this.quoted(installation, message)
   }
 
   // "Download it again" on a file of the customer that was lost
-  @PluginApi(PluginScopes.MESSAGES_WRITE, PluginScopes.CONVERSATIONS_READ)
-  @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_SEND)
+  // The answer is the message of a CUSTOMER (its text, its places, its files), so this route reads messages: `messages:read` too
+  @PluginApi(
+    PluginScopes.MESSAGES_WRITE,
+    PluginScopes.MESSAGES_READ,
+    PluginScopes.CONVERSATIONS_READ
+  )
+  @RequirePermissions(
+    Permissions.CONVERSATIONS_VIEW,
+    Permissions.MESSAGES_SEND,
+    Permissions.MESSAGES_VIEW
+  )
   @Post(PluginApiRoutes.messages.refetchFile(':id', ':index'))
   @HttpCode(HttpStatusCodes.OK)
   async refetchFile(
@@ -317,7 +328,7 @@ export class PluginMessagesController {
       operation: PluginMessageOperations.REFETCH_FILE,
       index
     })
-    return message
+    return this.quoted(installation, message)
   }
 
   // The text of a message the customer deleted, while it is kept. Every read is audited, with the plugin on the metadata.
@@ -359,6 +370,11 @@ export class PluginMessagesController {
       editedByType,
       createdAt
     }))
+  }
+
+  // The message a write answers, held to what the key may read (`pluginMessageViewOf`)
+  private quoted(installation: PluginCaller, message: MessageView): MessageView {
+    return pluginMessageViewOf(message, installation.scopes.includes(PluginScopes.MESSAGES_READ))
   }
 
   // The trail of what a plugin did: the actor is the platform (nobody is signed in), the plugin and its installation are on the

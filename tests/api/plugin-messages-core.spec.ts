@@ -461,7 +461,7 @@ describe('A message written by a plugin', () => {
   })
 
   describe('what a plugin does not send', () => {
-    it('is no template, which is the provider’s, nor a file, which needs a person’s upload', async () => {
+    it('is no template, which is the provider’s, nor a file that its own installation did not upload', async () => {
       const { id } = await mk()
 
       await expect(
