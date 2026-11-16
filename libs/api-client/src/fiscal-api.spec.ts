@@ -1,3 +1,5 @@
+import { FiscalDocumentStatus } from '@platform/core/domain'
+
 import { createApiClient } from './api-client'
 import {
   fetchFiscalDocument,
@@ -64,7 +66,12 @@ describe('the fiscal documents', () => {
     const { client, fetchImpl } = setup(
       json(200, { data: [document], nextCursor: '12', hasMore: true })
     )
-    const page = await fetchFiscalDocumentPage(client, 'store-1', { status: 'rejected' }, '40')
+    const page = await fetchFiscalDocumentPage(
+      client,
+      'store-1',
+      { status: FiscalDocumentStatus.REJECTED },
+      '40'
+    )
     const { url, headers } = callOf(fetchImpl)
     expect(url).toContain('/fiscal/documents?')
     expect(url).toContain('status=rejected')
