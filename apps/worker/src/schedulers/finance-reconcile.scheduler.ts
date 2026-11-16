@@ -1,0 +1,85 @@
+import { InjectQueue } from '@nestjs/bullmq'
+import { Injectable } from '@nestjs/common'
+import { Cron } from '@nestjs/schedule'
+import type { Queue } from 'bullmq'
+import { PinoLogger } from 'nestjs-pino'
+
+import { PrismaService } from '@platform/core/database'
+import { FinanceSweepLimits } from '@platform/core/domain'
+import { errorName } from '@platform/core/errors'
+import {
+  JobNames,
+  LockNames,
+  QueueNames,
+  reconcileFinanceJobId,
+  type ReconcileFinanceJob,
+  Schedules
+} from '@platform/core/queues'
+
+import { LeaderLockService } from './leader-lock.service'
+
+const LOCK_SECONDS = 600
+const DAY_LENGTH = 10 // "2026-11-12" in an ISO date
+
+// Daily at 04:30 UTC, on one replica (TDD_18 §11): one check of the books for each organization that has set them up. The check itself is
+// the heavy-processing job, so a slow organization does not hold the lock of the schedule.
+@Injectable()
+export class FinanceReconcileScheduler {
+  constructor(
+    private readonly locks: LeaderLockService,
+    @InjectQueue(QueueNames.HEAVY_PROCESSING)
+    private readonly heavyQueue: Queue<ReconcileFinanceJob>,
+    private readonly prisma: PrismaService,
+    private readonly logger: PinoLogger
+  ) {
+    this.logger.setContext(FinanceReconcileScheduler.name)
+  }
+
+  @Cron(Schedules.RECONCILE_FINANCE)
+  async run(): Promise<void> {
+    try {
+      await this.locks.withLock(LockNames.RECONCILE_FINANCE, LOCK_SECONDS, async () => {
+        const queued = await this.enqueueAll(new Date())
+        this.logger.info({ queued }, 'the check of the books was queued')
+      })
+    } catch (error) {
+      // A cron that throws must not take the worker down; tomorrow it tries again
+      this.logger.error({ errorName: errorName(error) }, 'the check of the books was not queued')
+    }
+  }
+
+  // The job id carries the organization and the UTC day: the same day asked twice is one job, whatever the replica
+  async enqueueAll(now: Date, options: { pageSize?: number } = {}): Promise<number> {
+    const pageSize = options.pageSize ?? FinanceSweepLimits.ORGANIZATIONS_PAGE_SIZE
+    const day = now.toISOString().slice(0, DAY_LENGTH)
+    let queued = 0
+    let cursor: string | undefined
+    for (;;) {
+      const settings = await this.prisma.client.financeSettings.findMany({
+        select: { organizationId: true },
+        orderBy: { organizationId: 'asc' },
+        take: pageSize,
+        ...(cursor === undefined ? {} : { cursor: { organizationId: cursor }, skip: 1 })
+      })
+      if (settings.length > 0) {
+        await this.heavyQueue.addBulk(
+          settings.map(row => ({
+            name: JobNames.RECONCILE_FINANCE,
+            data: { organizationId: row.organizationId },
+            opts: {
+              jobId: reconcileFinanceJobId(row.organizationId, day),
+              // A blip of the database at 04:30 must not cost the day: it is tried again, and a failed job does not stay to block the same day
+              attempts: FinanceSweepLimits.JOB_ATTEMPTS,
+              backoff: { type: 'exponential' as const, delay: FinanceSweepLimits.JOB_BACKOFF_MS },
+              removeOnFail: true
+            }
+          }))
+        )
+        queued += settings.length
+      }
+      if (settings.length < pageSize) break
+      cursor = settings.at(-1)?.organizationId
+    }
+    return queued
+  }
+}

@@ -163,6 +163,7 @@ export const AuditAction = {
   REMITTANCE_IMPORTED: 'remittance.imported',
   REMITTANCE_CONFIRMED: 'remittance.confirmed',
   REMITTANCE_VOIDED: 'remittance.voided',
+  REMITTANCE_DIFFERENCE_WRITTEN_OFF: 'remittance.difference_written_off',
   STORE_PREFERENCES_UPDATED: 'store_preferences.updated',
 
   // Security configuration
@@ -203,6 +204,11 @@ export const AuditAction = {
   FINANCE_TAX_RATE_CHANGED: 'finance.tax_rate_changed',
   FINANCE_PAYMENT_ACCOUNT_CHANGED: 'finance.payment_account_changed',
   FINANCE_PERIOD_OPENED: 'finance.period_opened',
+  // Closing and reopening a month (TDD_18 §5, Step 4B.8): the reopen carries who, when and why; the CSVs and the chain check an auditor takes
+  FINANCE_PERIOD_CLOSED: 'finance.period_closed',
+  FINANCE_PERIOD_REOPENED: 'finance.period_reopened',
+  FINANCE_EXPORTED: 'finance.exported',
+  FINANCE_CHAIN_VERIFIED: 'finance.chain_verified',
   FINANCE_ENTRY_POSTED_MANUAL: 'finance.entry_posted_manual',
   FINANCE_ENTRY_REVERSED: 'finance.entry_reversed',
   FINANCE_POSTING_RETRIED: 'finance.posting_retried',

@@ -33,6 +33,7 @@ export const ClientPermissions = {
   FINANCE_POST_MANUAL: 'finance:post_manual',
   FINANCE_RECONCILE: 'finance:reconcile',
   FINANCE_VIEW: 'finance:view',
+  FINANCE_VIEW_CARRIER_FEES: 'finance:view_carrier_fees',
   FINANCE_VIEW_JOURNAL: 'finance:view_journal',
   INVENTORY_ADJUST: 'inventory:adjust',
   INVENTORY_APPLY_COUNTS: 'inventory:apply_counts',

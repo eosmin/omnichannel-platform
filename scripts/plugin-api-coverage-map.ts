@@ -400,6 +400,14 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'finance.taxRates.reactivate': { none: FINANCE },
   'finance.reports.vat': { none: FINANCE },
   'finance.reports.vatCsv': { none: FINANCE },
+  'finance.reports.trialBalance': { none: FINANCE },
+  'finance.reports.ledger': { none: FINANCE },
+  'finance.reports.trialBalanceCsv': { none: FINANCE },
+  'finance.reports.ledgerCsv': { none: FINANCE },
+  'finance.reports.journalCsv': { none: FINANCE },
+  'finance.reports.verifyChain': { none: FINANCE },
+  'finance.periods.close': { none: FINANCE },
+  'finance.periods.reopen': { none: FINANCE },
   'finance.storeTaxSettings': { none: FINANCE },
   'finance.paymentAccounts.list': { none: FINANCE },
   'finance.paymentAccounts.set': { none: FINANCE },
@@ -642,6 +650,8 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'remittances.lineById': { proposed: 'remittances:write', step: STEP },
   'remittances.confirm': { proposed: 'remittances:write', step: STEP },
   'remittances.void': { proposed: 'remittances:write', step: STEP },
+  // Moves money in the books (E7) and needs the permission to move it: it waits for PR E6-2 and the plugin actor, with a scope of its own
+  'remittances.writeOff': { proposed: 'remittances:write', step: STEP },
   // The GET is exposed; creating, changing and deleting a profile are writes
   'remittances.importProfiles': {
     proposed: ['remittances:read', 'remittances:write'],

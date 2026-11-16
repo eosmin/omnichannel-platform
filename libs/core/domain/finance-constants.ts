@@ -236,7 +236,11 @@ export const FiscalDocumentStatusTransitions: Record<
 > = {
   [FiscalDocumentStatus.DRAFT]: [FiscalDocumentStatus.QUEUED],
   [FiscalDocumentStatus.QUEUED]: [FiscalDocumentStatus.SUBMITTED],
-  [FiscalDocumentStatus.SUBMITTED]: [FiscalDocumentStatus.ACCEPTED, FiscalDocumentStatus.REJECTED],
+  [FiscalDocumentStatus.SUBMITTED]: [
+    FiscalDocumentStatus.ACCEPTED,
+    FiscalDocumentStatus.REJECTED,
+    FiscalDocumentStatus.QUEUED
+  ],
   [FiscalDocumentStatus.ACCEPTED]: [FiscalDocumentStatus.VOIDED],
   [FiscalDocumentStatus.REJECTED]: [FiscalDocumentStatus.QUEUED],
   [FiscalDocumentStatus.VOIDED]: []
@@ -353,6 +357,8 @@ export const LedgerHash = {
 
 // Why a request that is valid in itself is refused by the state of the books: for the client to tell apart (`metadata.conflict`)
 export const FinanceConflicts = {
+  // A check of the hash chain is running for the organization: it scans the whole journal, so one at a time
+  CHAIN_CHECK_RUNNING: 'chain_check_running',
   ALREADY_SET_UP: 'already_set_up',
   ACCOUNT_CODE_IN_USE: 'account_code_in_use',
   ACCOUNT_LIMIT: 'account_limit',
@@ -441,3 +447,16 @@ export function remittanceDestinationProblem(account: {
   if (!account.isPostable || account.cashKind === null) return RemittanceDestinationProblem.NOT_CASH
   return null
 }
+
+// The reports and the auditor's files (TDD_18 §10, §11, Step 4B.8)
+export const FinanceReportLimits = {
+  // Lines a CSV of the journal or the ledger carries: a file that would be larger is refused with the range to narrow (EXPORT_TOO_LARGE),
+  // never cut short, because a cut file looks like a whole one to an auditor
+  MAX_CSV_ROWS: 200_000,
+  // Entries the check of the chain reads at once; it walks the journal in pages in number order
+  CHAIN_PAGE_SIZE: 500,
+  // Lines the CSV of the journal reads from the database per round trip: the file is written as it is read, never held
+  CSV_PAGE_SIZE: 1000,
+  // Lines of the ledger of one account one request answers (it pages by line)
+  LEDGER_PAGE_MAX: 200
+} as const

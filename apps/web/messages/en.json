@@ -108,6 +108,9 @@
         "media": {
           "infected": "Infected file blocked",
           "unscannable": "File could not be scanned"
+        },
+        "finance": {
+          "posting_failed": "Entry of the books failed"
         }
       },
       "push": {
@@ -602,6 +605,10 @@
     "FINANCE_REOPEN_NOT_LATEST": "Only the latest closed period can be reopened",
     "FINANCE_CLOSE_PENDING_POSTINGS": "There are postings pending or failed in this period: resolve them first",
     "FINANCE_CLOSE_PREVIOUS_OPEN": "The previous period is still open: close periods in order",
+    "FINANCE_CLOSE_NOT_ENDED": "The period has not ended yet: a month is not closed before its last day",
+    "FINANCE_BALANCE_MISMATCHES": "The balances of the period do not match: it is an incident, it is not closed over",
+    "FINANCE_PERIOD_NOT_CLOSED": "The period is not closed",
+    "FINANCE_PERIOD_ALREADY_CLOSED": "The period is closed already",
     "FINANCE_CURRENCY_UNSUPPORTED": "Only USD is supported",
     "FINANCE_SETUP_REQUIRED": "Finance has not been set up for this organization yet",
     "FINANCE_TAX_RATE_NOT_CONFIGURED": "A product of this order is taxed and no tax rate is set for it: choose a default tax rate in Finance first",
@@ -1019,6 +1026,12 @@
     "unknown": {
       "title": "New notification",
       "body": "Open it to see the details."
+    },
+    "finance": {
+      "posting_failed": {
+        "title": "Entry of the books failed",
+        "body": "An entry of the books could not be posted automatically. Open the list of failed postings, fix its cause and post it again: the month cannot be closed until then."
+      }
     }
   },
   "orders": {

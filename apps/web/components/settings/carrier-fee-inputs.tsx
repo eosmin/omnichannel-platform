@@ -4,9 +4,11 @@ import { useTranslations } from 'next-intl'
 import { type ReactElement, useId } from 'react'
 
 import type { CarrierFeeSettingsView } from '@platform/api-client'
+import { ClientPermissions } from '@platform/core/auth'
 
 import { carrierRateLabelOf } from '../../lib/settings/carrier-fields'
 import { isRateText } from '../../lib/settings/carriers-form'
+import { useStore } from '../providers/store-context'
 import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 
@@ -33,6 +35,9 @@ export function CarrierFeeInputs({
   const t = useTranslations('settings.carriers.fees')
   const tAll = useTranslations()
   const prefix = useId()
+  const { can } = useStore()
+  // What was agreed with a carrier is shown, and agreed, only to who may view the carrier fees (the server hides it from everyone else)
+  if (!can(ClientPermissions.FINANCE_VIEW_CARRIER_FEES)) return null
   if (!fees.commission && fees.rateServices.length === 0) return null
   const message = (key: string): string | null =>
     tAll.has(key as Parameters<typeof tAll.has>[0]) ? tAll(key as Parameters<typeof tAll>[0]) : null

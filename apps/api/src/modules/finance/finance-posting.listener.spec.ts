@@ -1,7 +1,12 @@
 import type { PinoLogger } from 'nestjs-pino'
 
-import { FinanceEventKind, FinanceSourceType, ShipmentStatus } from '@platform/core/domain'
-import type { ShipmentStatusChangedPayload } from '@platform/core/events'
+import {
+  FinanceEventKind,
+  FinanceSourceType,
+  OrderStatus,
+  ShipmentStatus
+} from '@platform/core/domain'
+import type { OrderStatusChangedPayload, ShipmentStatusChangedPayload } from '@platform/core/events'
 import type { FinancePostingService } from '@platform/core/finance-ledger'
 
 import { FinancePostingListener } from './finance-posting.listener'
@@ -97,6 +102,24 @@ describe('FinancePostingListener, the carrier events (E4 to E6)', () => {
     ])
   })
 
+  it('queues the write-off of a difference as an event of the guide', async () => {
+    const { listener, queued } = build()
+    await listener.onDifferenceWrittenOff({
+      storeId: STORE,
+      shipmentId: 'ship-1',
+      connectionId: 'conn-1',
+      actor: { type: 'user', id: 'user-1' }
+    })
+    expect(queued).toMatchObject([
+      {
+        organizationId: ORG,
+        sourceType: FinanceSourceType.SHIPMENT,
+        sourceId: 'ship-1',
+        kind: FinanceEventKind.COD_WRITE_OFF
+      }
+    ])
+  })
+
   it('queues nothing for a store it cannot place', async () => {
     const { listener, queued } = build({ organization: null })
     await listener.onShipmentStatus(shipmentPayload(ShipmentStatus.DELIVERED))
@@ -110,6 +133,44 @@ describe('FinancePostingListener, the carrier events (E4 to E6)', () => {
     ).resolves.toBeUndefined()
     expect(unposted).toMatchObject([
       { sourceType: FinanceSourceType.SHIPMENT, kind: FinanceEventKind.CHARGES }
+    ])
+  })
+})
+
+describe('FinancePostingListener, the returns (E8)', () => {
+  it('queues the entry of a return when it is received, as an event of the return', async () => {
+    const { listener, queued } = build()
+    await listener.onReturnReceived({
+      storeId: STORE,
+      orderId: 'order-1',
+      orderNumber: '1001',
+      returnId: 'ret-1',
+      actor: { type: 'user', id: 'user-1' }
+    })
+    expect(queued).toMatchObject([
+      {
+        organizationId: ORG,
+        sourceType: FinanceSourceType.RETURN,
+        sourceId: 'ret-1',
+        kind: FinanceEventKind.RETURN_RESTOCK
+      }
+    ])
+  })
+
+  it('queues the entry of an order put back as a whole, and none of E2 or E3 for it', async () => {
+    const { listener, queued } = build()
+    const payload: OrderStatusChangedPayload = {
+      storeId: STORE,
+      orderId: 'order-1',
+      orderNumber: '1001',
+      actor: { type: 'user', id: 'user-1' },
+      from: OrderStatus.DELIVERED,
+      to: OrderStatus.RETURNED,
+      notifyCustomer: null
+    }
+    await listener.onOrderStatus(payload)
+    expect(queued.map(job => [job.sourceType, job.sourceId, job.kind])).toEqual([
+      [FinanceSourceType.ORDER, 'order-1', FinanceEventKind.ORDER_RETURN]
     ])
   })
 })

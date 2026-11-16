@@ -120,6 +120,8 @@ export const Events = {
   RETURN_RECEIVED: 'return.received',
   REMITTANCE_CONFIRMED: 'remittance.confirmed',
   REMITTANCE_VOIDED: 'remittance.voided',
+  // A person wrote off the difference of a guide that did not match its remittance (TDD_18 §4.2 E7): the books follow
+  REMITTANCE_DIFFERENCE_WRITTEN_OFF: 'remittance.difference_written_off',
   // A carrier has kept cash on delivery for longer than the store allows (the daily check, TDD_17 §4.15)
   REMITTANCE_OVERDUE: 'remittance.overdue',
 
@@ -129,6 +131,9 @@ export const Events = {
   FINANCE_ENTRY_REVERSED: 'finance.entry_reversed',
   // An automatic entry could not be posted and a person must fix it (TDD_18 §6.1). Api and worker only, ids and a reason code.
   FINANCE_POSTING_FAILED: 'finance.posting_failed',
+  // A month was closed, and the latest closed one was reopened (TDD_18 §5, Step 4B.8). Api only; ids and the month, never an amount or the reason.
+  FINANCE_PERIOD_CLOSED: 'finance.period_closed',
+  FINANCE_PERIOD_REOPENED: 'finance.period_reopened',
   // Goods of a purchase order were received into a warehouse (TDD_18 §3, E10). Api only, like the finance ones.
   PURCHASE_ORDER_RECEIVED: 'purchase_order.received',
 
@@ -259,7 +264,9 @@ export const BridgedEvents = [
   // The worker delivers the webhooks and turns one off after too many failures: the admins are told in the api
   Events.WEBHOOK_AUTO_DISABLED,
   // The worker turns the webhooks of a plugin off after too many failures in a row: the admins are told in the api
-  Events.PLUGIN_ERROR
+  Events.PLUGIN_ERROR,
+  // The worker says it once when an automatic entry of the books fails; the api tells whoever can fix it
+  Events.FINANCE_POSTING_FAILED
 ] as const satisfies readonly EventName[]
 
 export type BridgedEvent = (typeof BridgedEvents)[number]

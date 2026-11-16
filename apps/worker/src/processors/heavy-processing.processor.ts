@@ -27,6 +27,7 @@ import {
   QueueNames,
   type PollShipmentStatusJob,
   type ProcessImageJob,
+  type ReconcileFinanceJob,
   type ReconcileInventoryJob,
   type ReprocessCarrierEventsJob,
   type ScanFileJob,
@@ -34,6 +35,7 @@ import {
 } from '@platform/core/queues'
 
 import { CarrierEventReplay } from '../carriers/carrier-event-replay.service'
+import { FinanceReconciler } from '../finance/finance-reconciler.service'
 import { InventoryReconciler } from '../inventory/inventory-reconciler.service'
 import { InboundMediaFetcher } from '../media/inbound-media-fetcher.service'
 import { MediaPipeline } from '../media/media-pipeline.service'
@@ -54,6 +56,7 @@ type HeavyJob =
   | FetchInboundMediaJob
   | FetchOriginMediaJob
   | ReconcileInventoryJob
+  | ReconcileFinanceJob
   | PollShipmentStatusJob
   | ReprocessCarrierEventsJob
   | BulkLabelsMergeJob
@@ -104,6 +107,9 @@ const originFetchJobSchema = exactly<FetchOriginMediaJob>()(
 )
 const reconcileJobSchema = exactly<ReconcileInventoryJob>()(
   z.object({ storeId: z.uuid(), correlationId: z.string().optional() })
+)
+const reconcileFinanceJobSchema = exactly<ReconcileFinanceJob>()(
+  z.object({ organizationId: z.uuid(), correlationId: z.string().optional() })
 )
 const postFinanceJobSchema = exactly<PostFinanceEventJob>()(
   z.object({
@@ -173,7 +179,8 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     private readonly pickupSyncer: PickupSyncer,
     private readonly pickupEvaluator: PickupEvaluator,
     private readonly retention: StoreRetentionEnforcer,
-    private readonly financePosting: FinancePostingService
+    private readonly financePosting: FinancePostingService,
+    private readonly financeReconciler: FinanceReconciler
   ) {
     super(QueueNames.HEAVY_PROCESSING, support)
   }
@@ -195,6 +202,14 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       if (!reconcile.success)
         throw new UnrecoverableError('the reconcile job does not fit its schema')
       await this.reconciler.reconcileStore(reconcile.data.storeId)
+      return
+    }
+    if (job.name === JobNames.RECONCILE_FINANCE) {
+      const reconcile = reconcileFinanceJobSchema.safeParse(job.data)
+      if (!reconcile.success) {
+        throw new UnrecoverableError('the finance reconcile job does not fit its schema')
+      }
+      await this.financeReconciler.reconcile(reconcile.data.organizationId)
       return
     }
     if (job.name === JobNames.POST_FINANCE_EVENT) {
