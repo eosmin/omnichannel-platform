@@ -388,9 +388,42 @@ describe('The credit notes of the fiscal documents (Step 4B.7b)', () => {
       ).toBe(OK)
       expect(await noteOf(await receivedReturn(order, 1))).toBeNull()
     })
+
+    it('does not let a note that is only waiting, or was refused, keep the sale from being voided', async () => {
+      const order = await sale(true)
+      const waiting = await noteOf(await receivedReturn(order, 1))
+      expect(waiting?.status).toBe(FiscalDocumentStatus.QUEUED)
+      const refused = await noteOf(await receivedReturn(order, 1))
+      await owner.fiscalDocument.update({
+        where: { id: refused?.id },
+        data: { status: FiscalDocumentStatus.REJECTED, rejectionReason: 'x' }
+      })
+      expect(
+        (
+          await asAdminA()
+            .post(ApiRoutes.fiscal.documents.void(order.documentId))
+            .send({ reason: 'wrong customer' })
+        ).status
+      ).toBe(OK)
+    })
   })
 
   describe('the replacement of a voided document', () => {
+    it('makes the note of a return that was received while the sale had no live document', async () => {
+      const order = await sale(true)
+      await asAdminA()
+        .post(ApiRoutes.fiscal.documents.void(order.documentId))
+        .send({ reason: 'redo' })
+      const returnId = await receivedReturn(order, 1)
+      expect(await noteOf(returnId)).toBeNull()
+      const replaced = await asAdminA().post(ApiRoutes.fiscal.documents.replace(order.documentId))
+      expect(replaced.status).toBe(OK)
+      const newId = (replaced.body as { data: { id: string } }).data.id
+      const note = await noteOf(returnId)
+      expect(note?.parentDocumentId).toBe(newId)
+      expect(note?.status).toBe(FiscalDocumentStatus.QUEUED)
+    })
+
     it('makes the sale document again with a new number, keeps the receiver, and makes the voided credit notes again against it', async () => {
       const order = await sale(true)
       await asAdminA()

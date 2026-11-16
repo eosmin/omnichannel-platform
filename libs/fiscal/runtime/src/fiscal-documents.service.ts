@@ -6,7 +6,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService, type PrismaTransaction } from '@platform/core/database'
+import { isUniqueViolation, PrismaService, type PrismaTransaction } from '@platform/core/database'
 import {
   FinancePostingKey,
   FiscalConflictReasons,
@@ -341,25 +341,31 @@ export class FiscalDocumentsService {
     organizationId: string,
     returnId: string
   ): Promise<string | null> {
-    return this.prisma.transaction(async tx => {
-      const found = await tx.orderReturn.findFirst({
-        where: { id: returnId, store: { organizationId } },
-        select: { id: true, storeId: true, orderId: true, status: true, receivedAt: true }
+    return this.onceOnly(() =>
+      this.prisma.transaction(async tx => {
+        const found = await tx.orderReturn.findFirst({
+          where: { id: returnId, store: { organizationId } },
+          select: { id: true, storeId: true, orderId: true, status: true, receivedAt: true }
+        })
+        if (
+          found === null ||
+          found.receivedAt === null ||
+          !hasReceivedUnits(found.status as OrderReturnStatus)
+        ) {
+          return null
+        }
+        return this.makeCreditNote(tx, organizationId, found.orderId, found.id)
       })
-      if (
-        found === null ||
-        found.receivedAt === null ||
-        !hasReceivedUnits(found.status as OrderReturnStatus)
-      ) {
-        return null
-      }
-      return this.makeCreditNote(tx, organizationId, found.orderId, found.id)
-    })
+    )
   }
 
   // An order that came back as a whole with no return row (a parcel that came back, a delivered order an agent put back): every unit is
   // back. An order whose returns were received has a credit note per return instead, so this makes none for it.
   async createCreditNoteForOrder(organizationId: string, orderId: string): Promise<string | null> {
+    return this.onceOnly(() => this.makeOrderCreditNote(organizationId, orderId))
+  }
+
+  private makeOrderCreditNote(organizationId: string, orderId: string): Promise<string | null> {
     return this.prisma.transaction(async tx => {
       const order = await tx.order.findFirst({
         where: { id: orderId, store: { organizationId } },
@@ -371,13 +377,24 @@ export class FiscalDocumentsService {
         where: {
           storeId: order.storeId,
           orderId,
-          status: { in: [OrderReturnStatus.RECEIVED, OrderReturnStatus.COMPLETED] },
-          receivedAt: { not: null }
+          // The same predicate as the entry of the books, so the note and the entry agree on what the order is
+          status: { in: [OrderReturnStatus.RECEIVED, OrderReturnStatus.COMPLETED] }
         }
       })
       if (withReturns > 0) return null
       return this.makeCreditNote(tx, organizationId, orderId, null)
     })
+  }
+
+  // Two events for the same return (a repeated one, or the whole-order one next to a return) race the partial unique indexes: the one that
+  // loses finds the note already made, which is the answer, not a fault
+  private async onceOnly(make: () => Promise<string | null>): Promise<string | null> {
+    try {
+      return await make()
+    } catch (error) {
+      if (isUniqueViolation(error)) return null
+      throw error
+    }
   }
 
   // The credit note, in the transaction of its caller. `returnId` null is the order as a whole. A credit note whose units do not fit the
@@ -1184,12 +1201,14 @@ export class FiscalDocumentsService {
     if (doc.status !== (FiscalDocumentStatus.ACCEPTED as string)) {
       throw this.invalid(doc.status as FiscalDocumentStatus)
     }
-    // A sale document with a credit note that is not voided cannot be voided: the note names it, so the notes go first
+    // A sale document with a credit note that is live at the authority (accepted, or sent and not answered) cannot be voided: the note
+    // names it, so the notes go first. A note that is only waiting or was refused is not at the authority: it is refused when it is sent
+    // for a voided original, and a person retries it once the sale is replaced, so it never makes the sale unvoidable.
     const notes = await this.prisma.client.fiscalDocument.count({
       where: {
         organizationId,
         parentDocumentId: id,
-        status: { not: FiscalDocumentStatus.VOIDED }
+        status: { in: [FiscalDocumentStatus.ACCEPTED, FiscalDocumentStatus.SUBMITTED] }
       }
     })
     if (notes > 0) {
@@ -1381,22 +1400,30 @@ export class FiscalDocumentsService {
         },
         select: { id: true }
       })
-      const voidedNotes = await tx.fiscalDocument.findMany({
+      // Every return the order has received needs a note against the sale that is live now: the ones that were voided with the old document,
+      // and the ones whose return was received while the sale had none (no note could be made then). One that already has a live note is
+      // left as it is. An order that came back as a whole with no return row gets its one note.
+      const returns = await tx.orderReturn.findMany({
         where: {
-          organizationId,
-          parentDocumentId: old.id,
-          kind: FiscalDocumentKind.CREDIT_NOTE,
-          status: FiscalDocumentStatus.VOIDED
+          orderId: old.orderId,
+          storeId: old.storeId,
+          status: { in: [OrderReturnStatus.RECEIVED, OrderReturnStatus.COMPLETED] },
+          receivedAt: { not: null }
         },
-        orderBy: { sequenceNumber: 'asc' },
-        select: { returnId: true }
+        orderBy: [{ receivedAt: 'asc' }, { id: 'asc' }],
+        select: { id: true }
       })
+      const order = await tx.order.findFirst({
+        where: { id: old.orderId },
+        select: { status: true }
+      })
+      const targets: (string | null)[] = returns.map(row => row.id)
+      if (targets.length === 0 && order?.status === (OrderStatus.RETURNED as string)) {
+        targets.push(null)
+      }
       const creditNoteIds: string[] = []
-      const seen = new Set<string | null>()
-      for (const note of voidedNotes) {
-        if (seen.has(note.returnId)) continue
-        seen.add(note.returnId)
-        const again = await this.makeCreditNote(tx, organizationId, old.orderId, note.returnId, {
+      for (const returnId of targets) {
+        const again = await this.makeCreditNote(tx, organizationId, old.orderId, returnId, {
           id: created.id
         })
         if (again !== null) creditNoteIds.push(again)
