@@ -146,6 +146,16 @@ test.describe('Finance → bank reconciliation', () => {
     // A statement with a row that cannot be read is refused whole, with its row and its reason
     await page.getByTestId('bank-import-open').click()
     const importing = page.getByRole('dialog', { name: imports.dialog.title })
+    // No profile chosen (N-BR1-14): the screen asks for one, and the api is never asked about a profile that was not named
+    await importing.getByLabel(imports.dialog.file, { exact: true }).setInputFiles({
+      name: 'no-profile.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from(GOOD_CSV)
+    })
+    await importing.getByRole('button', { name: imports.dialog.submit, exact: true }).click()
+    await expect(
+      importing.getByRole('alert').getByText(imports.dialog.problems.profile)
+    ).toBeVisible()
     await importing
       .getByLabel(imports.dialog.profile, { exact: true })
       .selectOption({ label: profileName })

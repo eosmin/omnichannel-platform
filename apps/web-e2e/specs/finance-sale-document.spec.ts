@@ -65,7 +65,9 @@ test.describe('Finance → a sale, its fiscal document and its entry', () => {
     const row = form.getByTestId('fiscal-address-row').first()
     await row.getByLabel(fiscal.address.key, { exact: true }).fill('line1')
     await row.getByLabel(fiscal.address.value, { exact: true }).fill('1 Main Street')
-    await form.getByLabel('signingKey', { exact: true }).fill(`key-${run}`)
+    await form
+      .getByLabel(finance.fiscal.issuer.credentials.keys.signingKey, { exact: true })
+      .fill(`key-${run}`)
     await form.getByRole('button', { name: fiscal.issuer.submit, exact: true }).click()
     await expect(form.getByTestId('fiscal-credentials-state')).toHaveText(
       fiscal.issuer.credentials.stored

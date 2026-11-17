@@ -70,6 +70,8 @@ export function BankRowErrors({
     name !== null && t.has(`fields.${name}` as 'fields.date')
       ? t(`fields.${name}` as 'fields.date')
       : ''
+  // An error of the whole row (a stray quote) names no column: the text then has no empty slot, no loose comma
+  const hasField = (name: string | null): 'yes' | 'no' => (field(name) === '' ? 'no' : 'yes')
   return (
     <div
       role="alert"
@@ -81,9 +83,15 @@ export function BankRowErrors({
         {errors.map(error => (
           <li key={`${String(error.row)}-${error.field ?? ''}-${error.code}`}>
             {error.value === null
-              ? t('row', { row: error.row, field: field(error.field), reason: reason(error.code) })
+              ? t('row', {
+                  row: error.row,
+                  hasField: hasField(error.field),
+                  field: field(error.field),
+                  reason: reason(error.code)
+                })
               : t('rowWithValue', {
                   row: error.row,
+                  hasField: hasField(error.field),
                   field: field(error.field),
                   reason: reason(error.code),
                   value: error.value
