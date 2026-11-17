@@ -22,7 +22,7 @@ import {
   OrderMessageTriggers
 } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { Locale } from '@platform/core/i18n'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import { type OrderMessagePreview, pluginDispatchKey } from '@platform/core/shipping'
@@ -97,6 +97,7 @@ export class PluginOrderMessagesController {
 
   @PluginApi(PluginScopes.ORDERS_READ, PluginScopes.ORDER_MESSAGES_READ)
   @RequirePermissions(Permissions.ORDERS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.orders.messages(':id'))
   async list(
     @CurrentStore() store: { id: string },
@@ -108,6 +109,7 @@ export class PluginOrderMessagesController {
 
   @PluginApi(PluginScopes.ORDER_MESSAGES_READ)
   @RequirePermissions(Permissions.ORDERS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.orderTemplates.list)
   async listTemplates(@CurrentStore() store: { id: string }): Promise<PluginOrderTemplateView[]> {
     return (await this.templates.list(store.id)).map(pluginTemplateView)
@@ -115,6 +117,7 @@ export class PluginOrderMessagesController {
 
   @PluginApi(PluginScopes.ORDER_MESSAGES_READ)
   @RequirePermissions(Permissions.ORDERS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.orderTemplates.byKindAndLocale(':kind', ':locale'))
   async getTemplate(
     @CurrentStore() store: { id: string },

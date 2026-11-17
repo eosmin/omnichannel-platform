@@ -21,7 +21,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import { ExportTypes } from '@platform/core/queues'
 
 import { ExportsService, type ExportView } from '../exports'
@@ -47,6 +47,7 @@ export class AnalyticsController {
   ) {}
 
   @RequirePermissions(Permissions.ANALYTICS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.analytics.metrics)
   metricsOf(
     @CurrentStore() store: ResolvedTenant['store'],
@@ -57,6 +58,7 @@ export class AnalyticsController {
 
   // What was searched in the store: volume, searches that found nothing, clicks, and the texts of the catalog nobody found
   @RequirePermissions(Permissions.ANALYTICS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.analytics.search)
   searchReport(
     @CurrentStore() store: ResolvedTenant['store'],
@@ -67,6 +69,7 @@ export class AnalyticsController {
 
   // The figures of the person who asks, for the widget of the inbox: an agent has no analytics:view, and sees only their own
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.analytics.myPerformance)
   myPerformanceOf(
     @CurrentStore() store: ResolvedTenant['store'],
@@ -78,6 +81,7 @@ export class AnalyticsController {
   // The figures of the dashboard as a file, made in the background: the answer is the export to follow in the exports center.
   // Declared before nothing with a path parameter, so "export" is never read as an id.
   @RequirePermissions(Permissions.ANALYTICS_VIEW, Permissions.ANALYTICS_EXPORT)
+  @NoStore()
   @Get(ApiRoutes.analytics.export)
   @HttpCode(HttpStatusCodes.ACCEPTED)
   requestExport(
@@ -97,6 +101,7 @@ export class AnalyticsController {
   // Scheduled reports: each one sends the figures of the store out by email, so the person who saves one needs the right to take
   // them out as well as the right to manage reports
   @RequirePermissions(Permissions.ANALYTICS_VIEW, Permissions.ANALYTICS_MANAGE_REPORTS)
+  @NoStore()
   @Get(ApiRoutes.analytics.reports)
   listReports(@CurrentStore() store: ResolvedTenant['store']): Promise<ReportView[]> {
     return this.reports.list(store.id)

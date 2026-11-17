@@ -4,7 +4,7 @@ import type { Response } from 'express'
 import { PluginApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import type { Viewer } from '@platform/core/messaging'
 import { PluginScopes } from '@platform/plugins/sdk'
@@ -79,6 +79,7 @@ export class PluginInventoryController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.INVENTORY_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.inventory.levels)
   levels(
     @CurrentStore() store: { id: string },
@@ -90,6 +91,7 @@ export class PluginInventoryController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.INVENTORY_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.inventory.summary)
   summary(
     @CurrentStore() store: { id: string },
@@ -100,6 +102,7 @@ export class PluginInventoryController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.INVENTORY_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.inventory.movements)
   async movements(
     @CurrentStore() store: { id: string },
@@ -113,6 +116,7 @@ export class PluginInventoryController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.INVENTORY_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.inventory.kardex)
   async kardex(
     @CurrentStore() store: { id: string },
@@ -124,6 +128,7 @@ export class PluginInventoryController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.INVENTORY_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.products.inventory(':id'))
   productInventory(
     @CurrentStore() store: { id: string },

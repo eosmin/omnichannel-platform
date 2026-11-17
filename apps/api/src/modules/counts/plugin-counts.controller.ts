@@ -3,7 +3,7 @@ import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query, Req } from 
 import { PluginApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import { PluginScopes } from '@platform/plugins/sdk'
 
@@ -69,6 +69,7 @@ export class PluginCountsController {
 
   @PluginApi(READ)
   @RequireAnyPermission(Permissions.INVENTORY_MANAGE_COUNTS, Permissions.INVENTORY_APPLY_COUNTS)
+  @NoStore()
   @Get(PluginApiRoutes.counts.list)
   async list(
     @CurrentOrganization() organization: { id: string },
@@ -84,6 +85,7 @@ export class PluginCountsController {
 
   @PluginApi(READ)
   @RequireAnyPermission(Permissions.INVENTORY_MANAGE_COUNTS, Permissions.INVENTORY_APPLY_COUNTS)
+  @NoStore()
   @Get(PluginApiRoutes.counts.byId(':id'))
   async get(
     @CurrentOrganization() organization: { id: string },

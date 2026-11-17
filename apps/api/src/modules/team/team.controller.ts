@@ -4,7 +4,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import {
@@ -40,6 +40,7 @@ export class TeamController {
   ) {}
 
   @RequirePermissions(Permissions.TEAM_VIEW)
+  @NoStore()
   @Get(ApiRoutes.settings.members)
   listMembers(@CurrentStore() store: { id: string }): Promise<MemberView[]> {
     return this.members.list(store.id)
@@ -47,6 +48,7 @@ export class TeamController {
 
   // For every agent, unlike the list above, which needs TEAM_VIEW: it answers only who they are
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.members.directory)
   directory(@CurrentStore() store: { id: string }): Promise<MemberDirectoryEntry[]> {
     return this.members.directory(store.id)
@@ -67,6 +69,7 @@ export class TeamController {
   }
 
   @RequirePermissions(Permissions.TEAM_VIEW)
+  @NoStore()
   @Get(ApiRoutes.settings.invitations)
   listInvitations(@CurrentStore() store: { id: string }): Promise<InvitationView[]> {
     return this.invitations.list(store.id)
@@ -152,6 +155,7 @@ export class TeamController {
   }
 
   @RequirePermissions(Permissions.TEAM_VIEW)
+  @NoStore()
   @Get(ApiRoutes.settings.roles)
   listRoles(@CurrentStore() store: { id: string }): Promise<RoleView[]> {
     return this.roles.list(store.id)

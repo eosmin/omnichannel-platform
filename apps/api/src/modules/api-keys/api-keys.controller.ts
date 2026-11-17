@@ -27,6 +27,7 @@ export class ApiKeysController {
   constructor(private readonly keys: ApiKeysService) {}
 
   @RequirePermissions(Permissions.SETTINGS_MANAGE_API_KEYS)
+  @NoStore()
   @Get(ApiRoutes.settings.apiKeys)
   list(@CurrentStore() store: Store): Promise<ApiKeyView[]> {
     return this.keys.list(store.id)

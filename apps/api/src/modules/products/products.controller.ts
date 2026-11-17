@@ -15,7 +15,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import {
@@ -70,6 +70,7 @@ export class ProductsController {
   ) {}
 
   @RequirePermissions(Permissions.PRODUCTS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.products.list)
   async list(
     @CurrentStore() store: { id: string },
@@ -82,6 +83,7 @@ export class ProductsController {
 
   // Declared before `:id`, or "search" would be read as an id
   @RequirePermissions(Permissions.PRODUCTS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.products.search)
   search(
     @CurrentStore() store: { id: string },
@@ -107,6 +109,7 @@ export class ProductsController {
   }
 
   @RequirePermissions(Permissions.PRODUCTS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.products.byId(':id'))
   async get(
     @CurrentStore() store: { id: string },
@@ -118,6 +121,7 @@ export class ProductsController {
   }
 
   @RequirePermissions(Permissions.PRODUCTS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.products.images(':id'))
   images(
     @CurrentStore() store: { id: string },

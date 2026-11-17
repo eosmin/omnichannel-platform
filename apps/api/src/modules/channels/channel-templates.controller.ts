@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { ApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import { uuidSchema } from '@platform/core/domain'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 
 import { CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
 
@@ -21,6 +21,7 @@ export class ChannelTemplatesController {
   constructor(private readonly templates: ChannelTemplatesService) {}
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_SEND_TEMPLATE)
+  @NoStore()
   @Get(ApiRoutes.channels.templates(':pluginId'))
   list(
     @CurrentStore() store: ResolvedTenant['store'],

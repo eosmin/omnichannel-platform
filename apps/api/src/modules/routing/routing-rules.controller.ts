@@ -5,7 +5,7 @@ import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import {
   type CreateRuleBody,
@@ -31,6 +31,7 @@ export class RoutingRulesController {
   constructor(private readonly rules: RoutingRulesService) {}
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.settings.routing)
   list(@CurrentStore() store: Store): Promise<RoutingRuleView[]> {
     return this.rules.list(store.id)
@@ -61,6 +62,7 @@ export class RoutingRulesController {
   }
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.settings.routingRuleById(':id'))
   get(@CurrentStore() store: Store, @Param('id', id()) ruleId: string): Promise<RoutingRuleView> {
     return this.rules.get(store.id, ruleId)

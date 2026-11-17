@@ -15,7 +15,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import {
@@ -59,6 +59,7 @@ export class WarehousesController {
   ) {}
 
   @RequirePermissions(Permissions.INVENTORY_VIEW)
+  @NoStore()
   @Get(ApiRoutes.warehouses.list)
   list(
     @CurrentOrganization() organization: Organization,
@@ -68,6 +69,7 @@ export class WarehousesController {
   }
 
   @RequirePermissions(Permissions.INVENTORY_VIEW)
+  @NoStore()
   @Get(ApiRoutes.warehouses.byId(':id'))
   get(
     @CurrentOrganization() organization: Organization,

@@ -1,3 +1,6 @@
+import { readdirSync, statSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { PATH_METADATA, METHOD_METADATA, ROUTE_ARGS_METADATA } from '@nestjs/common/constants'
 import { RouteParamtypes } from '@nestjs/common/enums/route-paramtypes.enum'
 
@@ -139,5 +142,75 @@ describe('Cache-Control: no-store on the routes of money, fiscal documents, secr
   )('%s.%s answers with no-store', (_name, handler, controller) => {
     expect(Reflect.hasMetadata(PATH_METADATA, handlerOf(controller, handler))).toBe(true)
     expect(hasNoStore(controller, handler)).toBe(true)
+  })
+})
+
+// Every GET of every controller of the api (and of the libraries that bring one) answers with data of a store, a person or a
+// secret, so it says no-store, unless it is on the short list below with its reason or takes the response itself (the files).
+// A route added without the header fails here: nobody has to remember to add it to a list.
+const CONTROLLER_ROOTS = [join(__dirname, '..'), join(__dirname, '../../../../libs/core')]
+
+// A GET that may be kept by a cache, and why. Nothing of a store or a person belongs here.
+const MAY_BE_CACHED: Record<string, string> = {
+  'HealthController.live': 'liveness probe: no data',
+  'HealthController.ready': 'readiness probe: no data',
+  'MetricsController.scrape':
+    'the metrics of the process, read by the scraper inside the network, not by a person'
+}
+
+function controllerFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap(name => {
+    // The probe of the tests (`testing/`) is not a route of the product
+    if (name === 'node_modules' || name === '.next' || name === 'testing') return []
+    const path = join(dir, name)
+    if (statSync(path).isDirectory()) return controllerFiles(path)
+    return name.endsWith('.controller.ts') ? [path] : []
+  })
+}
+
+async function allControllers(): Promise<Controller[]> {
+  const found: Controller[] = []
+  for (const file of CONTROLLER_ROOTS.flatMap(controllerFiles)) {
+    const exported = (await import(file)) as Record<string, unknown>
+    for (const value of Object.values(exported)) {
+      // A class of Nest with a path is a controller
+      if (typeof value === 'function' && Reflect.hasMetadata(PATH_METADATA, value)) {
+        found.push(value)
+      }
+    }
+  }
+  return found
+}
+
+const GET = 0 // RequestMethod.GET
+
+describe('Cache-Control: no-store on every GET of the api', () => {
+  it('answers no-store on every GET, except the ones that say why they may be cached', async () => {
+    const controllers = await allControllers()
+    const names = controllers.map(controller => controller.prototype.constructor.name)
+    // The walk has to find the routes: a path that moved would turn this into a pass over nothing
+    expect(names).toEqual(expect.arrayContaining(['ShipmentsController', 'SettingsController']))
+    let checked = 0
+    const missing: string[] = []
+    const listed = new Set<string>()
+    for (const controller of controllers) {
+      const controllerName = controller.prototype.constructor.name
+      for (const name of handlersOf(controller)) {
+        const handler = handlerOf(controller, name)
+        if (Reflect.getMetadata(METHOD_METADATA, handler) !== GET) continue
+        const id = `${controllerName}.${name}`
+        if (id in MAY_BE_CACHED) {
+          listed.add(id)
+          continue
+        }
+        if (takesResponse(controller, name)) continue
+        checked += 1
+        if (!hasNoStore(controller, name)) missing.push(id)
+      }
+    }
+    expect(checked).toBeGreaterThan(100)
+    expect(missing).toEqual([])
+    // A line of the list that names no route is a route that was renamed: the list is kept honest
+    expect([...listed].sort()).toEqual(Object.keys(MAY_BE_CACHED).sort())
   })
 })

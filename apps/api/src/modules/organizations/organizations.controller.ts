@@ -4,7 +4,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import {
@@ -39,6 +39,7 @@ export class OrganizationsController {
   constructor(private readonly organizations: OrganizationsService) {}
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.organizations.current)
   current(@CurrentOrganization() organization: { id: string }): Promise<OrganizationView> {
     return this.organizations.getOrganization(organization.id)
@@ -57,6 +58,7 @@ export class OrganizationsController {
   }
 
   @RequirePermissions(Permissions.ORG_MANAGE_STORES)
+  @NoStore()
   @Get(ApiRoutes.organizations.stores)
   listStores(
     @CurrentOrganization() organization: { id: string },
@@ -82,6 +84,7 @@ export class OrganizationsController {
   }
 
   @RequirePermissions(Permissions.ORG_MANAGE_STORES)
+  @NoStore()
   @Get(ApiRoutes.organizations.storeById(':id'))
   getStore(
     @CurrentOrganization() organization: { id: string },

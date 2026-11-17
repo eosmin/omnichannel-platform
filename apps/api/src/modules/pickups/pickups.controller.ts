@@ -37,6 +37,7 @@ export class PickupsController {
   constructor(private readonly pickups: PickupsApiService) {}
 
   @RequirePermissions(Permissions.SHIPPING_VIEW)
+  @NoStore()
   @Get(ApiRoutes.pickups.list)
   list(
     @CurrentStore() store: Store,

@@ -21,7 +21,7 @@ import {
   updateReceptionItemSchema
 } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import {
@@ -57,6 +57,7 @@ export class ReturnReceptionController {
   constructor(private readonly reception: ReturnReceptionService) {}
 
   @RequirePermissions(Permissions.RETURNS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.returns.reception.batches)
   list(
     @CurrentStore() store: Store,
@@ -78,6 +79,7 @@ export class ReturnReceptionController {
   }
 
   @RequirePermissions(Permissions.RETURNS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.returns.reception.batchById(':id'))
   get(
     @CurrentStore() store: Store,

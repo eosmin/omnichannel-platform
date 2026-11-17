@@ -4,7 +4,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import {
   confirmUploadSchema,
   downloadAllBodySchema,
@@ -61,6 +61,7 @@ export class MediaController {
   }
 
   @RequirePermissions(Permissions.MEDIA_VIEW)
+  @NoStore()
   @Get(ApiRoutes.media.byId(':id'))
   urls(
     @CurrentStore() store: Store,

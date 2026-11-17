@@ -16,7 +16,7 @@ import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { type CursorPage, uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { MULTI_FILE_SEND_ENABLED, ZodValidationPipe } from '@platform/core/http'
+import { MULTI_FILE_SEND_ENABLED, NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
@@ -51,6 +51,7 @@ export class ChannelConnectionsController {
   ) {}
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.channels.connections)
   list(
     @CurrentStore() store: Store,
@@ -62,12 +63,14 @@ export class ChannelConnectionsController {
   // For every agent, unlike the list above, which needs SETTINGS_VIEW: it answers only what the
   // inbox needs to name and draw a channel
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.channels.directory)
   directory(@CurrentStore() store: Store): Promise<ChannelDirectoryEntry[]> {
     return this.connections.directory(store.id, this.multiFileEnabled)
   }
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.channels.connectionById(':id'))
   get(
     @CurrentStore() store: Store,

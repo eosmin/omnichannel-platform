@@ -5,7 +5,7 @@ import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import type { OrderMessageKindType } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { Locale } from '@platform/core/i18n'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import type { OrderMessagePreview } from '@platform/core/shipping'
@@ -35,6 +35,7 @@ export class OrderTemplatesController {
   constructor(private readonly templates: OrderTemplatesService) {}
 
   @RequirePermissions(Permissions.ORDERS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.orderTemplates.list)
   list(@CurrentStore() store: Store): Promise<OrderTemplateView[]> {
     return this.templates.list(store.id)
@@ -51,6 +52,7 @@ export class OrderTemplatesController {
   }
 
   @RequirePermissions(Permissions.ORDERS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.orderTemplates.byKindAndLocale(':kind', ':locale'))
   get(
     @CurrentStore() store: Store,

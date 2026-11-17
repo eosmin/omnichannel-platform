@@ -56,6 +56,7 @@ export class ShipmentsController {
   ) {}
 
   @RequirePermissions(Permissions.SHIPPING_VIEW)
+  @NoStore()
   @Get(ApiRoutes.shipments.list)
   list(
     @CurrentStore() store: Store,
@@ -65,6 +66,7 @@ export class ShipmentsController {
   }
 
   @RequirePermissions(Permissions.SHIPPING_VIEW)
+  @NoStore()
   @Get(ApiRoutes.shipments.byId(':id'))
   get(
     @CurrentStore() store: Store,
