@@ -16,7 +16,7 @@ export interface LevelState {
 }
 
 export type Refusal =
-  // Reserve, transfer out, adjustment out or count out: not enough available (onHand - reserved)
+  // Reserve, transfer out or adjustment out: not enough available (onHand - reserved)
   | { kind: 'insufficient_available'; available: number }
   // Issue, adjustment out, count out: it would leave less than nothing on hand
   | { kind: 'insufficient_on_hand'; onHand: number }
@@ -140,15 +140,19 @@ function refusalOf(
         ? { kind: 'insufficient_on_hand', onHand: level.onHand }
         : null
     case InventoryMovementType.ADJUSTMENT_OUT:
-    case InventoryMovementType.COUNT_OUT:
       if (!allowNegativeStock && onHandAfter < 0) {
         return { kind: 'insufficient_on_hand', onHand: level.onHand }
       }
-      // Units that an order has been promised stay on the shelf: a way out of the stock that leaves less on hand than is reserved
-      // would leave an order with no physical stock behind it (N-AA-05). The setting that allows negative stock allows this too,
-      // as a reservation already may exceed what is on hand then
+      // Units that an order has been promised stay on the shelf: a person or a plugin that takes stock out by hand and leaves less
+      // on hand than is reserved would leave an order with no physical stock behind it (N-AA-05). The setting that allows negative
+      // stock allows this too, as a reservation already may exceed what is on hand then. A COUNT_OUT is not asked this: it is what
+      // the shelf really holds, and it is recorded even under reservations
       return !allowNegativeStock && onHandAfter < level.reserved
         ? { kind: 'insufficient_available', available }
+        : null
+    case InventoryMovementType.COUNT_OUT:
+      return !allowNegativeStock && onHandAfter < 0
+        ? { kind: 'insufficient_on_hand', onHand: level.onHand }
         : null
     case InventoryMovementType.TRANSFER_OUT:
       // A physical shipment cannot exceed what is on the shelf and not promised: the setting does not apply
