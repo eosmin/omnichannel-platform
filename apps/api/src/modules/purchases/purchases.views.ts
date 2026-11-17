@@ -290,6 +290,8 @@ export interface PayableBillView {
   totalCents: number
   openCents: number
   overdue: boolean
+  // The days past the due day by the day of the books (0 when it is not overdue)
+  daysOverdue: number
 }
 
 export interface PayablesView {

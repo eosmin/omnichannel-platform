@@ -138,7 +138,8 @@ const payableBillSchema = z.object({
   dueOn: z.string(),
   totalCents: z.number().int(),
   openCents: z.number().int(),
-  overdue: z.boolean()
+  overdue: z.boolean(),
+  daysOverdue: z.number().int().min(0)
 })
 export type PayableBillView = z.output<typeof payableBillSchema>
 

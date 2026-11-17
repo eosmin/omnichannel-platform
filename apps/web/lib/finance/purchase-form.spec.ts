@@ -17,7 +17,6 @@ import {
   createOrderInputOf,
   createSupplierInputOf,
   dayOfDate,
-  daysPastDue,
   decimalOfCentsText,
   emptyOrderHeaderDraft,
   emptyPaymentDraft,
@@ -120,13 +119,8 @@ describe('whole numbers and days', () => {
     expect(wholeOfText('')).toBeNull()
   })
 
-  it('writes the accounting day of a clock and counts the days past due by the calendar', () => {
+  it('writes the accounting day of a clock', () => {
     expect(dayOfDate(new Date(2026, 10, 5))).toBe('2026-11-05')
-    expect(daysPastDue('2026-11-01', '2026-11-16')).toBe(15)
-    expect(daysPastDue('2026-11-16', '2026-11-16')).toBe(0)
-    expect(daysPastDue('2026-12-01', '2026-11-16')).toBe(0)
-    // Across a change of month and of year
-    expect(daysPastDue('2026-12-30', '2027-01-02')).toBe(3)
   })
 })
 

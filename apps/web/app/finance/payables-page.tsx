@@ -15,7 +15,6 @@ import { Button } from '../../components/ui/button'
 import { SELECT_CLASS } from '../../components/ui/field-classes'
 import { Label } from '../../components/ui/label'
 import { moneyText } from '../../lib/finance/money'
-import { daysPastDue } from '../../lib/finance/purchase-form'
 import { useAllSuppliers, usePayables } from '../../lib/finance/use-purchases'
 
 // Finance → Payables (TDD_18 §2.7): every bill with something open, with its due day, and what each supplier is owed in all. A bill is
@@ -50,8 +49,6 @@ function Payables(): ReactElement {
     () => new Map((suppliers.data ?? []).map(supplier => [supplier.id, supplier.name])),
     [suppliers.data]
   )
-  // The api decides what is overdue by the UTC day, so the days late are counted from it too
-  const today = new Date().toISOString().slice(0, 10)
 
   if (payables.isError) {
     return <LoadFailed error={payables.error} onRetry={() => void payables.refetch()} />
@@ -142,7 +139,7 @@ function Payables(): ReactElement {
                   <span className="text-sm font-medium">{supplierOf(bill.supplierId)}</span>
                   {bill.overdue ? (
                     <span className="bg-destructive/10 text-destructive rounded-full px-2 py-0.5 text-xs font-medium">
-                      {t('overdueDays', { days: daysPastDue(bill.dueOn, today) })}
+                      {t('overdueDays', { days: bill.daysOverdue })}
                     </span>
                   ) : null}
                 </span>

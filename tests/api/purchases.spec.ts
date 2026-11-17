@@ -65,7 +65,13 @@ interface BalanceBody {
   overdueCents: number
 }
 interface PayablesBody {
-  bills: { receiptId: string; openCents: number; dueOn: string; overdue: boolean }[]
+  bills: {
+    receiptId: string
+    openCents: number
+    dueOn: string
+    overdue: boolean
+    daysOverdue: number
+  }[]
   suppliers: BalanceBody[]
 }
 
@@ -628,8 +634,28 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
         `${ApiRoutes.suppliers.payables}?supplierId=${supplierId}`
       )
       expect((payables.body as PayablesBody).bills).toMatchObject([
-        { receiptId: receipt.id, openCents: 10_000, dueOn: TODAY, overdue: false }
+        { receiptId: receipt.id, openCents: 10_000, dueOn: TODAY, overdue: false, daysOverdue: 0 }
       ])
+    })
+
+    it('says how late a bill is by the day of the books', async () => {
+      const seller = await supplier({ paymentTermsDays: 0 })
+      const order = await placedOrder(seller.id, {
+        lines: [{ productId: (await product()).id, quantity: 1, unitCostCents: 1000 }]
+      })
+      const received = await receive(order.id, {
+        supplierDocumentNumber: `D-${key()}`,
+        receivedOn: isoDay(-5),
+        lines: [{ orderLineId: order.lines[0]?.id, quantity: 1 }]
+      })
+      expect(received.status).toBe(CREATED)
+      const payables = await asAdminA().get(
+        `${ApiRoutes.suppliers.payables}?supplierId=${seller.id}&overdueOnly=true`
+      )
+      const [bill] = (payables.body as PayablesBody).bills
+      // The day of the books is the one of the store furthest behind: up to a day before the UTC day
+      expect(bill).toMatchObject({ dueOn: isoDay(-5), overdue: true })
+      expect([4, 5]).toContain(bill?.daysOverdue)
     })
 
     it('pays in parts from the account chosen, posts Dr payable Cr account, and never above what is open', async () => {
