@@ -18,7 +18,10 @@ export const CONVERSATION_COLUMNS = [
   'type',
   'content',
   'delivery_status',
-  'deleted'
+  'deleted',
+  // The plugin that wrote the message, whatever the author column says (it writes as an agent or as the system): empty for the rest.
+  // Last, so that the columns of a file read before keep their place
+  'plugin_id'
 ] as const
 
 // A line the platform wrote (a system line, the line of an order: the order has its own export and its own
@@ -89,6 +92,7 @@ export function conversationsExportSource(
                 id: true,
                 createdAt: true,
                 authorType: true,
+                authorPluginId: true,
                 type: true,
                 content: true,
                 deliveryStatus: true,
@@ -116,7 +120,8 @@ export function conversationsExportSource(
                 message.type,
                 hidden ? null : exportMessageText(message),
                 message.deliveryStatus,
-                message.deletedAt !== null
+                message.deletedAt !== null,
+                message.authorPluginId
               ]
             }
           }
