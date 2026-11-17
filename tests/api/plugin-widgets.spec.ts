@@ -336,7 +336,35 @@ describe('the widgets of the plugins in the agent sidebar', () => {
     expect(last).toBe(TOO_MANY_REQUESTS)
   })
 
-  it('does not keep the token at rest, and limits what a person may ask in a minute', async () => {
+  it('refuses once the budget of the bridge of a person for an installation is used, and counts it by itself (WID-053)', async () => {
+    const token = await open()
+    const redis = app.get<Redis>(REDIS_CLIENT, { strict: false })
+    const key = CacheKeys.pluginWidget.bridgeRequests(ctx.storeA.id, ctx.agentA.id, installationId)
+    try {
+      // One request left in the window
+      await redis.set(
+        key,
+        PluginWidgetLimits.BRIDGE_REQUESTS_PER_MINUTE - 1,
+        'EX',
+        PluginWidgetLimits.BRIDGE_WINDOW_SECONDS
+      )
+
+      expect((await ask(token, PluginBridgeOperations.CONVERSATION_GET, 'last')).status).toBe(OK)
+      const refused = await ask(token, PluginBridgeOperations.CONVERSATION_GET, 'over')
+
+      expect(refused.status).toBe(TOO_MANY_REQUESTS)
+      expect((refused.body as { error: { code: string; message: string } }).error).toMatchObject({
+        code: ErrorCodes.RATE_LIMIT_EXCEEDED,
+        message: 'too many widget requests'
+      })
+      // Both requests were counted by the bridge, the refused one too
+      expect(Number(await redis.get(key))).toBe(PluginWidgetLimits.BRIDGE_REQUESTS_PER_MINUTE + 1)
+    } finally {
+      await redis.del(key)
+    }
+  })
+
+  it('does not keep the token at rest and ends it by itself', async () => {
     const token = await open()
     const redis = app.get<Redis>(REDIS_CLIENT, { strict: false })
     const keys = await redis.keys(`store:${ctx.storeA.id}:plugin-widget:*`)
@@ -351,11 +379,5 @@ describe('the widgets of the plugins in the agent sidebar', () => {
     )
     expect(ttl).toBeGreaterThan(0)
     expect(ttl).toBeLessThanOrEqual(PluginWidgetLimits.SESSION_TTL_SECONDS)
-
-    let last = OK
-    for (let i = 0; i <= PluginWidgetLimits.BRIDGE_REQUESTS_PER_MINUTE; i += 1) {
-      last = (await ask(token, PluginBridgeOperations.CONVERSATION_GET, `r-${i}`)).status
-    }
-    expect(last).toBe(TOO_MANY_REQUESTS)
   })
 })
