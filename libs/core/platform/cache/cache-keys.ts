@@ -47,7 +47,12 @@ export const CacheKeys = {
   // How many refusals of one user were written to the audit log this minute (the budget that keeps a
   // prober from filling the table)
   audit: {
-    denialBudget: (userId: string, action: string) => `audit:denials:${userId}:${action}`
+    denialBudget: (userId: string, action: string) => `audit:denials:${userId}:${action}`,
+    // The refusals of the plugin API: one entry per installation and reason in a window, and one shared counter for the keys no
+    // installation owns
+    pluginDenial: (installationId: string, reason: string) =>
+      `audit:plugin-denials:${installationId}:${reason}`,
+    pluginDenialAnonymous: 'audit:plugin-denials:anonymous'
   },
 
   realtime: {

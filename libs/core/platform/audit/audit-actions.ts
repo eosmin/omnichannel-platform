@@ -172,6 +172,9 @@ export const AuditAction = {
   WEBHOOK_CREATED: 'webhook.created',
   WEBHOOK_UPDATED: 'webhook.updated',
   WEBHOOK_DELETED: 'webhook.deleted',
+  // A call to the plugin API the guard refused (a key that is not valid, an installation that is off, a scope or a permission the plugin
+  // lacks): the platform is the actor, the installation and the reason are on the metadata, never the key; capped per window
+  PLUGIN_API_DENIED: 'plugin.api_denied',
   PLUGIN_REGISTERED: 'plugin.registered',
   PLUGIN_MANIFEST_UPDATED: 'plugin.manifest_updated',
   PLUGIN_DELETED: 'plugin.deleted',
