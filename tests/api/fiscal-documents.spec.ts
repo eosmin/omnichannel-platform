@@ -203,6 +203,49 @@ describe('The fiscal documents (Step 4B.7)', () => {
       }
     })
 
+    it('keeps the registration, the activity and the establishment code when a change does not name them, and clears them with null', async () => {
+      const codes = { registrationId: 'NRC-1', activityCode: '4711', establishmentCode: 'M001' }
+      const set = await asAdminA()
+        .put(ApiRoutes.fiscal.issuer)
+        .send({ ...ISSUER, ...codes })
+      expect(set.status).toBe(OK)
+      const read = async (): Promise<Record<string, unknown>> =>
+        ((await asAdminA().get(ApiRoutes.fiscal.issuer)).body as { data: Record<string, unknown> })
+          .data
+      expect(await read()).toMatchObject(codes)
+      // A change that names none of them leaves all three
+      const without = await asAdminA()
+        .put(ApiRoutes.fiscal.issuer)
+        .send({ ...ISSUER, legalName: 'Isolation Issuer 2' })
+      expect(without.status).toBe(OK)
+      expect(await read()).toMatchObject({ ...codes, legalName: 'Isolation Issuer 2' })
+      // Null clears one and leaves the others
+      const cleared = await asAdminA()
+        .put(ApiRoutes.fiscal.issuer)
+        .send({ ...ISSUER, activityCode: null })
+      expect(cleared.status).toBe(OK)
+      expect(await read()).toMatchObject({
+        registrationId: 'NRC-1',
+        activityCode: null,
+        establishmentCode: 'M001'
+      })
+      await asAdminA().put(ApiRoutes.fiscal.issuer).send(ISSUER)
+
+      // A first issuer that does not name them has none
+      await owner.fiscalIssuer.deleteMany({ where: { organizationId: ctx.orgB.id } })
+      try {
+        const first = await api(app, ctx.adminB, ctx.storeB)
+          .put(ApiRoutes.fiscal.issuer)
+          .send(ISSUER)
+        expect(first.status).toBe(OK)
+        expect(first.body).toMatchObject({
+          data: { registrationId: null, activityCode: null, establishmentCode: null }
+        })
+      } finally {
+        await owner.fiscalIssuer.deleteMany({ where: { organizationId: ctx.orgB.id } })
+      }
+    })
+
     it('moves the correlative forward only: a number is never used twice', async () => {
       const forward = await asAdminA()
         .put(ApiRoutes.fiscal.issuer)
