@@ -116,7 +116,10 @@
         "fiscal": {
           "document_rejected": "Documento fiscal rechazado",
           "document_stuck": "Documento fiscal detenido",
-          "entry_mismatch": "Un documento fiscal no coincide con los libros"
+          "entry_mismatch": "Un documento fiscal no coincide con los libros",
+          "contingency_opened": "Contingencia fiscal iniciada",
+          "contingency_report_failed": "Contingencia fiscal sin reportar",
+          "contingency_window_closing": "El plazo de una contingencia fiscal se acaba"
         }
       },
       "push": {
@@ -602,6 +605,7 @@
     "FISCAL_DOCUMENT_INVALID_TRANSITION": "El documento fiscal no puede pasar de su estado actual",
     "FISCAL_ISSUER_INVALID": "El emisor no pasa las comprobaciones del proveedor",
     "FISCAL_CUSTOMER_DATA_INVALID": "Los datos fiscales del cliente no pasan las comprobaciones del proveedor",
+    "FISCAL_CONTINGENCY_INVALID": "La contingencia no se puede cambiar así",
     "FISCAL_PROVIDER_UNAVAILABLE": "El proveedor de documentos fiscales no está disponible",
     "FINANCE_ENTRY_UNBALANCED": "El asiento no cuadra: los débitos y los créditos deben ser iguales y positivos",
     "FINANCE_ACCOUNT_NOT_POSTABLE": "Esta cuenta solo agrupa otras cuentas: elige una que acepte asientos",
@@ -1061,6 +1065,18 @@
       "entry_mismatch": {
         "title": "Un documento fiscal no coincide con los libros",
         "body": "La revisión diaria encontró una venta cuyo documento fiscal tiene un total o un impuesto distinto al de su asiento en los libros. Abre los documentos fiscales y pide al contador que decida cuál es el correcto: nada se corrige solo."
+      },
+      "contingency_opened": {
+        "title": "Se están emitiendo documentos sin la autoridad",
+        "body": "La autoridad no respondió un documento, así que los nuevos documentos fiscales se emiten en contingencia: firmados y guardados, sin enviar. Termina la contingencia en los ajustes fiscales cuando la autoridad responda otra vez, para reportarlos y enviarlos."
+      },
+      "contingency_report_failed": {
+        "title": "No se pudo reportar una contingencia",
+        "body": "La autoridad no aceptó el evento que reporta una contingencia tras todos los intentos. Los documentos emitidos en ella esperan. Abre los ajustes fiscales y pide reportarla de nuevo."
+      },
+      "contingency_window_closing": {
+        "title": "Los documentos de una contingencia deben enviarse pronto",
+        "body": "El plazo que da la autoridad para enviar los documentos emitidos en una contingencia se acaba. Abre los documentos fiscales y revisa que se estén enviando."
       }
     }
   },

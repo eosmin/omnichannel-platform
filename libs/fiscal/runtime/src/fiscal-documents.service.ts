@@ -11,6 +11,8 @@ import {
   FinancePostingKey,
   FiscalConflictReasons,
   FiscalConsultState,
+  FiscalContingencyLimits,
+  FiscalDeferOutcome,
   FiscalDocumentKind,
   FiscalDocumentStatus,
   type FiscalEnvironment,
@@ -48,6 +50,7 @@ import type {
   VoidResult
 } from '@platform/fiscal/sdk'
 
+import { type FiscalContingencyRoute, FiscalContingencyService } from './fiscal-contingency.service'
 import { FiscalEvidenceService } from './fiscal-evidence.service'
 import type { FiscalActor } from './fiscal-issuer.service'
 import { FiscalProviderRegistry } from './fiscal-provider.registry'
@@ -195,6 +198,7 @@ export class FiscalDocumentsService {
     private readonly cipher: CredentialCipher,
     private readonly providers: FiscalProviderRegistry,
     private readonly evidence: FiscalEvidenceService,
+    private readonly contingencies: FiscalContingencyService,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(FiscalDocumentsService.name)
@@ -809,6 +813,12 @@ export class FiscalDocumentsService {
       idempotencyKey: `${organizationId}:${documentId}:${doc.submission}`,
       attempt: doc.attempts + 1
     }
+    // A document made in a contingency goes out as it was kept (what the receiver was handed is what the authority gets), after the event
+    // that lists it was taken (the claim above lets it through only then)
+    if (doc.contingencyId !== null) {
+      await this.sendKept(organizationId, doc, provider, context)
+      return
+    }
     const receiver = this.openReceiver(doc.receiverEncrypted)
     const parts = record(doc.linesSnapshot)
     const sale = saleOf(doc, parts)
@@ -850,8 +860,23 @@ export class FiscalDocumentsService {
       sale.totalCents,
       doc.kind === (FiscalDocumentKind.CREDIT_NOTE as string)
     )
+    // An open contingency of this issuer (the provider has the deferred model): the document is made in it
+    const route = await this.contingencies.routeOf(
+      organizationId,
+      doc,
+      provider,
+      issuerInput.environment
+    )
     const built = await this.attempt('build', doc.id, () =>
       provider.build({
+        ...(route.kind === 'attach'
+          ? {
+              contingency: {
+                reason: route.contingency.reason,
+                motive: route.contingency.motive
+              }
+            }
+          : {}),
         kind: doc.kind as FiscalDocumentKind,
         credited: original === null ? null : this.creditedOf(original),
         sequenceNumber: doc.sequenceNumber,
@@ -895,6 +920,130 @@ export class FiscalDocumentsService {
       })
       return
     }
+    if (route.kind === 'attach') {
+      await this.keepInContingency(organizationId, doc, provider, built, context, route)
+      return
+    }
+    await this.deliver(organizationId, doc, provider, built, context)
+  }
+
+  // A document made in a contingency: signed by the provider and kept with the contingency, not sent. The consultation of an attempt
+  // that may have reached the authority is not asked: the authority is what is down, and a document that was there is found when it is sent
+  // (the same code answers "duplicate" and the consultation follows).
+  private async keepInContingency(
+    organizationId: string,
+    doc: { id: string },
+    provider: FiscalDocumentProvider,
+    built: BuiltDocument,
+    context: ProviderContext,
+    route: Extract<FiscalContingencyRoute, { kind: 'attach' }>
+  ): Promise<void> {
+    const deferred = await this.attempt('defer', doc.id, () =>
+      Promise.resolve().then(() => provider.deferDocument?.(built, context))
+    )
+    if (
+      deferred === null ||
+      deferred === undefined ||
+      deferred.outcome === FiscalDeferOutcome.UNAVAILABLE
+    ) {
+      return this.requeueAndFail(
+        organizationId,
+        doc.id,
+        'the fiscal provider could not sign the document in contingency'
+      )
+    }
+    if (deferred.outcome === FiscalDeferOutcome.REJECTED) {
+      await this.reject(
+        doc.id,
+        organizationId,
+        typeof deferred.reason === 'string' ? deferred.reason : '',
+        { built, beforeSending: true }
+      )
+      return
+    }
+    const kept = await this.contingencies.attach(
+      organizationId,
+      doc.id,
+      route.contingency.id,
+      built,
+      deferred.providerData,
+      route.mode.maxDocumentsPerEvent
+    )
+    if (kept === 'attached') return
+    // Ended a moment ago, full, or gone: the document goes back to the queue and is made again, by the rule of the moment
+    return this.requeueAndFail(
+      organizationId,
+      doc.id,
+      kept === 'full'
+        ? 'the open contingency holds the most documents an event takes'
+        : 'the contingency ended while the document was made'
+    )
+  }
+
+  // A document of a reported contingency: the kept document goes to the provider as it was
+  private async sendKept(
+    organizationId: string,
+    doc: {
+      id: string
+      documentType: string
+      builtPayloadEncrypted: Uint8Array | null
+      attempts: number
+      contingencyId: string | null
+    },
+    provider: FiscalDocumentProvider,
+    context: ProviderContext
+  ): Promise<void> {
+    let payload: Record<string, unknown> | null = null
+    if (doc.builtPayloadEncrypted !== null)
+      payload = this.openCredentials(doc.builtPayloadEncrypted)
+    if (payload === null) {
+      await this.reject(doc.id, organizationId, FiscalRejectionReasons.BUILD_FAILED, {
+        beforeSending: true
+      })
+      return
+    }
+    const built: BuiltDocument = {
+      documentType: doc.documentType,
+      payload,
+      missingReceiverFields: []
+    }
+    await this.deliver(organizationId, doc, provider, built, context)
+  }
+
+  // The authority did not answer on every attempt the lifecycle waits for, and the provider has a deferred model: a contingency opens (the
+  // person is told) and the document is made again in it, by the rule of the moment. A document of a contingency never opens another.
+  // Returns whether the document was taken up again.
+  private async openContingencyAndRetry(
+    organizationId: string,
+    doc: { id: string; attempts: number; contingencyId?: string | null },
+    provider: FiscalDocumentProvider,
+    context: ProviderContext
+  ): Promise<boolean> {
+    if (
+      doc.contingencyId != null ||
+      provider.manifest.contingencyMode === undefined ||
+      doc.attempts + 1 < FiscalContingencyLimits.AUTO_OPEN_AFTER_ATTEMPTS
+    ) {
+      return false
+    }
+    await this.contingencies.openBySystem(organizationId, provider, context.issuer.environment)
+    await this.prisma.client.fiscalDocument.updateMany({
+      where: { id: doc.id, organizationId, status: FiscalDocumentStatus.SUBMITTED },
+      data: { status: FiscalDocumentStatus.QUEUED }
+    })
+    await this.submit(organizationId, doc.id)
+    return true
+  }
+
+  // Sends a built document and decides what the provider answered: the consultation of an earlier attempt, the submission, and what each
+  // answer does to the document
+  private async deliver(
+    organizationId: string,
+    doc: { id: string; attempts: number; contingencyId?: string | null },
+    provider: FiscalDocumentProvider,
+    built: BuiltDocument,
+    context: ProviderContext
+  ): Promise<void> {
     // An earlier attempt of this submission may have reached the authority before it was cut short: ask before sending a second document.
     // A consultation that gets no answer is not "never received": the document goes back to the queue and the consultation is asked again.
     if (doc.attempts > 0) {
@@ -902,6 +1051,7 @@ export class FiscalDocumentsService {
         provider.consult(built, context)
       )
       if (consulted === null) {
+        if (await this.openContingencyAndRetry(organizationId, doc, provider, context)) return
         return this.requeueAndFail(
           organizationId,
           doc.id,
@@ -950,6 +1100,8 @@ export class FiscalDocumentsService {
       )
       return
     }
+    // The authority did not answer on every attempt the lifecycle waits for: a contingency opens and the document is made again in it
+    if (await this.openContingencyAndRetry(organizationId, doc, provider, context)) return
     // The authority did not answer: back to the queue, and the job fails so that the backoff of the queue spaces the next attempt
     await this.requeueAndFail(organizationId, doc.id, 'the fiscal provider did not answer')
   }
@@ -1162,6 +1314,14 @@ export class FiscalDocumentsService {
         Date.now() - doc.updatedAt.getTime() < FiscalLimits.CLAIM_LEASE_MS
       ) {
         return 'busy' as const
+      }
+      // A document made in a contingency is held until the authority has taken the event that lists it (Step 4B.7c-7): nothing is claimed,
+      // and the release of the contingency asks the queue for it
+      if (
+        doc.contingencyId !== null &&
+        !(await this.contingencies.releasedOf(organizationId, doc.contingencyId))
+      ) {
+        return null
       }
       const issuer = await tx.fiscalIssuer.findUnique({ where: { organizationId } })
       const provider = this.providers.find(doc.providerId)
@@ -1387,7 +1547,11 @@ export class FiscalDocumentsService {
   ): Promise<FiscalDocumentView> {
     await this.prisma.transaction(async tx => {
       const doc = await this.lock(tx, organizationId, id)
-      if (!receiverEditable(doc.status as FiscalDocumentStatus, doc.attempts)) {
+      // A document kept in a contingency is the one the receiver was handed: its receiver changes only after the authority refused it
+      if (
+        !receiverEditable(doc.status as FiscalDocumentStatus, doc.attempts) ||
+        (doc.contingencyId !== null && doc.status !== (FiscalDocumentStatus.REJECTED as string))
+      ) {
         throw this.immutable(doc.status as FiscalDocumentStatus)
       }
       // The receiver of a credit note is the one of the document it cancels: it is fixed there, and the note takes it when it is sent
@@ -1511,6 +1675,8 @@ export class FiscalDocumentsService {
             status: FiscalDocumentStatus.QUEUED,
             rejectionReason: null,
             parentDocumentId,
+            // A refused document made in a contingency is made again as any other: the contingency is over for it
+            contingencyId: null,
             ...(sale === null
               ? {}
               : {
@@ -1611,6 +1777,7 @@ export class FiscalDocumentsService {
           status: FiscalDocumentStatus.QUEUED,
           rejectionReason: null,
           parentDocumentId,
+          contingencyId: null,
           // A new submission for the authority of the new issuer: its own key and a fresh count
           submission: { increment: 1 },
           attempts: 0,

@@ -13,6 +13,7 @@ import {
   FinanceEventKind,
   FinancePostingFailureReason,
   FinanceSourceType,
+  FiscalContingencyAlertKind,
   FiscalLimits,
   GuideBalanceAlertLevel,
   idempotencyKeySchema,
@@ -244,6 +245,12 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
     organizationId: id,
     documentId: id,
     count: z.number().int().min(1)
+  }),
+  // A contingency needs a person: the organization, the contingency and what happened
+  [Events.FISCAL_CONTINGENCY_ALERT]: z.object({
+    organizationId: id,
+    contingencyId: id,
+    kind: z.nativeEnum(FiscalContingencyAlertKind)
   }),
   // The webhooks of a plugin turned off: the installation, the plugin and the count, never the address or the response
   [Events.PLUGIN_ERROR]: z.object({

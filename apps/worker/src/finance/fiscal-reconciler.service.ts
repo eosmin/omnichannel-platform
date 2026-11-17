@@ -24,6 +24,7 @@ import {
 } from '@platform/core/queues'
 import {
   type FiscalFinding,
+  FiscalContingencyService,
   FiscalDocumentsService,
   FiscalSweepService
 } from '@platform/fiscal/runtime'
@@ -50,6 +51,7 @@ export class FiscalReconciler {
     private readonly prisma: PrismaService,
     private readonly sweep: FiscalSweepService,
     private readonly documents: FiscalDocumentsService,
+    private readonly contingencies: FiscalContingencyService,
     @InjectQueue(QueueNames.HEAVY_PROCESSING)
     private readonly queue: Queue<SubmitFiscalDocumentJob>,
     @InjectMetric(MetricNames.FINANCE_FISCAL_FINDINGS) private readonly findings: Gauge<string>,
@@ -124,6 +126,15 @@ export class FiscalReconciler {
       if (kind === FiscalSweepKind.ENTRY_MISMATCH) {
         await this.tellMismatch(organizationId, mismatches)
       }
+    }
+    // Contingencies (Step 4B.7c-7): a report that is owed is asked again, and the person is told when a window is closing
+    try {
+      for (const id of await this.contingencies.unreported(organizationId)) {
+        await this.contingencies.askReport(organizationId, id, now)
+      }
+      await this.contingencies.warnWindows(organizationId, now)
+    } catch (error) {
+      failures.push(error)
     }
     this.publish(organizationId, remaining)
     if (report.truncated) {

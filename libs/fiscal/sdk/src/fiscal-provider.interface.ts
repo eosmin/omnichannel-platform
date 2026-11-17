@@ -1,5 +1,7 @@
 import type {
   FiscalConsultState,
+  FiscalContingencyReportOutcome,
+  FiscalDeferOutcome,
   FiscalDocumentKind,
   FiscalEnvironment,
   FiscalOperationCondition,
@@ -76,7 +78,71 @@ export interface FiscalProviderManifest {
   readonly sequence?: FiscalSequenceDeclaration
   // What the provider's authority asks a person for when an accepted document is invalidated. Absent: the reason alone is enough.
   readonly voidInputs?: FiscalVoidInputsDeclaration
+  // What the provider's authority lets an issuer do while it cannot be reached (Step 4B.7c-7). Absent: the provider has no deferred model
+  // and a document waits in the queue for the authority.
+  readonly contingencyMode?: FiscalContingencyDeclaration
 }
+
+// Contingency, in the provider's words: the reasons the authority tells apart (core keeps the one a person picks and never reads it), the
+// one that stands for "the authority is down" (the lifecycle uses it when it enters contingency by itself), the time the authority gives to
+// send the documents of the lot once the event that reports it was accepted, and how many documents one event takes.
+export interface FiscalContingencyDeclaration {
+  readonly reasons: readonly string[]
+  readonly authorityDownReason: string
+  readonly transmitWithinHours: number
+  readonly maxDocumentsPerEvent: number
+  // The authority wants to know who answers for the establishment (the person who ends the contingency gives it)
+  readonly requiresResponsible: boolean
+}
+
+// What `build` is told when the document is made in contingency: the document is made, signed and kept, and sent after the event
+export interface FiscalBuildContingency {
+  readonly reason: string
+  // What the person wrote about it (the authority takes it for the reason that has no code of its own)
+  readonly motive: string | null
+}
+
+// The answer to making a document in contingency: signed and kept, or not (a signature that cannot be made means the document is not
+// made in contingency either, and nothing is handed to the receiver)
+export type DeferResult =
+  | {
+      readonly outcome: FiscalDeferOutcome.DEFERRED
+      // Opaque to core: what the provider keeps with the document (the signed document, its codes); a delivery to the receiver carries it
+      readonly providerData?: Readonly<Record<string, unknown>>
+    }
+  | { readonly outcome: FiscalDeferOutcome.REJECTED; readonly reason: string }
+  | { readonly outcome: FiscalDeferOutcome.UNAVAILABLE }
+
+// The event that reports a contingency to the authority: the window and the documents made in it (stored, as they were built)
+export interface FiscalContingencyEvent {
+  // A stable identifier of the event, in the shape of a random UUID (version 4, lowercase): the same on every attempt to report it
+  readonly eventId: string
+  readonly reason: string
+  readonly motive: string | null
+  readonly startedAt: string
+  readonly endedAt: string
+  readonly documents: readonly StoredFiscalDocument[]
+  // Who answers for the establishment, when the manifest says the authority asks
+  readonly responsible: FiscalVoidParty | null
+}
+
+export type ContingencyReportResult =
+  | {
+      readonly outcome: FiscalContingencyReportOutcome.ACCEPTED
+      // Opaque to core: the seal the authority gave the event, kept with the contingency
+      readonly providerData?: Readonly<Record<string, unknown>>
+      readonly response?: Readonly<Record<string, unknown>>
+      // The instant the authority took the event, from which the window to send the documents runs (ISO 8601)
+      readonly receivedAt: string
+    }
+  | {
+      readonly outcome: FiscalContingencyReportOutcome.REJECTED
+      readonly reason: string
+      readonly response?: Readonly<Record<string, unknown>>
+      // Nothing was sent (a credential that is missing, an event that is incomplete)
+      readonly neverSent?: true
+    }
+  | { readonly outcome: FiscalContingencyReportOutcome.UNAVAILABLE }
 
 // What an invalidation asks of the person (Step 4B.7c-4): the screen draws the fields from this, and core passes what was typed on
 export interface FiscalVoidInputsDeclaration {
@@ -217,6 +283,8 @@ export interface FiscalBuildInput {
   // them. The amounts of `lines` are the order's own either way: `totalCents` of a line is `quantity x unitPriceCents`, its `taxCents` is
   // inside that amount when this is true.
   readonly pricesIncludeTax: boolean
+  // Set when the document is made in contingency (the deferred model): the provider marks it so and the authority takes it after the event
+  readonly contingency?: FiscalBuildContingency
   // How it was paid: one entry for the whole order today (the order records one method). The condition is core's reading of the status
   // of the payment, which a provider may refine from `payments`.
   readonly payments: readonly FiscalPayment[]
@@ -344,4 +412,13 @@ export interface FiscalDocumentProvider {
   // leaves it out and core goes by the answer of `void` alone.
   consultVoid?(doc: StoredFiscalDocument, ctx: ProviderContext): Promise<VoidConsultResult>
   readonly contingency?: ContingencyPolicy
+  // Signs a document built in the deferred model and says whether it can be kept for the report (Step 4B.7c-7). Sends nothing. Required
+  // when the manifest declares `contingencyMode`.
+  deferDocument?(built: BuiltDocument, ctx: ProviderContext): Promise<DeferResult>
+  // Reports a contingency with the documents made in it (Step 4B.7c-7). Required when the manifest declares `contingencyMode`; the registry
+  // refuses a provider that declares one and cannot report it.
+  reportContingency?(
+    event: FiscalContingencyEvent,
+    ctx: ProviderContext
+  ): Promise<ContingencyReportResult>
 }

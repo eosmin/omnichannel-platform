@@ -84,6 +84,20 @@ export enum FiscalSubmitOutcome {
   UNAVAILABLE = 'unavailable'
 }
 
+// The answer of a provider to a document made in contingency
+export enum FiscalDeferOutcome {
+  DEFERRED = 'deferred',
+  REJECTED = 'rejected',
+  UNAVAILABLE = 'unavailable'
+}
+
+// The answer of the authority to the event that reports a contingency, in core's words
+export enum FiscalContingencyReportOutcome {
+  ACCEPTED = 'accepted',
+  REJECTED = 'rejected',
+  UNAVAILABLE = 'unavailable'
+}
+
 export const fiscalJobOptions = (): {
   attempts: number
   backoff: { type: 'exponential'; delay: number }
@@ -100,7 +114,57 @@ export const fiscalJobOptions = (): {
 export const FiscalResourceTypes = {
   ISSUER: 'fiscal_issuer',
   DOCUMENT: 'fiscal_document',
-  CUSTOMER_DATA: 'customer_fiscal_data'
+  CUSTOMER_DATA: 'customer_fiscal_data',
+  CONTINGENCY: 'fiscal_contingency'
+} as const
+
+// Contingency (Step 4B.7c-7): while the authority cannot be reached an issuer may go on making documents in a deferred model (made, signed
+// and kept, not sent). OPEN while it lasts; CLOSED when the person (or the window) ends it and the event that reports it has not been
+// accepted yet; REPORTED when the authority accepted the event, from which the documents of the lot go out through the queue.
+export enum FiscalContingencyStatus {
+  OPEN = 'open',
+  CLOSED = 'closed',
+  REPORTED = 'reported'
+}
+
+// Who started it: a person, or the lifecycle itself when a document ran out of attempts with the authority down
+export enum FiscalContingencyOrigin {
+  USER = 'user',
+  SYSTEM = 'system'
+}
+
+// What a person is told about a contingency
+export enum FiscalContingencyAlertKind {
+  // The lifecycle opened it by itself (the authority did not answer): the documents are being made in the deferred model
+  OPENED_BY_SYSTEM = 'opened_by_system',
+  // The event that reports it was not accepted after every attempt of the queue
+  REPORT_FAILED = 'report_failed',
+  // The window to send the documents of the lot is closing
+  WINDOW_CLOSING = 'window_closing'
+}
+
+export const FiscalContingencyLimits = {
+  // The attempts of one submission that find the authority down before the lifecycle opens a contingency by itself
+  AUTO_OPEN_AFTER_ATTEMPTS: 3,
+  MOTIVE_MAX_LENGTH: 500,
+  // A report that fails is asked again with the backoff of the queue; after this many the person is told
+  REPORT_MAX_ATTEMPTS: 6,
+  // Fraction of the transmission window left at which the person is warned (the provider declares the window)
+  WARN_REMAINING_RATIO: 0.25,
+  // The most one contingency holds when the provider declares no limit of its own
+  DEFAULT_MAX_DOCUMENTS: 1_000
+} as const
+
+// What a provider declares about contingency in its manifest (`FiscalContingencyDeclaration`) is in its own words; these are core's reasons
+// for refusing a person's action on a contingency (`details.reason`)
+export const FiscalContingencyConflictReasons = {
+  UNSUPPORTED: 'contingency_unsupported',
+  ALREADY_OPEN: 'contingency_already_open',
+  NOT_OPEN: 'contingency_not_open',
+  UNKNOWN_REASON: 'contingency_unknown_reason',
+  RESPONSIBLE_REQUIRED: 'contingency_responsible_required',
+  NOT_CLOSED: 'contingency_not_closed',
+  MOTIVE_TOO_LONG: 'contingency_motive_too_long'
 } as const
 
 export const FiscalEvidenceContentType = 'application/json'

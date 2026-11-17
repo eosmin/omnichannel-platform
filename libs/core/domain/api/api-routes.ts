@@ -294,6 +294,13 @@ export const ApiRoutes = {
     issuer: '/fiscal/issuer',
     // GET the dry run of the daily check of the documents (Step 4B.8b-2b): the findings of one kind, a page at a time. It changes nothing
     reconciliation: '/fiscal/reconciliation',
+    // The contingency of the issuer (Step 4B.7c-7): GET the open one, POST starts one, POST /end ends it; the list of them; the report asked again
+    contingency: {
+      current: '/fiscal/contingency',
+      end: '/fiscal/contingency/end',
+      list: '/fiscal/contingencies',
+      report: (id: string) => `/fiscal/contingencies/${id}/report`
+    },
     documents: {
       list: '/fiscal/documents',
       byId: (id: string) => `/fiscal/documents/${id}`,

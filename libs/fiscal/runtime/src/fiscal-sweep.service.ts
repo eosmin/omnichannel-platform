@@ -4,6 +4,7 @@ import { PrismaService } from '@platform/core/database'
 import {
   AccountRole,
   FinancePostingKey,
+  FiscalContingencyStatus,
   FiscalDocumentKind,
   FiscalDocumentStatus,
   FiscalEntryMismatchField,
@@ -175,6 +176,9 @@ export class FiscalSweepService {
           { status: FiscalDocumentStatus.QUEUED, updatedAt: { lt: queuedBefore } },
           { status: FiscalDocumentStatus.SUBMITTED, updatedAt: { lt: submittedBefore } }
         ],
+        // A document kept in a contingency that has not been reported waits on purpose (Step 4B.7c-7): its contingency is what is
+        // checked below, and the release of the report asks the queue for it
+        NOT: { contingency: { status: { not: FiscalContingencyStatus.REPORTED } } },
         ...(cursor === undefined ? {} : { id: { gt: cursor } })
       },
       select: { id: true, orderId: true, submission: true, status: true },

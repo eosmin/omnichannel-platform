@@ -220,6 +220,10 @@ export const AuditAction = {
   FISCAL_DOCUMENT_RECEIVER_CHANGED: 'fiscal.document_receiver_changed',
   FISCAL_DOCUMENT_VOIDED: 'fiscal.document_voided',
   FISCAL_DOCUMENT_REPLACED: 'fiscal.document_replaced',
+  // A contingency of the issuer (Step 4B.7c-7): opened (by a person or by the lifecycle), ended, and reported to the authority
+  FISCAL_CONTINGENCY_ENTERED: 'fiscal.contingency_entered',
+  FISCAL_CONTINGENCY_ENDED: 'fiscal.contingency_ended',
+  FISCAL_CONTINGENCY_REPORTED: 'fiscal.contingency_reported',
   // The fiscal data of a customer (field names only, never the values), and every read of it by a person
   FISCAL_CUSTOMER_DATA_CHANGED: 'fiscal.customer_data_changed',
   FISCAL_CUSTOMER_DATA_CLEARED: 'fiscal.customer_data_cleared',

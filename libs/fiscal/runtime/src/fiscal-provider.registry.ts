@@ -46,6 +46,20 @@ export class FiscalProviderRegistry {
           `the fiscal provider ${provider.id} numbers by establishment or point of sale and does not require that code of the issuer`
         )
       }
+      // A provider that declares a contingency mode must report it, and its numbers must make sense (a window and a size of event)
+      const mode = provider.manifest.contingencyMode
+      if (
+        mode !== undefined &&
+        (provider.reportContingency === undefined ||
+          provider.deferDocument === undefined ||
+          mode.reasons.length === 0 ||
+          !mode.reasons.includes(mode.authorityDownReason) ||
+          !(mode.transmitWithinHours > 0) ||
+          !Number.isInteger(mode.maxDocumentsPerEvent) ||
+          mode.maxDocumentsPerEvent < 1)
+      ) {
+        throw new Error(`the contingency mode of the fiscal provider ${provider.id} is not valid`)
+      }
       // A second provider under the same id would take the documents of the first one's issuer
       if (byId.has(provider.id)) throw new Error(`two fiscal providers share the id ${provider.id}`)
       byId.set(provider.id, provider)

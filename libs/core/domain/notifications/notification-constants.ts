@@ -56,6 +56,10 @@ export const NotificationTypes = {
   FISCAL_DOCUMENT_STUCK: 'fiscal.document_stuck',
   // A sale document disagrees with its entry of the books: only a person can say which one is right (TDD_18 §11, Step 4B.8b-2b)
   FISCAL_ENTRY_MISMATCH: 'fiscal.entry_mismatch',
+  // A contingency of the issuer: opened by the lifecycle, its event not accepted, its window closing (Step 4B.7c-7)
+  FISCAL_CONTINGENCY_OPENED: 'fiscal.contingency_opened',
+  FISCAL_CONTINGENCY_REPORT_FAILED: 'fiscal.contingency_report_failed',
+  FISCAL_CONTINGENCY_WINDOW_CLOSING: 'fiscal.contingency_window_closing',
   EXPORT_READY: 'export.ready',
   EXPORT_FAILED: 'export.failed',
   MEDIA_INFECTED: 'media.infected',
@@ -154,6 +158,15 @@ export const NotificationDefaults: Record<NotificationType, NotificationDefault>
   [NotificationTypes.FISCAL_DOCUMENT_REJECTED]: { severity: ERROR, channels: [IN_APP, EMAIL] },
   [NotificationTypes.FISCAL_DOCUMENT_STUCK]: { severity: ERROR, channels: [IN_APP, EMAIL] },
   [NotificationTypes.FISCAL_ENTRY_MISMATCH]: { severity: ERROR, channels: [IN_APP, EMAIL] },
+  [NotificationTypes.FISCAL_CONTINGENCY_OPENED]: { severity: ERROR, channels: [IN_APP, EMAIL] },
+  [NotificationTypes.FISCAL_CONTINGENCY_REPORT_FAILED]: {
+    severity: ERROR,
+    channels: [IN_APP, EMAIL]
+  },
+  [NotificationTypes.FISCAL_CONTINGENCY_WINDOW_CLOSING]: {
+    severity: ERROR,
+    channels: [IN_APP, EMAIL]
+  },
   [NotificationTypes.EXPORT_READY]: { severity: SUCCESS, channels: [IN_APP] },
   [NotificationTypes.EXPORT_FAILED]: { severity: ERROR, channels: [IN_APP] },
   [NotificationTypes.MEDIA_INFECTED]: { severity: WARNING, channels: [IN_APP, PUSH] },
@@ -226,6 +239,9 @@ export const NotificationGroupTypes: Record<NotificationGroup, readonly Notifica
     NotificationTypes.FISCAL_DOCUMENT_REJECTED,
     NotificationTypes.FISCAL_DOCUMENT_STUCK,
     NotificationTypes.FISCAL_ENTRY_MISMATCH,
+    NotificationTypes.FISCAL_CONTINGENCY_OPENED,
+    NotificationTypes.FISCAL_CONTINGENCY_REPORT_FAILED,
+    NotificationTypes.FISCAL_CONTINGENCY_WINDOW_CLOSING,
     NotificationTypes.EXPORT_READY,
     NotificationTypes.EXPORT_FAILED,
     NotificationTypes.MEDIA_INFECTED,
