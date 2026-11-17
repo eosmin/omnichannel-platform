@@ -175,6 +175,61 @@ describe('The webhooks of a store', () => {
       }).expect(BAD_REQUEST)
     })
 
+    it('makes one webhook, not two, when the same request arrives twice at once', async () => {
+      const send = () =>
+        asAdmin()
+          .post(ApiRoutes.settings.webhooks)
+          .send({ url: PUBLIC_URL, events: [Events.ORDER_CREATED, Events.CUSTOMER_CREATED] })
+      const answers = await Promise.all(Array.from({ length: 6 }, () => send()))
+
+      expect(answers.filter(answer => answer.status === CREATED)).toHaveLength(1)
+      expect(answers.filter(answer => answer.status === CONFLICT)).toHaveLength(5)
+      expect(await owner.webhook.count({ where: { storeId: ctx.storeA.id } })).toBe(1)
+    })
+
+    it('refuses a copy whatever the order of its events, and allows another address or another set of events', async () => {
+      await create(PUBLIC_URL, [Events.ORDER_CREATED, Events.CUSTOMER_CREATED])
+
+      await asAdmin()
+        .post(ApiRoutes.settings.webhooks)
+        .send({ url: PUBLIC_URL, events: [Events.CUSTOMER_CREATED, Events.ORDER_CREATED] })
+        .expect(CONFLICT)
+      await create(PUBLIC_URL, [Events.ORDER_CREATED])
+      await create('https://8.8.4.4/other', [Events.ORDER_CREATED, Events.CUSTOMER_CREATED])
+      // Another store has its own room
+      await api(app, ctx.adminA2, ctx.storeA2)
+        .post(ApiRoutes.settings.webhooks)
+        .send({ url: PUBLIC_URL, events: [Events.ORDER_CREATED, Events.CUSTOMER_CREATED] })
+        .expect(CREATED)
+    })
+
+    it('does not count a webhook the platform disabled, and refuses to turn a copy on or to edit one into a copy', async () => {
+      const first = await create()
+      await owner.webhook.update({
+        where: { id: first.id },
+        data: { status: WebhookStatus.DISABLED }
+      })
+      const second = await create()
+      const third = await create('https://8.8.4.4/third')
+
+      // The disabled one cannot be turned on beside the active one
+      await asAdmin()
+        .patch(ApiRoutes.settings.webhookById(first.id))
+        .send({ status: WebhookStatus.ACTIVE })
+        .expect(CONFLICT)
+      // A webhook edited to the address and events of another is a copy
+      await asAdmin()
+        .patch(ApiRoutes.settings.webhookById(third.id))
+        .send({ url: PUBLIC_URL })
+        .expect(CONFLICT)
+      expect((await owner.webhook.findUniqueOrThrow({ where: { id: second.id } })).url).toBe(
+        PUBLIC_URL
+      )
+      expect((await owner.webhook.findUniqueOrThrow({ where: { id: third.id } })).url).not.toBe(
+        PUBLIC_URL
+      )
+    })
+
     it('holds a limit per store, counted under a lock', async () => {
       await owner.webhook.createMany({
         data: Array.from({ length: WebhookLimits.MAX_PER_STORE }, (_, index) => ({

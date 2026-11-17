@@ -25,12 +25,13 @@ const webhookUrl = z
     message: 'must not carry a fragment'
   })
 
-// Each event once, and only the ones a webhook can be subscribed to
+// Each event once, in a fixed order (the same set is then the same array: a store cannot hold two webhooks with the
+// same address and events), and only the ones a webhook can be subscribed to
 const webhookEvents = z
   .array(z.string().refine(isWebhookEvent, { message: 'is not an event a webhook can follow' }))
   .min(1)
   .max(WebhookEvents.length)
-  .transform(events => [...new Set(events)])
+  .transform(events => [...new Set(events)].sort())
 
 export const createWebhookSchema = z.strictObject({
   url: webhookUrl,
