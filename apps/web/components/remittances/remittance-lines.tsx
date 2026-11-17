@@ -22,6 +22,9 @@ import { Label } from '../ui/label'
 
 import { LineOutcomeText } from './remittance-badges'
 
+// A line whose guide is empty is told as such, on the screen and to a screen reader
+const guideOf = (guide: string, none: string): string => (guide.trim() === '' ? none : guide)
+
 function startingInput(line: RemittanceLineView): LineEditInput {
   return {
     reported: centsToInput(line.reportedCents),
@@ -43,6 +46,7 @@ function LineEditor({
   onDone: () => void
 }): ReactElement {
   const t = useTranslations('remittances.lines.edit')
+  const tLines = useTranslations('remittances.lines')
   const errorText = useErrorText()
   const { storeId } = useStore()
   const update = useUpdateRemittanceLine(storeId, remittanceId)
@@ -69,7 +73,7 @@ function LineEditor({
     <form
       onSubmit={submit}
       className="bg-muted/40 flex flex-col gap-3 rounded-md p-3"
-      aria-label={t('label', { guide: line.guideNumber })}
+      aria-label={t('label', { guide: guideOf(line.guideNumber, tLines('noGuide')) })}
     >
       <div className="flex flex-wrap gap-3">
         <div className="flex flex-col gap-1">
@@ -208,7 +212,7 @@ export function RemittanceLines({
                 }
               >
                 <td className="py-2 pr-3 text-sm whitespace-nowrap">
-                  {line.guideNumber}
+                  {guideOf(line.guideNumber, t('noGuide'))}
                   {line.excluded ? <span className="ml-2 text-xs">{t('leftOut')}</span> : null}
                   {line.note === null ? null : (
                     <p className="text-muted-foreground text-xs">{line.note}</p>
@@ -245,7 +249,7 @@ export function RemittanceLines({
                       variant="outline"
                       size="sm"
                       aria-expanded={editing === line.id}
-                      aria-label={t('editLine', { guide: line.guideNumber })}
+                      aria-label={t('editLine', { guide: guideOf(line.guideNumber, t('noGuide')) })}
                       onClick={() => setEditing(editing === line.id ? null : line.id)}
                     >
                       {t('edit.open')}

@@ -12,13 +12,13 @@ import { TaxRateDialog } from '../../components/finance/tax-rate-dialog'
 import { useStore } from '../../components/providers/store-context'
 import { LoadFailed, PageLoading } from '../../components/settings/states'
 import { Button } from '../../components/ui/button'
-import { percentOfBps } from '../../lib/finance/money'
 import {
   useFinanceAccounts,
   useFinanceTaxRates,
   useSetFinanceTaxRateActive,
   useUpdateFinanceTaxRate
 } from '../../lib/finance/use-finance'
+import { usePercentFigure } from '../../lib/finance/use-money'
 import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
 
@@ -104,6 +104,7 @@ function TaxRateRow({
   onEdit: () => void
 }): ReactElement {
   const t = useTranslations('finance.taxes')
+  const percentFigure = usePercentFigure()
   const errorText = useErrorText()
   const { storeId } = useStore()
   const toggle = useSetFinanceTaxRateActive(storeId)
@@ -134,7 +135,7 @@ function TaxRateRow({
           )}
         </span>
         <span className="text-sm tabular-nums" data-testid="finance-tax-rate-percent">
-          {t('percent', { percent: percentOfBps(rate.rateBps) })}
+          {t('percent', { percent: percentFigure(rate.rateBps) })}
         </span>
         <span className="text-muted-foreground text-xs">
           {t('accounts', {

@@ -16,7 +16,7 @@ import {
 import type { FinanceTaxRateView, PurchaseOrderView } from '@platform/api-client'
 import { PurchaseLimits, TaxRounding } from '@platform/core/domain'
 
-import { moneyText, percentOfBps } from '../../lib/finance/money'
+import { moneyText } from '../../lib/finance/money'
 import {
   centsOfText,
   type LineDraft,
@@ -28,6 +28,7 @@ import {
   moneyOfLines,
   wholeOfText
 } from '../../lib/finance/purchase-form'
+import { usePercentFigure } from '../../lib/finance/use-money'
 import { usePurchaseErrorText } from '../../lib/finance/use-purchase-error-text'
 import { useUpdatePurchaseOrder } from '../../lib/finance/use-purchases'
 import { useSubmitGuard } from '../../lib/submit-guard'
@@ -58,6 +59,7 @@ export function OrderLinesEditor({
   onDirty: (dirty: boolean) => void
 }): ReactElement {
   const t = useTranslations('finance.purchases.lines')
+  const percentFigure = usePercentFigure()
   const locale = useLocale()
   const errorText = usePurchaseErrorText()
   const { storeId } = useStore()
@@ -219,7 +221,7 @@ export function OrderLinesEditor({
                           .filter(rate => rate.active || rate.id === line.taxRateId)
                           .map(rate => (
                             <option key={rate.id} value={rate.id}>
-                              {rate.name} · {t('percent', { percent: percentOfBps(rate.rateBps) })}
+                              {rate.name} · {t('percent', { percent: percentFigure(rate.rateBps) })}
                             </option>
                           ))}
                       </LineSelect>

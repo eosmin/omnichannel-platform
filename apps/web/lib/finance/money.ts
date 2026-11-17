@@ -27,6 +27,15 @@ export function moneyText(locale: string, cents: string | number): string {
   return formatter.format(decimalOfCents(cents) as unknown as number)
 }
 
+// A rate in basis points as a figure in the language of the person, without the sign (1250 -> "12.5" in English, "12,5" in Spanish): the
+// text next to it says "%". `percentOfBps` is for what is typed into a field, which reads a point. Two decimals at most, as a rate has.
+export function percentFigureText(locale: string, bps: number): string {
+  return new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+  }).format(bps / 100)
+}
+
 // A rate is kept in basis points: 13 % is 1300. 1250 -> "12.5", 1300 -> "13", 125 -> "1.25"
 export function percentOfBps(bps: number): string {
   const whole = Math.trunc(bps / 100)

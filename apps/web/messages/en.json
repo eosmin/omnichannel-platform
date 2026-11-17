@@ -5396,7 +5396,8 @@
       },
       "warnings": {
         "FEE_EXCEEDS_COLLECTED": "The fee and the amount do not fit in what was collected: check them."
-      }
+      },
+      "noGuide": "No guide"
     },
     "confirm": {
       "title": "Confirm the remittance",
@@ -7646,7 +7647,10 @@
         "output": "Total charged",
         "input": "Total paid"
       },
-      "kind": "Kind of sale",
+      "kind": {
+        "output": "Kind of sale",
+        "input": "Kind of purchase"
+      },
       "rate": "Rate",
       "base": "Taxable amount",
       "tax": "Tax",
@@ -7665,7 +7669,11 @@
         "carriedForward": "Paid is more than charged: this carries forward.",
         "even": "Charged and paid are equal."
       },
-      "otherSide": "A line of an unknown side ({side}, {kind}):"
+      "otherSide": "A line of an unknown side ({side}, {kind}):",
+      "recognized": {
+        "delivered": "delivered",
+        "shipped": "shipped"
+      }
     },
     "margin": {
       "title": "Margin by product",
