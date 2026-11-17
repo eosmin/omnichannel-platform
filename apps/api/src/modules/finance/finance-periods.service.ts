@@ -11,7 +11,7 @@ import { financeRefusal } from '@platform/core/finance-ledger'
 import type { Actor } from '../tenancy'
 
 import type { ListPeriodsQuery, OpenPeriodBody } from './finance.schemas'
-import { dayDate } from './finance.support'
+import { dayDate, organizationDay } from './finance.support'
 import {
   isoDay,
   PERIOD_SELECT,
@@ -51,11 +51,12 @@ export class FinancePeriodsService {
       take: query.limit + 1,
       orderBy: [{ year: 'desc' }, { month: 'desc' }]
     })
+    const today = await organizationDay(this.prisma.client, organizationId, new Date())
     const hasMore = rows.length > query.limit
     const page = hasMore ? rows.slice(0, query.limit) : rows
     const last = page.at(-1)
     return {
-      data: page.map(periodView),
+      data: page.map(row => periodView(row, today)),
       nextCursor:
         hasMore && last !== undefined
           ? `${last.year}-${String(last.month).padStart(2, '0')}`
@@ -70,7 +71,7 @@ export class FinancePeriodsService {
       select: PERIOD_SELECT
     })
     if (row === null) throw resourceNotFound('fiscal period')
-    return periodView(row)
+    return periodView(row, await organizationDay(this.prisma.client, organizationId, new Date()))
   }
 
   // The period of a month, made if it is not there yet. Asking twice answers the same period.

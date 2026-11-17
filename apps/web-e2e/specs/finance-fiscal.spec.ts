@@ -66,14 +66,18 @@ test.describe('Finance → fiscal documents and issuer', () => {
     const row = form.getByTestId('fiscal-address-row').first()
     await row.getByLabel(fiscal.address.key, { exact: true }).fill('line1')
     await row.getByLabel(fiscal.address.value, { exact: true }).fill('1 Main Street')
-    await form.getByLabel('signingKey', { exact: true }).fill(`key-${run}`)
+    await form
+      .getByLabel(fiscal.issuer.credentials.keys.signingKey, { exact: true })
+      .fill(`key-${run}`)
     await form.getByRole('button', { name: fiscal.issuer.submit, exact: true }).click()
     // The credentials are written and never read back: the form says there are some and shows none
     await expect(
       page.getByTestId('fiscal-issuer-form').getByTestId('fiscal-credentials-state')
     ).toHaveText(fiscal.issuer.credentials.stored)
     await expect(
-      page.getByTestId('fiscal-issuer-form').getByLabel('signingKey', { exact: true })
+      page
+        .getByTestId('fiscal-issuer-form')
+        .getByLabel(fiscal.issuer.credentials.keys.signingKey, { exact: true })
     ).toHaveValue('')
 
     // With an issuer the series of numbers are shown (the simulator keeps one count for the organization, so no series yet), and the fields

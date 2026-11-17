@@ -13,12 +13,12 @@ import {
   periodEnded,
   trialBalanceTotals
 } from '@platform/core/finance'
-import { dayInZone, FinanceCloseGuard, financeRefusal } from '@platform/core/finance-ledger'
+import { FinanceCloseGuard, financeRefusal } from '@platform/core/finance-ledger'
 
 import type { Actor } from '../tenancy'
 
 import type { ReopenPeriodBody } from './finance-reports.schemas'
-import { dayDate } from './finance.support'
+import { dayDate, organizationDay } from './finance.support'
 import { isoDay, PERIOD_SELECT, type PeriodView, periodView } from './finance.views'
 
 const isClosed = (status: string): boolean => status === String(PeriodStatus.CLOSED)
@@ -61,7 +61,7 @@ export class FinanceCloseService {
       // 4. A month is not closed before its last day is over
       // The month has ended where the books are kept: the organization has no zone of its own, so the day is the one of the store that is
       // furthest behind (a month is not closed while any store of the organization still has its last day)
-      if (!periodEnded(isoDay(period.endsOn), await this.today(tx, organizationId, now))) {
+      if (!periodEnded(isoDay(period.endsOn), await organizationDay(tx, organizationId, now))) {
         throw financeRefusal(ErrorCodes.FINANCE_CLOSE_NOT_ENDED)
       }
       // 1. Closes are in order and with no month left out: every month from the one the books start in up to the one before this is a
@@ -200,24 +200,13 @@ export class FinanceCloseService {
     return this.get(organizationId, periodId)
   }
 
-  private async today(tx: PrismaTransaction, organizationId: string, now: Date): Promise<string> {
-    const stores = await tx.store.findMany({
-      where: { organizationId },
-      select: { timezone: true }
-    })
-    const days = stores.map(store => dayInZone(now, store.timezone))
-    return days.length === 0
-      ? now.toISOString().slice(0, 10)
-      : days.reduce((a, b) => (a < b ? a : b))
-  }
-
   private async get(organizationId: string, periodId: string): Promise<PeriodView> {
     const row = await this.prisma.client.fiscalPeriod.findFirst({
       where: { id: periodId, organizationId },
       select: PERIOD_SELECT
     })
     if (row === null) throw resourceNotFound('fiscal period')
-    return periodView(row)
+    return periodView(row, await organizationDay(this.prisma.client, organizationId, new Date()))
   }
 
   // Sources that should have an entry and have none, or whose entry failed (TDD_18 §5.1). Outside the transaction on purpose: the sweep
