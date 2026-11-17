@@ -338,8 +338,10 @@ export class FiscalContingencyService {
     actor: FiscalActor
   ): Promise<FiscalContingencyView> {
     const detached = await this.prisma.transaction(async tx => {
-      const rows = await tx.$queryRaw<{ status: string; last_report_error: string | null }[]>`
-        SELECT status, last_report_error FROM fiscal_contingencies WHERE id = ${id} AND organization_id = ${organizationId} FOR UPDATE`
+      const rows = await tx.$queryRaw<
+        { status: string; last_report_error: string | null; report_attempts: number }[]
+      >`
+        SELECT status, last_report_error, report_attempts FROM fiscal_contingencies WHERE id = ${id} AND organization_id = ${organizationId} FOR UPDATE`
       const found = rows[0]
       if (found === undefined) throw this.notFound()
       if ((found.status as FiscalContingencyStatus) !== FiscalContingencyStatus.CLOSED) {
@@ -349,7 +351,12 @@ export class FiscalContingencyService {
         )
       }
       // Only one whose report failed (an error is recorded): one that is on its way, or waiting for its attempts, is not given up under it
-      if (found.last_report_error === null) {
+      // and with no attempt left: a report with attempts left may be on its way (or asked again by the night), and the documents it lists
+      // are not taken from under it
+      if (
+        found.last_report_error === null ||
+        found.report_attempts < FiscalContingencyLimits.REPORT_MAX_ATTEMPTS
+      ) {
         throw this.conflict(
           'only an ended contingency whose report failed is given up',
           FiscalContingencyConflictReasons.NOT_FAILED
@@ -366,7 +373,6 @@ export class FiscalContingencyService {
       })
       return held
     })
-    await this.enqueueSubmissions(organizationId, detached)
     this.audit.log({
       action: AuditAction.FISCAL_CONTINGENCY_ABANDONED,
       actor: { userId: actor.userId },
@@ -378,6 +384,15 @@ export class FiscalContingencyService {
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
+    // The decision is recorded first; a queue that is down does not undo it (the check of stalled documents finds what was not queued)
+    try {
+      await this.enqueueSubmissions(organizationId, detached)
+    } catch (error) {
+      this.logger.error(
+        { contingencyId: id, err: errorName(error) },
+        'the documents of a contingency given up could not be queued: the check of stalled documents asks for them'
+      )
+    }
     const row = await this.prisma.client.fiscalContingency.findFirstOrThrow({
       where: { id, organizationId }
     })
@@ -390,7 +405,6 @@ export class FiscalContingencyService {
   // contingency of its issuer when the provider has the deferred model and the contingency is of this provider and environment.
   async routeOf(
     organizationId: string,
-    doc: { contingencyId: string | null },
     provider: FiscalDocumentProvider,
     environment: FiscalEnvironment
   ): Promise<FiscalContingencyRoute> {
@@ -410,8 +424,12 @@ export class FiscalContingencyService {
   }
 
   // The state of the contingency a document was made in, for the claim of its submission: only a REPORTED one lets the document go
-  async releasedOf(organizationId: string, contingencyId: string): Promise<boolean> {
-    const row = await this.prisma.client.fiscalContingency.findFirst({
+  async releasedOf(
+    organizationId: string,
+    contingencyId: string,
+    client: PrismaTransaction | PrismaService['client'] = this.prisma.client
+  ): Promise<boolean> {
+    const row = await client.fiscalContingency.findFirst({
       where: { id: contingencyId, organizationId },
       select: { status: true }
     })
@@ -500,6 +518,18 @@ export class FiscalContingencyService {
         ? FiscalContingencyAttachResult.ATTACHED
         : FiscalContingencyAttachResult.GONE
     })
+  }
+
+  // Whether the contingency already holds the most documents an event takes (asked before a document is signed for it)
+  async isFull(
+    organizationId: string,
+    contingencyId: string,
+    maxDocuments: number
+  ): Promise<boolean> {
+    const held = await this.prisma.client.fiscalDocument.count({
+      where: { organizationId, contingencyId }
+    })
+    return held >= maxDocuments
   }
 
   // ---------------------------------------------------------------- the report (worker)
@@ -875,7 +905,10 @@ export class FiscalContingencyService {
     contingencyId: string,
     ask: number
   ): Promise<void> {
-    const jobId = reportFiscalContingencyJobId(contingencyId, ask)
+    // One job for a contingency: a job that waits, runs or backs off keeps a second one from being added (the same id), so a report never
+    // runs twice at once and the attempts are not spent twice as fast. `ask` stays for the callers that told one ask from another.
+    void ask
+    const jobId = reportFiscalContingencyJobId(contingencyId, 1)
     const earlier = await this.queue.getJob(jobId)
     if (earlier !== undefined && (await earlier.isFailed())) await earlier.remove()
     await this.queue.add(
@@ -896,34 +929,21 @@ export class FiscalContingencyService {
     const kept = code.slice(0, 100)
     const stored =
       response === undefined ? undefined : cappedResponse(response, FiscalLimits.RESPONSE_MAX_CHARS)
-    const attempts = keepAttempts
-      ? { reportAttempts: FiscalContingencyLimits.REPORT_MAX_ATTEMPTS }
-      : {}
+    const data = {
+      lastReportError: kept,
+      ...(stored === undefined ? {} : { response: stored }),
+      ...(keepAttempts ? { reportAttempts: FiscalContingencyLimits.REPORT_MAX_ATTEMPTS } : {})
+    }
     await this.prisma.transaction(async tx => {
       // The person is told once for each failure: the first mark of an error is the one that says it, and a later run that fails the same
       // way only refreshes it (a person who asks again clears the error, so the next failure is told again)
+      const where = { id: contingencyId, organizationId, status: FiscalContingencyStatus.CLOSED }
       const first = await tx.fiscalContingency.updateMany({
-        where: {
-          id: contingencyId,
-          organizationId,
-          status: FiscalContingencyStatus.CLOSED,
-          lastReportError: null
-        },
-        data: {
-          lastReportError: kept,
-          ...(stored === undefined ? {} : { response: stored }),
-          ...attempts
-        }
+        where: { ...where, lastReportError: null },
+        data
       })
       if (first.count === 0) {
-        await tx.fiscalContingency.updateMany({
-          where: { id: contingencyId, organizationId, status: FiscalContingencyStatus.CLOSED },
-          data: {
-            lastReportError: kept,
-            ...(stored === undefined ? {} : { response: stored }),
-            ...attempts
-          }
-        })
+        await tx.fiscalContingency.updateMany({ where, data })
         return
       }
       this.events.publish(tx, Events.FISCAL_CONTINGENCY_ALERT, {

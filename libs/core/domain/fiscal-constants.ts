@@ -179,9 +179,7 @@ export const FiscalContingencyLimits = {
   // A report that fails is asked again with the backoff of the queue; after this many the person is told
   REPORT_MAX_ATTEMPTS: 6,
   // Fraction of the transmission window left at which the person is warned (the provider declares the window)
-  WARN_REMAINING_RATIO: 0.25,
-  // The most one contingency holds when the provider declares no limit of its own
-  DEFAULT_MAX_DOCUMENTS: 1_000
+  WARN_REMAINING_RATIO: 0.25
 } as const
 
 // What a provider declares about contingency in its manifest (`FiscalContingencyDeclaration`) is in its own words; these are core's reasons

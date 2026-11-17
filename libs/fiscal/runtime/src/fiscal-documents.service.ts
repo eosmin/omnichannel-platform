@@ -864,7 +864,6 @@ export class FiscalDocumentsService {
     // An open contingency of this issuer (the provider has the deferred model): the document is made in it
     const route = await this.contingencies.routeOf(
       organizationId,
-      doc,
       provider,
       issuerInput.environment
     )
@@ -939,6 +938,20 @@ export class FiscalDocumentsService {
     context: ProviderContext,
     route: Extract<FiscalContingencyRoute, { kind: 'attach' }>
   ): Promise<void> {
+    // A contingency that holds the most an event takes does not get a document signed for nothing
+    if (
+      await this.contingencies.isFull(
+        organizationId,
+        route.contingency.id,
+        route.mode.maxDocumentsPerEvent
+      )
+    ) {
+      return this.requeueAndFail(
+        organizationId,
+        doc.id,
+        'the open contingency holds the most documents an event takes'
+      )
+    }
     const deferred = await this.attempt('defer', doc.id, () =>
       Promise.resolve().then(() => provider.deferDocument?.(built, context))
     )
@@ -1032,7 +1045,6 @@ export class FiscalDocumentsService {
     // and nothing here calls itself again for ever
     const route = await this.contingencies.routeOf(
       organizationId,
-      { contingencyId: null },
       provider,
       context.issuer.environment
     )
@@ -1329,7 +1341,7 @@ export class FiscalDocumentsService {
       // and the release of the contingency asks the queue for it
       if (
         doc.contingencyId !== null &&
-        !(await this.contingencies.releasedOf(organizationId, doc.contingencyId))
+        !(await this.contingencies.releasedOf(organizationId, doc.contingencyId, tx))
       ) {
         return null
       }
@@ -1869,7 +1881,9 @@ export class FiscalDocumentsService {
           {
             status: { in: [FiscalDocumentStatus.QUEUED, FiscalDocumentStatus.REJECTED] },
             attempts: { gt: 0 }
-          }
+          },
+          // A note kept in a contingency is signed and listed in its event: it names this document and is as good as sent
+          { contingencyId: { not: null }, status: FiscalDocumentStatus.QUEUED }
         ]
       }
     })
@@ -2161,7 +2175,9 @@ export class FiscalDocumentsService {
             parentDocumentId: old.id,
             kind: FiscalDocumentKind.CREDIT_NOTE,
             status: { in: [FiscalDocumentStatus.QUEUED, FiscalDocumentStatus.REJECTED] },
-            attempts: 0
+            attempts: 0,
+            // Not one kept in a contingency: its payload names the document it was made for
+            contingencyId: null
           },
           select: { id: true, status: true }
         })

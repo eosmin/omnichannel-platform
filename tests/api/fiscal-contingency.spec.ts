@@ -579,9 +579,10 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
         new Date('2026-11-18T21:00:00.000Z')
       )
       const asked = jobs().slice(before)
+      // One job for a contingency, however it is asked: a second one never runs beside the first
       expect(asked.map(job => job.opts?.jobId)).toEqual([
-        `${JobNames.REPORT_FISCAL_CONTINGENCY}-${viewOf(open).id}-${Math.floor(day.getTime() / 86_400_000)}`,
-        `${JobNames.REPORT_FISCAL_CONTINGENCY}-${viewOf(open).id}-${Math.floor(day.getTime() / 86_400_000)}`
+        `${JobNames.REPORT_FISCAL_CONTINGENCY}-${viewOf(open).id}-1`,
+        `${JobNames.REPORT_FISCAL_CONTINGENCY}-${viewOf(open).id}-1`
       ])
       // One that was refused or ran out of attempts is not asked again by the night: a person asks
       await owner.fiscalContingency.update({

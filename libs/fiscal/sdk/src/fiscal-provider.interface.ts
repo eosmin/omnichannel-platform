@@ -415,8 +415,10 @@ export interface FiscalDocumentProvider {
   // Signs a document built in the deferred model and says whether it can be kept for the report (Step 4B.7c-7). Sends nothing. Required
   // when the manifest declares `contingencyMode`.
   deferDocument?(built: BuiltDocument, ctx: ProviderContext): Promise<DeferResult>
-  // Reports a contingency with the documents made in it (Step 4B.7c-7). Required when the manifest declares `contingencyMode`; the registry
-  // refuses a provider that declares one and cannot report it.
+  // Reports a contingency with the documents made in it (Step 4B.7c-7). It is idempotent by `event.eventId`: an event the authority took
+  // already (an answer that was lost) is answered with what the authority holds (ACCEPTED, the seal and the instant it took it), never as a
+  // refusal, because core asks again after a call that got no answer and a refusal would leave the lot held for good.
+  // Required when the manifest declares `contingencyMode`; the registry refuses a provider that declares one and cannot report it.
   reportContingency?(
     event: FiscalContingencyEvent,
     ctx: ProviderContext
