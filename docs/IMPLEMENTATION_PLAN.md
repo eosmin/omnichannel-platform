@@ -1498,6 +1498,22 @@ built once, by 4B.4b-1.
       kind narrowing, voided, a file of another organization or purpose), the signed links (clean, pending, other store, other
       organization), the trigger whoever writes, and the isolation of the receipt (no new table: `validate:isolation` keys its cases by model, so the proof is in `tests/api/finance-transaction-documents.spec.ts`: a file of another organization is never attached, a transaction of another organization is a 404 to attach to or to read the receipt of)
 - [x] **4B.4b-2 tests:** matching rules and every parser error, isolation cases of the new tables
+- [x] **4B.4b-2, bank file of the owner's first bank (PR `bank-import-datetime-thousands`):** a date with a time after the day
+      (`dd/MM/yyyy hh:mm[:ss]`, an ISO day may use a T) is read on the bank route only (remittances still refuse a time); the time is part of the
+      identity of the line (`bankLineKey`) when the row has one, so a statement that overlaps another never doubles a line and two equal
+      movements of one day at two times stay two; a row with no time keeps the identity it always had (what was imported is still known); the
+      thousands separator may be the delimiter (the quoted `"9,999.99"` of the bank; migration `20270112100000` drops that clause of the
+      database CHECK too, with its rollback), an unquoted one is refused (a row must then have exactly the cells of the file, and an amount of one to three digits followed by a cell of
+      three digits is the mark of a split amount)
+- [ ] **4B.4b-2, same bank file (PR `bank-import-skiprows`, after the one above):** `skipRows` in the profile (records, not physical lines)
+      so the lead of report lines before the movements is not read; migration with rollback, preview, web field
+- [ ] **Debts of the bank-file PRs (rule 12), owner: Step 7.3 unless said:** (a) a movement that one statement prints with a time and another
+      without it is not recognised as the same line (a bank prints it one way; a profile change of a bank mid-history would double the overlap);
+      (b) a negative amount in parentheses `(179.60)` is not read (`parseBankAmountCents`): the bank prints them only in its running-balance
+      column, which no profile maps; (c) the running balance of each row is not read, so it cannot check that no line was lost or misread: a
+      balance column in the profile, with the statement's own closing balance as a control, is a new feature; (d) the time of a line is hashed into its identity but not stored on `bank_statement_lines` (no column, no migration in the PR
+      that reads it): the screens show it only in the preview, and two stored lines that differ only by their time cannot be told apart there;
+      a `posted_time` column is the fix
 **TDD:** `TDD_18 §4.3`, `§4.4`, `TDD_07 §6.3`
 **Done when:** a person registers an expense paid from a chosen account with its VAT and a receipt, moves money between accounts, imports
 a statement and reconciles it, and every balance follows.

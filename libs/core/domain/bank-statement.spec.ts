@@ -3,6 +3,7 @@ import {
   BankStatementErrors,
   BankStatementLimits,
   BankThousandsSeparators,
+  bankLineKey,
   bankProfileProblem,
   canPair,
   daysBetween,
@@ -145,6 +146,7 @@ describe('parseBankStatement', () => {
     expect(parsed.lines).toEqual([
       {
         postedOn: '2026-11-02',
+        postedTime: null,
         amountCents: 10000,
         description: 'Deposit',
         reference: 'R-1',
@@ -153,6 +155,7 @@ describe('parseBankStatement', () => {
       },
       {
         postedOn: '2026-11-03',
+        postedTime: null,
         amountCents: -150,
         description: 'Fee',
         reference: null,
@@ -571,5 +574,235 @@ describe('matching', () => {
     expect(canPair(statement, { entryDate: '2026-11-14', signedCents: -250 }, 3)).toBe(false)
     expect(canPair(statement, { entryDate: '2026-11-10', signedCents: 250 }, 3)).toBe(false)
     expect(canPair(statement, { entryDate: '2026-11-10', signedCents: -251 }, 3)).toBe(false)
+  })
+})
+
+// A file of the shape a bank of the region sends (synthetic: nothing of a real statement is kept): a lead of report lines before the
+// movements, comma delimited, a day with a time on most rows and without it on some, debit and credit in their own columns with the
+// inactive one at 0.00, and thousands with a comma inside quotes
+describe('a statement with a time in its dates and thousands with a comma', () => {
+  const bank: BankStatementProfileShape = {
+    delimiter: RemittanceDelimiters.COMMA,
+    hasHeader: false,
+    decimalSeparator: RemittanceDecimalSeparators.DOT,
+    thousandsSeparator: BankThousandsSeparators.COMMA,
+    dateFormat: RemittanceDateFormats.DAY_FIRST_SLASH,
+    columns: { date: 0, description: 1, reference: 2, debit: 3, credit: 4 }
+  }
+
+  it('accepts a comma as thousands separator with a comma as delimiter', () => {
+    expect(
+      bankProfileProblem({
+        hasHeader: false,
+        delimiter: ',',
+        decimalSeparator: '.',
+        thousandsSeparator: 'comma',
+        columns: { date: 0, debit: 1, credit: 2 }
+      })
+    ).toBeNull()
+    // The other collisions still hold
+    expect(
+      bankProfileProblem({
+        hasHeader: false,
+        delimiter: ';',
+        decimalSeparator: ',',
+        thousandsSeparator: 'comma',
+        columns: { date: 0, amount: 1 }
+      })
+    ).not.toBeNull()
+    expect(
+      bankProfileProblem({
+        hasHeader: false,
+        delimiter: ',',
+        decimalSeparator: ',',
+        thousandsSeparator: 'none',
+        columns: { date: 0, amount: 1 }
+      })
+    ).not.toBeNull()
+  })
+
+  it('reads "9,999.99" inside quotes as 999999 cents, in debit and in credit', () => {
+    const parsed = parseBankStatement(
+      '02/11/2026,Deposit,R1,0.00,"9,999.99"\n03/11/2026,Payment,R2,"1,234.50",0.00\n',
+      bank
+    )
+    expect(parsed.errorCount).toBe(0)
+    expect(parsed.lines.map(line => line.amountCents)).toEqual([999999, -123450])
+  })
+
+  it('still refuses a thousands separator that is not quoted: the cell breaks, the amount is never read wrong', () => {
+    // 9,999.99 unquoted becomes two cells: the row is wider than the file and the credit reads "9"
+    const parsed = parseBankStatement(
+      [
+        '02/11/2026,Deposit,R1,0.00,9,999.99',
+        '03/11/2026,Payment,R2,1.00,0.00',
+        '03/11/2026,Payment,R3,2.00,0.00',
+        ''
+      ].join('\n'),
+      bank
+    )
+    expect(parsed.errorCount).toBeGreaterThan(0)
+    expect(parsed.errors.map(error => error.code)).toContain(BankStatementErrors.ROW_TOO_WIDE)
+    expect(parsed.lines.map(line => line.amountCents)).not.toContain(999)
+    expect(parsed.lines.map(line => line.amountCents)).not.toContain(999999)
+    // And groups that are not of three digits, quoted or not, are no amount
+    const loose = parseBankStatement('02/11/2026,Deposit,R1,0.00,"99,99.99"\n', bank)
+    expect(loose.errors[0]).toMatchObject({ code: BankStatementErrors.INVALID_AMOUNT })
+    expect(loose.lines).toEqual([])
+  })
+
+  it('refuses a row that does not have the cells of the file when the delimiter is also the thousands separator', () => {
+    // An empty cell at the end must not hide the shift of an unquoted 1,234.50
+    const withBalance: BankStatementProfileShape = {
+      ...bank,
+      hasHeader: true,
+      columns: { date: 'Date', description: 'Desc', reference: 'Ref', amount: 'Amount' }
+    }
+    const header = 'Date,Desc,Ref,Amount,Balance'
+    const hidden = parseBankStatement(
+      `${header}\n14/11/2026,A,R1,1,234.50,\n15/11/2026,B,R2,5.00,\n`,
+      withBalance
+    )
+    expect(hidden.errors.map(error => [error.row, error.code])).toEqual([
+      [2, BankStatementErrors.ROW_TOO_WIDE]
+    ])
+    // The shifted row is never read as 1.00: the file is refused as a whole by its error count
+    expect(hidden.lines.map(line => line.amountCents)).not.toContain(100)
+    // With no header, a modal width inflated by unquoted amounts does not let them through: the rows of another width are refused
+    const noHeader = parseBankStatement(
+      [
+        '14/11/2026,A,R1,0.00,9,999.99',
+        '14/11/2026,B,R2,0.00,8,888.88',
+        '15/11/2026,C,R3,0.00,5.00'
+      ].join('\n'),
+      bank
+    )
+    expect(noHeader.errorCount).toBeGreaterThan(0)
+    expect(noHeader.lines.map(line => line.amountCents)).not.toContain(900)
+    // Even when EVERY row has the unquoted amount, so that the width most rows have is the wrong one
+    const allSplit = parseBankStatement(
+      ['14/11/2026,A,R1,0.00,9,999.99', '14/11/2026,B,R2,0.00,8,888.88'].join('\n'),
+      bank
+    )
+    expect(allSplit.errors.map(error => error.code)).toEqual([
+      BankStatementErrors.INVALID_AMOUNT,
+      BankStatementErrors.INVALID_AMOUNT
+    ])
+    expect(allSplit.lines).toEqual([])
+    // Quoted, the same rows read
+    const quoted = parseBankStatement(
+      `${header}\n14/11/2026,A,R1,"1,234.50",\n15/11/2026,B,R2,5.00,\n`,
+      withBalance
+    )
+    expect(quoted.errorCount).toBe(0)
+    expect(quoted.lines.map(line => line.amountCents)).toEqual([123450, 500])
+  })
+
+  it('reads the day of a date with a time, keeps the time, and a day alone has none', () => {
+    const parsed = parseBankStatement(
+      [
+        '02/11/2026 10:15:30,With time,R1,0.00,5.00',
+        '02/11/2026,Day only,R2,0.00,6.00',
+        '02/11/2026 23:59,No seconds,R3,7.00,0.00',
+        ''
+      ].join('\r\n'),
+      bank
+    )
+    expect(parsed.errorCount).toBe(0)
+    expect(parsed.lines.map(line => [line.postedOn, line.postedTime])).toEqual([
+      ['2026-11-02', '10:15:30'],
+      ['2026-11-02', null],
+      ['2026-11-02', '23:59:00']
+    ])
+  })
+
+  it('refuses a time that does not exist or has text after it, row by row', () => {
+    const parsed = parseBankStatement(
+      [
+        '02/11/2026 25:61:00,A,R1,0.00,5.00',
+        '02/11/2026 10:00:00 pm,B,R2,0.00,5.00',
+        '02/11/2026 10:00:00,C,R3,0.00,5.00'
+      ].join('\n'),
+      bank
+    )
+    expect(parsed.errors.map(error => [error.row, error.field, error.code])).toEqual([
+      [1, 'date', BankStatementErrors.INVALID_DATE],
+      [2, 'date', BankStatementErrors.INVALID_DATE]
+    ])
+    // The row that reads is a line like any other; the file is refused as a whole by its error count
+    expect(parsed.errorCount).toBe(2)
+    expect(parsed.lines.map(line => line.description)).toEqual(['C'])
+  })
+
+  it('takes the order of the day and the month from the day of a date that has a time', () => {
+    const decisive = parseBankStatement(
+      '25/11/2026 10:00:00,A,R1,0.00,5.00\n03/11/2026 10:00:00,B,R2,0.00,5.00\n',
+      bank
+    )
+    expect(decisive.dateFormatUndecided).toBe(false)
+    const ambiguous = parseBankStatement('03/11/2026 10:00:00,A,R1,0.00,5.00\n', bank)
+    expect(ambiguous.dateFormatUndecided).toBe(true)
+  })
+
+  it('never takes a first row whose date has a time for the header', () => {
+    const parsed = parseBankStatement(
+      '02/11/2026 10:15:30,A,R1,0.00,5.00\n03/11/2026 10:15:30,B,R2,0.00,6.00\n',
+      { ...bank, hasHeader: true }
+    )
+    expect(parsed.errors.map(error => error.code)).toContain(
+      BankStatementErrors.HEADER_LOOKS_LIKE_DATA
+    )
+    expect(parsed.lines).toEqual([])
+  })
+
+  it('gives two identical lines of different times their own keys, and the same line the same key whichever file brings it', () => {
+    const line = (time: string | null, occurrence = 0) => ({
+      postedOn: '2026-11-02',
+      postedTime: time,
+      amountCents: 500,
+      description: 'X',
+      reference: 'R',
+      row: 1,
+      occurrence
+    })
+    // Two equal movements of the same day at two times are two lines
+    expect(bankLineKey('acc', line('10:00:00'))).not.toBe(bankLineKey('acc', line('11:00:00')))
+    // The same movement in an overlapping statement is the same line, whichever row it has there
+    expect(bankLineKey('acc', { ...line('11:00:00'), row: 40 })).toBe(
+      bankLineKey('acc', { ...line('11:00:00'), row: 3 })
+    )
+    // A line with no time keeps the key it always had, so what was imported before is still known
+    expect(bankLineKey('acc', line(null))).toBe(
+      ['acc', '2026-11-02', '500', 'R', 'X', '0'].join('\u0000')
+    )
+    expect(bankLineKey('acc', line('10:00:00'))).not.toBe(bankLineKey('acc', line(null)))
+  })
+
+  it('does not double the lines an overlapping statement repeats, nor merge two of different times', () => {
+    const first = [
+      '02/11/2026 10:00:00,X,R,0.00,5.00',
+      '02/11/2026 11:00:00,X,R,0.00,5.00',
+      '03/11/2026,Y,R9,2.00,0.00'
+    ].join('\n')
+    // The next statement starts at the second line of the day: it brings it again, alone, with the same time
+    const second = [
+      '02/11/2026 11:00:00,X,R,0.00,5.00',
+      '03/11/2026,Y,R9,2.00,0.00',
+      '04/11/2026 08:00:00,Z,R7,0.00,9.00'
+    ].join('\n')
+    const keys = (text: string): string[] =>
+      parseBankStatement(text, bank).lines.map(line => bankLineKey('acc', line))
+    const known = new Set(keys(first))
+    expect(known.size).toBe(3)
+    const fresh = keys(second).filter(key => !known.has(key))
+    // Only the 4 November line is new: the 11:00 line (same time) and the day-only line were known
+    expect(fresh).toHaveLength(1)
+    // Identical lines at the SAME time are still two lines, numbered in file order
+    const twins = parseBankStatement(
+      '02/11/2026 10:00:00,X,R,0.00,5.00\n02/11/2026 10:00:00,X,R,0.00,5.00\n',
+      bank
+    )
+    expect(twins.lines.map(line => line.occurrence)).toEqual([0, 1])
+    expect(new Set(twins.lines.map(line => bankLineKey('acc', line))).size).toBe(2)
   })
 })
