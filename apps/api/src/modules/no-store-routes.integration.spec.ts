@@ -14,13 +14,16 @@ import { FiscalController } from './fiscal/fiscal.controller'
 import { PluginWidgetsController } from './plugin-widgets/plugin-widgets.controller'
 import { PurchaseOrdersController } from './purchases/purchase-orders.controller'
 import { SuppliersController } from './purchases/suppliers.controller'
+import { PluginSearchController } from './search/plugin-search.controller'
+import { SearchController } from './search/search.controller'
 import { TenantWebhooksController } from './tenant-webhooks/tenant-webhooks.controller'
 
 const HEADERS_METADATA = '__headers__'
 
 type Controller = { prototype: object }
 
-// Every route of these controllers answers with money, a fiscal document, a secret or a session
+// Every route of these controllers answers with money, a fiscal document, a secret or a session, or with customers and messages found
+// by a search (QA N-A7-01)
 const MONEY_CONTROLLERS: readonly Controller[] = [
   FiscalController,
   CustomerFiscalDataController,
@@ -32,14 +35,17 @@ const MONEY_CONTROLLERS: readonly Controller[] = [
   FinanceStatementsController,
   FinanceTransactionsController,
   PurchaseOrdersController,
-  SuppliersController
+  SuppliersController,
+  SearchController,
+  PluginSearchController
 ]
 
 // Of these only the routes that mint a secret or a session
 const SECRET_ROUTES: readonly { controller: Controller; handlers: readonly string[] }[] = [
   { controller: ApiKeysController, handlers: ['create'] },
   { controller: TenantWebhooksController, handlers: ['create', 'rotateSecret'] },
-  { controller: PluginWidgetsController, handlers: ['openSession', 'bridge'] }
+  // The lists of the widgets name the plugins installed and what each one shows (QA N-A7-02)
+  { controller: PluginWidgetsController, handlers: ['openSession', 'bridge', 'list', 'settings'] }
 ]
 
 function handlersOf(controller: Controller): string[] {
