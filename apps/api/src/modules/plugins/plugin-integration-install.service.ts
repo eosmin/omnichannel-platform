@@ -259,7 +259,13 @@ export class PluginIntegrationInstallService {
     } catch (error) {
       // The plugin was deleted between the check and the write (its installations were none, so the delete went through): it does not
       // exist any more, which is what the next call would be told
-      if (isForeignKeyViolation(error)) throw resourceNotFound('plugin')
+      // (a foreign key can fail for another reason, so the plugin is asked about before it is called gone)
+      if (
+        isForeignKeyViolation(error) &&
+        (await this.prisma.client.plugin.count({ where: { id: pluginId } })) === 0
+      ) {
+        throw resourceNotFound('plugin')
+      }
       // Two first installs at once: the second one finds the first one's row and is told so
       if (!isUniqueViolation(error)) throw error
       throw alreadyInstalled()

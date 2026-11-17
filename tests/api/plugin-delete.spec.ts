@@ -282,7 +282,11 @@ describe('Deleting a plugin of the organization', () => {
   it('answers 404 and not 500 to an install of a plugin that is deleted while the install asks its address (OPS-PLG-308)', async () => {
     const id = await register()
     // The plugin has no installation, so its deletion goes through between the checks of the install and its write
+    let asked = false
     duringChallenge = async () => {
+      // One shot: the hook disarms itself, so no other install meets it
+      duringChallenge = null
+      asked = true
       await remove(id).expect(NO_CONTENT)
     }
     try {
@@ -290,6 +294,7 @@ describe('Deleting a plugin of the organization', () => {
         .post(ApiRoutes.plugins.install)
         .send({ pluginId: id, scopes: [PluginScopes.ORDERS_READ] })
 
+      expect(asked).toBe(true)
       expect(installed.status).toBe(NOT_FOUND)
       expect(codeOf(installed.body)).toBe(ErrorCodes.RESOURCE_NOT_FOUND)
     } finally {
