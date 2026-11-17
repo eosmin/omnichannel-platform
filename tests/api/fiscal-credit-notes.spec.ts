@@ -501,6 +501,13 @@ describe('The credit notes of the fiscal documents (Step 4B.7b)', () => {
         status: FiscalDocumentStatus.QUEUED,
         kind: FiscalDocumentKind.SALE
       })
+      // The voided document names its replacement and stops offering to make it again
+      const voidedView = (await asAdminA().get(ApiRoutes.fiscal.documents.byId(order.documentId)))
+        .body as {
+        data: { replacedByDocumentId: string | null; allowedActions: { replace: boolean } }
+      }
+      expect(voidedView.data.replacedByDocumentId).toBe(view.id)
+      expect(voidedView.data.allowedActions.replace).toBe(false)
       const fresh = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: view.id } })
       const old = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: order.documentId } })
       expect(fresh.sequenceNumber).toBeGreaterThan(old.sequenceNumber)

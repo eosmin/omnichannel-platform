@@ -1018,6 +1018,63 @@ describe('The fiscal documents (Step 4B.7)', () => {
       ).toBe(`${'*'.repeat(13)}01-1`)
     })
 
+    it('flags a document that is stuck, says what a person may do with it, and counts what needs a person over the whole organization', async () => {
+      type Page = { attention: { rejected: number; stuck: number } }
+      type One = { data: { stuck: boolean; allowedActions: { retry: boolean; void: boolean } } }
+      const attentionOf = async (who = asAdminA()): Promise<Page['attention']> =>
+        ((await who.get(`${ApiRoutes.fiscal.documents.list}?limit=1`)).body as Page).attention
+      const before = await attentionOf()
+      const otherBefore = await attentionOf(api(app, ctx.adminB, ctx.storeB))
+
+      const stuck = await sale()
+      const retrying = await sale()
+      const refused = await sale()
+      const ids = [stuck.documentId, retrying.documentId, refused.documentId]
+      const originals = await owner.fiscalDocument.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, status: true, attempts: true }
+      })
+      try {
+        await owner.fiscalDocument.update({
+          where: { id: stuck.documentId },
+          data: { status: FiscalDocumentStatus.QUEUED, attempts: FiscalLimits.MAX_ATTEMPTS }
+        })
+        await owner.fiscalDocument.update({
+          where: { id: retrying.documentId },
+          data: { status: FiscalDocumentStatus.QUEUED, attempts: FiscalLimits.MAX_ATTEMPTS - 1 }
+        })
+        await owner.fiscalDocument.update({
+          where: { id: refused.documentId },
+          data: { status: FiscalDocumentStatus.REJECTED, attempts: 1 }
+        })
+
+        const read = async (id: string): Promise<One['data']> =>
+          ((await asAdminA().get(ApiRoutes.fiscal.documents.byId(id))).body as One).data
+        expect(await read(stuck.documentId)).toMatchObject({
+          stuck: true,
+          allowedActions: { retry: true, void: false }
+        })
+        expect(await read(retrying.documentId)).toMatchObject({ stuck: false })
+        expect(await read(refused.documentId)).toMatchObject({
+          stuck: false,
+          allowedActions: { retry: true }
+        })
+        const after = await attentionOf()
+        expect(after.stuck - before.stuck).toBe(1)
+        expect(after.rejected - before.rejected).toBe(1)
+        // The count is the organization's own, whatever the page is
+        expect(await attentionOf(api(app, ctx.adminB, ctx.storeB))).toEqual(otherBefore)
+      } finally {
+        // The documents of this test go back to the state the sale left them in: the tests that follow read the same organization
+        for (const original of originals) {
+          await owner.fiscalDocument.update({
+            where: { id: original.id },
+            data: { status: original.status, attempts: original.attempts }
+          })
+        }
+      }
+    })
+
     it('refuses a cursor that is not a correlative', async () => {
       const answer = await asAdminA().get(`${ApiRoutes.fiscal.documents.list}?cursor=9999999999`)
       expect(answer.status).toBe(BAD_REQUEST)

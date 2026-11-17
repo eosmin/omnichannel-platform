@@ -52,6 +52,7 @@ import { FiscalEvidenceService } from './fiscal-evidence.service'
 import type { FiscalActor } from './fiscal-issuer.service'
 import { FiscalProviderRegistry } from './fiscal-provider.registry'
 import {
+  allowedActionsOf,
   canTransition,
   creditNoteSaleOf,
   declaresSequence,
@@ -59,8 +60,10 @@ import {
   documentLines,
   type FiscalDocumentDetail,
   fiscalDocumentUuid,
+  type FiscalDocumentActions,
   fiscalSequenceKey,
   isImmutable,
+  isStuck,
   maskTaxId,
   originalStateOf,
   paymentOfSnapshot,
@@ -113,6 +116,9 @@ export interface FiscalDocumentView {
   returnId: string | null
   parentDocumentId: string | null
   replacesDocumentId: string | null
+  // The newest document that replaces this one (a voided document is replaced once, so it is the only one the api lets exist); null when
+  // nobody did
+  replacedByDocumentId: string | null
   journalEntryId: string | null
   sequenceNumber: number
   documentType: string
@@ -125,6 +131,10 @@ export interface FiscalDocumentView {
   taxCents: number
   rejectionReason: string | null
   attempts: number
+  // Queued with every attempt of its job spent: only a person moves it
+  stuck: boolean
+  // What its state allows a person to do (the permission is the route's; a call can still be refused for something outside the document)
+  allowedActions: FiscalDocumentActions
   voidReason: string | null
   voidedAt: string | null
   issuedAt: string | null
@@ -143,6 +153,8 @@ export interface FiscalDocumentPage {
   data: FiscalDocumentView[]
   nextCursor: string | null
   hasMore: boolean
+  // What needs a person, counted over the whole organization (not the page, the filters or the period): the page shows at most its own size
+  attention: { rejected: number; stuck: number }
 }
 
 const SELECT = {
@@ -169,7 +181,9 @@ const SELECT = {
   voidedAt: true,
   issuedAt: true,
   createdAt: true,
-  receiverEncrypted: true
+  receiverEncrypted: true,
+  // The newest document that replaces it: the view names it, and says whether a voided document can still be replaced
+  replacedBy: { select: { id: true }, orderBy: { sequenceNumber: 'desc' }, take: 1 }
 } as const
 
 // The lifecycle of the fiscal document of a sale (TDD_18 §8.3). Core owns it and the link to the ledger; the provider owns what is
@@ -236,10 +250,24 @@ export class FiscalDocumentsService {
     const hasMore = rows.length > size
     const page = hasMore ? rows.slice(0, size) : rows
     const last = page.at(-1)
+    // Two counts of the organization, by its index (organization, status): the banner of the screen says how many, not how many of the page
+    const [rejected, stuck] = await Promise.all([
+      this.prisma.client.fiscalDocument.count({
+        where: { organizationId, status: FiscalDocumentStatus.REJECTED }
+      }),
+      this.prisma.client.fiscalDocument.count({
+        where: {
+          organizationId,
+          status: FiscalDocumentStatus.QUEUED,
+          attempts: { gte: FiscalLimits.MAX_ATTEMPTS }
+        }
+      })
+    ])
     return {
       data: page.map(row => this.view(row)),
       nextCursor: hasMore && last !== undefined ? String(last.sequenceNumber) : null,
-      hasMore
+      hasMore,
+      attention: { rejected, stuck }
     }
   }
 
@@ -2316,20 +2344,25 @@ export class FiscalDocumentsService {
     issuedAt: Date | null
     createdAt: Date
     receiverEncrypted: Uint8Array
+    replacedBy: { id: string }[]
   }): FiscalDocumentView {
     const receiver = this.openReceiver(row.receiverEncrypted)
+    const kind = row.kind as FiscalDocumentKind
+    const status = row.status as FiscalDocumentStatus
+    const replacedByDocumentId = row.replacedBy[0]?.id ?? null
     return {
       id: row.id,
       storeId: row.storeId,
       orderId: row.orderId,
-      kind: row.kind as FiscalDocumentKind,
+      kind,
       returnId: row.returnId,
       parentDocumentId: row.parentDocumentId,
       replacesDocumentId: row.replacesDocumentId,
+      replacedByDocumentId,
       journalEntryId: row.journalEntryId,
       sequenceNumber: row.sequenceNumber,
       documentType: row.documentType,
-      status: row.status as FiscalDocumentStatus,
+      status,
       providerId: row.providerId,
       environment: row.environment as FiscalEnvironment,
       externalNumber: row.externalNumber,
@@ -2338,6 +2371,14 @@ export class FiscalDocumentsService {
       taxCents: row.taxCents,
       rejectionReason: row.rejectionReason,
       attempts: row.attempts,
+      stuck: isStuck(status, row.attempts),
+      allowedActions: allowedActionsOf({
+        kind,
+        status,
+        attempts: row.attempts,
+        rejectionReason: row.rejectionReason,
+        replacedByDocumentId
+      }),
       voidReason: row.voidReason,
       voidedAt: row.voidedAt?.toISOString() ?? null,
       issuedAt: row.issuedAt?.toISOString() ?? null,
