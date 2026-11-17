@@ -19,7 +19,7 @@ import { ReceiveDialog } from '../../components/finance/receive-dialog'
 import { useStore } from '../../components/providers/store-context'
 import { LoadFailed, PageLoading } from '../../components/settings/states'
 import { Button } from '../../components/ui/button'
-import { moneyText, percentOfBps } from '../../lib/finance/money'
+import { moneyText } from '../../lib/finance/money'
 import {
   moneyOfLines,
   type OrderAction,
@@ -28,6 +28,7 @@ import {
 } from '../../lib/finance/purchase-form'
 import { useFinanceSettings, useFinanceTaxRates } from '../../lib/finance/use-finance'
 import { useLineLabels } from '../../lib/finance/use-line-labels'
+import { usePercentFigure } from '../../lib/finance/use-money'
 import { usePurchaseErrorText } from '../../lib/finance/use-purchase-error-text'
 import {
   useAllSuppliers,
@@ -57,6 +58,7 @@ function PurchaseOrder(): ReactElement {
   const params = useParams<{ id: string }>()
   const id = params.id
   const t = useTranslations('finance.purchases.order')
+  const percentFigure = usePercentFigure()
   const locale = useLocale()
   const format = useFormatter()
   const errorText = usePurchaseErrorText()
@@ -235,7 +237,7 @@ function PurchaseOrder(): ReactElement {
                       line.taxRateId === null
                         ? t('noTax')
                         : t('percent', {
-                            percent: percentOfBps(rateOf.get(line.taxRateId)?.rateBps ?? 0)
+                            percent: percentFigure(rateOf.get(line.taxRateId)?.rateBps ?? 0)
                           })
                   })}
                 </span>

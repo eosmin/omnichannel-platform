@@ -5,6 +5,7 @@ import { type ReactElement, useState } from 'react'
 
 import type { FinanceVatMonthView, FinanceVatRowView, FinanceVatView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
+import { SaleRecognition } from '@platform/core/domain'
 
 import { BoundedRanges, flowFileName } from '../../lib/finance/statement-form'
 import { vatBalanceKind, vatKindKeyOf, vatRowsOfMonth } from '../../lib/finance/tax-view'
@@ -78,6 +79,9 @@ export function VatPanel({ lockedThrough }: { lockedThrough: string | null }): R
 // What the report did not read whole, with the count. Only what is not zero is said.
 function VatNotices({ data }: { data: FinanceVatView }): ReactElement {
   const t = useTranslations('finance.vat')
+  // The moment the sales count, in words: the api names it with the value of the setting
+  const moment = Object.values(SaleRecognition).find(value => String(value) === data.recognizedOn)
+  const recognizedOn = moment === undefined ? data.recognizedOn : t(`recognized.${moment}`)
   const notices = [
     { key: 'withoutSnapshot', count: data.ordersWithoutTaxSnapshot },
     { key: 'notReadable', count: data.ordersNotReadable },
@@ -87,7 +91,10 @@ function VatNotices({ data }: { data: FinanceVatView }): ReactElement {
   return (
     <div className="flex flex-col gap-2">
       <p className="text-muted-foreground text-xs" data-testid="finance-vat-basis">
-        {t('basis', { recognizedOn: data.recognizedOn, start: data.accountingStartDate })}
+        {t('basis', {
+          recognizedOn,
+          start: data.accountingStartDate
+        })}
       </p>
       {shown.length === 0 ? null : (
         <ul
@@ -178,7 +185,7 @@ function VatSideTable({
         <thead>
           <tr className="text-muted-foreground border-y text-xs">
             <th scope="col" className="px-3 py-2 text-start font-medium">
-              {t('kind')}
+              {t(`kind.${side}`)}
             </th>
             <th scope="col" className="px-3 py-2 text-end font-medium">
               {t('rate')}
