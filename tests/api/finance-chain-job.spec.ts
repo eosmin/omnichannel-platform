@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
+import { EventEmitter2 } from '@nestjs/event-emitter'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
@@ -47,6 +48,7 @@ describe('The weekly check of the chain, its incident and the guard of the close
   let monitor: FinanceChainMonitor
   let apiMonitor: FinanceChainMonitor
   let workerDb: PrismaService
+  let workerEvents: DomainEvents
   let guard: FinanceCloseGuard
   let published: { event: string; payload: unknown }[] = []
 
@@ -91,10 +93,14 @@ describe('The weekly check of the chain, its incident and the guard of the close
     ctx = await seedTestContext(owner, app, prefix)
     apiMonitor = app.get(FinanceChainMonitor)
     workerDb = new PrismaService({ databaseUrl: connectionUrls().worker })
+    // The events of the worker are tied to the connection of the worker: a transaction opened there is not one of the api's PrismaService
+    workerEvents = new DomainEvents(workerDb, app.get(EventEmitter2), logger, {
+      publish: () => undefined
+    } as never)
     monitor = new FinanceChainMonitor(
       workerDb,
       app.get(FinanceChainVerifier),
-      app.get(DomainEvents),
+      workerEvents,
       { set: () => undefined } as never,
       logger
     )
@@ -110,9 +116,8 @@ describe('The weekly check of the chain, its incident and the guard of the close
     }
     await manual(ctx.adminA, ctx.storeA, ctx.orgA.id)
     await manual(ctx.adminB, ctx.storeB, ctx.orgB.id)
-    const events = app.get(DomainEvents)
-    const original = events.publish.bind(events)
-    jest.spyOn(events, 'publish').mockImplementation((tx, event, payload) => {
+    const original = workerEvents.publish.bind(workerEvents)
+    jest.spyOn(workerEvents, 'publish').mockImplementation((tx, event, payload) => {
       published.push({ event: String(event), payload })
       return original(tx, event, payload)
     })
@@ -221,6 +226,11 @@ describe('The weekly check of the chain, its incident and the guard of the close
   })
 
   it("leaves the incident open when the check is the auditor's (resolve: false): only the job closes it", async () => {
+    // An incident is open (the job found the break), and then the chain verifies again
+    await tamperWithLedger(owner, [firstMemo(ctx.orgA.id, 'Rewritten for the auditor')])
+    expect((await monitor.check(ctx.orgA.id, { resolve: true })).incident).toBe(
+      ChainIncidentChange.OPENED
+    )
     await tamperWithLedger(owner, [firstMemo(ctx.orgA.id, 'Original memo')])
 
     const result = await apiMonitor.check(ctx.orgA.id, { resolve: false })
@@ -257,7 +267,7 @@ describe('The weekly check of the chain, its incident and the guard of the close
       const counting = new FinanceChainMonitor(
         workerDb,
         app.get(FinanceChainVerifier),
-        app.get(DomainEvents),
+        workerEvents,
         {
           set: (labels: Record<string, string>, value: number) => values.push({ labels, value })
         } as never,

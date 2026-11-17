@@ -1356,6 +1356,11 @@ describe('The tables of the ledger', () => {
     })
 
     it('cannot be closed by the API role, only by the worker (LED-516)', async () => {
+      // An earlier case of this block left an open incident for the organization: close it (the owner may) before making this one
+      await owner.financeChainIncident.updateMany({
+        where: { organizationId: orgB.id, resolvedAt: null },
+        data: { resolvedAt: new Date() }
+      })
       const row = await owner.financeChainIncident.create({ data: incident(orgB.id) })
       const closeAs = async (url: string): Promise<unknown> => {
         const client = createOwnerClient(url)
@@ -1375,6 +1380,11 @@ describe('The tables of the ledger', () => {
     })
 
     it('write resolved_at once for the application: a closed incident is not reopened or moved by its roles, and a close is never dated before the detection', async () => {
+      // An earlier case of this block left an open incident for the organization: close it (the owner may) before making this one
+      await owner.financeChainIncident.updateMany({
+        where: { organizationId: orgB.id, resolvedAt: null },
+        data: { resolvedAt: new Date() }
+      })
       const row = await owner.financeChainIncident.create({ data: incident(orgB.id) })
       // A close dated before the detection (two clocks that disagree) is moved up to the detection, not refused
       const early = await owner.financeChainIncident.update({
