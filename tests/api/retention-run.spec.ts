@@ -742,7 +742,7 @@ describe('The retention run of the worker', () => {
 
       const report = await worker.transaction(
         async tx => {
-          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`
+          await tx.$queryRaw`SELECT 1 AS locked FROM (SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))) AS lock`
           return exporter.run(before)
         },
         { timeout: 30_000 }
