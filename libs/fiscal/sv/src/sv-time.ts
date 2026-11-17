@@ -1,6 +1,8 @@
 // The authority works in the time of El Salvador, which is UTC-6 all year (there is no daylight saving). A document carries the date and
 // the hour of its generation in that time.
-const OFFSET_MS = 6 * 60 * 60 * 1000
+// Hours El Salvador is behind UTC, all year
+export const SALVADOR_OFFSET_HOURS = 6
+const OFFSET_MS = SALVADOR_OFFSET_HOURS * 60 * 60 * 1000
 
 export interface SalvadorMoment {
   // yyyy-MM-dd

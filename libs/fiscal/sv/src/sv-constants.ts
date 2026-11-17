@@ -67,6 +67,8 @@ export const SvTimeouts = { AUTH_MS: 8000, RECEPTION_MS: 8000, SIGNER_MS: 10000 
 // The words of the answers of the authority and of the signing service, and the route of the signing service
 export const SvAnswerStates = {
   PROCESSED: 'PROCESADO',
+  // What the contingency service says of an event it took
+  RECEIVED: 'RECIBIDO',
   // What the consultation says of a document whose invalidation the authority accepted **[TO CONFIRM IN THE SANDBOX]**
   INVALIDATED: 'INVALIDADO',
   REFUSED: 'RECHAZADO',
@@ -96,9 +98,55 @@ export const SvSchemaVersions: Readonly<Record<SvDocumentType, number>> = {
   [SvDocumentTypes.CREDIT_NOTE]: 4
 }
 
-// CAT-003 / CAT-004: the model of billing and the kind of transmission. Normal transmission is the previous model (the document is sent
-// before it is handed to the receiver); contingency is Step 4B.7c-7.
-export const SvTransmission = { MODEL_PREVIOUS: 1, OPERATION_NORMAL: 1 } as const
+// CAT-003 (the billing model) and CAT-004 (the kind of transmission). Normal transmission is the previous model (the document is sent
+// before it is handed to the receiver); a document made in contingency is deferred and transmitted after the event.
+export const SvTransmission = {
+  MODEL_PREVIOUS: 1,
+  OPERATION_NORMAL: 1,
+  MODEL_DEFERRED: 2,
+  OPERATION_CONTINGENCY: 2
+} as const
+
+// Contingency (Step 4B.7c-7; Manual Técnico §3.3, Normativa cuadros 4 y 5, Funcional §XXIV).
+export const SvContingency = {
+  VERSION: 4,
+  // CAT-005. The authority's own system not available is the one the lifecycle uses when a document found it down in every attempt.
+  REASONS: {
+    AUTHORITY_DOWN: 1,
+    ISSUER_SYSTEM_DOWN: 2,
+    INTERNET_DOWN: 3,
+    POWER_DOWN: 4,
+    OTHER: 5
+  } as const,
+  // The time to send the documents of the lot once the event was taken (Normativa cuadro 5)
+  TRANSMIT_WITHIN_HOURS: 72,
+  // The documents one event lists (the schema's maximum)
+  MAX_DOCUMENTS: 1000,
+  MOTIVE_MAX: 500
+} as const
+
+// A reason as the manifest declares it (text of CAT-005): the exact code, never one that merely starts with a digit
+export const SvContingencyReasonCodes: readonly string[] = Object.values(SvContingency.REASONS).map(
+  String
+)
+
+// Why this provider refuses to make or report a contingency, in codes of its own (never a value)
+export const SvContingencyRefusals = {
+  CREDENTIALS_INCOMPLETE: 'credentials_incomplete',
+  CREDENTIALS_REJECTED: 'credentials_rejected',
+  SIGNING_CREDENTIALS_REJECTED: 'signing_credentials_rejected',
+  ISSUER_INCOMPLETE: 'issuer_incomplete',
+  DOCUMENT_INCOMPLETE: 'document_incomplete',
+  REASON_UNKNOWN: 'contingency_reason_unknown',
+  MOTIVE_REQUIRED: 'contingency_motive_required',
+  MOTIVE_TOO_LONG: 'contingency_motive_too_long',
+  EVENT_ID_INVALID: 'contingency_event_id_invalid',
+  RESPONSIBLE_REQUIRED: 'contingency_responsible_required',
+  PARTY_INVALID: 'contingency_party_invalid',
+  DOCUMENTS_INVALID: 'contingency_documents_invalid',
+  TOO_MANY_DOCUMENTS: 'contingency_too_many_documents',
+  WINDOW_INVALID: 'contingency_window_invalid'
+} as const
 
 export const SvCurrency = 'USD'
 
@@ -152,7 +200,11 @@ export const SvProviderDataKeys = {
   ISSUE_DATE: 'issueDate',
   PROCESSED_AT: 'processedAt',
   OBSERVATIONS: 'observations',
-  SIGNED_DOCUMENT: 'signedDocument'
+  SIGNED_DOCUMENT: 'signedDocument',
+  // Of a contingency: the documents its event listed, the hours it gave to send them, and whether the event was one the authority held
+  DOCUMENTS: 'documents',
+  WINDOW_HOURS: 'windowHours',
+  DUPLICATE: 'duplicate'
 } as const
 
 // The reasons this provider gives when it refuses a document before or after the authority did (codes of its own, never a value). The
@@ -288,6 +340,8 @@ export const SvCodePatterns = {
   POINT_OF_SALE: /^P\d{3}$/,
   TAX_ID: /^(\d{14}|\d{9})$/,
   REGISTRATION: /^\d{2,8}$/,
+  // The generation code of a document or an event: a UUID in capitals
+  GENERATION_CODE: /^[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}$/,
   CONTROL_NUMBER: /^DTE-\d{2}-[MBSP]\d{3}P\d{3}-\d{15}$/
 } as const
 
@@ -305,7 +359,10 @@ export const SvBuildErrors = {
   TOO_MANY_ITEMS: 'too_many_items',
   NO_ITEMS: 'no_items',
   ITEM_DESCRIPTION_EMPTY: 'item_description_empty',
-  QUANTITY_INVALID: 'quantity_invalid'
+  QUANTITY_INVALID: 'quantity_invalid',
+  CONTINGENCY_REASON_UNKNOWN: 'contingency_reason_unknown',
+  CONTINGENCY_MOTIVE_REQUIRED: 'contingency_motive_required',
+  CONTINGENCY_MOTIVE_TOO_LONG: 'contingency_motive_too_long'
 } as const
 export type SvBuildErrorCode = (typeof SvBuildErrors)[keyof typeof SvBuildErrors]
 
