@@ -3,13 +3,12 @@
 The provider of the Sistema de Transmisión DTE of the Ministerio de Hacienda. It is the only place that knows the country: core, the
 API, the worker, the web, the SDK and the runtime read its manifest and nothing else (`pnpm validate:fiscal-agnostic`).
 
-## State (Step 4B.7c-2)
+## State (Steps 4B.7c-2 and 4B.7c-3)
 
-- **Done:** the pure construction of the invoice to a final consumer (`01`), the tax credit document to a taxpayer (`03`) and the credit
-  note (`05`) from the sale the platform hands over; the checks of the issuer and of a receiver; the manifest (the three document types, the
-  series by type, establishment and point of sale, the required fields and the names of the credentials).
-- **Not yet:** signing (4B.7c-3), authentication and transmission (4B.7c-3), invalidation (4B.7c-4), contingency (4B.7c-7). `submit`,
-  `consult` and `void` refuse with `not_implemented`. The provider is registered only where the simulator is (development and test).
+- **Done:** the pure construction of the invoice (`01`), the tax credit document (`03`) and the credit note (`05`); the checks of the issuer and of a receiver; the manifest; **the client of the authority** (Step 4B.7c-3): the token (kept, renewed, with a memory of a refused password), the signer port and the adapter of the official signing service, `submit` and `consult`.
+- **Not yet:** invalidation (4B.7c-4, `void` refuses with `not_implemented`), the screens (4B.7c-5), the minimum tests in the sandbox (4B.7c-6), contingency (4B.7c-7).
+- **Offered** where the deployment sets `FISCAL_SIGNER_URL` (the address of the official signing service: a private network, never published).
+- **Never reaches the real authority in a test:** the specs and the contract suite run against `src/testing/fake-authority.ts`, a server of our own that plays the authority and the signer with a key generated for each run.
 
 ## Where the numbers come from
 

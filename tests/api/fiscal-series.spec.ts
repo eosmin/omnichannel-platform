@@ -11,6 +11,7 @@ import {
   FiscalLimits,
   FiscalOperationCondition,
   FiscalRejectionReasons,
+  FiscalSubmitOutcome,
   OrderStatus,
   PaymentMethod
 } from '@platform/core/domain'
@@ -22,6 +23,7 @@ import {
   SimulatorDocumentTypes,
   simulatorProvider
 } from '@platform/fiscal/simulator'
+import { SvRejectionReasons } from '@platform/fiscal/sv'
 
 import { createOrder } from '../builders'
 import { createTestApp } from '../helpers/app'
@@ -33,6 +35,7 @@ const OK = 200
 
 const SERIES_PROVIDER_ID = 'series-test'
 const LIAR_PROVIDER_ID = 'series-liar'
+const NEVER_SENT_PROVIDER_ID = 'never-sent'
 const SECRET = 'not-a-real-signing-key-1234567890'
 
 // A provider that numbers by document type, establishment and point of sale: the simulator with a manifest that says so. It records what
@@ -79,6 +82,22 @@ function liarProvider(): FiscalDocumentProvider {
   }
 }
 
+// A provider that refuses before it sends anything (a credential that is missing): `neverSent`
+function neverSentProvider(): FiscalDocumentProvider {
+  return {
+    ...seriesProvider(),
+    id: NEVER_SENT_PROVIDER_ID,
+    manifest: simulatorProvider().manifest,
+    resolveDocumentType: input => simulatorProvider().resolveDocumentType(input),
+    submit: () =>
+      Promise.resolve({
+        outcome: FiscalSubmitOutcome.REJECTED as const,
+        reason: SvRejectionReasons.CREDENTIALS_INCOMPLETE,
+        neverSent: true as const
+      })
+  }
+}
+
 describe('The series of the fiscal correlatives (Step 4B.7c-1)', () => {
   const prefix = newRunPrefix()
   let app: INestApplication
@@ -92,7 +111,7 @@ describe('The series of the fiscal correlatives (Step 4B.7c-1)', () => {
     app = await createTestApp([], builder =>
       builder
         .overrideProvider(FISCAL_PROVIDERS)
-        .useValue([simulatorProvider(), seriesProvider(), liarProvider()])
+        .useValue([simulatorProvider(), seriesProvider(), liarProvider(), neverSentProvider()])
     )
     ctx = await seedTestContext(owner, app, prefix)
     documents = app.get(FiscalDocumentsService)
@@ -608,5 +627,27 @@ describe('The series of the fiscal correlatives (Step 4B.7c-1)', () => {
         )
       }
     )
+  })
+
+  describe('a refusal of the provider before anything was sent', () => {
+    it('gives the attempt back and keeps the submission: it reads as a document that never left, not as one the authority refused', async () => {
+      expect((await putIssuerA(issuerBody(NEVER_SENT_PROVIDER_ID))).status).toBe(OK)
+      const never = await sale()
+      await documents.submit(ctx.orgA.id, never.documentId)
+      const notSent = await row(never.documentId)
+      expect(notSent.status).toBe(FiscalDocumentStatus.REJECTED)
+      expect(notSent.rejectionReason).toBe(SvRejectionReasons.CREDENTIALS_INCOMPLETE)
+      expect([notSent.submission, notSent.attempts]).toEqual([1, 0])
+
+      // The authority's own refusal moves the submission (a new key for the document once a person fixes it)
+      expect((await putIssuerA(issuerBody(SIMULATOR_PROVIDER_ID))).status).toBe(OK)
+      const refusedByAuthority = await sale()
+      expect(
+        (await patchReceiver(refusedByAuthority.documentId, { name: 'Ana', taxId: 'REJECT' }))
+          .status
+      ).toBe(OK)
+      await documents.submit(ctx.orgA.id, refusedByAuthority.documentId)
+      expect((await row(refusedByAuthority.documentId)).submission).toBe(2)
+    })
   })
 })

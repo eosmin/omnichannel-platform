@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common'
 
 import {
   CryptoPlatformModule,
+  FISCAL_SIGNER_URL,
+  FiscalSignerPlatformModule,
   QueuesPlatformModule,
   RUNTIME_ENVIRONMENT,
   RuntimeEnvironmentPlatformModule
@@ -18,12 +20,18 @@ import { officialFiscalProviders } from './official-providers'
 // The fiscal documents of the organization for the api and for the worker: the providers this deployment has, the issuer and the
 // lifecycle of a document. It relies on the global database, audit and event-bus modules of the app.
 @Module({
-  imports: [CryptoPlatformModule, QueuesPlatformModule, RuntimeEnvironmentPlatformModule],
+  imports: [
+    CryptoPlatformModule,
+    FiscalSignerPlatformModule,
+    QueuesPlatformModule,
+    RuntimeEnvironmentPlatformModule
+  ],
   providers: [
     {
       provide: FISCAL_PROVIDERS,
-      inject: [RUNTIME_ENVIRONMENT],
-      useFactory: (nodeEnv: string) => officialFiscalProviders(nodeEnv)
+      inject: [RUNTIME_ENVIRONMENT, FISCAL_SIGNER_URL],
+      useFactory: (nodeEnv: string, signerUrl: string | null) =>
+        officialFiscalProviders(nodeEnv, { signerUrl })
     },
     FiscalProviderRegistry,
     FiscalIssuerService,

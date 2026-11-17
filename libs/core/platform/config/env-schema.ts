@@ -1,3 +1,5 @@
+import { isIP } from 'node:net'
+
 import { z } from 'zod'
 
 import { E2eMagicLinkLimit } from '@platform/core/auth'
@@ -10,6 +12,30 @@ import {
 import { isBase64UrlOfBytes, PushLimits } from '@platform/core/notifications'
 
 import { DURATION_PATTERN, durationToSeconds } from './duration'
+
+// Whether a host is on a private network: parsed, never matched by prefix ("10.example.com" and "127.0.0.1.nip.io" are public names). An IPv4
+// address is private in the ranges of RFC 1918 and the loopback; an IPv6 one only for the loopback, the unique local (fc00::/7) and the link
+// local (fe80::/10); a name is private when it has no dot (a container), or ends in `.internal` or `.local`, or is a local hostname.
+export function isPrivateHost(hostname: string): boolean {
+  const host = hostname.replace(/^\[|\]$/g, '')
+  const kind = isIP(host)
+  if (kind === 4) {
+    const [a = 0, b = 0] = host.split('.').map(Number)
+    // The loopback, RFC 1918 and the link-local range (169.254/16, like fe80::/10 in IPv6); 0.0.0.0 is no address of a service
+    return (
+      a === 127 ||
+      a === 10 ||
+      (a === 192 && b === 168) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 169 && b === 254)
+    )
+  }
+  if (kind === 6) {
+    const lower = host.toLowerCase()
+    return lower === '::1' || /^f[cd]/.test(lower) || /^fe[89ab]/.test(lower)
+  }
+  return !host.includes('.') || host.endsWith('.internal') || host.endsWith('.local')
+}
 
 // Platform-level variables only. Channel credentials are per store and live encrypted in
 // ChannelConnection.credentials. Optional variables stay undefined when unset: an empty string
@@ -62,6 +88,31 @@ export const envSchema = z
     // Database
     DATABASE_URL: z.url(),
     DATABASE_REPLICA_URL: z.url().optional(),
+
+    // The signing service some fiscal providers need (an application of the tax authority's own, which holds the certificate and runs only on a
+    // private network): its address. Without it a provider that needs one is not offered. No credentials in the address.
+    // A blank variable (a compose file that passes it through) is the same as none
+    FISCAL_SIGNER_URL: z.preprocess(
+      value => (value === '' ? undefined : value),
+      z
+        .url()
+        .refine(
+          value => {
+            try {
+              const parsed = new URL(value)
+              return (
+                (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+                parsed.username === '' &&
+                parsed.password === ''
+              )
+            } catch {
+              return false
+            }
+          },
+          { message: 'an http or https address with no credentials' }
+        )
+        .optional()
+    ),
 
     // Redis
     REDIS_URL: z.url(),
@@ -239,6 +290,30 @@ export const envSchema = z
         path: ['TRUST_PROXY_HOPS'],
         input: env.TRUST_PROXY_HOPS
       })
+    }
+    // The signing service holds no authentication and receives the password of a private key: over plain http it may be only on a private
+    // network (a loopback or private address, a name with no dot as a container has, or `.internal` / `.local`); otherwise https
+    if (env.FISCAL_SIGNER_URL !== undefined) {
+      const signer = new URL(env.FISCAL_SIGNER_URL)
+      if (signer.protocol === 'http:' && !isPrivateHost(signer.hostname)) {
+        ctx.issues.push({
+          code: 'custom',
+          message:
+            'a deployed environment reaches the signing service over https, or over http only on a private network',
+          path: ['FISCAL_SIGNER_URL'],
+          input: env.FISCAL_SIGNER_URL
+        })
+      }
+      // A fiscal provider that can send documents but not yet invalidate them must not issue real ones (Step 4B.7c-4 builds the invalidation)
+      if (env.NODE_ENV === 'production') {
+        ctx.issues.push({
+          code: 'custom',
+          message:
+            'the fiscal signing service is not allowed in production until the invalidation of documents is built (Step 4B.7c-4)',
+          path: ['FISCAL_SIGNER_URL'],
+          input: env.FISCAL_SIGNER_URL
+        })
+      }
     }
     const frontend = new URL(env.FRONTEND_URL)
     if (frontend.protocol !== 'https:' || LOCAL_HOSTNAMES.includes(frontend.hostname)) {

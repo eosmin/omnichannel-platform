@@ -2,7 +2,11 @@ import { FiscalEnvironment } from '@platform/core/domain'
 
 import { SvBuildError, SvBuildErrors, SvCredentialKeys, SvEndpoints } from './sv-constants'
 import { svProvider } from './sv-provider'
-import { BUSINESS, ISSUER, sale } from './testing/sv-fixtures'
+import type { SvSigner } from './sv-signer'
+import { ISSUER, sale } from './testing/sv-fixtures'
+
+// A signer that is never called by these specs
+const NO_SIGNER: SvSigner = { sign: () => Promise.reject(new Error('not called')) }
 
 const CREDENTIALS = {
   [SvCredentialKeys.API_PASSWORD]: 'secret-api-password',
@@ -11,7 +15,7 @@ const CREDENTIALS = {
 }
 
 describe('the manifest of the provider', () => {
-  const provider = svProvider()
+  const provider = svProvider({ signer: NO_SIGNER })
 
   it('declares the three documents, with what a taxpayer needs of a customer and the credit note marked', () => {
     expect(provider.manifest.documentTypes.map(type => type.id)).toEqual(['01', '03', '05'])
@@ -53,10 +57,9 @@ describe('the manifest of the provider', () => {
   })
 
   it('works in both environments, each with its own endpoint and no trailing slash', () => {
-    expect(provider.manifest.environments).toEqual([
-      FiscalEnvironment.SANDBOX,
-      FiscalEnvironment.PRODUCTION
-    ])
+    // Only the sandbox until the invalidation of a document exists (Step 4B.7c-4): a document of the real environment that cannot be
+    // invalidated must not be sent
+    expect(provider.manifest.environments).toEqual([FiscalEnvironment.SANDBOX])
     expect(SvEndpoints[FiscalEnvironment.SANDBOX].baseUrl).toBe('https://apitest.dtes.mh.gob.sv')
     expect(SvEndpoints[FiscalEnvironment.PRODUCTION].baseUrl).toBe('https://api.dtes.mh.gob.sv')
     for (const environment of Object.values(SvEndpoints)) {
@@ -75,7 +78,15 @@ describe('the manifest of the provider', () => {
 })
 
 describe('the check of an issuer', () => {
-  const provider = svProvider()
+  it('refuses an issuer of the real environment until the invalidation exists', async () => {
+    const check = await svProvider({ signer: NO_SIGNER }).validateIssuer(
+      { ...ISSUER, environment: FiscalEnvironment.PRODUCTION },
+      { credentials: CREDENTIALS }
+    )
+    expect(check).toEqual({ ok: false, problems: ['environment'] })
+  })
+
+  const provider = svProvider({ signer: NO_SIGNER })
 
   it('accepts a complete issuer with its three credentials', async () => {
     expect(await provider.validateIssuer(ISSUER, { credentials: CREDENTIALS })).toEqual({
@@ -96,7 +107,7 @@ describe('the check of an issuer', () => {
     )
     expect(check.ok).toBe(false)
     expect([...check.problems].sort()).toEqual(
-      ['certificate', 'certificatePassword', 'email', 'pointOfSaleCode'].sort()
+      ['certificatePassword', 'email', 'pointOfSaleCode'].sort()
     )
     for (const value of Object.values(CREDENTIALS))
       expect(JSON.stringify(check)).not.toContain(value)
@@ -104,25 +115,18 @@ describe('the check of an issuer', () => {
 })
 
 describe('the parts of the provider that are not built yet', () => {
-  const provider = svProvider()
+  const provider = svProvider({ signer: NO_SIGNER })
   const ctx = { issuer: ISSUER, credentials: CREDENTIALS, idempotencyKey: 'k', attempt: 1 }
 
-  it('builds a document, and refuses to send, consult or invalidate one with a clear error', async () => {
-    const built = await provider.build(sale({ receiver: BUSINESS }))
-    expect(built.documentType).toBe('03')
-    for (const call of [
-      () => provider.submit(built, ctx),
-      () => provider.consult(built, ctx),
-      () =>
-        provider.void(
-          { documentType: '03', externalNumber: 'x', providerData: null, payload: {} },
-          'r',
-          ctx
-        )
-    ]) {
-      await expect(call()).rejects.toMatchObject({ code: SvBuildErrors.NOT_IMPLEMENTED })
-      await expect(call()).rejects.toBeInstanceOf(SvBuildError)
-    }
+  it('refuses to invalidate a document with a clear error until Step 4B.7c-4', async () => {
+    const call = () =>
+      provider.void(
+        { documentType: '03', externalNumber: 'x', providerData: null, payload: {} },
+        'r',
+        ctx
+      )
+    await expect(call()).rejects.toMatchObject({ code: SvBuildErrors.NOT_IMPLEMENTED })
+    await expect(call()).rejects.toBeInstanceOf(SvBuildError)
   })
 
   it('refuses an unbuildable sale with a code, as a rejected promise', async () => {

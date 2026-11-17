@@ -250,6 +250,83 @@ describe('VAPID keys', () => {
   })
 })
 
+describe('FISCAL_SIGNER_URL', () => {
+  it('is optional: without it no provider that needs a signing service is offered, and a blank value is none', () => {
+    expect(parseEnv(validEnv).FISCAL_SIGNER_URL).toBeUndefined()
+    expect(parseEnv({ ...validEnv, FISCAL_SIGNER_URL: '' }).FISCAL_SIGNER_URL).toBeUndefined()
+  })
+
+  it('takes an http or https address, with a port and a path', () => {
+    expect(
+      parseEnv({ ...validEnv, FISCAL_SIGNER_URL: 'http://signer.internal:8113' }).FISCAL_SIGNER_URL
+    ).toBe('http://signer.internal:8113')
+    expect(
+      parseEnv({ ...validEnv, FISCAL_SIGNER_URL: 'https://signer.internal/sign' }).FISCAL_SIGNER_URL
+    ).toBe('https://signer.internal/sign')
+  })
+
+  describe('in a deployed environment', () => {
+    const deployed = {
+      ...validEnv,
+      NODE_ENV: 'staging',
+      TRUST_PROXY_HOPS: '1',
+      FRONTEND_URL: 'https://app.example.com',
+      WIDGET_SCRIPT_URL: 'https://widget.example.com/w.js',
+      JWT_SECRET: 'z'.repeat(40),
+      RESEND_API_KEY: 're_x'
+    }
+
+    it.each([
+      'http://signer:8113',
+      'http://signer.internal:8113',
+      'http://10.0.4.5:8113',
+      'http://172.20.0.2:8113',
+      'http://192.168.1.9:8113',
+      'http://127.0.0.1:8113',
+      'http://[::1]:8113',
+      'http://[fd12:3456::1]:8113',
+      'http://[fe80::1]:8113',
+      'http://169.254.10.4:8113',
+      'http://signer.local:8113',
+      'https://signer.example.com'
+    ])('takes %s', url => {
+      expect(() => parseEnv({ ...deployed, FISCAL_SIGNER_URL: url })).not.toThrow(
+        /FISCAL_SIGNER_URL/
+      )
+    })
+
+    it.each([
+      'http://signer.example.com:8113',
+      'http://203.0.113.9:8113',
+      'http://172.32.0.1:8113',
+      'http://10.attacker.example.com',
+      'http://192.168.evil.com',
+      'http://127.0.0.1.nip.io',
+      'http://[2001:db8::1]:8113',
+      'http://0.0.0.0:8113',
+      'http://signer.example.com.:8113'
+    ])('refuses %s: the key password would travel in clear over a public network', url => {
+      expect(() => parseEnv({ ...deployed, FISCAL_SIGNER_URL: url })).toThrow(/FISCAL_SIGNER_URL/)
+    })
+
+    it('refuses the signing service in production until the invalidation of documents is built', () => {
+      expect(() =>
+        parseEnv({
+          ...deployed,
+          NODE_ENV: 'production',
+          FISCAL_SIGNER_URL: 'https://signer.example.com'
+        })
+      ).toThrow(/FISCAL_SIGNER_URL/)
+    })
+  })
+
+  it('refuses an address with credentials in it, another scheme, or no address', () => {
+    for (const value of ['http://user:pw@signer:8113', 'ftp://signer:8113', 'signer:8113']) {
+      expect(() => parseEnv({ ...validEnv, FISCAL_SIGNER_URL: value })).toThrow(/FISCAL_SIGNER_URL/)
+    }
+  })
+})
+
 describe('ports', () => {
   it('reject an empty, fractional or out-of-range port', () => {
     for (const port of ['', ' ', '80.5', '0', '99999']) {
