@@ -6,7 +6,7 @@ import {
   PlatformException,
   resourceNotFound
 } from '@platform/core/errors'
-import { dateToDay } from '@platform/core/finance'
+import { dateToDay, dayToDate } from '@platform/core/finance'
 
 export { lockScope } from '../finance/finance.support'
 
@@ -41,6 +41,14 @@ export function latestDay(): string {
 
 export function today(): string {
   return dateToDay(new Date())
+}
+
+// The days a bill is past due: a count between two accounting days, by the calendar and not by 24-hour blocks
+export function daysPastDue(dueOn: string, day: string): number {
+  return Math.max(
+    0,
+    Math.round((dayToDate(day).getTime() - dayToDate(dueOn).getTime()) / MS_PER_DAY)
+  )
 }
 
 // The answer for a request that a rule of purchases refuses: the first problem decides, the list is for the log

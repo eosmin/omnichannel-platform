@@ -4,11 +4,13 @@ import { type PrismaTransaction, PrismaService } from '@platform/core/database'
 import { resourceNotFound } from '@platform/core/errors'
 import { type BillBalance, billBalances, dateToDay } from '@platform/core/finance'
 
+import { organizationDay } from '../finance/finance.support'
+
 import type { PayablesQuery } from './purchases.schemas'
-import { today } from './purchases.support'
+import { daysPastDue } from './purchases.support'
 import type { PayableBillView, PayablesView, SupplierBalanceView } from './purchases.views'
 
-type Reader = Pick<PrismaTransaction, 'purchaseReceipt' | 'supplierPayment'>
+type Reader = Pick<PrismaTransaction, 'purchaseReceipt' | 'supplierPayment' | 'store'>
 
 // What is owed to the suppliers (TDD_18 §2.7): bills (the receipts) minus the live payments, with the due day of each bill. The
 // open balance of a supplier is exactly bills - payments, however the payments were named: a payment that names no bill is applied to
@@ -70,7 +72,7 @@ export class PayablesService {
     organizationId: string,
     supplierId: string | null
   ): Promise<{ bills: Bill[]; suppliers: SupplierBalanceView[] }> {
-    const [receipts, payments] = await Promise.all([
+    const [receipts, payments, day] = await Promise.all([
       db.purchaseReceipt.findMany({
         where: { organizationId, ...(supplierId === null ? {} : { supplierId }) },
         select: {
@@ -91,7 +93,9 @@ export class PayablesService {
           ...(supplierId === null ? {} : { supplierId })
         },
         _sum: { amountCents: true }
-      })
+      }),
+      // "Overdue" is against the day of the books (the store furthest behind), like the close: the browser clock decides nothing
+      organizationDay(db, organizationId, new Date())
     ])
     const paidOnBill = new Map<string, number>()
     const unapplied = new Map<string, number>()
@@ -115,7 +119,7 @@ export class PayablesService {
         paidCents: paidOnBill.get(receipt.id) ?? 0
       })),
       unapplied,
-      today()
+      day
     )
     const balances = new Map<string, SupplierBalanceView>()
     const touched = new Set([...receipts.map(r => r.supplierId), ...paidBySupplier.keys()])
@@ -144,6 +148,7 @@ export class PayablesService {
         const receipt = facts.get(bill.id)
         return {
           ...bill,
+          daysOverdue: bill.overdue ? daysPastDue(bill.dueOn, day) : 0,
           purchaseOrderId: receipt?.purchaseOrderId ?? '',
           supplierDocumentNumber: receipt?.supplierDocumentNumber ?? null,
           receivedOn: receipt === undefined ? '' : dateToDay(receipt.receivedOn)
@@ -155,6 +160,7 @@ export class PayablesService {
 }
 
 interface Bill extends BillBalance {
+  daysOverdue: number
   purchaseOrderId: string
   supplierDocumentNumber: string | null
   receivedOn: string
@@ -170,6 +176,7 @@ function billView(bill: Bill): PayableBillView {
     dueOn: bill.dueOn,
     totalCents: bill.totalCents,
     openCents: bill.openCents,
-    overdue: bill.overdue
+    overdue: bill.overdue,
+    daysOverdue: bill.daysOverdue
   }
 }

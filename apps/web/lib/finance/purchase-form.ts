@@ -485,12 +485,3 @@ export function paymentInputOf(
     ...(reference === undefined ? {} : { reference })
   }
 }
-
-// The days a bill is past due: a day count between two accounting days, by the calendar and not by 24-hour blocks
-export function daysPastDue(dueOn: string, today: string): number {
-  const day = (text: string): number => {
-    const [year, month, date] = text.split('-').map(Number)
-    return Date.UTC(year ?? 0, (month ?? 1) - 1, date ?? 1) / 86_400_000
-  }
-  return Math.max(0, Math.round(day(today) - day(dueOn)))
-}
