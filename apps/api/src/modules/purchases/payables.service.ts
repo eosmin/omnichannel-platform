@@ -72,7 +72,7 @@ export class PayablesService {
     organizationId: string,
     supplierId: string | null
   ): Promise<{ bills: Bill[]; suppliers: SupplierBalanceView[] }> {
-    const [receipts, payments] = await Promise.all([
+    const [receipts, payments, day] = await Promise.all([
       db.purchaseReceipt.findMany({
         where: { organizationId, ...(supplierId === null ? {} : { supplierId }) },
         select: {
@@ -93,7 +93,9 @@ export class PayablesService {
           ...(supplierId === null ? {} : { supplierId })
         },
         _sum: { amountCents: true }
-      })
+      }),
+      // "Overdue" is against the day of the books (the store furthest behind), like the close: the browser clock decides nothing
+      organizationDay(db, organizationId, new Date())
     ])
     const paidOnBill = new Map<string, number>()
     const unapplied = new Map<string, number>()
@@ -107,8 +109,6 @@ export class PayablesService {
         paidOnBill.set(group.purchaseReceiptId, amount)
       }
     }
-    // "Overdue" is against the day of the books (the store furthest behind), like the close: the browser clock decides nothing
-    const day = await organizationDay(db, organizationId, new Date())
     const facts = new Map(receipts.map(receipt => [receipt.id, receipt]))
     const bills = billBalances(
       receipts.map(receipt => ({

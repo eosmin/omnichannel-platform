@@ -485,4 +485,3 @@ export function paymentInputOf(
     ...(reference === undefined ? {} : { reference })
   }
 }
-
