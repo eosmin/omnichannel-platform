@@ -303,36 +303,59 @@ describe('Deleting a plugin of the organization', () => {
   it('archives a revoked plugin whose installation holds a connection, the history of a channel, and keeps every row it is named by (N-A7-08)', async () => {
     const id = await register()
     const installationId = await holdAConnection(id)
+    try {
+      await remove(id).expect(NO_CONTENT)
 
-    await remove(id).expect(NO_CONTENT)
-
-    // Kept, not deleted: the connection (and through it the conversations) still point at it
-    const row = await owner.plugin.findUniqueOrThrow({ where: { id } })
-    expect(row.status).toBe(PluginStatus.ARCHIVED)
-    expect(await owner.pluginInstallation.count({ where: { pluginId: id } })).toBe(1)
-    expect(await owner.channelConnection.count({ where: { installationId } })).toBe(1)
-    // Gone for the organization: out of the catalog, not removable again, not installable, its id not taken again
-    const catalog = (await asAdmin().get(ApiRoutes.plugins.available).expect(OK)).body as {
-      id: string
-    }[]
-    expect(catalog.map(entry => entry.id)).not.toContain(id)
-    await remove(id).expect(NOT_FOUND)
-    await asAdmin()
-      .post(ApiRoutes.plugins.install)
-      .send({ pluginId: id, scopes: [PluginScopes.ORDERS_READ] })
-      .expect(NOT_FOUND)
-    const again = await asAdmin().post(ApiRoutes.plugins.register).send(manifestOf(id))
-    expect(again.status).toBe(CONFLICT)
-    const [entry] = await waitForAuditEntries(owner, {
-      action: AuditAction.PLUGIN_ARCHIVED,
-      resourceId: id
-    })
-    expect(entry?.metadata).toMatchObject({ removedInstallations: 0 })
-
-    await owner.channelConnection.deleteMany({ where: { installationId } })
+      // Kept, not deleted: the connection (and through it the conversations) still point at it
+      const row = await owner.plugin.findUniqueOrThrow({ where: { id } })
+      expect(row.status).toBe(PluginStatus.ARCHIVED)
+      expect(await owner.pluginInstallation.count({ where: { pluginId: id } })).toBe(1)
+      expect(await owner.channelConnection.count({ where: { installationId } })).toBe(1)
+      // Gone for the organization: out of the catalog, not removable again, not installable
+      const catalog = (await asAdmin().get(ApiRoutes.plugins.available).expect(OK)).body as {
+        id: string
+      }[]
+      expect(catalog.map(entry => entry.id)).not.toContain(id)
+      await remove(id).expect(NOT_FOUND)
+      await asAdmin()
+        .post(ApiRoutes.plugins.install)
+        .send({ pluginId: id, scopes: [PluginScopes.ORDERS_READ] })
+        .expect(NOT_FOUND)
+      // The id stays reserved, with the manifest it had and with a newer one
+      for (const manifest of [manifestOf(id), manifestOf(id, { version: '1.0.1' })]) {
+        const again = await asAdmin().post(ApiRoutes.plugins.register).send(manifest)
+        expect(again.status).toBe(CONFLICT)
+        expect(codeOf(again.body)).toBe(ErrorCodes.PLUGIN_ALREADY_REGISTERED)
+      }
+      const entries = await waitForAuditEntries(owner, {
+        action: AuditAction.PLUGIN_ARCHIVED,
+        resourceId: id
+      })
+      expect(entries).toHaveLength(1)
+      expect(entries[0]?.metadata).toMatchObject({ removedInstallations: 0 })
+    } finally {
+      await owner.channelConnection.deleteMany({ where: { installationId } })
+    }
   })
 
-  it('still refuses, with PLUGIN_IN_USE, a plugin with a connection while an installation is not revoked', async () => {
+  it('archives once when two deletes of the same plugin arrive together', async () => {
+    const id = await register()
+    const installationId = await holdAConnection(id)
+    try {
+      const answers = await Promise.all([remove(id), remove(id)])
+
+      expect(answers.map(answer => answer.status).sort()).toEqual([NO_CONTENT, NOT_FOUND])
+      const entries = await waitForAuditEntries(owner, {
+        action: AuditAction.PLUGIN_ARCHIVED,
+        resourceId: id
+      })
+      expect(entries).toHaveLength(1)
+    } finally {
+      await owner.channelConnection.deleteMany({ where: { installationId } })
+    }
+  })
+
+  it('refuses, and does not archive, a plugin with a connection while its last webhook is still to be sent or an installation is live', async () => {
     const id = await register()
     const installationId = await setUp(id)
     await owner.channelConnection.create({
@@ -346,35 +369,43 @@ describe('Deleting a plugin of the organization', () => {
         installationId
       }
     })
-
-    expect(codeOf((await remove(id).expect(CONFLICT)).body)).toBe(ErrorCodes.PLUGIN_IN_USE)
-    expect((await owner.plugin.findUniqueOrThrow({ where: { id } })).status).not.toBe(
-      PluginStatus.ARCHIVED
-    )
-
-    await owner.channelConnection.deleteMany({ where: { installationId } })
+    try {
+      // Live installation
+      expect(codeOf((await remove(id).expect(CONFLICT)).body)).toBe(ErrorCodes.PLUGIN_IN_USE)
+      // Revoked, but the endpoint and the secret are still there: the revocation has not been delivered
+      await revoke(installationId)
+      expect(codeOf((await remove(id).expect(CONFLICT)).body)).toBe(ErrorCodes.PLUGIN_IN_USE)
+      expect((await owner.plugin.findUniqueOrThrow({ where: { id } })).status).not.toBe(
+        PluginStatus.ARCHIVED
+      )
+    } finally {
+      await owner.channelConnection.deleteMany({ where: { installationId } })
+    }
   })
 
   it('frees the place of an archived plugin in the limit of the organization (N-A7-08)', async () => {
     const fillers = await fill(1)
+    const id = await register()
+    let installationId: string | null = null
     try {
-      const id = await register()
       const refused = await asAdmin()
         .post(ApiRoutes.plugins.register)
         .send(manifestOf(`${prefix}-over`))
       expect(refused.status).toBe(CONFLICT)
       expect(codeOf(refused.body)).toBe(ErrorCodes.PLUGIN_LIMIT_REACHED)
 
-      const installationId = await holdAConnection(id)
+      installationId = await holdAConnection(id)
       await remove(id).expect(NO_CONTENT)
 
       await asAdmin()
         .post(ApiRoutes.plugins.register)
         .send(manifestOf(`${prefix}-over`))
         .expect(CREATED)
-      await owner.channelConnection.deleteMany({ where: { installationId } })
     } finally {
-      await owner.plugin.deleteMany({ where: { id: { in: fillers } } })
+      if (installationId !== null) {
+        await owner.channelConnection.deleteMany({ where: { installationId } })
+      }
+      await owner.plugin.deleteMany({ where: { id: { in: [...fillers, `${prefix}-over`] } } })
     }
   })
 

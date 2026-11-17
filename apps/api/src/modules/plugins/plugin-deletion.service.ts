@@ -30,7 +30,8 @@ function inUse(message: string): PlatformException {
 // Removing a plugin the organization registered (debt (h) of PR P1, PR W1-2). The catalog row goes, and so do the rows of its
 // installations, which by then are revoked and empty: no key, no secret, no open subscription and no connection. What the plugin
 // did stays where it is (messages, audit entries, the conversations of a channel's past connections); that is why a plugin
-// whose installation still holds connections, the history of a channel, is refused, as is any that is not fully revoked.
+// whose installation still holds connections, the history of a channel, is archived and not deleted (N-A7-08: its row stays,
+// out of the catalog and of the organization's count), while one that is not fully revoked is refused.
 @Injectable()
 export class PluginDeletionService {
   constructor(
@@ -76,6 +77,9 @@ export class PluginDeletionService {
       outcome = await this.prisma.transaction(async tx => {
         // The same lock as a registration: one change of the organization's catalog at a time
         await tx.$queryRaw`SELECT id FROM organizations WHERE id = ${store.organizationId} FOR UPDATE`
+        // The plugin row too, before its installations are read: an install that is writing waits for this, and one that comes
+        // after finds the plugin archived or deleted
+        await tx.$queryRaw`SELECT id FROM plugins WHERE id = ${plugin.id} FOR UPDATE`
         const installations = await tx.pluginInstallation.findMany({
           where: { pluginId: plugin.id },
           select: {
@@ -99,7 +103,13 @@ export class PluginDeletionService {
         // takes it out of the catalog, the registry and the count of the organization and keeps every row it is named by (N-A7-08)
         if (installations.some(installation => installation._count.channelConnections > 0)) {
           const archived = await tx.plugin.updateMany({
-            where: { id: plugin.id, organizationId: store.organizationId, isOfficial: false },
+            where: {
+              id: plugin.id,
+              organizationId: store.organizationId,
+              isOfficial: false,
+              // A second delete that waited for the first one finds nothing to archive: 404, not a second audit entry
+              status: { not: PluginStatus.ARCHIVED }
+            },
             data: { status: PluginStatus.ARCHIVED }
           })
           if (archived.count !== 1) throw resourceNotFound('plugin')
