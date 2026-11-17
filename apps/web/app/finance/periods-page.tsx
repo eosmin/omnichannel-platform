@@ -17,7 +17,7 @@ import { ReopenPeriodDialog } from '../../components/finance/reopen-period-dialo
 import { useStore } from '../../components/providers/store-context'
 import { LoadFailed, PageLoading } from '../../components/settings/states'
 import { Button } from '../../components/ui/button'
-import { periodHasEnded, periodKeyOf } from '../../lib/finance/period-form'
+import { periodKeyOf } from '../../lib/finance/period-form'
 import { useFinancePeriods } from '../../lib/finance/use-finance'
 
 // Finance → Periods (TDD_18 §3, §5): the months of the books and whether each is open. A period is opened ahead of time (who manages
@@ -137,7 +137,7 @@ function PeriodRow({
             {t('reopenReason', { reason: period.reopenReason })}
           </span>
         )}
-        {canClose && !closed && periodHasEnded(period, new Date()) ? (
+        {canClose && !closed && period.hasEnded ? (
           <Button
             size="sm"
             variant="outline"

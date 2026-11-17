@@ -312,7 +312,10 @@ describe('Closing the months, the reports and the auditor files', () => {
       expect(open.body).toMatchObject({
         status: PeriodStatus.OPEN,
         reopenedBy: ctx.adminA.id,
-        reopenReason: 'The bank corrected a payment'
+        reopenReason: 'The bank corrected a payment',
+        // February 2026 is over in the day of every store: the api says so, the button of the screen follows it
+        hasEnded: true,
+        hasStarted: true
       })
       expect((open.body as PeriodBody).reopenedAt).not.toBeNull()
       const settings = await owner.financeSettings.findUniqueOrThrow({

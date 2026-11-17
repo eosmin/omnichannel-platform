@@ -143,6 +143,9 @@ export const Events = {
   // The daily check found a sale document whose total or tax differs from the entry of the books for the same sale (TDD_18 §8.3, §11, Step
   // 4B.8b-2b). Api and worker only: the organization, one document id and the count, never an amount or the receiver's data.
   FISCAL_ENTRY_MISMATCH: 'fiscal.entry_mismatch',
+  // A contingency of an issuer needs a person (Step 4B.7c-7): the lifecycle opened one by itself, the event that reports one was not
+  // accepted, or the window to send its documents is closing. Api and worker only: the organization, the contingency and the kind.
+  FISCAL_CONTINGENCY_ALERT: 'fiscal.contingency_alert',
   // A month was closed, and the latest closed one was reopened (TDD_18 §5, Step 4B.8). Api only; ids and the month, never an amount or the reason.
   FINANCE_PERIOD_CLOSED: 'finance.period_closed',
   FINANCE_PERIOD_REOPENED: 'finance.period_reopened',
@@ -285,7 +288,9 @@ export const BridgedEvents = [
   Events.FISCAL_DOCUMENT_REJECTED,
   Events.FISCAL_DOCUMENT_STUCK,
   // The worker says it when the daily check finds a document that disagrees with its entry; the api tells whoever can act on it
-  Events.FISCAL_ENTRY_MISMATCH
+  Events.FISCAL_ENTRY_MISMATCH,
+  // The worker says it when a contingency needs a person; the api tells whoever can act on it
+  Events.FISCAL_CONTINGENCY_ALERT
 ] as const satisfies readonly EventName[]
 
 export type BridgedEvent = (typeof BridgedEvents)[number]

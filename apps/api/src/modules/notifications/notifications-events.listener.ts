@@ -16,6 +16,7 @@ import {
   ConversationStatusReasons,
   CountResourceTypes,
   FinanceResourceTypes,
+  FiscalContingencyAlertKind,
   FiscalResourceTypes,
   formatBpsAsPercent,
   GuideBalanceAlertLevel,
@@ -49,6 +50,7 @@ import {
   Events,
   type FinanceChainBrokenPayload,
   type FinancePostingFailedPayload,
+  type FiscalContingencyAlertPayload,
   type FiscalDocumentRejectedPayload,
   type FiscalDocumentStuckPayload,
   type FiscalEntryMismatchPayload,
@@ -548,10 +550,30 @@ export class NotificationsEventsListener {
     )
   }
 
+  // A contingency needs a person (Step 4B.7c-7). Told once for each person, contingency and kind until they read it; the text names
+  // no document and no reason: the fiscal screens say which.
+  @OnEvent(Events.FISCAL_CONTINGENCY_ALERT)
+  async onFiscalContingencyAlert(payload: FiscalContingencyAlertPayload): Promise<void> {
+    const type = {
+      [FiscalContingencyAlertKind.OPENED_BY_SYSTEM]: NotificationTypes.FISCAL_CONTINGENCY_OPENED,
+      [FiscalContingencyAlertKind.REPORT_FAILED]:
+        NotificationTypes.FISCAL_CONTINGENCY_REPORT_FAILED,
+      [FiscalContingencyAlertKind.WINDOW_CLOSING]:
+        NotificationTypes.FISCAL_CONTINGENCY_WINDOW_CLOSING
+    }[payload.kind]
+    await this.tellFiscalManagers(
+      payload.organizationId,
+      payload.contingencyId,
+      type,
+      FiscalResourceTypes.CONTINGENCY
+    )
+  }
+
   private async tellFiscalManagers(
     organizationId: string,
     documentId: string,
-    type: NotificationType
+    type: NotificationType,
+    resourceType: string = FiscalResourceTypes.DOCUMENT
   ): Promise<void> {
     try {
       const members = await this.prisma.client.membership.findMany({
@@ -576,7 +598,7 @@ export class NotificationsEventsListener {
             storeId,
             type,
             params: {},
-            resourceType: FiscalResourceTypes.DOCUMENT,
+            resourceType,
             resourceId: documentId
           })
         } catch (error) {

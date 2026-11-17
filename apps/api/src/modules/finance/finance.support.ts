@@ -1,5 +1,9 @@
 import { type Permission, Permissions } from '@platform/core/auth'
-import { type PrismaTransaction, isUniqueViolation } from '@platform/core/database'
+import {
+  type PrismaService,
+  type PrismaTransaction,
+  isUniqueViolation
+} from '@platform/core/database'
 import { type AccountType, FinanceConflicts, FinanceTransactionKind } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -9,7 +13,7 @@ import {
   resourceNotFound
 } from '@platform/core/errors'
 import { dayToDate } from '@platform/core/finance'
-import { financeRefusal } from '@platform/core/finance-ledger'
+import { dayInZone, financeRefusal } from '@platform/core/finance-ledger'
 
 // The accounting date of a 'YYYY-MM-DD' string, as the DATE columns take it
 export const dayDate = dayToDate
@@ -136,4 +140,20 @@ export const centsAsNumber = (value: bigint): number => {
     )
   }
   return Number(value)
+}
+
+// The day the books of the organization are in, 'YYYY-MM-DD'. The organization has no zone of its own, so it is the day of the store that
+// is furthest behind: a month is not over while any store of the organization still has its last day. The close and the periods the
+// screens draw read the day from here, so what the screen offers is what the close accepts (a browser clock never decides it).
+export async function organizationDay(
+  client: Pick<PrismaTransaction | PrismaService['client'], 'store'>,
+  organizationId: string,
+  now: Date
+): Promise<string> {
+  const stores = await client.store.findMany({
+    where: { organizationId },
+    select: { timezone: true }
+  })
+  const days = stores.map(store => dayInZone(now, store.timezone))
+  return days.length === 0 ? now.toISOString().slice(0, 10) : days.reduce((a, b) => (a < b ? a : b))
 }

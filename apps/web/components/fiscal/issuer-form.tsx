@@ -397,6 +397,12 @@ function Credentials({
   const t = useTranslations('finance.fiscal.issuer.credentials')
   const id = useId()
   const keys = provider?.manifest.credentialKeys ?? []
+  // A key the provider names that has no text of its own here is shown as the provider wrote it
+  // (only a plain word is looked up: a dot would be read as a path into the messages)
+  const labelOf = (key: string): string =>
+    /^[A-Za-z]+$/.test(key) && t.has(`keys.${key}` as 'keys.signingKey')
+      ? t(`keys.${key}` as 'keys.signingKey')
+      : key
   if (keys.length === 0) return null
   return (
     <fieldset
@@ -410,7 +416,7 @@ function Credentials({
       <p className="text-muted-foreground text-xs">{t('hint')}</p>
       {keys.map(key => (
         <div key={key} className="grid gap-1.5">
-          <Label htmlFor={`${id}-${key}`}>{key}</Label>
+          <Label htmlFor={`${id}-${key}`}>{labelOf(key)}</Label>
           <Input
             id={`${id}-${key}`}
             type="password"

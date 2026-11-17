@@ -56,6 +56,8 @@ export interface FakeAuthority {
     wrongLogins: number
     receptions: number
     invalidations: number
+    // The events of contingency it received
+    contingencies: number
     consults: number
     signs: number
     userAgents: Set<string>
@@ -64,6 +66,8 @@ export interface FakeAuthority {
     lastJws: string | null
     // The last event of invalidation it received, decoded
     lastEvent: Record<string, unknown> | null
+    // The last event of contingency it received, decoded
+    lastContingency: Record<string, unknown> | null
     // What reached the address a redirect pointed to (nothing, when redirects are refused)
     capturedBodies: string[]
   }
@@ -73,6 +77,10 @@ export interface FakeAuthority {
   forgetDocuments(): void
   // Stop answering the signer, as a service that is down
   signerDown: boolean
+  // The reception of documents answers 503 (the authority is down) while it is true; login and the contingency event still answer
+  receptionDown: boolean
+  // The event of contingency: taken, refused with a code, or not answered (503)
+  contingencyMode: 'normal' | 'refuse' | 'down'
   loginMode: 'normal' | 'rateLimited' | 'redirect'
   close(): Promise<void>
 }
@@ -100,11 +108,15 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
   const invalidated = new Set<string>()
   // The generation codes of the events it received: one sent again is a duplicate (code 4)
   const eventCodes = new Set<string>()
+  // The documents a contingency event listed (by generation code), with the instant the authority took the event: a deferred document is
+  // taken only if it is listed. The window of 72 hours is not enforced by this fake.
+  const listed = new Map<string, number>()
   const stats: FakeAuthority['stats'] = {
     logins: 0,
     wrongLogins: 0,
     receptions: 0,
     invalidations: 0,
+    contingencies: 0,
     consults: 0,
     signs: 0,
     userAgents: new Set(),
@@ -112,10 +124,13 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
     lastDocument: null,
     lastJws: null,
     lastEvent: null,
+    lastContingency: null,
     capturedBodies: []
   }
   const control = {
     signerDown: false,
+    receptionDown: false,
+    contingencyMode: 'normal' as 'normal' | 'refuse' | 'down',
     loginMode: 'normal' as 'normal' | 'rateLimited' | 'redirect'
   }
   // The documents that found the authority down once: it answers them on the next attempt
@@ -212,8 +227,54 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
         return
       }
 
+      if (path === '/fesv/contingencia') {
+        stats.contingencies += 1
+        const body = JSON.parse(raw) as { nit?: string; documento?: string }
+        const refusal = (code: string): void =>
+          send(response, 400, {
+            estado: 'RECHAZADO',
+            selloRecibido: null,
+            fechaHora: null,
+            codigoMsg: code,
+            descripcionMsg: 'REFUSED',
+            observaciones: null
+          })
+        if (control.contingencyMode === 'down') {
+          send(response, 503, { error: 'Service Unavailable' })
+          return
+        }
+        if (control.contingencyMode === 'refuse') return refusal('020')
+        const event = verifyJws(String(body.documento))
+        if (!String(request.headers['content-type']).startsWith('application/json')) {
+          return refusal('094')
+        }
+        if (event === null || body.nit !== FAKE.NIT) return refusal('033')
+        stats.lastContingency = event
+        if (schemaErrors('contingency', event).length > 0) return refusal('006')
+        const eventCode = (event['identificacion'] as { codigoGeneracion: string }).codigoGeneracion
+        // The same event sent again is refused as the authority refuses a repeated document (code 4): it holds it already
+        if (eventCodes.has(`contingency:${eventCode}`)) return refusal('004')
+        const detail = event['detalleDTE'] as { codigoGeneracion: string }[]
+        const took = Date.now()
+        eventCodes.add(`contingency:${eventCode}`)
+        for (const item of detail)
+          if (!listed.has(item.codigoGeneracion)) listed.set(item.codigoGeneracion, took)
+        send(response, 200, {
+          estado: 'RECIBIDO',
+          fechaHora: '17/11/2026 09:00:00',
+          mensaje: 'RECIBIDO',
+          selloRecibido: sealOf(`contingency:${eventCode}`),
+          observaciones: []
+        })
+        return
+      }
+
       if (path === '/fesv/recepciondte') {
         stats.receptions += 1
+        if (control.receptionDown) {
+          send(response, 503, { error: 'Service Unavailable' })
+          return
+        }
         const body = JSON.parse(raw) as {
           idEnvio?: unknown
           version?: unknown
@@ -251,6 +312,10 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
         if (id.codigoGeneracion !== body.codigoGeneracion || id.tipoDte !== body.tipoDte)
           return refusal('027')
         if (schemaErrors(id.tipoDte, document).length > 0) return refusal('006')
+        // A document made in contingency (operation 2) is taken only after an event listed it (a code of OUR fake: the real one is to be
+        // confirmed in the sandbox)
+        const operation = (document['identificacion'] as { tipoOperacion?: number }).tipoOperacion
+        if (operation === 2 && !listed.has(id.codigoGeneracion)) return refusal('056')
         const receiver = (document['receptor'] ?? {}) as { numDocumento?: string; nit?: string }
         const who = receiver.numDocumento ?? receiver.nit ?? ''
         if (who === FAKE.REJECT) return refusal('020')
@@ -413,6 +478,7 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
       received.clear()
       invalidated.clear()
       eventCodes.clear()
+      listed.clear()
       wasDown.clear()
     },
     get signerDown() {
@@ -426,6 +492,18 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
     },
     set loginMode(value: 'normal' | 'rateLimited' | 'redirect') {
       control.loginMode = value
+    },
+    get receptionDown() {
+      return control.receptionDown
+    },
+    set receptionDown(value: boolean) {
+      control.receptionDown = value
+    },
+    get contingencyMode() {
+      return control.contingencyMode
+    },
+    set contingencyMode(value: 'normal' | 'refuse' | 'down') {
+      control.contingencyMode = value
     },
     close: () =>
       new Promise<void>(resolve => {

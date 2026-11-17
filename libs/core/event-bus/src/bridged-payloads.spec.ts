@@ -7,6 +7,7 @@ import {
   ChannelIds,
   ConversationStatus,
   ConversationStatusReasons,
+  FiscalContingencyAlertKind,
   ShipmentStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -262,6 +263,11 @@ describe('bridgedPayload', () => {
       organizationId: randomUUID(),
       documentId: randomUUID(),
       count: 3
+    },
+    [Events.FISCAL_CONTINGENCY_ALERT]: {
+      organizationId: randomUUID(),
+      contingencyId: randomUUID(),
+      kind: FiscalContingencyAlertKind.REPORT_FAILED
     },
     [Events.BULK_LABELS_PROGRESS]: {
       storeId: randomUUID(),
