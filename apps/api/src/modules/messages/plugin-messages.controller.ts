@@ -13,6 +13,8 @@ import {
   Res
 } from '@nestjs/common'
 import type { Response } from 'express'
+import type { Redis } from 'ioredis'
+import { PinoLogger } from 'nestjs-pino'
 
 import { PluginApiRoutes } from '@platform/core/api'
 import { AuditAction, type AuditActionType } from '@platform/core/audit'
@@ -22,6 +24,7 @@ import { PrismaService } from '@platform/core/database'
 import {
   AuthorType,
   ChannelCapability,
+  PluginApiDenialReasons,
   PluginMessageOperations,
   uuidSchema
 } from '@platform/core/domain'
@@ -46,10 +49,12 @@ import {
   reactToMessageSchema,
   type RevisionView
 } from '@platform/core/messaging'
+import { REDIS_CLIENT } from '@platform/core/redis'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { PluginScopes } from '@platform/plugins/sdk'
 
 import { CurrentPluginInstallation, PluginApi } from '../plugins/plugin-api.decorators'
+import { auditPluginDenial } from '../plugins/plugin-denial-audit'
 import { CurrentPermissions, CurrentStore, RequirePermissions } from '../tenancy'
 import { pluginUserId } from '../tenancy/actor'
 
@@ -82,7 +87,9 @@ export class PluginMessagesController {
     private readonly registry: PluginRegistry,
     private readonly audit: AuditService,
     private readonly prisma: PrismaService,
-    @Inject(MULTI_FILE_SEND_ENABLED) private readonly multiFileEnabled: boolean
+    @Inject(MULTI_FILE_SEND_ENABLED) private readonly multiFileEnabled: boolean,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    private readonly logger: PinoLogger
   ) {}
 
   // 201 for a new message, 200 for the one a repeated idempotencyKey already made (and then nothing is audited twice)
@@ -101,11 +108,12 @@ export class PluginMessagesController {
     // A file is the installation's own upload, which asked for `media:write`: a key that lost that scope since sends no file (the route
     // names `messages:write` only, because the same route carries text)
     if ('mediaIds' in body && !installation.scopes.includes(PluginScopes.MEDIA_WRITE)) {
-      throw new PlatformException(
-        ErrorCodes.PLUGIN_SCOPE_DENIED,
-        'sending a file needs the scope media:write',
-        HttpStatusCodes.FORBIDDEN,
-        { required: [PluginScopes.MEDIA_WRITE] }
+      this.refuseScope(
+        req,
+        store.id,
+        installation,
+        PluginScopes.MEDIA_WRITE,
+        'sending a file needs the scope media:write'
       )
     }
     // Writing AS a person (`authorType: agent` + `userId`) is a grant of its own, read on the consent screen: `messages:write` alone
@@ -115,11 +123,12 @@ export class PluginMessagesController {
       body.authorType === AuthorType.AGENT &&
       !installation.scopes.includes(PluginScopes.MESSAGES_WRITE_AS_AGENT)
     ) {
-      throw new PlatformException(
-        ErrorCodes.PLUGIN_SCOPE_DENIED,
-        'writing as a member of the team needs the scope messages:write-as-agent',
-        HttpStatusCodes.FORBIDDEN,
-        { required: [PluginScopes.MESSAGES_WRITE_AS_AGENT] }
+      this.refuseScope(
+        req,
+        store.id,
+        installation,
+        PluginScopes.MESSAGES_WRITE_AS_AGENT,
+        'writing as a member of the team needs the scope messages:write-as-agent'
       )
     }
     const plugin = await this.prisma.client.plugin.findUnique({
@@ -156,6 +165,29 @@ export class PluginMessagesController {
       ...(origin.author === AuthorType.AGENT ? { userId: origin.userId } : {})
     })
     return answer
+  }
+
+  // A scope the body asks for and the key does not hold: audited as the guard audits the scopes of the route (`plugin.api_denied`,
+  // capped, so a probe of userIds is seen and cannot fill the log) and refused with the scope named, before anything about the body
+  // is looked at. Never returns.
+  private refuseScope(
+    req: AuthenticatedRequest,
+    storeId: string,
+    installation: PluginCaller,
+    scope: string,
+    message: string
+  ): never {
+    void auditPluginDenial({ audit: this.audit, redis: this.redis, logger: this.logger }, req, {
+      reason: PluginApiDenialReasons.SCOPE,
+      installation: { id: installation.id, pluginId: installation.pluginId, storeId },
+      missing: [scope]
+    })
+    throw new PlatformException(
+      ErrorCodes.PLUGIN_SCOPE_DENIED,
+      message,
+      HttpStatusCodes.FORBIDDEN,
+      { required: [scope] }
+    )
   }
 
   // The whole new text of a message or note the plugin wrote. A note carries the `version` it was read at (409 with the current text

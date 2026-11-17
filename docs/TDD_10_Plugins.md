@@ -960,6 +960,7 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   [PluginScopes.CONVERSATIONS_WRITE]: [Permissions.CONVERSATIONS_CREATE, Permissions.CONVERSATIONS_ASSIGN, Permissions.CONVERSATIONS_RESOLVE, Permissions.CONVERSATIONS_SNOOZE],
   [PluginScopes.MESSAGES_READ]:       [Permissions.MESSAGES_VIEW],
   [PluginScopes.MESSAGES_WRITE]:      [Permissions.MESSAGES_SEND, Permissions.MESSAGES_INTERNAL_NOTE],
+  [PluginScopes.MESSAGES_WRITE_AS_AGENT]: [], // the person written for holds the permission; the service checks it on that person
   [PluginScopes.MESSAGES_READ_DELETED]: [Permissions.MESSAGES_VIEW_DELETED],
   [PluginScopes.MESSAGES_DELETE]: [Permissions.MESSAGES_DELETE],
   [PluginScopes.CUSTOMERS_READ]:      [Permissions.CUSTOMERS_VIEW],

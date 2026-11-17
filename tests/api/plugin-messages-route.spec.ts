@@ -1,10 +1,12 @@
 import { createHash, randomInt, randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
+import { Redis } from 'ioredis'
 import supertest from 'supertest'
 
 import { API_PREFIX, PluginApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
+import { CacheKeys } from '@platform/core/cache'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
@@ -12,6 +14,7 @@ import {
   DeliveryStatus,
   MessageType,
   PLUGIN_API_KEY_TOKEN_PREFIX,
+  PluginApiDenialReasons,
   PluginCatalogTypes,
   PluginPricingModels,
   PluginStatus
@@ -21,6 +24,7 @@ import { MULTI_FILE_SEND_ENABLED } from '@platform/core/http'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { ChannelCapability, PluginScopes } from '@platform/plugins/sdk'
 
+import { REDIS_URL } from '../../apps/api/src/testing/test-env'
 import { buildChannelPlugin, createConversationOf } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
@@ -296,8 +300,52 @@ describe('The messages of the plugin API', () => {
     })
 
     // MSG-410: `messages:write` alone writes only as the plugin; acting as a person is the scope of its own
-    it('refuses to write as a person without messages:write-as-agent, the same for a real member and for one that does not exist', async () => {
+    it('writes a note as a person too, and the scope is needed for the note as for a reply', async () => {
       const { id } = await mk()
+      const note = (extra: Record<string, unknown>) => ({
+        type: 'note',
+        conversationId: id,
+        content: 'An internal note',
+        idempotencyKey: randomUUID(),
+        ...extra
+      })
+      const asAgent = { authorType: AuthorType.AGENT, userId: ctx.agentA.id }
+
+      const allowed = await post(note(asAgent))
+      const refused = await post(note(asAgent), keys.nomedia)
+
+      expect(allowed.status).toBe(CREATED)
+      expect(allowed.body).toMatchObject({ authorType: AuthorType.AGENT, authorId: ctx.agentA.id })
+      expect(refused.status).toBe(FORBIDDEN)
+      expect(codeOf(refused.body)).toBe(ErrorCodes.PLUGIN_SCOPE_DENIED)
+    })
+
+    it('audits the refusal of writing as a person as the guard audits a scope the route names', async () => {
+      const installation = await owner.pluginInstallation.findFirstOrThrow({
+        where: { storeId: ctx.storeA2.id, pluginId: otherPluginId },
+        select: { id: true }
+      })
+      // The audit keeps one entry per installation and reason in a window, and earlier cases of this file may have used it
+      const redis = new Redis(REDIS_URL)
+      await redis.del(CacheKeys.audit.pluginDenial(installation.id, PluginApiDenialReasons.SCOPE))
+      await redis.quit()
+      const { id } = await mk({ storeId: ctx.storeA2.id })
+
+      await post(text(id, { authorType: AuthorType.AGENT, userId: ctx.agentA.id }), keys.nomedia)
+
+      const [entry] = await waitForAuditEntries(owner, {
+        action: AuditAction.PLUGIN_API_DENIED,
+        resourceId: installation.id
+      })
+      expect(entry?.metadata).toMatchObject({
+        reason: PluginApiDenialReasons.SCOPE,
+        missing: [PluginScopes.MESSAGES_WRITE_AS_AGENT]
+      })
+    })
+
+    it('refuses to write as a person without messages:write-as-agent, the same for a real member and for one that does not exist', async () => {
+      // A conversation the key reaches (its own store): the refusal is the scope and not the store
+      const { id } = await mk({ storeId: ctx.storeA2.id })
       const real = await post(
         text(id, { authorType: AuthorType.AGENT, userId: ctx.agentA.id }),
         keys.nomedia

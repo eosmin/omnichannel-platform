@@ -21,9 +21,11 @@ export function PluginAuthorLine({
   // A message the plugin wrote as a person: the person's name stays as the author, and the mark says the plugin wrote it for them
   if (isOnBehalfOfPerson(authorship)) {
     return (
-      <span className="inline-flex items-center gap-1" data-testid="plugin-on-behalf">
+      <span className="inline-flex max-w-full items-center gap-1" data-testid="plugin-on-behalf">
         <Bot aria-hidden className="size-3.5 shrink-0" />
-        {t('sentOnBehalf', { plugin, name: fallbackName })}
+        <span className="truncate font-medium">
+          {t('sentOnBehalf', { plugin, name: fallbackName })}
+        </span>
       </span>
     )
   }

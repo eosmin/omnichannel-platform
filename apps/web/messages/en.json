@@ -3157,7 +3157,7 @@
         "conversations:write": "Change conversations: assign, close, tag and start new ones",
         "messages:read": "Read the messages of conversations",
         "messages:write": "Send messages to customers and write internal notes, under the name of the plugin",
-        "messages:write-as-agent": "Write messages as a member of your team: the customer and the thread see the message under that person's name, with a mark that the plugin wrote it",
+        "messages:write-as-agent": "Write messages as any active member of your team that can send them: the customer and the thread see the message under that person's name, with a mark that the plugin wrote it, and it counts as that person's answer in the response times",
         "messages:read-deleted": "Read the text of messages the customer deleted",
         "messages:delete": "Delete the messages the plugin itself wrote",
         "customers:read": "Read customers, their notes and history, and who the customer is in the conversations, orders and searches (name, phone and photo)",
