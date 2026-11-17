@@ -595,7 +595,8 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
 
   describe('a report that cannot go through', () => {
     it('lets a person give it up: the documents leave the contingency and go out the normal way', async () => {
-      expect((await end()).status).toBe(OK)
+      // None may be open here, or one the cases above left: either way the next one starts clean
+      await end()
       const opened = await enter()
       expect(opened.status).toBe(CREATED)
       const id = await sale()
@@ -639,7 +640,8 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
     })
 
     it('does not reset or give up a report that has not failed', async () => {
-      expect((await end()).status).toBe(OK)
+      // None may be open here, or one the cases above left: either way the next one starts clean
+      await end()
       const opened = await enter()
       const id = await sale()
       await documents.submit(ctx.orgA.id, id)
