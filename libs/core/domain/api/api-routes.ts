@@ -486,7 +486,6 @@ export const ApiRoutes = {
   analytics: {
     metrics: '/analytics/metrics',
     myPerformance: '/analytics/my-performance',
-    dashboard: '/analytics/dashboard',
     reports: '/analytics/reports',
     reportById: (id: string) => `/analytics/reports/${id}`,
     export: '/analytics/export',
