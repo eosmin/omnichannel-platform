@@ -53,6 +53,7 @@ describe('OrphanMediaCleaner', () => {
     | 'dropUnattachedAvatars'
     | 'deleteInfectedFiles'
     | 'settleStuckScans'
+    | 'dropUnsentMessageFiles'
   const quiet = (...passes: Pass[]) =>
     passes.map(pass =>
       jest
@@ -239,6 +240,7 @@ describe('OrphanMediaCleaner', () => {
       'deleteStrayObjects',
       'dropUnattachedAvatars',
       'deleteInfectedFiles',
+      'dropUnsentMessageFiles',
       'settleStuckScans'
     )
     const real = storage.list.bind(storage)
@@ -412,6 +414,120 @@ describe('OrphanMediaCleaner', () => {
 
   // A run limited to some stores and users, for the suites that share the database and the bucket with
   // others. The schedule never passes one.
+  describe('files an agent uploaded and never sent', () => {
+    const unsentLater = () =>
+      new Date(Date.now() + (UploadLimits.UNSENT_MESSAGE_FILE_TTL_HOURS + 1) * HOUR_MS)
+
+    const uploader = randomUUID()
+    const made: string[] = []
+    afterEach(async () => {
+      await owner.query(`DELETE FROM media WHERE id = ANY($1)`, [made.splice(0)])
+      await owner.query(`DELETE FROM customers WHERE store_id = $1`, [storeId])
+    })
+
+    // A confirmed message file as the api leaves it: the agent uploaded it, no message and no customer yet
+    async function unsent(
+      overrides: {
+        uploadedBy?: string | null
+        messageId?: string | null
+        customerId?: string | null
+      } = {}
+    ): Promise<{ id: string; key: string; thumb: string }> {
+      const id = randomUUID()
+      made.push(id)
+      const key = await object(StorageKeys.message(storeId, id, 'u.png'))
+      const thumb = await object(StorageKeys.messageVariant(storeId, id, 'thumb'))
+      await owner.query(
+        `INSERT INTO media (id, store_id, purpose, key, filename, content_type, file_size, status, variants,
+                            uploaded_by, message_id, customer_id, created_at)
+         VALUES ($1, $2, 'message', $3, 'u.png', 'image/png', 1, 'clean', $4::jsonb, $5, $6, $7, now() - interval '1 hour')`,
+        [
+          id,
+          storeId,
+          key,
+          JSON.stringify({ thumb }),
+          'uploadedBy' in overrides ? overrides.uploadedBy : uploader,
+          overrides.messageId ?? null,
+          overrides.customerId ?? null
+        ]
+      )
+      return { id, key, thumb }
+    }
+    const rowOf = async (id: string) =>
+      (await owner.query(`SELECT 1 FROM media WHERE id = $1`, [id])).rows.length
+
+    it('drops the row and every object of a file nobody sent once it is past the TTL', async () => {
+      const file = await unsent()
+
+      const report = await sweep(unsentLater())
+
+      expect(report.unsentFilesDropped).toBe(1)
+      expect(await rowOf(file.id)).toBe(0)
+      expect(await storage.head(file.key)).toBeNull()
+      expect(await storage.head(file.thumb)).toBeNull()
+    })
+
+    it('keeps a young file: an agent may be writing the message', async () => {
+      const file = await unsent()
+
+      const report = await sweep(new Date(Date.now() + HOUR_MS))
+
+      expect(report.unsentFilesDropped).toBe(0)
+      expect(await rowOf(file.id)).toBe(1)
+      expect(await storage.head(file.key)).not.toBeNull()
+    })
+
+    it('keeps a file that has a customer (the message that carried it was deleted) and a file a customer sent', async () => {
+      const customerId = randomUUID()
+      await owner.query(
+        `INSERT INTO customers (id, store_id, name, updated_at) VALUES ($1, $2, 'it-unsent', now())`,
+        [customerId, storeId]
+      )
+      const withCustomer = await unsent({ customerId })
+      const inbound = await unsent({ uploadedBy: null })
+
+      const report = await sweep(unsentLater())
+
+      expect(report.unsentFilesDropped).toBe(0)
+      expect(await rowOf(withCustomer.id)).toBe(1)
+      expect(await rowOf(inbound.id)).toBe(1)
+    })
+
+    it('does not touch a file of another purpose or of another store', async () => {
+      const file = await unsent()
+      await owner.query(`UPDATE media SET purpose = 'product' WHERE id = $1`, [file.id])
+
+      const report = await cleaner.runScoped(
+        { storeIds: [randomUUID()], userIds: [] },
+        unsentLater()
+      )
+
+      expect(report.unsentFilesDropped).toBe(0)
+      await sweep(unsentLater())
+      expect(await rowOf(file.id)).toBe(1)
+    })
+
+    it('does not take a file that a message links at the same moment', async () => {
+      const file = await unsent()
+      const holder = new pg.Client({ connectionString: connectionUrls().owner })
+      await holder.connect()
+      try {
+        // The agent's transaction holds the row (it is linking it); the sweep skips it instead of waiting
+        await holder.query('BEGIN')
+        await holder.query(`SELECT 1 FROM media WHERE id = $1 FOR UPDATE`, [file.id])
+
+        const report = await sweep(unsentLater())
+
+        expect(report.unsentFilesDropped).toBe(0)
+        await holder.query('COMMIT')
+      } finally {
+        await holder.end()
+      }
+      expect(await rowOf(file.id)).toBe(1)
+      expect(await storage.head(file.key)).not.toBeNull()
+    })
+  })
+
   describe('with a scope', () => {
     async function insertUser(id: string) {
       avatarUsers.push(id)
@@ -549,7 +665,12 @@ describe('OrphanMediaCleaner', () => {
       })
       // The listings are what is under test: the passes over rows do not run, so that the run without a scope
       // does not look at the rows of the suites beside this one
-      const quieted = quiet('dropUnattachedAvatars', 'deleteInfectedFiles', 'settleStuckScans')
+      const quieted = quiet(
+        'dropUnattachedAvatars',
+        'deleteInfectedFiles',
+        'dropUnsentMessageFiles',
+        'settleStuckScans'
+      )
       try {
         const user = randomUUID()
         const scope = { storeIds: [storeId], userIds: [user] }
@@ -593,7 +714,8 @@ describe('OrphanMediaCleaner', () => {
         objectsDeleted: 0,
         scansRequeued: 0,
         rowsDropped: 0,
-        infectedFilesDeleted: 0
+        infectedFilesDeleted: 0,
+        unsentFilesDropped: 0
       })
       expect(await storage.head(stray)).not.toBeNull()
       expect(await storage.head(staging)).not.toBeNull()
@@ -618,6 +740,7 @@ describe('OrphanMediaCleaner', () => {
         'deleteStrayObjects',
         'deleteStrayAvatarUploads',
         'deleteInfectedFiles',
+        'dropUnsentMessageFiles',
         'settleStuckScans'
       )
 

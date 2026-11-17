@@ -13,6 +13,7 @@ import { REDIS_CLIENT } from '@platform/core/redis'
 import {
   MediaObjectAreas,
   MediaPurpose,
+  objectKeysOf,
   parseAvatarKey,
   parseAvatarUploadKey,
   parseMediaObjectKey,
@@ -41,6 +42,7 @@ export interface CleanupReport {
   scansRequeued: number
   rowsDropped: number
   infectedFilesDeleted: number
+  unsentFilesDropped: number
 }
 
 // Everything that a failure half way through leaves behind (TDD_07 §6). Each pass is safe to run
@@ -79,7 +81,8 @@ export class OrphanMediaCleaner {
       objectsDeleted: 0,
       scansRequeued: 0,
       rowsDropped: 0,
-      infectedFilesDeleted: 0
+      infectedFilesDeleted: 0,
+      unsentFilesDropped: 0
     }
     report.objectsDeleted =
       (await this.pass('stray objects', () => this.deleteStrayObjects(now, scope))) ?? 0
@@ -90,6 +93,8 @@ export class OrphanMediaCleaner {
       (await this.pass('unattached avatars', () => this.dropUnattachedAvatars(now, scope))) ?? 0
     report.infectedFilesDeleted =
       (await this.pass('infected files', () => this.deleteInfectedFiles(scope))) ?? 0
+    report.unsentFilesDropped =
+      (await this.pass('unsent message files', () => this.dropUnsentMessageFiles(now, scope))) ?? 0
     const stuck = await this.pass('stuck scans', () => this.settleStuckScans(now, scope))
     report.scansRequeued = stuck?.requeued ?? 0
     report.rowsDropped += stuck?.dropped ?? 0
@@ -302,6 +307,47 @@ export class OrphanMediaCleaner {
         await this.storage.delete(row.key)
       } catch (error) {
         this.logger.warn({ errorName: errorName(error) }, 'an unattached avatar was not deleted')
+      }
+    }
+    return rows.length
+  }
+
+  // A file an agent uploaded and confirmed for a message and never sent: its row has no message and no
+  // customer (sending a message sets both in the same transaction), so nothing shows it and it would sit
+  // there until the retention of the store. It goes once it is older than the TTL of an unsent file, longer
+  // than the one of an unconfirmed upload because an agent may leave a draft for a day or two. Files of
+  // customers never match (their row is made with its message), nor does a file of another purpose.
+  // One statement decides and deletes: an agent who sends the file at this moment either links it first
+  // (the row is kept) or finds no row to link, never a row that this run removes under a message. Two runs
+  // at once take different rows (SKIP LOCKED). The objects go second: a failure leaves objects with no row,
+  // which the sweep of stray objects finds.
+  private async dropUnsentMessageFiles(now: Date, scope?: CleanupScope): Promise<number> {
+    const cutoff = new Date(now.getTime() - UploadLimits.UNSENT_MESSAGE_FILE_TTL_HOURS * HOUR_MS)
+    const all = scope === undefined
+    const storeIds = [...(scope?.storeIds ?? [])]
+    const rows = await this.prisma.client.$queryRaw<
+      { store_id: string; key: string; variants: unknown }[]
+    >`
+      DELETE FROM media WHERE id IN (
+        SELECT m.id FROM media m
+        WHERE m.purpose = ${MediaPurpose.MESSAGE} AND m.store_id IS NOT NULL
+          AND m.message_id IS NULL AND m.customer_id IS NULL AND m.uploaded_by IS NOT NULL
+          AND m.created_at < ${cutoff}
+          AND (${all}::boolean OR m.store_id = ANY(${storeIds}::text[]))
+        ORDER BY m.created_at LIMIT ${UploadLimits.ORPHAN_CLEANUP_BATCH}
+        FOR UPDATE OF m SKIP LOCKED)
+      RETURNING store_id, key, variants`
+    for (const row of rows) {
+      const { keys, foreign } = objectKeysOf(row.store_id, row)
+      if (foreign.length > 0) {
+        this.logger.warn({ count: foreign.length }, 'an unsent file had a key outside its store')
+      }
+      for (const key of keys) {
+        try {
+          await this.storage.delete(key)
+        } catch (error) {
+          this.logger.warn({ errorName: errorName(error) }, 'an unsent file was not deleted')
+        }
       }
     }
     return rows.length
