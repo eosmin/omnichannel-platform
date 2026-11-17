@@ -929,7 +929,9 @@ export class FiscalDocumentsService {
         doc.id,
         organizationId,
         typeof result.reason === 'string' ? result.reason : '',
-        { built, response: result.response, byAuthority: true }
+        result.neverSent === true
+          ? { built, response: result.response, beforeSending: true }
+          : { built, response: result.response, byAuthority: true }
       )
       return
     }

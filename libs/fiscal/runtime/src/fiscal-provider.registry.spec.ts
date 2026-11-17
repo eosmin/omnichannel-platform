@@ -94,12 +94,37 @@ describe('the series a provider numbers by', () => {
 describe('the providers of a deployment', () => {
   it('registers the simulator in development and test only: staging, production and an unset environment never get it', () => {
     expect(officialFiscalProviders('development').map(provider => provider.id)).toEqual([
-      'simulator',
-      'sv-dte'
+      'simulator'
     ])
-    expect(officialFiscalProviders('test')).toHaveLength(2)
+    expect(officialFiscalProviders('test').map(provider => provider.id)).toEqual(['simulator'])
     for (const env of ['staging', 'production', undefined, '', 'Production']) {
       expect(officialFiscalProviders(env)).toEqual([])
     }
+  })
+
+  it('offers the provider that signs for real only where the deployment gives the address of its signing service', () => {
+    const config = { signerUrl: 'http://signer.internal:8113' }
+    // (the env schema keeps the address out of production until the invalidation exists; this function only reads what it is given)
+    expect(officialFiscalProviders('production', config).map(provider => provider.id)).toEqual([
+      'sv-dte'
+    ])
+    expect(officialFiscalProviders('staging', config).map(provider => provider.id)).toEqual([
+      'sv-dte'
+    ])
+    // The simulator stays first where it is allowed
+    expect(officialFiscalProviders('development', config).map(provider => provider.id)).toEqual([
+      'simulator',
+      'sv-dte'
+    ])
+    expect(officialFiscalProviders('production', { signerUrl: null })).toEqual([])
+  })
+
+  it('refuses a signing service address with credentials or another scheme', () => {
+    expect(() =>
+      officialFiscalProviders('production', { signerUrl: 'http://user:pass@signer:8113' })
+    ).toThrow()
+    expect(() =>
+      officialFiscalProviders('production', { signerUrl: 'ftp://signer:8113' })
+    ).toThrow()
   })
 })

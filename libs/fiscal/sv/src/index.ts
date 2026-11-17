@@ -1,3 +1,6 @@
 export * from './sv-build'
 export * from './sv-constants'
 export * from './sv-provider'
+export * from './sv-auth'
+export * from './sv-http'
+export * from './sv-signer'

@@ -9,8 +9,10 @@ import {
 } from '@platform/core/domain'
 import type {
   FiscalBuildInput,
+  FiscalCreditedDocument,
   FiscalDocumentProvider,
   FiscalIssuerInput,
+  FiscalReceiver,
   ProviderContext,
   SubmitResult
 } from '@platform/fiscal/sdk'
@@ -19,27 +21,38 @@ import type {
 // owner and the accountant bring its credentials. A provider that passes it can replace another with no change outside its package.
 // What a given provider answers for a receiver is its own business, so the triggers (a receiver that makes it refuse, one that makes
 // the authority unavailable, one whose answer is lost) are given by whoever runs the suite.
+// A receiver of the suite: a name and a tax id, and anything else of the receiver a provider asks for (a registration number makes a taxpayer)
+export type ContractReceiver = {
+  name: string | null
+  taxId: string | null
+} & Partial<FiscalReceiver>
+
 export interface FiscalContractFixtures {
   issuer: FiscalIssuerInput
   credentials: Record<string, unknown>
+  // The credit note of a provider that credits only some documents (and for some receivers): the receiver, the document it cancels, and a text
+  // the built note must hold (the code of that document). Without it the suite credits an unknown document for the `plain` receiver.
+  creditNote?: { receiver: ContractReceiver; credited: FiscalCreditedDocument; marker: string }
+  // A provider that cannot invalidate yet says so, and the suite skips the voiding it cannot do
+  voidImplemented?: boolean
   // Strings that must never appear in anything a provider returns (a credential value, a key)
   secrets: readonly string[]
   // Receivers: `plain` is accepted; the others are optional
   receivers: {
-    plain: { name: string | null; taxId: string | null }
+    plain: ContractReceiver
     // What a sandbox of the provider answers by: a receiver it refuses, one whose authority is down on the first attempt, one whose answer
     // is lost after the document was received, and one that lacks what the type of its document needs. A provider with no way to
     // provoke one of them has not shown that it handles it, so none is optional.
-    refused: { name: string | null; taxId: string | null }
-    unavailable: { name: string | null; taxId: string | null }
-    lostAnswer: { name: string | null; taxId: string | null }
-    incomplete: { name: string | null; taxId: string | null }
+    refused: ContractReceiver
+    unavailable: ContractReceiver
+    lostAnswer: ContractReceiver
+    incomplete: ContractReceiver
   }
 }
 
 const baseInput = (
   fixtures: FiscalContractFixtures,
-  receiver: { name: string | null; taxId: string | null },
+  receiver: ContractReceiver,
   sequenceNumber: number
 ): FiscalBuildInput => ({
   kind: FiscalDocumentKind.SALE,
@@ -217,10 +230,11 @@ export function testFiscalProviderContract(
 
     it('builds the credit note of a sale with a type its manifest marks as a credit note, and names the document it cancels', async () => {
       const provider = makeProvider()
+      const given = fixtures.creditNote
       const note = await provider.build({
-        ...baseInput(fixtures, fixtures.receivers.plain, 7),
+        ...baseInput(fixtures, given?.receiver ?? fixtures.receivers.plain, 7),
         kind: FiscalDocumentKind.CREDIT_NOTE,
-        credited: {
+        credited: given?.credited ?? {
           documentType: 'any',
           externalNumber: 'EXT-1',
           issuedAt: '2026-11-15T12:00:00.000Z',
@@ -229,7 +243,7 @@ export function testFiscalProviderContract(
       })
       const declared = provider.manifest.documentTypes.find(type => type.id === note.documentType)
       expect(declared?.creditNote).toBe(true)
-      expect(JSON.stringify(note.payload)).toContain('EXT-1')
+      expect(JSON.stringify(note.payload)).toContain(given?.marker ?? 'EXT-1')
       noSecrets(note)
       // The document of a sale is never a credit note
       const sale = await provider.build(baseInput(fixtures, fixtures.receivers.plain, 8))
@@ -294,7 +308,30 @@ export function testFiscalProviderContract(
     })
   })
 
-  describe('voiding', () => {
+  // A provider that cannot void yet says so, and the suite checks that it fails instead of pretending: the flag must be removed (and the
+  // block below must pass) the day it can
+  if (fixtures.voidImplemented === false) {
+    describe('voiding, not built yet', () => {
+      it('refuses to void, and says it with an error', async () => {
+        const provider = makeProvider()
+        const built = await provider.build(baseInput(fixtures, fixtures.receivers.plain, 8))
+        await expect(
+          provider.void(
+            {
+              documentType: built.documentType,
+              externalNumber: 'x',
+              providerData: null,
+              payload: built.payload
+            },
+            'wrong customer',
+            contextOf('contract-void-unbuilt')
+          )
+        ).rejects.toBeDefined()
+      })
+    })
+  }
+  const voiding = fixtures.voidImplemented === false ? describe.skip : describe
+  voiding('voiding', () => {
     it('voids an accepted document for a reason and refuses an empty reason', async () => {
       const provider = makeProvider()
       const built = await provider.build(baseInput(fixtures, fixtures.receivers.plain, 8))

@@ -46,6 +46,37 @@ export const SvEnvironmentCodes: Readonly<Record<FiscalEnvironment, string>> = {
   [FiscalEnvironment.PRODUCTION]: '01'
 }
 
+// The token of the API: how long it lives in each environment (Manual Técnico §3) and when it is renewed (a share of that), and for how long
+// a password the authority refused is not sent again (three wrong logins lock the user until a person changes the password in the site of
+// the authority). **[PENDING OWNER CONFIRMATION]** fifteen minutes.
+export const SvAuthentication = {
+  TOKEN_LIFETIME_MS: {
+    [FiscalEnvironment.SANDBOX]: 48 * 60 * 60 * 1000,
+    [FiscalEnvironment.PRODUCTION]: 24 * 60 * 60 * 1000
+  },
+  RENEW_AT: 0.8,
+  REJECTED_MEMORY_MS: 15 * 60 * 1000
+} as const
+
+// The name the platform gives itself in the User-Agent of its calls: generic, with no data of the project. **[PENDING OWNER CONFIRMATION]**
+export const SvUserAgent = 'PlataformaOmnicanal/1.0'
+
+// The time the authority gets to answer a document before it counts as no answer (Manual Técnico §3.3: 8 seconds)
+export const SvTimeouts = { AUTH_MS: 8000, RECEPTION_MS: 8000, SIGNER_MS: 10000 } as const
+
+// The words of the answers of the authority and of the signing service, and the route of the signing service
+export const SvAnswerStates = {
+  PROCESSED: 'PROCESADO',
+  REFUSED: 'RECHAZADO',
+  OK: 'OK',
+  ERROR: 'ERROR'
+} as const
+export const SvSignerRoute = '/firmardocumento/'
+
+// The environments this provider lets an issuer choose. **Only the sandbox until the invalidation of a document exists (Step 4B.7c-4)**: a
+// document of the real environment that cannot be invalidated (the window is three months) must not be sent.
+export const SvEnabledEnvironments: readonly FiscalEnvironment[] = [FiscalEnvironment.SANDBOX]
+
 // CAT-002: the documents this provider makes. These are the ids of the manifest (the authority's own codes), the `tipoDte` of the JSON
 // and the second part of the control number.
 export const SvDocumentTypes = {
@@ -116,7 +147,19 @@ export const SvProviderDataKeys = {
   GENERATION_CODE: 'generationCode',
   CONTROL_NUMBER: 'controlNumber',
   RECEPTION_SEAL: 'receptionSeal',
-  ISSUE_DATE: 'issueDate'
+  ISSUE_DATE: 'issueDate',
+  PROCESSED_AT: 'processedAt',
+  OBSERVATIONS: 'observations',
+  SIGNED_DOCUMENT: 'signedDocument'
+} as const
+
+// The reasons this provider gives when it refuses a document before or after the authority did (codes of its own, never a value). The
+// authority's own refusal keeps the authority's code as its reason.
+export const SvRejectionReasons = {
+  CREDENTIALS_INCOMPLETE: 'credentials_incomplete',
+  CREDENTIALS_REJECTED: 'credentials_rejected',
+  SIGNING_CREDENTIALS_REJECTED: 'signing_credentials_rejected',
+  DOCUMENT_INCOMPLETE: 'document_incomplete'
 } as const
 
 // The documents a credit note may cancel. **[ACCOUNTANT]** The manual of the authority is not clear about whether a credit note may name
@@ -182,7 +225,8 @@ export const SvCodePatterns = {
   ESTABLISHMENT: /^[MBSP]\d{3}$/,
   POINT_OF_SALE: /^P\d{3}$/,
   TAX_ID: /^(\d{14}|\d{9})$/,
-  REGISTRATION: /^\d{2,8}$/
+  REGISTRATION: /^\d{2,8}$/,
+  CONTROL_NUMBER: /^DTE-\d{2}-[MBSP]\d{3}P\d{3}-\d{15}$/
 } as const
 
 // Why this provider refuses to build a document, in codes of its own (the error carries no customer data)

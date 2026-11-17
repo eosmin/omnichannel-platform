@@ -1,4 +1,3 @@
-import type { FiscalEnvironment } from '@platform/core/domain'
 import type {
   BuiltDocument,
   ConsultResult,
@@ -18,6 +17,7 @@ import type {
   VoidResult
 } from '@platform/fiscal/sdk'
 
+import { SvAuthenticator } from './sv-auth'
 import { buildDocument, resolveDocumentType } from './sv-build'
 import {
   SV_COUNTRY_CODE,
@@ -26,10 +26,16 @@ import {
   SvBuildErrors,
   SvCredentialKeys,
   SvDocumentTypes,
-  SvEndpoints,
-  SvIssuerProblems
+  SvEnabledEnvironments,
+  type SvEndpoints,
+  SvIssuerProblems,
+  SvTimeouts,
+  SvUserAgent
 } from './sv-constants'
+import type { SvFetch } from './sv-http'
 import { issuerProblems, receiverProblems } from './sv-parties'
+import type { SvSigner } from './sv-signer'
+import { consultDocument, submitDocument, type SvTransmissionDeps } from './sv-transmission'
 
 // What a taxpayer needs of a customer to make a tax credit document or a credit note
 const BUSINESS_RECEIVER_FIELDS = [
@@ -40,12 +46,49 @@ const BUSINESS_RECEIVER_FIELDS = [
   'address'
 ] as const
 
-// The provider of the electronic tax documents of El Salvador. Step 4B.7c-2 builds the documents; sending, consulting and invalidating
-// them is Step 4B.7c-3 and 4B.7c-4, so until then those three refuse with a clear error and the provider is registered only where the
-// simulator is, and no issuer can be set up with it in production.
+// The provider of the electronic tax documents of El Salvador: Step 4B.7c-2 builds the documents and Step 4B.7c-3 sends and consults them.
+// Invalidating them is Step 4B.7c-4, so `void` refuses with a clear error until then. The provider is offered where the deployment sets the
+// address of its signing service (`FISCAL_SIGNER_URL`), which must not be set in production before 4B.7c-4.
+export interface SvProviderOptions {
+  // Signs a document (the official signing service, or one of our own)
+  readonly signer: SvSigner
+  readonly fetch?: SvFetch
+  readonly now?: () => number
+  readonly userAgent?: string
+  // The time the authority gets to answer a document (8 seconds): the specs shorten it
+  readonly receptionTimeoutMs?: number
+  // The endpoints of the authority, for the specs against a server of their own: the real ones are the constants of this package
+  readonly endpoints?: typeof SvEndpoints
+}
+
+// The `fetch` of the platform (Node's own), adapted to what this package asks of one
+const platformFetch: SvFetch = (url, init) => fetch(url, init)
+
 export class SvProvider implements FiscalDocumentProvider {
   readonly id = SV_PROVIDER_ID
   readonly countryCode = SV_COUNTRY_CODE
+  private readonly deps: SvTransmissionDeps
+
+  constructor(options: SvProviderOptions) {
+    const request = options.fetch ?? platformFetch
+    const userAgent = options.userAgent ?? SvUserAgent
+    this.deps = {
+      auth: new SvAuthenticator({
+        fetch: request,
+        now: options.now ?? Date.now,
+        userAgent,
+        timeoutMs: SvTimeouts.AUTH_MS,
+        ...(options.endpoints === undefined ? {} : { endpoints: options.endpoints })
+      }),
+      signer: options.signer,
+      fetch: request,
+      userAgent,
+      ...(options.receptionTimeoutMs === undefined
+        ? {}
+        : { receptionTimeoutMs: options.receptionTimeoutMs }),
+      ...(options.endpoints === undefined ? {} : { endpoints: options.endpoints })
+    }
+  }
 
   readonly manifest: FiscalProviderManifest = {
     documentTypes: [
@@ -74,7 +117,7 @@ export class SvProvider implements FiscalDocumentProvider {
       'email'
     ],
     credentialKeys: Object.values(SvCredentialKeys),
-    environments: Object.keys(SvEndpoints) as FiscalEnvironment[],
+    environments: [...SvEnabledEnvironments],
     // The control number runs by document type, establishment and point of sale (Funcional §XI)
     sequence: { perDocumentType: true, perEstablishment: true, perPointOfSale: true }
   }
@@ -88,7 +131,8 @@ export class SvProvider implements FiscalDocumentProvider {
     credentials: FiscalIssuerCredentials
   ): Promise<IssuerCheck> {
     const problems = issuerProblems(issuer)
-    for (const key of Object.values(SvCredentialKeys)) {
+    // The certificate itself is a credential of a signer of our own; the official service keeps it on its own disk
+    for (const key of [SvCredentialKeys.API_PASSWORD, SvCredentialKeys.CERTIFICATE_PASSWORD]) {
       const value = credentials.credentials[key]
       if (typeof value !== 'string' || value.trim() === '') problems.push(key)
     }
@@ -110,12 +154,12 @@ export class SvProvider implements FiscalDocumentProvider {
     return Promise.resolve().then(() => buildDocument(input))
   }
 
-  submit(_built: BuiltDocument, _ctx: ProviderContext): Promise<SubmitResult> {
-    return Promise.reject(new SvBuildError(SvBuildErrors.NOT_IMPLEMENTED))
+  submit(built: BuiltDocument, ctx: ProviderContext): Promise<SubmitResult> {
+    return submitDocument(this.deps, built, ctx)
   }
 
-  consult(_built: BuiltDocument, _ctx: ProviderContext): Promise<ConsultResult> {
-    return Promise.reject(new SvBuildError(SvBuildErrors.NOT_IMPLEMENTED))
+  consult(built: BuiltDocument, ctx: ProviderContext): Promise<ConsultResult> {
+    return consultDocument(this.deps, built, ctx)
   }
 
   void(_doc: StoredFiscalDocument, _reason: string, _ctx: ProviderContext): Promise<VoidResult> {
@@ -123,4 +167,4 @@ export class SvProvider implements FiscalDocumentProvider {
   }
 }
 
-export const svProvider = (): SvProvider => new SvProvider()
+export const svProvider = (options: SvProviderOptions): SvProvider => new SvProvider(options)

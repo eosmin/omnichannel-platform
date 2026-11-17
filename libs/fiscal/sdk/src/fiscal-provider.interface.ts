@@ -233,6 +233,9 @@ export type SubmitResult =
       // A code, never customer data
       readonly reason: string
       readonly response?: Readonly<Record<string, unknown>>
+      // The provider refused it itself and nothing was sent (a credential that is missing, a document that is incomplete): it is not a
+      // refusal of the authority, so the attempt is given back and the document reads as one that never left
+      readonly neverSent?: true
     }
   // The authority is down or did not answer: the document stays queued
   | { readonly outcome: FiscalSubmitOutcome.UNAVAILABLE }
