@@ -851,7 +851,10 @@ describe('The books of an organization', () => {
         month: 3,
         startsOn: '2027-03-01',
         endsOn: '2027-03-31',
-        status: PeriodStatus.OPEN
+        status: PeriodStatus.OPEN,
+        // The api says it, in the day of the books: a month of 2027 has neither started nor ended
+        hasStarted: false,
+        hasEnded: false
       })
       expect((again.body as { id: string }).id).toBe((first.body as { id: string }).id)
       expect((list.body as { data: { year: number; month: number }[] }).data[0]).toMatchObject({

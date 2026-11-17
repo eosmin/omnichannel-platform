@@ -9,10 +9,11 @@ import type {
   FinanceTransactionView
 } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
-import { FinanceTransactionKind } from '@platform/core/domain'
+import { FinanceLimits, FinanceTransactionKind } from '@platform/core/domain'
 
 import { accountLabelsOf } from '../../lib/finance/account-form'
 import { dayOfClock, dayOfUtcClock, nextDay } from '../../lib/finance/dates'
+import { amountExceedsLine } from '../../lib/finance/money'
 import {
   categoryAccountsOf,
   emptyTransactionDraft,
@@ -176,8 +177,14 @@ function TransactionForm({
   const categories = categoryAccountsOf(accounts, kind, keep(draft.categoryAccountId))
   const rateOptions = taxRatesOf(rates, keep(draft.taxRateId))
   const tax = taxPreviewOf(draft, rates, rounding)
-  const problemText = (field: TransactionField): string | null =>
-    wrong === field ? t(`form.problems.${field}`) : null
+  const problemText = (field: TransactionField): string | null => {
+    if (wrong !== field) return null
+    // A well written amount that is above what a line holds says the limit, not the rule of the digits
+    if (field === TransactionFields.AMOUNT && amountExceedsLine(draft.amount)) {
+      return t('form.problems.amountTooLarge', { max: money(FinanceLimits.MAX_LINE_CENTS) })
+    }
+    return t(`form.problems.${field}`)
+  }
   const isTransfer = !takesCategory(kind)
 
   // The transaction is registered first and then its receipt: a receipt that fails leaves a transaction with none, said in a toast, and

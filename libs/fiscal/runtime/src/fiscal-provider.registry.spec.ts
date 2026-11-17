@@ -109,6 +109,60 @@ describe('the manifest of a provider', () => {
   })
 })
 
+describe('the contingency mode of a provider', () => {
+  const mode = {
+    reasons: ['down', 'other'],
+    authorityDownReason: 'down',
+    transmitWithinHours: 72,
+    maxDocumentsPerEvent: 1000,
+    requiresResponsible: true
+  }
+  const make = (
+    declared: Partial<typeof mode> | undefined,
+    methods: { report: boolean; defer: boolean }
+  ) => {
+    const provider = simulatorProvider()
+    return {
+      ...provider,
+      manifest: {
+        ...provider.manifest,
+        ...(declared === undefined ? {} : { contingencyMode: { ...mode, ...declared } })
+      },
+      ...(methods.report ? { reportContingency: () => Promise.reject(new Error('unused')) } : {}),
+      ...(methods.defer ? { deferDocument: () => Promise.reject(new Error('unused')) } : {})
+    } as unknown as ReturnType<typeof simulatorProvider>
+  }
+  const both = { report: true, defer: true }
+
+  it('is accepted when it can sign a document in contingency and report it', () => {
+    expect(() => new FiscalProviderRegistry([make({}, both)])).not.toThrow()
+    // A provider with no mode needs neither
+    expect(
+      () => new FiscalProviderRegistry([make(undefined, { report: false, defer: false })])
+    ).not.toThrow()
+  })
+
+  it('is refused without the means to report it or to keep a document, or with numbers that make no sense', () => {
+    const invalid = /contingency mode/
+    expect(() => new FiscalProviderRegistry([make({}, { report: false, defer: true })])).toThrow(
+      invalid
+    )
+    expect(() => new FiscalProviderRegistry([make({}, { report: true, defer: false })])).toThrow(
+      invalid
+    )
+    for (const declared of [
+      { reasons: [] },
+      { authorityDownReason: 'not-a-reason' },
+      { transmitWithinHours: 0 },
+      { transmitWithinHours: Number.NaN },
+      { maxDocumentsPerEvent: 0 },
+      { maxDocumentsPerEvent: 1.5 }
+    ]) {
+      expect(() => new FiscalProviderRegistry([make(declared, both)])).toThrow(invalid)
+    }
+  })
+})
+
 describe('the series a provider numbers by', () => {
   const numbering = (
     sequence: { perDocumentType?: boolean; perEstablishment?: boolean; perPointOfSale?: boolean },

@@ -116,7 +116,10 @@
         "fiscal": {
           "document_rejected": "Fiscal document refused",
           "document_stuck": "Fiscal document stuck",
-          "entry_mismatch": "Fiscal document disagrees with the books"
+          "entry_mismatch": "Fiscal document disagrees with the books",
+          "contingency_opened": "Fiscal contingency started",
+          "contingency_report_failed": "Fiscal contingency not reported",
+          "contingency_window_closing": "Fiscal contingency window closing"
         }
       },
       "push": {
@@ -602,6 +605,7 @@
     "FISCAL_DOCUMENT_INVALID_TRANSITION": "The fiscal document cannot move from its current state",
     "FISCAL_ISSUER_INVALID": "The issuer does not pass the checks of the provider",
     "FISCAL_CUSTOMER_DATA_INVALID": "The fiscal data of the customer does not pass the checks of the provider",
+    "FISCAL_CONTINGENCY_INVALID": "The contingency cannot be changed that way",
     "FISCAL_PROVIDER_UNAVAILABLE": "The provider of fiscal documents is not available",
     "FINANCE_ENTRY_UNBALANCED": "The entry does not balance: debits and credits must be equal and positive",
     "FINANCE_ACCOUNT_NOT_POSTABLE": "This account only groups other accounts: choose one that accepts entries",
@@ -1063,6 +1067,18 @@
       "entry_mismatch": {
         "title": "A fiscal document disagrees with the books",
         "body": "The daily check found a sale whose fiscal document has a different total or tax than its entry of the books. Open the fiscal documents and have the accountant decide which one is right: nothing is corrected by itself."
+      },
+      "contingency_opened": {
+        "title": "Documents are being made without the authority",
+        "body": "The authority did not answer a document, so new fiscal documents are being made in contingency: signed and kept, not sent. End the contingency in the fiscal settings when the authority answers again, so they can be reported and sent."
+      },
+      "contingency_report_failed": {
+        "title": "A contingency could not be reported",
+        "body": "The authority did not take the event that reports a contingency after every attempt. The documents made in it are waiting. Open the fiscal settings and ask again."
+      },
+      "contingency_window_closing": {
+        "title": "Documents of a contingency must be sent soon",
+        "body": "The time the authority gives to send the documents made in a contingency is closing. Open the fiscal documents and check that they are being sent."
       }
     }
   },
@@ -5310,6 +5326,7 @@
     },
     "outcome": {
       "matched": "Matches",
+      "matchedFeeConsumesCash": "Matches: the fee takes all the cash collected",
       "amount_differs": "Different amount",
       "not_found": "No guide found",
       "not_delivered": "Not delivered yet",
@@ -6348,6 +6365,7 @@
         "problems": {
           "date": "Write a date that exists, as year-month-day, and no more than a day ahead.",
           "amount": "Write an amount greater than zero, with at most two decimals.",
+          "amountTooLarge": "The amount cannot be more than {max}.",
           "from": "Pick the account the money comes from.",
           "to": "Pick the account the money goes to, different from the one it comes from.",
           "category": "Pick the account it is classified under.",
@@ -6594,8 +6612,8 @@
       },
       "errors": {
         "title": "{count, plural, one {# row cannot be read} other {# rows cannot be read}}",
-        "row": "Row {row}, {field}: {reason}",
-        "rowWithValue": "Row {row}, {field}: {reason} (“{value}”)",
+        "row": "Row {row}{hasField, select, yes {, {field}} other {}}: {reason}",
+        "rowWithValue": "Row {row}{hasField, select, yes {, {field}} other {}}: {reason} (“{value}”)",
         "more": "{count, plural, one {And # more.} other {And # more.}}",
         "unknown": "the file could not be read",
         "fields": {
@@ -7628,6 +7646,12 @@
         "nextSequenceFirst": "Leave it empty to start at 1. It only moves forward.",
         "nextSequenceHint": "The next document takes number {next}. A new number must be higher: it only moves forward.",
         "credentials": {
+          "keys": {
+            "signingKey": "Signing key",
+            "apiPassword": "API password",
+            "certificatePassword": "Certificate password",
+            "certificate": "Certificate"
+          },
           "legend": "Credentials",
           "stored": "Credentials are stored. They are never shown again.",
           "none": "No credentials are stored yet.",

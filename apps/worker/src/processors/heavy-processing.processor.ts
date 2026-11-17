@@ -28,6 +28,7 @@ import {
   type PollShipmentStatusJob,
   type ProcessImageJob,
   type ReconcileFinanceJob,
+  type ReportFiscalContingencyJob,
   type SubmitFiscalDocumentJob,
   type ReconcileInventoryJob,
   type ReprocessCarrierEventsJob,
@@ -35,7 +36,11 @@ import {
   type SyncPickupJob,
   type VerifyLedgerChainJob
 } from '@platform/core/queues'
-import { FiscalDocumentBusyError, FiscalDocumentsService } from '@platform/fiscal/runtime'
+import {
+  FiscalContingencyService,
+  FiscalDocumentBusyError,
+  FiscalDocumentsService
+} from '@platform/fiscal/runtime'
 
 import { CarrierEventReplay } from '../carriers/carrier-event-replay.service'
 import { FinanceChainChecker } from '../finance/finance-chain-checker.service'
@@ -72,6 +77,7 @@ type HeavyJob =
   | EnforceRetentionJob
   | PostFinanceEventJob
   | SubmitFiscalDocumentJob
+  | ReportFiscalContingencyJob
 
 const bulkLabelsJobSchema = exactly<BulkLabelsMergeJob>()(
   z.object({
@@ -138,6 +144,13 @@ const submitFiscalJobSchema = exactly<SubmitFiscalDocumentJob>()(
     correlationId: z.string().optional()
   })
 )
+const reportFiscalContingencyJobSchema = exactly<ReportFiscalContingencyJob>()(
+  z.object({
+    organizationId: z.uuid(),
+    contingencyId: z.uuid(),
+    correlationId: z.string().optional()
+  })
+)
 const retentionJobSchema = exactly<EnforceRetentionJob>()(
   z.object({ storeId: z.uuid(), correlationId: z.string().optional() })
 )
@@ -200,7 +213,8 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     private readonly financeReconciler: FinanceReconciler,
     private readonly financeChain: FinanceChainChecker,
     private readonly fiscalReconciler: FiscalReconciler,
-    private readonly fiscalDocuments: FiscalDocumentsService
+    private readonly fiscalDocuments: FiscalDocumentsService,
+    private readonly fiscalContingencies: FiscalContingencyService
   ) {
     super(QueueNames.HEAVY_PROCESSING, support)
   }
@@ -273,6 +287,26 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
             submit.data.organizationId,
             submit.data.documentId,
             error instanceof FiscalDocumentBusyError
+          )
+        }
+        throw error
+      }
+      return
+    }
+    if (job.name === JobNames.REPORT_FISCAL_CONTINGENCY) {
+      const report = reportFiscalContingencyJobSchema.safeParse(job.data)
+      if (!report.success) {
+        throw new UnrecoverableError('the contingency job does not fit its schema')
+      }
+      // Throws when the authority did not answer, so the queue tries again with its backoff; a decision (taken, refused) returns
+      try {
+        await this.fiscalContingencies.report(report.data.organizationId, report.data.contingencyId)
+      } catch (error) {
+        // The last attempt: nobody asks again by itself, so a person is told. The original error stays the one the queue sees.
+        if (isLastAttempt(job)) {
+          await this.fiscalContingencies.reportExhausted(
+            report.data.organizationId,
+            report.data.contingencyId
           )
         }
         throw error
