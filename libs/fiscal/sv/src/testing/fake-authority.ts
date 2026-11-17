@@ -98,6 +98,8 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
   const received = new Map<string, { type: string; seal: string }>()
   // The documents whose invalidation it accepted
   const invalidated = new Set<string>()
+  // The generation codes of the events it received: one sent again is a duplicate (code 4)
+  const eventCodes = new Set<string>()
   const stats: FakeAuthority['stats'] = {
     logins: 0,
     wrongLogins: 0,
@@ -314,6 +316,7 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
         if (event === null) return refusal('033')
         stats.lastEvent = event
         if (schemaErrors('invalidation', event).length > 0) return refusal('006')
+        const eventCode = (event['identificacion'] as { codigoGeneracion: string }).codigoGeneracion
         const original = event['documento'] as {
           codigoGeneracion: string
           selloRecibido: string
@@ -323,6 +326,7 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
         const known = received.get(original.codigoGeneracion)
         // The document must be there, with the seal the authority gave it
         if (known === undefined || known.seal !== original.selloRecibido) return refusal('014')
+        if (eventCodes.has(eventCode)) return refusal('004')
         if (invalidated.has(original.codigoGeneracion)) return refusal('053')
         // A correction and another reason name a replacement the authority has
         if (motivo.tipoAnulacion !== 2 && !received.has(String(original.codigoGeneracionR))) {
@@ -338,6 +342,7 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
           return
         }
         invalidated.add(original.codigoGeneracion)
+        eventCodes.add(eventCode)
         // It accepted and the answer is lost
         if (motivo.numDocSolicita === FAKE.LOST) {
           request.socket.destroy()
@@ -407,6 +412,7 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
     forgetDocuments: () => {
       received.clear()
       invalidated.clear()
+      eventCodes.clear()
       wasDown.clear()
     },
     get signerDown() {

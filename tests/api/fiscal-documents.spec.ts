@@ -1089,6 +1089,16 @@ describe('The fiscal documents (Step 4B.7)', () => {
           documentType: accepted.documentType,
           externalNumber: accepted.externalNumber
         })
+        // The trail says the kind and the replacement, and never the number of an identity document
+        const trail = await waitForAuditEntries(owner, {
+          action: AuditAction.FISCAL_DOCUMENT_VOIDED,
+          userId: ctx.adminA.id,
+          resourceId: documentId
+        })
+        const metadata = JSON.stringify(trail.map(entry => entry.metadata))
+        expect(metadata).toContain('"voidKind":"correction"')
+        expect(metadata).toContain(replacement.documentId)
+        expect(metadata).not.toContain(responsible.idNumber)
         // Without any of it the provider is told only the reason
         const plain = await sale()
         await documents.submit(ctx.orgA.id, plain.documentId)
@@ -1122,6 +1132,37 @@ describe('The fiscal documents (Step 4B.7)', () => {
           linesSnapshot: mine.linesSnapshot as object
         }
       })
+      // A document of the other environment or of another provider is not the replacement of this one. An accepted document is immutable:
+      // the other one is a copy of this one made so.
+      for (const change of [
+        { environment: FiscalEnvironment.PRODUCTION },
+        { providerId: 'another' }
+      ]) {
+        const order = await createOrder(owner, { storeId: ctx.storeA.id })
+        const made = await owner.fiscalDocument.create({
+          data: {
+            ...mine,
+            ...change,
+            id: randomUUID(),
+            orderId: order.id,
+            sequenceNumber: 1_000_000_000 + Math.floor(Math.random() * 1_000_000_000),
+            correlative: null,
+            correlativeScopeKey: null,
+            issuerSnapshot: mine.issuerSnapshot as object,
+            providerData: mine.providerData ?? DatabaseNull,
+            response: mine.response ?? DatabaseNull,
+            voidResponse: DatabaseNull,
+            linesSnapshot: mine.linesSnapshot as object
+          }
+        })
+        const answer = await voidWith(documentId, {
+          kind: FiscalVoidKind.CORRECTION,
+          responsible,
+          requester,
+          replacementDocumentId: made.id
+        })
+        expect(answer.status).toBe(NOT_FOUND)
+      }
       // The document of the other organization stays (a fiscal document is never deleted): this block runs after the ones that read
       // the list of that organization
       for (const replacementDocumentId of [documentId, queued.documentId, randomUUID(), other.id]) {

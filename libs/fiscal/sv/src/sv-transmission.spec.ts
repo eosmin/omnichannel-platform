@@ -463,13 +463,17 @@ describe('the client of the authority', () => {
         payload: document.payload
       }
     }
+    // A request of its own for each call: the key is the one core makes from the document, so two documents never share an event
+    let requests = 0
+    const vctx = (over: Partial<ProviderContext> = {}): ProviderContext =>
+      ctxOf({ idempotencyKey: `void:${(requests += 1)}`, ...over })
     beforeEach(() => {
       provider = make({ now: INSIDE })
     })
 
     it('sends the signed event with the token and the generic user agent, and says it is voided', async () => {
       const stored = await accepted(null)
-      const result = await provider.void(stored, 'Datos equivocados', ctxOf(), RESCISSION)
+      const result = await provider.void(stored, 'Datos equivocados', vctx(), RESCISSION)
       expect(result.voided).toBe(true)
       expect(result.response).toMatchObject({ estado: 'PROCESADO' })
       expect(authority.stats.invalidations).toBe(1)
@@ -485,11 +489,11 @@ describe('the client of the authority', () => {
 
     it('answers a consultation with the state the authority has', async () => {
       const stored = await accepted(null)
-      expect((await provider.consultVoid(stored, ctxOf())).state).toBe(
+      expect((await provider.consultVoid(stored, vctx())).state).toBe(
         FiscalVoidConsultState.NOT_VOIDED
       )
-      await provider.void(stored, 'Datos equivocados', ctxOf(), RESCISSION)
-      const after = await provider.consultVoid(stored, ctxOf())
+      await provider.void(stored, 'Datos equivocados', vctx(), RESCISSION)
+      const after = await provider.consultVoid(stored, vctx())
       expect(after.state).toBe(FiscalVoidConsultState.VOIDED)
       expect(after.response).toMatchObject({ estado: 'INVALIDADO' })
     })
@@ -497,21 +501,21 @@ describe('the client of the authority', () => {
     it('says it does not know when the document is not at the authority or cannot be read', async () => {
       const stored = await accepted(null)
       authority.forgetDocuments()
-      expect((await provider.consultVoid(stored, ctxOf())).state).toBe(
+      expect((await provider.consultVoid(stored, vctx())).state).toBe(
         FiscalVoidConsultState.UNKNOWN
       )
-      expect((await provider.consultVoid({ ...stored, providerData: null }, ctxOf())).state).toBe(
+      expect((await provider.consultVoid({ ...stored, providerData: null }, vctx())).state).toBe(
         FiscalVoidConsultState.UNKNOWN
       )
     })
 
     it('gives the refusal of the authority with its code, and voids a document only once', async () => {
       const stored = await accepted(null)
-      expect((await provider.void(stored, 'a', ctxOf(), RESCISSION)).voided).toBe(true)
+      expect((await provider.void(stored, 'a', vctx(), RESCISSION)).voided).toBe(true)
       const again = await provider.void(stored, 'a', ctxOf({ idempotencyKey: 'other' }), RESCISSION)
       expect(again).toMatchObject({ voided: false, reason: '053' })
       const refused = await accepted(null, 2)
-      const answer = await provider.void(refused, 'a', ctxOf(), {
+      const answer = await provider.void(refused, 'a', vctx(), {
         ...RESCISSION,
         requester: { name: 'Luis', idType: '36', idNumber: FAKE.REJECT }
       })
@@ -524,21 +528,58 @@ describe('the client of the authority', () => {
         ...RESCISSION,
         requester: { name: 'Luis', idType: '36', idNumber: FAKE.DOWN }
       }
-      await expect(provider.void(down, 'a', ctxOf(), details)).rejects.toBeInstanceOf(
+      await expect(provider.void(down, 'a', vctx(), details)).rejects.toBeInstanceOf(
         SvTransportError
       )
       // The next attempt finds it up
-      expect((await provider.void(down, 'a', ctxOf(), details)).voided).toBe(true)
+      expect((await provider.void(down, 'a', vctx(), details)).voided).toBe(true)
 
       const lost = await accepted(null, 4)
       const lostDetails = {
         ...RESCISSION,
         requester: { name: 'Luis', idType: '36', idNumber: FAKE.LOST }
       }
-      await expect(provider.void(lost, 'a', ctxOf(), lostDetails)).rejects.toBeDefined()
+      await expect(provider.void(lost, 'a', vctx(), lostDetails)).rejects.toBeDefined()
       expect((await provider.consultVoid(lost, ctxOf({ attempt: 2 }))).state).toBe(
         FiscalVoidConsultState.VOIDED
       )
+    })
+
+    it('recovers a void whose answer was lost when the same request is sent again', async () => {
+      const lost = await accepted(null, 7)
+      const details = {
+        ...RESCISSION,
+        requester: { name: 'Luis', idType: '36', idNumber: FAKE.LOST }
+      }
+      const ctx = ctxOf({ idempotencyKey: 'k:lost' })
+      await expect(provider.void(lost, 'a', ctx, details)).rejects.toBeDefined()
+      // The authority answers the second one that it has this event (code 4): it is asked what it holds, and it holds the void
+      const again = await provider.void(lost, 'a', { ...ctx, attempt: 2 }, details)
+      expect(again.voided).toBe(true)
+      expect(again.response).toMatchObject({ estado: 'INVALIDADO' })
+    })
+
+    it('does not believe an answer about another document', async () => {
+      const stored = await accepted(null, 8)
+      await provider.void(stored, 'a', vctx(), RESCISSION)
+      const other = svProvider({
+        signer: officialSigner({
+          baseUrl: authority.baseUrl,
+          fetch: (url, init) => fetch(url, init),
+          timeoutMs: 2000
+        }),
+        now: INSIDE,
+        endpoints: authority.endpoints,
+        fetch: async (url, init) => {
+          const real = await fetch(url, init)
+          if (!String(url).endsWith('/fesv/recepcion/consultadte')) return real
+          const body = (await real.json()) as Record<string, unknown>
+          return new Response(JSON.stringify({ ...body, codigoGeneracion: 'OTHER-DOCUMENT' }), {
+            status: real.status
+          })
+        }
+      })
+      expect((await other.consultVoid(stored, vctx())).state).toBe(FiscalVoidConsultState.UNKNOWN)
     })
 
     it('makes the same event for the same request and another one for another request', async () => {
@@ -560,13 +601,13 @@ describe('the client of the authority', () => {
       const correction = { ...RESCISSION, kind: FiscalVoidKind.CORRECTION }
       // Without it, nothing is sent
       const before = authority.stats.invalidations
-      expect(await provider.void(stored, 'a', ctxOf(), correction)).toEqual({
+      expect(await provider.void(stored, 'a', vctx(), correction)).toEqual({
         voided: false,
         reason: SvVoidRefusals.REPLACEMENT_REQUIRED
       })
       expect(authority.stats.invalidations).toBe(before)
       // With it, the event carries its generation code
-      const answer = await provider.void(stored, 'a', ctxOf(), { ...correction, replacement })
+      const answer = await provider.void(stored, 'a', vctx(), { ...correction, replacement })
       expect(answer.voided).toBe(true)
       expect(authority.stats.lastEvent?.['documento']).toMatchObject({
         codigoGeneracionR: (replacement.payload['identificacion'] as { codigoGeneracion: string })
@@ -582,7 +623,7 @@ describe('the client of the authority', () => {
         payload: ghost.payload
       }
       expect(
-        await provider.void(other, 'a', ctxOf(), { ...correction, replacement: ghostStored })
+        await provider.void(other, 'a', vctx(), { ...correction, replacement: ghostStored })
       ).toMatchObject({ voided: false, reason: '054' })
     })
 
@@ -590,7 +631,7 @@ describe('the client of the authority', () => {
       const stored = await accepted(null)
       provider = make({ now: () => Date.parse('2027-02-17T12:00:00.000Z') })
       const before = authority.stats.invalidations
-      expect(await provider.void(stored, 'a', ctxOf(), RESCISSION)).toEqual({
+      expect(await provider.void(stored, 'a', vctx(), RESCISSION)).toEqual({
         voided: false,
         reason: SvVoidRefusals.DEADLINE_PASSED
       })
@@ -601,18 +642,18 @@ describe('the client of the authority', () => {
       const stored = await accepted(null)
       const signsBefore = authority.stats.signs
       const wrong = { ...CREDENTIALS, [SvCredentialKeys.API_PASSWORD]: 'wrong-password' }
-      const answer = await provider.void(stored, 'a', ctxOf({ credentials: wrong }), RESCISSION)
+      const answer = await provider.void(stored, 'a', vctx({ credentials: wrong }), RESCISSION)
       expect(answer).toEqual({ voided: false, reason: SvVoidRefusals.CREDENTIALS_REJECTED })
       expect(authority.stats.signs).toBe(signsBefore)
       expect(JSON.stringify(answer)).not.toContain('wrong-password')
-      const none = await provider.void(stored, 'a', ctxOf({ credentials: {} }), RESCISSION)
+      const none = await provider.void(stored, 'a', vctx({ credentials: {} }), RESCISSION)
       expect(none).toEqual({ voided: false, reason: SvVoidRefusals.CREDENTIALS_INCOMPLETE })
     })
 
     it('throws, and does not tell the person the document is refused, when the signer is down', async () => {
       const stored = await accepted(null)
       authority.signerDown = true
-      await expect(provider.void(stored, 'a', ctxOf(), RESCISSION)).rejects.toBeInstanceOf(
+      await expect(provider.void(stored, 'a', vctx(), RESCISSION)).rejects.toBeInstanceOf(
         SvTransportError
       )
     })

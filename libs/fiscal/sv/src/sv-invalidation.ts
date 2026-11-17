@@ -7,6 +7,7 @@ import type {
   StoredFiscalDocument
 } from '@platform/fiscal/sdk'
 
+import { isIdentityDocument } from './sv-catalog'
 import {
   SvCodePatterns,
   SvDocumentTypes,
@@ -22,7 +23,7 @@ import {
   type SvDocumentType
 } from './sv-constants'
 import { recordOf, textOf } from './sv-http'
-import { digitsOf } from './sv-parties'
+import { digitsOf, identityOf } from './sv-parties'
 import { salvadorMoment } from './sv-time'
 
 // The invalidation event of an accepted document (Manual Técnico §4.4, Funcional §VII). Pure: the document, the issuer and the people become
@@ -140,14 +141,14 @@ function partyOf(
   if (party === undefined) return null
   const name = party.name.trim()
   const idType = party.idType.trim()
-  const idNumber = party.idNumber.trim()
+  // The type is one of CAT-022 and the number has the form of its type (a tax number or a national id are digits, whatever the dashes)
+  const identity = isIdentityDocument(idType) ? identityOf(party.idNumber, idType) : null
   return name === '' ||
     name.length > SvInvalidation.PARTY_NAME_MAX ||
-    idType === '' ||
-    idNumber === '' ||
-    idNumber.length > SvInvalidation.PARTY_ID_MAX
+    identity === null ||
+    identity.number.length > SvInvalidation.PARTY_ID_MAX
     ? null
-    : { name, idType, idNumber }
+    : { name, idType, idNumber: identity.number }
 }
 
 // The receiver as the event repeats it: the identity document and the contact, as the document had them (an invoice with no receiver has none)
@@ -165,7 +166,7 @@ function receiverOf(payload: Readonly<Record<string, unknown>>): {
   return {
     tipoDocumento:
       textOf(receiver['tipoDocumento']) ?? (tax === null ? null : SvIdentityDocuments.TAX_ID),
-    numDocumento: number === null ? null : number.slice(0, SvInvalidation.PARTY_ID_MAX),
+    numDocumento: number,
     nombre: textOf(receiver['nombre']),
     // The schema asks at least eight characters of a phone that is there
     telefono: phone !== null && phone.length >= SvLimits.PHONE_MIN ? phone : null,
@@ -189,6 +190,11 @@ export function buildInvalidation(input: SvInvalidationInput): SvInvalidationBui
   const original = invalidatedOf(doc)
   if (original === null) return refuse(SvVoidRefusals.DOCUMENT_INCOMPLETE)
   if (!SvInvalidationAllowed[original.type]) return refuse(SvVoidRefusals.NOT_ALLOWED)
+  // The event repeats the receiver of the document: a number the schema would not take is never cut, the document is refused as unreadable
+  const receiver = receiverOf(doc.payload)
+  if ((receiver.numDocumento?.length ?? 0) > SvInvalidation.PARTY_ID_MAX) {
+    return refuse(SvVoidRefusals.DOCUMENT_INCOMPLETE)
+  }
 
   const nit = digitsOf(issuer.taxId)
   const phone = (issuer.phone ?? '').trim()
@@ -234,9 +240,13 @@ export function buildInvalidation(input: SvInvalidationInput): SvInvalidationBui
   }
 
   const moment = salvadorMoment(input.now)
+  // A deadline counted in business days is enforced only with a list of holidays (without it the count could end too early)
+  const holidays = input.holidays ?? SvHolidays
+  const countable = original.type === SvDocumentTypes.INVOICE || holidays.length > 0
   if (
     SvInvalidationEnforceDeadline &&
-    moment.date > invalidationDeadline(original.type, original.issueDate, input.holidays)
+    countable &&
+    moment.date > invalidationDeadline(original.type, original.issueDate, holidays)
   ) {
     return refuse(SvVoidRefusals.DEADLINE_PASSED)
   }
@@ -270,7 +280,7 @@ export function buildInvalidation(input: SvInvalidationInput): SvInvalidationBui
         numeroControl: original.controlNumber,
         fecEmi: original.issueDate,
         codigoGeneracionR: replacementCode,
-        ...receiverOf(doc.payload)
+        ...receiver
       },
       motivo: {
         tipoAnulacion: SvInvalidation.KINDS[kind],

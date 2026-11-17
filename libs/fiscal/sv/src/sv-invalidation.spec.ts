@@ -217,12 +217,60 @@ describe('the invalidation event', () => {
     expect(refusal(buildInvalidation(input({ now: '2027-02-17T06:30:00.000Z' })))).toBe(
       SvVoidRefusals.DEADLINE_PASSED
     )
-    // The tax credit document of the same date: the last day is 2026-12-14
+    // The tax credit document of the same date: the last day is 2026-12-14, counted with the holidays of the accountant
     const doc = acceptedDocument({ receiver: BUSINESS })
-    expect(refusal(buildInvalidation(input({ doc, now: '2026-12-14T20:00:00.000Z' })))).toBeNull()
-    expect(refusal(buildInvalidation(input({ doc, now: '2026-12-15T07:00:00.000Z' })))).toBe(
+    const holidays = ['2026-12-25']
+    expect(
+      refusal(buildInvalidation(input({ doc, holidays, now: '2026-12-14T20:00:00.000Z' })))
+    ).toBeNull()
+    expect(
+      refusal(buildInvalidation(input({ doc, holidays, now: '2026-12-15T07:00:00.000Z' })))
+    ).toBe(SvVoidRefusals.DEADLINE_PASSED)
+  })
+
+  it('leaves a deadline counted in business days to the authority until the holidays are listed', () => {
+    // Without the list the tenth business day could come too early, and a lawful invalidation would be refused here
+    const doc = acceptedDocument({ receiver: BUSINESS })
+    expect(refusal(buildInvalidation(input({ doc, now: '2026-12-20T20:00:00.000Z' })))).toBeNull()
+    // An invoice (calendar months) is always checked
+    expect(refusal(buildInvalidation(input({ now: '2027-03-20T20:00:00.000Z' })))).toBe(
       SvVoidRefusals.DEADLINE_PASSED
     )
+  })
+
+  it('never cuts the number of the receiver and accepts only an identity document of the catalog', () => {
+    const doc = acceptedDocument()
+    const long = {
+      ...doc,
+      payload: {
+        ...doc.payload,
+        receptor: { ...(doc.payload['receptor'] as object), numDocumento: '1'.repeat(21) }
+      }
+    }
+    expect(refusal(buildInvalidation(input({ doc: long })))).toBe(
+      SvVoidRefusals.DOCUMENT_INCOMPLETE
+    )
+    const party = (over: object): FiscalVoidDetails => ({
+      kind: FiscalVoidKind.RESCISSION,
+      responsible: { ...PERSON, ...over },
+      requester: REQUESTER
+    })
+    for (const bad of [
+      { idType: '99' },
+      { idType: '13', idNumber: '12345' },
+      { idType: '36', idNumber: 'ABC' }
+    ]) {
+      expect(refusal(buildInvalidation(input({ details: party(bad) })))).toBe(
+        SvVoidRefusals.PARTY_INVALID
+      )
+    }
+    // Dashes of a national id are cleaned, as the document of a receiver is
+    const built = buildInvalidation(
+      input({ details: party({ idType: '13', idNumber: '01234567-8' }) })
+    )
+    expect(
+      built.ok && (built.event['motivo'] as Record<string, unknown>)['numDocResponsable']
+    ).toBe('012345678')
   })
 
   it('goes by the time of El Salvador, not by UTC', () => {

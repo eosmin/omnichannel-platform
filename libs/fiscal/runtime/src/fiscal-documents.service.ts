@@ -1656,7 +1656,12 @@ export class FiscalDocumentsService {
               where: {
                 id: input.replacementDocumentId,
                 organizationId,
-                status: FiscalDocumentStatus.ACCEPTED
+                status: FiscalDocumentStatus.ACCEPTED,
+                // A replacement is a document of the same kind (a sale, not a credit note) made with the same provider in the same environment:
+                // never one of another authority or of the test environment
+                kind: doc.kind,
+                providerId: doc.providerId,
+                environment: doc.environment
               }
             })
       if (other === null) throw resourceNotFound('replacement fiscal document')
@@ -1741,7 +1746,16 @@ export class FiscalDocumentsService {
       // One key per document and reason: a double click, or a request asked again after an answer that was lost, is the same
       // invalidation for the provider; one that was refused and is asked again with another reason is a new one
       idempotencyKey: `${organizationId}:${id}:void:${createHash('sha256')
-        .update(`${reason}\n${input.kind ?? ''}\n${input.replacementDocumentId ?? ''}`)
+        .update(
+          // The reason, the kind, the people and the replacement: a request corrected in any of them is a new one for the provider
+          JSON.stringify([
+            reason,
+            input.kind ?? null,
+            input.responsible ?? null,
+            input.requester ?? null,
+            input.replacementDocumentId ?? null
+          ])
+        )
         .digest('hex')
         .slice(0, 16)}`,
       attempt
@@ -1804,7 +1818,16 @@ export class FiscalDocumentsService {
       storeId: actor.storeId,
       resourceType: FiscalResourceTypes.DOCUMENT,
       resourceId: id,
-      metadata: { externalNumber: doc.externalNumber, recoveredFromAuthority: recovered },
+      metadata: {
+        externalNumber: doc.externalNumber,
+        recoveredFromAuthority: recovered,
+        // What the person declared (the numbers of the identity documents stay out of the trail: they are customer data)
+        ...(input.kind === undefined ? {} : { voidKind: input.kind }),
+        ...(input.replacementDocumentId === undefined
+          ? {}
+          : { replacementDocumentId: input.replacementDocumentId }),
+        partiesDeclared: input.responsible !== undefined && input.requester !== undefined
+      },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })

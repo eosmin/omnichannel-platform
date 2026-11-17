@@ -48,7 +48,7 @@ export const SvEnvironmentCodes: Readonly<Record<FiscalEnvironment, string>> = {
 
 // The token of the API: how long it lives in each environment (Manual Técnico §3) and when it is renewed (a share of that), and for how long
 // a password the authority refused is not sent again (three wrong logins lock the user until a person changes the password in the site of
-// the authority). **[PENDING OWNER CONFIRMATION]** fifteen minutes.
+// the authority). (confirmed by the owner 2026-11-17) fifteen minutes.
 export const SvAuthentication = {
   TOKEN_LIFETIME_MS: {
     [FiscalEnvironment.SANDBOX]: 48 * 60 * 60 * 1000,
@@ -58,7 +58,7 @@ export const SvAuthentication = {
   REJECTED_MEMORY_MS: 15 * 60 * 1000
 } as const
 
-// The name the platform gives itself in the User-Agent of its calls: generic, with no data of the project. **[PENDING OWNER CONFIRMATION]**
+// The name the platform gives itself in the User-Agent of its calls: generic, with no data of the project. (confirmed by the owner 2026-11-17)
 export const SvUserAgent = 'PlataformaOmnicanal/1.0'
 
 // The time the authority gets to answer a document before it counts as no answer (Manual Técnico §3.3: 8 seconds)
@@ -202,7 +202,9 @@ export const SvInvalidationAllowed: Readonly<Record<SvDocumentType, boolean>> = 
 export const SvInvalidationEnforceDeadline = true
 
 // The days that are not business days besides Saturdays and Sundays (holidays), as yyyy-MM-dd. **[ACCOUNTANT]** Empty until the accountant
-// hands the list the authority counts by (a holiday not listed makes the platform's deadline one day too generous, never too strict).
+// hands the list the authority counts by. A holiday that is not listed makes the tenth business day come EARLIER than the authority's, so
+// the platform's deadline would be stricter than the law: until the list is given, the deadline of a tax credit document or a credit note
+// (counted in business days) is not enforced here and the authority has the last word. An invoice's (calendar months) always is.
 export const SvHolidays: readonly string[] = []
 
 // Why this provider refuses an invalidation, in codes of its own (never a value). Nothing was sent when one of these is the reason.

@@ -317,6 +317,7 @@ export async function voidDocument(
   const environment = ctx.issuer.environment
   const endpoints = (deps.endpoints ?? SvEndpoints)[environment]
 
+  // The token first, as `submitDocument` does: a refused password never reaches the signer (the login is kept, so the loop finds it)
   const first = await deps.auth.login(environment, identity.nit, identity.apiPassword)
   if (first.kind === 'rejected') return notVoided(SvVoidRefusals.CREDENTIALS_REJECTED)
   if (first.kind === 'unavailable') throw new SvTransportError(SvTransportFailures.NETWORK)
@@ -360,6 +361,15 @@ export async function voidDocument(
     if (answer.kind === 'credentials') return notVoided(SvVoidRefusals.CREDENTIALS_REJECTED)
     if (answer.kind === 'transient') throw new SvTransportError(SvTransportFailures.NETWORK)
     if (answer.kind === 'accepted') return { voided: true, response: answer.body }
+    if (answer.kind === 'duplicate') {
+      // The authority has this very event (an earlier call whose answer was lost): it is asked what it holds, and a document it has
+      // invalidated is the voided one this call wanted. Anything else is no answer yet: core asks again, nothing is told as refused.
+      const held = await consultVoided(deps, doc, ctx)
+      if (held.state === FiscalVoidConsultState.VOIDED) {
+        return { voided: true, ...(held.response === undefined ? {} : { response: held.response }) }
+      }
+      throw new SvTransportError(SvTransportFailures.NETWORK)
+    }
     return { voided: false, reason: answer.code, response: answer.body }
   }
   // The token was refused twice: not a verdict on the document
@@ -406,7 +416,11 @@ export async function consultVoided(
       continue
     }
     if (result.status >= 500) throw new SvTransportError(SvTransportFailures.NETWORK)
-    if (body['estado'] === SvAnswerStates.INVALIDATED) {
+    // "Invalidated" is believed only when the answer is about this document: a body that names another one (or none) says nothing of it
+    if (
+      body['estado'] === SvAnswerStates.INVALIDATED &&
+      textOf(body['codigoGeneracion'])?.toUpperCase() === original.generationCode
+    ) {
       return { state: FiscalVoidConsultState.VOIDED, response: body }
     }
     return body['estado'] === SvAnswerStates.PROCESSED

@@ -39,3 +39,10 @@ Not copied: the manuals, the signing certificate, any credential, nor the enviro
 - The discount of the order is spread over the items (the field of each item); the global discounts of the summary stay empty.
 - The shipping fee is a service of its own: taxed when the order taxed it, exempt when it carried no tax.
 - An invoice holds the tax inside its prices; a tax credit document and a credit note show net prices and the tax apart.
+
+## Runbook of the sandbox (the signing service)
+
+- Run the official signing service in a container **without SSL on a private network** (never published): the platform reaches it by `FISCAL_SIGNER_URL`.
+- The service reads the certificate of the taxpayer from its own disk as `{NIT}.crt`, with the NIT exactly as the service is asked for it (digits, no dashes). **The file the ministry gives is called `Certificado_<nit>.crt`: mount a renamed copy** (read-only volume), never the original, and never put it in the repository or in the image.
+- The platform sends only the NIT and the password of the private key; the password of the API user is a credential of the issuer. Neither is logged.
+- `scripts/check-sv-certificate.ts` is run by the owner on their machine (the password in `SV_CERT_PASSWORD`); it prints only booleans.
