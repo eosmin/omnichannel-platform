@@ -1211,7 +1211,6 @@ export const ApiRoutes = {
 
   analytics: {
     metrics: '/analytics/metrics',
-    dashboard: '/analytics/dashboard',
     reports: '/analytics/reports',
     reportById: (id: string) => `/analytics/reports/${id}`,
     export: '/analytics/export',
