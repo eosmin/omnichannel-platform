@@ -108,6 +108,20 @@ export class PluginMessagesController {
         { required: [PluginScopes.MEDIA_WRITE] }
       )
     }
+    // Writing AS a person (`authorType: agent` + `userId`) is a grant of its own, read on the consent screen: `messages:write` alone
+    // writes only as the plugin (MSG-410). The route names this scope only when the body asks for it, so it is checked here, as the
+    // scope of a file is above; the service then checks the person (an active member of the store who holds the permission).
+    if (
+      body.authorType === AuthorType.AGENT &&
+      !installation.scopes.includes(PluginScopes.MESSAGES_WRITE_AS_AGENT)
+    ) {
+      throw new PlatformException(
+        ErrorCodes.PLUGIN_SCOPE_DENIED,
+        'writing as a member of the team needs the scope messages:write-as-agent',
+        HttpStatusCodes.FORBIDDEN,
+        { required: [PluginScopes.MESSAGES_WRITE_AS_AGENT] }
+      )
+    }
     const plugin = await this.prisma.client.plugin.findUnique({
       where: { id: installation.pluginId },
       select: { name: true }

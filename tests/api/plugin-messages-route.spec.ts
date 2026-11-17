@@ -52,6 +52,7 @@ const ALL_SCOPES = [
   PluginScopes.CONVERSATIONS_READ,
   PluginScopes.MESSAGES_READ,
   PluginScopes.MESSAGES_WRITE,
+  PluginScopes.MESSAGES_WRITE_AS_AGENT,
   PluginScopes.MESSAGES_READ_DELETED,
   PluginScopes.MEDIA_WRITE
 ]
@@ -292,6 +293,58 @@ describe('The messages of the plugin API', () => {
         authorPluginId: pluginId
       })
       expect((await row(id)).firstResponseAt).not.toBeNull()
+    })
+
+    // MSG-410: `messages:write` alone writes only as the plugin; acting as a person is the scope of its own
+    it('refuses to write as a person without messages:write-as-agent, the same for a real member and for one that does not exist', async () => {
+      const { id } = await mk()
+      const real = await post(
+        text(id, { authorType: AuthorType.AGENT, userId: ctx.agentA.id }),
+        keys.nomedia
+      )
+      const unknown = await post(
+        text(id, { authorType: AuthorType.AGENT, userId: randomUUID() }),
+        keys.nomedia
+      )
+
+      for (const response of [real, unknown]) {
+        expect(response.status).toBe(FORBIDDEN)
+        expect(codeOf(response.body)).toBe(ErrorCodes.PLUGIN_SCOPE_DENIED)
+        expect(response.body).toMatchObject({
+          error: { metadata: { required: [PluginScopes.MESSAGES_WRITE_AS_AGENT] } }
+        })
+      }
+      expect(await owner.message.count({ where: { conversationId: id } })).toBe(0)
+    })
+
+    it('still writes as the plugin with messages:write alone', async () => {
+      const { id } = await mk({ storeId: ctx.storeA2.id })
+
+      const response = await post(text(id), keys.nomedia)
+
+      expect(response.status).toBe(CREATED)
+      expect(response.body).toMatchObject({
+        authorType: AuthorType.SYSTEM,
+        authorId: null,
+        authorPluginId: otherPluginId
+      })
+    })
+
+    it('audits a message written as a person with the plugin, the installation and the person it wrote for', async () => {
+      const { id } = await mk()
+
+      const response = await post(text(id, { authorType: AuthorType.AGENT, userId: ctx.agentA.id }))
+
+      const [entry] = await waitForAuditEntries(owner, {
+        action: AuditAction.MESSAGE_PLUGIN_SENT,
+        resourceId: (response.body as MessageBody).id
+      })
+      expect(entry?.userId).toBeNull()
+      expect(entry?.metadata).toMatchObject({
+        pluginId,
+        authorType: AuthorType.AGENT,
+        userId: ctx.agentA.id
+      })
     })
 
     it('refuses to write as a user of another store, and writes nothing', async () => {
