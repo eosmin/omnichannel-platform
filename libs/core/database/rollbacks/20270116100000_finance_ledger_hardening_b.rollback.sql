@@ -1,4 +1,4 @@
--- Rolls back 20270115100000_finance_ledger_hardening_b: gives the application roles back the column privileges and drops the write-once guard
+-- Rolls back 20270116100000_finance_ledger_hardening_b: gives the application roles back the column privileges and drops the write-once guard
 -- of the incident. Safe to run twice.
 BEGIN;
 
