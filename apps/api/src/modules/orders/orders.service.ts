@@ -80,6 +80,7 @@ import {
   type OrderTaxSnapshot,
   planTax,
   snapshotTax,
+  storedRounding,
   taxColumnsOf
 } from './orders-tax'
 import { type ListOrdersQuery, encodeOrderCursor } from './orders.schemas'
@@ -982,6 +983,8 @@ export class OrdersService {
               ? null
               : planTax(taxContext, {
                   includesTax: order.pricesIncludeTax,
+                  // The rounding the tax was quoted with, not the one of the books today
+                  rounding: storedRounding(order.taxRounding),
                   // A fee that did not change keeps the rate it was taxed at
                   shippingRateBps:
                     shippingCents === order.shippingCents ? order.shippingTaxRateBps : 'current'

@@ -426,6 +426,7 @@ export const QueryKeys = {
     root: ['fiscal'] as const,
     providers: (storeId: string) => ['fiscal', storeId, 'providers'] as const,
     issuer: (storeId: string) => ['fiscal', storeId, 'issuer'] as const,
+    series: (storeId: string) => ['fiscal', storeId, 'series'] as const,
     documents: (storeId: string, filters: Record<string, string>) =>
       ['fiscal', storeId, 'documents', filters] as const,
     document: (storeId: string, id: string) => ['fiscal', storeId, 'document', id] as const

@@ -76,6 +76,18 @@ export interface FiscalProviderManifest {
   readonly sequence?: FiscalSequenceDeclaration
   // What the provider's authority asks a person for when an accepted document is invalidated. Absent: the reason alone is enough.
   readonly voidInputs?: FiscalVoidInputsDeclaration
+  // The lists of values the provider's authority defines (a kind of establishment, an economic activity, a kind of identity document), by
+  // the provider's own name for each list. The settings screen draws a select from one, so a person picks a code instead of typing it and
+  // the screen knows no catalog of any country (Step 4B.7c-5).
+  readonly catalogs?: Readonly<Record<string, readonly FiscalCatalogOption[]>>
+  // Which catalog an issuer field is chosen from; a field with no entry is typed
+  readonly issuerFieldCatalogs?: Readonly<Partial<Record<FiscalIssuerField, string>>>
+}
+
+// One value of a catalog: the code the provider reads and the words a person reads
+export interface FiscalCatalogOption {
+  readonly code: string
+  readonly label: string
 }
 
 // What an invalidation asks of the person (Step 4B.7c-4): the screen draws the fields from this, and core passes what was typed on
@@ -86,6 +98,8 @@ export interface FiscalVoidInputsDeclaration {
   readonly requiresParties: boolean
   // The reasons that name the document that takes the place of the invalidated one (the authority wants it first)
   readonly kindsWithReplacement?: readonly FiscalVoidKind[]
+  // The catalog the kind of identity document of the two people is chosen from; absent: typed
+  readonly identityCatalog?: string
   // The longest reason the authority takes; the screen counts with it (core's own limit is wider)
   readonly reasonMaxLength?: number
 }

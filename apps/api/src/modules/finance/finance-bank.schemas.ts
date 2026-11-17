@@ -128,7 +128,8 @@ export const bankImportQuerySchema = z
         .pipe(z.number().int().min(-FinanceLimits.MAX_LINE_CENTS).max(FinanceLimits.MAX_LINE_CENTS))
         .optional()
     ),
-    closingOn: day.optional(),
+    // An empty day is no day, like an empty balance: the two come together or not at all
+    closingOn: z.preprocess(value => (value === '' ? undefined : value), day.optional()),
     // The person said the order of the day and the month of the file is the profile's, when every date reads in both orders
     dateFormatConfirmed: z
       .enum(['true', 'false'])

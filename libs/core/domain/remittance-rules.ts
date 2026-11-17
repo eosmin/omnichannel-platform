@@ -94,12 +94,23 @@ export interface LineInput {
   reportedFeeCents: number | null
   // The guide was already seen in this same remittance (the second occurrence is ignored)
   duplicate: boolean
+  // What the earlier confirmed remittances already paid for this guide: a later one is held against what is still owed
+  remittedBeforeCents?: number
   shipment: MatchShipment | null
 }
 
 export interface LineResult {
   outcome: RemittanceLineOutcome
   expectedCents: number | null
+}
+
+// What a guide still owes once the earlier confirmed remittances are counted (never below zero); an unknown amount stays unknown.
+// The books already add every confirmed remittance of a guide, so the guide's own figures do the same (TDD_17 §4.13).
+export function owedAfter(
+  expectedCents: number | null,
+  remittedBeforeCents: number
+): number | null {
+  return expectedCents === null ? null : Math.max(0, expectedCents - remittedBeforeCents)
 }
 
 // The outcome of one line (§4.15). A line that finds no shipment, or one that cannot be remitted, keeps its expected amount
@@ -119,7 +130,10 @@ export function classifyLine(input: LineInput, deductsFee: boolean): LineResult 
   if (!RemittableCodStatuses.includes(shipment.codStatus)) {
     return { outcome: RemittanceLineOutcome.NOT_DELIVERED, expectedCents: null }
   }
-  const expectedCents = lineExpectedCents(shipment, input.reportedFeeCents, deductsFee)
+  const expectedCents = owedAfter(
+    lineExpectedCents(shipment, input.reportedFeeCents, deductsFee),
+    input.remittedBeforeCents ?? 0
+  )
   return {
     outcome:
       expectedCents === input.reportedCents
