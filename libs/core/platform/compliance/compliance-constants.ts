@@ -84,8 +84,17 @@ export const AuditColdExport = {
   READ_BATCH: 1000,
   DELETE_BATCH: 500,
   MAX_MONTHS_PER_RUN: 3,
-  CONTENT_TYPE: 'application/gzip'
+  CONTENT_TYPE: 'application/gzip',
+  // The most a month may hold its lock (the transaction that holds it). Past it the database ends the transaction and
+  // the lock is let go; a process that dies lets it go at once, because the connection closes
+  LOCK_TIMEOUT_MS: 2 * 60 * 60 * 1000,
+  LOCK_MAX_WAIT_MS: 5_000
 } as const
+
+// The advisory lock of the cold export of one month: two runs of the same month (a job given again as stalled, two
+// replicas, a hand-added job) never export it at the same time
+export const auditColdExportLockKey = (year: number, month: number): string =>
+  `audit-cold-export-${year}-${month}`
 
 export const LegalBases = {
   CONSENT: 'consent',

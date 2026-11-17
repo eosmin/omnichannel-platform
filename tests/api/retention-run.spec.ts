@@ -5,7 +5,7 @@ import type { INestApplication } from '@nestjs/common'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
-import { DataRetentionPolicies } from '@platform/core/compliance'
+import { auditColdExportLockKey, DataRetentionPolicies } from '@platform/core/compliance'
 import { PrismaService } from '@platform/core/database'
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
 import { ConversationStatus } from '@platform/core/domain'
@@ -734,6 +734,45 @@ describe('The retention run of the worker', () => {
       expect((await linesOf(key1)).map(line => line.id)).toEqual([first.id])
       expect((await linesOf(key2)).map(line => line.id)).toEqual([again.id])
       expect(await owner.auditLog.count({ where: { id: again.id } })).toBe(0)
+    })
+
+    it('leaves a month to the run that holds its lock: it writes no object and deletes no row', async () => {
+      const row = await entry('2001-05-10T00:00:00Z', 'test.cold.locked')
+      const key = auditColdExportLockKey(2001, 5)
+
+      const report = await owner.$transaction(
+        async tx => {
+          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`
+          return exporter.run(before)
+        },
+        { timeout: 30_000 }
+      )
+
+      expect(report.busy).toEqual({ year: 2001, month: 5 })
+      expect(report.months).toEqual([])
+      expect(await storage.head(StorageKeys.auditArchive(2001, 5))).toBeNull()
+      expect(await owner.auditLog.count({ where: { id: row.id } })).toBe(1)
+      // Once the other run is over (its lock is gone) the month goes
+      const after = await exporter.run(before)
+      archived.push(StorageKeys.auditArchive(2001, 5))
+      expect(after.busy).toBeNull()
+      expect(after.months.find(month => month.month === 5)?.rows).toBe(1)
+    })
+
+    it('exports a month once when two runs meet: one object, every row in it, none lost', async () => {
+      const rows = [
+        await entry('2001-02-03T00:00:00Z', 'test.cold.twice'),
+        await entry('2001-02-20T00:00:00Z', 'test.cold.twice')
+      ]
+
+      const reports = await Promise.all([exporter.run(before), exporter.run(before)])
+
+      const key = StorageKeys.auditArchive(2001, 2)
+      archived.push(key, StorageKeys.auditArchive(2001, 2, 2))
+      expect(reports.flatMap(report => report.months).filter(month => month.month === 2)).toHaveLength(1)
+      expect(await storage.head(StorageKeys.auditArchive(2001, 2, 2))).toBeNull()
+      expect((await linesOf(key)).map(line => line.id).sort()).toEqual(rows.map(row => row.id).sort())
+      expect(await owner.auditLog.count({ where: { id: { in: rows.map(row => row.id) } } })).toBe(0)
     })
 
     it('holds a job to the end of the hot window, whatever instant it names', async () => {

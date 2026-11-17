@@ -1,13 +1,14 @@
 import { createHash } from 'node:crypto'
 import { once } from 'node:events'
 import { Transform, Writable } from 'node:stream'
+import { createInterface } from 'node:readline'
 import { pipeline } from 'node:stream/promises'
 import { createGunzip, createGzip } from 'node:zlib'
 
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
-import { AuditColdExport } from '@platform/core/compliance'
+import { AuditColdExport, auditColdExportLockKey } from '@platform/core/compliance'
 import { PrismaService } from '@platform/core/database'
 import { DAY_MS } from '@platform/core/domain'
 import { StorageKeys } from '@platform/core/storage'
@@ -19,6 +20,8 @@ export interface AuditColdExportReport {
   months: { year: number; month: number; rows: number; key: string }[]
   // True when months past the window are left for the next run
   more: boolean
+  // The month another run held the lock of, when this one met it: it is left to that run and the loop stops here
+  busy: { year: number; month: number } | null
 }
 
 const NEWLINE = 0x0a
@@ -29,7 +32,11 @@ const NEWLINE = 0x0a
 // only then are those rows deleted, with the role of the worker (`platform_app` cannot delete from audit_logs).
 // Nothing is deleted early (only whole months older than the window), nothing is patched, and nothing is deleted
 // whose copy was not verified. A month is one object: if a run finds it already there (the delete did not finish)
-// the rows that are left go in the next part, never over the first.
+// the rows that are left go in the next part, never over the first. A month is exported by one run at a time: the
+// run takes the advisory lock of the month (of a transaction, so it is let go when the connection closes, if the
+// process dies, and it works behind PgBouncer) and a run that does not get it leaves the month to the one that has
+// it, so that it never deletes an object the other one wrote or verified. The rows deleted are the ones that were
+// written to the object, read back from it, and not every row the month holds at that moment.
 @Injectable()
 export class AuditColdExporter {
   constructor(
@@ -48,7 +55,7 @@ export class AuditColdExporter {
     const limit = before.getTime() > hotEnd.getTime() ? hotEnd : before
     // A month leaves only once all of it is older than `limit`: its end is at or before the start of the month `limit` is in
     const bound = startOfUtcMonth(limit)
-    const report: AuditColdExportReport = { months: [], more: false }
+    const report: AuditColdExportReport = { months: [], more: false, busy: null }
     for (let done = 0; done < AuditColdExport.MAX_MONTHS_PER_RUN; done += 1) {
       const oldest = await this.prisma.client.auditLog.findFirst({
         where: { timestamp: { lt: bound } },
@@ -57,7 +64,17 @@ export class AuditColdExporter {
       })
       if (oldest === null) return report
       const start = startOfUtcMonth(oldest.timestamp)
-      report.months.push(await this.exportMonth(start, startOfNextUtcMonth(start)))
+      const exported = await this.withMonthLock(start, () =>
+        this.exportMonth(start, startOfNextUtcMonth(start))
+      )
+      if (exported === null) {
+        // Another run has this month and is the one to finish it: asking for the oldest again would find it again
+        report.busy = { year: start.getUTCFullYear(), month: start.getUTCMonth() + 1 }
+        report.more = true
+        this.logger.info(report.busy, 'a month of the audit log is held by another export run')
+        return report
+      }
+      report.months.push(exported)
     }
     report.more =
       (await this.prisma.client.auditLog.findFirst({
@@ -65,6 +82,21 @@ export class AuditColdExporter {
         select: { id: true }
       })) !== null
     return report
+  }
+
+  // Runs `fn` while holding the lock of the month, or answers null at once when another run holds it. The lock lives
+  // as long as the transaction that took it, which does nothing else: the export reads and writes on its own connections
+  private async withMonthLock<T>(start: Date, fn: () => Promise<T>): Promise<T | null> {
+    const key = auditColdExportLockKey(start.getUTCFullYear(), start.getUTCMonth() + 1)
+    return this.prisma.transaction(
+      async tx => {
+        const rows = await tx.$queryRaw<{ locked: boolean }[]>`
+          SELECT pg_try_advisory_xact_lock(hashtextextended(${key}, 0)) AS locked`
+        if (rows[0]?.locked !== true) return null
+        return fn()
+      },
+      { maxWait: AuditColdExport.LOCK_MAX_WAIT_MS, timeout: AuditColdExport.LOCK_TIMEOUT_MS }
+    )
   }
 
   private async exportMonth(start: Date, end: Date) {
@@ -147,7 +179,7 @@ export class AuditColdExporter {
       await this.storage.delete(key).catch(() => undefined)
       throw error
     }
-    await this.deleteRows(start, end)
+    await this.deleteExportedRows(key)
     this.logger.info({ year, month, rows, key }, 'a month of the audit log went to cold storage')
     return { year, month, rows, key }
   }
@@ -191,15 +223,28 @@ export class AuditColdExporter {
     }
   }
 
-  private async deleteRows(start: Date, end: Date): Promise<void> {
-    for (;;) {
-      const deleted = await this.prisma.client.$executeRaw`
-        DELETE FROM audit_logs WHERE id IN (
-          SELECT id FROM audit_logs
-          WHERE timestamp >= (${start.toISOString()}::timestamptz AT TIME ZONE 'UTC')
-            AND timestamp < (${end.toISOString()}::timestamptz AT TIME ZONE 'UTC')
-          LIMIT ${AuditColdExport.DELETE_BATCH})`
-      if (deleted < AuditColdExport.DELETE_BATCH) return
+  // Deletes the rows that are in the object, and only those: a row that reached the month after the export read it is
+  // not in the object and stays for the next run. The ids are read back from the verified object, a batch at a time
+  private async deleteExportedRows(key: string): Promise<void> {
+    const body = await this.storage.stream(key)
+    if (body === null) throw new Error('the cold export is not in the bucket to delete its rows')
+    const gunzip = createGunzip()
+    // A failure of the object stream reaches the loop through the gunzip stream, which pipe() does not do by itself
+    body.on('error', (error: Error) => gunzip.destroy(error))
+    const lines = createInterface({ input: body.pipe(gunzip), crlfDelay: Infinity })
+    let ids: string[] = []
+    for await (const line of lines) {
+      const id = (JSON.parse(line) as { id: string }).id
+      ids.push(id)
+      if (ids.length >= AuditColdExport.DELETE_BATCH) {
+        await this.deleteIds(ids)
+        ids = []
+      }
     }
+    if (ids.length > 0) await this.deleteIds(ids)
+  }
+
+  private async deleteIds(ids: string[]): Promise<void> {
+    await this.prisma.client.$executeRaw`DELETE FROM audit_logs WHERE id = ANY(${ids}::text[])`
   }
 }
