@@ -299,7 +299,7 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
       const again = await enter()
       expect(again.status).toBe(CONFLICT)
       expect(metaOf(again)).toMatchObject({ reason: 'contingency_already_open' })
-      expect(dataOf(await asAdminA().get(ApiRoutes.fiscal.contingency.current)).id).toBe(
+      expect(viewOf(await asAdminA().get(ApiRoutes.fiscal.contingency.current)).id).toBe(
         contingencyId
       )
     })
