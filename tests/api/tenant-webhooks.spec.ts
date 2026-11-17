@@ -1,15 +1,19 @@
 import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import type { INestApplication } from '@nestjs/common'
+import pg from 'pg'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { CredentialCipher } from '@platform/core/crypto'
 import { PrismaService } from '@platform/core/database'
-import type { OwnerClient } from '@platform/core/database-testing'
+import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
 import {
   WEBHOOK_RESOURCE_TYPE,
   WEBHOOK_SECRET_PREFIX,
+  WebhookConflictReasons,
   WebhookEvents,
   WebhookLimits,
   WebhookStatus
@@ -26,6 +30,12 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { standalone } from '../helpers/leaks'
 import { type CapturedQueue, queueOf } from '../helpers/queue'
+
+// Runs its unscoped statements on the test database, so it relies on the suites running one at a time (`--runInBand`)
+const MIGRATION = join(
+  __dirname,
+  '../../libs/core/database/prisma/migrations/20270118100000_webhooks_unique_target/migration.sql'
+)
 
 const OK = 200
 const CREATED = 201
@@ -183,8 +193,25 @@ describe('The webhooks of a store', () => {
       const answers = await Promise.all(Array.from({ length: 6 }, () => send()))
 
       expect(answers.filter(answer => answer.status === CREATED)).toHaveLength(1)
-      expect(answers.filter(answer => answer.status === CONFLICT)).toHaveLength(5)
+      const refused = answers.filter(answer => answer.status === CONFLICT)
+      expect(refused).toHaveLength(5)
+      for (const answer of refused) {
+        const { error } = answer.body as {
+          error: { code: string; details: { reason: string } }
+        }
+        expect(error.code).toBe(ErrorCodes.RESOURCE_CONFLICT)
+        expect(error.details.reason).toBe(WebhookConflictReasons.DUPLICATE)
+      }
       expect(await owner.webhook.count({ where: { storeId: ctx.storeA.id } })).toBe(1)
+    })
+
+    it('takes two spellings of one address for one address', async () => {
+      await create('https://8.8.8.8/hooks/platform', [Events.ORDER_CREATED])
+
+      await asAdmin()
+        .post(ApiRoutes.settings.webhooks)
+        .send({ url: 'https://8.8.8.8:443/hooks/platform', events: [Events.ORDER_CREATED] })
+        .expect(CONFLICT)
     })
 
     it('refuses a copy whatever the order of its events, and allows another address or another set of events', async () => {
@@ -253,6 +280,69 @@ describe('The webhooks of a store', () => {
         .post(ApiRoutes.settings.webhooks)
         .send({ url: PUBLIC_URL, events: [Events.ORDER_CREATED] })
         .expect(CREATED)
+    })
+  })
+
+  describe('the migration that made it unique', () => {
+    it('sorts the events, keeps the active copy of a pair and disables the others without deleting them', async () => {
+      const sql = readFileSync(MIGRATION, 'utf8')
+      const make = (
+        url: string,
+        events: string[],
+        status: string,
+        createdAt: string
+      ): Promise<{ id: string }> =>
+        owner.webhook.create({
+          data: {
+            storeId: ctx.storeA.id,
+            url,
+            events,
+            status,
+            secret: Buffer.from('x'),
+            createdBy: ctx.adminA.id,
+            createdAt: new Date(createdAt)
+          },
+          select: { id: true }
+        })
+      // The state before the migration: no index, so the copies can exist
+      await owner.$executeRawUnsafe('DROP INDEX IF EXISTS "uq_webhooks_store_url_events"')
+      const pausedOld = await make(PUBLIC_URL, [Events.ORDER_CREATED], 'paused', '2027-01-01')
+      const activeNew = await make(PUBLIC_URL, [Events.ORDER_CREATED], 'active', '2027-01-02')
+      const activeNewer = await make(PUBLIC_URL, [Events.ORDER_CREATED], 'active', '2027-01-03')
+      const unsorted = await make(
+        'https://8.8.4.4/x',
+        [Events.ORDER_CREATED, Events.CUSTOMER_CREATED],
+        'paused',
+        '2027-01-01'
+      )
+      const sortedTwin = await make(
+        'https://8.8.4.4/x',
+        [Events.CUSTOMER_CREATED, Events.ORDER_CREATED],
+        'paused',
+        '2027-01-02'
+      )
+      const client = new pg.Client({ connectionString: connectionUrls().owner })
+      await client.connect()
+      try {
+        await client.query(sql)
+        // Idempotent: a second run changes nothing and does not fail
+        await client.query(sql)
+      } finally {
+        await client.end()
+      }
+      const status = async (id: string) =>
+        (await owner.webhook.findUniqueOrThrow({ where: { id } })).status
+      expect(await status(activeNew.id)).toBe('active')
+      expect(await status(activeNewer.id)).toBe('disabled')
+      expect(await status(pausedOld.id)).toBe('disabled')
+      // The older of two with the same state stays; the events are in the order of the api
+      expect(await status(unsorted.id)).toBe('paused')
+      expect(await status(sortedTwin.id)).toBe('disabled')
+      expect(
+        (await owner.webhook.findUniqueOrThrow({ where: { id: unsorted.id } })).events
+      ).toEqual([Events.CUSTOMER_CREATED, Events.ORDER_CREATED])
+      // Nothing was deleted
+      expect(await owner.webhook.count({ where: { storeId: ctx.storeA.id } })).toBe(5)
     })
   })
 

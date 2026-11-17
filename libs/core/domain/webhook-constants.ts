@@ -11,6 +11,11 @@ export const WebhookHeaders = {
 // Who is calling: a receiver behind a firewall that refuses a request with no User-Agent would fail every delivery for good
 export const WEBHOOK_USER_AGENT = 'Platform-Webhooks/1.0'
 
+// Why a write to a webhook was refused with a conflict (`details.reason` of the answer), so that the client tells them apart
+export const WebhookConflictReasons = {
+  DUPLICATE: 'duplicate_webhook' // The store already has one for the same events at the same address
+} as const
+
 export const WebhookLimits = {
   MAX_CONSECUTIVE_FAILURES: 20, // The webhook is auto-disabled and its admins are notified once
   MAX_PER_STORE: 20, // The list of the settings page is returned whole, so the count bounds it

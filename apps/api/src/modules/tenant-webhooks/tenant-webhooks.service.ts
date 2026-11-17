@@ -13,6 +13,7 @@ import {
 import {
   WEBHOOK_RESOURCE_TYPE,
   WEBHOOK_SECRET_PREFIX,
+  WebhookConflictReasons,
   WebhookLimits,
   WebhookStatus
 } from '@platform/core/domain'
@@ -48,7 +49,8 @@ async function refusingCopies<T>(work: () => Promise<T>): Promise<T> {
   try {
     return await work()
   } catch (error) {
-    if (isUniqueViolation(error)) throw resourceConflict(DUPLICATE)
+    if (isUniqueViolation(error))
+      throw resourceConflict(DUPLICATE, { reason: WebhookConflictReasons.DUPLICATE })
     throw error
   }
 }

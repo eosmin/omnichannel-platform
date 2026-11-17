@@ -24,6 +24,9 @@ const webhookUrl = z
   .refine(value => !isPlainHttpsUrl(value) || new URL(value).hash === '', {
     message: 'must not carry a fragment'
   })
+  // The address as the URL standard writes it (host in lower case, no default port, a path): two spellings of one address
+  // are one, for the rule that a store holds one webhook per address and set of events
+  .transform(value => (isPlainHttpsUrl(value) ? new URL(value).href : value))
 
 // Each event once, in a fixed order (the same set is then the same array: a store cannot hold two webhooks with the
 // same address and events), and only the ones a webhook can be subscribed to
