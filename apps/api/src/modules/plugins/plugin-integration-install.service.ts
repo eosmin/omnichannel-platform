@@ -173,6 +173,14 @@ export class PluginIntegrationInstallService {
     const write = () =>
       this.prisma.transaction(async tx => {
         await lockStoreForWrite(tx, storeId)
+        // The plugin row is held while the installation is written, and the archive of the plugin takes it first: the install either
+        // sees the plugin archived (it is gone for the organization) or the archive sees this installation and refuses (N-A7-08)
+        const [held] = await tx.$queryRaw<
+          { status: string }[]
+        >`SELECT status FROM plugins WHERE id = ${pluginId} FOR SHARE`
+        if (held === undefined || held.status !== String(PluginStatus.APPROVED)) {
+          throw resourceNotFound('plugin')
+        }
         const current = await tx.pluginInstallation.findUnique({
           where: { storeId_pluginId: { storeId, pluginId } },
           select: {

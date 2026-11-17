@@ -165,9 +165,11 @@ export class PluginRegistrationService {
     if (manifest.type !== PluginCatalogTypes.CHANNEL || manifest.icon === undefined) return null
     const existing = await this.prisma.client.plugin.findUnique({
       where: { id: manifest.id },
-      select: { organizationId: true, iconKey: true, manifest: true }
+      select: { organizationId: true, iconKey: true, manifest: true, status: true }
     })
     if (existing !== null && existing.organizationId !== store.organizationId) return null
+    // An archived plugin is not registered again: nothing is fetched for it
+    if (existing?.status === String(PluginStatus.ARCHIVED)) return null
     const stored = storedIconSchema.safeParse(existing?.manifest)
     if (existing?.iconKey != null && stored.success && stored.data.icon === manifest.icon) {
       return null
@@ -206,7 +208,13 @@ export class PluginRegistrationService {
       }
 
       if (existing === null) {
-        const count = await tx.plugin.count({ where: { organizationId: store.organizationId } })
+        // An archived plugin (removed, with the history of a channel kept) frees its place
+        const count = await tx.plugin.count({
+          where: {
+            organizationId: store.organizationId,
+            status: { not: PluginStatus.ARCHIVED }
+          }
+        })
         if (count >= PluginRegistrationLimits.MAX_PER_ORGANIZATION) {
           throw new PlatformException(
             ErrorCodes.PLUGIN_LIMIT_REACHED,
@@ -240,6 +248,10 @@ export class PluginRegistrationService {
         existing.type !== manifest.type
       ) {
         throw alreadyRegistered('that plugin id is taken')
+      }
+      // An archived plugin keeps its id for the history it holds: it is not registered again under it, whatever manifest comes
+      if (existing.status === String(PluginStatus.ARCHIVED)) {
+        throw alreadyRegistered('that plugin was removed and its id cannot be used again')
       }
       const storedVersion = storedVersionSchema.safeParse(existing.manifest)
       // A row whose manifest has no version is not one this code wrote: it is not replaced, whatever comes
