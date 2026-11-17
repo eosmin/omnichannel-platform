@@ -452,6 +452,23 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
       expect(response.status).toBe(BAD_REQUEST)
     })
 
+    it('takes an empty closing day like an empty balance: both empty is a statement with no balance', async () => {
+      const both = await send(
+        `${HEADER}\n${day(-97)},Both empty ${randomUUID()},,1.00\n`,
+        profile.id,
+        '&closingBalanceCents=&closingOn='
+      )
+      expect(both.status).toBe(CREATED)
+      expect(both.body).toMatchObject({ closingBalanceCents: null, closingOn: null })
+      // A balance with an empty day is still a balance without its day
+      const noDay = await send(
+        `${HEADER}\n${day(-98)},No day ${randomUUID()},,1.00\n`,
+        profile.id,
+        '&closingBalanceCents=100&closingOn='
+      )
+      expect(noDay.status).toBe(BAD_REQUEST)
+    })
+
     it('reads a closing balance that is a whole number of cents and nothing else', async () => {
       const before = await owner.bankStatementImport.count({
         where: { organizationId: ctx.orgA.id }

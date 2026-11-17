@@ -5,11 +5,14 @@ type Frequency = ReportFrequencyType
 const DAY_MS = 86_400_000
 const CALENDAR_DAY_LENGTH = 10 // "2026-11-12"
 
-// A time zone name the runtime knows: `Intl` refuses the others with a RangeError
+// A time zone name of the database the runtime knows: `Intl` refuses the others with a RangeError. It also takes a fixed offset
+// ("+06:00") as a zone, and that is not one (it never changes with daylight saving time): a name that resolves to an offset is refused.
+const FIXED_OFFSET = /^[+-]/
+
 export function isTimeZone(name: string): boolean {
   try {
-    new Intl.DateTimeFormat('en-US', { timeZone: name })
-    return true
+    const resolved = new Intl.DateTimeFormat('en-US', { timeZone: name }).resolvedOptions().timeZone
+    return !FIXED_OFFSET.test(resolved)
   } catch {
     return false
   }

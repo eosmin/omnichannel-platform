@@ -15,6 +15,13 @@ describe('time zones', () => {
     expect(isTimeZone('Mars/Olympus')).toBe(false)
     expect(isTimeZone('')).toBe(false)
   })
+
+  it('refuses a fixed offset: it is no zone of the database and has no daylight saving time', () => {
+    for (const offset of ['+06:00', '-06:00', '+0600', '-0600', '+06', '-6']) {
+      expect([offset, isTimeZone(offset)]).toEqual([offset, false])
+    }
+    expect(isTimeZone('UTC')).toBe(true)
+  })
 })
 
 describe('localMoment', () => {
