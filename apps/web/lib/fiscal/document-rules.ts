@@ -30,7 +30,10 @@ export interface FiscalDocumentActions {
 }
 
 export function fiscalActionsOf(
-  document: Pick<FiscalDocumentView, 'id' | 'kind' | 'status' | 'attempts' | 'rejectionReason'>,
+  document: Pick<
+    FiscalDocumentView,
+    'id' | 'kind' | 'status' | 'attempts' | 'rejectionReason' | 'replacesDocumentId'
+  >,
   replacedIds: ReadonlySet<string>,
   // Whether the provider's authority asks for the replacement before an invalidation (its manifest): then an accepted sale document can
   // be replaced first
@@ -47,6 +50,8 @@ export function fiscalActionsOf(
       asksReplacementFirst &&
       sale &&
       document.status === FiscalDocumentStatus.ACCEPTED &&
+      // A replacement is not replaced first (the server refuses it)
+      document.replacesDocumentId === null &&
       !replacedIds.has(document.id),
     replace:
       document.status === FiscalDocumentStatus.VOIDED &&

@@ -1,4 +1,4 @@
--- Rolls back 20270114100000_fiscal_replace_first. It refuses to run while a replacement exists whose original is not voided: the restored
+-- Rolls back 20270114100000_fiscal_replace_first. It refuses to run while a live replacement exists whose original is not voided: the restored
 -- rules (one live sale document per order, a replacement only of a voided document) would be broken by that pair. Void the original (or
 -- decide with the accountant which of the two documents stands) first. Run it before the code that makes a replacement first is brought
 -- back, and stop the code that makes a replacement first (an older release) before it: the script takes a lock that keeps writers out of the
@@ -10,9 +10,9 @@ BEGIN
   IF EXISTS (
     SELECT 1 FROM fiscal_documents r
     JOIN fiscal_documents o ON o.id = r.replaces_document_id
-    WHERE o.status <> 'voided'
+    WHERE o.status <> 'voided' AND r.status <> 'voided'
   ) THEN
-    RAISE EXCEPTION 'a replacement exists whose original is not voided: void the original first';
+    RAISE EXCEPTION 'a live replacement exists whose original is not voided: void the original first';
   END IF;
 END
 $$;

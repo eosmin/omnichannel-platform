@@ -256,14 +256,27 @@ describe('The replacement made before the invalidation (Step 4B.7c-5b)', () => {
       expect(reasonOf(again)).toBe(FiscalConflictReasons.ALREADY_REPLACED)
     })
 
-    it('does not make the replacement of a replacement while the original is alive, and says why', async () => {
+    it('does not make the replacement of a replacement, and says it is not available', async () => {
       const original = await accepted()
       const made = ((await replaceOf(original.documentId)).body as { data: { id: string } }).data.id
       await documents.submit(ctx.orgA.id, made)
       const third = await replaceOf(made)
       expect(third.status).toBe(CONFLICT)
-      expect(reasonOf(third)).toBe(FiscalConflictReasons.REPLACEMENT_PENDING)
+      expect(reasonOf(third)).toBe(FiscalConflictReasons.REPLACE_FIRST_UNAVAILABLE)
       expect(await owner.fiscalDocument.count({ where: { replacesDocumentId: made } })).toBe(0)
+      // Once the original is voided the replacement is the live document, and it is still not replaced first
+      expect(
+        (
+          await asAdminA().post(ApiRoutes.fiscal.documents.void(original.documentId)).send({
+            reason: 'wrong receiver',
+            kind: FiscalVoidKind.CORRECTION,
+            replacementDocumentId: made
+          })
+        ).status
+      ).toBe(OK)
+      const after = await replaceOf(made)
+      expect(after.status).toBe(CONFLICT)
+      expect(reasonOf(after)).toBe(FiscalConflictReasons.REPLACE_FIRST_UNAVAILABLE)
     })
 
     it('keeps one live sale document per order among the documents that replace nothing', async () => {

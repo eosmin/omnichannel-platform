@@ -7471,7 +7471,9 @@
         "no_issuer_change": "The issuer of this document is the one it was made with: send it again instead.",
         "issuer_changed_in_flight": "This document may be at the issuer it was made with, which was changed since. Confirm that it is not there to make it again with the new issuer.",
         "note_not_voided": "Only a voided credit note can be made again.",
-        "note_already_replaced": "The return of this credit note already has a live credit note."
+        "note_already_replaced": "The return of this credit note already has a live credit note.",
+        "replace_first_unavailable": "This provider does not ask for the replacement before an invalidation, or this document is itself a replacement. Void it and make the new document after.",
+        "replacement_pending": "This sale already has a replacement made first. Invalidate the original first."
       },
       "receiver": {
         "title": "Fix the receiver of document No. {number}",

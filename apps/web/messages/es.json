@@ -7471,7 +7471,9 @@
         "no_issuer_change": "El emisor de este documento es con el que se hizo: envíalo de nuevo.",
         "issuer_changed_in_flight": "Este documento puede estar en el emisor con el que se hizo, que cambió después. Confirma que no está allí para hacerlo de nuevo con el emisor nuevo.",
         "note_not_voided": "Solo una nota de crédito anulada se puede hacer de nuevo.",
-        "note_already_replaced": "La devolución de esta nota de crédito ya tiene una nota de crédito vigente."
+        "note_already_replaced": "La devolución de esta nota de crédito ya tiene una nota de crédito vigente.",
+        "replace_first_unavailable": "Este proveedor no pide el reemplazo antes de invalidar, o este documento ya es un reemplazo. Anúlalo y haz el documento nuevo después.",
+        "replacement_pending": "Esta venta ya tiene un reemplazo hecho primero. Invalida primero el original."
       },
       "receiver": {
         "title": "Corregir el receptor del documento N.º {number}",

@@ -1,7 +1,7 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { type FormEvent, type ReactElement, useEffect, useMemo, useState } from 'react'
+import { type FormEvent, type ReactElement, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ApiError, type FiscalDocumentView } from '@platform/api-client'
 import { FiscalDocumentStatus, FiscalLimits } from '@platform/core/domain'
@@ -115,11 +115,18 @@ function VoidForm({
   )
   // The replacement that was made first for this document, once it is accepted, is the one to name
   const madeFirst = candidates[0]?.id
+  // Chosen once: a person who clears it keeps it cleared
+  const preselected = useRef(false)
   useEffect(() => {
-    if (needsReplacement && madeFirst !== undefined && draft.replacementDocumentId === '') {
-      setDraft(current => ({ ...current, replacementDocumentId: madeFirst }))
+    if (needsReplacement && madeFirst !== undefined && !preselected.current) {
+      preselected.current = true
+      setDraft(current =>
+        current.replacementDocumentId === ''
+          ? { ...current, replacementDocumentId: madeFirst }
+          : current
+      )
     }
-  }, [needsReplacement, madeFirst, draft.replacementDocumentId])
+  }, [needsReplacement, madeFirst])
   // The words for what the provider refused before it sent anything (a deadline, a person, a replacement): it names a code in `reason`
   const refusalText = (error: unknown): string => {
     const reason = error instanceof ApiError ? error.metadata['reason'] : null

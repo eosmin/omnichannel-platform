@@ -175,6 +175,12 @@ describe('the replacement made before the invalidation', () => {
     expect(fiscalActionsOf(accepted, new Set([accepted.id]), true).replaceFirst).toBe(false)
   })
 
+  it('is not offered for a document that is itself a replacement', () => {
+    expect(
+      fiscalActionsOf({ ...accepted, replacesDocumentId: 'original' }, none, true).replaceFirst
+    ).toBe(false)
+  })
+
   it('is not offered for a credit note or for a document that is not accepted', () => {
     expect(
       fiscalActionsOf({ ...accepted, kind: FiscalDocumentKind.CREDIT_NOTE }, none, true)
