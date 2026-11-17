@@ -19,7 +19,7 @@ import { PluginApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import { CHANNEL_ANONYMITY, type ChannelAnonymitySource } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import {
   type ConversationPage,
@@ -125,6 +125,7 @@ export class PluginCustomersController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.customers.list)
   list(
     @CurrentStore() store: Store,
@@ -136,6 +137,7 @@ export class PluginCustomersController {
   // The route holds `customers:read` too, so the answer may say which customers look like the new one (what a person sees)
   @PluginApi(READ, WRITE)
   @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CUSTOMERS_CREATE)
+  @NoStore()
   @Post(PluginApiRoutes.customers.list)
   @HttpCode(HttpStatusCodes.CREATED)
   create(
@@ -149,6 +151,7 @@ export class PluginCustomersController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.customers.byId(':id'))
   get(
     @CurrentStore() store: Store,
@@ -161,6 +164,7 @@ export class PluginCustomersController {
 
   @PluginApi(READ, WRITE)
   @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CUSTOMERS_EDIT)
+  @NoStore()
   @Patch(PluginApiRoutes.customers.byId(':id'))
   update(
     @CurrentStore() store: Store,
@@ -175,6 +179,7 @@ export class PluginCustomersController {
   // Only a customer with no conversations and no orders can go (the service refuses the rest with a 409)
   @PluginApi(READ, PluginScopes.CUSTOMERS_DELETE)
   @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CUSTOMERS_DELETE)
+  @NoStore()
   @Delete(PluginApiRoutes.customers.byId(':id'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async remove(
@@ -190,6 +195,7 @@ export class PluginCustomersController {
   // shows it or joins it to `users` (see the plan, "Left by PR E2").
   @PluginApi(READ, PluginScopes.CUSTOMERS_FLAG_CAUTION)
   @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CUSTOMERS_FLAG_CAUTION)
+  @NoStore()
   @Put(PluginApiRoutes.customers.caution(':id'))
   setCaution(
     @CurrentStore() store: Store,
@@ -203,6 +209,7 @@ export class PluginCustomersController {
 
   @PluginApi(READ, PluginScopes.CUSTOMERS_FLAG_CAUTION)
   @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CUSTOMERS_FLAG_CAUTION)
+  @NoStore()
   @Delete(PluginApiRoutes.customers.caution(':id'))
   clearCaution(
     @CurrentStore() store: Store,
@@ -215,6 +222,7 @@ export class PluginCustomersController {
 
   @PluginApi(READ, WRITE)
   @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CUSTOMERS_EDIT)
+  @NoStore()
   @Post(PluginApiRoutes.customers.identities(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   async linkIdentity(
@@ -231,6 +239,7 @@ export class PluginCustomersController {
 
   @PluginApi(READ, WRITE)
   @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CUSTOMERS_EDIT)
+  @NoStore()
   @Delete(PluginApiRoutes.customers.identityById(':id', ':identityId'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async unlinkIdentity(
@@ -245,6 +254,7 @@ export class PluginCustomersController {
   // notes and the merges and neither of them (a viewer without CONVERSATIONS_VIEW or ORDERS_VIEW gets the rest only)
   @PluginApi(READ)
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.customers.timeline(':id'))
   listTimeline(
     @CurrentStore() store: Store,
@@ -257,6 +267,7 @@ export class PluginCustomersController {
 
   @PluginApi(READ, PluginScopes.ORDERS_READ)
   @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.ORDERS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.customers.orders(':id'))
   listOrders(
     @CurrentStore() store: Store,
@@ -269,6 +280,7 @@ export class PluginCustomersController {
   // The same page as GET /plugin-api/conversations, for one customer
   @PluginApi(READ, PluginScopes.CONVERSATIONS_READ)
   @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.customers.conversations(':id'))
   async listConversations(
     @CurrentStore() store: Store,
@@ -288,6 +300,7 @@ export class PluginCustomersController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.customers.notes(':id'))
   listNotes(
     @CurrentStore() store: Store,
@@ -298,6 +311,7 @@ export class PluginCustomersController {
 
   @PluginApi(READ, WRITE)
   @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CUSTOMERS_EDIT)
+  @NoStore()
   @Post(PluginApiRoutes.customers.addresses(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   createAddress(
@@ -310,6 +324,7 @@ export class PluginCustomersController {
 
   @PluginApi(READ, WRITE)
   @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CUSTOMERS_EDIT)
+  @NoStore()
   @Patch(PluginApiRoutes.customers.addressById(':id', ':addressId'))
   updateAddress(
     @CurrentStore() store: Store,
@@ -322,6 +337,7 @@ export class PluginCustomersController {
 
   @PluginApi(READ, WRITE)
   @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CUSTOMERS_EDIT)
+  @NoStore()
   @Delete(PluginApiRoutes.customers.addressById(':id', ':addressId'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async removeAddress(
@@ -334,6 +350,7 @@ export class PluginCustomersController {
 
   @PluginApi(READ, WRITE)
   @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CUSTOMERS_EDIT)
+  @NoStore()
   @Post(PluginApiRoutes.customers.tags(':id'))
   @HttpCode(HttpStatusCodes.OK)
   attachTag(
@@ -346,6 +363,7 @@ export class PluginCustomersController {
 
   @PluginApi(READ, WRITE)
   @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CUSTOMERS_EDIT)
+  @NoStore()
   @Delete(PluginApiRoutes.customers.tagById(':id', ':tagId'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async detachTag(

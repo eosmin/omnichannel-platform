@@ -12,7 +12,7 @@ import {
   type UpdateOrderInput
 } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import { PluginScopes } from '@platform/plugins/sdk'
 
@@ -77,6 +77,7 @@ export class PluginOrdersController {
 
   @PluginApi(PluginScopes.ORDERS_READ)
   @RequirePermissions(Permissions.ORDERS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.orders.list)
   async list(
     @CurrentStore() store: { id: string },
@@ -87,6 +88,7 @@ export class PluginOrdersController {
 
   @PluginApi(PluginScopes.ORDERS_READ)
   @RequirePermissions(Permissions.ORDERS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.orders.byId(':id'))
   async get(
     @CurrentStore() store: { id: string },
@@ -98,6 +100,7 @@ export class PluginOrdersController {
 
   @PluginApi(PluginScopes.ORDERS_READ, PluginScopes.ORDERS_WRITE)
   @RequirePermissions(Permissions.ORDERS_CREATE)
+  @NoStore()
   @Post(PluginApiRoutes.orders.create)
   @HttpCode(HttpStatusCodes.CREATED)
   async create(
@@ -121,6 +124,7 @@ export class PluginOrdersController {
     PluginScopes.PRODUCTS_READ
   )
   @RequirePermissions(Permissions.ORDERS_VIEW, Permissions.ORDERS_CREATE)
+  @NoStore()
   @Get(PluginApiRoutes.orders.copy(':id'))
   async copy(
     @CurrentStore() store: { id: string },
@@ -131,6 +135,7 @@ export class PluginOrdersController {
 
   @PluginApi(PluginScopes.ORDERS_READ, PluginScopes.ORDERS_EDIT)
   @RequirePermissions(Permissions.ORDERS_EDIT)
+  @NoStore()
   @Patch(PluginApiRoutes.orders.byId(':id'))
   async update(
     @CurrentStore() store: { id: string },
@@ -153,6 +158,7 @@ export class PluginOrdersController {
 
   @PluginApi(PluginScopes.ORDERS_READ, PluginScopes.ORDERS_WRITE)
   @RequirePermissions(Permissions.ORDERS_CHANGE_STATUS)
+  @NoStore()
   @Post(PluginApiRoutes.orders.status(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async changeStatus(
@@ -177,6 +183,7 @@ export class PluginOrdersController {
   // Before the routes of `:id`, like every fixed route of the controller
   @PluginApi(PluginScopes.ORDERS_READ, PluginScopes.ORDERS_CONFIRM)
   @RequirePermissions(Permissions.ORDERS_CONFIRM)
+  @NoStore()
   @Post(PluginApiRoutes.orders.confirmBulk)
   @HttpCode(HttpStatusCodes.OK)
   confirmBulk(
@@ -197,6 +204,7 @@ export class PluginOrdersController {
 
   @PluginApi(PluginScopes.ORDERS_READ, PluginScopes.ORDERS_CONFIRM)
   @RequirePermissions(Permissions.ORDERS_CONFIRM)
+  @NoStore()
   @Post(PluginApiRoutes.orders.confirm(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async confirm(
@@ -220,6 +228,7 @@ export class PluginOrdersController {
 
   @PluginApi(PluginScopes.ORDERS_READ, PluginScopes.ORDERS_CANCEL)
   @RequirePermissions(Permissions.ORDERS_CANCEL)
+  @NoStore()
   @Post(PluginApiRoutes.orders.cancel(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async cancel(
@@ -246,6 +255,7 @@ export class PluginOrdersController {
 
   @PluginApi(PluginScopes.ORDERS_READ, PluginScopes.ORDERS_EDIT)
   @RequirePermissions(Permissions.ORDERS_EDIT)
+  @NoStore()
   @Post(PluginApiRoutes.orders.payment(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async recordPayment(
@@ -271,6 +281,7 @@ export class PluginOrdersController {
   // person would be, by the key `plugin:<plugin id>` that the service compares with the one of the requester
   @PluginApi(PluginScopes.ORDERS_READ, PluginScopes.ORDERS_APPROVE_PRICE)
   @RequirePermissions(Permissions.ORDERS_APPROVE_PRICE)
+  @NoStore()
   @Post(PluginApiRoutes.orders.priceApprovalApprove(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async approvePrice(
@@ -295,6 +306,7 @@ export class PluginOrdersController {
 
   @PluginApi(PluginScopes.ORDERS_READ, PluginScopes.ORDERS_APPROVE_PRICE)
   @RequirePermissions(Permissions.ORDERS_APPROVE_PRICE)
+  @NoStore()
   @Post(PluginApiRoutes.orders.priceApprovalReject(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async rejectPrice(

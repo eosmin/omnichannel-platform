@@ -2,7 +2,7 @@ import { Controller, Get, Query } from '@nestjs/common'
 
 import { PluginApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { Viewer } from '@platform/core/messaging'
 import { PluginScopes } from '@platform/plugins/sdk'
 
@@ -45,6 +45,7 @@ export class PluginSearchController {
   // plugin-conversations-identity), so the id is not a secret between the two routes: the name, the handle and the photo are.
   @PluginApi(PluginScopes.CONVERSATIONS_READ, PluginScopes.MESSAGES_READ)
   @RequirePermissions(...MessageSearchPermissions)
+  @NoStore()
   @Get(PluginApiRoutes.search.messages)
   async messages(
     @CurrentStore() store: { id: string },
@@ -58,6 +59,7 @@ export class PluginSearchController {
 
   @PluginApi(PluginScopes.CUSTOMERS_READ)
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.search.customers)
   customers(
     @CurrentStore() store: { id: string },
@@ -70,6 +72,7 @@ export class PluginSearchController {
   // is what `customers:read` guards, as in the orders of the plugin API: a key without it neither searches by those nor gets them.
   @PluginApi(PluginScopes.ORDERS_READ)
   @RequirePermissions(Permissions.ORDERS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.search.orders)
   async orders(
     @CurrentStore() store: { id: string },
@@ -82,6 +85,7 @@ export class PluginSearchController {
 
   @PluginApi(PluginScopes.PRODUCTS_READ)
   @RequirePermissions(Permissions.PRODUCTS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.search.products)
   products(
     @CurrentStore() store: { id: string },

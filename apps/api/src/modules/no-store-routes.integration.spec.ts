@@ -2,6 +2,10 @@ import { PATH_METADATA, METHOD_METADATA, ROUTE_ARGS_METADATA } from '@nestjs/com
 import { RouteParamtypes } from '@nestjs/common/enums/route-paramtypes.enum'
 
 import { ApiKeysController } from './api-keys/api-keys.controller'
+import { ConversationsController } from './conversations/conversations.controller'
+import { PluginConversationsController } from './conversations/plugin-conversations.controller'
+import { CustomersController } from './customers/customers.controller'
+import { PluginCustomersController } from './customers/plugin-customers.controller'
 import { FinanceBankController } from './finance/finance-bank.controller'
 import { FinanceBooksController } from './finance/finance-books.controller'
 import { FinanceMarginController } from './finance/finance-margin.controller'
@@ -10,19 +14,32 @@ import { FinanceStatementsController } from './finance/finance-statements.contro
 import { FinanceTransactionsController } from './finance/finance-transactions.controller'
 import { FinanceController } from './finance/finance.controller'
 import { CustomerFiscalDataController } from './fiscal/customer-fiscal-data.controller'
+import { FiscalContingencyController } from './fiscal/fiscal-contingency.controller'
 import { FiscalController } from './fiscal/fiscal.controller'
+import { MessagesController } from './messages/messages.controller'
+import { PluginMessagesController } from './messages/plugin-messages.controller'
+import { OrderMessagesController } from './order-messages/order-messages.controller'
+import { OrdersController } from './orders/orders.controller'
+import { PluginOrdersController } from './orders/plugin-orders.controller'
 import { PluginWidgetsController } from './plugin-widgets/plugin-widgets.controller'
 import { PurchaseOrdersController } from './purchases/purchase-orders.controller'
 import { SuppliersController } from './purchases/suppliers.controller'
+import { ReturnsController } from './returns/returns.controller'
+import { PluginSearchController } from './search/plugin-search.controller'
+import { SearchController } from './search/search.controller'
 import { TenantWebhooksController } from './tenant-webhooks/tenant-webhooks.controller'
 
 const HEADERS_METADATA = '__headers__'
 
 type Controller = { prototype: object }
 
-// Every route of these controllers answers with money, a fiscal document, a secret or a session
+// Every route of these controllers answers with money, a fiscal document, a secret or a session, or with customers and messages found
+// by a search (QA N-A7-01) or the customers, conversations, messages and orders themselves
 const MONEY_CONTROLLERS: readonly Controller[] = [
   FiscalController,
+  FiscalContingencyController,
+  OrderMessagesController,
+  ReturnsController,
   CustomerFiscalDataController,
   FinanceController,
   FinanceBankController,
@@ -32,14 +49,25 @@ const MONEY_CONTROLLERS: readonly Controller[] = [
   FinanceStatementsController,
   FinanceTransactionsController,
   PurchaseOrdersController,
-  SuppliersController
+  SuppliersController,
+  SearchController,
+  PluginSearchController,
+  CustomersController,
+  PluginCustomersController,
+  ConversationsController,
+  PluginConversationsController,
+  MessagesController,
+  PluginMessagesController,
+  OrdersController,
+  PluginOrdersController
 ]
 
 // Of these only the routes that mint a secret or a session
 const SECRET_ROUTES: readonly { controller: Controller; handlers: readonly string[] }[] = [
   { controller: ApiKeysController, handlers: ['create'] },
   { controller: TenantWebhooksController, handlers: ['create', 'rotateSecret'] },
-  { controller: PluginWidgetsController, handlers: ['openSession', 'bridge'] }
+  // The lists of the widgets name the plugins installed and what each one shows (QA N-A7-02)
+  { controller: PluginWidgetsController, handlers: ['openSession', 'bridge', 'list', 'settings'] }
 ]
 
 function handlersOf(controller: Controller): string[] {
@@ -74,7 +102,8 @@ function hasNoStore(controller: Controller, name: string): boolean {
   )
 }
 
-// A route that takes the response sets its own headers (the CSV files)
+// A route that takes the response sets its own headers (the CSV files, which take it with `passthrough: true` and set the
+// header by hand): the spec cannot tell them from other routes that take it, so it skips them all (debt (b) of the plan)
 function takesResponse(controller: Controller, name: string): boolean {
   const args = (Reflect.getMetadata(ROUTE_ARGS_METADATA, controller.prototype.constructor, name) ??
     {}) as Record<string, unknown>

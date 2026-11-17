@@ -19,7 +19,7 @@ import {
   returnDecisionSchema
 } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import { ReturnsService } from '@platform/core/shipping'
 
@@ -54,6 +54,7 @@ export class ReturnsController {
   ) {}
 
   @RequirePermissions(Permissions.RETURNS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.returns.list)
   list(
     @CurrentStore() store: Store,
@@ -63,12 +64,14 @@ export class ReturnsController {
   }
 
   @RequirePermissions(Permissions.RETURNS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.returns.byId(':id'))
   get(@CurrentStore() store: Store, @Param('id', id()) returnId: string): Promise<ReturnView> {
     return this.queries.get(store.id, returnId)
   }
 
   @RequirePermissions(Permissions.RETURNS_MANAGE)
+  @NoStore()
   @Post(ApiRoutes.returns.create)
   @HttpCode(HttpStatusCodes.CREATED)
   create(
@@ -83,6 +86,7 @@ export class ReturnsController {
   }
 
   @RequirePermissions(Permissions.RETURNS_MANAGE)
+  @NoStore()
   @Post(ApiRoutes.returns.approve(':id'))
   @HttpCode(HttpStatusCodes.OK)
   approve(
@@ -105,6 +109,7 @@ export class ReturnsController {
   }
 
   @RequirePermissions(Permissions.RETURNS_MANAGE)
+  @NoStore()
   @Post(ApiRoutes.returns.reject(':id'))
   @HttpCode(HttpStatusCodes.OK)
   reject(
@@ -120,6 +125,7 @@ export class ReturnsController {
   }
 
   @RequirePermissions(Permissions.RETURNS_MANAGE)
+  @NoStore()
   @Post(ApiRoutes.returns.cancel(':id'))
   @HttpCode(HttpStatusCodes.OK)
   cancel(
@@ -135,6 +141,7 @@ export class ReturnsController {
   }
 
   @RequirePermissions(Permissions.RETURNS_MANAGE)
+  @NoStore()
   @Post(ApiRoutes.returns.inTransit(':id'))
   @HttpCode(HttpStatusCodes.OK)
   inTransit(
@@ -149,6 +156,7 @@ export class ReturnsController {
   }
 
   @RequirePermissions(Permissions.RETURNS_MANAGE)
+  @NoStore()
   @Post(ApiRoutes.returns.receive(':id'))
   @HttpCode(HttpStatusCodes.OK)
   receive(
@@ -164,6 +172,7 @@ export class ReturnsController {
   }
 
   @RequirePermissions(Permissions.RETURNS_MANAGE)
+  @NoStore()
   @Post(ApiRoutes.returns.complete(':id'))
   @HttpCode(HttpStatusCodes.OK)
   complete(
@@ -180,6 +189,7 @@ export class ReturnsController {
 
   // The guide of the way back of an approved return (TDD_17 §4.11), for a connection whose carrier declares RETURN_SHIPMENT
   @RequirePermissions(Permissions.RETURNS_MANAGE)
+  @NoStore()
   @Post(ApiRoutes.returns.returnShipment(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   returnShipment(

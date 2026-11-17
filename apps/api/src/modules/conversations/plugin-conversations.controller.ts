@@ -18,7 +18,7 @@ import { PluginApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import { CHANNEL_ANONYMITY, type ChannelAnonymitySource, uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import {
   type AssignBody,
@@ -113,6 +113,7 @@ export class PluginConversationsController {
   // countsOnly=true answers the numbers beside the filters instead of a page
   @PluginApi(READ)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.conversations.list)
   list(
     @CurrentStore() store: Store,
@@ -131,6 +132,7 @@ export class PluginConversationsController {
   // stands for CONVERSATIONS_CREATE. 201 when it made one, 200 when the thread of that handle on that account already existed.
   @PluginApi(READ, WRITE)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_CREATE)
+  @NoStore()
   @Post(PluginApiRoutes.conversations.list)
   async start(
     @CurrentStore() store: Store,
@@ -150,6 +152,7 @@ export class PluginConversationsController {
   // Declared before the `:id` routes, or "bulk" would be read as an id. Not the CSV and not "assign to me" (see the schema).
   @PluginApi(READ, WRITE)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Post(PluginApiRoutes.conversations.bulk)
   @HttpCode(HttpStatusCodes.OK)
   runBulk(
@@ -164,6 +167,7 @@ export class PluginConversationsController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.conversations.byId(':id'))
   get(
     @CurrentStore() store: Store,
@@ -179,6 +183,7 @@ export class PluginConversationsController {
   // The ads and posts the customer came from: the messages are read too, as for a person
   @PluginApi(READ, MESSAGES)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.conversations.origins(':id'))
   listOrigins(
     @CurrentStore() store: Store,
@@ -190,6 +195,7 @@ export class PluginConversationsController {
 
   @PluginApi(READ, WRITE)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Patch(PluginApiRoutes.conversations.status(':id'))
   changeStatus(
     @CurrentStore() store: Store,
@@ -207,6 +213,7 @@ export class PluginConversationsController {
 
   @PluginApi(READ, WRITE)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_SNOOZE)
+  @NoStore()
   @Post(PluginApiRoutes.conversations.snooze(':id'))
   @HttpCode(HttpStatusCodes.OK)
   snooze(
@@ -224,6 +231,7 @@ export class PluginConversationsController {
   // To a person of the store, or to nobody (null). The service checks that the person is a member and that the plugin may assign.
   @PluginApi(READ, WRITE)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Patch(PluginApiRoutes.conversations.assign(':id'))
   assign(
     @CurrentStore() store: Store,
@@ -241,6 +249,7 @@ export class PluginConversationsController {
   // automation that only reads must not tell the customer that a person saw the message
   @PluginApi(READ, WRITE)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_RESOLVE)
+  @NoStore()
   @Post(PluginApiRoutes.conversations.read(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async read(
@@ -255,6 +264,7 @@ export class PluginConversationsController {
 
   @PluginApi(READ, WRITE)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_RESOLVE)
+  @NoStore()
   @Post(PluginApiRoutes.conversations.unread(':id'))
   @HttpCode(HttpStatusCodes.OK)
   unread(
@@ -270,6 +280,7 @@ export class PluginConversationsController {
 
   @PluginApi(READ, WRITE)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_RESOLVE)
+  @NoStore()
   @Post(PluginApiRoutes.conversations.tags(':id'))
   @HttpCode(HttpStatusCodes.OK)
   attachTag(
@@ -283,6 +294,7 @@ export class PluginConversationsController {
 
   @PluginApi(READ, WRITE)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_RESOLVE)
+  @NoStore()
   @Delete(PluginApiRoutes.conversations.tagById(':id', ':tagId'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async detachTag(

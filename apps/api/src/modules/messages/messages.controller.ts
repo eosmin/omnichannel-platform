@@ -22,7 +22,7 @@ import { type AuthenticatedUser, type Permission, Permissions } from '@platform/
 import { CurrentUser } from '@platform/core/auth-module'
 import { type CursorPage, MessageType, uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { MULTI_FILE_SEND_ENABLED, ZodValidationPipe } from '@platform/core/http'
+import { MULTI_FILE_SEND_ENABLED, NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import {
   AgentReactionsService,
@@ -69,6 +69,7 @@ export class MessagesController {
 
   // 201 for a new message, 200 for the one a repeated idempotencyKey already made
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Post(ApiRoutes.messages.create)
   @HttpCode(HttpStatusCodes.CREATED)
   async create(
@@ -108,6 +109,7 @@ export class MessagesController {
   // "Send again" on a reply that failed. The same message goes back to the channel, and the answer is
   // the message as it stands (queued).
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Post(ApiRoutes.messages.resend(':id'))
   @HttpCode(HttpStatusCodes.OK)
   resend(
@@ -124,6 +126,7 @@ export class MessagesController {
   // a failed reply; twice is once (204 both times, one audit entry). The audit says who, when, of what kind
   // and why it failed, and never the text.
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Post(ApiRoutes.messages.discard(':id'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async discard(
@@ -151,6 +154,7 @@ export class MessagesController {
   // "Send the text again" on a file whose caption failed or may not have gone. Only the text goes back to
   // the channel; the answer is the message with the caption `queued`.
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_SEND)
+  @NoStore()
   @Post(ApiRoutes.messages.resendCaption(':id'))
   @HttpCode(HttpStatusCodes.OK)
   resendCaption(
@@ -165,6 +169,7 @@ export class MessagesController {
   // "Download it again" on a file of the customer that was lost. The worker fetches it from the provider
   // with what it kept when it gave up; the caller names only the message and the place of the file.
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_SEND)
+  @NoStore()
   @Post(ApiRoutes.messages.refetchFile(':id', ':index'))
   @HttpCode(HttpStatusCodes.OK)
   refetchFile(
@@ -180,6 +185,7 @@ export class MessagesController {
   // The reaction of the caller to a message: `{ emoji }` sets it, `{ emoji: null }` takes it back. The
   // answer is 204: the thread shows the reaction and whether the channel took it.
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_SEND)
+  @NoStore()
   @Put(ApiRoutes.messages.reaction(':id'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async react(
@@ -204,6 +210,7 @@ export class MessagesController {
   // says `pendingEdit` until then. What each kind needs on top of seeing the conversation is decided
   // by the service.
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Patch(ApiRoutes.messages.byId(':id'))
   edit(
     @CurrentStore() store: { id: string },
@@ -225,6 +232,7 @@ export class MessagesController {
   // Deletes for everyone, or answers 409 when the channel cannot. Every delete is audited.
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
   @Audit(AuditAction.MESSAGE_DELETED, { resourceType: 'message' })
+  @NoStore()
   @Delete(ApiRoutes.messages.byId(':id'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async remove(
@@ -241,6 +249,7 @@ export class MessagesController {
   // The text of a message the customer deleted, while it is kept. Every read is audited.
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_VIEW_DELETED)
   @Audit(AuditAction.MESSAGE_DELETED_CONTENT_VIEWED, { resourceType: 'message' })
+  @NoStore()
   @Get(ApiRoutes.messages.deletedContent(':id'))
   deletedContent(
     @CurrentStore() store: { id: string },
@@ -253,6 +262,7 @@ export class MessagesController {
 
   // The earlier texts of an edited message, for the "edited by" link of a note
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_VIEW)
+  @NoStore()
   @Get(ApiRoutes.messages.revisions(':id'))
   revisions(
     @CurrentStore() store: { id: string },
@@ -264,6 +274,7 @@ export class MessagesController {
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_VIEW)
+  @NoStore()
   @Get(ApiRoutes.conversations.messages(':id'))
   list(
     @CurrentStore() store: { id: string },

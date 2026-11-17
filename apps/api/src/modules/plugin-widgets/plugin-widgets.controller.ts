@@ -43,6 +43,7 @@ export class PluginWidgetsController {
   constructor(private readonly widgets: PluginWidgetsService) {}
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.pluginWidgets.list)
   list(@CurrentStore() store: Store): Promise<PluginWidgetView[]> {
     return this.widgets.list(store.id)
@@ -50,6 +51,7 @@ export class PluginWidgetsController {
 
   // Settings → Plugins: all of them, the hidden ones with `visible: false`
   @RequirePermissions(Permissions.SETTINGS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.pluginWidgets.settings)
   settings(@CurrentStore() store: Store): Promise<PluginWidgetSettingsView[]> {
     return this.widgets.settings(store.id)

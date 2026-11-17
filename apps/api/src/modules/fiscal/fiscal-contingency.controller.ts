@@ -13,7 +13,7 @@ import {
   FiscalLimits
 } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import { FiscalContingencyService, type FiscalContingencyView } from '@platform/fiscal/runtime'
 
@@ -48,6 +48,7 @@ export class FiscalContingencyController {
 
   // The open contingency, or null
   @RequirePermissions(Permissions.FISCAL_VIEW)
+  @NoStore()
   @Get(ApiRoutes.fiscal.contingency.current)
   async current(
     @CurrentOrganization() organization: Organization
@@ -56,6 +57,7 @@ export class FiscalContingencyController {
   }
 
   @RequirePermissions(Permissions.FISCAL_VIEW)
+  @NoStore()
   @Get(ApiRoutes.fiscal.contingency.list)
   async list(
     @CurrentOrganization() organization: Organization,
@@ -65,6 +67,7 @@ export class FiscalContingencyController {
   }
 
   @RequirePermissions(Permissions.FISCAL_MANAGE)
+  @NoStore()
   @Post(ApiRoutes.fiscal.contingency.current)
   @HttpCode(HttpStatusCodes.CREATED)
   async enter(
@@ -80,6 +83,7 @@ export class FiscalContingencyController {
   }
 
   @RequirePermissions(Permissions.FISCAL_MANAGE)
+  @NoStore()
   @Post(ApiRoutes.fiscal.contingency.end)
   @HttpCode(HttpStatusCodes.OK)
   async end(
@@ -96,6 +100,7 @@ export class FiscalContingencyController {
 
   // An ended contingency whose event was not taken is reported again
   @RequirePermissions(Permissions.FISCAL_MANAGE)
+  @NoStore()
   @Post(ApiRoutes.fiscal.contingency.report(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async reportAgain(
@@ -112,6 +117,7 @@ export class FiscalContingencyController {
 
   // A person gives up the report of an ended contingency that cannot go through: its documents go out the normal way
   @RequirePermissions(Permissions.FISCAL_MANAGE)
+  @NoStore()
   @Post(ApiRoutes.fiscal.contingency.abandon(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async abandon(

@@ -4,7 +4,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 
 import type { ProductSuggestions } from '../products/products.views'
 import {
@@ -42,6 +42,7 @@ export class SearchController {
   constructor(private readonly runner: SearchRunner) {}
 
   @RequireAnyPermission(...GlobalSearchPermissions)
+  @NoStore()
   @Get(ApiRoutes.search.global)
   global(
     @CurrentStore() store: { id: string },
@@ -55,6 +56,7 @@ export class SearchController {
   // The result a person opened, for the report of what was searched. The answer is empty: the event is queued and the
   // click is never worth a wait. The runner checks the kind of result against what the member may search.
   @RequireAnyPermission(...GlobalSearchPermissions)
+  @NoStore()
   @Post(ApiRoutes.search.clicks)
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   click(
@@ -66,6 +68,7 @@ export class SearchController {
   }
 
   @RequirePermissions(...MessageSearchPermissions)
+  @NoStore()
   @Get(ApiRoutes.search.messages)
   messages(
     @CurrentStore() store: { id: string },
@@ -77,6 +80,7 @@ export class SearchController {
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.search.customers)
   customers(
     @CurrentStore() store: { id: string },
@@ -86,6 +90,7 @@ export class SearchController {
   }
 
   @RequirePermissions(Permissions.ORDERS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.search.orders)
   orders(
     @CurrentStore() store: { id: string },
@@ -95,6 +100,7 @@ export class SearchController {
   }
 
   @RequirePermissions(Permissions.PRODUCTS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.search.products)
   products(
     @CurrentStore() store: { id: string },
