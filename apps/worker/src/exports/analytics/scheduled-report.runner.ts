@@ -6,6 +6,7 @@ import { PinoLogger } from 'nestjs-pino'
 import {
   analyticsExportFiltersSchema,
   madeOnDay,
+  ReportDisableReasons,
   reportPeriod,
   type ReportFrequencyType,
   type ReportMetric,
@@ -82,6 +83,15 @@ export class ScheduledReportRunner {
         { reportId: report.id },
         'a scheduled report was turned off: its person lost the right'
       )
+      // The figures of a store stop going out by themselves: whoever reads the audit trail is told that, and why
+      this.audit.log({
+        action: AuditAction.REPORT_DISABLED,
+        actor: { system: true },
+        storeId: report.storeId,
+        resourceType: 'scheduled_report',
+        resourceId: report.id,
+        metadata: { reason: ReportDisableReasons.OWNER_LOST_RIGHT, createdBy: report.createdBy }
+      })
       return ReportRunOutcomes.DISABLED
     }
 

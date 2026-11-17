@@ -70,6 +70,8 @@ export const DateRangePresets = {
 export const ReportFrequency = { DAILY: 'daily', WEEKLY: 'weekly', MONTHLY: 'monthly' } as const
 export type ReportFrequencyType = (typeof ReportFrequency)[keyof typeof ReportFrequency]
 export const ReportFormats = { PDF: 'pdf', CSV: 'csv', EXCEL: 'excel' } as const
+// Why the runner turns a scheduled report off by itself (the `reason` of its audit row)
+export const ReportDisableReasons = { OWNER_LOST_RIGHT: 'owner_lost_right' } as const
 
 // How the points of a metric are put together when a query asks for a coarser period than the rollup keeps
 // (a week of daily rows). A count is added; a time, which the rollup keeps as its median and the number of
