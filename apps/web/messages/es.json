@@ -7456,7 +7456,11 @@
         "confirmIssuerChange": "El emisor cambió",
         "replaceNoteConfirmTitle": "¿Hacer de nuevo esta nota de crédito?",
         "replaceNoteConfirmDescription": "Se hace una nota de crédito nueva, con otro número, para la misma devolución, contra el documento de venta vigente, y se envía a la autoridad. No se puede deshacer.",
-        "replacedNote": "La nota de crédito nueva se hizo y quedó en cola."
+        "replacedNote": "La nota de crédito nueva se hizo y quedó en cola.",
+        "replaceFirst": "Hacer primero el reemplazo",
+        "replaceFirstConfirmTitle": "¿Hacer primero el reemplazo de este documento?",
+        "replaceFirstConfirmDescription": "La autoridad pide el documento que lo reemplaza antes de invalidar este. Se hace un documento nuevo de la misma venta, con número nuevo y el mismo receptor, y los libros conservan el asiento de la venta que ya tienen. Este documento sigue aceptado hasta que lo invalides indicando el nuevo.",
+        "replacedFirst": "El reemplazo quedó en cola. Invalida este documento cuando esté aceptado."
       },
       "conflicts": {
         "has_credit_notes": "Este documento tiene notas de crédito que no están anuladas. Anula primero las notas.",

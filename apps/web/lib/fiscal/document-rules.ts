@@ -19,6 +19,9 @@ export interface FiscalDocumentActions {
   retry: boolean
   // The invalidation of an accepted document: irreversible
   void: boolean
+  // An accepted sale document with no replacement, when the provider asks for the replacement before the invalidation: it is made first and
+  // the invalidation then names it
+  replaceFirst: boolean
   // A voided sale document that has no replacement among the documents the person has loaded, or a voided credit note (its replacement is
   // the note of its return, which the web cannot see: the api refuses with `note_already_replaced`)
   replace: boolean
@@ -28,7 +31,10 @@ export interface FiscalDocumentActions {
 
 export function fiscalActionsOf(
   document: Pick<FiscalDocumentView, 'id' | 'kind' | 'status' | 'attempts' | 'rejectionReason'>,
-  replacedIds: ReadonlySet<string>
+  replacedIds: ReadonlySet<string>,
+  // Whether the provider's authority asks for the replacement before an invalidation (its manifest): then an accepted sale document can
+  // be replaced first
+  asksReplacementFirst = false
 ): FiscalDocumentActions {
   const sale = document.kind === FiscalDocumentKind.SALE
   const refused = document.status === FiscalDocumentStatus.REJECTED
@@ -37,6 +43,11 @@ export function fiscalActionsOf(
     editReceiver: sale && (refused || (queued && document.attempts === 0)),
     retry: refused || queued,
     void: document.status === FiscalDocumentStatus.ACCEPTED,
+    replaceFirst:
+      asksReplacementFirst &&
+      sale &&
+      document.status === FiscalDocumentStatus.ACCEPTED &&
+      !replacedIds.has(document.id),
     replace:
       document.status === FiscalDocumentStatus.VOIDED &&
       (sale ? !replacedIds.has(document.id) : true),

@@ -15,6 +15,7 @@ import {
 import { useFiscalErrorText } from '../../lib/fiscal/use-fiscal-error-text'
 import {
   EMPTY_VOID_PARTY,
+  replacementCandidates,
   voidBodyOf,
   voidFormProblems,
   type VoidDraft,
@@ -109,17 +110,16 @@ function VoidForm({
     needsReplacement
   )
   const candidates = useMemo(
-    () =>
-      (accepted.data?.pages.flatMap(page => page.data) ?? []).filter(
-        // The ones the api takes as the replacement of this document: the same kind, provider and environment
-        candidate =>
-          candidate.id !== document.id &&
-          candidate.kind === document.kind &&
-          candidate.providerId === document.providerId &&
-          candidate.environment === document.environment
-      ),
-    [accepted.data, document.id]
+    () => replacementCandidates(accepted.data?.pages.flatMap(page => page.data) ?? [], document),
+    [accepted.data, document]
   )
+  // The replacement that was made first for this document, once it is accepted, is the one to name
+  const madeFirst = candidates.find(candidate => candidate.replacesDocumentId === document.id)?.id
+  useEffect(() => {
+    if (needsReplacement && madeFirst !== undefined && draft.replacementDocumentId === '') {
+      setDraft(current => ({ ...current, replacementDocumentId: madeFirst }))
+    }
+  }, [needsReplacement, madeFirst, draft.replacementDocumentId])
   // The words for what the provider refused before it sent anything (a deadline, a person, a replacement): it names a code in `reason`
   const refusalText = (error: unknown): string => {
     const reason = error instanceof ApiError ? error.metadata['reason'] : null

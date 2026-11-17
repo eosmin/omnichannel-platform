@@ -7456,7 +7456,11 @@
         "confirmIssuerChange": "The issuer changed",
         "replaceNoteConfirmTitle": "Make this credit note again?",
         "replaceNoteConfirmDescription": "A new credit note with a new number is made for the same return, against the sale document that is live now, and sent to the authority. This cannot be undone.",
-        "replacedNote": "The new credit note was made and queued."
+        "replacedNote": "The new credit note was made and queued.",
+        "replaceFirst": "Make the replacement first",
+        "replaceFirstConfirmTitle": "Make the replacement of this document first?",
+        "replaceFirstConfirmDescription": "The authority asks for the document that takes its place before it invalidates this one. A new document is made for the same sale, with a new number and the same receiver, and the books keep the sale entry they have. This document stays accepted until you invalidate it naming the new one.",
+        "replacedFirst": "The replacement was queued. Invalidate this document once it is accepted."
       },
       "conflicts": {
         "has_credit_notes": "This document has credit notes that are not voided. Void the notes first.",

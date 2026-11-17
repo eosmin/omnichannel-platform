@@ -163,3 +163,32 @@ describe('what needs attention', () => {
     expect(conflictReasonOf(5)).toBeNull()
   })
 })
+
+describe('the replacement made before the invalidation', () => {
+  const accepted = { ...base, status: FiscalDocumentStatus.ACCEPTED }
+  const none: ReadonlySet<string> = new Set()
+
+  it('is offered for an accepted sale document only when the provider asks for it, and once', () => {
+    expect(fiscalActionsOf(accepted, none, true).replaceFirst).toBe(true)
+    expect(fiscalActionsOf(accepted, none, false).replaceFirst).toBe(false)
+    expect(fiscalActionsOf(accepted, none).replaceFirst).toBe(false)
+    expect(fiscalActionsOf(accepted, new Set([accepted.id]), true).replaceFirst).toBe(false)
+  })
+
+  it('is not offered for a credit note or for a document that is not accepted', () => {
+    expect(
+      fiscalActionsOf({ ...accepted, kind: FiscalDocumentKind.CREDIT_NOTE }, none, true)
+        .replaceFirst
+    ).toBe(false)
+    for (const status of Object.values(FiscalDocumentStatus)) {
+      if (status === FiscalDocumentStatus.ACCEPTED) continue
+      expect(fiscalActionsOf({ ...base, status }, none, true).replaceFirst).toBe(false)
+    }
+  })
+
+  it('leaves the other actions as they were', () => {
+    const actions = fiscalActionsOf(accepted, none, true)
+    expect(actions.void).toBe(true)
+    expect(actions.replace).toBe(false)
+  })
+})

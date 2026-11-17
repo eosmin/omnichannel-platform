@@ -3,6 +3,7 @@ import { FiscalLimits, FiscalVoidKind, voidFiscalDocumentSchema } from '@platfor
 import {
   EMPTY_VOID_PARTY,
   voidBodyOf,
+  replacementCandidates,
   voidFormProblems,
   voidReasonProblem,
   type VoidDraft,
@@ -39,6 +40,31 @@ describe('the reason to void a fiscal document', () => {
       expect(voidReasonProblem(reason)).not.toBeNull()
       expect(voidFiscalDocumentSchema.safeParse({ reason: reason.trim() }).success).toBe(false)
     }
+  })
+})
+
+describe('the documents that may replace the one that is invalidated', () => {
+  const doc = (id: string, over: Partial<Record<string, string | null>> = {}) => ({
+    id,
+    kind: 'sale',
+    providerId: 'p',
+    environment: 'sandbox',
+    replacesDocumentId: null as string | null,
+    ...over
+  })
+
+  it('keeps the ones the api takes and puts the one made to replace it first', () => {
+    const original = doc('o')
+    const list = [
+      doc('a'),
+      doc('o'),
+      doc('credit', { kind: 'credit_note' }),
+      doc('other', { providerId: 'q' }),
+      doc('prod', { environment: 'production' }),
+      doc('r', { replacesDocumentId: 'o' }),
+      doc('b')
+    ]
+    expect(replacementCandidates(list, original).map(one => one.id)).toEqual(['r', 'a', 'b'])
   })
 })
 

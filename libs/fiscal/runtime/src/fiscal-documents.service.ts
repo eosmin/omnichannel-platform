@@ -540,15 +540,7 @@ export class FiscalDocumentsService {
     if (issuer === null) return null
     const parent =
       parentOverride === undefined
-        ? await tx.fiscalDocument.findFirst({
-            where: {
-              organizationId,
-              orderId,
-              kind: FiscalDocumentKind.SALE,
-              status: { not: FiscalDocumentStatus.VOIDED }
-            },
-            select: { id: true, receiverEncrypted: true }
-          })
+        ? await this.soleLiveSale(tx, organizationId, orderId)
         : await tx.fiscalDocument.findFirst({
             where: { id: parentOverride.id, organizationId },
             select: { id: true, receiverEncrypted: true }
@@ -1469,15 +1461,7 @@ export class FiscalDocumentsService {
         // A credit note names the sale document that is live now: the one it was made for may have been voided and replaced since
         let parentDocumentId = doc.parentDocumentId
         if (isNote) {
-          const live = await tx.fiscalDocument.findFirst({
-            where: {
-              organizationId,
-              orderId: doc.orderId,
-              kind: FiscalDocumentKind.SALE,
-              status: { not: FiscalDocumentStatus.VOIDED }
-            },
-            select: { id: true }
-          })
+          const live = await this.soleLiveSale(tx, organizationId, doc.orderId)
           if (live === null) {
             throw new PlatformException(
               ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
@@ -1586,15 +1570,7 @@ export class FiscalDocumentsService {
       // A credit note names the sale document that is live now
       let parentDocumentId = doc.parentDocumentId
       if (doc.kind === (FiscalDocumentKind.CREDIT_NOTE as string)) {
-        const live = await tx.fiscalDocument.findFirst({
-          where: {
-            organizationId,
-            orderId: doc.orderId,
-            kind: FiscalDocumentKind.SALE,
-            status: { not: FiscalDocumentStatus.VOIDED }
-          },
-          select: { id: true }
-        })
+        const live = await this.soleLiveSale(tx, organizationId, doc.orderId)
         if (live === null) {
           throw new PlatformException(
             ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
@@ -1683,19 +1659,7 @@ export class FiscalDocumentsService {
     // an accepted one, one being sent, and one that was sent and not answered (back in the queue with an attempt counted: the authority may
     // have it). A note that never left core (waiting, or refused by core or by the authority, which resets its attempts) is refused when
     // it is sent for a voided original and a person retries it once the sale is replaced, so it never makes the sale unvoidable.
-    const notes = await this.prisma.client.fiscalDocument.count({
-      where: {
-        organizationId,
-        parentDocumentId: id,
-        OR: [
-          { status: { in: [FiscalDocumentStatus.ACCEPTED, FiscalDocumentStatus.SUBMITTED] } },
-          {
-            status: { in: [FiscalDocumentStatus.QUEUED, FiscalDocumentStatus.REJECTED] },
-            attempts: { gt: 0 }
-          }
-        ]
-      }
-    })
+    const notes = await this.notesAtAuthority(this.prisma.client, organizationId, id)
     if (notes > 0) {
       throw new PlatformException(
         ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
@@ -1841,6 +1805,85 @@ export class FiscalDocumentsService {
     return this.get(organizationId, id)
   }
 
+  // The one sale document of an order that is alive, for what names it (a credit note). While a replacement made first stands beside its
+  // original (both alive on purpose, until the original is invalidated) no document is THE live one, and nothing is named: a note made in
+  // that window would name one of two documents, and a note naming the original would stop it from being invalidated. The notes of the
+  // returns received then are made once the original is voided (the sweep names the ones that wait).
+  private async soleLiveSale(
+    tx: PrismaTransaction,
+    organizationId: string,
+    orderId: string
+  ): Promise<{ id: string; receiverEncrypted: Uint8Array } | null> {
+    const live = await tx.fiscalDocument.findMany({
+      where: {
+        organizationId,
+        orderId,
+        kind: FiscalDocumentKind.SALE,
+        status: { not: FiscalDocumentStatus.VOIDED }
+      },
+      select: { id: true, receiverEncrypted: true },
+      take: 2
+    })
+    return live.length === 1 ? (live[0] ?? null) : null
+  }
+
+  // What a replacement made before the invalidation needs (the original is accepted, so it is at the authority): the provider asks for it,
+  // the original has no credit note that the authority may have (the notes go first, as for a void), and the issuer is the one the original
+  // was made with (the invalidation that follows needs it). Throws the conflict a person can read.
+  private async assertReplaceFirst(
+    tx: PrismaTransaction,
+    organizationId: string,
+    old: { id: string; providerId: string; issuerSnapshot: unknown },
+    issuer: Parameters<typeof sameIssuer>[1] & { providerId: string }
+  ): Promise<void> {
+    const asks = this.providers.find(old.providerId)?.manifest.voidInputs?.kindsWithReplacement
+    if (asks === undefined || asks.length === 0 || issuer.providerId !== old.providerId) {
+      throw new PlatformException(
+        ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+        'the provider does not ask for a replacement before an invalidation',
+        HttpStatusCodes.CONFLICT,
+        { reason: FiscalConflictReasons.REPLACE_FIRST_UNAVAILABLE }
+      )
+    }
+    if ((await this.notesAtAuthority(tx, organizationId, old.id)) > 0) {
+      throw new PlatformException(
+        ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+        'a document with credit notes that are not voided cannot be replaced first',
+        HttpStatusCodes.CONFLICT,
+        { reason: FiscalConflictReasons.HAS_CREDIT_NOTES }
+      )
+    }
+    if (!sameIssuer(record(old.issuerSnapshot), issuer)) {
+      throw new PlatformException(
+        ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
+        'the issuer changed since the document was made',
+        HttpStatusCodes.CONFLICT
+      )
+    }
+  }
+
+  // The credit notes of a sale document that the authority may have: an accepted one, one being sent, and one that was sent and not
+  // answered (back in the queue with an attempt counted). A note that never left core is not one of them.
+  private notesAtAuthority(
+    db: Pick<PrismaService['client'], 'fiscalDocument'>,
+    organizationId: string,
+    saleId: string
+  ): Promise<number> {
+    return db.fiscalDocument.count({
+      where: {
+        organizationId,
+        parentDocumentId: saleId,
+        OR: [
+          { status: { in: [FiscalDocumentStatus.ACCEPTED, FiscalDocumentStatus.SUBMITTED] } },
+          {
+            status: { in: [FiscalDocumentStatus.QUEUED, FiscalDocumentStatus.REJECTED] },
+            attempts: { gt: 0 }
+          }
+        ]
+      }
+    })
+  }
+
   // A document as a provider is shown it: what was built, readable; null when the sealed copy cannot be opened
   private storedOf(doc: {
     documentType: string
@@ -1895,8 +1938,11 @@ export class FiscalDocumentsService {
     const made = await this.prisma
       .transaction(async tx => {
         const old = await this.lock(tx, organizationId, id)
+        // The replacement of a voided document, or (when the provider's authority asks for the replacement before an invalidation) the
+        // replacement of an accepted one, made first: the invalidation then names it
+        const first = old.status === (FiscalDocumentStatus.ACCEPTED as string)
         if (
-          old.status !== (FiscalDocumentStatus.VOIDED as string) ||
+          (old.status !== (FiscalDocumentStatus.VOIDED as string) && !first) ||
           old.kind !== (FiscalDocumentKind.SALE as string)
         ) {
           throw this.invalid(old.status as FiscalDocumentStatus)
@@ -1909,16 +1955,20 @@ export class FiscalDocumentsService {
             HttpStatusCodes.CONFLICT
           )
         }
-        // One live sale document per order: the index says it too, this gives the answer a person can read
-        const live = await tx.fiscalDocument.findFirst({
-          where: {
-            organizationId,
-            orderId: old.orderId,
-            kind: FiscalDocumentKind.SALE,
-            status: { not: FiscalDocumentStatus.VOIDED }
-          },
-          select: { id: true }
-        })
+        if (first) await this.assertReplaceFirst(tx, organizationId, old, issuer)
+        // One live sale document per order: the index says it too, this gives the answer a person can read. The replacement made first has
+        // the original alive beside it on purpose (the index leaves it out, and the one-replacement index keeps it single)
+        const live = first
+          ? null
+          : await tx.fiscalDocument.findFirst({
+              where: {
+                organizationId,
+                orderId: old.orderId,
+                kind: FiscalDocumentKind.SALE,
+                status: { not: FiscalDocumentStatus.VOIDED }
+              },
+              select: { id: true }
+            })
         if (live !== null) {
           throw new PlatformException(
             ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,

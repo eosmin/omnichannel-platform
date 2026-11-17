@@ -3194,7 +3194,9 @@ model FiscalDocument {
   evidence     Media[]          @relation("FiscalEvidence")
 
   // At most one live sale document per order, one live credit note per return and one per order that came back with no return row: the
-  // partial unique indexes of the migration say it (Prisma cannot), a voided document leaves room for the one that replaces it
+  // partial unique indexes of the migration say it (Prisma cannot), a voided document leaves room for the one that replaces it, and a
+  // document that replaces another (made first, before the original is voided) is left out of the live-sale index: it is unique through
+  // the one-replacement-per-document index
   @@unique([organizationId, sequenceNumber])
   // One number of a series for one document: Postgres reads two nulls as different, so a document with no number yet never collides
   @@unique([organizationId, correlativeScopeKey, correlative])
