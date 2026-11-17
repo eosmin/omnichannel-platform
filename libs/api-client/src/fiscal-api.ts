@@ -35,6 +35,8 @@ const documentSchema = z.object({
   returnId: z.string().nullable(),
   parentDocumentId: z.string().nullable(),
   replacesDocumentId: z.string().nullable(),
+  // The newest document that replaces it; null when nobody did
+  replacedByDocumentId: z.string().nullable(),
   journalEntryId: z.string().nullable(),
   sequenceNumber: z.number().int(),
   documentType: z.string(),
@@ -47,6 +49,16 @@ const documentSchema = z.object({
   taxCents: z.number().int(),
   rejectionReason: z.string().nullable(),
   attempts: z.number().int(),
+  // Queued with every attempt spent: only a person moves it
+  stuck: z.boolean(),
+  // What its state allows a person to do (the permission is the route's; the api decides again on every call and may refuse with a reason)
+  allowedActions: z.object({
+    editReceiver: z.boolean(),
+    retry: z.boolean(),
+    void: z.boolean(),
+    replace: z.boolean(),
+    confirmIssuerChange: z.boolean()
+  }),
   voidReason: z.string().nullable(),
   voidedAt: z.string().nullable(),
   issuedAt: z.string().nullable(),
@@ -99,7 +111,9 @@ const documentDetailEnvelopeSchema = z.object({ data: documentDetailSchema })
 const documentPageSchema = z.object({
   data: z.array(documentSchema),
   nextCursor: z.string().nullable(),
-  hasMore: z.boolean()
+  hasMore: z.boolean(),
+  // What needs a person, counted over the whole organization: not the page, the filters or the period
+  attention: z.object({ rejected: z.number().int(), stuck: z.number().int() })
 })
 export type FiscalDocumentPageView = z.output<typeof documentPageSchema>
 

@@ -74,6 +74,7 @@ const document = {
   returnId: null,
   parentDocumentId: null,
   replacesDocumentId: null,
+  replacedByDocumentId: null,
   journalEntryId: null,
   sequenceNumber: 12,
   documentType: 'pending',
@@ -86,6 +87,14 @@ const document = {
   taxCents: 1300,
   rejectionReason: null,
   attempts: 1,
+  stuck: false,
+  allowedActions: {
+    editReceiver: false,
+    retry: false,
+    void: true,
+    replace: false,
+    confirmIssuerChange: false
+  },
   voidReason: null,
   voidedAt: null,
   issuedAt: '2026-02-03T10:00:00.000Z',
@@ -93,10 +102,12 @@ const document = {
   receiver: { name: 'Ana', taxIdMasked: '****1234', complete: true }
 }
 
+const attention = { rejected: 2, stuck: 1 }
+
 describe('the fiscal documents', () => {
   it('reads a page with only the filters that are set, for the store of the header', async () => {
     const { client, fetchImpl } = setup(
-      json(200, { data: [document], nextCursor: '12', hasMore: true })
+      json(200, { data: [document], nextCursor: '12', hasMore: true, attention })
     )
     const page = await fetchFiscalDocumentPage(
       client,
@@ -112,17 +123,28 @@ describe('the fiscal documents', () => {
     expect(headers.get('X-Store-Id')).toBe('store-1')
     expect(page.data[0]?.sequenceNumber).toBe(12)
     expect(page.nextCursor).toBe('12')
+    // What the server decides is carried as it came: the buttons, the stuck flag, the replacement and the counts of the whole organization
+    expect(page.data[0]).toMatchObject({ stuck: false, replacedByDocumentId: null })
+    expect(page.data[0]?.allowedActions.void).toBe(true)
+    expect(page.attention).toEqual({ rejected: 2, stuck: 1 })
   })
 
   it('asks with no query at all when nothing narrows the list', async () => {
-    const { client, fetchImpl } = setup(json(200, { data: [], nextCursor: null, hasMore: false }))
+    const { client, fetchImpl } = setup(
+      json(200, { data: [], nextCursor: null, hasMore: false, attention })
+    )
     await fetchFiscalDocumentPage(client, 's', {}, null)
     expect(callOf(fetchImpl).url.endsWith('/fiscal/documents')).toBe(true)
   })
 
   it('refuses a document with a status the lifecycle does not have', async () => {
     const { client } = setup(
-      json(200, { data: [{ ...document, status: 'invented' }], nextCursor: null, hasMore: false })
+      json(200, {
+        data: [{ ...document, status: 'invented' }],
+        nextCursor: null,
+        hasMore: false,
+        attention
+      })
     )
     await expect(fetchFiscalDocumentPage(client, 's', {}, null)).rejects.toThrow()
   })
@@ -138,7 +160,7 @@ describe('the fiscal documents', () => {
   it('refuses a detail with no sealed snapshot, and sends the period of the list', async () => {
     const bad = setup(json(200, { data: document }))
     await expect(fetchFiscalDocument(bad.client, 's', 'd1')).rejects.toThrow()
-    const page = setup(json(200, { data: [], nextCursor: null, hasMore: false }))
+    const page = setup(json(200, { data: [], nextCursor: null, hasMore: false, attention }))
     await fetchFiscalDocumentPage(
       page.client,
       's',

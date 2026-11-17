@@ -2358,6 +2358,22 @@ sale rows follow the ledger: a sale is out of a month's book only when its entry
     the address fields in the provider manifest [OWNER] [ACCOUNTANT], (g) the `stuck` flag and the exact count, and (i) `replacedBy`/`allowedActions` in the
     view stay open: **Step 4B.7b-5** (server, small, after the real provider's manifest is known). The screen still shows no lines: drawing `detail` in
     the detail dialog and a period filter in the list is the web's, **Step 4B.9b-2b** / **4B.9b-5** (the api-client already carries both).
+  - **Built in PR 4B.7b-5 (server, no migration, no new route; fiscal read model):** the view of a document (list, byId and detail) now answers `stuck` (queued
+    with every attempt spent, `isStuck`), `replacedByDocumentId` (the newest document that replaces it, read through the `replacedBy` relation) and
+    `allowedActions` (`allowedActionsOf`, pure, in `fiscal-rules.ts`: the five buttons the web used to derive: `editReceiver`, `retry`, `void`, `replace`,
+    `confirmIssuerChange`); the list page answers `attention: { rejected, stuck }`, two counts over the whole organization by the index
+    `(organizationId, status)`, not the page, the filters or the period. The api-client parses all of it. The permission to act stays the route's
+    (`fiscal:manage`); the api still decides again on every call. **Decisions (rule 12):** (1) the rules stay in the runtime, one function that the view
+    calls; rejected: a second copy of the rules in the view or a field per permission (the view is for `fiscal:view`, which may read the buttons it cannot
+    press); (2) `replace` of a credit note is true when it is voided (its replacement is the note of its return, which the view does not name), as the web
+    had it; (3) the counts ride on every page of the list, two indexed counts, rejected: a route of their own (a new route, a new coverage entry, one more
+    request for a banner). **Left by PR 4B.7b-5 (rule 12), with the step that closes each:** (a) the web still derives the buttons, the stuck flag and the
+    banner count itself (`document-rules.ts`, `attention-banner.tsx`): **Step 4B.9b-5d** switches it to `allowedActions`, `stuck`, `replacedByDocumentId`
+    and `attention` and deletes its copies of the rules (the spec that holds them to the lifecycle goes with them); (b) the buttons "issue" and "consult" stay
+    out: a route that issues or consults a document by hand needs the owner's word (rule 12: it acts on a real authority), owner **Step 4B.7c-8**; (c) the
+    address fields of the provider manifest (the parts of an address, with the catalogs of departments and municipalities) are the authority's data and the
+    screen's: **Step 4B.7c-5b**'s follow-up with the accountant [OWNER] [ACCOUNTANT], not built here; (e) `allowedActions` is read from the document alone, so a call can still be refused for what is outside it: `void` of a sale whose credit notes are alive (`has_credit_notes`), `retry` and `confirmIssuerChange` when the issuer moved since the refusal (they depend on the live comparison of the issuer, not on the stored reason), `replace` of a credit note whose return already has a live note, and `retry` of a document that is queued and healthy; the screen already answers each refusal with its reason, and a view that knows them needs the child notes and the issuer comparison in the read: **Step 4B.9b-5d** with the switch of the web, if the owner wants the buttons exact; (f) `stuck` is the queued case only; a document left SUBMITTED by a dead claim is told by the notice and swept by **Step 4B.8** (it has no button to press); (d) `attention` counts the whole organization, so a store
+    that sees only its documents still sees the organization's numbers: the fiscal area is organization-scoped (`fiscal:view`), as its list is.
 - [ ] Every route of 4B.2 to 4B.8 drawn (`frontend-coverage-map`), i18n keys in `es` and `en`, Lucide icons only, no emoji, the mobile layout of the
       common actions (register an expense, receive a purchase), the e2e of the month (register, receive, sell, remit, close)
 - **Decisions of PR 4B.9a-1 (rule 12):** (1) the books are an area of their own (`/finance`), not a page of Settings or of the organization: they are the
