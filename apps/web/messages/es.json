@@ -6233,6 +6233,10 @@
         "confirmDescription": "Una reversión no se puede deshacer ni borrar. Queda en el libro diario junto al asiento.",
         "confirm": "Revertir asiento",
         "done": "Asiento revertido.",
+        "conflicts": {
+          "reversal_not_reversible": "Una reversión no se puede revertir. Si fue un error, escribe un asiento nuevo a mano.",
+          "entry_owned_by_transaction": "Este asiento pertenece a un gasto, un ingreso o una transferencia. Anúlalo desde Transacciones en lugar de revertirlo aquí."
+        },
         "problems": {
           "memo": "Escribe el motivo de la reversión.",
           "date": "Escribe una fecha que exista, como año-mes-día."
