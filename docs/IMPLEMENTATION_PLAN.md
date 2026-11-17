@@ -2837,6 +2837,7 @@ Split in two PRs (coordinator, 2026-11-15; one PR would pass 40 files and mixes 
 
 **Left by 5.7a, for 7.7 (hardening)**
 - [ ] Audit of the requests a widget makes outside its scopes: today a denial is a Pino warning (`installationId`, `storeId`, operation; never the token) and the 403; an audit action with a denial budget like `AuditDenialBudget` joins when Settings shows a plugin's activity
+- Accepted (WID-053, ARREGLOS-1): the bridge budget of 120 requests a minute per person and installation is above the default limit of one address (`ThrottleProfiles.DEFAULT`, 100 a minute), so from one address the default limit stops first; the bridge budget is the one that counts across addresses. Kept at 120 (a lower one would throttle a widget that re-reads on every conversation switch); `plugin-widgets.spec.ts` proves the bridge counter itself with a counter seeded next to its limit (the test client uses a new address per request, so the default limit never stands in for it). Not tested: the counter across addresses (it is the same Redis key whatever the address).
 
 **Left by 5.7a for 5.6 (owner: 5.6, the PR that builds `pluginManifestSchema` and the install flow)**
 - [ ] `pluginManifestSchema` composes `pluginWidgetManifestSchema` (the `ui.widget` url and `widgets`), and registration rejects a widget url on a platform origin (5.7a drops it at read time as a second line)
