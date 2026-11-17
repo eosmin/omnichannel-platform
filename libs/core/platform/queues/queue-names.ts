@@ -62,6 +62,8 @@ export const JobNames = {
   VERIFY_LEDGER_CHAIN: 'verify-ledger-chain',
   // Builds, signs and submits the fiscal document of a sale through the provider of the issuer (TDD_18 §8.3)
   SUBMIT_FISCAL_DOCUMENT: 'submit-fiscal-document',
+  // Reports a contingency of an issuer to the authority, so that the documents made in it can be sent (Step 4B.7c-7)
+  REPORT_FISCAL_CONTINGENCY: 'report-fiscal-contingency',
   CREATE_SHIPMENTS: 'create-shipments', // One batch
   BULK_LABELS_MERGE: 'bulk-labels-merge',
   CANCEL_SHIPMENT: 'cancel-shipment',
@@ -141,6 +143,11 @@ export const verifyLedgerChainJobId = (organizationId: string, day: string): str
 // document that was refused, fixed and sent again is a new one (dashes, no colon)
 export const submitFiscalDocumentJobId = (documentId: string, submission: number): string =>
   `${JobNames.SUBMIT_FISCAL_DOCUMENT}-${documentId}-${submission}`
+
+// One report job per contingency: the retries of the report are one job; a person who asks again after a refusal needs a new one, so the
+// number of the ask counts (dashes, no colon)
+export const reportFiscalContingencyJobId = (contingencyId: string, ask: number): string =>
+  `${JobNames.REPORT_FISCAL_CONTINGENCY}-${contingencyId}-${ask}`
 
 // One retention run per store and local day: the hourly scheduler run twice in the same hour (or the store's hour of
 // 03:00 seen twice around a change of the clock) asks for the same job (dashes, no colon)

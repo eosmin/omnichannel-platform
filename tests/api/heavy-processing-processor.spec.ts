@@ -24,6 +24,8 @@ describe('HeavyProcessingProcessor', () => {
   const reconcileFiscal = jest.fn().mockResolvedValue(undefined)
   const checkChain = jest.fn().mockResolvedValue(undefined)
   const submitFiscal = jest.fn().mockResolvedValue(undefined)
+  const reportContingency = jest.fn().mockResolvedValue('reported')
+  const reportContingencyExhausted = jest.fn().mockResolvedValue(undefined)
   const support = {
     run: (_queue: string, current: ProcessorJob, work: (job: ProcessorJob) => Promise<void>) =>
       work(current)
@@ -45,7 +47,8 @@ describe('HeavyProcessingProcessor', () => {
     { reconcile: reconcileFinance } as never, // the daily check of the books: what it is handed is what is tested
     { check: checkChain } as never, // the weekly check of the chain: what it is handed is what is tested
     { reconcile: reconcileFiscal } as never, // the daily check of the fiscal documents: what it is handed is what is tested
-    { submit: submitFiscal } as never // the fiscal documents: what it is handed is what is tested
+    { submit: submitFiscal } as never, // the fiscal documents: what it is handed is what is tested
+    { report: reportContingency, reportExhausted: reportContingencyExhausted } as never // the contingency of the issuer: what it is handed is what is tested
   )
 
   const base = {
@@ -637,6 +640,49 @@ describe('HeavyProcessingProcessor', () => {
     ])('refuses for good a job with %s, and evaluates nothing', async (_name, data) => {
       await expect(evaluateJob(data)).rejects.toBeInstanceOf(UnrecoverableError)
       expect(evaluatePickups).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('report-fiscal-contingency jobs', () => {
+    const ORG_ID = '8d88e80f-cecb-408a-bd99-9da2db20a7da'
+    const CONTINGENCY_ID = '9e99f91f-dfdc-419b-ae00-aeb3ee1f31eb'
+    const report = (data: unknown, attemptsMade = 0): Promise<void> =>
+      processor.process({
+        name: JobNames.REPORT_FISCAL_CONTINGENCY,
+        data: JSON.parse(JSON.stringify(data)) as unknown,
+        attemptsMade,
+        opts: { attempts: 6 }
+      } as unknown as ProcessorJob)
+
+    it('hands the organization and the contingency to the service, nothing else', async () => {
+      reportContingency.mockClear()
+      await report({ organizationId: ORG_ID, contingencyId: CONTINGENCY_ID, correlationId: 'c' })
+      expect(reportContingency).toHaveBeenCalledWith(ORG_ID, CONTINGENCY_ID)
+    })
+
+    it('lets the error of an authority that did not answer reach the queue, and tells a person only on the last attempt', async () => {
+      reportContingencyExhausted.mockClear()
+      reportContingency.mockRejectedValue(new Error('the fiscal provider did not answer'))
+      await expect(
+        report({ organizationId: ORG_ID, contingencyId: CONTINGENCY_ID }, 0)
+      ).rejects.not.toBeInstanceOf(UnrecoverableError)
+      expect(reportContingencyExhausted).not.toHaveBeenCalled()
+      await expect(
+        report({ organizationId: ORG_ID, contingencyId: CONTINGENCY_ID }, 5)
+      ).rejects.toThrow(/did not answer/)
+      expect(reportContingencyExhausted).toHaveBeenCalledWith(ORG_ID, CONTINGENCY_ID)
+      reportContingency.mockResolvedValue('reported')
+    })
+
+    it.each([
+      ['a contingency that is not an id', { contingencyId: 'all' }],
+      ['an organization that is not an id', { organizationId: 'mine' }]
+    ])('refuses %s, and does not ask again', async (_label, patch) => {
+      reportContingency.mockClear()
+      await expect(
+        report({ organizationId: ORG_ID, contingencyId: CONTINGENCY_ID, ...patch })
+      ).rejects.toBeInstanceOf(UnrecoverableError)
+      expect(reportContingency).not.toHaveBeenCalled()
     })
   })
 })

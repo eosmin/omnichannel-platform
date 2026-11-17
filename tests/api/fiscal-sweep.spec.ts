@@ -28,6 +28,7 @@ import { FinancePostingService } from '@platform/core/finance-ledger'
 import { submitFiscalDocumentJobId } from '@platform/core/queues'
 import {
   type FiscalFindingsPage,
+  FiscalContingencyService,
   FiscalDocumentsService,
   FiscalSweepService
 } from '@platform/fiscal/runtime'
@@ -110,6 +111,7 @@ describe('The check of the fiscal documents', () => {
         app.get(PrismaService),
         sweep,
         documents,
+        app.get(FiscalContingencyService),
         heavy as never,
         {
           set: (labels: Record<string, string>, value: number) => gauge.push({ labels, value })
@@ -299,6 +301,7 @@ describe('The check of the fiscal documents', () => {
         app.get(PrismaService),
         sweep,
         documents,
+        app.get(FiscalContingencyService),
         broken as never,
         { set: () => undefined } as never,
         app.get(DomainEvents),

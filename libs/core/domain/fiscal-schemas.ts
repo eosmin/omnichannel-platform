@@ -5,6 +5,7 @@ import {
   FiscalCustomerDataLimits,
   FiscalEnvironment,
   FiscalIssueOn,
+  FiscalContingencyLimits,
   FiscalLimits,
   FiscalVoidKind
 } from './fiscal-constants'
@@ -152,6 +153,21 @@ export const voidFiscalDocumentSchema = z
   })
   .strict()
 export type VoidFiscalDocumentBody = z.output<typeof voidFiscalDocumentSchema>
+
+// A person starts a contingency of the issuer (Step 4B.7c-7): one of the reasons the provider's manifest declares, and what they say of it
+export const enterFiscalContingencySchema = z
+  .object({
+    reason: text(FiscalFieldLimits.CODE),
+    motive: text(FiscalContingencyLimits.MOTIVE_MAX_LENGTH).nullable().optional()
+  })
+  .strict()
+export type EnterFiscalContingencyBody = z.output<typeof enterFiscalContingencySchema>
+
+// A person ends it: who answers for the establishment, when the provider's authority asks
+export const endFiscalContingencySchema = z
+  .object({ responsible: voidPartySchema.optional() })
+  .strict()
+export type EndFiscalContingencyBody = z.output<typeof endFiscalContingencySchema>
 
 // What the person checked with the authority of the first issuer: that the document is not there
 export const confirmFiscalIssuerChangeSchema = fiscalReasonBodySchema

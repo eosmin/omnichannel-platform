@@ -24,6 +24,7 @@ import {
 } from '@platform/core/queues'
 import {
   type FiscalFinding,
+  FiscalContingencyService,
   FiscalDocumentsService,
   FiscalSweepService
 } from '@platform/fiscal/runtime'
@@ -50,6 +51,7 @@ export class FiscalReconciler {
     private readonly prisma: PrismaService,
     private readonly sweep: FiscalSweepService,
     private readonly documents: FiscalDocumentsService,
+    private readonly contingencies: FiscalContingencyService,
     @InjectQueue(QueueNames.HEAVY_PROCESSING)
     private readonly queue: Queue<SubmitFiscalDocumentJob>,
     @InjectMetric(MetricNames.FINANCE_FISCAL_FINDINGS) private readonly findings: Gauge<string>,
@@ -69,6 +71,11 @@ export class FiscalReconciler {
     // An organization that issues no documents has nothing to find: its gauges are zero
     if (issuer === null) {
       this.publish(organizationId, found)
+      // The contingencies do not depend on the issuer row (it may be gone): their report and their window are still checked
+      const stuck = await this.checkContingencies(organizationId, now)
+      if (stuck.length > 0) {
+        throw new Error(`${stuck.length} contingency checks failed`, { cause: stuck[0] })
+      }
       return report
     }
     // What is left after the run, for the gauge: a sale or a credit note the lifecycle made is no longer missing, a document asked for again
@@ -125,6 +132,7 @@ export class FiscalReconciler {
         await this.tellMismatch(organizationId, mismatches)
       }
     }
+    failures.push(...(await this.checkContingencies(organizationId, now)))
     this.publish(organizationId, remaining)
     if (report.truncated) {
       this.logger.warn({ organizationId }, 'the check of the fiscal documents stopped at its cap')
@@ -140,6 +148,29 @@ export class FiscalReconciler {
       })
     }
     return report
+  }
+
+  // Contingencies (Step 4B.7c-7): a report that is owed is asked again, and the person is told when a window is closing. Each step is
+  // its own: one that cannot be queued does not leave the others, nor the warning, for another day. Returns what failed.
+  private async checkContingencies(organizationId: string, now: Date): Promise<unknown[]> {
+    const failures: unknown[] = []
+    try {
+      for (const id of await this.contingencies.unreported(organizationId)) {
+        try {
+          await this.contingencies.askReport(organizationId, id, now)
+        } catch (error) {
+          failures.push(error)
+        }
+      }
+    } catch (error) {
+      failures.push(error)
+    }
+    try {
+      await this.contingencies.warnWindows(organizationId, now)
+    } catch (error) {
+      failures.push(error)
+    }
+    return failures
   }
 
   private publish(organizationId: string, found: Record<FiscalSweepKind, number>): void {
