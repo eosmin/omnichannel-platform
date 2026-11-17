@@ -1,6 +1,7 @@
 import {
   deleterPluginOf,
   editorPluginOf,
+  isOnBehalfOfPerson,
   pluginAuthorshipOf,
   sameAuthorship
 } from './plugin-author'
@@ -30,6 +31,21 @@ describe('pluginAuthorshipOf', () => {
     expect(
       pluginAuthorshipOf({ authorType: 'system', authorPluginId: 'a', authorNickname: '   ' })
     ).toMatchObject({ nickname: null })
+  })
+
+  it('draws the mark "on behalf of" only for a plugin that wrote as a person, never for the system with no nickname', () => {
+    const asPerson = pluginAuthorshipOf({
+      authorType: 'agent',
+      authorPluginId: 'acme-bot',
+      authorNickname: null
+    })
+    const asSystem = pluginAuthorshipOf({
+      authorType: 'system',
+      authorPluginId: 'acme-bot',
+      authorNickname: '   '
+    })
+    expect(asPerson !== null && isOnBehalfOfPerson(asPerson)).toBe(true)
+    expect(asSystem !== null && isOnBehalfOfPerson(asSystem)).toBe(false)
   })
 
   it('says a plugin that writes for a person is not automatic', () => {

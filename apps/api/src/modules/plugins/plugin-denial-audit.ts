@@ -32,7 +32,7 @@ export interface PluginDenial {
 
 // The call that the guard of the plugin API refused, in the audit log (PLG-198): the platform is the actor (a plugin has no person),
 // the installation and the reason are on the entry and the key never is. A plugin that probes the routes outside its scopes would
-// write a row per request, so each installation and reason gets ONE entry per window, and the keys nobody owns get one per address
+// write a row per request, so each installation, reason and set of scopes named gets ONE entry per window, and the keys nobody owns get one per address
 // and a budget for the whole window (the Pino log of the refusal is not capped, and has the rest). Never throws: the refusal that follows must not turn into a 500.
 export async function auditPluginDenial(
   deps: PluginDenialDeps,
@@ -82,8 +82,10 @@ async function withinBudget(
   if (installation !== undefined) {
     // SET NX EX is one step: the first refusal of the window takes it and the rest find it taken. If Redis fails the entry is
     // skipped and not written: a budget that opens when its store fails is no budget, and the Pino log still has the refusal.
+    // One slot per reason and set of scopes or permissions named: a refusal of one scope does not hide the refusal of another
+    const slot = [reason, ...(denial.missing ?? [])].join('|')
     const taken = await deps.redis.set(
-      CacheKeys.audit.pluginDenial(installation.id, reason),
+      CacheKeys.audit.pluginDenial(installation.id, slot),
       '1',
       'EX',
       PluginApiDenialAudit.WINDOW_SECONDS,

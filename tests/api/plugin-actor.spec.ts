@@ -72,6 +72,7 @@ const FULL_SCOPES = [
   PluginScopes.CONVERSATIONS_READ,
   PluginScopes.MESSAGES_READ,
   PluginScopes.MESSAGES_WRITE,
+  PluginScopes.MESSAGES_WRITE_AS_AGENT,
   PluginScopes.MESSAGES_DELETE
 ]
 

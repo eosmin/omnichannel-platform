@@ -14,6 +14,18 @@ describe('PluginScopes', () => {
     expect(Object.keys(PluginScopePermissions).sort()).toEqual(Object.values(PluginScopes).sort())
   })
 
+  it('keeps writing as a member of the team in a scope of its own, which stands for no permission and which messages:write does not hold', () => {
+    expect(PluginScopes.MESSAGES_WRITE_AS_AGENT).toBe('messages:write-as-agent')
+    expect(PluginScopePermissions[PluginScopes.MESSAGES_WRITE_AS_AGENT]).toEqual([])
+    const holders = Object.entries(PluginScopePermissions).filter(([scope]) =>
+      scope.startsWith('messages:write')
+    )
+    expect(holders.map(([scope]) => scope).sort()).toEqual([
+      PluginScopes.MESSAGES_WRITE,
+      PluginScopes.MESSAGES_WRITE_AS_AGENT
+    ])
+  })
+
   it('only grants permissions that exist, so a plugin never exceeds a human', () => {
     const known: readonly string[] = Object.values(Permissions)
     for (const granted of Object.values(PluginScopePermissions)) {
