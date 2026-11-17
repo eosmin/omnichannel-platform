@@ -51,6 +51,7 @@ const dateFormat = z.enum([
 ])
 const encoding = z.enum([BankStatementEncodings.UTF8, BankStatementEncodings.WINDOWS_1252])
 const windowDays = z.number().int().min(0).max(BankStatementLimits.DATE_WINDOW_MAX_DAYS)
+const skipRows = z.number().int().min(0).max(BankStatementLimits.SKIP_ROWS_MAX)
 
 const PROFILE_MESSAGE = { message: 'the profile breaks a rule of the bank import profiles' }
 const profileIsValid = (value: Parameters<typeof bankProfileProblem>[0]): boolean =>
@@ -59,6 +60,7 @@ const profileIsValid = (value: Parameters<typeof bankProfileProblem>[0]): boolea
 const reading = {
   delimiter: delimiter.default(RemittanceDelimiters.COMMA),
   hasHeader: z.boolean().default(true),
+  skipRows: skipRows.default(0),
   decimalSeparator: decimal.default(RemittanceDecimalSeparators.DOT),
   thousandsSeparator: thousands.default(BankThousandsSeparators.NONE),
   dateFormat: dateFormat.default(RemittanceDateFormats.ISO),
@@ -81,6 +83,7 @@ export const updateBankProfileSchema = z
     name: singleLineText(BankStatementLimits.PROFILE_NAME_MAX_LENGTH, 1).optional(),
     delimiter: delimiter.optional(),
     hasHeader: z.boolean().optional(),
+    skipRows: skipRows.optional(),
     decimalSeparator: decimal.optional(),
     thousandsSeparator: thousands.optional(),
     dateFormat: dateFormat.optional(),

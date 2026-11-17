@@ -22,6 +22,7 @@ import {
 const signed: BankStatementProfileShape = {
   delimiter: RemittanceDelimiters.COMMA,
   hasHeader: true,
+  skipRows: 0,
   decimalSeparator: RemittanceDecimalSeparators.DOT,
   thousandsSeparator: BankThousandsSeparators.NONE,
   dateFormat: RemittanceDateFormats.ISO,
@@ -299,6 +300,7 @@ describe('parseBankStatement', () => {
     const parsed = parseBankStatement('03/11/2026;Pago;REF1;1.234,50\n', {
       delimiter: RemittanceDelimiters.SEMICOLON,
       hasHeader: false,
+      skipRows: 0,
       decimalSeparator: RemittanceDecimalSeparators.COMMA,
       thousandsSeparator: BankThousandsSeparators.DOT,
       dateFormat: RemittanceDateFormats.DAY_FIRST_SLASH,
@@ -584,6 +586,7 @@ describe('a statement with a time in its dates and thousands with a comma', () =
   const bank: BankStatementProfileShape = {
     delimiter: RemittanceDelimiters.COMMA,
     hasHeader: false,
+    skipRows: 0,
     decimalSeparator: RemittanceDecimalSeparators.DOT,
     thousandsSeparator: BankThousandsSeparators.COMMA,
     dateFormat: RemittanceDateFormats.DAY_FIRST_SLASH,
@@ -804,5 +807,106 @@ describe('a statement with a time in its dates and thousands with a comma', () =
     )
     expect(twins.lines.map(line => line.occurrence)).toEqual([0, 1])
     expect(new Set(twins.lines.map(line => bankLineKey('acc', line))).size).toBe(2)
+  })
+})
+
+// The lead of report lines some banks print before the movements (synthetic, in the shape of a real one): titles, a quoted title with a
+// line break inside, blank rows, the opening and closing balances, and then a row of column titles and the movements
+describe('a statement that starts with a lead of report lines', () => {
+  const row = (cells: Record<number, string>, width = 12): string =>
+    Array.from({ length: width }, (_, index) => {
+      const cell = cells[index] ?? ''
+      return /[",\n]/.test(cell) ? `"${cell.replaceAll('"', '""')}"` : cell
+    }).join(',')
+  const lead = [
+    row({}),
+    row({}),
+    row({ 3: 'Statement of account' }),
+    row({ 3: 'Period\nfrom a day to a day' }),
+    row({}),
+    row({ 0: 'Opening balance:', 6: 'Total', 10: '100.00' }),
+    row({ 2: 'Product name and number' }),
+    row({}),
+    row({ 0: 'Closing balance:', 10: '(50.25)' }),
+    row({}),
+    row({ 1: 'Date', 3: 'Type', 5: 'Memo', 7: 'Ref', 8: 'Debit', 9: 'Credit', 11: 'Balance' })
+  ]
+  const movements = [
+    row({
+      1: '14/11/2026 10:15:30',
+      3: 'AB',
+      5: 'Deposit',
+      7: '1001',
+      8: '0.00',
+      9: '1,234.50',
+      11: '1,334.50'
+    }),
+    row({ 1: '15/11/2026', 3: 'CA', 5: 'Fee', 8: '2.00', 9: '0.00', 11: '(40.00)' })
+  ]
+  const text = [...lead, ...movements].join('\r\n') + '\r\n'
+  // The records of the lead that are not blank: 6, the row of titles included (the blank rows are not counted, the quoted title is one)
+  const base: BankStatementProfileShape = {
+    delimiter: RemittanceDelimiters.COMMA,
+    hasHeader: false,
+    skipRows: 6,
+    decimalSeparator: RemittanceDecimalSeparators.DOT,
+    thousandsSeparator: BankThousandsSeparators.COMMA,
+    dateFormat: RemittanceDateFormats.DAY_FIRST_SLASH,
+    columns: { date: 1, description: 5, reference: 7, debit: 8, credit: 9 }
+  }
+
+  it('does not read what is skipped, counts records and not lines, and reads the movements by position', () => {
+    const parsed = parseBankStatement(text, base)
+    expect(parsed.errorCount).toBe(0)
+    expect(parsed.lines.map(line => [line.postedOn, line.postedTime, line.amountCents])).toEqual([
+      ['2026-11-14', '10:15:30', 123450],
+      ['2026-11-15', null, -200]
+    ])
+  })
+
+  it('reads by the titles of the columns when the skip stops right before them', () => {
+    const parsed = parseBankStatement(text, {
+      ...base,
+      hasHeader: true,
+      skipRows: 5,
+      columns: {
+        date: 'Date',
+        description: 'Memo',
+        reference: 'Ref',
+        debit: 'Debit',
+        credit: 'Credit'
+      }
+    })
+    expect(parsed.errorCount).toBe(0)
+    expect(parsed.headers).toContain('Debit')
+    expect(parsed.lines).toHaveLength(2)
+  })
+
+  it('points an error at the line of the file, whatever was skipped before it', () => {
+    const broken = [...lead, row({ 1: '99/99/2026', 8: '1.00', 9: '0.00' })].join('\r\n')
+    const parsed = parseBankStatement(broken, base)
+    // 11 rows of the lead, one of them is two lines long: the bad row is on line 13 of the file
+    expect(parsed.errors[0]).toMatchObject({
+      row: 13,
+      field: 'date',
+      code: BankStatementErrors.INVALID_DATE
+    })
+  })
+
+  it('reads nothing of the lead: a stray quote or a wide row in it is of no consequence', () => {
+    const messy = ['"abc"def,x', 'a,b,c,d,e,f,g,h,i,j,k,l,m,n,o', ...movements].join('\n')
+    const parsed = parseBankStatement(messy, { ...base, skipRows: 2 })
+    expect(parsed.errorCount).toBe(0)
+    expect(parsed.lines).toHaveLength(2)
+  })
+
+  it('skips none by default and refuses a file that is all skipped', () => {
+    expect(parseBankStatement(text, { ...base, skipRows: 0 }).errorCount).toBeGreaterThan(0)
+    const all = parseBankStatement(text, { ...base, skipRows: 50 })
+    // The file has 6 records of lead and 2 movements: 8, and the profile skips more than that
+    expect(all.errors).toEqual([
+      { row: 1, field: null, code: BankStatementErrors.SKIP_PAST_END, value: '8' }
+    ])
+    expect(all.lines).toEqual([])
   })
 })

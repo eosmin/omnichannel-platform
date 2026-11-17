@@ -40,6 +40,8 @@ export const BankStatementLimits = {
   // A reference shorter than this says nothing ("1" is inside every number): it never makes a match "exact"
   REFERENCE_MIN_MATCH_LENGTH: 4,
   MAX_PROFILES_PER_ACCOUNT: 20,
+  // The records a profile may skip at the start of a file (the lead of report lines some banks print before the movements)
+  SKIP_ROWS_MAX: 50,
   // A column of a profile: the text of its header, or its position (0 is the first column)
   COLUMN_HEADER_MAX_LENGTH: 80,
   COLUMN_POSITION_MAX: 200,
@@ -108,7 +110,9 @@ export const BankStatementErrors = {
   STRAY_QUOTE: 'stray_quote',
   // The profile says the file has a header and maps its columns by position, and the first row is a movement (its date reads): a
   // movement would be read as the header and lost without a word
-  HEADER_LOOKS_LIKE_DATA: 'header_looks_like_data'
+  HEADER_LOOKS_LIKE_DATA: 'header_looks_like_data',
+  // The profile skips as many rows as the file has, or more: the lead is all there is. `value` says how many rows the file has.
+  SKIP_PAST_END: 'skip_past_end'
 } as const
 export type BankStatementError = (typeof BankStatementErrors)[keyof typeof BankStatementErrors]
 
@@ -127,6 +131,9 @@ export interface BankStatementMapping {
 export interface BankStatementProfileShape {
   delimiter: RemittanceDelimiter
   hasHeader: boolean
+  // How many records (rows that are not blank, a quoted line break is inside one) to drop from the start before the header or the first
+  // movement: the lead of report lines some banks print. The rows keep the line of the file they are on, so an error points at it.
+  skipRows: number
   decimalSeparator: RemittanceDecimalSeparator
   thousandsSeparator: BankThousandsSeparator
   dateFormat: RemittanceDateFormat
@@ -295,9 +302,16 @@ export function parseBankStatement(
     fail(openLine, null, BankStatementErrors.UNCLOSED_QUOTE, null)
     return { ...empty, errorCount }
   }
-  const body = rows
+  // The blank rows are not records: they are never counted by the rows a profile skips. What is skipped is not read at all (it is report
+  // text, not a statement), so a stray quote or a wide row in it is of no consequence.
+  const records = rows
     .map((cells, index) => ({ cells, line: startLines[index] ?? index + 1, index }))
     .filter(entry => entry.cells.some(cell => cell.trim() !== ''))
+  const body = records.slice(profile.skipRows)
+  if (body.length === 0 && records.length > 0) {
+    fail(1, null, BankStatementErrors.SKIP_PAST_END, String(records.length))
+    return { ...empty, errorCount }
+  }
   const first = body[0]
   if (profile.hasHeader && first !== undefined && strayRows.has(first.index)) {
     fail(first.line, null, BankStatementErrors.STRAY_QUOTE, null)

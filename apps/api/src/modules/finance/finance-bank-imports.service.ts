@@ -133,6 +133,7 @@ export class FinanceBankImportsService {
       {
         delimiter: body.profile.delimiter,
         hasHeader: body.profile.hasHeader,
+        skipRows: body.profile.skipRows,
         decimalSeparator: body.profile.decimalSeparator,
         thousandsSeparator: body.profile.thousandsSeparator,
         dateFormat: body.profile.dateFormat,

@@ -9,6 +9,7 @@ import {
   AccountRole,
   AccountType,
   BankStatementEncodings,
+  BankStatementLimits,
   BankThousandsSeparators,
   CashKind,
   ChainProblem,
@@ -1284,6 +1285,17 @@ describe('The tables of the ledger', () => {
       ['chk_bank_profiles_date_format', RemittanceDateFormats]
     ])('hold exactly the values of the enum in %s', async (constraint, values) => {
       expect(await listedIn(constraint)).toEqual(Object.values(values).sort())
+    })
+
+    it('holds the rows a bank profile skips between 0 and 50, and none for a profile that does not say', async () => {
+      const rows = await owner.$queryRaw<{ def: string; dflt: string }[]>`
+        SELECT pg_get_constraintdef(c.oid) AS def,
+               (SELECT column_default FROM information_schema.columns
+                 WHERE table_name = 'bank_import_profiles' AND column_name = 'skip_rows') AS dflt
+          FROM pg_constraint c WHERE c.conname = 'chk_bank_profiles_skip_rows'`
+      expect(rows[0]?.def).toContain('skip_rows >= 0')
+      expect(rows[0]?.def).toContain(`skip_rows <= ${BankStatementLimits.SKIP_ROWS_MAX}`)
+      expect(rows[0]?.dflt).toBe('0')
     })
 
     it('keeps the separators of a bank profile apart, except a comma that is both the delimiter and the thousands', async () => {
