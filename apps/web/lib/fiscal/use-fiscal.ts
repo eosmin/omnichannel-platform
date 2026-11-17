@@ -18,6 +18,7 @@ import {
   fetchFiscalEvidenceUrls,
   fetchFiscalIssuer,
   fetchFiscalProviders,
+  type FiscalDocumentDetailView,
   type FiscalDocumentFilters,
   type FiscalDocumentPageView,
   type FiscalDocumentView,
@@ -94,7 +95,7 @@ export function useFiscalDocument(
   storeId: string,
   id: string | null,
   enabled: boolean
-): UseQueryResult<FiscalDocumentView> {
+): UseQueryResult<FiscalDocumentDetailView> {
   return useQuery({
     queryKey: QueryKeys.fiscal.document(storeId, id ?? ''),
     queryFn: ({ signal }) => fetchFiscalDocument(apiClient, storeId, id ?? '', signal),

@@ -231,7 +231,7 @@ export function financeCall(
   token: string,
   storeId: string,
   path: string,
-  init: { method?: 'GET' | 'POST' | 'PATCH'; body?: unknown } = {}
+  init: { method?: 'GET' | 'POST' | 'PATCH' | 'PUT'; body?: unknown } = {}
 ): Promise<unknown> {
   return call(path, {
     method: init.method ?? 'GET',
