@@ -606,6 +606,7 @@
     "FINANCE_ENTRY_UNBALANCED": "The entry does not balance: debits and credits must be equal and positive",
     "FINANCE_ACCOUNT_NOT_POSTABLE": "This account only groups other accounts: choose one that accepts entries",
     "FINANCE_ACCOUNT_INACTIVE": "This account is inactive",
+    "FINANCE_ACCOUNT_TYPE_MISMATCH": "The type of this account does not fit: pick an account of the type this role or payment method needs (for example, tax owed is a liability and money received is an asset).",
     "FINANCE_ACCOUNT_TYPE_LOCKED": "The type of an account with entries cannot change",
     "FINANCE_ACCOUNT_HAS_ENTRIES": "An account with entries cannot be deleted or turned into a header, only deactivated",
     "FINANCE_ROLE_NOT_MAPPED": "An account is missing for this role: map it in the finance settings",

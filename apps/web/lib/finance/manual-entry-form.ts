@@ -37,6 +37,21 @@ export const ManualEntryFields = {
 } as const
 export type ManualEntryField = (typeof ManualEntryFields)[keyof typeof ManualEntryFields]
 
+// Where each problem of the form is drawn: by its own field, on the line that is wrong, or under the lines for the whole entry. A
+// `Record` over every field, so a field added to the form without a place is a compile error and a pressed Submit never ends in
+// silence (LED-822: the total was returned by `manualEntryProblem` and drawn nowhere).
+export const ManualEntryPlacement: Readonly<Record<ManualEntryField, 'field' | 'line' | 'footer'>> =
+  {
+    [ManualEntryFields.DATE]: 'field',
+    [ManualEntryFields.MEMO]: 'field',
+    [ManualEntryFields.LINE]: 'line',
+    [ManualEntryFields.LINES]: 'footer',
+    [ManualEntryFields.BALANCE]: 'footer',
+    [ManualEntryFields.TOTAL]: 'footer'
+  }
+export const isFooterProblem = (field: ManualEntryField): boolean =>
+  ManualEntryPlacement[field] === 'footer'
+
 export interface ManualEntryProblem {
   field: ManualEntryField
   // The line that is wrong, from 0, for the problems of one line

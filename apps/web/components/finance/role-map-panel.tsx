@@ -5,7 +5,7 @@ import { type ReactElement, useMemo } from 'react'
 
 import type { FinanceAccountView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
-import { AccountRole, CashKind } from '@platform/core/domain'
+import { AccountRole, AccountTypesOfRole, CashKind } from '@platform/core/domain'
 
 import { cashAccountsOf, postableAccountsOf } from '../../lib/finance/account-form'
 import {
@@ -22,8 +22,8 @@ import { SelectField } from './fields'
 
 // The account each role of the books posts to (TDD_18 §3, §4.2): the sales, the tax, the stock, what is owed to suppliers. A role
 // with no account stops the entries that need it, and says so in the postings that failed. A choice is saved when it is made.
-// Cash and the bank of the books are accounts of that kind of money; the other roles take any account that posts. (Whether a role may
-// take an account of a given type is the api's rule: it answers with a code that is said as it is.)
+// Cash and the bank of the books are accounts of that kind of money; the other roles take the accounts that post and are of a type the
+// role takes (`AccountTypesOfRole`, the same table the api refuses by: the list only keeps the person from a choice that is refused).
 const CASH_KIND_OF_ROLE: Readonly<Partial<Record<string, string>>> = {
   [AccountRole.CASH_DEFAULT]: CashKind.CASH,
   [AccountRole.BANK_DEFAULT]: CashKind.BANK
@@ -35,9 +35,13 @@ function optionsOf(
   current: string
 ): FinanceAccountView[] {
   const kind = CASH_KIND_OF_ROLE[role]
-  return kind === undefined
-    ? postableAccountsOf(accounts, [current])
-    : cashAccountsOf(accounts, [current], [kind])
+  // A role the table does not know (a newer api) filters nothing: the api still refuses what does not fit
+  const types = AccountTypesOfRole[role as AccountRole] as readonly string[] | undefined
+  return (
+    kind === undefined
+      ? postableAccountsOf(accounts, [current])
+      : cashAccountsOf(accounts, [current], [kind])
+  ).filter(account => account.id === current || types === undefined || types.includes(account.type))
 }
 
 export function RoleMapPanel(): ReactElement {

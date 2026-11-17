@@ -4,7 +4,11 @@ export type CsvValue = string | number | boolean | Date | null | undefined
 
 // A text that starts with one of these is a formula to a spreadsheet. Names and messages come from
 // third parties, so the cell is prefixed with a single quote and the program shows it as text.
-const FORMULA_START = /^[=+\-@\t\r]/
+// The defused text is written back to the original by dropping ONE leading quote, so a text that already is `'=1+1` must also take
+// a quote (it comes out as `''=1+1`): two different texts never share a cell, and the cell reads back as exactly what was written
+// (LED-R2-010, the auditor recomputes the hash of a memo from its CSV cell).
+const NEEDS_DEFUSING = /^'*[=+\-@\t\r]/
+const DEFUSED = /^'+[=+\-@\t\r]/
 const NEEDS_QUOTES = /[",\r\n]/
 
 // One cell of a CSV (RFC 4180). A number is written as it is, even a negative one: only text can be
@@ -14,8 +18,14 @@ export function csvCell(value: CsvValue): string {
   if (typeof value === 'number') return Number.isFinite(value) ? String(value) : ''
   if (typeof value === 'boolean') return value ? 'true' : 'false'
   const text = value instanceof Date ? value.toISOString() : value
-  const safe = FORMULA_START.test(text) ? `'${text}` : text
+  const safe = NEEDS_DEFUSING.test(text) ? `'${text}` : text
   return NEEDS_QUOTES.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe
+}
+
+// The text a cell of `csvCell` stands for, once the CSV quoting is undone: the inverse of the defusing. A cell that starts with quotes
+// and then a formula character had one quote added when it was written.
+export function csvCellText(cell: string): string {
+  return DEFUSED.test(cell) ? cell.slice(1) : cell
 }
 
 // A line with its terminator
