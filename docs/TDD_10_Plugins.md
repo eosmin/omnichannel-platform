@@ -891,8 +891,7 @@ ones in a consent screen (Step 5.6, install flow).
 name of the plugin as registered, typed as the person sees it: the case counts, the space around it does not) removes a plugin the
 organization registered. A plugin of another organization, an official one and one that does not exist answer the same 404, before the
 name is looked at. It is refused with 409 `PLUGIN_IN_USE` while any store of the organization holds an installation that is not
-revoked, a revoked one that still has its webhook endpoint or secret (the last `plugin.revoked` delivery has not been sent), or one that
-still has channel connections (the history of a channel: its conversations stay). When none does, the plugin row and the rows of its
+revoked, a revoked one that still has its webhook endpoint or secret (the last `plugin.revoked` delivery has not been sent). When the only thing that holds it is **a revoked installation that still has channel connections** (the history of a channel: its conversations stay), the plugin is **archived instead of deleted**: `Plugin.status` becomes `archived`, the action `plugin.archived` is audited, and the plugin leaves the catalog, the registry and the count of the organization's limit (the id stays reserved; a second `DELETE` answers 404). When no installation has a connection, the plugin row and the rows of its
 revoked installations (with their delivery log) go in one transaction, under the same lock of the organization as a registration, and the
 action `plugin.deleted` is audited with the plugin id, its type and the number of installations removed (nothing of a key or a secret,
 which a revoked installation no longer has). What the plugin wrote (messages, reactions, audit entries) stays, named by its id. The id is

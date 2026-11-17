@@ -180,6 +180,7 @@ export const AuditAction = {
   PLUGIN_REGISTERED: 'plugin.registered',
   PLUGIN_MANIFEST_UPDATED: 'plugin.manifest_updated',
   PLUGIN_DELETED: 'plugin.deleted',
+  PLUGIN_ARCHIVED: 'plugin.archived',
   PLUGIN_INSTALLED: 'plugin.installed',
   PLUGIN_SETUP_CODE_ISSUED: 'plugin.setup_code_issued',
   PLUGIN_SETUP_COMPLETED: 'plugin.setup_completed',

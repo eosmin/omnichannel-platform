@@ -206,7 +206,13 @@ export class PluginRegistrationService {
       }
 
       if (existing === null) {
-        const count = await tx.plugin.count({ where: { organizationId: store.organizationId } })
+        // An archived plugin (removed, with the history of a channel kept) frees its place
+        const count = await tx.plugin.count({
+          where: {
+            organizationId: store.organizationId,
+            status: { not: PluginStatus.ARCHIVED }
+          }
+        })
         if (count >= PluginRegistrationLimits.MAX_PER_ORGANIZATION) {
           throw new PlatformException(
             ErrorCodes.PLUGIN_LIMIT_REACHED,
@@ -248,6 +254,10 @@ export class PluginRegistrationService {
       const previousVersion = storedVersion.data.version
       if (isDeepStrictEqual(stored, existing.manifest)) {
         return { outcome: RegistrationOutcomes.UNCHANGED, previousVersion, status: existing.status }
+      }
+      // An archived plugin keeps its id for the history it holds: it is not registered again under it
+      if (existing.status === String(PluginStatus.ARCHIVED)) {
+        throw alreadyRegistered('that plugin was removed and its id cannot be used again')
       }
       // A suspended plugin is not edited: what its manifest says is what it was suspended with
       if (existing.status !== String(PluginStatus.APPROVED)) {
