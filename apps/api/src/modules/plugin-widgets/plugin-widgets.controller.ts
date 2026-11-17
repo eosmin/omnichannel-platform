@@ -5,7 +5,7 @@ import { type AuthenticatedUser, type Permission, Permissions } from '@platform/
 import { CurrentUser } from '@platform/core/auth-module'
 import { PluginBridgeMessages, type PluginBridgeResponse, uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import { viewerOf } from '@platform/core/messaging'
 
@@ -75,6 +75,7 @@ export class PluginWidgetsController {
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Post(ApiRoutes.pluginWidgets.sessions)
   @HttpCode(HttpStatusCodes.CREATED)
   openSession(
@@ -93,6 +94,7 @@ export class PluginWidgetsController {
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Post(ApiRoutes.pluginWidgets.bridge)
   @HttpCode(HttpStatusCodes.OK)
   async bridge(

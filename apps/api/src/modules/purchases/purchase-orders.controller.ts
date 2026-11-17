@@ -4,7 +4,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import {
@@ -56,6 +56,7 @@ export class PurchaseOrdersController {
   ) {}
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_PURCHASES)
+  @NoStore()
   @Get(ApiRoutes.purchaseOrders.list)
   list(
     @CurrentOrganization() organization: Organization,
@@ -68,6 +69,7 @@ export class PurchaseOrdersController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_PURCHASES)
+  @NoStore()
   @Post(ApiRoutes.purchaseOrders.create)
   @HttpCode(HttpStatusCodes.CREATED)
   create(
@@ -81,6 +83,7 @@ export class PurchaseOrdersController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_PURCHASES)
+  @NoStore()
   @Get(ApiRoutes.purchaseOrders.byId(':id'))
   get(
     @CurrentOrganization() organization: Organization,
@@ -93,6 +96,7 @@ export class PurchaseOrdersController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_PURCHASES)
+  @NoStore()
   @Patch(ApiRoutes.purchaseOrders.update(':id'))
   update(
     @CurrentOrganization() organization: Organization,
@@ -106,6 +110,7 @@ export class PurchaseOrdersController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_PURCHASES)
+  @NoStore()
   @Post(ApiRoutes.purchaseOrders.order(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   order(
@@ -119,6 +124,7 @@ export class PurchaseOrdersController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_PURCHASES)
+  @NoStore()
   @Post(ApiRoutes.purchaseOrders.receive(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   receive(
@@ -133,6 +139,7 @@ export class PurchaseOrdersController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_PURCHASES)
+  @NoStore()
   @Post(ApiRoutes.purchaseOrders.close(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   close(
@@ -147,6 +154,7 @@ export class PurchaseOrdersController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_PURCHASES)
+  @NoStore()
   @Post(ApiRoutes.purchaseOrders.cancel(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   cancel(
@@ -161,6 +169,7 @@ export class PurchaseOrdersController {
   }
 
   @RequireAnyPermission(Permissions.FINANCE_MANAGE_PURCHASES, Permissions.FINANCE_MOVE_MONEY)
+  @NoStore()
   @Get(ApiRoutes.purchaseOrders.payments(':id'))
   listPayments(
     @CurrentOrganization() organization: Organization,
@@ -172,6 +181,7 @@ export class PurchaseOrdersController {
 
   // Pays a bill of this order: the body names it (`purchaseReceiptId`, required here)
   @RequirePermissions(Permissions.FINANCE_MOVE_MONEY)
+  @NoStore()
   @Post(ApiRoutes.purchaseOrders.recordPayment(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   recordPayment(
