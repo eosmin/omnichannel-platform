@@ -170,6 +170,26 @@ export const PluginApiRateLimit = {
   THROTTLER_NAME: 'plugin-api'
 } as const
 
+// Why the guard of the plugin API refused a call (the audit entry `plugin.api_denied` carries it), and how many entries it may write:
+// a plugin that probes the routes outside its scopes must not fill the audit log. One entry per installation and reason in each
+// window; a key nobody knows has no installation, so those get one entry per address and a budget for the whole window.
+export const PluginApiDenialReasons = {
+  INVALID_KEY: 'invalid_key',
+  INACTIVE: 'inactive',
+  SCOPE: 'scope',
+  PERMISSION: 'permission',
+  // A route that names no scopes or no permission: a mistake of the code, kept apart so that it cannot mask a real refusal
+  ROUTE_UNDECLARED: 'route_undeclared'
+} as const
+export type PluginApiDenialReason =
+  (typeof PluginApiDenialReasons)[keyof typeof PluginApiDenialReasons]
+
+export const PluginApiDenialAudit = {
+  WINDOW_SECONDS: 300,
+  // One entry per address in a window, and no more than this many in all for the keys no installation owns
+  ANONYMOUS_PER_WINDOW: 60
+} as const
+
 // A channel connection works only while the installation it hangs from is active and its plugin
 // is approved (D19). Every path that receives, sends or checks through a connection adds
 // OfActiveInstallation to its query, so a connection that outlives an uninstall that failed half

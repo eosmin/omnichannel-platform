@@ -13,6 +13,7 @@ import {
   type ManualEntryDraft,
   ManualEntryEntryTypes,
   ManualEntryFields,
+  isFooterProblem,
   type ManualEntryProblem,
   manualEntryInputOf,
   manualEntryProblem,
@@ -279,7 +280,7 @@ function ManualEntryForm({
           <dd className="tabular-nums">{money(Math.abs(difference))}</dd>
         </div>
       </dl>
-      {wrong?.field === ManualEntryFields.LINES || wrong?.field === ManualEntryFields.BALANCE ? (
+      {wrong !== null && isFooterProblem(wrong.field) ? (
         <p role="alert" className="text-destructive text-sm">
           {t(`problems.${wrong.field}`)}
         </p>

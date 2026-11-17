@@ -1,6 +1,8 @@
 import {
   emptyManualEntryDraft,
+  isFooterProblem,
   ManualEntryFields,
+  ManualEntryPlacement,
   manualEntryInputOf,
   manualEntryProblem,
   manualEntryTotals,
@@ -119,5 +121,25 @@ describe('manualEntryTotals and manualEntryInputOf', () => {
         { accountId: 'equity', debitCents: 0, creditCents: 1550, memo: 'Capital' }
       ]
     })
+  })
+})
+
+describe('where a problem of the entry is drawn (LED-822)', () => {
+  it('draws the problems of the whole entry under the lines, the total included', () => {
+    expect(isFooterProblem(ManualEntryFields.LINES)).toBe(true)
+    expect(isFooterProblem(ManualEntryFields.BALANCE)).toBe(true)
+    expect(isFooterProblem(ManualEntryFields.TOTAL)).toBe(true)
+  })
+
+  it('leaves the date, the memo and a line to the place of their own', () => {
+    for (const field of [ManualEntryFields.DATE, ManualEntryFields.MEMO, ManualEntryFields.LINE]) {
+      expect(isFooterProblem(field)).toBe(false)
+    }
+  })
+
+  it('has a place for every problem the form can name', () => {
+    expect(Object.keys(ManualEntryPlacement).sort()).toEqual(
+      Object.values(ManualEntryFields).sort()
+    )
   })
 })

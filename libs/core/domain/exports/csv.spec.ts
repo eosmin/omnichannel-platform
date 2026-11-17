@@ -1,4 +1,4 @@
-import { csvCell, csvHeader, csvLine } from './csv'
+import { csvCell, csvCellText, csvHeader, csvLine } from './csv'
 
 describe('csv', () => {
   it('writes empty values as nothing', () => {
@@ -30,5 +30,39 @@ describe('csv', () => {
   it('ends a line with CRLF and starts a file with the BOM', () => {
     expect(csvLine(['a', 1])).toBe('a,1\r\n')
     expect(csvHeader(['x'])).toBe('﻿x\r\n')
+  })
+
+  describe('a cell that reads back as what was written (LED-R2-010)', () => {
+    const unquote = (cell: string): string =>
+      cell.startsWith('"') ? cell.slice(1, -1).replaceAll('""', '"') : cell
+
+    it('does not give two different texts the same cell', () => {
+      expect(csvCell('=1+1')).toBe("'=1+1")
+      expect(csvCell("'=1+1")).toBe("''=1+1")
+      expect(csvCell("'=1+1")).not.toBe(csvCell('=1+1'))
+    })
+
+    it.each([
+      '=1+1',
+      "'=1+1",
+      "''=1+1",
+      '+1',
+      "'-1",
+      "'@x",
+      '\tx',
+      "'\rx",
+      "'abc",
+      "'",
+      '',
+      'a-b',
+      "it's",
+      '=",x"'
+    ])('reads %j back exactly', text => {
+      expect(csvCellText(unquote(csvCell(text)))).toBe(text)
+    })
+
+    it('leaves a text with a quote and no formula as it is', () => {
+      expect(csvCell("'abc")).toBe("'abc")
+    })
   })
 })

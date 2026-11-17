@@ -192,6 +192,48 @@ export enum AccountRole {
   UNCATEGORIZED_EXPENSE = 'uncategorized_expense'
 }
 
+// The types of account each role may point at, and the payment methods (LED-154, LED-163). The TDD does not tabulate them, so the
+// table is read off the template of the chart (`templates/sv.ts`): what each role holds there is its type here, widened only where a
+// chart can reasonably book the same thing in a neighbour type (a cost of goods in expenses, a rounding that goes either way). A
+// role mapped to a type outside its list would post to the wrong side of a statement (an input tax to a liability doubles the tax).
+const { ASSET, LIABILITY, EQUITY, INCOME, COST_OF_SALES, EXPENSE } = AccountType
+export const AccountTypesOfRole: Readonly<Record<AccountRole, readonly AccountType[]>> = {
+  [AccountRole.CASH_DEFAULT]: [ASSET],
+  [AccountRole.BANK_DEFAULT]: [ASSET],
+  [AccountRole.INVENTORY]: [ASSET],
+  [AccountRole.INVENTORY_IN_TRANSIT]: [ASSET],
+  [AccountRole.RECEIVABLE_CARRIERS]: [ASSET],
+  [AccountRole.CUSTOMER_ADVANCES]: [LIABILITY],
+  [AccountRole.PAYABLE_SUPPLIERS]: [LIABILITY],
+  [AccountRole.PAYABLE_CARRIERS]: [LIABILITY],
+  [AccountRole.VAT_OUTPUT]: [LIABILITY],
+  [AccountRole.VAT_INPUT]: [ASSET],
+  [AccountRole.SALES_REVENUE]: [INCOME],
+  [AccountRole.SHIPPING_REVENUE]: [INCOME],
+  [AccountRole.SALES_DISCOUNTS]: [INCOME],
+  [AccountRole.SALES_RETURNS]: [INCOME],
+  [AccountRole.COST_OF_GOODS_SOLD]: [COST_OF_SALES, EXPENSE],
+  [AccountRole.INVENTORY_LOSS]: [EXPENSE, COST_OF_SALES],
+  [AccountRole.INVENTORY_GAIN]: [INCOME],
+  [AccountRole.CARRIER_FREIGHT_EXPENSE]: [EXPENSE, COST_OF_SALES],
+  [AccountRole.CARRIER_COMMISSION_EXPENSE]: [EXPENSE, COST_OF_SALES],
+  // A shortfall debits it and a surplus credits it (`return-entry-rules.ts`), so a chart may book it as an expense or as income
+  [AccountRole.COD_DIFFERENCES]: [EXPENSE, COST_OF_SALES, INCOME],
+  [AccountRole.OPENING_EQUITY]: [EQUITY],
+  [AccountRole.ROUNDING]: [EXPENSE, INCOME],
+  [AccountRole.UNCATEGORIZED_EXPENSE]: [EXPENSE, COST_OF_SALES]
+}
+
+// What a payment lands in is money held or owed to the business (cash, a bank, a carrier that collects): always an asset
+export const AccountTypesOfPaymentMethod: Readonly<Record<PaymentMethod, readonly AccountType[]>> =
+  {
+    [PaymentMethod.CASH]: [ASSET],
+    [PaymentMethod.TRANSFER]: [ASSET],
+    [PaymentMethod.CARD]: [ASSET],
+    [PaymentMethod.CASH_ON_DELIVERY]: [ASSET],
+    [PaymentMethod.OTHER]: [ASSET]
+  }
+
 export enum JournalEntryType {
   MANUAL = 'manual',
   OPENING_BALANCE = 'opening_balance',

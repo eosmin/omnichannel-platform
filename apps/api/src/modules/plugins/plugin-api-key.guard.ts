@@ -1,24 +1,30 @@
 import { type CanActivate, type ExecutionContext, Inject, Injectable } from '@nestjs/common'
 import { Reflector } from '@nestjs/core'
 import { getStorageToken, type ThrottlerStorage } from '@nestjs/throttler'
+import type { Redis } from 'ioredis'
 import { PinoLogger } from 'nestjs-pino'
 
+import { AuditService } from '@platform/core/audit-module'
 import { type Permission, RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
 import { hashToken } from '@platform/core/crypto'
 import { PrismaService } from '@platform/core/database'
 import {
   PLUGIN_API_KEY_TOKEN_PREFIX,
+  PluginApiDenialReasons,
+  type PluginApiDenialReason,
   PluginApiRateLimit,
   PluginInstallationStatus,
   PluginStatus
 } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import type { AuthenticatedRequest } from '@platform/core/logger'
+import { REDIS_CLIENT } from '@platform/core/redis'
 import type { PluginScope } from '@platform/plugins/sdk'
 
 import { ANY_PERMISSION_KEY, missingPermissions, PERMISSIONS_KEY } from '../tenancy'
 
 import { PLUGIN_SCOPES_KEY } from './plugin-api.keys'
+import { auditPluginDenial } from './plugin-denial-audit'
 import { bearerTokenOf, knownScopes, permissionsOfScopes } from './plugin-install-rules'
 
 function invalidKey(): PlatformException {
@@ -51,7 +57,9 @@ export class PluginApiKeyGuard implements CanActivate {
     private readonly prisma: PrismaService,
     private readonly reflector: Reflector,
     @Inject(getStorageToken()) private readonly throttle: ThrottlerStorage,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly audit: AuditService,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis
   ) {
     this.logger.setContext(PluginApiKeyGuard.name)
   }
@@ -59,7 +67,9 @@ export class PluginApiKeyGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>()
     const token = bearerTokenOf(request.headers.authorization)
-    if (token === undefined || !token.startsWith(PLUGIN_API_KEY_TOKEN_PREFIX)) throw invalidKey()
+    if (token === undefined || !token.startsWith(PLUGIN_API_KEY_TOKEN_PREFIX)) {
+      return this.refuseKey(request, PluginApiDenialReasons.INVALID_KEY)
+    }
 
     const installation = await this.prisma.client.pluginInstallation.findUnique({
       where: { apiKeyHash: hashToken(token) },
@@ -73,12 +83,15 @@ export class PluginApiKeyGuard implements CanActivate {
         store: { select: { id: true, organizationId: true, name: true } }
       }
     })
+    if (installation === null) return this.refuseKey(request, PluginApiDenialReasons.INVALID_KEY)
     if (
-      installation === null ||
       installation.status !== String(PluginInstallationStatus.ACTIVE) ||
       installation.plugin.status !== String(PluginStatus.APPROVED)
     ) {
-      throw invalidKey()
+      // The caller gets the same answer as for an unknown key; the audit log knows which installation it was
+      return this.refuseKey(request, PluginApiDenialReasons.INACTIVE, installation, {
+        status: { installation: installation.status, plugin: installation.plugin.status }
+      })
     }
 
     const targets = [context.getHandler(), context.getClass()]
@@ -87,6 +100,7 @@ export class PluginApiKeyGuard implements CanActivate {
       targets
     )
     if (required === undefined) {
+      this.denied(request, installation, PluginApiDenialReasons.ROUTE_UNDECLARED, [])
       throw new PlatformException(
         ErrorCodes.INTERNAL_ERROR,
         'a route behind PluginApiKeyGuard names no scopes',
@@ -100,7 +114,7 @@ export class PluginApiKeyGuard implements CanActivate {
     const granted = knownScopes(installation.scopes)
     const lacking = required.filter(scope => !granted.includes(scope))
     if (lacking.length > 0) {
-      this.denied(installation, 'scope', lacking)
+      this.denied(request, installation, PluginApiDenialReasons.SCOPE, lacking)
       throw new PlatformException(
         ErrorCodes.PLUGIN_SCOPE_DENIED,
         'the plugin lacks a scope of the route',
@@ -123,6 +137,7 @@ export class PluginApiKeyGuard implements CanActivate {
         { installationId: installation.id, handler: context.getHandler().name },
         'a plugin-api route with scopes declares no @RequirePermissions: refused'
       )
+      this.denied(request, installation, PluginApiDenialReasons.ROUTE_UNDECLARED, [])
       throw new PlatformException(
         ErrorCodes.PERMISSION_DENIED,
         'this route declares no permission',
@@ -136,7 +151,7 @@ export class PluginApiKeyGuard implements CanActivate {
         : [])
     ]
     if (missing.length > 0) {
-      this.denied(installation, 'permission', missing)
+      this.denied(request, installation, PluginApiDenialReasons.PERMISSION, missing)
       throw new PlatformException(
         ErrorCodes.PERMISSION_DENIED,
         'the scopes of the plugin do not cover what the route needs',
@@ -159,13 +174,58 @@ export class PluginApiKeyGuard implements CanActivate {
 
   // Said in the log, with the installation and never the key: a key that probes the routes outside its scopes is seen
   private denied(
-    installation: { id: string; pluginId: string },
-    kind: string,
-    missing: string[]
+    request: AuthenticatedRequest,
+    installation: { id: string; pluginId: string; store: { id: string } },
+    reason: PluginApiDenialReason,
+    missing: readonly string[]
   ): void {
     this.logger.warn(
-      { installationId: installation.id, pluginId: installation.pluginId, kind, missing },
+      { installationId: installation.id, pluginId: installation.pluginId, kind: reason, missing },
       'a plugin key was refused for lack of access'
+    )
+    void this.record(request, reason, installation, { missing })
+  }
+
+  // A key that does not open the door: audited (with a cap) and answered with the one answer for every such key
+  private refuseKey(
+    request: AuthenticatedRequest,
+    reason: PluginApiDenialReason,
+    installation?: { id: string; pluginId: string; store: { id: string } },
+    detail: { status?: { installation: string; plugin: string } } = {}
+  ): never {
+    // The audit is capped, so the log keeps every one of these (never the key)
+    this.logger.warn(
+      { installationId: installation?.id, reason },
+      'a plugin key that does not open the door was refused'
+    )
+    // Not awaited: it never throws, and an answer for a key that does not open the door must not wait for Redis
+    void this.record(request, reason, installation, detail)
+    throw invalidKey()
+  }
+
+  private record(
+    request: AuthenticatedRequest,
+    reason: PluginApiDenialReason,
+    installation?: { id: string; pluginId: string; store: { id: string } },
+    detail: { missing?: readonly string[]; status?: { installation: string; plugin: string } } = {}
+  ): Promise<void> {
+    return auditPluginDenial(
+      { audit: this.audit, redis: this.redis, logger: this.logger },
+      request,
+      {
+        reason,
+        ...(installation === undefined
+          ? {}
+          : {
+              installation: {
+                id: installation.id,
+                pluginId: installation.pluginId,
+                storeId: installation.store.id
+              }
+            }),
+        ...(detail.missing === undefined ? {} : { missing: detail.missing }),
+        ...(detail.status === undefined ? {} : { status: detail.status })
+      }
     )
   }
 
