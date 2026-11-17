@@ -696,52 +696,62 @@ describe('Orders written through the plugin API', () => {
         OrderMessageKind.ORDER_DELIVERED,
         Locales.EN
       )
-      await owner.orderMessageTemplate.deleteMany({
-        where: {
-          storeId: ctx.storeA.id,
-          kind: OrderMessageKind.ORDER_DELIVERED,
-          locale: Locales.EN
-        }
-      })
-      await owner.orderMessageTemplate.create({
-        data: {
-          storeId: ctx.storeA.id,
-          kind: OrderMessageKind.ORDER_DELIVERED,
-          locale: Locales.EN,
-          body: 'Delivered {{orderNumber}}',
-          autoSend: true,
-          attachSummary: true
-        }
-      })
+      try {
+        await owner.orderMessageTemplate.deleteMany({
+          where: {
+            storeId: ctx.storeA.id,
+            kind: OrderMessageKind.ORDER_DELIVERED,
+            locale: Locales.EN
+          }
+        })
+        await owner.orderMessageTemplate.create({
+          data: {
+            storeId: ctx.storeA.id,
+            kind: OrderMessageKind.ORDER_DELIVERED,
+            locale: Locales.EN,
+            body: 'Delivered {{orderNumber}}',
+            autoSend: true,
+            attachSummary: true
+          }
+        })
 
-      const saved = await call('put', path, templater.key).send({ body: 'Your order arrived' })
+        const saved = await call('put', path, templater.key).send({ body: 'Your order arrived' })
 
-      expect(saved.status).toBe(OK)
-      const row = await owner.orderMessageTemplate.findFirstOrThrow({
-        where: {
-          storeId: ctx.storeA.id,
-          kind: OrderMessageKind.ORDER_DELIVERED,
-          locale: Locales.EN
-        }
-      })
-      expect([row.body, row.autoSend, row.attachSummary]).toEqual([
-        'Your order arrived',
-        true,
-        true
-      ])
-      // A template the plugin creates starts with the defaults of its kind
-      await owner.orderMessageTemplate.deleteMany({ where: { id: row.id } })
-      const created = await call('put', path, templater.key).send({ body: 'Arrived' })
-      expect(created.status).toBe(OK)
-      const fresh = await owner.orderMessageTemplate.findFirstOrThrow({
-        where: {
-          storeId: ctx.storeA.id,
-          kind: OrderMessageKind.ORDER_DELIVERED,
-          locale: Locales.EN
-        }
-      })
-      expect(fresh.attachSummary).toBe(false)
-      await owner.orderMessageTemplate.deleteMany({ where: { id: fresh.id } })
+        expect(saved.status).toBe(OK)
+        const row = await owner.orderMessageTemplate.findFirstOrThrow({
+          where: {
+            storeId: ctx.storeA.id,
+            kind: OrderMessageKind.ORDER_DELIVERED,
+            locale: Locales.EN
+          }
+        })
+        expect([row.body, row.autoSend, row.attachSummary]).toEqual([
+          'Your order arrived',
+          true,
+          true
+        ])
+        // A template the plugin creates starts with the defaults of its kind
+        await owner.orderMessageTemplate.deleteMany({ where: { id: row.id } })
+        const created = await call('put', path, templater.key).send({ body: 'Arrived' })
+        expect(created.status).toBe(OK)
+        const fresh = await owner.orderMessageTemplate.findFirstOrThrow({
+          where: {
+            storeId: ctx.storeA.id,
+            kind: OrderMessageKind.ORDER_DELIVERED,
+            locale: Locales.EN
+          }
+        })
+        expect(fresh.attachSummary).toBe(false)
+        await owner.orderMessageTemplate.deleteMany({ where: { id: fresh.id } })
+      } finally {
+        await owner.orderMessageTemplate.deleteMany({
+          where: {
+            storeId: ctx.storeA.id,
+            kind: OrderMessageKind.ORDER_DELIVERED,
+            locale: Locales.EN
+          }
+        })
+      }
     })
   })
 
