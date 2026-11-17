@@ -33,7 +33,15 @@ import { toast } from '../../lib/toast'
 import { useStore } from '../providers/store-context'
 import { LoadFailed, PageLoading } from '../settings/states'
 import { Button } from '../ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '../ui/dialog'
 
 import { EvidencePanel } from './evidence-panel'
 import { FiscalStatusBadge } from './fiscal-status-badge'
@@ -195,6 +203,13 @@ function DocumentBody({
         open={changingIssuer}
         onOpenChange={setChangingIssuer}
       />
+      <DialogFooter>
+        <DialogClose asChild>
+          <Button type="button" variant="outline">
+            {t('close')}
+          </Button>
+        </DialogClose>
+      </DialogFooter>
     </>
   )
 }

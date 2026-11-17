@@ -7441,7 +7441,8 @@
           "no": "No",
           "minimized": "The receiver is customer data: only the name and a masked tax id are shown here."
         },
-        "immutable": "The lines, the taxes and the issuer of an accepted document are sealed when it is made and cannot be changed: what is shown above is what was sealed."
+        "immutable": "The lines, the taxes and the issuer of an accepted document are sealed when it is made and cannot be changed: what is shown above is what was sealed.",
+        "close": "Close"
       },
       "attention": {
         "rejected": {
