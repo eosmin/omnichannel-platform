@@ -136,6 +136,95 @@ describe('The retention run of the worker', () => {
       expect(await storage.head(old.thumb)).toBeNull()
     })
 
+    // The summary or the label of an order, sent in the conversation as a message: the file belongs to the order (TDD_05 §10.4: an order is
+    // never touched by the retention of a tenant), so it outlives the message it was sent with
+    async function orderDocumentIn(storeId: string, conversationId: string, messageId: string) {
+      const order = await createOrder(owner, { storeId })
+      const mediaId = randomUUID()
+      const key = await putObject(StorageKeys.message(storeId, mediaId, 'summary.pdf'))
+      await owner.media.create({
+        data: {
+          id: mediaId,
+          storeId,
+          purpose: MediaPurpose.ORDER,
+          orderId: order.id,
+          messageId,
+          key,
+          filename: 'summary.pdf',
+          contentType: 'application/pdf',
+          fileSize: 1
+        }
+      })
+      await owner.order.update({ where: { id: order.id }, data: { conversationId } })
+      return { orderId: order.id, mediaId, key }
+    }
+
+    it('keeps the document of an order that was sent in a deleted conversation, and deletes the plain file beside it', async () => {
+      const old = await conversationWithFile(ctx.storeA.id, {
+        status: ConversationStatus.RESOLVED,
+        lastMessageAt: daysAgo(800)
+      })
+      const document = await orderDocumentIn(ctx.storeA.id, old.conversationId, old.messageId)
+
+      await enforcer.enforce(ctx.storeA.id)
+
+      // The conversation, its message and the plain file are gone, with their objects
+      expect(await owner.conversation.count({ where: { id: old.conversationId } })).toBe(0)
+      expect(await owner.message.count({ where: { id: old.messageId } })).toBe(0)
+      expect(await owner.media.count({ where: { id: old.mediaId } })).toBe(0)
+      expect(await storage.head(old.key)).toBeNull()
+      // The document of the order keeps its row and its object, and only loses the message it was sent with
+      const kept = await owner.media.findUniqueOrThrow({ where: { id: document.mediaId } })
+      expect(kept.orderId).toBe(document.orderId)
+      expect(kept.messageId).toBeNull()
+      expect(await storage.head(document.key)).not.toBeNull()
+      const order = await owner.order.findUniqueOrThrow({ where: { id: document.orderId } })
+      expect(order.conversationId).toBeNull()
+    })
+
+    it('keeps the document of an order of an archived conversation too, deletes its plain file, and touches no other store', async () => {
+      const mine = await conversationWithFile(ctx.storeA.id, {
+        status: ConversationStatus.ARCHIVED,
+        lastMessageAt: daysAgo(900)
+      })
+      const mineDocument = await orderDocumentIn(ctx.storeA.id, mine.conversationId, mine.messageId)
+      const theirs = await conversationWithFile(ctx.storeB.id, {
+        status: ConversationStatus.RESOLVED,
+        lastMessageAt: daysAgo(900)
+      })
+      const theirDocument = await orderDocumentIn(
+        ctx.storeB.id,
+        theirs.conversationId,
+        theirs.messageId
+      )
+
+      await enforcer.enforce(ctx.storeA.id)
+
+      // Store A: the conversation, its message and its plain file are gone; the document stays and the order forgets only the link
+      expect(await owner.conversation.count({ where: { id: mine.conversationId } })).toBe(0)
+      expect(await owner.message.count({ where: { id: mine.messageId } })).toBe(0)
+      expect(await owner.media.count({ where: { id: mine.mediaId } })).toBe(0)
+      expect(await storage.head(mine.key)).toBeNull()
+      expect(await owner.media.count({ where: { id: mineDocument.mediaId } })).toBe(1)
+      expect(await storage.head(mineDocument.key)).not.toBeNull()
+      expect(
+        (await owner.order.findUniqueOrThrow({ where: { id: mineDocument.orderId } }))
+          .conversationId
+      ).toBeNull()
+      // Store B is not part of this run: its conversation, its file, its document and its order link stay as they were
+      expect(await owner.conversation.count({ where: { id: theirs.conversationId } })).toBe(1)
+      expect(await owner.media.count({ where: { id: theirs.mediaId } })).toBe(1)
+      const theirKept = await owner.media.findUniqueOrThrow({
+        where: { id: theirDocument.mediaId }
+      })
+      expect(theirKept.messageId).toBe(theirs.messageId)
+      expect(await storage.head(theirDocument.key)).not.toBeNull()
+      expect(
+        (await owner.order.findUniqueOrThrow({ where: { id: theirDocument.orderId } }))
+          .conversationId
+      ).toBe(theirs.conversationId)
+    })
+
     it('keeps the order made from a deleted conversation and removes only its link', async () => {
       const old = await conversationWithFile(ctx.storeA.id, {
         status: ConversationStatus.RESOLVED,

@@ -9,7 +9,7 @@ import { CONVERSATION_RESOURCE_TYPE } from '@platform/core/domain'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { isHiddenStatus, lockConversationForWrite } from '@platform/core/messaging'
-import { objectKeysOf } from '@platform/core/storage'
+import { filesOfConversationsWhere, objectKeysOf } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
 import type { Actor } from '../tenancy'
@@ -56,12 +56,8 @@ export class ConversationDeletionService {
         // in the gallery of other places), so they are found and deleted here, and so are the pictures of the ads.
         // Found through the conversation, never through a list of ids: a conversation of any length is one query.
         // The documents of an order (its summary, sent as a message) belong to the order: they keep their row and only
-        // lose the message they were sent with (`Media.message` is SET NULL).
-        const filesOfConversation = {
-          storeId,
-          orderId: null,
-          OR: [{ message: { conversationId } }, { origin: { conversationId } }]
-        }
+        // lose the message they were sent with (`Media.message` is SET NULL). The same rule as the nightly retention.
+        const filesOfConversation = filesOfConversationsWhere(storeId, [conversationId])
         const files = await tx.media.findMany({
           where: filesOfConversation,
           select: { key: true, variants: true }

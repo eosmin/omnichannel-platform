@@ -5,7 +5,7 @@ import { RetentionDefaults, RetentionRun, type RetentionField } from '@platform/
 import { PrismaService } from '@platform/core/database'
 import { ConversationStatus, DAY_MS } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
-import { MediaPurpose } from '@platform/core/storage'
+import { filesOfConversationsWhere, MediaPurpose } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
 import { categoryRunner, inBatches, PartialRunError } from './retention-batches'
@@ -171,15 +171,10 @@ export class StoreRetentionEnforcer {
         const eligibleIds = eligible.map(conversation => conversation.id)
         if (eligibleIds.length === 0) return { files: [] as FileRow[], count: 0 }
         // The files of its messages and of the picture of its ad: the rows of the messages go with the conversation
-        // and would leave these with no owner
+        // and would leave these with no owner. The documents of an order sent in it are not among them: they belong to the
+        // order and keep their row and their objects (the same rule as the manual deletion, TDD_05 §10.4)
         const files = await tx.media.findMany({
-          where: {
-            storeId,
-            OR: [
-              { message: { conversationId: { in: eligibleIds } } },
-              { origin: { conversationId: { in: eligibleIds } } }
-            ]
-          },
+          where: filesOfConversationsWhere(storeId, eligibleIds),
           select: { id: true, key: true, variants: true }
         })
         await tx.media.deleteMany({ where: { id: { in: files.map(file => file.id) }, storeId } })
