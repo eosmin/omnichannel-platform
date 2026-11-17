@@ -42,7 +42,9 @@ const period = {
   closedBy: 'u1',
   reopenedAt: null,
   reopenedBy: null,
-  reopenReason: null
+  reopenReason: null,
+  hasEnded: true,
+  hasStarted: true
 }
 
 describe('closing and reopening a month', () => {
