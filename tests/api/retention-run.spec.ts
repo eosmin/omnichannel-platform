@@ -737,6 +737,10 @@ describe('The retention run of the worker', () => {
     })
 
     it('leaves a month to the run that holds its lock: it writes no object and deletes no row', async () => {
+      // Cleaned up even when an assertion below fails, and proved empty first: an object here before the run would not be
+      // the run's, and the failure would say so
+      archived.push(StorageKeys.auditArchive(2001, 5))
+      expect(await storage.head(StorageKeys.auditArchive(2001, 5))).toBeNull()
       const row = await entry('2001-05-10T00:00:00Z', 'test.cold.locked')
       const key = auditColdExportLockKey(2001, 5)
 
@@ -754,7 +758,6 @@ describe('The retention run of the worker', () => {
       expect(await owner.auditLog.count({ where: { id: row.id } })).toBe(1)
       // Once the other run is over (its lock is gone) the month goes
       const after = await exporter.run(before)
-      archived.push(StorageKeys.auditArchive(2001, 5))
       expect(after.busy).toBeNull()
       expect(after.months.find(month => month.month === 5)?.rows).toBe(1)
     })
