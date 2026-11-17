@@ -3,7 +3,15 @@ import { Injectable } from '@nestjs/common'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { PrismaService } from '@platform/core/database'
-import { AccountRole, FinanceConflicts, FinanceResourceTypes } from '@platform/core/domain'
+import {
+  AccountRole,
+  AccountTypesOfPaymentMethod,
+  AccountTypesOfRole,
+  type AccountType,
+  FinanceConflicts,
+  FinanceResourceTypes,
+  type PaymentMethod
+} from '@platform/core/domain'
 import { ErrorCodes, resourceConflict, resourceNotFound } from '@platform/core/errors'
 import { financeRefusal } from '@platform/core/finance-ledger'
 
@@ -65,7 +73,12 @@ export class FinanceSettingsService {
         body.roundingAccountId !== undefined &&
         body.roundingAccountId !== current.roundingAccountId
       ) {
-        await usableAccount(tx, organizationId, body.roundingAccountId)
+        await usableAccount(
+          tx,
+          organizationId,
+          body.roundingAccountId,
+          AccountTypesOfRole[AccountRole.ROUNDING]
+        )
         // The rounding account is the account of the ROUNDING role too: one source of truth, kept in step from both ends
         await tx.accountRoleMapping.upsert({
           where: { organizationId_role: { organizationId, role: AccountRole.ROUNDING } },
@@ -133,7 +146,11 @@ export class FinanceSettingsService {
     const before = await this.prisma.transaction(async tx => {
       await lockChart(tx, organizationId)
       await requireSettings(tx, organizationId)
-      await usableAccount(tx, organizationId, body.accountId)
+      // A role the table does not know takes no account: the check never turns itself off
+      const expectedTypes = AccountTypesOfRole[role as AccountRole] as
+        readonly AccountType[] | undefined
+      if (expectedTypes === undefined) throw resourceNotFound('account role')
+      await usableAccount(tx, organizationId, body.accountId, expectedTypes)
       const current = await tx.accountRoleMapping.findUnique({
         where: { organizationId_role: { organizationId, role } },
         select: { accountId: true }
@@ -190,7 +207,10 @@ export class FinanceSettingsService {
         const store = await tx.store.count({ where: { id: storeId, organizationId } })
         if (store === 0) throw resourceNotFound('store')
       }
-      await usableAccount(tx, organizationId, body.accountId)
+      const expectedTypes = AccountTypesOfPaymentMethod[body.paymentMethod as PaymentMethod] as
+        readonly AccountType[] | undefined
+      if (expectedTypes === undefined) throw resourceNotFound('payment method')
+      await usableAccount(tx, organizationId, body.accountId, expectedTypes)
       const current = await tx.paymentMethodAccount.findFirst({
         where: { organizationId, storeId, paymentMethod: body.paymentMethod },
         select: { id: true, accountId: true }

@@ -1,6 +1,6 @@
 import { type Permission, Permissions } from '@platform/core/auth'
 import { type PrismaTransaction, isUniqueViolation } from '@platform/core/database'
-import { FinanceConflicts, FinanceTransactionKind } from '@platform/core/domain'
+import { type AccountType, FinanceConflicts, FinanceTransactionKind } from '@platform/core/domain'
 import {
   ErrorCodes,
   HttpStatusCodes,
@@ -62,22 +62,31 @@ export async function codeTransaction<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
-// An account a setting or a role is about to point at must take entries and be on
+// An account a setting or a role is about to point at must take entries and be on. When the caller says which types the role or
+// payment method takes, an account of another type is refused too, with the types it would take.
 export async function usableAccount(
   tx: PrismaTransaction,
   organizationId: string,
-  accountId: string
+  accountId: string,
+  expectedTypes?: readonly AccountType[]
 ): Promise<{ id: string }> {
   const account = await tx.ledgerAccount.findFirst({
     where: { id: accountId, organizationId },
-    select: { id: true, active: true, isPostable: true }
+    select: { id: true, active: true, isPostable: true, type: true }
   })
   if (account === null) throw resourceNotFound('ledger account')
   if (!account.isPostable) {
     throw financeRefusal(ErrorCodes.FINANCE_ACCOUNT_NOT_POSTABLE, { accountId })
   }
   if (!account.active) throw financeRefusal(ErrorCodes.FINANCE_ACCOUNT_INACTIVE, { accountId })
-  return account
+  if (expectedTypes !== undefined && !(expectedTypes as readonly string[]).includes(account.type)) {
+    throw financeRefusal(ErrorCodes.FINANCE_ACCOUNT_TYPE_MISMATCH, {
+      accountId,
+      type: account.type,
+      expectedTypes
+    })
+  }
+  return { id: account.id }
 }
 
 // The finance settings of the organization, or the answer that says it has none yet
