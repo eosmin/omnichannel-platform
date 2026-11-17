@@ -4,7 +4,7 @@ import { AppPaths } from '@platform/api-client'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { addFinanceViewer, addOwnerOfNewStore, addShippedTaxedSale } from '../support/database'
-import { expectDialogHoldsItsContent } from '../support/dialog-fit'
+import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
 import { expect, test } from '../support/test'
 
@@ -138,7 +138,7 @@ test.describe('Finance → a sale, its fiscal document and its entry', () => {
     const issuer = sealed.getByTestId('fiscal-sealed-issuer')
     await expect(issuer).toContainText(`E2E Shop ${run}`)
     await expect(issuer).toContainText('0614-010101-101-0')
-    await expectDialogHoldsItsContent(page, dialog)
+    await expectDialogFitsThePhoneWidth(page, dialog)
   })
 
   test('the list of documents narrows by the day the document was made', async ({ page }) => {
