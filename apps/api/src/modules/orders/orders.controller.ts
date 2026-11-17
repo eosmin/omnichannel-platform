@@ -17,7 +17,7 @@ import {
   updateOrderSchema
 } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import type { ExportView } from '../exports'
@@ -63,6 +63,7 @@ export class OrdersController {
   ) {}
 
   @RequirePermissions(Permissions.ORDERS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.orders.list)
   list(
     @CurrentStore() store: { id: string },
@@ -76,6 +77,7 @@ export class OrdersController {
   // Declared before `:id`, or "export" would be read as an id. The file is made in the background: the answer is the
   // export to follow in the exports center. It needs the same two permissions as the exports center asks for this kind.
   @RequirePermissions(Permissions.ORDERS_VIEW, Permissions.ORDERS_EXPORT)
+  @NoStore()
   @Get(ApiRoutes.orders.export)
   @HttpCode(HttpStatusCodes.ACCEPTED)
   requestExport(
@@ -89,6 +91,7 @@ export class OrdersController {
   }
 
   @RequirePermissions(Permissions.ORDERS_CREATE)
+  @NoStore()
   @Post(ApiRoutes.orders.create)
   @HttpCode(HttpStatusCodes.CREATED)
   create(
@@ -102,6 +105,7 @@ export class OrdersController {
   }
 
   @RequirePermissions(Permissions.ORDERS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.orders.byId(':id'))
   get(
     @CurrentStore() store: { id: string },
@@ -112,6 +116,7 @@ export class OrdersController {
   }
 
   @RequirePermissions(Permissions.ORDERS_EDIT)
+  @NoStore()
   @Patch(ApiRoutes.orders.byId(':id'))
   update(
     @CurrentStore() store: ResolvedTenant['store'],
@@ -125,6 +130,7 @@ export class OrdersController {
   }
 
   @RequirePermissions(Permissions.ORDERS_CHANGE_STATUS)
+  @NoStore()
   @Post(ApiRoutes.orders.status(':id'))
   @HttpCode(HttpStatusCodes.OK)
   changeStatus(
@@ -140,6 +146,7 @@ export class OrdersController {
 
   // Before the routes of `:id`, like every fixed route of the controller
   @RequirePermissions(Permissions.ORDERS_CONFIRM)
+  @NoStore()
   @Post(ApiRoutes.orders.confirmBulk)
   @HttpCode(HttpStatusCodes.OK)
   confirmBulk(
@@ -154,6 +161,7 @@ export class OrdersController {
 
   // The draft carries the customer's data and the notes: whoever reads orders and may create one
   @RequirePermissions(Permissions.ORDERS_VIEW, Permissions.ORDERS_CREATE)
+  @NoStore()
   @Get(ApiRoutes.orders.copy(':id'))
   copy(
     @CurrentStore() store: ResolvedTenant['store'],
@@ -163,6 +171,7 @@ export class OrdersController {
   }
 
   @RequirePermissions(Permissions.ORDERS_CONFIRM)
+  @NoStore()
   @Post(ApiRoutes.orders.confirm(':id'))
   @HttpCode(HttpStatusCodes.OK)
   confirm(
@@ -183,6 +192,7 @@ export class OrdersController {
   }
 
   @RequirePermissions(Permissions.ORDERS_CANCEL)
+  @NoStore()
   @Post(ApiRoutes.orders.cancel(':id'))
   @HttpCode(HttpStatusCodes.OK)
   cancel(
@@ -207,6 +217,7 @@ export class OrdersController {
   }
 
   @RequirePermissions(Permissions.ORDERS_EDIT)
+  @NoStore()
   @Post(ApiRoutes.orders.payment(':id'))
   @HttpCode(HttpStatusCodes.OK)
   recordPayment(
@@ -221,6 +232,7 @@ export class OrdersController {
   }
 
   @RequirePermissions(Permissions.ORDERS_APPROVE_PRICE)
+  @NoStore()
   @Post(ApiRoutes.orders.priceApprovalApprove(':id'))
   @HttpCode(HttpStatusCodes.OK)
   approvePrice(
@@ -242,6 +254,7 @@ export class OrdersController {
   }
 
   @RequirePermissions(Permissions.ORDERS_APPROVE_PRICE)
+  @NoStore()
   @Post(ApiRoutes.orders.priceApprovalReject(':id'))
   @HttpCode(HttpStatusCodes.OK)
   rejectPrice(

@@ -29,7 +29,7 @@ import {
   uuidSchema
 } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
-import { MULTI_FILE_SEND_ENABLED, ZodValidationPipe } from '@platform/core/http'
+import { MULTI_FILE_SEND_ENABLED, NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import {
   AgentReactionsService,
@@ -97,6 +97,7 @@ export class PluginMessagesController {
   // 201 for a new message, 200 for the one a repeated idempotencyKey already made (and then nothing is audited twice)
   @PluginApi(PluginScopes.MESSAGES_WRITE, PluginScopes.CONVERSATIONS_READ)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Post(PluginApiRoutes.messages.create)
   @HttpCode(HttpStatusCodes.CREATED)
   async create(
@@ -174,6 +175,7 @@ export class PluginMessagesController {
   // if it changed); a reply the customer has changes only when the channel takes the edit, and the answer says `pendingEdit`.
   @PluginApi(PluginScopes.MESSAGES_WRITE, PluginScopes.CONVERSATIONS_READ)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Patch(PluginApiRoutes.messages.byId(':id'))
   async edit(
     @CurrentStore() store: { id: string },
@@ -204,6 +206,7 @@ export class PluginMessagesController {
     PluginScopes.CONVERSATIONS_READ
   )
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_DELETE)
+  @NoStore()
   @Delete(PluginApiRoutes.messages.byId(':id'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async remove(
@@ -227,6 +230,7 @@ export class PluginMessagesController {
   // "Send again" on a reply of the plugin that failed. The same message goes back to the channel; the conversation does not move
   @PluginApi(PluginScopes.MESSAGES_WRITE, PluginScopes.CONVERSATIONS_READ)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_SEND)
+  @NoStore()
   @Post(PluginApiRoutes.messages.resend(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async resend(
@@ -255,6 +259,7 @@ export class PluginMessagesController {
     PluginScopes.CONVERSATIONS_READ
   )
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_SEND)
+  @NoStore()
   @Post(PluginApiRoutes.messages.discard(':id'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async discard(
@@ -280,6 +285,7 @@ export class PluginMessagesController {
   // The reaction of the plugin to a message: `{ emoji }` sets it, `{ emoji: null }` takes it back. A plugin reacts as the system.
   @PluginApi(PluginScopes.MESSAGES_WRITE, PluginScopes.CONVERSATIONS_READ)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_SEND)
+  @NoStore()
   @Put(PluginApiRoutes.messages.reaction(':id'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async react(
@@ -307,6 +313,7 @@ export class PluginMessagesController {
   // "Send the text again" on a file whose caption failed or may not have gone
   @PluginApi(PluginScopes.MESSAGES_WRITE, PluginScopes.CONVERSATIONS_READ)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_SEND)
+  @NoStore()
   @Post(PluginApiRoutes.messages.resendCaption(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async resendCaption(
@@ -339,6 +346,7 @@ export class PluginMessagesController {
     Permissions.MESSAGES_SEND,
     Permissions.MESSAGES_VIEW
   )
+  @NoStore()
   @Post(PluginApiRoutes.messages.refetchFile(':id', ':index'))
   @HttpCode(HttpStatusCodes.OK)
   async refetchFile(
@@ -360,6 +368,7 @@ export class PluginMessagesController {
   // The text of a message the customer deleted, while it is kept. Every read is audited, with the plugin on the metadata.
   @PluginApi(PluginScopes.MESSAGES_READ_DELETED, PluginScopes.CONVERSATIONS_READ)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_VIEW_DELETED)
+  @NoStore()
   @Get(PluginApiRoutes.messages.deletedContent(':id'))
   async deletedContent(
     @CurrentStore() store: { id: string },
@@ -383,6 +392,7 @@ export class PluginMessagesController {
   // of a person is what `authorType: agent` of the create route asks for
   @PluginApi(PluginScopes.MESSAGES_READ, PluginScopes.CONVERSATIONS_READ)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.messages.revisions(':id'))
   async revisions(
     @CurrentStore() store: { id: string },

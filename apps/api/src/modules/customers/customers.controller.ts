@@ -20,7 +20,7 @@ import { type AuthenticatedUser, type Permission, Permissions } from '@platform/
 import { CurrentUser } from '@platform/core/auth-module'
 import { CHANNEL_ANONYMITY, type ChannelAnonymitySource } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import {
   type ConversationPage,
@@ -130,6 +130,7 @@ export class CustomersController {
   // Declared before `:id`, or "export" would be read as an id. The file is made in the background:
   // the answer is the export to follow in the exports center.
   @RequirePermissions(Permissions.CUSTOMERS_EXPORT)
+  @NoStore()
   @Get(ApiRoutes.customers.export)
   @HttpCode(HttpStatusCodes.ACCEPTED)
   requestExport(
@@ -147,6 +148,7 @@ export class CustomersController {
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.customers.list)
   list(
     @CurrentStore() store: { id: string },
@@ -156,6 +158,7 @@ export class CustomersController {
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_CREATE)
+  @NoStore()
   @Post(ApiRoutes.customers.list)
   @HttpCode(HttpStatusCodes.CREATED)
   create(
@@ -169,6 +172,7 @@ export class CustomersController {
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.customers.byId(':id'))
   get(
     @CurrentStore() store: { id: string },
@@ -180,6 +184,7 @@ export class CustomersController {
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_EDIT)
+  @NoStore()
   @Patch(ApiRoutes.customers.byId(':id'))
   update(
     @CurrentStore() store: { id: string },
@@ -194,6 +199,7 @@ export class CustomersController {
   // The caution flag informs and never blocks (TDD_17 §4.16). Its own permission: whoever edits a customer
   // does not flag it by that.
   @RequirePermissions(Permissions.CUSTOMERS_FLAG_CAUTION)
+  @NoStore()
   @Put(ApiRoutes.customers.caution(':id'))
   setCaution(
     @CurrentStore() store: ResolvedTenant['store'],
@@ -206,6 +212,7 @@ export class CustomersController {
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_FLAG_CAUTION)
+  @NoStore()
   @Delete(ApiRoutes.customers.caution(':id'))
   clearCaution(
     @CurrentStore() store: ResolvedTenant['store'],
@@ -217,6 +224,7 @@ export class CustomersController {
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_DELETE)
+  @NoStore()
   @Delete(ApiRoutes.customers.byId(':id'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async remove(
@@ -229,6 +237,7 @@ export class CustomersController {
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_EDIT)
+  @NoStore()
   @Post(ApiRoutes.customers.identities(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   async linkIdentity(
@@ -244,6 +253,7 @@ export class CustomersController {
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_EDIT)
+  @NoStore()
   @Delete(ApiRoutes.customers.identityById(':id', ':identityId'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async unlinkIdentity(
@@ -255,6 +265,7 @@ export class CustomersController {
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_MERGE)
+  @NoStore()
   @Post(ApiRoutes.customers.merge(':id'))
   @HttpCode(HttpStatusCodes.OK)
   merge(
@@ -270,6 +281,7 @@ export class CustomersController {
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_MERGE)
+  @NoStore()
   @Post(ApiRoutes.customers.unmerge(':id'))
   @HttpCode(HttpStatusCodes.OK)
   unmerge(
@@ -286,6 +298,7 @@ export class CustomersController {
 
   // What a merge would do, for the confirmation step of the dialog. Declared with the merge routes.
   @RequirePermissions(Permissions.CUSTOMERS_MERGE)
+  @NoStore()
   @Get(ApiRoutes.customers.mergePreview(':id'))
   mergePreview(
     @CurrentStore() store: { id: string },
@@ -304,6 +317,7 @@ export class CustomersController {
   // Conversations, orders, notes and merges of the customer. The conversations follow the visibility of
   // the inbox, so a viewer without CONVERSATIONS_VIEW gets the rest only; the orders need ORDERS_VIEW.
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.customers.timeline(':id'))
   listTimeline(
     @CurrentStore() store: { id: string },
@@ -318,6 +332,7 @@ export class CustomersController {
   // The orders of the customer with the figures of the profile. The orders have their own permission,
   // and the notes of an order never come with them.
   @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.ORDERS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.customers.orders(':id'))
   listOrders(
     @CurrentStore() store: { id: string },
@@ -330,6 +345,7 @@ export class CustomersController {
   // The gallery of the customer: the files that came in or went out in the conversations the viewer
   // may open, clean ones only, with the count of each tab. Opening a file asks `GET /media/:id` for its signed link.
   @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.MEDIA_VIEW)
+  @NoStore()
   @Get(ApiRoutes.customers.media(':id'))
   listMedia(
     @CurrentStore() store: { id: string },
@@ -343,6 +359,7 @@ export class CustomersController {
 
   // The same page as GET /conversations, for one customer
   @RequirePermissions(Permissions.CUSTOMERS_VIEW, Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.customers.conversations(':id'))
   async listConversations(
     @CurrentStore() store: { id: string },
@@ -362,6 +379,7 @@ export class CustomersController {
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.customers.notes(':id'))
   listNotes(
     @CurrentStore() store: { id: string },
@@ -371,6 +389,7 @@ export class CustomersController {
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_EDIT)
+  @NoStore()
   @Post(ApiRoutes.customers.notes(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   createNote(
@@ -383,6 +402,7 @@ export class CustomersController {
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_EDIT)
+  @NoStore()
   @Delete(ApiRoutes.customers.noteById(':id', ':noteId'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async removeNote(
@@ -397,6 +417,7 @@ export class CustomersController {
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_EDIT)
+  @NoStore()
   @Post(ApiRoutes.customers.addresses(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   createAddress(
@@ -408,6 +429,7 @@ export class CustomersController {
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_EDIT)
+  @NoStore()
   @Patch(ApiRoutes.customers.addressById(':id', ':addressId'))
   updateAddress(
     @CurrentStore() store: { id: string },
@@ -419,6 +441,7 @@ export class CustomersController {
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_EDIT)
+  @NoStore()
   @Delete(ApiRoutes.customers.addressById(':id', ':addressId'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async removeAddress(
@@ -430,6 +453,7 @@ export class CustomersController {
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_EDIT)
+  @NoStore()
   @Post(ApiRoutes.customers.tags(':id'))
   @HttpCode(HttpStatusCodes.OK)
   attachTag(
@@ -441,6 +465,7 @@ export class CustomersController {
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_EDIT)
+  @NoStore()
   @Delete(ApiRoutes.customers.tagById(':id', ':tagId'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async detachTag(

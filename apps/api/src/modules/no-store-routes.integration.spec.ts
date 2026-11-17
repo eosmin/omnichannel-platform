@@ -2,6 +2,10 @@ import { PATH_METADATA, METHOD_METADATA, ROUTE_ARGS_METADATA } from '@nestjs/com
 import { RouteParamtypes } from '@nestjs/common/enums/route-paramtypes.enum'
 
 import { ApiKeysController } from './api-keys/api-keys.controller'
+import { ConversationsController } from './conversations/conversations.controller'
+import { PluginConversationsController } from './conversations/plugin-conversations.controller'
+import { CustomersController } from './customers/customers.controller'
+import { PluginCustomersController } from './customers/plugin-customers.controller'
 import { FinanceBankController } from './finance/finance-bank.controller'
 import { FinanceBooksController } from './finance/finance-books.controller'
 import { FinanceMarginController } from './finance/finance-margin.controller'
@@ -11,6 +15,10 @@ import { FinanceTransactionsController } from './finance/finance-transactions.co
 import { FinanceController } from './finance/finance.controller'
 import { CustomerFiscalDataController } from './fiscal/customer-fiscal-data.controller'
 import { FiscalController } from './fiscal/fiscal.controller'
+import { MessagesController } from './messages/messages.controller'
+import { PluginMessagesController } from './messages/plugin-messages.controller'
+import { OrdersController } from './orders/orders.controller'
+import { PluginOrdersController } from './orders/plugin-orders.controller'
 import { PluginWidgetsController } from './plugin-widgets/plugin-widgets.controller'
 import { PurchaseOrdersController } from './purchases/purchase-orders.controller'
 import { SuppliersController } from './purchases/suppliers.controller'
@@ -23,7 +31,7 @@ const HEADERS_METADATA = '__headers__'
 type Controller = { prototype: object }
 
 // Every route of these controllers answers with money, a fiscal document, a secret or a session, or with customers and messages found
-// by a search (QA N-A7-01)
+// by a search (QA N-A7-01) or the customers, conversations, messages and orders themselves
 const MONEY_CONTROLLERS: readonly Controller[] = [
   FiscalController,
   CustomerFiscalDataController,
@@ -37,7 +45,15 @@ const MONEY_CONTROLLERS: readonly Controller[] = [
   PurchaseOrdersController,
   SuppliersController,
   SearchController,
-  PluginSearchController
+  PluginSearchController,
+  CustomersController,
+  PluginCustomersController,
+  ConversationsController,
+  PluginConversationsController,
+  MessagesController,
+  PluginMessagesController,
+  OrdersController,
+  PluginOrdersController
 ]
 
 // Of these only the routes that mint a secret or a session

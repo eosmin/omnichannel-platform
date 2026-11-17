@@ -17,7 +17,7 @@ import { type AuthenticatedUser, type Permission, Permissions } from '@platform/
 import { CurrentUser } from '@platform/core/auth-module'
 import { CHANNEL_ANONYMITY, type ChannelAnonymitySource, uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import {
   type AssignBody,
@@ -100,6 +100,7 @@ export class ConversationsController {
   // now, with the filters of the list; it is made in the background and the answer is the export to
   // follow in the exports center.
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_EXPORT)
+  @NoStore()
   @Get(ApiRoutes.conversations.export)
   @HttpCode(HttpStatusCodes.ACCEPTED)
   requestExport(
@@ -125,6 +126,7 @@ export class ConversationsController {
 
   // countsOnly=true answers the numbers beside the filters instead of a page
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.conversations.list)
   list(
     @CurrentStore() store: { id: string },
@@ -143,6 +145,7 @@ export class ConversationsController {
   // Declared before `:id` routes, or "bulk" would be read as an id. The answer says which
   // conversations changed and which did not, with our error code for each.
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Post(ApiRoutes.conversations.bulk)
   @HttpCode(HttpStatusCodes.OK)
   runBulk(
@@ -156,6 +159,7 @@ export class ConversationsController {
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.conversations.byId(':id'))
   get(
     @CurrentStore() store: { id: string },
@@ -172,6 +176,7 @@ export class ConversationsController {
   // interface asks for the typed phrase first (DestructiveActionTiers.DELETE_CONVERSATION); the permission is
   // what the server keeps. It reaches every conversation of the store, not only the ones the caller may see.
   @RequirePermissions(Permissions.CONVERSATIONS_DELETE)
+  @NoStore()
   @Delete(ApiRoutes.conversations.byId(':id'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async deleteConversation(
@@ -185,6 +190,7 @@ export class ConversationsController {
 
   // The ads and posts the customer came from, for the card on top of the thread
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_VIEW)
+  @NoStore()
   @Get(ApiRoutes.conversations.origins(':id'))
   listOrigins(
     @CurrentStore() store: { id: string },
@@ -196,6 +202,7 @@ export class ConversationsController {
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Patch(ApiRoutes.conversations.status(':id'))
   changeStatus(
     @CurrentStore() store: Store,
@@ -211,6 +218,7 @@ export class ConversationsController {
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_SNOOZE)
+  @NoStore()
   @Post(ApiRoutes.conversations.snooze(':id'))
   @HttpCode(HttpStatusCodes.OK)
   snooze(
@@ -226,6 +234,7 @@ export class ConversationsController {
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Patch(ApiRoutes.conversations.assign(':id'))
   assign(
     @CurrentStore() store: { id: string },
@@ -241,6 +250,7 @@ export class ConversationsController {
 
   // It writes what the whole team sees (the unread count), so it is for who works the conversation
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_RESOLVE)
+  @NoStore()
   @Post(ApiRoutes.conversations.read(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async read(
@@ -264,6 +274,7 @@ export class ConversationsController {
 
   // Keeps a conversation to come back to: it counts as unread again, for the whole team
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_RESOLVE)
+  @NoStore()
   @Post(ApiRoutes.conversations.unread(':id'))
   @HttpCode(HttpStatusCodes.OK)
   unread(
@@ -278,6 +289,7 @@ export class ConversationsController {
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_RESOLVE)
+  @NoStore()
   @Post(ApiRoutes.conversations.tags(':id'))
   @HttpCode(HttpStatusCodes.OK)
   attachTag(
@@ -291,6 +303,7 @@ export class ConversationsController {
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW, Permissions.CONVERSATIONS_RESOLVE)
+  @NoStore()
   @Delete(ApiRoutes.conversations.tagById(':id', ':tagId'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async detachTag(
