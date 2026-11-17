@@ -48,6 +48,8 @@ interface MessageBody {
   content: string | null
 }
 
+const SUITE_REQUESTS_PER_MINUTE = 100_000
+
 const ALL_SCOPES = [
   PluginScopes.CONVERSATIONS_READ,
   PluginScopes.MESSAGES_READ,
@@ -99,7 +101,9 @@ describe('The messages of the plugin API', () => {
         status: 'active',
         apiKeyPrefix: key.slice(0, 12),
         apiKeyHash: createHash('sha256').update(key).digest('hex'),
-        installedBy: 'suite'
+        installedBy: 'suite',
+        // This suite sends hundreds of calls in a minute through one key and is not about the rate limit
+        rateLimitPerMinute: SUITE_REQUESTS_PER_MINUTE
       }
     })
     keys[name] = key
