@@ -43,11 +43,15 @@ describe('Deleting a plugin of the organization', () => {
   let owner: OwnerClient
   let ctx: TestContext
   let counter = 0
+  // What runs while the install asks the address of the plugin: the moment between its checks and its write
+  let duringChallenge: (() => Promise<void>) | null = null
 
   beforeAll(async () => {
     owner = ownerClient()
     app = await createTestApp([], builder =>
-      builder.overrideProvider(PluginChallengeService).useValue({ run: () => Promise.resolve() })
+      builder.overrideProvider(PluginChallengeService).useValue({
+        run: () => (duringChallenge === null ? Promise.resolve() : duringChallenge())
+      })
     )
     ctx = await seedTestContext(owner, app, prefix)
   })
@@ -273,5 +277,25 @@ describe('Deleting a plugin of the organization', () => {
     expect(await exists(id)).toBe(true)
 
     await owner.channelConnection.deleteMany({ where: { installationId } })
+  })
+
+  it('answers 404 and not 500 to an install of a plugin that is deleted while the install asks its address (OPS-PLG-308)', async () => {
+    const id = await register()
+    // The plugin has no installation, so its deletion goes through between the checks of the install and its write
+    duringChallenge = async () => {
+      await remove(id).expect(NO_CONTENT)
+    }
+    try {
+      const installed = await asAdmin()
+        .post(ApiRoutes.plugins.install)
+        .send({ pluginId: id, scopes: [PluginScopes.ORDERS_READ] })
+
+      expect(installed.status).toBe(NOT_FOUND)
+      expect(codeOf(installed.body)).toBe(ErrorCodes.RESOURCE_NOT_FOUND)
+    } finally {
+      duringChallenge = null
+    }
+    expect(await exists(id)).toBe(false)
+    expect(await owner.pluginInstallation.count({ where: { pluginId: id } })).toBe(0)
   })
 })
