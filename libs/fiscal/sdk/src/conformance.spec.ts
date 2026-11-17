@@ -77,6 +77,7 @@ interface Script {
   contingency?: boolean
   voidAnswer?: { voided: boolean; reason?: string }
   report?: FiscalContingencyReportOutcome
+  submitThrows?: (id: string) => boolean
 }
 
 function provider(script: Script = {}): FiscalDocumentProvider & { sent: string[] } {
@@ -112,6 +113,9 @@ function provider(script: Script = {}): FiscalDocumentProvider & { sent: string[
       })
     },
     submit: built => {
+      if (script.submitThrows?.(String(built.payload['id'])) === true) {
+        return Promise.reject(new TypeError('boom with a secret 1234567'))
+      }
       sent.push(String(built.payload['id']))
       return Promise.resolve(
         script.submit?.(built) ?? {
@@ -141,10 +145,11 @@ function provider(script: Script = {}): FiscalDocumentProvider & { sent: string[
   return Object.assign(base, { sent })
 }
 
-const sale = (n: number, tags: string[] = ['a']): ConformanceStep => ({
+const sale = (n: number, tags: string[] = ['a'], bucket: string | null = 'B'): ConformanceStep => ({
   kind: 'sale',
   id: `S${n}`,
   tags,
+  bucket,
   input: input(n)
 })
 const options = (p: FiscalDocumentProvider, over: Record<string, unknown> = {}) => ({
@@ -167,12 +172,10 @@ describe('the conformance run', () => {
       x: { planned: 2, succeeded: 2 },
       y: { planned: 1, succeeded: 1 }
     })
-    expect(conformanceGaps(report, { documents: { T1: 2 }, voids: 0, contingencies: 0 }).ok).toBe(
-      true
-    )
-    expect(conformanceGaps(report, { documents: { T1: 3 }, voids: 1, contingencies: 1 })).toEqual({
+    expect(conformanceGaps(report, { buckets: { B: 2 }, voids: 0, contingencies: 0 }).ok).toBe(true)
+    expect(conformanceGaps(report, { buckets: { B: 3 }, voids: 1, contingencies: 1 })).toEqual({
       ok: false,
-      missing: { T1: 1, voids: 1, contingencies: 1 }
+      missing: { B: 1, voids: 1, contingencies: 1 }
     })
   })
 
@@ -237,6 +240,7 @@ describe('the conformance run', () => {
       kind: 'credit_note',
       id: 'N1',
       tags: ['n'],
+      bucket: null,
       parent: 'S1',
       input: input(9, { kind: FiscalDocumentKind.CREDIT_NOTE })
     }
@@ -331,6 +335,35 @@ describe('the conformance run', () => {
   })
 })
 
+describe('a document of a lot that breaks', () => {
+  it('is a failure of its own and does not leave the rest of the lot unsent, nor count the event twice', async () => {
+    const p = provider({ contingency: true, submitThrows: id => id === 'doc-2' })
+    const event = {
+      eventId: 'e1',
+      reason: '1',
+      motive: null,
+      startedAt: '2026-11-17T08:00:00.000Z',
+      endedAt: '2026-11-17T09:00:00.000Z',
+      responsible: null
+    }
+    const steps: ConformanceStep[] = [
+      { kind: 'deferred_sale', id: 'D1', tags: ['d'], input: input(1) },
+      { kind: 'deferred_sale', id: 'D2', tags: ['d'], input: input(2) },
+      { kind: 'deferred_sale', id: 'D3', tags: ['d'], input: input(3) },
+      { kind: 'contingency', id: 'C1', tags: ['c'], documents: ['D1', 'D2', 'D3'], event }
+    ]
+    const report = await runConformance(steps, options(p))
+    expect(p.sent).toEqual(['doc-1', 'doc-3'])
+    expect(report.contingencies).toMatchObject({ reported: 1, deferred: 3, deferredAccepted: 2 })
+    expect(report.steps.filter(step => step.id === 'C1')).toHaveLength(1)
+    expect(
+      report.steps.find(step => step.id === 'D2' && step.outcome === ConformanceOutcome.ERROR)?.code
+    ).toBe('error:TypeError')
+    // The message of the error, which carried a value, is nowhere
+    expect(JSON.stringify(report)).not.toContain('1234567')
+  })
+})
+
 describe('what must never be in the report', () => {
   it('fails the run if a secret is anywhere in it, and says nothing of which', async () => {
     // A provider whose own id of the document type is the secret: the one thing a report repeats
@@ -358,6 +391,7 @@ describe('what must never be in the report', () => {
       'codes',
       'contingencies',
       'documents',
+      'minimum',
       'mode',
       'steps',
       'tags',
@@ -372,5 +406,55 @@ describe('what must never be in the report', () => {
       'outcome'
     ])
     expect(JSON.stringify(report)).not.toContain('EXT-')
+  })
+
+  it('searches the secret as JSON writes it too: a quote or a backslash in a password is escaped in the text of the report', () => {
+    expect(() => assertNoSecrets({ code: 'pa"ss\\word' }, ['pa"ss\\word'])).toThrow(
+      ConformanceLeakError
+    )
+  })
+
+  it('says, when it finds a secret, only numbers of what was done, so that it is not sent again', async () => {
+    const p = provider({ documentType: 'ISSUER-SECRET-1234' })
+    try {
+      await runConformance([sale(1), sale(2)], options(p, { secrets: ['ISSUER-SECRET-1234'] }))
+      throw new Error('it should have failed')
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConformanceLeakError)
+      expect((error as ConformanceLeakError).counts).toEqual({
+        steps: 2,
+        accepted: 2,
+        refused: 0,
+        unavailable: 0,
+        voided: 0,
+        contingenciesReported: 0
+      })
+      expect(JSON.stringify((error as ConformanceLeakError).counts)).not.toContain('SECRET')
+    }
+  })
+})
+
+describe('what counts toward the minimum', () => {
+  it('counts only the documents made for it, so extra documents that are accepted never fill a gap left by one that is not', async () => {
+    // Two of three documents of the bucket are refused; two extra documents (no bucket) are accepted
+    const answers: SubmitResult[] = [
+      { outcome: FiscalSubmitOutcome.ACCEPTED, externalNumber: 'E1' },
+      { outcome: FiscalSubmitOutcome.REJECTED, reason: '020' },
+      { outcome: FiscalSubmitOutcome.REJECTED, reason: '020' }
+    ]
+    let at = 0
+    const p = provider({
+      submit: () => answers[at++] ?? { outcome: FiscalSubmitOutcome.ACCEPTED, externalNumber: 'E' }
+    })
+    const report = await runConformance(
+      [sale(1), sale(2), sale(3), sale(4, ['extra'], null), sale(5, ['extra'], null)],
+      options(p)
+    )
+    expect(report.documents['T1']?.accepted).toBe(3)
+    expect(report.minimum).toEqual({ B: { planned: 3, accepted: 1 } })
+    expect(conformanceGaps(report, { buckets: { B: 3 }, voids: 0, contingencies: 0 })).toEqual({
+      ok: false,
+      missing: { B: 2 }
+    })
   })
 })

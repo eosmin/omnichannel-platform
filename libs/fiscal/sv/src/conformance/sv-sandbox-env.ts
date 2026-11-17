@@ -82,13 +82,24 @@ const present = (
 export function readSvSandboxEnv(
   env: Readonly<Record<string, string | undefined>>
 ): SvSandboxReading {
-  const missing = REQUIRED.filter(name => present(env, name) === null)
+  // A password of less than four characters would not be searched for in the report (nothing shorter is), so it is refused as if it were
+  // missing: a credential that short is a mistake, not a password
+  const SHORT = 4
+  const shortPassword = (name: string): boolean => (env[name] ?? '').length < SHORT
+  const missing = REQUIRED.filter(
+    name =>
+      present(env, name) === null ||
+      ((name === SvSandboxEnvNames.API_PASSWORD || name === SvSandboxEnvNames.KEY_PASSWORD) &&
+        shortPassword(name))
+  )
   const confirmed = present(env, SvSandboxEnvNames.CONFIRM) === SvSandboxConfirmation
   if (missing.length > 0 || !confirmed) return { ready: false, missing, confirmed }
   const value = (name: string): string => present(env, name) ?? ''
+  // A password goes as it was typed: a space or a line at its end is part of it, and a wrong one counts toward the lock of the account
+  const exact = (name: string): string => env[name] ?? ''
   const taxId = value(SvSandboxEnvNames.TAX_ID)
-  const apiPassword = value(SvSandboxEnvNames.API_PASSWORD)
-  const keyPassword = value(SvSandboxEnvNames.KEY_PASSWORD)
+  const apiPassword = exact(SvSandboxEnvNames.API_PASSWORD)
+  const keyPassword = exact(SvSandboxEnvNames.KEY_PASSWORD)
   const responsibleNumber = value(SvSandboxEnvNames.RESPONSIBLE_ID_NUMBER)
   return {
     ready: true,
@@ -122,17 +133,14 @@ export function readSvSandboxEnv(
         idType: value(SvSandboxEnvNames.RESPONSIBLE_ID_TYPE),
         idNumber: responsibleNumber
       },
-      // The tax number is searched both as typed and as digits (the documents carry it without dashes), and so are the others
+      // What must never be printed: the passwords and the tax numbers, as typed and as digits (the documents carry them without dashes). The
+      // names and the contact are not here: a short or common name would be "found" in any id of the plan
       secrets: [
         taxId,
         taxId.replace(/\D/g, ''),
         apiPassword,
         keyPassword,
-        responsibleNumber,
-        value(SvSandboxEnvNames.PHONE),
-        value(SvSandboxEnvNames.EMAIL),
-        value(SvSandboxEnvNames.LEGAL_NAME),
-        value(SvSandboxEnvNames.RESPONSIBLE_NAME)
+        responsibleNumber
       ].filter(secret => secret.length > 0)
     }
   }

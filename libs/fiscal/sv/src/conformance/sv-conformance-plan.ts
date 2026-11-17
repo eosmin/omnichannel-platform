@@ -26,12 +26,12 @@ import { MUNICIPALITIES } from '../catalogs/municipalities'
 import {
   SvAddressKeys,
   SvContingency,
-  SvDocumentTypes,
   SvIdentityDocuments,
   SvProviderDataKeys,
   SvVat
 } from '../sv-constants'
 import { allocate } from '../sv-decimal'
+import { SALVADOR_OFFSET_HOURS } from '../sv-time'
 
 // The plan of the minimum tests of the sandbox (Step 4B.7c-6; Funcional §XXIV): 90 invoices, 75 tax credit documents and 50 credit notes with
 // seal, 5 invalidations and 5 contingencies, made of invented data in many shapes (receivers, tax treatments, discounts, rounding, payments,
@@ -67,6 +67,21 @@ export const SvConformanceDemoIssuer: FiscalIssuerInput = {
   email: 'prueba@example.test',
   environment: FiscalEnvironment.SANDBOX
 }
+
+// The parts of the minimum the authority asks (the documents made for the invalidations and the contingencies count toward none of them)
+export const SvConformanceBuckets = {
+  INVOICE: 'invoice',
+  TAX_CREDIT: 'tax_credit',
+  CREDIT_NOTE: 'credit_note'
+} as const
+
+export const SvConformanceLimits = {
+  // An invoice to a final consumer who gave no identity is not made for this much or more (the notice of the authority of 2024-09-05 sets
+  // the threshold; **[TO CONFIRM IN THE SANDBOX]**): the plan names a receiver for it
+  ANONYMOUS_INVOICE_CENTS: 109_500,
+  // How far back a document is dated: inside the month of the run, and never more than this before the moment it is sent
+  MAX_BACK_MINUTES: 2 * 24 * 60
+} as const
 
 export const SvConformanceDefaults: SvConformanceCounts = {
   invoices: 90,
@@ -368,12 +383,17 @@ export function planSvConformance(options: SvConformanceOptions): ConformanceSte
   const series = { invoice: offset, taxCredit: offset, creditNote: offset }
   let sequence = offset
   const nowMs = options.now.getTime()
-  const monthStart = Date.UTC(options.now.getUTCFullYear(), options.now.getUTCMonth(), 1)
+  // The month is the one of El Salvador (UTC-6), where a document is dated: the first instant of it, as an instant
+  const local = new Date(nowMs - SALVADOR_OFFSET_HOURS * 60 * MINUTE_MS)
+  const monthStart =
+    Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), 1) +
+    SALVADOR_OFFSET_HOURS * 60 * MINUTE_MS
   // A document is dated inside the term: a date before the moment it is sent and in the month of the run
-  const issuedAt = (maxBackMinutes: number): string => {
-    const room = Math.max(0, Math.floor((nowMs - monthStart) / MINUTE_MS) - 10)
-    const back = rng.int(5, Math.max(5, Math.min(maxBackMinutes, 5 + room)))
-    return new Date(nowMs - back * MINUTE_MS).toISOString()
+  const issuedAt = (maxBackMinutes: number, notBefore: number = monthStart): string => {
+    // At least a minute before the moment it is sent, no further back than the term, the month of the run, or the document it follows
+    const room = Math.floor((nowMs - Math.max(monthStart, notBefore)) / MINUTE_MS) - 1
+    const farthest = Math.max(1, Math.min(maxBackMinutes, room))
+    return new Date(nowMs - rng.int(Math.min(5, farthest), farthest) * MINUTE_MS).toISOString()
   }
   const base = (
     id: string,
@@ -401,13 +421,25 @@ export function planSvConformance(options: SvConformanceOptions): ConformanceSte
     contingency?: FiscalBuildInput['contingency']
   ) => {
     const shape = shapes[steps.length % shapes.length] as (typeof shapes)[number]
-    const { receiver, tags } = consumerOf(rng)
+    const consumer = consumerOf(rng)
+    let receiver = consumer.receiver
+    let tags = consumer.tags
     const specs = specsOf(rng, shape)
     const shipping = rng.chance(0.4) ? rng.int(300, 1500) : 0
     const shippingTaxed = shipping > 0 && rng.chance(0.6)
     const gross = specs.reduce((sum, spec) => sum + spec.quantity * spec.unitPriceCents, 0)
     const discount = rng.chance(0.35) ? roundDiv(gross * rng.int(1, 20), 100) : 0
     const sale = compose(specs, shipping, shippingTaxed, discount, true)
+    // A big sale to nobody is not made: the plan gives it a receiver
+    if (receiver.taxId === null && sale.totalCents >= SvConformanceLimits.ANONYMOUS_INVOICE_CENTS) {
+      receiver = {
+        ...NO_RECEIVER,
+        name: personName(rng),
+        taxId: fakeNationalId(rng),
+        documentType: SvIdentityDocuments.NATIONAL_ID
+      }
+      tags = ['consumer_national_id']
+    }
     const input: FiscalBuildInput = {
       kind: FiscalDocumentKind.SALE,
       credited: null,
@@ -436,8 +468,14 @@ export function planSvConformance(options: SvConformanceOptions): ConformanceSte
   // The invoices
   for (let n = 1; n <= counts.invoices; n += 1) {
     const id = `INV-${String(n).padStart(3, '0')}`
-    const made = invoiceInput(id, issuedAt(8 * 24 * MINUTES_PER_HOUR))
-    steps.push({ kind: 'sale', id, tags: ['invoice', ...made.tags], input: made.input })
+    const made = invoiceInput(id, issuedAt(SvConformanceLimits.MAX_BACK_MINUTES))
+    steps.push({
+      kind: 'sale',
+      id,
+      tags: ['invoice', ...made.tags],
+      bucket: SvConformanceBuckets.INVOICE,
+      input: made.input
+    })
   }
 
   // The tax credit documents, and what each one holds, for the credit notes
@@ -446,6 +484,8 @@ export function planSvConformance(options: SvConformanceOptions): ConformanceSte
     input: FiscalBuildInput
     specs: LineSpec[]
     includes: boolean
+    discount: number
+    gross: number
   }[] = []
   for (let n = 1; n <= counts.taxCredits; n += 1) {
     const id = `CCF-${String(n).padStart(3, '0')}`
@@ -462,7 +502,7 @@ export function planSvConformance(options: SvConformanceOptions): ConformanceSte
       kind: FiscalDocumentKind.SALE,
       credited: null,
       ...base(id, 'taxCredit'),
-      issuedAt: issuedAt(8 * 24 * MINUTES_PER_HOUR),
+      issuedAt: issuedAt(SvConformanceLimits.MAX_BACK_MINUTES),
       receiver: businessOf(rng),
       lines: sale.lines,
       shippingCents: sale.shippingCents,
@@ -474,10 +514,11 @@ export function planSvConformance(options: SvConformanceOptions): ConformanceSte
       ...paymentOf(rng, sale.totalCents),
       ...(credit ? { condition: FiscalOperationCondition.DEFERRED } : {})
     }
-    taxCredits.push({ id, input, specs, includes })
+    taxCredits.push({ id, input, specs, includes, discount: sale.discountCents, gross })
     steps.push({
       kind: 'sale',
       id,
+      bucket: SvConformanceBuckets.TAX_CREDIT,
       tags: [
         'tax_credit',
         shape,
@@ -507,22 +548,31 @@ export function planSvConformance(options: SvConformanceOptions): ConformanceSte
       returned.length > 0
         ? returned
         : parent.specs.slice(0, 1).map(spec => ({ ...spec, quantity: 1 }))
-    const sale = compose(specs, 0, false, 0, parent.includes)
+    // The note gives back the discount the units had: the same share of the discount of the document as of its value, so the note is never for
+    // more than what the document charged for those units
+    const returnedGross = specs.reduce((sum, spec) => sum + spec.quantity * spec.unitPriceCents, 0)
+    const discount =
+      parent.discount === 0 || parent.gross === 0
+        ? 0
+        : Math.min(returnedGross, roundDiv(parent.discount * returnedGross, parent.gross))
+    const sale = compose(specs, 0, false, discount, parent.includes)
     steps.push({
       kind: 'credit_note',
       id,
+      bucket: SvConformanceBuckets.CREDIT_NOTE,
       parent: parent.id,
       tags: ['credit_note', whole ? 'whole_return' : 'partial_return'],
       input: {
         kind: FiscalDocumentKind.CREDIT_NOTE,
         credited: null,
         ...base(id, 'creditNote'),
-        issuedAt: issuedAt(2 * 24 * MINUTES_PER_HOUR),
+        // After the document it credits: a note never predates its parent
+        issuedAt: issuedAt(SvConformanceLimits.MAX_BACK_MINUTES, Date.parse(parent.input.issuedAt)),
         receiver: parent.input.receiver,
         lines: sale.lines,
         shippingCents: 0,
         shippingTaxCents: 0,
-        discountCents: 0,
+        discountCents: sale.discountCents,
         totalCents: sale.totalCents,
         taxCents: sale.taxCents,
         pricesIncludeTax: parent.includes,
@@ -555,6 +605,7 @@ export function planSvConformance(options: SvConformanceOptions): ConformanceSte
       kind: 'sale',
       id: targetId,
       tags: ['invoice', 'void_target'],
+      bucket: null,
       input: target.input
     })
     let replacement: string | null = null
@@ -565,6 +616,7 @@ export function planSvConformance(options: SvConformanceOptions): ConformanceSte
         kind: 'sale',
         id: replacement,
         tags: ['invoice', 'void_replacement'],
+        bucket: null,
         input: made.input
       })
     }
@@ -595,12 +647,13 @@ export function planSvConformance(options: SvConformanceOptions): ConformanceSte
       reason === SvContingency.REASONS.OTHER
         ? 'Falla del enlace con el proveedor de servicios'
         : null
-    const endedAt = new Date(nowMs - 10 * MINUTE_MS)
-    const startedAt = new Date(nowMs - 3 * 60 * MINUTE_MS)
+    // Each event has a window of its own, after the one before it and before the moment of the run: no two overlap
+    const endedAt = new Date(nowMs - (10 + (n - 1) * 40) * MINUTE_MS)
+    const startedAt = new Date(endedAt.getTime() - 30 * MINUTE_MS)
     const documents: string[] = []
     for (let k = 1; k <= counts.deferredPerContingency; k += 1) {
       const id = `DEF-${n}-${k}`
-      const when = new Date(startedAt.getTime() + rng.int(1, 150) * MINUTE_MS).toISOString()
+      const when = new Date(startedAt.getTime() + rng.int(1, 28) * MINUTE_MS).toISOString()
       const made = invoiceInput(id, when, { reason: String(reason), motive })
       steps.push({
         kind: 'deferred_sale',
@@ -634,10 +687,10 @@ export function svConformanceTargets(
 ): ConformanceTargets {
   const wanted = { ...SvConformanceDefaults, ...counts }
   return {
-    documents: {
-      [SvDocumentTypes.INVOICE]: wanted.invoices,
-      [SvDocumentTypes.TAX_CREDIT]: wanted.taxCredits,
-      [SvDocumentTypes.CREDIT_NOTE]: Math.min(wanted.creditNotes, wanted.taxCredits)
+    buckets: {
+      [SvConformanceBuckets.INVOICE]: wanted.invoices,
+      [SvConformanceBuckets.TAX_CREDIT]: wanted.taxCredits,
+      [SvConformanceBuckets.CREDIT_NOTE]: Math.min(wanted.creditNotes, wanted.taxCredits)
     },
     voids: wanted.voids,
     contingencies: wanted.contingencies

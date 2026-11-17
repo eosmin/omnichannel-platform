@@ -15,7 +15,9 @@ import { schemaErrors } from '../testing/sv-fixtures'
 
 import {
   planSvConformance,
+  SvConformanceBuckets,
   SvConformanceDefaults,
+  SvConformanceLimits,
   SvConformanceDemoIssuer,
   svConformanceTargets,
   svDryRunCredited
@@ -49,10 +51,10 @@ describe('the plan of the minimum tests', () => {
     expect(kinds('contingency')).toHaveLength(5)
     expect(kinds('deferred_sale')).toHaveLength(5 * SvConformanceDefaults.deferredPerContingency)
     expect(svConformanceTargets()).toEqual({
-      documents: {
-        [SvDocumentTypes.INVOICE]: 90,
-        [SvDocumentTypes.TAX_CREDIT]: 75,
-        [SvDocumentTypes.CREDIT_NOTE]: 50
+      buckets: {
+        [SvConformanceBuckets.INVOICE]: 90,
+        [SvConformanceBuckets.TAX_CREDIT]: 75,
+        [SvConformanceBuckets.CREDIT_NOTE]: 50
       },
       voids: 5,
       contingencies: 5
@@ -141,6 +143,43 @@ describe('the plan of the minimum tests', () => {
     }
   })
 
+  it('never makes a credit note for more than the document it credits, nor an anonymous invoice over the threshold, nor overlapping contingency windows', () => {
+    const inputs = new Map(
+      steps.flatMap(step => ('input' in step ? [[step.id, step.input] as const] : []))
+    )
+    for (const step of steps) {
+      if (step.kind === 'credit_note') {
+        const parent = inputs.get(step.parent)
+        expect(parent).toBeDefined()
+        expect(step.input.totalCents).toBeLessThanOrEqual(parent?.totalCents ?? 0)
+        // And never dated before the document it credits
+        expect(Date.parse(step.input.issuedAt)).toBeGreaterThanOrEqual(
+          Date.parse(parent?.issuedAt ?? '')
+        )
+      }
+      if (step.kind === 'sale' && step.input.receiver.taxId === null) {
+        expect(step.input.totalCents).toBeLessThan(SvConformanceLimits.ANONYMOUS_INVOICE_CENTS)
+      }
+    }
+    const windows = kinds('contingency')
+      .map(step => (step.kind === 'contingency' ? step.event : null))
+      .filter(event => event !== null)
+      .map(event => [Date.parse(event.startedAt), Date.parse(event.endedAt)] as const)
+      .sort((a, b) => a[0] - b[0])
+    for (let at = 1; at < windows.length; at += 1) {
+      expect(windows[at]?.[0] ?? 0).toBeGreaterThanOrEqual(
+        windows[at - 1]?.[1] ?? Number.MAX_SAFE_INTEGER
+      )
+    }
+    // And dated within two days before the moment of the run
+    for (const step of steps) {
+      if (!('input' in step) || step.kind === 'deferred_sale') continue
+      expect(NOW.getTime() - Date.parse(step.input.issuedAt)).toBeLessThanOrEqual(
+        SvConformanceLimits.MAX_BACK_MINUTES * 60_000
+      )
+    }
+  })
+
   it('takes smaller counts when they are asked for', () => {
     const small = plan({
       counts: { invoices: 3, taxCredits: 2, creditNotes: 9, voids: 1, contingencies: 1 }
@@ -148,7 +187,9 @@ describe('the plan of the minimum tests', () => {
     expect(small.filter(step => step.kind === 'credit_note')).toHaveLength(2)
     expect(small.filter(step => step.kind === 'void')).toHaveLength(1)
     expect(
-      svConformanceTargets({ taxCredits: 2, creditNotes: 9 }).documents[SvDocumentTypes.CREDIT_NOTE]
+      svConformanceTargets({ taxCredits: 2, creditNotes: 9 }).buckets[
+        SvConformanceBuckets.CREDIT_NOTE
+      ]
     ).toBe(2)
   })
 })
@@ -293,6 +334,23 @@ describe('what is read of the environment of the owner', () => {
         if (value.length >= 4) expect(text).not.toContain(value)
       }
     }
+  })
+
+  it('refuses a password too short to be searched for in a report, as if it were missing, and keeps names and contact out of the secrets', () => {
+    const short = readSvSandboxEnv({ ...FULL, [SvSandboxEnvNames.KEY_PASSWORD]: 'abc' })
+    expect(short.ready).toBe(false)
+    if (short.ready) return
+    expect(short.missing).toEqual([SvSandboxEnvNames.KEY_PASSWORD])
+    const ready = readSvSandboxEnv(FULL)
+    if (!ready.ready) throw new Error('it should be ready')
+    expect(ready.setup.secrets).not.toContain('Mi Empresa S.A.')
+    expect(ready.setup.secrets).not.toContain('yo@example.test')
+  })
+
+  it('keeps a password as it was typed, with the space at its end', () => {
+    const reading = readSvSandboxEnv({ ...FULL, [SvSandboxEnvNames.KEY_PASSWORD]: 'key-secret ' })
+    if (!reading.ready) throw new Error('it should be ready')
+    expect(reading.setup.credentials[SvCredentialKeys.CERTIFICATE_PASSWORD]).toBe('key-secret ')
   })
 
   it('is not ready with a name missing, and a blank value is a missing one', () => {

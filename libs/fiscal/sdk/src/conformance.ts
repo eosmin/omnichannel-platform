@@ -13,7 +13,8 @@ import type {
   FiscalIssuerInput,
   FiscalVoidDetails,
   ProviderContext,
-  StoredFiscalDocument
+  StoredFiscalDocument,
+  SubmitResult
 } from './fiscal-provider.interface'
 
 // The conformance run: the minimum set of documents an authority asks of an issuer before it authorizes it, made and sent through the port of
@@ -27,6 +28,8 @@ export type ConformanceStep =
       readonly kind: 'sale'
       readonly id: string
       readonly tags: readonly string[]
+      // The part of the minimum this document counts toward (the documents made for an invalidation or a contingency count toward none)
+      readonly bucket: string | null
       readonly input: FiscalBuildInput
     }
   // A credit note of a document of the plan (its `credited` is filled in from what the provider accepted)
@@ -34,6 +37,7 @@ export type ConformanceStep =
       readonly kind: 'credit_note'
       readonly id: string
       readonly tags: readonly string[]
+      readonly bucket: string | null
       readonly parent: string
       readonly input: FiscalBuildInput
     }
@@ -119,6 +123,8 @@ export interface ConformanceReport {
   readonly documents: Record<string, ConformanceDocumentTotals>
   // Documents of a kind no type was known for (built nothing): by kind of step
   readonly unbuilt: Record<string, number>
+  // What counts toward the minimum the authority asks, by bucket of the plan: only the documents the plan made for it, accepted
+  readonly minimum: Record<string, { planned: number; accepted: number }>
   readonly voids: { planned: number; done: number; refused: number }
   readonly contingencies: {
     planned: number
@@ -151,8 +157,19 @@ export interface ConformanceOptions {
   ) => FiscalCreditedDocument | null
 }
 
+// What a run that found a secret in its own report can still say: numbers only (they cannot carry a secret), so the person who ran it
+// knows what was sent and does not send it again
+export interface ConformanceCounts {
+  readonly steps: number
+  readonly accepted: number
+  readonly refused: number
+  readonly unavailable: number
+  readonly voided: number
+  readonly contingenciesReported: number
+}
+
 export class ConformanceLeakError extends Error {
-  constructor() {
+  constructor(readonly counts: ConformanceCounts) {
     // Never says which value or where: a message is the first thing a log keeps
     super('the report of the conformance run carries a value that must stay secret')
     this.name = 'ConformanceLeakError'
@@ -196,6 +213,7 @@ export async function runConformance(
   const unbuilt: Record<string, number> = {}
   const tags: Record<string, { planned: number; succeeded: number }> = {}
   const codes: Record<string, number> = {}
+  const minimum: Record<string, { planned: number; accepted: number }> = {}
   const voids = { planned: 0, done: 0, refused: 0 }
   const contingencies = { planned: 0, reported: 0, refused: 0, deferred: 0, deferredAccepted: 0 }
   const mode = options.dryRun ? ('dry_run' as const) : ('live' as const)
@@ -298,6 +316,10 @@ export async function runConformance(
         const totals = totalsOf(type)
         totals.planned += 1
         totals.built += 1
+        if (step.kind !== 'deferred_sale' && step.bucket !== null) {
+          const part = (minimum[step.bucket] ??= { planned: 0, accepted: 0 })
+          part.planned += 1
+        }
         const entry: Held = { input, built: made.built, accepted: null, deferred: false }
         held.set(step.id, entry)
         if (options.dryRun) {
@@ -333,6 +355,10 @@ export async function runConformance(
             providerData: sent.providerData ?? null
           }
           totals.accepted += 1
+          if (step.bucket !== null) {
+            const part = (minimum[step.bucket] ??= { planned: 0, accepted: 0 })
+            part.accepted += 1
+          }
           record(step, type, ConformanceOutcome.ACCEPTED, null, true)
         } else if (sent.outcome === FiscalSubmitOutcome.REJECTED) {
           if (sent.neverSent === true) {
@@ -456,7 +482,23 @@ export async function runConformance(
         const doc = held.get(id)
         if (doc === undefined) continue
         const totals = totalsOf(doc.built.documentType)
-        const sent = await options.provider.submit(doc.built, contextOf(id))
+        let sent: SubmitResult
+        try {
+          sent = await options.provider.submit(doc.built, contextOf(id))
+        } catch (error) {
+          // One document that breaks does not leave the rest of the lot unsent; it is a failure of its own
+          totals.failed += 1
+          const code = errorCode(error)
+          codes[code] = (codes[code] ?? 0) + 1
+          results.push({
+            id,
+            kind: 'deferred_sale',
+            documentType: doc.built.documentType,
+            outcome: ConformanceOutcome.ERROR,
+            code
+          })
+          continue
+        }
         if (sent.outcome === FiscalSubmitOutcome.ACCEPTED) {
           doc.accepted = {
             externalNumber: sent.externalNumber,
@@ -501,6 +543,7 @@ export async function runConformance(
     batch: options.batch,
     documents,
     unbuilt,
+    minimum,
     voids,
     contingencies,
     tags,
@@ -511,33 +554,53 @@ export async function runConformance(
   return report
 }
 
-// The last gate before a report leaves this module: none of the values that must stay secret may be anywhere in it. Short values are not
-// searched (a two-digit code would be "found" in any number): a secret is long.
+// The last gate before a report leaves this module: none of the values that must stay secret may be anywhere in it, as typed or as JSON
+// writes it (a quote or a backslash is escaped there). Short values are not searched (a two-digit code would be "found" in any number):
+// a secret is long. A leak fails the run, with the numbers of what was done and nothing else.
 const SECRET_MIN_LENGTH = 4
 export function assertNoSecrets(report: unknown, secrets: readonly string[]): void {
   const text = JSON.stringify(report)
   for (const secret of secrets) {
-    if (secret.length >= SECRET_MIN_LENGTH && text.includes(secret))
-      throw new ConformanceLeakError()
+    if (secret.length < SECRET_MIN_LENGTH) continue
+    if (text.includes(secret) || text.includes(JSON.stringify(secret).slice(1, -1))) {
+      throw new ConformanceLeakError(countsOf(report))
+    }
+  }
+}
+
+function countsOf(report: unknown): ConformanceCounts {
+  const given = report as Partial<ConformanceReport>
+  const totals = Object.values(given.documents ?? {})
+  const sum = (pick: (totals: ConformanceDocumentTotals) => number): number =>
+    totals.reduce((acc, one) => acc + pick(one), 0)
+  const number = (value: unknown): number => (typeof value === 'number' ? value : 0)
+  return {
+    steps: given.steps?.length ?? 0,
+    accepted: sum(one => one.accepted),
+    refused: sum(one => one.rejected + one.notSent + one.failed),
+    unavailable: sum(one => one.unavailable),
+    voided: number(given.voids?.done),
+    contingenciesReported: number(given.contingencies?.reported)
   }
 }
 
 export interface ConformanceTargets {
-  // By the provider's own id of the document type
-  readonly documents: Readonly<Record<string, number>>
+  // By bucket of the plan (what each document was made to count toward)
+  readonly buckets: Readonly<Record<string, number>>
   readonly voids: number
   readonly contingencies: number
 }
 
-// Whether the report reaches what the authority asks: documents accepted by type, invalidations done, contingencies reported
+// Whether the report reaches what the authority asks: documents accepted for each bucket (the extra ones made for the invalidations and the
+// contingencies never fill a bucket), invalidations done, contingencies reported
 export function conformanceGaps(
   report: ConformanceReport,
   targets: ConformanceTargets
 ): { readonly ok: boolean; readonly missing: Record<string, number> } {
   const missing: Record<string, number> = {}
-  for (const [type, wanted] of Object.entries(targets.documents)) {
-    const have = report.documents[type]?.accepted ?? 0
-    if (have < wanted) missing[type] = wanted - have
+  for (const [bucket, wanted] of Object.entries(targets.buckets)) {
+    const have = report.minimum[bucket]?.accepted ?? 0
+    if (have < wanted) missing[bucket] = wanted - have
   }
   if (report.voids.done < targets.voids) missing['voids'] = targets.voids - report.voids.done
   if (report.contingencies.reported < targets.contingencies) {
