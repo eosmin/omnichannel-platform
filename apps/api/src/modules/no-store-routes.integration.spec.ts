@@ -1,6 +1,7 @@
-import { readdirSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
+import { RequestMethod } from '@nestjs/common'
 import { PATH_METADATA, METHOD_METADATA, ROUTE_ARGS_METADATA } from '@nestjs/common/constants'
 import { RouteParamtypes } from '@nestjs/common/enums/route-paramtypes.enum'
 
@@ -148,7 +149,7 @@ describe('Cache-Control: no-store on the routes of money, fiscal documents, secr
 // Every GET of every controller of the api (and of the libraries that bring one) answers with data of a store, a person or a
 // secret, so it says no-store, unless it is on the short list below with its reason or takes the response itself (the files).
 // A route added without the header fails here: nobody has to remember to add it to a list.
-const CONTROLLER_ROOTS = [join(__dirname, '..'), join(__dirname, '../../../../libs/core')]
+const CONTROLLER_ROOTS = [join(__dirname, '..'), join(__dirname, '../../../../libs')]
 
 // A GET that may be kept by a cache, and why. Nothing of a store or a person belongs here.
 const MAY_BE_CACHED: Record<string, string> = {
@@ -168,6 +169,9 @@ function controllerFiles(dir: string): string[] {
   })
 }
 
+// The file each controller was read from, for the routes that set their header by hand
+const sourceOf = new Map<Controller, string>()
+
 async function allControllers(): Promise<Controller[]> {
   const found: Controller[] = []
   for (const file of CONTROLLER_ROOTS.flatMap(controllerFiles)) {
@@ -176,13 +180,12 @@ async function allControllers(): Promise<Controller[]> {
       // A class of Nest with a path is a controller
       if (typeof value === 'function' && Reflect.hasMetadata(PATH_METADATA, value)) {
         found.push(value)
+        sourceOf.set(value, file)
       }
     }
   }
   return found
 }
-
-const GET = 0 // RequestMethod.GET
 
 describe('Cache-Control: no-store on every GET of the api', () => {
   it('answers no-store on every GET, except the ones that say why they may be cached', async () => {
@@ -193,23 +196,31 @@ describe('Cache-Control: no-store on every GET of the api', () => {
     let checked = 0
     const missing: string[] = []
     const listed = new Set<string>()
+    const handByHand: string[] = []
     for (const controller of controllers) {
       const controllerName = controller.prototype.constructor.name
       for (const name of handlersOf(controller)) {
         const handler = handlerOf(controller, name)
-        if (Reflect.getMetadata(METHOD_METADATA, handler) !== GET) continue
+        if (Reflect.getMetadata(METHOD_METADATA, handler) !== RequestMethod.GET) continue
         const id = `${controllerName}.${name}`
         if (id in MAY_BE_CACHED) {
           listed.add(id)
           continue
         }
-        if (takesResponse(controller, name)) continue
+        if (takesResponse(controller, name)) {
+          // A route that takes the response sets the header by hand: it is named here and its file is read, so that
+          // a new one is not skipped and a line that was removed is seen
+          const source = readFileSync(sourceOf.get(controller) ?? '', 'utf8')
+          if (!/setHeader\(\s*'Cache-Control',\s*'no-store'\s*\)/.test(source)) handByHand.push(id)
+          continue
+        }
         checked += 1
         if (!hasNoStore(controller, name)) missing.push(id)
       }
     }
-    expect(checked).toBeGreaterThan(100)
+    expect(checked).toBeGreaterThan(240)
     expect(missing).toEqual([])
+    expect(handByHand).toEqual([])
     // A line of the list that names no route is a route that was renamed: the list is kept honest
     expect([...listed].sort()).toEqual(Object.keys(MAY_BE_CACHED).sort())
   })
