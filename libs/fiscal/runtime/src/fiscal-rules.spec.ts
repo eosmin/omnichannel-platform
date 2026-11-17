@@ -1,13 +1,17 @@
 import {
+  FiscalDocumentKind,
   FiscalDocumentStatus,
   FiscalEnvironment,
+  FiscalLimits,
   FiscalOperationCondition,
+  FiscalRejectionReasons,
   PaymentMethod,
   PaymentStatus,
   TaxTreatment
 } from '@platform/core/domain'
 
 import {
+  allowedActionsOf,
   canTransition,
   type CreditNoteOrder,
   creditNoteSaleOf,
@@ -16,6 +20,7 @@ import {
   fiscalDocumentUuid,
   fiscalSequenceKey,
   isImmutable,
+  isStuck,
   operationConditionOf,
   paymentOfSnapshot,
   paymentsOf,
@@ -844,5 +849,82 @@ describe('the detail of a sealed document', () => {
     }
     const odd = documentDetailOf(doc, { lines: [null, { quantity: 'many', taxRateBps: 1.5 }] }, {})
     expect(odd.lines[1]).toMatchObject({ quantity: 0, taxRateBps: null, description: '' })
+  })
+})
+
+describe('what a person may do with a document', () => {
+  const base = {
+    kind: FiscalDocumentKind.SALE,
+    status: FiscalDocumentStatus.ACCEPTED,
+    attempts: 1,
+    rejectionReason: null,
+    replacedByDocumentId: null
+  }
+  const none = {
+    editReceiver: false,
+    retry: false,
+    void: false,
+    replace: false,
+    confirmIssuerChange: false
+  }
+
+  it('says a document is stuck only when it is queued with every attempt spent', () => {
+    const max = FiscalLimits.MAX_ATTEMPTS
+    expect(isStuck(FiscalDocumentStatus.QUEUED, max)).toBe(true)
+    expect(isStuck(FiscalDocumentStatus.QUEUED, max - 1)).toBe(false)
+    expect(isStuck(FiscalDocumentStatus.REJECTED, max)).toBe(false)
+    expect(isStuck(FiscalDocumentStatus.ACCEPTED, max)).toBe(false)
+  })
+
+  it('lets an accepted document be voided and nothing else', () => {
+    expect(allowedActionsOf(base)).toEqual({ ...none, void: true })
+  })
+
+  it('lets a refused sale document be fixed and sent again, and the issuer change be confirmed only after an attempt', () => {
+    const refused = { ...base, status: FiscalDocumentStatus.REJECTED, attempts: 2 }
+    expect(allowedActionsOf(refused)).toEqual({ ...none, editReceiver: true, retry: true })
+    expect(
+      allowedActionsOf({ ...refused, rejectionReason: FiscalRejectionReasons.ISSUER_CHANGED })
+    ).toMatchObject({ confirmIssuerChange: true })
+    expect(
+      allowedActionsOf({
+        ...refused,
+        attempts: 0,
+        rejectionReason: FiscalRejectionReasons.ISSUER_CHANGED
+      })
+    ).toMatchObject({ confirmIssuerChange: false })
+  })
+
+  it('keeps the receiver of a credit note and of a queued document that was already sent', () => {
+    const queued = { ...base, status: FiscalDocumentStatus.QUEUED }
+    expect(allowedActionsOf({ ...queued, attempts: 0 })).toMatchObject({
+      editReceiver: true,
+      retry: true
+    })
+    expect(allowedActionsOf({ ...queued, attempts: 3 })).toMatchObject({
+      editReceiver: false,
+      retry: true
+    })
+    expect(
+      allowedActionsOf({
+        ...queued,
+        attempts: 0,
+        kind: FiscalDocumentKind.CREDIT_NOTE
+      }).editReceiver
+    ).toBe(false)
+  })
+
+  it('lets a voided sale document be replaced once, and a voided credit note be replaced', () => {
+    const voided = { ...base, status: FiscalDocumentStatus.VOIDED }
+    expect(allowedActionsOf(voided).replace).toBe(true)
+    expect(allowedActionsOf({ ...voided, replacedByDocumentId: 'd2' }).replace).toBe(false)
+    expect(
+      allowedActionsOf({
+        ...voided,
+        kind: FiscalDocumentKind.CREDIT_NOTE,
+        replacedByDocumentId: 'd2'
+      }).replace
+    ).toBe(true)
+    expect(allowedActionsOf({ ...base, replacedByDocumentId: 'd2' }).replace).toBe(false)
   })
 })
