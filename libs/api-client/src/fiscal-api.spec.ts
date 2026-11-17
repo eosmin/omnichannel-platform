@@ -1,4 +1,4 @@
-import { FiscalDocumentStatus, FiscalEvidenceKind } from '@platform/core/domain'
+import { FiscalDocumentStatus, FiscalEvidenceKind, FiscalVoidKind } from '@platform/core/domain'
 
 import { createApiClient } from './api-client'
 import {
@@ -165,10 +165,26 @@ describe('the fiscal documents', () => {
     expect(callOf(retried.fetchImpl).init.method).toBe('POST')
 
     const voided = setup(json(200, { data: { ...document, status: 'voided' } }))
-    const view = await voidFiscalDocument(voided.client, 's', 'd1', 'wrong receiver')
+    const view = await voidFiscalDocument(voided.client, 's', 'd1', { reason: 'wrong receiver' })
     expect(view.status).toBe('voided')
     expect(JSON.parse(callOf(voided.fetchImpl).init.body as string)).toEqual({
       reason: 'wrong receiver'
+    })
+
+    // The people and the kind a provider asks for travel with the reason
+    const party = { name: 'Ana', idType: '13', idNumber: '1' }
+    const detailed = setup(json(200, { data: { ...document, status: 'voided' } }))
+    await voidFiscalDocument(detailed.client, 's', 'd1', {
+      reason: 'wrong receiver',
+      kind: FiscalVoidKind.RESCISSION,
+      responsible: party,
+      requester: party
+    })
+    expect(JSON.parse(callOf(detailed.fetchImpl).init.body as string)).toEqual({
+      reason: 'wrong receiver',
+      kind: 'rescission',
+      responsible: party,
+      requester: party
     })
 
     const replaced = setup(json(200, { data: { ...document, id: 'd2' } }))
@@ -247,7 +263,13 @@ describe('the fiscal issuer', () => {
               documentTypes: [{ id: 't', label: 'Type', requiredReceiverFields: ['name'] }],
               requiredIssuerFields: ['legalName'],
               credentialKeys: ['signingKey'],
-              environments: ['sandbox']
+              environments: ['sandbox'],
+              voidInputs: {
+                kinds: ['correction', 'rescission'],
+                requiresParties: true,
+                kindsWithReplacement: ['correction'],
+                reasonMaxLength: 200
+              }
             },
             contingency: null
           }
@@ -256,6 +278,13 @@ describe('the fiscal issuer', () => {
     )
     const providers = await fetchFiscalProviders(client, 's')
     expect(providers[0]?.manifest.credentialKeys).toEqual(['signingKey'])
+    // What an invalidation asks of the person is read as the provider declares it
+    expect(providers[0]?.manifest.voidInputs).toEqual({
+      kinds: ['correction', 'rescission'],
+      requiresParties: true,
+      kindsWithReplacement: ['correction'],
+      reasonMaxLength: 200
+    })
   })
 })
 

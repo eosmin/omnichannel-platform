@@ -304,12 +304,13 @@ export const envSchema = z
           input: env.FISCAL_SIGNER_URL
         })
       }
-      // A fiscal provider that can send documents but not yet invalidate them must not issue real ones (Step 4B.7c-4 builds the invalidation)
+      // A fiscal provider must not issue real documents until the owner authorizes production (Step 4B.7c-8): the real environment needs its own
+      // configuration, apart from the sandbox's
       if (env.NODE_ENV === 'production') {
         ctx.issues.push({
           code: 'custom',
           message:
-            'the fiscal signing service is not allowed in production until the invalidation of documents is built (Step 4B.7c-4)',
+            'the fiscal signing service is not allowed in production until the owner authorizes it (Step 4B.7c-8)',
           path: ['FISCAL_SIGNER_URL'],
           input: env.FISCAL_SIGNER_URL
         })

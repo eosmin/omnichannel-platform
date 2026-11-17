@@ -7513,16 +7513,72 @@
         },
         "reason": "Reason",
         "problems": {
-          "required": "Write the reason.",
-          "tooLong": "The reason is too long.",
-          "invalid": "Write the reason on one line, with no special characters."
+          "kind": {
+            "required": "Choose the reason."
+          },
+          "responsible": {
+            "required": "Fill in the name, the type and the number.",
+            "tooLong": "One of the data is too long."
+          },
+          "requester": {
+            "required": "Fill in the name, the type and the number.",
+            "tooLong": "One of the data is too long."
+          },
+          "replacement": {
+            "required": "Choose the document that takes its place."
+          },
+          "reason": {
+            "required": "Write the reason.",
+            "tooLong": "The reason is too long.",
+            "invalid": "Write the reason on one line, with no special characters."
+          }
         },
         "cancel": "Cancel",
         "submit": "Void the document",
         "confirmTitle": "Void document No. {number}?",
         "confirmDescription": "The invalidation is sent to the authority and cannot be undone. The reason is kept in the audit log.",
         "confirm": "Void the document",
-        "done": "The document was voided."
+        "done": "The document was voided.",
+        "kind": "Reason for the invalidation",
+        "kindChoose": "Choose a reason",
+        "kinds": {
+          "correction": "The document has wrong information",
+          "rescission": "The operation was cancelled",
+          "other": "Another reason"
+        },
+        "replacement": "Document that takes its place",
+        "replacementHint": "The authority asks for it before the invalidation: make it first.",
+        "replacementChoose": "Choose the document",
+        "replacementOption": "No. {number} · {total}",
+        "responsible": {
+          "title": "Who makes the invalidation"
+        },
+        "requester": {
+          "title": "Who asks for it"
+        },
+        "party": {
+          "name": "Name",
+          "idType": "Type of identity document",
+          "idTypeHint": "The code of the authority's catalog.",
+          "idNumber": "Number of the identity document"
+        },
+        "providersError": "The data of the provider could not be read.",
+        "retry": "Try again",
+        "refusals": {
+          "void_deadline_passed": "The time to invalidate this document is over.",
+          "void_not_allowed": "This type of document cannot be invalidated.",
+          "void_kind_required": "Choose the reason for the invalidation.",
+          "void_parties_required": "Say who makes the invalidation and who asks for it.",
+          "void_party_invalid": "The name or the identity document of one of the two people is not valid.",
+          "void_replacement_required": "This reason needs the document that takes its place.",
+          "void_replacement_invalid": "The document that takes its place is not valid.",
+          "void_reason_invalid": "The reason is empty or too long for the authority.",
+          "document_incomplete": "The document does not have what the authority needs to invalidate it.",
+          "issuer_incomplete": "The data of the issuer is incomplete.",
+          "credentials_incomplete": "The credentials of the issuer are incomplete.",
+          "credentials_rejected": "The authority did not accept the credentials of the issuer.",
+          "signing_credentials_rejected": "The signing certificate did not accept its password."
+        }
       },
       "address": {
         "legend": "Address",

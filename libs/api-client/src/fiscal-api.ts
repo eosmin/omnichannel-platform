@@ -8,7 +8,9 @@ import {
   type FiscalEvidenceKind,
   FiscalIssueOn,
   type FiscalReceiverPatchBody,
-  type PutFiscalIssuerBody
+  FiscalVoidKind,
+  type PutFiscalIssuerBody,
+  type VoidFiscalDocumentBody
 } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
@@ -123,6 +125,15 @@ const providerSchema = z.object({
         perDocumentType: z.boolean().optional(),
         perEstablishment: z.boolean().optional(),
         perPointOfSale: z.boolean().optional()
+      })
+      .optional(),
+    // What an invalidation asks of the person besides the reason; none declared is the reason alone
+    voidInputs: z
+      .object({
+        kinds: z.array(z.enum(FiscalVoidKind)),
+        requiresParties: z.boolean(),
+        kindsWithReplacement: z.array(z.enum(FiscalVoidKind)).optional(),
+        reasonMaxLength: z.number().int().positive().optional()
       })
       .optional()
   }),
@@ -276,11 +287,11 @@ export async function voidFiscalDocument(
   client: ApiClient,
   storeId: string,
   id: string,
-  reason: string
+  input: VoidFiscalDocumentBody
 ): Promise<FiscalDocumentView> {
   const answer = await client.request(ApiRoutes.fiscal.documents.void(encodeURIComponent(id)), {
     method: 'POST',
-    body: { reason },
+    body: input,
     schema: documentEnvelopeSchema,
     storeId
   })
