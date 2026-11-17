@@ -73,6 +73,27 @@ describe('the refusals', () => {
     expect(plan(level(3, 0), Type.ADJUSTMENT_OUT, 3).ok).toBe(true)
   })
 
+  it('refuses an adjustment or a count that would leave less on hand than is reserved (N-AA-05)', () => {
+    for (const type of [Type.ADJUSTMENT_OUT, Type.COUNT_OUT]) {
+      // 5 on hand, 4 promised to an order: 3 out would leave 2 for the 4
+      expect(plan(level(5, 4), type, 3)).toEqual({
+        ok: false,
+        refusal: { kind: 'insufficient_available', available: 1 }
+      })
+      // The last free unit may go: 4 stay for the 4 reserved
+      expect(applied(plan(level(5, 4), type, 1)).next).toMatchObject({ onHand: 4, reserved: 4 })
+      // What is free, and no more, may go with nothing reserved
+      expect(plan(level(5, 0), type, 5).ok).toBe(true)
+    }
+  })
+
+  it('lets them take reserved units too when the store allows negative stock', () => {
+    for (const type of [Type.ADJUSTMENT_OUT, Type.COUNT_OUT]) {
+      const result = applied(plan(level(5, 4), type, 3, { allowNegativeStock: true }))
+      expect(result.next).toMatchObject({ onHand: 2, reserved: 4 })
+    }
+  })
+
   it('lets them go below zero when the store allows it', () => {
     for (const type of [Type.ADJUSTMENT_OUT, Type.COUNT_OUT]) {
       const result = applied(plan(level(2, 0), type, 5, { allowNegativeStock: true }))

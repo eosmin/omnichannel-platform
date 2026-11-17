@@ -200,6 +200,38 @@ describe('The stock of a store', () => {
       ).toBe(3)
     })
 
+    it('does not take out units that an order has reserved: 409 with what is available (N-AA-05)', async () => {
+      const made = await product()
+      await receive(made.id, 5)
+      // An order of 4 has promised 4 of the 5 on hand
+      await owner.inventoryLevel.updateMany({
+        where: { productId: made.id },
+        data: { reserved: 4 }
+      })
+
+      const refused = await post(
+        adjustment(made.id, { type: 'adjustment_out', quantity: 3, reason: 'damaged' })
+      )
+
+      expect(refused.status).toBe(CONFLICT)
+      expect(errorOf(refused)).toMatchObject({
+        code: ErrorCodes.INSUFFICIENT_INVENTORY,
+        metadata: { available: 1, requested: 3 }
+      })
+      expect(
+        await owner.inventoryMovement.count({
+          where: { productId: made.id, type: 'adjustment_out' }
+        })
+      ).toBe(0)
+      const level = await owner.inventoryLevel.findFirstOrThrow({ where: { productId: made.id } })
+      expect([level.onHand, level.reserved]).toEqual([5, 4])
+      // The free unit may still go
+      const free = await post(
+        adjustment(made.id, { type: 'adjustment_out', quantity: 1, reason: 'damaged' })
+      )
+      expect(free.status).toBe(CREATED)
+    })
+
     it('goes below zero when the store allows negative stock', async () => {
       const store = ctx.storeA
       await owner.storeSettings.update({
