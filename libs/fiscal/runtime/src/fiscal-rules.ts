@@ -2,9 +2,12 @@ import { createHash } from 'node:crypto'
 
 import {
   FiscalDocumentImmutableStatuses,
+  FiscalDocumentKind,
   FiscalDocumentStatus,
   FiscalDocumentStatusTransitions,
+  FiscalLimits,
   FiscalOperationCondition,
+  FiscalRejectionReasons,
   type FiscalEnvironment,
   PaymentMethod,
   PaymentStatus,
@@ -35,6 +38,52 @@ export const receiverEditable = (status: FiscalDocumentStatus, attempts: number)
 // Retried from a refusal, or from the queue when the job was lost (the attempts ran out while the authority was down)
 export const retryable = (status: FiscalDocumentStatus): boolean =>
   status === FiscalDocumentStatus.REJECTED || status === FiscalDocumentStatus.QUEUED
+
+// A document that stays in the queue after every attempt of its job was spent: it needs a person (a retry), nothing will move it by itself
+export const isStuck = (status: FiscalDocumentStatus, attempts: number): boolean =>
+  status === FiscalDocumentStatus.QUEUED && attempts >= FiscalLimits.MAX_ATTEMPTS
+
+// What the state of a document allows a person to do with it. The screen draws its buttons from this and the api decides again on every
+// call (the rules of the calls are the ones in `FiscalDocumentsService`); the permission to do it is the route's, not this function's.
+// It is a necessary condition, read from the document alone: a call can still be refused for something outside the document (credit notes
+// that are alive against a sale that is voided, an issuer that moved since the document was refused, a note that was made again) and
+// answers with the reason the screen has words for.
+export interface FiscalDocumentActions {
+  // The receiver of a sale document that was refused or never sent: a credit note's receiver is its sale document's
+  readonly editReceiver: boolean
+  // Sent again from a refusal, or from the queue when the job was lost
+  readonly retry: boolean
+  // The invalidation of an accepted document: irreversible
+  readonly void: boolean
+  // A voided sale document that nobody replaced, or a voided credit note (its replacement is the note of its return, which the view does not
+  // name: the api refuses with `note_already_replaced`)
+  readonly replace: boolean
+  // A refused document that was sent at least once and whose refusal is that the issuer changed: the person says it is not at the old issuer
+  readonly confirmIssuerChange: boolean
+}
+
+export function allowedActionsOf(document: {
+  kind: FiscalDocumentKind
+  status: FiscalDocumentStatus
+  attempts: number
+  rejectionReason: string | null
+  replacedByDocumentId: string | null
+}): FiscalDocumentActions {
+  const sale = document.kind === FiscalDocumentKind.SALE
+  const refused = document.status === FiscalDocumentStatus.REJECTED
+  return {
+    editReceiver: sale && receiverEditable(document.status, document.attempts),
+    retry: retryable(document.status),
+    void: document.status === FiscalDocumentStatus.ACCEPTED,
+    replace:
+      document.status === FiscalDocumentStatus.VOIDED &&
+      (sale ? document.replacedByDocumentId === null : true),
+    confirmIssuerChange:
+      refused &&
+      document.attempts > 0 &&
+      document.rejectionReason === FiscalRejectionReasons.ISSUER_CHANGED
+  }
+}
 
 export interface OrderLineRow {
   productName: string

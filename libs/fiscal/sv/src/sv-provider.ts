@@ -3,6 +3,9 @@ import type {
   BuiltDocument,
   ConsultResult,
   ContingencyPolicy,
+  ContingencyReportResult,
+  DeferResult,
+  FiscalContingencyEvent,
   FiscalBuildInput,
   FiscalDocumentProvider,
   FiscalIssuerCredentials,
@@ -27,6 +30,7 @@ import { buildDocument, resolveDocumentType } from './sv-build'
 import {
   SV_COUNTRY_CODE,
   SV_PROVIDER_ID,
+  SvContingency,
   SvCredentialKeys,
   SvDocumentTypes,
   SvEnabledEnvironments,
@@ -42,6 +46,8 @@ import type { SvSigner } from './sv-signer'
 import {
   consultDocument,
   consultVoided,
+  deferDocument,
+  reportContingencyEvent,
   submitDocument,
   voidDocument,
   type SvTransmissionDeps
@@ -145,11 +151,21 @@ export class SvProvider implements FiscalDocumentProvider {
       identityCatalog: 'identityDocuments',
       kindsWithReplacement: [...SvInvalidation.KINDS_WITH_REPLACEMENT],
       reasonMaxLength: SvInvalidation.REASON_MAX
+    },
+    // The deferred model: the reasons of CAT-005 (1 is the authority's own system not available), 72 hours to send the documents once the event
+    // was taken, 1000 documents an event, and the person who answers for the establishment
+    contingencyMode: {
+      reasons: Object.values(SvContingency.REASONS).map(String),
+      authorityDownReason: String(SvContingency.REASONS.AUTHORITY_DOWN),
+      transmitWithinHours: SvContingency.TRANSMIT_WITHIN_HOURS,
+      maxDocumentsPerEvent: SvContingency.MAX_DOCUMENTS,
+      requiresResponsible: true
     }
   }
 
   readonly contingency: ContingencyPolicy = {
-    description: 'Not available yet: the document stays queued and is sent again.'
+    description:
+      'The document is made, signed and kept without the authority, the contingency is reported with an event, and the documents are sent within 72 hours.'
   }
 
   validateIssuer(
@@ -195,6 +211,17 @@ export class SvProvider implements FiscalDocumentProvider {
     details?: FiscalVoidDetails
   ): Promise<VoidResult> {
     return voidDocument(this.deps, doc, reason, ctx, details)
+  }
+
+  deferDocument(built: BuiltDocument, ctx: ProviderContext): Promise<DeferResult> {
+    return deferDocument(this.deps, built, ctx)
+  }
+
+  reportContingency(
+    event: FiscalContingencyEvent,
+    ctx: ProviderContext
+  ): Promise<ContingencyReportResult> {
+    return reportContingencyEvent(this.deps, event, ctx)
   }
 
   consultVoid(doc: StoredFiscalDocument, ctx: ProviderContext): Promise<VoidConsultResult> {

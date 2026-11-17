@@ -6,6 +6,7 @@ import {
 } from '@platform/core/domain'
 import type {
   BuiltDocument,
+  FiscalBuildContingency,
   FiscalBuildInput,
   FiscalIssuerInput,
   FiscalReceiver,
@@ -17,6 +18,7 @@ import { activityName, isUnit } from './sv-catalog'
 import {
   SvBuildError,
   SvBuildErrors,
+  type SvBuildErrorCode,
   SvCodePatterns,
   SvCreditableDocuments,
   SvCurrency,
@@ -36,6 +38,7 @@ import {
   SvTransmission,
   SvVat
 } from './sv-constants'
+import { readContingency, type SvContingencyProblem } from './sv-contingency-reason'
 import { allocate, dollars, dollars8, roundDiv, SCALE_8, toScaled8 } from './sv-decimal'
 import {
   addressOf,
@@ -183,6 +186,34 @@ function checkTax(formulaCents: number, input: FiscalBuildInput): void {
 
 // ---------------------------------------------------------------- the common parts
 
+// A document made in contingency is deferred (model 2) and transmitted as a contingency (operation 2), with the reason of CAT-005; the reason
+// that is "other" carries the person's own words, and the others have none (Manual Técnico §3.3)
+// What each problem of the reason is called by the builder
+const BuildProblems: Record<SvContingencyProblem, SvBuildErrorCode> = {
+  reason: SvBuildErrors.CONTINGENCY_REASON_UNKNOWN,
+  motive_required: SvBuildErrors.CONTINGENCY_MOTIVE_REQUIRED,
+  motive_too_long: SvBuildErrors.CONTINGENCY_MOTIVE_TOO_LONG
+}
+
+function transmissionOf(contingency: FiscalBuildContingency | undefined): Record<string, unknown> {
+  if (contingency === undefined) {
+    return {
+      tipoModelo: SvTransmission.MODEL_PREVIOUS,
+      tipoOperacion: SvTransmission.OPERATION_NORMAL,
+      tipoContingencia: null,
+      motivoContin: null
+    }
+  }
+  const read = readContingency(contingency.reason, contingency.motive)
+  if (!read.ok) throw new SvBuildError(BuildProblems[read.problem])
+  return {
+    tipoModelo: SvTransmission.MODEL_DEFERRED,
+    tipoOperacion: SvTransmission.OPERATION_CONTINGENCY,
+    tipoContingencia: read.reason,
+    motivoContin: read.motive
+  }
+}
+
 function identification(type: SvDocumentType, input: FiscalBuildInput): Record<string, unknown> {
   const issuer = input.issuer
   const moment = salvadorMoment(input.issuedAt)
@@ -194,10 +225,7 @@ function identification(type: SvDocumentType, input: FiscalBuildInput): Record<s
     // DTE-{type}-{establishment}{point of sale}-{correlative}: the codes of the issuer (checked) and the number of the series
     numeroControl: `DTE-${type}-${(issuer.establishmentCode ?? '').trim()}${(issuer.pointOfSaleCode ?? '').trim()}-${sequence}`,
     codigoGeneracion: input.documentUuid.toUpperCase(),
-    tipoModelo: SvTransmission.MODEL_PREVIOUS,
-    tipoOperacion: SvTransmission.OPERATION_NORMAL,
-    tipoContingencia: null,
-    motivoContin: null,
+    ...transmissionOf(input.contingency),
     fecEmi: moment.date,
     horEmi: moment.time,
     tipoMoneda: SvCurrency,
