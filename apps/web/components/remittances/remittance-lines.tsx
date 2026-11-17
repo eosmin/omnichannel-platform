@@ -170,7 +170,7 @@ export function RemittanceLines({
   const [editing, setEditing] = useState<string | null>(null)
   if (lines.length === 0) return <p className="text-muted-foreground text-sm">{t('empty')}</p>
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto">
       <table className="w-full text-left">
         <caption className="sr-only">{t('caption')}</caption>
         <thead>

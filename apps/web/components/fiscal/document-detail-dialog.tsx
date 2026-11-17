@@ -33,7 +33,15 @@ import { toast } from '../../lib/toast'
 import { useStore } from '../providers/store-context'
 import { LoadFailed, PageLoading } from '../settings/states'
 import { Button } from '../ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle
+} from '../ui/dialog'
 
 import { EvidencePanel } from './evidence-panel'
 import { FiscalStatusBadge } from './fiscal-status-badge'
@@ -76,6 +84,7 @@ export function DocumentDetailDialog({
             ) : (
               <PageLoading />
             )}
+            <CloseFooter />
           </>
         ) : (
           <DocumentBody
@@ -195,6 +204,7 @@ function DocumentBody({
         open={changingIssuer}
         onOpenChange={setChangingIssuer}
       />
+      <CloseFooter />
     </>
   )
 }
@@ -403,5 +413,19 @@ function Actions({
         </p>
       )}
     </section>
+  )
+}
+
+// A visible way out for a touch screen: the dialog has no corner button, and Escape is not there on a phone
+function CloseFooter(): ReactElement {
+  const tCommon = useTranslations('common')
+  return (
+    <DialogFooter>
+      <DialogClose asChild>
+        <Button type="button" variant="outline">
+          {tCommon('close')}
+        </Button>
+      </DialogClose>
+    </DialogFooter>
   )
 }
