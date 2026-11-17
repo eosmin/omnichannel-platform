@@ -46,3 +46,11 @@ Not copied: the manuals, the signing certificate, any credential, nor the enviro
 - The service reads the certificate of the taxpayer from its own disk as `{NIT}.crt`, with the NIT exactly as the service is asked for it (digits, no dashes). **The file the ministry gives is called `Certificado_<nit>.crt`: mount a renamed copy** (read-only volume), never the original, and never put it in the repository or in the image.
 - The platform sends only the NIT and the password of the private key; the password of the API user is a credential of the issuer. Neither is logged.
 - `scripts/check-sv-certificate.ts` is run by the owner on their machine (the password in `SV_CERT_PASSWORD`); it prints only booleans.
+
+## The minimum tests of the sandbox (Step 4B.7c-6)
+
+`libs/fiscal/runtime/tools/run-conformance.ts` (`pnpm fiscal:conformance`) makes and sends the documents the authority asks before it authorizes an issuer (90 invoices, 75 tax credit documents and 50 credit notes with seal, 5 invalidations, 5 contingencies) from invented data, through the port of the provider (no database). The plan is `src/conformance/sv-conformance-plan.ts`; the report never carries a document, a number, a seal or a secret.
+
+- `pnpm fiscal:conformance` runs the plan through the simulator (nothing leaves the machine; the simulator has no contingency mode, so those steps are skipped and said so).
+- `pnpm fiscal:conformance --provider sv --dry-run` builds every document with this provider's rules and sends nothing; it needs no environment.
+- Against the real sandbox, on the owner's own machine only: export the names listed by `--help-env` (the same as `DTE_SANDBOX_*` in `src/conformance/sv-sandbox-env.ts`) and `DTE_SANDBOX_CONFIRM=send-to-sandbox`, then `--provider sv --batch b1 --offset 0`. A second run uses another `--batch` and an `--offset` after the numbers the first used. Values are never printed, logged or saved; the report is checked against them before it is shown.
