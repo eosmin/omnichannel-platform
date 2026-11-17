@@ -1,4 +1,4 @@
-import { FiscalResourceTypes } from '@platform/core/domain'
+import { FiscalContingencyAlertKind, FiscalResourceTypes } from '@platform/core/domain'
 import type {
   FiscalDocumentRejectedPayload,
   FiscalDocumentStuckPayload
@@ -101,6 +101,35 @@ describe('the notice of a fiscal document that needs a person', () => {
     })
     // The count is the check's, not the notice's: the text says no number
     expect(JSON.stringify(sent)).not.toContain('3')
+  })
+
+  it('says each alert of a contingency with its own type, about the contingency and not a document', async () => {
+    const expected = [
+      [FiscalContingencyAlertKind.OPENED_BY_SYSTEM, NotificationTypes.FISCAL_CONTINGENCY_OPENED],
+      [
+        FiscalContingencyAlertKind.REPORT_FAILED,
+        NotificationTypes.FISCAL_CONTINGENCY_REPORT_FAILED
+      ],
+      [
+        FiscalContingencyAlertKind.WINDOW_CLOSING,
+        NotificationTypes.FISCAL_CONTINGENCY_WINDOW_CLOSING
+      ]
+    ] as const
+    for (const [kind, type] of expected) {
+      const { listener, sent, asked } = build([{ userId: 'u1', storeId: 's1' }])
+      await listener.onFiscalContingencyAlert({
+        organizationId: ORG,
+        contingencyId: 'contingency-1',
+        kind
+      })
+      expect(sent[0]?.input).toMatchObject({
+        type,
+        resourceType: FiscalResourceTypes.CONTINGENCY,
+        resourceId: 'contingency-1',
+        params: {}
+      })
+      expect(JSON.stringify(asked[0])).toContain('fiscal:manage')
+    }
   })
 
   it('tells nobody when nobody can act, and never throws to the bus', async () => {

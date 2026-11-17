@@ -269,6 +269,7 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
       OR EXISTS (SELECT 1 FROM fiscal_documents WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM fiscal_issuers WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM fiscal_sequences WHERE organization_id = ANY(${organizationIds}))
+      OR EXISTS (SELECT 1 FROM fiscal_contingencies WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM finance_chain_incidents WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM finance_book_layouts WHERE organization_id = ANY(${organizationIds}))
       OR EXISTS (SELECT 1 FROM finance_book_snapshots WHERE organization_id = ANY(${organizationIds}))
@@ -283,6 +284,7 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
       'finance_book_snapshots',
       'finance_book_layouts',
       'fiscal_documents',
+      'fiscal_contingencies',
       'fiscal_sequences',
       'reconciliation_matches',
       'bank_statement_lines',
@@ -312,6 +314,8 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     await tx.financeBookSnapshot.deleteMany({ where })
     await tx.financeBookLayout.deleteMany({ where })
     await tx.fiscalDocument.deleteMany({ where })
+    // A contingency is named by its documents: it goes after them
+    await tx.fiscalContingency.deleteMany({ where })
     await tx.fiscalSequence.deleteMany({ where })
     await tx.fiscalIssuer.deleteMany({ where })
     await tx.supplierPayment.deleteMany({ where })

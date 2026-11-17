@@ -1,5 +1,6 @@
 import type { BenefitAlertLevelType, GuideBalanceAlertLevelType } from '../carrier-guide-constants'
 import type { ErrorCode } from '../errors/error-codes'
+import type { FiscalContingencyAlertKind } from '../fiscal-constants'
 import type {
   AttentionReason,
   AuthorType,
@@ -386,6 +387,13 @@ export interface FiscalDocumentStuckPayload {
   attempts: number
 }
 
+// A contingency needs a person (Step 4B.7c-7): ids and the kind, never a document, a reason text or an authority's answer
+export interface FiscalContingencyAlertPayload {
+  organizationId: string
+  contingencyId: string
+  kind: FiscalContingencyAlertKind
+}
+
 // A receipt of a purchase order was posted (TDD_18 §3): ids only, no amount and no cost
 export interface PurchaseOrderReceivedPayload {
   organizationId: string
@@ -660,6 +668,7 @@ export interface DomainEventPayloads {
   [Events.FISCAL_DOCUMENT_REJECTED]: FiscalDocumentRejectedPayload
   [Events.FISCAL_DOCUMENT_STUCK]: FiscalDocumentStuckPayload
   [Events.FISCAL_ENTRY_MISMATCH]: FiscalEntryMismatchPayload
+  [Events.FISCAL_CONTINGENCY_ALERT]: FiscalContingencyAlertPayload
   [Events.FINANCE_PERIOD_CLOSED]: FinancePeriodPayload
   [Events.FINANCE_PERIOD_REOPENED]: FinancePeriodPayload
   [Events.PURCHASE_ORDER_RECEIVED]: PurchaseOrderReceivedPayload

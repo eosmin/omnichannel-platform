@@ -46,6 +46,20 @@ export class FiscalProviderRegistry {
           `the fiscal provider ${provider.id} numbers by establishment or point of sale and does not require that code of the issuer`
         )
       }
+      // A provider that declares a contingency mode must report it, and its numbers must make sense (a window and a size of event)
+      const mode = provider.manifest.contingencyMode
+      if (
+        mode !== undefined &&
+        (provider.reportContingency === undefined ||
+          provider.deferDocument === undefined ||
+          mode.reasons.length === 0 ||
+          !mode.reasons.includes(mode.authorityDownReason) ||
+          !(mode.transmitWithinHours > 0) ||
+          !Number.isInteger(mode.maxDocumentsPerEvent) ||
+          mode.maxDocumentsPerEvent < 1)
+      ) {
+        throw new Error(`the contingency mode of the fiscal provider ${provider.id} is not valid`)
+      }
       // A catalog is a list of distinct, non-empty codes with words, and everything that names one names one the manifest has
       const catalogs = provider.manifest.catalogs ?? {}
       for (const [name, options] of Object.entries(catalogs)) {
