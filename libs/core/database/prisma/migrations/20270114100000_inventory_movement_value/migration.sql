@@ -4,7 +4,7 @@
 -- equal to the cent. Null for what moves no value (a reserve, a release, units that were never on hand) and for the rows written before
 -- this migration: those keep being valued at units x unit cost, the way their entries were posted. Existing rows are not backfilled.
 ALTER TABLE inventory_movements ADD COLUMN value_cents bigint;
--- NOT VALID and then VALIDATE: the column is all null, and the validation of a big ledger holds only a light lock, so stock writes go on
+-- NOT VALID, with no VALIDATE: every existing row is null and so satisfies the check, and the scan of a big ledger would hold the table locked
+-- for as long as it ran (a migration is one transaction). The check applies to every row written from now on.
 ALTER TABLE inventory_movements
   ADD CONSTRAINT chk_inventory_movements_value CHECK (value_cents IS NULL OR value_cents >= 0) NOT VALID;
-ALTER TABLE inventory_movements VALIDATE CONSTRAINT chk_inventory_movements_value;

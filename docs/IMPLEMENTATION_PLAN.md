@@ -1737,7 +1737,7 @@ sweep and the charge model.
       shipment) and E8 (returns, before and after delivery, with the refund destination); **`FINANCE_VIEW_CARRIER_FEES`** (below)
 - [x] **4B.6b-3:** the sweep, its metrics, the notification of a failure and the guard of the close (below); the charge model of a carrier
       connection is **4B.6b-4** (it needs an account role the accountant chooses)
-- [x] **4B.6b (done in 4B.6b-3, except the comparisons of inventory and carrier receivables, debt (ar)):** `RECONCILE_FINANCE` (daily): the sweep of unposted
+- [x] **4B.6b (done in 4B.6b-3, except the comparison of carrier receivables, debt (ar); the one of inventory is done by the `inventory-ledger-drift` fix below):** `RECONCILE_FINANCE` (daily): the sweep of unposted
       sources (it is what heals an event that was never queued), the recomputation of the balances; the metrics and the notification of
       `FINANCE_POSTING_FAILED` to who can fix it; `FinanceCloseGuard`, which the close of 4B.8 asks before it locks a month
 - [x] **Fix `inventory-ledger-drift` (HC-007, HC-123 in part; rule 12):** the books post EXACTLY the value a stock movement moved. `inventory_movements.value_cents`
@@ -1754,7 +1754,11 @@ sweep and the charge model.
       out (so that cost of goods sold clears exactly): the difference of the two, when the average moved, needs the accountant's choice of account: 4B.8b-4.
       (d) Rows written before the migration keep `value_cents` null and are valued at units x unit cost, as their entries were posted: no backfill (the journal is
       never rewritten). (e) The sweep still does not compare payables with the purchases (debt (c) of 4B.5), does not mark `truncated` when a preview fails and
-      does not fix the zone of its cron (the rest of HC-123): 4B.8b-2c. (g) `RECONCILE_INVENTORY` replays the ledger without `value_cents`, so a row whose value was edited or written wrong is seen only by the nightly
+      does not fix the zone of its cron (the rest of HC-123): 4B.8b-2c. (h) The inventory check reads after the sweep and compares the account the INVENTORY role points at today: a movement that commits between the two shows as a
+      difference for one night, and an organization that remaps the role sees the old account drop out (the remap with history is PR-J of the QA list); it adds
+      one to `platform_finance_balance_mismatches` whatever the size (the size is in the log and in the report), and a backlog of inventory events queued for
+      several nights holds the check back meanwhile; its own gauge with the figure, and `valueCents` required in the row types of the readers (today an
+      optional field that falls back to units x cost, so a new reader that forgets to select it brings the cent back): 4B.8b-2c. (g) `RECONCILE_INVENTORY` replays the ledger without `value_cents`, so a row whose value was edited or written wrong is seen only by the nightly
       total of the books, not at its movement: replay and compare the value of each row: Step 7.3. (f) An organization whose opening entry differs from the stock value at the start of
       its books shows a standing difference; the accountant's opening balance is meant to equal it (TDD_18, opening balances): the screen of 4B.9 shows both figures.
 - [x] **4B.6b (moved to 4B.6b-2):** **`FINANCE_VIEW_CARRIER_FEES`** gates the commission and the rates of a carrier connection (closes (c3)(i) of Step 4.15:
