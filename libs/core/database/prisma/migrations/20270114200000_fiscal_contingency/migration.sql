@@ -52,7 +52,7 @@ ALTER TABLE "fiscal_contingencies" ADD CONSTRAINT "chk_fiscal_contingencies_atte
 -- At most one open contingency per organization: two would report the same documents twice
 CREATE UNIQUE INDEX "uq_fiscal_contingencies_one_open" ON "fiscal_contingencies"("organization_id") WHERE "status" = 'open';
 -- The identifier of the event is the event's: two contingencies never share one
-CREATE UNIQUE INDEX "uq_fiscal_contingencies_event_code" ON "fiscal_contingencies"("event_code");
+CREATE UNIQUE INDEX "fiscal_contingencies_event_code_key" ON "fiscal_contingencies"("event_code");
 
 -- A contingency is never deleted and only moves forward (open, closed, reported); what it was made with never changes
 CREATE FUNCTION fiscal_contingency_guard() RETURNS trigger

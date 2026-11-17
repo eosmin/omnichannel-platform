@@ -3225,7 +3225,7 @@ model FiscalContingency {
   reason               String // one of the reasons the provider's manifest declares: the provider's words, never read by core
   motive               String? // what the person wrote about it
   responsibleEncrypted Bytes?    @map("responsible_encrypted") // who answers for the establishment (name and identity document), sealed: given when it is ended
-  eventCode            String    @map("event_code") // the stable identifier of the event that reports it, in the shape of a random UUID
+  eventCode            String    @unique @map("event_code") // the stable identifier of the event that reports it, in the shape of a random UUID
   startedAt            DateTime  @map("started_at")
   endedAt              DateTime? @map("ended_at")
   reportedAt           DateTime? @map("reported_at") // when the authority took the event

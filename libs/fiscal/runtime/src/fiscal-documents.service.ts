@@ -1027,6 +1027,15 @@ export class FiscalDocumentsService {
       return false
     }
     await this.contingencies.openBySystem(organizationId, provider, context.issuer.environment)
+    // One that is open for another provider or environment (the issuer changed since) does not take this document: it goes on as it did,
+    // and nothing here calls itself again for ever
+    const route = await this.contingencies.routeOf(
+      organizationId,
+      { contingencyId: null },
+      provider,
+      context.issuer.environment
+    )
+    if (route.kind !== 'attach') return false
     await this.prisma.client.fiscalDocument.updateMany({
       where: { id: doc.id, organizationId, status: FiscalDocumentStatus.SUBMITTED },
       data: { status: FiscalDocumentStatus.QUEUED }

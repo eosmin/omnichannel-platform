@@ -4,14 +4,21 @@
 -- them is brought back. Safe to run twice.
 BEGIN;
 DO $$
+DECLARE
+  found boolean;
 BEGIN
-  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'fiscal_documents' AND column_name = 'contingency_id')
-     AND EXISTS (SELECT 1 FROM fiscal_documents WHERE contingency_id IS NOT NULL) THEN
-    RAISE EXCEPTION 'fiscal documents were made in contingency: export them before rolling back';
+  -- Dynamic, so that a second run (the column and the table are gone) does not fail to plan
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'fiscal_documents' AND column_name = 'contingency_id') THEN
+    EXECUTE 'SELECT EXISTS (SELECT 1 FROM fiscal_documents WHERE contingency_id IS NOT NULL)' INTO found;
+    IF found THEN
+      RAISE EXCEPTION 'fiscal documents were made in contingency: export them before rolling back';
+    END IF;
   END IF;
-  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'fiscal_contingencies')
-     AND EXISTS (SELECT 1 FROM fiscal_contingencies) THEN
-    RAISE EXCEPTION 'fiscal contingencies exist: export them before rolling back';
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = 'fiscal_contingencies') THEN
+    EXECUTE 'SELECT EXISTS (SELECT 1 FROM fiscal_contingencies)' INTO found;
+    IF found THEN
+      RAISE EXCEPTION 'fiscal contingencies exist: export them before rolling back';
+    END IF;
   END IF;
 END
 $$;

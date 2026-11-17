@@ -270,13 +270,13 @@ export class FiscalContingencyService {
     // The ask counts in the id of the job: the failed one of the last time stays a week and would drop this one
     await this.enqueueReport(organizationId, id, Date.now())
     this.audit.log({
-      action: AuditAction.FISCAL_CONTINGENCY_ENDED,
+      action: AuditAction.FISCAL_CONTINGENCY_REPORT_ASKED,
       actor: { userId: actor.userId },
       organizationId,
       storeId: actor.storeId,
       resourceType: FiscalResourceTypes.CONTINGENCY,
       resourceId: id,
-      metadata: { reportAskedAgain: true },
+      metadata: {},
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })

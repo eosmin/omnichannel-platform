@@ -224,6 +224,7 @@ export const AuditAction = {
   FISCAL_CONTINGENCY_ENTERED: 'fiscal.contingency_entered',
   FISCAL_CONTINGENCY_ENDED: 'fiscal.contingency_ended',
   FISCAL_CONTINGENCY_REPORTED: 'fiscal.contingency_reported',
+  FISCAL_CONTINGENCY_REPORT_ASKED: 'fiscal.contingency_report_asked',
   // The fiscal data of a customer (field names only, never the values), and every read of it by a person
   FISCAL_CUSTOMER_DATA_CHANGED: 'fiscal.customer_data_changed',
   FISCAL_CUSTOMER_DATA_CLEARED: 'fiscal.customer_data_cleared',

@@ -1657,6 +1657,40 @@ const resources: IsolationResource[] = [
         })
       ).legalName !== 'hacked'
   },
+  // The contingency of the issuer (Step 4B.7c-7): organization-scoped, reached by its id only to ask again for its report. A request from
+  // another organization names a contingency it does not have: a 404, and the row stays as it was.
+  {
+    name: 'fiscalContingency',
+    create: async (owner, { storeId }) => {
+      const organizationId = await organizationOfStore(owner, storeId)
+      const made = await owner.fiscalContingency.create({
+        data: {
+          organizationId,
+          providerId: 'simulator',
+          environment: 'sandbox',
+          status: 'closed',
+          origin: 'user',
+          reason: 'iso',
+          eventCode: randomUUID(),
+          startedAt: new Date(),
+          endedAt: new Date(),
+          reportAttempts: 3,
+          lastReportError: 'iso_error'
+        },
+        select: { id: true }
+      })
+      return { id: made.id }
+    },
+    scope: 'organization',
+    modify: { path: id => ApiRoutes.fiscal.contingency.report(id), method: 'post', body: {} },
+    untouched: async (owner, id) => {
+      const row = await owner.fiscalContingency.findUnique({
+        where: { id },
+        select: { reportAttempts: true, lastReportError: true }
+      })
+      return row?.reportAttempts === 3 && row.lastReportError === 'iso_error'
+    }
+  },
   // The layout of a legal book (TDD_18 §7; Step 4B.8b-3): the layouts of an organization, read through the store of the request and never
   // by an id; a change is a new version of the organization's own, and an earlier version never changes.
   {
