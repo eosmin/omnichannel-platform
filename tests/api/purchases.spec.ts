@@ -232,6 +232,25 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       })
     })
 
+    it('reads the wildcards of a name search as the characters they are', async () => {
+      const tag = randomUUID().slice(0, 8)
+      const literal = await supplier({ name: `Lik_${tag}%Uno` })
+      const other = await supplier({ name: `LikXY${tag}ZUno` })
+      const search = async (q: string): Promise<string[]> => {
+        const res = await asAdminA().get(
+          `${ApiRoutes.suppliers.list}?q=${encodeURIComponent(q)}&includeInactive=true`
+        )
+        expect(res.status).toBe(OK)
+        return (res.body as { data: { id: string }[] }).data.map(row => row.id)
+      }
+      // "_" and "%" match only themselves: they are not "any one character" and "anything"
+      expect(await search(`Lik_${tag}%Uno`)).toEqual([literal.id])
+      expect(await search(`LIK_${tag}`)).toEqual([literal.id])
+      expect(await search(`${tag}%`)).toEqual([literal.id])
+      expect(await search(`${tag}Z`)).toEqual([other.id])
+      expect(await search(`Lik_${tag}Z`)).toEqual([])
+    })
+
     it('refuses a payable account that is not a liability', async () => {
       const response = await asAdminA()
         .post(ApiRoutes.suppliers.create)
