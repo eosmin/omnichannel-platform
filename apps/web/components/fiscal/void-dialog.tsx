@@ -114,7 +114,7 @@ function VoidForm({
     [accepted.data, document]
   )
   // The replacement that was made first for this document, once it is accepted, is the one to name
-  const madeFirst = candidates.find(candidate => candidate.replacesDocumentId === document.id)?.id
+  const madeFirst = candidates[0]?.id
   useEffect(() => {
     if (needsReplacement && madeFirst !== undefined && draft.replacementDocumentId === '') {
       setDraft(current => ({ ...current, replacementDocumentId: madeFirst }))

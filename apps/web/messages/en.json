@@ -7551,7 +7551,7 @@
           "other": "Another reason"
         },
         "replacement": "Document that takes its place",
-        "replacementHint": "The authority asks for it before the invalidation: make it first.",
+        "replacementHint": "Only a document made to replace this one can be chosen: make it first, from the detail of this document.",
         "replacementChoose": "Choose the document",
         "replacementOption": "No. {number} · {total}",
         "responsible": {

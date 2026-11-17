@@ -40,28 +40,15 @@ export interface VoidDraft {
   readonly replacementDocumentId: string
 }
 
-// The documents a person may name as the replacement of `original`: the accepted ones of the same kind, provider and environment (what the
-// api takes), with the one that was made to replace it first (the replacement made before the invalidation) at the top
-export function replacementCandidates<
-  T extends {
-    id: string
-    kind: string
-    providerId: string
-    environment: string
-    replacesDocumentId: string | null
-  }
->(documents: readonly T[], original: T): T[] {
-  const fits = documents.filter(
-    candidate =>
-      candidate.id !== original.id &&
-      candidate.kind === original.kind &&
-      candidate.providerId === original.providerId &&
-      candidate.environment === original.environment
+// The documents a person may name as the replacement of `original`: the accepted ones that were made to replace it (the api takes no other:
+// the authority is told its generation code as the document that takes the place of the invalidated one)
+export function replacementCandidates<T extends { id: string; replacesDocumentId: string | null }>(
+  documents: readonly T[],
+  original: T
+): T[] {
+  return documents.filter(
+    candidate => candidate.id !== original.id && candidate.replacesDocumentId === original.id
   )
-  return [
-    ...fits.filter(candidate => candidate.replacesDocumentId === original.id),
-    ...fits.filter(candidate => candidate.replacesDocumentId !== original.id)
-  ]
 }
 
 // What the provider asks, as the api sends it (one definition: the schema of the api-client)

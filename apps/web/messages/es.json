@@ -7551,7 +7551,7 @@
           "other": "Otro motivo"
         },
         "replacement": "Documento que lo reemplaza",
-        "replacementHint": "La autoridad lo pide antes de la invalidación: hazlo primero.",
+        "replacementHint": "Solo se puede elegir un documento hecho para reemplazar este: hazlo primero, desde el detalle de este documento.",
         "replacementChoose": "Elige el documento",
         "replacementOption": "N.º {number} · {total}",
         "responsible": {

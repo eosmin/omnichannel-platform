@@ -1,8 +1,10 @@
 -- Rolls back 20270114100000_fiscal_replace_first. It refuses to run while a replacement exists whose original is not voided: the restored
 -- rules (one live sale document per order, a replacement only of a voided document) would be broken by that pair. Void the original (or
 -- decide with the accountant which of the two documents stands) first. Run it before the code that makes a replacement first is brought
--- back. Safe to run twice.
+-- back, and stop the code that makes a replacement first (an older release) before it: the script takes a lock that keeps writers out of the
+-- table while it checks and swaps. Safe to run twice.
 BEGIN;
+LOCK TABLE fiscal_documents IN SHARE ROW EXCLUSIVE MODE;
 DO $$
 BEGIN
   IF EXISTS (
@@ -14,6 +16,7 @@ BEGIN
   END IF;
 END
 $$;
+DROP INDEX IF EXISTS "uq_fiscal_documents_live_replacement";
 DROP INDEX IF EXISTS "uq_fiscal_documents_live_sale";
 CREATE UNIQUE INDEX "uq_fiscal_documents_live_sale" ON "fiscal_documents"("organization_id", "order_id")
   WHERE kind = 'sale' AND status <> 'voided';

@@ -1,12 +1,14 @@
 -- Step 4B.7c-5b: the replacement of a sale document can be made BEFORE the original is invalidated (the authority asks for the replacement's
 -- generation code first for some kinds of invalidation). Until then a replacement needed a voided original.
 --
--- 1. One live sale document per order stays the rule for the ORIGINAL documents: a document that replaces another (it carries
---    `replaces_document_id`) is left out of that index, and `uq_fiscal_documents_replaces` already says that a document is replaced once. While
---    the original is not voided yet, the order has two live sale documents on purpose; once it is voided, only the replacement is live.
+-- 1. At most one live ORIGINAL sale document per order and at most one live REPLACEMENT (a document that carries `replaces_document_id`).
+--    While the original is not voided yet, the order has two live sale documents on purpose (the original and its replacement); a third
+--    one, or a replacement of the replacement, meets the second index. `uq_fiscal_documents_replaces` already says a document is replaced once.
 DROP INDEX IF EXISTS "uq_fiscal_documents_live_sale";
 CREATE UNIQUE INDEX "uq_fiscal_documents_live_sale" ON "fiscal_documents"("organization_id", "order_id")
   WHERE kind = 'sale' AND status <> 'voided' AND replaces_document_id IS NULL;
+CREATE UNIQUE INDEX "uq_fiscal_documents_live_replacement" ON "fiscal_documents"("organization_id", "order_id")
+  WHERE kind = 'sale' AND status <> 'voided' AND replaces_document_id IS NOT NULL;
 
 -- 2. The replaced document is a sale document of the same order that the authority has: accepted (replacement made first) or voided (the
 --    replacement made after). One that is queued, sent or refused is not at the authority, so nothing can replace it.
@@ -36,6 +38,14 @@ BEGIN
       AND p.kind = 'sale' AND p.status IN ('accepted', 'voided')
   ) THEN
     RAISE EXCEPTION 'a fiscal document replaces an accepted or voided sale document of the same order' USING ERRCODE = 'integrity_constraint_violation';
+  END IF;
+  -- A sale document that replaces nothing is the first one of its order: once the order has a sale document, voided or not, the next one is a
+  -- replacement (the index above no longer sees an original once its replacement stands)
+  IF TG_OP = 'INSERT' AND NEW.kind = 'sale' AND NEW.replaces_document_id IS NULL AND EXISTS (
+    SELECT 1 FROM fiscal_documents s
+    WHERE s.organization_id = NEW.organization_id AND s.order_id = NEW.order_id AND s.kind = 'sale' AND s.id <> NEW.id
+  ) THEN
+    RAISE EXCEPTION 'the sale document of an order that has one is replaced, not made again' USING ERRCODE = 'integrity_constraint_violation';
   END IF;
   RETURN NEW;
 END;

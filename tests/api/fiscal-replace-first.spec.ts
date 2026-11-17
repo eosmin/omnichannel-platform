@@ -256,6 +256,16 @@ describe('The replacement made before the invalidation (Step 4B.7c-5b)', () => {
       expect(reasonOf(again)).toBe(FiscalConflictReasons.ALREADY_REPLACED)
     })
 
+    it('does not make the replacement of a replacement while the original is alive, and says why', async () => {
+      const original = await accepted()
+      const made = ((await replaceOf(original.documentId)).body as { data: { id: string } }).data.id
+      await documents.submit(ctx.orgA.id, made)
+      const third = await replaceOf(made)
+      expect(third.status).toBe(CONFLICT)
+      expect(reasonOf(third)).toBe(FiscalConflictReasons.REPLACEMENT_PENDING)
+      expect(await owner.fiscalDocument.count({ where: { replacesDocumentId: made } })).toBe(0)
+    })
+
     it('keeps one live sale document per order among the documents that replace nothing', async () => {
       const original = await accepted()
       const mine = await row(original.documentId)
@@ -277,9 +287,11 @@ describe('The replacement made before the invalidation (Step 4B.7c-5b)', () => {
           }
         })
       await expect(copy({})).rejects.toThrow()
-      await expect(copy({ replacesDocumentId: mine.id })).resolves.toBeDefined()
+      const replacement = await copy({ replacesDocumentId: mine.id })
       // And it is replaced once: a second one that names the same document is refused
       await expect(copy({ replacesDocumentId: mine.id })).rejects.toThrow()
+      // A third live document (a replacement of the replacement) is refused: one live replacement per order
+      await expect(copy({ replacesDocumentId: replacement.id })).rejects.toThrow()
     })
 
     it('names no document with a credit note while the original and its replacement are both alive', async () => {

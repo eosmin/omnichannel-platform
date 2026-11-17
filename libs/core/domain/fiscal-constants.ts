@@ -146,6 +146,9 @@ export const FiscalConflictReasons = {
   NOTE_NOT_VOIDED: 'note_not_voided',
   // The provider of the document asks for no replacement before an invalidation: the replacement is made once the document is voided
   REPLACE_FIRST_UNAVAILABLE: 'replace_first_unavailable',
+  // An original and its replacement are both alive (the replacement was made first): the original is invalidated before anything else is
+  // made for the sale
+  REPLACEMENT_PENDING: 'replacement_pending',
   // The return of a credit note has a live note already
   NOTE_ALREADY_REPLACED: 'note_already_replaced'
 } as const

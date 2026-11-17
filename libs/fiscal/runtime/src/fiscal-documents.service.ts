@@ -1461,7 +1461,7 @@ export class FiscalDocumentsService {
         // A credit note names the sale document that is live now: the one it was made for may have been voided and replaced since
         let parentDocumentId = doc.parentDocumentId
         if (isNote) {
-          const live = await this.soleLiveSale(tx, organizationId, doc.orderId)
+          const live = await this.soleLiveSale(tx, organizationId, doc.orderId, 'throw')
           if (live === null) {
             throw new PlatformException(
               ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
@@ -1570,7 +1570,7 @@ export class FiscalDocumentsService {
       // A credit note names the sale document that is live now
       let parentDocumentId = doc.parentDocumentId
       if (doc.kind === (FiscalDocumentKind.CREDIT_NOTE as string)) {
-        const live = await this.soleLiveSale(tx, organizationId, doc.orderId)
+        const live = await this.soleLiveSale(tx, organizationId, doc.orderId, 'throw')
         if (live === null) {
           throw new PlatformException(
             ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
@@ -1641,7 +1641,10 @@ export class FiscalDocumentsService {
                 // never one of another authority or of the test environment
                 kind: doc.kind,
                 providerId: doc.providerId,
-                environment: doc.environment
+                environment: doc.environment,
+                // The replacement is the one that was made for THIS document: the authority is told its generation code as the
+                // document that takes its place
+                replacesDocumentId: id
               }
             })
       if (other === null) throw resourceNotFound('replacement fiscal document')
@@ -1806,24 +1809,40 @@ export class FiscalDocumentsService {
   }
 
   // The one sale document of an order that is alive, for what names it (a credit note). While a replacement made first stands beside its
-  // original (both alive on purpose, until the original is invalidated) no document is THE live one, and nothing is named: a note made in
-  // that window would name one of two documents, and a note naming the original would stop it from being invalidated. The notes of the
-  // returns received then are made once the original is voided (the sweep names the ones that wait).
+  // original (both alive on purpose, until the original is invalidated) no document is THE live one: a note made in that window would name
+  // one of two documents, and a note naming the original would stop it from being invalidated. With `onPair: 'null'` nothing is named (the
+  // note of a return is made later: the sweep names the ones that wait); with 'throw' the person is told the invalidation comes first. The
+  // live document is locked and read again, so a replacement made first at the same time is seen by whichever transaction comes second.
   private async soleLiveSale(
     tx: PrismaTransaction,
     organizationId: string,
-    orderId: string
+    orderId: string,
+    onPair: 'null' | 'throw' = 'null'
   ): Promise<{ id: string; receiverEncrypted: Uint8Array } | null> {
-    const live = await tx.fiscalDocument.findMany({
-      where: {
-        organizationId,
-        orderId,
-        kind: FiscalDocumentKind.SALE,
-        status: { not: FiscalDocumentStatus.VOIDED }
-      },
-      select: { id: true, receiverEncrypted: true },
-      take: 2
-    })
+    const read = (): Promise<{ id: string; receiverEncrypted: Uint8Array }[]> =>
+      tx.fiscalDocument.findMany({
+        where: {
+          organizationId,
+          orderId,
+          kind: FiscalDocumentKind.SALE,
+          status: { not: FiscalDocumentStatus.VOIDED }
+        },
+        select: { id: true, receiverEncrypted: true },
+        take: 2
+      })
+    let live = await read()
+    if (live.length === 1 && live[0] !== undefined) {
+      await tx.$queryRaw`SELECT id FROM fiscal_documents WHERE id = ${live[0].id} AND organization_id = ${organizationId} FOR UPDATE`
+      live = await read()
+    }
+    if (live.length > 1 && onPair === 'throw') {
+      throw new PlatformException(
+        ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+        'the sale has a replacement that was made first: invalidate the original first',
+        HttpStatusCodes.CONFLICT,
+        { reason: FiscalConflictReasons.REPLACEMENT_PENDING }
+      )
+    }
     return live.length === 1 ? (live[0] ?? null) : null
   }
 
@@ -1833,7 +1852,7 @@ export class FiscalDocumentsService {
   private async assertReplaceFirst(
     tx: PrismaTransaction,
     organizationId: string,
-    old: { id: string; providerId: string; issuerSnapshot: unknown },
+    old: { id: string; orderId: string; providerId: string; issuerSnapshot: unknown },
     issuer: Parameters<typeof sameIssuer>[1] & { providerId: string }
   ): Promise<void> {
     const asks = this.providers.find(old.providerId)?.manifest.voidInputs?.kindsWithReplacement
@@ -1845,7 +1864,34 @@ export class FiscalDocumentsService {
         { reason: FiscalConflictReasons.REPLACE_FIRST_UNAVAILABLE }
       )
     }
-    if ((await this.notesAtAuthority(tx, organizationId, old.id)) > 0) {
+    // The original is the only live sale document of its order: not a replacement that waits for its own original to be invalidated, and
+    // not one that already has its replacement (a third live document is never made)
+    const alive = await tx.fiscalDocument.count({
+      where: {
+        organizationId,
+        orderId: old.orderId,
+        kind: FiscalDocumentKind.SALE,
+        status: { not: FiscalDocumentStatus.VOIDED }
+      }
+    })
+    if (alive !== 1) {
+      throw new PlatformException(
+        ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+        'the sale already has a replacement that was made first',
+        HttpStatusCodes.CONFLICT,
+        { reason: FiscalConflictReasons.REPLACEMENT_PENDING }
+      )
+    }
+    // Any credit note that is not voided, waiting or sent: the notes name the original, and none is moved or made while both stand
+    const notes = await tx.fiscalDocument.count({
+      where: {
+        organizationId,
+        parentDocumentId: old.id,
+        kind: FiscalDocumentKind.CREDIT_NOTE,
+        status: { not: FiscalDocumentStatus.VOIDED }
+      }
+    })
+    if (notes > 0) {
       throw new PlatformException(
         ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
         'a document with credit notes that are not voided cannot be replaced first',
@@ -2078,7 +2124,9 @@ export class FiscalDocumentsService {
         const creditNoteIds: string[] = movable
           .filter(note => note.status === (FiscalDocumentStatus.QUEUED as string))
           .map(note => note.id)
-        for (const returnId of targets) {
+        // Made first, the replacement makes no note: the original stands beside it with none, and the notes of the returns wait until the
+        // original is voided (the sweep names them)
+        for (const returnId of first ? [] : targets) {
           const again = await this.makeCreditNote(tx, organizationId, old.orderId, returnId, {
             id: created.id
           })
@@ -2136,15 +2184,7 @@ export class FiscalDocumentsService {
             { reason: FiscalConflictReasons.NOTE_NOT_VOIDED }
           )
         }
-        const live = await tx.fiscalDocument.findFirst({
-          where: {
-            organizationId,
-            orderId: old.orderId,
-            kind: FiscalDocumentKind.SALE,
-            status: { not: FiscalDocumentStatus.VOIDED }
-          },
-          select: { id: true }
-        })
+        const live = await this.soleLiveSale(tx, organizationId, old.orderId, 'throw')
         if (live === null) {
           throw new PlatformException(
             ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,

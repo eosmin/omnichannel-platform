@@ -44,27 +44,13 @@ describe('the reason to void a fiscal document', () => {
 })
 
 describe('the documents that may replace the one that is invalidated', () => {
-  const doc = (id: string, over: Partial<Record<string, string | null>> = {}) => ({
-    id,
-    kind: 'sale',
-    providerId: 'p',
-    environment: 'sandbox',
-    replacesDocumentId: null as string | null,
-    ...over
-  })
+  const doc = (id: string, replacesDocumentId: string | null = null) => ({ id, replacesDocumentId })
 
-  it('keeps the ones the api takes and puts the one made to replace it first', () => {
+  it('are the ones made to replace it, and no other', () => {
     const original = doc('o')
-    const list = [
-      doc('a'),
-      doc('o'),
-      doc('credit', { kind: 'credit_note' }),
-      doc('other', { providerId: 'q' }),
-      doc('prod', { environment: 'production' }),
-      doc('r', { replacesDocumentId: 'o' }),
-      doc('b')
-    ]
-    expect(replacementCandidates(list, original).map(one => one.id)).toEqual(['r', 'a', 'b'])
+    const list = [doc('a'), doc('o'), doc('r', 'o'), doc('x', 'other'), doc('b')]
+    expect(replacementCandidates(list, original).map(one => one.id)).toEqual(['r'])
+    expect(replacementCandidates([doc('a')], original)).toEqual([])
   })
 })
 
