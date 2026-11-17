@@ -32,6 +32,7 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 
 const OK = 200
+const FORBIDDEN = 403
 
 const SERIES_PROVIDER_ID = 'series-test'
 const LIAR_PROVIDER_ID = 'series-liar'
@@ -255,6 +256,36 @@ describe('The series of the fiscal correlatives (Step 4B.7c-1)', () => {
       }
     })
 
+    it('shows each series with its readable scope and the number the next document takes, and never the key', async () => {
+      const answer = await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.fiscal.series)
+      expect(answer.status).toBe(OK)
+      const shown = (
+        answer.body as {
+          data: {
+            scope: Record<string, string>
+            nextNumber: number
+            updatedAt: string
+          }[]
+        }
+      ).data
+      const rows = await owner.fiscalSequence.findMany({ where: { organizationId: ctx.orgA.id } })
+      expect(shown).toHaveLength(rows.length)
+      expect(shown.length).toBeGreaterThanOrEqual(2)
+      for (const one of shown) {
+        expect(one.scope).toMatchObject({
+          providerId: SERIES_PROVIDER_ID,
+          environment: FiscalEnvironment.SANDBOX,
+          establishmentCode: 'M001',
+          pointOfSaleCode: 'P001'
+        })
+        // The number the next document takes is what the counter holds
+        expect(rows.map(candidate => candidate.nextValue)).toContain(one.nextNumber)
+      }
+      for (const stored of rows) {
+        expect(JSON.stringify(answer.body)).not.toContain(stored.scopeKey)
+      }
+    })
+
     it('hands the provider the same stable identifier at every attempt and every build of a document', async () => {
       const made = await sale()
       await documents.submit(ctx.orgA.id, made.documentId)
@@ -474,6 +505,21 @@ describe('The series of the fiscal correlatives (Step 4B.7c-1)', () => {
       await documents.submit(ctx.orgB.id, again.documentId)
       expect(await countersOfA()).toEqual(beforeA)
       expect((await row(again.documentId)).correlative).toBe(2)
+      // The view of each organization holds its own series only
+      const seen = async (admin: typeof ctx.adminA, store: typeof ctx.storeA) =>
+        (
+          (await api(app, admin, store).get(ApiRoutes.fiscal.series)).body as {
+            data: { nextNumber: number }[]
+          }
+        ).data
+      expect((await seen(ctx.adminB, ctx.storeB)).map(one => one.nextNumber)).toEqual([3])
+      expect((await seen(ctx.adminA, ctx.storeA)).map(one => one.nextNumber)).not.toContain(3)
+    })
+
+    it('asks FISCAL_VIEW to read the series', async () => {
+      expect((await api(app, ctx.viewerA, ctx.storeA).get(ApiRoutes.fiscal.series)).status).toBe(
+        FORBIDDEN
+      )
     })
   })
 

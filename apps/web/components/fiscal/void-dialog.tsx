@@ -93,6 +93,13 @@ function VoidForm({
   const [problems, setProblems] = useState<readonly VoidFormProblem[]>([])
   const [refusal, setRefusal] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const identityCatalog = inputs?.identityCatalog
+  const identities =
+    identityCatalog === undefined
+      ? null
+      : (providers.data?.find(provider => provider.id === document.providerId)?.manifest.catalogs?.[
+          identityCatalog
+        ] ?? null)
   const needsReplacement =
     draft.kind !== '' && inputs?.kindsWithReplacement?.includes(draft.kind) === true
   // The documents that may take the place of this one: the accepted ones, asked only when the chosen kind names one
@@ -258,6 +265,7 @@ function VoidForm({
             <>
               <PartyFields
                 prefix="responsible"
+                identities={identities}
                 party={draft.responsible}
                 disabled={pending}
                 problem={problemOf('responsible')}
@@ -265,6 +273,7 @@ function VoidForm({
               />
               <PartyFields
                 prefix="requester"
+                identities={identities}
                 party={draft.requester}
                 disabled={pending}
                 problem={problemOf('requester')}
@@ -298,12 +307,15 @@ function VoidForm({
 // A person of the invalidation: who makes it, or who asks for it. The kind of identity document is the provider's own code.
 function PartyFields({
   prefix,
+  identities,
   party,
   disabled,
   problem,
   onChange
 }: {
   prefix: 'responsible' | 'requester'
+  // The kinds of identity document the provider's manifest lists; none: the code is typed
+  identities: readonly { code: string; label: string }[] | null
   party: VoidPartyDraft
   disabled: boolean
   problem: string | null
@@ -321,13 +333,29 @@ function PartyFields({
         onChange={name => onChange({ ...party, name })}
       />
       <div className="grid gap-3 sm:grid-cols-2">
-        <TextField
-          label={t('party.idType')}
-          hint={t('party.idTypeHint')}
-          value={party.idType}
-          disabled={disabled}
-          onChange={idType => onChange({ ...party, idType })}
-        />
+        {identities === null ? (
+          <TextField
+            label={t('party.idType')}
+            hint={t('party.idTypeHint')}
+            value={party.idType}
+            disabled={disabled}
+            onChange={idType => onChange({ ...party, idType })}
+          />
+        ) : (
+          <SelectField
+            label={t('party.idType')}
+            value={party.idType}
+            disabled={disabled}
+            onChange={idType => onChange({ ...party, idType })}
+          >
+            <option value="">{t('party.idTypeChoose')}</option>
+            {identities.map(option => (
+              <option key={option.code} value={option.code}>
+                {`${option.code} · ${option.label}`}
+              </option>
+            ))}
+          </SelectField>
+        )}
         <TextField
           label={t('party.idNumber')}
           value={party.idNumber}

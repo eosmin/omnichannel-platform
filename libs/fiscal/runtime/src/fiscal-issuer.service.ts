@@ -66,6 +66,15 @@ export interface FiscalIssuerView {
   updatedAt: string
 }
 
+// A series of correlatives as a person reads it: what it counts (the provider, the environment and whatever its manifest declares: the type
+// of document, the establishment, the point of sale) and the number the next document of it takes. The key it is stored under is a hash
+// and never shown.
+export interface FiscalSeriesView {
+  scope: Record<string, string>
+  nextNumber: number
+  updatedAt: string
+}
+
 // The issuer of the organization (TDD_18 §8.2): the legal entity the documents are made in the name of, and the provider that makes
 // them. The credentials are encrypted like the carrier's and are never returned or logged: the audit entry names the fields only.
 @Injectable()
@@ -76,6 +85,23 @@ export class FiscalIssuerService {
     private readonly cipher: CredentialCipher,
     private readonly providers: FiscalProviderRegistry
   ) {}
+
+  // The series of the organization, oldest key first so the list does not move between reads. Filtered by the organization of the request.
+  async listSeries(organizationId: string): Promise<FiscalSeriesView[]> {
+    const rows = await this.prisma.client.fiscalSequence.findMany({
+      where: { organizationId },
+      orderBy: { scopeKey: 'asc' }
+    })
+    return rows.map(row => ({
+      scope: Object.fromEntries(
+        Object.entries(record(row.scope)).filter(
+          (entry): entry is [string, string] => typeof entry[1] === 'string'
+        )
+      ),
+      nextNumber: row.nextValue,
+      updatedAt: row.updatedAt.toISOString()
+    }))
+  }
 
   listProviders(): ReturnType<FiscalProviderRegistry['list']> {
     return this.providers.list()

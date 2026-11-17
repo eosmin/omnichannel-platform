@@ -1,5 +1,6 @@
 import { FiscalEnvironment } from '@platform/core/domain'
 
+import { activityName } from './sv-catalog'
 import { SvBuildErrors, SvCredentialKeys, SvEndpoints, SvVoidRefusals } from './sv-constants'
 import { svProvider } from './sv-provider'
 import type { SvSigner } from './sv-signer'
@@ -126,10 +127,24 @@ describe('the invalidation and the build refusals', () => {
     expect(answer).toEqual({ voided: false, reason: SvVoidRefusals.DOCUMENT_INCOMPLETE })
   })
 
+  it('offers the catalogs a person chooses from, with the code the provider reads', () => {
+    const { catalogs, issuerFieldCatalogs } = provider.manifest
+    expect(issuerFieldCatalogs).toEqual({ activityCode: 'activities' })
+    expect(catalogs?.['activities']).toContainEqual({
+      code: '47119',
+      label: expect.stringContaining('') as string
+    })
+    expect(catalogs?.['identityDocuments']).toContainEqual({ code: '36', label: 'NIT' })
+    // Every code of the list is one the provider itself accepts
+    for (const option of catalogs?.['activities'] ?? [])
+      expect(activityName(option.code)).not.toBeNull()
+  })
+
   it('declares what an invalidation asks of the person', () => {
     expect(provider.manifest.voidInputs).toEqual({
       kinds: ['correction', 'rescission', 'other'],
       requiresParties: true,
+      identityCatalog: 'identityDocuments',
       kindsWithReplacement: ['correction', 'other'],
       reasonMaxLength: 200
     })

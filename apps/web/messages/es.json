@@ -7559,7 +7559,8 @@
           "name": "Nombre",
           "idType": "Tipo de documento de identidad",
           "idTypeHint": "El código del catálogo de la autoridad.",
-          "idNumber": "Número del documento de identidad"
+          "idNumber": "Número del documento de identidad",
+          "idTypeChoose": "Elige el documento"
         },
         "providersError": "No se pudieron leer los datos del proveedor.",
         "retry": "Reintentar",
@@ -7631,13 +7632,19 @@
           "environment": "El proveedor no trabaja en este ambiente.",
           "incomplete": "Cada línea de la dirección necesita un nombre y un valor.",
           "duplicate": "Dos líneas de la dirección tienen el mismo nombre.",
-          "tooMany": "Hay demasiadas líneas de dirección."
+          "tooMany": "Hay demasiadas líneas de dirección.",
+          "unknown": "Este código no está en la lista del proveedor. Elige uno."
         },
         "providerProblems": "El proveedor no aceptó: {codes}",
         "readOnly": "Puedes leer el emisor. Para cambiarlo hace falta el permiso de gestionar documentos fiscales.",
         "submit": "Guardar el emisor",
         "done": "El emisor se guardó.",
-        "providerMissing": "El proveedor de este emisor ya no está en esta instalación. Elige otro para guardar."
+        "providerMissing": "El proveedor de este emisor ya no está en esta instalación. Elige otro para guardar.",
+        "establishmentType": "Tipo de establecimiento",
+        "pointOfSaleCode": "Código del punto de venta",
+        "phone": "Teléfono",
+        "email": "Correo",
+        "choose": "Elige…"
       },
       "issuerChange": {
         "title": "El emisor cambió: documento N.º {number}",
@@ -7724,7 +7731,21 @@
           "establishmentCode": "Establecimiento"
         }
       },
-      "emptyFiltered": "No hay documentos fiscales con estos filtros."
+      "emptyFiltered": "No hay documentos fiscales con estos filtros.",
+      "series": {
+        "title": "Series de numeración",
+        "description": "Cada serie cuenta aparte. El próximo documento de una serie toma el número que se muestra. Se mueven solas a medida que se hacen documentos.",
+        "loading": "Leyendo las series…",
+        "empty": "Ningún documento ha tomado número todavía.",
+        "next": "Próximo número: {number}",
+        "scope": {
+          "providerId": "Proveedor",
+          "environment": "Ambiente",
+          "documentType": "Documento",
+          "establishmentCode": "Establecimiento",
+          "pointOfSaleCode": "Punto de venta"
+        }
+      }
     },
     "vat": {
       "title": "IVA de un período",

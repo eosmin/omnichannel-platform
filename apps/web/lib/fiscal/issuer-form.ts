@@ -28,6 +28,10 @@ export interface IssuerDraft {
   address: AddressRow[]
   activityCode: string
   establishmentCode: string
+  establishmentType: string
+  pointOfSaleCode: string
+  phone: string
+  email: string
   environment: string
   issueOn: string
   nextSequence: string
@@ -42,6 +46,10 @@ export const IssuerFields = {
   ADDRESS: 'address',
   ACTIVITY_CODE: 'activityCode',
   ESTABLISHMENT_CODE: 'establishmentCode',
+  ESTABLISHMENT_TYPE: 'establishmentType',
+  POINT_OF_SALE_CODE: 'pointOfSaleCode',
+  PHONE: 'phone',
+  EMAIL: 'email',
   ENVIRONMENT: 'environment',
   NEXT_SEQUENCE: 'nextSequence',
   CREDENTIALS: 'credentials'
@@ -52,7 +60,7 @@ export interface IssuerProblem {
   field: IssuerField
   // The kind of problem, for the words: a field the provider asks for, a text too long, a correlative that goes back, a credential the
   // provider reads that was never given, or a problem of the address rows
-  kind: 'required' | 'tooLong' | 'sequence' | 'environment' | AddressProblem
+  kind: 'required' | 'tooLong' | 'unknown' | 'sequence' | 'environment' | AddressProblem
 }
 
 export const emptyIssuerDraft = (provider: FiscalProviderView | undefined): IssuerDraft => ({
@@ -63,6 +71,10 @@ export const emptyIssuerDraft = (provider: FiscalProviderView | undefined): Issu
   address: [emptyAddressRow()],
   activityCode: '',
   establishmentCode: '',
+  establishmentType: '',
+  pointOfSaleCode: '',
+  phone: '',
+  email: '',
   environment: provider?.manifest.environments[0] ?? FiscalEnvironment.SANDBOX,
   issueOn: FiscalIssueOn.DELIVERED,
   nextSequence: '',
@@ -79,6 +91,10 @@ export function issuerDraftOf(issuer: FiscalIssuerView): IssuerDraft {
     address: rows.length === 0 ? [emptyAddressRow()] : rows,
     activityCode: issuer.activityCode ?? '',
     establishmentCode: issuer.establishmentCode ?? '',
+    establishmentType: issuer.establishmentType ?? '',
+    pointOfSaleCode: issuer.pointOfSaleCode ?? '',
+    phone: issuer.phone ?? '',
+    email: issuer.email ?? '',
     environment: issuer.environment,
     issueOn: issuer.issueOn,
     // Left empty: the next correlative is what the issuer has, and it only moves forward
@@ -94,6 +110,20 @@ const present = (text: string): boolean => text.trim() !== ''
 const requiredBy = (provider: FiscalProviderView, field: string): boolean =>
   provider.manifest.requiredIssuerFields.includes(field)
 
+export interface CatalogOption {
+  readonly code: string
+  readonly label: string
+}
+
+// The catalog the provider's manifest says a field is chosen from, or null when the field is typed (or the manifest has no such list)
+export function catalogOf(
+  provider: FiscalProviderView | undefined,
+  field: IssuerField
+): readonly CatalogOption[] | null {
+  const name = provider?.manifest.issuerFieldCatalogs?.[field]
+  return name === undefined ? null : (provider?.manifest.catalogs?.[name] ?? null)
+}
+
 export function issuerProblems(
   draft: IssuerDraft,
   provider: FiscalProviderView | undefined,
@@ -104,6 +134,17 @@ export function issuerProblems(
   const text = (field: IssuerField, value: string, max: number, mustBePresent: boolean): void => {
     if (mustBePresent && !present(value)) problems.push({ field, kind: 'required' })
     else if (value.trim().length > max) problems.push({ field, kind: 'tooLong' })
+    else {
+      // A field chosen from a catalog takes only a code that is in it (what was typed before the catalog existed is told, not sent)
+      const options = catalogOf(provider, field)
+      if (
+        options !== null &&
+        present(value) &&
+        !options.some(option => option.code === value.trim())
+      ) {
+        problems.push({ field, kind: 'unknown' })
+      }
+    }
   }
   text(IssuerFields.LEGAL_NAME, draft.legalName, FiscalFieldLimits.NAME, true)
   text(IssuerFields.TAX_ID, draft.taxId, FiscalFieldLimits.TAX_ID, true)
@@ -125,6 +166,20 @@ export function issuerProblems(
     FiscalFieldLimits.CODE,
     requiredBy(provider, 'establishmentCode')
   )
+  text(
+    IssuerFields.ESTABLISHMENT_TYPE,
+    draft.establishmentType,
+    FiscalFieldLimits.CODE,
+    requiredBy(provider, 'establishmentType')
+  )
+  text(
+    IssuerFields.POINT_OF_SALE_CODE,
+    draft.pointOfSaleCode,
+    FiscalFieldLimits.CODE,
+    requiredBy(provider, 'pointOfSaleCode')
+  )
+  text(IssuerFields.PHONE, draft.phone, FiscalFieldLimits.PHONE, requiredBy(provider, 'phone'))
+  text(IssuerFields.EMAIL, draft.email, FiscalFieldLimits.EMAIL, requiredBy(provider, 'email'))
   const addressProblem = addressProblemOf(draft.address)
   if (addressProblem !== null) problems.push({ field: IssuerFields.ADDRESS, kind: addressProblem })
   else if (Object.keys(addressOf(draft.address)).length === 0) {
@@ -188,6 +243,11 @@ export function issuerInputOf(
     address: addressOf(draft.address),
     activityCode: orNull(draft.activityCode),
     establishmentCode: orNull(draft.establishmentCode),
+    // Sent as null when empty: the form knows these now, and a person clears one by emptying it
+    establishmentType: orNull(draft.establishmentType),
+    pointOfSaleCode: orNull(draft.pointOfSaleCode),
+    phone: orNull(draft.phone),
+    email: orNull(draft.email),
     environment: draft.environment as FiscalEnvironment,
     issueOn: draft.issueOn as FiscalIssueOn,
     ...(next === null ? {} : { nextSequence: next }),
