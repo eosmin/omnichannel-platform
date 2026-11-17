@@ -193,6 +193,7 @@ export const FiscalContingencyConflictReasons = {
   UNKNOWN_REASON: 'contingency_unknown_reason',
   RESPONSIBLE_REQUIRED: 'contingency_responsible_required',
   NOT_CLOSED: 'contingency_not_closed',
+  NOT_FAILED: 'contingency_report_not_failed',
   MOTIVE_TOO_LONG: 'contingency_motive_too_long'
 } as const
 

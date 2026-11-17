@@ -130,8 +130,17 @@ export class FiscalReconciler {
     // Contingencies (Step 4B.7c-7): a report that is owed is asked again, and the person is told when a window is closing
     try {
       for (const id of await this.contingencies.unreported(organizationId)) {
-        await this.contingencies.askReport(organizationId, id, now)
+        // One that cannot be queued does not leave the others, nor the warning below, for another day
+        try {
+          await this.contingencies.askReport(organizationId, id, now)
+        } catch (error) {
+          failures.push(error)
+        }
       }
+    } catch (error) {
+      failures.push(error)
+    }
+    try {
       await this.contingencies.warnWindows(organizationId, now)
     } catch (error) {
       failures.push(error)

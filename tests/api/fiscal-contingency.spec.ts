@@ -637,6 +637,28 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
       expect(metaOf(refused)).toMatchObject({ reason: 'contingency_not_closed' })
     })
 
+    it('does not reset or give up a report that has not failed', async () => {
+      expect((await end()).status).toBe(OK)
+      const opened = await enter()
+      const id = await sale()
+      await documents.submit(ctx.orgA.id, id)
+      expect((await end()).status).toBe(OK)
+      // Ended and waiting for its report: nothing failed, so nothing is asked again or given up under it
+      const again = await asAdminA()
+        .post(ApiRoutes.fiscal.contingency.report(viewOf(opened).id))
+        .send({})
+      expect(again.status).toBe(CONFLICT)
+      expect(metaOf(again)).toMatchObject({ reason: 'contingency_report_not_failed' })
+      const given = await asAdminA()
+        .post(ApiRoutes.fiscal.contingency.abandon(viewOf(opened).id))
+        .send({})
+      expect(given.status).toBe(CONFLICT)
+      expect(metaOf(given)).toMatchObject({ reason: 'contingency_report_not_failed' })
+      expect((await row(id)).contingencyId).toBe(viewOf(opened).id)
+      // Report it so it does not stay in the way of the cases that follow
+      expect(await contingencies.report(ctx.orgA.id, viewOf(opened).id)).toBe('reported')
+    })
+
     it('can always be ended, even when the issuer left the provider it was opened with', async () => {
       const opened = await enter()
       expect(opened.status).toBe(CREATED)
@@ -701,9 +723,14 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
       expect(
         (await asAdminB().post(ApiRoutes.fiscal.contingency.report(open.id)).send({})).status
       ).toBe(NOT_FOUND)
+      const heldBefore = await owner.fiscalDocument.count({ where: { contingencyId: open.id } })
       expect(
         (await asAdminB().post(ApiRoutes.fiscal.contingency.abandon(open.id)).send({})).status
       ).toBe(NOT_FOUND)
+      // Nothing of organization A was detached by it
+      expect(await owner.fiscalDocument.count({ where: { contingencyId: open.id } })).toBe(
+        heldBefore
+      )
       await expect(contingencies.get(ctx.orgB.id, open.id)).rejects.toThrow(/not found/)
       expect(await contingencies.report(ctx.orgB.id, open.id)).toBe('nothing')
       expect(
