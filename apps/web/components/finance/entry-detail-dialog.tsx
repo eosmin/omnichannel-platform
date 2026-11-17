@@ -9,9 +9,9 @@ import { FinanceSourceType, JournalEntryType } from '@platform/core/domain'
 
 import { isCalendarDay } from '../../lib/finance/dates'
 import { useFinanceEntry, useReverseFinanceEntry } from '../../lib/finance/use-finance'
+import { useReverseErrorText } from '../../lib/finance/use-reverse-error-text'
 import { useSubmitGuard } from '../../lib/submit-guard'
 import { toast } from '../../lib/toast'
-import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { LoadFailed, PageLoading } from '../settings/states'
 import { useDestructiveAction } from '../shared/destructive-action'
@@ -154,7 +154,7 @@ function ReverseForm({
   onCancel: () => void
 }): ReactElement {
   const t = useTranslations('finance.entry.reverse')
-  const errorText = useErrorText()
+  const errorText = useReverseErrorText()
   const { storeId } = useStore()
   const guard = useSubmitGuard()
   const run = useDestructiveAction()

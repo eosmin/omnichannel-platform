@@ -6233,6 +6233,10 @@
         "confirmDescription": "A reversal cannot be undone or erased. It stays in the journal next to the entry.",
         "confirm": "Reverse entry",
         "done": "Entry reversed.",
+        "conflicts": {
+          "reversal_not_reversible": "A reversal cannot be reversed. If it was a mistake, write a new entry by hand.",
+          "entry_owned_by_transaction": "This entry belongs to an expense, income or transfer. Void it from Transactions instead of reversing it here."
+        },
         "problems": {
           "memo": "Write the reason for the reversal.",
           "date": "Write a date that exists, as year-month-day."
