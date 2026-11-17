@@ -27,7 +27,9 @@ export const UploadLimits = {
   // The whole fetch of a file a customer sent: asking the provider and reading the body
   INBOUND_FETCH_TIMEOUT_MS: 60_000,
   // A row still `pending` after this long was never scanned (its job was lost): the scan is queued again
-  STUCK_SCAN_MINUTES: 30
+  STUCK_SCAN_MINUTES: 30,
+  // A file an agent uploaded and confirmed for a message and never sent is dropped (row and objects) after this long
+  UNSENT_MESSAGE_FILE_TTL_HOURS: 48
 } as const
 
 export const AllowedContentTypes = {
