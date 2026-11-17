@@ -1,4 +1,11 @@
-import { balanceView, entryView, isoDay, settingsView, taxRateView } from './finance.views'
+import {
+  balanceView,
+  entryView,
+  isoDay,
+  periodView,
+  settingsView,
+  taxRateView
+} from './finance.views'
 
 describe('isoDay', () => {
   it('is the accounting day of a DATE column, whatever the time zone of the server', () => {
@@ -102,5 +109,31 @@ describe('taxRateView', () => {
     expect(view.rateBps).toBe(1300)
     expect(view.createdAt).toBe('2026-01-01T00:00:00.000Z')
     expect([view.outputAccountId, view.inputAccountId, view.isDefault]).toEqual(['o', 'i', true])
+  })
+})
+
+describe('periodView', () => {
+  const row = {
+    id: 'p',
+    year: 2026,
+    month: 9,
+    startsOn: new Date('2026-09-01T00:00:00Z'),
+    endsOn: new Date('2026-09-30T00:00:00Z'),
+    status: 'open',
+    closedAt: null,
+    closedBy: null,
+    reopenedAt: null,
+    reopenedBy: null,
+    reopenReason: null
+  }
+
+  it('says a month has ended only from the day after its last one, in the day it is given', () => {
+    expect(periodView(row, '2026-09-30').hasEnded).toBe(false)
+    expect(periodView(row, '2026-10-01').hasEnded).toBe(true)
+  })
+
+  it('says a month has started from its first day', () => {
+    expect(periodView(row, '2026-08-31').hasStarted).toBe(false)
+    expect(periodView(row, '2026-09-01').hasStarted).toBe(true)
   })
 })

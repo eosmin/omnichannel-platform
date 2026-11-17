@@ -1,5 +1,5 @@
 import { NormalSide, type VatLineKind, type VatSide } from '@platform/core/domain'
-import { balanceOf, dateToDay } from '@platform/core/finance'
+import { balanceOf, dateToDay, periodEnded } from '@platform/core/finance'
 
 // What the finance routes answer. A date is 'YYYY-MM-DD' (an accounting date is a day, not an instant), and a count that can
 // pass the 32 bits of a line is a string (the sum of many lines is a BigInt of the database). Nothing here carries a secret.
@@ -181,9 +181,12 @@ export interface PeriodView {
   reopenedAt: string | null
   reopenedBy: string | null
   reopenReason: string | null
+  // Against the day of the organization (see `organizationDay`): the last day is over / the first day has come
+  hasEnded: boolean
+  hasStarted: boolean
 }
 
-export const periodView = (row: PeriodRow): PeriodView => ({
+export const periodView = (row: PeriodRow, today: string): PeriodView => ({
   id: row.id,
   year: row.year,
   month: row.month,
@@ -194,7 +197,9 @@ export const periodView = (row: PeriodRow): PeriodView => ({
   closedBy: row.closedBy,
   reopenedAt: row.reopenedAt === null ? null : row.reopenedAt.toISOString(),
   reopenedBy: row.reopenedBy,
-  reopenReason: row.reopenReason
+  reopenReason: row.reopenReason,
+  hasEnded: periodEnded(isoDay(row.endsOn), today),
+  hasStarted: isoDay(row.startsOn) <= today
 })
 
 export interface PeriodPage {
