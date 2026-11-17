@@ -1,11 +1,16 @@
 import {
   FiscalConsultState,
+  FiscalContingencyReportOutcome,
+  FiscalDeferOutcome,
   FiscalSubmitOutcome,
   FiscalVoidConsultState
 } from '@platform/core/domain'
 import type {
   BuiltDocument,
   ConsultResult,
+  ContingencyReportResult,
+  DeferResult,
+  FiscalContingencyEvent,
   FiscalIssuerInput,
   FiscalVoidDetails,
   ProviderContext,
@@ -18,6 +23,8 @@ import type {
 import { type SvAuthenticator } from './sv-auth'
 import {
   SvAnswerStates,
+  SvContingency,
+  SvContingencyRefusals,
   SvCodePatterns,
   SvCredentialKeys,
   SvEndpoints,
@@ -29,6 +36,8 @@ import {
   SvUserAgent,
   SvVoidRefusals
 } from './sv-constants'
+import { buildContingencyEvent } from './sv-contingency'
+import { readDeferred } from './sv-contingency-reason'
 import {
   callSv,
   recordOf,
@@ -39,8 +48,14 @@ import {
 } from './sv-http'
 import { buildInvalidation, invalidatedOf, invalidationCode } from './sv-invalidation'
 import { digitsOf } from './sv-parties'
-import { classifyReception, type SvReception } from './sv-responses'
+import {
+  classifyEventAnswer,
+  classifyReception,
+  type SvEventAnswer,
+  type SvReception
+} from './sv-responses'
 import type { SvSigner } from './sv-signer'
+import { SALVADOR_OFFSET_HOURS } from './sv-time'
 
 // Sending a document to the authority and asking about one (Manual Técnico §3, §4.2, §4.3). The platform's queue retries, and before it
 // sends a document that may already be there it asks (`consult`), so this module makes one attempt per call and never loops by itself.
@@ -432,4 +447,223 @@ export async function consultVoided(
       : { state: FiscalVoidConsultState.UNKNOWN }
   }
   throw new SvTransportError(SvTransportFailures.NETWORK)
+}
+
+// A document made in contingency (the deferred model): it is signed and its signed form is kept, and nothing is sent. The authority is what
+// is down, so no login is asked for; only the signature. A document that cannot be signed is not made in contingency either.
+export async function deferDocument(
+  deps: SvTransmissionDeps,
+  built: BuiltDocument,
+  ctx: ProviderContext
+): Promise<DeferResult> {
+  const privateKeyPassword = textOf(ctx.credentials[SvCredentialKeys.CERTIFICATE_PASSWORD])
+  const nit = digitsOf(ctx.issuer.taxId)
+  if (privateKeyPassword === null || nit === '') {
+    return {
+      outcome: FiscalDeferOutcome.REJECTED,
+      reason: SvContingencyRefusals.CREDENTIALS_INCOMPLETE
+    }
+  }
+  const about = identificationOf(built)
+  const id = recordOf(built.payload['identificacion'])
+  // Only a document built for the deferred model is kept: it says so (model 2, operation 2), and it is the issuer's own: the key that signs
+  // it is the one of the NIT in the document
+  if (
+    about === null ||
+    // Read the way the event reads it, and of this environment: a document the event could not list is not kept (it would refuse the whole
+    // lot with it)
+    !readDeferred(id).ok ||
+    !SvCodePatterns.GENERATION_CODE.test(about.generationCode) ||
+    id['ambiente'] !== SvEnvironmentCodes[ctx.issuer.environment] ||
+    digitsOf(textOf(recordOf(built.payload['emisor'])['nit']) ?? '') !== nit
+  ) {
+    return {
+      outcome: FiscalDeferOutcome.REJECTED,
+      reason: SvContingencyRefusals.DOCUMENT_INCOMPLETE
+    }
+  }
+  const signed = await deps.signer.sign({ nit, privateKeyPassword, document: built.payload })
+  if (signed.kind === 'unavailable') return { outcome: FiscalDeferOutcome.UNAVAILABLE }
+  if (signed.kind === 'rejected') {
+    return {
+      outcome: FiscalDeferOutcome.REJECTED,
+      reason: SvContingencyRefusals.SIGNING_CREDENTIALS_REJECTED
+    }
+  }
+  return {
+    outcome: FiscalDeferOutcome.DEFERRED,
+    providerData: {
+      [SvProviderDataKeys.GENERATION_CODE]: about.generationCode,
+      [SvProviderDataKeys.CONTROL_NUMBER]: about.controlNumber,
+      [SvProviderDataKeys.ISSUE_DATE]: about.issueDate,
+      // What a delivery to the receiver carries until the authority gives its seal
+      [SvProviderDataKeys.SIGNED_DOCUMENT]: signed.jws
+    }
+  }
+}
+
+// The authority's time of an answer, "dd/MM/yyyy HH:mm:ss" in the time of El Salvador (UTC-6), as an instant; null when it is not that shape
+export function authorityInstant(text: string | null): number | null {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})$/.exec(text ?? '')
+  if (match === null) return null
+  const [day, month, year, hour, minute, second] = match.slice(1).map(Number)
+  if (
+    day === undefined ||
+    month === undefined ||
+    year === undefined ||
+    hour === undefined ||
+    minute === undefined ||
+    second === undefined
+  ) {
+    return null
+  }
+  const instant = Date.UTC(year, month - 1, day, hour + SALVADOR_OFFSET_HOURS, minute, second)
+  // A field out of its range would roll over into another instant: the date is read back and must be the one that was written
+  const back = new Date(instant - SALVADOR_OFFSET_HOURS * 3_600_000)
+  return back.getUTCFullYear() === year &&
+    back.getUTCMonth() === month - 1 &&
+    back.getUTCDate() === day &&
+    back.getUTCHours() === hour &&
+    back.getUTCMinutes() === minute &&
+    back.getUTCSeconds() === second
+    ? instant
+    : null
+}
+
+// Reports a contingency: the event is signed and sent, and the window to send its documents runs from the moment the authority took it. The
+// window counts from the earlier of the authority's own time and ours, so it is never longer than the authority's.
+export async function reportContingencyEvent(
+  deps: SvTransmissionDeps,
+  event: FiscalContingencyEvent,
+  ctx: ProviderContext
+): Promise<ContingencyReportResult> {
+  const identity = identityOf(ctx.issuer, ctx.credentials)
+  if (identity === null) {
+    return {
+      outcome: FiscalContingencyReportOutcome.REJECTED,
+      reason: SvContingencyRefusals.CREDENTIALS_INCOMPLETE,
+      neverSent: true
+    }
+  }
+  const clock = deps.now ?? Date.now
+  const built = buildContingencyEvent(event, ctx.issuer, new Date(clock()).toISOString())
+  if (!built.ok) {
+    return {
+      outcome: FiscalContingencyReportOutcome.REJECTED,
+      reason: built.reason,
+      neverSent: true
+    }
+  }
+  const environment = ctx.issuer.environment
+  const endpoints = (deps.endpoints ?? SvEndpoints)[environment]
+  const first = await deps.auth.login(environment, identity.nit, identity.apiPassword)
+  if (first.kind === 'rejected') {
+    return {
+      outcome: FiscalContingencyReportOutcome.REJECTED,
+      reason: SvContingencyRefusals.CREDENTIALS_REJECTED,
+      neverSent: true
+    }
+  }
+  if (first.kind === 'unavailable') return { outcome: FiscalContingencyReportOutcome.UNAVAILABLE }
+  const signed = await deps.signer.sign({
+    nit: identity.nit,
+    privateKeyPassword: identity.privateKeyPassword,
+    document: built.event
+  })
+  if (signed.kind === 'unavailable') return { outcome: FiscalContingencyReportOutcome.UNAVAILABLE }
+  if (signed.kind === 'rejected') {
+    return {
+      outcome: FiscalContingencyReportOutcome.REJECTED,
+      reason: SvContingencyRefusals.SIGNING_CREDENTIALS_REJECTED,
+      neverSent: true
+    }
+  }
+  // What is kept of the event, the same for an event taken now and one the authority held already
+  const kept = {
+    [SvProviderDataKeys.GENERATION_CODE]: String(
+      recordOf(built.event['identificacion'])['codigoGeneracion']
+    ),
+    // The documents the event listed, for whoever reads the record
+    [SvProviderDataKeys.DOCUMENTS]: (built.event['detalleDTE'] as unknown[]).length,
+    [SvProviderDataKeys.WINDOW_HOURS]: SvContingency.TRANSMIT_WITHIN_HOURS
+  }
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const login = await deps.auth.login(environment, identity.nit, identity.apiPassword)
+    if (login.kind === 'rejected') {
+      return {
+        outcome: FiscalContingencyReportOutcome.REJECTED,
+        reason: SvContingencyRefusals.CREDENTIALS_REJECTED,
+        neverSent: true
+      }
+    }
+    if (login.kind === 'unavailable') return { outcome: FiscalContingencyReportOutcome.UNAVAILABLE }
+    let answer: SvEventAnswer
+    try {
+      const result = await callSv(
+        deps.fetch,
+        `${endpoints.baseUrl}${endpoints.contingency}`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: login.token,
+            'Content-Type': 'application/json',
+            'User-Agent': deps.userAgent ?? SvUserAgent
+          },
+          body: JSON.stringify({ nit: identity.nit, documento: signed.jws })
+        },
+        deps.receptionTimeoutMs ?? SvTimeouts.RECEPTION_MS
+      )
+      answer = classifyEventAnswer(result.status, result.json)
+    } catch (error) {
+      if (error instanceof SvTransportError) {
+        return { outcome: FiscalContingencyReportOutcome.UNAVAILABLE }
+      }
+      throw error
+    }
+    if (answer.kind === 'token') {
+      deps.auth.forget(environment, identity.nit, identity.apiPassword, login.token)
+      continue
+    }
+    if (answer.kind === 'credentials') {
+      return {
+        outcome: FiscalContingencyReportOutcome.REJECTED,
+        reason: SvContingencyRefusals.CREDENTIALS_REJECTED,
+        neverSent: true
+      }
+    }
+    if (answer.kind === 'transient') return { outcome: FiscalContingencyReportOutcome.UNAVAILABLE }
+    // The event is the authority's already (the answer of an earlier call was lost): it is taken, as the port says an event it holds is
+    // answered; the seal is not here (the authority did not repeat it).
+    // **[TO CONFIRM IN THE SANDBOX]** whether the authority repeats the seal, and the code it gives a repeated event.
+    if (answer.kind === 'duplicate') {
+      return {
+        outcome: FiscalContingencyReportOutcome.ACCEPTED,
+        // The event was sent after its window ended, so it cannot have been taken before: the end of the window is the earliest instant the
+        // authority can have taken it, and a window counted from it is never longer than the authority's
+        receivedAt: event.endedAt,
+        providerData: { ...kept, [SvProviderDataKeys.DUPLICATE]: true },
+        response: answer.body
+      }
+    }
+    if (answer.kind === 'rejected') {
+      return {
+        outcome: FiscalContingencyReportOutcome.REJECTED,
+        reason: answer.code,
+        response: answer.body
+      }
+    }
+    const now = clock()
+    // The first of the fields the answer says it in that reads as a date: the others may be in a shape nobody knows yet
+    const theirs =
+      answer.receivedAtTexts
+        .map(text => authorityInstant(text))
+        .find((instant): instant is number => instant !== null) ?? null
+    return {
+      outcome: FiscalContingencyReportOutcome.ACCEPTED,
+      receivedAt: new Date(theirs === null ? now : Math.min(theirs, now)).toISOString(),
+      providerData: { ...kept, [SvProviderDataKeys.RECEPTION_SEAL]: answer.seal },
+      response: answer.body
+    }
+  }
+  return { outcome: FiscalContingencyReportOutcome.UNAVAILABLE }
 }
