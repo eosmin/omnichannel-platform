@@ -312,13 +312,15 @@ export class OrphanMediaCleaner {
     return rows.length
   }
 
-  // A file an agent uploaded and confirmed for a message and never sent: its row has no message and no
-  // customer (sending a message sets both in the same transaction), so nothing shows it and it would sit
+  // A file an agent uploaded and confirmed for a message and never sent: its row has no message, no
+  // customer and no delivery state (sending a message sets all three in the same transaction, so a file that
+  // was sent and lost its message or customer afterwards still has its delivery state and is never taken), so nothing shows it and it would sit
   // there until the retention of the store. It goes once it is older than the TTL of an unsent file, longer
   // than the one of an unconfirmed upload because an agent may leave a draft for a day or two. Files of
   // customers never match (their row is made with its message), nor does a file of another purpose.
   // One statement decides and deletes: an agent who sends the file at this moment either links it first
-  // (the row is kept) or finds no row to link, never a row that this run removes under a message. Two runs
+  // (the row is kept), or its link fails with the conflict of a file already attached when this run removed
+  // the row between the check and the link (a file over two days old; the message is not sent either way). Two runs
   // at once take different rows (SKIP LOCKED). The objects go second: a failure leaves objects with no row,
   // which the sweep of stray objects finds.
   private async dropUnsentMessageFiles(now: Date, scope?: CleanupScope): Promise<number> {
@@ -331,7 +333,8 @@ export class OrphanMediaCleaner {
       DELETE FROM media WHERE id IN (
         SELECT m.id FROM media m
         WHERE m.purpose = ${MediaPurpose.MESSAGE} AND m.store_id IS NOT NULL
-          AND m.message_id IS NULL AND m.customer_id IS NULL AND m.uploaded_by IS NOT NULL
+          AND m.message_id IS NULL AND m.customer_id IS NULL AND m.delivery_status IS NULL
+          AND m.uploaded_by IS NOT NULL
           AND m.created_at < ${cutoff}
           AND (${all}::boolean OR m.store_id = ANY(${storeIds}::text[]))
         ORDER BY m.created_at LIMIT ${UploadLimits.ORPHAN_CLEANUP_BATCH}
@@ -349,6 +352,9 @@ export class OrphanMediaCleaner {
           this.logger.warn({ errorName: errorName(error) }, 'an unsent file was not deleted')
         }
       }
+    }
+    if (rows.length > 0) {
+      this.logger.warn({ dropped: rows.length }, 'message files that were never sent were dropped')
     }
     return rows.length
   }

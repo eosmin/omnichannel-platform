@@ -425,11 +425,11 @@ describe('OrphanMediaCleaner', () => {
       await owner.query(`DELETE FROM customers WHERE store_id = $1`, [storeId])
     })
 
-    // A confirmed message file as the api leaves it: the agent uploaded it, no message and no customer yet
+    // A confirmed message file as the api leaves it: the agent uploaded it, no message, no customer and no delivery state yet
     async function unsent(
       overrides: {
         uploadedBy?: string | null
-        messageId?: string | null
+        deliveryStatus?: string | null
         customerId?: string | null
       } = {}
     ): Promise<{ id: string; key: string; thumb: string }> {
@@ -439,7 +439,7 @@ describe('OrphanMediaCleaner', () => {
       const thumb = await object(StorageKeys.messageVariant(storeId, id, 'thumb'))
       await owner.query(
         `INSERT INTO media (id, store_id, purpose, key, filename, content_type, file_size, status, variants,
-                            uploaded_by, message_id, customer_id, created_at)
+                            uploaded_by, delivery_status, customer_id, created_at)
          VALUES ($1, $2, 'message', $3, 'u.png', 'image/png', 1, 'clean', $4::jsonb, $5, $6, $7, now() - interval '1 hour')`,
         [
           id,
@@ -447,7 +447,7 @@ describe('OrphanMediaCleaner', () => {
           key,
           JSON.stringify({ thumb }),
           'uploadedBy' in overrides ? overrides.uploadedBy : uploader,
-          overrides.messageId ?? null,
+          overrides.deliveryStatus ?? null,
           overrides.customerId ?? null
         ]
       )

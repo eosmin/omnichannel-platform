@@ -950,6 +950,7 @@ export const UploadLimits = {
   PRESIGNED_URL_TTL_SECONDS: 300,               // 5 min
   DOWNLOAD_URL_TTL_SECONDS: 900,                // 15 min
   UNCONFIRMED_UPLOAD_TTL_HOURS: 24,             // Orphan objects without a Media row are deleted by cleanup
+  UNSENT_MESSAGE_FILE_TTL_HOURS: 48,            // A confirmed message file never sent (no message, customer or delivery state) is dropped by cleanup
 } as const
 
 export const AllowedContentTypes = {
