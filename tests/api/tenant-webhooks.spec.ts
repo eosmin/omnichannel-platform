@@ -197,10 +197,10 @@ describe('The webhooks of a store', () => {
       expect(refused).toHaveLength(5)
       for (const answer of refused) {
         const { error } = answer.body as {
-          error: { code: string; details: { reason: string } }
+          error: { code: string; metadata: { reason: string } }
         }
         expect(error.code).toBe(ErrorCodes.RESOURCE_CONFLICT)
-        expect(error.details.reason).toBe(WebhookConflictReasons.DUPLICATE)
+        expect(error.metadata.reason).toBe(WebhookConflictReasons.DUPLICATE)
       }
       expect(await owner.webhook.count({ where: { storeId: ctx.storeA.id } })).toBe(1)
     })

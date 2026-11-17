@@ -2434,7 +2434,7 @@ const resources: IsolationResource[] = [
       'active',
     creation: {
       path: ApiRoutes.settings.webhooks,
-      body: () => ({ url: 'https://8.8.8.8/hook', events: ['order.created'] }),
+      body: () => ({ url: `https://8.8.8.8/hook/${randomUUID()}`, events: ['order.created'] }),
       strict: true,
       countIn: (owner, storeId) => owner.webhook.count({ where: { storeId } }),
       storeOf: async (owner, id) =>

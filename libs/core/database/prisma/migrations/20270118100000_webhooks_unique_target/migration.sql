@@ -27,5 +27,5 @@ WHERE w."status" <> 'disabled'
         OR (keeper."status" = w."status" AND (keeper."created_at", keeper."id") < (w."created_at", w."id"))));
 
 -- The address by its hash: a long one (it may be 2048 characters) would not fit in an entry of the index
-CREATE UNIQUE INDEX "uq_webhooks_store_url_events" ON "webhooks" ("store_id", md5("url"), "events")
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_webhooks_store_url_events" ON "webhooks" ("store_id", md5("url"), "events")
   WHERE "status" <> 'disabled';
