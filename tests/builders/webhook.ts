@@ -11,7 +11,8 @@ export async function createWebhook(
   return owner.webhook.create({
     data: {
       storeId: input.storeId,
-      url: input.url ?? 'https://8.8.8.8/hook',
+      // One address for each, as the store holds one webhook per address and set of events
+      url: input.url ?? `https://8.8.8.8/hook/${randomUUID()}`,
       events: input.events ?? [Events.ORDER_CREATED],
       secret: Buffer.from('not-a-sealed-secret'),
       createdBy: randomUUID() // A plain column, not a foreign key

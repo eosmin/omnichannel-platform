@@ -97,13 +97,19 @@ describe('The delivery of a webhook', () => {
 
   const secretOf = () => `whsec_${generateToken(WebhookLimits.SECRET_BYTES)}`
   async function webhook(
-    over: { storeId?: string; secret?: string; failures?: number; status?: string } = {}
+    over: {
+      storeId?: string
+      secret?: string
+      failures?: number
+      status?: string
+      url?: string
+    } = {}
   ) {
     const secret = over.secret ?? secretOf()
     const row = await owner.webhook.create({
       data: {
         storeId: over.storeId ?? ctx.storeA.id,
-        url: 'https://hooks.example.com/in',
+        url: over.url ?? 'https://hooks.example.com/in',
         events: [Events.ORDER_CREATED],
         secret: cipher.seal({ secret }),
         createdBy: ctx.adminA.id,
@@ -174,7 +180,8 @@ describe('The delivery of a webhook', () => {
     expect(
       (await owner.webhook.findUniqueOrThrow({ where: { id: row.id } })).consecutiveFailures
     ).toBe(0)
-    const healthy = await webhook()
+    // Another address: a store holds one webhook per address and set of events
+    const healthy = await webhook({ url: 'https://hooks.example.com/healthy' })
     const before = (await owner.webhook.findUniqueOrThrow({ where: { id: healthy.id } })).updatedAt
     await deliverer.deliver(jobFor(healthy), 1, { post: answers(200) })
     expect(
