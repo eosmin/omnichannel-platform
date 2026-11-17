@@ -116,6 +116,10 @@ export const RemoteChannelApiLimits = {
   TYPING_GAP_MS: 2000
 } as const
 
+// One writer at a time per account of a remote channel in a store: the store lock of the writers is a shared one, so two `PUT`s of the
+// same new account at once would both find nothing and race on the unique index (QA N-4A-06)
+export const RemoteChannelLockScopes = { CONNECTION: 'remote_channel_connection' } as const
+
 // `connectionId` is the plugin's own identifier of the account: letters, digits and . _ : + @ -
 export const REMOTE_CONNECTION_ID_PATTERN = /^[A-Za-z0-9._:+@-]+$/
 

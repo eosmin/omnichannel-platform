@@ -6,6 +6,7 @@ import {
   InventoryLevelSorts,
   InventoryLimits,
   InventoryMovementType,
+  lowercasedUuidSchema,
   PaginationLimits,
   ProductLimits,
   singleLineText
@@ -28,7 +29,7 @@ export const seqCursorSchema = z.string().transform((text, ctx): bigint => {
 export const encodeSeqCursor = (seq: bigint): string =>
   Buffer.from(JSON.stringify(seq.toString())).toString('base64url')
 
-export const idSchema = z.uuid()
+export const idSchema = lowercasedUuidSchema
 
 const limit = z.coerce
   .number()

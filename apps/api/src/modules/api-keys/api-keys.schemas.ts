@@ -1,8 +1,13 @@
 import { z } from 'zod'
 
-import { ApiKeyLimits, isApiKeyScope, singleLineText, uuidSchema } from '@platform/core/domain'
+import {
+  ApiKeyLimits,
+  isApiKeyScope,
+  lowercasedUuidSchema,
+  singleLineText
+} from '@platform/core/domain'
 
-export const idSchema = uuidSchema
+export const idSchema = lowercasedUuidSchema
 
 const scopes = z
   .array(z.string().refine(isApiKeyScope, { message: 'is not a scope a key can hold' }))

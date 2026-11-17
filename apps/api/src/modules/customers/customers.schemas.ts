@@ -5,6 +5,7 @@ import {
   CustomerLimits,
   CustomerTimelineTypes,
   LOCALE_TAG_PATTERN,
+  lowercasedUuidSchema,
   MergeableFields,
   MergeFieldSources,
   OrderStatus,
@@ -16,7 +17,7 @@ import { galleryTypeSchema, GalleryTypes, gallerySearchSchema } from '@platform/
 
 import { cursorSchema } from './list-cursor'
 
-export const idSchema = z.uuid()
+export const idSchema = lowercasedUuidSchema
 
 // Postgres text cannot hold a NUL character: it is a 400 here and not a 500 there
 const text = () =>

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import {
+  lowercasedUuidSchema,
   PaginationLimits,
   plainName,
   ProductLimits,
@@ -11,7 +12,7 @@ import {
 
 import { cursorSchema } from '../customers/list-cursor'
 
-export const idSchema = z.uuid()
+export const idSchema = lowercasedUuidSchema
 
 // Postgres text cannot hold a NUL character: it is a 400 here and not a 500 there
 const description = z

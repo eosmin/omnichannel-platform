@@ -1,4 +1,4 @@
-import { isSingleEmoji, phraseMatches, plainText } from './text'
+import { containsNul, isSingleEmoji, phraseMatches, plainText, withoutNul } from './text'
 
 describe('plainText', () => {
   it('lowers the case and takes the accents off', () => {
@@ -104,5 +104,47 @@ describe('isSingleEmoji', () => {
 
   it('refuses an emoji longer than the limit given', () => {
     expect(isSingleEmoji('👨‍👩‍👧‍👦', 4)).toBe(false)
+  })
+})
+
+describe('containsNul', () => {
+  it('finds a NUL in a string, in a key, in a list and deep inside an object', () => {
+    expect(containsNul('a\0b')).toBe(true)
+    expect(containsNul({ ['k\0']: 1 })).toBe(true)
+    expect(containsNul(['ok', ['no', { deep: [{ text: 'x\0' }] }]])).toBe(true)
+  })
+
+  it('leaves text with no NUL, and what is not text, alone', () => {
+    expect(containsNul('plain \u0001 control')).toBe(false)
+    expect(containsNul({ a: [1, true, null, undefined, { b: 'c' }] })).toBe(false)
+    expect(containsNul(undefined)).toBe(false)
+  })
+
+  it('does not overflow the stack on a deeply nested value', () => {
+    let nested: unknown = 'x\0'
+    for (let index = 0; index < 50_000; index += 1) nested = [nested]
+    expect(containsNul(nested)).toBe(true)
+  })
+})
+
+describe('withoutNul', () => {
+  it('does not throw on a deeply nested value', () => {
+    let nested: unknown = 'x\0'
+    for (let index = 0; index < 50_000; index += 1) nested = [nested]
+
+    expect(() => withoutNul(nested)).not.toThrow()
+  })
+
+  it('leaves a Buffer as it is', () => {
+    const bytes = Buffer.from('a\0b')
+
+    expect(withoutNul(bytes)).toBe(bytes)
+    expect(containsNul(bytes)).toBe(false)
+  })
+
+  it('takes the NUL out of every string and key and keeps the rest', () => {
+    expect(withoutNul({ ['n\0ame']: ['a\0b', 3, null, { t: 'c\0' }] })).toEqual({
+      name: ['ab', 3, null, { t: 'c' }]
+    })
   })
 })

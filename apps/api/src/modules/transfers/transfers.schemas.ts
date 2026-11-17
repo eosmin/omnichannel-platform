@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import {
   InventoryLimits,
+  lowercasedUuidSchema,
   PaginationLimits,
   singleLineText,
   TransferLimits,
@@ -11,7 +12,7 @@ import {
 
 import { cursorSchema } from '../customers/list-cursor'
 
-export const idSchema = z.uuid()
+export const idSchema = lowercasedUuidSchema
 
 const note = singleLineText(TransferLimits.NOTE_MAX_LENGTH, 1)
 const quantity = z.number().int().min(1).max(InventoryLimits.MAX_MOVEMENT_QUANTITY)

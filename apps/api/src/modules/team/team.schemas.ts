@@ -1,11 +1,13 @@
 import { z } from 'zod'
 
+import { lowercasedUuidSchema } from '@platform/core/domain'
+
 import { isPermission } from '../tenancy'
 
 const MAX_NAME_LENGTH = 60
 const MAX_DESCRIPTION_LENGTH = 255
 
-export const idSchema = z.uuid()
+export const idSchema = lowercasedUuidSchema
 
 const permissionList = z
   .array(z.string().refine(isPermission, { message: 'not a permission' }))

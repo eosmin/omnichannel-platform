@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import {
+  lowercasedUuidSchema,
   PaginationLimits,
   PurchaseLimits,
   PurchaseOrderStatus,
@@ -31,7 +32,7 @@ export {
   voidPaymentSchema
 }
 
-export const idSchema = z.uuid()
+export const idSchema = lowercasedUuidSchema
 
 const limit = z.coerce
   .number()

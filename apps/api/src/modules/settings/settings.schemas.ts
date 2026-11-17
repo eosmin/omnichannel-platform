@@ -2,18 +2,18 @@ import { z } from 'zod'
 
 import { RetentionBounds } from '@platform/core/compliance'
 import {
+  lowercasedUuidSchema,
   ProductLimits,
-  ShippingPayer,
   SettingsLimits,
+  ShippingPayer,
   singleLineText,
   SNIPPET_SHORTCUT_PATTERN,
   TAG_COLOR_PATTERN,
   timezoneSchema,
-  uuidSchema,
   weekScheduleSchema
 } from '@platform/core/domain'
 
-export const idSchema = uuidSchema
+export const idSchema = lowercasedUuidSchema
 
 const nothingToChange = { message: 'nothing to change' }
 const changesSomething = (body: object): boolean =>

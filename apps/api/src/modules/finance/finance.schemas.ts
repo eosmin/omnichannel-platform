@@ -6,9 +6,10 @@ import {
   CashKind,
   FinanceLimits,
   FinancePaymentMethods,
-  FinanceTransactionKind,
   FinanceTaxLimits,
+  FinanceTransactionKind,
   JournalEntryType,
+  lowercasedUuidSchema,
   PaginationLimits,
   SaleRecognition,
   singleLineText,
@@ -18,7 +19,7 @@ import { financeTemplateCountries, isIsoDate } from '@platform/core/finance'
 
 import { cursorSchema } from '../customers/list-cursor'
 
-export const idSchema = z.uuid()
+export const idSchema = lowercasedUuidSchema
 
 // A calendar day, not only a string that looks like one (no 31 of February)
 const day = z.string().refine(isIsoDate, { message: 'not a calendar date (YYYY-MM-DD)' })

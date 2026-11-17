@@ -9,7 +9,7 @@ import {
   FiscalLimits,
   FiscalVoidKind
 } from './fiscal-constants'
-import { singleLineText } from './validation'
+import { lowercasedUuidSchema, singleLineText } from './validation'
 
 // The bodies and the query of the fiscal routes (TDD_18 §8, §12). They live here, not in the api, so the web form that sends one is
 // tested against the very schema that reads it (the purchases do the same).
@@ -32,7 +32,7 @@ export const FiscalFieldLimits = {
 
 const text = (max: number) => singleLineText(max, 1)
 
-export const fiscalIdSchema = z.uuid()
+export const fiscalIdSchema = lowercasedUuidSchema
 
 // What a provider reads from an address: short lines of text keyed by the provider's own field names
 export const fiscalAddressSchema = z

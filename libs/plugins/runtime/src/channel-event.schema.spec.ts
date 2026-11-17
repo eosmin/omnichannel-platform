@@ -24,6 +24,25 @@ describe('channelEventSchema', () => {
     expect(channelEventSchema.safeParse(valid).success).toBe(true)
   })
 
+  it('keeps a message whose text, name or metadata carries a NUL, with the NUL taken out (N-4A-05)', () => {
+    const parsed = channelEventSchema.safeParse({
+      ...withMessage({ content: 'hel\0lo', metadata: { ['k\0ey']: ['a\0'] } }),
+      channelProfile: { displayName: 'An\0a' }
+    })
+
+    expect(parsed.success).toBe(true)
+    expect(parsed.data).toMatchObject({
+      channelProfile: { displayName: 'Ana' },
+      message: { content: 'hello', metadata: { key: ['a'] } }
+    })
+  })
+
+  it('makes the job id of an event from what is stored, with no NUL', () => {
+    const parsed = channelEventSchema.parse(withMessage({ externalId: 'm\0-1' }))
+
+    expect(parsed.message?.externalId).toBe('m-1')
+  })
+
   it('takes an origin with every field, and one with only its kind', () => {
     const full = {
       kind: 'ad',

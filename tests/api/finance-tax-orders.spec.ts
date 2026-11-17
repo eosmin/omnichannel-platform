@@ -796,6 +796,38 @@ describe('The tax of an order and the VAT report (Step 4B.3b)', () => {
         expect(april.rows.filter(row => row.side === (VatSide.OUTPUT as string))).toEqual([])
       })
 
+      it('reads the UTC day of a store whose zone the database does not know, and still answers (N-AA-02)', async () => {
+        // The api refuses such a zone, so it is a value written around it: one store must not leave the organization with no report
+        const { timezone: original } = await owner.store.findUniqueOrThrow({
+          where: { id: ctx.storeA.id },
+          select: { timezone: true }
+        })
+        const order = await place(1130, 1)
+        await delivered(order.id, '2027-04-01T03:00:00Z')
+        await owner.store.update({
+          where: { id: ctx.storeA.id },
+          data: { timezone: 'Mars/Phobos' }
+        })
+        try {
+          const april = await report('2027-04-01', '2027-04-01')
+          const march = await report('2027-03-31', '2027-03-31')
+
+          // 03:00 UTC is the April day, in UTC, which is what a zone that does not exist falls back to
+          expect(april.status).toBe(OK)
+          expect(march.status).toBe(OK)
+          expect(
+            (april.body as ReportBody).rows
+              .filter(row => row.side === (VatSide.OUTPUT as string))
+              .map(row => row.taxCents)
+          ).toEqual([130])
+          expect(
+            (march.body as ReportBody).rows.filter(row => row.side === (VatSide.OUTPUT as string))
+          ).toEqual([])
+        } finally {
+          await owner.store.update({ where: { id: ctx.storeA.id }, data: { timezone: original } })
+        }
+      })
+
       it('is a CSV with the same rows, with a header and no formula in a cell', async () => {
         await delivered((await legacyOrder()).id)
         const response = await asAdmin().get(

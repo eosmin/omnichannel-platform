@@ -8,7 +8,8 @@ import {
   MessageType,
   OriginKinds,
   OriginMediaTypes,
-  ReactionActors
+  ReactionActors,
+  withoutNul
 } from '@platform/core/domain'
 import { ChannelEventTypes } from '@platform/plugins/sdk'
 
@@ -112,102 +113,110 @@ const deletion = z.strictObject({
 
 // What a channel plugin returns for an event, checked before anything uses it: the plugin may be a
 // third party's, and a provider's payload is not ours either. A field that is not here is refused.
-export const channelEventSchema = z
-  .strictObject({
-    type: z.enum(ChannelEventTypes),
-    connectionId: id,
-    channelIdentity: id,
-    channelProfile: z
-      .strictObject({
-        displayName: text(200).optional(),
-        avatarUrl: z.url().max(InboundLimits.MEDIA_REF_MAX_LENGTH).optional(),
-        locale: text(35).optional(),
-        // Typed by the person in a form, not proved: the core reads them as contact data
-        email: text(InboundLimits.PROFILE_FIELD_MAX_LENGTH).optional(),
-        phone: text(InboundLimits.PROFILE_FIELD_MAX_LENGTH).optional()
-      })
-      .optional(),
-    message: message.optional(),
-    reaction: reaction.optional(),
-    edit: edit.optional(),
-    deletion: deletion.optional(),
-    status: status.optional(),
-    messageId: z.uuid().optional(),
-    timestamp: z.iso.datetime({ offset: true })
-  })
-  .superRefine((event, context) => {
-    const sent = event.message
-    if (sent !== undefined) {
-      const mediaTypes: readonly string[] = [
-        MessageType.IMAGE,
-        MessageType.VIDEO,
-        MessageType.AUDIO,
-        MessageType.DOCUMENT
+// What a provider says is kept, so the NULs it may carry (Postgres cannot store one, and the message
+// would fail in the worker and be lost: QA N-4A-05) are taken out before the shape is read; a remote
+// plugin never gets here with one, the api refuses its request first (RejectNulPipe).
+export const channelEventSchema = z.preprocess(
+  withoutNul,
+  z
+    .strictObject({
+      type: z.enum(ChannelEventTypes),
+      connectionId: id,
+      channelIdentity: id,
+      channelProfile: z
+        .strictObject({
+          displayName: text(200).optional(),
+          avatarUrl: z.url().max(InboundLimits.MEDIA_REF_MAX_LENGTH).optional(),
+          locale: text(35).optional(),
+          // Typed by the person in a form, not proved: the core reads them as contact data
+          email: text(InboundLimits.PROFILE_FIELD_MAX_LENGTH).optional(),
+          phone: text(InboundLimits.PROFILE_FIELD_MAX_LENGTH).optional()
+        })
+        .optional(),
+      message: message.optional(),
+      reaction: reaction.optional(),
+      edit: edit.optional(),
+      deletion: deletion.optional(),
+      status: status.optional(),
+      messageId: z.uuid().optional(),
+      timestamp: z.iso.datetime({ offset: true })
+    })
+    .superRefine((event, context) => {
+      const sent = event.message
+      if (sent !== undefined) {
+        const mediaTypes: readonly string[] = [
+          MessageType.IMAGE,
+          MessageType.VIDEO,
+          MessageType.AUDIO,
+          MessageType.DOCUMENT
+        ]
+        const needsMedia = mediaTypes.includes(sent.type)
+        if (needsMedia !== (sent.media !== undefined)) {
+          context.addIssue({
+            code: 'custom',
+            path: ['message', 'media'],
+            message: needsMedia
+              ? 'a media message needs its media'
+              : 'only a media message has media'
+          })
+        }
+        if (sent.type === MessageType.TEXT && (sent.content ?? '').trim() === '') {
+          context.addIssue({
+            code: 'custom',
+            path: ['message', 'content'],
+            message: 'a text message has text'
+          })
+        }
+      }
+      const needsMessage: readonly string[] = [
+        ChannelEventTypes.MESSAGE_RECEIVED,
+        ChannelEventTypes.MESSAGE_ECHO
       ]
-      const needsMedia = mediaTypes.includes(sent.type)
-      if (needsMedia !== (sent.media !== undefined)) {
+      if (needsMessage.includes(event.type) && event.message === undefined) {
         context.addIssue({
           code: 'custom',
-          path: ['message', 'media'],
-          message: needsMedia ? 'a media message needs its media' : 'only a media message has media'
+          path: ['message'],
+          message: 'a received or echoed event needs its message'
         })
       }
-      if (sent.type === MessageType.TEXT && (sent.content ?? '').trim() === '') {
+      const isReaction = event.type === ChannelEventTypes.MESSAGE_REACTION
+      if (isReaction !== (event.reaction !== undefined) || (isReaction && event.message)) {
         context.addIssue({
           code: 'custom',
-          path: ['message', 'content'],
-          message: 'a text message has text'
+          path: ['reaction'],
+          message: 'only a reaction event has a reaction, and it has no message'
         })
       }
-    }
-    const needsMessage: readonly string[] = [
-      ChannelEventTypes.MESSAGE_RECEIVED,
-      ChannelEventTypes.MESSAGE_ECHO
-    ]
-    if (needsMessage.includes(event.type) && event.message === undefined) {
-      context.addIssue({
-        code: 'custom',
-        path: ['message'],
-        message: 'a received or echoed event needs its message'
-      })
-    }
-    const isReaction = event.type === ChannelEventTypes.MESSAGE_REACTION
-    if (isReaction !== (event.reaction !== undefined) || (isReaction && event.message)) {
-      context.addIssue({
-        code: 'custom',
-        path: ['reaction'],
-        message: 'only a reaction event has a reaction, and it has no message'
-      })
-    }
-    const isEdit = event.type === ChannelEventTypes.MESSAGE_EDITED
-    if (isEdit !== (event.edit !== undefined) || (isEdit && event.message)) {
-      context.addIssue({
-        code: 'custom',
-        path: ['edit'],
-        message: 'only an edit event has an edit, and it has no message'
-      })
-    }
-    const isDeletion = event.type === ChannelEventTypes.MESSAGE_DELETED
-    if (isDeletion !== (event.deletion !== undefined) || (isDeletion && event.message)) {
-      context.addIssue({
-        code: 'custom',
-        path: ['deletion'],
-        message: 'only a delete event has a deletion, and it has no message'
-      })
-    }
-    const needsStatus: readonly string[] = [
-      ChannelEventTypes.MESSAGE_SENT,
-      ChannelEventTypes.MESSAGE_DELIVERED,
-      ChannelEventTypes.MESSAGE_READ,
-      ChannelEventTypes.MESSAGE_FAILED
-    ]
-    if (needsStatus.includes(event.type) && event.status === undefined) {
-      context.addIssue({
-        code: 'custom',
-        path: ['status'],
-        message: 'a status event needs its status'
-      })
-    }
-  })
+      const isEdit = event.type === ChannelEventTypes.MESSAGE_EDITED
+      if (isEdit !== (event.edit !== undefined) || (isEdit && event.message)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['edit'],
+          message: 'only an edit event has an edit, and it has no message'
+        })
+      }
+      const isDeletion = event.type === ChannelEventTypes.MESSAGE_DELETED
+      if (isDeletion !== (event.deletion !== undefined) || (isDeletion && event.message)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['deletion'],
+          message: 'only a delete event has a deletion, and it has no message'
+        })
+      }
+      const needsStatus: readonly string[] = [
+        ChannelEventTypes.MESSAGE_SENT,
+        ChannelEventTypes.MESSAGE_DELIVERED,
+        ChannelEventTypes.MESSAGE_READ,
+        ChannelEventTypes.MESSAGE_FAILED
+      ]
+      if (needsStatus.includes(event.type) && event.status === undefined) {
+        context.addIssue({
+          code: 'custom',
+          path: ['status'],
+          message: 'a status event needs its status'
+        })
+      }
+    })
+)
 
 export type ValidChannelEvent = z.output<typeof channelEventSchema>

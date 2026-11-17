@@ -4,13 +4,14 @@ import {
   CountLimits,
   CountLineFilters,
   CountStatus,
+  lowercasedUuidSchema,
   PaginationLimits,
   singleLineText
 } from '@platform/core/domain'
 
 import { cursorSchema } from '../customers/list-cursor'
 
-export const idSchema = z.uuid()
+export const idSchema = lowercasedUuidSchema
 
 export const listCountsQuerySchema = z.strictObject({
   cursor: cursorSchema.optional(),

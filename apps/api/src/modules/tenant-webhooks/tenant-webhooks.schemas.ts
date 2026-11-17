@@ -3,15 +3,15 @@ import { z } from 'zod'
 import {
   isPlainHttpsUrl,
   isWebhookEvent,
+  lowercasedUuidSchema,
   WebhookEvents,
-  uuidSchema,
   WebhookLimits,
   WebhookStatus
 } from '@platform/core/domain'
 
 import { cursorSchema } from '../customers/list-cursor'
 
-export const idSchema = uuidSchema
+export const idSchema = lowercasedUuidSchema
 
 // The address is checked for its shape here (https, no credentials); that it points at the public internet
 // needs the resolver and is checked by the service. No fragment: it would never reach the server.

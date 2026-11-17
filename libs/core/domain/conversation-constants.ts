@@ -251,11 +251,9 @@ export const InboundLimits = {
   // An emoji is a few code points (a flag, a family, a skin tone); the limit is in UTF-16 units
   EMOJI_MAX_LENGTH: 32,
   METADATA_MAX_BYTES: 8192,
-  // A message dated further ahead than this is dated now: a clock that is wrong must not pin a
-  // conversation to the top of the inbox
-  MAX_FUTURE_SKEW_MS: 5 * 60 * 1000,
-  // And one older than this is a unit mistake (seconds read as milliseconds is 1970), not a message
-  // that took a month to arrive
+  // A message dated ahead of the clock is dated now (never later than its reception): a clock that is
+  // wrong must not pin a conversation to the top of the inbox. One older than this is a unit mistake
+  // (seconds read as milliseconds is 1970), not a message that took a month to arrive
   MAX_AGE_MS: 30 * 24 * 60 * 60 * 1000
 } as const
 
