@@ -13,6 +13,7 @@ import {
   Res
 } from '@nestjs/common'
 import type { Response } from 'express'
+import type { Redis } from 'ioredis'
 import { PinoLogger } from 'nestjs-pino'
 
 import { PluginApiRoutes } from '@platform/core/api'
@@ -48,10 +49,12 @@ import {
   reactToMessageSchema,
   type RevisionView
 } from '@platform/core/messaging'
+import { REDIS_CLIENT } from '@platform/core/redis'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { PluginScopes } from '@platform/plugins/sdk'
 
 import { CurrentPluginInstallation, PluginApi } from '../plugins/plugin-api.decorators'
+import { auditPluginDenial } from '../plugins/plugin-denial-audit'
 import { CurrentPermissions, CurrentStore, RequirePermissions } from '../tenancy'
 import { pluginUserId } from '../tenancy/actor'
 
@@ -85,6 +88,7 @@ export class PluginMessagesController {
     private readonly audit: AuditService,
     private readonly prisma: PrismaService,
     private readonly logger: PinoLogger,
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
     @Inject(MULTI_FILE_SEND_ENABLED) private readonly multiFileEnabled: boolean
   ) {
     this.logger.setContext(PluginMessagesController.name)
@@ -106,21 +110,28 @@ export class PluginMessagesController {
     // A file is the installation's own upload, which asked for `media:write`: a key that lost that scope since sends no file (the route
     // names `messages:write` only, because the same route carries text)
     if ('mediaIds' in body && !installation.scopes.includes(PluginScopes.MEDIA_WRITE)) {
+      const missing = [PluginScopes.MEDIA_WRITE]
       // The same fields the guard logs for a scope it refuses (never the key), so that one search finds both
       this.logger.warn(
         {
           installationId: installation.id,
           pluginId: installation.pluginId,
           kind: PluginApiDenialReasons.SCOPE,
-          missing: [PluginScopes.MEDIA_WRITE]
+          missing
         },
         'a plugin key was refused for lack of access'
       )
+      // And in the audit log, as the guard does for every other scope it refuses (capped the same way; never throws)
+      await auditPluginDenial({ audit: this.audit, redis: this.redis, logger: this.logger }, req, {
+        reason: PluginApiDenialReasons.SCOPE,
+        installation: { id: installation.id, pluginId: installation.pluginId, storeId: store.id },
+        missing
+      })
       throw new PlatformException(
         ErrorCodes.PLUGIN_SCOPE_DENIED,
         'sending a file needs the scope media:write',
         HttpStatusCodes.FORBIDDEN,
-        { required: [PluginScopes.MEDIA_WRITE] }
+        { required: missing }
       )
     }
     const plugin = await this.prisma.client.plugin.findUnique({
