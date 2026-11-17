@@ -7,6 +7,7 @@ import {
 } from '@platform/core/domain'
 
 import { type AutoEntry, linesOf, type RoleAccounts, type SaleOrderRow } from './auto-entry-rules'
+import { movementCostCents } from './movement-cost'
 import { allocateByWeight } from './tax-rules'
 
 // The pure rules of the entries of a difference written off and of a return (TDD_18 §4.2, E7 and E8), Step 4B.6b-2. Like the other
@@ -193,6 +194,8 @@ export interface StockMove {
   // The cost the movement recorded; a unit that comes back (RETURN_IN) is stored with none, because the engine values it at the average
   // of the level without writing the figure on the row
   unitCostCents: number | null
+  // The value the movement moved (an ISSUE: what the sale took out of the stock); absent on a row written before it was recorded
+  valueCents?: bigint | null
 }
 
 export type RestockCostResult =
@@ -225,7 +228,10 @@ export function restockCost(
     if (units === 0 || same.some(row => row.unitCostCents === null)) {
       return { ok: false, reason: FinancePostingFailureReason.COST_MISSING }
     }
-    const total = same.reduce((sum, row) => sum + row.quantity * (row.unitCostCents ?? 0), 0)
+    const total = same.reduce(
+      (sum, row) => sum + movementCostCents(row.quantity, row.unitCostCents ?? 0, row.valueCents),
+      0
+    )
     costCents += prorate(total, quantity, units)
   }
   return { ok: true, costCents }

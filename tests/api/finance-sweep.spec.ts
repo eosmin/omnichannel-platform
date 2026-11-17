@@ -12,6 +12,7 @@ import {
   FinancePostingFailureReason,
   FinancePostingKey,
   FinanceSourceType,
+  InventoryAdjustmentReason,
   InventoryMovementType,
   ShipmentStatus,
   ShippingPayer
@@ -21,11 +22,12 @@ import {
   FinancePostingService,
   FinanceSweepService
 } from '@platform/core/finance-ledger'
+import { InventoryService } from '@platform/core/inventory'
 import { JobNames, reconcileFinanceJobId } from '@platform/core/queues'
 
 import { FinanceReconciler } from '../../apps/worker/src/finance/finance-reconciler.service'
 import { FinanceReconcileScheduler } from '../../apps/worker/src/schedulers/finance-reconcile.scheduler'
-import { createCarrierConnection, createOrder, createShipment } from '../builders'
+import { createCarrierConnection, createOrder, createProduct, createShipment } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
@@ -435,6 +437,109 @@ describe('The sweep of the books and the guard of the close', () => {
     })
   })
 
+  describe('the inventory account against the stock (HC-007)', () => {
+    // The books of the suite carry entries that no stock stands behind (the sales above issue units the fixtures never received), so what
+    // is checked is the DIFFERENCE and that a movement leaves it where it was
+    const stockMove = (input: {
+      productId: string
+      type: InventoryMovementType
+      quantity: number
+      unitCostCents?: number
+    }) =>
+      app.get(InventoryService, { strict: false }).move({
+        storeId: ctx.storeA.id,
+        warehouseId: ctx.warehouseA.id,
+        idempotencyKey: `${prefix}-${randomUUID()}`,
+        reason:
+          input.type === InventoryMovementType.RECEIPT
+            ? InventoryAdjustmentReason.OPENING_STOCK
+            : InventoryAdjustmentReason.DAMAGED,
+        ...input
+      })
+    const postAdjustment = (movementId: string) =>
+      posting.post({
+        organizationId: ctx.orgA.id,
+        sourceType: FinanceSourceType.INVENTORY_MOVEMENT,
+        sourceId: movementId,
+        kind: FinanceEventKind.ADJUST
+      })
+
+    it('keeps the books and the stock the same to the cent through issues of a level whose average has a fraction of a cent', async () => {
+      const product = await createProduct(owner, { storeId: ctx.storeA.id })
+      // 3 at 1.00 and 2 at 1.01: 5 units worth 502, an average of 100.4
+      await stockMove({
+        productId: product.id,
+        type: InventoryMovementType.RECEIPT,
+        quantity: 3,
+        unitCostCents: 100
+      })
+      await stockMove({
+        productId: product.id,
+        type: InventoryMovementType.RECEIPT,
+        quantity: 2,
+        unitCostCents: 101
+      })
+      // The receipts post nothing here (a purchase does, E10): the baseline is where the books and the stock stand with 502 in the level
+      const baseline = (await sweep.inventoryDrift(ctx.orgA.id)).differenceCents
+
+      const first = await stockMove({
+        productId: product.id,
+        type: InventoryMovementType.ADJUSTMENT_OUT,
+        quantity: 2
+      })
+      await postAdjustment(first.movement.id)
+      const level = await owner.inventoryLevel.findFirstOrThrow({
+        where: { productId: product.id, warehouseId: ctx.warehouseA.id }
+      })
+      // The level lost 201 (not 2 x 100) and the books credited the same 201
+      expect(level.valueCents).toBe(301n)
+      expect((await sweep.inventoryDrift(ctx.orgA.id)).differenceCents).toBe(baseline)
+
+      // Everything that is left leaves: no residue of the rounding stays in the books with the stock at zero
+      const last = await stockMove({
+        productId: product.id,
+        type: InventoryMovementType.ADJUSTMENT_OUT,
+        quantity: 3
+      })
+      await postAdjustment(last.movement.id)
+      const emptied = await owner.inventoryLevel.findFirstOrThrow({
+        where: { productId: product.id, warehouseId: ctx.warehouseA.id }
+      })
+      expect(emptied).toMatchObject({ onHand: 0, valueCents: 0n })
+      expect((await sweep.inventoryDrift(ctx.orgA.id)).differenceCents).toBe(baseline)
+      const moved = await owner.inventoryMovement.findMany({
+        where: { productId: product.id, type: InventoryMovementType.ADJUSTMENT_OUT },
+        orderBy: { seq: 'asc' },
+        select: { valueCents: true }
+      })
+      expect(moved.map(row => row.valueCents)).toEqual([201n, 301n])
+    })
+
+    it('says how far the books are from the stock, and a movement that bypassed the books shows', async () => {
+      const before = await sweep.inventoryDrift(ctx.orgA.id)
+      expect(before.differenceCents).toBe(before.ledgerCents - before.stockCents)
+      const product = await createProduct(owner, { storeId: ctx.storeA.id })
+      // Stock that no entry stands behind: 7 cents more in the warehouse than in the books
+      await owner.inventoryLevel.create({
+        data: {
+          storeId: ctx.storeA.id,
+          productId: product.id,
+          warehouseId: ctx.warehouseA.id,
+          onHand: 1,
+          valueCents: 7n
+        }
+      })
+      const after = await sweep.inventoryDrift(ctx.orgA.id)
+      expect(after.stockCents).toBe(before.stockCents + 7n)
+      expect(after.differenceCents).toBe(before.differenceCents - 7n)
+      // The other organization has its own books and its own stock: nothing of this reaches it
+      const other = await sweep.inventoryDrift(ctx.orgB.id)
+      expect(other.stockCents).toBe(0n)
+      // Nothing is posted to close it
+      expect(await sweep.inventoryDrift(ctx.orgA.id)).toEqual(after)
+    })
+  })
+
   describe('the guard of the close', () => {
     it('blocks while an entry failed and nobody fixed it, and opens when it is fixed', async () => {
       const id = await deliveredOrder()
@@ -576,8 +681,46 @@ describe('The sweep of the books and the guard of the close', () => {
       expect(report.queued).toBeGreaterThanOrEqual(2)
       expect(gauge).toEqual([{ labels: { organization_id: ctx.orgA.id }, value: report.unposted }])
       // The mismatches gauge is set to how many there are now, zero included, so that it goes back to zero when they are fixed
+      // The suite's sales credit inventory with no stock behind them, but this run just asked for entries that are not in the books yet: that
+      // is lag and not a difference, so the gauge says zero
+      expect(report.inventoryDriftCents).not.toBe(0)
       expect(counter).toEqual([{ labels: { organization_id: ctx.orgA.id }, value: 0 }])
       expect(report.balanceMismatches).toBe(0)
+    })
+
+    it('counts the inventory of the books against the stock as one difference when nothing waits to be posted, and posts nothing', async () => {
+      const product = await createProduct(owner, { storeId: ctx.storeB.id })
+      const level = await owner.inventoryLevel.create({
+        data: {
+          storeId: ctx.storeB.id,
+          productId: product.id,
+          warehouseId: ctx.warehouseB.id,
+          onHand: 1,
+          valueCents: 7n
+        }
+      })
+      try {
+        const heavy = new CapturedQueue()
+        const counter: { labels: Record<string, string>; value: number }[] = []
+        const reconciler = new FinanceReconciler(
+          sweep,
+          heavy as never,
+          { set: () => undefined } as never,
+          {
+            set: (labels: Record<string, string>, value: number) => counter.push({ labels, value })
+          } as never,
+          logger
+        )
+        const report = await reconciler.reconcile(ctx.orgB.id)
+        expect(report.queued).toBe(0)
+        expect(report.inventoryDriftCents).toBe(-7)
+        expect(report.balanceMismatches).toBe(1)
+        expect(counter).toEqual([{ labels: { organization_id: ctx.orgB.id }, value: 1 }])
+        expect(heavy.jobs).toEqual([])
+        expect(await owner.journalEntry.count({ where: { organizationId: ctx.orgB.id } })).toBe(0)
+      } finally {
+        await owner.inventoryLevel.delete({ where: { id: level.id } })
+      }
     })
 
     it('posts nothing by itself: what it queued is posted by the job, under the key', async () => {

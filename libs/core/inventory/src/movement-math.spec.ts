@@ -189,6 +189,70 @@ describe('weighted-average cost', () => {
   })
 })
 
+describe('the value a movement moves (HC-007)', () => {
+  // 3 units at 1.00 and 2 at 1.01: 5 units worth 502, an average of 100.4 that the movement records as 100
+  const five = level(5, 0, 502n)
+
+  it('records the value an issue took out of the level, not the rounded unit cost times the quantity', () => {
+    const out = applied(plan(five, Type.ADJUSTMENT_OUT, 2))
+    expect(out.unitCostCents).toBe(100)
+    // roundedDivision(502 x 2, 5) = 201; 2 x 100 would be 200 and leave the books a cent away from the stock
+    expect(out.valueCents).toBe(201n)
+    expect(out.next.valueCents).toBe(301n)
+  })
+
+  it('records all the value with the last unit, the residue of the rounding included', () => {
+    const out = applied(plan(five, Type.ADJUSTMENT_OUT, 5))
+    expect(out.valueCents).toBe(502n)
+    expect(out.next).toMatchObject({ onHand: 0, valueCents: 0n })
+  })
+
+  it('records only the value of the units that were on hand when more leave than there are', () => {
+    const out = applied(
+      plan(level(2, 0, 500n), Type.ADJUSTMENT_OUT, 5, { allowNegativeStock: true })
+    )
+    expect(out.valueCents).toBe(500n)
+  })
+
+  it('records no value for what carries no cost, a reserve or a release', () => {
+    expect(applied(plan(level(10, 0, 1000n), Type.RESERVE, 2)).valueCents).toBeNull()
+    expect(applied(plan(level(10, 3, 1000n), Type.RELEASE, 2)).valueCents).toBeNull()
+    expect(
+      applied(plan(level(0), Type.ADJUSTMENT_OUT, 3, { allowNegativeStock: true })).valueCents
+    ).toBeNull()
+  })
+
+  it('records the value that came in: the cost times the quantity, or only the units above zero over a deficit', () => {
+    expect(applied(plan(five, Type.RECEIPT, 2, { unitCostCents: 101 })).valueCents).toBe(202n)
+    expect(applied(plan(level(-2), Type.RECEIPT, 5, { unitCostCents: 100 })).valueCents).toBe(300n)
+    expect(applied(plan(level(10, 0, 3000n), Type.RETURN_IN, 2)).valueCents).toBe(600n)
+  })
+
+  it('takes out, over a run of issues, exactly what came in: the value of the level and the values recorded always add up', () => {
+    // A deterministic run of odd costs and quantities, so that the average is a fraction of a cent almost every time
+    let state = level(0)
+    let cameIn = 0n
+    let tookOut = 0n
+    let seed = 7
+    const next = (limit: number): number => {
+      seed = (seed * 1103515245 + 12345) % 2147483648
+      return (seed % limit) + 1
+    }
+    for (let step = 0; step < 400; step += 1) {
+      const wantsOut = state.onHand > 0 && next(3) === 1
+      const result = wantsOut
+        ? applied(plan(state, Type.ADJUSTMENT_OUT, next(state.onHand)))
+        : applied(plan(state, Type.RECEIPT, next(9), { unitCostCents: 90 + next(25) }))
+      if (result.valueCents !== null) {
+        if (wantsOut) tookOut += result.valueCents
+        else cameIn += result.valueCents
+      }
+      expect(cameIn - tookOut).toBe(result.next.valueCents)
+      state = result.next
+    }
+  })
+})
+
 describe('replayLedger', () => {
   const row = (type: Type, quantity: number, unitCostCents: number | null = null) => ({
     type,

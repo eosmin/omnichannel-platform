@@ -3,6 +3,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { PrismaService } from '@platform/core/database'
 import {
+  AccountRole,
   FinanceEventKind,
   FinancePostingFailureReason,
   FinancePostingKey,
@@ -41,6 +42,16 @@ const RETRIED_REASONS: ReadonlySet<string> = new Set([
   FinancePostingFailureReason.SOURCE_NOT_READY,
   FinancePostingFailureReason.NOT_QUEUED
 ])
+
+// The inventory account of the books against the value of the stock (TDD_16 §4, TDD_18 §11): both in whole USD cents.
+export interface InventoryDrift {
+  // Debits less credits of the account mapped to the inventory role, over every entry of the organization
+  ledgerCents: bigint
+  // The sum of `inventory_levels.value_cents` of every store of the organization
+  stockCents: bigint
+  // ledger less stock: zero when the books and the warehouse agree
+  differenceCents: bigint
+}
 
 export interface SweepOptions {
   // Sources one run previews at most (a test lowers it)
@@ -235,6 +246,31 @@ export class FinanceSweepService {
            OR COALESCE(l.credit_cents, 0) <> COALESCE(b.credit_cents, 0)
       ) differing`
     return Number(rows[0]?.mismatches ?? 0)
+  }
+
+  // The inventory account against the stock (TDD_18 §11): what the books say the warehouses hold and what the levels say they hold. Both
+  // are read in ONE statement, so that a movement that commits in between cannot make them differ. Read only, like the balances: a
+  // difference is the caller's metric and alert, and nothing here (or anywhere) posts to close it, because what to do with a cent or a
+  // sum of money that the stock and the books disagree on is a person's decision. A role with no account mapped reads as a zero ledger.
+  async inventoryDrift(organizationId: string): Promise<InventoryDrift> {
+    const rows = await this.prisma.client.$queryRaw<{ ledger: bigint; stock: bigint }[]>`
+      SELECT
+        COALESCE((
+          SELECT SUM(ln.debit_cents - ln.credit_cents)
+          FROM journal_lines ln
+          JOIN account_role_mappings m
+            ON m.organization_id = ln.organization_id AND m.account_id = ln.account_id AND m.role = ${AccountRole.INVENTORY}
+          WHERE ln.organization_id = ${organizationId}
+        ), 0)::bigint AS ledger,
+        COALESCE((
+          SELECT SUM(lv.value_cents)
+          FROM inventory_levels lv
+          JOIN stores st ON st.id = lv.store_id
+          WHERE st.organization_id = ${organizationId}
+        ), 0)::bigint AS stock`
+    const ledgerCents = rows[0]?.ledger ?? 0n
+    const stockCents = rows[0]?.stock ?? 0n
+    return { ledgerCents, stockCents, differenceCents: ledgerCents - stockCents }
   }
 
   private async existingKeys(

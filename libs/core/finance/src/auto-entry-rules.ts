@@ -7,6 +7,7 @@ import {
 } from '@platform/core/domain'
 
 import type { DraftLine } from './entry-rules'
+import { movementCostCents } from './movement-cost'
 import { allocateByWeight } from './tax-rules'
 
 // The pure rules of the automatic entries (TDD_18 §4.2, E1 to E3 and E9), Step 4B.6a. They take rows the service already
@@ -157,12 +158,14 @@ export function saleAmounts(order: SaleOrderRow): SaleAmountsResult {
 export interface IssueMovementRow {
   quantity: number
   unitCostCents: number | null
+  // The value the movement took out of the stock: what the books credit to inventory, so that the two agree to the cent
+  valueCents?: bigint | null
 }
 
 export type CostResult =
   { ok: true; costCents: number } | { ok: false; reason: FinancePostingFailureReason }
 
-// quantity x the cost one unit carried, summed. A movement that left with no cost (nothing on hand to average) cannot be valued
+// The value each movement took out of the stock, summed (a movement written before the value was recorded: units x the cost one unit carried). A movement that left with no cost (nothing on hand to average) cannot be valued
 // and is a failure: a cost of zero would hide a gap in the books. No movement at all is a cost of zero (a service, or a product
 // whose stock is not tracked).
 export function issueCost(movements: readonly IssueMovementRow[]): CostResult {
@@ -171,7 +174,7 @@ export function issueCost(movements: readonly IssueMovementRow[]): CostResult {
     if (movement.unitCostCents === null) {
       return { ok: false, reason: FinancePostingFailureReason.COST_MISSING }
     }
-    costCents += movement.quantity * movement.unitCostCents
+    costCents += movementCostCents(movement.quantity, movement.unitCostCents, movement.valueCents)
   }
   return { ok: true, costCents }
 }
@@ -290,6 +293,8 @@ export interface AdjustmentMovementRow {
   reason: string | null
   quantity: number
   unitCostCents: number | null
+  // The value the movement moved: the loss of units out is exactly what the stock lost (the units in keep the cost times the units)
+  valueCents?: bigint | null
 }
 
 const OUT_TYPES: ReadonlySet<string> = new Set([
@@ -317,7 +322,9 @@ export function adjustmentLines(input: {
       ? { ok: true, lines: [] }
       : { ok: false, reason: FinancePostingFailureReason.COST_MISSING }
   }
-  const cents = movement.quantity * movement.unitCostCents
+  const cents = OUT_TYPES.has(movement.type)
+    ? movementCostCents(movement.quantity, movement.unitCostCents, movement.valueCents)
+    : movement.quantity * movement.unitCostCents
   if (cents === 0) return { ok: true, lines: [] }
   if (OUT_TYPES.has(movement.type)) {
     return linesOf(
