@@ -24,7 +24,8 @@ const base = {
   kind: FiscalDocumentKind.SALE,
   status: FiscalDocumentStatus.ACCEPTED,
   attempts: 1,
-  rejectionReason: null as string | null
+  rejectionReason: null as string | null,
+  replacesDocumentId: null as string | null
 }
 const none = new Set<string>()
 
