@@ -762,13 +762,32 @@ describe('The tables of the ledger', () => {
         expect(await can(role, 'last_entry_hash')).toBe(false)
         // The row of the settings is never deleted: a new one would start the counter and the lock again
         expect(await canTable(role, 'DELETE')).toBe(false)
-        for (const column of [
-          'locked_through',
-          'recognize_sale_on',
-          'country_code',
-          'rounding_account_id'
-        ]) {
+        // The country and the start date are set once, when the books are set up (LED-R2-040)
+        expect(await can(role, 'country_code')).toBe(false)
+        expect(await can(role, 'accounting_start_date')).toBe(false)
+        for (const column of ['locked_through', 'recognize_sale_on', 'rounding_account_id']) {
           expect(await can(role, column)).toBe(true)
+        }
+      }
+    })
+
+    it('refuse a real UPDATE of the start date or the country as the application', async () => {
+      const urls = connectionUrls()
+      for (const url of [urls.app, urls.worker]) {
+        const client = createOwnerClient(url)
+        try {
+          await expect(
+            client.$executeRawUnsafe(
+              `UPDATE finance_settings SET country_code = 'GT' WHERE organization_id = '${orgA.id}'`
+            )
+          ).rejects.toThrow(/permission denied/)
+          await expect(
+            client.$executeRawUnsafe(
+              `UPDATE finance_settings SET accounting_start_date = '2020-01-01' WHERE organization_id = '${orgA.id}'`
+            )
+          ).rejects.toThrow(/permission denied/)
+        } finally {
+          await client.$disconnect()
         }
       }
     })
@@ -1333,6 +1352,48 @@ describe('The tables of the ledger', () => {
       })
       await owner.financeChainIncident.create({ data: incident(orgA.id) })
       expect(await owner.financeChainIncident.count({ where: { organizationId: orgA.id } })).toBe(2)
+    })
+
+    it('cannot be closed by the API role, only by the worker (LED-516)', async () => {
+      const row = await owner.financeChainIncident.create({ data: incident(orgB.id) })
+      const closeAs = async (url: string): Promise<unknown> => {
+        const client = createOwnerClient(url)
+        try {
+          return await client.$executeRawUnsafe(
+            `UPDATE finance_chain_incidents SET resolved_at = now() WHERE id = '${row.id}'`
+          )
+        } finally {
+          await client.$disconnect()
+        }
+      }
+      await expect(closeAs(connectionUrls().app)).rejects.toThrow(/permission denied/)
+      await closeAs(connectionUrls().worker)
+      expect(
+        (await owner.financeChainIncident.findUniqueOrThrow({ where: { id: row.id } })).resolvedAt
+      ).not.toBeNull()
+    })
+
+    it('write resolved_at once: a closed incident is not reopened or moved, and not closed before it was detected', async () => {
+      const row = await owner.financeChainIncident.create({ data: incident(orgB.id) })
+      await expect(
+        owner.financeChainIncident.update({
+          where: { id: row.id },
+          data: { resolvedAt: new Date(row.detectedAt.getTime() - 60_000) }
+        })
+      ).rejects.toThrow(/before it was detected/)
+      await owner.financeChainIncident.update({
+        where: { id: row.id },
+        data: { resolvedAt: new Date(row.detectedAt.getTime() + 1000) }
+      })
+      await expect(
+        owner.financeChainIncident.update({ where: { id: row.id }, data: { resolvedAt: null } })
+      ).rejects.toThrow(/cannot be reopened/)
+      await expect(
+        owner.financeChainIncident.update({
+          where: { id: row.id },
+          data: { resolvedAt: new Date(row.detectedAt.getTime() + 5000) }
+        })
+      ).rejects.toThrow(/cannot be reopened/)
     })
 
     it('refuse a reason that is not a code of the check', async () => {

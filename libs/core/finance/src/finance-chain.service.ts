@@ -247,9 +247,16 @@ export class FinanceChainMonitor {
     this.logger.setContext(FinanceChainMonitor.name)
   }
 
-  async check(organizationId: string, now: Date = new Date()): Promise<ChainCheck> {
+  // `resolve` says whether a passing check may close the open incident. Only the weekly job (the worker role) may: the database
+  // takes UPDATE(resolved_at) away from the API role, so an application taken over cannot declare the books sound again. A check the
+  // auditor asks for passes `resolve: false` and reports an open incident as STILL_OPEN until the job closes it
+  async check(
+    organizationId: string,
+    now: Date = new Date(),
+    options: { resolve: boolean } = { resolve: true }
+  ): Promise<ChainCheck> {
     const verification = await this.verifier.verify(organizationId)
-    const incident = await this.record(organizationId, verification, now)
+    const incident = await this.record(organizationId, verification, now, options.resolve)
     this.breaks.set({ organization_id: organizationId }, verification.ok ? 0 : 1)
     return { verification, incident }
   }
@@ -257,9 +264,16 @@ export class FinanceChainMonitor {
   private async record(
     organizationId: string,
     verification: ChainVerification,
-    now: Date
+    now: Date,
+    resolve: boolean
   ): Promise<ChainIncidentChange> {
     const broken = verification.break
+    if (broken === null && !resolve) {
+      const open = await this.prisma.client.financeChainIncident.count({
+        where: { organizationId, resolvedAt: null }
+      })
+      return open > 0 ? ChainIncidentChange.STILL_OPEN : ChainIncidentChange.NONE
+    }
     if (broken === null) {
       // A passing check closes whatever was open (a chain restored from a backup, or a head that moved during an earlier walk)
       const closed = await this.prisma.client.financeChainIncident.updateMany({

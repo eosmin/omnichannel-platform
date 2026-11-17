@@ -75,7 +75,7 @@ export class FinanceChainService {
     this.running.add(organizationId)
     let check: ChainCheck
     try {
-      check = await this.monitor.check(organizationId)
+      check = await this.monitor.check(organizationId, new Date(), { resolve: false })
     } finally {
       this.running.delete(organizationId)
     }

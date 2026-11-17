@@ -205,6 +205,18 @@ describe('The weekly check of the chain, its incident and the guard of the close
     ).toBeGreaterThanOrEqual(2)
   })
 
+  it("leaves the incident open when the check is the auditor's (resolve: false): only the job closes it", async () => {
+    await tamperWithLedger(owner, [firstMemo(ctx.orgA.id, 'Original memo')])
+
+    const result = await monitor.check(ctx.orgA.id, new Date(), { resolve: false })
+
+    expect(result.verification.ok).toBe(true)
+    expect(result.incident).toBe(ChainIncidentChange.STILL_OPEN)
+    expect(await openIncidents(ctx.orgA.id)).toHaveLength(1)
+    // The next check of the job (the default) closes it
+    expect((await monitor.check(ctx.orgA.id)).incident).toBe(ChainIncidentChange.RESOLVED)
+  })
+
   it('opens an incident for a head that does not follow the last entry (a tail cut off behind the application)', async () => {
     await tamperWithLedger(owner, [
       `UPDATE finance_settings SET last_entry_hash = 'cut' WHERE organization_id = '${ctx.orgB.id}'`
