@@ -66,12 +66,34 @@ export type SvEventAnswer =
   | { readonly kind: 'token' }
   | { readonly kind: 'credentials' }
 
-export function classifyEventAnswer(status: number, json: unknown): SvEventAnswer {
-  const body = recordOf(json)
+// What the authority said when it did not take the document or the event: one reading for both, so a new code is learned once. A status that
+// says the token is bad, a code that says the credentials are, a fault of the moment, a repeated generation code, or a refusal.
+type SvFailure =
+  | { readonly kind: 'token' }
+  | { readonly kind: 'credentials' }
+  | { readonly kind: 'transient' }
+  | {
+      readonly kind: 'duplicate'
+      readonly code: string
+      readonly body: Readonly<Record<string, unknown>>
+    }
+  | {
+      readonly kind: 'rejected'
+      readonly code: string
+      readonly body: Readonly<Record<string, unknown>>
+    }
+
+function classifyFailure(status: number, body: Readonly<Record<string, unknown>>): SvFailure {
   if (status === 401 || status === 403) return { kind: 'token' }
   if (status >= 500) return { kind: 'transient' }
+  return classifyFailure(status, body)
+}
+
+export function classifyEventAnswer(status: number, json: unknown): SvEventAnswer {
+  const body = recordOf(json)
   const seal = textOf(body['selloRecibido'])
   if (
+    status < 400 &&
     (body['estado'] === SvAnswerStates.RECEIVED || body['estado'] === SvAnswerStates.PROCESSED) &&
     seal !== null
   ) {
@@ -82,20 +104,13 @@ export function classifyEventAnswer(status: number, json: unknown): SvEventAnswe
       body
     }
   }
-  const code = codeOf(body['codigoMsg'])
-  const number = codeNumber(code)
-  if (SvTokenCodes.has(number)) return { kind: 'token' }
-  if (SvCredentialCodes.has(number)) return { kind: 'credentials' }
-  if (body['estado'] === SvAnswerStates.REFUSED || status === 400) {
-    if (code === null) return { kind: 'transient' }
-    if (SvDuplicateCodes.has(number)) return { kind: 'duplicate', body }
-    return SvTransientCodes.has(number) ? { kind: 'transient' } : { kind: 'rejected', code, body }
-  }
-  return { kind: 'transient' }
+  const failure = classifyFailure(status, body)
+  return failure.kind === 'duplicate' ? { kind: 'duplicate', body: failure.body } : failure
 }
 
 export function classifyReception(status: number, json: unknown): SvReception {
   const body = recordOf(json)
+  // A bad token or a fault of the server is never read as an answer, whatever the body says
   if (status === 401 || status === 403) return { kind: 'token' }
   if (status >= 500) return { kind: 'transient' }
   const seal = textOf(body['selloRecibido'])

@@ -3,9 +3,11 @@ import type { BuiltDocument, FiscalContingencyEvent, FiscalIssuerInput } from '@
 import {
   SvCodePatterns,
   SvContingency,
+  SvContingencyReasonCodes,
   SvContingencyRefusals,
   SvEnvironmentCodes,
-  SvLimits
+  SvLimits,
+  SvTransmission
 } from './sv-constants'
 import { recordOf, textOf } from './sv-http'
 import { partyOf } from './sv-invalidation'
@@ -36,16 +38,21 @@ export function buildContingencyEvent(
   issuer: FiscalIssuerInput,
   now: string
 ): SvContingencyBuilt {
-  const reason = Number.parseInt(input.reason, 10)
-  if (!(Object.values(SvContingency.REASONS) as number[]).includes(reason)) {
+  if (!SvContingencyReasonCodes.includes(input.reason)) {
     return refuse(SvContingencyRefusals.REASON_UNKNOWN)
   }
+  const reason = Number(input.reason)
+  // The words of a person travel only with the reason "other" (the catalog has no field for them elsewhere)
   const motive = input.motive?.trim() ?? ''
-  if (reason === SvContingency.OTHER_REASON && motive === '') {
+  if (reason === SvContingency.REASONS.OTHER && motive === '') {
     return refuse(SvContingencyRefusals.MOTIVE_REQUIRED)
   }
-  if (motive.length > SvContingency.MOTIVE_MAX) {
-    return refuse(SvContingencyRefusals.MOTIVE_REQUIRED)
+  if (reason === SvContingency.REASONS.OTHER && motive.length > SvContingency.MOTIVE_MAX) {
+    return refuse(SvContingencyRefusals.MOTIVE_TOO_LONG)
+  }
+  // The generation code of the event is the schema's: a UUID, which is checked here and not after the login and the signature
+  if (!SvCodePatterns.GENERATION_CODE.test(input.eventId.toUpperCase())) {
+    return refuse(SvContingencyRefusals.EVENT_ID_INVALID)
   }
 
   const nit = digitsOf(issuer.taxId)
@@ -72,7 +79,7 @@ export function buildContingencyEvent(
 
   if (input.responsible === null) return refuse(SvContingencyRefusals.RESPONSIBLE_REQUIRED)
   const responsible = partyOf(input.responsible)
-  if (responsible === null || responsible.idNumber.length > SvContingency.PARTY_ID_MAX) {
+  if (responsible === null) {
     return refuse(SvContingencyRefusals.PARTY_INVALID)
   }
 
@@ -84,9 +91,16 @@ export function buildContingencyEvent(
   const seen = new Set<string>()
   for (const [index, doc] of input.documents.entries()) {
     const about = listedOf(doc)
-    // A document that is not a deferred one, or that is listed twice, is not a thing the authority takes
+    // A document that is not a deferred one of this reason and this environment, or that is listed twice, is not a thing the authority
+    // takes: the event must say what its documents say
     const id = recordOf(doc.payload['identificacion'])
-    if (about === null || seen.has(about.generationCode) || id['tipoOperacion'] !== 2) {
+    if (
+      about === null ||
+      seen.has(about.generationCode) ||
+      id['tipoOperacion'] !== SvTransmission.OPERATION_CONTINGENCY ||
+      id['tipoContingencia'] !== reason ||
+      id['ambiente'] !== SvEnvironmentCodes[issuer.environment]
+    ) {
       return refuse(SvContingencyRefusals.DOCUMENTS_INVALID)
     }
     seen.add(about.generationCode)
@@ -95,7 +109,13 @@ export function buildContingencyEvent(
 
   const started = new Date(input.startedAt)
   const ended = new Date(input.endedAt)
-  if (Number.isNaN(started.getTime()) || Number.isNaN(ended.getTime()) || ended < started) {
+  // The window is a past one: it starts before it ends, and it has ended by the moment of the event
+  if (
+    Number.isNaN(started.getTime()) ||
+    Number.isNaN(ended.getTime()) ||
+    ended < started ||
+    ended.getTime() > new Date(now).getTime()
+  ) {
     return refuse(SvContingencyRefusals.WINDOW_INVALID)
   }
   const sent = salvadorMoment(now)
@@ -130,7 +150,7 @@ export function buildContingencyEvent(
         hInicio: from.time,
         hFin: to.time,
         tipoContingencia: reason,
-        motivoContingencia: reason === SvContingency.OTHER_REASON ? motive : null
+        motivoContingencia: reason === SvContingency.REASONS.OTHER ? motive : null
       }
     }
   }

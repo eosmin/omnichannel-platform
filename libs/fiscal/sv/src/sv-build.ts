@@ -35,6 +35,7 @@ import {
   SvSchemaVersions,
   SvShippingLine,
   SvContingency,
+  SvContingencyReasonCodes,
   SvTransmission,
   SvVat
 } from './sv-constants'
@@ -196,22 +197,22 @@ function transmissionOf(contingency: FiscalBuildContingency | undefined): Record
       motivoContin: null
     }
   }
-  const reason = Number.parseInt(contingency.reason, 10)
-  if (!(Object.values(SvContingency.REASONS) as number[]).includes(reason)) {
+  if (!SvContingencyReasonCodes.includes(contingency.reason)) {
     throw new SvBuildError(SvBuildErrors.CONTINGENCY_REASON_UNKNOWN)
   }
+  const reason = Number(contingency.reason)
   const motive = contingency.motive?.trim() ?? ''
-  if (
-    reason === SvContingency.OTHER_REASON &&
-    (motive === '' || motive.length > SvContingency.MOTIVE_MAX)
-  ) {
+  if (reason === SvContingency.REASONS.OTHER && motive === '') {
     throw new SvBuildError(SvBuildErrors.CONTINGENCY_MOTIVE_REQUIRED)
+  }
+  if (reason === SvContingency.REASONS.OTHER && motive.length > SvContingency.MOTIVE_MAX) {
+    throw new SvBuildError(SvBuildErrors.CONTINGENCY_MOTIVE_TOO_LONG)
   }
   return {
     tipoModelo: SvTransmission.MODEL_DEFERRED,
     tipoOperacion: SvTransmission.OPERATION_CONTINGENCY,
     tipoContingencia: reason,
-    motivoContin: reason === SvContingency.OTHER_REASON ? motive : null
+    motivoContin: reason === SvContingency.REASONS.OTHER ? motive : null
   }
 }
 

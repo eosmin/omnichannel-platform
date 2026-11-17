@@ -119,18 +119,19 @@ export const SvContingency = {
     POWER_DOWN: 4,
     OTHER: 5
   } as const,
-  // The only reason that carries the person's own words (up to 500 characters); the others have none
-  OTHER_REASON: 5,
   // The time to send the documents of the lot once the event was taken (Normativa cuadro 5)
   TRANSMIT_WITHIN_HOURS: 72,
   // The documents one event lists (the schema's maximum)
   MAX_DOCUMENTS: 1000,
-  MOTIVE_MAX: 500,
-  PARTY_NAME_MAX: 100,
-  PARTY_ID_MAX: 25
+  MOTIVE_MAX: 500
 } as const
 
 // Why this provider refuses to make or report a contingency, in codes of its own (never a value)
+// A reason as the manifest declares it (text of CAT-005): the exact code, never one that merely starts with a digit
+export const SvContingencyReasonCodes: readonly string[] = Object.values(SvContingency.REASONS).map(
+  String
+)
+
 export const SvContingencyRefusals = {
   CREDENTIALS_INCOMPLETE: 'credentials_incomplete',
   CREDENTIALS_REJECTED: 'credentials_rejected',
@@ -139,6 +140,8 @@ export const SvContingencyRefusals = {
   DOCUMENT_INCOMPLETE: 'document_incomplete',
   REASON_UNKNOWN: 'contingency_reason_unknown',
   MOTIVE_REQUIRED: 'contingency_motive_required',
+  MOTIVE_TOO_LONG: 'contingency_motive_too_long',
+  EVENT_ID_INVALID: 'contingency_event_id_invalid',
   RESPONSIBLE_REQUIRED: 'contingency_responsible_required',
   PARTY_INVALID: 'contingency_party_invalid',
   DOCUMENTS_INVALID: 'contingency_documents_invalid',
@@ -198,7 +201,11 @@ export const SvProviderDataKeys = {
   ISSUE_DATE: 'issueDate',
   PROCESSED_AT: 'processedAt',
   OBSERVATIONS: 'observations',
-  SIGNED_DOCUMENT: 'signedDocument'
+  SIGNED_DOCUMENT: 'signedDocument',
+  // Of a contingency: the documents its event listed, the hours it gave to send them, and whether the event was one the authority held
+  DOCUMENTS: 'documents',
+  WINDOW_HOURS: 'windowHours',
+  DUPLICATE: 'duplicate'
 } as const
 
 // The reasons this provider gives when it refuses a document before or after the authority did (codes of its own, never a value). The
@@ -334,6 +341,8 @@ export const SvCodePatterns = {
   POINT_OF_SALE: /^P\d{3}$/,
   TAX_ID: /^(\d{14}|\d{9})$/,
   REGISTRATION: /^\d{2,8}$/,
+  // The generation code of a document or an event: a UUID in capitals
+  GENERATION_CODE: /^[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}$/,
   CONTROL_NUMBER: /^DTE-\d{2}-[MBSP]\d{3}P\d{3}-\d{15}$/
 } as const
 
@@ -353,7 +362,8 @@ export const SvBuildErrors = {
   ITEM_DESCRIPTION_EMPTY: 'item_description_empty',
   QUANTITY_INVALID: 'quantity_invalid',
   CONTINGENCY_REASON_UNKNOWN: 'contingency_reason_unknown',
-  CONTINGENCY_MOTIVE_REQUIRED: 'contingency_motive_required'
+  CONTINGENCY_MOTIVE_REQUIRED: 'contingency_motive_required',
+  CONTINGENCY_MOTIVE_TOO_LONG: 'contingency_motive_too_long'
 } as const
 export type SvBuildErrorCode = (typeof SvBuildErrors)[keyof typeof SvBuildErrors]
 

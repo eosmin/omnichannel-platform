@@ -109,7 +109,7 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
   // The generation codes of the events it received: one sent again is a duplicate (code 4)
   const eventCodes = new Set<string>()
   // The documents a contingency event listed (by generation code), with the instant the authority took the event: a deferred document is
-  // taken only if it is listed, and inside the window (72 hours). The window is read from the clock the spec sets (`windowClock`).
+  // taken only if it is listed. The window of 72 hours is not enforced by this fake.
   const listed = new Map<string, number>()
   const stats: FakeAuthority['stats'] = {
     logins: 0,

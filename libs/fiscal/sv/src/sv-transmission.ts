@@ -33,6 +33,7 @@ import {
   SvProviderDataKeys,
   SvRejectionReasons,
   SvTimeouts,
+  SvTransmission,
   SvUserAgent,
   SvVoidRefusals
 } from './sv-constants'
@@ -459,8 +460,14 @@ export async function deferDocument(
   }
   const about = identificationOf(built)
   const id = recordOf(built.payload['identificacion'])
-  // Only a document built for the deferred model is kept: it says so (model 2, operation 2)
-  if (about === null || id['tipoModelo'] !== 2 || id['tipoOperacion'] !== 2) {
+  // Only a document built for the deferred model is kept: it says so (model 2, operation 2), and it is the issuer's own: the key that signs
+  // it is the one of the NIT in the document
+  if (
+    about === null ||
+    id['tipoModelo'] !== SvTransmission.MODEL_DEFERRED ||
+    id['tipoOperacion'] !== SvTransmission.OPERATION_CONTINGENCY ||
+    digitsOf(textOf(recordOf(built.payload['emisor'])['nit']) ?? '') !== nit
+  ) {
     return {
       outcome: FiscalDeferOutcome.REJECTED,
       reason: SvContingencyRefusals.DOCUMENT_INCOMPLETE
@@ -596,19 +603,21 @@ export async function reportContingencyEvent(
     }
     if (answer.kind === 'transient') return { outcome: FiscalContingencyReportOutcome.UNAVAILABLE }
     // The event is the authority's already (the answer of an earlier call was lost): it is taken, as the port says an event it holds is
-    // answered. The window runs from now, the one instant this side can vouch for; the seal is not here (the authority did not repeat it).
+    // answered; the seal is not here (the authority did not repeat it).
     // **[TO CONFIRM IN THE SANDBOX]** whether the authority repeats the seal, and the code it gives a repeated event.
     if (answer.kind === 'duplicate') {
       return {
         outcome: FiscalContingencyReportOutcome.ACCEPTED,
-        receivedAt: new Date(clock()).toISOString(),
+        // The event was sent after its window ended, so it cannot have been taken before: the end of the window is the earliest instant the
+        // authority can have taken it, and a window counted from it is never longer than the authority's
+        receivedAt: event.endedAt,
         providerData: {
           [SvProviderDataKeys.GENERATION_CODE]: String(
             recordOf(built.event['identificacion'])['codigoGeneracion']
           ),
-          documents: (built.event['detalleDTE'] as unknown[]).length,
-          window_hours: SvContingency.TRANSMIT_WITHIN_HOURS,
-          duplicate: true
+          [SvProviderDataKeys.DOCUMENTS]: (built.event['detalleDTE'] as unknown[]).length,
+          [SvProviderDataKeys.WINDOW_HOURS]: SvContingency.TRANSMIT_WITHIN_HOURS,
+          [SvProviderDataKeys.DUPLICATE]: true
         },
         response: answer.body
       }
@@ -631,8 +640,8 @@ export async function reportContingencyEvent(
           recordOf(built.event['identificacion'])['codigoGeneracion']
         ),
         // The documents the event listed, for whoever reads the record
-        documents: (built.event['detalleDTE'] as unknown[]).length,
-        window_hours: SvContingency.TRANSMIT_WITHIN_HOURS
+        [SvProviderDataKeys.DOCUMENTS]: (built.event['detalleDTE'] as unknown[]).length,
+        [SvProviderDataKeys.WINDOW_HOURS]: SvContingency.TRANSMIT_WITHIN_HOURS
       },
       response: answer.body
     }

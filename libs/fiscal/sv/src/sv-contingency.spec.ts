@@ -1,5 +1,6 @@
 import {
   FiscalContingencyReportOutcome,
+  FiscalEnvironment,
   FiscalDeferOutcome,
   FiscalSubmitOutcome
 } from '@platform/core/domain'
@@ -169,6 +170,27 @@ describe('the event of a contingency', () => {
     expect(reason(eventOf(documents, { endedAt: '2026-11-18T09:00:00.000Z' }))).toBe(
       SvContingencyRefusals.WINDOW_INVALID
     )
+    // A window that has not ended yet is not reported
+    expect(reason(eventOf(documents, { endedAt: '2026-11-18T16:00:00.000Z' }))).toBe(
+      SvContingencyRefusals.WINDOW_INVALID
+    )
+    // A reason is the code of the catalog, not whatever starts with a digit
+    expect(reason(eventOf(documents, { reason: '1abc' }))).toBe(
+      SvContingencyRefusals.REASON_UNKNOWN
+    )
+    expect(reason(eventOf(documents, { reason: '5', motive: 'x'.repeat(501) }))).toBe(
+      SvContingencyRefusals.MOTIVE_TOO_LONG
+    )
+    expect(reason(eventOf(documents, { eventId: 'not-a-uuid' }))).toBe(
+      SvContingencyRefusals.EVENT_ID_INVALID
+    )
+    // The event says what its documents say: another reason, or another environment
+    expect(reason(eventOf(documents, { reason: '3' }))).toBe(
+      SvContingencyRefusals.DOCUMENTS_INVALID
+    )
+    expect(
+      reason(eventOf(documents), { ...ISSUER, environment: FiscalEnvironment.PRODUCTION })
+    ).toBe(SvContingencyRefusals.DOCUMENTS_INVALID)
     expect(reason(eventOf(documents), { ...ISSUER, phone: null })).toBe(
       SvContingencyRefusals.ISSUER_INCOMPLETE
     )
@@ -299,8 +321,10 @@ describe('the provider against the authority while it is down', () => {
     const first = await provider.reportContingency(eventOf(documents), ctx())
     expect(first.outcome).toBe(FiscalContingencyReportOutcome.ACCEPTED)
     const again = await provider.reportContingency(eventOf(documents), ctx())
+    // The window counts from the end of the contingency: the earliest instant the authority can have taken the event
     expect(again).toMatchObject({
       outcome: FiscalContingencyReportOutcome.ACCEPTED,
+      receivedAt: '2026-11-18T14:30:00.000Z',
       providerData: { duplicate: true }
     })
     expect(authority.stats.contingencies).toBe(2)
@@ -334,6 +358,87 @@ describe('the provider against the authority while it is down', () => {
       ctx({ credentials: {} })
     )
     expect(noCredentials).toMatchObject({ neverSent: true })
+    expect(authority.stats.contingencies).toBe(before)
+  })
+
+  it('does not defer a document of another issuer, nor one for a reason the catalog does not have', async () => {
+    const other = await provider.build(
+      deferredSale(20, { receiver: CONSUMER, issuer: { ...ISSUER, taxId: '0614-010101-102-9' } })
+    )
+    expect(await provider.deferDocument(other, ctx())).toEqual({
+      outcome: FiscalDeferOutcome.REJECTED,
+      reason: SvContingencyRefusals.DOCUMENT_INCOMPLETE
+    })
+    expect(() =>
+      buildDocument(deferredSale(21, { contingency: { reason: '5abc', motive: null } }))
+    ).toThrow(SvBuildErrors.CONTINGENCY_REASON_UNKNOWN)
+    expect(() =>
+      buildDocument(deferredSale(22, { contingency: { reason: '5', motive: 'x'.repeat(501) } }))
+    ).toThrow(SvBuildErrors.CONTINGENCY_MOTIVE_TOO_LONG)
+  })
+
+  it('counts the window from our clock when the authority says a later instant than ours', async () => {
+    const early = svProvider({
+      signer: officialSigner({
+        baseUrl: authority.baseUrl,
+        fetch: (url, init) => fetch(url, init),
+        timeoutMs: 2000
+      }),
+      // Before the 09:00 of 17/11/2026 (UTC-6) the fake authority answers with
+      now: () => Date.parse('2026-11-17T10:00:00.000Z'),
+      endpoints: authority.endpoints
+    })
+    // The event must have ended by the clock of the provider
+    const documents = [stored(await made(23))]
+    const reported = await early.reportContingency(
+      eventOf(documents, {
+        startedAt: '2026-11-17T04:00:00.000Z',
+        endedAt: '2026-11-17T09:00:00.000Z'
+      }),
+      ctx()
+    )
+    expect(reported).toMatchObject({
+      outcome: FiscalContingencyReportOutcome.ACCEPTED,
+      receivedAt: '2026-11-17T10:00:00.000Z'
+    })
+  })
+
+  it('asks for a new token once when the authority says the one it has is not good', async () => {
+    const documents = [stored(await made(24))]
+    await provider.reportContingency(eventOf(documents), ctx())
+    authority.expireTokens()
+    const again = await provider.reportContingency(
+      eventOf(documents, { eventId: '3c9d6bcd-bbfd-4b2d-9b5d-00000000a002' }),
+      ctx()
+    )
+    expect(again.outcome).toBe(FiscalContingencyReportOutcome.ACCEPTED)
+  })
+
+  it('does not send the event when the password of the account is refused, nor when the signing service is down', async () => {
+    const documents = [stored(await made(25))]
+    const before = authority.stats.contingencies
+    const refused = await provider.reportContingency(
+      eventOf(documents),
+      ctx({ credentials: { ...CREDENTIALS, [SvCredentialKeys.API_PASSWORD]: 'wrong' } })
+    )
+    expect(refused).toMatchObject({
+      outcome: FiscalContingencyReportOutcome.REJECTED,
+      reason: SvContingencyRefusals.CREDENTIALS_REJECTED,
+      neverSent: true
+    })
+    authority.signerDown = true
+    expect((await provider.reportContingency(eventOf(documents), ctx())).outcome).toBe(
+      FiscalContingencyReportOutcome.UNAVAILABLE
+    )
+    authority.signerDown = false
+    const badKey = await provider.reportContingency(
+      eventOf(documents),
+      ctx({ credentials: { ...CREDENTIALS, [SvCredentialKeys.CERTIFICATE_PASSWORD]: 'wrong' } })
+    )
+    expect(badKey).toMatchObject({
+      reason: SvContingencyRefusals.SIGNING_CREDENTIALS_REJECTED,
+      neverSent: true
+    })
     expect(authority.stats.contingencies).toBe(before)
   })
 })
