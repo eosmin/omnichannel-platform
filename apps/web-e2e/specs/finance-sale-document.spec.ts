@@ -4,6 +4,7 @@ import { AppPaths } from '@platform/api-client'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { addFinanceViewer, addOwnerOfNewStore, addShippedTaxedSale } from '../support/database'
+import { expectDialogHoldsItsContent } from '../support/dialog-fit'
 import { signIn } from '../support/login'
 import { expect, test } from '../support/test'
 
@@ -116,6 +117,53 @@ test.describe('Finance → a sale, its fiscal document and its entry', () => {
     // A sale to a customer with no fiscal data is a consumer document: no receiver is asked for
     await expect(facts).toContainText('Simulated consumer document')
     await expect(dialog.getByTestId('fiscal-receiver')).toBeVisible()
+
+    // What the document was sealed with: the line, the tax by rate and the issuer as it was (Step 4B.9b-5c)
+    const sealed = dialog.getByTestId('fiscal-sealed')
+    await expect(sealed).toBeVisible()
+    await expect(sealed.getByTestId('fiscal-sealed-inconsistent')).toHaveCount(0)
+    const line = sealed.getByTestId('fiscal-sealed-line')
+    await expect(line).toHaveCount(1)
+    await expect(line).toContainText(/\$11\.30(?!\d)/)
+    await expect(line).toContainText('13 %')
+    await expect(line).toContainText(/\$2\.60(?!\d)/)
+    await expect(line).toContainText(/\$22\.60(?!\d)/)
+    const rate = sealed.getByTestId('fiscal-sealed-rate')
+    await expect(rate).toHaveCount(1)
+    await expect(rate).toContainText(/\$20\.00(?!\d)/)
+    await expect(rate).toContainText(/\$2\.60(?!\d)/)
+    const issuer = sealed.getByTestId('fiscal-sealed-issuer')
+    await expect(issuer).toContainText(`E2E Shop ${run}`)
+    await expect(issuer).toContainText('0614-010101-101-0')
+    await expectDialogHoldsItsContent(page, dialog)
+  })
+
+  test('the list of documents narrows by the day the document was made', async ({ page }) => {
+    await signIn(page, ownerEmail)
+    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.goto(AppPaths.finance.fiscal)
+    const rows = page.getByTestId('fiscal-document-row')
+    await expect(rows).toHaveCount(1)
+
+    // A period that starts tomorrow holds nothing, and clearing it brings the document back
+    const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
+    await page.getByLabel(fiscal.filters.from, { exact: true }).fill(tomorrow)
+    await expect(page.getByTestId('fiscal-empty')).toBeVisible()
+    await page.getByRole('button', { name: fiscal.filters.clear, exact: true }).click()
+    await expect(rows).toHaveCount(1)
+
+    // A period that holds today keeps it
+    await page.getByLabel(fiscal.filters.from, { exact: true }).fill('2026-01-01')
+    await page.getByLabel(fiscal.filters.to, { exact: true }).fill(todayIso())
+    await expect(rows).toHaveCount(1)
+
+    // A period that ends before it starts is told and not asked: the list stays as it was
+    await page.getByLabel(fiscal.filters.from, { exact: true }).fill(todayIso())
+    await page.getByLabel(fiscal.filters.to, { exact: true }).fill('2026-01-01')
+    await expect(page.getByTestId('fiscal-period-problem')).toHaveText(
+      fiscal.filters.problems.order
+    )
+    await expect(rows).toHaveCount(1)
   })
 
   test('its entry is in the books: the trial balance balances and the statement reads $20.00 of sale', async ({

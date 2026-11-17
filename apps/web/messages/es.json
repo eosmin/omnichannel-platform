@@ -7330,7 +7330,16 @@
       "noIssuerLink": "Configurar el emisor",
       "filters": {
         "status": "Estado",
-        "allStatuses": "Todos los estados"
+        "allStatuses": "Todos los estados",
+        "period": "Periodo del documento",
+        "from": "Desde",
+        "to": "Hasta",
+        "clear": "Quitar el periodo",
+        "problems": {
+          "from": "Escribe un día que exista, como año-mes-día.",
+          "to": "Escribe un día que exista, como año-mes-día.",
+          "order": "El primer día no puede ser posterior al último."
+        }
       },
       "empty": "Aún no hay documentos fiscales. Se hacen solos cuando se reconoce una venta.",
       "more": "Ver más",
@@ -7402,7 +7411,7 @@
           "no": "No",
           "minimized": "El receptor es dato del cliente: aquí solo se muestran el nombre y la identificación tributaria enmascarada."
         },
-        "immutable": "Las líneas, los impuestos y el emisor de un documento aceptado se sellan al hacerlo y no se muestran ni se cambian aquí."
+        "immutable": "Las líneas, los impuestos y el emisor de un documento aceptado se sellan al hacerlo y no se pueden cambiar: lo que se muestra arriba es lo que quedó sellado."
       },
       "attention": {
         "rejected": {
@@ -7621,7 +7630,41 @@
             "hint": "Lo que respondió la autoridad cuando el documento se anuló."
           }
         }
-      }
+      },
+      "sealed": {
+        "title": "Lo que se selló",
+        "inconsistent": "Las líneas de este documento no suman su total.",
+        "pricesIncludeTax": "Los precios de las líneas incluyen el impuesto.",
+        "pricesExcludeTax": "Los precios de las líneas no incluyen el impuesto.",
+        "noRate": "Sin tasa",
+        "lines": {
+          "caption": "Líneas del documento",
+          "description": "Descripción",
+          "quantity": "Cantidad",
+          "unitPrice": "Precio unitario",
+          "rate": "Tasa",
+          "tax": "Impuesto",
+          "total": "Total"
+        },
+        "shipping": "Envío",
+        "shippingTax": "Impuesto del envío",
+        "discount": "Descuento",
+        "breakdown": {
+          "title": "Impuesto por tasa",
+          "rate": "Tasa",
+          "base": "Base",
+          "tax": "Impuesto"
+        },
+        "issuer": {
+          "title": "Emisor al hacerlo",
+          "legalName": "Razón social",
+          "taxId": "Identificación fiscal",
+          "registrationId": "Registro",
+          "activityCode": "Actividad",
+          "establishmentCode": "Establecimiento"
+        }
+      },
+      "emptyFiltered": "No hay documentos fiscales con estos filtros."
     },
     "vat": {
       "title": "IVA de un período",

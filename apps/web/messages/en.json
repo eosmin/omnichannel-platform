@@ -7330,7 +7330,16 @@
       "noIssuerLink": "Set up the issuer",
       "filters": {
         "status": "Status",
-        "allStatuses": "All statuses"
+        "allStatuses": "All statuses",
+        "period": "Period of the document",
+        "from": "From",
+        "to": "To",
+        "clear": "Clear the period",
+        "problems": {
+          "from": "Write a day that exists, as year-month-day.",
+          "to": "Write a day that exists, as year-month-day.",
+          "order": "The first day cannot be after the last."
+        }
       },
       "empty": "There are no fiscal documents here yet. They are made by themselves when a sale is recognized.",
       "more": "Show more",
@@ -7402,7 +7411,7 @@
           "no": "No",
           "minimized": "The receiver is customer data: only the name and a masked tax id are shown here."
         },
-        "immutable": "The lines, the taxes and the issuer of an accepted document are sealed when it is made and are not shown or changed here."
+        "immutable": "The lines, the taxes and the issuer of an accepted document are sealed when it is made and cannot be changed: what is shown above is what was sealed."
       },
       "attention": {
         "rejected": {
@@ -7621,7 +7630,41 @@
             "hint": "What the authority answered when the document was voided."
           }
         }
-      }
+      },
+      "sealed": {
+        "title": "What was sealed",
+        "inconsistent": "The lines of this document do not add up to its total.",
+        "pricesIncludeTax": "The prices of the lines include the tax.",
+        "pricesExcludeTax": "The prices of the lines do not include the tax.",
+        "noRate": "No rate",
+        "lines": {
+          "caption": "Lines of the document",
+          "description": "Description",
+          "quantity": "Quantity",
+          "unitPrice": "Unit price",
+          "rate": "Rate",
+          "tax": "Tax",
+          "total": "Total"
+        },
+        "shipping": "Shipping",
+        "shippingTax": "Tax on shipping",
+        "discount": "Discount",
+        "breakdown": {
+          "title": "Tax by rate",
+          "rate": "Rate",
+          "base": "Base",
+          "tax": "Tax"
+        },
+        "issuer": {
+          "title": "Issuer when it was made",
+          "legalName": "Legal name",
+          "taxId": "Tax id",
+          "registrationId": "Registration",
+          "activityCode": "Activity",
+          "establishmentCode": "Establishment"
+        }
+      },
+      "emptyFiltered": "There are no fiscal documents with these filters."
     },
     "vat": {
       "title": "VAT of a period",

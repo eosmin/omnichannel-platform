@@ -198,6 +198,36 @@ test.describe('Finance → the month, from the first entry to the close', () => 
     await expect(trial.getByTestId('finance-trial-balance-debit').first()).toContainText('11.30')
   })
 
+  test('a transaction dated in the closed month is refused by the books and nothing is written', async ({
+    page
+  }) => {
+    await signIn(page, ownerEmail)
+    await page.waitForURL(/\/s\/[^/]+\//)
+    await page.goto(AppPaths.finance.transactions)
+    const list = page.getByTestId('finance-transactions')
+    const rows = list.getByTestId('finance-transaction-row')
+    await expect(rows).toHaveCount(1)
+
+    await page.getByRole('button', { name: finance.transactions.new, exact: true }).click()
+    const form = page.getByRole('dialog', { name: finance.transactions.form.createTitle })
+    await form.getByLabel(finance.transactions.form.date, { exact: true }).fill(`${MONTH}-20`)
+    await form.getByLabel(finance.transactions.form.amount, { exact: true }).fill('3.00')
+    await form
+      .getByLabel(finance.transactions.form.expenseFrom, { exact: true })
+      .selectOption({ index: 1 })
+    await form
+      .getByLabel(finance.transactions.form.expenseCategory, { exact: true })
+      .selectOption({ index: 1 })
+    await form.getByRole('button', { name: finance.transactions.form.submit, exact: true }).click()
+
+    // The api says the month is closed, the form stays open with what was written, and the list has the one transaction it had
+    await expect(form.getByRole('alert').getByText(en.errors.FINANCE_PERIOD_CLOSED)).toBeVisible()
+    await expect(form).toBeVisible()
+    await form.getByRole('button', { name: finance.transactions.form.cancel, exact: true }).click()
+    await expect(form).toHaveCount(0)
+    await expect(rows).toHaveCount(1)
+  })
+
   test('who may only read the books sees the month closed and has no button to change it', async ({
     page
   }) => {

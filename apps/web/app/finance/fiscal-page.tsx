@@ -15,9 +15,11 @@ import { useStore } from '../../components/providers/store-context'
 import { LoadFailed, PageLoading } from '../../components/settings/states'
 import { Button } from '../../components/ui/button'
 import { SELECT_CLASS } from '../../components/ui/field-classes'
+import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
 import { useMoney } from '../../lib/finance/use-money'
 import { fiscalAttentionOf, replacedIdsOf } from '../../lib/fiscal/document-rules'
+import { type PeriodDraft, periodFiltersOf, periodProblem } from '../../lib/fiscal/period-filter'
 import {
   useFiscalDocuments,
   useFiscalIssuer,
@@ -37,9 +39,21 @@ function Fiscal(): ReactElement {
   const ids = useId()
   const [status, setStatus] = useState<FiscalDocumentStatus | ''>('')
   const [openId, setOpenId] = useState<string | null>(null)
+  const [period, setPeriod] = useState<PeriodDraft>({ from: '', to: '' })
+  // The days as they were last asked: a period that is wrong is told and not asked, so the list keeps the last good one until the days are right
+  const [periodFilters, setPeriodFilters] = useState<ReturnType<typeof periodFiltersOf>>({})
+  const problem = periodProblem(period)
+  const editPeriod = (next: PeriodDraft): void => {
+    setPeriod(next)
+    if (periodProblem(next) === null) setPeriodFilters(periodFiltersOf(next))
+  }
   const providers = useFiscalProviders(storeId, true)
   const issuer = useFiscalIssuer(storeId, true)
-  const documents = useFiscalDocuments(storeId, status === '' ? {} : { status }, true)
+  const documents = useFiscalDocuments(
+    storeId,
+    { ...(status === '' ? {} : { status }), ...periodFilters },
+    true
+  )
   const rows = useMemo(
     () => documents.data?.pages.flatMap(page => page.data) ?? [],
     [documents.data]
@@ -88,13 +102,46 @@ function Fiscal(): ReactElement {
           ))}
         </select>
       </div>
+      <fieldset className="flex flex-wrap items-end gap-3" data-testid="fiscal-period">
+        <legend className="sr-only">{t('filters.period')}</legend>
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${ids}-from`}>{t('filters.from')}</Label>
+          <Input
+            id={`${ids}-from`}
+            type="date"
+            value={period.from}
+            onChange={event => editPeriod({ ...period, from: event.target.value })}
+          />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${ids}-to`}>{t('filters.to')}</Label>
+          <Input
+            id={`${ids}-to`}
+            type="date"
+            value={period.to}
+            onChange={event => editPeriod({ ...period, to: event.target.value })}
+          />
+        </div>
+        {period.from === '' && period.to === '' ? null : (
+          <Button variant="outline" size="sm" onClick={() => editPeriod({ from: '', to: '' })}>
+            {t('filters.clear')}
+          </Button>
+        )}
+      </fieldset>
+      {problem === null ? null : (
+        <p role="alert" className="text-destructive text-sm" data-testid="fiscal-period-problem">
+          {t(`filters.problems.${problem}`)}
+        </p>
+      )}
       {documents.isError && documents.data === undefined ? (
         <LoadFailed error={documents.error} onRetry={() => void documents.refetch()} />
       ) : documents.data === undefined ? (
         <PageLoading />
       ) : rows.length === 0 ? (
         <p className="text-muted-foreground text-sm" data-testid="fiscal-empty">
-          {t('empty')}
+          {status === '' && Object.keys(periodFilters).length === 0
+            ? t('empty')
+            : t('emptyFiltered')}
         </p>
       ) : (
         <ul className="divide-y rounded-md border" data-testid="fiscal-documents">
