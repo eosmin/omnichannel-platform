@@ -643,6 +643,36 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       })
       expect(received.status).toBeLessThan(BAD_REQUEST)
     })
+
+    it('does not let a caller end an order that has lines of another store too, and lets them end one received in full (N-AA-03)', async () => {
+      const seller = await supplier()
+      const mixed = await placedOrder(seller.id)
+      // One line belongs to a store the admin of store A does not see: the order is no longer wholly theirs
+      await owner.purchaseOrderLine.update({
+        where: { id: mixed.lines[1]?.id ?? '' },
+        data: { storeId: ctx.storeA2.id }
+      })
+      for (const route of [
+        ApiRoutes.purchaseOrders.close(mixed.id),
+        ApiRoutes.purchaseOrders.cancel(mixed.id)
+      ]) {
+        const refused = await asAdminA().post(route).send({})
+        expect(refused.status).toBe(CONFLICT)
+        expect(errorOf(refused).metadata).toMatchObject({
+          conflict: PurchaseConflicts.LINE_STORE_NOT_VISIBLE
+        })
+      }
+      expect(
+        (await owner.purchaseOrder.findUniqueOrThrow({ where: { id: mixed.id } })).status
+      ).toBe(PurchaseOrderStatus.ORDERED)
+      // A line that arrived in full gives up nothing: the order whose only unseen line was received can be tidied
+      await owner.purchaseOrderLine.update({
+        where: { id: mixed.lines[1]?.id ?? '' },
+        data: { receivedQuantity: 4 }
+      })
+      const closed = await asAdminA().post(ApiRoutes.purchaseOrders.close(mixed.id)).send({})
+      expect(closed.status).toBeLessThan(BAD_REQUEST)
+    })
   })
 
   describe('paying a supplier (E11)', () => {

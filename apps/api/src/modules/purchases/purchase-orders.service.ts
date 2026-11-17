@@ -290,13 +290,15 @@ export class PurchaseOrdersService {
       await lockScope(tx, `${organizationId}:purchase:${id}`)
       const order = await this.row(tx, organizationId, id)
       this.requireTransition(order.status, to)
-      // Ending an order gives up every line that was still to arrive, so it must be wholly the caller's, like an edit or a receipt of
-      // its lines: a person who does not see the lines of another store cannot end them for the people who do (N-AA-03)
+      // Ending an order gives up every line that was still to arrive, so those lines must be wholly the caller's, like an edit or a
+      // receipt of them: a person who does not see the lines of another store cannot end them for the people who do (N-AA-03). A line
+      // that already arrived gives up nothing, so it does not stop the tidying of an order that was received in full
       const lines = await tx.purchaseOrderLine.findMany({
         where: { organizationId, purchaseOrderId: id },
-        select: { storeId: true }
+        select: { storeId: true, quantity: true, receivedQuantity: true }
       })
-      if (!seesEveryLine(lines, visible)) throw lineNotVisible()
+      const open = lines.filter(line => line.receivedQuantity < line.quantity)
+      if (!seesEveryLine(open, visible)) throw lineNotVisible()
       await tx.purchaseOrder.update({ where: { id }, data: { status: to } })
     })
   }
