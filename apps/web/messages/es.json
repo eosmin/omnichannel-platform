@@ -7441,8 +7441,7 @@
           "no": "No",
           "minimized": "El receptor es dato del cliente: aquí solo se muestran el nombre y la identificación tributaria enmascarada."
         },
-        "immutable": "Las líneas, los impuestos y el emisor de un documento aceptado se sellan al hacerlo y no se pueden cambiar: lo que se muestra arriba es lo que quedó sellado.",
-        "close": "Cerrar"
+        "immutable": "Las líneas, los impuestos y el emisor de un documento aceptado se sellan al hacerlo y no se pueden cambiar: lo que se muestra arriba es lo que quedó sellado."
       },
       "attention": {
         "rejected": {

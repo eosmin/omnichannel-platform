@@ -84,6 +84,7 @@ export function DocumentDetailDialog({
             ) : (
               <PageLoading />
             )}
+            <CloseFooter />
           </>
         ) : (
           <DocumentBody
@@ -203,13 +204,7 @@ function DocumentBody({
         open={changingIssuer}
         onOpenChange={setChangingIssuer}
       />
-      <DialogFooter>
-        <DialogClose asChild>
-          <Button type="button" variant="outline">
-            {t('close')}
-          </Button>
-        </DialogClose>
-      </DialogFooter>
+      <CloseFooter />
     </>
   )
 }
@@ -418,5 +413,19 @@ function Actions({
         </p>
       )}
     </section>
+  )
+}
+
+// A visible way out for a touch screen: the dialog has no corner button, and Escape is not there on a phone
+function CloseFooter(): ReactElement {
+  const tCommon = useTranslations('common')
+  return (
+    <DialogFooter>
+      <DialogClose asChild>
+        <Button type="button" variant="outline">
+          {tCommon('close')}
+        </Button>
+      </DialogClose>
+    </DialogFooter>
   )
 }
