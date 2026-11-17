@@ -23,7 +23,13 @@ describe('the fiscal schemas', () => {
     expect(putFiscalIssuerSchema.parse({ ...issuer, issueOn: FiscalIssueOn.SHIPPED }).issueOn).toBe(
       FiscalIssueOn.SHIPPED
     )
-    expect(parsed.registrationId).toBeNull()
+    // Left out, the registration, the activity and the establishment code are undefined (kept), never null: a client that omits them wipes nothing
+    expect(parsed.registrationId).toBeUndefined()
+    expect(parsed.activityCode).toBeUndefined()
+    expect(parsed.establishmentCode).toBeUndefined()
+    expect(
+      putFiscalIssuerSchema.parse({ ...issuer, registrationId: null }).registrationId
+    ).toBeNull()
   })
 
   it('refuses a field it does not know, a correlative out of range and a long address line', () => {

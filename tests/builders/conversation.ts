@@ -118,6 +118,8 @@ export async function createMessage(
     authorType?: AuthorType
     // The agent who wrote it (an AGENT message)
     authorId?: string
+    // The plugin that wrote it, whatever the author type says
+    authorPluginId?: string
     type?: MessageType
     createdAt?: Date
     metadata?: Record<string, MetadataValue>
@@ -134,6 +136,7 @@ export async function createMessage(
         input.authorType ??
         (input.type === MessageType.INTERNAL_NOTE ? AuthorType.AGENT : AuthorType.CUSTOMER),
       ...(input.authorId === undefined ? {} : { authorId: input.authorId }),
+      ...(input.authorPluginId === undefined ? {} : { authorPluginId: input.authorPluginId }),
       ...(input.createdAt === undefined ? {} : { createdAt: input.createdAt }),
       ...(input.metadata === undefined ? {} : { metadata: input.metadata })
     },

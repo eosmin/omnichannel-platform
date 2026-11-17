@@ -49,12 +49,12 @@ export const putFiscalIssuerSchema = z
     providerId: text(FiscalFieldLimits.PROVIDER_ID),
     legalName: text(FiscalFieldLimits.NAME),
     taxId: text(FiscalFieldLimits.TAX_ID),
-    registrationId: text(FiscalFieldLimits.REGISTRATION_ID).nullable().default(null),
+    // The registration, the activity and the establishment code, the kind of establishment, the point of sale and the contact of the issuer:
+    // a field left out keeps the stored one, a field sent as null clears it, so a client that does not send them never wipes them
+    registrationId: text(FiscalFieldLimits.REGISTRATION_ID).nullable().optional(),
     address: fiscalAddressSchema,
-    activityCode: text(FiscalFieldLimits.CODE).nullable().default(null),
-    establishmentCode: text(FiscalFieldLimits.CODE).nullable().default(null),
-    // The kind of establishment, the point of sale and the contact of the issuer (Step 4B.7c-1): a field left out keeps the stored one, a
-    // field sent as null clears it, so a form that does not know them yet never wipes them
+    activityCode: text(FiscalFieldLimits.CODE).nullable().optional(),
+    establishmentCode: text(FiscalFieldLimits.CODE).nullable().optional(),
     establishmentType: text(FiscalFieldLimits.CODE).nullable().optional(),
     pointOfSaleCode: text(FiscalFieldLimits.CODE).nullable().optional(),
     phone: text(FiscalFieldLimits.PHONE).nullable().optional(),

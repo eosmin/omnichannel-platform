@@ -87,10 +87,12 @@ export class PluginMessagesController {
     private readonly registry: PluginRegistry,
     private readonly audit: AuditService,
     private readonly prisma: PrismaService,
-    @Inject(MULTI_FILE_SEND_ENABLED) private readonly multiFileEnabled: boolean,
+    private readonly logger: PinoLogger,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
-    private readonly logger: PinoLogger
-  ) {}
+    @Inject(MULTI_FILE_SEND_ENABLED) private readonly multiFileEnabled: boolean
+  ) {
+    this.logger.setContext(PluginMessagesController.name)
+  }
 
   // 201 for a new message, 200 for the one a repeated idempotencyKey already made (and then nothing is audited twice)
   @PluginApi(PluginScopes.MESSAGES_WRITE, PluginScopes.CONVERSATIONS_READ)
@@ -204,6 +206,16 @@ export class PluginMessagesController {
     scope: string,
     message: string
   ): never {
+    // The same fields the guard logs for a scope it refuses (never the key), so that one search finds both
+    this.logger.warn(
+      {
+        installationId: installation.id,
+        pluginId: installation.pluginId,
+        kind: PluginApiDenialReasons.SCOPE,
+        missing: [scope]
+      },
+      'a plugin key was refused for lack of access'
+    )
     void auditPluginDenial({ audit: this.audit, redis: this.redis, logger: this.logger }, req, {
       reason: PluginApiDenialReasons.SCOPE,
       installation: { id: installation.id, pluginId: installation.pluginId, storeId },

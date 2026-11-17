@@ -29,11 +29,11 @@ export interface FiscalIssuerBody {
   providerId: string
   legalName: string
   taxId: string
-  registrationId: string | null
   address: Record<string, string>
-  activityCode: string | null
-  establishmentCode: string | null
-  // Absent keeps the stored one, null clears it (Step 4B.7c-1)
+  // Absent keeps the stored one, null clears it
+  registrationId?: string | null
+  activityCode?: string | null
+  establishmentCode?: string | null
   establishmentType?: string | null
   pointOfSaleCode?: string | null
   phone?: string | null
@@ -195,6 +195,9 @@ export class FiscalIssuerService {
             providerId: true,
             environment: true,
             nextSequence: true,
+            registrationId: true,
+            activityCode: true,
+            establishmentCode: true,
             establishmentType: true,
             pointOfSaleCode: true,
             phone: true,
@@ -204,13 +207,23 @@ export class FiscalIssuerService {
         // What the provider is told is what will be stored: the value sent, or the one kept when the request leaves it out
         const kept = <T>(sentValue: T | undefined, stored: T | undefined): T | null =>
           sentValue !== undefined ? sentValue : (stored ?? null)
+        // The codes of the issuer are the old provider's or environment's when either changes: a client that moves to another one and
+        // leaves them out does not carry them over (the credentials guard below holds the same line for the keys)
+        const moved =
+          existing !== null &&
+          (existing.providerId !== body.providerId ||
+            (existing.environment as FiscalEnvironment) !== body.environment)
+        const keptCode = (
+          sentValue: string | null | undefined,
+          stored: string | null | undefined
+        ) => kept(sentValue, moved ? undefined : stored)
         const input: FiscalIssuerInput = {
           legalName: body.legalName,
           taxId: body.taxId,
-          registrationId: body.registrationId,
+          registrationId: keptCode(body.registrationId, existing?.registrationId),
           address: body.address,
-          activityCode: body.activityCode,
-          establishmentCode: body.establishmentCode,
+          activityCode: keptCode(body.activityCode, existing?.activityCode),
+          establishmentCode: keptCode(body.establishmentCode, existing?.establishmentCode),
           establishmentType: kept(body.establishmentType, existing?.establishmentType),
           pointOfSaleCode: kept(body.pointOfSaleCode, existing?.pointOfSaleCode),
           phone: kept(body.phone, existing?.phone),
@@ -268,11 +281,11 @@ export class FiscalIssuerService {
           providerId: body.providerId,
           legalName: body.legalName,
           taxId: body.taxId,
-          registrationId: body.registrationId,
           address: toJson(body.address),
-          activityCode: body.activityCode,
-          establishmentCode: body.establishmentCode,
-          // Absent keeps the stored one, null clears it
+          // What the provider was told is what is stored: the value sent, the stored one kept, or null after a move to another provider
+          registrationId: input.registrationId,
+          activityCode: input.activityCode,
+          establishmentCode: input.establishmentCode,
           ...(body.establishmentType === undefined
             ? {}
             : { establishmentType: body.establishmentType }),

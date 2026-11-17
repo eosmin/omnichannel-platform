@@ -645,7 +645,7 @@ describe('Exports', () => {
       expect(file).not.toContain('secret of store B')
       // The deleted message is still a row, without its text, and says so
       expect(file).toContain(removed.id)
-      expect(file).toContain(',true\r\n')
+      expect(file).toContain(',true,\r\n')
     })
 
     it('leaves out a reply that was thrown away: not a row, not an id, not a word of it', async () => {
@@ -780,6 +780,30 @@ describe('Exports', () => {
         expect(file).toContain('bulk-wanted')
         expect(file).not.toContain('bulk-not-ticked')
         expect(file).not.toContain(notTicked.id)
+      })
+
+      it('names the plugin that wrote a message, and leaves the column empty for the rest (N-O23-02)', async () => {
+        const conversation = await seed('plugin-export-customer')
+        const pluginId = randomUUID()
+        await createMessage(owner, {
+          storeId: ctx.storeA.id,
+          conversationId: conversation.id,
+          content: 'plugin-export-reply',
+          authorType: AuthorType.SYSTEM,
+          authorPluginId: pluginId
+        })
+        const response = await bulk(ctx.adminA, {
+          action: BulkActions.EXPORT_CSV,
+          conversationIds: [conversation.id]
+        })
+        expect(response.status).toBe(OK)
+        const file = await made((await lastExport()).id)
+        const [header = '', ...lines] = file.split('\r\n')
+        expect(header.split(',').at(-1)).toBe('plugin_id')
+        const cell = (text: string) =>
+          (lines.find(line => line.includes(text)) ?? '').split(',').at(-1)
+        expect(cell('plugin-export-reply')).toBe(pluginId)
+        expect(cell('plugin-export-customer')).toBe('')
       })
 
       it('does not export the conversation another agent holds to an agent who may not see it', async () => {
