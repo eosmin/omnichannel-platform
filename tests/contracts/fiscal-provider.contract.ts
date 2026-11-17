@@ -70,6 +70,7 @@ const baseInput = (
   discountCents: 0,
   totalCents: 2825,
   taxCents: 325,
+  pricesIncludeTax: true,
   payments: [{ method: PaymentMethod.TRANSFER, amountCents: 2825, reference: 'T-1' }],
   condition: FiscalOperationCondition.IMMEDIATE
 })

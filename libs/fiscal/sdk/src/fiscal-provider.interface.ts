@@ -181,6 +181,10 @@ export interface FiscalBuildInput {
   readonly discountCents: number
   readonly totalCents: number
   readonly taxCents: number
+  // Whether the unit prices and the shipping fee of the order already hold their tax (the default of a store) or the tax comes on top of
+  // them. The amounts of `lines` are the order's own either way: `totalCents` of a line is `quantity x unitPriceCents`, its `taxCents` is
+  // inside that amount when this is true.
+  readonly pricesIncludeTax: boolean
   // How it was paid: one entry for the whole order today (the order records one method). The condition is core's reading of the status
   // of the payment, which a provider may refine from `payments`.
   readonly payments: readonly FiscalPayment[]

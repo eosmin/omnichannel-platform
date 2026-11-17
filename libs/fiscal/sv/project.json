@@ -1,0 +1,12 @@
+{
+  "name": "fiscal-sv",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/fiscal/sv/src",
+  "projectType": "library",
+  "tags": ["scope:fiscal", "type:lib"],
+  "targets": {
+    "lint": {},
+    "type-check": {},
+    "test": {}
+  }
+}

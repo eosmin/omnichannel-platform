@@ -93,8 +93,11 @@ describe('the series a provider numbers by', () => {
 
 describe('the providers of a deployment', () => {
   it('registers the simulator in development and test only: staging, production and an unset environment never get it', () => {
-    expect(officialFiscalProviders('development')).toHaveLength(1)
-    expect(officialFiscalProviders('test')).toHaveLength(1)
+    expect(officialFiscalProviders('development').map(provider => provider.id)).toEqual([
+      'simulator',
+      'sv-dte'
+    ])
+    expect(officialFiscalProviders('test')).toHaveLength(2)
     for (const env of ['staging', 'production', undefined, '', 'Production']) {
       expect(officialFiscalProviders(env)).toEqual([])
     }
