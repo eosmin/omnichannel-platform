@@ -250,7 +250,7 @@ const schemas: { [E in BridgedEvent]: z.ZodType<BridgedPayloads[E], unknown> } =
   [Events.FISCAL_CONTINGENCY_ALERT]: z.object({
     organizationId: id,
     contingencyId: id,
-    kind: z.nativeEnum(FiscalContingencyAlertKind)
+    kind: z.enum(FiscalContingencyAlertKind)
   }),
   // The webhooks of a plugin turned off: the installation, the plugin and the count, never the address or the response
   [Events.PLUGIN_ERROR]: z.object({
