@@ -842,6 +842,47 @@ describe('The entries that depend on a carrier (Step 4B.6b-1)', () => {
       ).toBe(1)
     })
 
+    it('answers with the reversal a person wrote first and writes no second one (HC-012)', async () => {
+      const shipment = await delivered()
+      await post(FinanceSourceType.SHIPMENT, shipment.id, FinanceEventKind.CHARGES)
+      const remittanceId = await confirmed(shipment.connectionId, [
+        { shipmentId: shipment.id, reported: 2102 }
+      ])
+      await post(FinanceSourceType.REMITTANCE, remittanceId, FinanceEventKind.REMITTANCE_CONFIRM)
+      const e5 = await entryOf(FinancePostingKey.REMITTANCE_CONFIRM(remittanceId))
+      // A person reverses the entry of the confirmation by hand before the remittance is voided
+      const byHand = await api(app, ctx.adminA, ctx.storeA)
+        .post(ApiRoutes.finance.entries.reverse(e5?.id ?? ''))
+        .send({ memo: 'reversed by hand' })
+      expect(byHand.status).toBe(CREATED)
+      const personal = await owner.journalEntry.findFirstOrThrow({
+        where: { organizationId: ctx.orgA.id, reversesEntryId: e5?.id }
+      })
+      expect(personal.createdBy).toBe(ctx.adminA.id)
+
+      await voided(remittanceId)
+      const system = await post(
+        FinanceSourceType.REMITTANCE,
+        remittanceId,
+        FinanceEventKind.REMITTANCE_VOID
+      )
+      // The system's reversal is settled by the one that exists: no second entry, and no failure left open for the remittance
+      expect(system).toMatchObject({
+        outcome: FinancePostingOutcome.REPLAYED,
+        entryId: personal.id
+      })
+      expect(
+        await owner.journalEntry.count({
+          where: { organizationId: ctx.orgA.id, reversesEntryId: e5?.id }
+        })
+      ).toBe(1)
+      expect(
+        await owner.financePostingFailure.count({
+          where: { organizationId: ctx.orgA.id, sourceId: remittanceId, resolvedAt: null }
+        })
+      ).toBe(0)
+    })
+
     it('has nothing to undo when the confirmation was never posted, and then posts nothing for it', async () => {
       const shipment = await delivered()
       await post(FinanceSourceType.SHIPMENT, shipment.id, FinanceEventKind.CHARGES)
