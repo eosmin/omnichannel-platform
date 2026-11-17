@@ -665,6 +665,39 @@ describe('The entries of a difference written off and of a return (Step 4B.6b-2)
       ).toBe(FinancePostingOutcome.POSTED)
     })
 
+    it('dates a late retry by the day the return was received, never by the day it was retried (AUT-R2-027)', async () => {
+      const receivedDay = new Date(Date.now() - 12 * 86_400_000).toISOString().slice(0, 10)
+      const connectionId = (await createCarrierConnection(owner, { storeId: ctx.storeA.id })).id
+      const made = await order({ connectionId, day: receivedDay })
+      await movement(
+        made.id,
+        InventoryMovementType.ISSUE,
+        { type: InventoryReferenceType.ORDER, id: made.id },
+        { quantity: 2, unitCostCents: 400 }
+      )
+      const returnId = await received(made, { quantity: 1, receivedAt: NOON(receivedDay) })
+      // The first attempt fails because the sale it gives back is not posted yet
+      expect(
+        await post(FinanceSourceType.RETURN, returnId, FinanceEventKind.RETURN_RESTOCK)
+      ).toMatchObject({
+        outcome: FinancePostingOutcome.FAILED,
+        reason: FinancePostingFailureReason.SOURCE_NOT_READY
+      })
+      expect((await post(FinanceSourceType.ORDER, made.id, FinanceEventKind.SENT)).outcome).toBe(
+        FinancePostingOutcome.POSTED
+      )
+      expect((await post(FinanceSourceType.ORDER, made.id, FinanceEventKind.SALE)).outcome).toBe(
+        FinancePostingOutcome.POSTED
+      )
+      // The retry comes days later and carries no date of its own (as the sweep's does not): the day is the one of the receipt
+      expect(
+        (await post(FinanceSourceType.RETURN, returnId, FinanceEventKind.RETURN_RESTOCK)).outcome
+      ).toBe(FinancePostingOutcome.POSTED)
+      const entry = await entryOf(FinancePostingKey.RETURN_RESTOCK(returnId))
+      expect(entry?.entryDate.toISOString().slice(0, 10)).toBe(receivedDay)
+      expect(entry?.sourceDate?.toISOString().slice(0, 10)).toBe(receivedDay)
+    })
+
     it('values a unit at the cost its movement recorded when it has one, and posts nothing for a return that is not received', async () => {
       const made = await sold()
       const priced = await received(made, {
