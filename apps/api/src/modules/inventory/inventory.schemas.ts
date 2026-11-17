@@ -148,7 +148,8 @@ export const createAdjustmentSchema = z.strictObject({
   reason: z.enum(Object.values(InventoryAdjustmentReason)).optional(),
   note: singleLineText(InventoryLimits.NOTE_MAX_LENGTH, 1).optional(),
   // The client's, generated once per attempt (a UUID): a double click or a retry adjusts once
-  idempotencyKey: lowercasedUuidSchema,
+  // Kept as sent: it is the text of a unique index, and the keys already stored hold the case the client used
+  idempotencyKey: z.uuid(),
   // The cost of ONE unit that comes in, in whole USD cents: setting a cost needs products:view_cost
   unitCostCents: z.number().int().min(0).max(ProductLimits.MAX_AMOUNT_CENTS).optional()
 })

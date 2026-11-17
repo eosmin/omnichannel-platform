@@ -40,11 +40,11 @@ export function containsUnstorableText(value: unknown): boolean {
   return false
 }
 
-// The same walk, for what a provider says and the platform must keep: the NULs of every string and key are taken
-// out (half of an emoji stays, for the schema to judge), and the rest of the value is returned as it was. A copy is built with a stack too, so a
+// The same walk, for what a provider says and the platform must keep: every string and key goes through
+// `safeText` (the NULs go, half of an emoji becomes U+FFFD), and the rest of the value is returned as it was. A copy is built with a stack too, so a
 // deep payload is no way to make it throw.
 export function withoutNul(value: unknown): unknown {
-  if (typeof value === 'string') return withoutNulText(value)
+  if (typeof value === 'string') return safeText(value)
   if (
     typeof value !== 'object' ||
     value === null ||
@@ -61,7 +61,7 @@ export function withoutNul(value: unknown): unknown {
       : Object.entries(source)
     for (const [key, inner] of entries) {
       let copy: unknown = inner
-      if (typeof inner === 'string') copy = withoutNulText(inner)
+      if (typeof inner === 'string') copy = safeText(inner)
       else if (
         typeof inner === 'object' &&
         inner !== null &&
@@ -72,7 +72,7 @@ export function withoutNul(value: unknown): unknown {
       }
       // defineProperty, not an assignment: a `__proto__` key of a JSON payload is data, and an assignment would swap the prototype
       // of the copy. A key that another one became once cleaned is left to the first.
-      const property = Array.isArray(target) ? key : withoutNulText(key)
+      const property = Array.isArray(target) ? key : safeText(key)
       if (!Object.hasOwn(target, property)) {
         Object.defineProperty(target, property, {
           value: copy,
@@ -85,8 +85,6 @@ export function withoutNul(value: unknown): unknown {
   }
   return root
 }
-
-export const withoutNulText = (text: string): string => text.replaceAll('\0', '')
 
 // An emoji a person left: visible, short, and nothing the database would refuse (a NUL, half of one)
 export const isWholeEmoji = (value: string, maxLength: number): boolean =>
