@@ -75,6 +75,27 @@ describe('the fiscal schemas', () => {
   it('needs a reason to void', () => {
     expect(voidFiscalDocumentSchema.safeParse({ reason: '  ' }).success).toBe(false)
     expect(voidFiscalDocumentSchema.safeParse({ reason: 'wrong receiver' }).success).toBe(true)
+    // The kind, the people and the replacement a provider may ask for: optional, strict, and one line each
+    const party = { name: 'Ana', idType: '13', idNumber: '1' }
+    const full = {
+      reason: 'wrong receiver',
+      kind: 'rescission',
+      responsible: party,
+      requester: party,
+      replacementDocumentId: '2b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed'
+    }
+    expect(voidFiscalDocumentSchema.safeParse(full).success).toBe(true)
+    for (const bad of [
+      { ...full, kind: 'nope' },
+      { ...full, responsible: { ...party, idNumber: '' } },
+      { ...full, requester: { ...party, name: 'a'.repeat(101) } },
+      { ...full, requester: { ...party, idNumber: '1'.repeat(21) } },
+      { ...full, responsible: { ...party, extra: 1 } },
+      { ...full, replacementDocumentId: 'x' },
+      { ...full, extra: 1 }
+    ]) {
+      expect(voidFiscalDocumentSchema.safeParse(bad).success).toBe(false)
+    }
   })
 
   it('needs a reason to confirm an issuer change, and takes nothing else', () => {

@@ -7512,16 +7512,55 @@
         },
         "reason": "Reason",
         "problems": {
-          "required": "Write the reason.",
-          "tooLong": "The reason is too long.",
-          "invalid": "Write the reason on one line, with no special characters."
+          "kind": {
+            "required": "Choose the reason."
+          },
+          "responsible": {
+            "required": "Fill in the name, the type and the number.",
+            "tooLong": "One of the data is too long."
+          },
+          "requester": {
+            "required": "Fill in the name, the type and the number.",
+            "tooLong": "One of the data is too long."
+          },
+          "replacement": {
+            "required": "Choose the document that takes its place."
+          },
+          "reason": {
+            "required": "Write the reason.",
+            "tooLong": "The reason is too long.",
+            "invalid": "Write the reason on one line, with no special characters."
+          }
         },
         "cancel": "Cancel",
         "submit": "Void the document",
         "confirmTitle": "Void document No. {number}?",
         "confirmDescription": "The invalidation is sent to the authority and cannot be undone. The reason is kept in the audit log.",
         "confirm": "Void the document",
-        "done": "The document was voided."
+        "done": "The document was voided.",
+        "kind": "Reason for the invalidation",
+        "kindChoose": "Choose a reason",
+        "kinds": {
+          "correction": "The document has wrong information",
+          "rescission": "The operation was cancelled",
+          "other": "Another reason"
+        },
+        "replacement": "Document that takes its place",
+        "replacementHint": "The authority asks for it before the invalidation: make it first.",
+        "replacementChoose": "Choose the document",
+        "replacementOption": "No. {number} · {total}",
+        "responsible": {
+          "title": "Who makes the invalidation"
+        },
+        "requester": {
+          "title": "Who asks for it"
+        },
+        "party": {
+          "name": "Name",
+          "idType": "Type of identity document",
+          "idTypeHint": "The code of the authority's catalog.",
+          "idNumber": "Number of the identity document"
+        }
       },
       "address": {
         "legend": "Address",

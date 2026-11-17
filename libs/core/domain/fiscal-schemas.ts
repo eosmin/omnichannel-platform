@@ -5,7 +5,8 @@ import {
   FiscalCustomerDataLimits,
   FiscalEnvironment,
   FiscalIssueOn,
-  FiscalLimits
+  FiscalLimits,
+  FiscalVoidKind
 } from './fiscal-constants'
 import { singleLineText } from './validation'
 
@@ -128,7 +129,28 @@ const fiscalReasonBodySchema = z
   .object({ reason: text(FiscalLimits.VOID_REASON_MAX_LENGTH) })
   .strict()
 
-export const voidFiscalDocumentSchema = fiscalReasonBodySchema
+// A person of an invalidation: who makes it and who asks for it (a provider whose authority wants them declares it in its manifest)
+const voidPartySchema = z
+  .object({
+    name: text(FiscalLimits.VOID_PARTY_NAME_MAX_LENGTH),
+    // The kind of identity document, in the words of the provider's own catalog
+    idType: text(FiscalFieldLimits.CODE),
+    idNumber: text(FiscalLimits.VOID_PARTY_ID_MAX_LENGTH)
+  })
+  .strict()
+export type VoidPartyBody = z.output<typeof voidPartySchema>
+
+export const voidFiscalDocumentSchema = z
+  .object({
+    reason: text(FiscalLimits.VOID_REASON_MAX_LENGTH),
+    // Absent: the provider's default (a document with no kind is the free reason alone)
+    kind: z.enum(FiscalVoidKind).optional(),
+    responsible: voidPartySchema.optional(),
+    requester: voidPartySchema.optional(),
+    // The accepted document that takes the place of this one (the authority wants it first for a correction)
+    replacementDocumentId: fiscalIdSchema.optional()
+  })
+  .strict()
 export type VoidFiscalDocumentBody = z.output<typeof voidFiscalDocumentSchema>
 
 // What the person checked with the authority of the first issuer: that the document is not there

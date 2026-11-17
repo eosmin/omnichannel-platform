@@ -5,8 +5,8 @@ API, the worker, the web, the SDK and the runtime read its manifest and nothing 
 
 ## State (Steps 4B.7c-2 and 4B.7c-3)
 
-- **Done:** the pure construction of the invoice (`01`), the tax credit document (`03`) and the credit note (`05`); the checks of the issuer and of a receiver; the manifest; **the client of the authority** (Step 4B.7c-3): the token (kept, renewed, with a memory of a refused password), the signer port and the adapter of the official signing service, `submit` and `consult`.
-- **Not yet:** invalidation (4B.7c-4, `void` refuses with `not_implemented`), the screens (4B.7c-5), the minimum tests in the sandbox (4B.7c-6), contingency (4B.7c-7).
+- **Done:** the pure construction of the invoice (`01`), the tax credit document (`03`) and the credit note (`05`); the checks of the issuer and of a receiver; the manifest; **the client of the authority** (Step 4B.7c-3): the token (kept, renewed, with a memory of a refused password), the signer port and the adapter of the official signing service, `submit` and `consult`; **the invalidation** (Step 4B.7c-4): the event of version 3, the deadlines (three months for an invoice, ten business days of the following month for the others), `void` and `consultVoid`.
+- **Not yet:** the screens (4B.7c-5), the minimum tests in the sandbox (4B.7c-6), contingency (4B.7c-7).
 - **Offered** where the deployment sets `FISCAL_SIGNER_URL` (the address of the official signing service: a private network, never published).
 - **Never reaches the real authority in a test:** the specs and the contract suite run against `src/testing/fake-authority.ts`, a server of our own that plays the authority and the signer with a key generated for each run.
 
@@ -23,6 +23,7 @@ wording of the amount in words, and the rules of the accountant (`[ACCOUNTANT]` 
   document (version 4) and the credit note (version 4) from `svfe-json-schemas` of the Ministerio de Hacienda (public technical
   documents). Reformatted by Prettier (whitespace only: the content is the authority's). Used only by the specs, to check every generated document against the schema of the authority. A new version of a schema
   replaces its file and the version in `SvSchemaVersions`.
+- `schemas/invalidacion-v3.json`: the JSON schema of the invalidation event (version 3) from the same `svfe-json-schemas`. Used only by the specs.
 - `src/catalogs/*.ts`: generated from "Catálogos - Facturación Electrónica", version 1.1 (07/2026) of the same ministry: departments
   (CAT-012), municipalities (CAT-013, with their department, derived from the name), districts (CAT-008), economic activities (CAT-019),
   units of measure (CAT-014), forms of payment (CAT-017), identity documents (CAT-022) and types of establishment (CAT-009). Data only; a

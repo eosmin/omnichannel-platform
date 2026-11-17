@@ -55,12 +55,15 @@ export interface FakeAuthority {
     logins: number
     wrongLogins: number
     receptions: number
+    invalidations: number
     consults: number
     signs: number
     userAgents: Set<string>
     environments: Set<string>
     lastDocument: Record<string, unknown> | null
     lastJws: string | null
+    // The last event of invalidation it received, decoded
+    lastEvent: Record<string, unknown> | null
     // What reached the address a redirect pointed to (nothing, when redirects are refused)
     capturedBodies: string[]
   }
@@ -93,16 +96,20 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
   let tokens = new Set<string>()
   let issued = 0
   const received = new Map<string, { type: string; seal: string }>()
+  // The documents whose invalidation it accepted
+  const invalidated = new Set<string>()
   const stats: FakeAuthority['stats'] = {
     logins: 0,
     wrongLogins: 0,
     receptions: 0,
+    invalidations: 0,
     consults: 0,
     signs: 0,
     userAgents: new Set(),
     environments: new Set(),
     lastDocument: null,
     lastJws: null,
+    lastEvent: null,
     capturedBodies: []
   }
   const control = {
@@ -277,6 +284,78 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
         return
       }
 
+      if (path === '/fesv/anulardte') {
+        stats.invalidations += 1
+        const body = JSON.parse(raw) as {
+          idEnvio?: unknown
+          version?: unknown
+          ambiente?: string
+          documento?: string
+        }
+        const refusal = (code: string): void =>
+          send(response, 400, {
+            version: 3,
+            ambiente: body.ambiente,
+            estado: 'RECHAZADO',
+            selloRecibido: null,
+            fhProcesamiento: null,
+            codigoMsg: code,
+            descripcionMsg: 'REFUSED',
+            observaciones: null
+          })
+        const event = verifyJws(String(body.documento))
+        if (
+          !String(request.headers['content-type']).startsWith('application/json') ||
+          !Number.isInteger(body.idEnvio) ||
+          body.version !== 3
+        ) {
+          return refusal('094')
+        }
+        if (event === null) return refusal('033')
+        stats.lastEvent = event
+        if (schemaErrors('invalidation', event).length > 0) return refusal('006')
+        const original = event['documento'] as {
+          codigoGeneracion: string
+          selloRecibido: string
+          codigoGeneracionR: string | null
+        }
+        const motivo = event['motivo'] as { tipoAnulacion: number; numDocSolicita: string }
+        const known = received.get(original.codigoGeneracion)
+        // The document must be there, with the seal the authority gave it
+        if (known === undefined || known.seal !== original.selloRecibido) return refusal('014')
+        if (invalidated.has(original.codigoGeneracion)) return refusal('053')
+        // A correction and another reason name a replacement the authority has
+        if (motivo.tipoAnulacion !== 2 && !received.has(String(original.codigoGeneracionR))) {
+          return refusal('054')
+        }
+        if (motivo.numDocSolicita === FAKE.REJECT) return refusal('020')
+        if (
+          motivo.numDocSolicita === FAKE.DOWN &&
+          !wasDown.has(`void:${original.codigoGeneracion}`)
+        ) {
+          wasDown.add(`void:${original.codigoGeneracion}`)
+          send(response, 503, { error: 'Service Unavailable' })
+          return
+        }
+        invalidated.add(original.codigoGeneracion)
+        // It accepted and the answer is lost
+        if (motivo.numDocSolicita === FAKE.LOST) {
+          request.socket.destroy()
+          return
+        }
+        send(response, 200, {
+          version: 3,
+          ambiente: body.ambiente,
+          estado: 'PROCESADO',
+          selloRecibido: sealOf(`event:${original.codigoGeneracion}`),
+          fhProcesamiento: '18/11/2026 09:00:00',
+          codigoMsg: '001',
+          descripcionMsg: 'RECIBIDO',
+          observaciones: []
+        })
+        return
+      }
+
       if (path === '/fesv/recepcion/consultadte') {
         stats.consults += 1
         const body = JSON.parse(raw) as { codigoGeneracion?: string; nitEmisor?: string }
@@ -293,7 +372,7 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
         }
         send(response, 200, {
           version: 2,
-          estado: 'PROCESADO',
+          estado: invalidated.has(String(body.codigoGeneracion)) ? 'INVALIDADO' : 'PROCESADO',
           codigoGeneracion: body.codigoGeneracion,
           selloRecibido: known.seal,
           fhProcesamiento: '17/11/2026 09:00:00',
@@ -327,6 +406,7 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
     },
     forgetDocuments: () => {
       received.clear()
+      invalidated.clear()
       wasDown.clear()
     },
     get signerDown() {

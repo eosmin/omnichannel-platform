@@ -1,6 +1,6 @@
 import { FiscalEnvironment } from '@platform/core/domain'
 
-import { SvBuildError, SvBuildErrors, SvCredentialKeys, SvEndpoints } from './sv-constants'
+import { SvBuildErrors, SvCredentialKeys, SvEndpoints, SvVoidRefusals } from './sv-constants'
 import { svProvider } from './sv-provider'
 import type { SvSigner } from './sv-signer'
 import { ISSUER, sale } from './testing/sv-fixtures'
@@ -57,8 +57,7 @@ describe('the manifest of the provider', () => {
   })
 
   it('works in both environments, each with its own endpoint and no trailing slash', () => {
-    // Only the sandbox until the invalidation of a document exists (Step 4B.7c-4): a document of the real environment that cannot be
-    // invalidated must not be sent
+    // Only the sandbox until the owner authorizes production (Step 4B.7c-8): the real environment needs its own configuration
     expect(provider.manifest.environments).toEqual([FiscalEnvironment.SANDBOX])
     expect(SvEndpoints[FiscalEnvironment.SANDBOX].baseUrl).toBe('https://apitest.dtes.mh.gob.sv')
     expect(SvEndpoints[FiscalEnvironment.PRODUCTION].baseUrl).toBe('https://api.dtes.mh.gob.sv')
@@ -78,7 +77,7 @@ describe('the manifest of the provider', () => {
 })
 
 describe('the check of an issuer', () => {
-  it('refuses an issuer of the real environment until the invalidation exists', async () => {
+  it('refuses an issuer of the real environment until production is authorized', async () => {
     const check = await svProvider({ signer: NO_SIGNER }).validateIssuer(
       { ...ISSUER, environment: FiscalEnvironment.PRODUCTION },
       { credentials: CREDENTIALS }
@@ -114,19 +113,26 @@ describe('the check of an issuer', () => {
   })
 })
 
-describe('the parts of the provider that are not built yet', () => {
+describe('the invalidation and the build refusals', () => {
   const provider = svProvider({ signer: NO_SIGNER })
   const ctx = { issuer: ISSUER, credentials: CREDENTIALS, idempotencyKey: 'k', attempt: 1 }
 
-  it('refuses to invalidate a document with a clear error until Step 4B.7c-4', async () => {
-    const call = () =>
-      provider.void(
-        { documentType: '03', externalNumber: 'x', providerData: null, payload: {} },
-        'r',
-        ctx
-      )
-    await expect(call()).rejects.toMatchObject({ code: SvBuildErrors.NOT_IMPLEMENTED })
-    await expect(call()).rejects.toBeInstanceOf(SvBuildError)
+  it('refuses an invalidation that lacks what the authority asks, with a code and without calling anyone', async () => {
+    const answer = await provider.void(
+      { documentType: '03', externalNumber: 'x', providerData: null, payload: {} },
+      'r',
+      ctx
+    )
+    expect(answer).toEqual({ voided: false, reason: SvVoidRefusals.DOCUMENT_INCOMPLETE })
+  })
+
+  it('declares what an invalidation asks of the person', () => {
+    expect(provider.manifest.voidInputs).toEqual({
+      kinds: ['correction', 'rescission', 'other'],
+      requiresParties: true,
+      kindsWithReplacement: ['correction', 'other'],
+      reasonMaxLength: 200
+    })
   })
 
   it('refuses an unbuildable sale with a code, as a rejected promise', async () => {

@@ -1,18 +1,29 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import { type FormEvent, type ReactElement, useEffect, useState } from 'react'
+import { type FormEvent, type ReactElement, useEffect, useMemo, useState } from 'react'
 
 import type { FiscalDocumentView } from '@platform/api-client'
-import { FiscalLimits } from '@platform/core/domain'
+import { FiscalDocumentStatus, FiscalLimits } from '@platform/core/domain'
 
 import { useMoney } from '../../lib/finance/use-money'
-import { useVoidFiscalDocument } from '../../lib/fiscal/use-fiscal'
+import {
+  useFiscalDocuments,
+  useFiscalProviders,
+  useVoidFiscalDocument
+} from '../../lib/fiscal/use-fiscal'
 import { useFiscalErrorText } from '../../lib/fiscal/use-fiscal-error-text'
-import { voidReasonProblem, type VoidReasonProblem } from '../../lib/fiscal/void-form'
+import {
+  EMPTY_VOID_PARTY,
+  voidBodyOf,
+  voidFormProblems,
+  type VoidDraft,
+  type VoidFormProblem,
+  type VoidPartyDraft
+} from '../../lib/fiscal/void-form'
 import { useSubmitGuard } from '../../lib/submit-guard'
 import { toast } from '../../lib/toast'
-import { TextField } from '../finance/fields'
+import { SelectField, TextField } from '../finance/fields'
 import { useStore } from '../providers/store-context'
 import { useDestructiveAction } from '../shared/destructive-action'
 import { Button } from '../ui/button'
@@ -68,10 +79,56 @@ function VoidForm({
   const { storeId } = useStore()
   const guard = useSubmitGuard()
   const voiding = useVoidFiscalDocument(storeId)
-  const [reason, setReason] = useState('')
-  const [wrong, setWrong] = useState<VoidReasonProblem | null>(null)
+  // What the provider that accepted the document asks besides the reason (its manifest); none is the reason alone
+  const providers = useFiscalProviders(storeId, true)
+  const inputs = providers.data?.find(provider => provider.id === document.providerId)?.manifest
+    .voidInputs
+  const [draft, setDraft] = useState<VoidDraft>({
+    reason: '',
+    kind: '',
+    responsible: EMPTY_VOID_PARTY,
+    requester: EMPTY_VOID_PARTY,
+    replacementDocumentId: ''
+  })
+  const [problems, setProblems] = useState<readonly VoidFormProblem[]>([])
   const [refusal, setRefusal] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+  const needsReplacement =
+    draft.kind !== '' && inputs?.kindsWithReplacement?.includes(draft.kind) === true
+  // The documents that may take the place of this one: the accepted ones, asked only when the chosen kind names one
+  const accepted = useFiscalDocuments(
+    storeId,
+    { status: FiscalDocumentStatus.ACCEPTED },
+    needsReplacement
+  )
+  const candidates = useMemo(
+    () =>
+      (accepted.data?.pages.flatMap(page => page.data) ?? []).filter(
+        candidate => candidate.id !== document.id
+      ),
+    [accepted.data, document.id]
+  )
+  const change = (patch: Partial<VoidDraft>): void => {
+    setDraft(current => ({ ...current, ...patch }))
+    setProblems([])
+    setRefusal(null)
+  }
+  const problemOf = (field: VoidFormProblem['field']): string | null => {
+    const found = problems.find(candidate => candidate.field === field)
+    if (found === undefined) return null
+    switch (found.field) {
+      case 'reason':
+        return t(`problems.reason.${found.problem}`)
+      case 'kind':
+        return t('problems.kind.required')
+      case 'replacement':
+        return t('problems.replacement.required')
+      case 'responsible':
+        return t(`problems.responsible.${found.problem}`)
+      case 'requester':
+        return t(`problems.requester.${found.problem}`)
+    }
+  }
 
   useEffect(() => {
     onBusy(pending)
@@ -83,7 +140,7 @@ function VoidForm({
     setRefusal(null)
     setPending(true)
     try {
-      await voiding.mutateAsync({ id: document.id, reason: reason.trim() })
+      await voiding.mutateAsync({ id: document.id, body: voidBodyOf(draft, inputs) })
       toast.success(t('done'))
       onDone()
     } catch (error) {
@@ -96,9 +153,11 @@ function VoidForm({
 
   const submit = (event: FormEvent): void => {
     event.preventDefault()
-    const problem = voidReasonProblem(reason)
-    if (problem !== null) {
-      setWrong(problem)
+    // The provider's manifest is still on its way: the form asks for what it knows, and never sends a reason alone to a provider that wants more
+    if (providers.data === undefined) return
+    const found = voidFormProblems(draft, inputs)
+    if (found.length > 0) {
+      setProblems(found)
       return
     }
     run('VOID_FISCAL_DOCUMENT', {
@@ -125,16 +184,76 @@ function VoidForm({
       </div>
       <TextField
         label={t('reason')}
-        value={reason}
-        maxLength={FiscalLimits.VOID_REASON_MAX_LENGTH}
+        value={draft.reason}
+        maxLength={Math.min(
+          inputs?.reasonMaxLength ?? Infinity,
+          FiscalLimits.VOID_REASON_MAX_LENGTH
+        )}
         disabled={pending}
-        problem={wrong === null ? null : t(`problems.${wrong}`)}
-        onChange={value => {
-          setReason(value)
-          setWrong(null)
-          setRefusal(null)
-        }}
+        problem={problemOf('reason')}
+        onChange={value => change({ reason: value })}
       />
+      {inputs === undefined ? null : (
+        <>
+          <SelectField
+            label={t('kind')}
+            value={draft.kind}
+            disabled={pending}
+            problem={problemOf('kind')}
+            onChange={value =>
+              change({
+                kind: inputs.kinds.find(kind => String(kind) === value) ?? '',
+                replacementDocumentId: ''
+              })
+            }
+          >
+            <option value="">{t('kindChoose')}</option>
+            {inputs.kinds.map(kind => (
+              <option key={kind} value={kind}>
+                {t(`kinds.${kind}`)}
+              </option>
+            ))}
+          </SelectField>
+          {needsReplacement ? (
+            <SelectField
+              label={t('replacement')}
+              hint={t('replacementHint')}
+              value={draft.replacementDocumentId}
+              disabled={pending}
+              problem={problemOf('replacement')}
+              onChange={value => change({ replacementDocumentId: value })}
+            >
+              <option value="">{t('replacementChoose')}</option>
+              {candidates.map(candidate => (
+                <option key={candidate.id} value={candidate.id}>
+                  {t('replacementOption', {
+                    number: candidate.sequenceNumber,
+                    total: money(candidate.totalCents)
+                  })}
+                </option>
+              ))}
+            </SelectField>
+          ) : null}
+          {inputs.requiresParties ? (
+            <>
+              <PartyFields
+                prefix="responsible"
+                party={draft.responsible}
+                disabled={pending}
+                problem={problemOf('responsible')}
+                onChange={responsible => change({ responsible })}
+              />
+              <PartyFields
+                prefix="requester"
+                party={draft.requester}
+                disabled={pending}
+                problem={problemOf('requester')}
+                onChange={requester => change({ requester })}
+              />
+            </>
+          ) : null}
+        </>
+      )}
       {refusal === null ? null : (
         <p role="alert" className="text-destructive text-sm">
           {refusal}
@@ -144,10 +263,64 @@ function VoidForm({
         <Button type="button" variant="outline" onClick={onDone} disabled={pending}>
           {t('cancel')}
         </Button>
-        <Button type="submit" variant="destructive" disabled={pending}>
+        <Button
+          type="submit"
+          variant="destructive"
+          disabled={pending || providers.data === undefined}
+        >
           {t('submit')}
         </Button>
       </div>
     </form>
+  )
+}
+
+// A person of the invalidation: who makes it, or who asks for it. The kind of identity document is the provider's own code.
+function PartyFields({
+  prefix,
+  party,
+  disabled,
+  problem,
+  onChange
+}: {
+  prefix: 'responsible' | 'requester'
+  party: VoidPartyDraft
+  disabled: boolean
+  problem: string | null
+  onChange: (party: VoidPartyDraft) => void
+}): ReactElement {
+  const t = useTranslations('finance.fiscal.void')
+  return (
+    <fieldset className="grid gap-3 rounded-md border p-3" disabled={disabled}>
+      <legend className="px-1 text-sm font-medium">{t(`${prefix}.title`)}</legend>
+      <TextField
+        label={t('party.name')}
+        value={party.name}
+        maxLength={FiscalLimits.VOID_PARTY_NAME_MAX_LENGTH}
+        disabled={disabled}
+        onChange={name => onChange({ ...party, name })}
+      />
+      <div className="grid gap-3 sm:grid-cols-2">
+        <TextField
+          label={t('party.idType')}
+          hint={t('party.idTypeHint')}
+          value={party.idType}
+          disabled={disabled}
+          onChange={idType => onChange({ ...party, idType })}
+        />
+        <TextField
+          label={t('party.idNumber')}
+          value={party.idNumber}
+          maxLength={FiscalLimits.VOID_PARTY_ID_MAX_LENGTH}
+          disabled={disabled}
+          onChange={idNumber => onChange({ ...party, idNumber })}
+        />
+      </div>
+      {problem === null ? null : (
+        <p role="alert" className="text-destructive text-sm">
+          {problem}
+        </p>
+      )}
+    </fieldset>
   )
 }
