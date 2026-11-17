@@ -226,6 +226,9 @@ export const FiscalConflictReasons = {
   ALREADY_REPLACED: 'already_replaced',
   // The receiver of a credit note is the one of the document it cancels: it is fixed there
   CREDIT_NOTE_RECEIVER: 'credit_note_receiver',
+  // The sealed receiver cannot be read and the change does not carry the whole receiver: it would be merged over nothing and drop what
+  // was stored (the tax id first)
+  RECEIVER_UNREADABLE: 'receiver_unreadable',
   // A credit note whose sale document was voided and has no replacement yet
   ORIGINAL_VOIDED: FiscalRejectionReasons.ORIGINAL_VOIDED,
   // The units of a return still do not fit its sale

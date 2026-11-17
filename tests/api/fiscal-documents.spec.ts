@@ -6,9 +6,11 @@ import { EventEmitter2 } from '@nestjs/event-emitter'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
+import { CredentialCipher } from '@platform/core/crypto'
 import { DatabaseNull } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
+  FiscalConflictReasons,
   FiscalDocumentStatus,
   FiscalEnvironment,
   FiscalIssueOn,
@@ -602,6 +604,61 @@ describe('The fiscal documents (Step 4B.7)', () => {
       } finally {
         emitter.off(Events.FISCAL_DOCUMENT_REJECTED, listener)
       }
+    })
+
+    describe('a change of the receiver that carries some fields', () => {
+      const FULL = {
+        name: 'Ana Pérez',
+        taxId: '0614-010101-101-1',
+        registrationId: '123456-7',
+        email: 'ana@example.com',
+        phone: '70000000',
+        address: { line1: 'Calle 1', city: 'San Salvador' }
+      }
+      const storedReceiver = async (documentId: string): Promise<Record<string, unknown>> => {
+        const row = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+        return app.get(CredentialCipher).open(row.receiverEncrypted)
+      }
+
+      const changes: Array<[string, Record<string, unknown>]> = [
+        ['name', { name: 'Ana María' }],
+        ['tax id', { taxId: '0614-020202-202-2' }],
+        ['registration id', { registrationId: '765432-1' }],
+        ['email', { email: 'otra@example.com' }],
+        ['phone', { phone: '71111111' }],
+        ['address', { address: { line1: 'Calle 2', city: 'Santa Ana' } }]
+      ]
+
+      it.each(changes)('keeps every field it does not carry: the %s', async (_label, change) => {
+        const { documentId } = await sale()
+        expect((await patchReceiver(documentId, FULL)).status).toBe(OK)
+        expect((await patchReceiver(documentId, change)).status).toBe(OK)
+        const kept = await storedReceiver(documentId)
+        expect(kept).toMatchObject({ ...FULL, ...change })
+      })
+
+      it('refuses with its reason, and drops nothing, when the stored receiver cannot be read and the change is partial', async () => {
+        const { documentId } = await sale()
+        expect((await patchReceiver(documentId, FULL)).status).toBe(OK)
+        const row = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+        const damaged = Buffer.from(row.receiverEncrypted)
+        damaged.writeUInt8(damaged.readUInt8(damaged.length - 1) ^ 0xff, damaged.length - 1)
+        await owner.fiscalDocument.update({
+          where: { id: documentId },
+          data: { receiverEncrypted: new Uint8Array(damaged) }
+        })
+        const refused = await patchReceiver(documentId, { name: 'Solo Nombre' })
+        expect(refused.status).toBe(409)
+        expect(
+          (refused.body as { error: { metadata?: { reason?: string } } }).error.metadata?.reason
+        ).toBe(FiscalConflictReasons.RECEIVER_UNREADABLE)
+        const after = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+        expect(Buffer.from(after.receiverEncrypted).equals(damaged)).toBe(true)
+        // Writing the whole receiver again repairs it
+        const repaired = await patchReceiver(documentId, FULL)
+        expect(repaired.status).toBe(OK)
+        expect(await storedReceiver(documentId)).toMatchObject(FULL)
+      })
     })
 
     it('rejects a document whose receiver lacks what its type needs', async () => {
