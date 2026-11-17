@@ -23,6 +23,19 @@ const order = (over: Partial<MarginOrder> = {}): MarginOrder => ({
   ...over
 })
 
+describe('marginOfOrder cost (HC-007)', () => {
+  it('costs a product at the value its movements removed from the stock, the figure the sale entry credits to inventory', () => {
+    const o = order()
+    const result = marginOfOrder(o, [
+      { productId: 'a', quantity: 2, unitCostCents: 100, valueCents: 201n },
+      { productId: 'b', quantity: 1, unitCostCents: 650 }
+    ])
+    if (!result.ok) throw new Error('the order must be accepted')
+    expect(result.rows.find(row => row.productId === 'a')?.costCents).toBe(201)
+    expect(result.costCents).toBe(201 + 650)
+  })
+})
+
 describe('marginOfOrder', () => {
   it('splits the revenue of the sale entry among the lines, to the cent, and costs each product at its movements', () => {
     const o = order()

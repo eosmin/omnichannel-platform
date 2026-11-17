@@ -987,6 +987,10 @@ model InventoryMovement {
   // cost of a level is kept from these (InventoryLevel.valueCents), and FIFO lots can later be built from the receipts
   // without changing this table.
   unitCostCents     Int?     @map("unit_cost_cents")
+  // The value the movement moved in or out of the level, in whole USD cents (what the books post, TDD_18 §4.2): units x the rounded
+  // unit cost differs from it by a cent or two when the average has a fraction of a cent. Null for a reserve, a release, units that were
+  // never on hand, and the rows written before the column existed (those are valued at units x unit cost).
+  valueCents        BigInt?  @map("value_cents")
   onHandAfter       Int      @map("on_hand_after")
   reservedAfter     Int      @map("reserved_after")
   createdBy         String?  @map("created_by")

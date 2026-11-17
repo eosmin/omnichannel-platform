@@ -139,6 +139,28 @@ describe('issueCost', () => {
     expect(issueCost([])).toEqual({ ok: true, costCents: 0 })
   })
 
+  it('takes the value the movement removed from the stock, not the rounded unit cost times the units (HC-007)', () => {
+    // 5 units worth 502, an average of 100.4: two leave with a recorded cost of 100 and a value of 201 (2 x 100 would be 200)
+    expect(issueCost([{ quantity: 2, unitCostCents: 100, valueCents: 201n }])).toEqual({
+      ok: true,
+      costCents: 201
+    })
+    // The rest leaves with the residue of the rounding: the books keep nothing of a level the stock emptied
+    expect(
+      issueCost([
+        { quantity: 2, unitCostCents: 100, valueCents: 201n },
+        { quantity: 3, unitCostCents: 100, valueCents: 301n }
+      ])
+    ).toEqual({ ok: true, costCents: 502 })
+  })
+
+  it('falls back to the units times the cost for a movement written before the value was recorded', () => {
+    expect(issueCost([{ quantity: 2, unitCostCents: 100, valueCents: null }])).toEqual({
+      ok: true,
+      costCents: 200
+    })
+  })
+
   it('fails on a movement that left with no cost', () => {
     expect(issueCost([{ quantity: 1, unitCostCents: null }])).toEqual({
       ok: false,
@@ -301,6 +323,28 @@ describe('adjustmentLines (E9)', () => {
     })
     expect(result.ok && lineOf(result.lines, AccountRole.INVENTORY_LOSS)?.debitCents).toBe(750)
     expect(result.ok && lineOf(result.lines, AccountRole.INVENTORY)?.creditCents).toBe(750)
+  })
+
+  it('units out are a loss of exactly the value the movement removed from the stock (HC-007)', () => {
+    const result = adjustmentLines({
+      accounts,
+      movement: { ...movement(InventoryMovementType.ADJUSTMENT_OUT, 2, 100), valueCents: 201n },
+      storeId: STORE
+    })
+    expect(result.ok && lineOf(result.lines, AccountRole.INVENTORY_LOSS)?.debitCents).toBe(201)
+    expect(result.ok && lineOf(result.lines, AccountRole.INVENTORY)?.creditCents).toBe(201)
+  })
+
+  it('units in keep the cost times the units: only what leaves carries a value that the rounding bends', () => {
+    const result = adjustmentLines({
+      accounts,
+      movement: {
+        ...movement(InventoryMovementType.ADJUSTMENT_IN, 2, 500, InventoryAdjustmentReason.FOUND),
+        valueCents: 900n
+      },
+      storeId: STORE
+    })
+    expect(result.ok && lineOf(result.lines, AccountRole.INVENTORY)?.debitCents).toBe(1000)
   })
 
   it('units in are a gain', () => {

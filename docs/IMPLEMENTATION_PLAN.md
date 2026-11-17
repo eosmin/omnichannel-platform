@@ -1740,6 +1740,23 @@ sweep and the charge model.
 - [x] **4B.6b (done in 4B.6b-3, except the comparisons of inventory and carrier receivables, debt (ar)):** `RECONCILE_FINANCE` (daily): the sweep of unposted
       sources (it is what heals an event that was never queued), the recomputation of the balances; the metrics and the notification of
       `FINANCE_POSTING_FAILED` to who can fix it; `FinanceCloseGuard`, which the close of 4B.8 asks before it locks a month
+- [x] **Fix `inventory-ledger-drift` (HC-007, HC-123 in part; rule 12):** the books post EXACTLY the value a stock movement moved. `inventory_movements.value_cents`
+      (migration `20270114100000_inventory_movement_value`, with its rollback) holds what the level lost or gained; `planMovement` fills it, E2/E3 (`issueCost`),
+      E9 units out (`adjustmentLines`), the cost put back by E8 (`restockCost`) and the margin read it, so that the inventory account and the stock value stay equal
+      to the cent through issues (3 at 1.00 and 2 at 1.01, two leave: stock 301, books 301; all leave: no residue). The daily `RECONCILE_FINANCE` compares the inventory
+      account with the sum of `inventory_levels.value_cents` of the organization (`FinanceSweepService.inventoryDrift`, one statement) and counts a difference in
+      `platform_finance_balance_mismatches` with an error log; it posts nothing. Debts, each with its owner: (a) **a receipt over negative stock** (PUR-545): the
+      level values only the units above zero while E10 debits inventory for every unit; how the units sold with no cost are booked is the accountant's decision
+      (P-24), and so is the same case in `ADJUSTMENT_IN`/`COUNT_IN` over a deficit (the books debit the units times the cost, the level gains only the units above
+      zero) and an issue of more units than were on hand (the value covers only the units that were): 4B.8b-4, the sweep shows the difference meanwhile. (b) **Transfers** bring units in at the rounded unit cost the dispatch recorded, so the stock moves
+      by less than a cent a unit with no entry (the debt already noted in 4.5): pass the dispatched value to the `TRANSFER_IN`, prorated by the units received and
+      closed to the last unit: Step 7.3. (c) **A return** puts the units back in stock at the current average (the engine) while E8 books the cost the sale took
+      out (so that cost of goods sold clears exactly): the difference of the two, when the average moved, needs the accountant's choice of account: 4B.8b-4.
+      (d) Rows written before the migration keep `value_cents` null and are valued at units x unit cost, as their entries were posted: no backfill (the journal is
+      never rewritten). (e) The sweep still does not compare payables with the purchases (debt (c) of 4B.5), does not mark `truncated` when a preview fails and
+      does not fix the zone of its cron (the rest of HC-123): 4B.8b-2c. (g) `RECONCILE_INVENTORY` replays the ledger without `value_cents`, so a row whose value was edited or written wrong is seen only by the nightly
+      total of the books, not at its movement: replay and compare the value of each row: Step 7.3. (f) An organization whose opening entry differs from the stock value at the start of
+      its books shows a standing difference; the accountant's opening balance is meant to equal it (TDD_18, opening balances): the screen of 4B.9 shows both figures.
 - [x] **4B.6b (moved to 4B.6b-2):** **`FINANCE_VIEW_CARRIER_FEES`** gates the commission and the rates of a carrier connection (closes (c3)(i) of Step 4.15:
       `shipping:view` stops showing them; the web of Settings → Carriers shows the boxes only with it)
 - [ ] **4B.6b (moved to 4B.6b-4):** the charge model of a carrier connection (`prepaid` | `collected in the remittance` | `invoiced`, `TDD_18 §4.2` note on E4,

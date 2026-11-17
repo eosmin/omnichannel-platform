@@ -21,6 +21,8 @@ export interface FinanceReconcileReport {
   openFailures: number
   unposted: number
   balanceMismatches: number
+  // The inventory account less the value of the stock, in cents: zero when the books and the warehouses agree
+  inventoryDriftCents: number
   truncated: boolean
 }
 
@@ -63,14 +65,32 @@ export class FinanceReconciler {
       // The run stopped at a cap: the number above is a floor, and the rest is for tomorrow
       this.logger.warn({ organizationId }, 'the check of the books stopped at its cap')
     }
-    const balanceMismatches = await this.sweep.balanceMismatches(organizationId)
+    const lineMismatches = await this.sweep.balanceMismatches(organizationId)
+    // The inventory account against the stock counts as one more difference: the same gauge, the same person, the same rule (never fixed here)
+    const drift = await this.sweep.inventoryDrift(organizationId)
+    // What the sweep has just asked the job to post is not in the books yet and the stock already moved: that lag is not a difference, and
+    // tomorrow's check sees the entries. An entry that failed and waits for a person is NOT lag: it counts
+    const lagging = swept.toQueue.length > 0
+    const inventoryDiffers = drift.differenceCents !== 0n && !lagging
+    const balanceMismatches = lineMismatches + (inventoryDiffers ? 1 : 0)
     // How many there are now, so that it goes back to zero when someone fixes them
     this.mismatches.set({ organization_id: organizationId }, balanceMismatches)
-    if (balanceMismatches > 0) {
+    if (lineMismatches > 0) {
       // Never fixed from here: the journal is the truth and a correction is a person's decision
       this.logger.error(
-        { organizationId, balanceMismatches },
+        { organizationId, balanceMismatches: lineMismatches },
         'the balances of the books disagree with their lines'
+      )
+    }
+    if (inventoryDiffers) {
+      this.logger.error(
+        {
+          organizationId,
+          ledgerCents: drift.ledgerCents.toString(),
+          stockCents: drift.stockCents.toString(),
+          differenceCents: drift.differenceCents.toString()
+        },
+        'the inventory account of the books disagrees with the value of the stock'
       )
     }
     this.logger.info(
@@ -89,6 +109,7 @@ export class FinanceReconciler {
       openFailures: swept.openFailures,
       unposted: swept.unposted,
       balanceMismatches,
+      inventoryDriftCents: Number(drift.differenceCents),
       truncated: swept.truncated
     }
   }

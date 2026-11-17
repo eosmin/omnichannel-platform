@@ -461,8 +461,9 @@ always a return or a manual reversal; nothing mutates a posted entry.
 
 **Weighted average.** The cost of every inventory entry is the cost the **movement** carries, which `InventoryService`
 already computes from the average at the moment (`TDD_16`). The ledger never recomputes a cost: it trusts the
-movement and the daily reconciliation compares `INVENTORY` against `InventoryLevel.valueCents` (§11). FIFO later
-changes how `InventoryService` fills `unitCostCents` and nothing here.
+movement and the daily reconciliation compares `INVENTORY` against `InventoryLevel.valueCents` (§11). The cost of what
+leaves is the **value** the movement took out of the level (`InventoryMovement.valueCents`), never `quantity x unitCostCents`: the unit cost is
+rounded to the cent and the product is not what the level lost. FIFO later changes how `InventoryService` fills them and nothing here.
 
 ### 4.3 Registering by hand
 
