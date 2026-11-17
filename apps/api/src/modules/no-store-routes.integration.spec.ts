@@ -208,10 +208,15 @@ describe('Cache-Control: no-store on every GET of the api', () => {
           continue
         }
         if (takesResponse(controller, name)) {
-          // A route that takes the response sets the header by hand: it is named here and its file is read, so that
+          // A route that takes the response says it with the decorator, or sets the header by hand: then its file is read, so that
           // a new one is not skipped and a line that was removed is seen
           const source = readFileSync(sourceOf.get(controller) ?? '', 'utf8')
-          if (!/setHeader\(\s*'Cache-Control',\s*'no-store'\s*\)/.test(source)) handByHand.push(id)
+          if (
+            !hasNoStore(controller, name) &&
+            !/setHeader\(\s*'Cache-Control',\s*'no-store'\s*\)/.test(source)
+          ) {
+            handByHand.push(id)
+          }
           continue
         }
         checked += 1
