@@ -2,7 +2,7 @@ import { Controller, Get, Param, Query } from '@nestjs/common'
 
 import { PluginApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import { PluginScopes } from '@platform/plugins/sdk'
 
 import { PluginApi } from '../plugins/plugin-api.decorators'
@@ -35,6 +35,7 @@ export class PluginShipmentsController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.SHIPPING_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.shipments.list)
   async list(
     @CurrentStore() store: { id: string },
@@ -45,6 +46,7 @@ export class PluginShipmentsController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.SHIPPING_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.shipments.byId(':id'))
   async get(
     @CurrentStore() store: { id: string },

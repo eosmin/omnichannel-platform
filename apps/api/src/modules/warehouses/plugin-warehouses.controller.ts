@@ -2,7 +2,7 @@ import { Controller, Get, Param, Query } from '@nestjs/common'
 
 import { PluginApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import { PluginScopes } from '@platform/plugins/sdk'
 
 import { PluginApi } from '../plugins/plugin-api.decorators'
@@ -26,6 +26,7 @@ export class PluginWarehousesController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.INVENTORY_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.warehouses.list)
   async list(
     @CurrentOrganization() organization: { id: string },
@@ -37,6 +38,7 @@ export class PluginWarehousesController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.INVENTORY_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.warehouses.byId(':id'))
   async get(
     @CurrentOrganization() organization: { id: string },

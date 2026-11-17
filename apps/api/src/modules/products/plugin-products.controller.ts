@@ -14,7 +14,7 @@ import {
 import { PluginApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import type { Viewer } from '@platform/core/messaging'
 import { PluginScopes } from '@platform/plugins/sdk'
@@ -85,6 +85,7 @@ export class PluginProductsController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.PRODUCTS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.products.list)
   async list(
     @CurrentStore() store: Store,
@@ -98,6 +99,7 @@ export class PluginProductsController {
   // Declared before `:id`, or "search" would be read as an id
   @PluginApi(READ)
   @RequirePermissions(Permissions.PRODUCTS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.products.search)
   search(
     @CurrentStore() store: Store,
@@ -129,6 +131,7 @@ export class PluginProductsController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.PRODUCTS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.products.byId(':id'))
   async get(
     @CurrentStore() store: Store,
@@ -141,6 +144,7 @@ export class PluginProductsController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.PRODUCTS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.products.images(':id'))
   images(
     @CurrentStore() store: Store,

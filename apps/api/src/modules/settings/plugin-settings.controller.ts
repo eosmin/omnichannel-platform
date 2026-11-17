@@ -3,7 +3,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Req } from
 import { PluginApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import { PluginScopes } from '@platform/plugins/sdk'
 
@@ -43,6 +43,7 @@ export class PluginSettingsController {
 
   @PluginApi(PluginScopes.SETTINGS_READ)
   @RequirePermissions(Permissions.SETTINGS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.settings.preferences)
   async getPreferences(@CurrentStore() store: { id: string }): Promise<PluginPreferencesView> {
     return pluginPreferencesView(await this.preferences.get(store.id))
@@ -50,6 +51,7 @@ export class PluginSettingsController {
 
   @PluginApi(PluginScopes.SETTINGS_READ)
   @RequirePermissions(Permissions.SETTINGS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.settings.returns)
   getReturns(@CurrentStore() store: { id: string }): Promise<ReturnSettingsView> {
     return this.returns.get(store.id)
@@ -57,6 +59,7 @@ export class PluginSettingsController {
 
   @PluginApi(TAGS_READ)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.settings.tags)
   listTags(@CurrentStore() store: { id: string }): Promise<TagView[]> {
     return this.tags.list(store.id)
@@ -64,6 +67,7 @@ export class PluginSettingsController {
 
   @PluginApi(TAGS_READ)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.settings.tagById(':id'))
   getTag(
     @CurrentStore() store: { id: string },
@@ -76,6 +80,7 @@ export class PluginSettingsController {
   // is the owner's (SETTINGS_EDIT) and has no scope.
   @PluginApi(PluginScopes.SNIPPETS_READ)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.settings.snippets)
   listSnippets(@CurrentStore() store: { id: string }): Promise<SnippetView[]> {
     return this.snippets.list(store.id)
@@ -83,6 +88,7 @@ export class PluginSettingsController {
 
   @PluginApi(PluginScopes.SNIPPETS_READ)
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.settings.snippetById(':id'))
   getSnippet(
     @CurrentStore() store: { id: string },

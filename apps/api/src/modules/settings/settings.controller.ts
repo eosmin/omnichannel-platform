@@ -20,7 +20,7 @@ import {
   type UpdateSafetySettingsBody
 } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import {
   type StorePreferences,
@@ -87,12 +87,14 @@ export class SettingsController {
   ) {}
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.settings.tags)
   listTags(@CurrentStore() store: Store): Promise<TagView[]> {
     return this.tags.list(store.id)
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.settings.tagById(':id'))
   getTag(@CurrentStore() store: Store, @Param('id', id()) tagId: string): Promise<TagView> {
     return this.tags.get(store.id, tagId)
@@ -135,12 +137,14 @@ export class SettingsController {
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.settings.snippets)
   listSnippets(@CurrentStore() store: Store): Promise<SnippetView[]> {
     return this.snippets.list(store.id)
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.settings.snippetById(':id'))
   getSnippet(
     @CurrentStore() store: Store,
@@ -186,6 +190,7 @@ export class SettingsController {
   }
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.settings.businessHours)
   getBusinessHours(@CurrentStore() store: Store): Promise<BusinessHoursView> {
     return this.businessHours.get(store.id)
@@ -203,12 +208,14 @@ export class SettingsController {
   }
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.settings.inboxBehavior)
   getInboxBehavior(@CurrentStore() store: Store): Promise<InboxBehaviorView> {
     return this.inbox.behavior(store.id)
   }
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.settings.inbox)
   getInbox(@CurrentStore() store: Store): Promise<InboxSettingsView> {
     return this.inbox.get(store.id)
@@ -227,6 +234,7 @@ export class SettingsController {
 
   // Read by whoever works the inbox: the screens ask (or do not) before a destructive action by what it says
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.settings.safety)
   getSafety(@CurrentStore() store: Store): Promise<SafetySettings> {
     return this.safety.get(store.id)
@@ -244,6 +252,7 @@ export class SettingsController {
   }
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.settings.preferences)
   getPreferences(@CurrentStore() store: Store): Promise<StorePreferences> {
     return this.preferences.get(store.id)
@@ -261,6 +270,7 @@ export class SettingsController {
   }
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.settings.inventory)
   getInventory(@CurrentStore() store: Store): Promise<InventorySettingsView> {
     return this.inventory.get(store.id)
@@ -279,6 +289,7 @@ export class SettingsController {
 
   // The windows the nightly run deletes by: shortening one deletes data, so even reading them is for whoever manages them
   @RequirePermissions(Permissions.SETTINGS_MANAGE_RETENTION)
+  @NoStore()
   @Get(ApiRoutes.settings.retention)
   getRetention(@CurrentStore() store: Store): Promise<RetentionSettingsView> {
     return this.retention.get(store.id)
@@ -296,6 +307,7 @@ export class SettingsController {
   }
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.settings.returns)
   getReturns(@CurrentStore() store: Store): Promise<ReturnSettingsView> {
     return this.returnSettings.get(store.id)

@@ -2,7 +2,7 @@ import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common'
 
 import { PluginApiRoutes } from '@platform/core/api'
 import type { CursorPage } from '@platform/core/domain'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import { PluginScopes } from '@platform/plugins/sdk'
 
 import { CurrentPluginInstallation, PluginApi } from '../plugins/plugin-api.decorators'
@@ -25,6 +25,7 @@ export class PluginExportsController {
   constructor(private readonly exports: ExportsService) {}
 
   @PluginApi(READ)
+  @NoStore()
   @Get(PluginApiRoutes.exports.list)
   list(
     @CurrentStore() store: { id: string },
@@ -36,6 +37,7 @@ export class PluginExportsController {
   }
 
   @PluginApi(READ)
+  @NoStore()
   @Get(PluginApiRoutes.exports.byId(':id'))
   byId(
     @CurrentStore() store: { id: string },
@@ -47,6 +49,7 @@ export class PluginExportsController {
   }
 
   @PluginApi(READ)
+  @NoStore()
   @Get(PluginApiRoutes.exports.download(':id'))
   download(
     @CurrentStore() store: { id: string },

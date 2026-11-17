@@ -24,7 +24,7 @@ import {
   PlatformException,
   resourceNotFound
 } from '@platform/core/errors'
-import { RateLimit } from '@platform/core/http'
+import { NoStore, RateLimit } from '@platform/core/http'
 import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 import { PluginRegistry } from '@platform/plugins/runtime'
@@ -63,6 +63,7 @@ export class ChannelWebhookController {
   }
 
   // Meta asks first with a GET and a challenge; a channel that has no handshake answers 404
+  @NoStore()
   @Get(ApiRoutes.webhooks.channel(':pluginId'))
   verifyWebhook(
     @Param('pluginId') pluginId: string,

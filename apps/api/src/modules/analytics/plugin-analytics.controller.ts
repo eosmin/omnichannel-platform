@@ -3,7 +3,7 @@ import { Controller, Get, HttpCode, Query } from '@nestjs/common'
 import { PluginApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import { ExportTypes } from '@platform/core/queues'
 import { PluginScopes } from '@platform/plugins/sdk'
 
@@ -29,6 +29,7 @@ export class PluginAnalyticsController {
 
   @PluginApi(PluginScopes.ANALYTICS_READ)
   @RequirePermissions(Permissions.ANALYTICS_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.analytics.metrics)
   metricsOf(
     @CurrentStore() store: { id: string },
@@ -42,6 +43,7 @@ export class PluginAnalyticsController {
   // and the right to take them out.
   @PluginApi(PluginScopes.ANALYTICS_READ, PluginScopes.EXPORTS_WRITE)
   @RequirePermissions(Permissions.ANALYTICS_VIEW, Permissions.ANALYTICS_EXPORT)
+  @NoStore()
   @Get(PluginApiRoutes.analytics.export)
   @HttpCode(HttpStatusCodes.ACCEPTED)
   requestExport(

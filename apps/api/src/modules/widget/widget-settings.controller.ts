@@ -11,7 +11,7 @@ import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
@@ -30,6 +30,7 @@ export class WidgetSettingsController {
   constructor(private readonly settings: WidgetSettings) {}
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.channels.widgetEmbed(':id'))
   embed(
     @CurrentStore() store: Store,

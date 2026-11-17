@@ -47,6 +47,7 @@ export class TenantWebhooksController {
   constructor(private readonly webhooks: TenantWebhooksService) {}
 
   @RequirePermissions(Permissions.SETTINGS_MANAGE_WEBHOOKS)
+  @NoStore()
   @Get(ApiRoutes.settings.webhooks)
   list(@CurrentStore() store: Store): Promise<WebhookView[]> {
     return this.webhooks.list(store.id)
@@ -67,6 +68,7 @@ export class TenantWebhooksController {
   }
 
   @RequirePermissions(Permissions.SETTINGS_MANAGE_WEBHOOKS)
+  @NoStore()
   @Get(ApiRoutes.settings.webhookById(':id'))
   get(@CurrentStore() store: Store, @Param('id', id()) webhookId: string): Promise<WebhookView> {
     return this.webhooks.get(store.id, webhookId)
@@ -111,6 +113,7 @@ export class TenantWebhooksController {
   }
 
   @RequirePermissions(Permissions.SETTINGS_MANAGE_WEBHOOKS)
+  @NoStore()
   @Get(ApiRoutes.settings.webhookDeliveries(':id'))
   deliveries(
     @CurrentStore() store: Store,

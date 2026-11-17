@@ -44,6 +44,7 @@ export class PluginApiController {
 
   // Any active key: no scope is needed to learn what the key itself is
   @PluginApi()
+  @NoStore()
   @Get(PluginApiRoutes.installation)
   installation(
     @CurrentPluginInstallation()

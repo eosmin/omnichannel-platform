@@ -3,7 +3,7 @@ import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post } from '@ne
 import { PluginApiRoutes } from '@platform/core/api'
 import { type Permission, Permissions } from '@platform/core/auth'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import {
   confirmUploadSchema,
   type ConfirmUploadBody,
@@ -64,6 +64,7 @@ export class PluginMediaController {
 
   @PluginApi(PluginScopes.MEDIA_READ)
   @RequirePermissions(Permissions.MEDIA_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.media.byId(':id'))
   urls(
     @CurrentStore() store: { id: string },

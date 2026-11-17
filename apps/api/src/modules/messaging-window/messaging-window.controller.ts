@@ -4,7 +4,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { uuidSchema } from '@platform/core/domain'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import {
   MessagingWindowService,
   type MessagingWindowState,
@@ -18,6 +18,7 @@ export class MessagingWindowController {
   constructor(private readonly window: MessagingWindowService) {}
 
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.conversations.messagingWindow(':id'))
   get(
     @CurrentStore() store: { id: string },

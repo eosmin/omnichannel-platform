@@ -4,7 +4,7 @@ import { ApiRoutes } from '@platform/core/api'
 import type { AuthenticatedUser, Permission } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import type { CursorPage } from '@platform/core/domain'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 
 import { CurrentPermissions, CurrentStore, RequireAnyPermission } from '../tenancy'
 
@@ -20,6 +20,7 @@ import type { ExportDownload, ExportView } from './exports.views'
 export class ExportsController {
   constructor(private readonly exports: ExportsService) {}
 
+  @NoStore()
   @Get(ApiRoutes.exports.list)
   list(
     @CurrentStore() store: { id: string },
@@ -30,6 +31,7 @@ export class ExportsController {
     return this.exports.list(store.id, user.id, held, query)
   }
 
+  @NoStore()
   @Get(ApiRoutes.exports.byId(':id'))
   byId(
     @CurrentStore() store: { id: string },
@@ -40,6 +42,7 @@ export class ExportsController {
     return this.exports.get(store.id, user.id, held, id)
   }
 
+  @NoStore()
   @Get(ApiRoutes.exports.download(':id'))
   download(
     @CurrentStore() store: { id: string },

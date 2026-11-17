@@ -3,7 +3,7 @@ import { Controller, Get, Param, Query } from '@nestjs/common'
 import { PluginApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
 import type { CursorPage } from '@platform/core/domain'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import { PluginScopes } from '@platform/plugins/sdk'
 
 import { PluginApi } from '../plugins/plugin-api.decorators'
@@ -50,6 +50,7 @@ export class PluginCarriersController {
   // Declared before the routes with an id: `registry` is not the id of a connection
   @PluginApi(READ)
   @RequirePermissions(Permissions.SHIPPING_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.carriers.registry)
   async registry(@CurrentStore() store: { id: string }): Promise<PluginCarrierRegistryEntry[]> {
     return (await this.connections.registryOf(store.id)).map(pluginCarrierRegistryEntry)
@@ -57,6 +58,7 @@ export class PluginCarriersController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.SHIPPING_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.carriers.list)
   async list(
     @CurrentStore() store: { id: string },
@@ -68,6 +70,7 @@ export class PluginCarriersController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.SHIPPING_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.carriers.byId(':id'))
   async get(
     @CurrentStore() store: { id: string },
@@ -78,6 +81,7 @@ export class PluginCarriersController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.SHIPPING_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.carriers.statusCatalog(':id'))
   async statusCatalog(
     @CurrentStore() store: { id: string },
@@ -88,6 +92,7 @@ export class PluginCarriersController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.SHIPPING_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.carriers.unmappedStatuses(':id'))
   async unmappedStatuses(
     @CurrentStore() store: { id: string },

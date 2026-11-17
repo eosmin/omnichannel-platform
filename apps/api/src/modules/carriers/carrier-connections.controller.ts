@@ -52,12 +52,14 @@ export class CarrierConnectionsController {
 
   // Declared before the routes with an id: `registry` is not the id of a connection
   @RequirePermissions(Permissions.SHIPPING_VIEW)
+  @NoStore()
   @Get(ApiRoutes.carriers.registry)
   registry(@CurrentStore() store: Store): Promise<CarrierRegistryEntry[]> {
     return this.connections.registryOf(store.id)
   }
 
   @RequirePermissions(Permissions.SHIPPING_VIEW)
+  @NoStore()
   @Get(ApiRoutes.carriers.list)
   async list(
     @CurrentStore() store: Store,
@@ -71,6 +73,7 @@ export class CarrierConnectionsController {
   // The places the carrier lists for the address of a guide, under one parent or at the top (the dialog of a guide of a carrier that
   // needs ids of places). Reading them needs SHIPPING_VIEW, like the connection they belong to
   @RequirePermissions(Permissions.SHIPPING_VIEW)
+  @NoStore()
   @Get(ApiRoutes.carriers.locations(':id'))
   locations(
     @CurrentStore() store: Store,
@@ -81,6 +84,7 @@ export class CarrierConnectionsController {
   }
 
   @RequirePermissions(Permissions.SHIPPING_VIEW)
+  @NoStore()
   @Get(ApiRoutes.carriers.byId(':id'))
   async get(
     @CurrentStore() store: Store,

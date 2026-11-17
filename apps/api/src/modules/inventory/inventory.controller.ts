@@ -5,7 +5,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import {
@@ -52,6 +52,7 @@ export class InventoryController {
   ) {}
 
   @RequirePermissions(Permissions.INVENTORY_VIEW)
+  @NoStore()
   @Get(ApiRoutes.inventory.levels)
   levels(
     @CurrentStore() store: { id: string },
@@ -63,6 +64,7 @@ export class InventoryController {
 
   // Declared with the other fixed routes, before any `:id`
   @RequirePermissions(Permissions.INVENTORY_VIEW)
+  @NoStore()
   @Get(ApiRoutes.inventory.summary)
   summary(
     @CurrentStore() store: { id: string },
@@ -72,6 +74,7 @@ export class InventoryController {
   }
 
   @RequirePermissions(Permissions.INVENTORY_VIEW)
+  @NoStore()
   @Get(ApiRoutes.inventory.movements)
   movements(
     @CurrentStore() store: { id: string },
@@ -82,6 +85,7 @@ export class InventoryController {
   }
 
   @RequirePermissions(Permissions.INVENTORY_VIEW)
+  @NoStore()
   @Get(ApiRoutes.inventory.kardex)
   kardex(
     @CurrentStore() store: { id: string },
@@ -92,6 +96,7 @@ export class InventoryController {
   }
 
   @RequirePermissions(Permissions.INVENTORY_VIEW)
+  @NoStore()
   @Get(ApiRoutes.products.inventory(':id'))
   productInventory(
     @CurrentStore() store: { id: string },

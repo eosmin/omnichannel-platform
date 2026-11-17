@@ -55,6 +55,7 @@ export class PluginsController {
   ) {}
 
   @RequirePermissions(Permissions.SETTINGS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.plugins.available)
   catalog(@CurrentStore() store: Store): Promise<PluginCatalogEntry[]> {
     return this.installations.catalog(store)
@@ -103,6 +104,7 @@ export class PluginsController {
 
   // What installing an integration plugin would grant: the consent screen reads it (the id is the plugin's)
   @RequirePermissions(Permissions.SETTINGS_MANAGE_PLUGINS)
+  @NoStore()
   @Get(ApiRoutes.plugins.consent(':id'))
   consent(
     @CurrentStore() store: Store,

@@ -29,6 +29,7 @@ export class PluginPickupsController {
 
   @PluginApi(READ)
   @RequirePermissions(Permissions.SHIPPING_VIEW)
+  @NoStore()
   @Get(PluginApiRoutes.pickups.list)
   async list(
     @CurrentStore() store: { id: string },
