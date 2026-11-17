@@ -1,7 +1,25 @@
 import { TaxRounding, TaxTreatment } from '@platform/core/domain'
 import { ErrorCodes, PlatformException } from '@platform/core/errors'
 
-import { lineTaxOf, planTax, snapshotTax, taxColumnsOf, type TaxContext } from './orders-tax'
+import {
+  lineTaxOf,
+  planTax,
+  snapshotTax,
+  storedRounding,
+  taxColumnsOf,
+  type TaxContext
+} from './orders-tax'
+
+describe('storedRounding', () => {
+  it('reads a rounding of the list, and takes anything else for none', () => {
+    for (const rounding of Object.values(TaxRounding)) {
+      expect(storedRounding(rounding)).toBe(rounding)
+    }
+    expect(storedRounding(null)).toBeNull()
+    expect(storedRounding('')).toBeNull()
+    expect(storedRounding('banker')).toBeNull()
+  })
+})
 
 const context = (over: Partial<TaxContext> = {}): TaxContext => ({
   rounding: TaxRounding.HALF_UP,
@@ -81,6 +99,7 @@ describe('planTax', () => {
   it('keeps what an order that exists fixed: its price mode, and the rate of a fee that did not change', () => {
     const plan = planTax(context({ includesTax: false, defaultRateBps: 1500 }), {
       includesTax: true,
+      rounding: null,
       shippingRateBps: 1300
     })
     expect(plan).toMatchObject({
@@ -90,13 +109,29 @@ describe('planTax', () => {
     })
     // A fee that was not taxed stays untaxed
     expect(
-      planTax(context(), { includesTax: true, shippingRateBps: null })?.shippingRateBps
+      planTax(context(), { includesTax: true, rounding: null, shippingRateBps: null })
+        ?.shippingRateBps
     ).toBeNull()
     // A fee that changed takes today's
     expect(
-      planTax(context({ defaultRateBps: 1500 }), { includesTax: true, shippingRateBps: 'current' })
-        ?.shippingRateBps
+      planTax(context({ defaultRateBps: 1500 }), {
+        includesTax: true,
+        rounding: null,
+        shippingRateBps: 'current'
+      })?.shippingRateBps
     ).toBe(1500)
+  })
+
+  it("keeps the rounding the order was quoted with, and takes today's only when it kept none", () => {
+    const books = context({ rounding: TaxRounding.HALF_EVEN })
+    expect(
+      planTax(books, { includesTax: true, rounding: TaxRounding.UP, shippingRateBps: null })
+        ?.rounding
+    ).toBe(TaxRounding.UP)
+    expect(
+      planTax(books, { includesTax: true, rounding: null, shippingRateBps: null })?.rounding
+    ).toBe(TaxRounding.HALF_EVEN)
+    expect(planTax(books)?.rounding).toBe(TaxRounding.HALF_EVEN)
   })
 })
 
@@ -115,6 +150,7 @@ describe('snapshotTax', () => {
     expect(snapshot).toMatchObject({
       taxCents: 377 + 65,
       pricesIncludeTax: false,
+      taxRounding: TaxRounding.HALF_UP,
       shippingTaxRateBps: 1300,
       addedToTotalCents: 442
     })
@@ -142,16 +178,22 @@ describe('snapshotTax', () => {
 })
 
 describe('taxColumnsOf', () => {
-  it('writes the three columns together, or none', () => {
+  it('writes the four columns together, or none', () => {
     expect(taxColumnsOf(null)).toEqual({})
     expect(
       taxColumnsOf({
         taxCents: 130,
         pricesIncludeTax: true,
+        taxRounding: TaxRounding.HALF_UP,
         shippingTaxRateBps: null,
         lines: [],
         addedToTotalCents: 0
       })
-    ).toEqual({ taxCents: 130, pricesIncludeTax: true, shippingTaxRateBps: null })
+    ).toEqual({
+      taxCents: 130,
+      pricesIncludeTax: true,
+      taxRounding: TaxRounding.HALF_UP,
+      shippingTaxRateBps: null
+    })
   })
 })
