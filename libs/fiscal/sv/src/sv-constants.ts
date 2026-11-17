@@ -1,4 +1,4 @@
-import { FiscalEnvironment, PaymentMethod } from '@platform/core/domain'
+import { FiscalEnvironment, FiscalVoidKind, PaymentMethod } from '@platform/core/domain'
 
 // What this package knows about the electronic tax documents of El Salvador (the Sistema de Transmisión of the Ministerio de Hacienda).
 // The platform knows none of it: core reads the manifest of the provider and nothing else. The sources are the public technical manual
@@ -48,7 +48,7 @@ export const SvEnvironmentCodes: Readonly<Record<FiscalEnvironment, string>> = {
 
 // The token of the API: how long it lives in each environment (Manual Técnico §3) and when it is renewed (a share of that), and for how long
 // a password the authority refused is not sent again (three wrong logins lock the user until a person changes the password in the site of
-// the authority). **[PENDING OWNER CONFIRMATION]** fifteen minutes.
+// the authority). (confirmed by the owner 2026-11-17) fifteen minutes.
 export const SvAuthentication = {
   TOKEN_LIFETIME_MS: {
     [FiscalEnvironment.SANDBOX]: 48 * 60 * 60 * 1000,
@@ -58,7 +58,7 @@ export const SvAuthentication = {
   REJECTED_MEMORY_MS: 15 * 60 * 1000
 } as const
 
-// The name the platform gives itself in the User-Agent of its calls: generic, with no data of the project. **[PENDING OWNER CONFIRMATION]**
+// The name the platform gives itself in the User-Agent of its calls: generic, with no data of the project. (confirmed by the owner 2026-11-17)
 export const SvUserAgent = 'PlataformaOmnicanal/1.0'
 
 // The time the authority gets to answer a document before it counts as no answer (Manual Técnico §3.3: 8 seconds)
@@ -67,14 +67,16 @@ export const SvTimeouts = { AUTH_MS: 8000, RECEPTION_MS: 8000, SIGNER_MS: 10000 
 // The words of the answers of the authority and of the signing service, and the route of the signing service
 export const SvAnswerStates = {
   PROCESSED: 'PROCESADO',
+  // What the consultation says of a document whose invalidation the authority accepted **[TO CONFIRM IN THE SANDBOX]**
+  INVALIDATED: 'INVALIDADO',
   REFUSED: 'RECHAZADO',
   OK: 'OK',
   ERROR: 'ERROR'
 } as const
 export const SvSignerRoute = '/firmardocumento/'
 
-// The environments this provider lets an issuer choose. **Only the sandbox until the invalidation of a document exists (Step 4B.7c-4)**: a
-// document of the real environment that cannot be invalidated (the window is three months) must not be sent.
+// The environments this provider lets an issuer choose. **Only the sandbox until the owner authorizes production (Step 4B.7c-8)**: the
+// invalidation exists since Step 4B.7c-4, but the real environment also needs its own configuration, apart from the sandbox's.
 export const SvEnabledEnvironments: readonly FiscalEnvironment[] = [FiscalEnvironment.SANDBOX]
 
 // CAT-002: the documents this provider makes. These are the ids of the manifest (the authority's own codes), the `tipoDte` of the JSON
@@ -162,6 +164,66 @@ export const SvRejectionReasons = {
   DOCUMENT_INCOMPLETE: 'document_incomplete'
 } as const
 
+// The invalidation event (Manual Técnico §4.4, schema `invalidacion-schema-v3`; CAT-024 is the kind of invalidation)
+export const SvInvalidation = {
+  VERSION: 3,
+  // CAT-024. A correction and "other" name the document that takes the place of the invalidated one (its generation code); a rescission
+  // does not.
+  KINDS: {
+    [FiscalVoidKind.CORRECTION]: 1,
+    [FiscalVoidKind.RESCISSION]: 2,
+    [FiscalVoidKind.OTHER]: 3
+  } as const satisfies Readonly<Record<FiscalVoidKind, number>>,
+  KINDS_WITH_REPLACEMENT: [
+    FiscalVoidKind.CORRECTION,
+    FiscalVoidKind.OTHER
+  ] as readonly FiscalVoidKind[],
+  REASON_MAX: 200,
+  PARTY_NAME_MAX: 100,
+  PARTY_ID_MAX: 20,
+  // The business days of the following month a tax credit document or a credit note may be invalidated within (Funcional §VII)
+  BUSINESS_DAYS_OF_NEXT_MONTH: 10,
+  // The months an invoice may be invalidated within (Funcional §VII)
+  INVOICE_MONTHS: 3
+} as const
+
+// Whether a person may invalidate a document of each type. **[ACCOUNTANT]** Whether a final consumer's invoice is cancelled by an
+// invalidation or by a credit note is the accountant's to say, and the manual does not settle it: the answer is one switch per type (the
+// type says the kind of buyer: the invoice is the final consumer's, the others are the taxpayer's), all of them open until it is decided.
+// A closed one refuses with `SvVoidRefusals.NOT_ALLOWED`, and nothing is sent.
+export const SvInvalidationAllowed: Readonly<Record<SvDocumentType, boolean>> = {
+  [SvDocumentTypes.INVOICE]: true,
+  [SvDocumentTypes.TAX_CREDIT]: true,
+  [SvDocumentTypes.CREDIT_NOTE]: true
+}
+
+// The deadlines are checked before anything is sent (a refusal with a code of ours, the authority is not troubled); switch this off to leave
+// the verdict to the authority alone. **[ACCOUNTANT]**
+export const SvInvalidationEnforceDeadline = true
+
+// The days that are not business days besides Saturdays and Sundays (holidays), as yyyy-MM-dd. **[ACCOUNTANT]** Empty until the accountant
+// hands the list the authority counts by. A holiday that is not listed makes the tenth business day come EARLIER than the authority's, so
+// the platform's deadline would be stricter than the law: until the list is given, the deadline of a tax credit document or a credit note
+// (counted in business days) is not enforced here and the authority has the last word. An invoice's (calendar months) always is.
+export const SvHolidays: readonly string[] = []
+
+// Why this provider refuses an invalidation, in codes of its own (never a value). Nothing was sent when one of these is the reason.
+export const SvVoidRefusals = {
+  CREDENTIALS_INCOMPLETE: 'credentials_incomplete',
+  CREDENTIALS_REJECTED: 'credentials_rejected',
+  SIGNING_CREDENTIALS_REJECTED: 'signing_credentials_rejected',
+  DOCUMENT_INCOMPLETE: 'document_incomplete',
+  ISSUER_INCOMPLETE: 'issuer_incomplete',
+  KIND_REQUIRED: 'void_kind_required',
+  PARTIES_REQUIRED: 'void_parties_required',
+  PARTY_INVALID: 'void_party_invalid',
+  REPLACEMENT_REQUIRED: 'void_replacement_required',
+  REPLACEMENT_INVALID: 'void_replacement_invalid',
+  REASON_INVALID: 'void_reason_invalid',
+  NOT_ALLOWED: 'void_not_allowed',
+  DEADLINE_PASSED: 'void_deadline_passed'
+} as const
+
 // The documents a credit note may cancel. **[ACCOUNTANT]** The manual of the authority is not clear about whether a credit note may name
 // an invoice to a final consumer (the invalidation within three months is the other way): until the accountant says, only the tax credit
 // document is credited, and asking for a credit note of an invoice stops with a clear error. Add `INVOICE` here to allow it.
@@ -243,8 +305,7 @@ export const SvBuildErrors = {
   TOO_MANY_ITEMS: 'too_many_items',
   NO_ITEMS: 'no_items',
   ITEM_DESCRIPTION_EMPTY: 'item_description_empty',
-  QUANTITY_INVALID: 'quantity_invalid',
-  NOT_IMPLEMENTED: 'not_implemented'
+  QUANTITY_INVALID: 'quantity_invalid'
 } as const
 export type SvBuildErrorCode = (typeof SvBuildErrors)[keyof typeof SvBuildErrors]
 

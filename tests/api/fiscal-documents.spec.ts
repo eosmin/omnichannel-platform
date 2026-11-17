@@ -1,9 +1,12 @@
+import { randomUUID } from 'node:crypto'
+
 import type { INestApplication } from '@nestjs/common'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
+import { DatabaseNull } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   FiscalDocumentStatus,
@@ -11,6 +14,7 @@ import {
   FiscalIssueOn,
   FiscalLimits,
   FiscalRejectionReasons,
+  FiscalVoidKind,
   OrderStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
@@ -1049,6 +1053,177 @@ describe('The fiscal documents (Step 4B.7)', () => {
       )
       const list = await other.get(ApiRoutes.fiscal.documents.list)
       expect((list.body as { data: unknown[] }).data).toEqual([])
+    })
+  })
+
+  describe('the details of an invalidation (Step 4B.7c-4)', () => {
+    const responsible = { name: 'Ana Pérez', idType: '13', idNumber: '012345678' }
+    const requester = { name: 'Luis Gómez', idType: '36', idNumber: '06140101011011' }
+    const voidWith = (documentId: string, body: Record<string, unknown>) =>
+      asAdminA()
+        .post(ApiRoutes.fiscal.documents.void(documentId))
+        .send({ reason: 'wrong customer', ...body })
+
+    it('hands the kind, the people and the replacement to the provider, with the replacement as it was accepted', async () => {
+      const provider = app.get(FiscalProviderRegistry).find(SIMULATOR_PROVIDER_ID)
+      if (provider === undefined) throw new Error('the simulator is registered in test')
+      const { documentId } = await sale()
+      const replacement = await sale()
+      await documents.submit(ctx.orgA.id, documentId)
+      await documents.submit(ctx.orgA.id, replacement.documentId)
+      const spy = jest.spyOn(provider, 'void')
+      try {
+        const answer = await voidWith(documentId, {
+          kind: FiscalVoidKind.CORRECTION,
+          responsible,
+          requester,
+          replacementDocumentId: replacement.documentId
+        })
+        expect(answer.status).toBe(OK)
+        const details = spy.mock.calls[0]?.[3]
+        expect(details).toMatchObject({ kind: FiscalVoidKind.CORRECTION, responsible, requester })
+        const accepted = await owner.fiscalDocument.findUniqueOrThrow({
+          where: { id: replacement.documentId }
+        })
+        expect(details?.replacement).toMatchObject({
+          documentType: accepted.documentType,
+          externalNumber: accepted.externalNumber
+        })
+        // The trail says the kind and the replacement, and never the number of an identity document
+        const trail = await waitForAuditEntries(owner, {
+          action: AuditAction.FISCAL_DOCUMENT_VOIDED,
+          userId: ctx.adminA.id,
+          resourceId: documentId
+        })
+        const metadata = JSON.stringify(trail.map(entry => entry.metadata))
+        expect(metadata).toContain('"voidKind":"correction"')
+        expect(metadata).toContain(replacement.documentId)
+        expect(metadata).not.toContain(responsible.idNumber)
+        // Without any of it the provider is told only the reason
+        const plain = await sale()
+        await documents.submit(ctx.orgA.id, plain.documentId)
+        expect((await voidWith(plain.documentId, {})).status).toBe(OK)
+        expect(spy.mock.calls[1]?.[3]).toEqual({})
+      } finally {
+        spy.mockRestore()
+      }
+    })
+
+    it('refuses a replacement that is not an accepted document of the organization', async () => {
+      const { documentId } = await sale()
+      await documents.submit(ctx.orgA.id, documentId)
+      const queued = await sale()
+      // The document itself, one that is not accepted, one that does not exist, and the document of another organization
+      const foreign = await createOrder(owner, { storeId: ctx.storeB.id })
+      const mine = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+      const other = await owner.fiscalDocument.create({
+        data: {
+          ...mine,
+          id: randomUUID(),
+          organizationId: ctx.orgB.id,
+          storeId: ctx.storeB.id,
+          orderId: foreign.id,
+          correlative: null,
+          correlativeScopeKey: null,
+          issuerSnapshot: mine.issuerSnapshot as object,
+          providerData: mine.providerData ?? DatabaseNull,
+          response: mine.response ?? DatabaseNull,
+          voidResponse: DatabaseNull,
+          linesSnapshot: mine.linesSnapshot as object
+        }
+      })
+      // A document of the other environment or of another provider is not the replacement of this one. An accepted document is immutable:
+      // the other one is a copy of this one made so.
+      for (const change of [
+        { environment: FiscalEnvironment.PRODUCTION },
+        { providerId: 'another' },
+        { kind: 'credit_note', parentDocumentId: documentId, orderId: mine.orderId }
+      ]) {
+        const order = await createOrder(owner, { storeId: ctx.storeA.id })
+        const made = await owner.fiscalDocument.create({
+          data: {
+            ...mine,
+            id: randomUUID(),
+            orderId: order.id,
+            sequenceNumber: 1_000_000_000 + Math.floor(Math.random() * 1_000_000_000),
+            correlative: null,
+            correlativeScopeKey: null,
+            issuerSnapshot: mine.issuerSnapshot as object,
+            providerData: mine.providerData ?? DatabaseNull,
+            response: mine.response ?? DatabaseNull,
+            voidResponse: DatabaseNull,
+            linesSnapshot: mine.linesSnapshot as object,
+            ...change
+          }
+        })
+        const answer = await voidWith(documentId, {
+          kind: FiscalVoidKind.CORRECTION,
+          responsible,
+          requester,
+          replacementDocumentId: made.id
+        })
+        expect(answer.status).toBe(NOT_FOUND)
+      }
+      // The document of the other organization stays (a fiscal document is never deleted): this block runs after the ones that read
+      // the list of that organization
+      for (const replacementDocumentId of [documentId, queued.documentId, randomUUID(), other.id]) {
+        const answer = await voidWith(documentId, {
+          kind: FiscalVoidKind.CORRECTION,
+          responsible,
+          requester,
+          replacementDocumentId
+        })
+        expect(answer.status).toBe(NOT_FOUND)
+      }
+      expect(await statusOf(documentId)).toBe(FiscalDocumentStatus.ACCEPTED)
+    })
+
+    it('says the evidence cannot be read when the replacement has no sealed copy', async () => {
+      const { documentId } = await sale()
+      await documents.submit(ctx.orgA.id, documentId)
+      const mine = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+      const order = await createOrder(owner, { storeId: ctx.storeA.id })
+      const bare = await owner.fiscalDocument.create({
+        data: {
+          ...mine,
+          id: randomUUID(),
+          orderId: order.id,
+          sequenceNumber: 1_000_000_000 + Math.floor(Math.random() * 1_000_000_000),
+          correlative: null,
+          correlativeScopeKey: null,
+          builtPayloadEncrypted: null,
+          issuerSnapshot: mine.issuerSnapshot as object,
+          providerData: mine.providerData ?? DatabaseNull,
+          response: mine.response ?? DatabaseNull,
+          voidResponse: DatabaseNull,
+          linesSnapshot: mine.linesSnapshot as object
+        }
+      })
+      const answer = await voidWith(documentId, {
+        kind: FiscalVoidKind.CORRECTION,
+        responsible,
+        requester,
+        replacementDocumentId: bare.id
+      })
+      expect(answer.status).toBe(CONFLICT)
+      expect((answer.body as { error: { code: string } }).error.code).toBe(
+        ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE
+      )
+      expect(await statusOf(documentId)).toBe(FiscalDocumentStatus.ACCEPTED)
+    })
+
+    it('refuses a body with a kind that does not exist, a person with no number, or a field it does not know', async () => {
+      const { documentId } = await sale()
+      await documents.submit(ctx.orgA.id, documentId)
+      for (const body of [
+        { kind: 'nope' },
+        { requester: { name: 'x', idType: '1' } },
+        { responsible: { ...responsible, extra: 1 } },
+        { replacementDocumentId: 'not-a-uuid' },
+        { surprise: true }
+      ]) {
+        expect((await voidWith(documentId, body)).status).toBe(BAD_REQUEST)
+      }
     })
   })
 })

@@ -7512,16 +7512,72 @@
         },
         "reason": "Motivo",
         "problems": {
-          "required": "Escribe el motivo.",
-          "tooLong": "El motivo es demasiado largo.",
-          "invalid": "Escribe el motivo en una línea, sin caracteres especiales."
+          "kind": {
+            "required": "Elige el motivo."
+          },
+          "responsible": {
+            "required": "Completa el nombre, el tipo y el número.",
+            "tooLong": "Uno de los datos es demasiado largo."
+          },
+          "requester": {
+            "required": "Completa el nombre, el tipo y el número.",
+            "tooLong": "Uno de los datos es demasiado largo."
+          },
+          "replacement": {
+            "required": "Elige el documento que lo reemplaza."
+          },
+          "reason": {
+            "required": "Escribe el motivo.",
+            "tooLong": "El motivo es demasiado largo.",
+            "invalid": "Escribe el motivo en una línea, sin caracteres especiales."
+          }
         },
         "cancel": "Cancelar",
         "submit": "Anular el documento",
         "confirmTitle": "¿Anular el documento N.º {number}?",
         "confirmDescription": "La invalidación se envía a la autoridad y no se puede deshacer. El motivo queda en el registro de auditoría.",
         "confirm": "Anular el documento",
-        "done": "El documento se anuló."
+        "done": "El documento se anuló.",
+        "kind": "Motivo de la invalidación",
+        "kindChoose": "Elige un motivo",
+        "kinds": {
+          "correction": "El documento tiene información errónea",
+          "rescission": "Se canceló la operación",
+          "other": "Otro motivo"
+        },
+        "replacement": "Documento que lo reemplaza",
+        "replacementHint": "La autoridad lo pide antes de la invalidación: hazlo primero.",
+        "replacementChoose": "Elige el documento",
+        "replacementOption": "N.º {number} · {total}",
+        "responsible": {
+          "title": "Quién hace la invalidación"
+        },
+        "requester": {
+          "title": "Quién la solicita"
+        },
+        "party": {
+          "name": "Nombre",
+          "idType": "Tipo de documento de identidad",
+          "idTypeHint": "El código del catálogo de la autoridad.",
+          "idNumber": "Número del documento de identidad"
+        },
+        "providersError": "No se pudieron leer los datos del proveedor.",
+        "retry": "Reintentar",
+        "refusals": {
+          "void_deadline_passed": "Ya pasó el plazo para invalidar este documento.",
+          "void_not_allowed": "Este tipo de documento no se puede invalidar.",
+          "void_kind_required": "Elige el motivo de la invalidación.",
+          "void_parties_required": "Indica quién hace la invalidación y quién la solicita.",
+          "void_party_invalid": "El nombre o el documento de identidad de una de las dos personas no es válido.",
+          "void_replacement_required": "Este motivo necesita el documento que lo reemplaza.",
+          "void_replacement_invalid": "El documento que lo reemplaza no es válido.",
+          "void_reason_invalid": "El motivo está vacío o es demasiado largo para la autoridad.",
+          "document_incomplete": "El documento no tiene lo que la autoridad necesita para invalidarlo.",
+          "issuer_incomplete": "Los datos del emisor están incompletos.",
+          "credentials_incomplete": "Las credenciales del emisor están incompletas.",
+          "credentials_rejected": "La autoridad no aceptó las credenciales del emisor.",
+          "signing_credentials_rejected": "El certificado de firma no aceptó su contraseña."
+        }
       },
       "address": {
         "legend": "Dirección",

@@ -35,7 +35,8 @@ import {
 import type {
   FiscalEvidenceKind,
   FiscalReceiverPatchBody,
-  PutFiscalIssuerBody
+  PutFiscalIssuerBody,
+  VoidFiscalDocumentBody
 } from '@platform/core/domain'
 
 import { apiClient } from '../api'
@@ -139,8 +140,8 @@ export const useRetryFiscalDocument = (storeId: string): Write<string, void> =>
 
 export const useVoidFiscalDocument = (
   storeId: string
-): Write<{ id: string; reason: string }, FiscalDocumentView> =>
-  useFiscalWrite(input => voidFiscalDocument(apiClient, storeId, input.id, input.reason), true)
+): Write<{ id: string; body: VoidFiscalDocumentBody }, FiscalDocumentView> =>
+  useFiscalWrite(input => voidFiscalDocument(apiClient, storeId, input.id, input.body), true)
 
 export const useReplaceFiscalDocument = (storeId: string): Write<string, FiscalDocumentView> =>
   useFiscalWrite(id => replaceFiscalDocument(apiClient, storeId, id), true)

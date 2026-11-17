@@ -1,22 +1,33 @@
-import { FiscalConsultState, FiscalSubmitOutcome } from '@platform/core/domain'
+import {
+  FiscalConsultState,
+  FiscalSubmitOutcome,
+  FiscalVoidConsultState
+} from '@platform/core/domain'
 import type {
   BuiltDocument,
   ConsultResult,
   FiscalIssuerInput,
+  FiscalVoidDetails,
   ProviderContext,
-  SubmitResult
+  StoredFiscalDocument,
+  SubmitResult,
+  VoidConsultResult,
+  VoidResult
 } from '@platform/fiscal/sdk'
 
 import { type SvAuthenticator } from './sv-auth'
 import {
+  SvAnswerStates,
   SvCodePatterns,
   SvCredentialKeys,
   SvEndpoints,
   SvEnvironmentCodes,
+  SvInvalidation,
   SvProviderDataKeys,
   SvRejectionReasons,
   SvTimeouts,
-  SvUserAgent
+  SvUserAgent,
+  SvVoidRefusals
 } from './sv-constants'
 import {
   callSv,
@@ -26,6 +37,7 @@ import {
   textOf,
   type SvFetch
 } from './sv-http'
+import { buildInvalidation, invalidatedOf, invalidationCode } from './sv-invalidation'
 import { digitsOf } from './sv-parties'
 import { classifyReception, type SvReception } from './sv-responses'
 import type { SvSigner } from './sv-signer'
@@ -40,6 +52,8 @@ export interface SvTransmissionDeps {
   readonly endpoints?: typeof SvEndpoints
   readonly userAgent?: string
   readonly receptionTimeoutMs?: number
+  // The clock (milliseconds), for the instant of an invalidation
+  readonly now?: () => number
 }
 
 interface Identity {
@@ -271,6 +285,151 @@ export async function consultDocument(
     // not there) is "I do not know": sending again is safe, because a document that is there is refused as a duplicate and consulted
     if (result.status >= 500) throw new SvTransportError(SvTransportFailures.NETWORK)
     return { state: FiscalConsultState.UNKNOWN }
+  }
+  throw new SvTransportError(SvTransportFailures.NETWORK)
+}
+
+// What an invalidation of this provider is told when it stops before the authority: a code of ours, nothing was sent
+const notVoided = (reason: string): VoidResult => ({ voided: false, reason })
+
+// Invalidates an accepted document (Manual Técnico §4.4): the event is built, signed and sent. An answer the authority gives is a verdict
+// (voided, or refused with its code); no answer (the network, a fault of the moment) throws, and core asks `consultVoid` before it tells the
+// person to try again. One attempt per call.
+export async function voidDocument(
+  deps: SvTransmissionDeps,
+  doc: StoredFiscalDocument,
+  reason: string,
+  ctx: ProviderContext,
+  details: FiscalVoidDetails | undefined
+): Promise<VoidResult> {
+  const identity = identityOf(ctx.issuer, ctx.credentials)
+  if (identity === null) return notVoided(SvVoidRefusals.CREDENTIALS_INCOMPLETE)
+  const built = buildInvalidation({
+    doc,
+    issuer: ctx.issuer,
+    reason,
+    details,
+    // The same request is the same event: a second call after a lost answer carries the generation code the authority has already seen
+    code: invalidationCode(ctx.idempotencyKey),
+    now: new Date((deps.now ?? Date.now)()).toISOString()
+  })
+  if (!built.ok) return notVoided(built.reason)
+  const environment = ctx.issuer.environment
+  const endpoints = (deps.endpoints ?? SvEndpoints)[environment]
+
+  // The token first, as `submitDocument` does: a refused password never reaches the signer (the login is kept, so the loop finds it)
+  const first = await deps.auth.login(environment, identity.nit, identity.apiPassword)
+  if (first.kind === 'rejected') return notVoided(SvVoidRefusals.CREDENTIALS_REJECTED)
+  if (first.kind === 'unavailable') throw new SvTransportError(SvTransportFailures.NETWORK)
+  const signed = await deps.signer.sign({
+    nit: identity.nit,
+    privateKeyPassword: identity.privateKeyPassword,
+    document: built.event
+  })
+  if (signed.kind === 'unavailable') throw new SvTransportError(SvTransportFailures.NETWORK)
+  if (signed.kind === 'rejected') return notVoided(SvVoidRefusals.SIGNING_CREDENTIALS_REJECTED)
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const login = await deps.auth.login(environment, identity.nit, identity.apiPassword)
+    if (login.kind === 'rejected') return notVoided(SvVoidRefusals.CREDENTIALS_REJECTED)
+    if (login.kind === 'unavailable') throw new SvTransportError(SvTransportFailures.NETWORK)
+    const result = await callSv(
+      deps.fetch,
+      `${endpoints.baseUrl}${endpoints.invalidation}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: login.token,
+          'Content-Type': 'application/json',
+          'User-Agent': deps.userAgent ?? SvUserAgent
+        },
+        body: JSON.stringify({
+          ambiente: SvEnvironmentCodes[environment],
+          // The number of the shipment "at the discretion" of the issuer: the one of the document being invalidated
+          idEnvio: Number.parseInt(built.original.controlNumber.slice(-9), 10),
+          version: SvInvalidation.VERSION,
+          documento: signed.jws
+        })
+      },
+      deps.receptionTimeoutMs ?? SvTimeouts.RECEPTION_MS
+    )
+    const answer = classifyReception(result.status, result.json)
+    if (answer.kind === 'token') {
+      deps.auth.forget(environment, identity.nit, identity.apiPassword, login.token)
+      continue
+    }
+    if (answer.kind === 'credentials') return notVoided(SvVoidRefusals.CREDENTIALS_REJECTED)
+    if (answer.kind === 'transient') throw new SvTransportError(SvTransportFailures.NETWORK)
+    if (answer.kind === 'accepted') return { voided: true, response: answer.body }
+    if (answer.kind === 'duplicate') {
+      // The authority has this very event (an earlier call whose answer was lost): it is asked what it holds, and a document it has
+      // invalidated is the voided one this call wanted. Anything else is no answer yet: core asks again, nothing is told as refused.
+      const held = await consultVoided(deps, doc, ctx)
+      if (held.state === FiscalVoidConsultState.VOIDED) {
+        return { voided: true, ...(held.response === undefined ? {} : { response: held.response }) }
+      }
+      // It holds the document as processed: the event is not in effect, and the person is told the authority's code
+      if (held.state === FiscalVoidConsultState.NOT_VOIDED) {
+        return { voided: false, reason: answer.code, response: answer.body }
+      }
+      throw new SvTransportError(SvTransportFailures.NETWORK)
+    }
+    return { voided: false, reason: answer.code, response: answer.body }
+  }
+  // The token was refused twice: not a verdict on the document
+  throw new SvTransportError(SvTransportFailures.NETWORK)
+}
+
+// Whether the authority has the document invalidated already, by asking for the document (its state says so). Anything that is not a clear
+// "invalidated" or a clear "still processed" is UNKNOWN: a request is then made, and the authority refuses what is already done.
+export async function consultVoided(
+  deps: SvTransmissionDeps,
+  doc: StoredFiscalDocument,
+  ctx: ProviderContext
+): Promise<VoidConsultResult> {
+  const identity = identityOf(ctx.issuer, ctx.credentials)
+  const original = invalidatedOf(doc)
+  if (identity === null || original === null) return { state: FiscalVoidConsultState.UNKNOWN }
+  const environment = ctx.issuer.environment
+  const endpoints = (deps.endpoints ?? SvEndpoints)[environment]
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const login = await deps.auth.login(environment, identity.nit, identity.apiPassword)
+    if (login.kind === 'rejected') return { state: FiscalVoidConsultState.UNKNOWN }
+    if (login.kind === 'unavailable') throw new SvTransportError(SvTransportFailures.NETWORK)
+    const result = await callSv(
+      deps.fetch,
+      `${endpoints.baseUrl}${endpoints.consult}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: login.token,
+          'Content-Type': 'application/json',
+          'User-Agent': deps.userAgent ?? SvUserAgent
+        },
+        body: JSON.stringify({
+          nitEmisor: identity.nit,
+          tdte: original.type,
+          codigoGeneracion: original.generationCode
+        })
+      },
+      deps.receptionTimeoutMs ?? SvTimeouts.RECEPTION_MS
+    )
+    const body = recordOf(result.json)
+    if (result.status === 401 || result.status === 403) {
+      deps.auth.forget(environment, identity.nit, identity.apiPassword, login.token)
+      continue
+    }
+    if (result.status >= 500) throw new SvTransportError(SvTransportFailures.NETWORK)
+    // "Invalidated" is believed only when the answer is about this document: a body that names another one (or none) says nothing of it
+    if (
+      body['estado'] === SvAnswerStates.INVALIDATED &&
+      textOf(body['codigoGeneracion'])?.toUpperCase() === original.generationCode
+    ) {
+      return { state: FiscalVoidConsultState.VOIDED, response: body }
+    }
+    return body['estado'] === SvAnswerStates.PROCESSED
+      ? { state: FiscalVoidConsultState.NOT_VOIDED }
+      : { state: FiscalVoidConsultState.UNKNOWN }
   }
   throw new SvTransportError(SvTransportFailures.NETWORK)
 }
