@@ -39,12 +39,29 @@ describe('the registry of fiscal providers', () => {
           { code: '1', label: 'One' },
           { code: '1', label: 'Again' }
         ],
+        [
+          { code: '1', label: 'One' },
+          { code: '1 ', label: 'One with a blank' }
+        ],
         [{ code: ' ', label: 'Blank' }],
-        [{ code: '1', label: '' }]
+        [{ code: '1', label: '' }],
+        []
       ]) {
         expect(
           () => new FiscalProviderRegistry([withManifest({ catalogs: { kinds: options } })])
         ).toThrow(/is not valid/)
+      }
+    })
+
+    it('does not take a property every object has for a catalog', () => {
+      const catalogs = { kinds: [{ code: '1', label: 'One' }] }
+      for (const name of ['constructor', 'toString', '__proto__']) {
+        expect(
+          () =>
+            new FiscalProviderRegistry([
+              withManifest({ catalogs, issuerFieldCatalogs: { activityCode: name } })
+            ])
+        ).toThrow(/does not have/)
       }
     })
 

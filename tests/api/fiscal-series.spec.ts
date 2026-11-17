@@ -270,7 +270,10 @@ describe('The series of the fiscal correlatives (Step 4B.7c-1)', () => {
       ).data
       const rows = await owner.fiscalSequence.findMany({ where: { organizationId: ctx.orgA.id } })
       expect(shown).toHaveLength(rows.length)
-      expect(shown.length).toBeGreaterThanOrEqual(2)
+      expect(shown.length).toBe(rows.length)
+      // In the order a person reads them: by what they count, not by the hash of the key
+      const documentTypes = shown.map(one => one.scope['documentType'] ?? '')
+      expect(documentTypes).toEqual([...documentTypes].sort((x, y) => x.localeCompare(y)))
       for (const one of shown) {
         expect(one.scope).toMatchObject({
           providerId: SERIES_PROVIDER_ID,
@@ -512,8 +515,17 @@ describe('The series of the fiscal correlatives (Step 4B.7c-1)', () => {
             data: { nextNumber: number }[]
           }
         ).data
-      expect((await seen(ctx.adminB, ctx.storeB)).map(one => one.nextNumber)).toEqual([3])
-      expect((await seen(ctx.adminA, ctx.storeA)).map(one => one.nextNumber)).not.toContain(3)
+      // Each one sees as many as its own organization has, and the ones of B are what B's rows say
+      const countersOf = async (organizationId: string) =>
+        (await owner.fiscalSequence.findMany({ where: { organizationId } }))
+          .map(row => row.nextValue)
+          .sort()
+      expect((await seen(ctx.adminB, ctx.storeB)).map(one => one.nextNumber).sort()).toEqual(
+        await countersOf(ctx.orgB.id)
+      )
+      expect((await seen(ctx.adminA, ctx.storeA)).map(one => one.nextNumber).sort()).toEqual(
+        await countersOf(ctx.orgA.id)
+      )
     })
 
     it('asks FISCAL_VIEW to read the series', async () => {

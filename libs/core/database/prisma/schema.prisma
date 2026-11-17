@@ -3086,7 +3086,7 @@ model FiscalIssuer {
 model FiscalSequence {
   organizationId String   @map("organization_id")
   scopeKey       String   @map("scope_key")
-  scope          Json // what the key was made of, for a person who reads the table (never read back by the code)
+  scope          Json // what the key was made of: shown to a person by the series view (never used to find a counter: the key does that)
   nextValue      Int      @default(1) @map("next_value")
   updatedAt      DateTime @updatedAt @map("updated_at")
 

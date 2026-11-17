@@ -86,21 +86,32 @@ export class FiscalIssuerService {
     private readonly providers: FiscalProviderRegistry
   ) {}
 
-  // The series of the organization, oldest key first so the list does not move between reads. Filtered by the organization of the request.
+  // The series of the organization, in the order a person reads them (provider, environment, document type, establishment, point of sale);
+  // the hashed key breaks a tie so the list does not move between reads. Filtered by the organization of the request.
   async listSeries(organizationId: string): Promise<FiscalSeriesView[]> {
     const rows = await this.prisma.client.fiscalSequence.findMany({
       where: { organizationId },
       orderBy: { scopeKey: 'asc' }
     })
-    return rows.map(row => ({
-      scope: Object.fromEntries(
-        Object.entries(record(row.scope)).filter(
-          (entry): entry is [string, string] => typeof entry[1] === 'string'
-        )
-      ),
-      nextNumber: row.nextValue,
-      updatedAt: row.updatedAt.toISOString()
-    }))
+    const readable = (row: { scope: unknown }): string =>
+      ['providerId', 'environment', 'documentType', 'establishmentCode', 'pointOfSaleCode']
+        .map(key => {
+          const value = record(row.scope)[key]
+          return typeof value === 'string' ? value : ''
+        })
+        .join('\u0000')
+    // A stable sort: rows with the same readable scope keep the order of their keys
+    return [...rows]
+      .sort((a, b) => readable(a).localeCompare(readable(b)))
+      .map(row => ({
+        scope: Object.fromEntries(
+          Object.entries(record(row.scope)).filter(
+            (entry): entry is [string, string] => typeof entry[1] === 'string'
+          )
+        ),
+        nextNumber: row.nextValue,
+        updatedAt: row.updatedAt.toISOString()
+      }))
   }
 
   listProviders(): ReturnType<FiscalProviderRegistry['list']> {

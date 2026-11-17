@@ -1678,7 +1678,8 @@ const resources: IsolationResource[] = [
             scope: { providerId: `iso-series-${marker}` },
             nextValue: 1
           },
-          update: { scope: { providerId: `iso-series-${marker}` } }
+          // A series only moves forward: the trigger refuses to change what it counts
+          update: {}
         })
       },
       markerIn: body => {

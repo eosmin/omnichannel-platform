@@ -52,7 +52,9 @@ export class FiscalProviderRegistry {
         const codes = options.map(option => option.code)
         if (
           name.trim() === '' ||
-          new Set(codes).size !== codes.length ||
+          // A list with nothing to choose from would leave a required field that cannot be filled
+          options.length === 0 ||
+          new Set(codes.map(code => code.trim())).size !== codes.length ||
           options.some(option => option.code.trim() === '' || option.label.trim() === '')
         ) {
           throw new Error(`the catalog ${name} of the fiscal provider ${provider.id} is not valid`)
@@ -64,7 +66,8 @@ export class FiscalProviderRegistry {
           ? []
           : [provider.manifest.voidInputs.identityCatalog])
       ]
-      if (referenced.some(name => !(name in catalogs))) {
+      // Own names only: a name that is a property of every object (`constructor`) is not a catalog
+      if (referenced.some(name => !Object.hasOwn(catalogs, name))) {
         throw new Error(
           `the fiscal provider ${provider.id} names a catalog its manifest does not have`
         )
