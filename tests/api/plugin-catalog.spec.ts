@@ -33,6 +33,7 @@ const CREATED = 201
 const NO_CONTENT = 204
 const FORBIDDEN = 403
 const NOT_FOUND = 404
+const CONFLICT = 409
 
 interface ErrorBody {
   error: { code: string }
@@ -426,6 +427,35 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
       expect(entry?.metadata).toMatchObject({ pluginInstallationId: adjuster.installationId })
       // neither the plugin nor a person is named in what the plugin reads back
       expect(JSON.stringify(made.body)).not.toMatch(/createdBy/)
+    })
+
+    it('does not take out units that an order has reserved, as a person cannot either (N-AA-05)', async () => {
+      const product = await createProduct(owner, { storeId: ctx.storeA.id, trackInventory: true })
+      await call('post', PluginApiRoutes.inventory.adjustments, adjuster.key)
+        .send(adjustment(product.id))
+        .expect(CREATED)
+      // An order of 4 has promised 4 of the 5 on hand
+      await owner.inventoryLevel.updateMany({
+        where: { productId: product.id },
+        data: { reserved: 4 }
+      })
+      const out = (quantity: number) =>
+        call('post', PluginApiRoutes.inventory.adjustments, adjuster.key).send(
+          adjustment(product.id, {
+            type: InventoryMovementType.ADJUSTMENT_OUT,
+            reason: InventoryAdjustmentReason.DAMAGED,
+            quantity
+          })
+        )
+
+      const refused = await out(3)
+
+      expect(refused.status).toBe(CONFLICT)
+      expect(codeOf(refused.body)).toBe(ErrorCodes.INSUFFICIENT_INVENTORY)
+      expect(
+        (await owner.inventoryLevel.findFirstOrThrow({ where: { productId: product.id } })).onHand
+      ).toBe(5)
+      expect((await out(1)).status).toBe(CREATED)
     })
 
     it('refuses to set the cost of the units: no scope grants products:view_cost', async () => {
