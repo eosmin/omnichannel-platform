@@ -3,6 +3,7 @@ import { FiscalLimits, FiscalVoidKind, voidFiscalDocumentSchema } from '@platfor
 import {
   EMPTY_VOID_PARTY,
   voidBodyOf,
+  replacementCandidates,
   voidFormProblems,
   voidReasonProblem,
   type VoidDraft,
@@ -39,6 +40,17 @@ describe('the reason to void a fiscal document', () => {
       expect(voidReasonProblem(reason)).not.toBeNull()
       expect(voidFiscalDocumentSchema.safeParse({ reason: reason.trim() }).success).toBe(false)
     }
+  })
+})
+
+describe('the documents that may replace the one that is invalidated', () => {
+  const doc = (id: string, replacesDocumentId: string | null = null) => ({ id, replacesDocumentId })
+
+  it('are the ones made to replace it, and no other', () => {
+    const original = doc('o')
+    const list = [doc('a'), doc('o'), doc('r', 'o'), doc('x', 'other'), doc('b')]
+    expect(replacementCandidates(list, original).map(one => one.id)).toEqual(['r'])
+    expect(replacementCandidates([doc('a')], original)).toEqual([])
   })
 })
 

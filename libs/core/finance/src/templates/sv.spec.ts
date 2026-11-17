@@ -1,4 +1,11 @@
-import { AccountRole, AccountType, CashKind, PaymentMethod } from '@platform/core/domain'
+import {
+  AccountRole,
+  AccountType,
+  AccountTypesOfPaymentMethod,
+  AccountTypesOfRole,
+  CashKind,
+  PaymentMethod
+} from '@platform/core/domain'
 
 import { accountProblems, type ChartNode, parentProblem } from '../account-rules'
 
@@ -119,5 +126,24 @@ describe('the template of El Salvador', () => {
     expect(byCode.get(SvTemplate.roles[vat?.inputRole as AccountRole])?.type).toBe(
       AccountType.ASSET
     )
+  })
+
+  it('maps every role and payment method to an account of a type the table of types takes (LED-154, LED-163)', () => {
+    for (const [role, code] of Object.entries(SvTemplate.roles)) {
+      const type = byCode.get(code)?.type
+      expect([
+        role,
+        type !== undefined && AccountTypesOfRole[role as AccountRole].includes(type)
+      ]).toEqual([role, true])
+    }
+    for (const [method, code] of Object.entries(SvTemplate.paymentMethods)) {
+      const type = byCode.get(code)?.type
+      expect([
+        method,
+        type !== undefined && AccountTypesOfPaymentMethod[method as PaymentMethod].includes(type)
+      ]).toEqual([method, true])
+    }
+    // The template maps every role, so the loop above leaves none out
+    expect(Object.keys(SvTemplate.roles).sort()).toEqual(Object.values(AccountRole).sort())
   })
 })

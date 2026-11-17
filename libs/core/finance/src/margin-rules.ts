@@ -1,4 +1,5 @@
 import { type SaleLineRow, saleAmounts, type SaleOrderRow } from './auto-entry-rules'
+import { movementCostCents } from './movement-cost'
 import { allocateByWeight } from './tax-rules'
 
 // The pure rules of the margin by product (TDD_18 §10, Step 4B.8b-2). A margin is the revenue the order recorded less the cost the stock
@@ -19,6 +20,8 @@ export interface MarginMovement {
   productId: string
   quantity: number
   unitCostCents: number | null
+  // The value the movement took out of the stock: the cost the sale entry credits to inventory
+  valueCents?: bigint | null
 }
 
 export interface MarginRow {
@@ -74,7 +77,7 @@ export function marginOfOrder(
       unvaluedUnits += movement.quantity
       continue
     }
-    const cost = movement.quantity * movement.unitCostCents
+    const cost = movementCostCents(movement.quantity, movement.unitCostCents, movement.valueCents)
     row(movement.productId).costCents += cost
     costCents += cost
   }

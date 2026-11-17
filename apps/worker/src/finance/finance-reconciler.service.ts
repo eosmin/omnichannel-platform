@@ -4,7 +4,7 @@ import type { Gauge } from '@prometheus-io/client'
 import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
-import { financePostingJobOptions } from '@platform/core/domain'
+import { FinanceEventKind, financePostingJobOptions } from '@platform/core/domain'
 import { FinanceSweepService } from '@platform/core/finance-ledger'
 import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
@@ -15,12 +15,24 @@ import {
   QueueNames
 } from '@platform/core/queues'
 
+// The events whose entry moves the inventory account: while one of them waits in the queue the books are behind the stock. Every other event
+// (a payment, a carrier's charge, a remittance) leaves the inventory account alone and says nothing about the check of the stock.
+const INVENTORY_EVENTS: ReadonlySet<string> = new Set([
+  FinanceEventKind.SENT,
+  FinanceEventKind.SALE,
+  FinanceEventKind.RETURN_RESTOCK,
+  FinanceEventKind.ORDER_RETURN,
+  FinanceEventKind.ADJUST
+])
+
 export interface FinanceReconcileReport {
   examined: number
   queued: number
   openFailures: number
   unposted: number
   balanceMismatches: number
+  // The inventory account less the value of the stock, in cents: zero when the books and the warehouses agree
+  inventoryDriftCents: number
   truncated: boolean
 }
 
@@ -63,14 +75,32 @@ export class FinanceReconciler {
       // The run stopped at a cap: the number above is a floor, and the rest is for tomorrow
       this.logger.warn({ organizationId }, 'the check of the books stopped at its cap')
     }
-    const balanceMismatches = await this.sweep.balanceMismatches(organizationId)
+    const lineMismatches = await this.sweep.balanceMismatches(organizationId)
+    // The inventory account against the stock counts as one more difference: the same gauge, the same person, the same rule (never fixed here)
+    const drift = await this.sweep.inventoryDrift(organizationId)
+    // What the sweep has just asked the job to post for the inventory is not in the books yet and the stock already moved: that lag is not a
+    // difference, and a later check sees the entries. An entry that failed and waits for a person is NOT lag: it counts
+    const lagging = swept.toQueue.some(job => INVENTORY_EVENTS.has(job.kind))
+    const inventoryDiffers = drift.differenceCents !== 0n && !lagging
+    const balanceMismatches = lineMismatches + (inventoryDiffers ? 1 : 0)
     // How many there are now, so that it goes back to zero when someone fixes them
     this.mismatches.set({ organization_id: organizationId }, balanceMismatches)
-    if (balanceMismatches > 0) {
+    if (lineMismatches > 0) {
       // Never fixed from here: the journal is the truth and a correction is a person's decision
       this.logger.error(
-        { organizationId, balanceMismatches },
+        { organizationId, balanceMismatches: lineMismatches },
         'the balances of the books disagree with their lines'
+      )
+    }
+    if (inventoryDiffers) {
+      this.logger.error(
+        {
+          organizationId,
+          ledgerCents: drift.ledgerCents.toString(),
+          stockCents: drift.stockCents.toString(),
+          differenceCents: drift.differenceCents.toString()
+        },
+        'the inventory account of the books disagrees with the value of the stock'
       )
     }
     this.logger.info(
@@ -89,6 +119,7 @@ export class FinanceReconciler {
       openFailures: swept.openFailures,
       unposted: swept.unposted,
       balanceMismatches,
+      inventoryDriftCents: Number(drift.differenceCents),
       truncated: swept.truncated
     }
   }

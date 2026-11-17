@@ -299,6 +299,7 @@ export class InventoryService {
         referenceId: input.reference?.id ?? null,
         idempotencyKey: input.idempotencyKey,
         unitCostCents: plan.unitCostCents,
+        valueCents: plan.valueCents,
         onHandAfter: plan.next.onHand,
         reservedAfter: plan.next.reserved,
         createdBy: input.createdBy ?? null,

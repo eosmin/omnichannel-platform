@@ -19,7 +19,7 @@ import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ExportContentTypes, ExportFileExtensions } from '@platform/core/exports'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import {
@@ -85,6 +85,7 @@ export class FinanceReportsController {
 
   // HIGH tier of DestructiveActionTiers (CLOSE_FISCAL_PERIOD): the interface asks before it sends this
   @RequirePermissions(Permissions.FINANCE_CLOSE_PERIODS)
+  @NoStore()
   @Post(ApiRoutes.finance.periods.close(':id'))
   @HttpCode(HttpStatusCodes.OK)
   closePeriod(
@@ -99,6 +100,7 @@ export class FinanceReportsController {
 
   // HIGH tier of DestructiveActionTiers (REOPEN_FISCAL_PERIOD)
   @RequirePermissions(Permissions.FINANCE_CLOSE_PERIODS)
+  @NoStore()
   @Post(ApiRoutes.finance.periods.reopen(':id'))
   @HttpCode(HttpStatusCodes.OK)
   reopenPeriod(
@@ -113,6 +115,7 @@ export class FinanceReportsController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW)
+  @NoStore()
   @Get(ApiRoutes.finance.reports.trialBalance)
   trialBalance(
     @CurrentOrganization() organization: Organization,
@@ -122,6 +125,7 @@ export class FinanceReportsController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW_JOURNAL)
+  @NoStore()
   @Get(ApiRoutes.finance.reports.ledger)
   ledger(
     @CurrentOrganization() organization: Organization,
@@ -190,6 +194,7 @@ export class FinanceReportsController {
 
   // Whether the weekly check left the chain flagged: the incident that stops a close, read without scanning the journal
   @RequirePermissions(Permissions.FINANCE_VIEW_REPORTS)
+  @NoStore()
   @Get(ApiRoutes.finance.reports.chainStatus)
   chainStatus(@CurrentOrganization() organization: Organization): Promise<ChainStatusView> {
     return this.chain.status(organization.id)
@@ -197,6 +202,7 @@ export class FinanceReportsController {
 
   // The check of the hash chain, on demand for the auditor (TDD_18 §11): the verdict, the head, and whether every frozen head is still there
   @RequirePermissions(Permissions.FINANCE_EXPORT)
+  @NoStore()
   @Post(ApiRoutes.finance.reports.verifyChain)
   @HttpCode(HttpStatusCodes.OK)
   verifyChain(

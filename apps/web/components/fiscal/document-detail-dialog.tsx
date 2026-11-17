@@ -106,7 +106,11 @@ function DocumentBody({
   const [editingReceiver, setEditingReceiver] = useState(false)
   const [voiding, setVoiding] = useState(false)
   const [changingIssuer, setChangingIssuer] = useState(false)
-  const actions = fiscalActionsOf(document, replacedIds)
+  const actions = fiscalActionsOf(
+    document,
+    replacedIds,
+    (provider?.manifest.voidInputs?.kindsWithReplacement?.length ?? 0) > 0
+  )
   const canManage = can(ClientPermissions.FISCAL_MANAGE)
   const when = (iso: string | null): string =>
     iso === null
@@ -259,6 +263,7 @@ function Actions({
     !actions.retry &&
     !actions.void &&
     !actions.replace &&
+    !actions.replaceFirst &&
     !actions.confirmIssuerChange
   ) {
     return null
@@ -293,10 +298,22 @@ function Actions({
           data-testid="fiscal-replace-confirm"
         >
           <p className="font-medium">
-            {t(note ? 'replaceNoteConfirmTitle' : 'replaceConfirmTitle')}
+            {t(
+              note
+                ? 'replaceNoteConfirmTitle'
+                : actions.replaceFirst
+                  ? 'replaceFirstConfirmTitle'
+                  : 'replaceConfirmTitle'
+            )}
           </p>
           <p className="text-muted-foreground">
-            {t(note ? 'replaceNoteConfirmDescription' : 'replaceConfirmDescription')}
+            {t(
+              note
+                ? 'replaceNoteConfirmDescription'
+                : actions.replaceFirst
+                  ? 'replaceFirstConfirmDescription'
+                  : 'replaceConfirmDescription'
+            )}
           </p>
           <div className="flex flex-wrap justify-end gap-2">
             <Button
@@ -316,7 +333,7 @@ function Actions({
                     await replace.mutateAsync(document.id)
                     setConfirmingReplace(false)
                   },
-                  t(note ? 'replacedNote' : 'replaced')
+                  t(note ? 'replacedNote' : actions.replaceFirst ? 'replacedFirst' : 'replaced')
                 )
               }
             >
@@ -360,6 +377,17 @@ function Actions({
               onClick={() => setConfirmingReplace(true)}
             >
               {t('replace')}
+            </Button>
+          ) : null}
+          {actions.replaceFirst ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={pending}
+              data-testid="fiscal-replace-first"
+              onClick={() => setConfirmingReplace(true)}
+            >
+              {t('replaceFirst')}
             </Button>
           ) : null}
           {actions.void ? (
