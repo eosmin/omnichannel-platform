@@ -7,6 +7,8 @@ import { ApiError, type FiscalIssuerView, type FiscalProviderView } from '@platf
 import { FiscalFieldLimits, FiscalIssueOn } from '@platform/core/domain'
 
 import {
+  type CatalogOption,
+  catalogOf,
   emptyIssuerDraft,
   type IssuerDraft,
   type IssuerField,
@@ -107,6 +109,8 @@ export function IssuerForm({
 
   const requires = (field: string): boolean =>
     provider?.manifest.requiredIssuerFields.includes(field) === true
+  // A field the provider does not ask for is shown only when the issuer has a value in it, so that a person can still read it and clear it
+  const shows = (field: string, value: string): boolean => requires(field) || value.trim() !== ''
   const mark = (label: string, field: string): string =>
     requires(field) ? `${label} ${t('requiredMark')}` : label
 
@@ -128,6 +132,9 @@ export function IssuerForm({
           set({
             providerId: value,
             environment: next?.manifest.environments[0] ?? draft.environment,
+            // A code of the lists of the other provider is not a code of this one
+            activityCode: '',
+            establishmentType: '',
             credentials: {}
           })
         }}
@@ -211,10 +218,10 @@ export function IssuerForm({
           problem={wordsOf(IssuerFields.REGISTRATION_ID)}
           onChange={registrationId => set({ registrationId })}
         />
-        <TextField
+        <CodeField
           label={mark(t('activityCode'), IssuerFields.ACTIVITY_CODE)}
           value={draft.activityCode}
-          maxLength={FiscalFieldLimits.CODE}
+          options={catalogOf(provider, IssuerFields.ACTIVITY_CODE)}
           disabled={locked}
           problem={wordsOf(IssuerFields.ACTIVITY_CODE)}
           onChange={activityCode => set({ activityCode })}
@@ -227,6 +234,46 @@ export function IssuerForm({
           problem={wordsOf(IssuerFields.ESTABLISHMENT_CODE)}
           onChange={establishmentCode => set({ establishmentCode })}
         />
+        {shows(IssuerFields.ESTABLISHMENT_TYPE, draft.establishmentType) ? (
+          <CodeField
+            label={mark(t('establishmentType'), IssuerFields.ESTABLISHMENT_TYPE)}
+            value={draft.establishmentType}
+            options={catalogOf(provider, IssuerFields.ESTABLISHMENT_TYPE)}
+            disabled={locked}
+            problem={wordsOf(IssuerFields.ESTABLISHMENT_TYPE)}
+            onChange={establishmentType => set({ establishmentType })}
+          />
+        ) : null}
+        {shows(IssuerFields.POINT_OF_SALE_CODE, draft.pointOfSaleCode) ? (
+          <TextField
+            label={mark(t('pointOfSaleCode'), IssuerFields.POINT_OF_SALE_CODE)}
+            value={draft.pointOfSaleCode}
+            maxLength={FiscalFieldLimits.CODE}
+            disabled={locked}
+            problem={wordsOf(IssuerFields.POINT_OF_SALE_CODE)}
+            onChange={pointOfSaleCode => set({ pointOfSaleCode })}
+          />
+        ) : null}
+        {shows(IssuerFields.PHONE, draft.phone) ? (
+          <TextField
+            label={mark(t('phone'), IssuerFields.PHONE)}
+            value={draft.phone}
+            maxLength={FiscalFieldLimits.PHONE}
+            disabled={locked}
+            problem={wordsOf(IssuerFields.PHONE)}
+            onChange={phone => set({ phone })}
+          />
+        ) : null}
+        {shows(IssuerFields.EMAIL, draft.email) ? (
+          <TextField
+            label={mark(t('email'), IssuerFields.EMAIL)}
+            value={draft.email}
+            maxLength={FiscalFieldLimits.EMAIL}
+            disabled={locked}
+            problem={wordsOf(IssuerFields.EMAIL)}
+            onChange={email => set({ email })}
+          />
+        ) : null}
       </div>
       <AddressRowsField
         rows={draft.address}
@@ -278,6 +325,56 @@ export function IssuerForm({
         <p className="text-muted-foreground text-sm">{t('readOnly')}</p>
       )}
     </form>
+  )
+}
+
+// A code the provider reads: chosen from the list its manifest names for the field (the code with its words), or typed when it names none.
+// A code the issuer already has that the list does not know stays as an option, so that it is read and told, never dropped.
+function CodeField({
+  label,
+  value,
+  options,
+  disabled,
+  problem,
+  onChange
+}: {
+  label: string
+  value: string
+  options: readonly CatalogOption[] | null
+  disabled: boolean
+  problem: string | null
+  onChange: (value: string) => void
+}): ReactElement {
+  const t = useTranslations('finance.fiscal.issuer')
+  if (options === null) {
+    return (
+      <TextField
+        label={label}
+        value={value}
+        maxLength={FiscalFieldLimits.CODE}
+        disabled={disabled}
+        problem={problem}
+        onChange={onChange}
+      />
+    )
+  }
+  const known = options.some(option => option.code === value.trim())
+  return (
+    <SelectField
+      label={label}
+      value={value}
+      disabled={disabled}
+      problem={problem}
+      onChange={onChange}
+    >
+      <option value="">{t('choose')}</option>
+      {value !== '' && !known ? <option value={value}>{value}</option> : null}
+      {options.map(option => (
+        <option key={option.code} value={option.code}>
+          {`${option.code} · ${option.label}`}
+        </option>
+      ))}
+    </SelectField>
   )
 }
 

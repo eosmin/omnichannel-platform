@@ -20,6 +20,8 @@ import type {
   VoidResult
 } from '@platform/fiscal/sdk'
 
+import { ACTIVITIES } from './catalogs/activities'
+import { IDENTITY_DOCUMENTS } from './catalogs/identity-documents'
 import { SvAuthenticator } from './sv-auth'
 import { buildDocument, resolveDocumentType } from './sv-build'
 import {
@@ -129,10 +131,18 @@ export class SvProvider implements FiscalDocumentProvider {
     environments: [...SvEnabledEnvironments],
     // The control number runs by document type, establishment and point of sale (Funcional §XI)
     sequence: { perDocumentType: true, perEstablishment: true, perPointOfSale: true },
+    // The lists of the authority's catalogs a person chooses from: the economic activities of the issuer (CAT-019) and the identity
+    // documents of the people of an invalidation (CAT-022)
+    catalogs: {
+      activities: ACTIVITIES.map(row => ({ code: row.code, label: row.name })),
+      identityDocuments: IDENTITY_DOCUMENTS.map(row => ({ code: row.code, label: row.name }))
+    },
+    issuerFieldCatalogs: { activityCode: 'activities' },
     // The authority asks who makes an invalidation and who asks for it, and tells three reasons apart (CAT-024)
     voidInputs: {
       kinds: Object.keys(SvInvalidation.KINDS) as FiscalVoidKind[],
       requiresParties: true,
+      identityCatalog: 'identityDocuments',
       kindsWithReplacement: [...SvInvalidation.KINDS_WITH_REPLACEMENT],
       reasonMaxLength: SvInvalidation.REASON_MAX
     }

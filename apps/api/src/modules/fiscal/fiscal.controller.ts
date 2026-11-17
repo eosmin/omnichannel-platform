@@ -27,6 +27,7 @@ import {
   type FiscalDocumentView,
   FiscalIssuerService,
   type FiscalIssuerView,
+  type FiscalSeriesView,
   type FiscalFindingsPage,
   FiscalSweepService
 } from '@platform/fiscal/runtime'
@@ -93,6 +94,15 @@ export class FiscalController {
     @CurrentOrganization() organization: Organization
   ): Promise<{ data: FiscalIssuerView | null }> {
     return { data: await this.issuer.get(organization.id) }
+  }
+
+  // The series of correlatives of the organization of the store of the request
+  @RequirePermissions(Permissions.FISCAL_VIEW)
+  @Get(ApiRoutes.fiscal.series)
+  async series(
+    @CurrentOrganization() organization: Organization
+  ): Promise<{ data: FiscalSeriesView[] }> {
+    return { data: await this.issuer.listSeries(organization.id) }
   }
 
   @RequirePermissions(Permissions.FISCAL_MANAGE)

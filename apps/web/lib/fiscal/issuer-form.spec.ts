@@ -6,6 +6,7 @@ import {
   emptyIssuerDraft,
   issuerDraftOf,
   issuerInputOf,
+  catalogOf,
   issuerProblems,
   sequenceOf
 } from './issuer-form'
@@ -135,5 +136,120 @@ describe('the form of the issuer', () => {
     const body = issuerInputOf({ ...filled(), registrationId: '  ' }, provider)
     expect(body.registrationId).toBeNull()
     expect(body.activityCode).toBeNull()
+  })
+})
+
+describe('the fields the port added: point of sale, kind of establishment, phone and email', () => {
+  const rich: FiscalProviderView = {
+    ...provider,
+    manifest: {
+      ...provider.manifest,
+      requiredIssuerFields: [
+        ...provider.manifest.requiredIssuerFields,
+        'activityCode',
+        'establishmentType',
+        'pointOfSaleCode',
+        'phone',
+        'email'
+      ],
+      catalogs: {
+        activities: [
+          { code: '47119', label: 'Retail' },
+          { code: '10101', label: 'Farming' }
+        ]
+      },
+      issuerFieldCatalogs: { activityCode: 'activities' }
+    }
+  }
+  const full = () => ({
+    ...filled(),
+    activityCode: '47119',
+    establishmentType: '02',
+    pointOfSaleCode: 'P001',
+    phone: '2222-0000',
+    email: 'a@example.test'
+  })
+
+  it('asks for the ones the manifest requires, and only those', () => {
+    const asked = issuerProblems(filled(), rich, null).map(each => each.field)
+    expect(asked).toEqual(
+      expect.arrayContaining([
+        'activityCode',
+        'establishmentType',
+        'pointOfSaleCode',
+        'phone',
+        'email'
+      ])
+    )
+    const plain = issuerProblems(filled(), provider, null).map(each => each.field)
+    for (const field of ['establishmentType', 'pointOfSaleCode', 'phone', 'email'])
+      expect(plain).not.toContain(field)
+  })
+
+  it('takes a value of the catalog the manifest names for the field, and refuses one it does not have', () => {
+    expect(catalogOf(rich, 'activityCode')?.map(option => option.code)).toEqual(['47119', '10101'])
+    expect(catalogOf(rich, 'phone')).toBeNull()
+    expect(catalogOf(provider, 'activityCode')).toBeNull()
+    expect(issuerProblems(full(), rich, null)).toEqual([])
+    expect(issuerProblems({ ...full(), activityCode: '99999' }, rich, null)).toEqual([
+      { field: 'activityCode', kind: 'unknown' }
+    ])
+    // A provider with no catalog for the field takes what is typed
+    expect(issuerProblems({ ...full(), activityCode: '99999' }, provider, null)).toEqual([])
+  })
+
+  it('does not hold a saved code against the person who changes something else, but tells a new one', () => {
+    const saved = { ...issuer, activityCode: 'OLD-CODE', providerId: 'provider-a' }
+    const draft = { ...issuerDraftOf(saved), credentials: { signingKey: 'k', secret: 's' } }
+    // The stored code is not in the list (a catalog that changed): the form is not refused for it
+    const fields = issuerProblems({ ...draft, phone: '2222-0000' }, rich, saved).map(
+      each => each.field
+    )
+    expect(fields).not.toContain('activityCode')
+    // A different code that is not in the list is told
+    expect(
+      issuerProblems({ ...full(), activityCode: 'ANOTHER' }, rich, saved).map(each => each.field)
+    ).toContain('activityCode')
+    // And a code with blanks around it is the code
+    expect(issuerProblems({ ...full(), activityCode: ' 47119 ' }, rich, null)).toEqual([])
+  })
+
+  it('counts the length the api takes', () => {
+    expect(issuerProblems({ ...full(), phone: '1'.repeat(41) }, rich, null)).toEqual([
+      { field: 'phone', kind: 'tooLong' }
+    ])
+    expect(issuerProblems({ ...full(), email: 'a'.repeat(201) }, rich, null)).toEqual([
+      { field: 'email', kind: 'tooLong' }
+    ])
+  })
+
+  it('sends them in a body the api accepts, trimmed, and null when empty so that a person can clear one', () => {
+    const body = issuerInputOf({ ...full(), phone: ' 2222-0000 ' }, rich)
+    expect(body).toMatchObject({
+      establishmentType: '02',
+      pointOfSaleCode: 'P001',
+      phone: '2222-0000',
+      email: 'a@example.test'
+    })
+    expect(putFiscalIssuerSchema.safeParse(body).success).toBe(true)
+    const cleared = issuerInputOf({ ...full(), phone: '', email: '  ' }, provider)
+    expect(cleared).toMatchObject({ phone: null, email: null })
+  })
+
+  it('starts again from what the issuer has', () => {
+    const draft = issuerDraftOf({
+      ...issuer,
+      establishmentType: '02',
+      pointOfSaleCode: 'P001',
+      phone: '2222-0000',
+      email: 'a@example.test'
+    })
+    expect(draft).toMatchObject({
+      establishmentType: '02',
+      pointOfSaleCode: 'P001',
+      phone: '2222-0000',
+      email: 'a@example.test'
+    })
+    expect(emptyIssuerDraft(rich)).toMatchObject({ phone: '', email: '', pointOfSaleCode: '' })
   })
 })
