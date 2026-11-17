@@ -737,12 +737,14 @@ describe('The retention run of the worker', () => {
     })
 
     it('leaves a month to the run that holds its lock: it writes no object and deletes no row', async () => {
-      // Cleaned up even when an assertion below fails, and proved empty first: an object here before the run would not be
-      // the run's, and the failure would say so
-      archived.push(StorageKeys.auditArchive(2001, 5))
-      expect(await storage.head(StorageKeys.auditArchive(2001, 5))).toBeNull()
-      const row = await entry('2001-05-10T00:00:00Z', 'test.cold.locked')
-      const key = auditColdExportLockKey(2001, 5)
+      // A month that no other case of this suite uses (1987), so that no other run can have written its object; cleaned up
+      // even when an assertion below fails, and proved empty first: an object here before the run would not be the run's
+      const lockedKey = StorageKeys.auditArchive(1987, 3)
+      await storage.delete(lockedKey).catch(() => undefined)
+      archived.push(lockedKey)
+      expect(await storage.head(lockedKey)).toBeNull()
+      const row = await entry('1987-03-10T00:00:00Z', 'test.cold.locked')
+      const key = auditColdExportLockKey(1987, 3)
 
       const report = await worker.transaction(
         async tx => {
@@ -752,14 +754,14 @@ describe('The retention run of the worker', () => {
         { timeout: 30_000 }
       )
 
-      expect(report.busy).toEqual({ year: 2001, month: 5 })
+      expect(report.busy).toEqual({ year: 1987, month: 3 })
       expect(report.months).toEqual([])
-      expect(await storage.head(StorageKeys.auditArchive(2001, 5))).toBeNull()
+      expect(await storage.head(lockedKey)).toBeNull()
       expect(await owner.auditLog.count({ where: { id: row.id } })).toBe(1)
       // Once the other run is over (its lock is gone) the month goes
       const after = await exporter.run(before)
       expect(after.busy).toBeNull()
-      expect(after.months.find(month => month.month === 5)?.rows).toBe(1)
+      expect(after.months.find(month => month.year === 1987 && month.month === 3)?.rows).toBe(1)
     })
 
     it('exports a month once when two runs meet: one object, every row in it, none lost', async () => {
