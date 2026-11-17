@@ -108,5 +108,10 @@ async function withinBudget(
     .exec()
   const counted = results?.[0]
   if (counted === undefined || counted[0] !== null || typeof counted[1] !== 'number') return false
+  // A Redis that refuses the NX option would leave the counter with no end, and the keys nobody owns would never be audited again:
+  // the end is then given without it (a counter that did not just start keeps the end it has)
+  if (results?.[1]?.[0] instanceof Error && counted[1] === 1) {
+    await deps.redis.expire(key, PluginApiDenialAudit.WINDOW_SECONDS)
+  }
   return counted[1] <= PluginApiDenialAudit.ANONYMOUS_PER_WINDOW
 }

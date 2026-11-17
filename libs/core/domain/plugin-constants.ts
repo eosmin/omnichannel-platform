@@ -177,7 +177,9 @@ export const PluginApiDenialReasons = {
   INVALID_KEY: 'invalid_key',
   INACTIVE: 'inactive',
   SCOPE: 'scope',
-  PERMISSION: 'permission'
+  PERMISSION: 'permission',
+  // A route that names no scopes or no permission: a mistake of the code, kept apart so that it cannot mask a real refusal
+  ROUTE_UNDECLARED: 'route_undeclared'
 } as const
 export type PluginApiDenialReason =
   (typeof PluginApiDenialReasons)[keyof typeof PluginApiDenialReasons]

@@ -100,6 +100,7 @@ export class PluginApiKeyGuard implements CanActivate {
       targets
     )
     if (required === undefined) {
+      this.denied(request, installation, PluginApiDenialReasons.ROUTE_UNDECLARED, [])
       throw new PlatformException(
         ErrorCodes.INTERNAL_ERROR,
         'a route behind PluginApiKeyGuard names no scopes',
@@ -136,7 +137,7 @@ export class PluginApiKeyGuard implements CanActivate {
         { installationId: installation.id, handler: context.getHandler().name },
         'a plugin-api route with scopes declares no @RequirePermissions: refused'
       )
-      this.denied(request, installation, PluginApiDenialReasons.PERMISSION, [])
+      this.denied(request, installation, PluginApiDenialReasons.ROUTE_UNDECLARED, [])
       throw new PlatformException(
         ErrorCodes.PERMISSION_DENIED,
         'this route declares no permission',
@@ -192,6 +193,11 @@ export class PluginApiKeyGuard implements CanActivate {
     installation?: { id: string; pluginId: string; store: { id: string } },
     detail: { status?: { installation: string; plugin: string } } = {}
   ): never {
+    // The audit is capped, so the log keeps every one of these (never the key)
+    this.logger.warn(
+      { installationId: installation?.id, reason },
+      'a plugin key that does not open the door was refused'
+    )
     // Not awaited: it never throws, and an answer for a key that does not open the door must not wait for Redis
     void this.record(request, reason, installation, detail)
     throw invalidKey()

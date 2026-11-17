@@ -72,12 +72,13 @@ describe('the audit of the calls the plugin API refuses', () => {
     await owner.$disconnect()
   })
 
-  const get = (path: string, key: string) => {
+  const get = (path: string, key: string, userAgent?: string) => {
     const server = app.getHttpServer() as Parameters<typeof supertest>[0]
     return supertest(server)
       .get(`${API_PREFIX}${path}`)
       .set('x-forwarded-for', `10.${randomInt(256)}.${randomInt(256)}.${randomInt(1, 255)}`)
       .set('authorization', `Bearer ${key}`)
+      .set('user-agent', userAgent ?? 'plugin-denial-audit-suite')
   }
   const entriesOf = (installationId: string) =>
     waitForAuditEntries(
@@ -142,19 +143,22 @@ describe('the audit of the calls the plugin API refuses', () => {
     const redis = new Redis(REDIS_URL)
     await redis.del(CacheKeys.audit.pluginDenialAnonymous)
     await redis.quit()
-    const before = await owner.auditLog.count({
-      where: { action: AuditAction.PLUGIN_API_DENIED, storeId: null }
-    })
+    // The rows of this test are the ones with its own user agent: other suites write rows with no store too
+    const probe = `${prefix}-probe`
     const unknown = `${PLUGIN_API_KEY_TOKEN_PREFIX}${randomBytes(32).toString('base64url')}`
     await Promise.all(
-      Array.from({ length: UNKNOWN_FLOOD }, () => get(PluginApiRoutes.customers.list, unknown))
+      Array.from({ length: UNKNOWN_FLOOD }, () =>
+        get(PluginApiRoutes.customers.list, unknown, probe)
+      )
     )
     await settle()
     const rows = await owner.auditLog.findMany({
-      where: { action: AuditAction.PLUGIN_API_DENIED, storeId: null },
+      where: { action: AuditAction.PLUGIN_API_DENIED, storeId: null, userAgent: probe },
       orderBy: { timestamp: 'asc' }
     })
-    const added = rows.length - before
+    const added = rows.length
+    // Each request came from its own address, so the per-address limit lets many through and the whole-window limit stops them
+    expect(new Set(rows.map(row => row.ipAddress)).size).toBe(added)
     expect(added).toBeGreaterThan(0)
     expect(added).toBeLessThanOrEqual(PluginApiDenialAudit.ANONYMOUS_PER_WINDOW)
     expect(added).toBeLessThan(UNKNOWN_FLOOD)
