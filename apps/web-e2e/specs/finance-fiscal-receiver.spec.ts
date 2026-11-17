@@ -6,7 +6,7 @@ import { ApiRoutes } from '@platform/core/api'
 import en from '../../web/messages/en.json' with { type: 'json' }
 import { financeCall, signInByApi } from '../support/api'
 import { addOwnerOfNewStore, addShippedTaxedSale } from '../support/database'
-import { expectDialogHoldsItsContent } from '../support/dialog-fit'
+import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
 import { expect, test } from '../support/test'
 
@@ -128,7 +128,7 @@ test.describe('Finance → a business document with a sealed receiver', () => {
     await dialog.getByRole('button', { name: fiscal.actions.editReceiver, exact: true }).click()
 
     const fix = page.getByRole('dialog', { name: /^Fix the receiver of document/ })
-    await expectDialogHoldsItsContent(page, fix)
+    await expectDialogFitsThePhoneWidth(page, fix)
     // Writing nothing is refused before anything is sent
     await fix.getByRole('button', { name: fiscal.receiver.submit, exact: true }).click()
     await expect(fix.getByRole('alert').getByText(fiscal.receiver.problems.nothing)).toBeVisible()
