@@ -73,6 +73,48 @@ describe('the refusals', () => {
     expect(plan(level(3, 0), Type.ADJUSTMENT_OUT, 3).ok).toBe(true)
   })
 
+  it('refuses an adjustment out that would leave less on hand than is reserved, and records a count (N-AA-05)', () => {
+    // 5 on hand, 4 promised to an order: 3 out by hand would leave 2 for the 4
+    expect(plan(level(5, 4), Type.ADJUSTMENT_OUT, 3)).toEqual({
+      ok: false,
+      refusal: { kind: 'insufficient_available', available: 1 }
+    })
+    // The last free unit may go: 4 stay for the 4 reserved
+    expect(applied(plan(level(5, 4), Type.ADJUSTMENT_OUT, 1)).next).toMatchObject({
+      onHand: 4,
+      reserved: 4
+    })
+    expect(plan(level(5, 0), Type.ADJUSTMENT_OUT, 5).ok).toBe(true)
+    // A level already over-reserved has no free unit to give
+    expect(plan(level(2, 4), Type.ADJUSTMENT_OUT, 1)).toEqual({
+      ok: false,
+      refusal: { kind: 'insufficient_available', available: -2 }
+    })
+    // More than is on hand is still told as what is on hand, before what is reserved
+    expect(plan(level(2, 1), Type.ADJUSTMENT_OUT, 3)).toEqual({
+      ok: false,
+      refusal: { kind: 'insufficient_on_hand', onHand: 2 }
+    })
+    // What the shelf really holds is recorded whatever is reserved
+    expect(applied(plan(level(5, 4), Type.COUNT_OUT, 3)).next).toMatchObject({
+      onHand: 2,
+      reserved: 4
+    })
+  })
+
+  it('lets an adjustment out take reserved units when the store allows negative stock, and a replay never refuses', () => {
+    expect(
+      applied(plan(level(5, 4), Type.ADJUSTMENT_OUT, 3, { allowNegativeStock: true })).next
+    ).toMatchObject({ onHand: 2, reserved: 4 })
+    expect(
+      planMovement(level(5, 4), Type.ADJUSTMENT_OUT, 3, {
+        allowNegativeStock: false,
+        unitCostCents: null,
+        force: true
+      }).ok
+    ).toBe(true)
+  })
+
   it('lets them go below zero when the store allows it', () => {
     for (const type of [Type.ADJUSTMENT_OUT, Type.COUNT_OUT]) {
       const result = applied(plan(level(2, 0), type, 5, { allowNegativeStock: true }))
