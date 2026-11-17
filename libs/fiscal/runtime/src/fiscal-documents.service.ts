@@ -107,6 +107,17 @@ export class FiscalDocumentBusyError extends Error {}
 class FiscalSequenceExhaustedError extends Error {}
 
 // An acceptance has a number: what a provider returns is not trusted to
+// The fields a person sends to write a receiver again when the stored one cannot be read (null leaves one empty). The type, the activity
+// and the document type of the receiver are not sent by the form: a rewrite leaves them empty, as a new receiver does
+const WHOLE_RECEIVER_FIELDS = [
+  'name',
+  'taxId',
+  'registrationId',
+  'email',
+  'phone',
+  'address'
+] as const
+
 const hasNumber = (value: unknown): value is string =>
   typeof value === 'string' && value.trim() !== ''
 
@@ -1587,6 +1598,7 @@ export class FiscalDocumentsService {
     },
     actor: FiscalActor
   ): Promise<FiscalDocumentView> {
+    let replacedUnreadable = false
     await this.prisma.transaction(async tx => {
       const doc = await this.lock(tx, organizationId, id)
       // A document kept in a contingency is the one the receiver was handed: its receiver changes only after the authority refused it
@@ -1605,7 +1617,19 @@ export class FiscalDocumentsService {
           { reason: FiscalConflictReasons.CREDIT_NOTE_RECEIVER }
         )
       }
-      const current = this.openReceiver(doc.receiverEncrypted)
+      // A receiver that cannot be opened is not merged over: the change would be laid on an empty one and drop what was stored. The
+      // person then writes the whole receiver (every field sent, null to leave one empty), or the api refuses with a reason.
+      const opened = this.tryOpenReceiver(doc.receiverEncrypted)
+      if (opened === null && !WHOLE_RECEIVER_FIELDS.every(field => field in patch)) {
+        throw new PlatformException(
+          ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+          'the stored receiver cannot be read: the whole receiver must be sent',
+          HttpStatusCodes.CONFLICT,
+          { reason: FiscalConflictReasons.RECEIVER_UNREADABLE }
+        )
+      }
+      replacedUnreadable = opened === null
+      const current = opened ?? receiverOf({})
       const next: FiscalReceiver = {
         name: 'name' in patch ? (patch.name ?? null) : current.name,
         taxId: 'taxId' in patch ? (patch.taxId ?? null) : current.taxId,
@@ -1635,7 +1659,10 @@ export class FiscalDocumentsService {
       storeId: actor.storeId,
       resourceType: FiscalResourceTypes.DOCUMENT,
       resourceId: id,
-      metadata: { fields: Object.keys(patch) },
+      metadata: {
+        fields: Object.keys(patch),
+        ...(replacedUnreadable ? { replacedUnreadable: true } : {})
+      },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
@@ -2566,10 +2593,15 @@ export class FiscalDocumentsService {
   // A row whose receiver cannot be opened reads as an empty receiver: one bad row never breaks the list, and the document that holds
   // it is refused for its missing data until a person writes the receiver again
   private openReceiver(sealed: Uint8Array): FiscalReceiver {
+    return this.tryOpenReceiver(sealed) ?? receiverOf({})
+  }
+
+  // The receiver, or null when it cannot be opened (a rotated key, a damaged row)
+  private tryOpenReceiver(sealed: Uint8Array): FiscalReceiver | null {
     try {
       return receiverOf(this.cipher.open(sealed))
     } catch {
-      return receiverOf({})
+      return null
     }
   }
 

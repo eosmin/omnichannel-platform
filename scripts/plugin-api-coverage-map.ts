@@ -193,7 +193,9 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
     exposed: '/plugin-api/conversations/bulk'
   },
   'conversations.export': { scope: ['conversations:read', 'exports:write'] },
-  // Seeing a conversation is `conversations:read` for a plugin as for a person, so each message route names it too
+  // Seeing a conversation is `conversations:read` for a plugin as for a person, so each message route names it too. `messages.create`
+  // also needs `messages:write-as-agent` (and `media:write` for a file) when the body asks for it: a scope the body asks for is checked
+  // in the handler, not named by the route (as is `messages:write-as-agent` for PATCH and the resend of a message written as a person)
   'messages.create': {
     scope: ['conversations:read', 'messages:write'],
     exposed: '/plugin-api/messages'

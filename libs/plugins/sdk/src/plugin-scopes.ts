@@ -6,6 +6,12 @@ export const PluginScopes = {
   CONVERSATIONS_WRITE: 'conversations:write',
   MESSAGES_READ: 'messages:read',
   MESSAGES_WRITE: 'messages:write',
+  // Writing a message AS a member of the team (`authorType: agent` + `userId` of `POST /plugin-api/messages`): its own scope, so that
+  // `messages:write` alone writes only as the plugin (its name, `authorPluginId` and nickname) and acting as a person is a grant the
+  // owner reads on the consent screen. It stands for no human permission: the person's own (MESSAGES_SEND or MESSAGES_INTERNAL_NOTE)
+  // is checked on the member the plugin names, who must be active in the store. The route names it only when the body asks to write as
+  // a person, so a call of any other kind never needs it.
+  MESSAGES_WRITE_AS_AGENT: 'messages:write-as-agent',
   // The text of a message the customer deleted, while it is kept: its own scope, because no other grants MESSAGES_VIEW_DELETED
   MESSAGES_READ_DELETED: 'messages:read-deleted',
   // Deleting a message the plugin wrote (and throwing away a reply of its own that failed): its own scope, because deleting cannot be
@@ -117,6 +123,8 @@ export const PluginScopePermissions: Record<PluginScope, readonly Permission[]> 
   ],
   [PluginScopes.MESSAGES_READ]: [Permissions.MESSAGES_VIEW],
   [PluginScopes.MESSAGES_WRITE]: [Permissions.MESSAGES_SEND, Permissions.MESSAGES_INTERNAL_NOTE],
+  // No permission of its own: the person written for holds the permission, and the service checks it on that person
+  [PluginScopes.MESSAGES_WRITE_AS_AGENT]: [],
   [PluginScopes.MESSAGES_READ_DELETED]: [Permissions.MESSAGES_VIEW_DELETED],
   [PluginScopes.MESSAGES_DELETE]: [Permissions.MESSAGES_DELETE],
   [PluginScopes.CUSTOMERS_READ]: [Permissions.CUSTOMERS_VIEW],

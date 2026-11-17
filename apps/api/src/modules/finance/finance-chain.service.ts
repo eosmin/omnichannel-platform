@@ -27,7 +27,7 @@ export interface ChainStatusView {
 
 // The check of the hash chain asked by a person (TDD_18 §11). The walk itself lives in `libs/core/finance` because the weekly job of the
 // worker runs the same code; here is only what belongs to a request: one scan at a time and the audit row. A check that finds the chain
-// altered opens the incident that stops the close, and one that passes closes it, exactly as the weekly one does.
+// altered opens the incident that stops the close, and one that passes reports it and leaves the closing to the weekly job (the API role cannot close an incident).
 @Injectable()
 export class FinanceChainService {
   private readonly running = new Set<string>()
@@ -75,7 +75,7 @@ export class FinanceChainService {
     this.running.add(organizationId)
     let check: ChainCheck
     try {
-      check = await this.monitor.check(organizationId)
+      check = await this.monitor.check(organizationId, { resolve: false })
     } finally {
       this.running.delete(organizationId)
     }

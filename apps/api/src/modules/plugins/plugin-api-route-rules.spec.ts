@@ -165,7 +165,7 @@ describe('pluginApiRouteViolations', () => {
 
   // The exemption of a route from naming a permission lives in what the scope map grants: a scope added with no permission would
   // open its routes from the check, so each one that has none is said here, with the reason, and a new one fails this until it is
-  it('knows which scopes stand for no human permission: the webhooks, the exports centre and the two of a channel plugin, and no other', () => {
+  it('knows which scopes stand for no human permission: the webhooks, the exports centre, the two of a channel plugin and writing as a member of the team, and no other', () => {
     const none = Object.entries(PluginScopePermissions)
       .filter(([, permissions]) => permissions.length === 0)
       .map(([scope]) => scope)
@@ -175,6 +175,7 @@ describe('pluginApiRouteViolations', () => {
         PluginScopes.CHANNEL_CONNECTIONS,
         PluginScopes.CHANNEL_EVENTS,
         PluginScopes.EXPORTS_READ,
+        PluginScopes.MESSAGES_WRITE_AS_AGENT,
         PluginScopes.WEBHOOKS_WRITE
       ].sort()
     )

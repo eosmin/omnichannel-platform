@@ -111,28 +111,29 @@ export class PluginMessagesController {
     // A file is the installation's own upload, which asked for `media:write`: a key that lost that scope since sends no file (the route
     // names `messages:write` only, because the same route carries text)
     if ('mediaIds' in body && !installation.scopes.includes(PluginScopes.MEDIA_WRITE)) {
-      const missing = [PluginScopes.MEDIA_WRITE]
-      // The same fields the guard logs for a scope it refuses (never the key), so that one search finds both
-      this.logger.warn(
-        {
-          installationId: installation.id,
-          pluginId: installation.pluginId,
-          kind: PluginApiDenialReasons.SCOPE,
-          missing
-        },
-        'a plugin key was refused for lack of access'
+      this.refuseScope(
+        req,
+        store.id,
+        installation,
+        PluginScopes.MEDIA_WRITE,
+        'sending a file needs the scope media:write'
       )
-      // And in the audit log, as the guard does for every other scope it refuses (capped the same way; never throws)
-      await auditPluginDenial({ audit: this.audit, redis: this.redis, logger: this.logger }, req, {
-        reason: PluginApiDenialReasons.SCOPE,
-        installation: { id: installation.id, pluginId: installation.pluginId, storeId: store.id },
-        missing
-      })
-      throw new PlatformException(
-        ErrorCodes.PLUGIN_SCOPE_DENIED,
-        'sending a file needs the scope media:write',
-        HttpStatusCodes.FORBIDDEN,
-        { required: missing }
+    }
+    // Writing AS a person (`authorType: agent` + `userId`) is a grant of its own, read on the consent screen: `messages:write` alone
+    // writes only as the plugin (MSG-410). The route names this scope only when the body asks for it, so it is checked here, as the
+    // scope of a file is above: after the body is validated and before the member is looked at (a key without the scope gets the
+    // same 403 for a member that exists and one that does not); the service then checks the person (an active member of the store
+    // who holds the permission).
+    if (
+      body.authorType === AuthorType.AGENT &&
+      !installation.scopes.includes(PluginScopes.MESSAGES_WRITE_AS_AGENT)
+    ) {
+      this.refuseScope(
+        req,
+        store.id,
+        installation,
+        PluginScopes.MESSAGES_WRITE_AS_AGENT,
+        'writing as a member of the team needs the scope messages:write-as-agent'
       )
     }
     const plugin = await this.prisma.client.plugin.findUnique({
@@ -171,6 +172,64 @@ export class PluginMessagesController {
     return answer
   }
 
+  // Changing the text of a message the plugin wrote AS a person (editing it, sending it again) is the same grant as writing it: a key
+  // that lost the scope, or never held it, cannot rewrite what the customer sees under a member's name. Taking it back (deleting) is
+  // not, and a message of another author is the service's to refuse. The store is the one of the key.
+  private async requireScopeToChangeAsAgent(
+    req: AuthenticatedRequest,
+    storeId: string,
+    installation: PluginCaller,
+    messageId: string
+  ): Promise<void> {
+    if (installation.scopes.includes(PluginScopes.MESSAGES_WRITE_AS_AGENT)) return
+    const message = await this.prisma.client.message.findFirst({
+      where: { id: messageId, storeId, authorPluginId: installation.pluginId },
+      select: { authorType: true }
+    })
+    if (message?.authorType === String(AuthorType.AGENT)) {
+      this.refuseScope(
+        req,
+        storeId,
+        installation,
+        PluginScopes.MESSAGES_WRITE_AS_AGENT,
+        'changing a message written as a member of the team needs the scope messages:write-as-agent'
+      )
+    }
+  }
+
+  // A scope the body asks for and the key does not hold: audited as the guard audits the scopes of the route (`plugin.api_denied`,
+  // capped, so a probe of userIds is seen and cannot fill the log) and refused with the scope named, before anything about the body
+  // is looked at. Never returns.
+  private refuseScope(
+    req: AuthenticatedRequest,
+    storeId: string,
+    installation: PluginCaller,
+    scope: string,
+    message: string
+  ): never {
+    // The same fields the guard logs for a scope it refuses (never the key), so that one search finds both
+    this.logger.warn(
+      {
+        installationId: installation.id,
+        pluginId: installation.pluginId,
+        kind: PluginApiDenialReasons.SCOPE,
+        missing: [scope]
+      },
+      'a plugin key was refused for lack of access'
+    )
+    void auditPluginDenial({ audit: this.audit, redis: this.redis, logger: this.logger }, req, {
+      reason: PluginApiDenialReasons.SCOPE,
+      installation: { id: installation.id, pluginId: installation.pluginId, storeId },
+      missing: [scope]
+    })
+    throw new PlatformException(
+      ErrorCodes.PLUGIN_SCOPE_DENIED,
+      message,
+      HttpStatusCodes.FORBIDDEN,
+      { required: [scope] }
+    )
+  }
+
   // The whole new text of a message or note the plugin wrote. A note carries the `version` it was read at (409 with the current text
   // if it changed); a reply the customer has changes only when the channel takes the edit, and the answer says `pendingEdit`.
   @PluginApi(PluginScopes.MESSAGES_WRITE, PluginScopes.CONVERSATIONS_READ)
@@ -185,6 +244,7 @@ export class PluginMessagesController {
     @Body(new ZodValidationPipe(editMessageSchema)) body: EditMessageBody,
     @Req() req: AuthenticatedRequest
   ): Promise<MessageView> {
+    await this.requireScopeToChangeAsAgent(req, store.id, installation, messageId)
     const message = await this.changes.edit(
       store.id,
       messageId,
@@ -240,6 +300,7 @@ export class PluginMessagesController {
     @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string,
     @Req() req: AuthenticatedRequest
   ): Promise<MessageView> {
+    await this.requireScopeToChangeAsAgent(req, store.id, installation, messageId)
     const message = await this.messages.resend(
       store.id,
       messageId,

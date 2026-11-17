@@ -2091,6 +2091,7 @@
       "automatic": "Automatic",
       "automaticMark": "Automatic",
       "sentThrough": "sent through {plugin}",
+      "sentOnBehalf": "sent by {plugin} on behalf of {name}",
       "editedByPlugin": "edited by {plugin}",
       "deletedByPlugin": "{plugin} deleted this message",
       "internalNote": "Internal note",
@@ -3171,7 +3172,8 @@
         "conversations:read": "Read conversations and their state (the customer appears only as an id, unless the plugin can also read customers)",
         "conversations:write": "Change conversations: assign, close, tag and start new ones",
         "messages:read": "Read the messages of conversations",
-        "messages:write": "Send messages to customers, as the system or on behalf of a team member",
+        "messages:write": "Send messages to customers and write internal notes, under the name of the plugin or a name it chooses",
+        "messages:write-as-agent": "Write messages as any active member of your team that can send them: the customer and the thread see the message under that person's name, with a mark that the plugin wrote it, and it counts as that person's answer in the response times",
         "messages:read-deleted": "Read the text of messages the customer deleted",
         "messages:delete": "Delete the messages the plugin itself wrote",
         "customers:read": "Read customers, their notes and history, and who the customer is in the conversations, orders and searches (name, phone and photo)",
@@ -6233,6 +6235,10 @@
         "confirmDescription": "A reversal cannot be undone or erased. It stays in the journal next to the entry.",
         "confirm": "Reverse entry",
         "done": "Entry reversed.",
+        "conflicts": {
+          "reversal_not_reversible": "A reversal cannot be reversed. If it was a mistake, write a new entry by hand.",
+          "entry_owned_by_transaction": "This entry belongs to an expense, income or transfer. Void it from Transactions instead of reversing it here."
+        },
         "problems": {
           "memo": "Write the reason for the reversal.",
           "date": "Write a date that exists, as year-month-day."
@@ -7485,6 +7491,7 @@
         "has_credit_notes": "This document has credit notes that are not voided. Void the notes first.",
         "already_replaced": "This sale already has a document that replaces it.",
         "credit_note_receiver": "The receiver of a credit note is the one of the document it cancels: fix it there.",
+        "receiver_unreadable": "The stored receiver of this document cannot be read: write the whole receiver (name, tax id, registration number, email, phone and address).",
         "original_voided": "The sale document of this credit note was voided and has no replacement yet.",
         "return_inconsistent": "The units of the return still do not fit the sale they came from.",
         "no_issuer_change": "The issuer of this document is the one it was made with: send it again instead.",

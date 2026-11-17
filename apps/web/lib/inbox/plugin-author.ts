@@ -25,6 +25,11 @@ export function pluginAuthorshipOf(
   }
 }
 
+// A plugin that wrote AS a person (`authorType: agent`): the person stays the author and the thread says the plugin wrote it for them.
+// A plugin that wrote as itself has its nickname and is `automatic`.
+export const isOnBehalfOfPerson = (authorship: PluginAuthorship): boolean =>
+  !authorship.automatic && authorship.nickname === null
+
 // The plugin that last edited the message, or the one that deleted it; null when a person or the channel did
 export function editorPluginOf(message: Pick<MessageView, 'editedByPluginId'>): string | null {
   const id = message.editedByPluginId ?? null

@@ -48,10 +48,13 @@ interface MessageBody {
   content: string | null
 }
 
+const SUITE_REQUESTS_PER_MINUTE = 100_000
+
 const ALL_SCOPES = [
   PluginScopes.CONVERSATIONS_READ,
   PluginScopes.MESSAGES_READ,
   PluginScopes.MESSAGES_WRITE,
+  PluginScopes.MESSAGES_WRITE_AS_AGENT,
   PluginScopes.MESSAGES_READ_DELETED,
   PluginScopes.MEDIA_WRITE
 ]
@@ -98,7 +101,9 @@ describe('The messages of the plugin API', () => {
         status: 'active',
         apiKeyPrefix: key.slice(0, 12),
         apiKeyHash: createHash('sha256').update(key).digest('hex'),
-        installedBy: 'suite'
+        installedBy: 'suite',
+        // This suite sends hundreds of calls in a minute through one key and is not about the rate limit
+        rateLimitPerMinute: SUITE_REQUESTS_PER_MINUTE
       }
     })
     keys[name] = key
@@ -181,7 +186,7 @@ describe('The messages of the plugin API', () => {
     await owner.$disconnect()
   })
 
-  const call = (method: 'get' | 'post', path: string, key: string | undefined) => {
+  const call = (method: 'get' | 'post' | 'patch', path: string, key: string | undefined) => {
     const request = supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
       [method](`${API_PREFIX}${path}`)
       .set('x-forwarded-for', `10.${randomInt(256)}.${randomInt(256)}.${randomInt(1, 255)}`)
@@ -292,6 +297,146 @@ describe('The messages of the plugin API', () => {
         authorPluginId: pluginId
       })
       expect((await row(id)).firstResponseAt).not.toBeNull()
+    })
+
+    // MSG-410: `messages:write` alone writes only as the plugin; acting as a person is the scope of its own
+    it('writes a note as a person too, and the scope is needed for the note as for a reply', async () => {
+      const { id } = await mk()
+      const note = (extra: Record<string, unknown>) => ({
+        type: 'note',
+        conversationId: id,
+        content: 'An internal note',
+        idempotencyKey: randomUUID(),
+        ...extra
+      })
+      const asAgent = { authorType: AuthorType.AGENT, userId: ctx.agentA.id }
+
+      const allowed = await post(note(asAgent))
+      const refused = await post(note(asAgent), keys.nomedia)
+
+      expect(allowed.status).toBe(CREATED)
+      expect(allowed.body).toMatchObject({ authorType: AuthorType.AGENT, authorId: ctx.agentA.id })
+      expect(refused.status).toBe(FORBIDDEN)
+      expect(codeOf(refused.body)).toBe(ErrorCodes.PLUGIN_SCOPE_DENIED)
+    })
+
+    it('audits the refusal of writing as a person as the guard audits a scope the route names, apart from the refusal of another scope', async () => {
+      const installation = await owner.pluginInstallation.findFirstOrThrow({
+        where: { storeId: ctx.storeA2.id, pluginId: otherPluginId },
+        select: { id: true }
+      })
+      const { id } = await mk({ storeId: ctx.storeA2.id })
+
+      // A refusal of another scope first: it takes its own slot of the window and does not hide the next one
+      await post(
+        {
+          type: 'image',
+          conversationId: id,
+          mediaIds: [randomUUID()],
+          idempotencyKey: randomUUID()
+        },
+        keys.nomedia
+      )
+      await post(text(id, { authorType: AuthorType.AGENT, userId: ctx.agentA.id }), keys.nomedia)
+
+      const entries = await waitForAuditEntries(
+        owner,
+        { action: AuditAction.PLUGIN_API_DENIED, resourceId: installation.id },
+        2
+      )
+      const missing = entries.map(entry => (entry.metadata as { missing?: string[] }).missing)
+      expect(missing).toContainEqual([PluginScopes.MEDIA_WRITE])
+      expect(missing).toContainEqual([PluginScopes.MESSAGES_WRITE_AS_AGENT])
+      expect(entries.every(entry => entry.userId === null)).toBe(true)
+    })
+
+    it('refuses to edit or send again a message it wrote as a person without the scope, and answers a replay of that write the same way', async () => {
+      const { id } = await mk({ storeId: ctx.storeA2.id })
+      const written = await owner.message.create({
+        data: {
+          storeId: ctx.storeA2.id,
+          conversationId: id,
+          type: MessageType.TEXT,
+          content: 'written as a person',
+          authorType: AuthorType.AGENT,
+          authorId: ctx.agentA.id,
+          authorPluginId: otherPluginId
+        },
+        select: { id: true }
+      })
+
+      const edit = await call(
+        'patch',
+        PluginApiRoutes.messages.byId(written.id),
+        keys.nomedia
+      ).send({
+        content: 'a new text',
+        version: 1
+      })
+      const again = await call('post', PluginApiRoutes.messages.resend(written.id), keys.nomedia)
+      const replay = await post(
+        text(id, { authorType: AuthorType.AGENT, userId: ctx.agentA.id }),
+        keys.nomedia
+      )
+
+      for (const response of [edit, again, replay]) {
+        expect(response.status).toBe(FORBIDDEN)
+        expect(codeOf(response.body)).toBe(ErrorCodes.PLUGIN_SCOPE_DENIED)
+      }
+      const after = await owner.message.findUniqueOrThrow({ where: { id: written.id } })
+      expect(after.content).toBe('written as a person')
+    })
+
+    it('refuses to write as a person without messages:write-as-agent, the same for a real member and for one that does not exist', async () => {
+      // A conversation the key reaches (its own store): the refusal is the scope and not the store
+      const { id } = await mk({ storeId: ctx.storeA2.id })
+      const real = await post(
+        text(id, { authorType: AuthorType.AGENT, userId: ctx.agentA.id }),
+        keys.nomedia
+      )
+      const unknown = await post(
+        text(id, { authorType: AuthorType.AGENT, userId: randomUUID() }),
+        keys.nomedia
+      )
+
+      for (const response of [real, unknown]) {
+        expect(response.status).toBe(FORBIDDEN)
+        expect(codeOf(response.body)).toBe(ErrorCodes.PLUGIN_SCOPE_DENIED)
+        expect(response.body).toMatchObject({
+          error: { metadata: { required: [PluginScopes.MESSAGES_WRITE_AS_AGENT] } }
+        })
+      }
+      expect(await owner.message.count({ where: { conversationId: id } })).toBe(0)
+    })
+
+    it('still writes as the plugin with messages:write alone', async () => {
+      const { id } = await mk({ storeId: ctx.storeA2.id })
+
+      const response = await post(text(id), keys.nomedia)
+
+      expect(response.status).toBe(CREATED)
+      expect(response.body).toMatchObject({
+        authorType: AuthorType.SYSTEM,
+        authorId: null,
+        authorPluginId: otherPluginId
+      })
+    })
+
+    it('audits a message written as a person with the plugin, the installation and the person it wrote for', async () => {
+      const { id } = await mk()
+
+      const response = await post(text(id, { authorType: AuthorType.AGENT, userId: ctx.agentA.id }))
+
+      const [entry] = await waitForAuditEntries(owner, {
+        action: AuditAction.MESSAGE_PLUGIN_SENT,
+        resourceId: (response.body as MessageBody).id
+      })
+      expect(entry?.userId).toBeNull()
+      expect(entry?.metadata).toMatchObject({
+        pluginId,
+        authorType: AuthorType.AGENT,
+        userId: ctx.agentA.id
+      })
     })
 
     it('refuses to write as a user of another store, and writes nothing', async () => {
