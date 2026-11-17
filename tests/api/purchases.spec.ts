@@ -609,6 +609,40 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
         conflict: PurchaseConflicts.LINE_STORE_NOT_VISIBLE
       })
     })
+
+    it('does not let a caller end an order that has lines of a store they do not see (N-AA-03)', async () => {
+      const seller = await supplier()
+      const order = await placedOrder(seller.id)
+      const buyerOfOtherStore = api(
+        app,
+        await actorWithPermissions(owner, app, {
+          prefix,
+          name: 'buyer-store-a2-end',
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA2.id,
+          permissions: [Permissions.FINANCE_MANAGE_PURCHASES]
+        }),
+        ctx.storeA2
+      )
+      for (const route of [
+        ApiRoutes.purchaseOrders.close(order.id),
+        ApiRoutes.purchaseOrders.cancel(order.id)
+      ]) {
+        const refused = await buyerOfOtherStore.post(route).send({})
+        expect(refused.status).toBe(CONFLICT)
+        expect(errorOf(refused).metadata).toMatchObject({
+          conflict: PurchaseConflicts.LINE_STORE_NOT_VISIBLE
+        })
+      }
+      // Nothing changed: the order is still open and the people who see the line can still receive it
+      expect(
+        (await owner.purchaseOrder.findUniqueOrThrow({ where: { id: order.id } })).status
+      ).toBe(PurchaseOrderStatus.ORDERED)
+      const received = await receive(order.id, {
+        lines: [{ orderLineId: order.lines[0]?.id, quantity: 1 }]
+      })
+      expect(received.status).toBeLessThan(BAD_REQUEST)
+    })
   })
 
   describe('paying a supplier (E11)', () => {

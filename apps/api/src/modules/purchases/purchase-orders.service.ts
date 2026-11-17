@@ -258,7 +258,7 @@ export class PurchaseOrdersService {
     body: ClosePurchaseOrderBody,
     actor: Actor
   ): Promise<OrderView> {
-    await this.finish(organizationId, id, PurchaseOrderStatus.CANCELLED)
+    await this.finish(organizationId, id, PurchaseOrderStatus.CANCELLED, actor)
     this.auditOrder(AuditAction.PURCHASE_ORDER_CANCELLED, organizationId, id, actor, {
       reason: body.reason ?? null
     })
@@ -272,7 +272,7 @@ export class PurchaseOrdersService {
     body: ClosePurchaseOrderBody,
     actor: Actor
   ): Promise<OrderView> {
-    await this.finish(organizationId, id, PurchaseOrderStatus.CLOSED)
+    await this.finish(organizationId, id, PurchaseOrderStatus.CLOSED, actor)
     this.auditOrder(AuditAction.PURCHASE_ORDER_CLOSED, organizationId, id, actor, {
       reason: body.reason ?? null
     })
@@ -282,12 +282,21 @@ export class PurchaseOrdersService {
   private async finish(
     organizationId: string,
     id: string,
-    to: PurchaseOrderStatus.CANCELLED | PurchaseOrderStatus.CLOSED
+    to: PurchaseOrderStatus.CANCELLED | PurchaseOrderStatus.CLOSED,
+    actor: Actor
   ): Promise<void> {
+    const visible = await visibleStoreIds(this.prisma, organizationId, actor.userId)
     await this.prisma.transaction(async tx => {
       await lockScope(tx, `${organizationId}:purchase:${id}`)
       const order = await this.row(tx, organizationId, id)
       this.requireTransition(order.status, to)
+      // Ending an order gives up every line that was still to arrive, so it must be wholly the caller's, like an edit or a receipt of
+      // its lines: a person who does not see the lines of another store cannot end them for the people who do (N-AA-03)
+      const lines = await tx.purchaseOrderLine.findMany({
+        where: { organizationId, purchaseOrderId: id },
+        select: { storeId: true }
+      })
+      if (!seesEveryLine(lines, visible)) throw lineNotVisible()
       await tx.purchaseOrder.update({ where: { id }, data: { status: to } })
     })
   }
