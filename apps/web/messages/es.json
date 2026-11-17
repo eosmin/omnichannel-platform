@@ -3156,7 +3156,7 @@
         "conversations:read": "Leer conversaciones y su estado (el cliente aparece solo como un identificador, salvo que el plugin también pueda leer clientes)",
         "conversations:write": "Cambiar conversaciones: asignar, cerrar, etiquetar y abrir nuevas",
         "messages:read": "Leer los mensajes de las conversaciones",
-        "messages:write": "Enviar mensajes a clientes y escribir notas internas, con el nombre del plugin",
+        "messages:write": "Enviar mensajes a clientes y escribir notas internas, con el nombre del plugin o un nombre que elija",
         "messages:write-as-agent": "Escribir mensajes como cualquier miembro activo de tu equipo que pueda enviarlos: el cliente y el hilo ven el mensaje con el nombre de esa persona, con una marca de que lo escribió el plugin, y cuenta como respuesta de esa persona en los tiempos de respuesta",
         "messages:read-deleted": "Leer el texto de los mensajes que el cliente borró",
         "messages:delete": "Borrar los mensajes que escribió el propio plugin",

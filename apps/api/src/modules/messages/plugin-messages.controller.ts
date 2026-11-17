@@ -118,7 +118,9 @@ export class PluginMessagesController {
     }
     // Writing AS a person (`authorType: agent` + `userId`) is a grant of its own, read on the consent screen: `messages:write` alone
     // writes only as the plugin (MSG-410). The route names this scope only when the body asks for it, so it is checked here, as the
-    // scope of a file is above; the service then checks the person (an active member of the store who holds the permission).
+    // scope of a file is above: after the body is validated and before the member is looked at (a key without the scope gets the
+    // same 403 for a member that exists and one that does not); the service then checks the person (an active member of the store
+    // who holds the permission).
     if (
       body.authorType === AuthorType.AGENT &&
       !installation.scopes.includes(PluginScopes.MESSAGES_WRITE_AS_AGENT)
@@ -167,6 +169,31 @@ export class PluginMessagesController {
     return answer
   }
 
+  // Changing the text of a message the plugin wrote AS a person (editing it, sending it again) is the same grant as writing it: a key
+  // that lost the scope, or never held it, cannot rewrite what the customer sees under a member's name. Taking it back (deleting) is
+  // not, and a message of another author is the service's to refuse. The store is the one of the key.
+  private async requireScopeToChangeAsAgent(
+    req: AuthenticatedRequest,
+    storeId: string,
+    installation: PluginCaller,
+    messageId: string
+  ): Promise<void> {
+    if (installation.scopes.includes(PluginScopes.MESSAGES_WRITE_AS_AGENT)) return
+    const message = await this.prisma.client.message.findFirst({
+      where: { id: messageId, storeId, authorPluginId: installation.pluginId },
+      select: { authorType: true }
+    })
+    if (message?.authorType === String(AuthorType.AGENT)) {
+      this.refuseScope(
+        req,
+        storeId,
+        installation,
+        PluginScopes.MESSAGES_WRITE_AS_AGENT,
+        'changing a message written as a member of the team needs the scope messages:write-as-agent'
+      )
+    }
+  }
+
   // A scope the body asks for and the key does not hold: audited as the guard audits the scopes of the route (`plugin.api_denied`,
   // capped, so a probe of userIds is seen and cannot fill the log) and refused with the scope named, before anything about the body
   // is looked at. Never returns.
@@ -203,6 +230,7 @@ export class PluginMessagesController {
     @Body(new ZodValidationPipe(editMessageSchema)) body: EditMessageBody,
     @Req() req: AuthenticatedRequest
   ): Promise<MessageView> {
+    await this.requireScopeToChangeAsAgent(req, store.id, installation, messageId)
     const message = await this.changes.edit(
       store.id,
       messageId,
@@ -256,6 +284,7 @@ export class PluginMessagesController {
     @Param('id', new ZodValidationPipe(uuidSchema)) messageId: string,
     @Req() req: AuthenticatedRequest
   ): Promise<MessageView> {
+    await this.requireScopeToChangeAsAgent(req, store.id, installation, messageId)
     const message = await this.messages.resend(
       store.id,
       messageId,

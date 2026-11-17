@@ -1,12 +1,10 @@
 import { createHash, randomInt, randomUUID } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
-import { Redis } from 'ioredis'
 import supertest from 'supertest'
 
 import { API_PREFIX, PluginApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
-import { CacheKeys } from '@platform/core/cache'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
@@ -14,7 +12,6 @@ import {
   DeliveryStatus,
   MessageType,
   PLUGIN_API_KEY_TOKEN_PREFIX,
-  PluginApiDenialReasons,
   PluginCatalogTypes,
   PluginPricingModels,
   PluginStatus
@@ -24,7 +21,6 @@ import { MULTI_FILE_SEND_ENABLED } from '@platform/core/http'
 import { PluginRegistry } from '@platform/plugins/runtime'
 import { ChannelCapability, PluginScopes } from '@platform/plugins/sdk'
 
-import { REDIS_URL } from '../../apps/api/src/testing/test-env'
 import { buildChannelPlugin, createConversationOf } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
@@ -186,7 +182,7 @@ describe('The messages of the plugin API', () => {
     await owner.$disconnect()
   })
 
-  const call = (method: 'get' | 'post', path: string, key: string | undefined) => {
+  const call = (method: 'get' | 'post' | 'patch', path: string, key: string | undefined) => {
     const request = supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
       [method](`${API_PREFIX}${path}`)
       .set('x-forwarded-for', `10.${randomInt(256)}.${randomInt(256)}.${randomInt(1, 255)}`)
@@ -320,27 +316,71 @@ describe('The messages of the plugin API', () => {
       expect(codeOf(refused.body)).toBe(ErrorCodes.PLUGIN_SCOPE_DENIED)
     })
 
-    it('audits the refusal of writing as a person as the guard audits a scope the route names', async () => {
+    it('audits the refusal of writing as a person as the guard audits a scope the route names, apart from the refusal of another scope', async () => {
       const installation = await owner.pluginInstallation.findFirstOrThrow({
         where: { storeId: ctx.storeA2.id, pluginId: otherPluginId },
         select: { id: true }
       })
-      // The audit keeps one entry per installation and reason in a window, and earlier cases of this file may have used it
-      const redis = new Redis(REDIS_URL)
-      await redis.del(CacheKeys.audit.pluginDenial(installation.id, PluginApiDenialReasons.SCOPE))
-      await redis.quit()
       const { id } = await mk({ storeId: ctx.storeA2.id })
 
+      // A refusal of another scope first: it takes its own slot of the window and does not hide the next one
+      await post(
+        {
+          type: 'image',
+          conversationId: id,
+          mediaIds: [randomUUID()],
+          idempotencyKey: randomUUID()
+        },
+        keys.nomedia
+      )
       await post(text(id, { authorType: AuthorType.AGENT, userId: ctx.agentA.id }), keys.nomedia)
 
-      const [entry] = await waitForAuditEntries(owner, {
-        action: AuditAction.PLUGIN_API_DENIED,
-        resourceId: installation.id
+      const entries = await waitForAuditEntries(
+        owner,
+        { action: AuditAction.PLUGIN_API_DENIED, resourceId: installation.id },
+        2
+      )
+      const missing = entries.map(entry => (entry.metadata as { missing?: string[] }).missing)
+      expect(missing).toContainEqual([PluginScopes.MEDIA_WRITE])
+      expect(missing).toContainEqual([PluginScopes.MESSAGES_WRITE_AS_AGENT])
+      expect(entries.every(entry => entry.userId === null)).toBe(true)
+    })
+
+    it('refuses to edit or send again a message it wrote as a person without the scope, and answers a replay of that write the same way', async () => {
+      const { id } = await mk({ storeId: ctx.storeA2.id })
+      const written = await owner.message.create({
+        data: {
+          storeId: ctx.storeA2.id,
+          conversationId: id,
+          type: MessageType.TEXT,
+          content: 'written as a person',
+          authorType: AuthorType.AGENT,
+          authorId: ctx.agentA.id,
+          authorPluginId: otherPluginId
+        },
+        select: { id: true }
       })
-      expect(entry?.metadata).toMatchObject({
-        reason: PluginApiDenialReasons.SCOPE,
-        missing: [PluginScopes.MESSAGES_WRITE_AS_AGENT]
+
+      const edit = await call(
+        'patch',
+        PluginApiRoutes.messages.byId(written.id),
+        keys.nomedia
+      ).send({
+        content: 'a new text',
+        version: 1
       })
+      const again = await call('post', PluginApiRoutes.messages.resend(written.id), keys.nomedia)
+      const replay = await post(
+        text(id, { authorType: AuthorType.AGENT, userId: ctx.agentA.id }),
+        keys.nomedia
+      )
+
+      for (const response of [edit, again, replay]) {
+        expect(response.status).toBe(FORBIDDEN)
+        expect(codeOf(response.body)).toBe(ErrorCodes.PLUGIN_SCOPE_DENIED)
+      }
+      const after = await owner.message.findUniqueOrThrow({ where: { id: written.id } })
+      expect(after.content).toBe('written as a person')
     })
 
     it('refuses to write as a person without messages:write-as-agent, the same for a real member and for one that does not exist', async () => {
