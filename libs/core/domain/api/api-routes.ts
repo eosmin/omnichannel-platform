@@ -299,7 +299,8 @@ export const ApiRoutes = {
       current: '/fiscal/contingency',
       end: '/fiscal/contingency/end',
       list: '/fiscal/contingencies',
-      report: (id: string) => `/fiscal/contingencies/${id}/report`
+      report: (id: string) => `/fiscal/contingencies/${id}/report`,
+      abandon: (id: string) => `/fiscal/contingencies/${id}/abandon`
     },
     documents: {
       list: '/fiscal/documents',

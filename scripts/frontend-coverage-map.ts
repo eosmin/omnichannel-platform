@@ -184,6 +184,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'fiscal.contingency.end': { step: '4B.9' },
   'fiscal.contingency.list': { step: '4B.9' },
   'fiscal.contingency.report': { step: '4B.9' },
+  'fiscal.contingency.abandon': { step: '4B.9' },
   'fiscal.documents.list': { step: '4B.9' },
   'fiscal.documents.byId': { step: '4B.9' },
   'fiscal.documents.receiver': { step: '4B.9' },

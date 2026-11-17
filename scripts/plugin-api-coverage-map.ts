@@ -467,6 +467,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'fiscal.contingency.end': { none: FINANCE },
   'fiscal.contingency.list': { none: FINANCE },
   'fiscal.contingency.report': { none: FINANCE },
+  'fiscal.contingency.abandon': { none: FINANCE },
   'fiscal.documents.list': { none: FINANCE },
   'fiscal.documents.byId': { none: FINANCE },
   'fiscal.documents.receiver': { none: FINANCE },

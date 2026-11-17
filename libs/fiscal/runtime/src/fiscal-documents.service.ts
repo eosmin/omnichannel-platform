@@ -11,6 +11,7 @@ import {
   FinancePostingKey,
   FiscalConflictReasons,
   FiscalConsultState,
+  FiscalContingencyAttachResult,
   FiscalContingencyLimits,
   FiscalDeferOutcome,
   FiscalDocumentKind,
@@ -969,12 +970,12 @@ export class FiscalDocumentsService {
       deferred.providerData,
       route.mode.maxDocumentsPerEvent
     )
-    if (kept === 'attached') return
+    if (kept === FiscalContingencyAttachResult.ATTACHED) return
     // Ended a moment ago, full, or gone: the document goes back to the queue and is made again, by the rule of the moment
     return this.requeueAndFail(
       organizationId,
       doc.id,
-      kept === 'full'
+      kept === FiscalContingencyAttachResult.FULL
         ? 'the open contingency holds the most documents an event takes'
         : 'the contingency ended while the document was made'
     )

@@ -109,4 +109,20 @@ export class FiscalContingencyController {
       data: await this.contingencies.reportAgain(organization.id, id, actorOf(user, store, req))
     }
   }
+
+  // A person gives up the report of an ended contingency that cannot go through: its documents go out the normal way
+  @RequirePermissions(Permissions.FISCAL_MANAGE)
+  @Post(ApiRoutes.fiscal.contingency.abandon(':id'))
+  @HttpCode(HttpStatusCodes.OK)
+  async abandon(
+    @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', new ZodValidationPipe(fiscalIdSchema)) id: string,
+    @Req() req: AuthenticatedRequest
+  ): Promise<{ data: FiscalContingencyView }> {
+    return {
+      data: await this.contingencies.abandon(organization.id, id, actorOf(user, store, req))
+    }
+  }
 }

@@ -68,7 +68,9 @@ const control = {
   report: FiscalContingencyReportOutcome.ACCEPTED as FiscalContingencyReportOutcome,
   maxDocuments: 1000,
   // The instant the authority "took" the event
-  receivedAt: '2026-11-18T12:00:00.000Z'
+  receivedAt: '2026-11-18T12:00:00.000Z',
+  // What the authority says when it refuses the event
+  refusal: 'event_refused'
 }
 const builds: FiscalBuildInput[] = []
 const submitted: BuiltDocument[] = []
@@ -120,7 +122,7 @@ function contingencyProvider(): FiscalDocumentProvider {
       if (control.report === FiscalContingencyReportOutcome.REJECTED) {
         return Promise.resolve({
           outcome: FiscalContingencyReportOutcome.REJECTED as const,
-          reason: 'event_refused'
+          reason: control.refusal
         })
       }
       return Promise.resolve({
@@ -140,7 +142,11 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
   let documents: FiscalDocumentsService
   let contingencies: FiscalContingencyService
   let emitter: EventEmitter2
-  const alerts: { organizationId: string; contingencyId: string; kind: string }[] = []
+  const alerts: {
+    organizationId: string
+    contingencyId: string
+    kind: FiscalContingencyAlertKind
+  }[] = []
 
   beforeAll(async () => {
     owner = ownerClient()
@@ -166,6 +172,7 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
     control.down = false
     control.report = FiscalContingencyReportOutcome.ACCEPTED
     control.maxDocuments = 1000
+    control.refusal = 'event_refused'
     alerts.length = 0
   })
 
@@ -365,13 +372,21 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
       )
       expect((await contingencyRow(contingencyId)).reportAttempts).toBe(1)
       control.report = FiscalContingencyReportOutcome.REJECTED
+      // Free text (it may carry the data of a document) is not kept as the reason: only a code is
+      control.refusal = 'El receptor Ana Pérez con NIT 0614-010101-101-1 no es válido'
       expect(await contingencies.report(ctx.orgA.id, contingencyId)).toBe('refused')
       const refused = await contingencyRow(contingencyId)
       expect(refused).toMatchObject({
         status: FiscalContingencyStatus.CLOSED,
-        lastReportError: 'event_refused',
+        lastReportError: 'rejected',
         reportAttempts: FiscalContingencyLimits.REPORT_MAX_ATTEMPTS
       })
+      expect(JSON.stringify(refused.lastReportError)).not.toContain('Ana')
+      // A second refusal of the same contingency says the same thing and tells nobody again
+      expect(await contingencies.report(ctx.orgA.id, contingencyId)).toBe('refused')
+      expect(
+        alerts.filter(alert => alert.kind === FiscalContingencyAlertKind.REPORT_FAILED)
+      ).toHaveLength(1)
       expect(alerts).toContainEqual({
         organizationId: ctx.orgA.id,
         contingencyId,
@@ -577,6 +592,65 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
     })
   })
 
+  describe('a report that cannot go through', () => {
+    it('lets a person give it up: the documents leave the contingency and go out the normal way', async () => {
+      expect((await end()).status).toBe(OK)
+      const opened = await enter()
+      expect(opened.status).toBe(CREATED)
+      const id = await sale()
+      await documents.submit(ctx.orgA.id, id)
+      expect((await row(id)).contingencyId).toBe(viewOf(opened).id)
+      expect((await end()).status).toBe(OK)
+      control.report = FiscalContingencyReportOutcome.REJECTED
+      expect(await contingencies.report(ctx.orgA.id, viewOf(opened).id)).toBe('refused')
+      // Held for good: nothing moves it by itself
+      expect((await row(id)).status).toBe(FiscalDocumentStatus.QUEUED)
+      expect(await contingencies.unreported(ctx.orgA.id)).not.toContain(viewOf(opened).id)
+
+      const before = jobs().length
+      const given = await asAdminA()
+        .post(ApiRoutes.fiscal.contingency.abandon(viewOf(opened).id))
+        .send({})
+      expect(given.status).toBe(OK)
+      expect(dataOf(given)).toMatchObject({ status: FiscalContingencyStatus.CLOSED, documents: 0 })
+      expect((await row(id)).contingencyId).toBeNull()
+      const queued = jobs()
+        .slice(before)
+        .filter(job => job.name === JobNames.SUBMIT_FISCAL_DOCUMENT)
+        .map(job => (job.data as { documentId: string }).documentId)
+      expect(queued).toEqual([id])
+      // It is sent the normal way: built again, in the previous model, and accepted
+      builds.length = 0
+      control.report = FiscalContingencyReportOutcome.ACCEPTED
+      await documents.submit(ctx.orgA.id, id)
+      expect(builds.at(-1)?.contingency).toBeUndefined()
+      expect((await row(id)).status).toBe(FiscalDocumentStatus.ACCEPTED)
+      // A second time there is nothing to give up, and a reported one is not given up
+      expect((await contingencyRow(viewOf(opened).id)).status).toBe(FiscalContingencyStatus.CLOSED)
+      const reported = await owner.fiscalContingency.findFirstOrThrow({
+        where: { organizationId: ctx.orgA.id, status: FiscalContingencyStatus.REPORTED }
+      })
+      const refused = await asAdminA()
+        .post(ApiRoutes.fiscal.contingency.abandon(reported.id))
+        .send({})
+      expect(refused.status).toBe(CONFLICT)
+      expect(metaOf(refused)).toMatchObject({ reason: 'contingency_not_closed' })
+    })
+
+    it('can always be ended, even when the issuer left the provider it was opened with', async () => {
+      const opened = await enter()
+      expect(opened.status).toBe(CREATED)
+      expect((await putIssuer(simulatorProvider().id)).status).toBe(OK)
+      // The rule is the one of the provider the contingency was opened with, not of the issuer of today
+      const missing = await end({})
+      expect(missing.status).toBe(BAD_REQUEST)
+      expect(metaOf(missing)).toMatchObject({ reason: 'contingency_responsible_required' })
+      expect((await end()).status).toBe(OK)
+      expect((await contingencyRow(viewOf(opened).id)).status).toBe(FiscalContingencyStatus.CLOSED)
+      expect((await putIssuer(PROVIDER_ID)).status).toBe(OK)
+    })
+  })
+
   describe('a contingency that is open for another environment', () => {
     it('does not take the document, and the lifecycle does not call itself for ever', async () => {
       await owner.fiscalContingency.updateMany({
@@ -626,6 +700,9 @@ describe('The contingency of the fiscal documents (Step 4B.7c-7)', () => {
       })
       expect(
         (await asAdminB().post(ApiRoutes.fiscal.contingency.report(open.id)).send({})).status
+      ).toBe(NOT_FOUND)
+      expect(
+        (await asAdminB().post(ApiRoutes.fiscal.contingency.abandon(open.id)).send({})).status
       ).toBe(NOT_FOUND)
       await expect(contingencies.get(ctx.orgB.id, open.id)).rejects.toThrow(/not found/)
       expect(await contingencies.report(ctx.orgB.id, open.id)).toBe('nothing')

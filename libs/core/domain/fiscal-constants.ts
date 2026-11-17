@@ -128,6 +128,35 @@ export enum FiscalContingencyStatus {
 }
 
 // Who started it: a person, or the lifecycle itself when a document ran out of attempts with the authority down
+// What the report of a contingency came to, and what became of a document that tried to enter one
+export enum FiscalContingencyReportResult {
+  REPORTED = 'reported',
+  REFUSED = 'refused',
+  NOTHING = 'nothing'
+}
+export enum FiscalContingencyAttachResult {
+  ATTACHED = 'attached',
+  CLOSED = 'closed',
+  FULL = 'full',
+  GONE = 'gone'
+}
+
+// Why a report did not go through, in codes (core's own; a provider's are kept as codes of its shape, anything else is `rejected`)
+export const FiscalContingencyFailures = {
+  PROVIDER_UNAVAILABLE: 'provider_unavailable',
+  ISSUER_CHANGED: 'issuer_changed',
+  CREDENTIALS_UNREADABLE: 'credentials_unreadable',
+  DOCUMENT_UNREADABLE: 'document_unreadable',
+  RESPONSIBLE_UNREADABLE: 'responsible_unreadable',
+  TOO_MANY_DOCUMENTS: 'too_many_documents',
+  PROVIDER_ANSWER_INVALID: 'provider_answer_invalid',
+  NO_ANSWER: 'no_answer',
+  REJECTED: 'rejected'
+} as const
+
+// The shape of a code a provider or an authority may give as the reason of a refusal: letters, digits and a few marks, never free text
+export const FiscalContingencyCodePattern = /^[A-Za-z0-9_.-]{1,60}$/
+
 export enum FiscalContingencyOrigin {
   USER = 'user',
   SYSTEM = 'system'

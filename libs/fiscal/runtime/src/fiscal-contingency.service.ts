@@ -11,6 +11,10 @@ import { CredentialCipher } from '@platform/core/crypto'
 import { isUniqueViolation, PrismaService, type PrismaTransaction } from '@platform/core/database'
 import {
   FiscalContingencyAlertKind,
+  FiscalContingencyAttachResult,
+  FiscalContingencyCodePattern,
+  FiscalContingencyFailures,
+  FiscalContingencyReportResult,
   FiscalContingencyConflictReasons,
   FiscalContingencyLimits,
   FiscalContingencyOrigin,
@@ -54,6 +58,22 @@ import { withTimeout } from './with-timeout'
 
 const HOUR_MS = 3_600_000
 
+interface ViewRow {
+  id: string
+  status: string
+  origin: string
+  providerId: string
+  environment: string
+  reason: string
+  motive: string | null
+  startedAt: Date
+  endedAt: Date | null
+  reportedAt: Date | null
+  windowEndsAt: Date | null
+  reportAttempts: number
+  lastReportError: string | null
+}
+
 export interface FiscalContingencyView {
   id: string
   status: FiscalContingencyStatus
@@ -93,7 +113,7 @@ export type FiscalContingencyRoute =
   // Made in a contingency whose event the authority has taken: it goes out through the queue
   | { kind: 'send'; contingencyId: string }
 
-export type FiscalContingencyAttach = 'attached' | 'closed' | 'full' | 'gone'
+export type FiscalContingencyAttach = FiscalContingencyAttachResult
 
 // The contingency of an issuer (Step 4B.7c-7, TDD_18 §8.3). While the authority cannot be reached an issuer goes on making documents in
 // the deferred model: each is built, signed and kept, not sent. When the contingency ends, the event that reports it (the window, the
@@ -130,7 +150,11 @@ export class FiscalContingencyService {
       orderBy: [{ startedAt: 'desc' }, { id: 'desc' }],
       take: Math.min(Math.max(limit, 1), FiscalLimits.LIST_MAX_PAGE_SIZE)
     })
-    return Promise.all(rows.map(row => this.view(organizationId, row)))
+    const counts = await this.documentCounts(
+      organizationId,
+      rows.map(row => row.id)
+    )
+    return rows.map(row => this.toView(row, counts.get(row.id) ?? 0))
   }
 
   async get(organizationId: string, id: string): Promise<FiscalContingencyView> {
@@ -196,20 +220,25 @@ export class FiscalContingencyService {
     body: FiscalContingencyEndBody,
     actor: FiscalActor
   ): Promise<FiscalContingencyView> {
-    const { mode } = await this.issuerOf(organizationId)
     const responsible = body.responsible ?? null
-    if (mode.requiresResponsible && responsible === null) {
-      throw this.conflict(
-        'the authority asks who answers for the establishment',
-        FiscalContingencyConflictReasons.RESPONSIBLE_REQUIRED,
-        HttpStatusCodes.BAD_REQUEST
-      )
-    }
     const ended = await this.prisma.transaction(async tx => {
-      const rows = await tx.$queryRaw<{ id: string }[]>`
-        SELECT id FROM fiscal_contingencies WHERE organization_id = ${organizationId} AND status = ${FiscalContingencyStatus.OPEN} FOR UPDATE`
-      const id = rows[0]?.id
-      if (id === undefined) return null
+      const rows = await tx.$queryRaw<{ id: string; provider_id: string }[]>`
+        SELECT id, provider_id FROM fiscal_contingencies WHERE organization_id = ${organizationId} AND status = ${FiscalContingencyStatus.OPEN} FOR UPDATE`
+      const found = rows[0]
+      if (found === undefined) return null
+      // What the authority asks is read from the provider the contingency was opened with, not from today's issuer (it may have changed,
+      // or be gone): a contingency can always be ended
+      const asks =
+        this.providers.find(found.provider_id)?.manifest.contingencyMode?.requiresResponsible ===
+        true
+      if (asks && responsible === null) {
+        throw this.conflict(
+          'the authority asks who answers for the establishment',
+          FiscalContingencyConflictReasons.RESPONSIBLE_REQUIRED,
+          HttpStatusCodes.BAD_REQUEST
+        )
+      }
+      const id = found.id
       const documents = await tx.fiscalDocument.count({
         where: { organizationId, contingencyId: id }
       })
@@ -263,9 +292,19 @@ export class FiscalContingencyService {
         FiscalContingencyConflictReasons.NOT_CLOSED
       )
     }
-    const updated = await this.prisma.client.fiscalContingency.update({
-      where: { id },
+    // Only while it is still ended and not reported: a report that took it a moment ago is not touched
+    const reset = await this.prisma.client.fiscalContingency.updateMany({
+      where: { id, organizationId, status: FiscalContingencyStatus.CLOSED },
       data: { reportAttempts: 0, lastReportError: null }
+    })
+    if (reset.count === 0) {
+      throw this.conflict(
+        'only an ended contingency that was not reported is reported again',
+        FiscalContingencyConflictReasons.NOT_CLOSED
+      )
+    }
+    const updated = await this.prisma.client.fiscalContingency.findFirstOrThrow({
+      where: { id, organizationId }
     })
     // The ask counts in the id of the job: the failed one of the last time stays a week and would drop this one
     await this.enqueueReport(organizationId, id, Date.now())
@@ -281,6 +320,54 @@ export class FiscalContingencyService {
       userAgent: actor.userAgent
     })
     return this.view(organizationId, updated)
+  }
+
+  // A person gives up the report of an ended contingency that cannot go through (the authority refused the event for good, or the issuer
+  // changed): the documents held in it leave it and go out the normal way, made again in the model of the moment. The contingency stays
+  // as the record of what happened, with nothing held in it.
+  async abandon(
+    organizationId: string,
+    id: string,
+    actor: FiscalActor
+  ): Promise<FiscalContingencyView> {
+    const detached = await this.prisma.transaction(async tx => {
+      const rows = await tx.$queryRaw<{ status: string }[]>`
+        SELECT status FROM fiscal_contingencies WHERE id = ${id} AND organization_id = ${organizationId} FOR UPDATE`
+      const status = rows[0]?.status
+      if (status === undefined) throw this.notFound()
+      if ((status as FiscalContingencyStatus) !== FiscalContingencyStatus.CLOSED) {
+        throw this.conflict(
+          'only an ended contingency that was not reported is given up',
+          FiscalContingencyConflictReasons.NOT_CLOSED
+        )
+      }
+      const held = await tx.fiscalDocument.findMany({
+        where: { organizationId, contingencyId: id, status: FiscalDocumentStatus.QUEUED },
+        select: { id: true, submission: true },
+        orderBy: { sequenceNumber: 'asc' }
+      })
+      await tx.fiscalDocument.updateMany({
+        where: { organizationId, contingencyId: id, status: FiscalDocumentStatus.QUEUED },
+        data: { contingencyId: null }
+      })
+      return held
+    })
+    await this.enqueueSubmissions(organizationId, detached)
+    this.audit.log({
+      action: AuditAction.FISCAL_CONTINGENCY_ABANDONED,
+      actor: { userId: actor.userId },
+      organizationId,
+      storeId: actor.storeId,
+      resourceType: FiscalResourceTypes.CONTINGENCY,
+      resourceId: id,
+      metadata: { documents: detached.length },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
+    const row = await this.prisma.client.fiscalContingency.findFirstOrThrow({
+      where: { id, organizationId }
+    })
+    return this.view(organizationId, row)
   }
 
   // ---------------------------------------------------------------- the lifecycle
@@ -330,32 +417,29 @@ export class FiscalContingencyService {
   ): Promise<boolean> {
     const mode = provider.manifest.contingencyMode
     if (mode === undefined) return false
-    // Not in a transaction: the unique violation of a second open contingency would abort it
-    const created = await this.open(
-      this.prisma.client,
-      organizationId,
-      provider,
-      environment,
-      FiscalContingencyOrigin.SYSTEM,
-      mode.authorityDownReason,
-      null,
-      null
-    )
-    if (created === null) return false
-    await this.prisma.transaction(tx => {
+    // One transaction for the row and its alert, so that a contingency never opens without the person being told. The insert does nothing
+    // when one is open already (the partial unique index), so the transaction is not aborted by the conflict.
+    const id = randomUUID()
+    const created = await this.prisma.transaction(async tx => {
+      const inserted = await tx.$executeRaw`
+        INSERT INTO fiscal_contingencies (id, organization_id, provider_id, environment, status, origin, reason, event_code, started_at, updated_at)
+        VALUES (${id}, ${organizationId}, ${provider.id}, ${environment}, ${FiscalContingencyStatus.OPEN}, ${FiscalContingencyOrigin.SYSTEM}, ${mode.authorityDownReason}, ${randomUUID()}, now(), now())
+        ON CONFLICT DO NOTHING`
+      if (inserted === 0) return false
       this.events.publish(tx, Events.FISCAL_CONTINGENCY_ALERT, {
         organizationId,
-        contingencyId: created.id,
+        contingencyId: id,
         kind: FiscalContingencyAlertKind.OPENED_BY_SYSTEM
       })
-      return Promise.resolve()
+      return true
     })
+    if (!created) return false
     this.audit.log({
       action: AuditAction.FISCAL_CONTINGENCY_ENTERED,
       actor: { system: true },
       organizationId,
       resourceType: FiscalResourceTypes.CONTINGENCY,
-      resourceId: created.id,
+      resourceId: id,
       metadata: { origin: FiscalContingencyOrigin.SYSTEM, reason: mode.authorityDownReason }
     })
     return true
@@ -382,12 +466,12 @@ export class FiscalContingencyService {
       const rows = await tx.$queryRaw<{ status: string }[]>`
         SELECT status FROM fiscal_contingencies WHERE id = ${contingencyId} AND organization_id = ${organizationId} FOR UPDATE`
       const status = rows[0]?.status
-      if (status === undefined) return 'gone' as const
+      if (status === undefined) return FiscalContingencyAttachResult.GONE
       if ((status as FiscalContingencyStatus) !== FiscalContingencyStatus.OPEN) {
-        return 'closed' as const
+        return FiscalContingencyAttachResult.CLOSED
       }
       const held = await tx.fiscalDocument.count({ where: { organizationId, contingencyId } })
-      if (held >= maxDocuments) return 'full' as const
+      if (held >= maxDocuments) return FiscalContingencyAttachResult.FULL
       // Only the attempt that holds the claim of the document keeps it
       const moved = await tx.fiscalDocument.updateMany({
         where: { id: documentId, organizationId, status: FiscalDocumentStatus.SUBMITTED },
@@ -400,7 +484,9 @@ export class FiscalContingencyService {
           ...(data === undefined ? {} : { providerData: data })
         }
       })
-      return moved.count === 1 ? ('attached' as const) : ('gone' as const)
+      return moved.count === 1
+        ? FiscalContingencyAttachResult.ATTACHED
+        : FiscalContingencyAttachResult.GONE
     })
   }
 
@@ -411,23 +497,29 @@ export class FiscalContingencyService {
   async report(
     organizationId: string,
     contingencyId: string
-  ): Promise<'reported' | 'refused' | 'nothing'> {
+  ): Promise<FiscalContingencyReportResult> {
     const row = await this.prisma.client.fiscalContingency.findFirst({
       where: { id: contingencyId, organizationId }
     })
-    if (row === null) return 'nothing'
+    if (row === null) return FiscalContingencyReportResult.NOTHING
     if ((row.status as FiscalContingencyStatus) === FiscalContingencyStatus.REPORTED) {
       // Taken already (a second job of the same contingency): the release is asked again, which the job ids keep from doubling
       await this.release(organizationId, contingencyId)
-      return 'nothing'
+      return FiscalContingencyReportResult.NOTHING
     }
-    if ((row.status as FiscalContingencyStatus) !== FiscalContingencyStatus.CLOSED) return 'nothing'
+    if ((row.status as FiscalContingencyStatus) !== FiscalContingencyStatus.CLOSED)
+      return FiscalContingencyReportResult.NOTHING
     const provider = this.providers.find(row.providerId)
     const mode = provider?.manifest.contingencyMode
     const reportEvent = provider?.reportContingency?.bind(provider)
     if (provider === undefined || mode === undefined || reportEvent === undefined) {
-      await this.markFailed(organizationId, contingencyId, 'provider_unavailable', true)
-      return 'refused'
+      await this.markFailed(
+        organizationId,
+        contingencyId,
+        FiscalContingencyFailures.PROVIDER_UNAVAILABLE,
+        true
+      )
+      return FiscalContingencyReportResult.REFUSED
     }
     const issuer = await this.prisma.client.fiscalIssuer.findUnique({ where: { organizationId } })
     // The contingency was made for a provider and an environment: an issuer that changed since is not the one its credentials belong to
@@ -436,16 +528,26 @@ export class FiscalContingencyService {
       issuer.providerId !== row.providerId ||
       (issuer.environment as FiscalEnvironment) !== (row.environment as FiscalEnvironment)
     ) {
-      await this.markFailed(organizationId, contingencyId, 'issuer_changed', true)
-      return 'refused'
+      await this.markFailed(
+        organizationId,
+        contingencyId,
+        FiscalContingencyFailures.ISSUER_CHANGED,
+        true
+      )
+      return FiscalContingencyReportResult.REFUSED
     }
     let credentials: Record<string, unknown> = {}
     if (issuer.credentialsEncrypted !== null) {
       try {
         credentials = this.cipher.open(issuer.credentialsEncrypted)
       } catch {
-        await this.markFailed(organizationId, contingencyId, 'credentials_unreadable', true)
-        return 'refused'
+        await this.markFailed(
+          organizationId,
+          contingencyId,
+          FiscalContingencyFailures.CREDENTIALS_UNREADABLE,
+          true
+        )
+        return FiscalContingencyReportResult.REFUSED
       }
     }
     const held = await this.prisma.client.fiscalDocument.findMany({
@@ -460,15 +562,25 @@ export class FiscalContingencyService {
     const documents: StoredFiscalDocument[] = []
     for (const doc of held) {
       if (doc.builtPayloadEncrypted === null) {
-        await this.markFailed(organizationId, contingencyId, 'document_unreadable', true)
-        return 'refused'
+        await this.markFailed(
+          organizationId,
+          contingencyId,
+          FiscalContingencyFailures.DOCUMENT_UNREADABLE,
+          true
+        )
+        return FiscalContingencyReportResult.REFUSED
       }
       let payload: Record<string, unknown>
       try {
         payload = this.cipher.open(doc.builtPayloadEncrypted)
       } catch {
-        await this.markFailed(organizationId, contingencyId, 'document_unreadable', true)
-        return 'refused'
+        await this.markFailed(
+          organizationId,
+          contingencyId,
+          FiscalContingencyFailures.DOCUMENT_UNREADABLE,
+          true
+        )
+        return FiscalContingencyReportResult.REFUSED
       }
       documents.push({
         documentType: doc.documentType,
@@ -478,7 +590,7 @@ export class FiscalContingencyService {
       })
     }
     // Nothing was made in it after all: nothing to report
-    if (documents.length === 0) return 'nothing'
+    if (documents.length === 0) return FiscalContingencyReportResult.NOTHING
     let responsible: FiscalVoidParty | null = null
     if (row.responsibleEncrypted !== null) {
       try {
@@ -490,13 +602,23 @@ export class FiscalContingencyService {
           idNumber: text(opened['idNumber'])
         }
       } catch {
-        await this.markFailed(organizationId, contingencyId, 'responsible_unreadable', true)
-        return 'refused'
+        await this.markFailed(
+          organizationId,
+          contingencyId,
+          FiscalContingencyFailures.RESPONSIBLE_UNREADABLE,
+          true
+        )
+        return FiscalContingencyReportResult.REFUSED
       }
     }
     if (documents.length > mode.maxDocumentsPerEvent) {
-      await this.markFailed(organizationId, contingencyId, 'too_many_documents', true)
-      return 'refused'
+      await this.markFailed(
+        organizationId,
+        contingencyId,
+        FiscalContingencyFailures.TOO_MANY_DOCUMENTS,
+        true
+      )
+      return FiscalContingencyReportResult.REFUSED
     }
     const context: ProviderContext = {
       issuer: this.issuerInput(issuer),
@@ -541,16 +663,24 @@ export class FiscalContingencyService {
       await this.markFailed(
         organizationId,
         contingencyId,
-        typeof result.reason === 'string' ? result.reason : 'rejected',
+        // A code of the shape of a code; free text (it may carry data of a document) is not kept, the capped response is
+        typeof result.reason === 'string' && FiscalContingencyCodePattern.test(result.reason)
+          ? result.reason
+          : FiscalContingencyFailures.REJECTED,
         true,
         result.response
       )
-      return 'refused'
+      return FiscalContingencyReportResult.REFUSED
     }
     const receivedAt = new Date(result.receivedAt)
     if (Number.isNaN(receivedAt.getTime())) {
-      await this.markFailed(organizationId, contingencyId, 'provider_answer_invalid', true)
-      return 'refused'
+      await this.markFailed(
+        organizationId,
+        contingencyId,
+        FiscalContingencyFailures.PROVIDER_ANSWER_INVALID,
+        true
+      )
+      return FiscalContingencyReportResult.REFUSED
     }
     const windowEndsAt = new Date(receivedAt.getTime() + mode.transmitWithinHours * HOUR_MS)
     const providerData =
@@ -561,8 +691,9 @@ export class FiscalContingencyService {
       result.response === undefined
         ? undefined
         : cappedResponse(result.response, FiscalLimits.RESPONSE_MAX_CHARS)
-    await this.prisma.client.fiscalContingency.update({
-      where: { id: contingencyId },
+    // Only the run that finds it still ended takes it: another one that got there first has released the documents already
+    const taken = await this.prisma.client.fiscalContingency.updateMany({
+      where: { id: contingencyId, organizationId, status: FiscalContingencyStatus.CLOSED },
       data: {
         status: FiscalContingencyStatus.REPORTED,
         reportedAt: new Date(),
@@ -572,6 +703,7 @@ export class FiscalContingencyService {
         ...(response === undefined ? {} : { response })
       }
     })
+    if (taken.count === 0) return FiscalContingencyReportResult.NOTHING
     this.audit.log({
       action: AuditAction.FISCAL_CONTINGENCY_REPORTED,
       actor: { system: true },
@@ -581,13 +713,18 @@ export class FiscalContingencyService {
       metadata: { documents: documents.length }
     })
     await this.release(organizationId, contingencyId)
-    return 'reported'
+    return FiscalContingencyReportResult.REPORTED
   }
 
   // The last attempt of the report job failed: nobody asks again by itself, so a person is told
   async reportExhausted(organizationId: string, contingencyId: string): Promise<void> {
     try {
-      await this.markFailed(organizationId, contingencyId, 'no_answer', false)
+      await this.markFailed(
+        organizationId,
+        contingencyId,
+        FiscalContingencyFailures.NO_ANSWER,
+        false
+      )
     } catch (error) {
       this.logger.error(
         { contingencyId, err: errorName(error) },
@@ -645,14 +782,16 @@ export class FiscalContingencyService {
       where: { organizationId, status: FiscalContingencyStatus.CLOSED },
       select: { id: true, reportAttempts: true }
     })
-    const owed: string[] = []
-    for (const row of rows) {
-      if (row.reportAttempts >= FiscalContingencyLimits.REPORT_MAX_ATTEMPTS) continue
-      const documents = await this.prisma.client.fiscalDocument.count({
-        where: { organizationId, contingencyId: row.id }
-      })
-      if (documents > 0) owed.push(row.id)
-    }
+    const asking = rows.filter(
+      row => row.reportAttempts < FiscalContingencyLimits.REPORT_MAX_ATTEMPTS
+    )
+    // Only the documents still held count: one that was moved out (refused, detached) is not a report owed
+    const counts = await this.documentCounts(
+      organizationId,
+      asking.map(row => row.id),
+      FiscalDocumentStatus.QUEUED
+    )
+    const owed = asking.filter(row => (counts.get(row.id) ?? 0) > 0).map(row => row.id)
     return owed
   }
 
@@ -665,6 +804,13 @@ export class FiscalContingencyService {
       select: { id: true, submission: true },
       orderBy: { sequenceNumber: 'asc' }
     })
+    await this.enqueueSubmissions(organizationId, docs)
+  }
+
+  private async enqueueSubmissions(
+    organizationId: string,
+    docs: readonly { id: string; submission: number }[]
+  ): Promise<void> {
     for (const doc of docs) {
       const jobId = submitFiscalDocumentJobId(doc.id, doc.submission)
       const earlier = await this.queue.getJob(jobId)
@@ -708,16 +854,36 @@ export class FiscalContingencyService {
     const kept = code.slice(0, 100)
     const stored =
       response === undefined ? undefined : cappedResponse(response, FiscalLimits.RESPONSE_MAX_CHARS)
+    const attempts = keepAttempts
+      ? { reportAttempts: FiscalContingencyLimits.REPORT_MAX_ATTEMPTS }
+      : {}
     await this.prisma.transaction(async tx => {
-      const moved = await tx.fiscalContingency.updateMany({
-        where: { id: contingencyId, organizationId, status: FiscalContingencyStatus.CLOSED },
+      // The person is told once for each failure: the first mark of an error is the one that says it, and a later run that fails the same
+      // way only refreshes it (a person who asks again clears the error, so the next failure is told again)
+      const first = await tx.fiscalContingency.updateMany({
+        where: {
+          id: contingencyId,
+          organizationId,
+          status: FiscalContingencyStatus.CLOSED,
+          lastReportError: null
+        },
         data: {
           lastReportError: kept,
           ...(stored === undefined ? {} : { response: stored }),
-          ...(keepAttempts ? { reportAttempts: FiscalContingencyLimits.REPORT_MAX_ATTEMPTS } : {})
+          ...attempts
         }
       })
-      if (moved.count === 0) return
+      if (first.count === 0) {
+        await tx.fiscalContingency.updateMany({
+          where: { id: contingencyId, organizationId, status: FiscalContingencyStatus.CLOSED },
+          data: {
+            lastReportError: kept,
+            ...(stored === undefined ? {} : { response: stored }),
+            ...attempts
+          }
+        })
+        return
+      }
       this.events.publish(tx, Events.FISCAL_CONTINGENCY_ALERT, {
         organizationId,
         contingencyId,
@@ -829,30 +995,38 @@ export class FiscalContingencyService {
   }
 
   private notFound(): PlatformException {
-    return resourceNotFound('contingency')
+    return resourceNotFound(FiscalResourceTypes.CONTINGENCY)
   }
 
-  private async view(
+  private async view(organizationId: string, row: ViewRow): Promise<FiscalContingencyView> {
+    const counts = await this.documentCounts(organizationId, [row.id])
+    return this.toView(row, counts.get(row.id) ?? 0)
+  }
+
+  // How many documents each contingency holds, in one query
+  private async documentCounts(
     organizationId: string,
-    row: {
-      id: string
-      status: string
-      origin: string
-      providerId: string
-      environment: string
-      reason: string
-      motive: string | null
-      startedAt: Date
-      endedAt: Date | null
-      reportedAt: Date | null
-      windowEndsAt: Date | null
-      reportAttempts: number
-      lastReportError: string | null
-    }
-  ): Promise<FiscalContingencyView> {
-    const documents = await this.prisma.client.fiscalDocument.count({
-      where: { organizationId, contingencyId: row.id }
+    ids: readonly string[],
+    status?: FiscalDocumentStatus
+  ): Promise<Map<string, number>> {
+    if (ids.length === 0) return new Map()
+    const grouped = await this.prisma.client.fiscalDocument.groupBy({
+      by: ['contingencyId'],
+      where: {
+        organizationId,
+        contingencyId: { in: [...ids] },
+        ...(status === undefined ? {} : { status })
+      },
+      _count: { _all: true }
     })
+    const counts = new Map<string, number>()
+    for (const group of grouped) {
+      if (group.contingencyId !== null) counts.set(group.contingencyId, group._count._all)
+    }
+    return counts
+  }
+
+  private toView(row: ViewRow, documents: number): FiscalContingencyView {
     return {
       id: row.id,
       status: row.status as FiscalContingencyStatus,
