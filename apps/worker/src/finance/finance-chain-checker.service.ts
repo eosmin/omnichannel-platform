@@ -15,7 +15,7 @@ export class FinanceChainChecker {
   }
 
   async check(organizationId: string, now: Date = new Date()): Promise<ChainCheck> {
-    const result = await this.monitor.check(organizationId, now)
+    const result = await this.monitor.check(organizationId, { resolve: true }, now)
     this.logger.info(
       {
         organizationId,

@@ -5,7 +5,7 @@ import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
 import { PrismaService } from '@platform/core/database'
-import type { OwnerClient } from '@platform/core/database-testing'
+import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
 import {
   ChainIncidentChange,
   ChainProblem,
@@ -43,7 +43,10 @@ describe('The weekly check of the chain, its incident and the guard of the close
   let app: INestApplication
   let owner: OwnerClient
   let ctx: TestContext
+  // The monitor of the weekly job, on the connection of the worker (the only role that may close an incident), and the one of the api
   let monitor: FinanceChainMonitor
+  let apiMonitor: FinanceChainMonitor
+  let workerDb: PrismaService
   let guard: FinanceCloseGuard
   let published: { event: string; payload: unknown }[] = []
 
@@ -86,7 +89,15 @@ describe('The weekly check of the chain, its incident and the guard of the close
     owner = ownerClient()
     app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
-    monitor = app.get(FinanceChainMonitor)
+    apiMonitor = app.get(FinanceChainMonitor)
+    workerDb = new PrismaService({ databaseUrl: connectionUrls().worker })
+    monitor = new FinanceChainMonitor(
+      workerDb,
+      app.get(FinanceChainVerifier),
+      app.get(DomainEvents),
+      { set: () => undefined } as never,
+      logger
+    )
     guard = app.get(FinanceCloseGuard)
     for (const [user, store] of [
       [ctx.adminA, ctx.storeA],
@@ -110,6 +121,7 @@ describe('The weekly check of the chain, its incident and the guard of the close
     jest.restoreAllMocks()
     await cleanUp(owner, prefix)
     await app.close()
+    await workerDb.onModuleDestroy()
     await owner.$disconnect()
   })
   beforeEach(() => {
@@ -117,7 +129,7 @@ describe('The weekly check of the chain, its incident and the guard of the close
   })
 
   it('leaves a sound chain alone: no incident, no notice, the close is not blocked', async () => {
-    const result = await monitor.check(ctx.orgA.id)
+    const result = await monitor.check(ctx.orgA.id, { resolve: true })
 
     expect(result.verification.ok).toBe(true)
     expect(result.incident).toBe(ChainIncidentChange.NONE)
@@ -129,8 +141,8 @@ describe('The weekly check of the chain, its incident and the guard of the close
   it('opens one incident when an entry was changed, tells once, and keeps telling nothing while it stays open', async () => {
     await tamperWithLedger(owner, [firstMemo(ctx.orgA.id, 'Rewritten')])
 
-    const first = await monitor.check(ctx.orgA.id)
-    const again = await monitor.check(ctx.orgA.id)
+    const first = await monitor.check(ctx.orgA.id, { resolve: true })
+    const again = await monitor.check(ctx.orgA.id, { resolve: true })
 
     expect(first.incident).toBe(ChainIncidentChange.OPENED)
     expect(first.verification.break?.reason).toBe(ChainProblem.HASH_MISMATCH)
@@ -182,7 +194,10 @@ describe('The weekly check of the chain, its incident and the guard of the close
       where: { organizationId: ctx.orgA.id, resolvedAt: null },
       data: { resolvedAt: new Date() }
     })
-    const results = await Promise.all([monitor.check(ctx.orgA.id), monitor.check(ctx.orgA.id)])
+    const results = await Promise.all([
+      monitor.check(ctx.orgA.id, { resolve: true }),
+      monitor.check(ctx.orgA.id, { resolve: true })
+    ])
 
     expect(results.map(result => result.incident).sort()).toEqual(
       [ChainIncidentChange.OPENED, ChainIncidentChange.STILL_OPEN].sort()
@@ -193,7 +208,7 @@ describe('The weekly check of the chain, its incident and the guard of the close
   it('closes the incident when the chain verifies again, and the close is open again', async () => {
     await tamperWithLedger(owner, [firstMemo(ctx.orgA.id, 'Original memo')])
 
-    const result = await monitor.check(ctx.orgA.id)
+    const result = await monitor.check(ctx.orgA.id, { resolve: true })
 
     expect(result.verification.ok).toBe(true)
     expect(result.incident).toBe(ChainIncidentChange.RESOLVED)
@@ -208,20 +223,22 @@ describe('The weekly check of the chain, its incident and the guard of the close
   it("leaves the incident open when the check is the auditor's (resolve: false): only the job closes it", async () => {
     await tamperWithLedger(owner, [firstMemo(ctx.orgA.id, 'Original memo')])
 
-    const result = await monitor.check(ctx.orgA.id, new Date(), { resolve: false })
+    const result = await apiMonitor.check(ctx.orgA.id, { resolve: false })
 
     expect(result.verification.ok).toBe(true)
     expect(result.incident).toBe(ChainIncidentChange.STILL_OPEN)
     expect(await openIncidents(ctx.orgA.id)).toHaveLength(1)
     // The next check of the job (the default) closes it
-    expect((await monitor.check(ctx.orgA.id)).incident).toBe(ChainIncidentChange.RESOLVED)
+    expect((await monitor.check(ctx.orgA.id, { resolve: true })).incident).toBe(
+      ChainIncidentChange.RESOLVED
+    )
   })
 
   it('opens an incident for a head that does not follow the last entry (a tail cut off behind the application)', async () => {
     await tamperWithLedger(owner, [
       `UPDATE finance_settings SET last_entry_hash = 'cut' WHERE organization_id = '${ctx.orgB.id}'`
     ])
-    const result = await monitor.check(ctx.orgB.id)
+    const result = await monitor.check(ctx.orgB.id, { resolve: true })
     expect(result.incident).toBe(ChainIncidentChange.OPENED)
     expect(result.verification.break?.reason).toBe(ChainProblem.HEAD_MISMATCH)
     // The incident of B does not block A
@@ -229,14 +246,16 @@ describe('The weekly check of the chain, its incident and the guard of the close
     await tamperWithLedger(owner, [
       `UPDATE finance_settings SET last_entry_hash = (SELECT hash FROM journal_entries WHERE organization_id = '${ctx.orgB.id}' ORDER BY number DESC LIMIT 1) WHERE organization_id = '${ctx.orgB.id}'`
     ])
-    expect((await monitor.check(ctx.orgB.id)).incident).toBe(ChainIncidentChange.RESOLVED)
+    expect((await monitor.check(ctx.orgB.id, { resolve: true })).incident).toBe(
+      ChainIncidentChange.RESOLVED
+    )
   })
 
   describe('the job of the worker', () => {
     it('sets the gauge to one while the chain is altered and back to zero when it verifies, whoever ran the check', async () => {
       const values: { labels: Record<string, string>; value: number }[] = []
       const counting = new FinanceChainMonitor(
-        app.get(PrismaService),
+        workerDb,
         app.get(FinanceChainVerifier),
         app.get(DomainEvents),
         {

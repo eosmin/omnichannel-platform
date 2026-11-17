@@ -765,6 +765,7 @@ describe('The tables of the ledger', () => {
         // The country and the start date are set once, when the books are set up (LED-R2-040)
         expect(await can(role, 'country_code')).toBe(false)
         expect(await can(role, 'accounting_start_date')).toBe(false)
+        expect(await can(role, 'base_currency')).toBe(false)
         for (const column of ['locked_through', 'recognize_sale_on', 'rounding_account_id']) {
           expect(await can(role, column)).toBe(true)
         }
@@ -1373,27 +1374,38 @@ describe('The tables of the ledger', () => {
       ).not.toBeNull()
     })
 
-    it('write resolved_at once: a closed incident is not reopened or moved, and not closed before it was detected', async () => {
+    it('write resolved_at once for the application: a closed incident is not reopened or moved by its roles, and a close is never dated before the detection', async () => {
       const row = await owner.financeChainIncident.create({ data: incident(orgB.id) })
-      await expect(
-        owner.financeChainIncident.update({
-          where: { id: row.id },
-          data: { resolvedAt: new Date(row.detectedAt.getTime() - 60_000) }
-        })
-      ).rejects.toThrow(/before it was detected/)
-      await owner.financeChainIncident.update({
+      // A close dated before the detection (two clocks that disagree) is moved up to the detection, not refused
+      const early = await owner.financeChainIncident.update({
         where: { id: row.id },
-        data: { resolvedAt: new Date(row.detectedAt.getTime() + 1000) }
+        data: { resolvedAt: new Date(row.detectedAt.getTime() - 60_000) }
       })
-      await expect(
-        owner.financeChainIncident.update({ where: { id: row.id }, data: { resolvedAt: null } })
-      ).rejects.toThrow(/cannot be reopened/)
-      await expect(
-        owner.financeChainIncident.update({
-          where: { id: row.id },
-          data: { resolvedAt: new Date(row.detectedAt.getTime() + 5000) }
-        })
-      ).rejects.toThrow(/cannot be reopened/)
+      expect(early.resolvedAt?.getTime()).toBe(row.detectedAt.getTime())
+      const urls = connectionUrls()
+      for (const url of [urls.worker]) {
+        const client = createOwnerClient(url)
+        try {
+          await expect(
+            client.$executeRawUnsafe(
+              `UPDATE finance_chain_incidents SET resolved_at = NULL WHERE id = '${row.id}'`
+            )
+          ).rejects.toThrow(/cannot be reopened/)
+          await expect(
+            client.$executeRawUnsafe(
+              `UPDATE finance_chain_incidents SET resolved_at = now() + interval '1 hour' WHERE id = '${row.id}'`
+            )
+          ).rejects.toThrow(/cannot be reopened/)
+        } finally {
+          await client.$disconnect()
+        }
+      }
+      // The owner of the database keeps the way to correct a mistake
+      const reopened = await owner.financeChainIncident.update({
+        where: { id: row.id },
+        data: { resolvedAt: null }
+      })
+      expect(reopened.resolvedAt).toBeNull()
     })
 
     it('refuse a reason that is not a code of the check', async () => {

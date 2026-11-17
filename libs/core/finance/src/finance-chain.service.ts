@@ -230,9 +230,9 @@ export interface ChainCheck {
 }
 
 // What a check of the chain leaves behind (TDD_18 §11, Step 4B.8b-2): an alteration opens ONE incident per organization, which stops the
-// close of a month (`FinanceCloseGuard`) and is told once (`FINANCE_CHAIN_BROKEN`); a check that passes closes it. Nothing here touches
+// close of a month (`FinanceCloseGuard`) and is told once (`FINANCE_CHAIN_BROKEN`); a check that passes closes it only when the caller may (the worker; see `check`). Nothing here touches
 // the journal: an incident is the record that someone must look, never a repair. The check runs from the weekly job and from the
-// auditor's request, so a chain restored (or a false alarm) is cleared by the next check that passes, whoever runs it.
+// auditor's request, so a chain restored (or a false alarm) is cleared by the next check of the weekly job that passes: the auditor's request reports it, and leaves the closing to the job.
 @Injectable()
 export class FinanceChainMonitor {
   constructor(
@@ -250,10 +250,11 @@ export class FinanceChainMonitor {
   // `resolve` says whether a passing check may close the open incident. Only the weekly job (the worker role) may: the database
   // takes UPDATE(resolved_at) away from the API role, so an application taken over cannot declare the books sound again. A check the
   // auditor asks for passes `resolve: false` and reports an open incident as STILL_OPEN until the job closes it
+  // `options` is required on purpose: the privileged behaviour is never a default, so a caller in the API cannot reach it by omission
   async check(
     organizationId: string,
-    now: Date = new Date(),
-    options: { resolve: boolean } = { resolve: true }
+    options: { resolve: boolean },
+    now: Date = new Date()
   ): Promise<ChainCheck> {
     const verification = await this.verifier.verify(organizationId)
     const incident = await this.record(organizationId, verification, now, options.resolve)
