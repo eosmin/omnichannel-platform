@@ -13,6 +13,7 @@ import {
   Res
 } from '@nestjs/common'
 import type { Response } from 'express'
+import { PinoLogger } from 'nestjs-pino'
 
 import { PluginApiRoutes } from '@platform/core/api'
 import { AuditAction, type AuditActionType } from '@platform/core/audit'
@@ -22,6 +23,7 @@ import { PrismaService } from '@platform/core/database'
 import {
   AuthorType,
   ChannelCapability,
+  PluginApiDenialReasons,
   PluginMessageOperations,
   uuidSchema
 } from '@platform/core/domain'
@@ -82,8 +84,11 @@ export class PluginMessagesController {
     private readonly registry: PluginRegistry,
     private readonly audit: AuditService,
     private readonly prisma: PrismaService,
+    private readonly logger: PinoLogger,
     @Inject(MULTI_FILE_SEND_ENABLED) private readonly multiFileEnabled: boolean
-  ) {}
+  ) {
+    this.logger.setContext(PluginMessagesController.name)
+  }
 
   // 201 for a new message, 200 for the one a repeated idempotencyKey already made (and then nothing is audited twice)
   @PluginApi(PluginScopes.MESSAGES_WRITE, PluginScopes.CONVERSATIONS_READ)
@@ -101,6 +106,16 @@ export class PluginMessagesController {
     // A file is the installation's own upload, which asked for `media:write`: a key that lost that scope since sends no file (the route
     // names `messages:write` only, because the same route carries text)
     if ('mediaIds' in body && !installation.scopes.includes(PluginScopes.MEDIA_WRITE)) {
+      // The same fields the guard logs for a scope it refuses (never the key), so that one search finds both
+      this.logger.warn(
+        {
+          installationId: installation.id,
+          pluginId: installation.pluginId,
+          kind: PluginApiDenialReasons.SCOPE,
+          missing: [PluginScopes.MEDIA_WRITE]
+        },
+        'a plugin key was refused for lack of access'
+      )
       throw new PlatformException(
         ErrorCodes.PLUGIN_SCOPE_DENIED,
         'sending a file needs the scope media:write',
