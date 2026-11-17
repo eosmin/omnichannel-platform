@@ -17,6 +17,7 @@ import {
   resourceNotFound
 } from '@platform/core/errors'
 import { PurchaseRule } from '@platform/core/finance'
+import { escapeLike } from '@platform/core/messaging'
 
 import { encodeCursor } from '../customers/list-cursor'
 import { lockScope, usableAccount } from '../finance/finance.support'
@@ -56,7 +57,10 @@ export class SuppliersService {
       where: {
         organizationId,
         ...(query.includeInactive ? {} : { active: true }),
-        ...(query.q === undefined ? {} : { name: { contains: query.q, mode: 'insensitive' } }),
+        // Read as the characters it is: Prisma's `contains` does not escape the wildcards of LIKE
+        ...(query.q === undefined
+          ? {}
+          : { name: { contains: escapeLike(query.q), mode: 'insensitive' } }),
         ...(cursor === undefined
           ? {}
           : {

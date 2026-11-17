@@ -1,4 +1,4 @@
-import { FiscalDocumentStatus, FiscalEvidenceKind } from '@platform/core/domain'
+import { FiscalDocumentStatus, FiscalEvidenceKind, FiscalVoidKind } from '@platform/core/domain'
 
 import { createApiClient } from './api-client'
 import {
@@ -8,6 +8,7 @@ import {
   fetchFiscalEvidenceUrls,
   fetchFiscalIssuer,
   fetchFiscalProviders,
+  fetchFiscalSeries,
   patchFiscalReceiver,
   putFiscalIssuer,
   replaceFiscalDocument,
@@ -165,10 +166,26 @@ describe('the fiscal documents', () => {
     expect(callOf(retried.fetchImpl).init.method).toBe('POST')
 
     const voided = setup(json(200, { data: { ...document, status: 'voided' } }))
-    const view = await voidFiscalDocument(voided.client, 's', 'd1', 'wrong receiver')
+    const view = await voidFiscalDocument(voided.client, 's', 'd1', { reason: 'wrong receiver' })
     expect(view.status).toBe('voided')
     expect(JSON.parse(callOf(voided.fetchImpl).init.body as string)).toEqual({
       reason: 'wrong receiver'
+    })
+
+    // The people and the kind a provider asks for travel with the reason
+    const party = { name: 'Ana', idType: '13', idNumber: '1' }
+    const detailed = setup(json(200, { data: { ...document, status: 'voided' } }))
+    await voidFiscalDocument(detailed.client, 's', 'd1', {
+      reason: 'wrong receiver',
+      kind: FiscalVoidKind.RESCISSION,
+      responsible: party,
+      requester: party
+    })
+    expect(JSON.parse(callOf(detailed.fetchImpl).init.body as string)).toEqual({
+      reason: 'wrong receiver',
+      kind: 'rescission',
+      responsible: party,
+      requester: party
     })
 
     const replaced = setup(json(200, { data: { ...document, id: 'd2' } }))
@@ -247,7 +264,16 @@ describe('the fiscal issuer', () => {
               documentTypes: [{ id: 't', label: 'Type', requiredReceiverFields: ['name'] }],
               requiredIssuerFields: ['legalName'],
               credentialKeys: ['signingKey'],
-              environments: ['sandbox']
+              environments: ['sandbox'],
+              catalogs: { activities: [{ code: '1', label: 'One' }] },
+              issuerFieldCatalogs: { activityCode: 'activities' },
+              voidInputs: {
+                identityCatalog: 'ids',
+                kinds: ['correction', 'rescission'],
+                requiresParties: true,
+                kindsWithReplacement: ['correction'],
+                reasonMaxLength: 200
+              }
             },
             contingency: null
           }
@@ -256,6 +282,40 @@ describe('the fiscal issuer', () => {
     )
     const providers = await fetchFiscalProviders(client, 's')
     expect(providers[0]?.manifest.credentialKeys).toEqual(['signingKey'])
+    // What an invalidation asks of the person is read as the provider declares it
+    expect(providers[0]?.manifest.catalogs).toEqual({ activities: [{ code: '1', label: 'One' }] })
+    expect(providers[0]?.manifest.issuerFieldCatalogs).toEqual({ activityCode: 'activities' })
+    expect(providers[0]?.manifest.voidInputs).toEqual({
+      identityCatalog: 'ids',
+      kinds: ['correction', 'rescission'],
+      requiresParties: true,
+      kindsWithReplacement: ['correction'],
+      reasonMaxLength: 200
+    })
+  })
+})
+
+describe('the series of correlatives', () => {
+  it('reads what each counts and the number the next document takes, through the store', async () => {
+    const { client, fetchImpl } = setup(
+      json(200, {
+        data: [
+          {
+            scope: { providerId: 'p', environment: 'sandbox', documentType: '01' },
+            nextNumber: 5,
+            updatedAt: '2026-11-17T00:00:00.000Z'
+          }
+        ]
+      })
+    )
+    const series = await fetchFiscalSeries(client, 's')
+    expect(series[0]).toMatchObject({ nextNumber: 5, scope: { documentType: '01' } })
+    expect(callOf(fetchImpl).url).toContain('/fiscal/series')
+  })
+
+  it('refuses an answer that is not a list of series', async () => {
+    const { client } = setup(json(200, { data: [{ scope: { a: 1 }, nextNumber: 'x' }] }))
+    await expect(fetchFiscalSeries(client, 's')).rejects.toBeDefined()
   })
 })
 

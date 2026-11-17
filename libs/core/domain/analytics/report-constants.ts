@@ -51,6 +51,8 @@ export const ReportLimits = {
   // The days a file may span: a column for each metric and a row for each day
   MAX_DAYS: MetricQueryLimits.MAX_DAILY_RANGE_DAYS,
   DEFAULT_SEND_AT_HOUR: 8,
+  // After the end of the last UTC day of a period: the daily rollup is queued at 00:15 UTC and its jobs need time to write
+  ROLLUP_READY_GRACE_MS: 60 * 60 * 1000,
   // The zone a form starts from when the browser names none the api knows
   FALLBACK_TIME_ZONE: 'UTC'
 } as const

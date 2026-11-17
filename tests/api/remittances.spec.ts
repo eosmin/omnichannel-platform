@@ -706,17 +706,53 @@ describe('COD remittances (TDD_17 §4.15)', () => {
       ).toBe(RemittanceStatus.DRAFT)
     })
 
-    it('lets a shipment in discrepancy be settled by a later remittance', async () => {
+    it('lets a shipment in discrepancy be settled by a later remittance that pays what was left (N-INV-4)', async () => {
       const shipment = await pendingShipment('LATER-1', 1000)
       const first = await draftWith([{ guideNumber: 'LATER-1', reportedCents: 800 }])
       await asAdmin().post(ApiRoutes.remittances.confirm(first.id)).send({})
       expect((await shipmentRow(shipment.id)).codStatus).toBe(CodStatus.DISCREPANCY)
-      const second = await draftWith([{ guideNumber: 'LATER-1', reportedCents: 1000 }])
+      // 200 are still owed, and the pending screen says so
+      const owed = async (): Promise<number> => {
+        const body = (
+          await asAdmin().get(`${ApiRoutes.remittances.pending}?connectionId=${connectionId}`)
+        ).body as Array<{ shipments: Array<{ guideNumber: string; owedCents: number }> }>
+        // Only this guide: the connection holds what the other tests left
+        return body[0]?.shipments.find(row => row.guideNumber === 'LATER-1')?.owedCents ?? 0
+      }
+      expect(await owed()).toBe(200)
+      const second = await draftWith([{ guideNumber: 'LATER-1', reportedCents: 200 }])
       expect(lineOf(second, 'LATER-1').outcome).toBe(RemittanceLineOutcome.MATCHED)
       await asAdmin().post(ApiRoutes.remittances.confirm(second.id)).send({})
       const row = await shipmentRow(shipment.id)
       expect(row.codStatus).toBe(CodStatus.REMITTED)
+      expect(row.codRemittedCents).toBe(1000)
+      expect(row.codExpectedCents).toBe(1000)
       expect(row.codRemittanceId).toBe(second.id)
+      expect(await owed()).toBe(0)
+    })
+
+    it('adds every remittance of a guide, and a payment short of what is left stays a discrepancy', async () => {
+      const shipment = await pendingShipment('LATER-3', 1000)
+      for (const [reported, status, total] of [
+        [300, CodStatus.DISCREPANCY, 300],
+        [300, CodStatus.DISCREPANCY, 600],
+        [400, CodStatus.REMITTED, 1000]
+      ] as const) {
+        const draft = await draftWith([{ guideNumber: 'LATER-3', reportedCents: reported }])
+        await asAdmin().post(ApiRoutes.remittances.confirm(draft.id)).send({})
+        const row = await shipmentRow(shipment.id)
+        expect(row.codStatus).toBe(status)
+        expect(row.codRemittedCents).toBe(total)
+      }
+    })
+
+    it('does not take the full amount again as the payment of what was left', async () => {
+      await pendingShipment('LATER-4', 1000)
+      const first = await draftWith([{ guideNumber: 'LATER-4', reportedCents: 800 }])
+      await asAdmin().post(ApiRoutes.remittances.confirm(first.id)).send({})
+      const second = await draftWith([{ guideNumber: 'LATER-4', reportedCents: 1000 }])
+      expect(lineOf(second, 'LATER-4').outcome).toBe(RemittanceLineOutcome.AMOUNT_DIFFERS)
+      expect(lineOf(second, 'LATER-4').differenceCents).toBe(800)
     })
   })
 
@@ -765,16 +801,107 @@ describe('COD remittances (TDD_17 §4.15)', () => {
       expect(errorCode(refused.body)).toBe(ErrorCodes.REMITTANCE_INVALID_STATUS_TRANSITION)
     })
 
-    it('leaves a shipment that a later remittance settled alone', async () => {
+    it('refuses to void a remittance while a later one paid the same guide, and the later one restores the earlier state', async () => {
       const shipment = await pendingShipment('VD-LATE', 1000)
       const first = await draftWith([{ guideNumber: 'VD-LATE', reportedCents: 600 }])
       await asAdmin().post(ApiRoutes.remittances.confirm(first.id)).send({})
-      const second = await draftWith([{ guideNumber: 'VD-LATE', reportedCents: 1000 }])
+      const second = await draftWith([{ guideNumber: 'VD-LATE', reportedCents: 400 }])
       await asAdmin().post(ApiRoutes.remittances.confirm(second.id)).send({})
-      await asAdmin().post(ApiRoutes.remittances.void(first.id)).send({})
+      const refused = await asAdmin().post(ApiRoutes.remittances.void(first.id)).send({})
+      expect(refused.status).toBe(CONFLICT)
+      expect(errorCode(refused.body)).toBe(ErrorCodes.REMITTANCE_INVALID_STATUS_TRANSITION)
+      expect((await shipmentRow(shipment.id)).codRemittedCents).toBe(1000)
+      const undone = await asAdmin().post(ApiRoutes.remittances.void(second.id)).send({})
+      expect(undone.status).toBe(OK)
       const row = await shipmentRow(shipment.id)
-      expect(row.codStatus).toBe(CodStatus.REMITTED)
-      expect(row.codRemittanceId).toBe(second.id)
+      expect(row.codStatus).toBe(CodStatus.DISCREPANCY)
+      expect(row.codRemittedCents).toBe(600)
+      expect(row.codRemittanceId).toBe(first.id)
+      // and now the first can go too
+      expect((await asAdmin().post(ApiRoutes.remittances.void(first.id)).send({})).status).toBe(OK)
+      expect((await shipmentRow(shipment.id)).codStatus).toBe(CodStatus.PENDING_REMITTANCE)
+    })
+  })
+
+  describe('voiding with several remittances on a guide', () => {
+    it('keeps the expected amount of a guide that was paid over, and puts each guide back as it was', async () => {
+      const over = await pendingShipment('OV-1', 1000)
+      const first = await draftWith([{ guideNumber: 'OV-1', reportedCents: 1200 }])
+      await asAdmin().post(ApiRoutes.remittances.confirm(first.id)).send({})
+      const second = await draftWith([{ guideNumber: 'OV-1', reportedCents: 100 }])
+      await asAdmin().post(ApiRoutes.remittances.confirm(second.id)).send({})
+      const row = await shipmentRow(over.id)
+      // nothing was owed any more: the guide still says it was to bring 1000, and 1300 came
+      expect(row.codExpectedCents).toBe(1000)
+      expect(row.codRemittedCents).toBe(1300)
+      expect(row.codStatus).toBe(CodStatus.DISCREPANCY)
+      await asAdmin().post(ApiRoutes.remittances.void(second.id)).send({})
+      const back = await shipmentRow(over.id)
+      expect(back).toMatchObject({
+        codStatus: CodStatus.DISCREPANCY,
+        codRemittedCents: 1200,
+        codExpectedCents: 1000,
+        codRemittanceId: first.id
+      })
+    })
+
+    it('puts back, in one void, a guide that had an earlier remittance and one that had none', async () => {
+      const a = await pendingShipment('MX-A', 1000)
+      const b = await pendingShipment('MX-B', 500)
+      const first = await draftWith([{ guideNumber: 'MX-A', reportedCents: 600 }])
+      await asAdmin().post(ApiRoutes.remittances.confirm(first.id)).send({})
+      const second = await draftWith([
+        { guideNumber: 'MX-A', reportedCents: 400 },
+        { guideNumber: 'MX-B', reportedCents: 500 }
+      ])
+      await asAdmin().post(ApiRoutes.remittances.confirm(second.id)).send({})
+      expect((await shipmentRow(a.id)).codStatus).toBe(CodStatus.REMITTED)
+      const voided = await asAdmin().post(ApiRoutes.remittances.void(second.id)).send({})
+      expect(voided.status).toBe(OK)
+      expect(await shipmentRow(a.id)).toMatchObject({
+        codStatus: CodStatus.DISCREPANCY,
+        codRemittedCents: 600,
+        codRemittanceId: first.id
+      })
+      expect(await shipmentRow(b.id)).toMatchObject({
+        codStatus: CodStatus.PENDING_REMITTANCE,
+        codRemittedCents: null,
+        codRemittanceId: null
+      })
+    })
+
+    it('puts back the expected amount the earlier remittance held the guide against when the fee changed in between', async () => {
+      await owner.carrierConnection.update({
+        where: { id: connectionId },
+        data: { remittanceDeductsFee: true }
+      })
+      const guide = await pendingShipment('FEE-V', 1000, {
+        codExpectedCents: 1000,
+        carrierCostCents: 300
+      })
+      const first = await draftWith([{ guideNumber: 'FEE-V', reportedCents: 500 }])
+      await asAdmin().post(ApiRoutes.remittances.confirm(first.id)).send({})
+      expect((await shipmentRow(guide.id)).codExpectedCents).toBe(700)
+      // the carrier's cost is corrected: the guide is now expected to bring 800, of which 500 came
+      await owner.shipment.update({ where: { id: guide.id }, data: { carrierCostCents: 200 } })
+      const second = await draftWith([{ guideNumber: 'FEE-V', reportedCents: 300 }])
+      expect(lineOf(second, 'FEE-V').outcome).toBe(RemittanceLineOutcome.MATCHED)
+      await asAdmin().post(ApiRoutes.remittances.confirm(second.id)).send({})
+      expect(await shipmentRow(guide.id)).toMatchObject({
+        codStatus: CodStatus.REMITTED,
+        codExpectedCents: 800,
+        codRemittedCents: 800
+      })
+      await asAdmin().post(ApiRoutes.remittances.void(second.id)).send({})
+      await owner.carrierConnection.update({
+        where: { id: connectionId },
+        data: { remittanceDeductsFee: false }
+      })
+      expect(await shipmentRow(guide.id)).toMatchObject({
+        codStatus: CodStatus.DISCREPANCY,
+        codExpectedCents: 700,
+        codRemittedCents: 500
+      })
     })
   })
 

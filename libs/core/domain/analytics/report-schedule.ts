@@ -1,15 +1,19 @@
 import { ReportFrequency, type ReportFrequencyType } from './analytics-constants'
+import { ReportLimits } from './report-constants'
 
 type Frequency = ReportFrequencyType
 
 const DAY_MS = 86_400_000
 const CALENDAR_DAY_LENGTH = 10 // "2026-11-12"
 
-// A time zone name the runtime knows: `Intl` refuses the others with a RangeError
+// A time zone name of the database the runtime knows: `Intl` refuses the others with a RangeError. It also takes a fixed offset
+// ("+06:00") as a zone, and that is not one (it never changes with daylight saving time): a name that resolves to an offset is refused.
+const FIXED_OFFSET = /^[+-]/
+
 export function isTimeZone(name: string): boolean {
   try {
-    new Intl.DateTimeFormat('en-US', { timeZone: name })
-    return true
+    const resolved = new Intl.DateTimeFormat('en-US', { timeZone: name }).resolvedOptions().timeZone
+    return !FIXED_OFFSET.test(resolved)
   } catch {
     return false
   }
@@ -45,14 +49,19 @@ export function localMoment(now: Date, timeZone: string): LocalMoment {
   }
 }
 
-// A report is made from its hour of the day on, on every day (daily), on Mondays (weekly) or on the first of the month (monthly),
-// by the clock of its own zone. From its hour and not only at it: a tick that was missed (the worker was down, an hour that the
-// clock skipped) is made up for in the next ones, and `madeOnDay` stops a second one.
-export function isReportDue(frequency: Frequency, local: LocalMoment, sendAtHour: number): boolean {
-  if (local.hour < sendAtHour) return false
-  if (frequency === ReportFrequency.DAILY) return true
-  if (frequency === ReportFrequency.WEEKLY) return local.weekday === 1
-  return local.dayOfMonth === 1
+// The day of its zone that a report is owed for, or null while its hour of today has not come: today (daily), the latest Monday
+// (weekly) or the latest first of the month (monthly) at or before today, by the clock of its own zone. The hour gates the whole
+// run, so a worker that was down on the day itself still makes the report on the next day, once its hour comes (it is made up for,
+// not lost), and `madeOnDay` against this day stops a second one.
+export function reportDueDay(
+  frequency: Frequency,
+  local: LocalMoment,
+  sendAtHour: number
+): string | null {
+  if (local.hour < sendAtHour) return null
+  if (frequency === ReportFrequency.DAILY) return local.day
+  if (frequency === ReportFrequency.WEEKLY) return shiftDay(local.day, -(local.weekday - 1))
+  return `${local.day.slice(0, 8)}01`
 }
 
 const shiftDay = (day: string, days: number): string =>
@@ -85,4 +94,12 @@ export function daysOfPeriod(period: ReportPeriod): string[] {
 // Whether the report was already made on that calendar day of its zone
 export function madeOnDay(lastSentAt: Date | null, timeZone: string, day: string): boolean {
   return lastSentAt !== null && localMoment(lastSentAt, timeZone).day >= day
+}
+
+// Whether the figures of the period are in: the rollup cuts its days in UTC and writes the last one after midnight UTC (00:15, then
+// its jobs), so a period is only read once its last day closed and the rollup had time to write it. A zone ahead of UTC reaches its
+// hour before that: the report waits for the rollup, it is not sent with a day half done.
+export function reportRollupReady(frequency: Frequency, day: string, now: Date): boolean {
+  const closedAt = Date.parse(`${reportPeriod(frequency, day).to}T00:00:00.000Z`)
+  return now.getTime() >= closedAt + ReportLimits.ROLLUP_READY_GRACE_MS
 }

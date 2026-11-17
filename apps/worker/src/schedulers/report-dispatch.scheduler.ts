@@ -5,9 +5,10 @@ import type { Queue } from 'bullmq'
 import { PinoLogger } from 'nestjs-pino'
 
 import {
-  isReportDue,
   localMoment,
   madeOnDay,
+  reportDueDay,
+  reportRollupReady,
   type ReportFrequencyType
 } from '@platform/core/analytics'
 import { PrismaService } from '@platform/core/database'
@@ -26,8 +27,9 @@ import { LeaderLockService } from './leader-lock.service'
 const LOCK_SECONDS = 300
 const PAGE_SIZE = 200
 
-// Every hour on the hour (TDD_11 §7.4), on one replica: queues the reports whose own clock reads their hour today. The job is named
-// by the report and the day of its zone, so the schedule run twice in an hour asks for the same job.
+// Every hour on the hour (TDD_11 §7.4), on one replica: queues the reports owed (their hour has come on the day they are owed, or on a
+// later one if the worker was down) whose period the rollup has already written. The job is named by the report and the day it is
+// owed for, so the schedule run twice in an hour, or a catch-up on the next day, asks for the same job.
 @Injectable()
 export class ReportDispatchScheduler {
   constructor(
@@ -58,17 +60,28 @@ export class ReportDispatchScheduler {
     for (;;) {
       const reports = await this.prisma.client.scheduledReport.findMany({
         where: { enabled: true },
-        select: { id: true, frequency: true, timezone: true, sendAtHour: true, lastSentAt: true },
+        select: {
+          id: true,
+          frequency: true,
+          timezone: true,
+          sendAtHour: true,
+          lastSentAt: true,
+          createdAt: true
+        },
         orderBy: { id: 'asc' },
         take: pageSize,
         ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 })
       })
       const due = reports.flatMap(report => {
         try {
-          const local = localMoment(now, report.timezone)
-          return isReportDue(report.frequency as ReportFrequencyType, local, report.sendAtHour) &&
-            !madeOnDay(report.lastSentAt, report.timezone, local.day)
-            ? [{ report, day: local.day }]
+          const frequency = report.frequency as ReportFrequencyType
+          const day = reportDueDay(frequency, localMoment(now, report.timezone), report.sendAtHour)
+          // A report is owed from the day it was made on: one made on a Wednesday does not send last Monday's week
+          return day !== null &&
+            reportRollupReady(frequency, day, now) &&
+            !madeOnDay(report.lastSentAt, report.timezone, day) &&
+            localMoment(report.createdAt, report.timezone).day <= day
+            ? [{ report, day }]
             : []
         } catch (error) {
           // A zone the runtime does not know any more costs that report, not the run of every store

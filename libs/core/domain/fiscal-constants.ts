@@ -57,6 +57,9 @@ export const FiscalLimits = {
   // once it is accepted: its limit is far above the response's, and a provider that goes over it is a fault to read in the logs
   PROVIDER_DATA_MAX_CHARS: 256_000,
   VOID_REASON_MAX_LENGTH: 500,
+  // The name and the number of the identity document of the person who makes or asks for an invalidation
+  VOID_PARTY_NAME_MAX_LENGTH: 100,
+  VOID_PARTY_ID_MAX_LENGTH: 20,
   FAILED_JOB_KEEP_SECONDS: 7 * 24 * 60 * 60,
   // The correlative is an INTEGER of the database
   MAX_SEQUENCE: 2_000_000_000,
@@ -154,6 +157,23 @@ export enum FiscalConsultState {
   REJECTED = 'rejected',
   // The provider has no such document: it was never received
   UNKNOWN = 'unknown'
+}
+
+// The parts a series of correlatives can be made of, as the series view names them (what a provider's manifest declares it counts by)
+export const FiscalSeriesScopeKeys = {
+  PROVIDER: 'providerId',
+  ENVIRONMENT: 'environment',
+  DOCUMENT_TYPE: 'documentType',
+  ESTABLISHMENT: 'establishmentCode',
+  POINT_OF_SALE: 'pointOfSaleCode'
+} as const
+
+// Why a person invalidates an accepted document, in the platform's own words (a provider maps it to the code of its authority): the
+// document had wrong information, the operation was cancelled (rescinded), or another reason the person writes down (Step 4B.7c-4)
+export enum FiscalVoidKind {
+  CORRECTION = 'correction',
+  RESCISSION = 'rescission',
+  OTHER = 'other'
 }
 
 // What a provider says about the invalidation of an accepted document (the answer to a void consultation, Step 4B.7b-2)

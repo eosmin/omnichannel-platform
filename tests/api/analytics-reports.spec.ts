@@ -415,6 +415,7 @@ describe('Analytics reports and export', () => {
           createdBy: ctx.adminA.id,
           timezone: 'UTC',
           sendAtHour: 8,
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
           ...data
         }
       })
@@ -424,7 +425,10 @@ describe('Analytics reports and export', () => {
       const due = await make({})
       await make({ sendAtHour: 9 }) // not yet its hour
       await make({ enabled: false })
-      await make({ frequency: ReportFrequency.WEEKLY }) // 2026-11-10 is a Tuesday
+      await make({
+        frequency: ReportFrequency.WEEKLY,
+        lastSentAt: new Date('2026-11-09T09:00:00.000Z')
+      }) // 2026-11-10 is a Tuesday: Monday was made
       await make({ timezone: 'America/El_Salvador' }) // 08:00 UTC is 02:00 there
       const queue = new (queueOf(app, QueueNames.EXPORTS).constructor as new () => CapturedQueue)()
       const queued = await scheduler(queue).dispatch(new Date('2026-11-10T08:00:00.000Z'))
@@ -454,7 +458,11 @@ describe('Analytics reports and export', () => {
         timezone: 'America/El_Salvador',
         sendAtHour: 2
       })
-      const monthly = await make({ frequency: ReportFrequency.MONTHLY, timezone: 'UTC' })
+      const monthly = await make({
+        frequency: ReportFrequency.MONTHLY,
+        timezone: 'UTC',
+        lastSentAt: new Date('2026-11-01T08:00:00.000Z')
+      })
       const queue = new (queueOf(app, QueueNames.EXPORTS).constructor as new () => CapturedQueue)()
       // Monday 2026-11-09 08:00 UTC is 02:00 in El Salvador
       await scheduler(queue).dispatch(new Date('2026-11-09T08:00:00.000Z'))
@@ -466,6 +474,102 @@ describe('Analytics reports and export', () => {
       expect(queue2.jobs.map(job => (job.data as { reportId: string }).reportId)).toContain(
         monthly.id
       )
+    })
+  })
+
+  describe('the dispatch of a day that is not whole yet, or that was missed', () => {
+    function scheduler(queue: CapturedQueue): ReportDispatchScheduler {
+      return new ReportDispatchScheduler(
+        {} as never,
+        queue as never,
+        app.get(PrismaService, { strict: false }),
+        { setContext: jest.fn(), info: jest.fn(), error: jest.fn() } as unknown as PinoLogger
+      )
+    }
+    const freshQueue = () =>
+      new (queueOf(app, QueueNames.EXPORTS).constructor as new () => CapturedQueue)()
+
+    async function make(data: Record<string, unknown>) {
+      return owner.scheduledReport.create({
+        data: {
+          storeId: ctx.storeA.id,
+          name: 'r',
+          metrics: [AnalyticsMetrics.ORDERS_CREATED],
+          frequency: ReportFrequency.DAILY,
+          format: 'csv',
+          recipients: ['a@b.co'],
+          createdBy: ctx.adminA.id,
+          timezone: 'UTC',
+          sendAtHour: 8,
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          ...data
+        }
+      })
+    }
+    const daysOf = (queue: CapturedQueue) =>
+      queue.jobs.map(job => (job.data as { reportId: string; day: string }).day)
+
+    it('does not send a day that is still running in UTC: Auckland at hour 0 waits for the rollup of the day it reports', async () => {
+      const report = await make({ timezone: 'Pacific/Auckland', sendAtHour: 0 })
+      // 2026-11-15T11:00Z is 2026-11-16 00:00 in Auckland, but the UTC day of the 15th ends 13 hours later
+      const early = freshQueue()
+      expect(await scheduler(early).dispatch(new Date('2026-11-15T11:00:00.000Z'))).toBe(0)
+      const justClosed = freshQueue()
+      expect(await scheduler(justClosed).dispatch(new Date('2026-11-16T00:05:00.000Z'))).toBe(0)
+      const ready = freshQueue()
+      expect(await scheduler(ready).dispatch(new Date('2026-11-16T01:00:00.000Z'))).toBe(1)
+      expect(ready.jobs[0]?.data).toEqual({ reportId: report.id, day: '2026-11-16' })
+    })
+
+    it('does not send at 00:05 UTC, before the rollup of 00:15, and sends from the hour after', async () => {
+      await make({ sendAtHour: 0 })
+      const early = freshQueue()
+      expect(await scheduler(early).dispatch(new Date('2026-11-16T00:05:00.000Z'))).toBe(0)
+      const ready = freshQueue()
+      expect(await scheduler(ready).dispatch(new Date('2026-11-16T01:00:00.000Z'))).toBe(1)
+    })
+
+    it('makes up a weekly report when the worker was down all Monday, and only once', async () => {
+      const report = await make({ frequency: ReportFrequency.WEEKLY })
+      // Tuesday 2026-11-10: Monday the 9th was lost
+      const tuesday = freshQueue()
+      expect(await scheduler(tuesday).dispatch(new Date('2026-11-10T08:00:00.000Z'))).toBe(1)
+      // the week it covers is the one of Monday the 9th, not the one of Tuesday
+      expect(tuesday.jobs[0]?.data).toEqual({ reportId: report.id, day: '2026-11-09' })
+      await owner.scheduledReport.update({
+        where: { id: report.id },
+        data: { lastSentAt: new Date('2026-11-10T08:05:00.000Z') }
+      })
+      const wednesday = freshQueue()
+      expect(await scheduler(wednesday).dispatch(new Date('2026-11-11T09:00:00.000Z'))).toBe(0)
+      // and the next Monday is its own report
+      const nextMonday = freshQueue()
+      await scheduler(nextMonday).dispatch(new Date('2026-11-16T08:00:00.000Z'))
+      expect(daysOf(nextMonday)).toEqual(['2026-11-16'])
+    })
+
+    it('makes up a monthly report on the second of the month', async () => {
+      const report = await make({ frequency: ReportFrequency.MONTHLY })
+      const queue = freshQueue()
+      expect(await scheduler(queue).dispatch(new Date('2026-12-02T08:00:00.000Z'))).toBe(1)
+      expect(queue.jobs[0]?.data).toEqual({ reportId: report.id, day: '2026-12-01' })
+    })
+
+    it('does not make up a period that ended before the report existed', async () => {
+      // made on Wednesday the 11th: last Monday is not owed
+      await make({
+        frequency: ReportFrequency.WEEKLY,
+        createdAt: new Date('2026-11-11T10:00:00.000Z')
+      })
+      const queue = freshQueue()
+      expect(await scheduler(queue).dispatch(new Date('2026-11-12T08:00:00.000Z'))).toBe(0)
+      // one made on the Monday itself, after its hour, is still sent that day (as before)
+      await make({
+        frequency: ReportFrequency.WEEKLY,
+        createdAt: new Date('2026-11-09T09:00:00.000Z')
+      })
+      const monday = freshQueue()
+      expect(await scheduler(monday).dispatch(new Date('2026-11-09T10:00:00.000Z'))).toBe(1)
     })
   })
 

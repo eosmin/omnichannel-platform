@@ -120,7 +120,7 @@ describe('The tax of an order and the VAT report (Step 4B.3b)', () => {
     })
     await owner.order.update({
       where: { id: order.id },
-      data: { taxCents: null, pricesIncludeTax: null, shippingTaxRateBps: null }
+      data: { taxCents: null, pricesIncludeTax: null, shippingTaxRateBps: null, taxRounding: null }
     })
     return order
   }
@@ -342,6 +342,50 @@ describe('The tax of an order and the VAT report (Step 4B.3b)', () => {
         expect(fresh).toMatchObject({ taxCents: 150, pricesIncludeTax: false, totalCents: 1150 })
       })
 
+      it('keeps its rounding when the same items are sent again after the books changed theirs', async () => {
+        await setStorePrices(false)
+        // 50 cents at 13 % is 6.5 cents: half up places 7, half even places 6
+        const order = await place(50, 1)
+        const productId = (await dbOrder(order.id)).items[0]?.productId ?? ''
+        expect(order).toMatchObject({ taxCents: 7, totalCents: 57 })
+        expect(await dbOrder(order.id)).toMatchObject({ taxRounding: TaxRounding.HALF_UP })
+        await owner.financeSettings.update({
+          where: { organizationId: ctx.orgA.id },
+          data: { taxRounding: TaxRounding.HALF_EVEN }
+        })
+
+        const resent = await asAdmin()
+          .patch(ApiRoutes.orders.byId(order.id))
+          .send({ items: [{ productId, quantity: 1 }] })
+        const after = await read(order.id)
+
+        expect(resent.status).toBe(OK)
+        expect(after).toMatchObject({ taxCents: 7, totalCents: 57 })
+        expect(after.items[0]).toMatchObject({ taxCents: 7 })
+        expect(await dbOrder(order.id)).toMatchObject({ taxRounding: TaxRounding.HALF_UP })
+        // An order made now takes the new rounding
+        expect(await place(50, 1)).toMatchObject({ taxCents: 6, totalCents: 56 })
+      })
+
+      it('prices an order made before its rounding was kept with the rounding of the books of that day', async () => {
+        await setStorePrices(false)
+        const order = await place(50, 1)
+        const productId = (await dbOrder(order.id)).items[0]?.productId ?? ''
+        await owner.order.update({ where: { id: order.id }, data: { taxRounding: null } })
+        await owner.financeSettings.update({
+          where: { organizationId: ctx.orgA.id },
+          data: { taxRounding: TaxRounding.HALF_EVEN }
+        })
+
+        const resent = await asAdmin()
+          .patch(ApiRoutes.orders.byId(order.id))
+          .send({ items: [{ productId, quantity: 1 }] })
+
+        expect(resent.status).toBe(OK)
+        expect(await read(order.id)).toMatchObject({ taxCents: 6, totalCents: 56 })
+        expect(await dbOrder(order.id)).toMatchObject({ taxRounding: TaxRounding.HALF_EVEN })
+      })
+
       it('keeps the rate of its lines, and its price mode, when an edit moves the price', async () => {
         const order = await place(1130, 3)
         await owner.taxRate.updateMany({
@@ -525,11 +569,21 @@ describe('The tax of an order and the VAT report (Step 4B.3b)', () => {
       it('refuses a half-written tax snapshot on an order', async () => {
         const order = await place(1130, 1)
         await expect(
-          owner.order.update({ where: { id: order.id }, data: { taxCents: null } })
+          owner.order.update({
+            where: { id: order.id },
+            data: { taxCents: null, taxRounding: null }
+          })
         ).rejects.toThrow(/orders_tax_snapshot_check/)
         await expect(
           owner.order.update({ where: { id: order.id }, data: { taxCents: -1 } })
         ).rejects.toThrow(/orders_tax_cents_check/)
+        // A rounding with no snapshot to belong to, and one that is no rounding
+        await expect(
+          owner.order.update({ where: { id: order.id }, data: { taxCents: null } })
+        ).rejects.toThrow(/orders_tax_rounding_check/)
+        await expect(
+          owner.order.update({ where: { id: order.id }, data: { taxRounding: 'banker' } })
+        ).rejects.toThrow(/orders_tax_rounding_check/)
       })
     })
 

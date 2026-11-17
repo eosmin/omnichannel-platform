@@ -13,6 +13,7 @@ import type {
   FiscalDocumentProvider,
   FiscalIssuerInput,
   FiscalReceiver,
+  FiscalVoidDetails,
   ProviderContext,
   SubmitResult
 } from '@platform/fiscal/sdk'
@@ -35,6 +36,8 @@ export interface FiscalContractFixtures {
   creditNote?: { receiver: ContractReceiver; credited: FiscalCreditedDocument; marker: string }
   // A provider that cannot invalidate yet says so, and the suite skips the voiding it cannot do
   voidImplemented?: boolean
+  // What a provider whose authority asks for more than a reason is given when the suite invalidates (the kind, the people)
+  voidDetails?: FiscalVoidDetails
   // Strings that must never appear in anything a provider returns (a credential value, a key)
   secrets: readonly string[]
   // Receivers: `plain` is accepted; the others are optional
@@ -342,8 +345,16 @@ export function testFiscalProviderContract(
         providerData: acceptedOf(accepted).providerData ?? null,
         payload: built.payload
       }
-      expect((await provider.void(stored, '', contextOf('contract-void-op'))).voided).toBe(false)
-      const voided = await provider.void(stored, 'wrong customer', contextOf('contract-void-op'))
+      expect(
+        (await provider.void(stored, '', contextOf('contract-void-op'), fixtures.voidDetails))
+          .voided
+      ).toBe(false)
+      const voided = await provider.void(
+        stored,
+        'wrong customer',
+        contextOf('contract-void-op'),
+        fixtures.voidDetails
+      )
       expect(voided.voided).toBe(true)
       noSecrets(voided)
     })
@@ -365,7 +376,12 @@ export function testFiscalProviderContract(
       expect(Object.values(FiscalVoidConsultState)).toContain(before.state)
       expect(before.state).not.toBe(FiscalVoidConsultState.VOIDED)
       noSecrets(before)
-      await provider.void(stored, 'wrong customer', contextOf('contract-void-consult-op'))
+      await provider.void(
+        stored,
+        'wrong customer',
+        contextOf('contract-void-consult-op'),
+        fixtures.voidDetails
+      )
       const after = await provider.consultVoid(stored, contextOf('contract-void-consult-op', 2))
       expect(Object.values(FiscalVoidConsultState)).toContain(after.state)
       noSecrets(after)

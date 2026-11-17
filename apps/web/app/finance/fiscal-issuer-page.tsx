@@ -5,6 +5,7 @@ import { type ReactElement, useState } from 'react'
 
 import { FiscalGate } from '../../components/fiscal/fiscal-gate'
 import { IssuerForm } from '../../components/fiscal/issuer-form'
+import { SeriesPanel } from '../../components/fiscal/series-panel'
 import { useStore } from '../../components/providers/store-context'
 import { LoadFailed, PageLoading } from '../../components/settings/states'
 import { useFiscalIssuer, useFiscalProviders } from '../../lib/fiscal/use-fiscal'
@@ -49,6 +50,7 @@ function Issuer({ canManage }: { canManage: boolean }): ReactElement {
           canManage={canManage}
         />
       )}
+      {issuer.data === null ? null : <SeriesPanel providers={providers.data} />}
     </section>
   )
 }

@@ -8,7 +8,8 @@ import {
   type FiscalEnvironment,
   type FiscalIssueOn,
   FiscalLimits,
-  FiscalResourceTypes
+  FiscalResourceTypes,
+  FiscalSeriesScopeKeys
 } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import type { FiscalIssuerInput } from '@platform/fiscal/sdk'
@@ -66,6 +67,15 @@ export interface FiscalIssuerView {
   updatedAt: string
 }
 
+// A series of correlatives as a person reads it: what it counts (the provider, the environment and whatever its manifest declares: the type
+// of document, the establishment, the point of sale) and the number the next document of it takes. The key it is stored under is a hash
+// and never shown.
+export interface FiscalSeriesView {
+  scope: Record<string, string>
+  nextNumber: number
+  updatedAt: string
+}
+
 // The issuer of the organization (TDD_18 §8.2): the legal entity the documents are made in the name of, and the provider that makes
 // them. The credentials are encrypted like the carrier's and are never returned or logged: the audit entry names the fields only.
 @Injectable()
@@ -76,6 +86,34 @@ export class FiscalIssuerService {
     private readonly cipher: CredentialCipher,
     private readonly providers: FiscalProviderRegistry
   ) {}
+
+  // The series of the organization, in the order a person reads them (provider, environment, document type, establishment, point of sale);
+  // the hashed key breaks a tie so the list does not move between reads. Filtered by the organization of the request.
+  async listSeries(organizationId: string): Promise<FiscalSeriesView[]> {
+    const rows = await this.prisma.client.fiscalSequence.findMany({
+      where: { organizationId },
+      orderBy: { scopeKey: 'asc' }
+    })
+    const readable = (row: { scope: unknown }): string =>
+      Object.values(FiscalSeriesScopeKeys)
+        .map(key => {
+          const value = record(row.scope)[key]
+          return typeof value === 'string' ? value : ''
+        })
+        .join('\u0000')
+    // A stable sort: rows with the same readable scope keep the order of their keys
+    return [...rows]
+      .sort((a, b) => readable(a).localeCompare(readable(b)))
+      .map(row => ({
+        scope: Object.fromEntries(
+          Object.entries(record(row.scope)).filter(
+            (entry): entry is [string, string] => typeof entry[1] === 'string'
+          )
+        ),
+        nextNumber: row.nextValue,
+        updatedAt: row.updatedAt.toISOString()
+      }))
+  }
 
   listProviders(): ReturnType<FiscalProviderRegistry['list']> {
     return this.providers.list()

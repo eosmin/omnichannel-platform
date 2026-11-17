@@ -5,6 +5,7 @@ import type {
   FiscalOperationCondition,
   FiscalSubmitOutcome,
   FiscalVoidConsultState,
+  FiscalVoidKind,
   PaymentMethod,
   TaxTreatment
 } from '@platform/core/domain'
@@ -73,6 +74,51 @@ export interface FiscalProviderManifest {
   // The scope of the correlative (see `FiscalSequenceDeclaration`). A provider that declares `perDocumentType` must implement
   // `resolveDocumentType`: core asks for the type before it takes the number, and the registry refuses a provider that does not.
   readonly sequence?: FiscalSequenceDeclaration
+  // What the provider's authority asks a person for when an accepted document is invalidated. Absent: the reason alone is enough.
+  readonly voidInputs?: FiscalVoidInputsDeclaration
+  // The lists of values the provider's authority defines (a kind of establishment, an economic activity, a kind of identity document), by
+  // the provider's own name for each list. The settings screen draws a select from one, so a person picks a code instead of typing it and
+  // the screen knows no catalog of any country (Step 4B.7c-5).
+  readonly catalogs?: Readonly<Record<string, readonly FiscalCatalogOption[]>>
+  // Which catalog an issuer field is chosen from; a field with no entry is typed
+  readonly issuerFieldCatalogs?: Readonly<Partial<Record<FiscalIssuerField, string>>>
+}
+
+// One value of a catalog: the code the provider reads and the words a person reads
+export interface FiscalCatalogOption {
+  readonly code: string
+  readonly label: string
+}
+
+// What an invalidation asks of the person (Step 4B.7c-4): the screen draws the fields from this, and core passes what was typed on
+export interface FiscalVoidInputsDeclaration {
+  // The reasons the authority tells apart (the person picks one)
+  readonly kinds: readonly FiscalVoidKind[]
+  // The authority wants to know who makes the invalidation and who asks for it
+  readonly requiresParties: boolean
+  // The reasons that name the document that takes the place of the invalidated one (the authority wants it first)
+  readonly kindsWithReplacement?: readonly FiscalVoidKind[]
+  // The catalog the kind of identity document of the two people is chosen from; absent: typed
+  readonly identityCatalog?: string
+  // The longest reason the authority takes; the screen counts with it (core's own limit is wider)
+  readonly reasonMaxLength?: number
+}
+
+// A person who takes part in an invalidation, in the words of the provider's own catalog of identity documents
+export interface FiscalVoidParty {
+  readonly name: string
+  readonly idType: string
+  readonly idNumber: string
+}
+
+// What a person gives besides the reason. Every part is optional for core; the provider refuses (with a code, nothing sent) what its
+// authority requires and is not here.
+export interface FiscalVoidDetails {
+  readonly kind?: FiscalVoidKind
+  readonly responsible?: FiscalVoidParty
+  readonly requester?: FiscalVoidParty
+  // The accepted document that takes the place of the one invalidated
+  readonly replacement?: StoredFiscalDocument
 }
 
 // What core hands a provider about the issuer. Credentials are decrypted for the provider's call only and never leave it.
@@ -301,7 +347,12 @@ export interface FiscalDocumentProvider {
   // The state of a document the provider may or may not have received (a submission that timed out): asked before a second submission
   consult(built: BuiltDocument, ctx: ProviderContext): Promise<ConsultResult>
   // The invalidation event of an accepted document
-  void(doc: StoredFiscalDocument, reason: string, ctx: ProviderContext): Promise<VoidResult>
+  void(
+    doc: StoredFiscalDocument,
+    reason: string,
+    ctx: ProviderContext,
+    details?: FiscalVoidDetails
+  ): Promise<VoidResult>
   // Whether the authority has an accepted document invalidated already: asked before a void is sent (the invalidation may have been made
   // elsewhere, or by an earlier request whose answer was lost) and after a void that got no answer. Optional: a provider that cannot tell
   // leaves it out and core goes by the answer of `void` alone.

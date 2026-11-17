@@ -8,7 +8,9 @@ import {
   type FiscalEvidenceKind,
   FiscalIssueOn,
   type FiscalReceiverPatchBody,
-  type PutFiscalIssuerBody
+  FiscalVoidKind,
+  type PutFiscalIssuerBody,
+  type VoidFiscalDocumentBody
 } from '@platform/core/domain'
 
 import type { ApiClient } from './api-client'
@@ -124,6 +126,21 @@ const providerSchema = z.object({
         perEstablishment: z.boolean().optional(),
         perPointOfSale: z.boolean().optional()
       })
+      .optional(),
+    // The lists of values the provider's authority defines, by the provider's own name, and which one an issuer field is chosen from
+    catalogs: z
+      .record(z.string(), z.array(z.object({ code: z.string(), label: z.string() })))
+      .optional(),
+    issuerFieldCatalogs: z.record(z.string(), z.string()).optional(),
+    // What an invalidation asks of the person besides the reason; none declared is the reason alone
+    voidInputs: z
+      .object({
+        kinds: z.array(z.enum(FiscalVoidKind)),
+        requiresParties: z.boolean(),
+        kindsWithReplacement: z.array(z.enum(FiscalVoidKind)).optional(),
+        identityCatalog: z.string().optional(),
+        reasonMaxLength: z.number().int().positive().optional()
+      })
       .optional()
   }),
   // What the provider does while the authority is down, in its own words
@@ -152,6 +169,15 @@ const issuerSchema = z.object({
 })
 export type FiscalIssuerView = z.output<typeof issuerSchema>
 
+// A series of correlatives: what it counts and the number the next document of it takes
+const seriesSchema = z.object({
+  scope: z.record(z.string(), z.string()),
+  nextNumber: z.number().int(),
+  updatedAt: z.string()
+})
+export type FiscalSeriesView = z.output<typeof seriesSchema>
+const seriesEnvelopeSchema = z.object({ data: z.array(seriesSchema) })
+
 const issuerEnvelopeSchema = z.object({ data: issuerSchema.nullable() })
 const savedIssuerEnvelopeSchema = z.object({ data: issuerSchema })
 const providersEnvelopeSchema = z.object({ data: z.array(providerSchema) })
@@ -164,6 +190,19 @@ export interface FiscalDocumentFilters {
   // The period of the creation of the document, ISO instants, both ends included
   from?: string
   to?: string
+}
+
+export async function fetchFiscalSeries(
+  client: ApiClient,
+  storeId: string,
+  signal?: AbortSignal
+): Promise<FiscalSeriesView[]> {
+  const answer = await client.request(ApiRoutes.fiscal.series, {
+    schema: seriesEnvelopeSchema,
+    storeId,
+    ...(signal === undefined ? {} : { signal })
+  })
+  return answer.data
 }
 
 export async function fetchFiscalProviders(
@@ -276,11 +315,11 @@ export async function voidFiscalDocument(
   client: ApiClient,
   storeId: string,
   id: string,
-  reason: string
+  input: VoidFiscalDocumentBody
 ): Promise<FiscalDocumentView> {
   const answer = await client.request(ApiRoutes.fiscal.documents.void(encodeURIComponent(id)), {
     method: 'POST',
-    body: { reason },
+    body: input,
     schema: documentEnvelopeSchema,
     storeId
   })

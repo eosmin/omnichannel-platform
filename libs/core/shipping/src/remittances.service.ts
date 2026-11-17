@@ -231,6 +231,13 @@ export class RemittancesService {
         select: { id: true, codStatus: true }
       })
       const statusOf = new Map(current.map(row => [row.id, row.codStatus as CodStatus]))
+      // What earlier confirmed remittances paid for each guide: the guide keeps the running total, and the full amount it was expected
+      // to bring (this line was held against what was left)
+      const paidBefore = await this.remittedBefore(
+        tx,
+        storeId,
+        settling.map(line => line.shipmentId ?? '')
+      )
       const settles = settling.map(line => {
         const differs = line.outcome === String(RemittanceLineOutcome.AMOUNT_DIFFERS)
         const next = differs ? CodStatus.DISCREPANCY : CodStatus.REMITTED
@@ -243,12 +250,17 @@ export class RemittancesService {
             'a shipment changed while the remittance was being confirmed'
           )
         }
+        const paid = paidBefore.get(line.shipmentId ?? '') ?? 0
         return {
           id: line.shipmentId,
           from,
           next,
-          reported: line.reportedCents,
-          expected: line.expectedCents
+          reported: paid + line.reportedCents,
+          // Paid already over what was expected: the line has nothing owed, and the amount the guide was expected to bring stays
+          expected:
+            line.expectedCents === null || (paid > 0 && line.expectedCents === 0)
+              ? null
+              : line.expectedCents + paid
         }
       })
       // One statement for every shipment, each held to the status it was read in: a count short of the lines means one changed
@@ -342,7 +354,8 @@ export class RemittancesService {
   }
 
   // A confirmed remittance can be voided: its shipments go back to waiting for a remittance and it stays as the evidence of what
-  // was undone. A shipment that a later remittance settled again is not touched (it names the later one).
+  // was undone. A guide that a later confirmed remittance also paid keeps its running total, so that remittance is voided first: the
+  // void is refused while any of its guides names a later one. A guide an earlier remittance paid in part goes back to the state it gave.
   async void(
     storeId: string,
     remittanceId: string,
@@ -381,18 +394,114 @@ export class RemittancesService {
           'a remittance with a written-off difference cannot be voided'
         )
       }
-      const restored = await tx.shipment.updateMany({
+      // The settling lines of this remittance and of the others for the same guides, in the order they were confirmed
+      const guideIds = (
+        await tx.codRemittanceLine.findMany({
+          where: {
+            storeId,
+            remittanceId,
+            excluded: false,
+            shipmentId: { not: null },
+            outcome: { in: [...SettlingOutcomes] }
+          },
+          select: { shipmentId: true }
+        })
+      ).flatMap(line => (line.shipmentId === null ? [] : [line.shipmentId]))
+      const others = await tx.codRemittanceLine.findMany({
+        where: {
+          storeId,
+          shipmentId: { in: guideIds },
+          excluded: false,
+          outcome: { in: [...SettlingOutcomes] },
+          remittanceId: { not: remittanceId },
+          remittance: { storeId, status: RemittanceStatus.CONFIRMED }
+        },
+        orderBy: [{ remittance: { confirmedAt: 'asc' } }, { remittanceId: 'asc' }],
+        select: {
+          shipmentId: true,
+          remittanceId: true,
+          reportedCents: true,
+          expectedCents: true,
+          outcome: true
+        }
+      })
+      const held = await tx.shipment.findMany({
         where: {
           storeId,
           codRemittanceId: remittanceId,
           codStatus: { in: [CodStatus.REMITTED, CodStatus.DISCREPANCY] }
         },
+        select: { id: true }
+      })
+      // The guide names the last remittance that settled it: a guide with other remittances that does not name this one was settled
+      // after it, and taking this one out would leave the running total of the later ones wrong. Decided by that pointer and not by
+      // timestamps, so two confirmations in the same millisecond cannot be mistaken for one another.
+      const heldIds = new Set(held.map(guide => guide.id))
+      if (others.some(other => other.shipmentId !== null && !heldIds.has(other.shipmentId))) {
+        throw refusal(
+          ErrorCodes.REMITTANCE_INVALID_STATUS_TRANSITION,
+          'a later remittance paid the same guides: void that one first'
+        )
+      }
+      // Per guide: what the earlier remittances paid, the last of them, and what that one held the guide against
+      const earlier = new Map<
+        string,
+        {
+          total: number
+          last: { remittanceId: string; reported: number; expected: number | null; outcome: string }
+        }
+      >()
+      for (const other of others) {
+        if (other.shipmentId === null) continue
+        earlier.set(other.shipmentId, {
+          total: (earlier.get(other.shipmentId)?.total ?? 0) + other.reportedCents,
+          last: {
+            remittanceId: other.remittanceId,
+            reported: other.reportedCents,
+            expected: other.expectedCents,
+            outcome: other.outcome
+          }
+        })
+      }
+      // Most guides had no earlier remittance: one statement for all of them (a file can carry thousands of guides)
+      const fresh = held.filter(guide => !earlier.has(guide.id)).map(guide => guide.id)
+      const reset = await tx.shipment.updateMany({
+        where: { id: { in: fresh }, storeId, codRemittanceId: remittanceId },
         data: {
           codStatus: CodStatus.PENDING_REMITTANCE,
           codRemittedCents: null,
           codRemittanceId: null
         }
       })
+      // A guide that an earlier remittance had paid in part goes back to the state that one gave it: its status from that line's
+      // outcome, and its expected amount from what that line was held against plus what the ones before it paid
+      const back = held.flatMap(guide => {
+        const before = earlier.get(guide.id)
+        if (before === undefined) return []
+        const paidBeforeLast = before.total - before.last.reported
+        return [
+          {
+            id: guide.id,
+            next:
+              before.last.outcome === String(RemittanceLineOutcome.AMOUNT_DIFFERS)
+                ? CodStatus.DISCREPANCY
+                : CodStatus.REMITTED,
+            remitted: before.total,
+            remittance: before.last.remittanceId,
+            expected: before.last.expected === null ? null : before.last.expected + paidBeforeLast
+          }
+        ]
+      })
+      let restored = reset.count
+      if (back.length > 0) {
+        restored = await tx.$executeRaw`
+          UPDATE shipments s
+          SET cod_status = v.next, cod_remitted_cents = v.remitted, cod_remittance_id = v.remittance,
+              cod_expected_cents = COALESCE(v.expected, s.cod_expected_cents), updated_at = now()
+          FROM jsonb_to_recordset(${JSON.stringify(back)}::jsonb) AS v(id text, next text, remitted int, remittance text, expected int)
+          WHERE s.id = v.id AND s.store_id = ${storeId} AND s.cod_remittance_id = ${remittanceId}`
+        restored += reset.count
+      }
       const voided = await tx.codRemittance.updateMany({
         where: { id: remittanceId, storeId, status: RemittanceStatus.CONFIRMED },
         data: {
@@ -414,7 +523,7 @@ export class RemittancesService {
         connectionId: row.connectionId,
         actor
       })
-      return { remittanceId, connectionId: row.connectionId, restored: restored.count }
+      return { remittanceId, connectionId: row.connectionId, restored }
     })
   }
 
@@ -544,6 +653,32 @@ export class RemittancesService {
     })
   }
 
+  // What the confirmed remittances (not voided ones) already paid for each guide: the sum of what their settling lines reported. The
+  // books add the same lines, so the guide's own figures (what is owed, what was remitted, its status) agree with them.
+  private async remittedBefore(
+    tx: PrismaTransaction,
+    storeId: string,
+    shipmentIds: readonly string[]
+  ): Promise<Map<string, number>> {
+    if (shipmentIds.length === 0) return new Map()
+    const rows = await tx.codRemittanceLine.groupBy({
+      by: ['shipmentId'],
+      where: {
+        storeId,
+        shipmentId: { in: [...shipmentIds] },
+        excluded: false,
+        outcome: { in: [...SettlingOutcomes] },
+        remittance: { storeId, status: RemittanceStatus.CONFIRMED }
+      },
+      _sum: { reportedCents: true }
+    })
+    return new Map(
+      rows.flatMap(row =>
+        row.shipmentId === null ? [] : [[row.shipmentId, row._sum.reportedCents ?? 0] as const]
+      )
+    )
+  }
+
   // Matches every line of the draft against the shipments of its connection by guide number (ignoring case and the whitespace
   // around it) and writes the outcome, the expected amount and the shipment of each line that changed. Of two lines for the
   // same guide the first counts and the second is a duplicate.
@@ -582,6 +717,11 @@ export class RemittancesService {
       const key = guideKey(row.guide_number)
       byKey.set(key, [...(byKey.get(key) ?? []), row])
     }
+    const before = await this.remittedBefore(
+      tx,
+      storeId,
+      shipments.map(row => row.id)
+    )
     const seen = new Set<string>()
     const changes: {
       id: string
@@ -614,6 +754,7 @@ export class RemittancesService {
           reportedCents: line.reportedCents,
           reportedFeeCents: line.reportedFeeCents,
           duplicate: seen.has(found?.id ?? key),
+          remittedBeforeCents: found === undefined ? 0 : (before.get(found.id) ?? 0),
           shipment
         },
         deductsFee

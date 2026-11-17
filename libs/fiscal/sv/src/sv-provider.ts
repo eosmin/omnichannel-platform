@@ -1,3 +1,4 @@
+import type { FiscalVoidKind } from '@platform/core/domain'
 import type {
   BuiltDocument,
   ConsultResult,
@@ -10,24 +11,27 @@ import type {
   FiscalReceiver,
   FiscalReceiverProblem,
   FiscalTypeInput,
+  FiscalVoidDetails,
   IssuerCheck,
   ProviderContext,
   StoredFiscalDocument,
   SubmitResult,
+  VoidConsultResult,
   VoidResult
 } from '@platform/fiscal/sdk'
 
+import { ACTIVITIES } from './catalogs/activities'
+import { IDENTITY_DOCUMENTS } from './catalogs/identity-documents'
 import { SvAuthenticator } from './sv-auth'
 import { buildDocument, resolveDocumentType } from './sv-build'
 import {
   SV_COUNTRY_CODE,
   SV_PROVIDER_ID,
-  SvBuildError,
-  SvBuildErrors,
   SvCredentialKeys,
   SvDocumentTypes,
   SvEnabledEnvironments,
   type SvEndpoints,
+  SvInvalidation,
   SvIssuerProblems,
   SvTimeouts,
   SvUserAgent
@@ -35,7 +39,13 @@ import {
 import type { SvFetch } from './sv-http'
 import { issuerProblems, receiverProblems } from './sv-parties'
 import type { SvSigner } from './sv-signer'
-import { consultDocument, submitDocument, type SvTransmissionDeps } from './sv-transmission'
+import {
+  consultDocument,
+  consultVoided,
+  submitDocument,
+  voidDocument,
+  type SvTransmissionDeps
+} from './sv-transmission'
 
 // What a taxpayer needs of a customer to make a tax credit document or a credit note
 const BUSINESS_RECEIVER_FIELDS = [
@@ -47,8 +57,8 @@ const BUSINESS_RECEIVER_FIELDS = [
 ] as const
 
 // The provider of the electronic tax documents of El Salvador: Step 4B.7c-2 builds the documents and Step 4B.7c-3 sends and consults them.
-// Invalidating them is Step 4B.7c-4, so `void` refuses with a clear error until then. The provider is offered where the deployment sets the
-// address of its signing service (`FISCAL_SIGNER_URL`), which must not be set in production before 4B.7c-4.
+// Step 4B.7c-4 invalidates them. The provider is offered where the deployment sets the address of its signing service
+// (`FISCAL_SIGNER_URL`), which stays refused in production until the owner authorizes it (Step 4B.7c-8).
 export interface SvProviderOptions {
   // Signs a document (the official signing service, or one of our own)
   readonly signer: SvSigner
@@ -82,6 +92,7 @@ export class SvProvider implements FiscalDocumentProvider {
       }),
       signer: options.signer,
       fetch: request,
+      ...(options.now === undefined ? {} : { now: options.now }),
       userAgent,
       ...(options.receptionTimeoutMs === undefined
         ? {}
@@ -119,7 +130,22 @@ export class SvProvider implements FiscalDocumentProvider {
     credentialKeys: Object.values(SvCredentialKeys),
     environments: [...SvEnabledEnvironments],
     // The control number runs by document type, establishment and point of sale (Funcional §XI)
-    sequence: { perDocumentType: true, perEstablishment: true, perPointOfSale: true }
+    sequence: { perDocumentType: true, perEstablishment: true, perPointOfSale: true },
+    // The lists of the authority's catalogs a person chooses from: the economic activities of the issuer (CAT-019) and the identity
+    // documents of the people of an invalidation (CAT-022)
+    catalogs: {
+      activities: ACTIVITIES.map(row => ({ code: row.code, label: row.name })),
+      identityDocuments: IDENTITY_DOCUMENTS.map(row => ({ code: row.code, label: row.name }))
+    },
+    issuerFieldCatalogs: { activityCode: 'activities' },
+    // The authority asks who makes an invalidation and who asks for it, and tells three reasons apart (CAT-024)
+    voidInputs: {
+      kinds: Object.keys(SvInvalidation.KINDS) as FiscalVoidKind[],
+      requiresParties: true,
+      identityCatalog: 'identityDocuments',
+      kindsWithReplacement: [...SvInvalidation.KINDS_WITH_REPLACEMENT],
+      reasonMaxLength: SvInvalidation.REASON_MAX
+    }
   }
 
   readonly contingency: ContingencyPolicy = {
@@ -162,8 +188,17 @@ export class SvProvider implements FiscalDocumentProvider {
     return consultDocument(this.deps, built, ctx)
   }
 
-  void(_doc: StoredFiscalDocument, _reason: string, _ctx: ProviderContext): Promise<VoidResult> {
-    return Promise.reject(new SvBuildError(SvBuildErrors.NOT_IMPLEMENTED))
+  void(
+    doc: StoredFiscalDocument,
+    reason: string,
+    ctx: ProviderContext,
+    details?: FiscalVoidDetails
+  ): Promise<VoidResult> {
+    return voidDocument(this.deps, doc, reason, ctx, details)
+  }
+
+  consultVoid(doc: StoredFiscalDocument, ctx: ProviderContext): Promise<VoidConsultResult> {
+    return consultVoided(this.deps, doc, ctx)
   }
 }
 

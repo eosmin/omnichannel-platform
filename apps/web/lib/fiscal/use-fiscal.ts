@@ -18,6 +18,7 @@ import {
   fetchFiscalEvidenceUrls,
   fetchFiscalIssuer,
   fetchFiscalProviders,
+  fetchFiscalSeries,
   type FiscalDocumentDetailView,
   type FiscalDocumentFilters,
   type FiscalDocumentPageView,
@@ -25,6 +26,7 @@ import {
   type FiscalIssuerView,
   type MediaUrlsView,
   type FiscalProviderView,
+  type FiscalSeriesView,
   patchFiscalReceiver,
   putFiscalIssuer,
   QueryKeys,
@@ -35,7 +37,8 @@ import {
 import type {
   FiscalEvidenceKind,
   FiscalReceiverPatchBody,
-  PutFiscalIssuerBody
+  PutFiscalIssuerBody,
+  VoidFiscalDocumentBody
 } from '@platform/core/domain'
 
 import { apiClient } from '../api'
@@ -53,6 +56,19 @@ export function useFiscalProviders(
     enabled,
     // The providers of a deployment do not change while a person works
     staleTime: Infinity
+  })
+}
+
+// The series of correlatives of the organization: what each counts and the number the next document of it takes. Any write of a document
+// moves them, so the fiscal root makes them stale like the rest.
+export function useFiscalSeries(
+  storeId: string,
+  enabled: boolean
+): UseQueryResult<FiscalSeriesView[]> {
+  return useQuery({
+    queryKey: QueryKeys.fiscal.series(storeId),
+    queryFn: ({ signal }) => fetchFiscalSeries(apiClient, storeId, signal),
+    enabled
   })
 }
 
@@ -139,8 +155,8 @@ export const useRetryFiscalDocument = (storeId: string): Write<string, void> =>
 
 export const useVoidFiscalDocument = (
   storeId: string
-): Write<{ id: string; reason: string }, FiscalDocumentView> =>
-  useFiscalWrite(input => voidFiscalDocument(apiClient, storeId, input.id, input.reason), true)
+): Write<{ id: string; body: VoidFiscalDocumentBody }, FiscalDocumentView> =>
+  useFiscalWrite(input => voidFiscalDocument(apiClient, storeId, input.id, input.body), true)
 
 export const useReplaceFiscalDocument = (storeId: string): Write<string, FiscalDocumentView> =>
   useFiscalWrite(id => replaceFiscalDocument(apiClient, storeId, id), true)
