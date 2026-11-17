@@ -6,6 +6,7 @@ import { PinoLogger } from 'nestjs-pino'
 import {
   analyticsExportFiltersSchema,
   madeOnDay,
+  ReportDisableReasons,
   reportPeriod,
   type ReportFrequencyType,
   type ReportMetric,
@@ -74,14 +75,26 @@ export class ScheduledReportRunner {
     // The report is made for a person: it is theirs while they still hold the right to take the figures out. When they lose it
     // (removed, suspended, a role without it) the report stops, and its row says so (it shows as off in the list).
     if (!(await this.stillAllowed(report.storeId, report.createdBy))) {
-      await this.prisma.client.scheduledReport.updateMany({
-        where: { id: report.id, storeId: report.storeId },
+      const { count } = await this.prisma.client.scheduledReport.updateMany({
+        where: { id: report.id, storeId: report.storeId, enabled: true },
         data: { enabled: false }
       })
       this.logger.warn(
         { reportId: report.id },
         'a scheduled report was turned off: its person lost the right'
       )
+      // The figures of a store stop going out by themselves: whoever reads the audit trail is told that, and why. Only the run that
+      // made the change says so (an overlapping run, or a report gone meanwhile, changed nothing)
+      if (count === 1) {
+        this.audit.log({
+          action: AuditAction.REPORT_DISABLED,
+          actor: { system: true },
+          storeId: report.storeId,
+          resourceType: 'scheduled_report',
+          resourceId: report.id,
+          metadata: { reason: ReportDisableReasons.OWNER_LOST_RIGHT, createdBy: report.createdBy }
+        })
+      }
       return ReportRunOutcomes.DISABLED
     }
 

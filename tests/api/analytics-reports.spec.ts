@@ -5,7 +5,12 @@ import { UnrecoverableError } from 'bullmq'
 import { strFromU8, unzipSync } from 'fflate'
 import type { PinoLogger } from 'nestjs-pino'
 
-import { AnalyticsMetrics, ReportFrequency, ReportLimits } from '@platform/core/analytics'
+import {
+  AnalyticsMetrics,
+  ReportDisableReasons,
+  ReportFrequency,
+  ReportLimits
+} from '@platform/core/analytics'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
@@ -672,6 +677,28 @@ describe('Analytics reports and export', () => {
         (await owner.scheduledReport.findUniqueOrThrow({ where: { id: report.id } })).enabled
       ).toBe(false)
       expect(await owner.export.count({ where: { requestedBy: member.id } })).toBe(0)
+      // The runner turned it off by itself, so the trail says so and why (N-A7-06): the system did it, the person is in the metadata
+      const [entry] = await waitForAuditEntries(owner, {
+        storeId: ctx.storeA.id,
+        action: AuditAction.REPORT_DISABLED,
+        resourceId: report.id
+      })
+      expect(entry?.userId).toBeNull()
+      expect(entry?.metadata).toMatchObject({
+        reason: ReportDisableReasons.OWNER_LOST_RIGHT,
+        createdBy: member.id
+      })
+      // Off now: a later run skips it and says nothing more
+      expect(await runner.run(report.id, DAY, false, now)).toBe('skipped')
+      expect(
+        await owner.auditLog.count({
+          where: {
+            storeId: ctx.storeA.id,
+            action: AuditAction.REPORT_DISABLED,
+            resourceId: report.id
+          }
+        })
+      ).toBe(1)
     })
 
     it('turns the report off when the person was suspended in the store', async () => {
@@ -689,6 +716,12 @@ describe('Analytics reports and export', () => {
         })
       }
       expect(emails.jobs).toHaveLength(0)
+      const [entry] = await waitForAuditEntries(owner, {
+        storeId: ctx.storeA.id,
+        action: AuditAction.REPORT_DISABLED,
+        resourceId: report.id
+      })
+      expect(entry?.metadata).toMatchObject({ reason: ReportDisableReasons.OWNER_LOST_RIGHT })
     })
 
     it('refuses to run a report whose stored metrics do not fit any more', async () => {

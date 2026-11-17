@@ -45,6 +45,8 @@ export const AuditAction = {
   REPORT_UPDATED: 'report.updated',
   REPORT_DELETED: 'report.deleted',
   REPORT_SENT: 'report.sent',
+  // The runner turned a report off by itself: the person it was made for lost the right to take the figures out (reason in the metadata)
+  REPORT_DISABLED: 'report.disabled',
   MEDIA_INFECTED: 'media.infected',
   MEDIA_UNSCANNABLE: 'media.unscannable',
   AUDIT_LOG_VIEWED: 'audit_log.viewed',
