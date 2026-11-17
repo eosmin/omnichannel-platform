@@ -368,6 +368,10 @@ export async function voidDocument(
       if (held.state === FiscalVoidConsultState.VOIDED) {
         return { voided: true, ...(held.response === undefined ? {} : { response: held.response }) }
       }
+      // It holds the document as processed: the event is not in effect, and the person is told the authority's code
+      if (held.state === FiscalVoidConsultState.NOT_VOIDED) {
+        return { voided: false, reason: answer.code, response: answer.body }
+      }
       throw new SvTransportError(SvTransportFailures.NETWORK)
     }
     return { voided: false, reason: answer.code, response: answer.body }

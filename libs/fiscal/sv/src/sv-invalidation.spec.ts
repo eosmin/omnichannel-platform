@@ -238,6 +238,23 @@ describe('the invalidation event', () => {
     )
   })
 
+  it('refuses a document whose receiver the schema of the event would not take', () => {
+    const doc = acceptedDocument()
+    for (const over of [
+      { nombre: 'n'.repeat(251) },
+      { correo: 'c'.repeat(101) },
+      { telefono: '1'.repeat(31) }
+    ]) {
+      const long = {
+        ...doc,
+        payload: { ...doc.payload, receptor: { ...(doc.payload['receptor'] as object), ...over } }
+      }
+      expect(refusal(buildInvalidation(input({ doc: long })))).toBe(
+        SvVoidRefusals.DOCUMENT_INCOMPLETE
+      )
+    }
+  })
+
   it('never cuts the number of the receiver and accepts only an identity document of the catalog', () => {
     const doc = acceptedDocument()
     const long = {

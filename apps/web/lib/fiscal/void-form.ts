@@ -1,3 +1,4 @@
+import type { FiscalProviderView } from '@platform/api-client'
 import {
   FiscalFieldLimits,
   FiscalLimits,
@@ -39,12 +40,8 @@ export interface VoidDraft {
   readonly replacementDocumentId: string
 }
 
-export interface VoidInputsView {
-  readonly kinds: readonly FiscalVoidKind[]
-  readonly requiresParties: boolean
-  readonly kindsWithReplacement?: readonly FiscalVoidKind[] | undefined
-  readonly reasonMaxLength?: number | undefined
-}
+// What the provider asks, as the api sends it (one definition: the schema of the api-client)
+export type VoidInputsView = NonNullable<FiscalProviderView['manifest']['voidInputs']>
 
 export type VoidFormProblem =
   | { readonly field: 'reason'; readonly problem: VoidReasonProblem }

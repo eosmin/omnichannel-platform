@@ -1136,13 +1136,13 @@ describe('The fiscal documents (Step 4B.7)', () => {
       // the other one is a copy of this one made so.
       for (const change of [
         { environment: FiscalEnvironment.PRODUCTION },
-        { providerId: 'another' }
+        { providerId: 'another' },
+        { kind: 'credit_note', parentDocumentId: documentId, orderId: mine.orderId }
       ]) {
         const order = await createOrder(owner, { storeId: ctx.storeA.id })
         const made = await owner.fiscalDocument.create({
           data: {
             ...mine,
-            ...change,
             id: randomUUID(),
             orderId: order.id,
             sequenceNumber: 1_000_000_000 + Math.floor(Math.random() * 1_000_000_000),
@@ -1152,7 +1152,8 @@ describe('The fiscal documents (Step 4B.7)', () => {
             providerData: mine.providerData ?? DatabaseNull,
             response: mine.response ?? DatabaseNull,
             voidResponse: DatabaseNull,
-            linesSnapshot: mine.linesSnapshot as object
+            linesSnapshot: mine.linesSnapshot as object,
+            ...change
           }
         })
         const answer = await voidWith(documentId, {
@@ -1174,6 +1175,40 @@ describe('The fiscal documents (Step 4B.7)', () => {
         })
         expect(answer.status).toBe(NOT_FOUND)
       }
+      expect(await statusOf(documentId)).toBe(FiscalDocumentStatus.ACCEPTED)
+    })
+
+    it('says the evidence cannot be read when the replacement has no sealed copy', async () => {
+      const { documentId } = await sale()
+      await documents.submit(ctx.orgA.id, documentId)
+      const mine = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+      const order = await createOrder(owner, { storeId: ctx.storeA.id })
+      const bare = await owner.fiscalDocument.create({
+        data: {
+          ...mine,
+          id: randomUUID(),
+          orderId: order.id,
+          sequenceNumber: 1_000_000_000 + Math.floor(Math.random() * 1_000_000_000),
+          correlative: null,
+          correlativeScopeKey: null,
+          builtPayloadEncrypted: null,
+          issuerSnapshot: mine.issuerSnapshot as object,
+          providerData: mine.providerData ?? DatabaseNull,
+          response: mine.response ?? DatabaseNull,
+          voidResponse: DatabaseNull,
+          linesSnapshot: mine.linesSnapshot as object
+        }
+      })
+      const answer = await voidWith(documentId, {
+        kind: FiscalVoidKind.CORRECTION,
+        responsible,
+        requester,
+        replacementDocumentId: bare.id
+      })
+      expect(answer.status).toBe(CONFLICT)
+      expect((answer.body as { error: { code: string } }).error.code).toBe(
+        ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE
+      )
       expect(await statusOf(documentId)).toBe(FiscalDocumentStatus.ACCEPTED)
     })
 

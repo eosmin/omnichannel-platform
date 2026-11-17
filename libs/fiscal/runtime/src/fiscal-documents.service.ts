@@ -174,6 +174,10 @@ const SELECT = {
 
 // The lifecycle of the fiscal document of a sale (TDD_18 §8.3). Core owns it and the link to the ledger; the provider owns what is
 // legal. The sale amounts are the order's own (the tax snapshot of Step 4B.3b), copied into the document once and never recomputed.
+// The people of a request as the key counts them: without the blanks around the words, as a provider reads them
+const partyKey = (party: FiscalVoidParty | undefined): string[] | null =>
+  party === undefined ? null : [party.name.trim(), party.idType.trim(), party.idNumber.trim()]
+
 // What a person gives to invalidate a document besides the reason (the screen draws the fields from the manifest of the provider)
 export interface FiscalVoidInput {
   readonly kind?: FiscalVoidKind
@@ -1751,8 +1755,8 @@ export class FiscalDocumentsService {
           JSON.stringify([
             reason,
             input.kind ?? null,
-            input.responsible ?? null,
-            input.requester ?? null,
+            partyKey(input.responsible),
+            partyKey(input.requester),
             input.replacementDocumentId ?? null
           ])
         )

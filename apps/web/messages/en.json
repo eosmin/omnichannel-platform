@@ -7560,6 +7560,23 @@
           "idType": "Type of identity document",
           "idTypeHint": "The code of the authority's catalog.",
           "idNumber": "Number of the identity document"
+        },
+        "providersError": "The data of the provider could not be read.",
+        "retry": "Try again",
+        "refusals": {
+          "void_deadline_passed": "The time to invalidate this document is over.",
+          "void_not_allowed": "This type of document cannot be invalidated.",
+          "void_kind_required": "Choose the reason for the invalidation.",
+          "void_parties_required": "Say who makes the invalidation and who asks for it.",
+          "void_party_invalid": "The name or the identity document of one of the two people is not valid.",
+          "void_replacement_required": "This reason needs the document that takes its place.",
+          "void_replacement_invalid": "The document that takes its place is not valid.",
+          "void_reason_invalid": "The reason is empty or too long for the authority.",
+          "document_incomplete": "The document does not have what the authority needs to invalidate it.",
+          "issuer_incomplete": "The data of the issuer is incomplete.",
+          "credentials_incomplete": "The credentials of the issuer are incomplete.",
+          "credentials_rejected": "The authority did not accept the credentials of the issuer.",
+          "signing_credentials_rejected": "The signing certificate did not accept its password."
         }
       },
       "address": {

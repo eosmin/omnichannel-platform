@@ -3,7 +3,7 @@
 import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useEffect, useMemo, useState } from 'react'
 
-import type { FiscalDocumentView } from '@platform/api-client'
+import { ApiError, type FiscalDocumentView } from '@platform/api-client'
 import { FiscalDocumentStatus, FiscalLimits } from '@platform/core/domain'
 
 import { useMoney } from '../../lib/finance/use-money'
@@ -104,10 +104,22 @@ function VoidForm({
   const candidates = useMemo(
     () =>
       (accepted.data?.pages.flatMap(page => page.data) ?? []).filter(
-        candidate => candidate.id !== document.id
+        // The ones the api takes as the replacement of this document: the same kind, provider and environment
+        candidate =>
+          candidate.id !== document.id &&
+          candidate.kind === document.kind &&
+          candidate.providerId === document.providerId &&
+          candidate.environment === document.environment
       ),
     [accepted.data, document.id]
   )
+  // The words for what the provider refused before it sent anything (a deadline, a person, a replacement): it names a code in `reason`
+  const refusalText = (error: unknown): string => {
+    const reason = error instanceof ApiError ? error.metadata['reason'] : null
+    return typeof reason === 'string' && t.has(`refusals.${reason}` as 'refusals.void_not_allowed')
+      ? t(`refusals.${reason}` as 'refusals.void_not_allowed')
+      : errorText(error)
+  }
   const change = (patch: Partial<VoidDraft>): void => {
     setDraft(current => ({ ...current, ...patch }))
     setProblems([])
@@ -144,7 +156,7 @@ function VoidForm({
       toast.success(t('done'))
       onDone()
     } catch (error) {
-      setRefusal(errorText(error))
+      setRefusal(refusalText(error))
     } finally {
       setPending(false)
       guard.leave()
@@ -193,6 +205,14 @@ function VoidForm({
         problem={problemOf('reason')}
         onChange={value => change({ reason: value })}
       />
+      {providers.isError ? (
+        <p role="alert" className="text-destructive text-sm">
+          {t('providersError')}{' '}
+          <button type="button" className="underline" onClick={() => void providers.refetch()}>
+            {t('retry')}
+          </button>
+        </p>
+      ) : null}
       {inputs === undefined ? null : (
         <>
           <SelectField

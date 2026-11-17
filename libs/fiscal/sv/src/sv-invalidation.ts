@@ -192,7 +192,12 @@ export function buildInvalidation(input: SvInvalidationInput): SvInvalidationBui
   if (!SvInvalidationAllowed[original.type]) return refuse(SvVoidRefusals.NOT_ALLOWED)
   // The event repeats the receiver of the document: a number the schema would not take is never cut, the document is refused as unreadable
   const receiver = receiverOf(doc.payload)
-  if ((receiver.numDocumento?.length ?? 0) > SvInvalidation.PARTY_ID_MAX) {
+  if (
+    (receiver.numDocumento?.length ?? 0) > SvInvalidation.PARTY_ID_MAX ||
+    (receiver.nombre?.length ?? 0) > SvLimits.NAME_MAX ||
+    (receiver.correo?.length ?? 0) > SvLimits.EMAIL_MAX ||
+    (receiver.telefono?.length ?? 0) > SvLimits.PHONE_MAX
+  ) {
     return refuse(SvVoidRefusals.DOCUMENT_INCOMPLETE)
   }
 
