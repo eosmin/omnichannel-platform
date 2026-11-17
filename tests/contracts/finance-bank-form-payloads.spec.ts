@@ -52,6 +52,11 @@ const DRAFTS: [string, BankProfileDraft][] = [
       dateWindowDays: '0'
     })
   ],
+  [
+    'a lead of report lines to skip',
+    draft({ skipRows: '14', hasHeader: false, date: '1', amount: '3' })
+  ],
+  ['the most rows to skip', draft({ skipRows: '50' })],
   ['a tab and the widest window', draft({ delimiter: '\t', dateWindowDays: '31' })],
   ['a name with an accent', draft({ name: 'Cuenta de ahorros ñ' })]
 ]
@@ -100,6 +105,27 @@ describe('the profile the screen makes is the one the api takes', () => {
     expect(
       createBankProfileSchema.safeParse({ ...valid.value, decimalSeparator: ',' }).success
     ).toBe(false)
+  })
+
+  it('takes the rows to skip from 0 to 50 on both sides, and none when it is not sent', () => {
+    const valid = createBankProfileInputOf(draft(), randomUUID())
+    if (!valid.ok) throw new Error('the form refused a valid profile')
+    const without: Record<string, unknown> = { ...valid.value }
+    delete without['skipRows']
+    expect(createBankProfileSchema.parse(without).skipRows).toBe(0)
+    for (const rows of [0, 14, 50]) {
+      expect(createBankProfileSchema.safeParse({ ...valid.value, skipRows: rows }).success).toBe(
+        true
+      )
+    }
+    for (const rows of [-1, 51, 1.5, '14']) {
+      expect(createBankProfileSchema.safeParse({ ...valid.value, skipRows: rows }).success).toBe(
+        false
+      )
+    }
+    expect(bankReadingOf(draft({ skipRows: '51' })).ok).toBe(false)
+    expect(updateBankProfileSchema.safeParse({ skipRows: 6 }).success).toBe(true)
+    expect(updateBankProfileSchema.safeParse({ skipRows: 99 }).success).toBe(false)
   })
 })
 

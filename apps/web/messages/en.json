@@ -6532,6 +6532,8 @@
             "dateFormat": "Format of the date",
             "window": "Days apart",
             "windowHint": "How many days a line of the statement may be apart from the books and still be suggested.",
+            "skipRows": "Rows to skip at the start",
+            "skipRowsHint": "How many rows at the start of the file are left unread (report titles, balances, the product name). Blank rows do not count and a title with a line break inside is one row. Count the row with the column names too when the first row of the file does not name the columns.",
             "hasHeader": "The first row names the columns",
             "hasHeaderHint": "Leave it off when the file starts with data: the columns are then given by position.",
             "mode": "How the money is written",
@@ -6558,6 +6560,7 @@
             "debit": "Say which column has the debits.",
             "credit": "Say which column has the credits.",
             "dateWindowDays": "Write a whole number of days from 0 to 31.",
+            "skipRows": "Write a whole number of rows from 0 to 50.",
             "rule": "These settings break a rule: each value needs a column of its own, the money is one column or a debit and a credit column, and the separators must differ."
           },
           "sample": {
@@ -6615,7 +6618,8 @@
         "unclosed_quote": "a quote is never closed",
         "row_too_wide": "the row has too many columns",
         "stray_quote": "a quote is in the wrong place",
-        "header_looks_like_data": "the first row is a movement, not a header: the profile says the file has a header"
+        "header_looks_like_data": "the first row is a movement, not a header: the profile says the file has a header",
+        "skip_past_end": "the profile skips every row of the file, or more than it has"
       },
       "statement": {
         "title": "Statement from {from} to {to}",

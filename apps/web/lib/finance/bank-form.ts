@@ -12,7 +12,9 @@ import {
   BankThousandsSeparators,
   RemittanceDateFormats,
   RemittanceDecimalSeparators,
-  RemittanceDelimiters
+  RemittanceDelimiters,
+  type RemittanceDelimiter,
+  splitDelimited
 } from '@platform/core/domain'
 
 // The form of a bank profile (TDD_18 §4.4): how the CSV of one bank is read. The rules a profile keeps are the domain's own function
@@ -32,6 +34,8 @@ export interface BankProfileDraft {
   name: string
   delimiter: string
   hasHeader: boolean
+  // Records to leave out at the start of the file, as typed
+  skipRows: string
   decimalSeparator: string
   thousandsSeparator: string
   dateFormat: string
@@ -52,6 +56,7 @@ export const emptyBankDraft = (): BankProfileDraft => ({
   name: '',
   delimiter: RemittanceDelimiters.COMMA,
   hasHeader: true,
+  skipRows: '0',
   decimalSeparator: RemittanceDecimalSeparators.DOT,
   thousandsSeparator: BankThousandsSeparators.NONE,
   dateFormat: RemittanceDateFormats.ISO,
@@ -75,6 +80,7 @@ export function bankDraftOf(profile: BankProfileView): BankProfileDraft {
     name: profile.name,
     delimiter: profile.delimiter,
     hasHeader: profile.hasHeader,
+    skipRows: String(profile.skipRows),
     decimalSeparator: profile.decimalSeparator,
     thousandsSeparator: profile.thousandsSeparator,
     dateFormat: profile.dateFormat,
@@ -99,6 +105,7 @@ export const BankProfileFields = {
   DEBIT: 'debit',
   CREDIT: 'credit',
   WINDOW: 'dateWindowDays',
+  SKIP_ROWS: 'skipRows',
   // The profile as a whole breaks a rule of the profiles (two values from one column, the delimiter is the decimal separator, ...)
   RULE: 'rule'
 } as const
@@ -161,6 +168,13 @@ function windowOf(draft: BankProfileDraft): number | null {
   return days <= BankStatementLimits.DATE_WINDOW_MAX_DAYS ? days : null
 }
 
+function skipRowsOf(draft: BankProfileDraft): number | null {
+  const value = draft.skipRows.trim()
+  if (!/^\d{1,2}$/.test(value)) return null
+  const rows = Number(value)
+  return rows <= BankStatementLimits.SKIP_ROWS_MAX ? rows : null
+}
+
 // How the file is read, checked: the preview of the mapper and a saved profile both take this
 export function bankReadingOf(
   draft: BankProfileDraft
@@ -169,9 +183,12 @@ export function bankReadingOf(
   if (!columns.ok) return columns
   const dateWindowDays = windowOf(draft)
   if (dateWindowDays === null) return { ok: false, field: BankProfileFields.WINDOW }
+  const skipRows = skipRowsOf(draft)
+  if (skipRows === null) return { ok: false, field: BankProfileFields.SKIP_ROWS }
   const reading = {
     delimiter: draft.delimiter,
     hasHeader: draft.hasHeader,
+    skipRows,
     decimalSeparator: draft.decimalSeparator,
     thousandsSeparator: draft.thousandsSeparator,
     dateFormat: draft.dateFormat,
@@ -237,3 +254,45 @@ export const decimalKey = (value: string): 'dot' | 'comma' =>
   value === RemittanceDecimalSeparators.COMMA ? 'comma' : 'dot'
 
 export const MONEY_MODE_OPTIONS: readonly MoneyMode[] = [MoneyModes.SIGNED, MoneyModes.SPLIT]
+
+// The row that names the columns of a sample, once the lead the profile skips is left out: the records are the parser's (blank rows do not
+// count, a quoted line break is inside one), so the suggestions are the words of that row and not of a report title
+function sampleRecords(text: string, delimiter: string, skipRows: number): string[][] {
+  const split = splitDelimited(text, delimiter as RemittanceDelimiter)
+  return split.rows.filter(cells => cells.some(cell => cell.trim() !== '')).slice(skipRows)
+}
+
+export function bankHeaderSuggestions(text: string, delimiter: string, skipRows: number): string[] {
+  const first = sampleRecords(text, delimiter, skipRows)[0] ?? []
+  const cells = first
+    .map(cell => cell.trim())
+    .filter(cell => cell !== '')
+    .map(cell => cell.replace(/\s+/g, ' '))
+  return Array.from(new Set(cells)).slice(0, 60)
+}
+
+// The delimiter that cuts the first record after the lead into the most cells: a suggestion the person changes
+export function guessBankDelimiter(text: string, skipRows: number): RemittanceDelimiter {
+  let best: RemittanceDelimiter = RemittanceDelimiters.COMMA
+  let bestCount = 0
+  for (const option of [
+    RemittanceDelimiters.TAB,
+    RemittanceDelimiters.SEMICOLON,
+    RemittanceDelimiters.COMMA
+  ] as const) {
+    const count = (sampleRecords(text, option, skipRows)[0] ?? []).length
+    if (count > 1 && count > bestCount) {
+      best = option
+      bestCount = count
+    }
+  }
+  return best
+}
+
+// The rows to skip as the number the form holds (a value that is not one skips none: the form refuses it when it is sent)
+export function skipRowsOfDraft(draft: Pick<BankProfileDraft, 'skipRows'>): number {
+  const value = Number(draft.skipRows.trim())
+  return Number.isInteger(value) && value >= 0 && value <= BankStatementLimits.SKIP_ROWS_MAX
+    ? value
+    : 0
+}
