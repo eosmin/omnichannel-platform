@@ -606,6 +606,7 @@
     "FINANCE_ENTRY_UNBALANCED": "El asiento no cuadra: los débitos y los créditos deben ser iguales y positivos",
     "FINANCE_ACCOUNT_NOT_POSTABLE": "Esta cuenta solo agrupa otras cuentas: elige una que acepte asientos",
     "FINANCE_ACCOUNT_INACTIVE": "Esta cuenta está inactiva",
+    "FINANCE_ACCOUNT_TYPE_MISMATCH": "El tipo de esta cuenta no corresponde: elige una cuenta del tipo que pide este rol o método de pago (por ejemplo, el impuesto por pagar es un pasivo y el dinero recibido es un activo).",
     "FINANCE_ACCOUNT_TYPE_LOCKED": "El tipo de una cuenta con asientos no se puede cambiar",
     "FINANCE_ACCOUNT_HAS_ENTRIES": "Una cuenta con asientos no se puede eliminar ni volver encabezado, solo desactivar",
     "FINANCE_ROLE_NOT_MAPPED": "Falta una cuenta para este rol: asígnala en los ajustes de finanzas",

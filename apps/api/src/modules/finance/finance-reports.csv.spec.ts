@@ -70,6 +70,15 @@ describe('the CSV of the journal', () => {
     expect(text).toContain("'-2+3")
   })
 
+  it('gives a memo that is a formula and one that starts with a quote and a formula two different cells (LED-R2-010)', () => {
+    const cellsOf = (memo: string): string[] =>
+      (journalCsvRows([row({ entryMemo: memo })]).split('\r\n')[0] ?? '').split(',')
+
+    expect(cellsOf('=1+1')).toContain("'=1+1")
+    expect(cellsOf("'=1+1")).toContain("''=1+1")
+    expect(cellsOf("'=1+1")).not.toContain("'=1+1")
+  })
+
   it('does not put a quote before a negative number', () => {
     expect(
       ledgerCsv([

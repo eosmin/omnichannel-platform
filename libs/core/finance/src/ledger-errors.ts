@@ -10,6 +10,7 @@ type Refusal =
   | typeof ErrorCodes.FINANCE_BEFORE_START_DATE
   | typeof ErrorCodes.FINANCE_ACCOUNT_NOT_POSTABLE
   | typeof ErrorCodes.FINANCE_ACCOUNT_INACTIVE
+  | typeof ErrorCodes.FINANCE_ACCOUNT_TYPE_MISMATCH
   | typeof ErrorCodes.FINANCE_ENTRY_ALREADY_REVERSED
   | typeof ErrorCodes.FINANCE_ENTRY_RECONCILED
   | typeof ErrorCodes.FINANCE_SETUP_REQUIRED
@@ -27,6 +28,8 @@ const MESSAGES: Record<Refusal, string> = {
   [ErrorCodes.FINANCE_BEFORE_START_DATE]: 'the date is before the accounting start date',
   [ErrorCodes.FINANCE_ACCOUNT_NOT_POSTABLE]: 'the account takes no entries',
   [ErrorCodes.FINANCE_ACCOUNT_INACTIVE]: 'the account is inactive',
+  [ErrorCodes.FINANCE_ACCOUNT_TYPE_MISMATCH]:
+    'the type of the account is not one the role or payment method takes',
   [ErrorCodes.FINANCE_ENTRY_ALREADY_REVERSED]: 'the entry was reversed already',
   [ErrorCodes.FINANCE_ENTRY_RECONCILED]:
     'the entry is reconciled with a bank statement: take the match back first',

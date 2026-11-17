@@ -1405,6 +1405,27 @@ a supplier payment translates the refusal into its own typed conflict (`TRANSACT
 **Done when:** the accountant's chart can be seeded and edited, a manual entry posts and is reversed, a period can be listed, every rule
 above is a failing test that passes, and no code outside `libs/core/finance` writes the ledger (lint).
 
+**PR fix/ledger-hardening-a (LED-154/163, LED-R2-010, LED-822)**
+- [x] A role or a payment method refuses an account of a type that does not fit (`FINANCE_ACCOUNT_TYPE_MISMATCH`, table
+      `AccountTypesOfRole` / `AccountTypesOfPaymentMethod` in `finance-constants.ts`, read off the template `sv.ts` because TDD_18 does not
+      tabulate it; **[ACCOUNTANT]** to confirm the widened pairs: cost of goods / freight / commission / differences in expenses or cost of
+      sales, rounding in expenses or income). The roles screen lists only the accounts of a type the role takes.
+- [x] The CSV defusing of a formula is reversible (`'` is added to a text that is a formula or starts with quotes and then a formula
+      character; `csvCellText` reads it back), so the auditor can recompute the hash of a memo.
+- [x] The total error of the manual entry dialog is drawn (`ManualEntryFooterFields`).
+- [ ] **Debt, 4B.8b-4 / hardening B (owner of the book, migration):** `platform_app` and `platform_worker` keep `UPDATE (resolved_at)` of
+      `finance_chain_incidents` (LED-516) and `UPDATE (accounting_start_date, country_code, recognize_sale_on)` of `finance_settings`
+      (LED-R2-040), with no trigger. The setup only creates those columns, so the privilege to update the first two can be revoked; the
+      incident needs the check that resolves it to run as a role the compromised app does not hold (the chain verifier is TypeScript, the
+      database cannot re-verify). Own PR with its rollback and database specs.
+- [ ] **Debt (review of PR A):** `CASH_DEFAULT`, `BANK_DEFAULT` and the payment methods take any asset account in the api; the screen already offers only
+      accounts with a `cashKind` (`cashAccountsOf`), but the api does not require it (an asset such as Inventory passes). Require `cashKind` (and
+      cash for `CASH_DEFAULT`, bank for `BANK_DEFAULT`) in `usableAccount`, as `remittanceDestinationProblem` does. And a role or the rounding account
+      that was ALREADY mapped to a type the table forbids (the old code took any account) is not re-checked or repaired: a sweep that lists them
+      goes with 4B.8b-4. Closes in hardening B.
+- [ ] **Debt:** the tax-rate accounts (`finance-tax-rates.service.ts`) and the payable account of a supplier (`suppliers.service.ts`) still take
+      any postable account; they go with the accountant's answer on the VAT accounts (HC-118, FIS N8).
+
 ### Step 4B.3 — VAT and the tax snapshot (api)
 Delivered in two PRs (the step is bigger than one review): **4B.3a** the schema, the constants, the tax math, the rates, the product
 treatment and the store preference; **4B.3b** the snapshot on the orders, the order total, the tax fields of the order routes and the VAT

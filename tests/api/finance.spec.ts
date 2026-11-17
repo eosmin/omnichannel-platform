@@ -656,6 +656,79 @@ describe('The books of an organization', () => {
       expect(logged[0]?.metadata).toMatchObject({ role: AccountRole.CASH_DEFAULT, to: target })
     })
 
+    it('refuses a role or a payment method an account of a type that does not fit (LED-154, LED-163)', async () => {
+      const expense = accounts['6112'] ?? ''
+      const income = accounts['4101'] ?? ''
+      const liability = accounts['2201'] ?? ''
+      const asset = accounts['1401'] ?? ''
+      const before = await owner.accountRoleMapping.findMany({
+        where: { organizationId: ctx.orgA.id },
+        orderBy: { role: 'asc' }
+      })
+      const put = (role: string, accountId: string) =>
+        asAdminA().put(ApiRoutes.finance.accountRoles.byRole(role)).send({ accountId })
+
+      const outputToExpense = await put(AccountRole.VAT_OUTPUT, expense)
+      const inputToLiability = await put(AccountRole.VAT_INPUT, liability)
+      const payableToExpense = await put(AccountRole.PAYABLE_SUPPLIERS, expense)
+      const inventoryToLiability = await put(AccountRole.INVENTORY, liability)
+      const revenueToAsset = await put(AccountRole.SALES_REVENUE, asset)
+      const roundingToLiability = await asAdminA()
+        .patch(ApiRoutes.finance.settings)
+        .send({ roundingAccountId: liability })
+      const cardToIncome = await asAdminA().put(ApiRoutes.finance.paymentAccounts.set).send({
+        paymentMethod: PaymentMethod.CARD,
+        accountId: income
+      })
+      const cashToLiability = await asAdminA().put(ApiRoutes.finance.paymentAccounts.set).send({
+        paymentMethod: PaymentMethod.CASH,
+        storeId: ctx.storeA.id,
+        accountId: liability
+      })
+
+      for (const refused of [
+        outputToExpense,
+        inputToLiability,
+        payableToExpense,
+        inventoryToLiability,
+        revenueToAsset,
+        roundingToLiability,
+        cardToIncome,
+        cashToLiability
+      ]) {
+        expect(refused.status).toBe(CONFLICT)
+        expect(errorOf(refused).code).toBe(ErrorCodes.FINANCE_ACCOUNT_TYPE_MISMATCH)
+      }
+      expect(errorOf(outputToExpense).metadata).toMatchObject({
+        type: 'expense',
+        expectedTypes: ['liability']
+      })
+      // Nothing moved: the maps are what they were
+      expect(
+        await owner.accountRoleMapping.findMany({
+          where: { organizationId: ctx.orgA.id },
+          orderBy: { role: 'asc' }
+        })
+      ).toEqual(before)
+      expect(
+        await owner.paymentMethodAccount.count({
+          where: {
+            organizationId: ctx.orgA.id,
+            storeId: ctx.storeA.id,
+            paymentMethod: PaymentMethod.CASH
+          }
+        })
+      ).toBe(0)
+      // The right type still goes through, for a role that takes either of two (a spare income account, put back at the end whatever happens)
+      try {
+        const rounding = await put(AccountRole.ROUNDING, accounts['4106'] ?? '')
+        expect(rounding.status).toBe(OK)
+      } finally {
+        const restored = await put(AccountRole.ROUNDING, accounts['6111'] ?? '')
+        expect(restored.status).toBe(OK)
+      }
+    })
+
     it('chooses the account of a payment method for a store, falls back to the default, and keeps the default', async () => {
       const set = await asAdminA().put(ApiRoutes.finance.paymentAccounts.set).send({
         paymentMethod: PaymentMethod.CARD,
