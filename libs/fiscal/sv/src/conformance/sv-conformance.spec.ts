@@ -20,7 +20,9 @@ import {
   SvConformanceLimits,
   SvConformanceDemoIssuer,
   svConformanceTargets,
-  svDryRunCredited
+  svDryRunCredited,
+  svMonthJustStarted,
+  svNextOffset
 } from './sv-conformance-plan'
 import { readSvSandboxEnv, SvSandboxConfirmation, SvSandboxEnvNames } from './sv-sandbox-env'
 
@@ -178,6 +180,16 @@ describe('the plan of the minimum tests', () => {
         SvConformanceLimits.MAX_BACK_MINUTES * 60_000
       )
     }
+  })
+
+  it('says the number the next run starts from, and knows the first minutes of a month of El Salvador', () => {
+    // The series of the invoices holds the minimum and the documents made for the invalidations and the contingencies
+    expect(svNextOffset(steps)).toBe(90 + 5 + 3 + 10)
+    // 2026-12-01 00:10 in El Salvador is 06:10 UTC; an hour later is not "just started"
+    expect(svMonthJustStarted(new Date('2026-12-01T06:10:00.000Z'))).toBe(true)
+    expect(svMonthJustStarted(new Date('2026-12-01T07:30:00.000Z'))).toBe(false)
+    // 2026-12-01 03:00 UTC is still the 30th of November there
+    expect(svMonthJustStarted(new Date('2026-12-01T03:00:00.000Z'))).toBe(false)
   })
 
   it('takes smaller counts when they are asked for', () => {
@@ -344,6 +356,13 @@ describe('what is read of the environment of the owner', () => {
     const ready = readSvSandboxEnv(FULL)
     if (!ready.ready) throw new Error('it should be ready')
     expect(ready.setup.secrets).not.toContain('Mi Empresa S.A.')
+    // The number of the responsible person as typed and as digits (the documents carry it without dashes)
+    const dashed = readSvSandboxEnv({
+      ...FULL,
+      [SvSandboxEnvNames.RESPONSIBLE_ID_NUMBER]: '01234567-8'
+    })
+    if (!dashed.ready) throw new Error('it should be ready')
+    expect(dashed.setup.secrets).toEqual(expect.arrayContaining(['01234567-8', '012345678']))
     expect(ready.setup.secrets).not.toContain('yo@example.test')
   })
 

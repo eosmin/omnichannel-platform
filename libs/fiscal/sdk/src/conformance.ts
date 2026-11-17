@@ -201,6 +201,8 @@ interface Held {
   } | null
   // Set when it was made in contingency and kept
   deferred: boolean
+  // What its step said about it, to take back the success of a deferred document the authority refused after its event
+  readonly tags: readonly string[]
 }
 
 export async function runConformance(
@@ -228,6 +230,13 @@ export async function runConformance(
     idempotencyKey: `conformance:${options.batch}:${id}`,
     attempt: 1
   })
+  // A deferred document was counted as made when it was kept; if the authority then refuses it, that success is taken back
+  const takeBack = (documentTags: readonly string[]): void => {
+    for (const tag of documentTags) {
+      const entry = tags[tag]
+      if (entry !== undefined && entry.succeeded > 0) entry.succeeded -= 1
+    }
+  }
   const totalsOf = (type: string): ConformanceDocumentTotals => (documents[type] ??= emptyTotals())
   const record = (
     step: ConformanceStep,
@@ -320,7 +329,13 @@ export async function runConformance(
           const part = (minimum[step.bucket] ??= { planned: 0, accepted: 0 })
           part.planned += 1
         }
-        const entry: Held = { input, built: made.built, accepted: null, deferred: false }
+        const entry: Held = {
+          input,
+          built: made.built,
+          accepted: null,
+          deferred: false,
+          tags: step.tags
+        }
         held.set(step.id, entry)
         if (options.dryRun) {
           record(step, type, ConformanceOutcome.DRY_RUN_BUILT, null, true)
@@ -488,6 +503,7 @@ export async function runConformance(
         } catch (error) {
           // One document that breaks does not leave the rest of the lot unsent; it is a failure of its own
           totals.failed += 1
+          takeBack(doc.tags)
           const code = errorCode(error)
           codes[code] = (codes[code] ?? 0) + 1
           results.push({
@@ -520,6 +536,7 @@ export async function runConformance(
               : ConformanceCodes.NO_ANSWER
           if (sent.outcome === FiscalSubmitOutcome.REJECTED) totals.rejected += 1
           else totals.unavailable += 1
+          takeBack(doc.tags)
           codes[code] = (codes[code] ?? 0) + 1
           results.push({
             id,
@@ -534,6 +551,9 @@ export async function runConformance(
         }
       }
     } catch (error) {
+      // What was in the middle of is counted as refused, so the summary does not say less than what happened
+      if (step.kind === 'void') voids.refused += 1
+      if (step.kind === 'contingency') contingencies.refused += 1
       record(step, null, ConformanceOutcome.ERROR, errorCode(error), false)
     }
   }

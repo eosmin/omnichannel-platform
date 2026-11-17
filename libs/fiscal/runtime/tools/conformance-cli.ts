@@ -17,6 +17,8 @@ import {
   readSvSandboxEnv,
   SvConformanceDemoIssuer,
   svConformanceTargets,
+  svMonthJustStarted,
+  svNextOffset,
   svDryRunCredited,
   svProvider,
   SvSandboxConfirmation,
@@ -78,6 +80,9 @@ function parse(args: readonly string[]): Parsed | string {
     } else if (VALUE_OPTIONS.has(token)) {
       const value = args[at + 1]
       if (value === undefined || value.startsWith('--')) return `${token} needs a value`
+      // Given twice it would be the last that counts, silently: a real send assembled from a shell alias and extra arguments could change
+      // the provider or the batch without anyone noticing
+      if (values.has(token)) return `${token} is given twice`
       values.set(token, value)
       at += 1
     } else {
@@ -202,7 +207,10 @@ async function run(
     // Exactly name=number, a name once, and a number that is not a mistake of a thousand times (a real run sends every document)
     const found = /^([A-Za-z]+)=(\d{1,4})$/.exec(part)
     const name = found?.[1]
-    const bound = name === undefined ? undefined : CountLimits[name as keyof SvConformanceCounts]
+    const bound =
+      name === undefined || !Object.hasOwn(CountLimits, name)
+        ? undefined
+        : CountLimits[name as keyof SvConformanceCounts]
     if (
       found === null ||
       name === undefined ||
@@ -230,10 +238,17 @@ async function run(
     provider = simulatorProvider()
   } else {
     const reading = readSvSandboxEnv(env)
+    // The gates of a real send, in the order they are asked; every one of them refuses before anything is built. Production is refused for
+    // anything that would use the environment of the owner, a dry run with it set included.
+    if (env['NODE_ENV'] === 'production' && (!dryRun || reading.ready)) {
+      io.err('this does not run where NODE_ENV is production\n')
+      return ConformanceExit.REFUSED
+    }
     if (!dryRun) {
-      // The gates of a real send, in the order they are asked; every one of them refuses before anything is built
-      if (env['NODE_ENV'] === 'production') {
-        io.err('this does not run where NODE_ENV is production\n')
+      if (svMonthJustStarted(new Date())) {
+        io.err(
+          'this does not run in the first minutes of a month (the documents are dated inside the month of the run)\n'
+        )
         return ConformanceExit.REFUSED
       }
       if (!reading.ready) {
@@ -294,7 +309,7 @@ async function run(
       ? // Against what the authority asks, not against what was asked of this run: a reduced run is never "the minimum"
         conformanceGaps(report, svConformanceTargets())
       : { ok: true, missing: {} as Record<string, number> }
-  io.out(`${summary(report, providerName, dryRun, gaps)}\n`)
+  io.out(`${summary(report, providerName, dryRun, gaps, svNextOffset(steps))}\n`)
   const out = values.get('--out')
   if (out !== undefined) io.write(out, `${JSON.stringify(report, null, 2)}\n`)
   if (flags.has('--json')) io.out(`${JSON.stringify(report, null, 2)}\n`)
@@ -308,7 +323,11 @@ async function run(
   ).length
   const clean = failed === 0 && brokenSkips === 0
   if (dryRun) return clean ? ConformanceExit.OK : ConformanceExit.INCOMPLETE
-  if (providerName === 'sv') return gaps.ok ? ConformanceExit.OK : ConformanceExit.INCOMPLETE
+  // The minimum reached is not enough for a real run if something else failed (a replacement, a deferred document, an invalidation): the
+  // exit code says so for whoever reads it
+  if (providerName === 'sv') {
+    return gaps.ok && clean ? ConformanceExit.OK : ConformanceExit.INCOMPLETE
+  }
   return clean ? ConformanceExit.OK : ConformanceExit.INCOMPLETE
 }
 
@@ -327,7 +346,8 @@ function summary(
   report: ConformanceReport,
   providerName: string,
   dryRun: boolean,
-  gaps: { ok: boolean; missing: Record<string, number> }
+  gaps: { ok: boolean; missing: Record<string, number> },
+  nextOffset: number
 ): string {
   const lines: string[] = []
   lines.push(
@@ -368,6 +388,9 @@ function summary(
           : `  coverage: still missing ${Object.entries(gaps.missing)
               .map(([what, n]) => `${what} ${n}`)
               .join(', ')}`
+  )
+  lines.push(
+    `  next --offset: ${nextOffset} (the first number a following run of this plan may use is the one after it)`
   )
   return lines.join('\n')
 }

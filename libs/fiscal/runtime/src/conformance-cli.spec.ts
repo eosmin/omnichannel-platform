@@ -2,7 +2,11 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { ConformanceLeakError, type ConformanceReport } from '@platform/fiscal/sdk'
+import {
+  ConformanceLeakError,
+  ConformanceOutcome,
+  type ConformanceReport
+} from '@platform/fiscal/sdk'
 import { SvSandboxConfirmation, SvSandboxEnvNames } from '@platform/fiscal/sv'
 
 import { ConformanceExit, runConformanceCli, signerUrlProblem } from '../tools/conformance-cli'
@@ -67,6 +71,9 @@ describe('the conformance tool refuses what it does not know', () => {
     ['a count it does not know', ['--counts', 'toString=1']],
     ['a count that is not a number', ['--counts', 'invoices=many']],
     ['a count with two equals signs', ['--counts', 'invoices=90=5']],
+    ['a value option given twice', ['--provider', 'simulator', '--provider', 'sv']],
+    ['a batch given twice', ['--batch', 'b1', '--batch', 'b2']],
+    ['a name of the prototype of an object as a count', ['--counts', 'constructor=1']],
     ['a name given twice', ['--counts', 'invoices=9,invoices=10']],
     ['a count a thousand times too big', ['--counts', 'invoices=9999']],
     ['more contingencies than the limit', ['--counts', 'contingencies=21']]
@@ -74,6 +81,26 @@ describe('the conformance tool refuses what it does not know', () => {
     const h = harness()
     expect(await runConformanceCli(args, {}, h.io)).toBe(ConformanceExit.REFUSED)
     expect(h.out).toEqual([])
+  })
+
+  it('refuses a dry run too where NODE_ENV is production when the environment of the owner is set', async () => {
+    const h = harness()
+    expect(
+      await runConformanceCli(
+        ['--provider', 'sv', '--dry-run'],
+        { ...FULL, NODE_ENV: 'production' },
+        h.io
+      )
+    ).toBe(ConformanceExit.REFUSED)
+    // With nothing set a dry run is inert and is not refused
+    const inert = harness()
+    expect(
+      await runConformanceCli(
+        ['--provider', 'sv', '--dry-run'],
+        { NODE_ENV: 'production' },
+        inert.io
+      )
+    ).toBe(ConformanceExit.OK)
   })
 
   it('refuses a typo of --dry-run with the whole environment set, and sends nothing', async () => {
@@ -176,6 +203,8 @@ describe('what the tool runs and prints', () => {
     expect(h.out.join('')).toContain(
       'minimum (accepted of planned): invoice 0/90, tax_credit 0/75, credit_note 0/50'
     )
+    // The number to start the next run from: the series of the invoices holds the minimum and the documents made for the other tests
+    expect(h.out.join('')).toMatch(/next --offset: 1\d\d /)
   })
 
   it('runs through the simulator by default, and writes a report with no document, no number and no secret', async () => {
@@ -266,6 +295,25 @@ describe('the exit codes of a run, with a runner that sends nothing', () => {
     const code = await runConformanceCli(live, FULL, h.io, { runner: () => Promise.resolve(short) })
     expect(code).toBe(ConformanceExit.INCOMPLETE)
     expect(h.out.join('')).toContain('still missing invoice 10')
+  })
+
+  it('exits 1 when the minimum is reached but something else failed', async () => {
+    const h = harness()
+    const broken = reportOf({
+      steps: [
+        {
+          id: 'VOID-1',
+          kind: 'void',
+          documentType: null,
+          outcome: ConformanceOutcome.VOID_REFUSED,
+          code: '053'
+        }
+      ]
+    })
+    const code = await runConformanceCli(live, FULL, h.io, {
+      runner: () => Promise.resolve(broken)
+    })
+    expect(code).toBe(ConformanceExit.INCOMPLETE)
   })
 
   it('judges a reduced run against the minimum of the authority, not against what was asked of it', async () => {

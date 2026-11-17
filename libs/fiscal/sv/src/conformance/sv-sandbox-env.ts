@@ -140,7 +140,8 @@ export function readSvSandboxEnv(
         taxId.replace(/\D/g, ''),
         apiPassword,
         keyPassword,
-        responsibleNumber
+        responsibleNumber,
+        responsibleNumber.replace(/\D/g, '')
       ].filter(secret => secret.length > 0)
     }
   }

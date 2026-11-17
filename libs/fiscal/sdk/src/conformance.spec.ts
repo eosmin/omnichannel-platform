@@ -364,6 +364,56 @@ describe('a document of a lot that breaks', () => {
   })
 })
 
+describe('a step whose provider call throws', () => {
+  const event = {
+    eventId: 'e1',
+    reason: '1',
+    motive: null,
+    startedAt: '2026-11-17T08:00:00.000Z',
+    endedAt: '2026-11-17T09:00:00.000Z',
+    responsible: null
+  }
+
+  it('counts an invalidation that broke as refused, and a contingency that broke as refused', async () => {
+    const p = provider({ contingency: true })
+    const broken: FiscalDocumentProvider = {
+      ...p,
+      void: () => Promise.reject(new TypeError('boom')),
+      reportContingency: () => Promise.reject(new TypeError('boom'))
+    }
+    const steps: ConformanceStep[] = [
+      sale(1),
+      {
+        kind: 'void',
+        id: 'V1',
+        tags: ['v'],
+        target: 'S1',
+        reason: 'r',
+        details: {},
+        replacement: null
+      },
+      { kind: 'deferred_sale', id: 'D1', tags: ['d'], input: input(2) },
+      { kind: 'contingency', id: 'C1', tags: ['c'], documents: ['D1'], event }
+    ]
+    const report = await runConformance(steps, options(broken))
+    expect(report.voids).toEqual({ planned: 1, done: 0, refused: 1 })
+    expect(report.contingencies).toMatchObject({ planned: 1, reported: 0, refused: 1 })
+  })
+
+  it('takes back the success of a deferred document the authority refuses after its event', async () => {
+    const p = provider({
+      contingency: true,
+      submit: () => ({ outcome: FiscalSubmitOutcome.REJECTED, reason: '020' })
+    })
+    const steps: ConformanceStep[] = [
+      { kind: 'deferred_sale', id: 'D1', tags: ['deferred'], input: input(1) },
+      { kind: 'contingency', id: 'C1', tags: ['c'], documents: ['D1'], event }
+    ]
+    const report = await runConformance(steps, options(p))
+    expect(report.tags['deferred']).toEqual({ planned: 1, succeeded: 0 })
+  })
+})
+
 describe('what must never be in the report', () => {
   it('fails the run if a secret is anywhere in it, and says nothing of which', async () => {
     // A provider whose own id of the document type is the secret: the one thing a report repeats

@@ -721,3 +721,19 @@ export function svDryRunCredited(
     }
   }
 }
+
+// The highest number of a series the plan used (the documents made for the invalidations and the contingencies share the series of the
+// minimum): the `--offset` of the run that follows it, so that no control number is used twice
+export function svNextOffset(steps: readonly ConformanceStep[]): number {
+  return steps.reduce(
+    (highest, step) => ('input' in step ? Math.max(highest, step.input.correlative) : highest),
+    0
+  )
+}
+
+// Whether the moment is in the first minutes of a month of El Salvador, when a document could only be dated in the month before
+export function svMonthJustStarted(now: Date): boolean {
+  const local = new Date(now.getTime() - SALVADOR_OFFSET_HOURS * 60 * MINUTE_MS)
+  const start = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), 1)
+  return local.getTime() - start < 30 * MINUTE_MS
+}
