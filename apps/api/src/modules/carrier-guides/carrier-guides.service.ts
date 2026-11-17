@@ -2,7 +2,12 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { isUniqueViolation, lockStoreScope, PrismaService } from '@platform/core/database'
+import {
+  isUniqueViolation,
+  lockStoreForWrite,
+  lockStoreScope,
+  PrismaService
+} from '@platform/core/database'
 import {
   type BenefitStateType,
   BenefitPeriodKind,
@@ -151,15 +156,20 @@ export class CarrierGuidesApiService {
     actor: Actor
   ): Promise<GuideMovementView> {
     await this.assertConnection(storeId, connectionId)
-    const row = await this.prisma.client.carrierGuideMovement.create({
-      data: {
-        storeId,
-        connectionId,
-        kind: GuideMovementKind.ADJUSTMENT,
-        guidesDelta: body.guides,
-        note: body.note,
-        createdBy: actor.userId
-      }
+    // Under the lock of the balance, like the guides and the void of a purchase: a void that read the balance waits for this write
+    const row = await this.prisma.transaction(async tx => {
+      await lockStoreForWrite(tx, storeId)
+      await lockStoreScope(tx, storeId, `${ShipmentLockScopes.GUIDE_BALANCE}:${connectionId}`)
+      return tx.carrierGuideMovement.create({
+        data: {
+          storeId,
+          connectionId,
+          kind: GuideMovementKind.ADJUSTMENT,
+          guidesDelta: body.guides,
+          note: body.note,
+          createdBy: actor.userId
+        }
+      })
     })
     this.record(AuditAction.CARRIER_GUIDE_ADJUSTED, storeId, connectionId, actor, {
       movementId: row.id,
@@ -179,6 +189,7 @@ export class CarrierGuidesApiService {
     await this.assertConnection(storeId, connectionId)
     try {
       const row = await this.prisma.transaction(async tx => {
+        await lockStoreForWrite(tx, storeId)
         // One writer of the balance of the connection at a time: the same lock the guides take, so the balance read below is the
         // one the void leaves behind
         await lockStoreScope(tx, storeId, `${ShipmentLockScopes.GUIDE_BALANCE}:${connectionId}`)

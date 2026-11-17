@@ -233,7 +233,8 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
       expect((await balanceOf(id)).balance).toBe(0)
     })
 
-    it('does not touch the purchase of another store: it is a 404', async () => {
+    it('does not touch the purchase of another store: it is a 404 and writes nothing there', async () => {
+      const own = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
       const { id } = await createCarrierConnection(owner, { storeId: ctx.storeB.id })
       const purchase = await owner.carrierGuideMovement.create({
         data: {
@@ -247,7 +248,29 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
           createdBy: ctx.adminA.id
         }
       })
+      // the connection of another store, and the purchase of another store under the connection of this one
       expect((await voidPurchase(id, purchase.id)).status).toBe(404)
+      expect((await voidPurchase(own.id, purchase.id)).status).toBe(404)
+      expect(
+        await owner.carrierGuideMovement.count({
+          where: { voidsMovementId: purchase.id }
+        })
+      ).toBe(0)
+    })
+
+    it('waits for an adjustment that is being written, so the balance it reads is the final one', async () => {
+      const { id } = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
+      const purchase = (await buy(id, 10, 1000)).body as { id: string }
+      const adjust = admin()
+        .post(ApiRoutes.carriers.guideAdjustments(id))
+        .send({ guides: -8, note: 'lost' })
+      const voided = voidPurchase(id, purchase.id)
+      const [adjusted, result] = await Promise.all([adjust, voided])
+      // whichever came first, the balance never ends below zero through the void
+      expect(adjusted.status).toBe(201)
+      const balance = (await balanceOf(id)).balance
+      if (result.status === 200) expect(balance).toBe(-8)
+      else expect(balance).toBe(2)
     })
   })
 
