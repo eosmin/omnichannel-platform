@@ -645,7 +645,7 @@ describe('Exports', () => {
       expect(file).not.toContain('secret of store B')
       // The deleted message is still a row, without its text, and says so
       expect(file).toContain(removed.id)
-      expect(file).toContain(',true\r\n')
+      expect(file).toContain(',true,\r\n')
     })
 
     it('leaves out a reply that was thrown away: not a row, not an id, not a word of it', async () => {
