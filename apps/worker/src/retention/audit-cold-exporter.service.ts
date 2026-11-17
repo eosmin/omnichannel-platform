@@ -64,9 +64,20 @@ export class AuditColdExporter {
       })
       if (oldest === null) return report
       const start = startOfUtcMonth(oldest.timestamp)
-      const exported = await this.withMonthLock(start, () =>
-        this.exportMonth(start, startOfNextUtcMonth(start))
-      )
+      const end = startOfNextUtcMonth(start)
+      const exported = await this.withMonthLock(start, async held => {
+        // The oldest month was read before the lock: a run that had it may have finished since, and an empty month
+        // must not become an empty part in the bucket
+        if (
+          (await this.prisma.client.auditLog.count({
+            where: { timestamp: { gte: start, lt: end } }
+          })) === 0
+        ) {
+          return undefined
+        }
+        return this.exportMonth(start, end, held)
+      })
+      if (exported === undefined) continue
       if (exported === null) {
         // Another run has this month and is the one to finish it: asking for the oldest again would find it again
         report.busy = { year: start.getUTCFullYear(), month: start.getUTCMonth() + 1 }
@@ -86,20 +97,27 @@ export class AuditColdExporter {
 
   // Runs `fn` while holding the lock of the month, or answers null at once when another run holds it. The lock lives
   // as long as the transaction that took it, which does nothing else: the export reads and writes on its own connections
-  private async withMonthLock<T>(start: Date, fn: () => Promise<T>): Promise<T | null> {
+  // `fn` is given `held`, which fails when the transaction that holds the lock is over (its timeout, a dropped
+  // connection): the export calls it before it deletes, so that a lock that was lost never lets a delete through
+  private async withMonthLock<T>(
+    start: Date,
+    fn: (held: () => Promise<void>) => Promise<T>
+  ): Promise<T | null> {
     const key = auditColdExportLockKey(start.getUTCFullYear(), start.getUTCMonth() + 1)
     return this.prisma.transaction(
       async tx => {
         const rows = await tx.$queryRaw<{ locked: boolean }[]>`
           SELECT pg_try_advisory_xact_lock(hashtextextended(${key}, 0)) AS locked`
         if (rows[0]?.locked !== true) return null
-        return fn()
+        return fn(async () => {
+          await tx.$queryRaw`SELECT 1 AS held`
+        })
       },
       { maxWait: AuditColdExport.LOCK_MAX_WAIT_MS, timeout: AuditColdExport.LOCK_TIMEOUT_MS }
     )
   }
 
-  private async exportMonth(start: Date, end: Date) {
+  private async exportMonth(start: Date, end: Date, held: () => Promise<void>) {
     const year = start.getUTCFullYear()
     const month = start.getUTCMonth() + 1
     const where = { timestamp: { gte: start, lt: end } }
@@ -179,6 +197,7 @@ export class AuditColdExporter {
       await this.storage.delete(key).catch(() => undefined)
       throw error
     }
+    await held()
     await this.deleteExportedRows(key)
     this.logger.info({ year, month, rows, key }, 'a month of the audit log went to cold storage')
     return { year, month, rows, key }
@@ -233,15 +252,24 @@ export class AuditColdExporter {
     body.on('error', (error: Error) => gunzip.destroy(error))
     const lines = createInterface({ input: body.pipe(gunzip), crlfDelay: Infinity })
     let ids: string[] = []
-    for await (const line of lines) {
-      const id = (JSON.parse(line) as { id: string }).id
-      ids.push(id)
-      if (ids.length >= AuditColdExport.DELETE_BATCH) {
-        await this.deleteIds(ids)
-        ids = []
+    try {
+      for await (const line of lines) {
+        if (line.length === 0) continue
+        const id = (JSON.parse(line) as { id?: unknown }).id
+        if (typeof id !== 'string') throw new Error('a line of the cold export has no id')
+        ids.push(id)
+        if (ids.length >= AuditColdExport.DELETE_BATCH) {
+          await this.deleteIds(ids)
+          ids = []
+        }
       }
+      if (ids.length > 0) await this.deleteIds(ids)
+    } finally {
+      // An error in the loop must not leave the bucket connection open
+      lines.close()
+      gunzip.destroy()
+      body.destroy()
     }
-    if (ids.length > 0) await this.deleteIds(ids)
   }
 
   private async deleteIds(ids: string[]): Promise<void> {
