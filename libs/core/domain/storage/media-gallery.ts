@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { lowercasedUuidSchema } from '../validation'
+
 import { AllowedContentTypes } from './upload-constants'
 
 // The tabs of the media gallery of a customer (TDD_09 §7). "all" is no filter.
@@ -61,7 +63,7 @@ const searchSchema = z.string().trim().min(1).max(GalleryLimits.SEARCH_MAX_LENGT
 // export also freezes who asked (`mediaZipFiltersSchema`, in messaging), because the file holds what
 // that member could see.
 export const downloadAllBodySchema = z.strictObject({
-  customerId: z.uuid(),
+  customerId: lowercasedUuidSchema,
   type: galleryTypeSchema.optional(),
   q: searchSchema.optional()
 })

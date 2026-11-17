@@ -5,11 +5,14 @@
 -- migration (the ones it wrote and the ones stores made after): they go, and with them the plugin
 -- rows nobody installs any more (the official ones the boot of the api writes again, and the ones
 -- the migration wrote for connections of other plugins).
+--
+-- Safe to run twice (TDD_03 §5.4) for the schema: a run repeated by hand finds nothing left to drop. The deletes of
+-- official plugins nobody installs repeat what the first run did, so they also take what the api boot wrote since.
 BEGIN;
 
-DROP INDEX "channel_connections_installation_id_idx";
-ALTER TABLE "channel_connections" DROP CONSTRAINT "channel_connections_installation_id_fkey";
-ALTER TABLE "channel_connections" DROP COLUMN "installation_id";
+DROP INDEX IF EXISTS "channel_connections_installation_id_idx";
+ALTER TABLE "channel_connections" DROP CONSTRAINT IF EXISTS "channel_connections_installation_id_fkey";
+ALTER TABLE "channel_connections" DROP COLUMN IF EXISTS "installation_id";
 
 DELETE FROM "plugin_installations" WHERE "api_key_hash" IS NULL;
 DELETE FROM "plugins" WHERE ("is_official" OR "author_name" = 'migration') AND NOT EXISTS (

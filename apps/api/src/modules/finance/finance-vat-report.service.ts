@@ -9,6 +9,7 @@ import {
   FinanceReport,
   FinanceReportLimits,
   FinanceResourceTypes,
+  FinanceTransactionKind,
   OrderStatus,
   SaleRecognition,
   VatLineKind,
@@ -36,7 +37,7 @@ interface Bucket {
 // tax snapshot the orders keep, by the day the sale is recognized in the time zone of its store (`recognizeSaleOn`); the input side
 // is the VAT_INPUT account of the journal, by the day of the entry and the rate the line names. It reads; it writes nothing.
 //
-// What it does not do yet: the tax of returns is posted and reported by Step 4B.6 (E8), the orders made before the tax columns carry
+// What it does not do yet: the tax of returns (E8) is posted but not taken off the report (HC-003), the orders made before the tax columns carry
 // no snapshot and are counted apart (`ordersWithoutTaxSnapshot`) and not estimated, and the legal books (sales to consumers, to
 // taxpayers, purchases) wait for the accountant's format (**[ACCOUNTANT]**, Step 4B.8).
 @Injectable()
@@ -121,13 +122,22 @@ export class FinanceVatReportService {
     // all stores at once (the column holds a UTC instant without a zone, so it is read as UTC first). A cancelled order is never a sale, and one never delivered (or never shipped) is not one yet.
     const shipped = recognizedOn === SaleRecognition.SHIPPED
     const recognized = await db.$queryRaw<{ id: string; month: string; status: string }[]>`
+      WITH known AS MATERIALIZED (SELECT lower(name) AS name FROM pg_timezone_names),
+      zones AS (
+        -- A zone the database does not know (a value written around the api, which validates it) is the UTC day, as the books do
+        -- (dayInZone): one store with a bad zone must not leave the whole organization without its report. The list of zones is read once for the call, and as dayInZone reads a zone (a name of the database in any case; an abbreviation is not a zone there)
+        SELECT s.id AS store_id,
+               CASE WHEN lower(s.timezone) IN (SELECT name FROM known)
+                    THEN s.timezone ELSE 'UTC' END AS timezone
+        FROM stores s
+        WHERE s.organization_id = ${organizationId}
+      )
       SELECT x.id, x.status, to_char(((x.at AT TIME ZONE 'UTC') AT TIME ZONE x.timezone)::date, 'YYYY-MM') AS month
       FROM (
-        SELECT o.id, s.timezone, o.status,
+        SELECT o.id, z.timezone, o.status,
                CASE WHEN ${shipped}::boolean THEN o.shipped_at ELSE o.delivered_at END AS at
         FROM orders o
-        JOIN stores s ON s.id = o.store_id
-        WHERE s.organization_id = ${organizationId}
+        JOIN zones z ON z.store_id = o.store_id
       ) x
       WHERE x.status <> ${OrderStatus.CANCELLED}
         AND x.at IS NOT NULL
@@ -195,6 +205,44 @@ export class FinanceVatReportService {
           bucket.documents += 1
         }
         if (recognizedRow.status === (OrderStatus.RETURNED as string)) returnedOrdersIncluded += 1
+      }
+    }
+
+    // The output side of the incomes registered by hand (TDD_18 §2.6, §7): the books credit the output account of the rate for them, and
+    // they have no order. By the day of the entry, as the books do: a void is its own reversing entry, dated like the income it undoes
+    // (the first open day when that month is closed), so it takes the tax out of the month of its entry. The base is what the income
+    // received without the tax. An income with no rate carries no tax and is not a line; a rate of 0 % is a taxed line of rate 0, the
+    // base of zero-rated incomes being read from the transactions (debt (f) of 4B.4a). The rate is the one the tax rate row has today
+    // (a transaction keeps no snapshot of it, debt (q) of 4B.8b).
+    {
+      const rows = await db.$queryRaw<
+        { month: string; rate_bps: number; base: bigint; cents: bigint; documents: bigint }[]
+      >`
+        SELECT to_char(e.entry_date, 'YYYY-MM') AS month, r.rate_bps,
+               SUM(x.sign * (t.amount_cents - t.tax_cents))::bigint AS base,
+               SUM(x.sign * t.tax_cents)::bigint AS cents,
+               (COUNT(*) FILTER (WHERE x.sign = 1 AND t.voided_by_entry_id IS NULL))::bigint AS documents
+        FROM finance_transactions t
+        JOIN LATERAL (
+          SELECT t.entry_id AS entry_id, 1 AS sign
+          UNION ALL
+          SELECT t.voided_by_entry_id, -1 WHERE t.voided_by_entry_id IS NOT NULL
+        ) x ON TRUE
+        JOIN journal_entries e ON e.id = x.entry_id AND e.organization_id = t.organization_id
+        JOIN tax_rates r ON r.id = t.tax_rate_id AND r.organization_id = t.organization_id
+        WHERE t.organization_id = ${organizationId}
+          AND t.kind = ${FinanceTransactionKind.INCOME}
+          -- A reversing entry is never dated before the income it undoes, so an income after the range has no leg in it
+          AND t.occurred_on <= ${query.to}::date
+          AND e.entry_date BETWEEN ${query.from}::date AND ${query.to}::date
+        GROUP BY 1, 2
+        -- An income and its void inside one month cancel out: no row of zeros
+        HAVING SUM(x.sign * t.tax_cents) <> 0 OR SUM(x.sign * (t.amount_cents - t.tax_cents)) <> 0`
+      for (const row of rows) {
+        const bucket = touch(row.month, VatSide.OUTPUT, VatLineKind.TAXED, row.rate_bps)
+        bucket.base = (bucket.base ?? 0) + Number(row.base)
+        bucket.tax += Number(row.cents)
+        bucket.documents += Number(row.documents)
       }
     }
 

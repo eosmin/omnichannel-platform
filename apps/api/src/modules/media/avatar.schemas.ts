@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { lowercasedUuidSchema } from '@platform/core/domain'
+
 const filenameSchema = z.string().min(1).max(255)
 const contentTypeSchema = z.string().min(1).max(127)
 const fileSizeSchema = z.number().int().positive()
@@ -13,7 +15,7 @@ export const requestAvatarUploadSchema = z.strictObject({
 export type RequestAvatarUploadBody = z.infer<typeof requestAvatarUploadSchema>
 
 export const confirmAvatarUploadSchema = z.strictObject({
-  mediaId: z.uuid(),
+  mediaId: lowercasedUuidSchema,
   key: z.string().min(1).max(1024),
   filename: filenameSchema,
   contentType: contentTypeSchema,

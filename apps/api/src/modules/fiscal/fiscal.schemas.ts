@@ -1,18 +1,19 @@
 import { z } from 'zod'
 
 import {
-  type ConfirmFiscalIssuerChangeBody,
   confirmFiscalIssuerChangeSchema,
   FiscalEvidenceKind,
   fiscalIdSchema,
-  type FiscalReceiverPatchBody,
   fiscalReceiverPatchSchema,
   FiscalSweepKind,
   FiscalSweepLimits,
-  type ListFiscalDocumentsQuery,
   listFiscalDocumentsQuerySchema,
-  type PutFiscalIssuerBody,
+  lowercasedUuidSchema,
   putFiscalIssuerSchema,
+  type ConfirmFiscalIssuerChangeBody,
+  type FiscalReceiverPatchBody,
+  type ListFiscalDocumentsQuery,
+  type PutFiscalIssuerBody,
   type VoidFiscalDocumentBody,
   voidFiscalDocumentSchema
 } from '@platform/core/domain'
@@ -34,7 +35,7 @@ export const evidenceKindSchema = z.enum(FiscalEvidenceKind)
 // The dry run of the daily check: one kind of finding, a page at a time (the cursor is the id the last page ended at)
 export const reconciliationQuerySchema = z.object({
   kind: z.enum(FiscalSweepKind),
-  cursor: z.uuid().optional(),
+  cursor: lowercasedUuidSchema.optional(),
   limit: z.coerce
     .number()
     .int()

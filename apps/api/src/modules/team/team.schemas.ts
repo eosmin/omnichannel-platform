@@ -1,11 +1,13 @@
 import { z } from 'zod'
 
+import { lowercasedUuidSchema } from '@platform/core/domain'
+
 import { isPermission } from '../tenancy'
 
 const MAX_NAME_LENGTH = 60
 const MAX_DESCRIPTION_LENGTH = 255
 
-export const idSchema = z.uuid()
+export const idSchema = lowercasedUuidSchema
 
 const permissionList = z
   .array(z.string().refine(isPermission, { message: 'not a permission' }))
@@ -19,10 +21,10 @@ const MAX_EMAIL_LENGTH = 254
 
 export const inviteMemberSchema = z.strictObject({
   email: z.email().max(MAX_EMAIL_LENGTH),
-  roleId: z.uuid()
+  roleId: lowercasedUuidSchema
 })
 
-export const changeMemberRoleSchema = z.strictObject({ roleId: z.uuid() })
+export const changeMemberRoleSchema = z.strictObject({ roleId: lowercasedUuidSchema })
 
 export const createRoleSchema = z.strictObject({
   name: roleName,

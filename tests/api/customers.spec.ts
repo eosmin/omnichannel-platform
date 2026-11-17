@@ -90,6 +90,17 @@ describe('The customers of a store', () => {
     })
   })
 
+  describe('the id in the path', () => {
+    it('reads an id written in capitals as the same customer, as the orders do (OPS-RD-177)', async () => {
+      const customer = await create({ name: 'Capitals' })
+
+      const read = await asAdmin().get(ApiRoutes.customers.byId(customer.id.toUpperCase()))
+
+      expect(read.status).toBe(OK)
+      expect((read.body as CustomerBody).id).toBe(customer.id)
+    })
+  })
+
   describe('a possible duplicate', () => {
     interface Hint {
       id: string

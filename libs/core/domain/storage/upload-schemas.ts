@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { lowercasedUuidSchema } from '../validation'
+
 import { MediaPurpose } from './media-purpose'
 import type { UploadRulePurpose } from './upload-rules'
 
@@ -36,13 +38,13 @@ const fileFields = {
   fileSizeBytes: fileSizeSchema
 }
 const messageFields = { purpose: z.literal(MediaPurpose.MESSAGE) }
-const productFields = { purpose: z.literal(MediaPurpose.PRODUCT), parentId: z.uuid() }
-const orderFields = { purpose: z.literal(MediaPurpose.ORDER), parentId: z.uuid() }
+const productFields = { purpose: z.literal(MediaPurpose.PRODUCT), parentId: lowercasedUuidSchema }
+const orderFields = { purpose: z.literal(MediaPurpose.ORDER), parentId: lowercasedUuidSchema }
 const financeDocumentFields = {
   purpose: z.literal(MediaPurpose.FINANCE_DOCUMENT),
-  parentId: z.uuid()
+  parentId: lowercasedUuidSchema
 }
-const confirmFields = { mediaId: z.uuid(), key: z.string().min(1).max(1024) }
+const confirmFields = { mediaId: lowercasedUuidSchema, key: z.string().min(1).max(1024) }
 
 // Whether the type is allowed and the size fits is NOT checked here: the answers are the error codes
 // FILE_TYPE_NOT_ALLOWED and FILE_TOO_LARGE, which a client tells apart from a malformed body.

@@ -4,6 +4,7 @@ import {
   AgingKind,
   FinanceLimits,
   FinanceReportLimits,
+  lowercasedUuidSchema,
   singleLineText
 } from '@platform/core/domain'
 import { isIsoDate } from '@platform/core/finance'
@@ -29,8 +30,8 @@ export const reopenPeriodSchema = z.strictObject({
 })
 
 export const trialBalanceQuerySchema = z.strictObject({
-  periodId: z.uuid(),
-  storeId: z.uuid().optional()
+  periodId: lowercasedUuidSchema,
+  storeId: lowercasedUuidSchema.optional()
 })
 
 // 'YYYY-MM-DD:number:lineNo': the position of the last line of the page, in the order of the ledger (date, number, line)
@@ -49,10 +50,10 @@ export const ledgerCursorSchema = z
 
 export const ledgerQuerySchema = z
   .strictObject({
-    accountId: z.uuid(),
+    accountId: lowercasedUuidSchema,
     from: day.optional(),
     to: day.optional(),
-    storeId: z.uuid().optional(),
+    storeId: lowercasedUuidSchema.optional(),
     cursor: ledgerCursorSchema.optional(),
     limit: z.coerce.number().int().min(1).max(FinanceReportLimits.LEDGER_PAGE_MAX).default(100)
   })
@@ -62,7 +63,12 @@ export const ledgerQuerySchema = z
 
 export const journalCsvQuerySchema = range
 export const ledgerCsvQuerySchema = z
-  .strictObject({ accountId: z.uuid(), from: day, to: day, storeId: z.uuid().optional() })
+  .strictObject({
+    accountId: lowercasedUuidSchema,
+    from: day,
+    to: day,
+    storeId: lowercasedUuidSchema.optional()
+  })
   .refine(value => value.from <= value.to, { message: 'from is after to' })
   .refine(value => rangeLength(value) < MAX_RANGE_DAYS, {
     message: `the range is longer than ${String(MAX_RANGE_DAYS)} days`
@@ -71,18 +77,21 @@ export const trialBalanceCsvQuerySchema = trialBalanceQuerySchema
 
 // The statements: a range of days (any length, they are sums and not files of rows) or one day, optionally of one store
 export const flowQuerySchema = z
-  .strictObject({ from: day, to: day, storeId: z.uuid().optional() })
+  .strictObject({ from: day, to: day, storeId: lowercasedUuidSchema.optional() })
   .refine(value => value.from <= value.to, { message: 'from is after to' })
 // The margin walks the sale entries and the orders of its range in one request, so its range is bounded like the one of the VAT report
 export const marginQuerySchema = flowQuerySchema.refine(
   value => rangeLength(value) <= FinanceLimits.VAT_REPORT_MAX_DAYS,
   { message: `the range is longer than ${String(FinanceLimits.VAT_REPORT_MAX_DAYS)} days` }
 )
-export const balanceSheetQuerySchema = z.strictObject({ asOf: day, storeId: z.uuid().optional() })
+export const balanceSheetQuerySchema = z.strictObject({
+  asOf: day,
+  storeId: lowercasedUuidSchema.optional()
+})
 export const agingQuerySchema = z.strictObject({
   kind: z.enum(AgingKind),
   asOf: day,
-  storeId: z.uuid().optional()
+  storeId: lowercasedUuidSchema.optional()
 })
 
 export type FlowQuery = z.infer<typeof flowQuerySchema>

@@ -3,15 +3,15 @@ import { z } from 'zod'
 import {
   isPlainHttpsUrl,
   isWebhookEvent,
+  lowercasedUuidSchema,
   WebhookEvents,
-  uuidSchema,
   WebhookLimits,
   WebhookStatus
 } from '@platform/core/domain'
 
 import { cursorSchema } from '../customers/list-cursor'
 
-export const idSchema = uuidSchema
+export const idSchema = lowercasedUuidSchema
 
 // The address is checked for its shape here (https, no credentials); that it points at the public internet
 // needs the resolver and is checked by the service. No fragment: it would never reach the server.
@@ -24,13 +24,17 @@ const webhookUrl = z
   .refine(value => !isPlainHttpsUrl(value) || new URL(value).hash === '', {
     message: 'must not carry a fragment'
   })
+  // The address as the URL standard writes it (host in lower case, no default port, a path): two spellings of one address
+  // are one, for the rule that a store holds one webhook per address and set of events
+  .transform(value => (isPlainHttpsUrl(value) ? new URL(value).href : value))
 
-// Each event once, and only the ones a webhook can be subscribed to
+// Each event once, in a fixed order (the same set is then the same array: a store cannot hold two webhooks with the
+// same address and events), and only the ones a webhook can be subscribed to
 const webhookEvents = z
   .array(z.string().refine(isWebhookEvent, { message: 'is not an event a webhook can follow' }))
   .min(1)
   .max(WebhookEvents.length)
-  .transform(events => [...new Set(events)])
+  .transform(events => [...new Set(events)].sort())
 
 export const createWebhookSchema = z.strictObject({
   url: webhookUrl,

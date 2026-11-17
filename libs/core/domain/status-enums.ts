@@ -174,7 +174,10 @@ export enum PluginStatus {
   CHANGES_REQUESTED = 'changes_requested',
   APPROVED = 'approved',
   REJECTED = 'rejected',
-  SUSPENDED = 'suspended'
+  SUSPENDED = 'suspended',
+  // A plugin the organization removed while its channel still holds conversations: out of the catalog, the registry and the
+  // organization's count, and kept for the history of those conversations (N-A7-08)
+  ARCHIVED = 'archived'
 }
 
 export enum ApiKeyStatus {

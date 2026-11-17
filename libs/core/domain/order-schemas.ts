@@ -20,7 +20,7 @@ import {
   PriceApprovalStatus,
   type OrderEditableField
 } from './status-enums'
-import { singleLineText } from './validation'
+import { lowercasedUuidSchema, singleLineText } from './validation'
 
 // The shared schemas of the orders (TDD_02 §13): the server validates the body with them and the web forms use the
 // same ones. Every shape is strict: a field the schema does not name is refused, which is how the server refuses a
@@ -29,9 +29,6 @@ import { singleLineText } from './validation'
 
 const cents = z.number().int().min(0).max(ORDER_MAX_AMOUNT_CENTS)
 
-// A uuid is valid in either case and the rows hold it in lower case: the server compares ids as strings, so it reads
-// them in the one form (a product written in capitals is the same product, not a 404)
-export const lowercasedUuidSchema = z.uuid().transform(value => value.toLowerCase())
 const id = lowercasedUuidSchema
 
 // Postgres text cannot hold a NUL character: a 400 here and not a 500 there

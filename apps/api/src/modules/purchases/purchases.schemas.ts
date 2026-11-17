@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import {
+  lowercasedUuidSchema,
   PaginationLimits,
   PurchaseLimits,
   PurchaseOrderStatus,
@@ -31,7 +32,7 @@ export {
   voidPaymentSchema
 }
 
-export const idSchema = z.uuid()
+export const idSchema = lowercasedUuidSchema
 
 const limit = z.coerce
   .number()
@@ -54,11 +55,11 @@ export const listPurchaseOrdersQuerySchema = z.strictObject({
   cursor: cursorSchema.optional(),
   limit,
   status: z.enum(PurchaseOrderStatus).optional(),
-  supplierId: z.uuid().optional()
+  supplierId: lowercasedUuidSchema.optional()
 })
 
 export const payablesQuerySchema = z.strictObject({
-  supplierId: z.uuid().optional(),
+  supplierId: lowercasedUuidSchema.optional(),
   // Only the bills past their due day
   overdueOnly: flag.default(false)
 })

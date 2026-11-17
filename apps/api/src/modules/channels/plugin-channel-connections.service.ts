@@ -6,6 +6,7 @@ import { CredentialCipher } from '@platform/core/crypto'
 import {
   isUniqueViolation,
   lockStoreForWrite,
+  lockStoreScope,
   PrismaService,
   type PrismaTransaction
 } from '@platform/core/database'
@@ -13,7 +14,8 @@ import {
   ChannelConnectionStatus,
   PluginInstallationStatus,
   PluginStatus,
-  RemoteChannelApiLimits
+  RemoteChannelApiLimits,
+  RemoteChannelLockScopes
 } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -96,6 +98,12 @@ export class PluginChannelConnectionsService {
   async disconnect(caller: PluginCaller, connectionId: string, actor: Actor): Promise<void> {
     const changed = await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, caller.storeId)
+      // The same lock as the `PUT` of the account: a disconnect and a put of it take turns
+      await lockStoreScope(
+        tx,
+        caller.storeId,
+        `${RemoteChannelLockScopes.CONNECTION}:${caller.pluginId}:${connectionId}`
+      )
       const row = await tx.channelConnection.findFirst({
         where: {
           pluginId: caller.pluginId,
@@ -146,6 +154,13 @@ export class PluginChannelConnectionsService {
     const { storeId, pluginId, installationId } = caller
     return this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
+      // The same account twice at once from one store takes turns: the second finds the row of the first and updates it (200). Two
+      // stores racing for one new account are settled by the unique index and the retry of `put`
+      await lockStoreScope(
+        tx,
+        storeId,
+        `${RemoteChannelLockScopes.CONNECTION}:${pluginId}:${connectionId}`
+      )
       // Read again with the store locked: a revoke or a suspension waits for this write to commit and then disconnects what it
       // made, and a connection is never added to an installation that was revoked a moment ago
       const installation = await tx.pluginInstallation.findFirst({

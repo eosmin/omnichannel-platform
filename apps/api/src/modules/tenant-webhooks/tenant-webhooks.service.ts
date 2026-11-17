@@ -4,6 +4,7 @@ import { AuditAction, type AuditActionType } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { CredentialCipher, generateToken } from '@platform/core/crypto'
 import {
+  isUniqueViolation,
   lockStoreForWrite,
   lockStoreScope,
   PrismaService,
@@ -12,6 +13,7 @@ import {
 import {
   WEBHOOK_RESOURCE_TYPE,
   WEBHOOK_SECRET_PREFIX,
+  WebhookConflictReasons,
   WebhookLimits,
   WebhookStatus
 } from '@platform/core/domain'
@@ -39,6 +41,19 @@ import { assertWebhookUrl } from './webhook-url'
 const SCOPE = 'webhook'
 // The status column is text: compared with the value of the enum as text
 const ACTIVE: string = WebhookStatus.ACTIVE
+const DUPLICATE = 'the store already has a webhook for these events at this address'
+
+// The unique index (`uq_webhooks_store_url_events`, not counting the disabled) is what keeps two requests at once from
+// making two; the answer is the conflict of a copy, whichever of them lost
+async function refusingCopies<T>(work: () => Promise<T>): Promise<T> {
+  try {
+    return await work()
+  } catch (error) {
+    if (isUniqueViolation(error))
+      throw resourceConflict(DUPLICATE, { reason: WebhookConflictReasons.DUPLICATE })
+    throw error
+  }
+}
 
 // The outbound webhooks of a store (Settings → Webhooks, TDD_07 §2, TDD_09 §13). The secret signs every delivery; it
 // is kept sealed like the credentials of a channel and shown once, when it is made. Every read and write is scoped by the
@@ -76,26 +91,28 @@ export class TenantWebhooksService {
   ): Promise<WebhookWithSecretView> {
     await assertWebhookUrl(body.url)
     const secret = newSecret()
-    const row = await this.prisma.transaction(async tx => {
-      await lockStoreForWrite(tx, storeId)
-      await lockStoreScope(tx, storeId, SCOPE)
-      const count = await tx.webhook.count({ where: { storeId } })
-      if (count >= WebhookLimits.MAX_PER_STORE) {
-        throw resourceConflict(`a store holds at most ${WebhookLimits.MAX_PER_STORE} webhooks`, {
-          limit: WebhookLimits.MAX_PER_STORE
+    const row = await refusingCopies(() =>
+      this.prisma.transaction(async tx => {
+        await lockStoreForWrite(tx, storeId)
+        await lockStoreScope(tx, storeId, SCOPE)
+        const count = await tx.webhook.count({ where: { storeId } })
+        if (count >= WebhookLimits.MAX_PER_STORE) {
+          throw resourceConflict(`a store holds at most ${WebhookLimits.MAX_PER_STORE} webhooks`, {
+            limit: WebhookLimits.MAX_PER_STORE
+          })
+        }
+        return tx.webhook.create({
+          data: {
+            storeId,
+            url: body.url,
+            events: body.events,
+            secret: this.cipher.seal({ secret }),
+            createdBy: actor.userId
+          },
+          select: WEBHOOK_SELECT
         })
-      }
-      return tx.webhook.create({
-        data: {
-          storeId,
-          url: body.url,
-          events: body.events,
-          secret: this.cipher.seal({ secret }),
-          createdBy: actor.userId
-        },
-        select: WEBHOOK_SELECT
       })
-    })
+    )
     // The address is not in the entry: it can carry a token of the receiver
     this.record(AuditAction.WEBHOOK_CREATED, storeId, actor, row.id, { events: body.events })
     return { ...webhookView(row), secret }
@@ -108,24 +125,26 @@ export class TenantWebhooksService {
     actor: Actor
   ): Promise<WebhookView> {
     if (body.url !== undefined) await assertWebhookUrl(body.url)
-    const row = await this.prisma.transaction(async tx => {
-      await lockStoreForWrite(tx, storeId)
-      const before = await this.lock(tx, storeId, webhookId)
-      return tx.webhook.update({
-        where: { id: webhookId },
-        data: {
-          ...(body.url === undefined ? {} : { url: body.url }),
-          ...(body.events === undefined ? {} : { events: body.events }),
-          ...(body.status === undefined ? {} : { status: body.status }),
-          // A webhook that is turned on again (it was not active) starts with a clean count; one that is only saved as active keeps its count: what disabled it was the old state of the
-          // endpoint. A new address alone changes nothing about its status: a disabled webhook is turned on on purpose.
-          ...(body.status === WebhookStatus.ACTIVE && before !== ACTIVE
-            ? { consecutiveFailures: 0 }
-            : {})
-        },
-        select: WEBHOOK_SELECT
+    const row = await refusingCopies(() =>
+      this.prisma.transaction(async tx => {
+        await lockStoreForWrite(tx, storeId)
+        const before = await this.lock(tx, storeId, webhookId)
+        return tx.webhook.update({
+          where: { id: webhookId },
+          data: {
+            ...(body.url === undefined ? {} : { url: body.url }),
+            ...(body.events === undefined ? {} : { events: body.events }),
+            ...(body.status === undefined ? {} : { status: body.status }),
+            // A webhook that is turned on again (it was not active) starts with a clean count; one that is only saved as active keeps its count: what disabled it was the old state of the
+            // endpoint. A new address alone changes nothing about its status: a disabled webhook is turned on on purpose.
+            ...(body.status === WebhookStatus.ACTIVE && before !== ACTIVE
+              ? { consecutiveFailures: 0 }
+              : {})
+          },
+          select: WEBHOOK_SELECT
+        })
       })
-    })
+    )
     this.record(AuditAction.WEBHOOK_UPDATED, storeId, actor, webhookId, {
       changed: Object.keys(body).filter(key => body[key as keyof UpdateWebhookBody] !== undefined),
       ...(body.status === undefined ? {} : { status: body.status })

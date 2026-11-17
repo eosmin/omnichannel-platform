@@ -25,8 +25,6 @@ const CUSTOMER_MERGE =
 const CUSTOMER_NOTE_AUTHOR =
   'Writing and deleting the notes of a customer: a note keeps its author, a person the profile shows by name, and only the author or CUSTOMERS_DELETE may remove it; a plugin reads the notes (GET) and does not write them until it has an actor to show (Step 5.6 W1)'
 
-const ANALYTICS_DASHBOARD =
-  'No server route of its own: the dashboard is drawn by the web from the metrics, which a plugin reads at /plugin-api/analytics/metrics'
 const ANALYTICS_REPORTS =
   'The scheduled reports send the figures out by email to addresses of people, and a report keeps who made it: a plugin reads the metrics and asks for a file of them, and the reports wait for an actor that the screen can show (Step 5.6 PR E7-2)'
 
@@ -723,7 +721,6 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'search.clicks': { none: SEARCH_CLICK },
   'analytics.metrics': { scope: 'analytics:read', exposed: '/plugin-api/analytics/metrics' },
   'analytics.myPerformance': { none: OWN_PERFORMANCE },
-  'analytics.dashboard': { none: ANALYTICS_DASHBOARD },
   'analytics.reports': { none: ANALYTICS_REPORTS },
   'analytics.reportById': { none: ANALYTICS_REPORTS },
   'analytics.search': { none: SEARCH_REPORT },

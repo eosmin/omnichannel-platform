@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import {
+  lowercasedUuidSchema,
   PaginationLimits,
   plainName,
   ProductLimits,
@@ -11,7 +12,7 @@ import {
 
 import { cursorSchema } from '../customers/list-cursor'
 
-export const idSchema = z.uuid()
+export const idSchema = lowercasedUuidSchema
 
 // Postgres text cannot hold a NUL character: it is a 400 here and not a 500 there
 const description = z
@@ -48,7 +49,7 @@ export const listProductsQuerySchema = z.strictObject({
 // How the product is taxed (TDD_18 §7): taxed by default, exempt or not subject for what carries no VAT. A rate of its own is for a
 // taxed product that is not at the default rate of the organization; null takes the default again.
 const taxTreatment = z.enum(TaxTreatment)
-const taxRateId = z.uuid()
+const taxRateId = lowercasedUuidSchema
 
 export const createProductSchema = z.strictObject({
   name,
@@ -80,7 +81,7 @@ export const updateProductSchema = z
     taxTreatment: taxTreatment.optional(),
     taxRateId: taxRateId.nullable().optional(),
     // The cover: a live file of THIS product (checked by the service), or null for none
-    imageMediaId: z.uuid().nullable().optional()
+    imageMediaId: lowercasedUuidSchema.nullable().optional()
   })
   .refine(notEmpty, { message: 'nothing to change' })
 

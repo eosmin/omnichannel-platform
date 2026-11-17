@@ -24,6 +24,26 @@ describe('channelEventSchema', () => {
     expect(channelEventSchema.safeParse(valid).success).toBe(true)
   })
 
+  it('keeps a message whose text, name or metadata carries a NUL, with the NUL taken out (N-4A-05)', () => {
+    const parsed = channelEventSchema.safeParse({
+      ...withMessage({ content: 'hel\0lo', metadata: { ['k\0ey']: ['a\0'] } }),
+      channelProfile: { displayName: 'An\0a' }
+    })
+
+    expect(parsed.success).toBe(true)
+    expect(parsed.data).toMatchObject({
+      channelProfile: { displayName: 'Ana' },
+      message: { content: 'hello', metadata: { key: ['a'] } }
+    })
+  })
+
+  it('refuses an id with a NUL instead of rewriting it: two ids must not become one (N-4A-05)', () => {
+    expect(channelEventSchema.safeParse(withMessage({ externalId: 'm\0-1' })).success).toBe(false)
+    expect(channelEventSchema.safeParse({ ...valid, channelIdentity: 'customer\0' }).success).toBe(
+      false
+    )
+  })
+
   it('takes an origin with every field, and one with only its kind', () => {
     const full = {
       kind: 'ad',

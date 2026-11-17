@@ -274,8 +274,8 @@ describe('The messages of the plugin API', () => {
     it('cuts the nickname, removes the control characters and falls back to the name of the plugin when nothing is left', async () => {
       const { id } = await mk()
 
-      const cut = await post(text(id, { nickname: `  Bo\u0000t\n${'x'.repeat(200)}  ` }))
-      const blank = await post(text(id, { nickname: ' \u0000\n ' }))
+      const cut = await post(text(id, { nickname: `  Bo\u0007t\n${'x'.repeat(200)}  ` }))
+      const blank = await post(text(id, { nickname: ' \u0007\n ' }))
 
       const nickname = (cut.body as MessageBody).authorNickname ?? ''
       expect(cut.status).toBe(CREATED)
@@ -283,6 +283,14 @@ describe('The messages of the plugin API', () => {
       expect(Array.from(nickname).length).toBeLessThanOrEqual(64)
       expect(Array.from(nickname).some(character => character.charCodeAt(0) < 32)).toBe(false)
       expect((blank.body as MessageBody).authorNickname).toBe(pluginName)
+    })
+
+    it('refuses a NUL in the nickname with 400, as it does anywhere else in the body (N-4A-05)', async () => {
+      const { id } = await mk()
+
+      const response = await post(text(id, { nickname: 'Bo\u0000t' }))
+
+      expect(response.status).toBe(BAD_REQUEST)
     })
 
     it('writes as a person of the store when it says so, and that is the answer of that person', async () => {

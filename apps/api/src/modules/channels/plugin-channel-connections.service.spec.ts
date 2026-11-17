@@ -6,7 +6,8 @@ import { PluginChannelConnectionsService } from './plugin-channel-connections.se
 
 jest.mock('@platform/core/database', () => ({
   ...jest.requireActual<object>('@platform/core/database'),
-  lockStoreForWrite: jest.fn().mockResolvedValue(undefined)
+  lockStoreForWrite: jest.fn().mockResolvedValue(undefined),
+  lockStoreScope: jest.fn().mockResolvedValue(undefined)
 }))
 
 // `expect.objectContaining` is typed `any`: said once, as what it is
