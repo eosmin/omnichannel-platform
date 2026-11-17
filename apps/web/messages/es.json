@@ -7485,6 +7485,7 @@
         "has_credit_notes": "Este documento tiene notas de crédito que no están anuladas. Anula primero las notas.",
         "already_replaced": "Esta venta ya tiene un documento que la reemplaza.",
         "credit_note_receiver": "El receptor de una nota de crédito es el del documento que cancela: corrígelo allí.",
+        "receiver_unreadable": "El receptor guardado de este documento no se puede leer: escribe el receptor completo (nombre, NIT, NRC, correo, teléfono y dirección).",
         "original_voided": "El documento de venta de esta nota de crédito fue anulado y aún no tiene reemplazo.",
         "return_inconsistent": "Las unidades de la devolución todavía no encajan con la venta de la que vienen.",
         "no_issuer_change": "El emisor de este documento es con el que se hizo: envíalo de nuevo.",

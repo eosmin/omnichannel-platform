@@ -2374,6 +2374,16 @@ sale rows follow the ledger: a sale is out of a month's book only when its entry
     address fields of the provider manifest (the parts of an address, with the catalogs of departments and municipalities) are the authority's data and the
     screen's: **Step 4B.7c-5b**'s follow-up with the accountant [OWNER] [ACCOUNTANT], not built here; (e) `allowedActions` is read from the document alone, so a call can still be refused for what is outside it: `void` of a sale whose credit notes are alive (`has_credit_notes`), `retry` and `confirmIssuerChange` when the issuer moved since the refusal (they depend on the live comparison of the issuer, not on the stored reason), `replace` of a credit note whose return already has a live note, and `retry` of a document that is queued and healthy; the screen already answers each refusal with its reason, and a view that knows them needs the child notes and the issuer comparison in the read: **Step 4B.9b-5d** with the switch of the web, if the owner wants the buttons exact; (f) `stuck` is the queued case only; a document left SUBMITTED by a dead claim is told by the notice and swept by **Step 4B.8** (it has no button to press); (d) `attention` counts the whole organization, so a store
     that sees only its documents still sees the organization's numbers: the fiscal area is organization-scoped (`fiscal:view`), as its list is.
+  - **Built in PR N-AA-01 (fix, no migration, no new route):** `PATCH /fiscal/documents/:id/receiver` merged what was sent over a receiver that could not be
+    opened as if it were empty (a rotated key, a damaged row), so `{"name": ...}` dropped the tax id and the document read as complete. Now the change is
+    refused with `409` and the reason `receiver_unreadable` unless it carries the whole receiver (`name`, `taxId`, `registrationId`, `email`, `phone`,
+    `address`, null leaves one empty); the other three fields (`taxpayerType`, `economicActivity`, `documentType`) are not required because the form does not send them
+    and a rewrite leaves them empty, as a new receiver does. A readable receiver merges as before (one case per field in `fiscal-documents.spec.ts`).
+    The audit entry of a rewrite of an unreadable receiver says so (`replacedUnreadable`). **Left by PR N-AA-01 (rule 12):** (a) the web form sends only the
+    non-blank fields, so it cannot write a whole receiver (a blank field must go as null): **Step 4B.9b-5d** adds that mode, shown when the api answers
+    `receiver_unreadable`; (b) a document built or retried with an unreadable receiver (`openReceiver`) is sent with an empty one when its type does not
+    ask for a receiver: it should be refused with the same reason, owner **Step 4B.7c-8** (the sealed data is kept; no value is lost until a person rewrites it);
+    (c) the cipher error is not told apart (rotated key vs damaged row vs missing key) and nothing logs it: **Step 7.3**.
 - [ ] Every route of 4B.2 to 4B.8 drawn (`frontend-coverage-map`), i18n keys in `es` and `en`, Lucide icons only, no emoji, the mobile layout of the
       common actions (register an expense, receive a purchase), the e2e of the month (register, receive, sell, remit, close)
 - **Decisions of PR 4B.9a-1 (rule 12):** (1) the books are an area of their own (`/finance`), not a page of Settings or of the organization: they are the

@@ -7485,6 +7485,7 @@
         "has_credit_notes": "This document has credit notes that are not voided. Void the notes first.",
         "already_replaced": "This sale already has a document that replaces it.",
         "credit_note_receiver": "The receiver of a credit note is the one of the document it cancels: fix it there.",
+        "receiver_unreadable": "The stored receiver of this document cannot be read: write the whole receiver (name, tax id, registration number, email, phone and address).",
         "original_voided": "The sale document of this credit note was voided and has no replacement yet.",
         "return_inconsistent": "The units of the return still do not fit the sale they came from.",
         "no_issuer_change": "The issuer of this document is the one it was made with: send it again instead.",
