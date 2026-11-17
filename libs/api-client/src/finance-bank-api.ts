@@ -29,6 +29,8 @@ const profileSchema = z.object({
   name: z.string(),
   delimiter: z.string(),
   hasHeader: z.boolean(),
+  // An api that predates the column sends none: the profile skips nothing
+  skipRows: z.number().int().default(0),
   decimalSeparator: z.string(),
   thousandsSeparator: z.string(),
   dateFormat: z.string(),
@@ -44,6 +46,8 @@ export type BankProfileView = z.output<typeof profileSchema>
 export interface BankReadingInput {
   delimiter: string
   hasHeader: boolean
+  // Records dropped from the start of the file before the header or the first movement
+  skipRows: number
   decimalSeparator: string
   thousandsSeparator: string
   dateFormat: string

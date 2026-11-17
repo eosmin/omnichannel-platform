@@ -11,6 +11,7 @@ import {
   type BankProfileField,
   bankDraftOf,
   bankReadingOf,
+  bankHeaderSuggestions,
   createBankProfileInputOf,
   DATE_FORMATS,
   DECIMAL_SEPARATORS,
@@ -19,8 +20,10 @@ import {
   delimiterKey,
   emptyBankDraft,
   ENCODINGS,
+  guessBankDelimiter,
   MONEY_MODE_OPTIONS,
   MoneyModes,
+  skipRowsOfDraft,
   THOUSANDS_SEPARATORS,
   updateBankProfileInputOf
 } from '../../lib/finance/bank-form'
@@ -31,7 +34,7 @@ import {
   useCreateBankProfile,
   useUpdateBankProfile
 } from '../../lib/finance/use-finance-bank'
-import { guessDelimiter, headerSuggestions, sampleOf } from '../../lib/remittances/import-mapper'
+import { sampleOf } from '../../lib/remittances/import-mapper'
 import { useSubmitGuard } from '../../lib/submit-guard'
 import { toast } from '../../lib/toast'
 import { useStore } from '../providers/store-context'
@@ -139,12 +142,13 @@ function BankProfileForm({
   const text = sample.decoded?.ok === true ? sample.decoded.text : null
   const headers = useMemo(
     () =>
-      text === null
-        ? []
-        : headerSuggestions(text, draft.delimiter as Parameters<typeof headerSuggestions>[1]),
-    [text, draft.delimiter]
+      text === null ? [] : bankHeaderSuggestions(text, draft.delimiter, skipRowsOfDraft(draft)),
+    [text, draft]
   )
-  const guessed = useMemo(() => (text === null ? null : guessDelimiter(text)), [text])
+  const guessed = useMemo(
+    () => (text === null ? null : guessBankDelimiter(text, skipRowsOfDraft(draft))),
+    [text, draft]
+  )
 
   const tryMapping = (): void => {
     const reading = bankReadingOf(draft)
@@ -286,6 +290,17 @@ function BankProfileForm({
           <span className="text-muted-foreground block text-xs">{t('fields.hasHeaderHint')}</span>
         </span>
       </label>
+
+      <TextField
+        label={t('fields.skipRows')}
+        value={draft.skipRows}
+        inputMode="numeric"
+        maxLength={2}
+        disabled={pending}
+        hint={t('fields.skipRowsHint')}
+        problem={problem(BankProfileFields.SKIP_ROWS)}
+        onChange={skipRows => set({ skipRows })}
+      />
 
       <fieldset className="flex flex-col gap-3 rounded-md border p-3">
         <legend className="px-1 text-sm font-medium">{t('columns')}</legend>

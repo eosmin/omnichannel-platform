@@ -2954,6 +2954,7 @@ model BankImportProfile {
   name               String
   delimiter          String   @default(",")
   hasHeader          Boolean  @default(true) @map("has_header")
+  skipRows           Int      @default(0) @map("skip_rows") // records dropped from the start of the file (a lead of report lines)
   decimalSeparator   String   @default(".") @map("decimal_separator")
   thousandsSeparator String   @default("none") @map("thousands_separator") // BankThousandsSeparator
   dateFormat         String   @default("yyyy-MM-dd") @map("date_format")

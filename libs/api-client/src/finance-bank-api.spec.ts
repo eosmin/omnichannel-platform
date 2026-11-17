@@ -52,6 +52,7 @@ const profile = {
   name: 'Bank',
   delimiter: ',',
   hasHeader: true,
+  skipRows: 0,
   decimalSeparator: '.',
   thousandsSeparator: 'none',
   dateFormat: 'yyyy-MM-dd',
@@ -116,6 +117,7 @@ describe('finance bank api', () => {
     const reading = {
       delimiter: ',',
       hasHeader: true,
+      skipRows: 0,
       decimalSeparator: '.',
       thousandsSeparator: 'none',
       dateFormat: 'yyyy-MM-dd',
@@ -163,6 +165,7 @@ describe('finance bank api', () => {
       profile: {
         delimiter: ',',
         hasHeader: true,
+        skipRows: 0,
         decimalSeparator: '.',
         thousandsSeparator: 'none',
         dateFormat: 'yyyy-MM-dd',

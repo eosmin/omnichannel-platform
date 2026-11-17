@@ -1505,15 +1505,21 @@ built once, by 4B.4b-1.
       thousands separator may be the delimiter (the quoted `"9,999.99"` of the bank; migration `20270112100000` drops that clause of the
       database CHECK too, with its rollback), an unquoted one is refused (a row must then have exactly the cells of the file, and an amount of one to three digits followed by a cell of
       three digits is the mark of a split amount)
-- [ ] **4B.4b-2, same bank file (PR `bank-import-skiprows`, after the one above):** `skipRows` in the profile (records, not physical lines)
-      so the lead of report lines before the movements is not read; migration with rollback, preview, web field
+- [x] **4B.4b-2, same bank file (PR `bank-import-skiprows`):** `skipRows` in the profile (0 to 50, default 0, so every saved profile reads as it did)
+      leaves out the lead of report lines before the movements. It counts records (rows that are not blank; a title with a quoted line
+      break is one), what is skipped is not read at all, and an error still points at the line of the file. Migration `20270113100000`
+      (column, CHECK 0..50, rollback), api schemas, preview, web field (es/en), contract and integration tests with synthetic files
 - [ ] **Debts of the bank-file PRs (rule 12), owner: Step 7.3 unless said:** (a) a movement that one statement prints with a time and another
       without it is not recognised as the same line (a bank prints it one way; a profile change of a bank mid-history would double the overlap);
       (b) a negative amount in parentheses `(179.60)` is not read (`parseBankAmountCents`): the bank prints them only in its running-balance
       column, which no profile maps; (c) the running balance of each row is not read, so it cannot check that no line was lost or misread: a
       balance column in the profile, with the statement's own closing balance as a control, is a new feature; (d) the time of a line is hashed into its identity but not stored on `bank_statement_lines` (no column, no migration in the PR
       that reads it): the screens show it only in the preview, and two stored lines that differ only by their time cannot be told apart there;
-      a `posted_time` column is the fix
+      a `posted_time` column is the fix; (e) a lead whose title opens a quote that never closes (`"Statement of account`) makes
+      the whole file an `unclosed_quote` before the skip is applied: the lead is split like any text, so the profile cannot leave it out; (f) the
+      profile saves with any `skipRows` and any `hasHeader` (a count one too low or too high shows only in the preview, as `column_not_found` or
+      `header_looks_like_data`): a required preview before saving is a screen decision of the owner; (g) the CHECK of the column holds the literal
+      50 of `BankStatementLimits.SKIP_ROWS_MAX` (a security spec compares both), raising one needs a migration for the other
 **TDD:** `TDD_18 §4.3`, `§4.4`, `TDD_07 §6.3`
 **Done when:** a person registers an expense paid from a chosen account with its VAT and a receipt, moves money between accounts, imports
 a statement and reconciles it, and every balance follows.
