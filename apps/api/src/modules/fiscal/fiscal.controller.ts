@@ -243,7 +243,15 @@ export class FiscalController {
         organization.id,
         documentId,
         body.reason,
-        actorOf(user, store, req)
+        actorOf(user, store, req),
+        {
+          ...(body.kind === undefined ? {} : { kind: body.kind }),
+          ...(body.responsible === undefined ? {} : { responsible: body.responsible }),
+          ...(body.requester === undefined ? {} : { requester: body.requester }),
+          ...(body.replacementDocumentId === undefined
+            ? {}
+            : { replacementDocumentId: body.replacementDocumentId })
+        }
       )
     }
   }

@@ -104,7 +104,7 @@ describe('the providers of a deployment', () => {
 
   it('offers the provider that signs for real only where the deployment gives the address of its signing service', () => {
     const config = { signerUrl: 'http://signer.internal:8113' }
-    // (the env schema keeps the address out of production until the invalidation exists; this function only reads what it is given)
+    // (the env schema keeps the address out of production until production is authorized; this function only reads what it is given)
     expect(officialFiscalProviders('production', config).map(provider => provider.id)).toEqual([
       'sv-dte'
     ])

@@ -21,6 +21,7 @@ import {
   FiscalResourceTypes,
   FiscalSubmitOutcome,
   FiscalVoidConsultState,
+  type FiscalVoidKind,
   hasReceivedUnits,
   OrderReturnStatus,
   OrderStatus
@@ -41,6 +42,8 @@ import type {
   FiscalIssuerInput,
   FiscalReceiver,
   ProviderContext,
+  FiscalVoidDetails,
+  FiscalVoidParty,
   StoredFiscalDocument,
   VoidResult
 } from '@platform/fiscal/sdk'
@@ -171,6 +174,18 @@ const SELECT = {
 
 // The lifecycle of the fiscal document of a sale (TDD_18 §8.3). Core owns it and the link to the ledger; the provider owns what is
 // legal. The sale amounts are the order's own (the tax snapshot of Step 4B.3b), copied into the document once and never recomputed.
+// The people of a request as the key counts them: without the blanks around the words, as a provider reads them
+const partyKey = (party: FiscalVoidParty | undefined): string[] | null =>
+  party === undefined ? null : [party.name.trim(), party.idType.trim(), party.idNumber.trim()]
+
+// What a person gives to invalidate a document besides the reason (the screen draws the fields from the manifest of the provider)
+export interface FiscalVoidInput {
+  readonly kind?: FiscalVoidKind
+  readonly responsible?: FiscalVoidParty
+  readonly requester?: FiscalVoidParty
+  readonly replacementDocumentId?: string
+}
+
 @Injectable()
 export class FiscalDocumentsService {
   constructor(
@@ -1627,12 +1642,42 @@ export class FiscalDocumentsService {
     organizationId: string,
     id: string,
     reason: string,
-    actor: FiscalActor
+    actor: FiscalActor,
+    input: FiscalVoidInput = {}
   ): Promise<FiscalDocumentView> {
     const doc = await this.prisma.client.fiscalDocument.findFirst({ where: { id, organizationId } })
     if (doc === null) throw resourceNotFound('fiscal document')
     if (doc.status !== (FiscalDocumentStatus.ACCEPTED as string)) {
       throw this.invalid(doc.status as FiscalDocumentStatus)
+    }
+    // The document that takes the place of this one, when the person names it: one of the same organization, accepted, and another one
+    let replacement: StoredFiscalDocument | undefined
+    if (input.replacementDocumentId !== undefined) {
+      const other =
+        input.replacementDocumentId === id
+          ? null
+          : await this.prisma.client.fiscalDocument.findFirst({
+              where: {
+                id: input.replacementDocumentId,
+                organizationId,
+                status: FiscalDocumentStatus.ACCEPTED,
+                // A replacement is a document of the same kind (a sale, not a credit note) made with the same provider in the same environment:
+                // never one of another authority or of the test environment
+                kind: doc.kind,
+                providerId: doc.providerId,
+                environment: doc.environment
+              }
+            })
+      if (other === null) throw resourceNotFound('replacement fiscal document')
+      const stored = this.storedOf(other)
+      if (stored === null) {
+        throw new PlatformException(
+          ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
+          'the evidence of the replacement document cannot be read',
+          HttpStatusCodes.CONFLICT
+        )
+      }
+      replacement = stored
     }
     // A sale document with a credit note that may be at the authority cannot be voided: the note names it, so the notes go first. That is
     // an accepted one, one being sent, and one that was sent and not answered (back in the queue with an attempt counted: the authority may
@@ -1685,27 +1730,38 @@ export class FiscalDocumentsService {
       )
     }
     // The document as it was built is what the invalidation is about: a provider is never asked to invalidate an empty one
-    const payload =
-      doc.builtPayloadEncrypted === null ? null : this.openCredentials(doc.builtPayloadEncrypted)
-    if (payload === null || payload['unreadable'] === true) {
+    const stored = this.storedOf(doc)
+    if (stored === null) {
       throw new PlatformException(
         ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
         'the evidence of the document cannot be read',
         HttpStatusCodes.CONFLICT
       )
     }
-    const stored: StoredFiscalDocument = {
-      documentType: doc.documentType,
-      externalNumber: doc.externalNumber,
-      providerData: doc.providerData === null ? null : record(doc.providerData),
-      payload
+    const details: FiscalVoidDetails = {
+      ...(input.kind === undefined ? {} : { kind: input.kind }),
+      ...(input.responsible === undefined ? {} : { responsible: input.responsible }),
+      ...(input.requester === undefined ? {} : { requester: input.requester }),
+      ...(replacement === undefined ? {} : { replacement })
     }
     const contextOf = (attempt: number): ProviderContext => ({
       issuer: this.issuerOfSnapshot(doc.issuerSnapshot),
       credentials,
       // One key per document and reason: a double click, or a request asked again after an answer that was lost, is the same
       // invalidation for the provider; one that was refused and is asked again with another reason is a new one
-      idempotencyKey: `${organizationId}:${id}:void:${createHash('sha256').update(reason).digest('hex').slice(0, 16)}`,
+      idempotencyKey: `${organizationId}:${id}:void:${createHash('sha256')
+        .update(
+          // The reason, the kind, the people and the replacement: a request corrected in any of them is a new one for the provider
+          JSON.stringify([
+            reason,
+            input.kind ?? null,
+            partyKey(input.responsible),
+            partyKey(input.requester),
+            input.replacementDocumentId ?? null
+          ])
+        )
+        .digest('hex')
+        .slice(0, 16)}`,
       attempt
     })
     // The authority may have the document invalidated already (an earlier request whose answer was lost, or a void made elsewhere):
@@ -1716,7 +1772,9 @@ export class FiscalDocumentsService {
     let outcome: VoidResult | null = await this.consultedVoid(provider, id, stored, contextOf(1))
     if (outcome !== null) recovered = true
     else {
-      outcome = await this.attempt('void', id, () => provider.void(stored, reason, contextOf(1)))
+      outcome = await this.attempt('void', id, () =>
+        provider.void(stored, reason, contextOf(1), details)
+      )
       // No answer to the invalidation: it may have reached the authority, so it is asked once before the person is told to try again
       if (outcome === null) {
         outcome = await this.consultedVoid(provider, id, stored, contextOf(2))
@@ -1764,7 +1822,16 @@ export class FiscalDocumentsService {
       storeId: actor.storeId,
       resourceType: FiscalResourceTypes.DOCUMENT,
       resourceId: id,
-      metadata: { externalNumber: doc.externalNumber, recoveredFromAuthority: recovered },
+      metadata: {
+        externalNumber: doc.externalNumber,
+        recoveredFromAuthority: recovered,
+        // What the person declared (the numbers of the identity documents stay out of the trail: they are customer data)
+        ...(input.kind === undefined ? {} : { voidKind: input.kind }),
+        ...(input.replacementDocumentId === undefined
+          ? {}
+          : { replacementDocumentId: input.replacementDocumentId }),
+        partiesDeclared: input.responsible !== undefined && input.requester !== undefined
+      },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
     })
@@ -1772,6 +1839,24 @@ export class FiscalDocumentsService {
     // the audit entry: a slow bucket never delays or loses the trail of a decision that is made
     await this.evidence.keepAll(organizationId, id)
     return this.get(organizationId, id)
+  }
+
+  // A document as a provider is shown it: what was built, readable; null when the sealed copy cannot be opened
+  private storedOf(doc: {
+    documentType: string
+    externalNumber: string | null
+    providerData: unknown
+    builtPayloadEncrypted: Uint8Array | null
+  }): StoredFiscalDocument | null {
+    const payload =
+      doc.builtPayloadEncrypted === null ? null : this.openCredentials(doc.builtPayloadEncrypted)
+    if (payload === null || payload['unreadable'] === true) return null
+    return {
+      documentType: doc.documentType,
+      externalNumber: doc.externalNumber,
+      providerData: doc.providerData === null ? null : record(doc.providerData),
+      payload
+    }
   }
 
   // A void the authority has made already, as a void result; null when the provider cannot tell, does not have it voided or did not answer

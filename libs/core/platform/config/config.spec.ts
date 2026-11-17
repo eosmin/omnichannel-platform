@@ -309,7 +309,7 @@ describe('FISCAL_SIGNER_URL', () => {
       expect(() => parseEnv({ ...deployed, FISCAL_SIGNER_URL: url })).toThrow(/FISCAL_SIGNER_URL/)
     })
 
-    it('refuses the signing service in production until the invalidation of documents is built', () => {
+    it('refuses the signing service in production until production is authorized', () => {
       expect(() =>
         parseEnv({
           ...deployed,
