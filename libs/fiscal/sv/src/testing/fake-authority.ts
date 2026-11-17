@@ -252,7 +252,8 @@ export async function startFakeAuthority(): Promise<FakeAuthority> {
         stats.lastContingency = event
         if (schemaErrors('contingency', event).length > 0) return refusal('006')
         const eventCode = (event['identificacion'] as { codigoGeneracion: string }).codigoGeneracion
-        // The same event sent again is answered with the seal it got the first time
+        // The same event sent again is refused as the authority refuses a repeated document (code 4): it holds it already
+        if (eventCodes.has(`contingency:${eventCode}`)) return refusal('004')
         const detail = event['detalleDTE'] as { codigoGeneracion: string }[]
         const took = Date.now()
         eventCodes.add(`contingency:${eventCode}`)

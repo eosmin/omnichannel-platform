@@ -595,6 +595,24 @@ export async function reportContingencyEvent(
       }
     }
     if (answer.kind === 'transient') return { outcome: FiscalContingencyReportOutcome.UNAVAILABLE }
+    // The event is the authority's already (the answer of an earlier call was lost): it is taken, as the port says an event it holds is
+    // answered. The window runs from now, the one instant this side can vouch for; the seal is not here (the authority did not repeat it).
+    // **[TO CONFIRM IN THE SANDBOX]** whether the authority repeats the seal, and the code it gives a repeated event.
+    if (answer.kind === 'duplicate') {
+      return {
+        outcome: FiscalContingencyReportOutcome.ACCEPTED,
+        receivedAt: new Date(clock()).toISOString(),
+        providerData: {
+          [SvProviderDataKeys.GENERATION_CODE]: String(
+            recordOf(built.event['identificacion'])['codigoGeneracion']
+          ),
+          documents: (built.event['detalleDTE'] as unknown[]).length,
+          window_hours: SvContingency.TRANSMIT_WITHIN_HOURS,
+          duplicate: true
+        },
+        response: answer.body
+      }
+    }
     if (answer.kind === 'rejected') {
       return {
         outcome: FiscalContingencyReportOutcome.REJECTED,

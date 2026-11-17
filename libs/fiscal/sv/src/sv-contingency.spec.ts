@@ -294,6 +294,18 @@ describe('the provider against the authority while it is down', () => {
     }
   })
 
+  it('takes an event the authority holds already as reported: the answer of the first call was lost', async () => {
+    const documents = [stored(await made(9))]
+    const first = await provider.reportContingency(eventOf(documents), ctx())
+    expect(first.outcome).toBe(FiscalContingencyReportOutcome.ACCEPTED)
+    const again = await provider.reportContingency(eventOf(documents), ctx())
+    expect(again).toMatchObject({
+      outcome: FiscalContingencyReportOutcome.ACCEPTED,
+      providerData: { duplicate: true }
+    })
+    expect(authority.stats.contingencies).toBe(2)
+  })
+
   it('answers "unavailable" when the authority does not answer the event, and keeps the refusal code when it refuses', async () => {
     const documents = [stored(await made(7))]
     authority.contingencyMode = 'down'

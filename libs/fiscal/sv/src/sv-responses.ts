@@ -60,6 +60,8 @@ export type SvEventAnswer =
       readonly code: string
       readonly body: Readonly<Record<string, unknown>>
     }
+  // The authority holds an event with this generation code already: an answer that was lost, sent again
+  | { readonly kind: 'duplicate'; readonly body: Readonly<Record<string, unknown>> }
   | { readonly kind: 'transient' }
   | { readonly kind: 'token' }
   | { readonly kind: 'credentials' }
@@ -86,6 +88,7 @@ export function classifyEventAnswer(status: number, json: unknown): SvEventAnswe
   if (SvCredentialCodes.has(number)) return { kind: 'credentials' }
   if (body['estado'] === SvAnswerStates.REFUSED || status === 400) {
     if (code === null) return { kind: 'transient' }
+    if (SvDuplicateCodes.has(number)) return { kind: 'duplicate', body }
     return SvTransientCodes.has(number) ? { kind: 'transient' } : { kind: 'rejected', code, body }
   }
   return { kind: 'transient' }
