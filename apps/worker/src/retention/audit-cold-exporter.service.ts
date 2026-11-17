@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { once } from 'node:events'
-import { Transform, Writable } from 'node:stream'
 import { createInterface } from 'node:readline'
+import { Transform, Writable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { createGunzip, createGzip } from 'node:zlib'
 

@@ -740,7 +740,7 @@ describe('The retention run of the worker', () => {
       const row = await entry('2001-05-10T00:00:00Z', 'test.cold.locked')
       const key = auditColdExportLockKey(2001, 5)
 
-      const report = await owner.$transaction(
+      const report = await worker.transaction(
         async tx => {
           await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`
           return exporter.run(before)
@@ -769,9 +769,13 @@ describe('The retention run of the worker', () => {
 
       const key = StorageKeys.auditArchive(2001, 2)
       archived.push(key, StorageKeys.auditArchive(2001, 2, 2))
-      expect(reports.flatMap(report => report.months).filter(month => month.month === 2)).toHaveLength(1)
+      expect(
+        reports.flatMap(report => report.months).filter(month => month.month === 2)
+      ).toHaveLength(1)
       expect(await storage.head(StorageKeys.auditArchive(2001, 2, 2))).toBeNull()
-      expect((await linesOf(key)).map(line => line.id).sort()).toEqual(rows.map(row => row.id).sort())
+      expect((await linesOf(key)).map(line => line.id).sort()).toEqual(
+        rows.map(row => row.id).sort()
+      )
       expect(await owner.auditLog.count({ where: { id: { in: rows.map(row => row.id) } } })).toBe(0)
     })
 
