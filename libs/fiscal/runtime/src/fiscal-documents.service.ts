@@ -11,6 +11,9 @@ import {
   FinancePostingKey,
   FiscalConflictReasons,
   FiscalConsultState,
+  FiscalContingencyAttachResult,
+  FiscalContingencyLimits,
+  FiscalDeferOutcome,
   FiscalDocumentKind,
   FiscalDocumentStatus,
   type FiscalEnvironment,
@@ -48,6 +51,7 @@ import type {
   VoidResult
 } from '@platform/fiscal/sdk'
 
+import { type FiscalContingencyRoute, FiscalContingencyService } from './fiscal-contingency.service'
 import { FiscalEvidenceService } from './fiscal-evidence.service'
 import type { FiscalActor } from './fiscal-issuer.service'
 import { FiscalProviderRegistry } from './fiscal-provider.registry'
@@ -209,6 +213,7 @@ export class FiscalDocumentsService {
     private readonly cipher: CredentialCipher,
     private readonly providers: FiscalProviderRegistry,
     private readonly evidence: FiscalEvidenceService,
+    private readonly contingencies: FiscalContingencyService,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(FiscalDocumentsService.name)
@@ -568,15 +573,7 @@ export class FiscalDocumentsService {
     if (issuer === null) return null
     const parent =
       parentOverride === undefined
-        ? await tx.fiscalDocument.findFirst({
-            where: {
-              organizationId,
-              orderId,
-              kind: FiscalDocumentKind.SALE,
-              status: { not: FiscalDocumentStatus.VOIDED }
-            },
-            select: { id: true, receiverEncrypted: true }
-          })
+        ? await this.soleLiveSale(tx, organizationId, orderId)
         : await tx.fiscalDocument.findFirst({
             where: { id: parentOverride.id, organizationId },
             select: { id: true, receiverEncrypted: true }
@@ -837,6 +834,12 @@ export class FiscalDocumentsService {
       idempotencyKey: `${organizationId}:${documentId}:${doc.submission}`,
       attempt: doc.attempts + 1
     }
+    // A document made in a contingency goes out as it was kept (what the receiver was handed is what the authority gets), after the event
+    // that lists it was taken (the claim above lets it through only then)
+    if (doc.contingencyId !== null) {
+      await this.sendKept(organizationId, doc, provider, context)
+      return
+    }
     const receiver = this.openReceiver(doc.receiverEncrypted)
     const parts = record(doc.linesSnapshot)
     const sale = saleOf(doc, parts)
@@ -878,8 +881,22 @@ export class FiscalDocumentsService {
       sale.totalCents,
       doc.kind === (FiscalDocumentKind.CREDIT_NOTE as string)
     )
+    // An open contingency of this issuer (the provider has the deferred model): the document is made in it
+    const route = await this.contingencies.routeOf(
+      organizationId,
+      provider,
+      issuerInput.environment
+    )
     const built = await this.attempt('build', doc.id, () =>
       provider.build({
+        ...(route.kind === 'attach'
+          ? {
+              contingency: {
+                reason: route.contingency.reason,
+                motive: route.contingency.motive
+              }
+            }
+          : {}),
         kind: doc.kind as FiscalDocumentKind,
         credited: original === null ? null : this.creditedOf(original),
         sequenceNumber: doc.sequenceNumber,
@@ -923,6 +940,152 @@ export class FiscalDocumentsService {
       })
       return
     }
+    if (route.kind === 'attach') {
+      await this.keepInContingency(organizationId, doc, provider, built, context, route)
+      return
+    }
+    await this.deliver(organizationId, doc, provider, built, context)
+  }
+
+  // A document made in a contingency: signed by the provider and kept with the contingency, not sent. The consultation of an attempt
+  // that may have reached the authority is not asked: the authority is what is down, and a document that was there is found when it is sent
+  // (the same code answers "duplicate" and the consultation follows).
+  private async keepInContingency(
+    organizationId: string,
+    doc: { id: string },
+    provider: FiscalDocumentProvider,
+    built: BuiltDocument,
+    context: ProviderContext,
+    route: Extract<FiscalContingencyRoute, { kind: 'attach' }>
+  ): Promise<void> {
+    // A contingency that holds the most an event takes does not get a document signed for nothing
+    if (
+      await this.contingencies.isFull(
+        organizationId,
+        route.contingency.id,
+        route.mode.maxDocumentsPerEvent
+      )
+    ) {
+      return this.requeueAndFail(
+        organizationId,
+        doc.id,
+        'the open contingency holds the most documents an event takes'
+      )
+    }
+    const deferred = await this.attempt('defer', doc.id, () =>
+      Promise.resolve().then(() => provider.deferDocument?.(built, context))
+    )
+    if (
+      deferred === null ||
+      deferred === undefined ||
+      deferred.outcome === FiscalDeferOutcome.UNAVAILABLE
+    ) {
+      return this.requeueAndFail(
+        organizationId,
+        doc.id,
+        'the fiscal provider could not sign the document in contingency'
+      )
+    }
+    if (deferred.outcome === FiscalDeferOutcome.REJECTED) {
+      await this.reject(
+        doc.id,
+        organizationId,
+        typeof deferred.reason === 'string' ? deferred.reason : '',
+        { built, beforeSending: true }
+      )
+      return
+    }
+    const kept = await this.contingencies.attach(
+      organizationId,
+      doc.id,
+      route.contingency.id,
+      built,
+      deferred.providerData,
+      route.mode.maxDocumentsPerEvent
+    )
+    if (kept === FiscalContingencyAttachResult.ATTACHED) return
+    // Ended a moment ago, full, or gone: the document goes back to the queue and is made again, by the rule of the moment
+    return this.requeueAndFail(
+      organizationId,
+      doc.id,
+      kept === FiscalContingencyAttachResult.FULL
+        ? 'the open contingency holds the most documents an event takes'
+        : 'the contingency ended while the document was made'
+    )
+  }
+
+  // A document of a reported contingency: the kept document goes to the provider as it was
+  private async sendKept(
+    organizationId: string,
+    doc: {
+      id: string
+      documentType: string
+      builtPayloadEncrypted: Uint8Array | null
+      attempts: number
+      contingencyId: string | null
+    },
+    provider: FiscalDocumentProvider,
+    context: ProviderContext
+  ): Promise<void> {
+    let payload: Record<string, unknown> | null = null
+    if (doc.builtPayloadEncrypted !== null)
+      payload = this.openCredentials(doc.builtPayloadEncrypted)
+    if (payload === null) {
+      await this.reject(doc.id, organizationId, FiscalRejectionReasons.BUILD_FAILED, {
+        beforeSending: true
+      })
+      return
+    }
+    const built: BuiltDocument = {
+      documentType: doc.documentType,
+      payload,
+      missingReceiverFields: []
+    }
+    await this.deliver(organizationId, doc, provider, built, context)
+  }
+
+  // The authority did not answer on every attempt the lifecycle waits for, and the provider has a deferred model: a contingency opens (the
+  // person is told) and the document is made again in it, by the rule of the moment. A document of a contingency never opens another.
+  // Returns whether the document was taken up again.
+  private async openContingencyAndRetry(
+    organizationId: string,
+    doc: { id: string; attempts: number; contingencyId?: string | null },
+    provider: FiscalDocumentProvider,
+    context: ProviderContext
+  ): Promise<boolean> {
+    if (
+      doc.contingencyId != null ||
+      provider.manifest.contingencyMode === undefined ||
+      doc.attempts + 1 < FiscalContingencyLimits.AUTO_OPEN_AFTER_ATTEMPTS
+    ) {
+      return false
+    }
+    await this.contingencies.openBySystem(organizationId, provider, context.issuer.environment)
+    // One that is open for another provider or environment (the issuer changed since) does not take this document: it goes on as it did,
+    // and nothing here calls itself again for ever
+    const route = await this.contingencies.routeOf(
+      organizationId,
+      provider,
+      context.issuer.environment
+    )
+    if (route.kind !== 'attach') return false
+    await this.prisma.client.fiscalDocument.updateMany({
+      where: { id: doc.id, organizationId, status: FiscalDocumentStatus.SUBMITTED },
+      data: { status: FiscalDocumentStatus.QUEUED }
+    })
+    await this.submit(organizationId, doc.id)
+    return true
+  }
+
+  // Sends a built document and decides what the provider answered: the consultation of an earlier attempt, the submission, and what each
+  // answer does to the document
+  private async deliver(
+    organizationId: string,
+    doc: { id: string; attempts: number; contingencyId?: string | null },
+    provider: FiscalDocumentProvider,
+    built: BuiltDocument,
+    context: ProviderContext
+  ): Promise<void> {
     // An earlier attempt of this submission may have reached the authority before it was cut short: ask before sending a second document.
     // A consultation that gets no answer is not "never received": the document goes back to the queue and the consultation is asked again.
     if (doc.attempts > 0) {
@@ -930,6 +1093,7 @@ export class FiscalDocumentsService {
         provider.consult(built, context)
       )
       if (consulted === null) {
+        if (await this.openContingencyAndRetry(organizationId, doc, provider, context)) return
         return this.requeueAndFail(
           organizationId,
           doc.id,
@@ -978,6 +1142,8 @@ export class FiscalDocumentsService {
       )
       return
     }
+    // The authority did not answer on every attempt the lifecycle waits for: a contingency opens and the document is made again in it
+    if (await this.openContingencyAndRetry(organizationId, doc, provider, context)) return
     // The authority did not answer: back to the queue, and the job fails so that the backoff of the queue spaces the next attempt
     await this.requeueAndFail(organizationId, doc.id, 'the fiscal provider did not answer')
   }
@@ -1190,6 +1356,14 @@ export class FiscalDocumentsService {
         Date.now() - doc.updatedAt.getTime() < FiscalLimits.CLAIM_LEASE_MS
       ) {
         return 'busy' as const
+      }
+      // A document made in a contingency is held until the authority has taken the event that lists it (Step 4B.7c-7): nothing is claimed,
+      // and the release of the contingency asks the queue for it
+      if (
+        doc.contingencyId !== null &&
+        !(await this.contingencies.releasedOf(organizationId, doc.contingencyId, tx))
+      ) {
+        return null
       }
       const issuer = await tx.fiscalIssuer.findUnique({ where: { organizationId } })
       const provider = this.providers.find(doc.providerId)
@@ -1415,7 +1589,11 @@ export class FiscalDocumentsService {
   ): Promise<FiscalDocumentView> {
     await this.prisma.transaction(async tx => {
       const doc = await this.lock(tx, organizationId, id)
-      if (!receiverEditable(doc.status as FiscalDocumentStatus, doc.attempts)) {
+      // A document kept in a contingency is the one the receiver was handed: its receiver changes only after the authority refused it
+      if (
+        !receiverEditable(doc.status as FiscalDocumentStatus, doc.attempts) ||
+        (doc.contingencyId !== null && doc.status !== (FiscalDocumentStatus.REJECTED as string))
+      ) {
         throw this.immutable(doc.status as FiscalDocumentStatus)
       }
       // The receiver of a credit note is the one of the document it cancels: it is fixed there, and the note takes it when it is sent
@@ -1497,15 +1675,7 @@ export class FiscalDocumentsService {
         // A credit note names the sale document that is live now: the one it was made for may have been voided and replaced since
         let parentDocumentId = doc.parentDocumentId
         if (isNote) {
-          const live = await tx.fiscalDocument.findFirst({
-            where: {
-              organizationId,
-              orderId: doc.orderId,
-              kind: FiscalDocumentKind.SALE,
-              status: { not: FiscalDocumentStatus.VOIDED }
-            },
-            select: { id: true }
-          })
+          const live = await this.soleLiveSaleOrThrow(tx, organizationId, doc.orderId)
           if (live === null) {
             throw new PlatformException(
               ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
@@ -1539,6 +1709,8 @@ export class FiscalDocumentsService {
             status: FiscalDocumentStatus.QUEUED,
             rejectionReason: null,
             parentDocumentId,
+            // A refused document made in a contingency is made again as any other: the contingency is over for it
+            contingencyId: null,
             ...(sale === null
               ? {}
               : {
@@ -1614,15 +1786,7 @@ export class FiscalDocumentsService {
       // A credit note names the sale document that is live now
       let parentDocumentId = doc.parentDocumentId
       if (doc.kind === (FiscalDocumentKind.CREDIT_NOTE as string)) {
-        const live = await tx.fiscalDocument.findFirst({
-          where: {
-            organizationId,
-            orderId: doc.orderId,
-            kind: FiscalDocumentKind.SALE,
-            status: { not: FiscalDocumentStatus.VOIDED }
-          },
-          select: { id: true }
-        })
+        const live = await this.soleLiveSaleOrThrow(tx, organizationId, doc.orderId)
         if (live === null) {
           throw new PlatformException(
             ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
@@ -1639,6 +1803,7 @@ export class FiscalDocumentsService {
           status: FiscalDocumentStatus.QUEUED,
           rejectionReason: null,
           parentDocumentId,
+          contingencyId: null,
           // A new submission for the authority of the new issuer: its own key and a fresh count
           submission: { increment: 1 },
           attempts: 0,
@@ -1693,7 +1858,10 @@ export class FiscalDocumentsService {
                 // never one of another authority or of the test environment
                 kind: doc.kind,
                 providerId: doc.providerId,
-                environment: doc.environment
+                environment: doc.environment,
+                // The replacement is the one that was made for THIS document: the authority is told its generation code as the
+                // document that takes its place
+                replacesDocumentId: id
               }
             })
       if (other === null) throw resourceNotFound('replacement fiscal document')
@@ -1711,19 +1879,7 @@ export class FiscalDocumentsService {
     // an accepted one, one being sent, and one that was sent and not answered (back in the queue with an attempt counted: the authority may
     // have it). A note that never left core (waiting, or refused by core or by the authority, which resets its attempts) is refused when
     // it is sent for a voided original and a person retries it once the sale is replaced, so it never makes the sale unvoidable.
-    const notes = await this.prisma.client.fiscalDocument.count({
-      where: {
-        organizationId,
-        parentDocumentId: id,
-        OR: [
-          { status: { in: [FiscalDocumentStatus.ACCEPTED, FiscalDocumentStatus.SUBMITTED] } },
-          {
-            status: { in: [FiscalDocumentStatus.QUEUED, FiscalDocumentStatus.REJECTED] },
-            attempts: { gt: 0 }
-          }
-        ]
-      }
-    })
+    const notes = await this.notesAtAuthority(this.prisma.client, organizationId, id)
     if (notes > 0) {
       throw new PlatformException(
         ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
@@ -1869,6 +2025,164 @@ export class FiscalDocumentsService {
     return this.get(organizationId, id)
   }
 
+  // The sale document of an order that is alive, for what names it (a credit note): `sale` is the one, and `pair` says there are two (a
+  // replacement made first stands beside its original, both alive on purpose until the original is invalidated). In that window no document
+  // is THE live one: a note made then would name one of two documents, and a note naming the original would stop it from being invalidated.
+  // The live document is locked and read again, so a replacement made first at the same time is seen by whichever transaction comes second.
+  private async liveSaleOf(
+    tx: PrismaTransaction,
+    organizationId: string,
+    orderId: string
+  ): Promise<{ sale: { id: string; receiverEncrypted: Uint8Array } | null; pair: boolean }> {
+    const read = (): Promise<{ id: string; receiverEncrypted: Uint8Array }[]> =>
+      tx.fiscalDocument.findMany({
+        where: {
+          organizationId,
+          orderId,
+          kind: FiscalDocumentKind.SALE,
+          status: { not: FiscalDocumentStatus.VOIDED }
+        },
+        select: { id: true, receiverEncrypted: true },
+        take: 2
+      })
+    let live = await read()
+    if (live.length === 1 && live[0] !== undefined) {
+      await tx.$queryRaw`SELECT id FROM fiscal_documents WHERE id = ${live[0].id} AND organization_id = ${organizationId} FOR UPDATE`
+      live = await read()
+    }
+    return { sale: live.length === 1 ? (live[0] ?? null) : null, pair: live.length > 1 }
+  }
+
+  // The live sale document, or null when there is none or when two stand (nothing is named then: the note of a return is made later, and
+  // the sweep names the ones that wait)
+  private async soleLiveSale(
+    tx: PrismaTransaction,
+    organizationId: string,
+    orderId: string
+  ): Promise<{ id: string; receiverEncrypted: Uint8Array } | null> {
+    return (await this.liveSaleOf(tx, organizationId, orderId)).sale
+  }
+
+  // The same, for what a person asks for (a retry, a reissue): two live documents are told as such, the invalidation of the original comes first
+  private async soleLiveSaleOrThrow(
+    tx: PrismaTransaction,
+    organizationId: string,
+    orderId: string
+  ): Promise<{ id: string; receiverEncrypted: Uint8Array } | null> {
+    const { sale, pair } = await this.liveSaleOf(tx, organizationId, orderId)
+    if (pair) {
+      throw new PlatformException(
+        ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+        'the sale has a replacement that was made first: invalidate the original first',
+        HttpStatusCodes.CONFLICT,
+        { reason: FiscalConflictReasons.REPLACEMENT_PENDING }
+      )
+    }
+    return sale
+  }
+
+  // What a replacement made before the invalidation needs (the original is accepted, so it is at the authority): the provider asks for it,
+  // the original has no credit note that the authority may have (the notes go first, as for a void), and the issuer is the one the original
+  // was made with (the invalidation that follows needs it). Throws the conflict a person can read.
+  private async assertReplaceFirst(
+    tx: PrismaTransaction,
+    organizationId: string,
+    old: {
+      id: string
+      orderId: string
+      providerId: string
+      issuerSnapshot: unknown
+      replacesDocumentId: string | null
+    },
+    issuer: Parameters<typeof sameIssuer>[1] & { providerId: string }
+  ): Promise<void> {
+    // A replacement is not replaced first: it is invalidated, or its original is, and the document is replaced after that (the table keeps one
+    // live replacement per order, so the answer would be a false 'already replaced')
+    if (old.replacesDocumentId !== null) {
+      throw new PlatformException(
+        ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+        'a replacement is not replaced before it is invalidated',
+        HttpStatusCodes.CONFLICT,
+        { reason: FiscalConflictReasons.REPLACE_FIRST_UNAVAILABLE }
+      )
+    }
+    const asks = this.providers.find(old.providerId)?.manifest.voidInputs?.kindsWithReplacement
+    if (asks === undefined || asks.length === 0 || issuer.providerId !== old.providerId) {
+      throw new PlatformException(
+        ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+        'the provider does not ask for a replacement before an invalidation',
+        HttpStatusCodes.CONFLICT,
+        { reason: FiscalConflictReasons.REPLACE_FIRST_UNAVAILABLE }
+      )
+    }
+    // The original is the only live sale document of its order: not a replacement that waits for its own original to be invalidated, and
+    // not one that already has its replacement (a third live document is never made)
+    const alive = await tx.fiscalDocument.count({
+      where: {
+        organizationId,
+        orderId: old.orderId,
+        kind: FiscalDocumentKind.SALE,
+        status: { not: FiscalDocumentStatus.VOIDED }
+      }
+    })
+    if (alive !== 1) {
+      throw new PlatformException(
+        ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+        'the sale already has a replacement that was made first',
+        HttpStatusCodes.CONFLICT,
+        { reason: FiscalConflictReasons.REPLACEMENT_PENDING }
+      )
+    }
+    // Any credit note that is not voided, waiting or sent: the notes name the original, and none is moved or made while both stand
+    const notes = await tx.fiscalDocument.count({
+      where: {
+        organizationId,
+        parentDocumentId: old.id,
+        kind: FiscalDocumentKind.CREDIT_NOTE,
+        status: { not: FiscalDocumentStatus.VOIDED }
+      }
+    })
+    if (notes > 0) {
+      throw new PlatformException(
+        ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+        'a document with credit notes that are not voided cannot be replaced first',
+        HttpStatusCodes.CONFLICT,
+        { reason: FiscalConflictReasons.HAS_CREDIT_NOTES }
+      )
+    }
+    if (!sameIssuer(record(old.issuerSnapshot), issuer)) {
+      throw new PlatformException(
+        ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
+        'the issuer changed since the document was made',
+        HttpStatusCodes.CONFLICT
+      )
+    }
+  }
+
+  // The credit notes of a sale document that the authority may have: an accepted one, one being sent, and one that was sent and not
+  // answered (back in the queue with an attempt counted). A note that never left core is not one of them.
+  private notesAtAuthority(
+    db: Pick<PrismaService['client'], 'fiscalDocument'>,
+    organizationId: string,
+    saleId: string
+  ): Promise<number> {
+    return db.fiscalDocument.count({
+      where: {
+        organizationId,
+        parentDocumentId: saleId,
+        OR: [
+          { status: { in: [FiscalDocumentStatus.ACCEPTED, FiscalDocumentStatus.SUBMITTED] } },
+          {
+            status: { in: [FiscalDocumentStatus.QUEUED, FiscalDocumentStatus.REJECTED] },
+            attempts: { gt: 0 }
+          },
+          // A note kept in a contingency is signed and listed in its event: it names this document and is as good as sent
+          { contingencyId: { not: null }, status: FiscalDocumentStatus.QUEUED }
+        ]
+      }
+    })
+  }
+
   // A document as a provider is shown it: what was built, readable; null when the sealed copy cannot be opened
   private storedOf(doc: {
     documentType: string
@@ -1923,8 +2237,11 @@ export class FiscalDocumentsService {
     const made = await this.prisma
       .transaction(async tx => {
         const old = await this.lock(tx, organizationId, id)
+        // The replacement of a voided document, or (when the provider's authority asks for the replacement before an invalidation) the
+        // replacement of an accepted one, made first: the invalidation then names it
+        const first = old.status === (FiscalDocumentStatus.ACCEPTED as string)
         if (
-          old.status !== (FiscalDocumentStatus.VOIDED as string) ||
+          (old.status !== (FiscalDocumentStatus.VOIDED as string) && !first) ||
           old.kind !== (FiscalDocumentKind.SALE as string)
         ) {
           throw this.invalid(old.status as FiscalDocumentStatus)
@@ -1937,24 +2254,6 @@ export class FiscalDocumentsService {
             HttpStatusCodes.CONFLICT
           )
         }
-        // One live sale document per order: the index says it too, this gives the answer a person can read
-        const live = await tx.fiscalDocument.findFirst({
-          where: {
-            organizationId,
-            orderId: old.orderId,
-            kind: FiscalDocumentKind.SALE,
-            status: { not: FiscalDocumentStatus.VOIDED }
-          },
-          select: { id: true }
-        })
-        if (live !== null) {
-          throw new PlatformException(
-            ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
-            'the sale already has a live document',
-            HttpStatusCodes.CONFLICT,
-            { reason: FiscalConflictReasons.ALREADY_REPLACED }
-          )
-        }
         // A document is replaced once, even when its replacement was voided later (a person replaces the last one then)
         const replacement = await tx.fiscalDocument.findFirst({
           where: { organizationId, replacesDocumentId: old.id },
@@ -1964,6 +2263,28 @@ export class FiscalDocumentsService {
           throw new PlatformException(
             ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
             'the document was already replaced',
+            HttpStatusCodes.CONFLICT,
+            { reason: FiscalConflictReasons.ALREADY_REPLACED }
+          )
+        }
+        if (first) await this.assertReplaceFirst(tx, organizationId, old, issuer)
+        // One live sale document per order: the index says it too, this gives the answer a person can read. The replacement made first has
+        // the original alive beside it on purpose (the index leaves it out, and the one-replacement index keeps it single)
+        const live = first
+          ? null
+          : await tx.fiscalDocument.findFirst({
+              where: {
+                organizationId,
+                orderId: old.orderId,
+                kind: FiscalDocumentKind.SALE,
+                status: { not: FiscalDocumentStatus.VOIDED }
+              },
+              select: { id: true }
+            })
+        if (live !== null) {
+          throw new PlatformException(
+            ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+            'the sale already has a live document',
             HttpStatusCodes.CONFLICT,
             { reason: FiscalConflictReasons.ALREADY_REPLACED }
           )
@@ -2012,7 +2333,9 @@ export class FiscalDocumentsService {
             parentDocumentId: old.id,
             kind: FiscalDocumentKind.CREDIT_NOTE,
             status: { in: [FiscalDocumentStatus.QUEUED, FiscalDocumentStatus.REJECTED] },
-            attempts: 0
+            attempts: 0,
+            // Not one kept in a contingency: its payload names the document it was made for
+            contingencyId: null
           },
           select: { id: true, status: true }
         })
@@ -2056,7 +2379,9 @@ export class FiscalDocumentsService {
         const creditNoteIds: string[] = movable
           .filter(note => note.status === (FiscalDocumentStatus.QUEUED as string))
           .map(note => note.id)
-        for (const returnId of targets) {
+        // Made first, the replacement makes no note: the original stands beside it with none, and the notes of the returns wait until the
+        // original is voided (the sweep names them)
+        for (const returnId of first ? [] : targets) {
           const again = await this.makeCreditNote(tx, organizationId, old.orderId, returnId, {
             id: created.id
           })
@@ -2114,15 +2439,7 @@ export class FiscalDocumentsService {
             { reason: FiscalConflictReasons.NOTE_NOT_VOIDED }
           )
         }
-        const live = await tx.fiscalDocument.findFirst({
-          where: {
-            organizationId,
-            orderId: old.orderId,
-            kind: FiscalDocumentKind.SALE,
-            status: { not: FiscalDocumentStatus.VOIDED }
-          },
-          select: { id: true }
-        })
+        const live = await this.soleLiveSaleOrThrow(tx, organizationId, old.orderId)
         if (live === null) {
           throw new PlatformException(
             ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,

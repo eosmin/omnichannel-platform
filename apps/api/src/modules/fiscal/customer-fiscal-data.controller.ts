@@ -4,7 +4,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import { FiscalCustomerDataService, type MaskedCustomerFiscalData } from '@platform/fiscal/runtime'
 
@@ -37,6 +37,7 @@ export class CustomerFiscalDataController {
   constructor(private readonly data: FiscalCustomerDataService) {}
 
   @RequirePermissions(Permissions.FISCAL_VIEW_CUSTOMER_DATA)
+  @NoStore()
   @Get(ApiRoutes.fiscal.customerData.get(':customerId'))
   async get(
     @CurrentStore() store: Store,
@@ -46,6 +47,7 @@ export class CustomerFiscalDataController {
   }
 
   @RequirePermissions(Permissions.FISCAL_MANAGE_CUSTOMER_DATA)
+  @NoStore()
   @Put(ApiRoutes.fiscal.customerData.put(':customerId'))
   async put(
     @CurrentOrganization() organization: Organization,
@@ -68,6 +70,7 @@ export class CustomerFiscalDataController {
   }
 
   @RequirePermissions(Permissions.FISCAL_MANAGE_CUSTOMER_DATA)
+  @NoStore()
   @Delete(ApiRoutes.fiscal.customerData.clear(':customerId'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async clear(

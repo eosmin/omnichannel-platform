@@ -172,6 +172,9 @@ export const AuditAction = {
   WEBHOOK_CREATED: 'webhook.created',
   WEBHOOK_UPDATED: 'webhook.updated',
   WEBHOOK_DELETED: 'webhook.deleted',
+  // A call to the plugin API the guard refused (a key that is not valid, an installation that is off, a scope or a permission the plugin
+  // lacks): the platform is the actor, the installation and the reason are on the metadata, never the key; capped per window
+  PLUGIN_API_DENIED: 'plugin.api_denied',
   PLUGIN_REGISTERED: 'plugin.registered',
   PLUGIN_MANIFEST_UPDATED: 'plugin.manifest_updated',
   PLUGIN_DELETED: 'plugin.deleted',
@@ -220,6 +223,13 @@ export const AuditAction = {
   FISCAL_DOCUMENT_RECEIVER_CHANGED: 'fiscal.document_receiver_changed',
   FISCAL_DOCUMENT_VOIDED: 'fiscal.document_voided',
   FISCAL_DOCUMENT_REPLACED: 'fiscal.document_replaced',
+  // A contingency of the issuer (Step 4B.7c-7): opened (by a person or by the lifecycle), ended, and reported to the authority
+  FISCAL_CONTINGENCY_ENTERED: 'fiscal.contingency_entered',
+  FISCAL_CONTINGENCY_ENDED: 'fiscal.contingency_ended',
+  FISCAL_CONTINGENCY_REPORTED: 'fiscal.contingency_reported',
+  FISCAL_CONTINGENCY_REPORT_ASKED: 'fiscal.contingency_report_asked',
+  // A person gives up the report of a contingency: its documents go out the normal way
+  FISCAL_CONTINGENCY_ABANDONED: 'fiscal.contingency_abandoned',
   // The fiscal data of a customer (field names only, never the values), and every read of it by a person
   FISCAL_CUSTOMER_DATA_CHANGED: 'fiscal.customer_data_changed',
   FISCAL_CUSTOMER_DATA_CLEARED: 'fiscal.customer_data_cleared',

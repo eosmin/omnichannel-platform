@@ -116,7 +116,10 @@
         "fiscal": {
           "document_rejected": "Documento fiscal rechazado",
           "document_stuck": "Documento fiscal detenido",
-          "entry_mismatch": "Un documento fiscal no coincide con los libros"
+          "entry_mismatch": "Un documento fiscal no coincide con los libros",
+          "contingency_opened": "Contingencia fiscal iniciada",
+          "contingency_report_failed": "Contingencia fiscal sin reportar",
+          "contingency_window_closing": "El plazo de una contingencia fiscal se acaba"
         }
       },
       "push": {
@@ -602,10 +605,12 @@
     "FISCAL_DOCUMENT_INVALID_TRANSITION": "El documento fiscal no puede pasar de su estado actual",
     "FISCAL_ISSUER_INVALID": "El emisor no pasa las comprobaciones del proveedor",
     "FISCAL_CUSTOMER_DATA_INVALID": "Los datos fiscales del cliente no pasan las comprobaciones del proveedor",
+    "FISCAL_CONTINGENCY_INVALID": "La contingencia no se puede cambiar así",
     "FISCAL_PROVIDER_UNAVAILABLE": "El proveedor de documentos fiscales no está disponible",
     "FINANCE_ENTRY_UNBALANCED": "El asiento no cuadra: los débitos y los créditos deben ser iguales y positivos",
     "FINANCE_ACCOUNT_NOT_POSTABLE": "Esta cuenta solo agrupa otras cuentas: elige una que acepte asientos",
     "FINANCE_ACCOUNT_INACTIVE": "Esta cuenta está inactiva",
+    "FINANCE_ACCOUNT_TYPE_MISMATCH": "El tipo de esta cuenta no corresponde: elige una cuenta del tipo que pide este rol o método de pago (por ejemplo, el impuesto por pagar es un pasivo y el dinero recibido es un activo).",
     "FINANCE_ACCOUNT_TYPE_LOCKED": "El tipo de una cuenta con asientos no se puede cambiar",
     "FINANCE_ACCOUNT_HAS_ENTRIES": "Una cuenta con asientos no se puede eliminar ni volver encabezado, solo desactivar",
     "FINANCE_ROLE_NOT_MAPPED": "Falta una cuenta para este rol: asígnala en los ajustes de finanzas",
@@ -1062,6 +1067,18 @@
       "entry_mismatch": {
         "title": "Un documento fiscal no coincide con los libros",
         "body": "La revisión diaria encontró una venta cuyo documento fiscal tiene un total o un impuesto distinto al de su asiento en los libros. Abre los documentos fiscales y pide al contador que decida cuál es el correcto: nada se corrige solo."
+      },
+      "contingency_opened": {
+        "title": "Se están emitiendo documentos sin la autoridad",
+        "body": "La autoridad no respondió un documento, así que los nuevos documentos fiscales se emiten en contingencia: firmados y guardados, sin enviar. Termina la contingencia en los ajustes fiscales cuando la autoridad responda otra vez, para reportarlos y enviarlos."
+      },
+      "contingency_report_failed": {
+        "title": "No se pudo reportar una contingencia",
+        "body": "La autoridad no aceptó el evento que reporta una contingencia tras todos los intentos. Los documentos emitidos en ella esperan. Abre los ajustes fiscales y pide reportarla de nuevo."
+      },
+      "contingency_window_closing": {
+        "title": "Los documentos de una contingencia deben enviarse pronto",
+        "body": "El plazo que da la autoridad para enviar los documentos emitidos en una contingencia se acaba. Abre los documentos fiscales y revisa que se estén enviando."
       }
     }
   },
@@ -7456,7 +7473,11 @@
         "confirmIssuerChange": "El emisor cambió",
         "replaceNoteConfirmTitle": "¿Hacer de nuevo esta nota de crédito?",
         "replaceNoteConfirmDescription": "Se hace una nota de crédito nueva, con otro número, para la misma devolución, contra el documento de venta vigente, y se envía a la autoridad. No se puede deshacer.",
-        "replacedNote": "La nota de crédito nueva se hizo y quedó en cola."
+        "replacedNote": "La nota de crédito nueva se hizo y quedó en cola.",
+        "replaceFirst": "Hacer primero el reemplazo",
+        "replaceFirstConfirmTitle": "¿Hacer primero el reemplazo de este documento?",
+        "replaceFirstConfirmDescription": "La autoridad pide el documento que lo reemplaza antes de invalidar este. Se hace un documento nuevo de la misma venta, con número nuevo y el mismo receptor, y los libros conservan el asiento de la venta que ya tienen. Este documento sigue aceptado hasta que lo invalides indicando el nuevo.",
+        "replacedFirst": "El reemplazo quedó en cola. Invalida este documento cuando esté aceptado."
       },
       "conflicts": {
         "has_credit_notes": "Este documento tiene notas de crédito que no están anuladas. Anula primero las notas.",
@@ -7467,7 +7488,9 @@
         "no_issuer_change": "El emisor de este documento es con el que se hizo: envíalo de nuevo.",
         "issuer_changed_in_flight": "Este documento puede estar en el emisor con el que se hizo, que cambió después. Confirma que no está allí para hacerlo de nuevo con el emisor nuevo.",
         "note_not_voided": "Solo una nota de crédito anulada se puede hacer de nuevo.",
-        "note_already_replaced": "La devolución de esta nota de crédito ya tiene una nota de crédito vigente."
+        "note_already_replaced": "La devolución de esta nota de crédito ya tiene una nota de crédito vigente.",
+        "replace_first_unavailable": "Este proveedor no pide el reemplazo antes de invalidar, o este documento ya es un reemplazo. Anúlalo y haz el documento nuevo después.",
+        "replacement_pending": "Esta venta ya tiene un reemplazo hecho primero. Invalida primero el original."
       },
       "receiver": {
         "title": "Corregir el receptor del documento N.º {number}",
@@ -7547,7 +7570,7 @@
           "other": "Otro motivo"
         },
         "replacement": "Documento que lo reemplaza",
-        "replacementHint": "La autoridad lo pide antes de la invalidación: hazlo primero.",
+        "replacementHint": "Solo se puede elegir un documento hecho para reemplazar este: hazlo primero, desde el detalle de este documento.",
         "replacementChoose": "Elige el documento",
         "replacementOption": "N.º {number} · {total}",
         "responsible": {

@@ -574,7 +574,7 @@ describe('The credit notes of the fiscal documents (Step 4B.7b)', () => {
   })
 
   describe('what the database keeps', () => {
-    it('refuses a second live credit note for a return, a credit note with no original and a sale document that replaces a live one', async () => {
+    it('refuses a second live credit note for a return, a credit note with no original and a sale document that replaces one the authority does not have', async () => {
       const order = await sale(true)
       const note = await noteOf(await receivedReturn(order, 1))
       const copy = (overrides: Record<string, unknown>) => {
@@ -587,13 +587,42 @@ describe('The credit notes of the fiscal documents (Step 4B.7b)', () => {
       }
       await expect(copy({})).rejects.toThrow()
       await expect(copy({ sequenceNumber: 2_000_001, parentDocumentId: null })).rejects.toThrow()
+      // A sale document replaces a document the authority has (accepted, or voided); one that is only queued is not replaced
+      const waiting = await sale(false)
       await expect(
         copy({
           sequenceNumber: 2_000_002,
           kind: FiscalDocumentKind.SALE,
+          orderId: waiting.id,
+          returnId: null,
+          parentDocumentId: null,
+          replacesDocumentId: waiting.documentId
+        })
+      ).rejects.toThrow()
+      // The replacement of an accepted sale document is the one made first (Step 4B.7c-5b): once, and not a third live document
+      const made = await copy({
+        sequenceNumber: 2_000_003,
+        kind: FiscalDocumentKind.SALE,
+        returnId: null,
+        parentDocumentId: null,
+        replacesDocumentId: order.documentId
+      })
+      await expect(
+        copy({
+          sequenceNumber: 2_000_004,
+          kind: FiscalDocumentKind.SALE,
           returnId: null,
           parentDocumentId: null,
           replacesDocumentId: order.documentId
+        })
+      ).rejects.toThrow()
+      await expect(
+        copy({
+          sequenceNumber: 2_000_005,
+          kind: FiscalDocumentKind.SALE,
+          returnId: null,
+          parentDocumentId: null,
+          replacesDocumentId: made.id
         })
       ).rejects.toThrow()
     })

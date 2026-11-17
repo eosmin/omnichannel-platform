@@ -1,3 +1,4 @@
+export * from './fiscal-contingency.service'
 export * from './fiscal-customer-data.service'
 export * from './fiscal-documents.service'
 export * from './fiscal-evidence.service'

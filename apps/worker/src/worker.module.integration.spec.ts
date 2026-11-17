@@ -1,6 +1,10 @@
 import { Test } from '@nestjs/testing'
 
-import { FiscalDocumentsService, FiscalProviderRegistry } from '@platform/fiscal/runtime'
+import {
+  FiscalContingencyService,
+  FiscalDocumentsService,
+  FiscalProviderRegistry
+} from '@platform/fiscal/runtime'
 
 import { FinanceChainChecker } from './finance/finance-chain-checker.service'
 import { FinanceReconciler } from './finance/finance-reconciler.service'
@@ -35,6 +39,11 @@ describe('WorkerModule', () => {
     )
     // The daily check of the fiscal documents asks the heavy queue and the metrics, and the lifecycle: built with them, or the worker would not start
     expect(moduleRef.get(FiscalReconciler, { strict: false })).toBeInstanceOf(FiscalReconciler)
+    // The contingency is reported by the heavy processor and its windows are checked by the daily check: built with the queue, or the worker
+    // would not start
+    expect(moduleRef.get(FiscalContingencyService, { strict: false })).toBeInstanceOf(
+      FiscalContingencyService
+    )
     // The fiscal documents are submitted by the heavy processor: the lifecycle must be built with the providers of the deployment, and the
     // simulator is one of them in test (it is never one in production)
     expect(moduleRef.get(FiscalDocumentsService, { strict: false })).toBeInstanceOf(

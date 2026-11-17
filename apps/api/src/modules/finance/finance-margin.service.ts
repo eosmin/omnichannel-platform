@@ -156,7 +156,8 @@ export class FinanceMarginService {
           referenceId: true,
           productId: true,
           quantity: true,
-          unitCostCents: true
+          unitCostCents: true,
+          valueCents: true
         }
       })
       const movementsOf = new Map<string, MarginMovement[]>()

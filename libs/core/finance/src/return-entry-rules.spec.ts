@@ -28,6 +28,38 @@ const sum = (lines: readonly DraftLine[], side: 'debitCents' | 'creditCents'): n
 const lineOf = (lines: readonly DraftLine[], role: AccountRole): DraftLine | undefined =>
   lines.find(line => line.accountId === `acc-${role}`)
 
+describe('restockCost (E8, HC-007)', () => {
+  const back = [{ productId: 'p', variantId: null, quantity: 2, unitCostCents: null }]
+
+  it('puts back at the exact value the sale took out, not the rounded cost times the units', () => {
+    // The sale took 2 units out of 5 worth 502: a value of 201 at a recorded cost of 100
+    const issued = [
+      { productId: 'p', variantId: null, quantity: 2, unitCostCents: 100, valueCents: 201n }
+    ]
+    expect(restockCost(back, issued)).toEqual({ ok: true, costCents: 201 })
+  })
+
+  it('prorates the total of several issues of the same product by the units that came back', () => {
+    const issued = [
+      { productId: 'p', variantId: null, quantity: 2, unitCostCents: 100, valueCents: 201n },
+      { productId: 'p', variantId: null, quantity: 3, unitCostCents: 100, valueCents: 301n }
+    ]
+    // 1 of the 5 units: 502 / 5 = 100.4 -> 100
+    expect(
+      restockCost([{ productId: 'p', variantId: null, quantity: 1, unitCostCents: null }], issued)
+    ).toEqual({ ok: true, costCents: 100 })
+    // All 5 of them clear the whole 502 of the cost of goods sold
+    expect(
+      restockCost([{ productId: 'p', variantId: null, quantity: 5, unitCostCents: null }], issued)
+    ).toEqual({ ok: true, costCents: 502 })
+  })
+
+  it('keeps the units times the cost for an issue written before the value was recorded', () => {
+    const issued = [{ productId: 'p', variantId: null, quantity: 2, unitCostCents: 100 }]
+    expect(restockCost(back, issued)).toEqual({ ok: true, costCents: 200 })
+  })
+})
+
 describe('openReceivableCents (E7)', () => {
   it('is what the carrier had to collect less what every confirmed remittance cleared', () => {
     // 100.00 to collect; a first remittance reported 80.00 and kept 5.00, a second one reported 10.00 and kept nothing
