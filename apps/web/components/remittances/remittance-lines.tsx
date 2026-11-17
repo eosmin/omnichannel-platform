@@ -5,7 +5,7 @@ import { useFormatter, useTranslations } from 'next-intl'
 import { type FormEvent, Fragment, type ReactElement, useState } from 'react'
 
 import type { RemittanceLineView } from '@platform/api-client'
-import { RemittanceLimits } from '@platform/core/domain'
+import { RemittanceLimits, RemittanceLineWarnings } from '@platform/core/domain'
 
 import { centsToInput, formatCents } from '../../lib/products/money'
 import {
@@ -229,7 +229,14 @@ export function RemittanceLines({
                 </td>
                 <td className="py-2 pr-3 text-sm whitespace-nowrap">{line.orderNumber ?? ''}</td>
                 <td className="py-2 pr-3 text-sm">
-                  <LineOutcomeText outcome={line.outcome} />
+                  <LineOutcomeText
+                    outcome={line.outcome}
+                    feeConsumesCash={
+                      showWarnings &&
+                      !line.excluded &&
+                      knownWarnings(line).includes(RemittanceLineWarnings.FEE_EXCEEDS_COLLECTED)
+                    }
+                  />
                 </td>
                 <td className="py-2 pr-3 text-right text-sm whitespace-nowrap">
                   {line.expectedCents === null ? '' : formatCents(format, line.expectedCents)}

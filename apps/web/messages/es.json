@@ -5309,6 +5309,7 @@
     },
     "outcome": {
       "matched": "Coincide",
+      "matchedFeeConsumesCash": "Coincide: la comisión consume lo cobrado",
       "amount_differs": "Monto distinto",
       "not_found": "Guía no encontrada",
       "not_delivered": "Aún sin entregar",
@@ -6347,6 +6348,7 @@
         "problems": {
           "date": "Escribe una fecha que exista, como año-mes-día, y a lo más un día adelante.",
           "amount": "Escribe un monto mayor que cero, con a lo más dos decimales.",
+          "amountTooLarge": "El monto no puede pasar de {max}.",
           "from": "Elige la cuenta de la que sale el dinero.",
           "to": "Elige la cuenta a la que entra el dinero, distinta de la de origen.",
           "category": "Elige la cuenta donde se clasifica.",
@@ -6593,8 +6595,8 @@
       },
       "errors": {
         "title": "{count, plural, one {# fila no se puede leer} other {# filas no se pueden leer}}",
-        "row": "Fila {row}, {field}: {reason}",
-        "rowWithValue": "Fila {row}, {field}: {reason} (“{value}”)",
+        "row": "Fila {row}{hasField, select, yes {, {field}} other {}}: {reason}",
+        "rowWithValue": "Fila {row}{hasField, select, yes {, {field}} other {}}: {reason} (“{value}”)",
         "more": "{count, plural, one {Y # más.} other {Y # más.}}",
         "unknown": "no se pudo leer el archivo",
         "fields": {
@@ -7621,6 +7623,12 @@
         "nextSequenceFirst": "Déjalo vacío para empezar en 1. Solo avanza.",
         "nextSequenceHint": "El siguiente documento toma el número {next}. Un número nuevo debe ser mayor: solo avanza.",
         "credentials": {
+          "keys": {
+            "signingKey": "Llave de firma",
+            "apiPassword": "Contraseña de la API",
+            "certificatePassword": "Contraseña del certificado",
+            "certificate": "Certificado"
+          },
           "legend": "Credenciales",
           "stored": "Hay credenciales guardadas. No se vuelven a mostrar.",
           "none": "Aún no hay credenciales guardadas.",

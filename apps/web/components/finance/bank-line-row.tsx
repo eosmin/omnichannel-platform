@@ -83,7 +83,7 @@ export function BankLineRow({
             {money(line.amountCents)}
           </span>
           <span
-            className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs"
+            className="bg-muted text-muted-foreground shrink-0 rounded-full px-2 py-0.5 text-xs wrap-normal whitespace-nowrap"
             data-testid="bank-line-state"
           >
             {t(`states.${state}`)}
@@ -204,7 +204,7 @@ function SuggestionRow({
           <li
             key={item.reason}
             data-reason={item.reason}
-            className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs"
+            className="bg-muted text-muted-foreground shrink-0 rounded-full px-2 py-0.5 text-xs wrap-normal whitespace-nowrap"
           >
             {item.reason === SuggestionReasons.DAYS_APART
               ? reasons('daysApart', { days: item.days ?? 0 })
@@ -214,7 +214,7 @@ function SuggestionRow({
         {suggestion.exact ? (
           <li
             data-reason="exact"
-            className="bg-primary text-primary-foreground rounded-full px-2 py-0.5 text-xs"
+            className="bg-primary text-primary-foreground shrink-0 rounded-full px-2 py-0.5 text-xs wrap-normal whitespace-nowrap"
           >
             {reasons('exact')}
           </li>

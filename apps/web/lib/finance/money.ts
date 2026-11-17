@@ -63,6 +63,13 @@ export function centsOfDecimalText(input: string, maxCents = 2_147_483_647): num
   return match[1] === '-' && cents !== 0 ? -cents : cents
 }
 
+// An amount that is well written (digits, a sign never, at most two decimals) but more than a line of the books can hold: the screens say
+// the limit instead of the rule of the digits.
+export function amountExceedsLine(input: string): boolean {
+  const cents = centsOfDecimalText(input, Number.MAX_SAFE_INTEGER)
+  return cents !== null && cents > FinanceLimits.MAX_LINE_CENTS
+}
+
 // What a person types as an amount of a transaction or a line: the same reading, but only above zero and within a line of the books
 // ("12" -> 1200, "0.05" -> 5); a sign, zero or more than a line can hold is not an amount (null).
 export function positiveCentsOfDecimalText(input: string): number | null {
