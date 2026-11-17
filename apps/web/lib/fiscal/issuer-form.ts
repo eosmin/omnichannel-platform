@@ -124,6 +124,12 @@ export function catalogOf(
   return name === undefined ? null : (provider?.manifest.catalogs?.[name] ?? null)
 }
 
+// What the issuer has stored in a field that is typed or chosen as a code
+const storedValueOf = (current: FiscalIssuerView, field: IssuerField): string | null => {
+  const value = (current as unknown as Record<string, unknown>)[field]
+  return typeof value === 'string' ? value.trim() : null
+}
+
 export function issuerProblems(
   draft: IssuerDraft,
   provider: FiscalProviderView | undefined,
@@ -137,10 +143,13 @@ export function issuerProblems(
     else {
       // A field chosen from a catalog takes only a code that is in it (what was typed before the catalog existed is told, not sent)
       const options = catalogOf(provider, field)
+      // A code the issuer was saved with stays as it is: it is told only when the person changes it to one the list does not have
+      const stored = current === null ? null : storedValueOf(current, field)
       if (
         options !== null &&
         present(value) &&
-        !options.some(option => option.code === value.trim())
+        !options.some(option => option.code === value.trim()) &&
+        !(stored !== null && stored === value.trim() && current?.providerId === draft.providerId)
       ) {
         problems.push({ field, kind: 'unknown' })
       }

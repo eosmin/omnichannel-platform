@@ -8,7 +8,8 @@ import {
   type FiscalEnvironment,
   type FiscalIssueOn,
   FiscalLimits,
-  FiscalResourceTypes
+  FiscalResourceTypes,
+  FiscalSeriesScopeKeys
 } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import type { FiscalIssuerInput } from '@platform/fiscal/sdk'
@@ -94,7 +95,7 @@ export class FiscalIssuerService {
       orderBy: { scopeKey: 'asc' }
     })
     const readable = (row: { scope: unknown }): string =>
-      ['providerId', 'environment', 'documentType', 'establishmentCode', 'pointOfSaleCode']
+      Object.values(FiscalSeriesScopeKeys)
         .map(key => {
           const value = record(row.scope)[key]
           return typeof value === 'string' ? value : ''

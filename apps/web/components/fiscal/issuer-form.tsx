@@ -132,6 +132,9 @@ export function IssuerForm({
           set({
             providerId: value,
             environment: next?.manifest.environments[0] ?? draft.environment,
+            // A code of the lists of the other provider is not a code of this one
+            activityCode: '',
+            establishmentType: '',
             credentials: {}
           })
         }}
@@ -256,7 +259,6 @@ export function IssuerForm({
             label={mark(t('phone'), IssuerFields.PHONE)}
             value={draft.phone}
             maxLength={FiscalFieldLimits.PHONE}
-            inputMode="text"
             disabled={locked}
             problem={wordsOf(IssuerFields.PHONE)}
             onChange={phone => set({ phone })}
@@ -356,7 +358,7 @@ function CodeField({
       />
     )
   }
-  const known = options.some(option => option.code === value)
+  const known = options.some(option => option.code === value.trim())
   return (
     <SelectField
       label={label}

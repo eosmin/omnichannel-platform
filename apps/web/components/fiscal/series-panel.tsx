@@ -4,21 +4,18 @@ import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
 import type { FiscalProviderView, FiscalSeriesView } from '@platform/api-client'
+import { FiscalEnvironment, FiscalSeriesScopeKeys } from '@platform/core/domain'
 
 import { useFiscalSeries } from '../../lib/fiscal/use-fiscal'
 import { useStore } from '../providers/store-context'
 import { LoadFailed } from '../settings/states'
 
 // The keys a scope can carry that this screen has words for; any other key a provider declares is shown as it is named
-const KNOWN_KEYS = [
-  'providerId',
-  'environment',
-  'documentType',
-  'establishmentCode',
-  'pointOfSaleCode'
-] as const
-type KnownKey = (typeof KNOWN_KEYS)[number]
-const isKnown = (key: string): key is KnownKey => (KNOWN_KEYS as readonly string[]).includes(key)
+const KNOWN_KEYS: readonly string[] = Object.values(FiscalSeriesScopeKeys)
+type KnownKey = (typeof FiscalSeriesScopeKeys)[keyof typeof FiscalSeriesScopeKeys]
+const isKnown = (key: string): key is KnownKey => KNOWN_KEYS.includes(key)
+const isEnvironment = (value: string): value is FiscalEnvironment =>
+  (Object.values(FiscalEnvironment) as string[]).includes(value)
 
 // The series of correlatives of the organization (TDD_18 §8.2, Step 4B.7c-5): what each one counts (the provider, the environment and what
 // the manifest declares: the type of document, the establishment, the point of sale) and the number the next document of it takes. Read only:
@@ -36,15 +33,21 @@ export function SeriesPanel({
     return <LoadFailed error={series.error} onRetry={() => void series.refetch()} />
   }
   if (series.data === undefined)
-    return <p className="text-muted-foreground text-sm">{t('loading')}</p>
+    return (
+      <p role="status" className="text-muted-foreground text-sm">
+        {t('loading')}
+      </p>
+    )
 
   // The words for a value of a scope: the label of a document type in the manifest of the provider of the series, the name of an environment
   const valueOf = (view: FiscalSeriesView, key: string, value: string): string => {
-    if (key === 'documentType') {
-      const provider = providers.find(candidate => candidate.id === view.scope['providerId'])
+    if (key === FiscalSeriesScopeKeys.DOCUMENT_TYPE) {
+      const provider = providers.find(
+        candidate => candidate.id === view.scope[FiscalSeriesScopeKeys.PROVIDER]
+      )
       return provider?.manifest.documentTypes.find(type => type.id === value)?.label ?? value
     }
-    if (key === 'environment' && (value === 'sandbox' || value === 'production')) {
+    if (key === FiscalSeriesScopeKeys.ENVIRONMENT && isEnvironment(value)) {
       return tEnvironment(value)
     }
     return value

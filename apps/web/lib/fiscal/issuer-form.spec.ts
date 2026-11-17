@@ -198,6 +198,22 @@ describe('the fields the port added: point of sale, kind of establishment, phone
     expect(issuerProblems({ ...full(), activityCode: '99999' }, provider, null)).toEqual([])
   })
 
+  it('does not hold a saved code against the person who changes something else, but tells a new one', () => {
+    const saved = { ...issuer, activityCode: 'OLD-CODE', providerId: 'provider-a' }
+    const draft = { ...issuerDraftOf(saved), credentials: { signingKey: 'k', secret: 's' } }
+    // The stored code is not in the list (a catalog that changed): the form is not refused for it
+    const fields = issuerProblems({ ...draft, phone: '2222-0000' }, rich, saved).map(
+      each => each.field
+    )
+    expect(fields).not.toContain('activityCode')
+    // A different code that is not in the list is told
+    expect(
+      issuerProblems({ ...full(), activityCode: 'ANOTHER' }, rich, saved).map(each => each.field)
+    ).toContain('activityCode')
+    // And a code with blanks around it is the code
+    expect(issuerProblems({ ...full(), activityCode: ' 47119 ' }, rich, null)).toEqual([])
+  })
+
   it('counts the length the api takes', () => {
     expect(issuerProblems({ ...full(), phone: '1'.repeat(41) }, rich, null)).toEqual([
       { field: 'phone', kind: 'tooLong' }

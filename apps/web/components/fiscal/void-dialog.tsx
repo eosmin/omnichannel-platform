@@ -174,7 +174,11 @@ function VoidForm({
     event.preventDefault()
     // The provider's manifest is still on its way: the form asks for what it knows, and never sends a reason alone to a provider that wants more
     if (providers.data === undefined) return
-    const found = voidFormProblems(draft, inputs)
+    const found = voidFormProblems(
+      draft,
+      inputs,
+      identities === null ? null : identities.map(option => option.code)
+    )
     if (found.length > 0) {
       setProblems(found)
       return
