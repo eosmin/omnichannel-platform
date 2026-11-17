@@ -43,10 +43,21 @@ const SECRET_ROUTES: readonly { controller: Controller; handlers: readonly strin
 ]
 
 function handlersOf(controller: Controller): string[] {
-  return Object.getOwnPropertyNames(controller.prototype).filter(name => {
-    const handler = (controller.prototype as Record<string, unknown>)[name]
-    return typeof handler === 'function' && Reflect.hasMetadata(METHOD_METADATA, handler)
-  })
+  const names = new Set<string>()
+  // The routes a base class gives are routes of the controller too
+  for (
+    let proto: object | null = controller.prototype;
+    proto && proto !== Object.prototype;
+    proto = Object.getPrototypeOf(proto) as object | null
+  ) {
+    for (const name of Object.getOwnPropertyNames(proto)) {
+      const handler = (proto as Record<string, unknown>)[name]
+      if (typeof handler === 'function' && Reflect.hasMetadata(METHOD_METADATA, handler)) {
+        names.add(name)
+      }
+    }
+  }
+  return [...names]
 }
 
 function handlerOf(controller: Controller, name: string): object {
@@ -71,6 +82,15 @@ function takesResponse(controller: Controller, name: string): boolean {
 }
 
 describe('Cache-Control: no-store on the routes of money, fiscal documents, secrets and sessions', () => {
+  // A Nest upgrade that renames the metadata would turn the checks below into vacuous passes
+  const [firstHandler = ''] = handlersOf(FiscalController)
+  it('reads the metadata Nest keeps: a known route has the header and a known file route takes the response', () => {
+    expect(hasNoStore(FiscalController, firstHandler)).toBe(true)
+    expect(
+      handlersOf(FinanceBooksController).some(n => takesResponse(FinanceBooksController, n))
+    ).toBe(true)
+  })
+
   it.each(MONEY_CONTROLLERS.map(c => [c.prototype.constructor.name, c] as const))(
     '%s answers every route with no-store',
     (_name, controller) => {
