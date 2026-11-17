@@ -1,3 +1,4 @@
+import { FiscalVoidKind } from '@platform/core/domain'
 import { SvCredentialKeys, officialSigner, svProvider } from '@platform/fiscal/sv'
 
 import {
@@ -10,7 +11,7 @@ import { ISSUER } from '../../libs/fiscal/sv/src/testing/sv-fixtures'
 import { testFiscalProviderContract } from './fiscal-provider.contract'
 
 // The provider of El Salvador passes the same contract as the simulator (TDD_18 §8.1), against a server of our own that plays the authority
-// and its signing service (nothing reaches the real one). Invalidation is not built yet (Step 4B.7c-4), so that part of the contract is skipped.
+// and its signing service (nothing reaches the real one).
 let authority: FakeAuthority
 
 beforeAll(async () => {
@@ -31,7 +32,9 @@ testFiscalProviderContract(
         fetch: (url, init) => fetch(url, init),
         timeoutMs: 2000
       }),
-      endpoints: authority.endpoints
+      endpoints: authority.endpoints,
+      // Inside the window of the documents the suite makes (2026-11-16)
+      now: () => Date.parse('2026-11-18T15:00:00.000Z')
     }),
   {
     issuer: ISSUER,
@@ -40,7 +43,11 @@ testFiscalProviderContract(
       [SvCredentialKeys.CERTIFICATE_PASSWORD]: FAKE.KEY_PASSWORD
     },
     secrets: [FAKE.API_PASSWORD, FAKE.KEY_PASSWORD],
-    voidImplemented: false,
+    voidDetails: {
+      kind: FiscalVoidKind.RESCISSION,
+      responsible: { name: 'Ana Pérez', idType: '13', idNumber: '012345678' },
+      requester: { name: 'Luis Gómez', idType: '36', idNumber: '06140101011011' }
+    },
     receivers: {
       plain: { name: null, taxId: null },
       refused: { name: 'Ana', taxId: FAKE.REJECT },

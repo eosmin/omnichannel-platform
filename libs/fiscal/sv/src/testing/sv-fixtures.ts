@@ -15,9 +15,11 @@ import type {
   FiscalCreditedDocument,
   FiscalIssuerInput,
   FiscalLine,
-  FiscalReceiver
+  FiscalReceiver,
+  StoredFiscalDocument
 } from '@platform/fiscal/sdk'
 
+import { buildDocument } from '../sv-build'
 import { SvProviderDataKeys } from '../sv-constants'
 
 // Fixtures of the specs of this package: a sale the way core hands it over, and the JSON schemas of the authority to check a document
@@ -120,7 +122,9 @@ const SCHEMAS = join(__dirname, '..', '..', 'schemas')
 const FILES: Record<string, string> = {
   '01': 'fe-f-v2.json',
   '03': 'fe-ccf-v4.json',
-  '05': 'fe-nc-v4.json'
+  '05': 'fe-nc-v4.json',
+  // The event that invalidates a document
+  invalidation: 'invalidacion-v3.json'
 }
 
 // The validator of the authority's own schema for a type of document. `multipleOfPrecision` because a float is never an exact multiple of
@@ -144,4 +148,21 @@ export function schemaErrors(type: string, payload: unknown): string[] {
   return validate(payload)
     ? []
     : (validate.errors ?? []).map(error => `${error.instancePath} ${error.message ?? ''}`.trim())
+}
+
+// A document as the authority accepted it and core kept it: built from a sale, with the answer's seal in its provider data. What the
+// invalidation reads.
+export function acceptedDocument(over: Partial<FiscalBuildInput> = {}): StoredFiscalDocument {
+  const built = buildDocument(sale(over))
+  const id = built.payload['identificacion'] as { codigoGeneracion: string; numeroControl: string }
+  return {
+    documentType: built.documentType,
+    externalNumber: id.numeroControl,
+    providerData: {
+      [SvProviderDataKeys.GENERATION_CODE]: id.codigoGeneracion,
+      [SvProviderDataKeys.CONTROL_NUMBER]: id.numeroControl,
+      [SvProviderDataKeys.RECEPTION_SEAL]: 'A'.repeat(40)
+    },
+    payload: built.payload
+  }
 }
