@@ -1,19 +1,23 @@
 import { randomBytes, randomInt } from 'node:crypto'
 
 import type { INestApplication } from '@nestjs/common'
+import { Redis } from 'ioredis'
 import supertest from 'supertest'
 
 import { API_PREFIX, PluginApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
+import { CacheKeys } from '@platform/core/cache'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   PLUGIN_API_KEY_TOKEN_PREFIX,
+  PluginApiDenialAudit,
   PluginApiDenialReasons,
   PluginInstallationStatus
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { PluginScopes } from '@platform/plugins/sdk'
 
+import { REDIS_URL } from '../../apps/api/src/testing/test-env'
 import { createPluginKey } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
@@ -24,6 +28,8 @@ const OK = 200
 const UNAUTHORIZED = 401
 const FORBIDDEN = 403
 const FLOOD = 25
+// More unknown keys, from more addresses, than the whole window takes
+const UNKNOWN_FLOOD = PluginApiDenialAudit.ANONYMOUS_PER_WINDOW + 40
 
 interface ErrorBody {
   error: { code: string }
@@ -59,9 +65,6 @@ describe('the audit of the calls the plugin API refuses', () => {
     })
   })
   afterAll(async () => {
-    await owner.auditLog
-      .deleteMany({ where: { action: AuditAction.PLUGIN_API_DENIED } })
-      .catch(() => undefined)
     await owner.pluginInstallation.deleteMany({ where: { pluginId: { startsWith: prefix } } })
     await owner.plugin.deleteMany({ where: { id: { startsWith: prefix } } })
     await cleanUp(owner, prefix)
@@ -128,18 +131,23 @@ describe('the audit of the calls the plugin API refuses', () => {
     const [entry] = await entriesOf(revoked.installationId)
     expect(entry?.metadata).toMatchObject({
       installationId: revoked.installationId,
-      reason: PluginApiDenialReasons.INACTIVE
+      reason: PluginApiDenialReasons.INACTIVE,
+      installationStatus: PluginInstallationStatus.REVOKED
     })
     expect(JSON.stringify(entry)).not.toContain(revoked.key)
   })
 
   it('audits a key nobody knows with no installation and no key material, within a small budget for the window', async () => {
+    // The budget of the window is shared with every other suite that sends a bad key: start it from zero
+    const redis = new Redis(REDIS_URL)
+    await redis.del(CacheKeys.audit.pluginDenialAnonymous)
+    await redis.quit()
     const before = await owner.auditLog.count({
       where: { action: AuditAction.PLUGIN_API_DENIED, storeId: null }
     })
     const unknown = `${PLUGIN_API_KEY_TOKEN_PREFIX}${randomBytes(32).toString('base64url')}`
     await Promise.all(
-      Array.from({ length: FLOOD * 2 }, () => get(PluginApiRoutes.customers.list, unknown))
+      Array.from({ length: UNKNOWN_FLOOD }, () => get(PluginApiRoutes.customers.list, unknown))
     )
     await settle()
     const rows = await owner.auditLog.findMany({
@@ -148,7 +156,8 @@ describe('the audit of the calls the plugin API refuses', () => {
     })
     const added = rows.length - before
     expect(added).toBeGreaterThan(0)
-    expect(added).toBeLessThan(FLOOD)
+    expect(added).toBeLessThanOrEqual(PluginApiDenialAudit.ANONYMOUS_PER_WINDOW)
+    expect(added).toBeLessThan(UNKNOWN_FLOOD)
     const last = rows.at(-1)
     expect(last?.userId).toBeNull()
     expect(last?.metadata).toMatchObject({ reason: PluginApiDenialReasons.INVALID_KEY })

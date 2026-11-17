@@ -172,7 +172,7 @@ export const PluginApiRateLimit = {
 
 // Why the guard of the plugin API refused a call (the audit entry `plugin.api_denied` carries it), and how many entries it may write:
 // a plugin that probes the routes outside its scopes must not fill the audit log. One entry per installation and reason in each
-// window; a key nobody knows has no installation, so those share a small budget for the whole window.
+// window; a key nobody knows has no installation, so those get one entry per address and a budget for the whole window.
 export const PluginApiDenialReasons = {
   INVALID_KEY: 'invalid_key',
   INACTIVE: 'inactive',
@@ -184,7 +184,8 @@ export type PluginApiDenialReason =
 
 export const PluginApiDenialAudit = {
   WINDOW_SECONDS: 300,
-  ANONYMOUS_PER_WINDOW: 12
+  // One entry per address in a window, and no more than this many in all for the keys no installation owns
+  ANONYMOUS_PER_WINDOW: 60
 } as const
 
 // A channel connection works only while the installation it hangs from is active and its plugin

@@ -89,7 +89,9 @@ export class PluginApiKeyGuard implements CanActivate {
       installation.plugin.status !== String(PluginStatus.APPROVED)
     ) {
       // The caller gets the same answer as for an unknown key; the audit log knows which installation it was
-      return this.refuseKey(request, PluginApiDenialReasons.INACTIVE, installation)
+      return this.refuseKey(request, PluginApiDenialReasons.INACTIVE, installation, {
+        status: { installation: installation.status, plugin: installation.plugin.status }
+      })
     }
 
     const targets = [context.getHandler(), context.getClass()]
@@ -111,7 +113,7 @@ export class PluginApiKeyGuard implements CanActivate {
     const granted = knownScopes(installation.scopes)
     const lacking = required.filter(scope => !granted.includes(scope))
     if (lacking.length > 0) {
-      await this.denied(request, installation, PluginApiDenialReasons.SCOPE, lacking)
+      this.denied(request, installation, PluginApiDenialReasons.SCOPE, lacking)
       throw new PlatformException(
         ErrorCodes.PLUGIN_SCOPE_DENIED,
         'the plugin lacks a scope of the route',
@@ -134,7 +136,7 @@ export class PluginApiKeyGuard implements CanActivate {
         { installationId: installation.id, handler: context.getHandler().name },
         'a plugin-api route with scopes declares no @RequirePermissions: refused'
       )
-      await this.denied(request, installation, PluginApiDenialReasons.PERMISSION, [])
+      this.denied(request, installation, PluginApiDenialReasons.PERMISSION, [])
       throw new PlatformException(
         ErrorCodes.PERMISSION_DENIED,
         'this route declares no permission',
@@ -148,7 +150,7 @@ export class PluginApiKeyGuard implements CanActivate {
         : [])
     ]
     if (missing.length > 0) {
-      await this.denied(request, installation, PluginApiDenialReasons.PERMISSION, missing)
+      this.denied(request, installation, PluginApiDenialReasons.PERMISSION, missing)
       throw new PlatformException(
         ErrorCodes.PERMISSION_DENIED,
         'the scopes of the plugin do not cover what the route needs',
@@ -170,26 +172,28 @@ export class PluginApiKeyGuard implements CanActivate {
   }
 
   // Said in the log, with the installation and never the key: a key that probes the routes outside its scopes is seen
-  private async denied(
+  private denied(
     request: AuthenticatedRequest,
     installation: { id: string; pluginId: string; store: { id: string } },
     reason: PluginApiDenialReason,
     missing: readonly string[]
-  ): Promise<void> {
+  ): void {
     this.logger.warn(
       { installationId: installation.id, pluginId: installation.pluginId, kind: reason, missing },
       'a plugin key was refused for lack of access'
     )
-    await this.record(request, reason, installation, missing)
+    void this.record(request, reason, installation, { missing })
   }
 
   // A key that does not open the door: audited (with a cap) and answered with the one answer for every such key
-  private async refuseKey(
+  private refuseKey(
     request: AuthenticatedRequest,
     reason: PluginApiDenialReason,
-    installation?: { id: string; pluginId: string; store: { id: string } }
-  ): Promise<never> {
-    await this.record(request, reason, installation)
+    installation?: { id: string; pluginId: string; store: { id: string } },
+    detail: { status?: { installation: string; plugin: string } } = {}
+  ): never {
+    // Not awaited: it never throws, and an answer for a key that does not open the door must not wait for Redis
+    void this.record(request, reason, installation, detail)
     throw invalidKey()
   }
 
@@ -197,7 +201,7 @@ export class PluginApiKeyGuard implements CanActivate {
     request: AuthenticatedRequest,
     reason: PluginApiDenialReason,
     installation?: { id: string; pluginId: string; store: { id: string } },
-    missing?: readonly string[]
+    detail: { missing?: readonly string[]; status?: { installation: string; plugin: string } } = {}
   ): Promise<void> {
     return auditPluginDenial(
       { audit: this.audit, redis: this.redis, logger: this.logger },
@@ -213,7 +217,8 @@ export class PluginApiKeyGuard implements CanActivate {
                 storeId: installation.store.id
               }
             }),
-        ...(missing === undefined ? {} : { missing })
+        ...(detail.missing === undefined ? {} : { missing: detail.missing }),
+        ...(detail.status === undefined ? {} : { status: detail.status })
       }
     )
   }

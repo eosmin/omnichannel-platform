@@ -48,10 +48,11 @@ export const CacheKeys = {
   // prober from filling the table)
   audit: {
     denialBudget: (userId: string, action: string) => `audit:denials:${userId}:${action}`,
-    // The refusals of the plugin API: one entry per installation and reason in a window, and one shared counter for the keys no
-    // installation owns
+    // The refusals of the plugin API: one entry per installation and reason in a window; for the keys no installation owns, one per
+    // address and a counter shared by all
     pluginDenial: (installationId: string, reason: string) =>
       `audit:plugin-denials:${installationId}:${reason}`,
+    pluginDenialAddress: (address: string) => `audit:plugin-denials:address:${address}`,
     pluginDenialAnonymous: 'audit:plugin-denials:anonymous'
   },
 

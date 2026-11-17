@@ -4,7 +4,11 @@ import type { PinoLogger } from 'nestjs-pino'
 import { AuditAction } from '@platform/core/audit'
 import type { AuditService } from '@platform/core/audit-module'
 import { CacheKeys } from '@platform/core/cache'
-import { PluginApiDenialAudit, type PluginApiDenialReason } from '@platform/core/domain'
+import {
+  PLUGIN_INSTALLATION_RESOURCE_TYPE,
+  PluginApiDenialAudit,
+  type PluginApiDenialReason
+} from '@platform/core/domain'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import { routePathOf } from '../tenancy/decorators'
@@ -21,19 +25,22 @@ export interface PluginDenial {
   installation?: { id: string; pluginId: string; storeId: string }
   // The scopes or permissions the call lacked: names the platform declares, never a value the caller sent
   missing?: readonly string[]
+  // For an installation that was refused as not active: what the platform holds for it, so that a revoked key still in use can be
+  // told from a suspended plugin. Values of the platform's own enums, never of the caller.
+  status?: { installation: string; plugin: string }
 }
 
 // The call that the guard of the plugin API refused, in the audit log (PLG-198): the platform is the actor (a plugin has no person),
 // the installation and the reason are on the entry and the key never is. A plugin that probes the routes outside its scopes would
-// write a row per request, so each installation and reason gets ONE entry per window, and the keys nobody owns share a small budget
-// for the window. Never throws: the refusal that follows must not turn into a 500.
+// write a row per request, so each installation and reason gets ONE entry per window, and the keys nobody owns get one per address
+// and a budget for the whole window (the Pino log of the refusal is not capped, and has the rest). Never throws: the refusal that follows must not turn into a 500.
 export async function auditPluginDenial(
   deps: PluginDenialDeps,
   request: AuthenticatedRequest,
   denial: PluginDenial
 ): Promise<void> {
   try {
-    if (!(await withinBudget(deps, denial))) return
+    if (!(await withinBudget(deps, denial, request.ip))) return
     const userAgent = request.get('user-agent')
     const { installation } = denial
     deps.audit.log({
@@ -43,7 +50,7 @@ export async function auditPluginDenial(
         ? {}
         : {
             storeId: installation.storeId,
-            resourceType: 'plugin_installation',
+            resourceType: PLUGIN_INSTALLATION_RESOURCE_TYPE,
             resourceId: installation.id
           }),
       metadata: {
@@ -53,7 +60,10 @@ export async function auditPluginDenial(
         ...(installation === undefined
           ? {}
           : { pluginId: installation.pluginId, installationId: installation.id }),
-        ...(denial.missing === undefined ? {} : { missing: [...denial.missing] })
+        ...(denial.missing === undefined ? {} : { missing: [...denial.missing] }),
+        ...(denial.status === undefined
+          ? {}
+          : { installationStatus: denial.status.installation, pluginStatus: denial.status.plugin })
       },
       ...(request.ip === undefined ? {} : { ipAddress: request.ip }),
       ...(userAgent === undefined ? {} : { userAgent })
@@ -63,7 +73,11 @@ export async function auditPluginDenial(
   }
 }
 
-async function withinBudget(deps: PluginDenialDeps, denial: PluginDenial): Promise<boolean> {
+async function withinBudget(
+  deps: PluginDenialDeps,
+  denial: PluginDenial,
+  address: string | undefined
+): Promise<boolean> {
   const { installation, reason } = denial
   if (installation !== undefined) {
     // SET NX EX is one step: the first refusal of the window takes it and the rest find it taken. If Redis fails the entry is
@@ -77,6 +91,15 @@ async function withinBudget(deps: PluginDenialDeps, denial: PluginDenial): Promi
     )
     return taken === 'OK'
   }
+  // Keys nobody owns: one entry per address first, so that the first caller of a window cannot use up what the next one needs
+  const first = await deps.redis.set(
+    CacheKeys.audit.pluginDenialAddress(address ?? 'unknown'),
+    '1',
+    'EX',
+    PluginApiDenialAudit.WINDOW_SECONDS,
+    'NX'
+  )
+  if (first !== 'OK') return false
   const key = CacheKeys.audit.pluginDenialAnonymous
   const results = await deps.redis
     .multi()
