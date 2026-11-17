@@ -700,6 +700,7 @@
     "REMITTANCE_ALREADY_CONFIRMED": "La remesa ya está confirmada",
     "REMITTANCE_IMPORT_INVALID": "El archivo de la remesa no es válido",
     "REMITTANCE_INVALID_STATUS_TRANSITION": "La remesa no puede pasar a ese estado",
+    "CARRIER_GUIDE_VOID_EXCEEDS_BALANCE": "Parte de las guías de esta compra ya se usó: anularla dejaría el saldo bajo cero. Registra un ajuste en su lugar",
     "REMITTANCE_NOTHING_TO_SETTLE": "Esta remesa no tiene nada que liquidar",
     "REMITTANCE_TOO_MANY_LINES": "Una remesa admite como máximo 5.000 líneas",
     "RESOURCE_ALREADY_EXISTS": "Ya hay un elemento con ese nombre.",

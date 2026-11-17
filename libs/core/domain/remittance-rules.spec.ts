@@ -3,6 +3,7 @@ import {
   classifyLine,
   expectedCodCents,
   guideKey,
+  owedAfter,
   lineExpectedCents,
   lineWarnings,
   type MatchShipment,
@@ -137,6 +138,28 @@ describe('lineExpectedCents', () => {
 
 describe('classifyLine', () => {
   const line = { reportedCents: 1000, reportedFeeCents: null, duplicate: false }
+  it('holds a later remittance against what the earlier ones left owed (N-INV-4)', () => {
+    const discrepancy = shipment({ codStatus: CodStatus.DISCREPANCY })
+    // 400 paid before, 600 still owed: the 600 settles it, the full 1000 again does not
+    expect(
+      classifyLine(
+        { ...line, reportedCents: 600, remittedBeforeCents: 400, shipment: discrepancy },
+        false
+      )
+    ).toEqual({ outcome: RemittanceLineOutcome.MATCHED, expectedCents: 600 })
+    expect(
+      classifyLine(
+        { ...line, reportedCents: 1000, remittedBeforeCents: 400, shipment: discrepancy },
+        false
+      )
+    ).toEqual({ outcome: RemittanceLineOutcome.AMOUNT_DIFFERS, expectedCents: 600 })
+    expect(
+      classifyLine(
+        { ...line, reportedCents: 100, remittedBeforeCents: 400, shipment: discrepancy },
+        false
+      ).outcome
+    ).toBe(RemittanceLineOutcome.AMOUNT_DIFFERS)
+  })
   it('matches when the reported amount is the expected one', () => {
     expect(classifyLine({ ...line, shipment: shipment() }, false)).toEqual({
       outcome: RemittanceLineOutcome.MATCHED,
@@ -297,5 +320,14 @@ describe('lineWarnings with the guide known (a carrier that deducts its fee)', (
         deductsFee: true
       })
     ).toEqual(warn)
+  })
+})
+
+describe('owedAfter', () => {
+  it('takes the earlier payments off, never below zero, and keeps the unknown unknown', () => {
+    expect(owedAfter(1000, 400)).toBe(600)
+    expect(owedAfter(1000, 0)).toBe(1000)
+    expect(owedAfter(1000, 1500)).toBe(0)
+    expect(owedAfter(null, 400)).toBeNull()
   })
 })
