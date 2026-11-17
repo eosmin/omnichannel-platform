@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl'
 import type { ReactElement } from 'react'
 
 import type { FinanceBookLayoutView, FinanceBookView } from '@platform/api-client'
-import { PeriodStatus } from '@platform/core/domain'
+import { LegalBookField, PeriodStatus } from '@platform/core/domain'
 
 import {
   BOOK_ROWS_SHOWN,
@@ -34,6 +34,13 @@ export function BookContent({
   layouts: readonly FinanceBookLayoutView[] | undefined
 }): ReactElement {
   const t = useTranslations('finance.books')
+  // A column with no label of its own comes with the name of its field: it is written in the language of the person (the file keeps the name)
+  const fieldLabelOf = (header: string, index: number): string => {
+    // Only a header that is the name of the field of its own column has no label of the organization behind it
+    if (columns[index]?.field !== header) return header
+    const field = Object.values(LegalBookField).find(value => String(value) === header)
+    return field === undefined ? header : t(`fields.${field}`)
+  }
   const columns = bookColumns(book, layouts, kind)
   const totals = totalCells(columns, book.totals)
   const shown = book.rows.slice(0, BOOK_ROWS_SHOWN)
@@ -116,7 +123,7 @@ export function BookContent({
                       scope="col"
                       className={`px-3 py-2 font-medium ${columns[index]?.money === true ? 'text-end' : 'text-start'}`}
                     >
-                      {header}
+                      {fieldLabelOf(header, index)}
                     </th>
                   ))}
                 </tr>

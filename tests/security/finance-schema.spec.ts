@@ -1285,6 +1285,20 @@ describe('The tables of the ledger', () => {
     ])('hold exactly the values of the enum in %s', async (constraint, values) => {
       expect(await listedIn(constraint)).toEqual(Object.values(values).sort())
     })
+
+    it('keeps the separators of a bank profile apart, except a comma that is both the delimiter and the thousands', async () => {
+      const rows = await owner.$queryRaw<{ def: string }[]>`
+        SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'chk_bank_profiles_separators'`
+      const def = rows[0]?.def ?? ''
+      // Kept: the delimiter is not the decimal separator, and neither the comma nor the dot is both thousands and decimal
+      expect(def).toContain('delimiter <> decimal_separator')
+      expect(def).toContain(
+        "thousands_separator = 'comma'::text) AND (decimal_separator = ','::text"
+      )
+      expect(def).toContain("thousands_separator = 'dot'::text) AND (decimal_separator = '.'::text")
+      // Dropped: a bank that quotes 1,234.50 in a comma file
+      expect(def).not.toContain("delimiter = ','::text")
+    })
   })
 
   describe('the incidents of the chain', () => {

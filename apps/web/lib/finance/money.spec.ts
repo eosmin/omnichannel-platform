@@ -4,6 +4,7 @@ import {
   positiveCentsOfDecimalText,
   decimalOfCents,
   moneyText,
+  percentFigureText,
   percentOfBps
 } from './money'
 
@@ -39,6 +40,18 @@ describe('moneyText', () => {
 
   it('keeps the cents of a sum a float would lose', () => {
     expect(moneyText('en', '9007199254740993')).toBe('$90,071,992,547,409.93')
+  })
+})
+
+describe('the figure of a rate in the language of the person', () => {
+  it.each([
+    ['en', 1250, '12.5'],
+    ['es', 1250, '12,5'],
+    ['es', 1, '0,01'],
+    ['en', 1300, '13'],
+    ['es', 0, '0']
+  ])('writes %s %i as %s', (locale, bps, text) => {
+    expect(percentFigureText(locale, bps)).toBe(text)
   })
 })
 

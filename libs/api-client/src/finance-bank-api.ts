@@ -67,6 +67,8 @@ export type BankRowErrorView = z.output<typeof rowErrorSchema>
 
 const parsedLineSchema = z.object({
   postedOn: z.string(),
+  // 'HH:mm:ss' when the date of the row had a time
+  postedTime: z.string().nullable(),
   amountCents: z.number().int(),
   description: z.string().nullable(),
   reference: z.string().nullable(),

@@ -143,6 +143,7 @@ function RowErrors({
 function Preview({ form, text }: { form: MapperForm; text: string }): ReactElement {
   const t = useTranslations('remittances.import.preview')
   const tw = useTranslations('remittances.lines.warnings')
+  const tLines = useTranslations('remittances.lines')
   const format = useFormatter()
   const { storeId } = useStore()
   const mapping = useMemo(() => mappingOf(form), [form])
@@ -220,7 +221,7 @@ function Preview({ form, text }: { form: MapperForm; text: string }): ReactEleme
                 <tr key={line.row} className="border-b">
                   <td className="py-1 pr-3 whitespace-nowrap">{line.row}</td>
                   <td className="py-1 pr-3 whitespace-nowrap">
-                    {line.guideNumber}
+                    {line.guideNumber.trim() === '' ? tLines('noGuide') : line.guideNumber}
                     {knownWarnings(line).map(warning => (
                       <p
                         key={warning}
