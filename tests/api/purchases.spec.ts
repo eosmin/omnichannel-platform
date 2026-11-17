@@ -612,7 +612,6 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
 
     it('does not let a caller end an order that has lines of a store they do not see (N-AA-03)', async () => {
       const seller = await supplier()
-      const order = await placedOrder(seller.id)
       const buyerOfOtherStore = api(
         app,
         await actorWithPermissions(owner, app, {
@@ -624,50 +623,70 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
         }),
         ctx.storeA2
       )
-      for (const route of [
-        ApiRoutes.purchaseOrders.close(order.id),
-        ApiRoutes.purchaseOrders.cancel(order.id)
-      ]) {
+      // An order that was only placed can be cancelled; one that arrived in part can be closed (the table of states, TDD_18 §3)
+      const toCancel = await placedOrder(seller.id)
+      const toClose = await placedOrder(seller.id)
+      expect(
+        (await receive(toClose.id, { lines: [{ orderLineId: toClose.lines[0]?.id, quantity: 1 }] }))
+          .status
+      ).toBeLessThan(BAD_REQUEST)
+      for (const [order, route] of [
+        [toCancel, ApiRoutes.purchaseOrders.cancel(toCancel.id)],
+        [toClose, ApiRoutes.purchaseOrders.close(toClose.id)]
+      ] as const) {
         const refused = await buyerOfOtherStore.post(route).send({})
         expect(refused.status).toBe(CONFLICT)
         expect(errorOf(refused).metadata).toMatchObject({
           conflict: PurchaseConflicts.LINE_STORE_NOT_VISIBLE
         })
+        expect(
+          (await owner.purchaseOrder.findUniqueOrThrow({ where: { id: order.id } })).status
+        ).not.toBe(PurchaseOrderStatus.CANCELLED)
+        expect(
+          (await owner.purchaseOrder.findUniqueOrThrow({ where: { id: order.id } })).status
+        ).not.toBe(PurchaseOrderStatus.CLOSED)
       }
-      // Nothing changed: the order is still open and the people who see the line can still receive it
-      expect(
-        (await owner.purchaseOrder.findUniqueOrThrow({ where: { id: order.id } })).status
-      ).toBe(PurchaseOrderStatus.ORDERED)
-      const received = await receive(order.id, {
-        lines: [{ orderLineId: order.lines[0]?.id, quantity: 1 }]
+      // Nothing changed: the people who see the lines can still receive them
+      const received = await receive(toClose.id, {
+        lines: [{ orderLineId: toClose.lines[0]?.id, quantity: 1 }]
       })
       expect(received.status).toBeLessThan(BAD_REQUEST)
     })
 
-    it('does not let a caller end an order that has lines of another store too, and lets them end one received in full (N-AA-03)', async () => {
+    it('does not let a caller end an order that has a line to arrive of another store, and lets them end one whose other lines arrived (N-AA-03)', async () => {
       const seller = await supplier()
       const mixed = await placedOrder(seller.id)
-      // One line belongs to a store the admin of store A does not see: the order is no longer wholly theirs
-      await owner.purchaseOrderLine.update({
-        where: { id: mixed.lines[1]?.id ?? '' },
-        data: { storeId: ctx.storeA2.id }
+      // A line of a store the admin of store A does not see: the order is no longer wholly theirs
+      const theirs = await createProduct(owner, { storeId: ctx.storeA2.id })
+      const foreign = await owner.purchaseOrderLine.create({
+        data: {
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA2.id,
+          purchaseOrderId: mixed.id,
+          lineNo: 3,
+          productId: theirs.id,
+          quantity: 4,
+          unitCostCents: 250
+        }
       })
-      for (const route of [
-        ApiRoutes.purchaseOrders.close(mixed.id),
-        ApiRoutes.purchaseOrders.cancel(mixed.id)
-      ]) {
-        const refused = await asAdminA().post(route).send({})
-        expect(refused.status).toBe(CONFLICT)
-        expect(errorOf(refused).metadata).toMatchObject({
-          conflict: PurchaseConflicts.LINE_STORE_NOT_VISIBLE
-        })
-      }
+      const cancelled = await asAdminA().post(ApiRoutes.purchaseOrders.cancel(mixed.id)).send({})
+      expect(cancelled.status).toBe(CONFLICT)
+      expect(errorOf(cancelled).metadata).toMatchObject({
+        conflict: PurchaseConflicts.LINE_STORE_NOT_VISIBLE
+      })
+      // Arrived in part, it can be closed, but not while the line of the other store is still to arrive
       expect(
-        (await owner.purchaseOrder.findUniqueOrThrow({ where: { id: mixed.id } })).status
-      ).toBe(PurchaseOrderStatus.ORDERED)
-      // A line that arrived in full gives up nothing: the order whose only unseen line was received can be tidied
+        (await receive(mixed.id, { lines: [{ orderLineId: mixed.lines[0]?.id, quantity: 1 }] }))
+          .status
+      ).toBeLessThan(BAD_REQUEST)
+      const refused = await asAdminA().post(ApiRoutes.purchaseOrders.close(mixed.id)).send({})
+      expect(refused.status).toBe(CONFLICT)
+      expect(errorOf(refused).metadata).toMatchObject({
+        conflict: PurchaseConflicts.LINE_STORE_NOT_VISIBLE
+      })
+      // A line that arrived in full gives up nothing: the order whose only unseen line arrived can be tidied
       await owner.purchaseOrderLine.update({
-        where: { id: mixed.lines[1]?.id ?? '' },
+        where: { id: foreign.id },
         data: { receivedQuantity: 4 }
       })
       const closed = await asAdminA().post(ApiRoutes.purchaseOrders.close(mixed.id)).send({})
