@@ -6,8 +6,8 @@
 -- rows nobody installs any more (the official ones the boot of the api writes again, and the ones
 -- the migration wrote for connections of other plugins).
 --
--- Safe to run twice (TDD_03 §5.4): a run that failed half way, or one repeated by hand, finds nothing left to
--- drop and changes nothing.
+-- Safe to run twice (TDD_03 §5.4) for the schema: a run repeated by hand finds nothing left to drop. The deletes of
+-- official plugins nobody installs repeat what the first run did, so they also take what the api boot wrote since.
 BEGIN;
 
 DROP INDEX IF EXISTS "channel_connections_installation_id_idx";

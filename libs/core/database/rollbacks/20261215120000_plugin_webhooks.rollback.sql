@@ -1,12 +1,13 @@
 BEGIN;
 
--- Safe to run twice (TDD_03 §5.4): each statement that names a column of the migration runs only while the column is there. The tries of the plugin webhooks are lost (the log of the tenant webhooks stays), and so are the secrets and
+-- Safe to run twice (TDD_03 §5.4): each statement that names a column of the migration runs only while the column is there.
+-- The tries of the plugin webhooks are lost (the log of the tenant webhooks stays), and so are the secrets and
 -- the failure counts: a plugin that was installed has to be installed again to get a new secret before it receives webhooks.
 DO $$
 BEGIN
   IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = current_schema() AND table_name = 'webhook_deliveries' AND column_name = 'plugin_installation_id'
+    SELECT 1 FROM pg_attribute
+    WHERE attrelid = to_regclass('webhook_deliveries') AND attname = 'plugin_installation_id' AND NOT attisdropped
   ) THEN
     DELETE FROM "webhook_deliveries" WHERE "plugin_installation_id" IS NOT NULL;
   END IF;
@@ -25,8 +26,8 @@ ALTER TABLE "webhook_deliveries" ALTER COLUMN "webhook_id" SET NOT NULL;
 DO $$
 BEGIN
   IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = current_schema() AND table_name = 'plugin_installations' AND column_name = 'webhook_secret'
+    SELECT 1 FROM pg_attribute
+    WHERE attrelid = to_regclass('plugin_installations') AND attname = 'webhook_secret' AND NOT attisdropped
   ) THEN
     UPDATE "plugin_installations" SET "webhook_endpoint" = NULL WHERE "webhook_secret" IS NOT NULL;
   END IF;
