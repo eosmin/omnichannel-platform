@@ -5,7 +5,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { ExportContentTypes, ExportFileExtensions } from '@platform/core/exports'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import { actorOf, CurrentOrganization, CurrentStore, RequirePermissions } from '../tenancy'
@@ -27,6 +27,7 @@ export class FinanceMarginController {
   constructor(private readonly margin: FinanceMarginService) {}
 
   @RequirePermissions(Permissions.FINANCE_VIEW_REPORTS)
+  @NoStore()
   @Get(ApiRoutes.finance.reports.margin)
   report(
     @CurrentOrganization() organization: Organization,

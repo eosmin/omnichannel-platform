@@ -4,7 +4,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import type { MediaUrls } from '@platform/core/storage'
 
@@ -55,6 +55,7 @@ export class FinanceTransactionsController {
   ) {}
 
   @RequirePermissions(Permissions.FINANCE_VIEW_JOURNAL)
+  @NoStore()
   @Get(ApiRoutes.finance.transactions.list)
   list(
     @CurrentOrganization() organization: Organization,
@@ -64,6 +65,7 @@ export class FinanceTransactionsController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW_JOURNAL)
+  @NoStore()
   @Get(ApiRoutes.finance.transactions.byId(':id'))
   get(
     @CurrentOrganization() organization: Organization,
@@ -73,6 +75,7 @@ export class FinanceTransactionsController {
   }
 
   @RequireAnyPermission(Permissions.FINANCE_MANAGE_TRANSACTIONS, Permissions.FINANCE_MOVE_MONEY)
+  @NoStore()
   @Post(ApiRoutes.finance.transactions.record)
   @HttpCode(HttpStatusCodes.CREATED)
   record(
@@ -88,6 +91,7 @@ export class FinanceTransactionsController {
 
   // HIGH tier of DestructiveActionTiers (VOID_FINANCE_TRANSACTION): the interface asks before it sends this
   @RequireAnyPermission(Permissions.FINANCE_MANAGE_TRANSACTIONS, Permissions.FINANCE_MOVE_MONEY)
+  @NoStore()
   @Post(ApiRoutes.finance.transactions.void(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   voidTransaction(
@@ -110,6 +114,7 @@ export class FinanceTransactionsController {
 
   // Voids one and registers another: the same HIGH tier as voiding it
   @RequireAnyPermission(Permissions.FINANCE_MANAGE_TRANSACTIONS, Permissions.FINANCE_MOVE_MONEY)
+  @NoStore()
   @Post(ApiRoutes.finance.transactions.replace(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   replace(
@@ -134,6 +139,7 @@ export class FinanceTransactionsController {
   // answer carries the transaction, so it tells no more than reading it)
   @RequirePermissions(Permissions.FINANCE_VIEW_JOURNAL)
   @RequireAnyPermission(Permissions.FINANCE_MANAGE_TRANSACTIONS, Permissions.FINANCE_MOVE_MONEY)
+  @NoStore()
   @Post(ApiRoutes.finance.transactions.document(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   attachDocument(
@@ -156,6 +162,7 @@ export class FinanceTransactionsController {
 
   // The signed links of the receipt: the journal's permission reads it, and the files are served only once clean
   @RequirePermissions(Permissions.FINANCE_VIEW_JOURNAL)
+  @NoStore()
   @Get(ApiRoutes.finance.transactions.document(':id'))
   documentUrls(
     @CurrentOrganization() organization: Organization,

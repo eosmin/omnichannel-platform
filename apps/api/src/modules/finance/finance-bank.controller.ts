@@ -17,7 +17,7 @@ import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { BankStatementLimits } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import { isImportContentType, readImportBody } from '../remittances/remittance-import-body'
@@ -84,6 +84,7 @@ export class FinanceBankController {
   ) {}
 
   @RequirePermissions(Permissions.FINANCE_RECONCILE)
+  @NoStore()
   @Get(ApiRoutes.finance.bank.profiles)
   listProfiles(
     @CurrentOrganization() organization: Organization,
@@ -93,6 +94,7 @@ export class FinanceBankController {
   }
 
   @RequirePermissions(Permissions.FINANCE_RECONCILE)
+  @NoStore()
   @Post(ApiRoutes.finance.bank.profiles)
   @HttpCode(HttpStatusCodes.CREATED)
   createProfile(
@@ -107,6 +109,7 @@ export class FinanceBankController {
 
   // The mapper: a sample read with the mapping being tried. It writes nothing
   @RequirePermissions(Permissions.FINANCE_RECONCILE)
+  @NoStore()
   @Post(ApiRoutes.finance.bank.profilePreview)
   @HttpCode(HttpStatusCodes.OK)
   preview(@Body(new ZodValidationPipe(bankPreviewSchema)) body: BankPreviewBody): BankPreviewView {
@@ -114,6 +117,7 @@ export class FinanceBankController {
   }
 
   @RequirePermissions(Permissions.FINANCE_RECONCILE)
+  @NoStore()
   @Patch(ApiRoutes.finance.bank.profileById(':id'))
   updateProfile(
     @CurrentOrganization() organization: Organization,
@@ -124,6 +128,7 @@ export class FinanceBankController {
   }
 
   @RequirePermissions(Permissions.FINANCE_RECONCILE)
+  @NoStore()
   @Delete(ApiRoutes.finance.bank.profileById(':id'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   async removeProfile(
@@ -137,6 +142,7 @@ export class FinanceBankController {
   // profile, and the closing balance when the person knows it, are in the query. A file with a row that cannot be read answers 400
   // and makes nothing; one with no new line answers 409.
   @RequirePermissions(Permissions.FINANCE_RECONCILE)
+  @NoStore()
   @Post(ApiRoutes.finance.bank.imports)
   @HttpCode(HttpStatusCodes.CREATED)
   async importFile(
@@ -170,6 +176,7 @@ export class FinanceBankController {
   }
 
   @RequirePermissions(Permissions.FINANCE_RECONCILE)
+  @NoStore()
   @Get(ApiRoutes.finance.bank.imports)
   listImports(
     @CurrentOrganization() organization: Organization,
@@ -179,6 +186,7 @@ export class FinanceBankController {
   }
 
   @RequirePermissions(Permissions.FINANCE_RECONCILE)
+  @NoStore()
   @Get(ApiRoutes.finance.bank.importById(':id'))
   getImport(
     @CurrentOrganization() organization: Organization,
@@ -188,6 +196,7 @@ export class FinanceBankController {
   }
 
   @RequirePermissions(Permissions.FINANCE_RECONCILE)
+  @NoStore()
   @Get(ApiRoutes.finance.bank.importLines(':id'))
   lines(
     @CurrentOrganization() organization: Organization,
@@ -198,6 +207,7 @@ export class FinanceBankController {
   }
 
   @RequirePermissions(Permissions.FINANCE_RECONCILE)
+  @NoStore()
   @Post(ApiRoutes.finance.bank.confirmExact(':id'))
   @HttpCode(HttpStatusCodes.OK)
   confirmExact(
@@ -211,6 +221,7 @@ export class FinanceBankController {
   }
 
   @RequirePermissions(Permissions.FINANCE_RECONCILE)
+  @NoStore()
   @Get(ApiRoutes.finance.bank.difference(':id'))
   difference(
     @CurrentOrganization() organization: Organization,
@@ -220,6 +231,7 @@ export class FinanceBankController {
   }
 
   @RequirePermissions(Permissions.FINANCE_RECONCILE)
+  @NoStore()
   @Post(ApiRoutes.finance.bank.lineMatches(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   confirm(
@@ -234,6 +246,7 @@ export class FinanceBankController {
   }
 
   @RequirePermissions(Permissions.FINANCE_RECONCILE)
+  @NoStore()
   @Post(ApiRoutes.finance.bank.lineRejections(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   reject(
@@ -248,6 +261,7 @@ export class FinanceBankController {
   }
 
   @RequirePermissions(Permissions.FINANCE_RECONCILE)
+  @NoStore()
   @Get(ApiRoutes.finance.bank.lineRegisterDraft(':id'))
   registerDraft(
     @CurrentOrganization() organization: Organization,
@@ -257,6 +271,7 @@ export class FinanceBankController {
   }
 
   @RequirePermissions(Permissions.FINANCE_RECONCILE)
+  @NoStore()
   @Post(ApiRoutes.finance.bank.matchUndo(':id'))
   @HttpCode(HttpStatusCodes.OK)
   undo(
@@ -270,6 +285,7 @@ export class FinanceBankController {
   }
 
   @RequirePermissions(Permissions.FINANCE_RECONCILE)
+  @NoStore()
   @Get(ApiRoutes.finance.bank.status)
   status(
     @CurrentOrganization() organization: Organization,

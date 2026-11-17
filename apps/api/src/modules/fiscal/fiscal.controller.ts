@@ -17,7 +17,7 @@ import { type AuthenticatedUser, type Permission, Permissions } from '@platform/
 import { CurrentUser } from '@platform/core/auth-module'
 import type { FiscalEvidenceKind } from '@platform/core/domain'
 import { errorName, HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import type { MediaUrls } from '@platform/core/storage'
 import {
@@ -82,12 +82,14 @@ export class FiscalController {
   }
 
   @RequirePermissions(Permissions.FISCAL_VIEW)
+  @NoStore()
   @Get(ApiRoutes.fiscal.providers)
   providers(): { data: ReturnType<FiscalIssuerService['listProviders']> } {
     return { data: this.issuer.listProviders() }
   }
 
   @RequirePermissions(Permissions.FISCAL_VIEW)
+  @NoStore()
   @Get(ApiRoutes.fiscal.issuer)
   async getIssuer(
     @CurrentOrganization() organization: Organization
@@ -96,6 +98,7 @@ export class FiscalController {
   }
 
   @RequirePermissions(Permissions.FISCAL_MANAGE)
+  @NoStore()
   @Put(ApiRoutes.fiscal.issuer)
   async putIssuer(
     @CurrentOrganization() organization: Organization,
@@ -110,6 +113,7 @@ export class FiscalController {
   // The dry run of the daily check of the documents: what the night would ask the queue for, and the documents that disagree with their
   // entry. It reads only, by the organization of the store, and shows ids and statuses, never the receiver's data.
   @RequirePermissions(Permissions.FISCAL_VIEW)
+  @NoStore()
   @Get(ApiRoutes.fiscal.reconciliation)
   reconciliation(
     @CurrentOrganization() organization: Organization,
@@ -122,6 +126,7 @@ export class FiscalController {
   }
 
   @RequirePermissions(Permissions.FISCAL_VIEW)
+  @NoStore()
   @Get(ApiRoutes.fiscal.documents.list)
   list(
     @CurrentOrganization() organization: Organization,
@@ -131,6 +136,7 @@ export class FiscalController {
   }
 
   @RequirePermissions(Permissions.FISCAL_VIEW)
+  @NoStore()
   @Get(ApiRoutes.fiscal.documents.byId(':id'))
   async byId(
     @CurrentOrganization() organization: Organization,
@@ -142,6 +148,7 @@ export class FiscalController {
   // The signed link of one file of evidence (the document as it was built, the answer to its acceptance or to its void). The files hold the
   // receiver's data: a short-lived link, clean files only, audited.
   @RequirePermissions(Permissions.FISCAL_VIEW)
+  @NoStore()
   @Get(ApiRoutes.fiscal.documents.evidence(':id', ':kind'))
   async evidence(
     @CurrentOrganization() organization: Organization,
@@ -164,6 +171,7 @@ export class FiscalController {
   }
 
   @RequirePermissions(Permissions.FISCAL_MANAGE)
+  @NoStore()
   @Patch(ApiRoutes.fiscal.documents.receiver(':id'))
   async receiver(
     @CurrentOrganization() organization: Organization,
@@ -184,6 +192,7 @@ export class FiscalController {
   }
 
   @RequirePermissions(Permissions.FISCAL_MANAGE)
+  @NoStore()
   @Post(ApiRoutes.fiscal.documents.retry(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async retry(
@@ -206,6 +215,7 @@ export class FiscalController {
   // not there says so, with the reason, and it is made again with the issuer as it is now. HIGH tier like the void: the interface asks
   // for the confirmation before it sends this.
   @RequirePermissions(Permissions.FISCAL_MANAGE)
+  @NoStore()
   @Post(ApiRoutes.fiscal.documents.confirmIssuerChange(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async confirmIssuerChange(
@@ -228,6 +238,7 @@ export class FiscalController {
 
   // HIGH tier of DestructiveActionTiers (VOID_FISCAL_DOCUMENT): the interface asks before it sends this
   @RequirePermissions(Permissions.FISCAL_MANAGE)
+  @NoStore()
   @Post(ApiRoutes.fiscal.documents.void(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async voidDocument(
@@ -258,6 +269,7 @@ export class FiscalController {
 
   // The sale document made again after the one before was voided (and its credit notes): a new document with a new number, queued
   @RequirePermissions(Permissions.FISCAL_MANAGE)
+  @NoStore()
   @Post(ApiRoutes.fiscal.documents.replace(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async replace(

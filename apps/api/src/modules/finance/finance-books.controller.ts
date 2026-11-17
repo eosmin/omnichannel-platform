@@ -7,7 +7,7 @@ import { CurrentUser } from '@platform/core/auth-module'
 import { LegalBookHeaders, LegalBookKind } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ExportContentTypes, ExportFileExtensions } from '@platform/core/exports'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import {
@@ -53,6 +53,7 @@ export class FinanceBooksController {
   constructor(private readonly books: FinanceBooksService) {}
 
   @RequirePermissions(Permissions.FINANCE_VIEW_REPORTS)
+  @NoStore()
   @Get(ApiRoutes.finance.bookLayouts.list)
   layouts(@CurrentOrganization() organization: Organization): Promise<BookLayoutView[]> {
     return this.books.layouts(organization.id)
@@ -60,6 +61,7 @@ export class FinanceBooksController {
 
   // Writes a NEW version of the layout of a kind of book; an earlier version is never changed
   @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @NoStore()
   @Put(ApiRoutes.finance.bookLayouts.byKind(':kind'))
   @HttpCode(HttpStatusCodes.OK)
   writeLayout(
@@ -74,6 +76,7 @@ export class FinanceBooksController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW_REPORTS, Permissions.FINANCE_EXPORT)
+  @NoStore()
   @Get(ApiRoutes.finance.frozenBooks.list)
   frozen(
     @CurrentOrganization() organization: Organization,
@@ -83,6 +86,7 @@ export class FinanceBooksController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW_REPORTS, Permissions.FINANCE_EXPORT)
+  @NoStore()
   @Get(ApiRoutes.finance.frozenBooks.byId(':id'))
   frozenById(
     @CurrentOrganization() organization: Organization,
@@ -95,6 +99,7 @@ export class FinanceBooksController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW_REPORTS, Permissions.FINANCE_EXPORT)
+  @NoStore()
   @Get(ApiRoutes.finance.books.byKind(':kind'))
   book(
     @CurrentOrganization() organization: Organization,
@@ -109,6 +114,7 @@ export class FinanceBooksController {
 
   // A file is an attachment and no shared cache keeps it
   @RequirePermissions(Permissions.FINANCE_VIEW_REPORTS, Permissions.FINANCE_EXPORT)
+  @NoStore()
   @Get(ApiRoutes.finance.books.csvByKind(':kind'))
   async bookCsv(
     @CurrentOrganization() organization: Organization,
