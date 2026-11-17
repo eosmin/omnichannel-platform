@@ -3,12 +3,11 @@ import type { BuiltDocument, FiscalContingencyEvent, FiscalIssuerInput } from '@
 import {
   SvCodePatterns,
   SvContingency,
-  SvContingencyReasonCodes,
   SvContingencyRefusals,
   SvEnvironmentCodes,
-  SvLimits,
-  SvTransmission
+  SvLimits
 } from './sv-constants'
+import { readContingency, readDeferred, type SvContingencyProblem } from './sv-contingency-reason'
 import { recordOf, textOf } from './sv-http'
 import { partyOf } from './sv-invalidation'
 import { digitsOf, issuerProblems } from './sv-parties'
@@ -23,6 +22,13 @@ export type SvContingencyBuilt =
 
 const refuse = (reason: string): SvContingencyBuilt => ({ ok: false, reason })
 
+// What each problem of the reason is called by this module
+const EventProblems: Record<SvContingencyProblem, string> = {
+  reason: SvContingencyRefusals.REASON_UNKNOWN,
+  motive_required: SvContingencyRefusals.MOTIVE_REQUIRED,
+  motive_too_long: SvContingencyRefusals.MOTIVE_TOO_LONG
+}
+
 // What the event says of one document: its type and its generation code, read from what was built and kept
 export function listedOf(
   built: Pick<BuiltDocument, 'payload'>
@@ -30,7 +36,12 @@ export function listedOf(
   const id = recordOf(built.payload['identificacion'])
   const type = textOf(id['tipoDte'])
   const generationCode = textOf(id['codigoGeneracion'])
-  return type === null || generationCode === null ? null : { type, generationCode }
+  // The generation code is the schema's (a UUID in capitals): a document with another is never listed
+  return type === null ||
+    generationCode === null ||
+    !SvCodePatterns.GENERATION_CODE.test(generationCode)
+    ? null
+    : { type, generationCode }
 }
 
 export function buildContingencyEvent(
@@ -38,18 +49,9 @@ export function buildContingencyEvent(
   issuer: FiscalIssuerInput,
   now: string
 ): SvContingencyBuilt {
-  if (!SvContingencyReasonCodes.includes(input.reason)) {
-    return refuse(SvContingencyRefusals.REASON_UNKNOWN)
-  }
-  const reason = Number(input.reason)
-  // The words of a person travel only with the reason "other" (the catalog has no field for them elsewhere)
-  const motive = input.motive?.trim() ?? ''
-  if (reason === SvContingency.REASONS.OTHER && motive === '') {
-    return refuse(SvContingencyRefusals.MOTIVE_REQUIRED)
-  }
-  if (reason === SvContingency.REASONS.OTHER && motive.length > SvContingency.MOTIVE_MAX) {
-    return refuse(SvContingencyRefusals.MOTIVE_TOO_LONG)
-  }
+  const read = readContingency(input.reason, input.motive)
+  if (!read.ok) return refuse(EventProblems[read.problem])
+  const reason = read.reason
   // The generation code of the event is the schema's: a UUID, which is checked here and not after the login and the signature
   if (!SvCodePatterns.GENERATION_CODE.test(input.eventId.toUpperCase())) {
     return refuse(SvContingencyRefusals.EVENT_ID_INVALID)
@@ -92,14 +94,20 @@ export function buildContingencyEvent(
   for (const [index, doc] of input.documents.entries()) {
     const about = listedOf(doc)
     // A document that is not a deferred one of this reason and this environment, or that is listed twice, is not a thing the authority
-    // takes: the event must say what its documents say
+    // takes: the event must say what its documents say. The time a document was issued is not part of it: it may predate the window (it
+    // was made, the authority did not answer, and the contingency began after the attempts).
     const id = recordOf(doc.payload['identificacion'])
+    const deferred = readDeferred(id)
     if (
       about === null ||
       seen.has(about.generationCode) ||
-      id['tipoOperacion'] !== SvTransmission.OPERATION_CONTINGENCY ||
-      id['tipoContingencia'] !== reason ||
-      id['ambiente'] !== SvEnvironmentCodes[issuer.environment]
+      !deferred.ok ||
+      deferred.reason !== reason ||
+      // The words of the reason "other" are the event's too
+      deferred.motive !== read.motive ||
+      id['ambiente'] !== SvEnvironmentCodes[issuer.environment] ||
+      // and the issuer's: the event carries one NIT
+      digitsOf(textOf(recordOf(doc.payload['emisor'])['nit']) ?? '') !== nit
     ) {
       return refuse(SvContingencyRefusals.DOCUMENTS_INVALID)
     }
@@ -150,7 +158,7 @@ export function buildContingencyEvent(
         hInicio: from.time,
         hFin: to.time,
         tipoContingencia: reason,
-        motivoContingencia: reason === SvContingency.REASONS.OTHER ? motive : null
+        motivoContingencia: read.motive
       }
     }
   }

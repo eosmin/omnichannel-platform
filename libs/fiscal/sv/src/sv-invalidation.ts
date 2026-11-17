@@ -30,7 +30,6 @@ import { salvadorMoment } from './sv-time'
 // the event the signer signs, or a code that says what is missing. Nothing here calls the authority.
 
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/
-const GENERATION_CODE = /^[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}$/
 const SEAL_LENGTH = 40
 
 const daysIn = (year: number, month: number): number =>
@@ -117,7 +116,7 @@ export function invalidatedOf(doc: StoredFiscalDocument): SvInvalidated | null {
   return type === null ||
     !isDocumentType(type) ||
     generationCode === null ||
-    !GENERATION_CODE.test(generationCode) ||
+    !SvCodePatterns.GENERATION_CODE.test(generationCode) ||
     controlNumber === null ||
     !SvCodePatterns.CONTROL_NUMBER.test(controlNumber) ||
     issueDate === null ||

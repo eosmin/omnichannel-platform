@@ -18,6 +18,7 @@ import { activityName, isUnit } from './sv-catalog'
 import {
   SvBuildError,
   SvBuildErrors,
+  type SvBuildErrorCode,
   SvCodePatterns,
   SvCreditableDocuments,
   SvCurrency,
@@ -34,11 +35,10 @@ import {
   SvProviderDataKeys,
   SvSchemaVersions,
   SvShippingLine,
-  SvContingency,
-  SvContingencyReasonCodes,
   SvTransmission,
   SvVat
 } from './sv-constants'
+import { readContingency, type SvContingencyProblem } from './sv-contingency-reason'
 import { allocate, dollars, dollars8, roundDiv, SCALE_8, toScaled8 } from './sv-decimal'
 import {
   addressOf,
@@ -188,6 +188,13 @@ function checkTax(formulaCents: number, input: FiscalBuildInput): void {
 
 // A document made in contingency is deferred (model 2) and transmitted as a contingency (operation 2), with the reason of CAT-005; the reason
 // that is "other" carries the person's own words, and the others have none (Manual Técnico §3.3)
+// What each problem of the reason is called by the builder
+const BuildProblems: Record<SvContingencyProblem, SvBuildErrorCode> = {
+  reason: SvBuildErrors.CONTINGENCY_REASON_UNKNOWN,
+  motive_required: SvBuildErrors.CONTINGENCY_MOTIVE_REQUIRED,
+  motive_too_long: SvBuildErrors.CONTINGENCY_MOTIVE_TOO_LONG
+}
+
 function transmissionOf(contingency: FiscalBuildContingency | undefined): Record<string, unknown> {
   if (contingency === undefined) {
     return {
@@ -197,22 +204,13 @@ function transmissionOf(contingency: FiscalBuildContingency | undefined): Record
       motivoContin: null
     }
   }
-  if (!SvContingencyReasonCodes.includes(contingency.reason)) {
-    throw new SvBuildError(SvBuildErrors.CONTINGENCY_REASON_UNKNOWN)
-  }
-  const reason = Number(contingency.reason)
-  const motive = contingency.motive?.trim() ?? ''
-  if (reason === SvContingency.REASONS.OTHER && motive === '') {
-    throw new SvBuildError(SvBuildErrors.CONTINGENCY_MOTIVE_REQUIRED)
-  }
-  if (reason === SvContingency.REASONS.OTHER && motive.length > SvContingency.MOTIVE_MAX) {
-    throw new SvBuildError(SvBuildErrors.CONTINGENCY_MOTIVE_TOO_LONG)
-  }
+  const read = readContingency(contingency.reason, contingency.motive)
+  if (!read.ok) throw new SvBuildError(BuildProblems[read.problem])
   return {
     tipoModelo: SvTransmission.MODEL_DEFERRED,
     tipoOperacion: SvTransmission.OPERATION_CONTINGENCY,
-    tipoContingencia: reason,
-    motivoContin: reason === SvContingency.REASONS.OTHER ? motive : null
+    tipoContingencia: read.reason,
+    motivoContin: read.motive
   }
 }
 

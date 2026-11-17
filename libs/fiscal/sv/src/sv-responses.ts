@@ -52,7 +52,8 @@ export type SvEventAnswer =
   | {
       readonly kind: 'accepted'
       readonly seal: string
-      readonly receivedAt: string | null
+      // What the answer says about when it took the event, in every field it may say it (the first that reads is the one used)
+      readonly receivedAtTexts: readonly string[]
       readonly body: Readonly<Record<string, unknown>>
     }
   | {
@@ -86,7 +87,17 @@ type SvFailure =
 function classifyFailure(status: number, body: Readonly<Record<string, unknown>>): SvFailure {
   if (status === 401 || status === 403) return { kind: 'token' }
   if (status >= 500) return { kind: 'transient' }
-  return classifyFailure(status, body)
+  const code = codeOf(body['codigoMsg'])
+  const number = codeNumber(code)
+  if (SvTokenCodes.has(number)) return { kind: 'token' }
+  if (SvCredentialCodes.has(number)) return { kind: 'credentials' }
+  if (body['estado'] === SvAnswerStates.REFUSED || status === 400) {
+    if (code === null) return { kind: 'transient' }
+    if (SvDuplicateCodes.has(number)) return { kind: 'duplicate', code, body }
+    return SvTransientCodes.has(number) ? { kind: 'transient' } : { kind: 'rejected', code, body }
+  }
+  // Anything else (a page of a proxy, a shape nobody knows) is not a verdict on the document
+  return { kind: 'transient' }
 }
 
 export function classifyEventAnswer(status: number, json: unknown): SvEventAnswer {
@@ -100,7 +111,9 @@ export function classifyEventAnswer(status: number, json: unknown): SvEventAnswe
     return {
       kind: 'accepted',
       seal,
-      receivedAt: textOf(body['fechaHora']) ?? textOf(body['fhProcesamiento']),
+      receivedAtTexts: [textOf(body['fechaHora']), textOf(body['fhProcesamiento'])].filter(
+        (text): text is string => text !== null
+      ),
       body
     }
   }
@@ -114,7 +127,8 @@ export function classifyReception(status: number, json: unknown): SvReception {
   if (status === 401 || status === 403) return { kind: 'token' }
   if (status >= 500) return { kind: 'transient' }
   const seal = textOf(body['selloRecibido'])
-  if (body['estado'] === SvAnswerStates.PROCESSED && seal !== null) {
+  // A status of refusal is never an acceptance, whatever the body says (the same reading as the event's)
+  if (status < 400 && body['estado'] === SvAnswerStates.PROCESSED && seal !== null) {
     const observations = Array.isArray(body['observaciones'])
       ? (body['observaciones'] as unknown[]).filter(
           (item): item is string => typeof item === 'string'
@@ -128,15 +142,5 @@ export function classifyReception(status: number, json: unknown): SvReception {
       body
     }
   }
-  const code = codeOf(body['codigoMsg'])
-  const number = codeNumber(code)
-  if (SvTokenCodes.has(number)) return { kind: 'token' }
-  if (SvCredentialCodes.has(number)) return { kind: 'credentials' }
-  if (body['estado'] === SvAnswerStates.REFUSED || status === 400) {
-    if (code === null) return { kind: 'transient' }
-    if (SvDuplicateCodes.has(number)) return { kind: 'duplicate', code, body }
-    return SvTransientCodes.has(number) ? { kind: 'transient' } : { kind: 'rejected', code, body }
-  }
-  // Anything else (a page of a proxy, a shape nobody knows) is not a verdict on the document
-  return { kind: 'transient' }
+  return classifyFailure(status, body)
 }

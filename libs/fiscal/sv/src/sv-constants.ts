@@ -98,9 +98,8 @@ export const SvSchemaVersions: Readonly<Record<SvDocumentType, number>> = {
   [SvDocumentTypes.CREDIT_NOTE]: 4
 }
 
-// CAT-003 / CAT-004: the model of billing and the kind of transmission. Normal transmission is the previous model (the document is sent
-// before it is handed to the receiver); contingency is Step 4B.7c-7.
-// CAT-003 (the billing model) and CAT-004 (the kind of transmission): a document made in contingency is deferred and transmitted after the event
+// CAT-003 (the billing model) and CAT-004 (the kind of transmission). Normal transmission is the previous model (the document is sent
+// before it is handed to the receiver); a document made in contingency is deferred and transmitted after the event.
 export const SvTransmission = {
   MODEL_PREVIOUS: 1,
   OPERATION_NORMAL: 1,
@@ -126,12 +125,12 @@ export const SvContingency = {
   MOTIVE_MAX: 500
 } as const
 
-// Why this provider refuses to make or report a contingency, in codes of its own (never a value)
 // A reason as the manifest declares it (text of CAT-005): the exact code, never one that merely starts with a digit
 export const SvContingencyReasonCodes: readonly string[] = Object.values(SvContingency.REASONS).map(
   String
 )
 
+// Why this provider refuses to make or report a contingency, in codes of its own (never a value)
 export const SvContingencyRefusals = {
   CREDENTIALS_INCOMPLETE: 'credentials_incomplete',
   CREDENTIALS_REJECTED: 'credentials_rejected',

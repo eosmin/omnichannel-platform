@@ -33,11 +33,11 @@ import {
   SvProviderDataKeys,
   SvRejectionReasons,
   SvTimeouts,
-  SvTransmission,
   SvUserAgent,
   SvVoidRefusals
 } from './sv-constants'
 import { buildContingencyEvent } from './sv-contingency'
+import { readDeferred } from './sv-contingency-reason'
 import {
   callSv,
   recordOf,
@@ -48,8 +48,14 @@ import {
 } from './sv-http'
 import { buildInvalidation, invalidatedOf, invalidationCode } from './sv-invalidation'
 import { digitsOf } from './sv-parties'
-import { classifyEventAnswer, classifyReception, type SvReception } from './sv-responses'
+import {
+  classifyEventAnswer,
+  classifyReception,
+  type SvEventAnswer,
+  type SvReception
+} from './sv-responses'
 import type { SvSigner } from './sv-signer'
+import { SALVADOR_OFFSET_HOURS } from './sv-time'
 
 // Sending a document to the authority and asking about one (Manual Técnico §3, §4.2, §4.3). The platform's queue retries, and before it
 // sends a document that may already be there it asks (`consult`), so this module makes one attempt per call and never loops by itself.
@@ -464,8 +470,11 @@ export async function deferDocument(
   // it is the one of the NIT in the document
   if (
     about === null ||
-    id['tipoModelo'] !== SvTransmission.MODEL_DEFERRED ||
-    id['tipoOperacion'] !== SvTransmission.OPERATION_CONTINGENCY ||
+    // Read the way the event reads it, and of this environment: a document the event could not list is not kept (it would refuse the whole
+    // lot with it)
+    !readDeferred(id).ok ||
+    !SvCodePatterns.GENERATION_CODE.test(about.generationCode) ||
+    id['ambiente'] !== SvEnvironmentCodes[ctx.issuer.environment] ||
     digitsOf(textOf(recordOf(built.payload['emisor'])['nit']) ?? '') !== nit
   ) {
     return {
@@ -494,19 +503,31 @@ export async function deferDocument(
 }
 
 // The authority's time of an answer, "dd/MM/yyyy HH:mm:ss" in the time of El Salvador (UTC-6), as an instant; null when it is not that shape
-function authorityInstant(text: string | null): number | null {
+export function authorityInstant(text: string | null): number | null {
   const match = /^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})$/.exec(text ?? '')
   if (match === null) return null
-  const [, day, month, year, hour, minute, second] = match
-  const instant = Date.UTC(
-    Number(year),
-    Number(month) - 1,
-    Number(day),
-    Number(hour) + 6,
-    Number(minute),
-    Number(second)
-  )
-  return Number.isNaN(instant) ? null : instant
+  const [day, month, year, hour, minute, second] = match.slice(1).map(Number)
+  if (
+    day === undefined ||
+    month === undefined ||
+    year === undefined ||
+    hour === undefined ||
+    minute === undefined ||
+    second === undefined
+  ) {
+    return null
+  }
+  const instant = Date.UTC(year, month - 1, day, hour + SALVADOR_OFFSET_HOURS, minute, second)
+  // A field out of its range would roll over into another instant: the date is read back and must be the one that was written
+  const back = new Date(instant - SALVADOR_OFFSET_HOURS * 3_600_000)
+  return back.getUTCFullYear() === year &&
+    back.getUTCMonth() === month - 1 &&
+    back.getUTCDate() === day &&
+    back.getUTCHours() === hour &&
+    back.getUTCMinutes() === minute &&
+    back.getUTCSeconds() === second
+    ? instant
+    : null
 }
 
 // Reports a contingency: the event is signed and sent, and the window to send its documents runs from the moment the authority took it. The
@@ -557,6 +578,15 @@ export async function reportContingencyEvent(
       neverSent: true
     }
   }
+  // What is kept of the event, the same for an event taken now and one the authority held already
+  const kept = {
+    [SvProviderDataKeys.GENERATION_CODE]: String(
+      recordOf(built.event['identificacion'])['codigoGeneracion']
+    ),
+    // The documents the event listed, for whoever reads the record
+    [SvProviderDataKeys.DOCUMENTS]: (built.event['detalleDTE'] as unknown[]).length,
+    [SvProviderDataKeys.WINDOW_HOURS]: SvContingency.TRANSMIT_WITHIN_HOURS
+  }
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const login = await deps.auth.login(environment, identity.nit, identity.apiPassword)
     if (login.kind === 'rejected') {
@@ -567,7 +597,7 @@ export async function reportContingencyEvent(
       }
     }
     if (login.kind === 'unavailable') return { outcome: FiscalContingencyReportOutcome.UNAVAILABLE }
-    let answer
+    let answer: SvEventAnswer
     try {
       const result = await callSv(
         deps.fetch,
@@ -611,14 +641,7 @@ export async function reportContingencyEvent(
         // The event was sent after its window ended, so it cannot have been taken before: the end of the window is the earliest instant the
         // authority can have taken it, and a window counted from it is never longer than the authority's
         receivedAt: event.endedAt,
-        providerData: {
-          [SvProviderDataKeys.GENERATION_CODE]: String(
-            recordOf(built.event['identificacion'])['codigoGeneracion']
-          ),
-          [SvProviderDataKeys.DOCUMENTS]: (built.event['detalleDTE'] as unknown[]).length,
-          [SvProviderDataKeys.WINDOW_HOURS]: SvContingency.TRANSMIT_WITHIN_HOURS,
-          [SvProviderDataKeys.DUPLICATE]: true
-        },
+        providerData: { ...kept, [SvProviderDataKeys.DUPLICATE]: true },
         response: answer.body
       }
     }
@@ -630,19 +653,15 @@ export async function reportContingencyEvent(
       }
     }
     const now = clock()
-    const theirs = authorityInstant(answer.receivedAt)
+    // The first of the fields the answer says it in that reads as a date: the others may be in a shape nobody knows yet
+    const theirs =
+      answer.receivedAtTexts
+        .map(text => authorityInstant(text))
+        .find((instant): instant is number => instant !== null) ?? null
     return {
       outcome: FiscalContingencyReportOutcome.ACCEPTED,
       receivedAt: new Date(theirs === null ? now : Math.min(theirs, now)).toISOString(),
-      providerData: {
-        [SvProviderDataKeys.RECEPTION_SEAL]: answer.seal,
-        [SvProviderDataKeys.GENERATION_CODE]: String(
-          recordOf(built.event['identificacion'])['codigoGeneracion']
-        ),
-        // The documents the event listed, for whoever reads the record
-        [SvProviderDataKeys.DOCUMENTS]: (built.event['detalleDTE'] as unknown[]).length,
-        [SvProviderDataKeys.WINDOW_HOURS]: SvContingency.TRANSMIT_WITHIN_HOURS
-      },
+      providerData: { ...kept, [SvProviderDataKeys.RECEPTION_SEAL]: answer.seal },
       response: answer.body
     }
   }

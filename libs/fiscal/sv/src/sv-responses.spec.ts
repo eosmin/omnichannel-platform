@@ -1,4 +1,5 @@
 import {
+  classifyEventAnswer,
   classifyReception,
   SvCredentialCodes,
   SvDuplicateCodes,
@@ -103,5 +104,49 @@ describe('what the authority answered to a document', () => {
   it('keeps the three groups of codes apart: a code is never two things', () => {
     const all = [...SvTransientCodes, ...SvTokenCodes, ...SvCredentialCodes, ...SvDuplicateCodes]
     expect(new Set(all).size).toBe(all.length)
+  })
+})
+
+describe('what the authority answered to the event of a contingency', () => {
+  const taken = (extra: Record<string, unknown> = {}) => ({
+    estado: 'RECIBIDO',
+    fechaHora: '17/11/2026 09:00:00',
+    selloRecibido: 'B'.repeat(40),
+    ...extra
+  })
+
+  it('is taken with its seal and the instant the authority gave', () => {
+    expect(classifyEventAnswer(200, taken())).toMatchObject({
+      kind: 'accepted',
+      seal: 'B'.repeat(40),
+      receivedAtTexts: ['17/11/2026 09:00:00']
+    })
+  })
+
+  it('reads each way the authority does not take it, the same as a document', () => {
+    expect(classifyEventAnswer(401, {})).toEqual({ kind: 'token' })
+    expect(classifyEventAnswer(503, {})).toEqual({ kind: 'transient' })
+    for (const code of SvTokenCodes) {
+      expect(classifyEventAnswer(400, refused(String(code)))).toEqual({ kind: 'token' })
+    }
+    for (const code of SvCredentialCodes) {
+      expect(classifyEventAnswer(400, refused(String(code)))).toEqual({ kind: 'credentials' })
+    }
+    for (const code of SvTransientCodes) {
+      expect(classifyEventAnswer(400, refused(String(code)))).toEqual({ kind: 'transient' })
+    }
+    for (const code of SvDuplicateCodes) {
+      expect(classifyEventAnswer(400, refused(String(code)))).toMatchObject({ kind: 'duplicate' })
+    }
+    expect(classifyEventAnswer(400, refused('020'))).toMatchObject({
+      kind: 'rejected',
+      code: '020'
+    })
+    // A refusal that says no code, and an answer that is not a verdict, are the fault of the moment
+    expect(classifyEventAnswer(400, { estado: 'RECHAZADO' })).toEqual({ kind: 'transient' })
+    expect(classifyEventAnswer(200, { estado: 'RECIBIDO', selloRecibido: null })).toEqual({
+      kind: 'transient'
+    })
+    expect(classifyEventAnswer(200, '<html>')).toEqual({ kind: 'transient' })
   })
 })

@@ -21,6 +21,7 @@ import {
 import { buildContingencyEvent } from './sv-contingency'
 import { svProvider, type SvProvider } from './sv-provider'
 import { officialSigner } from './sv-signer'
+import { authorityInstant } from './sv-transmission'
 import { FAKE, startFakeAuthority, verifyJws, type FakeAuthority } from './testing/fake-authority'
 import { CONSUMER, ISSUER, sale, schemaErrors } from './testing/sv-fixtures'
 
@@ -242,6 +243,10 @@ describe('the provider against the authority while it is down', () => {
   })
   beforeEach(() => {
     authority.forgetDocuments()
+    // What a case counts is its own
+    authority.stats.contingencies = 0
+    authority.stats.receptions = 0
+    authority.stats.logins = 0
     authority.receptionDown = false
     authority.contingencyMode = 'normal'
     authority.signerDown = false
@@ -440,5 +445,26 @@ describe('the provider against the authority while it is down', () => {
       neverSent: true
     })
     expect(authority.stats.contingencies).toBe(before)
+  })
+})
+
+describe('the instant the authority says it took an event', () => {
+  it('reads dd/MM/yyyy HH:mm:ss of El Salvador (UTC-6) as an instant', () => {
+    expect(authorityInstant('17/11/2026 09:00:00')).toBe(Date.parse('2026-11-17T15:00:00.000Z'))
+    expect(authorityInstant('31/12/2026 23:59:59')).toBe(Date.parse('2027-01-01T05:59:59.000Z'))
+  })
+
+  it('does not read a date that does not exist, a field out of range or another shape', () => {
+    for (const text of [
+      '31/02/2026 10:00:00',
+      '45/13/2026 99:99:99',
+      '17/11/2026 24:00:00',
+      '2026-11-17T09:00:00Z',
+      '17/11/2026',
+      '',
+      null
+    ]) {
+      expect(authorityInstant(text)).toBeNull()
+    }
   })
 })
