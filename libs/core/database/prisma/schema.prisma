@@ -839,6 +839,7 @@ model Order {
   taxCents                         Int?      @map("tax_cents") // The tax of the order, fixed at creation (TDD_18 §7); null on an order made before the tax columns
   pricesIncludeTax                 Boolean?  @map("prices_include_tax") // Whether the prices were tax included when it was made; null as above
   shippingTaxRateBps               Int?      @map("shipping_tax_rate_bps") // The rate the shipping fee was taxed at; null when it was not taxed
+  taxRounding                      String?   @map("tax_rounding") // The rounding the tax was made with (a TaxRounding); null on an order made before this column
   createdBy                        String?   @map("created_by") // Null when a plugin made it (`createdByPluginId`): exactly one of the two (a check)
   createdByPluginId                String?   @map("created_by_plugin_id")
   createdAt                        DateTime  @default(now()) @map("created_at")
@@ -987,6 +988,10 @@ model InventoryMovement {
   // cost of a level is kept from these (InventoryLevel.valueCents), and FIFO lots can later be built from the receipts
   // without changing this table.
   unitCostCents     Int?     @map("unit_cost_cents")
+  // The value the movement moved in or out of the level, in whole USD cents (what the books post, TDD_18 §4.2): units x the rounded
+  // unit cost differs from it by a cent or two when the average has a fraction of a cent. Null for a reserve, a release, units that were
+  // never on hand, and the rows written before the column existed (those are valued at units x unit cost).
+  valueCents        BigInt?  @map("value_cents")
   onHandAfter       Int      @map("on_hand_after")
   reservedAfter     Int      @map("reserved_after")
   createdBy         String?  @map("created_by")

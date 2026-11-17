@@ -3,6 +3,7 @@
 export * from './account-rules'
 export * from './auto-entry-rules'
 export * from './entry-rules'
+export * from './movement-cost'
 export * from './legal-books'
 export * from './period-rules'
 export * from './purchase-rules'

@@ -23,8 +23,12 @@ export type Refusal =
   // Release or issue for more units than are reserved
   | { kind: 'reservation_exceeded'; reserved: number }
 
+// `unitCostCents` is the cost of one unit, rounded to the cent: what a screen shows. `valueCents` is the value the movement moved in
+// or out of the level, to the cent, and is the figure the books post (TDD_18 §4.2): the units times the rounded cost does not add up
+// to it when the average has a fraction of a cent. Null for what moves no value (a reserve, a release, units that were never on hand).
 export type Plan =
-  { ok: true; next: LevelState; unitCostCents: number | null } | { ok: false; refusal: Refusal }
+  | { ok: true; next: LevelState; unitCostCents: number | null; valueCents: bigint | null }
+  | { ok: false; refusal: Refusal }
 
 export interface PlanOptions {
   // StoreSettings.allowNegativeStock (TDD_16 §4.10)
@@ -76,14 +80,21 @@ export function planMovement(
     return {
       ok: true,
       next: { onHand, reserved, valueCents },
-      unitCostCents: options.unitCostCents
+      unitCostCents: options.unitCostCents,
+      // What the level gained: over a deficit only the units above zero carry value
+      valueCents: valueCents - (level.onHand >= 0 ? level.valueCents : 0n)
     }
   }
 
   if (effect.onHand < 0) {
     // Units leave at the average cost of the level; with none on hand there is no cost to take
     if (level.onHand <= 0) {
-      return { ok: true, next: { onHand, reserved, valueCents: 0n }, unitCostCents: null }
+      return {
+        ok: true,
+        next: { onHand, reserved, valueCents: 0n },
+        unitCostCents: null,
+        valueCents: null
+      }
     }
     const unitCostCents = Number(roundedDivision(level.valueCents, BigInt(level.onHand)))
     const leaving = Math.min(quantity, level.onHand)
@@ -92,11 +103,17 @@ export function planMovement(
         ? level.valueCents
         : roundedDivision(level.valueCents * BigInt(leaving), BigInt(level.onHand))
     const valueCents = onHand <= 0 ? 0n : level.valueCents - removed
-    return { ok: true, next: { onHand, reserved, valueCents }, unitCostCents }
+    // What leaves the level is what the level loses: one figure for the stock and for the books, with no second rounding
+    return { ok: true, next: { onHand, reserved, valueCents }, unitCostCents, valueCents: removed }
   }
 
   // Reserve and release move no value
-  return { ok: true, next: { onHand, reserved, valueCents: level.valueCents }, unitCostCents: null }
+  return {
+    ok: true,
+    next: { onHand, reserved, valueCents: level.valueCents },
+    unitCostCents: null,
+    valueCents: null
+  }
 }
 
 function refusalOf(
