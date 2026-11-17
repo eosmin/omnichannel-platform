@@ -4,25 +4,26 @@ import {
   CountLimits,
   CountLineFilters,
   CountStatus,
+  lowercasedUuidSchema,
   PaginationLimits,
   singleLineText
 } from '@platform/core/domain'
 
 import { cursorSchema } from '../customers/list-cursor'
 
-export const idSchema = z.uuid()
+export const idSchema = lowercasedUuidSchema
 
 export const listCountsQuerySchema = z.strictObject({
   cursor: cursorSchema.optional(),
   limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
   status: z.enum(CountStatus).optional(),
-  warehouseId: z.uuid().optional()
+  warehouseId: lowercasedUuidSchema.optional()
 })
 
 export const createCountSchema = z.strictObject({
-  warehouseId: z.uuid(),
+  warehouseId: lowercasedUuidSchema,
   // Limits the count to the products of one store of the organization
-  storeId: z.uuid().optional(),
+  storeId: lowercasedUuidSchema.optional(),
   note: singleLineText(CountLimits.NOTE_MAX_LENGTH, 1).optional()
 })
 
@@ -31,7 +32,7 @@ export const updateCountLinesSchema = z.strictObject({
   lines: z
     .array(
       z.strictObject({
-        lineId: z.uuid(),
+        lineId: lowercasedUuidSchema,
         countedQuantity: z.number().int().min(0).max(CountLimits.MAX_COUNTED_QUANTITY).nullable()
       })
     )
@@ -43,7 +44,7 @@ export const updateCountLinesSchema = z.strictObject({
 })
 
 export const countLinesQuerySchema = z.strictObject({
-  cursor: z.uuid().optional(),
+  cursor: lowercasedUuidSchema.optional(),
   limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT),
   // Only the lines still to count, or only those whose count differs from the snapshot
   filter: z.enum(CountLineFilters).optional()

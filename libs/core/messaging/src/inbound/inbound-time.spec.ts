@@ -1,5 +1,3 @@
-import { InboundLimits } from '@platform/core/domain'
-
 import { receivedTime } from './inbound-time'
 
 const now = new Date('2026-10-27T12:00:00.000Z')
@@ -11,14 +9,14 @@ describe('receivedTime', () => {
     )
   })
 
-  it('allows a small drift of the clock of the provider', () => {
-    const ahead = new Date(now.getTime() + InboundLimits.MAX_FUTURE_SKEW_MS)
-    expect(receivedTime(ahead.toISOString(), now)).toEqual(ahead)
+  it('counts any date ahead of the clock as now, a small drift of the provider included', () => {
+    for (const ahead of [1, 1000, 5 * 60 * 1000, 5 * 60 * 1000 + 1, 24 * 60 * 60 * 1000]) {
+      expect(receivedTime(new Date(now.getTime() + ahead).toISOString(), now)).toBe(now)
+    }
   })
 
-  it('counts a date too far ahead as now', () => {
-    const ahead = new Date(now.getTime() + InboundLimits.MAX_FUTURE_SKEW_MS + 1)
-    expect(receivedTime(ahead.toISOString(), now)).toBe(now)
+  it('keeps a date that is exactly now', () => {
+    expect(receivedTime(now.toISOString(), now)).toEqual(now)
   })
 
   it('counts a date from long ago as now: it is a unit mistake', () => {

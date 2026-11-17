@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import { slugify } from '@platform/core/database'
-import { OrganizationLimits, timezoneSchema } from '@platform/core/domain'
+import { lowercasedUuidSchema, OrganizationLimits, timezoneSchema } from '@platform/core/domain'
 import { SUPPORTED_LOCALES } from '@platform/core/i18n'
 
 const CURRENCY_CODE = /^[A-Z]{3}$/
@@ -26,7 +26,7 @@ const defaultLocale = z
     message: 'not a supported locale'
   })
 
-export const idSchema = z.uuid()
+export const idSchema = lowercasedUuidSchema
 
 export const updateOrganizationSchema = z.strictObject({ name })
 

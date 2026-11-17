@@ -6,6 +6,7 @@ import {
   InventoryLevelSorts,
   InventoryLimits,
   InventoryMovementType,
+  lowercasedUuidSchema,
   PaginationLimits,
   ProductLimits,
   singleLineText
@@ -28,7 +29,7 @@ export const seqCursorSchema = z.string().transform((text, ctx): bigint => {
 export const encodeSeqCursor = (seq: bigint): string =>
   Buffer.from(JSON.stringify(seq.toString())).toString('base64url')
 
-export const idSchema = z.uuid()
+export const idSchema = lowercasedUuidSchema
 
 const limit = z.coerce
   .number()
@@ -54,7 +55,7 @@ export const encodeNameCursor = (row: NameCursor): string =>
 
 const nameCursorParts = z.strictObject({
   name: z.string(),
-  id: z.uuid()
+  id: lowercasedUuidSchema
 })
 
 function parseNameCursor(text: string): NameCursor | null {
@@ -147,6 +148,7 @@ export const createAdjustmentSchema = z.strictObject({
   reason: z.enum(Object.values(InventoryAdjustmentReason)).optional(),
   note: singleLineText(InventoryLimits.NOTE_MAX_LENGTH, 1).optional(),
   // The client's, generated once per attempt (a UUID): a double click or a retry adjusts once
+  // Kept as sent: it is the text of a unique index, and the keys already stored hold the case the client used
   idempotencyKey: z.uuid(),
   // The cost of ONE unit that comes in, in whole USD cents: setting a cost needs products:view_cost
   unitCostCents: z.number().int().min(0).max(ProductLimits.MAX_AMOUNT_CENTS).optional()

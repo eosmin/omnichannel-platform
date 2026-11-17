@@ -796,6 +796,38 @@ describe('The tax of an order and the VAT report (Step 4B.3b)', () => {
         expect(april.rows.filter(row => row.side === (VatSide.OUTPUT as string))).toEqual([])
       })
 
+      it('reads the UTC day of a store whose zone the database does not know, and still answers (N-AA-02)', async () => {
+        // The api refuses such a zone, so it is a value written around it: one store must not leave the organization with no report
+        const { timezone: original } = await owner.store.findUniqueOrThrow({
+          where: { id: ctx.storeA.id },
+          select: { timezone: true }
+        })
+        const order = await place(1130, 1)
+        await delivered(order.id, '2027-04-01T03:00:00Z')
+        const outputTax = async (day: string): Promise<number> =>
+          ((await report(day, day)).body as ReportBody).rows
+            .filter(row => row.side === (VatSide.OUTPUT as string))
+            .reduce((sum, row) => sum + row.taxCents, 0)
+        // With its real zone (UTC-6) the instant is still the night of 31 March
+        const marchBefore = await outputTax('2027-03-31')
+        expect(marchBefore).toBeGreaterThanOrEqual(130)
+        expect(await outputTax('2027-04-01')).toBe(0)
+        await owner.store.update({
+          where: { id: ctx.storeA.id },
+          data: { timezone: 'Mars/Phobos' }
+        })
+        try {
+          const april = await report('2027-04-01', '2027-04-01')
+
+          // The zone does not exist: the report answers and reads the UTC day, so what was March 31 is April 1
+          expect(april.status).toBe(OK)
+          expect(await outputTax('2027-04-01')).toBe(marchBefore)
+          expect(await outputTax('2027-03-31')).toBe(0)
+        } finally {
+          await owner.store.update({ where: { id: ctx.storeA.id }, data: { timezone: original } })
+        }
+      })
+
       it('is a CSV with the same rows, with a header and no formula in a cell', async () => {
         await delivered((await legacyOrder()).id)
         const response = await asAdmin().get(

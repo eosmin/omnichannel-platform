@@ -8,25 +8,35 @@ import {
   MessageType,
   OriginKinds,
   OriginMediaTypes,
-  ReactionActors
+  ReactionActors,
+  lowercasedUuidSchema,
+  safeText,
+  withoutNul
 } from '@platform/core/domain'
 import { ChannelEventTypes } from '@platform/plugins/sdk'
 
-const id = z.string().min(1).max(InboundLimits.ID_MAX_LENGTH)
-const text = (max: number): z.ZodString => z.string().max(max)
+// Postgres cannot hold a NUL in text or jsonb. What a provider says in words (a text, a name) is kept with the NULs taken out, so
+// the message arrives and is not lost in the worker (QA N-4A-05); what NAMES something (an id, a reference, a type) is refused
+// instead, because two ids that differ by a NUL would become one and merge two customers or drop a message as a repeat.
+const hasNoNul = (value: string): boolean => !value.includes('\0')
+const NO_NUL = { message: 'a NUL character is not allowed here' }
+const name = (schema: z.ZodString): z.ZodString => schema.refine(hasNoNul, NO_NUL)
+const id = name(z.string().min(1).max(InboundLimits.ID_MAX_LENGTH))
+const text = (max: number) => z.string().max(max).transform(safeText)
 
 const metadata = z
   .record(z.string(), z.json())
   .refine(value => Buffer.byteLength(JSON.stringify(value)) <= InboundLimits.METADATA_MAX_BYTES, {
     message: 'metadata is too large'
   })
+  .transform(value => withoutNul(value) as typeof value)
 
 const media = z.strictObject({
   // The id the stored file will have. Only the web widget's is used (the worker ignores it for any other
   // plugin) and the worker refuses one that is already taken; here it is a uuid, once per file
-  id: z.uuid().optional(),
-  ref: z.string().min(1).max(InboundLimits.MEDIA_REF_MAX_LENGTH),
-  contentType: z.string().min(1).max(InboundLimits.CONTENT_TYPE_MAX_LENGTH),
+  id: lowercasedUuidSchema.optional(),
+  ref: name(z.string().min(1).max(InboundLimits.MEDIA_REF_MAX_LENGTH)),
+  contentType: name(z.string().min(1).max(InboundLimits.CONTENT_TYPE_MAX_LENGTH)),
   filename: text(InboundLimits.FILENAME_MAX_LENGTH).nullable()
 })
 
@@ -41,7 +51,7 @@ const origin = z.strictObject({
   media: z
     .strictObject({
       type: z.enum(OriginMediaTypes),
-      ref: z.string().min(1).max(InboundLimits.MEDIA_REF_MAX_LENGTH).optional(),
+      ref: name(z.string().min(1).max(InboundLimits.MEDIA_REF_MAX_LENGTH)).optional(),
       url: url.optional()
     })
     .refine(value => (value.ref === undefined) !== (value.url === undefined), {
@@ -132,7 +142,7 @@ export const channelEventSchema = z
     edit: edit.optional(),
     deletion: deletion.optional(),
     status: status.optional(),
-    messageId: z.uuid().optional(),
+    messageId: lowercasedUuidSchema.optional(),
     timestamp: z.iso.datetime({ offset: true })
   })
   .superRefine((event, context) => {

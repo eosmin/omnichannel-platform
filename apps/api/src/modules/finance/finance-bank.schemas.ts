@@ -7,6 +7,7 @@ import {
   BankStatementLimits,
   BankThousandsSeparators,
   FinanceLimits,
+  lowercasedUuidSchema,
   PaginationLimits,
   RemittanceDateFormats,
   RemittanceDecimalSeparators,
@@ -71,7 +72,7 @@ const reading = {
 
 export const createBankProfileSchema = z
   .strictObject({
-    accountId: z.uuid(),
+    accountId: lowercasedUuidSchema,
     name: singleLineText(BankStatementLimits.PROFILE_NAME_MAX_LENGTH, 1),
     ...reading
   })
@@ -96,7 +97,9 @@ export const updateBankProfileSchema = z
   })
 export type UpdateBankProfileBody = z.output<typeof updateBankProfileSchema>
 
-export const listBankProfilesQuerySchema = z.strictObject({ accountId: z.uuid().optional() })
+export const listBankProfilesQuerySchema = z.strictObject({
+  accountId: lowercasedUuidSchema.optional()
+})
 export type ListBankProfilesQuery = z.output<typeof listBankProfilesQuerySchema>
 
 // The mapper's preview: a sample of the file, already text (the browser decoded it), and the mapping being tried
@@ -116,7 +119,7 @@ export type BankPreviewBody = z.output<typeof bankPreviewSchema>
 // statement ends with and the day it is of: both or neither
 export const bankImportQuerySchema = z
   .strictObject({
-    profileId: z.uuid(),
+    profileId: lowercasedUuidSchema,
     // An empty value is no balance (it would be read as 0.00, a balance nobody said). The cents are written as a whole number and
     // nothing else: `Number()` would read a blank as 0, "1e3" as 1000 and "0x10" as 16
     closingBalanceCents: z.preprocess(
@@ -142,7 +145,7 @@ export const bankImportQuerySchema = z
 export type BankImportQuery = z.output<typeof bankImportQuerySchema>
 
 export const listBankImportsQuerySchema = z.strictObject({
-  accountId: z.uuid().optional(),
+  accountId: lowercasedUuidSchema.optional(),
   limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
 })
 export type ListBankImportsQuery = z.output<typeof listBankImportsQuerySchema>
@@ -156,11 +159,11 @@ export const listBankLinesQuerySchema = z.strictObject({
 export type ListBankLinesQuery = z.output<typeof listBankLinesQuerySchema>
 
 // A pair: the journal line a person says is the same movement as the statement line of the path
-export const bankPairSchema = z.strictObject({ journalLineId: z.uuid() })
+export const bankPairSchema = z.strictObject({ journalLineId: lowercasedUuidSchema })
 export type BankPairBody = z.output<typeof bankPairSchema>
 
 export const bankStatusQuerySchema = z.strictObject({
-  accountId: z.uuid(),
+  accountId: lowercasedUuidSchema,
   year: z.coerce.number().int().min(FinanceLimits.MIN_YEAR).max(FinanceLimits.MAX_YEAR),
   month: z.coerce.number().int().min(FinanceLimits.FIRST_MONTH).max(FinanceLimits.LAST_MONTH)
 })

@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import {
   InventoryLimits,
+  lowercasedUuidSchema,
   PaginationLimits,
   singleLineText,
   WarehouseLimits
@@ -9,7 +10,7 @@ import {
 
 import { cursorSchema } from '../customers/list-cursor'
 
-export const idSchema = z.uuid()
+export const idSchema = lowercasedUuidSchema
 
 const name = singleLineText(InventoryLimits.WAREHOUSE_NAME_MAX_LENGTH, 1)
 // ASCII only, no spaces: the code is printed on documents and typed at a counter. The database holds the same rule,
@@ -63,7 +64,7 @@ export const putWarehouseStoresSchema = z.strictObject({
   stores: z
     .array(
       z.strictObject({
-        storeId: z.uuid(),
+        storeId: lowercasedUuidSchema,
         priority: z.number().int().min(1).max(WarehouseLimits.MAX_STORES_PER_REQUEST).optional()
       })
     )

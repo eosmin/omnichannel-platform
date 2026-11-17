@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { FinanceLimits } from './finance-constants'
 import { isIsoDate } from './ledger-days'
 import { PurchaseLimits } from './purchase-constants'
-import { singleLineText } from './validation'
+import { lowercasedUuidSchema, singleLineText } from './validation'
 
 // The bodies of the purchase routes (TDD_18 §2.7, §12), in the shared lib: the api validates with them and the web checks what each
 // form sends against the very same schema (a spec of the web), so the two cannot drift. The queries stay in the api (they carry its
@@ -25,7 +25,7 @@ const supplierFields = {
   email: z.email().max(PurchaseLimits.SUPPLIER_EMAIL_MAX_LENGTH),
   phone: singleLineText(PurchaseLimits.SUPPLIER_PHONE_MAX_LENGTH, 1),
   paymentTermsDays: z.number().int().min(0).max(PurchaseLimits.MAX_PAYMENT_TERMS_DAYS),
-  defaultPayableAccountId: z.uuid()
+  defaultPayableAccountId: lowercasedUuidSchema
 }
 
 export const createSupplierSchema = z.strictObject({
@@ -54,20 +54,20 @@ export const updateSupplierSchema = z
   .refine(body => Object.values(body).some(value => value !== undefined), nothingToChange)
 
 const orderLine = z.strictObject({
-  productId: z.uuid(),
-  variantId: z.uuid().optional(),
+  productId: lowercasedUuidSchema,
+  variantId: lowercasedUuidSchema.optional(),
   quantity,
   // The cost of ONE unit before tax
   unitCostCents: cents,
-  taxRateId: z.uuid().optional()
+  taxRateId: lowercasedUuidSchema.optional()
 })
 
 const orderLines = z.array(orderLine).max(PurchaseLimits.MAX_LINES_PER_ORDER)
 
 export const createPurchaseOrderSchema = z.strictObject({
   idempotencyKey: purchaseIdempotencyKey,
-  supplierId: z.uuid(),
-  warehouseId: z.uuid(),
+  supplierId: lowercasedUuidSchema,
+  warehouseId: lowercasedUuidSchema,
   expectedOn: day.optional(),
   notes: singleLineText(PurchaseLimits.NOTES_MAX_LENGTH, 1).optional(),
   lines: orderLines.default([])
@@ -76,8 +76,8 @@ export const createPurchaseOrderSchema = z.strictObject({
 // Only a draft is changed. The lines, when sent, are the whole list: they replace the ones it had
 export const updatePurchaseOrderSchema = z
   .strictObject({
-    supplierId: z.uuid().optional(),
-    warehouseId: z.uuid().optional(),
+    supplierId: lowercasedUuidSchema.optional(),
+    warehouseId: lowercasedUuidSchema.optional(),
     expectedOn: day.nullable().optional(),
     notes: singleLineText(PurchaseLimits.NOTES_MAX_LENGTH, 1).nullable().optional(),
     lines: orderLines.optional()
@@ -92,7 +92,7 @@ export const receivePurchaseOrderSchema = z.strictObject({
   // Whether the tax of the bill is input VAT. Left out, it is when the supplier's document number is given [ACCOUNTANT]
   taxCreditable: z.boolean().optional(),
   lines: z
-    .array(z.strictObject({ orderLineId: z.uuid(), quantity }))
+    .array(z.strictObject({ orderLineId: lowercasedUuidSchema, quantity }))
     .min(1)
     .max(PurchaseLimits.MAX_LINES_PER_ORDER)
     .refine(lines => new Set(lines.map(line => line.orderLineId)).size === lines.length, {
@@ -105,11 +105,11 @@ export const closePurchaseOrderSchema = z.strictObject({ reason: reason.optional
 
 export const recordPaymentSchema = z.strictObject({
   idempotencyKey: purchaseIdempotencyKey,
-  paidFromAccountId: z.uuid(),
+  paidFromAccountId: lowercasedUuidSchema,
   amountCents: z.number().int().min(1).max(FinanceLimits.MAX_LINE_CENTS),
   paidOn: day,
   // The bill it pays; left out, it is a payment on what the supplier is owed in all
-  purchaseReceiptId: z.uuid().optional(),
+  purchaseReceiptId: lowercasedUuidSchema.optional(),
   reference: singleLineText(PurchaseLimits.REFERENCE_MAX_LENGTH, 1).optional()
 })
 

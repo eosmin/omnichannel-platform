@@ -122,13 +122,22 @@ export class FinanceVatReportService {
     // all stores at once (the column holds a UTC instant without a zone, so it is read as UTC first). A cancelled order is never a sale, and one never delivered (or never shipped) is not one yet.
     const shipped = recognizedOn === SaleRecognition.SHIPPED
     const recognized = await db.$queryRaw<{ id: string; month: string; status: string }[]>`
+      WITH known AS MATERIALIZED (SELECT lower(name) AS name FROM pg_timezone_names),
+      zones AS (
+        -- A zone the database does not know (a value written around the api, which validates it) is the UTC day, as the books do
+        -- (dayInZone): one store with a bad zone must not leave the whole organization without its report. The list of zones is read once for the call, and as dayInZone reads a zone (a name of the database in any case; an abbreviation is not a zone there)
+        SELECT s.id AS store_id,
+               CASE WHEN lower(s.timezone) IN (SELECT name FROM known)
+                    THEN s.timezone ELSE 'UTC' END AS timezone
+        FROM stores s
+        WHERE s.organization_id = ${organizationId}
+      )
       SELECT x.id, x.status, to_char(((x.at AT TIME ZONE 'UTC') AT TIME ZONE x.timezone)::date, 'YYYY-MM') AS month
       FROM (
-        SELECT o.id, s.timezone, o.status,
+        SELECT o.id, z.timezone, o.status,
                CASE WHEN ${shipped}::boolean THEN o.shipped_at ELSE o.delivered_at END AS at
         FROM orders o
-        JOIN stores s ON s.id = o.store_id
-        WHERE s.organization_id = ${organizationId}
+        JOIN zones z ON z.store_id = o.store_id
       ) x
       WHERE x.status <> ${OrderStatus.CANCELLED}
         AND x.at IS NOT NULL

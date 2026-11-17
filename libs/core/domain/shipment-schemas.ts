@@ -97,7 +97,8 @@ export const bulkLocationIdsSchema = z.strictObject({
 // the run applies a pair to the orders that carrier makes the guide of, and to no other. The way a run pinned to one carrier gives its
 // pair (`connectionId` + `locationIds`) and this one are never used together.
 export const bulkLocationsByConnectionSchema = z
-  .record(uuidSchema, bulkLocationIdsSchema)
+  // The keys stay as sent: two that differ by case must not become one entry
+  .record(z.uuid(), bulkLocationIdsSchema)
   .refine(value => Object.keys(value).length <= BulkLabelLimits.MAX_PLACE_CARRIERS, {
     message: 'too many carriers'
   })

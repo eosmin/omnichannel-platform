@@ -8,6 +8,84 @@ export const LONE_SURROGATE =
 export const safeText = (text: string): string =>
   text.replaceAll('\0', '').replace(LONE_SURROGATE, '\uFFFD')
 
+// Only what JSON makes: a Buffer or a typed array is not walked byte by byte
+function isPlainObject(value: object): boolean {
+  const prototype = Object.getPrototypeOf(value) as unknown
+  return prototype === Object.prototype || prototype === null
+}
+
+// The same as LONE_SURROGATE with no `g` flag, which would keep a position between two `test` calls
+const HAS_LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/
+const isUnstorable = (text: string): boolean => text.includes('\0') || HAS_LONE_SURROGATE.test(text)
+
+// Whether a text, a list or an object holds, anywhere, a NUL or half of an emoji: in a string, in a key of an object, at any
+// depth. Postgres refuses it in text and in jsonb, so it must be told at the edge as a 400, never reach
+// the database as a 500 (QA OPS-RD-046, N-4A-05). Walks with a stack, not by recursion: a body of
+// 1 MiB can nest deeper than the call stack.
+export function containsUnstorableText(value: unknown): boolean {
+  const pending: unknown[] = [value]
+  while (pending.length > 0) {
+    const item = pending.pop()
+    if (typeof item === 'string') {
+      if (isUnstorable(item)) return true
+    } else if (Array.isArray(item)) {
+      for (const inner of item as unknown[]) pending.push(inner)
+    } else if (typeof item === 'object' && item !== null && isPlainObject(item)) {
+      for (const [key, inner] of Object.entries(item)) {
+        if (isUnstorable(key)) return true
+        pending.push(inner)
+      }
+    }
+  }
+  return false
+}
+
+// The same walk, for what a provider says and the platform must keep: every string and key goes through
+// `safeText` (the NULs go, half of an emoji becomes U+FFFD), and the rest of the value is returned as it was. A copy is built with a stack too, so a
+// deep payload is no way to make it throw.
+export function withoutNul(value: unknown): unknown {
+  if (typeof value === 'string') return safeText(value)
+  if (
+    typeof value !== 'object' ||
+    value === null ||
+    !(Array.isArray(value) || isPlainObject(value))
+  ) {
+    return value
+  }
+  const root: unknown = Array.isArray(value) ? [] : {}
+  const stack: [object, object][] = [[value, root as object]]
+  while (stack.length > 0) {
+    const [source, target] = stack.pop() as [object, object]
+    const entries: [string, unknown][] = Array.isArray(source)
+      ? (source as unknown[]).map((inner, index) => [String(index), inner])
+      : Object.entries(source)
+    for (const [key, inner] of entries) {
+      let copy: unknown = inner
+      if (typeof inner === 'string') copy = safeText(inner)
+      else if (
+        typeof inner === 'object' &&
+        inner !== null &&
+        (Array.isArray(inner) || isPlainObject(inner))
+      ) {
+        copy = Array.isArray(inner) ? [] : {}
+        stack.push([inner, copy as object])
+      }
+      // defineProperty, not an assignment: a `__proto__` key of a JSON payload is data, and an assignment would swap the prototype
+      // of the copy. A key that another one became once cleaned is left to the first.
+      const property = Array.isArray(target) ? key : safeText(key)
+      if (!Object.hasOwn(target, property)) {
+        Object.defineProperty(target, property, {
+          value: copy,
+          enumerable: true,
+          writable: true,
+          configurable: true
+        })
+      }
+    }
+  }
+  return root
+}
+
 // An emoji a person left: visible, short, and nothing the database would refuse (a NUL, half of one)
 export const isWholeEmoji = (value: string, maxLength: number): boolean =>
   value.trim() !== '' && value.length <= maxLength && safeText(value) === value

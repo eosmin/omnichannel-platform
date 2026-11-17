@@ -35,7 +35,7 @@ const FILE_TYPES = {
 // Who the message is from and how it behaves, the same for every kind
 const authorFields = {
   authorType: z.enum([AuthorType.SYSTEM, AuthorType.AGENT]).default(AuthorType.SYSTEM),
-  userId: uuidSchema.transform(id => id.toLowerCase()).optional(),
+  userId: uuidSchema.optional(),
   quiet: z.boolean().default(false),
   nickname: z.string().max(NICKNAME_INPUT_MAX).optional()
 }
