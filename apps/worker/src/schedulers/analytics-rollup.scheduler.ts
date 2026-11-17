@@ -18,6 +18,7 @@ import {
 
 import {
   periodsToRecompute,
+  type RollupPeriod,
   RollupGranularities,
   type RollupGranularity
 } from '../analytics/rollup-periods'
@@ -25,6 +26,8 @@ import {
 import { LeaderLockService } from './leader-lock.service'
 
 const LOCK_SECONDS = 300
+const HOUR_MS = 3_600_000
+const DAY_MS = 24 * HOUR_MS
 
 const JobNameOf = {
   [RollupGranularities.HOURLY]: JobNames.ROLLUP_HOURLY,
@@ -110,6 +113,60 @@ export class AnalyticsRollupScheduler {
       if (stores.length < pageSize) break
       cursor = stores.at(-1)?.id
     }
+    if (granularity === RollupGranularities.DAILY) {
+      queued += await this.enqueueLateDays(now, periods, runStart)
+    }
     return queued
+  }
+
+  // An order cancelled or adjusted after its day left the recompute window would keep that day's count and revenue for good. The
+  // day of an order that changed in the last LATE_ORDER_CHANGE_HOURS goes back through the rollup, if it is not older than
+  // LATE_ORDER_LOOKBACK_DAYS. The figure stays dated by when the order was made; it is the day that is corrected, not today.
+  private async enqueueLateDays(
+    now: Date,
+    window: readonly RollupPeriod[],
+    runStart: Date
+  ): Promise<number> {
+    const windowStart = window.at(-1)?.start ?? now
+    const changedSince = new Date(now.getTime() - RollupLimits.LATE_ORDER_CHANGE_HOURS * HOUR_MS)
+    const oldest = new Date(now.getTime() - RollupLimits.LATE_ORDER_LOOKBACK_DAYS * DAY_MS)
+    const days = new Map<string, Set<number>>()
+    let cursor: string | undefined
+    for (;;) {
+      const orders = await this.prisma.client.order.findMany({
+        where: {
+          updatedAt: { gte: changedSince },
+          createdAt: { gte: oldest, lt: windowStart }
+        },
+        select: { id: true, storeId: true, createdAt: true },
+        orderBy: { id: 'asc' },
+        take: RollupLimits.LATE_ORDER_PAGE_SIZE,
+        ...(cursor === undefined ? {} : { cursor: { id: cursor }, skip: 1 })
+      })
+      for (const order of orders) {
+        const start = Math.floor(order.createdAt.getTime() / DAY_MS) * DAY_MS
+        const of = days.get(order.storeId) ?? new Set<number>()
+        of.add(start)
+        days.set(order.storeId, of)
+      }
+      if (orders.length < RollupLimits.LATE_ORDER_PAGE_SIZE) break
+      cursor = orders.at(-1)?.id
+    }
+    const jobs = [...days].flatMap(([storeId, starts]) =>
+      [...starts].map(start => ({
+        name: JobNames.ROLLUP_DAILY,
+        data: {
+          storeId,
+          periodStart: new Date(start).toISOString(),
+          periodEnd: new Date(start + DAY_MS).toISOString()
+        },
+        opts: { jobId: rollupJobId(JobNames.ROLLUP_DAILY, storeId, new Date(start), runStart) }
+      }))
+    )
+    // In batches, like the stores: a bulk change of old orders must not build one giant request
+    for (let from = 0; from < jobs.length; from += RollupLimits.LATE_ORDER_PAGE_SIZE) {
+      await this.queue.addBulk(jobs.slice(from, from + RollupLimits.LATE_ORDER_PAGE_SIZE))
+    }
+    return jobs.length
   }
 }

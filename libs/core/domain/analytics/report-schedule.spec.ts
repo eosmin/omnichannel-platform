@@ -1,11 +1,12 @@
 import { ReportFrequency } from './analytics-constants'
 import {
   daysOfPeriod,
-  isReportDue,
   isTimeZone,
   localMoment,
   madeOnDay,
-  reportPeriod
+  reportDueDay,
+  reportPeriod,
+  reportRollupReady
 } from './report-schedule'
 
 describe('time zones', () => {
@@ -31,33 +32,71 @@ describe('localMoment', () => {
   })
 })
 
-describe('isReportDue', () => {
+describe('reportDueDay', () => {
   const monday = { day: '2026-11-09', hour: 8, weekday: 1, dayOfMonth: 9 }
   const first = { day: '2026-12-01', hour: 8, weekday: 2, dayOfMonth: 1 }
   const tuesday = { day: '2026-11-10', hour: 8, weekday: 2, dayOfMonth: 10 }
 
   it('is never due before its hour', () => {
-    expect(isReportDue(ReportFrequency.DAILY, { ...monday, hour: 7 }, 8)).toBe(false)
+    expect(reportDueDay(ReportFrequency.DAILY, { ...monday, hour: 7 }, 8)).toBeNull()
+    expect(reportDueDay(ReportFrequency.WEEKLY, { ...monday, hour: 7 }, 8)).toBeNull()
   })
 
-  it('is due after its hour too, so a missed tick is made up for', () => {
-    expect(isReportDue(ReportFrequency.DAILY, { ...monday, hour: 15 }, 8)).toBe(true)
-    // but only on its day
-    expect(isReportDue(ReportFrequency.WEEKLY, { ...tuesday, hour: 15 }, 8)).toBe(false)
+  it('daily is owed for today, at its hour and after it', () => {
+    expect(reportDueDay(ReportFrequency.DAILY, tuesday, 8)).toBe('2026-11-10')
+    expect(reportDueDay(ReportFrequency.DAILY, { ...tuesday, hour: 15 }, 8)).toBe('2026-11-10')
   })
 
-  it('daily is due every day at its hour', () => {
-    expect(isReportDue(ReportFrequency.DAILY, tuesday, 8)).toBe(true)
+  it('weekly is owed for the latest Monday: the day itself, and every day after it until the next one', () => {
+    expect(reportDueDay(ReportFrequency.WEEKLY, monday, 8)).toBe('2026-11-09')
+    // the worker was down all Monday: Tuesday still owes it (H-4)
+    expect(reportDueDay(ReportFrequency.WEEKLY, tuesday, 8)).toBe('2026-11-09')
+    const sunday = { day: '2026-11-15', hour: 9, weekday: 7, dayOfMonth: 15 }
+    expect(reportDueDay(ReportFrequency.WEEKLY, sunday, 8)).toBe('2026-11-09')
   })
 
-  it('weekly is due on Mondays only', () => {
-    expect(isReportDue(ReportFrequency.WEEKLY, monday, 8)).toBe(true)
-    expect(isReportDue(ReportFrequency.WEEKLY, tuesday, 8)).toBe(false)
+  it('weekly crosses a month and a year to its Monday', () => {
+    const friday = { day: '2027-01-01', hour: 8, weekday: 5, dayOfMonth: 1 }
+    expect(reportDueDay(ReportFrequency.WEEKLY, friday, 8)).toBe('2026-12-28')
   })
 
-  it('monthly is due on the first only', () => {
-    expect(isReportDue(ReportFrequency.MONTHLY, first, 8)).toBe(true)
-    expect(isReportDue(ReportFrequency.MONTHLY, tuesday, 8)).toBe(false)
+  it('monthly is owed for the first of the month, on it and every day after it', () => {
+    expect(reportDueDay(ReportFrequency.MONTHLY, first, 8)).toBe('2026-12-01')
+    expect(reportDueDay(ReportFrequency.MONTHLY, tuesday, 8)).toBe('2026-11-01')
+  })
+})
+
+describe('reportRollupReady', () => {
+  it('waits for the last UTC day of the period to close and for its rollup (an hour after midnight UTC)', () => {
+    // Auckland at its hour 0 on the 16th is 11:00 UTC on the 15th: the day 15 is still running (H-3)
+    expect(
+      reportRollupReady(ReportFrequency.DAILY, '2026-11-16', new Date('2026-11-15T11:00:00.000Z'))
+    ).toBe(false)
+    // UTC hour 0: midnight itself, before the rollup of 00:15
+    expect(
+      reportRollupReady(ReportFrequency.DAILY, '2026-11-16', new Date('2026-11-16T00:00:00.000Z'))
+    ).toBe(false)
+    expect(
+      reportRollupReady(ReportFrequency.DAILY, '2026-11-16', new Date('2026-11-16T00:59:59.999Z'))
+    ).toBe(false)
+    expect(
+      reportRollupReady(ReportFrequency.DAILY, '2026-11-16', new Date('2026-11-16T01:00:00.000Z'))
+    ).toBe(true)
+  })
+
+  it('reads the week and the month by their own last day', () => {
+    expect(
+      reportRollupReady(ReportFrequency.WEEKLY, '2026-11-09', new Date('2026-11-09T00:30:00.000Z'))
+    ).toBe(false)
+    expect(
+      reportRollupReady(ReportFrequency.WEEKLY, '2026-11-09', new Date('2026-11-09T01:00:00.000Z'))
+    ).toBe(true)
+    expect(
+      reportRollupReady(ReportFrequency.MONTHLY, '2026-12-01', new Date('2026-11-30T23:00:00.000Z'))
+    ).toBe(false)
+    expect(
+      reportRollupReady(ReportFrequency.MONTHLY, '2026-12-01', new Date('2026-12-01T01:00:00.000Z'))
+    ).toBe(true)
   })
 })
 
