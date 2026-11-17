@@ -28,11 +28,7 @@ const EXCLUDED =
 // Each entry needs its reason in writing; this is not a place to put a file that fails the check.
 export const ALLOWED_FILES: Readonly<Record<string, string>> = {
   'libs/fiscal/runtime/src/official-providers.ts':
-    'Composition root: the one place that imports the provider packages to register them; nothing else may.',
-  'libs/fiscal/runtime/tools/conformance-cli.ts':
-    'Composition root of the conformance run (Step 4B.7c-6): it picks a provider by name and the plan that provider package makes, so it imports the provider packages; it is a tool run by hand, not part of the platform.',
-  'libs/fiscal/runtime/tools/run-conformance.ts':
-    'Composition root of the conformance run (Step 4B.7c-6): it picks a provider by name and the plan that provider package makes, so it imports the provider packages; it is a tool run by hand, not part of the platform.'
+    'Composition root: the one place that imports the provider packages to register them; nothing else may.'
 }
 
 export function isScanned(file: string): boolean {

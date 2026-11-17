@@ -295,7 +295,13 @@ export async function runConformance(
               providerData: parent.accepted.providerData
             }
           } else if (options.dryRun && parent !== undefined) {
-            credited = options.dryRunCredited?.(parent.built, parent.input) ?? null
+            // The provider package says what its note names; one that does not gets what the port asks of any: the type, the number and the date
+            credited = options.dryRunCredited?.(parent.built, parent.input) ?? {
+              documentType: parent.built.documentType,
+              externalNumber: 'dry-run',
+              issuedAt: parent.input.issuedAt,
+              providerData: null
+            }
           }
           if (credited === null) {
             record(step, null, ConformanceOutcome.SKIPPED, ConformanceCodes.PARENT_MISSING, false)

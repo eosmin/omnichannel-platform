@@ -9,7 +9,7 @@ import {
 } from '@platform/fiscal/sdk'
 import { SvSandboxConfirmation, SvSandboxEnvNames } from '@platform/fiscal/sv'
 
-import { ConformanceExit, runConformanceCli, signerUrlProblem } from '../tools/conformance-cli'
+import { ConformanceExit, runConformanceCli, signerUrlProblem } from './conformance-cli'
 
 // The gates of the tool that can send documents to the sandbox of the tax authority: what it refuses, what it prints and what it writes.
 // Nothing here sends anything: every case that would send is refused before a provider is made, or runs the simulator.

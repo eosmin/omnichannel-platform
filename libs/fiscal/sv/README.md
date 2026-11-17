@@ -49,7 +49,7 @@ Not copied: the manuals, the signing certificate, any credential, nor the enviro
 
 ## The minimum tests of the sandbox (Step 4B.7c-6)
 
-`libs/fiscal/runtime/tools/run-conformance.ts` (`pnpm fiscal:conformance`) makes and sends the documents the authority asks before it authorizes an issuer (90 invoices, 75 tax credit documents and 50 credit notes with seal, 5 invalidations, 5 contingencies) from invented data, through the port of the provider (no database). The plan is `src/conformance/sv-conformance-plan.ts`; the report never carries a document, a number, a seal or a secret.
+`libs/fiscal/conformance/src/run-conformance.ts` (`pnpm fiscal:conformance`) makes and sends the documents the authority asks before it authorizes an issuer (90 invoices, 75 tax credit documents and 50 credit notes with seal, 5 invalidations, 5 contingencies) from invented data, through the port of the provider (no database). The plan is `src/conformance/sv-conformance-plan.ts`; the report never carries a document, a number, a seal or a secret.
 
 - `pnpm fiscal:conformance` runs the plan through the simulator (nothing leaves the machine; the simulator has no contingency mode, so those steps are skipped and said so).
 - `pnpm fiscal:conformance --provider sv --dry-run` builds every document with this provider's rules and sends nothing; it needs no environment.
