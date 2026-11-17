@@ -157,7 +157,10 @@ export class OrderTemplatesService {
     kind: OrderMessageKindType,
     locale: Locale,
     body: PutTemplateBody,
-    actor: Actor
+    actor: Actor,
+    // A plugin changes the text and the link, never the settings that decide what goes to a customer: it leaves what the store
+    // chose where it is, so a PUT with only a text does not reset them (N-AA-04)
+    options: { keepSettings?: boolean } = {}
   ): Promise<OrderTemplateView> {
     assertKnownVariables(body.body)
     const autoSend = body.autoSend ?? defaultAutoSend(kind)
@@ -201,14 +204,17 @@ export class OrderTemplatesService {
       }
       const updated = await tx.orderMessageTemplate.update({
         where: { id: existing.id },
-        data,
+        data:
+          options.keepSettings === true
+            ? { body: data.body, channelTemplate: data.channelTemplate }
+            : data,
         select: TEMPLATE_SELECT
       })
       return { row: updated, created: false }
     })
     this.logChange(storeId, actor, AuditAction.ORDER_TEMPLATE_UPDATED, kind, locale, {
       change: created ? 'created' : 'updated',
-      autoSend,
+      autoSend: row.autoSend,
       linked: body.channelTemplate !== null,
       // What went out to customers is the text: its hash tells that it changed, and its length how much
       bodySha256: createHash('sha256').update(body.body).digest('hex'),

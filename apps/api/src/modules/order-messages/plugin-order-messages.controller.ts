@@ -182,7 +182,8 @@ export class PluginOrderMessagesController {
         kind,
         locale,
         body,
-        pluginActorOf(installation, store, req)
+        pluginActorOf(installation, store, req),
+        { keepSettings: true }
       )
     )
   }

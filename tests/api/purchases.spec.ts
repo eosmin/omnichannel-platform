@@ -609,6 +609,89 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
         conflict: PurchaseConflicts.LINE_STORE_NOT_VISIBLE
       })
     })
+
+    it('does not let a caller end an order that has lines of a store they do not see (N-AA-03)', async () => {
+      const seller = await supplier()
+      const buyerOfOtherStore = api(
+        app,
+        await actorWithPermissions(owner, app, {
+          prefix,
+          name: 'buyer-store-a2-end',
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA2.id,
+          permissions: [Permissions.FINANCE_MANAGE_PURCHASES]
+        }),
+        ctx.storeA2
+      )
+      // An order that was only placed can be cancelled; one that arrived in part can be closed (the table of states, TDD_18 §3)
+      const toCancel = await placedOrder(seller.id)
+      const toClose = await placedOrder(seller.id)
+      expect(
+        (await receive(toClose.id, { lines: [{ orderLineId: toClose.lines[0]?.id, quantity: 1 }] }))
+          .status
+      ).toBeLessThan(BAD_REQUEST)
+      for (const [order, route] of [
+        [toCancel, ApiRoutes.purchaseOrders.cancel(toCancel.id)],
+        [toClose, ApiRoutes.purchaseOrders.close(toClose.id)]
+      ] as const) {
+        const refused = await buyerOfOtherStore.post(route).send({})
+        expect(refused.status).toBe(CONFLICT)
+        expect(errorOf(refused).metadata).toMatchObject({
+          conflict: PurchaseConflicts.LINE_STORE_NOT_VISIBLE
+        })
+        expect(
+          (await owner.purchaseOrder.findUniqueOrThrow({ where: { id: order.id } })).status
+        ).not.toBe(PurchaseOrderStatus.CANCELLED)
+        expect(
+          (await owner.purchaseOrder.findUniqueOrThrow({ where: { id: order.id } })).status
+        ).not.toBe(PurchaseOrderStatus.CLOSED)
+      }
+      // Nothing changed: the people who see the lines can still receive them
+      const received = await receive(toClose.id, {
+        lines: [{ orderLineId: toClose.lines[0]?.id, quantity: 1 }]
+      })
+      expect(received.status).toBeLessThan(BAD_REQUEST)
+    })
+
+    it('does not let a caller end an order that has a line to arrive of another store, and lets them end one whose other lines arrived (N-AA-03)', async () => {
+      const seller = await supplier()
+      const mixed = await placedOrder(seller.id)
+      // A line of a store the admin of store A does not see: the order is no longer wholly theirs
+      const theirs = await createProduct(owner, { storeId: ctx.storeA2.id })
+      const foreign = await owner.purchaseOrderLine.create({
+        data: {
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA2.id,
+          purchaseOrderId: mixed.id,
+          lineNo: 3,
+          productId: theirs.id,
+          quantity: 4,
+          unitCostCents: 250
+        }
+      })
+      const cancelled = await asAdminA().post(ApiRoutes.purchaseOrders.cancel(mixed.id)).send({})
+      expect(cancelled.status).toBe(CONFLICT)
+      expect(errorOf(cancelled).metadata).toMatchObject({
+        conflict: PurchaseConflicts.LINE_STORE_NOT_VISIBLE
+      })
+      // Arrived in part, it can be closed, but not while the line of the other store is still to arrive
+      expect(
+        (await receive(mixed.id, { lines: [{ orderLineId: mixed.lines[0]?.id, quantity: 1 }] }))
+          .status
+      ).toBeLessThan(BAD_REQUEST)
+      const refused = await asAdminA().post(ApiRoutes.purchaseOrders.close(mixed.id)).send({})
+      expect(refused.status).toBe(CONFLICT)
+      expect(errorOf(refused).metadata).toMatchObject({
+        conflict: PurchaseConflicts.LINE_STORE_NOT_VISIBLE
+      })
+      // A line that arrived in full gives up nothing: the order whose only unseen line arrived can be tidied
+      await owner.purchaseOrderLine.update({
+        where: { id: foreign.id },
+        data: { receivedQuantity: 4 }
+      })
+      const closed = await asAdminA().post(ApiRoutes.purchaseOrders.close(mixed.id)).send({})
+      expect(closed.status).toBeLessThan(BAD_REQUEST)
+    })
   })
 
   describe('paying a supplier (E11)', () => {
