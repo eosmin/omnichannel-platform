@@ -14,9 +14,9 @@ describe('the kind of refusal of a reversal of an entry', () => {
     expect(reverseConflictOf(error({ conflict: FinanceConflicts.REVERSAL_NOT_REVERSIBLE }))).toBe(
       'reversal_not_reversible'
     )
-    expect(reverseConflictOf(error({ conflict: FinanceConflicts.ENTRY_OWNED_BY_TRANSACTION }))).toBe(
-      'entry_owned_by_transaction'
-    )
+    expect(
+      reverseConflictOf(error({ conflict: FinanceConflicts.ENTRY_OWNED_BY_TRANSACTION }))
+    ).toBe('entry_owned_by_transaction')
     expect(reverseConflictOf(error({ conflict: FinanceConflicts.ACCOUNT_LIMIT }))).toBeNull()
     expect(reverseConflictOf(error({ conflict: 7 }))).toBeNull()
   })
