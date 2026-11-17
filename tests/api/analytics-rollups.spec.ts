@@ -706,6 +706,89 @@ describe('The rollups of analytics', () => {
       ])
     })
 
+    describe('the day of an order that changed after the window', () => {
+      const RUN = new Date('2026-11-10T00:15:00.000Z') // the window is the 9th and the 8th
+      const lateDays = (storeId: string) =>
+        queue.jobs
+          .filter(job => (job.data as { storeId: string }).storeId === storeId)
+          .map(job => (job.data as { periodStart: string }).periodStart.slice(0, 10))
+      async function orderOf(storeId: string, createdAt: string, updatedAt: string) {
+        const order = await createOrder(owner, { storeId })
+        await owner.order.update({
+          where: { id: order.id },
+          data: { createdAt: new Date(createdAt), updatedAt: new Date(updatedAt) }
+        })
+        return order
+      }
+
+      it('puts back the day of an order made before the window and changed since the last run (H-5)', async () => {
+        const { id: storeId } = await aStoreWithAMember()
+        await orderOf(storeId, '2026-11-01T10:00:00.000Z', '2026-11-09T12:00:00.000Z')
+
+        await scheduler.enqueueAll(RollupGranularities.DAILY, RUN)
+
+        expect(lateDays(storeId)).toEqual(['2026-11-09', '2026-11-08', '2026-11-01'])
+      })
+
+      it('queues a day once for many orders, and leaves alone what did not change, what is inside the window and what is too old', async () => {
+        const { id: storeId } = await aStoreWithAMember()
+        await orderOf(storeId, '2026-11-01T10:00:00.000Z', '2026-11-09T12:00:00.000Z')
+        await orderOf(storeId, '2026-11-01T22:00:00.000Z', '2026-11-09T13:00:00.000Z')
+        await orderOf(storeId, '2026-11-02T10:00:00.000Z', '2026-11-02T10:00:00.000Z') // unchanged
+        await orderOf(storeId, '2026-11-09T10:00:00.000Z', '2026-11-09T12:00:00.000Z') // in the window
+        await orderOf(storeId, '2026-07-01T10:00:00.000Z', '2026-11-09T12:00:00.000Z') // older than 90 days
+
+        await scheduler.enqueueAll(RollupGranularities.DAILY, RUN)
+
+        expect(lateDays(storeId)).toEqual(['2026-11-09', '2026-11-08', '2026-11-01'])
+      })
+
+      it('does not add days to the hourly run', async () => {
+        const { id: storeId } = await aStoreWithAMember()
+        await orderOf(storeId, '2026-11-01T10:00:00.000Z', '2026-11-09T12:00:00.000Z')
+
+        await scheduler.enqueueAll(RollupGranularities.HOURLY, NOW)
+
+        expect(lateDays(storeId)).toEqual(['2026-11-10', '2026-11-10'])
+      })
+
+      it('keeps each day with its own store, and the job rewrites the day so a cancelled order leaves its count and revenue', async () => {
+        const mine = await aStoreWithAMember()
+        const other = await aStoreWithAMember()
+        const order = await orderOf(mine.id, '2026-11-01T10:00:00.000Z', '2026-11-01T10:00:00.000Z')
+        const day = {
+          start: new Date('2026-11-01T00:00:00.000Z'),
+          end: new Date('2026-11-02T00:00:00.000Z')
+        }
+        await rollups.rollup(RollupGranularities.DAILY, mine.id, day)
+        const revenue = () =>
+          owner.metricDaily.findFirst({
+            where: { storeId: mine.id, date: day.start, metric: AnalyticsMetrics.ORDERS_REVENUE }
+          })
+        expect(Number((await revenue())?.value)).toBe(19.99)
+        await owner.order.update({
+          where: { id: order.id },
+          data: { status: OrderStatus.CANCELLED, updatedAt: new Date('2026-11-09T12:00:00.000Z') }
+        })
+
+        await scheduler.enqueueAll(RollupGranularities.DAILY, RUN)
+        const job = queue.jobs.find(
+          item =>
+            (item.data as { storeId: string; periodStart: string }).storeId === mine.id &&
+            (item.data as { periodStart: string }).periodStart.startsWith('2026-11-01')
+        )
+        expect(job).toBeDefined()
+        expect(lateDays(other.id)).toEqual(['2026-11-09', '2026-11-08'])
+        const data = job?.data as { periodStart: string; periodEnd: string }
+        await rollups.rollup(RollupGranularities.DAILY, mine.id, {
+          start: new Date(data.periodStart),
+          end: new Date(data.periodEnd)
+        })
+
+        expect(await revenue()).toBeNull()
+      })
+    })
+
     it('goes through every page of stores', async () => {
       const first = await aStore()
       const second = await aStore()
