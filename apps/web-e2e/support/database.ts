@@ -1050,7 +1050,7 @@ export function addWarehouseTo(
 // makes the fiscal document and the sale entry. Returns what the case needs to find it and tries to take the order out afterwards.
 export async function addShippedTaxedSale(
   storeId: string
-): Promise<{ id: string; orderNumber: string; remove: () => Promise<void> }> {
+): Promise<{ id: string; orderNumber: string; customerId: string; remove: () => Promise<void> }> {
   const made = await withOwner(async owner => {
     const created = await createOrder(owner, {
       storeId,
@@ -1081,6 +1081,7 @@ export async function addShippedTaxedSale(
   return {
     id: made.id,
     orderNumber: made.orderNumber,
+    customerId: made.customerId,
     remove: () =>
       withOwner(async owner => {
         // Best effort: the books and the fiscal document keep what they hold, and the next run uses its own names

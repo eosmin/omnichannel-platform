@@ -5,12 +5,15 @@ import {
   type BankProfileDraft,
   BankProfileFields,
   bankDraftOf,
+  bankHeaderSuggestions,
   bankReadingOf,
   createBankProfileInputOf,
   decimalKey,
   delimiterKey,
   emptyBankDraft,
+  guessBankDelimiter,
   MoneyModes,
+  skipRowsOfDraft,
   updateBankProfileInputOf
 } from './bank-form'
 
@@ -24,6 +27,41 @@ const signed = (over: Partial<BankProfileDraft> = {}): BankProfileDraft => ({
 
 const split = (over: Partial<BankProfileDraft> = {}): BankProfileDraft =>
   signed({ mode: MoneyModes.SPLIT, amount: '', debit: 'Cargo', credit: 'Abono', ...over })
+
+describe('the sample of a file that starts with a lead of report lines', () => {
+  const sample = [
+    ',,,Statement of account,,',
+    ',,,"Period\nfrom a day to a day",,',
+    ',,,,,',
+    ',Date,Memo,Ref,Debit,Credit',
+    ',19/11/2026,Deposit,R1,0.00,5.00'
+  ].join('\r\n')
+
+  it('suggests the names of the row after the lead, not the words of a title', () => {
+    expect(bankHeaderSuggestions(sample, ',', 2)).toEqual([
+      'Date',
+      'Memo',
+      'Ref',
+      'Debit',
+      'Credit'
+    ])
+    expect(bankHeaderSuggestions(sample, ',', 0)).toEqual(['Statement of account'])
+    expect(bankHeaderSuggestions(sample, ',', 40)).toEqual([])
+  })
+
+  it('guesses the delimiter from the row after the lead', () => {
+    expect(guessBankDelimiter(sample, 2)).toBe(',')
+    expect(guessBankDelimiter('Titulo\n\na;b;c;d\n1;2;3;4', 1)).toBe(';')
+    expect(guessBankDelimiter('a\tb\tc', 0)).toBe('\t')
+    expect(guessBankDelimiter('nothing to cut', 0)).toBe(',')
+  })
+
+  it('reads the rows to skip of the form, and none when it is not a number in range', () => {
+    expect(skipRowsOfDraft({ skipRows: ' 14 ' })).toBe(14)
+    for (const bad of ['', 'x', '-1', '51', '1.5'])
+      expect(skipRowsOfDraft({ skipRows: bad })).toBe(0)
+  })
+})
 
 describe('the form of a bank profile', () => {
   it('makes the body of a profile with a signed amount column', () => {
@@ -39,6 +77,7 @@ describe('the form of a bank profile', () => {
         name: 'Banco Uno',
         delimiter: ',',
         hasHeader: true,
+        skipRows: 0,
         decimalSeparator: '.',
         thousandsSeparator: 'none',
         dateFormat: 'yyyy-MM-dd',
@@ -47,6 +86,15 @@ describe('the form of a bank profile', () => {
         columns: { date: 'Fecha', description: 'Detalle', reference: 'Ref', amount: 'Monto' }
       }
     })
+  })
+
+  it('sends how many rows to skip, as a whole number from 0 to the most the api takes, and refuses anything else', () => {
+    expect(bankReadingOf(signed({ skipRows: '14' })).ok).toBe(true)
+    const read = bankReadingOf(signed({ skipRows: ' 14 ' }))
+    expect(read.ok && read.value.skipRows).toBe(14)
+    for (const bad of ['', 'x', '-1', '1.5', '51', '100', '1e1']) {
+      expect(bankReadingOf(signed({ skipRows: bad }))).toEqual({ ok: false, field: 'skipRows' })
+    }
   })
 
   it('sends a debit and a credit column and never the amount that is typed beside them', () => {
@@ -159,6 +207,7 @@ describe('the form of a bank profile', () => {
       'encoding',
       'hasHeader',
       'name',
+      'skipRows',
       'thousandsSeparator'
     ])
   })
@@ -170,6 +219,7 @@ describe('the form of a bank profile', () => {
       name: 'Banco Dos',
       delimiter: ';',
       hasHeader: false,
+      skipRows: 9,
       decimalSeparator: ',',
       thousandsSeparator: 'dot',
       dateFormat: 'dd/MM/yyyy',
@@ -187,6 +237,7 @@ describe('the form of a bank profile', () => {
     expect(input.ok && input.value).toMatchObject({
       delimiter: ';',
       hasHeader: false,
+      skipRows: 9,
       decimalSeparator: ',',
       thousandsSeparator: 'dot',
       dateFormat: 'dd/MM/yyyy',
@@ -194,6 +245,7 @@ describe('the form of a bank profile', () => {
       dateWindowDays: 5,
       columns: { date: 0, debit: 3, credit: 4, description: 1 }
     })
+    expect(draft.skipRows).toBe('9')
   })
 
   it('names the delimiters and the decimal separators by word', () => {

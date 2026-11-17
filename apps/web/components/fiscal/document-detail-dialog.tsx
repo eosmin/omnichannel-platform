@@ -7,6 +7,7 @@ import { type ReactElement, type ReactNode, useRef, useState } from 'react'
 import {
   ApiError,
   AppPaths,
+  type FiscalDocumentDetailView,
   type FiscalDocumentView,
   type FiscalProviderView
 } from '@platform/api-client'
@@ -38,6 +39,7 @@ import { EvidencePanel } from './evidence-panel'
 import { FiscalStatusBadge } from './fiscal-status-badge'
 import { IssuerChangeDialog } from './issuer-change-dialog'
 import { ReceiverDialog } from './receiver-dialog'
+import { SealedDetail } from './sealed-detail'
 import { VoidDialog } from './void-dialog'
 
 // One fiscal document (TDD_18 §8.3). It is read only: after the authority accepts it nothing of it changes but its status, and the
@@ -92,7 +94,7 @@ function DocumentBody({
   provider,
   replacedIds
 }: {
-  document: FiscalDocumentView
+  document: FiscalDocumentDetailView
   provider: FiscalProviderView | undefined
   replacedIds: ReadonlySet<string>
 }): ReactElement {
@@ -165,6 +167,7 @@ function DocumentBody({
         </dl>
         <p className="text-muted-foreground text-xs">{t('receiver.minimized')}</p>
       </section>
+      <SealedDetail detail={document.detail} />
       <EvidencePanel document={document} />
       <p className="text-muted-foreground text-xs">{t('immutable')}</p>
       {canManage ? (

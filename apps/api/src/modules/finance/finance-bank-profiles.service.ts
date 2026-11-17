@@ -32,6 +32,7 @@ export interface BankProfileView {
   name: string
   delimiter: RemittanceDelimiter
   hasHeader: boolean
+  skipRows: number
   decimalSeparator: RemittanceDecimalSeparator
   thousandsSeparator: BankThousandsSeparator
   dateFormat: RemittanceDateFormat
@@ -48,6 +49,7 @@ const SELECT = {
   name: true,
   delimiter: true,
   hasHeader: true,
+  skipRows: true,
   decimalSeparator: true,
   thousandsSeparator: true,
   dateFormat: true,
@@ -64,6 +66,7 @@ interface Row {
   name: string
   delimiter: string
   hasHeader: boolean
+  skipRows: number
   decimalSeparator: string
   thousandsSeparator: string
   dateFormat: string
@@ -81,6 +84,7 @@ export function bankProfileView(row: Row): BankProfileView {
     name: row.name,
     delimiter: row.delimiter as RemittanceDelimiter,
     hasHeader: row.hasHeader,
+    skipRows: row.skipRows,
     decimalSeparator: row.decimalSeparator as RemittanceDecimalSeparator,
     thousandsSeparator: row.thousandsSeparator as BankThousandsSeparator,
     dateFormat: row.dateFormat as RemittanceDateFormat,
@@ -114,6 +118,7 @@ export function bankShapeOf(row: BankProfileView): BankStatementProfileShape {
   return {
     delimiter: row.delimiter,
     hasHeader: row.hasHeader,
+    skipRows: row.skipRows,
     decimalSeparator: row.decimalSeparator,
     thousandsSeparator: row.thousandsSeparator,
     dateFormat: row.dateFormat,
@@ -177,6 +182,7 @@ export class FinanceBankProfilesService {
             name: body.name,
             delimiter: body.delimiter,
             hasHeader: body.hasHeader,
+            skipRows: body.skipRows,
             decimalSeparator: body.decimalSeparator,
             thousandsSeparator: body.thousandsSeparator,
             dateFormat: body.dateFormat,
@@ -228,6 +234,7 @@ export class FinanceBankProfilesService {
             ...(body.name === undefined ? {} : { name: body.name }),
             ...(body.delimiter === undefined ? {} : { delimiter: body.delimiter }),
             ...(body.hasHeader === undefined ? {} : { hasHeader: body.hasHeader }),
+            ...(body.skipRows === undefined ? {} : { skipRows: body.skipRows }),
             ...(body.decimalSeparator === undefined
               ? {}
               : { decimalSeparator: body.decimalSeparator }),

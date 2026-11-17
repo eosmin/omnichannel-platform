@@ -1505,15 +1505,21 @@ built once, by 4B.4b-1.
       thousands separator may be the delimiter (the quoted `"9,999.99"` of the bank; migration `20270112100000` drops that clause of the
       database CHECK too, with its rollback), an unquoted one is refused (a row must then have exactly the cells of the file, and an amount of one to three digits followed by a cell of
       three digits is the mark of a split amount)
-- [ ] **4B.4b-2, same bank file (PR `bank-import-skiprows`, after the one above):** `skipRows` in the profile (records, not physical lines)
-      so the lead of report lines before the movements is not read; migration with rollback, preview, web field
+- [x] **4B.4b-2, same bank file (PR `bank-import-skiprows`):** `skipRows` in the profile (0 to 50, default 0, so every saved profile reads as it did)
+      leaves out the lead of report lines before the movements. It counts records (rows that are not blank; a title with a quoted line
+      break is one), what is skipped is not read at all, and an error still points at the line of the file. Migration `20270113100000`
+      (column, CHECK 0..50, rollback), api schemas, preview, web field (es/en), contract and integration tests with synthetic files
 - [ ] **Debts of the bank-file PRs (rule 12), owner: Step 7.3 unless said:** (a) a movement that one statement prints with a time and another
       without it is not recognised as the same line (a bank prints it one way; a profile change of a bank mid-history would double the overlap);
       (b) a negative amount in parentheses `(179.60)` is not read (`parseBankAmountCents`): the bank prints them only in its running-balance
       column, which no profile maps; (c) the running balance of each row is not read, so it cannot check that no line was lost or misread: a
       balance column in the profile, with the statement's own closing balance as a control, is a new feature; (d) the time of a line is hashed into its identity but not stored on `bank_statement_lines` (no column, no migration in the PR
       that reads it): the screens show it only in the preview, and two stored lines that differ only by their time cannot be told apart there;
-      a `posted_time` column is the fix
+      a `posted_time` column is the fix; (e) a lead whose title opens a quote that never closes (`"Statement of account`) makes
+      the whole file an `unclosed_quote` before the skip is applied: the lead is split like any text, so the profile cannot leave it out; (f) the
+      profile saves with any `skipRows` and any `hasHeader` (a count one too low or too high shows only in the preview, as `column_not_found` or
+      `header_looks_like_data`): a required preview before saving is a screen decision of the owner; (g) the CHECK of the column holds the literal
+      50 of `BankStatementLimits.SKIP_ROWS_MAX` (a security spec compares both), raising one needs a migration for the other
 **TDD:** `TDD_18 §4.3`, `§4.4`, `TDD_07 §6.3`
 **Done when:** a person registers an expense paid from a chosen account with its VAT and a receipt, moves money between accounts, imports
 a statement and reconciles it, and every balance follows.
@@ -2215,12 +2221,20 @@ sale rows follow the ledger: a sale is out of a month's book only when its entry
           its detail ($22.60, $2.60); the sale entry is in the journal, the trial balance balances and the income statement reads $20.00; the VAT of
           the period holds $2.60; the accepted document is voided with its reason and made again; and the person who holds `finance:view` alone
           is refused the journal, transactions, statements, books, margin and fiscal pages (the VAT page opens for `finance:view`). The payment is recorded through the screen first, so the advance entry (E1) exists when the sale (E3) posts. It runs in CI only.
-    - [ ] **4B.9b-5c (what 4B.9b-5b left, rule 12):** (a) the e2e cases of a business document (a sealed receiver, the receiver dialog, the refusal by the
-          simulator's `REJECT` tax id, the evidence files, the confirmation of an issuer change, a voided credit note and its re-issue): they need a customer
-          with sealed fiscal data and a return; (b) the purchase received and the remittance of the month (the figures after them, the margin with data):
-          they need a carrier connection and a guide; (c) drawing the sealed `detail` (lines, tax breakdown) in the document dialog and the `from`/`to`
-          filter of #569 in the list (a web change, with its i18n and specs; the api-client already carries both); (d) a write the api refuses in the
-          closed month (an entry dated in it); (e) the month and sale cases run in English only: the same cases in Spanish. It closes 4B.9.
+    - [x] **4B.9b-5c (the sealed detail, the period filter and the cases that were left, the part built):** (a) the document dialog draws what the
+          document was sealed with (`SealedDetail`: the lines, the shipping, the discount, the tax by rate, the issuer as it was, and a notice when the
+          api says its lines do not agree with its total); the address of the issuer is the provider's own keys and values, so the screen knows no
+          country and no provider (`validate:fiscal-agnostic`); (b) the list narrows by the day the document was made (`from`/`to`, the UTC day, an
+          open end allowed, a wrong period told and not asked: `period-filter.ts` with a spec held to the schema of the api); (c) e2e: the sealed detail
+          and the period of the list (`finance-sale-document.spec.ts`), a business document whose receiver the authority refuses, fixed through the
+          screen, sent again and accepted (`finance-fiscal-receiver.spec.ts`, the customer's fiscal data written through the api), a transaction
+          dated in a closed month refused by the books (`finance-month.spec.ts`), and the screens in Spanish on 390 and 1280 px
+          (`finance-spanish.spec.ts`: the month without a capital on its "de", the VAT basis in words, no sideways scroll on the pages of the area).
+    - [ ] **4B.9b-5d (what 4B.9b-5c left, rule 12):** (e) the keys of the issuer's address in the sealed detail are the provider's own words (`line1`) and are drawn as they come, as the issuer form draws them: a label per key needs the manifest to carry them, with the texts of the manifest (Step 7.7); (f) the end of the period is the last millisecond of the day, and a document made in the last microseconds of it is found under the next day; (a) the purchase received and the remittance of the month with their figures (the VAT of the
+          purchases and the margin with data): a remittance needs a carrier connection and a guide that the e2e does not build yet; (b) the evidence
+          files of a document and the confirmation of an issuer change in the e2e (they need a stored file and a document made by an issuer that was
+          changed); (c) a voided credit note and its re-issue in the e2e (it needs a return); (d) the Spanish run of the sealed detail and of the
+          receiver dialog. It closes 4B.9.
   - **Decisions of PR 4B.9b-2 (rule 12):** (1) the bodies of the fiscal routes moved from the api to `libs/core/domain/fiscal-schemas.ts` (the api's
     `fiscal.schemas.ts` re-exports them), so the web forms are tested against the schema that reads them, as the purchases do; the alternative, a copy in the
     web, drifts. (2) The area opens for `fiscal:view` alone and the fiscal pages do not wait for the books to be set up (the api's routes do not need them).
@@ -3360,7 +3374,7 @@ The MVP is complete when every row that is not `deferred` and not optional is `d
 | 4B.6 | The automatic entries (sales, remittances, returns, stock) | in progress | 4B.6a machinery, E1 to E3 and E9 (#546); 4B.6b-1 carrier charges, remittance confirmed and voided (E4 to E6; #548); 4B.6b-2 the difference written off, returns and the fee permission (E7, E8, E4 of a return guide; #550); 4B.6b-3 the sweep, its metrics, the failure notice and the close guard (this PR); 4B.6b-4 the prepaid charge model: todo | |
 | 4B.7 | Fiscal documents (DTE) behind a provider, simulator first | in progress | 4B.7a-1 the libraries and the rule (#552, done); 4B.7a-2 the database, the lifecycle, the queue and the routes (#555, done); 4B.7b-1 the credit note of a return and the replacement of a voided document (#562, done); 4B.7b-2 the evidence as media, the notices, the consultation for `void`, the issuer change a person confirms and the credit note made again (this PR); 4B.7b-3 the customer's fiscal data (#566, done); 4B.7c-1 the gaps of the port: the series of correlatives, the stable identifier, treatment, payments, contact and point of sale (#587, done); 4B.7c-2 the provider of El Salvador: construction of the invoice, the tax credit document and the credit note (#591, done); 4B.7c-3 the client of the authority: login, signing, reception and consultation (this PR) | |
 | 4B.8 | Reports, monthly close and the auditor's export | in progress | 4B.8a (#553); 4B.8b-1 statements and aging (#556); 4B.8b-2 chain job, margin, VAT file (#561); 4B.8b-3 legal books mechanism (#559); 4B.8b-2b fiscal check of the daily job (this PR); 4B.8b-2c and 4B.8b-4 (the accountant's layout): todo | |
-| 4B.9 | Finance interface (web) | in progress | 4B.9a-1 (setup, chart, taxes, settings, periods) #554, 4B.9a-2 (the journal, transactions and receipts; #560), 4B.9a-3 (bank reconciliation by CSV) #557, 4B.9a-4 (suppliers, purchases, payables; #558), 4B.9b-1 (close, reports; #563), 4B.9b-3 (statements, aging, legal books; #565), 4B.9b-4a (VAT, margin, the notice of the chain; #568); 4B.9b-5 (the month: close, reopen, dialog-fit; #580), 4B.9b-5b (a sale end to end; this PR); 4B.9b-2, 4B.9b-4b and 4B.9b-5c: todo | |
+| 4B.9 | Finance interface (web) | in progress | 4B.9a-1 (setup, chart, taxes, settings, periods) #554, 4B.9a-2 (the journal, transactions and receipts; #560), 4B.9a-3 (bank reconciliation by CSV) #557, 4B.9a-4 (suppliers, purchases, payables; #558), 4B.9b-1 (close, reports; #563), 4B.9b-3 (statements, aging, legal books; #565), 4B.9b-4a (VAT, margin, the notice of the chain; #568); 4B.9b-5 (the month: close, reopen, dialog-fit; #580), 4B.9b-5b (a sale end to end; #584), 4B.9b-5c (the sealed detail, the period filter, the receiver, the closed month, Spanish; this PR); 4B.9b-2, 4B.9b-4b and 4B.9b-5d: todo | |
 | **Milestone 5: Operations** | | | | |
 | 5.1 | Search | done | #486 (PR A: the server), #488 (PR B: the web), #496 (the click, in Step 5.2 PR C3) | 2026-11-15 |
 | 5.2 | Analytics | done | #485 (PR A: rollups, answer semantics, metrics route), PR B #487 (dashboard, My performance, View analytics), PR C1 #491 (reports and export, server), PR C2 #494 (reports and export, web); PR C3 #496 (search click, passive flag and report) | 2026-11-15 |

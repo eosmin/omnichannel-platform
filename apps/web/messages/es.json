@@ -6533,6 +6533,8 @@
             "dateFormat": "Formato de la fecha",
             "window": "Días de diferencia",
             "windowHint": "Cuántos días puede distar una línea del extracto de los libros y aun así sugerirse.",
+            "skipRows": "Filas que se saltan al principio",
+            "skipRowsHint": "Cuántas filas del inicio del archivo se dejan sin leer (títulos del informe, saldos, el nombre del producto). Las filas en blanco no cuentan y un título con un salto de línea adentro es una sola fila. Cuenta también la fila con los nombres de las columnas si la primera fila del archivo no las nombra.",
             "hasHeader": "La primera fila nombra las columnas",
             "hasHeaderHint": "Déjalo apagado cuando el archivo empieza con datos: las columnas se dan entonces por su posición.",
             "mode": "Cómo se escribe el dinero",
@@ -6559,6 +6561,7 @@
             "debit": "Indica qué columna tiene los débitos.",
             "credit": "Indica qué columna tiene los créditos.",
             "dateWindowDays": "Escribe un número entero de días del 0 al 31.",
+            "skipRows": "Escribe un número entero de filas del 0 al 50.",
             "rule": "Estos ajustes rompen una regla: cada valor necesita su propia columna, el dinero es una columna o una de débito y otra de crédito, y los separadores deben ser distintos."
           },
           "sample": {
@@ -6616,7 +6619,8 @@
         "unclosed_quote": "hay una comilla que nunca se cierra",
         "row_too_wide": "la fila tiene demasiadas columnas",
         "stray_quote": "hay una comilla fuera de lugar",
-        "header_looks_like_data": "la primera fila es un movimiento, no una cabecera: el perfil dice que el archivo tiene cabecera"
+        "header_looks_like_data": "la primera fila es un movimiento, no una cabecera: el perfil dice que el archivo tiene cabecera",
+        "skip_past_end": "el perfil se salta todas las filas del archivo o más de las que tiene"
       },
       "statement": {
         "title": "Extracto del {from} al {to}",
@@ -7330,7 +7334,16 @@
       "noIssuerLink": "Configurar el emisor",
       "filters": {
         "status": "Estado",
-        "allStatuses": "Todos los estados"
+        "allStatuses": "Todos los estados",
+        "period": "Periodo del documento",
+        "from": "Desde",
+        "to": "Hasta",
+        "clear": "Quitar el periodo",
+        "problems": {
+          "from": "Escribe un día que exista, como año-mes-día.",
+          "to": "Escribe un día que exista, como año-mes-día.",
+          "order": "El primer día no puede ser posterior al último."
+        }
       },
       "empty": "Aún no hay documentos fiscales. Se hacen solos cuando se reconoce una venta.",
       "more": "Ver más",
@@ -7402,7 +7415,7 @@
           "no": "No",
           "minimized": "El receptor es dato del cliente: aquí solo se muestran el nombre y la identificación tributaria enmascarada."
         },
-        "immutable": "Las líneas, los impuestos y el emisor de un documento aceptado se sellan al hacerlo y no se muestran ni se cambian aquí."
+        "immutable": "Las líneas, los impuestos y el emisor de un documento aceptado se sellan al hacerlo y no se pueden cambiar: lo que se muestra arriba es lo que quedó sellado."
       },
       "attention": {
         "rejected": {
@@ -7621,7 +7634,41 @@
             "hint": "Lo que respondió la autoridad cuando el documento se anuló."
           }
         }
-      }
+      },
+      "sealed": {
+        "title": "Lo que se selló",
+        "inconsistent": "Las líneas de este documento no suman su total.",
+        "pricesIncludeTax": "Los precios de las líneas incluyen el impuesto.",
+        "pricesExcludeTax": "Los precios de las líneas no incluyen el impuesto.",
+        "noRate": "Sin tasa",
+        "lines": {
+          "caption": "Líneas del documento",
+          "description": "Descripción",
+          "quantity": "Cantidad",
+          "unitPrice": "Precio unitario",
+          "rate": "Tasa",
+          "tax": "Impuesto",
+          "total": "Total"
+        },
+        "shipping": "Envío",
+        "shippingTax": "Impuesto del envío",
+        "discount": "Descuento",
+        "breakdown": {
+          "title": "Impuesto por tasa",
+          "rate": "Tasa",
+          "base": "Base",
+          "tax": "Impuesto"
+        },
+        "issuer": {
+          "title": "Emisor al hacerlo",
+          "legalName": "Razón social",
+          "taxId": "Identificación fiscal",
+          "registrationId": "Registro",
+          "activityCode": "Actividad",
+          "establishmentCode": "Establecimiento"
+        }
+      },
+      "emptyFiltered": "No hay documentos fiscales con estos filtros."
     },
     "vat": {
       "title": "IVA de un período",

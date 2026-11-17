@@ -1183,6 +1183,116 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
     })
   })
 
+  // A bank that prints a lead of report lines before the movements: the profile says how many records to skip
+  describe('a statement that starts with a lead of report lines', () => {
+    const lead = [
+      ',,,Statement of account,,',
+      ',,,"Period\nfrom a day to a day",,',
+      ',,,,,',
+      'Opening balance:,,,,,100.00',
+      ',,,,,',
+      ',Date,Memo,Ref,Debit,Credit'
+    ]
+    const movements = [
+      '19/11/2026 10:15:30,Deposit,R1,0.00,"1,234.50"',
+      '20/11/2026,Fee,R2,2.00,0.00'
+    ].map(line => `,${line}`)
+    const text = `${[...lead, ...movements].join('\n')}\n`
+    let skipping: ProfileBody
+    beforeAll(async () => {
+      // 5 records that are not blank: the title, the multi line title, the balance, and the row of titles (4); the blank ones are not
+      skipping = await makeProfile(accounts['1102'] ?? '', 'lead', {
+        hasHeader: false,
+        skipRows: 4,
+        thousandsSeparator: 'comma',
+        dateFormat: 'dd/MM/yyyy',
+        columns: { date: 1, description: 2, reference: 3, debit: 4, credit: 5 }
+      })
+    })
+
+    it('keeps the rows to skip in the profile, and a profile made without them skips none', async () => {
+      const read = await asAdmin().get(
+        `${ApiRoutes.finance.bank.profiles}?accountId=${accounts['1102']}`
+      )
+      expect(read.status).toBe(OK)
+      const mine = (read.body as { id: string; skipRows: number }[]).find(
+        item => item.id === skipping.id
+      )
+      expect(mine?.skipRows).toBe(4)
+      const plain = await makeProfile(accounts['1102'] ?? '', 'plain')
+      expect((plain as ProfileBody & { skipRows: number }).skipRows).toBe(0)
+    })
+
+    it('refuses the rows to skip out of range, on a new profile and on a change', async () => {
+      const body = {
+        accountId: accounts['1102'],
+        name: `range-${randomUUID().slice(0, 6)}`,
+        columns: { date: 'Date', amount: 'Amount' }
+      }
+      expect(
+        (
+          await asAdmin()
+            .post(ApiRoutes.finance.bank.profiles)
+            .send({ ...body, skipRows: 51 })
+        ).status
+      ).toBe(BAD_REQUEST)
+      expect(
+        (
+          await asAdmin()
+            .post(ApiRoutes.finance.bank.profiles)
+            .send({ ...body, skipRows: -1 })
+        ).status
+      ).toBe(BAD_REQUEST)
+      const changed = await asAdmin()
+        .patch(ApiRoutes.finance.bank.profileById(skipping.id))
+        .send({ skipRows: 99 })
+      expect(changed.status).toBe(BAD_REQUEST)
+      const ok = await asAdmin()
+        .patch(ApiRoutes.finance.bank.profileById(skipping.id))
+        .send({ skipRows: 4 })
+      expect(ok.status).toBe(OK)
+    })
+
+    it('previews the movements and not the lead, and imports them', async () => {
+      const preview = await asAdmin()
+        .post(ApiRoutes.finance.bank.profilePreview)
+        .send({
+          text,
+          profile: {
+            delimiter: ',',
+            hasHeader: false,
+            skipRows: 4,
+            decimalSeparator: '.',
+            thousandsSeparator: 'comma',
+            dateFormat: 'dd/MM/yyyy',
+            columns: { date: 1, description: 2, reference: 3, debit: 4, credit: 5 }
+          }
+        })
+      expect(preview.status).toBe(OK)
+      expect((preview.body as { errorCount: number; lines: unknown[] }).errorCount).toBe(0)
+      expect((preview.body as { lines: unknown[] }).lines).toHaveLength(2)
+      const response = await send(text, skipping.id)
+      expect(response.status).toBe(CREATED)
+      expect((response.body as ImportBody).lineCount).toBe(2)
+    })
+
+    it('refuses the same file with a profile that skips none, naming the rows, and keeps nothing', async () => {
+      const before = await owner.bankStatementLine.count({ where: { accountId: accounts['1102'] } })
+      const plain = await makeProfile(accounts['1102'] ?? '', 'plain-refuse', {
+        hasHeader: false,
+        thousandsSeparator: 'comma',
+        dateFormat: 'dd/MM/yyyy',
+        columns: { date: 1, description: 2, reference: 3, debit: 4, credit: 5 }
+      })
+      const refused = await send(text, plain.id)
+      expect(refused.status).toBe(BAD_REQUEST)
+      expect(codeOf(refused.body)).toBe(ErrorCodes.BANK_STATEMENT_INVALID)
+      expect(await owner.bankStatementLine.count({ where: { accountId: accounts['1102'] } })).toBe(
+        before
+      )
+    })
+  })
+
   async function bookLineOnCash(amountCents: number, occurredOn: string): Promise<string> {
     const response = await asAdmin()
       .post(ApiRoutes.finance.transactions.record)
