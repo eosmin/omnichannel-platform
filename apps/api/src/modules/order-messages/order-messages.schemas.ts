@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { PaginationLimits, uuidSchema } from '@platform/core/domain'
+import { lowercasedUuidSchema, PaginationLimits, uuidSchema } from '@platform/core/domain'
 
 import { kindSchema } from './order-templates.schemas'
 
@@ -48,7 +48,7 @@ export function encodeOrderMessageCursor(row: OrderMessageCursor): string {
   return Buffer.from(JSON.stringify([row.createdAt.toISOString(), row.id])).toString('base64url')
 }
 
-const cursorParts = z.tuple([z.iso.datetime(), z.uuid()])
+const cursorParts = z.tuple([z.iso.datetime(), lowercasedUuidSchema])
 
 export const orderMessageCursorSchema = z.string().transform((text, ctx): OrderMessageCursor => {
   try {

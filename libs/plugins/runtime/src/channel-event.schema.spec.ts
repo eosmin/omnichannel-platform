@@ -37,10 +37,11 @@ describe('channelEventSchema', () => {
     })
   })
 
-  it('makes the job id of an event from what is stored, with no NUL', () => {
-    const parsed = channelEventSchema.parse(withMessage({ externalId: 'm\0-1' }))
-
-    expect(parsed.message?.externalId).toBe('m-1')
+  it('refuses an id with a NUL instead of rewriting it: two ids must not become one (N-4A-05)', () => {
+    expect(channelEventSchema.safeParse(withMessage({ externalId: 'm\0-1' })).success).toBe(false)
+    expect(channelEventSchema.safeParse({ ...valid, channelIdentity: 'customer\0' }).success).toBe(
+      false
+    )
   })
 
   it('takes an origin with every field, and one with only its kind', () => {

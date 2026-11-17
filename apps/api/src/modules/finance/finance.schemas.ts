@@ -52,7 +52,7 @@ export const updateSettingsSchema = z
     taxRounding: z.enum(TaxRounding).optional(),
     shippingTaxed: z.boolean().optional(),
     // The rounding account cannot be taken away: a cent that cannot be placed needs somewhere to go (TDD_18 §6.4)
-    roundingAccountId: z.uuid().optional()
+    roundingAccountId: lowercasedUuidSchema.optional()
   })
   .refine(body => Object.values(body).some(value => value !== undefined), nothingToChange)
 
@@ -68,7 +68,7 @@ export const createAccountSchema = z.strictObject({
   code: accountCode,
   name: accountName,
   type: z.enum(AccountType),
-  parentId: z.uuid().nullable().optional(),
+  parentId: lowercasedUuidSchema.nullable().optional(),
   isPostable: z.boolean().optional(),
   cashKind: z.enum(CashKind).nullable().optional()
 })
@@ -78,7 +78,7 @@ export const updateAccountSchema = z
     code: accountCode.optional(),
     name: accountName.optional(),
     type: z.enum(AccountType).optional(),
-    parentId: z.uuid().nullable().optional(),
+    parentId: lowercasedUuidSchema.nullable().optional(),
     isPostable: z.boolean().optional(),
     cashKind: z.enum(CashKind).nullable().optional()
   })
@@ -97,8 +97,8 @@ export const createTaxRateSchema = z.strictObject({
   name: taxRateName,
   // Basis points: 13 % is 1300
   rateBps: taxRateBps,
-  outputAccountId: z.uuid(),
-  inputAccountId: z.uuid(),
+  outputAccountId: lowercasedUuidSchema,
+  inputAccountId: lowercasedUuidSchema,
   // Makes it the default rate, taking the place of the one that was
   isDefault: z.boolean().optional()
 })
@@ -108,8 +108,8 @@ export const updateTaxRateSchema = z
     code: taxRateCode.optional(),
     name: taxRateName.optional(),
     rateBps: taxRateBps.optional(),
-    outputAccountId: z.uuid().optional(),
-    inputAccountId: z.uuid().optional(),
+    outputAccountId: lowercasedUuidSchema.optional(),
+    inputAccountId: lowercasedUuidSchema.optional(),
     // Only to make a rate the default: another rate takes the place when this one stops being it
     isDefault: z.literal(true).optional()
   })
@@ -132,13 +132,13 @@ export const vatReportQuerySchema = z
 
 export const roleParamSchema = z.enum(AccountRole)
 
-export const mapRoleSchema = z.strictObject({ accountId: z.uuid() })
+export const mapRoleSchema = z.strictObject({ accountId: lowercasedUuidSchema })
 
 export const setPaymentAccountSchema = z.strictObject({
   paymentMethod: z.enum(FinancePaymentMethods as [string, ...string[]]),
   // The store whose choice it is; none (or null) is the default of the organization
-  storeId: z.uuid().nullable().optional(),
-  accountId: z.uuid()
+  storeId: lowercasedUuidSchema.nullable().optional(),
+  accountId: lowercasedUuidSchema
 })
 
 const period = z.strictObject({
@@ -163,10 +163,10 @@ export const listEntriesQuerySchema = z.strictObject({
     .regex(/^[1-9]\d{0,17}$/)
     .optional(),
   limit,
-  periodId: z.uuid().optional(),
+  periodId: lowercasedUuidSchema.optional(),
   type: z.enum(JournalEntryType).optional(),
   // The entries that touch an account
-  accountId: z.uuid().optional(),
+  accountId: lowercasedUuidSchema.optional(),
   from: day.optional(),
   to: day.optional()
 })
@@ -174,10 +174,10 @@ export const listEntriesQuerySchema = z.strictObject({
 // An entry a person writes (TDD_18 §4.2, E13): free lines, balanced, with the reason. It names no party and no tax rate: those
 // belong to the entries the system derives from a sale, a purchase or a remittance, where the ids come from the source.
 const manualLine = z.strictObject({
-  accountId: z.uuid(),
+  accountId: lowercasedUuidSchema,
   debitCents: cents.default(0),
   creditCents: cents.default(0),
-  storeId: z.uuid().optional(),
+  storeId: lowercasedUuidSchema.optional(),
   memo: singleLineText(FinanceLimits.MEMO_MAX_LENGTH, 1).optional()
 })
 
@@ -204,11 +204,11 @@ export const recordTransactionSchema = z.strictObject({
   kind: z.enum(FinanceTransactionKind),
   occurredOn: day,
   amountCents: z.number().int().min(1).max(FinanceLimits.MAX_LINE_CENTS),
-  fromAccountId: z.uuid().optional(),
-  toAccountId: z.uuid().optional(),
-  categoryAccountId: z.uuid().optional(),
-  storeId: z.uuid().optional(),
-  taxRateId: z.uuid().optional(),
+  fromAccountId: lowercasedUuidSchema.optional(),
+  toAccountId: lowercasedUuidSchema.optional(),
+  categoryAccountId: lowercasedUuidSchema.optional(),
+  storeId: lowercasedUuidSchema.optional(),
+  taxRateId: lowercasedUuidSchema.optional(),
   taxCreditable: z.boolean().default(false),
   documentNumber: singleLineText(FinanceLimits.DOCUMENT_NUMBER_MAX_LENGTH, 1).optional(),
   memo: memo.optional()
@@ -218,7 +218,7 @@ export const recordTransactionSchema = z.strictObject({
 export const voidTransactionSchema = z.strictObject({ reason: memo })
 
 // The receipt: the media id the upload gave, for a file made for this transaction
-export const attachDocumentSchema = z.strictObject({ mediaId: z.uuid() })
+export const attachDocumentSchema = z.strictObject({ mediaId: lowercasedUuidSchema })
 
 export const replaceTransactionSchema = z.strictObject({
   reason: memo,
@@ -233,14 +233,14 @@ export const listTransactionsQuerySchema = z.strictObject({
   from: day.optional(),
   to: day.optional(),
   // The transactions that touch an account (the source, the destination or the category)
-  accountId: z.uuid().optional(),
+  accountId: lowercasedUuidSchema.optional(),
   // The voided ones are listed only when asked
   includeVoided: flag.default(false)
 })
 
 export const balancesQuerySchema = z.strictObject({
-  periodId: z.uuid().optional(),
-  storeId: z.uuid().optional()
+  periodId: lowercasedUuidSchema.optional(),
+  storeId: lowercasedUuidSchema.optional()
 })
 
 export const listPostingsQuerySchema = z.strictObject({

@@ -78,7 +78,7 @@ export type PutFiscalIssuerBody = z.output<typeof putFiscalIssuerSchema>
 export const listFiscalDocumentsQuerySchema = z
   .object({
     status: z.enum(FiscalDocumentStatus).optional(),
-    orderId: z.uuid().optional(),
+    orderId: lowercasedUuidSchema.optional(),
     // The correlative of the last document of the previous page
     cursor: z
       .string()

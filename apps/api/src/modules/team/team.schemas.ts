@@ -21,10 +21,10 @@ const MAX_EMAIL_LENGTH = 254
 
 export const inviteMemberSchema = z.strictObject({
   email: z.email().max(MAX_EMAIL_LENGTH),
-  roleId: z.uuid()
+  roleId: lowercasedUuidSchema
 })
 
-export const changeMemberRoleSchema = z.strictObject({ roleId: z.uuid() })
+export const changeMemberRoleSchema = z.strictObject({ roleId: lowercasedUuidSchema })
 
 export const createRoleSchema = z.strictObject({
   name: roleName,

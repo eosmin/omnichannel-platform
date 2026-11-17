@@ -6,8 +6,8 @@ import {
   lowercasedUuidSchema,
   OrderConfirmationChannel,
   OrderLimits,
-  orderListFilterShape,
   orderListFiltersAreConsistent,
+  orderListFilterShape,
   orderSortShape,
   PaginationLimits,
   recordOrderPaymentSchema,
@@ -39,7 +39,7 @@ export function encodeOrderCursor(row: OrderCursor): string {
   )
 }
 
-const cursorParts = z.tuple([z.iso.date().nullable(), z.iso.datetime(), z.uuid()])
+const cursorParts = z.tuple([z.iso.date().nullable(), z.iso.datetime(), lowercasedUuidSchema])
 
 export const orderCursorSchema = z.string().transform((text, ctx): OrderCursor => {
   try {

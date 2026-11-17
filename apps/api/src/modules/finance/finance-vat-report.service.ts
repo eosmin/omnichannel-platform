@@ -121,13 +121,12 @@ export class FinanceVatReportService {
     // all stores at once (the column holds a UTC instant without a zone, so it is read as UTC first). A cancelled order is never a sale, and one never delivered (or never shipped) is not one yet.
     const shipped = recognizedOn === SaleRecognition.SHIPPED
     const recognized = await db.$queryRaw<{ id: string; month: string; status: string }[]>`
-      WITH zones AS (
+      WITH known AS MATERIALIZED (SELECT lower(name) AS name FROM pg_timezone_names),
+      zones AS (
         -- A zone the database does not know (a value written around the api, which validates it) is the UTC day, as the books do
-        -- (dayInZone): one store with a bad zone must not leave the whole organization without its report. Read once per store, not
-        -- per order, and as the database reads a zone: a name in any case or an abbreviation is still its own
+        -- (dayInZone): one store with a bad zone must not leave the whole organization without its report. The list of zones is read once for the call, and as dayInZone reads a zone (a name of the database in any case; an abbreviation is not a zone there)
         SELECT s.id AS store_id,
-               CASE WHEN EXISTS (SELECT 1 FROM pg_timezone_names n WHERE lower(n.name) = lower(s.timezone))
-                      OR EXISTS (SELECT 1 FROM pg_timezone_abbrevs a WHERE lower(a.abbrev) = lower(s.timezone))
+               CASE WHEN lower(s.timezone) IN (SELECT name FROM known)
                     THEN s.timezone ELSE 'UTC' END AS timezone
         FROM stores s
         WHERE s.organization_id = ${organizationId}

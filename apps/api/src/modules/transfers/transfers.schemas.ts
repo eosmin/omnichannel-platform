@@ -63,7 +63,7 @@ export const updateTransferSchema = z
 
 // The client's, generated once per attempt (a UUID): a double click or a retry receives once
 export const receiveTransferSchema = z.strictObject({
-  receiptKey: z.uuid(),
+  receiptKey: lowercasedUuidSchema,
   lines: z
     .array(z.strictObject({ lineId: idSchema, quantity }))
     .min(1)

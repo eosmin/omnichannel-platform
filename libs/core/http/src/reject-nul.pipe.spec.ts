@@ -33,6 +33,11 @@ describe('RejectNulPipe', () => {
     expect(refusal({ q: 'x\0' }, 'query').code).toBe(ErrorCodes.VALIDATION_FAILED)
   })
 
+  it('refuses half of an emoji too, which jsonb refuses', () => {
+    expect(refusal({ note: 'a\ud83d' }, 'body').code).toBe(ErrorCodes.VALIDATION_FAILED)
+    expect(refusal({ ['k\ude00']: 1 }, 'query').code).toBe(ErrorCodes.VALIDATION_FAILED)
+  })
+
   it('returns the very same value when there is no NUL', () => {
     const body = { name: 'Ana', tags: ['a', 'b'] }
 

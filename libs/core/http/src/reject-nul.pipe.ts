@@ -1,6 +1,6 @@
 import { type ArgumentMetadata, type PipeTransform } from '@nestjs/common'
 
-import { containsNul } from '@platform/core/domain'
+import { containsUnstorableText } from '@platform/core/domain'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 
 // What a request carries that a person or a program chose: the body, the query and the path
@@ -12,10 +12,10 @@ const READ_KINDS: ReadonlySet<ArgumentMetadata['type']> = new Set(['body', 'quer
 // exactly the one that forgets (QA OPS-RD-046). The error names where, never the value.
 export class RejectNulPipe implements PipeTransform<unknown> {
   transform(value: unknown, metadata: ArgumentMetadata): unknown {
-    if (READ_KINDS.has(metadata.type) && containsNul(value)) {
+    if (READ_KINDS.has(metadata.type) && containsUnstorableText(value)) {
       throw new PlatformException(
         ErrorCodes.VALIDATION_FAILED,
-        'a NUL character is not allowed',
+        'a NUL character or half of an emoji is not allowed',
         HttpStatusCodes.BAD_REQUEST,
         { in: metadata.type, ...(metadata.data === undefined ? {} : { field: metadata.data }) }
       )

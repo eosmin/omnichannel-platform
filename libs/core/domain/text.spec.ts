@@ -1,4 +1,4 @@
-import { containsNul, isSingleEmoji, phraseMatches, plainText, withoutNul } from './text'
+import { containsUnstorableText, isSingleEmoji, phraseMatches, plainText, withoutNul } from './text'
 
 describe('plainText', () => {
   it('lowers the case and takes the accents off', () => {
@@ -107,23 +107,36 @@ describe('isSingleEmoji', () => {
   })
 })
 
-describe('containsNul', () => {
+describe('containsUnstorableText', () => {
   it('finds a NUL in a string, in a key, in a list and deep inside an object', () => {
-    expect(containsNul('a\0b')).toBe(true)
-    expect(containsNul({ ['k\0']: 1 })).toBe(true)
-    expect(containsNul(['ok', ['no', { deep: [{ text: 'x\0' }] }]])).toBe(true)
+    expect(containsUnstorableText('a\0b')).toBe(true)
+    expect(containsUnstorableText({ ['k\0']: 1 })).toBe(true)
+    expect(containsUnstorableText(['ok', ['no', { deep: [{ text: 'x\0' }] }]])).toBe(true)
   })
 
   it('leaves text with no NUL, and what is not text, alone', () => {
-    expect(containsNul('plain \u0001 control')).toBe(false)
-    expect(containsNul({ a: [1, true, null, undefined, { b: 'c' }] })).toBe(false)
-    expect(containsNul(undefined)).toBe(false)
+    expect(containsUnstorableText('plain \u0001 control')).toBe(false)
+    expect(containsUnstorableText({ a: [1, true, null, undefined, { b: 'c' }] })).toBe(false)
+    expect(containsUnstorableText(undefined)).toBe(false)
   })
 
   it('does not overflow the stack on a deeply nested value', () => {
     let nested: unknown = 'x\0'
     for (let index = 0; index < 50_000; index += 1) nested = [nested]
-    expect(containsNul(nested)).toBe(true)
+    expect(containsUnstorableText(nested)).toBe(true)
+  })
+})
+
+describe('withoutNul keys', () => {
+  it('keeps a __proto__ key as data and does not swap the prototype of the copy', () => {
+    const copy = withoutNul(JSON.parse('{"__proto__":{"x":1},"a":2}')) as Record<string, unknown>
+
+    expect(Object.getPrototypeOf(copy)).toBe(Object.prototype)
+    expect(Object.keys(copy).sort()).toEqual(['__proto__', 'a'])
+  })
+
+  it('leaves the first of two keys that are one once cleaned', () => {
+    expect(withoutNul({ a: 1, ['a\0']: 2 })).toEqual({ a: 1 })
   })
 })
 
@@ -139,7 +152,7 @@ describe('withoutNul', () => {
     const bytes = Buffer.from('a\0b')
 
     expect(withoutNul(bytes)).toBe(bytes)
-    expect(containsNul(bytes)).toBe(false)
+    expect(containsUnstorableText(bytes)).toBe(false)
   })
 
   it('takes the NUL out of every string and key and keeps the rest', () => {

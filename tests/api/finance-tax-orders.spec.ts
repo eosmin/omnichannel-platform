@@ -804,25 +804,25 @@ describe('The tax of an order and the VAT report (Step 4B.3b)', () => {
         })
         const order = await place(1130, 1)
         await delivered(order.id, '2027-04-01T03:00:00Z')
+        const outputTax = async (day: string): Promise<number> =>
+          ((await report(day, day)).body as ReportBody).rows
+            .filter(row => row.side === (VatSide.OUTPUT as string))
+            .reduce((sum, row) => sum + row.taxCents, 0)
+        // With its real zone (UTC-6) the instant is still the night of 31 March
+        const marchBefore = await outputTax('2027-03-31')
+        expect(marchBefore).toBeGreaterThanOrEqual(130)
+        expect(await outputTax('2027-04-01')).toBe(0)
         await owner.store.update({
           where: { id: ctx.storeA.id },
           data: { timezone: 'Mars/Phobos' }
         })
         try {
           const april = await report('2027-04-01', '2027-04-01')
-          const march = await report('2027-03-31', '2027-03-31')
 
-          // 03:00 UTC is the April day, in UTC, which is what a zone that does not exist falls back to
+          // The zone does not exist: the report answers and reads the UTC day, so what was March 31 is April 1
           expect(april.status).toBe(OK)
-          expect(march.status).toBe(OK)
-          expect(
-            (april.body as ReportBody).rows
-              .filter(row => row.side === (VatSide.OUTPUT as string))
-              .map(row => row.taxCents)
-          ).toEqual([130])
-          expect(
-            (march.body as ReportBody).rows.filter(row => row.side === (VatSide.OUTPUT as string))
-          ).toEqual([])
+          expect(await outputTax('2027-04-01')).toBe(marchBefore)
+          expect(await outputTax('2027-03-31')).toBe(0)
         } finally {
           await owner.store.update({ where: { id: ctx.storeA.id }, data: { timezone: original } })
         }

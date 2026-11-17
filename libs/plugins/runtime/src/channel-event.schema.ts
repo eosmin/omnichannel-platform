@@ -9,25 +9,33 @@ import {
   OriginKinds,
   OriginMediaTypes,
   ReactionActors,
-  withoutNul
+  withoutNul,
+  withoutNulText
 } from '@platform/core/domain'
 import { ChannelEventTypes } from '@platform/plugins/sdk'
 
-const id = z.string().min(1).max(InboundLimits.ID_MAX_LENGTH)
-const text = (max: number): z.ZodString => z.string().max(max)
+// Postgres cannot hold a NUL in text or jsonb. What a provider says in words (a text, a name) is kept with the NULs taken out, so
+// the message arrives and is not lost in the worker (QA N-4A-05); what NAMES something (an id, a reference, a type) is refused
+// instead, because two ids that differ by a NUL would become one and merge two customers or drop a message as a repeat.
+const hasNoNul = (value: string): boolean => !value.includes('\0')
+const NO_NUL = { message: 'a NUL character is not allowed here' }
+const name = (schema: z.ZodString): z.ZodString => schema.refine(hasNoNul, NO_NUL)
+const id = name(z.string().min(1).max(InboundLimits.ID_MAX_LENGTH))
+const text = (max: number) => z.string().max(max).transform(withoutNulText)
 
 const metadata = z
   .record(z.string(), z.json())
   .refine(value => Buffer.byteLength(JSON.stringify(value)) <= InboundLimits.METADATA_MAX_BYTES, {
     message: 'metadata is too large'
   })
+  .transform(value => withoutNul(value) as typeof value)
 
 const media = z.strictObject({
   // The id the stored file will have. Only the web widget's is used (the worker ignores it for any other
   // plugin) and the worker refuses one that is already taken; here it is a uuid, once per file
   id: z.uuid().optional(),
-  ref: z.string().min(1).max(InboundLimits.MEDIA_REF_MAX_LENGTH),
-  contentType: z.string().min(1).max(InboundLimits.CONTENT_TYPE_MAX_LENGTH),
+  ref: name(z.string().min(1).max(InboundLimits.MEDIA_REF_MAX_LENGTH)),
+  contentType: name(z.string().min(1).max(InboundLimits.CONTENT_TYPE_MAX_LENGTH)),
   filename: text(InboundLimits.FILENAME_MAX_LENGTH).nullable()
 })
 
@@ -42,7 +50,7 @@ const origin = z.strictObject({
   media: z
     .strictObject({
       type: z.enum(OriginMediaTypes),
-      ref: z.string().min(1).max(InboundLimits.MEDIA_REF_MAX_LENGTH).optional(),
+      ref: name(z.string().min(1).max(InboundLimits.MEDIA_REF_MAX_LENGTH)).optional(),
       url: url.optional()
     })
     .refine(value => (value.ref === undefined) !== (value.url === undefined), {
@@ -113,110 +121,102 @@ const deletion = z.strictObject({
 
 // What a channel plugin returns for an event, checked before anything uses it: the plugin may be a
 // third party's, and a provider's payload is not ours either. A field that is not here is refused.
-// What a provider says is kept, so the NULs it may carry (Postgres cannot store one, and the message
-// would fail in the worker and be lost: QA N-4A-05) are taken out before the shape is read; a remote
-// plugin never gets here with one, the api refuses its request first (RejectNulPipe).
-export const channelEventSchema = z.preprocess(
-  withoutNul,
-  z
-    .strictObject({
-      type: z.enum(ChannelEventTypes),
-      connectionId: id,
-      channelIdentity: id,
-      channelProfile: z
-        .strictObject({
-          displayName: text(200).optional(),
-          avatarUrl: z.url().max(InboundLimits.MEDIA_REF_MAX_LENGTH).optional(),
-          locale: text(35).optional(),
-          // Typed by the person in a form, not proved: the core reads them as contact data
-          email: text(InboundLimits.PROFILE_FIELD_MAX_LENGTH).optional(),
-          phone: text(InboundLimits.PROFILE_FIELD_MAX_LENGTH).optional()
-        })
-        .optional(),
-      message: message.optional(),
-      reaction: reaction.optional(),
-      edit: edit.optional(),
-      deletion: deletion.optional(),
-      status: status.optional(),
-      messageId: z.uuid().optional(),
-      timestamp: z.iso.datetime({ offset: true })
-    })
-    .superRefine((event, context) => {
-      const sent = event.message
-      if (sent !== undefined) {
-        const mediaTypes: readonly string[] = [
-          MessageType.IMAGE,
-          MessageType.VIDEO,
-          MessageType.AUDIO,
-          MessageType.DOCUMENT
-        ]
-        const needsMedia = mediaTypes.includes(sent.type)
-        if (needsMedia !== (sent.media !== undefined)) {
-          context.addIssue({
-            code: 'custom',
-            path: ['message', 'media'],
-            message: needsMedia
-              ? 'a media message needs its media'
-              : 'only a media message has media'
-          })
-        }
-        if (sent.type === MessageType.TEXT && (sent.content ?? '').trim() === '') {
-          context.addIssue({
-            code: 'custom',
-            path: ['message', 'content'],
-            message: 'a text message has text'
-          })
-        }
-      }
-      const needsMessage: readonly string[] = [
-        ChannelEventTypes.MESSAGE_RECEIVED,
-        ChannelEventTypes.MESSAGE_ECHO
+export const channelEventSchema = z
+  .strictObject({
+    type: z.enum(ChannelEventTypes),
+    connectionId: id,
+    channelIdentity: id,
+    channelProfile: z
+      .strictObject({
+        displayName: text(200).optional(),
+        avatarUrl: z.url().max(InboundLimits.MEDIA_REF_MAX_LENGTH).optional(),
+        locale: text(35).optional(),
+        // Typed by the person in a form, not proved: the core reads them as contact data
+        email: text(InboundLimits.PROFILE_FIELD_MAX_LENGTH).optional(),
+        phone: text(InboundLimits.PROFILE_FIELD_MAX_LENGTH).optional()
+      })
+      .optional(),
+    message: message.optional(),
+    reaction: reaction.optional(),
+    edit: edit.optional(),
+    deletion: deletion.optional(),
+    status: status.optional(),
+    messageId: z.uuid().optional(),
+    timestamp: z.iso.datetime({ offset: true })
+  })
+  .superRefine((event, context) => {
+    const sent = event.message
+    if (sent !== undefined) {
+      const mediaTypes: readonly string[] = [
+        MessageType.IMAGE,
+        MessageType.VIDEO,
+        MessageType.AUDIO,
+        MessageType.DOCUMENT
       ]
-      if (needsMessage.includes(event.type) && event.message === undefined) {
+      const needsMedia = mediaTypes.includes(sent.type)
+      if (needsMedia !== (sent.media !== undefined)) {
         context.addIssue({
           code: 'custom',
-          path: ['message'],
-          message: 'a received or echoed event needs its message'
+          path: ['message', 'media'],
+          message: needsMedia ? 'a media message needs its media' : 'only a media message has media'
         })
       }
-      const isReaction = event.type === ChannelEventTypes.MESSAGE_REACTION
-      if (isReaction !== (event.reaction !== undefined) || (isReaction && event.message)) {
+      if (sent.type === MessageType.TEXT && (sent.content ?? '').trim() === '') {
         context.addIssue({
           code: 'custom',
-          path: ['reaction'],
-          message: 'only a reaction event has a reaction, and it has no message'
+          path: ['message', 'content'],
+          message: 'a text message has text'
         })
       }
-      const isEdit = event.type === ChannelEventTypes.MESSAGE_EDITED
-      if (isEdit !== (event.edit !== undefined) || (isEdit && event.message)) {
-        context.addIssue({
-          code: 'custom',
-          path: ['edit'],
-          message: 'only an edit event has an edit, and it has no message'
-        })
-      }
-      const isDeletion = event.type === ChannelEventTypes.MESSAGE_DELETED
-      if (isDeletion !== (event.deletion !== undefined) || (isDeletion && event.message)) {
-        context.addIssue({
-          code: 'custom',
-          path: ['deletion'],
-          message: 'only a delete event has a deletion, and it has no message'
-        })
-      }
-      const needsStatus: readonly string[] = [
-        ChannelEventTypes.MESSAGE_SENT,
-        ChannelEventTypes.MESSAGE_DELIVERED,
-        ChannelEventTypes.MESSAGE_READ,
-        ChannelEventTypes.MESSAGE_FAILED
-      ]
-      if (needsStatus.includes(event.type) && event.status === undefined) {
-        context.addIssue({
-          code: 'custom',
-          path: ['status'],
-          message: 'a status event needs its status'
-        })
-      }
-    })
-)
+    }
+    const needsMessage: readonly string[] = [
+      ChannelEventTypes.MESSAGE_RECEIVED,
+      ChannelEventTypes.MESSAGE_ECHO
+    ]
+    if (needsMessage.includes(event.type) && event.message === undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['message'],
+        message: 'a received or echoed event needs its message'
+      })
+    }
+    const isReaction = event.type === ChannelEventTypes.MESSAGE_REACTION
+    if (isReaction !== (event.reaction !== undefined) || (isReaction && event.message)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['reaction'],
+        message: 'only a reaction event has a reaction, and it has no message'
+      })
+    }
+    const isEdit = event.type === ChannelEventTypes.MESSAGE_EDITED
+    if (isEdit !== (event.edit !== undefined) || (isEdit && event.message)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['edit'],
+        message: 'only an edit event has an edit, and it has no message'
+      })
+    }
+    const isDeletion = event.type === ChannelEventTypes.MESSAGE_DELETED
+    if (isDeletion !== (event.deletion !== undefined) || (isDeletion && event.message)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['deletion'],
+        message: 'only a delete event has a deletion, and it has no message'
+      })
+    }
+    const needsStatus: readonly string[] = [
+      ChannelEventTypes.MESSAGE_SENT,
+      ChannelEventTypes.MESSAGE_DELIVERED,
+      ChannelEventTypes.MESSAGE_READ,
+      ChannelEventTypes.MESSAGE_FAILED
+    ]
+    if (needsStatus.includes(event.type) && event.status === undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['status'],
+        message: 'a status event needs its status'
+      })
+    }
+  })
 
 export type ValidChannelEvent = z.output<typeof channelEventSchema>

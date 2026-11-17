@@ -14,21 +14,25 @@ function isPlainObject(value: object): boolean {
   return prototype === Object.prototype || prototype === null
 }
 
-// Whether a text, a list or an object holds a NUL anywhere: in a string, in a key of an object, at any
+// The same as LONE_SURROGATE with no `g` flag, which would keep a position between two `test` calls
+const HAS_LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/
+const isUnstorable = (text: string): boolean => text.includes('\0') || HAS_LONE_SURROGATE.test(text)
+
+// Whether a text, a list or an object holds, anywhere, a NUL or half of an emoji: in a string, in a key of an object, at any
 // depth. Postgres refuses it in text and in jsonb, so it must be told at the edge as a 400, never reach
 // the database as a 500 (QA OPS-RD-046, N-4A-05). Walks with a stack, not by recursion: a body of
 // 1 MiB can nest deeper than the call stack.
-export function containsNul(value: unknown): boolean {
+export function containsUnstorableText(value: unknown): boolean {
   const pending: unknown[] = [value]
   while (pending.length > 0) {
     const item = pending.pop()
     if (typeof item === 'string') {
-      if (item.includes('\0')) return true
+      if (isUnstorable(item)) return true
     } else if (Array.isArray(item)) {
       for (const inner of item as unknown[]) pending.push(inner)
     } else if (typeof item === 'object' && item !== null && isPlainObject(item)) {
       for (const [key, inner] of Object.entries(item)) {
-        if (key.includes('\0')) return true
+        if (isUnstorable(key)) return true
         pending.push(inner)
       }
     }
@@ -36,11 +40,11 @@ export function containsNul(value: unknown): boolean {
   return false
 }
 
-// The same walk, for what a provider says and the platform must keep: every string and key goes through
-// `safeText`, and the rest of the value is returned as it was. A copy is built with a stack too, so a
+// The same walk, for what a provider says and the platform must keep: the NULs of every string and key are taken
+// out (half of an emoji stays, for the schema to judge), and the rest of the value is returned as it was. A copy is built with a stack too, so a
 // deep payload is no way to make it throw.
 export function withoutNul(value: unknown): unknown {
-  if (typeof value === 'string') return safeText(value)
+  if (typeof value === 'string') return withoutNulText(value)
   if (
     typeof value !== 'object' ||
     value === null ||
@@ -57,7 +61,7 @@ export function withoutNul(value: unknown): unknown {
       : Object.entries(source)
     for (const [key, inner] of entries) {
       let copy: unknown = inner
-      if (typeof inner === 'string') copy = safeText(inner)
+      if (typeof inner === 'string') copy = withoutNulText(inner)
       else if (
         typeof inner === 'object' &&
         inner !== null &&
@@ -66,11 +70,23 @@ export function withoutNul(value: unknown): unknown {
         copy = Array.isArray(inner) ? [] : {}
         stack.push([inner, copy as object])
       }
-      ;(target as Record<string, unknown>)[Array.isArray(target) ? key : safeText(key)] = copy
+      // defineProperty, not an assignment: a `__proto__` key of a JSON payload is data, and an assignment would swap the prototype
+      // of the copy. A key that another one became once cleaned is left to the first.
+      const property = Array.isArray(target) ? key : withoutNulText(key)
+      if (!Object.hasOwn(target, property)) {
+        Object.defineProperty(target, property, {
+          value: copy,
+          enumerable: true,
+          writable: true,
+          configurable: true
+        })
+      }
     }
   }
   return root
 }
+
+export const withoutNulText = (text: string): string => text.replaceAll('\0', '')
 
 // An emoji a person left: visible, short, and nothing the database would refuse (a NUL, half of one)
 export const isWholeEmoji = (value: string, maxLength: number): boolean =>

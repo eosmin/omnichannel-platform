@@ -64,7 +64,7 @@ export const putWarehouseStoresSchema = z.strictObject({
   stores: z
     .array(
       z.strictObject({
-        storeId: z.uuid(),
+        storeId: lowercasedUuidSchema,
         priority: z.number().int().min(1).max(WarehouseLimits.MAX_STORES_PER_REQUEST).optional()
       })
     )

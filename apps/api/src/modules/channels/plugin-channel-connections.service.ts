@@ -98,6 +98,12 @@ export class PluginChannelConnectionsService {
   async disconnect(caller: PluginCaller, connectionId: string, actor: Actor): Promise<void> {
     const changed = await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, caller.storeId)
+      // The same lock as the `PUT` of the account: a disconnect and a put of it take turns
+      await lockStoreScope(
+        tx,
+        caller.storeId,
+        `${RemoteChannelLockScopes.CONNECTION}:${caller.pluginId}:${connectionId}`
+      )
       const row = await tx.channelConnection.findFirst({
         where: {
           pluginId: caller.pluginId,

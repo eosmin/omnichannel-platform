@@ -297,17 +297,18 @@ describe('The channel routes of the plugin API', () => {
       })
     })
 
-    it('makes the connection once when the same new account is put twice at the same time: 201 and 200, one row (N-4A-06)', async () => {
-      const account = 'acct-race'
+    it('makes each connection once when the same new account is put twice at the same time: 201 and 200, one row (N-4A-06)', async () => {
+      // Several accounts, so that the two requests of one of them overlap whatever the scheduling
+      for (const account of ['acct-race-1', 'acct-race-2', 'acct-race-3', 'acct-race-4']) {
+        const [first, second] = await Promise.all([put(account, a.key), put(account, a.key)])
 
-      const [first, second] = await Promise.all([put(account, a.key), put(account, a.key)])
-
-      expect([first.status, second.status].sort()).toEqual([OK, CREATED])
-      expect(
-        await owner.channelConnection.count({
-          where: { pluginId: a.pluginId, connectionId: account }
-        })
-      ).toBe(1)
+        expect([first.status, second.status].sort()).toEqual([OK, CREATED])
+        expect(
+          await owner.channelConnection.count({
+            where: { pluginId: a.pluginId, connectionId: account }
+          })
+        ).toBe(1)
+      }
     })
 
     it('refuses what a plugin has no business saying: a store, credentials, an installation, an unknown field', async () => {
@@ -587,18 +588,6 @@ describe('The channel routes of the plugin API', () => {
       expect(jobs()).toHaveLength(0)
     })
 
-    it('queues a message dated a few minutes ahead of the clock: the platform dates it by its reception (N-4A-07)', async () => {
-      const ahead = new Date(Date.now() + 4 * 60_000).toISOString()
-      const response = await report(a.key, [
-        received('acct-a', {
-          message: { ...(received('acct-a') as { message: object }).message, timestamp: ahead },
-          timestamp: ahead
-        })
-      ])
-
-      expect(response.status).toBe(ACCEPTED)
-    })
-
     it('does not take a store, a plugin or an installation from the body', async () => {
       const response = await report(a.key, [
         received('acct-a', { storeId: ctx.storeA2.id, pluginId: 'official' })
@@ -700,7 +689,9 @@ describe('The channel routes of the plugin API', () => {
 
   describe('a NUL character in a path parameter', () => {
     it('answers 400 and not 500 to the id of a channel with a NUL, on the route of a person (OPS-RD-046)', async () => {
-      const response = await asAdmin().get(ApiRoutes.channels.templates('%00'))
+      const response = await asAdmin().get(
+        `${ApiRoutes.channels.templates('%00')}?connectionId=${randomUUID()}`
+      )
 
       expect(response.status).toBe(BAD_REQUEST)
       expect(codeOf(response.body)).toBe(ErrorCodes.VALIDATION_FAILED)

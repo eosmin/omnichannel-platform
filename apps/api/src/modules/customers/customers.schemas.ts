@@ -73,7 +73,7 @@ export const listCustomerOrdersQuerySchema = z.strictObject({
   status: z.enum(OrderStatus).optional()
 })
 
-export const mergePreviewQuerySchema = z.strictObject({ absorbedId: z.uuid() })
+export const mergePreviewQuerySchema = z.strictObject({ absorbedId: lowercasedUuidSchema })
 
 export const createCustomerSchema = z
   .strictObject({
@@ -108,13 +108,13 @@ export const linkIdentitySchema = z.strictObject({
 const mergeSource = z.enum([MergeFieldSources.SURVIVOR, MergeFieldSources.ABSORBED])
 
 export const mergeCustomersSchema = z.strictObject({
-  absorbedId: z.uuid(),
+  absorbedId: lowercasedUuidSchema,
   fieldChoices: z
     .strictObject(Object.fromEntries(MergeableFields.map(field => [field, mergeSource.optional()])))
     .default({})
 })
 
-export const unmergeCustomersSchema = z.strictObject({ mergeId: z.uuid() })
+export const unmergeCustomersSchema = z.strictObject({ mergeId: lowercasedUuidSchema })
 
 const addressField = text().min(1).max(CustomerLimits.ADDRESS_FIELD_MAX_LENGTH)
 const addressBody = {
@@ -163,7 +163,7 @@ export const createNoteSchema = z.strictObject({
   content: text().min(1).max(CustomerLimits.NOTE_MAX_LENGTH)
 })
 
-export const attachTagSchema = z.strictObject({ tagId: z.uuid() })
+export const attachTagSchema = z.strictObject({ tagId: lowercasedUuidSchema })
 
 // The reason is required: a flag nobody can explain is not acted on (TDD_17 §4.16)
 export const setCautionSchema = z.strictObject({

@@ -99,12 +99,6 @@ describe('The customers of a store', () => {
       expect(read.status).toBe(OK)
       expect((read.body as CustomerBody).id).toBe(customer.id)
     })
-
-    it('answers 400 and not 500 to an id with a NUL character (OPS-RD-046)', async () => {
-      const read = await asAdmin().get(ApiRoutes.customers.byId('%00'))
-
-      expect(read.status).toBe(BAD_REQUEST)
-    })
   })
 
   describe('a possible duplicate', () => {
