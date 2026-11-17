@@ -67,6 +67,8 @@ export const SvTimeouts = { AUTH_MS: 8000, RECEPTION_MS: 8000, SIGNER_MS: 10000 
 // The words of the answers of the authority and of the signing service, and the route of the signing service
 export const SvAnswerStates = {
   PROCESSED: 'PROCESADO',
+  // What the contingency service says of an event it took
+  RECEIVED: 'RECIBIDO',
   // What the consultation says of a document whose invalidation the authority accepted **[TO CONFIRM IN THE SANDBOX]**
   INVALIDATED: 'INVALIDADO',
   REFUSED: 'RECHAZADO',
@@ -98,7 +100,51 @@ export const SvSchemaVersions: Readonly<Record<SvDocumentType, number>> = {
 
 // CAT-003 / CAT-004: the model of billing and the kind of transmission. Normal transmission is the previous model (the document is sent
 // before it is handed to the receiver); contingency is Step 4B.7c-7.
-export const SvTransmission = { MODEL_PREVIOUS: 1, OPERATION_NORMAL: 1 } as const
+// CAT-003 (the billing model) and CAT-004 (the kind of transmission): a document made in contingency is deferred and transmitted after the event
+export const SvTransmission = {
+  MODEL_PREVIOUS: 1,
+  OPERATION_NORMAL: 1,
+  MODEL_DEFERRED: 2,
+  OPERATION_CONTINGENCY: 2
+} as const
+
+// Contingency (Step 4B.7c-7; Manual Técnico §3.3, Normativa cuadros 4 y 5, Funcional §XXIV).
+export const SvContingency = {
+  VERSION: 4,
+  // CAT-005. The authority's own system not available is the one the lifecycle uses when a document found it down in every attempt.
+  REASONS: {
+    AUTHORITY_DOWN: 1,
+    ISSUER_SYSTEM_DOWN: 2,
+    INTERNET_DOWN: 3,
+    POWER_DOWN: 4,
+    OTHER: 5
+  } as const,
+  // The only reason that carries the person's own words (up to 500 characters); the others have none
+  OTHER_REASON: 5,
+  // The time to send the documents of the lot once the event was taken (Normativa cuadro 5)
+  TRANSMIT_WITHIN_HOURS: 72,
+  // The documents one event lists (the schema's maximum)
+  MAX_DOCUMENTS: 1000,
+  MOTIVE_MAX: 500,
+  PARTY_NAME_MAX: 100,
+  PARTY_ID_MAX: 25
+} as const
+
+// Why this provider refuses to make or report a contingency, in codes of its own (never a value)
+export const SvContingencyRefusals = {
+  CREDENTIALS_INCOMPLETE: 'credentials_incomplete',
+  CREDENTIALS_REJECTED: 'credentials_rejected',
+  SIGNING_CREDENTIALS_REJECTED: 'signing_credentials_rejected',
+  ISSUER_INCOMPLETE: 'issuer_incomplete',
+  DOCUMENT_INCOMPLETE: 'document_incomplete',
+  REASON_UNKNOWN: 'contingency_reason_unknown',
+  MOTIVE_REQUIRED: 'contingency_motive_required',
+  RESPONSIBLE_REQUIRED: 'contingency_responsible_required',
+  PARTY_INVALID: 'contingency_party_invalid',
+  DOCUMENTS_INVALID: 'contingency_documents_invalid',
+  TOO_MANY_DOCUMENTS: 'contingency_too_many_documents',
+  WINDOW_INVALID: 'contingency_window_invalid'
+} as const
 
 export const SvCurrency = 'USD'
 
@@ -305,7 +351,9 @@ export const SvBuildErrors = {
   TOO_MANY_ITEMS: 'too_many_items',
   NO_ITEMS: 'no_items',
   ITEM_DESCRIPTION_EMPTY: 'item_description_empty',
-  QUANTITY_INVALID: 'quantity_invalid'
+  QUANTITY_INVALID: 'quantity_invalid',
+  CONTINGENCY_REASON_UNKNOWN: 'contingency_reason_unknown',
+  CONTINGENCY_MOTIVE_REQUIRED: 'contingency_motive_required'
 } as const
 export type SvBuildErrorCode = (typeof SvBuildErrors)[keyof typeof SvBuildErrors]
 

@@ -6,6 +6,7 @@ import {
 } from '@platform/core/domain'
 import type {
   BuiltDocument,
+  FiscalBuildContingency,
   FiscalBuildInput,
   FiscalIssuerInput,
   FiscalReceiver,
@@ -33,6 +34,7 @@ import {
   SvProviderDataKeys,
   SvSchemaVersions,
   SvShippingLine,
+  SvContingency,
   SvTransmission,
   SvVat
 } from './sv-constants'
@@ -183,6 +185,36 @@ function checkTax(formulaCents: number, input: FiscalBuildInput): void {
 
 // ---------------------------------------------------------------- the common parts
 
+// A document made in contingency is deferred (model 2) and transmitted as a contingency (operation 2), with the reason of CAT-005; the reason
+// that is "other" carries the person's own words, and the others have none (Manual Técnico §3.3)
+function transmissionOf(contingency: FiscalBuildContingency | undefined): Record<string, unknown> {
+  if (contingency === undefined) {
+    return {
+      tipoModelo: SvTransmission.MODEL_PREVIOUS,
+      tipoOperacion: SvTransmission.OPERATION_NORMAL,
+      tipoContingencia: null,
+      motivoContin: null
+    }
+  }
+  const reason = Number.parseInt(contingency.reason, 10)
+  if (!(Object.values(SvContingency.REASONS) as number[]).includes(reason)) {
+    throw new SvBuildError(SvBuildErrors.CONTINGENCY_REASON_UNKNOWN)
+  }
+  const motive = contingency.motive?.trim() ?? ''
+  if (
+    reason === SvContingency.OTHER_REASON &&
+    (motive === '' || motive.length > SvContingency.MOTIVE_MAX)
+  ) {
+    throw new SvBuildError(SvBuildErrors.CONTINGENCY_MOTIVE_REQUIRED)
+  }
+  return {
+    tipoModelo: SvTransmission.MODEL_DEFERRED,
+    tipoOperacion: SvTransmission.OPERATION_CONTINGENCY,
+    tipoContingencia: reason,
+    motivoContin: reason === SvContingency.OTHER_REASON ? motive : null
+  }
+}
+
 function identification(type: SvDocumentType, input: FiscalBuildInput): Record<string, unknown> {
   const issuer = input.issuer
   const moment = salvadorMoment(input.issuedAt)
@@ -194,10 +226,7 @@ function identification(type: SvDocumentType, input: FiscalBuildInput): Record<s
     // DTE-{type}-{establishment}{point of sale}-{correlative}: the codes of the issuer (checked) and the number of the series
     numeroControl: `DTE-${type}-${(issuer.establishmentCode ?? '').trim()}${(issuer.pointOfSaleCode ?? '').trim()}-${sequence}`,
     codigoGeneracion: input.documentUuid.toUpperCase(),
-    tipoModelo: SvTransmission.MODEL_PREVIOUS,
-    tipoOperacion: SvTransmission.OPERATION_NORMAL,
-    tipoContingencia: null,
-    motivoContin: null,
+    ...transmissionOf(input.contingency),
     fecEmi: moment.date,
     horEmi: moment.time,
     tipoMoneda: SvCurrency,

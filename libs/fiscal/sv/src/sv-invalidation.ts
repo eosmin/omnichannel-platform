@@ -135,7 +135,7 @@ export type SvInvalidationBuilt =
 const refuse = (reason: string): SvInvalidationBuilt => ({ ok: false, reason })
 
 // A person of the event as the authority's schema takes them; null when the name or the number is empty or too long
-function partyOf(
+export function partyOf(
   party: FiscalVoidParty | undefined
 ): { name: string; idType: string; idNumber: string } | null {
   if (party === undefined) return null

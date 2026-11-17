@@ -46,6 +46,51 @@ export type SvReception =
 const codeNumber = (code: string | null): number =>
   code === null ? Number.NaN : Number.parseInt(code, 10)
 
+// The answer to the event of a contingency: taken (with its seal), refused, or a fault of the moment. The event has no duplicate: one sent
+// again with the same generation code is the same event, which the authority answers with the seal it gave.
+export type SvEventAnswer =
+  | {
+      readonly kind: 'accepted'
+      readonly seal: string
+      readonly receivedAt: string | null
+      readonly body: Readonly<Record<string, unknown>>
+    }
+  | {
+      readonly kind: 'rejected'
+      readonly code: string
+      readonly body: Readonly<Record<string, unknown>>
+    }
+  | { readonly kind: 'transient' }
+  | { readonly kind: 'token' }
+  | { readonly kind: 'credentials' }
+
+export function classifyEventAnswer(status: number, json: unknown): SvEventAnswer {
+  const body = recordOf(json)
+  if (status === 401 || status === 403) return { kind: 'token' }
+  if (status >= 500) return { kind: 'transient' }
+  const seal = textOf(body['selloRecibido'])
+  if (
+    (body['estado'] === SvAnswerStates.RECEIVED || body['estado'] === SvAnswerStates.PROCESSED) &&
+    seal !== null
+  ) {
+    return {
+      kind: 'accepted',
+      seal,
+      receivedAt: textOf(body['fechaHora']) ?? textOf(body['fhProcesamiento']),
+      body
+    }
+  }
+  const code = codeOf(body['codigoMsg'])
+  const number = codeNumber(code)
+  if (SvTokenCodes.has(number)) return { kind: 'token' }
+  if (SvCredentialCodes.has(number)) return { kind: 'credentials' }
+  if (body['estado'] === SvAnswerStates.REFUSED || status === 400) {
+    if (code === null) return { kind: 'transient' }
+    return SvTransientCodes.has(number) ? { kind: 'transient' } : { kind: 'rejected', code, body }
+  }
+  return { kind: 'transient' }
+}
+
 export function classifyReception(status: number, json: unknown): SvReception {
   const body = recordOf(json)
   if (status === 401 || status === 403) return { kind: 'token' }
