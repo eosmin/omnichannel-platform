@@ -1,4 +1,4 @@
--- Rolls back 20270114100000_fiscal_replace_first. It refuses to run while a live replacement exists whose original is not voided: the restored
+-- Rolls back 20270115100000_fiscal_replace_first. It refuses to run while a live replacement exists whose original is not voided: the restored
 -- rules (one live sale document per order, a replacement only of a voided document) would be broken by that pair. Void the original (or
 -- decide with the accountant which of the two documents stands) first. Run it before the code that makes a replacement first is brought
 -- back, and stop the code that makes a replacement first (an older release) before it: the script takes a lock that keeps writers out of the
