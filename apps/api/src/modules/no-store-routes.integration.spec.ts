@@ -14,14 +14,17 @@ import { FinanceStatementsController } from './finance/finance-statements.contro
 import { FinanceTransactionsController } from './finance/finance-transactions.controller'
 import { FinanceController } from './finance/finance.controller'
 import { CustomerFiscalDataController } from './fiscal/customer-fiscal-data.controller'
+import { FiscalContingencyController } from './fiscal/fiscal-contingency.controller'
 import { FiscalController } from './fiscal/fiscal.controller'
 import { MessagesController } from './messages/messages.controller'
 import { PluginMessagesController } from './messages/plugin-messages.controller'
+import { OrderMessagesController } from './order-messages/order-messages.controller'
 import { OrdersController } from './orders/orders.controller'
 import { PluginOrdersController } from './orders/plugin-orders.controller'
 import { PluginWidgetsController } from './plugin-widgets/plugin-widgets.controller'
 import { PurchaseOrdersController } from './purchases/purchase-orders.controller'
 import { SuppliersController } from './purchases/suppliers.controller'
+import { ReturnsController } from './returns/returns.controller'
 import { PluginSearchController } from './search/plugin-search.controller'
 import { SearchController } from './search/search.controller'
 import { TenantWebhooksController } from './tenant-webhooks/tenant-webhooks.controller'
@@ -34,6 +37,9 @@ type Controller = { prototype: object }
 // by a search (QA N-A7-01) or the customers, conversations, messages and orders themselves
 const MONEY_CONTROLLERS: readonly Controller[] = [
   FiscalController,
+  FiscalContingencyController,
+  OrderMessagesController,
+  ReturnsController,
   CustomerFiscalDataController,
   FinanceController,
   FinanceBankController,
@@ -96,7 +102,8 @@ function hasNoStore(controller: Controller, name: string): boolean {
   )
 }
 
-// A route that takes the response sets its own headers (the CSV files)
+// A route that takes the response sets its own headers (the CSV files, which take it with `passthrough: true` and set the
+// header by hand): the spec cannot tell them from other routes that take it, so it skips them all (debt (b) of the plan)
 function takesResponse(controller: Controller, name: string): boolean {
   const args = (Reflect.getMetadata(ROUTE_ARGS_METADATA, controller.prototype.constructor, name) ??
     {}) as Record<string, unknown>

@@ -5,7 +5,7 @@ import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { type CursorPage, OrderMessageTriggers, uuidSchema } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import { invalidInput } from '@platform/core/messaging'
 import { pressedDispatchKey } from '@platform/core/shipping'
 
@@ -40,6 +40,7 @@ export class OrderMessagesController {
 
   // What was sent about the order, or not sent and why, newest first
   @RequirePermissions(Permissions.ORDERS_VIEW)
+  @NoStore()
   @Get(ApiRoutes.orders.messages(':id'))
   list(
     @CurrentStore() store: ResolvedTenant['store'],
@@ -50,6 +51,7 @@ export class OrderMessagesController {
   }
 
   @RequirePermissions(Permissions.ORDERS_SEND_MESSAGES)
+  @NoStore()
   @Post(ApiRoutes.orders.messages(':id'))
   @HttpCode(HttpStatusCodes.OK)
   async send(
