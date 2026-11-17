@@ -8,6 +8,7 @@ import {
   fetchFiscalEvidenceUrls,
   fetchFiscalIssuer,
   fetchFiscalProviders,
+  fetchFiscalSeries,
   patchFiscalReceiver,
   putFiscalIssuer,
   replaceFiscalDocument,
@@ -264,7 +265,10 @@ describe('the fiscal issuer', () => {
               requiredIssuerFields: ['legalName'],
               credentialKeys: ['signingKey'],
               environments: ['sandbox'],
+              catalogs: { activities: [{ code: '1', label: 'One' }] },
+              issuerFieldCatalogs: { activityCode: 'activities' },
               voidInputs: {
+                identityCatalog: 'ids',
                 kinds: ['correction', 'rescission'],
                 requiresParties: true,
                 kindsWithReplacement: ['correction'],
@@ -279,12 +283,39 @@ describe('the fiscal issuer', () => {
     const providers = await fetchFiscalProviders(client, 's')
     expect(providers[0]?.manifest.credentialKeys).toEqual(['signingKey'])
     // What an invalidation asks of the person is read as the provider declares it
+    expect(providers[0]?.manifest.catalogs).toEqual({ activities: [{ code: '1', label: 'One' }] })
+    expect(providers[0]?.manifest.issuerFieldCatalogs).toEqual({ activityCode: 'activities' })
     expect(providers[0]?.manifest.voidInputs).toEqual({
+      identityCatalog: 'ids',
       kinds: ['correction', 'rescission'],
       requiresParties: true,
       kindsWithReplacement: ['correction'],
       reasonMaxLength: 200
     })
+  })
+})
+
+describe('the series of correlatives', () => {
+  it('reads what each counts and the number the next document takes, through the store', async () => {
+    const { client, fetchImpl } = setup(
+      json(200, {
+        data: [
+          {
+            scope: { providerId: 'p', environment: 'sandbox', documentType: '01' },
+            nextNumber: 5,
+            updatedAt: '2026-11-17T00:00:00.000Z'
+          }
+        ]
+      })
+    )
+    const series = await fetchFiscalSeries(client, 's')
+    expect(series[0]).toMatchObject({ nextNumber: 5, scope: { documentType: '01' } })
+    expect(callOf(fetchImpl).url).toContain('/fiscal/series')
+  })
+
+  it('refuses an answer that is not a list of series', async () => {
+    const { client } = setup(json(200, { data: [{ scope: { a: 1 }, nextNumber: 'x' }] }))
+    await expect(fetchFiscalSeries(client, 's')).rejects.toBeDefined()
   })
 })
 

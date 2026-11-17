@@ -94,6 +94,16 @@ describe('the form of an invalidation that asks for more than a reason', () => {
     ])
   })
 
+  it('takes only a kind of identity document of the provider list when it has one', () => {
+    const codes = ['13', '36']
+    expect(voidFormProblems(draft(), inputs, codes)).toEqual([])
+    expect(
+      voidFormProblems(draft({ responsible: { ...party, idType: '99' } }), inputs, codes)
+    ).toEqual([{ field: 'responsible', problem: 'required' }])
+    // With no list, what is typed is taken
+    expect(voidFormProblems(draft({ responsible: { ...party, idType: '99' } }), inputs)).toEqual([])
+  })
+
   it('sends only what the chosen kind needs, in a body the api reads', () => {
     const rescission = voidBodyOf(draft({ replacementDocumentId: 'stale' }), inputs)
     expect(rescission).not.toHaveProperty('replacementDocumentId')

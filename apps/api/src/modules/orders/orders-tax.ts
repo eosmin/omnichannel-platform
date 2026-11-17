@@ -1,5 +1,5 @@
 import type { PrismaTransaction } from '@platform/core/database'
-import { type TaxRounding, TaxTreatment } from '@platform/core/domain'
+import { TaxRounding, TaxTreatment } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { computeOrderTax, type TaxableLine } from '@platform/core/finance'
 import { readFinancePreferences } from '@platform/core/store-preferences'
@@ -63,6 +63,12 @@ export function lineTaxOf(
   return { taxTreatment: treatment, taxRateBps: rateBps }
 }
 
+// The rounding an order stored with its tax, read from its text column: a text that is no rounding (the database check keeps one out)
+// is the same as none, and the order takes the rounding of the books of the day
+export function storedRounding(value: string | null): TaxRounding | null {
+  return Object.values<string>(TaxRounding).includes(value ?? '') ? (value as TaxRounding) : null
+}
+
 export interface LineTaxSnapshot {
   readonly taxTreatment: TaxTreatment
   readonly taxRateBps: number | null
@@ -73,6 +79,8 @@ export interface LineTaxSnapshot {
 export interface OrderTaxSnapshot {
   readonly taxCents: number
   readonly pricesIncludeTax: boolean
+  // The rounding the tax was made with: the order keeps it, so that pricing it again never moves a tax that was quoted
+  readonly taxRounding: TaxRounding
   // The rate the shipping fee was taxed at; null when it was not taxed
   readonly shippingTaxRateBps: number | null
   readonly lines: readonly LineTaxSnapshot[]
@@ -80,8 +88,8 @@ export interface OrderTaxSnapshot {
   readonly addedToTotalCents: number
 }
 
-// How an order is taxed now: the context, and what an order that exists fixes in it (the price mode, and the rate of a shipping fee
-// that did not change)
+// How an order is taxed now: the context, and what an order that exists fixes in it (the price mode, the rounding, and the rate of a
+// shipping fee that did not change)
 export interface TaxPlan {
   readonly rounding: TaxRounding
   readonly includesTax: boolean
@@ -93,14 +101,19 @@ export interface TaxPlan {
 
 export function planTax(
   context: TaxContext | null,
-  fixed?: { includesTax: boolean; shippingRateBps: number | null | 'current' }
+  fixed?: {
+    includesTax: boolean
+    // null: an order made before the rounding was kept, which takes the one of the books today
+    rounding: TaxRounding | null
+    shippingRateBps: number | null | 'current'
+  }
 ): TaxPlan | null {
   if (context === null) return null
   const current = context.shippingTaxed ? context.defaultRateBps : null
   const stored =
     fixed === undefined || fixed.shippingRateBps === 'current' ? undefined : fixed.shippingRateBps
   return {
-    rounding: context.rounding,
+    rounding: fixed?.rounding ?? context.rounding,
     includesTax: fixed?.includesTax ?? context.includesTax,
     shippingRateBps: stored === undefined ? current : stored,
     shippingNeedsRate:
@@ -148,6 +161,7 @@ export function snapshotTax(
   return {
     taxCents: tax.taxCents,
     pricesIncludeTax: plan.includesTax,
+    taxRounding: plan.rounding,
     shippingTaxRateBps: input.shippingCents > 0 ? plan.shippingRateBps : null,
     lines: tax.lines.map((line, index) => ({
       taxTreatment: input.lines[index]?.taxTreatment as TaxTreatment,
@@ -158,10 +172,11 @@ export function snapshotTax(
   }
 }
 
-// The columns of the order that hold its tax: all three or none (the database holds them together), and none when it carries no tax
+// The columns of the order that hold its tax: all four or none, and none when it carries no tax
 export function taxColumnsOf(tax: OrderTaxSnapshot | null): {
   taxCents?: number
   pricesIncludeTax?: boolean
+  taxRounding?: TaxRounding
   shippingTaxRateBps?: number | null
 } {
   return tax === null
@@ -169,6 +184,7 @@ export function taxColumnsOf(tax: OrderTaxSnapshot | null): {
     : {
         taxCents: tax.taxCents,
         pricesIncludeTax: tax.pricesIncludeTax,
+        taxRounding: tax.taxRounding,
         shippingTaxRateBps: tax.shippingTaxRateBps
       }
 }

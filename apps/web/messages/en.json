@@ -704,6 +704,7 @@
     "REMITTANCE_ALREADY_CONFIRMED": "The remittance is already confirmed",
     "REMITTANCE_IMPORT_INVALID": "The remittance file is not valid",
     "REMITTANCE_INVALID_STATUS_TRANSITION": "The remittance cannot change to that status",
+    "CARRIER_GUIDE_VOID_EXCEEDS_BALANCE": "Part of the guides of this purchase was already used: voiding it would leave the balance below zero. Record an adjustment instead",
     "REMITTANCE_NOTHING_TO_SETTLE": "There is nothing to settle in this remittance",
     "REMITTANCE_TOO_MANY_LINES": "A remittance holds at most 5,000 lines",
     "RESOURCE_ALREADY_EXISTS": "That already exists",
@@ -7575,7 +7576,8 @@
           "name": "Name",
           "idType": "Type of identity document",
           "idTypeHint": "The code of the authority's catalog.",
-          "idNumber": "Number of the identity document"
+          "idNumber": "Number of the identity document",
+          "idTypeChoose": "Choose the document"
         },
         "providersError": "The data of the provider could not be read.",
         "retry": "Try again",
@@ -7647,13 +7649,19 @@
           "environment": "The provider does not work in this environment.",
           "incomplete": "Each address line needs a name and a value.",
           "duplicate": "Two address lines have the same name.",
-          "tooMany": "There are too many address lines."
+          "tooMany": "There are too many address lines.",
+          "unknown": "This code is not in the list of the provider. Choose one."
         },
         "providerProblems": "The provider did not accept: {codes}",
         "readOnly": "You can read the issuer. Changing it needs the permission to manage fiscal documents.",
         "submit": "Save the issuer",
         "done": "The issuer was saved.",
-        "providerMissing": "The provider of this issuer is not in this deployment any more. Choose another one to save."
+        "providerMissing": "The provider of this issuer is not in this deployment any more. Choose another one to save.",
+        "establishmentType": "Kind of establishment",
+        "pointOfSaleCode": "Point of sale code",
+        "phone": "Phone",
+        "email": "Email",
+        "choose": "Choose…"
       },
       "issuerChange": {
         "title": "The issuer changed: document No. {number}",
@@ -7740,7 +7748,21 @@
           "establishmentCode": "Establishment"
         }
       },
-      "emptyFiltered": "There are no fiscal documents with these filters."
+      "emptyFiltered": "There are no fiscal documents with these filters.",
+      "series": {
+        "title": "Series of numbers",
+        "description": "Each series counts apart. The next document of a series takes the number shown. They move by themselves as documents are made.",
+        "loading": "Reading the series…",
+        "empty": "No document has taken a number yet.",
+        "next": "Next number: {number}",
+        "scope": {
+          "providerId": "Provider",
+          "environment": "Environment",
+          "documentType": "Document",
+          "establishmentCode": "Establishment",
+          "pointOfSaleCode": "Point of sale"
+        }
+      }
     },
     "vat": {
       "title": "VAT of a period",

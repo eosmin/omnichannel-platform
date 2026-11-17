@@ -81,6 +81,18 @@ export interface FiscalProviderManifest {
   // What the provider's authority lets an issuer do while it cannot be reached (Step 4B.7c-7). Absent: the provider has no deferred model
   // and a document waits in the queue for the authority.
   readonly contingencyMode?: FiscalContingencyDeclaration
+  // The lists of values the provider's authority defines (a kind of establishment, an economic activity, a kind of identity document), by
+  // the provider's own name for each list. The settings screen draws a select from one, so a person picks a code instead of typing it and
+  // the screen knows no catalog of any country (Step 4B.7c-5).
+  readonly catalogs?: Readonly<Record<string, readonly FiscalCatalogOption[]>>
+  // Which catalog an issuer field is chosen from; a field with no entry is typed
+  readonly issuerFieldCatalogs?: Readonly<Partial<Record<FiscalIssuerField, string>>>
+}
+
+// One value of a catalog: the code the provider reads and the words a person reads
+export interface FiscalCatalogOption {
+  readonly code: string
+  readonly label: string
 }
 
 // Contingency, in the provider's words: the reasons the authority tells apart (core keeps the one a person picks and never reads it), the
@@ -152,6 +164,8 @@ export interface FiscalVoidInputsDeclaration {
   readonly requiresParties: boolean
   // The reasons that name the document that takes the place of the invalidated one (the authority wants it first)
   readonly kindsWithReplacement?: readonly FiscalVoidKind[]
+  // The catalog the kind of identity document of the two people is chosen from; absent: typed
+  readonly identityCatalog?: string
   // The longest reason the authority takes; the screen counts with it (core's own limit is wider)
   readonly reasonMaxLength?: number
 }

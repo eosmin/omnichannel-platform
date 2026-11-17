@@ -1,3 +1,4 @@
+import type { FiscalDocumentProvider, FiscalProviderManifest } from '@platform/fiscal/sdk'
 import { simulatorProvider } from '@platform/fiscal/simulator'
 
 import { FiscalProviderRegistry } from './fiscal-provider.registry'
@@ -10,6 +11,74 @@ describe('the registry of fiscal providers', () => {
     expect(registry.find('no-such-provider')).toBeUndefined()
     const [listed] = registry.list()
     expect(listed?.manifest.credentialKeys).toEqual(['signingKey'])
+  })
+
+  describe('the catalogs of a manifest', () => {
+    const base = simulatorProvider()
+    // The simulator with another manifest: its methods stay on the prototype
+    const withManifest = (extra: Partial<FiscalProviderManifest>): FiscalDocumentProvider =>
+      Object.create(base, {
+        manifest: { value: { ...base.manifest, ...extra }, enumerable: true }
+      }) as FiscalDocumentProvider
+
+    it('lists them for the settings screen', () => {
+      const registry = new FiscalProviderRegistry([
+        withManifest({
+          catalogs: { kinds: [{ code: '1', label: 'One' }] },
+          issuerFieldCatalogs: { establishmentType: 'kinds' }
+        })
+      ])
+      expect(registry.list()[0]?.manifest.catalogs).toEqual({
+        kinds: [{ code: '1', label: 'One' }]
+      })
+    })
+
+    it('refuses a catalog with a repeated or empty code or with no words', () => {
+      for (const options of [
+        [
+          { code: '1', label: 'One' },
+          { code: '1', label: 'Again' }
+        ],
+        [
+          { code: '1', label: 'One' },
+          { code: '1 ', label: 'One with a blank' }
+        ],
+        [{ code: ' ', label: 'Blank' }],
+        [{ code: '1', label: '' }],
+        []
+      ]) {
+        expect(
+          () => new FiscalProviderRegistry([withManifest({ catalogs: { kinds: options } })])
+        ).toThrow(/is not valid/)
+      }
+    })
+
+    it('does not take a property every object has for a catalog', () => {
+      const catalogs = { kinds: [{ code: '1', label: 'One' }] }
+      for (const name of ['constructor', 'toString', '__proto__']) {
+        expect(
+          () =>
+            new FiscalProviderRegistry([
+              withManifest({ catalogs, issuerFieldCatalogs: { activityCode: name } })
+            ])
+        ).toThrow(/does not have/)
+      }
+    })
+
+    it('refuses a field or an identity list that names a catalog the manifest does not have', () => {
+      expect(
+        () =>
+          new FiscalProviderRegistry([withManifest({ issuerFieldCatalogs: { activityCode: 'x' } })])
+      ).toThrow(/does not have/)
+      expect(
+        () =>
+          new FiscalProviderRegistry([
+            withManifest({
+              voidInputs: { kinds: [], requiresParties: true, identityCatalog: 'missing' }
+            })
+          ])
+      ).toThrow(/does not have/)
+    })
   })
 
   it('refuses two providers under the same id', () => {

@@ -76,6 +76,12 @@ test.describe('Finance → fiscal documents and issuer', () => {
       page.getByTestId('fiscal-issuer-form').getByLabel('signingKey', { exact: true })
     ).toHaveValue('')
 
+    // With an issuer the series of numbers are shown (the simulator keeps one count for the organization, so no series yet), and the fields
+    // the provider does not ask for are not drawn
+    await expect(page.getByRole('heading', { name: fiscal.series.title })).toBeVisible()
+    await expect(page.getByTestId('fiscal-series-empty')).toHaveText(fiscal.series.empty)
+    await expect(form.getByLabel(fiscal.issuer.pointOfSaleCode)).toHaveCount(0)
+
     // With an issuer the list no longer says it is missing
     await page.goto(AppPaths.finance.fiscal)
     await expect(page.getByRole('heading', { name: fiscal.title, level: 1 })).toBeVisible()

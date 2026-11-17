@@ -1691,6 +1691,50 @@ const resources: IsolationResource[] = [
       return row?.reportAttempts === 3 && row.lastReportError === 'iso_error'
     }
   },
+  // The series of correlatives of the fiscal documents (Step 4B.7c-5): the counters of an organization, read through the store of the
+  // request and never by an id; no route writes them (the lifecycle of a document does).
+  {
+    name: 'fiscalSequence',
+    create: async (owner, { storeId }) => {
+      await ensureFiscalIssuer(owner, await organizationOfStore(owner, storeId))
+      return { id: storeId }
+    },
+    scope: 'organization',
+    readPath: () => ApiRoutes.fiscal.series,
+    own: {
+      set: async (owner, storeId, marker) => {
+        const organizationId = await organizationOfStore(owner, storeId)
+        await owner.fiscalSequence.upsert({
+          where: { organizationId_scopeKey: { organizationId, scopeKey: 'iso-series' } },
+          create: {
+            organizationId,
+            scopeKey: 'iso-series',
+            scope: { providerId: `iso-series-${marker}` },
+            nextValue: 1
+          },
+          // A series only moves forward: the trigger refuses to change what it counts
+          update: {}
+        })
+      },
+      markerIn: body => {
+        const series = (body as { data?: { scope?: { providerId?: string } }[] }).data ?? []
+        const found = series.map(one => one.scope?.providerId)
+        return found.includes('iso-series-A') ? 'A' : found.includes('iso-series-B') ? 'B' : null
+      }
+    },
+    // No route changes a counter: the one of the isolation suite is still where it was made
+    untouched: async (owner, storeId) =>
+      (
+        await owner.fiscalSequence.findUnique({
+          where: {
+            organizationId_scopeKey: {
+              organizationId: await organizationOfStore(owner, storeId),
+              scopeKey: 'iso-series'
+            }
+          }
+        })
+      )?.nextValue === 1
+  },
   // The layout of a legal book (TDD_18 §7; Step 4B.8b-3): the layouts of an organization, read through the store of the request and never
   // by an id; a change is a new version of the organization's own, and an earlier version never changes.
   {

@@ -840,6 +840,7 @@ model Order {
   taxCents                         Int?      @map("tax_cents") // The tax of the order, fixed at creation (TDD_18 §7); null on an order made before the tax columns
   pricesIncludeTax                 Boolean?  @map("prices_include_tax") // Whether the prices were tax included when it was made; null as above
   shippingTaxRateBps               Int?      @map("shipping_tax_rate_bps") // The rate the shipping fee was taxed at; null when it was not taxed
+  taxRounding                      String?   @map("tax_rounding") // The rounding the tax was made with (a TaxRounding); null on an order made before this column
   createdBy                        String?   @map("created_by") // Null when a plugin made it (`createdByPluginId`): exactly one of the two (a check)
   createdByPluginId                String?   @map("created_by_plugin_id")
   createdAt                        DateTime  @default(now()) @map("created_at")
@@ -3087,7 +3088,7 @@ model FiscalIssuer {
 model FiscalSequence {
   organizationId String   @map("organization_id")
   scopeKey       String   @map("scope_key")
-  scope          Json // what the key was made of, for a person who reads the table (never read back by the code)
+  scope          Json // what the key was made of: shown to a person by the series view (never used to find a counter: the key does that)
   nextValue      Int      @default(1) @map("next_value")
   updatedAt      DateTime @updatedAt @map("updated_at")
 

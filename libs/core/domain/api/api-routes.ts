@@ -292,6 +292,8 @@ export const ApiRoutes = {
     providers: '/fiscal/providers',
     // GET the issuer without credentials; PUT sets it (credentials are written, never read)
     issuer: '/fiscal/issuer',
+    // GET the series of correlatives of the organization: what each counts and the number the next document takes (Step 4B.7c-5)
+    series: '/fiscal/series',
     // GET the dry run of the daily check of the documents (Step 4B.8b-2b): the findings of one kind, a page at a time. It changes nothing
     reconciliation: '/fiscal/reconciliation',
     // The contingency of the issuer (Step 4B.7c-7): GET the open one, POST starts one, POST /end ends it; the list of them; the report asked again
