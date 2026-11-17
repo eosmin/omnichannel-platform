@@ -850,6 +850,7 @@ describe('The entries that depend on a carrier (Step 4B.6b-1)', () => {
       ])
       await post(FinanceSourceType.REMITTANCE, remittanceId, FinanceEventKind.REMITTANCE_CONFIRM)
       const e5 = await entryOf(FinancePostingKey.REMITTANCE_CONFIRM(remittanceId))
+      expect(e5).not.toBeNull()
       // A person reverses the entry of the confirmation by hand before the remittance is voided
       const byHand = await api(app, ctx.adminA, ctx.storeA)
         .post(ApiRoutes.finance.entries.reverse(e5?.id ?? ''))
@@ -881,6 +882,10 @@ describe('The entries that depend on a carrier (Step 4B.6b-1)', () => {
           where: { organizationId: ctx.orgA.id, sourceId: remittanceId, resolvedAt: null }
         })
       ).toBe(0)
+      // The person's entry stays as it was written
+      expect(
+        await owner.journalEntry.findUniqueOrThrow({ where: { id: personal.id } })
+      ).toMatchObject({ createdBy: ctx.adminA.id, origin: personal.origin, memo: personal.memo })
     })
 
     it('has nothing to undo when the confirmation was never posted, and then posts nothing for it', async () => {

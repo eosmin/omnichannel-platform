@@ -14,9 +14,7 @@ export function useReverseErrorText(): (error: unknown) => string {
   return useCallback(
     (error: unknown): string => {
       const conflict = reverseConflictOf(error)
-      return conflict !== null && t.has(conflict as 'reversal_not_reversible')
-        ? t(conflict as 'reversal_not_reversible')
-        : generic(error)
+      return conflict === null ? generic(error) : t(conflict)
     },
     [t, generic]
   )

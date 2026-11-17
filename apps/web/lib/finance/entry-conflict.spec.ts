@@ -4,7 +4,7 @@ import { FinanceConflicts } from '@platform/core/domain'
 import messages from '../../messages/en.json'
 import esMessages from '../../messages/es.json'
 
-import { reverseConflictOf } from './entry-conflict'
+import { REVERSE_CONFLICTS, reverseConflictOf } from './entry-conflict'
 
 const error = (metadata: Record<string, unknown>): ApiError =>
   new ApiError(409, 'RESOURCE_CONFLICT', 'refused', null, metadata)
@@ -27,10 +27,7 @@ describe('the kind of refusal of a reversal of an entry', () => {
   })
 
   it('has a sentence in both languages for every conflict it reads', () => {
-    for (const kind of [
-      FinanceConflicts.REVERSAL_NOT_REVERSIBLE,
-      FinanceConflicts.ENTRY_OWNED_BY_TRANSACTION
-    ]) {
+    for (const kind of REVERSE_CONFLICTS) {
       const en = messages.finance.entry.reverse.conflicts as Record<string, string>
       const es = esMessages.finance.entry.reverse.conflicts as Record<string, string>
       expect(en[kind]).toBeTruthy()
