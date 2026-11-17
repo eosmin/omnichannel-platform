@@ -688,6 +688,17 @@ describe('Analytics reports and export', () => {
         reason: ReportDisableReasons.OWNER_LOST_RIGHT,
         createdBy: member.id
       })
+      // Off now: a later run skips it and says nothing more
+      expect(await runner.run(report.id, DAY, false, now)).toBe('skipped')
+      expect(
+        await owner.auditLog.count({
+          where: {
+            storeId: ctx.storeA.id,
+            action: AuditAction.REPORT_DISABLED,
+            resourceId: report.id
+          }
+        })
+      ).toBe(1)
     })
 
     it('turns the report off when the person was suspended in the store', async () => {
