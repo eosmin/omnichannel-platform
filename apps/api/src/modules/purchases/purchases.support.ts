@@ -45,7 +45,10 @@ export function today(): string {
 
 // The days a bill is past due: a count between two accounting days, by the calendar and not by 24-hour blocks
 export function daysPastDue(dueOn: string, day: string): number {
-  return Math.max(0, Math.round((dayToDate(day).getTime() - dayToDate(dueOn).getTime()) / MS_PER_DAY))
+  return Math.max(
+    0,
+    Math.round((dayToDate(day).getTime() - dayToDate(dueOn).getTime()) / MS_PER_DAY)
+  )
 }
 
 // The answer for a request that a rule of purchases refuses: the first problem decides, the list is for the log
