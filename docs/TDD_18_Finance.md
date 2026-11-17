@@ -511,6 +511,10 @@ head in the period row for the auditor, `FiscalPeriod.closingHash`, added in the
   is dated in the open period and keeps its `sourceDate`; the report of the closed month does not change, and the
   difference is visible as "late postings" in the period view. This is the usual practice and is configurable only
   as "post to the open period" (the alternative, refusing, would leave the source unposted forever).
+  A **retry** of a posting whose day is a column of its source (a return: the day it was received; a sale: the day it
+  was delivered) is dated by the same rule from that day, never from the day of the failure or of the retry; only a
+  closed period moves it to the first day of the open one. A posting that has no such column (a person's action) keeps
+  the day the job carries.
 - Inputs the ledger does not own (an order's date, a remittance's date) are **not** blocked by the lock: operations
   never stop because a month closed.
 
