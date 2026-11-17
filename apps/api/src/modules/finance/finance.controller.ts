@@ -19,7 +19,7 @@ import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { ExportContentTypes, ExportFileExtensions } from '@platform/core/exports'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import {
@@ -120,12 +120,14 @@ export class FinanceController {
   ) {}
 
   @RequirePermissions(Permissions.FINANCE_VIEW)
+  @NoStore()
   @Get(ApiRoutes.finance.setup)
   setupState(@CurrentOrganization() organization: Organization): Promise<SetupState> {
     return this.setup.state(organization.id)
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @NoStore()
   @Post(ApiRoutes.finance.setup)
   @HttpCode(HttpStatusCodes.CREATED)
   setUp(
@@ -139,12 +141,14 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW)
+  @NoStore()
   @Get(ApiRoutes.finance.settings)
   getSettings(@CurrentOrganization() organization: Organization): Promise<SettingsView> {
     return this.settings.get(organization.id)
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @NoStore()
   @Patch(ApiRoutes.finance.settings)
   updateSettings(
     @CurrentOrganization() organization: Organization,
@@ -157,6 +161,7 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW)
+  @NoStore()
   @Get(ApiRoutes.finance.accounts.list)
   listAccounts(
     @CurrentOrganization() organization: Organization,
@@ -166,6 +171,7 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW)
+  @NoStore()
   @Get(ApiRoutes.finance.accounts.byId(':id'))
   getAccount(
     @CurrentOrganization() organization: Organization,
@@ -175,6 +181,7 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @NoStore()
   @Post(ApiRoutes.finance.accounts.create)
   @HttpCode(HttpStatusCodes.CREATED)
   createAccount(
@@ -188,6 +195,7 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @NoStore()
   @Patch(ApiRoutes.finance.accounts.byId(':id'))
   updateAccount(
     @CurrentOrganization() organization: Organization,
@@ -201,6 +209,7 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @NoStore()
   @Post(ApiRoutes.finance.accounts.deactivate(':id'))
   @HttpCode(HttpStatusCodes.OK)
   deactivateAccount(
@@ -214,6 +223,7 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @NoStore()
   @Post(ApiRoutes.finance.accounts.reactivate(':id'))
   @HttpCode(HttpStatusCodes.OK)
   reactivateAccount(
@@ -227,12 +237,14 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW)
+  @NoStore()
   @Get(ApiRoutes.finance.accountRoles.list)
   listRoles(@CurrentOrganization() organization: Organization): Promise<RoleMappingView[]> {
     return this.settings.roles(organization.id)
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @NoStore()
   @Put(ApiRoutes.finance.accountRoles.byRole(':role'))
   mapRole(
     @CurrentOrganization() organization: Organization,
@@ -246,6 +258,7 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW)
+  @NoStore()
   @Get(ApiRoutes.finance.paymentAccounts.list)
   listPaymentAccounts(
     @CurrentOrganization() organization: Organization
@@ -254,6 +267,7 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @NoStore()
   @Put(ApiRoutes.finance.paymentAccounts.set)
   setPaymentAccount(
     @CurrentOrganization() organization: Organization,
@@ -266,6 +280,7 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @NoStore()
   @Delete(ApiRoutes.finance.paymentAccounts.byId(':id'))
   @HttpCode(HttpStatusCodes.NO_CONTENT)
   removePaymentAccount(
@@ -284,6 +299,7 @@ export class FinanceController {
 
   // The VAT report (TDD_18 §7) of the organization for a range of days: the JSON, and the same rows as a CSV file
   @RequirePermissions(Permissions.FINANCE_VIEW)
+  @NoStore()
   @Get(ApiRoutes.finance.reports.vat)
   vat(
     @CurrentOrganization() organization: Organization,
@@ -315,12 +331,14 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW)
+  @NoStore()
   @Get(ApiRoutes.finance.taxRates.list)
   listTaxRates(@CurrentOrganization() organization: Organization): Promise<TaxRateView[]> {
     return this.taxRates.list(organization.id)
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @NoStore()
   @Post(ApiRoutes.finance.taxRates.create)
   @HttpCode(HttpStatusCodes.CREATED)
   createTaxRate(
@@ -334,6 +352,7 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @NoStore()
   @Patch(ApiRoutes.finance.taxRates.byId(':id'))
   updateTaxRate(
     @CurrentOrganization() organization: Organization,
@@ -347,6 +366,7 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @NoStore()
   @Post(ApiRoutes.finance.taxRates.deactivate(':id'))
   @HttpCode(HttpStatusCodes.OK)
   deactivateTaxRate(
@@ -360,6 +380,7 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @NoStore()
   @Post(ApiRoutes.finance.taxRates.reactivate(':id'))
   @HttpCode(HttpStatusCodes.OK)
   reactivateTaxRate(
@@ -373,12 +394,14 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW)
+  @NoStore()
   @Get(ApiRoutes.finance.storeTaxSettings)
   getStoreTaxSettings(@CurrentStore() store: Store): Promise<StoreTaxSettingsView> {
     return this.storeTax.get(store.id)
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @NoStore()
   @Patch(ApiRoutes.finance.storeTaxSettings)
   updateStoreTaxSettings(
     @CurrentOrganization() organization: Organization,
@@ -391,6 +414,7 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW)
+  @NoStore()
   @Get(ApiRoutes.finance.periods.list)
   listPeriods(
     @CurrentOrganization() organization: Organization,
@@ -400,6 +424,7 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW)
+  @NoStore()
   @Get(ApiRoutes.finance.periods.byId(':id'))
   getPeriod(
     @CurrentOrganization() organization: Organization,
@@ -409,6 +434,7 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @NoStore()
   @Post(ApiRoutes.finance.periods.open)
   @HttpCode(HttpStatusCodes.OK)
   openPeriod(
@@ -422,6 +448,7 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW_JOURNAL)
+  @NoStore()
   @Get(ApiRoutes.finance.entries.list)
   listEntries(
     @CurrentOrganization() organization: Organization,
@@ -431,6 +458,7 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW_JOURNAL)
+  @NoStore()
   @Get(ApiRoutes.finance.entries.byId(':id'))
   getEntry(
     @CurrentOrganization() organization: Organization,
@@ -441,6 +469,7 @@ export class FinanceController {
 
   // HIGH tier of DestructiveActionTiers (POST_MANUAL_ENTRY): the interface asks before it sends this
   @RequirePermissions(Permissions.FINANCE_POST_MANUAL)
+  @NoStore()
   @Post(ApiRoutes.finance.entries.manual)
   @HttpCode(HttpStatusCodes.CREATED)
   postManual(
@@ -455,6 +484,7 @@ export class FinanceController {
 
   // HIGH tier of DestructiveActionTiers (REVERSE_ENTRY)
   @RequirePermissions(Permissions.FINANCE_POST_MANUAL)
+  @NoStore()
   @Post(ApiRoutes.finance.entries.reverse(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   reverseEntry(
@@ -469,6 +499,7 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW)
+  @NoStore()
   @Get(ApiRoutes.finance.balances)
   balances(
     @CurrentOrganization() organization: Organization,
@@ -478,6 +509,7 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @NoStore()
   @Post(ApiRoutes.finance.postingRetry(':id'))
   @HttpCode(HttpStatusCodes.OK)
   retryPosting(
@@ -491,6 +523,7 @@ export class FinanceController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_ACCOUNTS)
+  @NoStore()
   @Get(ApiRoutes.finance.postings)
   postings(
     @CurrentOrganization() organization: Organization,

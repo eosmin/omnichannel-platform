@@ -4,7 +4,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { ZodValidationPipe } from '@platform/core/http'
+import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
 import {
@@ -64,6 +64,7 @@ export class SuppliersController {
   ) {}
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_PURCHASES)
+  @NoStore()
   @Get(ApiRoutes.suppliers.list)
   list(
     @CurrentOrganization() organization: Organization,
@@ -73,6 +74,7 @@ export class SuppliersController {
   }
 
   @RequireAnyPermission(Permissions.FINANCE_MANAGE_PURCHASES, Permissions.FINANCE_MOVE_MONEY)
+  @NoStore()
   @Get(ApiRoutes.suppliers.payables)
   listPayables(
     @CurrentOrganization() organization: Organization,
@@ -82,6 +84,7 @@ export class SuppliersController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_PURCHASES)
+  @NoStore()
   @Post(ApiRoutes.suppliers.create)
   @HttpCode(HttpStatusCodes.CREATED)
   create(
@@ -95,6 +98,7 @@ export class SuppliersController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_PURCHASES)
+  @NoStore()
   @Get(ApiRoutes.suppliers.byId(':id'))
   get(
     @CurrentOrganization() organization: Organization,
@@ -104,6 +108,7 @@ export class SuppliersController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_PURCHASES)
+  @NoStore()
   @Patch(ApiRoutes.suppliers.update(':id'))
   update(
     @CurrentOrganization() organization: Organization,
@@ -117,6 +122,7 @@ export class SuppliersController {
   }
 
   @RequireAnyPermission(Permissions.FINANCE_MANAGE_PURCHASES, Permissions.FINANCE_MOVE_MONEY)
+  @NoStore()
   @Get(ApiRoutes.suppliers.balance(':id'))
   balance(
     @CurrentOrganization() organization: Organization,
@@ -126,6 +132,7 @@ export class SuppliersController {
   }
 
   @RequireAnyPermission(Permissions.FINANCE_MANAGE_PURCHASES, Permissions.FINANCE_MOVE_MONEY)
+  @NoStore()
   @Get(ApiRoutes.suppliers.payments(':id'))
   listPayments(
     @CurrentOrganization() organization: Organization,
@@ -136,6 +143,7 @@ export class SuppliersController {
   }
 
   @RequirePermissions(Permissions.FINANCE_MOVE_MONEY)
+  @NoStore()
   @Post(ApiRoutes.suppliers.recordPayment(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   recordPayment(
@@ -151,6 +159,7 @@ export class SuppliersController {
 
   // HIGH tier of DestructiveActionTiers (VOID_SUPPLIER_PAYMENT): the interface asks before it sends this
   @RequirePermissions(Permissions.FINANCE_MOVE_MONEY)
+  @NoStore()
   @Post(ApiRoutes.supplierPayments.void(':id'))
   @HttpCode(HttpStatusCodes.CREATED)
   voidPayment(

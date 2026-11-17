@@ -40,6 +40,17 @@ export interface VoidDraft {
   readonly replacementDocumentId: string
 }
 
+// The documents a person may name as the replacement of `original`: the accepted ones that were made to replace it (the api takes no other:
+// the authority is told its generation code as the document that takes the place of the invalidated one)
+export function replacementCandidates<T extends { id: string; replacesDocumentId: string | null }>(
+  documents: readonly T[],
+  original: T
+): T[] {
+  return documents.filter(
+    candidate => candidate.id !== original.id && candidate.replacesDocumentId === original.id
+  )
+}
+
 // What the provider asks, as the api sends it (one definition: the schema of the api-client)
 export type VoidInputsView = NonNullable<FiscalProviderView['manifest']['voidInputs']>
 
