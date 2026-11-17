@@ -6,7 +6,7 @@ API, the worker, the web, the SDK and the runtime read its manifest and nothing 
 ## State (Steps 4B.7c-2 and 4B.7c-3)
 
 - **Done:** the pure construction of the invoice (`01`), the tax credit document (`03`) and the credit note (`05`); the checks of the issuer and of a receiver; the manifest; **the client of the authority** (Step 4B.7c-3): the token (kept, renewed, with a memory of a refused password), the signer port and the adapter of the official signing service, `submit` and `consult`; **the invalidation** (Step 4B.7c-4): the event of version 3, the deadlines (three months for an invoice, ten business days of the following month for the others), `void` and `consultVoid`.
-- **Not yet:** the screens (4B.7c-5), the minimum tests in the sandbox (4B.7c-6), contingency (4B.7c-7).
+- **Not yet:** the screens (4B.7c-5), the minimum tests in the sandbox (4B.7c-6), contingency (4B.7c-7: `sv-contingency.ts`, schema `schemas/contingencia-v4.json`).
 - **Offered** where the deployment sets `FISCAL_SIGNER_URL` (the address of the official signing service: a private network, never published).
 - **Never reaches the real authority in a test:** the specs and the contract suite run against `src/testing/fake-authority.ts`, a server of our own that plays the authority and the signer with a key generated for each run.
 

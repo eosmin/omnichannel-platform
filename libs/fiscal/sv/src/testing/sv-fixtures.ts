@@ -124,7 +124,9 @@ const FILES: Record<string, string> = {
   '03': 'fe-ccf-v4.json',
   '05': 'fe-nc-v4.json',
   // The event that invalidates a document
-  invalidation: 'invalidacion-v3.json'
+  invalidation: 'invalidacion-v3.json',
+  // The event that reports a contingency
+  contingency: 'contingencia-v4.json'
 }
 
 // The validator of the authority's own schema for a type of document. `multipleOfPrecision` because a float is never an exact multiple of
