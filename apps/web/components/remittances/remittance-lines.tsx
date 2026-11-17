@@ -234,6 +234,7 @@ export function RemittanceLines({
                     feeConsumesCash={
                       showWarnings &&
                       !line.excluded &&
+                      line.expectedCents === 0 &&
                       knownWarnings(line).includes(RemittanceLineWarnings.FEE_EXCEEDS_COLLECTED)
                     }
                   />

@@ -398,8 +398,11 @@ function Credentials({
   const id = useId()
   const keys = provider?.manifest.credentialKeys ?? []
   // A key the provider names that has no text of its own here is shown as the provider wrote it
+  // (only a plain word is looked up: a dot would be read as a path into the messages)
   const labelOf = (key: string): string =>
-    t.has(`keys.${key}` as 'keys.signingKey') ? t(`keys.${key}` as 'keys.signingKey') : key
+    /^[A-Za-z]+$/.test(key) && t.has(`keys.${key}` as 'keys.signingKey')
+      ? t(`keys.${key}` as 'keys.signingKey')
+      : key
   if (keys.length === 0) return null
   return (
     <fieldset

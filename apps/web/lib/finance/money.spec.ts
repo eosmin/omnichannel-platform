@@ -138,6 +138,8 @@ describe('positiveCentsOfDecimalText', () => {
 describe('amountExceedsLine', () => {
   it('is true only for a well written amount above a line of the books', () => {
     expect(amountExceedsLine('21474836.48')).toBe(true)
+    expect(amountExceedsLine('21474836.47')).toBe(false)
+    expect(amountExceedsLine('00000000021474836.48')).toBe(true)
     expect(amountExceedsLine('99999999999')).toBe(true)
     expect(amountExceedsLine('12.50')).toBe(false)
     expect(amountExceedsLine('-5')).toBe(false)

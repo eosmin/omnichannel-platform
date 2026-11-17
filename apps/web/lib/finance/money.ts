@@ -63,11 +63,17 @@ export function centsOfDecimalText(input: string, maxCents = 2_147_483_647): num
   return match[1] === '-' && cents !== 0 ? -cents : cents
 }
 
-// An amount that is well written (digits, a sign never, at most two decimals) but more than a line of the books can hold: the screens say
-// the limit instead of the rule of the digits.
+// An amount that is well written (digits and at most two decimals, no sign) but more than a line of the books can hold, however many
+// digits it has: the screens say the limit instead of the rule of the digits.
 export function amountExceedsLine(input: string): boolean {
-  const cents = centsOfDecimalText(input, Number.MAX_SAFE_INTEGER)
-  return cents !== null && cents > FinanceLimits.MAX_LINE_CENTS
+  const match = /^(\d+)(?:[.,](\d{1,2}))?$/.exec(input.trim())
+  if (match === null) return false
+  const whole = (match[1] ?? '').replace(/^0+(?=\d)/, '')
+  // More digits than the limit has cannot be below it; fewer are compared as numbers
+  const limitDigits = String(FinanceLimits.MAX_LINE_CENTS).length
+  if (whole.length > limitDigits) return true
+  const cents = Number(whole) * 100 + Number((match[2] ?? '').padEnd(2, '0'))
+  return cents > FinanceLimits.MAX_LINE_CENTS
 }
 
 // What a person types as an amount of a transaction or a line: the same reading, but only above zero and within a line of the books
