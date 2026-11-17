@@ -508,7 +508,7 @@ export class FinancePostingService {
         referenceType: InventoryReferenceType.ORDER,
         referenceId: orderId
       },
-      select: { quantity: true, unitCostCents: true }
+      select: { quantity: true, unitCostCents: true, valueCents: true }
     })
     return issueCost(movements)
   }
@@ -1026,7 +1026,13 @@ export class FinancePostingService {
               referenceType: InventoryReferenceType.ORDER,
               referenceId: order.id
             },
-            select: { productId: true, variantId: true, quantity: true, unitCostCents: true }
+            select: {
+              productId: true,
+              variantId: true,
+              quantity: true,
+              unitCostCents: true,
+              valueCents: true
+            }
           })
         : []
     const cost = restockCost(movements, issued)
@@ -1079,6 +1085,7 @@ export class FinancePostingService {
         reason: true,
         quantity: true,
         unitCostCents: true,
+        valueCents: true,
         createdAt: true,
         store: { select: { timezone: true } }
       }

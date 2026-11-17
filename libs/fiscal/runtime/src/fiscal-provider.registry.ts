@@ -46,6 +46,32 @@ export class FiscalProviderRegistry {
           `the fiscal provider ${provider.id} numbers by establishment or point of sale and does not require that code of the issuer`
         )
       }
+      // A catalog is a list of distinct, non-empty codes with words, and everything that names one names one the manifest has
+      const catalogs = provider.manifest.catalogs ?? {}
+      for (const [name, options] of Object.entries(catalogs)) {
+        const codes = options.map(option => option.code)
+        if (
+          name.trim() === '' ||
+          // A list with nothing to choose from would leave a required field that cannot be filled
+          options.length === 0 ||
+          new Set(codes.map(code => code.trim())).size !== codes.length ||
+          options.some(option => option.code.trim() === '' || option.label.trim() === '')
+        ) {
+          throw new Error(`the catalog ${name} of the fiscal provider ${provider.id} is not valid`)
+        }
+      }
+      const referenced = [
+        ...Object.values(provider.manifest.issuerFieldCatalogs ?? {}),
+        ...(provider.manifest.voidInputs?.identityCatalog === undefined
+          ? []
+          : [provider.manifest.voidInputs.identityCatalog])
+      ]
+      // Own names only: a name that is a property of every object (`constructor`) is not a catalog
+      if (referenced.some(name => !Object.hasOwn(catalogs, name))) {
+        throw new Error(
+          `the fiscal provider ${provider.id} names a catalog its manifest does not have`
+        )
+      }
       // A second provider under the same id would take the documents of the first one's issuer
       if (byId.has(provider.id)) throw new Error(`two fiscal providers share the id ${provider.id}`)
       byId.set(provider.id, provider)

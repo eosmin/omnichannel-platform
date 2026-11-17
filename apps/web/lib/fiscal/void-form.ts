@@ -48,11 +48,16 @@ export type VoidFormProblem =
   | { readonly field: 'kind' | 'replacement'; readonly problem: 'required' }
   | { readonly field: 'responsible' | 'requester'; readonly problem: 'required' | 'tooLong' }
 
-const partyProblem = (party: VoidPartyDraft): 'required' | 'tooLong' | null => {
+const partyProblem = (
+  party: VoidPartyDraft,
+  identityCodes: readonly string[] | null
+): 'required' | 'tooLong' | null => {
   const name = party.name.trim()
   const idType = party.idType.trim()
   const idNumber = party.idNumber.trim()
   if (name === '' || idType === '' || idNumber === '') return 'required'
+  // The kind of identity document is one of the provider's list when it names one
+  if (identityCodes !== null && !identityCodes.includes(idType)) return 'required'
   return name.length > FiscalLimits.VOID_PARTY_NAME_MAX_LENGTH ||
     idType.length > FiscalFieldLimits.CODE ||
     idNumber.length > FiscalLimits.VOID_PARTY_ID_MAX_LENGTH
@@ -63,7 +68,9 @@ const partyProblem = (party: VoidPartyDraft): 'required' | 'tooLong' | null => {
 // What is wrong in the form, the first thing of each field; empty when it can be sent. With no `inputs` the provider asks for the reason alone.
 export function voidFormProblems(
   draft: VoidDraft,
-  inputs: VoidInputsView | undefined
+  inputs: VoidInputsView | undefined,
+  // The codes of the identity documents the provider lists, when it does
+  identityCodes: readonly string[] | null = null
 ): VoidFormProblem[] {
   const problems: VoidFormProblem[] = []
   const reason = voidReasonProblem(draft.reason, inputs?.reasonMaxLength)
@@ -71,9 +78,9 @@ export function voidFormProblems(
   if (inputs === undefined) return problems
   if (draft.kind === '') problems.push({ field: 'kind', problem: 'required' })
   if (inputs.requiresParties) {
-    const responsible = partyProblem(draft.responsible)
+    const responsible = partyProblem(draft.responsible, identityCodes)
     if (responsible !== null) problems.push({ field: 'responsible', problem: responsible })
-    const requester = partyProblem(draft.requester)
+    const requester = partyProblem(draft.requester, identityCodes)
     if (requester !== null) problems.push({ field: 'requester', problem: requester })
   }
   if (

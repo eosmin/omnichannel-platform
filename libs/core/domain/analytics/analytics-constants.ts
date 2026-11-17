@@ -113,6 +113,12 @@ export const MetricDimensionsOf = {
 // Rollup windows (TDD_08 §6): each run recomputes the two latest closed periods, so a late webhook is absorbed
 export const RollupLimits = {
   RECOMPUTE_PERIODS: 2,
+  // An order that changed (cancelled, adjusted) after its day left the recompute window puts that day back in the daily run, as long
+  // as the day is no older than this; an older day stays as it was
+  LATE_ORDER_LOOKBACK_DAYS: 90,
+  // The orders that changed in this long before the run are the ones that put a day back (two runs, so one that was missed is covered)
+  LATE_ORDER_CHANGE_HOURS: 48,
+  LATE_ORDER_PAGE_SIZE: 500,
   STORES_PAGE_SIZE: 200,
   // Conversations created longer ago than this are not counted as waiting for a person
   WAITING_LOOKBACK_DAYS: 90,

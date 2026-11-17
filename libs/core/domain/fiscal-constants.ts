@@ -159,6 +159,15 @@ export enum FiscalConsultState {
   UNKNOWN = 'unknown'
 }
 
+// The parts a series of correlatives can be made of, as the series view names them (what a provider's manifest declares it counts by)
+export const FiscalSeriesScopeKeys = {
+  PROVIDER: 'providerId',
+  ENVIRONMENT: 'environment',
+  DOCUMENT_TYPE: 'documentType',
+  ESTABLISHMENT: 'establishmentCode',
+  POINT_OF_SALE: 'pointOfSaleCode'
+} as const
+
 // Why a person invalidates an accepted document, in the platform's own words (a provider maps it to the code of its authority): the
 // document had wrong information, the operation was cancelled (rescinded), or another reason the person writes down (Step 4B.7c-4)
 export enum FiscalVoidKind {

@@ -2,7 +2,12 @@ import { Injectable } from '@nestjs/common'
 
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
-import { isUniqueViolation, PrismaService } from '@platform/core/database'
+import {
+  isUniqueViolation,
+  lockStoreForWrite,
+  lockStoreScope,
+  PrismaService
+} from '@platform/core/database'
 import {
   type BenefitStateType,
   BenefitPeriodKind,
@@ -17,9 +22,16 @@ import {
   type CursorPage,
   type RecordGuideAdjustmentBody,
   type RecordGuidePurchaseBody,
+  ShipmentLockScopes,
   type VoidGuidePurchaseBody
 } from '@platform/core/domain'
-import { resourceConflict, resourceNotFound } from '@platform/core/errors'
+import {
+  ErrorCodes,
+  HttpStatusCodes,
+  PlatformException,
+  resourceConflict,
+  resourceNotFound
+} from '@platform/core/errors'
 import {
   currentBenefit,
   type GuidePolicy,
@@ -144,15 +156,20 @@ export class CarrierGuidesApiService {
     actor: Actor
   ): Promise<GuideMovementView> {
     await this.assertConnection(storeId, connectionId)
-    const row = await this.prisma.client.carrierGuideMovement.create({
-      data: {
-        storeId,
-        connectionId,
-        kind: GuideMovementKind.ADJUSTMENT,
-        guidesDelta: body.guides,
-        note: body.note,
-        createdBy: actor.userId
-      }
+    // Under the lock of the balance, like the guides and the void of a purchase: a void that read the balance waits for this write
+    const row = await this.prisma.transaction(async tx => {
+      await lockStoreForWrite(tx, storeId)
+      await lockStoreScope(tx, storeId, `${ShipmentLockScopes.GUIDE_BALANCE}:${connectionId}`)
+      return tx.carrierGuideMovement.create({
+        data: {
+          storeId,
+          connectionId,
+          kind: GuideMovementKind.ADJUSTMENT,
+          guidesDelta: body.guides,
+          note: body.note,
+          createdBy: actor.userId
+        }
+      })
     })
     this.record(AuditAction.CARRIER_GUIDE_ADJUSTED, storeId, connectionId, actor, {
       movementId: row.id,
@@ -170,28 +187,44 @@ export class CarrierGuidesApiService {
     actor: Actor
   ): Promise<GuideMovementView> {
     await this.assertConnection(storeId, connectionId)
-    const purchase = await this.prisma.client.carrierGuideMovement.findFirst({
-      where: { id: movementId, storeId, connectionId, kind: GuideMovementKind.PURCHASE },
-      include: { voidedBy: { select: { id: true } } }
-    })
-    if (purchase === null) throw resourceNotFound('Purchase')
-    if (purchase.voidedBy !== null) throw resourceConflict('The purchase was already voided')
     try {
-      const row = await this.prisma.client.carrierGuideMovement.create({
-        data: {
-          storeId,
-          connectionId,
-          kind: GuideMovementKind.VOID,
-          guidesDelta: -purchase.guidesDelta,
-          costCentsDelta: -purchase.costCentsDelta,
-          voidsMovementId: purchase.id,
-          note: body.note,
-          createdBy: actor.userId
+      const row = await this.prisma.transaction(async tx => {
+        await lockStoreForWrite(tx, storeId)
+        // One writer of the balance of the connection at a time: the same lock the guides take, so the balance read below is the
+        // one the void leaves behind
+        await lockStoreScope(tx, storeId, `${ShipmentLockScopes.GUIDE_BALANCE}:${connectionId}`)
+        const purchase = await tx.carrierGuideMovement.findFirst({
+          where: { id: movementId, storeId, connectionId, kind: GuideMovementKind.PURCHASE },
+          include: { voidedBy: { select: { id: true } } }
+        })
+        if (purchase === null) throw resourceNotFound('Purchase')
+        if (purchase.voidedBy !== null) throw resourceConflict('The purchase was already voided')
+        // Guides of the purchase already used: voiding it would take them out of a balance that does not hold them (TDD_17 §4.18).
+        // A void never leaves the balance below zero; the way to correct it is an adjustment, with its reason.
+        const { balance } = await guideBalanceOf(tx, storeId, connectionId)
+        if (balance - purchase.guidesDelta < 0) {
+          throw new PlatformException(
+            ErrorCodes.CARRIER_GUIDE_VOID_EXCEEDS_BALANCE,
+            'The guides of this purchase were already used: voiding it would leave the balance below zero',
+            HttpStatusCodes.CONFLICT
+          )
         }
+        return tx.carrierGuideMovement.create({
+          data: {
+            storeId,
+            connectionId,
+            kind: GuideMovementKind.VOID,
+            guidesDelta: -purchase.guidesDelta,
+            costCentsDelta: -purchase.costCentsDelta,
+            voidsMovementId: purchase.id,
+            note: body.note,
+            createdBy: actor.userId
+          }
+        })
       })
       this.record(AuditAction.CARRIER_GUIDE_PURCHASE_VOIDED, storeId, connectionId, actor, {
         movementId: row.id,
-        voidsMovementId: purchase.id
+        voidsMovementId: movementId
       })
       return this.viewOf(row, false)
     } catch (error) {

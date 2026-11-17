@@ -17,6 +17,7 @@ import {
   ShipmentStatus,
   ShippingPayer
 } from '@platform/core/domain'
+import { ErrorCodes } from '@platform/core/errors'
 import { NotificationTypes } from '@platform/core/notifications'
 import { closeBenefitPeriods, readGuidePolicy, ShipmentWrites } from '@platform/core/shipping'
 
@@ -195,6 +196,82 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
     const rows = (page.body as { data: Array<{ id: string; voided: boolean }> }).data
     expect(rows).toHaveLength(2)
     expect(rows.find(row => row.id === purchase.id)?.voided).toBe(true)
+  })
+
+  describe('voiding a purchase whose guides were already used (G006)', () => {
+    const voidPurchase = (connectionId: string, purchaseId: string) =>
+      admin()
+        .post(ApiRoutes.carriers.guidePurchaseVoid(connectionId, purchaseId))
+        .send({ note: 'typed twice' })
+
+    it('refuses with its own code, writes nothing and leaves the balance as it was', async () => {
+      const { id } = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
+      await putPolicy(id, { benefitEnabled: false })
+      const purchase = (await buy(id, 10, 1000)).body as { id: string }
+      for (let used = 0; used < 4; used += 1) await madeGuide(id)
+      expect((await balanceOf(id)).balance).toBe(6)
+      const refused = await voidPurchase(id, purchase.id)
+      expect(refused.status).toBe(409)
+      expect((refused.body as { error: { code: string } }).error.code).toBe(
+        ErrorCodes.CARRIER_GUIDE_VOID_EXCEEDS_BALANCE
+      )
+      expect(await movementsOf(id, GuideMovementKind.VOID)).toHaveLength(0)
+      expect((await balanceOf(id)).balance).toBe(6)
+    })
+
+    it('refuses when the balance is already below zero, and at the exact edge lets the void through', async () => {
+      const { id } = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
+      await putPolicy(id, { benefitEnabled: false })
+      const first = (await buy(id, 10, 1000)).body as { id: string }
+      const second = (await buy(id, 10, 1000)).body as { id: string }
+      for (let used = 0; used < 10; used += 1) await madeGuide(id)
+      // 20 bought, 10 used: voiding one of 10 leaves exactly 0
+      expect((await voidPurchase(id, first.id)).status).toBe(200)
+      expect((await balanceOf(id)).balance).toBe(0)
+      // what is left cannot be voided: it would leave -10
+      expect((await voidPurchase(id, second.id)).status).toBe(409)
+      expect((await balanceOf(id)).balance).toBe(0)
+    })
+
+    it('does not touch the purchase of another store: it is a 404 and writes nothing there', async () => {
+      const own = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
+      const { id } = await createCarrierConnection(owner, { storeId: ctx.storeB.id })
+      const purchase = await owner.carrierGuideMovement.create({
+        data: {
+          storeId: ctx.storeB.id,
+          connectionId: id,
+          kind: GuideMovementKind.PURCHASE,
+          guidesDelta: 5,
+          costCentsDelta: 500,
+          paidQuantity: 5,
+          giftQuantity: 0,
+          createdBy: ctx.adminA.id
+        }
+      })
+      // the connection of another store, and the purchase of another store under the connection of this one
+      expect((await voidPurchase(id, purchase.id)).status).toBe(404)
+      expect((await voidPurchase(own.id, purchase.id)).status).toBe(404)
+      expect(
+        await owner.carrierGuideMovement.count({
+          where: { voidsMovementId: purchase.id }
+        })
+      ).toBe(0)
+    })
+
+    it('waits for an adjustment that is being written, so the balance it reads is the final one', async () => {
+      const { id } = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
+      const purchase = (await buy(id, 10, 1000)).body as { id: string }
+      const adjust = admin()
+        .post(ApiRoutes.carriers.guideAdjustments(id))
+        .send({ guides: -8, note: 'lost' })
+      const voided = voidPurchase(id, purchase.id)
+      const [adjusted, result] = await Promise.all([adjust, voided])
+      // whichever came first, the balance never ends below zero through the void
+      expect(adjusted.status).toBe(201)
+      const balance = (await balanceOf(id)).balance
+      if (result.status === 200) expect(balance).toBe(-8)
+      else expect(balance).toBe(2)
+    })
   })
 
   it('adjusts by a signed number of guides with a reason, and refuses a zero or no reason', async () => {
