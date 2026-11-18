@@ -409,6 +409,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'finance.reports.journalCsv': { none: FINANCE },
   'finance.reports.verifyChain': { none: FINANCE },
   'finance.reports.chainStatus': { none: FINANCE },
+  'finance.reports.resolveChain': { none: FINANCE },
   'finance.reports.incomeStatement': { none: FINANCE },
   'finance.reports.balanceSheet': { none: FINANCE },
   'finance.reports.cashFlow': { none: FINANCE },

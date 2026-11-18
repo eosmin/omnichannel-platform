@@ -14,16 +14,24 @@ export class FinanceChainChecker {
     this.logger.setContext(FinanceChainChecker.name)
   }
 
-  async check(organizationId: string, now: Date = new Date()): Promise<ChainCheck> {
+  // `requestedBy`: the person who asked for this check to close an incident, when it is not the weekly schedule
+  async check(
+    organizationId: string,
+    now: Date = new Date(),
+    requestedBy?: string
+  ): Promise<ChainCheck> {
     const result = await this.monitor.check(organizationId, { resolve: true }, now)
     this.logger.info(
       {
         organizationId,
         ok: result.verification.ok,
         entriesChecked: result.verification.entriesChecked,
-        incident: result.incident
+        incident: result.incident,
+        requestedBy: requestedBy ?? null
       },
-      'the weekly check of the hash chain ran'
+      requestedBy === undefined
+        ? 'the weekly check of the hash chain ran'
+        : 'the check of the hash chain a person asked for ran'
     )
     return result
   }

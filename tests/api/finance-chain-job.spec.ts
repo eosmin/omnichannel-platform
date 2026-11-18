@@ -5,11 +5,13 @@ import { EventEmitter2 } from '@nestjs/event-emitter'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
+import { AuditAction } from '@platform/core/audit'
 import { PrismaService } from '@platform/core/database'
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
 import {
   ChainIncidentChange,
   ChainProblem,
+  FinanceConflicts,
   FinanceCountryCodes,
   JournalEntryType
 } from '@platform/core/domain'
@@ -21,18 +23,27 @@ import {
   FinanceChainVerifier,
   FinanceCloseGuard
 } from '@platform/core/finance-ledger'
-import { JobNames, verifyLedgerChainJobId } from '@platform/core/queues'
+import {
+  JobNames,
+  QueueNames,
+  requestedVerifyLedgerChainJobId,
+  verifyLedgerChainJobId
+} from '@platform/core/queues'
 
 import { FinanceChainChecker } from '../../apps/worker/src/finance/finance-chain-checker.service'
 import { FinanceChainScheduler } from '../../apps/worker/src/schedulers/finance-chain.scheduler'
 import { tamperWithLedger } from '../builders/finance'
 import { createTestApp } from '../helpers/app'
+import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
-import { CapturedQueue } from '../helpers/queue'
+import { CapturedQueue, queueOf } from '../helpers/queue'
 
 const CREATED = 201
+const ACCEPTED = 202
+const FORBIDDEN = 403
+const CONFLICT = 409
 const START = '2026-01-01'
 const CASH = '1101'
 const RENT = '6105'
@@ -333,6 +344,102 @@ describe('The weekly check of the chain, its incident and the guard of the close
         logger
       )
       await expect(failing.run()).resolves.toBeUndefined()
+    })
+  })
+  // N-B8-1: the api role cannot close an incident, so a person asks the worker, which walks the chain again and decides
+  describe('asking the worker to close an incident', () => {
+    const heavy = () => queueOf(app, QueueNames.HEAVY_PROCESSING)
+    const asked = (org: string) =>
+      heavy().jobs.filter(
+        job =>
+          job.name === JobNames.VERIFY_LEDGER_CHAIN &&
+          (job.data as { organizationId: string }).organizationId === org &&
+          (job.data as { requestedBy?: string }).requestedBy !== undefined
+      )
+    const openIncidentFor = (organizationId: string) =>
+      owner.financeChainIncident.create({
+        data: {
+          organizationId,
+          reason: ChainProblem.HASH_MISMATCH,
+          entriesChecked: 1,
+          lastSeenAt: new Date()
+        }
+      })
+    const resolveAll = (organizationId: string) =>
+      owner.financeChainIncident.updateMany({
+        where: { organizationId, resolvedAt: null },
+        data: { resolvedAt: new Date() }
+      })
+
+    it('refuses a member without the right to close periods', async () => {
+      await openIncidentFor(ctx.orgA.id)
+
+      const response = await api(app, ctx.agentA, ctx.storeA).post(
+        ApiRoutes.finance.reports.resolveChain
+      )
+
+      expect(response.status).toBe(FORBIDDEN)
+      expect(asked(ctx.orgA.id)).toEqual([])
+    })
+
+    it('refuses when no incident is open', async () => {
+      await resolveAll(ctx.orgB.id)
+
+      const response = await api(app, ctx.adminB, ctx.storeB).post(
+        ApiRoutes.finance.reports.resolveChain
+      )
+
+      expect(response.status).toBe(CONFLICT)
+      expect(
+        (response.body as { error: { metadata?: { conflict?: string } } }).error.metadata?.conflict
+      ).toBe(FinanceConflicts.CHAIN_NO_OPEN_INCIDENT)
+      expect(asked(ctx.orgB.id)).toEqual([])
+    })
+
+    it('queues one check for the organization of the caller, audits who asked, and never closes the incident itself', async () => {
+      await resolveAll(ctx.orgA.id)
+      await resolveAll(ctx.orgB.id)
+      await openIncidentFor(ctx.orgB.id)
+
+      const first = await api(app, ctx.adminB, ctx.storeB).post(
+        ApiRoutes.finance.reports.resolveChain
+      )
+      const second = await api(app, ctx.adminB, ctx.storeB).post(
+        ApiRoutes.finance.reports.resolveChain
+      )
+
+      expect(first.status).toBe(ACCEPTED)
+      expect(second.status).toBe(ACCEPTED)
+      const jobs = asked(ctx.orgB.id)
+      // Twice asked, the same job id: the queue keeps one while it waits
+      expect(new Set(jobs.map(job => job.opts?.jobId))).toEqual(
+        new Set([requestedVerifyLedgerChainJobId(ctx.orgB.id)])
+      )
+      expect(jobs[0]?.data).toEqual({ organizationId: ctx.orgB.id, requestedBy: ctx.adminB.id })
+      // The api did not close it: that is the worker's, and the api role has no right to
+      expect(await openIncidents(ctx.orgB.id)).toHaveLength(1)
+      const [entry] = await waitForAuditEntries(owner, {
+        action: AuditAction.FINANCE_CHAIN_RESOLVE_REQUESTED,
+        resourceId: ctx.orgB.id
+      })
+      expect(entry?.userId).toBe(ctx.adminB.id)
+      // Nothing was asked for the other organization
+      expect(asked(ctx.orgA.id)).toEqual([])
+    })
+
+    it('is closed by the job of the worker when the chain verifies, and stays open when it does not', async () => {
+      const checker = new FinanceChainChecker(monitor, logger)
+      await tamperWithLedger(owner, [firstMemo(ctx.orgB.id, 'Rewritten')])
+      const broken = await checker.check(ctx.orgB.id, new Date(), ctx.adminB.id)
+      expect(broken.verification.ok).toBe(false)
+      expect(await openIncidents(ctx.orgB.id)).toHaveLength(1)
+
+      await tamperWithLedger(owner, [firstMemo(ctx.orgB.id, 'Original memo')])
+      const sound = await checker.check(ctx.orgB.id, new Date(), ctx.adminB.id)
+
+      expect(sound.verification.ok).toBe(true)
+      expect(sound.incident).toBe(ChainIncidentChange.RESOLVED)
+      expect(await openIncidents(ctx.orgB.id)).toEqual([])
     })
   })
 })

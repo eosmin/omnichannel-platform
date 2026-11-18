@@ -125,7 +125,11 @@ const reconcileFinanceJobSchema = exactly<ReconcileFinanceJob>()(
   z.object({ organizationId: z.uuid(), correlationId: z.string().optional() })
 )
 const verifyLedgerChainJobSchema = exactly<VerifyLedgerChainJob>()(
-  z.object({ organizationId: z.uuid(), correlationId: z.string().optional() })
+  z.object({
+    organizationId: z.uuid(),
+    requestedBy: z.uuid().optional(),
+    correlationId: z.string().optional()
+  })
 )
 const postFinanceJobSchema = exactly<PostFinanceEventJob>()(
   z.object({
@@ -270,7 +274,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
         throw new UnrecoverableError('the chain check job does not fit its schema')
       }
       // A break is an incident the check records and returns; only an error of the infrastructure rejects, and the queue asks again
-      await this.financeChain.check(verify.data.organizationId)
+      await this.financeChain.check(verify.data.organizationId, new Date(), verify.data.requestedBy)
       return
     }
     if (job.name === JobNames.SUBMIT_FISCAL_DOCUMENT) {
