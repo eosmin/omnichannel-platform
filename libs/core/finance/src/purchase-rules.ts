@@ -2,6 +2,7 @@
 export {
   billBalances,
   canTransition,
+  documentNumberKey,
   dueDay,
   needsUncreditableTaxAccount,
   paymentLines,
