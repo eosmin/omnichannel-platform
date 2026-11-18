@@ -68,11 +68,10 @@ if (pushed.length === 0) {
 // only edits it runs those three: a step renamed or deferred must not first break in CI
 const PLAN_FILE = 'docs/IMPLEMENTATION_PLAN.md'
 const PLAN_CHECKS = ['validate:isolation', 'validate:frontend', 'validate:plugin-api']
+// A stray backup (`docs/x.md-e`) is exactly what a docs-only push can carry: that check is path-based and always runs
+const STRAY_CHECK = 'validate:stray-files'
 const docsOnly = isDocsOnly(pushed)
-if (docsOnly && !pushed.includes(PLAN_FILE)) {
-  console.log('only docs/ changed in what is pushed: nothing to check')
-  exit(0)
-}
+const docsChecks = pushed.includes(PLAN_FILE) ? [...PLAN_CHECKS, STRAY_CHECK] : [STRAY_CHECK]
 
 const STEPS: AffectedStep[] = [
   {
@@ -114,7 +113,7 @@ const STEPS: AffectedStep[] = [
 
 const toRun = selectSteps(STEPS, { full })
 for (const { name, command } of docsOnly
-  ? toRun.filter(({ name }) => PLAN_CHECKS.includes(name))
+  ? toRun.filter(({ name }) => docsChecks.includes(name))
   : toRun) {
   console.log(`\n> ${name}`)
   const result = spawnSync('pnpm', command, { stdio: 'inherit' })
