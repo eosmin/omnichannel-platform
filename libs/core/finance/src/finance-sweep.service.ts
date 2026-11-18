@@ -596,6 +596,9 @@ export class FinanceSweepService {
       },
       out
     )
+    // E14 (the refund of a return) is NOT swept either: the return keeps no date of its completion (`updatedAt` moves with any later
+    // write), and a refund recorded before E14 existed may already be booked by hand, so sweeping would post it twice. A refund that never
+    // reached the queue is on the list of failures (the listener marks it) and a person presses "post again".
     // E8 of an order that came back as a whole with no return row is NOT swept, for the reason E7 is not: its day is the day of the job.
 
     // E9: an adjustment or a count variance

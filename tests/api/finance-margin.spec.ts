@@ -10,14 +10,17 @@ import {
   AccountRole,
   FinanceCountryCodes,
   FinanceEventKind,
+  FinancePostingKey,
   FinanceReport,
   FinanceSourceType,
   InventoryMovementType,
+  JournalEntryType,
   MarginWarning
 } from '@platform/core/domain'
 import { FinancePostingService } from '@platform/core/finance-ledger'
 
 import { createCarrierConnection, createOrder } from '../builders'
+import { postTestEntry } from '../builders/finance'
 import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
@@ -333,6 +336,47 @@ describe('The margin by product', () => {
       row => (row.metadata as { report?: string } | null)?.report === FinanceReport.MARGIN
     )
     expect(mine?.metadata).toMatchObject({ report: FinanceReport.MARGIN, from: TODAY, to: TODAY })
+  })
+  // HC-005: the advance payment of an order (E1) is a SALE entry of source ORDER too, under another key than the sale. The margin reads
+  // the entry of the sale only (`order:<id>:sale`), as the books do: an order paid in advance is neither counted twice nor in the month
+  // of the payment.
+  it('does not count the entry of an advance payment as the sale of its order', async () => {
+    const before = (await margin()).body as MarginBody
+    const advanceOf = await deliveredOrder(ctx.storeA.id, ctx.warehouseA.id)
+    // The same advance on an order that has its sale in the range too: it must not be counted twice
+    const both = orderA[0] ?? ''
+    const role = async (name: string): Promise<string> =>
+      (
+        await owner.accountRoleMapping.findUniqueOrThrow({
+          where: { organizationId_role: { organizationId: ctx.orgA.id, role: name } }
+        })
+      ).accountId
+    const period = await owner.fiscalPeriod.findFirstOrThrow({
+      where: {
+        organizationId: ctx.orgA.id,
+        startsOn: { lte: new Date(TODAY) },
+        endsOn: { gte: new Date(TODAY) }
+      }
+    })
+    for (const orderId of [advanceOf, both]) {
+      await postTestEntry(owner, {
+        organizationId: ctx.orgA.id,
+        periodId: period.id,
+        entryDate: TODAY,
+        type: JournalEntryType.SALE,
+        sourceType: FinanceSourceType.ORDER,
+        sourceId: orderId,
+        idempotencyKey: FinancePostingKey.ORDER_PAYMENT(orderId),
+        lines: [
+          { accountId: await role(AccountRole.CASH_DEFAULT), debitCents: 2825 },
+          { accountId: await role(AccountRole.CUSTOMER_ADVANCES), creditCents: 2825 }
+        ]
+      })
+    }
+    const after = (await margin()).body as MarginBody
+
+    expect(after.ordersUsed).toBe(before.ordersUsed)
+    expect(after.totals).toEqual(before.totals)
   })
 })
 
