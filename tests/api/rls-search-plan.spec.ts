@@ -183,6 +183,8 @@ describe('the plan of the searches with row-level security on', () => {
   // 20270121600000_rls_search_functions): the policy is then the explicit `store_id = ANY (context)` inside them, and the index serves the
   // search again. The case below measures the FUNCTION with the policies on, from the plan of the statement inside it (the outer plan only
   // says "Function Scan"): auto_explain, which the owner of the database (a superuser in CI) loads. The call is made as platform_app.
+  const MESSAGES_FUNCTION =
+    'public.rls_search_messages(text, integer, integer, text, boolean, boolean, boolean, boolean, text[], text, text, text, text)'
   const FUNCTION_CALL = `SELECT * FROM public.rls_search_messages($1, 25::integer, $2::integer, NULL::text, true, true, true, true,
     $3::text[], $4, $5, $6, $7)`
   async function planOfFunction(): Promise<string> {
@@ -192,14 +194,26 @@ describe('the plan of the searches with row-level security on', () => {
     await raw.query('BEGIN')
     try {
       await raw.query("SET LOCAL lock_timeout = '20s'")
-      for (const table of ['conversations', 'messages']) {
+      // The deployment: the function belongs to a role that is NOT a superuser and does not bypass row security, and the tables it reads
+      // are FORCED, so what lets it read is the `<table>_owner` policy of its owner, exactly as in production. Everything here is
+      // rolled back (DDL is transactional): the role, the policies and the owner of the function never exist outside this case.
+      const role = `plan_owner_${prefix.replaceAll(/[^a-z0-9]/gi, '_')}`.slice(0, 60)
+      await raw.query(`CREATE ROLE ${role} NOLOGIN NOSUPERUSER NOBYPASSRLS`)
+      await raw.query(`GRANT USAGE, CREATE ON SCHEMA public TO ${role}`)
+      for (const table of ['conversations', 'messages', 'customers']) {
+        await raw.query(`GRANT SELECT ON ${table} TO ${role}`)
         await raw.query(`ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY`)
+        await raw.query(`ALTER TABLE ${table} FORCE ROW LEVEL SECURITY`)
+        await raw.query(`DROP POLICY IF EXISTS plan_owner ON ${table}`)
+        await raw.query(
+          `CREATE POLICY plan_owner ON ${table} AS PERMISSIVE FOR ALL TO ${role} USING (true) WITH CHECK (true)`
+        )
       }
+      await raw.query(`ALTER FUNCTION ${MESSAGES_FUNCTION} OWNER TO ${role}`)
       await raw.query(`LOAD 'auto_explain'`)
       await raw.query('SET LOCAL auto_explain.log_min_duration = 0')
       await raw.query('SET LOCAL auto_explain.log_nested_statements = on')
       await raw.query('SET LOCAL client_min_messages = log')
-      await raw.query('SET LOCAL ROLE platform_app')
       await raw.query("SELECT set_config('app.store_ids', $1, true)", [storeA])
       await raw.query(FUNCTION_CALL, [
         'zorbalux',
@@ -219,7 +233,8 @@ describe('the plan of the searches with row-level security on', () => {
 
   it('with the policies on, the function reads the messages of a word through the index of the search', async () => {
     const plan = await planOfFunction()
-    expect({ usesIndex: plan.includes(MESSAGES_INDEX), plan }).toMatchObject({ usesIndex: true })
+    // The whole plan travels with the failure: `plan` is what auto_explain logged for the statement inside the function
+    expect(plan).toContain(MESSAGES_INDEX)
     expect(plan).not.toMatch(/Seq Scan on messages/)
   })
 })

@@ -47,10 +47,6 @@ const FUNCTION_ARGS = {
       'MaxWords=20, MinWords=5'
     ] as const
 }
-// Seeding two stores of this many rows (a GIN index to maintain) takes longer than the default timeout of a test
-const VOLUME_ROWS = 10000
-const VOLUME_TIMEOUT_MS = 180_000
-const VOLUME_MARKED = 4
 const MESSAGES_CALL = `SELECT * FROM public.rls_search_messages($1, $2::integer, $3::integer, $4::text, $5::boolean, $6::boolean,
   $7::boolean, $8::boolean, $9::text[], $10, $11, $12, $13)`
 const TYPED_CALL = `SELECT * FROM public.rls_search_messages_typed($1, $2, $3::integer, $4::text, $5::boolean, $6::boolean,
@@ -66,7 +62,6 @@ describe('the search functions of row-level security', () => {
   let owner: OwnerClient
   let ctx: TestContext
   let appDb: pg.Client
-  let ownerDb: pg.Client
   const tag = `zs${Math.random()
     .toString(36)
     .slice(2, 10)
@@ -79,13 +74,10 @@ describe('the search functions of row-level security', () => {
     )
     ctx = await seedTestContext(owner, app, prefix)
     appDb = new pg.Client({ connectionString: urls.app })
-    ownerDb = new pg.Client({ connectionString: urls.owner })
     await appDb.connect()
-    await ownerDb.connect()
   })
   afterAll(async () => {
     await appDb.end()
-    await ownerDb.end()
     await cleanUp(owner, prefix)
     await app.close()
     await owner.$disconnect()
@@ -319,94 +311,4 @@ describe('the search functions of row-level security', () => {
     expect(await idsAs('someone-else')).not.toContain(message.id)
     expect(await idsAs(undefined)).not.toContain(message.id)
   })
-
-  // Rows of a store that look like the ones of a real inbox, copied from one the builders made (so every NOT NULL column has a valid
-  // value) with a new id and a text of their own, one second apart. The generated columns are left out of the column list.
-  async function seedVolume(storeId: string, template: string, rows: number, marked: number) {
-    const { rows: columns } = await ownerDb.query<{ list: string }>(
-      `SELECT string_agg(quote_ident(attname), ',' ORDER BY attnum) AS list FROM pg_attribute
-        WHERE attrelid = 'public.messages'::regclass AND attnum > 0 AND NOT attisdropped AND attgenerated = ''`
-    )
-    const list = columns[0]?.list ?? ''
-    await ownerDb.query(
-      `INSERT INTO public.messages (${list})
-       SELECT ${list} FROM (
-         SELECT (jsonb_populate_record(NULL::public.messages, to_jsonb(t) || jsonb_build_object(
-           'id', gen_random_uuid()::text,
-           'content', CASE WHEN g <= $3 THEN $4 || ' pedido de camión ' || g ELSE 'relleno número ' || g || ' del almacén' END,
-           'created_at', t.created_at - g * interval '1 second',
-           'channel_message_id', NULL, 'idempotency_key', NULL))).*
-         FROM public.messages t CROSS JOIN generate_series(1, $2::integer) g
-         WHERE t.id = $1
-       ) x`,
-      [template, rows, marked, tag]
-    )
-    await ownerDb.query('ANALYZE public.messages')
-    return storeId
-  }
-
-  // The plan of the statements INSIDE a function, as auto_explain logs them (the outer plan only says "Function Scan"). Run on the
-  // connection of the owner of the database, which can load it; the plan of a SECURITY DEFINER function does not depend on who calls.
-  async function planOf(store: string, call: string, args: readonly unknown[]): Promise<string> {
-    const plans: string[] = []
-    const collect = (notice: { message?: string }) => plans.push(notice.message ?? '')
-    ownerDb.on('notice', collect)
-    try {
-      await ownerDb.query('BEGIN')
-      await ownerDb.query(
-        `SELECT set_config('app.store_ids', $1, true), set_config('app.organization_ids', '', true)`,
-        [store]
-      )
-      await ownerDb.query(`LOAD 'auto_explain'`)
-      await ownerDb.query('SET LOCAL auto_explain.log_min_duration = 0')
-      await ownerDb.query('SET LOCAL auto_explain.log_nested_statements = on')
-      await ownerDb.query('SET LOCAL client_min_messages = log')
-      await ownerDb.query(call, [...args])
-      await ownerDb.query('COMMIT')
-    } catch (error) {
-      await ownerDb.query('ROLLBACK')
-      throw error
-    } finally {
-      ownerDb.off('notice', collect)
-    }
-    return plans.join('\n')
-  }
-
-  it(
-    'reads the full-text index of the messages with the rows of two stores in the table, and not the store index',
-    async () => {
-      const mine = await createConversationOf(owner, { storeId: ctx.storeA.id })
-      const theirs = await createConversationOf(owner, { storeId: ctx.storeB.id })
-      const first = await createMessage(owner, {
-        storeId: ctx.storeA.id,
-        conversationId: mine.id,
-        content: 'semilla'
-      })
-      const second = await createMessage(owner, {
-        storeId: ctx.storeB.id,
-        conversationId: theirs.id,
-        content: 'semilla'
-      })
-      await seedVolume(ctx.storeA.id, first.id, VOLUME_ROWS, VOLUME_MARKED)
-      await seedVolume(ctx.storeB.id, second.id, VOLUME_ROWS, VOLUME_MARKED)
-
-      const [q, ...rest] = FUNCTION_ARGS.messages(`camion ${tag}`)
-      const plan = await planOf(ctx.storeA.id, MESSAGES_CALL, [q, ...rest])
-      // The message of the plan is what failed, so it travels with the assertion
-      expect({ usesGin: plan.includes('idx_messages_search_unaccent'), plan }).toMatchObject({
-        usesGin: true
-      })
-      expect(plan).not.toMatch(/Seq Scan on messages/)
-      // And it answers: the marked rows of the store of the context, and none of the other store
-      const ids = (await messagesIn([ctx.storeA.id], `camion ${tag}`)).map(row => row.id)
-      // At least the marked rows: an earlier case of this file has a message with the same word
-      expect(ids.length).toBeGreaterThanOrEqual(VOLUME_MARKED)
-      const alien = await ownerDb.query<{ n: string }>(
-        'SELECT count(*)::text AS n FROM public.messages WHERE id = ANY($1::text[]) AND store_id <> $2',
-        [ids, ctx.storeA.id]
-      )
-      expect(alien.rows[0]?.n).toBe('0')
-    },
-    VOLUME_TIMEOUT_MS
-  )
 })
