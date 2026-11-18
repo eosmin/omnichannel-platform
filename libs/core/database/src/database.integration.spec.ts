@@ -186,16 +186,26 @@ describe('PrismaService', () => {
     expect(rows[0]).toEqual({ stores: 's-1,s-2', organizations: 'o-1', person: 'u-1' })
   })
 
-  it('reads the replica in a READ ONLY transaction, and refuses a write through it and a call inside a tenant transaction', async () => {
+  it('reads the replica in a READ ONLY transaction, and refuses a call inside a tenant transaction', async () => {
     const context = { storeIds: ['s-1'], organizationIds: ['o-1'] }
-    await expect(
-      service.replicaTenantRead(
-        context,
-        // A statement that writes is refused at its start, even when it matches no row (a temporary table would be allowed, and
-        // CREATE is refused to the role for another reason first)
-        db => db.$executeRaw`UPDATE stores SET name = name WHERE false`
-      )
-    ).rejects.toThrow(/read-only/i)
+    // The contract is that the transaction IS read only (replicaTenantRead itself refuses to read when it is not)
+    const mode = await service.replicaTenantRead(
+      context,
+      db =>
+        db.$queryRaw<
+          { read_only: string }[]
+        >`SELECT current_setting('transaction_read_only') AS read_only`
+    )
+    expect(mode[0]?.read_only).toBe('on')
+    // And the tenant transaction of a request is not
+    const writable = await service.tenantTransaction(
+      context,
+      () =>
+        service.client.$queryRaw<
+          { read_only: string }[]
+        >`SELECT current_setting('transaction_read_only') AS read_only`
+    )
+    expect(writable[0]?.read_only).toBe('off')
     await expect(
       service.tenantTransaction(context, () =>
         service.replicaTenantRead(context, () => Promise.resolve(1))

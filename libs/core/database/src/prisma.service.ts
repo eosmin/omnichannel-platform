@@ -41,10 +41,16 @@ export type ReplicaTransaction = Parameters<Parameters<ReplicaClient['$transacti
 // The context is set in ONE statement (a round trip fewer through PgBouncer), with set_config(..., true): transaction-local, so
 // it cannot reach the next client of a pooled connection. A session-level setting is refused by `pnpm validate:rls`.
 async function applyTenantContext(
-  tx: Pick<PrismaTransaction, '$executeRaw'>,
+  tx: Pick<PrismaTransaction, '$queryRaw'>,
   context: TenantContext
-): Promise<void> {
-  await tx.$executeRaw`SELECT set_config('app.store_ids', ${context.storeIds.join(',')}, true), set_config('app.organization_ids', ${context.organizationIds.join(',')}, true), set_config('app.user_id', ${context.userId ?? ''}, true)`
+): Promise<string> {
+  // The last column says whether the transaction is read only, so that the caller that needs it can check it in the same trip
+  const rows = await tx.$queryRaw<{ read_only: string }[]>`
+    SELECT set_config('app.store_ids', ${context.storeIds.join(',')}, true),
+           set_config('app.organization_ids', ${context.organizationIds.join(',')}, true),
+           set_config('app.user_id', ${context.userId ?? ''}, true),
+           current_setting('transaction_read_only') AS read_only`
+  return rows[0]?.read_only ?? ''
 }
 
 interface TransactionOptions {
