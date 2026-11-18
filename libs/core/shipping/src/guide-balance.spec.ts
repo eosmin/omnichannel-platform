@@ -1,5 +1,6 @@
 import type { PrismaService, PrismaTransaction } from '@platform/core/database'
 import {
+  CarrierChargeModel,
   BenefitBase,
   BenefitLossRule,
   BenefitPeriodKind,
@@ -37,6 +38,7 @@ interface Movement {
   guidesDelta: number
   costCentsDelta: number
   unitCostCents?: number | null
+  onAdvance?: boolean
   shipmentId?: string | null
 }
 interface EventRow {
@@ -81,6 +83,7 @@ function fakeDb(
   options: {
     policy?: ReturnType<typeof policyRow> | null
     timezone?: string | null
+    chargeModel?: string
   } = {}
 ) {
   const state = {
@@ -97,6 +100,9 @@ function fakeDb(
   const db = {
     carrierGuidePolicy: {
       findFirst: () => Promise.resolve(state.policy)
+    },
+    carrierConnection: {
+      findFirst: () => Promise.resolve({ chargeModel: options.chargeModel ?? 'invoiced' })
     },
     store: {
       findUnique: () =>
@@ -402,6 +408,19 @@ describe('the guide taken when a label is made', () => {
     expect(consumed[0]?.unitCostCents).toBe(100)
     expect(fake.state.locks).toBe(2)
     expect(fake.published).toHaveLength(0)
+  })
+
+  it('writes on the movement whether the guide took its cost out of the advance, from how the connection charges when it was made (HC-101)', async () => {
+    for (const [chargeModel, onAdvance] of [
+      [CarrierChargeModel.PREPAID, true],
+      [CarrierChargeModel.INVOICED, false],
+      [CarrierChargeModel.REMITTANCE, false]
+    ] as const) {
+      const fake = fakeDb({ chargeModel })
+      await made(fake, 'a')
+      const consumed = fake.state.movements.filter(row => row.kind === GuideMovementKind.CONSUME)
+      expect(consumed.map(row => row.onAdvance)).toEqual([onAdvance])
+    }
   })
 
   it('says low and then empty when the balance gets there, and never refuses', async () => {

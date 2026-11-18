@@ -186,6 +186,8 @@ export enum AccountRole {
   COST_OF_GOODS_SOLD = 'cost_of_goods_sold',
   INVENTORY_LOSS = 'inventory_loss',
   INVENTORY_GAIN = 'inventory_gain',
+  // Guides bought in advance and not used yet (an asset): the purchase of guides debits it (the next PR of Step 4B.6b-4), each guide a prepaid connection makes credits it
+  PREPAID_CARRIER_GUIDES = 'prepaid_carrier_guides',
   CARRIER_FREIGHT_EXPENSE = 'carrier_freight_expense',
   CARRIER_COMMISSION_EXPENSE = 'carrier_commission_expense',
   COD_DIFFERENCES = 'cod_differences',
@@ -252,6 +254,7 @@ export const AccountTypesOfRole: Readonly<Record<AccountRole, readonly AccountTy
   [AccountRole.COST_OF_GOODS_SOLD]: [COST_OF_SALES, EXPENSE],
   [AccountRole.INVENTORY_LOSS]: [EXPENSE, COST_OF_SALES],
   [AccountRole.INVENTORY_GAIN]: [INCOME],
+  [AccountRole.PREPAID_CARRIER_GUIDES]: [ASSET],
   [AccountRole.CARRIER_FREIGHT_EXPENSE]: [EXPENSE, COST_OF_SALES],
   [AccountRole.CARRIER_COMMISSION_EXPENSE]: [EXPENSE, COST_OF_SALES],
   // A shortfall debits it and a surplus credits it (`return-entry-rules.ts`), so a chart may book it as an expense or as income
