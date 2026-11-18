@@ -5,7 +5,11 @@ import type { INestApplication } from '@nestjs/common'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { AuditAction } from '@platform/core/audit'
-import { auditColdExportLockKey, DataRetentionPolicies } from '@platform/core/compliance'
+import {
+  AuditColdExport,
+  auditColdExportLockKey,
+  DataRetentionPolicies
+} from '@platform/core/compliance'
 import { PrismaService } from '@platform/core/database'
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
 import { ConversationStatus } from '@platform/core/domain'
@@ -697,6 +701,21 @@ describe('The retention run of the worker', () => {
       const lines = await linesOf(key)
       expect(lines.map(line => line.id).sort()).toEqual(rows.map(row => row.id).sort())
       expect(await owner.auditLog.count({ where: { id: { in: rows.map(row => row.id) } } })).toBe(0)
+      // The purge left its own entry: what, when and the evidence of the export it went with
+      const purged = await owner.auditLog.findMany({
+        where: {
+          action: AuditAction.AUDIT_LOG_PURGED,
+          metadata: { path: ['exportKey'], equals: key }
+        }
+      })
+      expect(purged).toHaveLength(1)
+      expect(purged[0]?.metadata).toMatchObject({
+        rule: AuditColdExport.PURGE_RULE,
+        deleted: 3,
+        exportRows: 3,
+        exportKey: key
+      })
+      await owner.auditLog.deleteMany({ where: { id: { in: purged.map(entry => entry.id) } } })
     })
 
     it('leaves a month that is not entirely past the window, and anything newer', async () => {
@@ -797,11 +816,14 @@ describe('The retention run of the worker', () => {
       await owner.auditLog.deleteMany({ where: { id: { in: [young.id, middling.id] } } })
     })
 
-    it('is a delete only the worker role may make: the role of the api cannot delete from audit_logs', async () => {
+    it('is a delete only the function may make: neither role of the application can delete from audit_logs', async () => {
       const row = await entry('2001-02-01T00:00:00Z', 'test.cold.role')
 
       await expect(
         app.get(PrismaService).client.auditLog.delete({ where: { id: row.id } })
+      ).rejects.toThrow()
+      await expect(
+        worker.client.$executeRaw`DELETE FROM audit_logs WHERE id = ${row.id}`
       ).rejects.toThrow()
       expect(await owner.auditLog.count({ where: { id: row.id } })).toBe(1)
     })
