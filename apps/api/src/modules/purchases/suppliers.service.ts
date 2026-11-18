@@ -20,7 +20,7 @@ import { PurchaseRule } from '@platform/core/finance'
 import { escapeLike } from '@platform/core/messaging'
 
 import { encodeCursor } from '../customers/list-cursor'
-import { lockScope, usableAccount } from '../finance/finance.support'
+import { lockChart, lockScope, usableAccount } from '../finance/finance.support'
 import type { Actor } from '../tenancy'
 
 import type {
@@ -250,6 +250,9 @@ export class SuppliersService {
     organizationId: string,
     accountId: string
   ): Promise<void> {
+    // Under the lock of the chart, so that a request that switches the account off and this one that points a supplier at it take turns:
+    // the guard of the account counts the suppliers that use it (HC-120)
+    await lockChart(tx, organizationId)
     await usableAccount(tx, organizationId, accountId)
     const account = await tx.ledgerAccount.findFirst({
       where: { id: accountId, organizationId },

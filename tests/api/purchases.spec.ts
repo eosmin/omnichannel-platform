@@ -269,7 +269,7 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       const payable = await owner.ledgerAccount.create({
         data: {
           organizationId: ctx.orgA.id,
-          code: `28${randomUUID().slice(0, 4)}`,
+          code: `28${randomUUID().slice(0, 6)}`,
           name: 'Payable of one supplier',
           type: AccountType.LIABILITY,
           normalSide: NormalSide.CREDIT
@@ -286,7 +286,11 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
         .patch(ApiRoutes.finance.accounts.byId(payable.id))
         .send({ isPostable: false })
 
-      for (const response of [off, header]) {
+      const retyped = await asAdminA()
+        .patch(ApiRoutes.finance.accounts.byId(payable.id))
+        .send({ type: AccountType.EXPENSE })
+
+      for (const response of [off, header, retyped]) {
         expect(response.status).toBe(CONFLICT)
         expect(errorOf(response).metadata).toMatchObject({
           conflict: FinanceConflicts.ACCOUNT_IN_USE_BY_SETTING
@@ -297,6 +301,15 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
         select: { active: true, isPostable: true }
       })
       expect(row).toEqual({ active: true, isPostable: true })
+
+      // Once no supplier points at it, the account is free again
+      const supplierId = (created.body as { id: string }).id
+      const cleared = await asAdminA()
+        .patch(ApiRoutes.suppliers.update(supplierId))
+        .send({ defaultPayableAccountId: null })
+      expect(cleared.status).toBe(OK)
+      const freed = await asAdminA().post(ApiRoutes.finance.accounts.deactivate(payable.id))
+      expect(freed.status).toBe(OK)
     })
 
     it('does not see a supplier of another organization', async () => {

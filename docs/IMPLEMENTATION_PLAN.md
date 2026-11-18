@@ -1430,7 +1430,10 @@ above is a failing test that passes, and no code outside `libs/core/finance` wri
       any postable account; they go with the accountant's answer on the VAT accounts (HC-118, FIS N8).
 - [x] **HC-120 (`fix/account-in-use-by-supplier`):** `usedBySetting` also counts `suppliers.defaultPayableAccountId`: the payable account of a
       supplier cannot be switched off, made a header, retyped or changed in its cash kind (`ACCOUNT_IN_USE_BY_SETTING`); a supplier with
-      history cannot change it (PUR-413), so the pair would have blocked its receipts and payments. Test in `tests/api/purchases.spec.ts`.
+      history cannot change it (PUR-413), so the pair would have blocked its receipts and payments. Pointing a supplier at an account takes the chart lock (`lockChart` in
+      `requirePayableAccount`) so a deactivation and a supplier write take turns. Known limit: an archived supplier or one with no history that
+      still points at the account also blocks it (conservative; the 409 does not name the supplier): Step 7.7. No concurrency test (needs two
+      connections): same step. Test in `tests/api/purchases.spec.ts`.
 
 **PR fix/manual-entry-key-kept (HC-114; HC-111 verified)**
 - [x] An attempt of the manual entry dialog that may have posted (no answer, a timeout, a 5xx, an unreadable success) locks the form and
