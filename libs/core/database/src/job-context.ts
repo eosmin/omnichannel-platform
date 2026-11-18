@@ -70,6 +70,11 @@ function sameSet(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every(id => b.includes(id))
 }
 
+// For a spec: the organization of a store is remembered by the process, and cases must not share it
+export function forgetOrganizationsOfStores(): void {
+  organizationOfStore.clear()
+}
+
 @Injectable()
 export class JobContext {
   constructor(private readonly prisma: PrismaService) {}
@@ -81,6 +86,7 @@ export class JobContext {
     options?: TransactionOptions
   ): Promise<T> {
     const open = active.getStore()
+    this.refuseForeignContext(open)
     if (open !== undefined) {
       if (open.kind === 'store' && sameSet(open.storeIds, [storeId])) return work()
       throw new JobContextError('a context of another store is already open')
@@ -118,6 +124,7 @@ export class JobContext {
     options?: TransactionOptions
   ): Promise<T> {
     const open = active.getStore()
+    this.refuseForeignContext(open)
     if (open !== undefined) {
       if (open.kind === 'organization' && open.organizationIds[0] === organizationId) return work()
       throw new JobContextError('a context of another organization is already open')
@@ -151,6 +158,7 @@ export class JobContext {
     options?: TransactionOptions
   ): Promise<T> {
     const open = active.getStore()
+    this.refuseForeignContext(open)
     if (open !== undefined) throw new JobContextError('a context is already open')
     const user = await this.prisma.client.user.findUnique({
       where: { id: userId },
@@ -229,6 +237,14 @@ export class JobContext {
   // True when the code runs inside a context of this class: for a service that is called by both a job and a request
   isOpen(): boolean {
     return active.getStore() !== undefined
+  }
+
+  // A tenant transaction that PrismaService opened for something else (a shared service called from a request) is not ours to join:
+  // say so, instead of the generic error of tenantTransaction
+  private refuseForeignContext(open: ActiveContext | undefined): void {
+    if (open === undefined && this.prisma.hasTenantContext()) {
+      throw new JobContextError('a tenant transaction that is not a job context is already open')
+    }
   }
 
   private open<T>(

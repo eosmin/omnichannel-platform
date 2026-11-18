@@ -90,4 +90,35 @@ describe('the worker fails closed when row security hides rows', () => {
       ).toEqual([])
     }
   })
+
+  it('reads the real table and not a temporary table of the caller with the same name', async () => {
+    // A role may create temporary tables; a function that runs as the owner must not read one of them in place of the real table
+    const worker = new pg.Client({ connectionString: urls.worker })
+    await worker.connect()
+    try {
+      await worker.query('CREATE TEMP TABLE media (id text, store_id text, key text)')
+      await worker.query("INSERT INTO media VALUES ('forged', 'a-store-of-the-attacker', 'k')")
+      const forged = await worker.query('SELECT * FROM rls_store_of_media($1)', ['forged'])
+      expect(forged.rows).toEqual([])
+    } finally {
+      await worker.end()
+    }
+  })
+
+  it('returns of a channel connection its ids and statuses and nothing else', async () => {
+    const [row] = await owner
+      .query<{ names: string[] }>(
+        "SELECT proargnames AS names FROM pg_proc WHERE proname = 'rls_resolve_channel_connection'"
+      )
+      .then(result => result.rows)
+    expect(row?.names).toEqual([
+      'p_plugin_id',
+      'p_connection_id',
+      'id',
+      'store_id',
+      'status',
+      'installation_status',
+      'plugin_status'
+    ])
+  })
 })

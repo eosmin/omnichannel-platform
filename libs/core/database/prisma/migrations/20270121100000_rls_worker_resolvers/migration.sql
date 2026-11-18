@@ -5,33 +5,33 @@
 
 -- The store of a file (NULL for the avatar of a person, which has none: the job then acts for a user)
 CREATE FUNCTION rls_store_of_media(p_id text) RETURNS TABLE (found boolean, store_id text)
-  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
   AS $$
-    SELECT true, m.store_id FROM media m WHERE m.id = p_id
+    SELECT true, m.store_id FROM public.media m WHERE m.id = p_id
   $$;
 
 CREATE FUNCTION rls_store_of_export(p_id text) RETURNS TABLE (found boolean, store_id text)
-  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
   AS $$
-    SELECT true, e.store_id FROM exports e WHERE e.id = p_id
+    SELECT true, e.store_id FROM public.exports e WHERE e.id = p_id
   $$;
 
 CREATE FUNCTION rls_store_of_scheduled_report(p_id text) RETURNS TABLE (found boolean, store_id text)
-  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
   AS $$
-    SELECT true, r.store_id FROM scheduled_reports r WHERE r.id = p_id
+    SELECT true, r.store_id FROM public.scheduled_reports r WHERE r.id = p_id
   $$;
 
 -- The store that owns the recipient of a channel event: the connection found by (plugin, connection id), with the statuses the
 -- caller needs to say whether it is active. Nothing else of the connection leaves (no credentials, no metadata).
 CREATE FUNCTION rls_resolve_channel_connection(p_plugin_id text, p_connection_id text)
   RETURNS TABLE (id text, store_id text, status text, installation_status text, plugin_status text)
-  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public
+  LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
   AS $$
     SELECT c.id, c.store_id, c.status, i.status, p.status
-    FROM channel_connections c
-    JOIN plugin_installations i ON i.id = c.installation_id
-    JOIN plugins p ON p.id = i.plugin_id
+    FROM public.channel_connections c
+    JOIN public.plugin_installations i ON i.id = c.installation_id
+    JOIN public.plugins p ON p.id = i.plugin_id
     WHERE c.plugin_id = p_plugin_id AND c.connection_id = p_connection_id
   $$;
 

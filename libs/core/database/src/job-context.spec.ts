@@ -3,7 +3,8 @@ import {
   JobContext,
   JobContextError,
   JobContextGoneError,
-  JobContextMismatchError
+  JobContextMismatchError,
+  forgetOrganizationsOfStores
 } from './job-context'
 import type { PrismaService } from './prisma.service'
 
@@ -42,6 +43,7 @@ function fakePrisma(
   }
   const prisma = {
     client,
+    hasTenantContext: () => false,
     tenantTransaction: jest.fn((context: Context, work: () => Promise<unknown>) => {
       contexts.push(context)
       return work()
@@ -51,6 +53,8 @@ function fakePrisma(
 }
 
 describe('JobContext', () => {
+  beforeEach(() => forgetOrganizationsOfStores())
+
   it('opens the context of the store and of its organization', async () => {
     const { prisma, contexts } = fakePrisma({ store: { organizationId: ORG } })
     const result = await new JobContext(prisma).forStore(STORE, () => Promise.resolve('done'))
