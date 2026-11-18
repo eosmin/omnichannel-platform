@@ -2,6 +2,7 @@ import { PartyType, PurchaseOrderStatus, TaxRounding } from './finance-constants
 import {
   billBalances,
   canTransition,
+  documentNumberKey,
   dueDay,
   needsUncreditableTaxAccount,
   paymentLines,
@@ -245,5 +246,26 @@ describe('order status', () => {
         { quantity: 3, receivedQuantity: 1 }
       ])
     ).toBe(PurchaseOrderStatus.PARTIALLY_RECEIVED)
+  })
+})
+
+describe('the key of a supplier document (HC-124)', () => {
+  it.each([
+    ['fac-001', 'FAC001'],
+    ['FAC 001', 'FAC001'],
+    ['  Fac_001 ', 'FAC001'],
+    ['f.a.c/001', 'FAC001'],
+    ['Nº 12', 'Nº12']
+  ])('reads %j as %j', (text, key) => {
+    expect(documentNumberKey(text)).toBe(key)
+  })
+
+  it('gives two writings of one invoice one key and two invoices two', () => {
+    expect(documentNumberKey('ab-1')).toBe(documentNumberKey('AB 1'))
+    expect(documentNumberKey('AB-1')).not.toBe(documentNumberKey('AB-10'))
+  })
+
+  it('has no key for a text with no letter or digit', () => {
+    expect(documentNumberKey('---')).toBe('')
   })
 })

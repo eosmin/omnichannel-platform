@@ -552,6 +552,31 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       })
     })
 
+    it('reads the same invoice written with other capitals, spaces or hyphens as the same invoice (HC-124)', async () => {
+      const seller = await supplier()
+      const first = await placedOrder(seller.id)
+      const second = await placedOrder(seller.id)
+      const tag = key().replaceAll('-', '').slice(0, 8).toUpperCase()
+      expect(
+        (
+          await receive(first.id, {
+            supplierDocumentNumber: `FAC-${tag}`,
+            lines: [{ orderLineId: first.lines[0]?.id, quantity: 1 }]
+          })
+        ).status
+      ).toBe(CREATED)
+      for (const variant of [`fac ${tag.toLowerCase()}`, `FAC${tag}`, ` Fac - ${tag} `]) {
+        const elsewhere = await receive(second.id, {
+          supplierDocumentNumber: variant,
+          lines: [{ orderLineId: second.lines[0]?.id, quantity: 1 }]
+        })
+        expect(elsewhere.status).toBe(CONFLICT)
+        expect(errorOf(elsewhere).metadata).toMatchObject({
+          conflict: PurchaseConflicts.DOCUMENT_NUMBER_IN_USE
+        })
+      }
+    })
+
     it('does not post anything when the stock refuses the receipt', async () => {
       const seller = await supplier()
       const item = await product()
