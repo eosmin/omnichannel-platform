@@ -7,6 +7,8 @@ import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   FinanceCountryCodes,
+  FinancePostingKey,
+  FinanceSourceType,
   JournalEntryType,
   OrderStatus,
   PaymentMethod,
@@ -17,7 +19,7 @@ import {
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 
-import { postTestEntry } from '../builders/finance'
+import { createPeriod, postTestEntry } from '../builders/finance'
 import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
@@ -651,6 +653,105 @@ describe('The tax of an order and the VAT report (Step 4B.3b)', () => {
           }
         ])
         expect(body.ordersNotReadable).toBe(0)
+      })
+
+      describe('the month of a sale is the month of its entry in the books (HC-004)', () => {
+        const role = async (organizationId: string, name: string): Promise<string> =>
+          (
+            await owner.accountRoleMapping.findUniqueOrThrow({
+              where: { organizationId_role: { organizationId, role: name } }
+            })
+          ).accountId
+        const periodOf = async (organizationId: string, year: number, month: number) =>
+          (
+            await owner.fiscalPeriod.findFirst({
+              where: { organizationId, year, month },
+              select: { id: true }
+            })
+          )?.id ?? (await createPeriod(owner, organizationId, year, month))
+        // The sale entry the books post for an order: 130 of tax over 1000
+        const book = async (
+          orderId: string,
+          entryDay: string,
+          organizationId = ctx.orgA.id
+        ): Promise<{ id: string }> =>
+          postTestEntry(owner, {
+            organizationId,
+            periodId: await periodOf(
+              organizationId,
+              Number(entryDay.slice(0, 4)),
+              Number(entryDay.slice(5, 7))
+            ),
+            entryDate: entryDay,
+            type: JournalEntryType.SALE,
+            sourceType: FinanceSourceType.ORDER,
+            sourceId: orderId,
+            idempotencyKey: FinancePostingKey.ORDER_SALE(orderId),
+            lines: [
+              { accountId: await role(organizationId, 'cash_default'), debitCents: 1130 },
+              { accountId: await role(organizationId, 'vat_output'), creditCents: 130 },
+              { accountId: await role(organizationId, 'sales_revenue'), creditCents: 1000 }
+            ]
+          })
+        const months = async (from: string, to: string) =>
+          ((await report(from, to)).body as ReportBody).months
+
+        it('puts a sale delivered in June, whose month was closed, in July where its entry is', async () => {
+          await setStorePrices(true)
+          const late = await place(1130, 1)
+          await delivered(late.id, '2027-06-20T15:00:00Z')
+          await book(late.id, '2027-07-01')
+
+          expect(await months('2027-06-01', '2027-06-30')).toEqual([])
+          expect(await months('2027-07-01', '2027-07-31')).toEqual([
+            { month: '2027-07', outputTaxCents: 130, inputTaxCents: 0, balanceCents: -130 }
+          ])
+        })
+
+        it('leaves out a cancelled order, and a sale whose entry was reversed in its own month', async () => {
+          await setStorePrices(true)
+          const cancelled = await place(1130, 1)
+          await delivered(cancelled.id, '2027-08-10T15:00:00Z')
+          await book(cancelled.id, '2027-08-10')
+          await owner.order.update({
+            where: { id: cancelled.id },
+            data: { status: OrderStatus.CANCELLED }
+          })
+          const voided = await place(1130, 1)
+          await delivered(voided.id, '2027-09-10T15:00:00Z')
+          const sale = await book(voided.id, '2027-09-10')
+          await postTestEntry(owner, {
+            organizationId: ctx.orgA.id,
+            periodId: await periodOf(ctx.orgA.id, 2027, 9),
+            entryDate: '2027-09-20',
+            type: JournalEntryType.REVERSAL,
+            reversesEntryId: sale.id,
+            lines: [
+              { accountId: await role(ctx.orgA.id, 'cash_default'), creditCents: 1130 },
+              { accountId: await role(ctx.orgA.id, 'vat_output'), debitCents: 130 },
+              { accountId: await role(ctx.orgA.id, 'sales_revenue'), debitCents: 1000 }
+            ]
+          })
+
+          expect(await months('2027-08-01', '2027-09-30')).toEqual([])
+        })
+
+        it('never reads the sale entry another organization holds under the same key', async () => {
+          const setup = await api(app, ctx.adminB, ctx.storeB).post(ApiRoutes.finance.setup).send({
+            countryCode: FinanceCountryCodes.EL_SALVADOR,
+            accountingStartDate: '2026-01-01'
+          })
+          expect(setup.status).toBe(CREATED)
+          await setStorePrices(true)
+          const mine = await place(1130, 1)
+          await delivered(mine.id, '2027-10-10T15:00:00Z')
+          // Organization B holds an entry under the key of this order, dated in another month: it moves nothing here
+          await book(mine.id, '2027-11-05', ctx.orgB.id)
+
+          expect(await months('2027-10-01', '2027-11-30')).toEqual([
+            { month: '2027-10', outputTaxCents: 130, inputTaxCents: 0, balanceCents: -130 }
+          ])
+        })
       })
 
       it('counts the orders made before the tax columns apart and does not estimate them', async () => {
