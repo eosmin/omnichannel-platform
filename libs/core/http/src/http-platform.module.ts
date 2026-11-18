@@ -50,7 +50,10 @@ export class HttpPlatformModule {
         MetricsModule,
         DatabaseModule.forRoot({
           databaseUrl: env.DATABASE_URL,
-          replicaUrl: env.DATABASE_REPLICA_URL
+          replicaUrl: env.DATABASE_REPLICA_URL,
+          // With RLS_CONTEXT on, a query of the api with no tenant context throws instead of answering no rows. The worker
+          // gets its contexts in phase 5 of the RLS step
+          requireContext: env.RLS_CONTEXT && env.APP_ROLE === AppRoles.API
         }),
         // The worker has no sockets: what it announces goes to the api instances through Redis
         EventBusModule.forRoot({ mode: BRIDGE_MODES[env.APP_ROLE] }),
