@@ -57,8 +57,6 @@ const INDEXES = {
   customers: 'idx_customers_name_search_trgm',
   orders: 'idx_orders_order_number_trgm'
 } as const
-const STATS_WAIT_MS = 6000
-const STATS_POLL_MS = 250
 
 describe('the search functions of row-level security', () => {
   const prefix = newRunPrefix()
@@ -67,7 +65,6 @@ describe('the search functions of row-level security', () => {
   let owner: OwnerClient
   let ctx: TestContext
   let appDb: pg.Client
-  let statsDb: pg.Client
   const tag = `zs${Math.random()
     .toString(36)
     .slice(2, 10)
@@ -80,13 +77,10 @@ describe('the search functions of row-level security', () => {
     )
     ctx = await seedTestContext(owner, app, prefix)
     appDb = new pg.Client({ connectionString: urls.app })
-    statsDb = new pg.Client({ connectionString: urls.owner })
     await appDb.connect()
-    await statsDb.connect()
   })
   afterAll(async () => {
     await appDb.end()
-    await statsDb.end()
     await cleanUp(owner, prefix)
     await app.close()
     await owner.$disconnect()
@@ -321,19 +315,19 @@ describe('the search functions of row-level security', () => {
     expect(await idsAs(undefined)).not.toContain(message.id)
   })
 
-  // The index each search reads. The statistics of an index reach the shared counters a moment after the statement, from another
-  // connection, so the count is polled; the sequential scan is switched off for the call so that a table this small does not
-  // take it for want of rows. Another suite that uses the same index at the same moment could only make this pass, never fail.
-  async function indexScans(index: string): Promise<number> {
-    await statsDb.query('SELECT pg_stat_clear_snapshot()')
-    const { rows } = await statsDb.query<{ scans: string }>(
-      'SELECT idx_scan::text AS scans FROM pg_stat_user_indexes WHERE indexrelname = $1',
-      [index]
-    )
-    return Number(rows[0]?.scans ?? '0')
-  }
+  // The index each search reads, counted INSIDE the transaction of the call (`pg_stat_get_xact_numscans`: the scans of this transaction
+  // only, visible at once, so no other suite can move it and nothing waits for the shared counters). The sequential scan is switched
+  // off for the call so that a table this small does not take it for want of rows.
   async function readsIndex(index: string, call: () => Promise<unknown>): Promise<boolean> {
-    const before = await indexScans(index)
+    const scans = async (): Promise<number> =>
+      Number(
+        (
+          await appDb.query<{ scans: string }>(
+            'SELECT pg_stat_get_xact_numscans($1::regclass)::text AS scans',
+            [index]
+          )
+        ).rows[0]?.scans ?? '0'
+      )
     await appDb.query('BEGIN')
     try {
       await appDb.query(
@@ -341,18 +335,15 @@ describe('the search functions of row-level security', () => {
         [ctx.storeA.id]
       )
       await appDb.query('SET LOCAL enable_seqscan = off')
+      const before = await scans()
       await call()
+      const after = await scans()
       await appDb.query('COMMIT')
+      return after > before
     } catch (error) {
       await appDb.query('ROLLBACK')
       throw error
     }
-    const deadline = Date.now() + STATS_WAIT_MS
-    while (Date.now() < deadline) {
-      if ((await indexScans(index)) > before) return true
-      await new Promise(resolve => setTimeout(resolve, STATS_POLL_MS))
-    }
-    return false
   }
 
   it('reads the full-text index of the messages', async () => {
