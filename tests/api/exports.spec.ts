@@ -34,6 +34,8 @@ import {
 import { StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
 
+import { ExportsService } from '../../apps/api/src/modules/exports'
+import { pluginUserId } from '../../apps/api/src/modules/tenancy/actor'
 import { AnalyticsExportWriter } from '../../apps/worker/src/exports/analytics/analytics-export.writer'
 import { CsvExportWriter } from '../../apps/worker/src/exports/csv-export-writer'
 import { ExpiredExportsCleaner } from '../../apps/worker/src/exports/expired-exports-cleaner.service'
@@ -1179,6 +1181,39 @@ describe('Exports', () => {
 
       expect(response.status).toBe(TOO_MANY)
       expect((response.body as ErrorBody).error.code).toBe(ErrorCodes.RATE_LIMIT_EXCEEDED)
+    })
+    it('lets one of a burst of requests of one plugin installation through, and a burst of people up to the store ceiling', async () => {
+      await owner.export.updateMany({
+        where: { storeId: ctx.storeA.id, status: ExportStatus.PENDING },
+        data: { status: ExportStatus.FAILED }
+      })
+      const service = app.get(ExportsService, { strict: false })
+      const ask = (userId: string) =>
+        service.request({
+          storeId: ctx.storeA.id,
+          userId,
+          type: ExportTypes.ANALYTICS,
+          format: ExportFormats.CSV,
+          filters: {}
+        })
+
+      const pluginUser = pluginUserId(randomUUID())
+      const pluginBurst = await Promise.allSettled(Array.from({ length: 5 }, () => ask(pluginUser)))
+
+      expect(pluginBurst.filter(result => result.status === 'fulfilled')).toHaveLength(
+        ExportLimits.MAX_ACTIVE_PER_PLUGIN
+      )
+      await owner.export.updateMany({
+        where: { storeId: ctx.storeA.id, status: ExportStatus.PENDING },
+        data: { status: ExportStatus.FAILED }
+      })
+      const peopleBurst = await Promise.allSettled(
+        Array.from({ length: 8 }, () => ask(ctx.adminA.id))
+      )
+
+      expect(peopleBurst.filter(result => result.status === 'fulfilled')).toHaveLength(
+        ExportLimits.MAX_ACTIVE_PER_STORE
+      )
     })
   })
 
