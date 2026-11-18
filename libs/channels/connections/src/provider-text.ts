@@ -126,7 +126,7 @@ function redactSecrets(text: string): string {
 }
 
 // An HTML or XML tag, opening, closing or a comment/doctype start: no nested angle bracket, so the match is linear
-const MARKUP_TAG = /<[/!?]?[A-Za-z][^<>]*>/g
+const MARKUP_TAG = /<!--[^<>]*-->|<[/!?]?[A-Za-z][^<>]*>/g
 
 const HIDDEN = new RegExp(`[\\p{Cc}\\p{Zl}\\p{Zp}${HIDDEN_SOURCE}]+`, 'gu')
 // What `providerErrorText` also removes, because inside the name of a credential they split it: the
