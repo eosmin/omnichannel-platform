@@ -228,7 +228,7 @@ describe('the receiver', () => {
   })
 
   it('masks a person name: the first letter of each word only, so two receivers can still be told apart', () => {
-    expect(maskPersonName('Maria Receptora Completa')).toBe('M**** R******** C********')
+    expect(maskPersonName('Maria Receptora Completa')).toBe('M**** R******** C*******')
     expect(maskPersonName('  Ana   Paz ')).toBe('A** P**')
     expect(maskPersonName('X')).toBe('X')
     expect(maskPersonName('')).toBeNull()
