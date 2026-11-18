@@ -12,6 +12,8 @@ import {
   saleAmounts,
   saleLines,
   sentLines,
+  transferWriteOffCents,
+  transferWriteOffLines,
   type DraftLine,
   type RoleAccounts,
   type SaleOrderRow
@@ -473,5 +475,82 @@ describe('adjustmentLines (E9)', () => {
         lines: []
       }
     )
+  })
+})
+
+describe('transferWriteOffLines (E9, a transfer shortage written off)', () => {
+  it('the units that never arrived are a loss at the cost they left the source with (AUT-911)', () => {
+    // 4 dispatched at 250, 3 received: one unit is gone
+    const row = { quantity: 4, receivedQuantity: 3, unitCostCents: 250, valueCents: 1000n }
+    expect(transferWriteOffCents(row)).toBe(250)
+    const result = transferWriteOffLines({ accounts, row, storeId: STORE })
+    expect(result.ok && lineOf(result.lines, AccountRole.INVENTORY_LOSS)?.debitCents).toBe(250)
+    expect(result.ok && lineOf(result.lines, AccountRole.INVENTORY)?.creditCents).toBe(250)
+  })
+
+  it('a line that arrived in full loses nothing', () => {
+    expect(transferWriteOffCents({ quantity: 4, receivedQuantity: 4, unitCostCents: 250 })).toBe(0)
+  })
+
+  it('nothing of it arrived: the whole value of the dispatch is the loss', () => {
+    expect(
+      transferWriteOffCents({
+        quantity: 4,
+        receivedQuantity: 0,
+        unitCostCents: 250,
+        valueCents: 1001n
+      })
+    ).toBe(1001)
+  })
+
+  it('the rounding of the dispatch value lands in the loss, so the books match the stock', () => {
+    // the source gave 4 units at an average of 33.33 (value 133 cents, unit 33): 3 came in at 33 each (99), the stock lost 34
+    expect(
+      transferWriteOffCents({
+        quantity: 4,
+        receivedQuantity: 3,
+        unitCostCents: 33,
+        valueCents: 133n
+      })
+    ).toBe(34)
+  })
+
+  it('the loss is what the receipts really put in, to the cent, when the service has it', () => {
+    expect(
+      transferWriteOffCents({
+        quantity: 4,
+        receivedQuantity: 3,
+        unitCostCents: 33,
+        valueCents: 133n,
+        receivedValueCents: 100n
+      })
+    ).toBe(33)
+  })
+
+  it('a dispatch valued with no unit cost still loses what its value says', () => {
+    expect(
+      transferWriteOffCents({
+        quantity: 2,
+        receivedQuantity: 1,
+        unitCostCents: null,
+        valueCents: 90n,
+        receivedValueCents: 45n
+      })
+    ).toBe(45)
+  })
+
+  it('a dispatch with no cost (nothing on hand to average) has nothing to write off', () => {
+    const row = { quantity: 4, receivedQuantity: 3, unitCostCents: null }
+    expect(transferWriteOffCents(row)).toBe(0)
+    expect(transferWriteOffLines({ accounts, row, storeId: STORE })).toEqual({
+      ok: true,
+      lines: []
+    })
+  })
+
+  it('a missing mapping is a visible failure, never a guess', () => {
+    const row = { quantity: 2, receivedQuantity: 1, unitCostCents: 100 }
+    const result = transferWriteOffLines({ accounts: () => null, row, storeId: STORE })
+    expect(result.ok).toBe(false)
   })
 })

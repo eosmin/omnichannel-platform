@@ -112,13 +112,13 @@ describe('pluginMessageViewOf', () => {
     expect(JSON.stringify(seen)).not.toContain('internal: a risk')
   })
 
-  it('keeps a deleted quote deleted and without text', () => {
-    const seen = pluginMessageViewOf(
-      answer(quote({ deleted: true, content: null, file: null })),
-      true
-    )
+  // HC-216: a plugin is not told that the quoted message was deleted, nor who wrote it
+  it.each([false, true])('gives nothing of a deleted quote, with messages:read %s', reads => {
+    const deleted = quote({ deleted: true, content: null, file: null })
+    const seen = pluginMessageViewOf(answer(deleted), reads)
 
-    expect(seen.replyTo).toMatchObject({ deleted: true, content: null })
+    expect(seen.replyTo).toBeNull()
+    expect(JSON.stringify(seen.replyTo)).not.toContain(MEMBER)
   })
 
   it('does not change the answer it was given', () => {

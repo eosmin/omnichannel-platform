@@ -5,6 +5,7 @@
 -- per store and the account per organization); the books check it when they post and the default bank role is used when it is null.
 ALTER TABLE carrier_guide_movements ADD COLUMN paid_from_account_id TEXT;
 
+-- (After 20270120100000_finance_transfer_line_source, whose `transfer_line` the lists keep.)
 -- The sets that are hashed and frozen with an entry list the new type and the new source (finance-schema.spec.ts compares them)
 ALTER TABLE journal_entries DROP CONSTRAINT chk_journal_entries_type;
 ALTER TABLE journal_entries
@@ -16,11 +17,11 @@ ALTER TABLE journal_entries DROP CONSTRAINT chk_journal_entries_source_type;
 ALTER TABLE journal_entries
   ADD CONSTRAINT chk_journal_entries_source_type CHECK (source_type IS NULL OR source_type IN (
     'order', 'shipment', 'remittance', 'return', 'inventory_movement', 'purchase_receipt', 'supplier_payment',
-    'carrier_guide_movement', 'finance_transaction', 'manual'
+    'carrier_guide_movement', 'finance_transaction', 'manual', 'transfer_line'
   ));
 ALTER TABLE finance_posting_failures DROP CONSTRAINT chk_finance_posting_failures_source_type;
 ALTER TABLE finance_posting_failures
   ADD CONSTRAINT chk_finance_posting_failures_source_type CHECK (source_type IN (
     'order', 'shipment', 'remittance', 'return', 'inventory_movement', 'purchase_receipt', 'supplier_payment',
-    'carrier_guide_movement', 'finance_transaction', 'manual'
+    'carrier_guide_movement', 'finance_transaction', 'manual', 'transfer_line'
   ));

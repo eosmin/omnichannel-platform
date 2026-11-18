@@ -26,7 +26,13 @@ const range = z
     message: `the range is longer than ${String(MAX_RANGE_DAYS)} days`
   })
 
-// Closing takes no body: the period is the one in the path. The reopen carries the reason, which is the audit trail of why the books moved.
+// Closing takes no body and the chain status no query: the period is in the path and the organization is the caller's. A key
+// the caller sends anyway (an `organizationId`, say) is refused, as every other route does, and not ignored (LED-753). A close
+// sent with no body at all reads as an empty one.
+export const closePeriodSchema = z.preprocess(value => value ?? {}, z.strictObject({}))
+export const chainStatusQuerySchema = z.strictObject({})
+
+// The reopen carries the reason, which is the audit trail of why the books moved.
 export const reopenPeriodSchema = z.strictObject({
   reason: singleLineText(FinanceLimits.REOPEN_REASON_MAX_LENGTH, 1)
 })
@@ -137,6 +143,8 @@ export const agingQuerySchema = z.strictObject({
 export type FlowQuery = z.infer<typeof flowQuerySchema>
 export type BalanceSheetQuery = z.infer<typeof balanceSheetQuerySchema>
 export type AgingQuery = z.infer<typeof agingQuerySchema>
+export type ClosePeriodBody = z.infer<typeof closePeriodSchema>
+export type ChainStatusQuery = z.infer<typeof chainStatusQuerySchema>
 export type ReopenPeriodBody = z.infer<typeof reopenPeriodSchema>
 export type TrialBalanceQuery = z.infer<typeof trialBalanceQuerySchema>
 export type AccountBalancesQuery = z.infer<typeof accountBalancesQuerySchema>

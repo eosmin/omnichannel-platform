@@ -8,7 +8,9 @@ import {
   FinanceSourceType,
   OrderStatus,
   PaymentStatus,
-  ShipmentStatus
+  ShipmentStatus,
+  TransferShortageAction,
+  TransferStatus
 } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import {
@@ -20,7 +22,8 @@ import {
   type RemittanceDifferenceWrittenOffPayload,
   type RemittanceEventPayload,
   type ReturnEventPayload,
-  type ShipmentStatusChangedPayload
+  type ShipmentStatusChangedPayload,
+  type TransferChangedPayload
 } from '@platform/core/events'
 import { isAdjustmentType } from '@platform/core/finance'
 import { FinancePostingService } from '@platform/core/finance-ledger'
@@ -178,6 +181,39 @@ export class FinancePostingListener {
       sourceId: payload.movementId,
       kind: FinanceEventKind.ADJUST
     })
+  }
+
+  // E9: a transfer was closed, and the units of a line that did not arrive were written off. The event also fires when the last units
+  // are received, so the lines asked for are the ones whose shortage action says write-off: a transfer received in full has none
+  @OnEvent(Events.TRANSFER_RECEIVED)
+  async onTransferReceived(payload: TransferChangedPayload): Promise<void> {
+    // Only a transfer that ended can have a write-off: a receipt that leaves units in transit is not a close
+    if (payload.status !== TransferStatus.RECEIVED) return
+    let lines: { id: string }[]
+    try {
+      lines = await this.prisma.client.stockTransferLine.findMany({
+        where: {
+          transferId: payload.transferId,
+          shortageAction: TransferShortageAction.WRITE_OFF,
+          transfer: { organizationId: payload.organizationId }
+        },
+        select: { id: true }
+      })
+    } catch (error) {
+      this.logger.error(
+        { transferId: payload.transferId, errorName: errorName(error) },
+        'the lines of a closed transfer could not be read: the sweep will find them'
+      )
+      return
+    }
+    for (const line of lines) {
+      await this.enqueue({
+        organizationId: payload.organizationId,
+        sourceType: FinanceSourceType.TRANSFER_LINE,
+        sourceId: line.id,
+        kind: FinanceEventKind.TRANSFER_WRITE_OFF
+      })
+    }
   }
 
   private async enqueueOrder(

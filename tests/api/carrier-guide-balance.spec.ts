@@ -195,7 +195,7 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
     const voided = await admin()
       .post(ApiRoutes.carriers.guidePurchaseVoid(id, carriedRow.id))
       .send({ note: 'typed twice' })
-    expect(voided.status).toBe(201)
+    expect(voided.status).toBe(200)
     const voidRow = await owner.carrierGuideMovement.findFirstOrThrow({
       where: { voidsMovementId: carriedRow.id }
     })

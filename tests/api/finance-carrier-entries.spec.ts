@@ -581,8 +581,13 @@ describe('The entries that depend on a carrier (Step 4B.6b-1)', () => {
       expect((await postPurchase(voided.id, FinanceEventKind.GUIDE_PURCHASE_VOID)).outcome).toBe(
         FinancePostingOutcome.POSTED
       )
-      const entry = await entryOf(FinancePostingKey.GUIDE_PURCHASE_VOID(voided.id))
-      expect(linesOf(entry as NonNullable<typeof entry>)).toEqual(
+      // The void is the reversal of the entry of the purchase, line by line
+      const original = await entryOf(FinancePostingKey.GUIDE_PURCHASE(row.id))
+      const entry = await owner.journalEntry.findFirstOrThrow({
+        where: { organizationId: ctx.orgA.id, reversesEntryId: original?.id },
+        include: { lines: { include: { account: { select: { code: true } } } } }
+      })
+      expect(linesOf(entry)).toEqual(
         sorted([
           [code(AccountRole.PREPAID_CARRIER_GUIDES), 0, 8000],
           [code(AccountRole.BANK_DEFAULT), 8000, 0]
