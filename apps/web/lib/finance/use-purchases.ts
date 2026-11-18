@@ -28,6 +28,7 @@ import {
   fetchSupplier,
   fetchSupplierBalance,
   fetchSupplierPage,
+  fetchSupplierPaymentReturns,
   fetchSupplierPayments,
   orderPurchaseOrder,
   type PayablesView,
@@ -35,21 +36,27 @@ import {
   type PurchaseOrderView,
   QueryKeys,
   type ReceivePurchaseOrderInput,
+  type RecordPaymentReturnInput,
   type RecordSupplierPaymentInput,
   receivePurchaseOrder,
   recordPurchaseOrderPayment,
   recordSupplierPayment,
+  recordSupplierPaymentReturn,
   type SupplierBalanceView,
   type SupplierPageView,
   type SupplierPaymentPageView,
+  type SupplierPaymentReturnPageView,
+  type SupplierPaymentReturnView,
   type SupplierPaymentView,
   type SupplierView,
   type UpdatePurchaseOrderInput,
   type UpdateSupplierInput,
   updatePurchaseOrder,
   updateSupplier,
+  type VoidPaymentReturnInput,
   type VoidSupplierPaymentInput,
-  voidSupplierPayment
+  voidSupplierPayment,
+  voidSupplierPaymentReturn
 } from '@platform/api-client'
 import type { PurchaseOrderStatus } from '@platform/core/domain'
 
@@ -246,6 +253,22 @@ export const useCancelPurchaseOrder = (
 ): Write<{ id: string; input: ClosePurchaseOrderInput }, PurchaseOrderView> =>
   usePurchaseWrite(storeId, value => cancelPurchaseOrder(apiClient, storeId, value.id, value.input))
 
+// The returns of one payment: asked only when the person opens them
+export function useSupplierPaymentReturns(
+  storeId: string,
+  paymentId: string,
+  enabled: boolean
+): UseInfiniteQueryResult<InfiniteData<SupplierPaymentReturnPageView, string | null>> {
+  return useInfiniteQuery({
+    queryKey: QueryKeys.purchases.paymentReturns(storeId, paymentId),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) =>
+      fetchSupplierPaymentReturns(apiClient, storeId, paymentId, pageParam, signal),
+    getNextPageParam: last => (last.hasMore ? last.nextCursor : undefined),
+    enabled
+  })
+}
+
 // A payment named by the supplier it pays, or by the purchase order whose bill it pays
 export const useRecordSupplierPayment = (
   storeId: string
@@ -265,3 +288,17 @@ export const useVoidSupplierPayment = (
   storeId: string
 ): Write<{ id: string; input: VoidSupplierPaymentInput }, SupplierPaymentView> =>
   usePurchaseWrite(storeId, value => voidSupplierPayment(apiClient, storeId, value.id, value.input))
+
+export const useRecordPaymentReturn = (
+  storeId: string
+): Write<{ paymentId: string; input: RecordPaymentReturnInput }, SupplierPaymentReturnView> =>
+  usePurchaseWrite(storeId, value =>
+    recordSupplierPaymentReturn(apiClient, storeId, value.paymentId, value.input)
+  )
+
+export const useVoidPaymentReturn = (
+  storeId: string
+): Write<{ id: string; input: VoidPaymentReturnInput }, SupplierPaymentReturnView> =>
+  usePurchaseWrite(storeId, value =>
+    voidSupplierPaymentReturn(apiClient, storeId, value.id, value.input)
+  )

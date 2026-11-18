@@ -8,9 +8,11 @@ import {
   PaginationLimits,
   PurchaseOrderStatus,
   type receivePurchaseOrderSchema,
+  type recordPaymentReturnSchema,
   type recordPaymentSchema,
   type updatePurchaseOrderSchema,
   type updateSupplierSchema,
+  type voidPaymentReturnSchema,
   type voidPaymentSchema
 } from '@platform/core/domain'
 
@@ -120,6 +122,25 @@ export type SupplierPaymentView = z.output<typeof paymentSchema>
 const paymentPageSchema = pageOf(paymentSchema)
 export type SupplierPaymentPageView = z.output<typeof paymentPageSchema>
 
+// What a supplier gave back of one payment (TDD_18 §4.2 E11b): the bank returned it or it bounced
+const paymentReturnSchema = z.object({
+  id: z.string(),
+  supplierId: z.string(),
+  supplierPaymentId: z.string(),
+  receivedIntoAccountId: z.string(),
+  amountCents: z.number().int(),
+  returnedOn: z.string(),
+  reference: z.string().nullable(),
+  entryId: z.string(),
+  voidedByEntryId: z.string().nullable(),
+  createdBy: z.string(),
+  createdAt: z.string()
+})
+export type SupplierPaymentReturnView = z.output<typeof paymentReturnSchema>
+
+const paymentReturnPageSchema = pageOf(paymentReturnSchema)
+export type SupplierPaymentReturnPageView = z.output<typeof paymentReturnPageSchema>
+
 const balanceSchema = z.object({
   supplierId: z.string(),
   billedCents: z.number().int(),
@@ -158,6 +179,8 @@ export type ReceivePurchaseOrderInput = z.input<typeof receivePurchaseOrderSchem
 export type ClosePurchaseOrderInput = z.input<typeof closePurchaseOrderSchema>
 export type RecordSupplierPaymentInput = z.input<typeof recordPaymentSchema>
 export type VoidSupplierPaymentInput = z.input<typeof voidPaymentSchema>
+export type RecordPaymentReturnInput = z.input<typeof recordPaymentReturnSchema>
+export type VoidPaymentReturnInput = z.input<typeof voidPaymentReturnSchema>
 
 // The pages are followed up to the bound the api itself keeps, never further: a list that is still not over at the bound is a failure,
 // never a shorter list that looks complete (5000 suppliers per organization, 100 per page).
@@ -336,6 +359,48 @@ export function voidSupplierPayment(
     method: 'POST',
     body: input,
     schema: paymentSchema,
+    storeId
+  })
+}
+
+export function fetchSupplierPaymentReturns(
+  client: ApiClient,
+  storeId: string,
+  paymentId: string,
+  cursor: string | null,
+  signal?: AbortSignal
+): Promise<SupplierPaymentReturnPageView> {
+  return client.request(
+    withQuery(ApiRoutes.supplierPayments.returns(enc(paymentId)), paymentQuery(cursor)),
+    { schema: paymentReturnPageSchema, storeId, signal }
+  )
+}
+
+export function recordSupplierPaymentReturn(
+  client: ApiClient,
+  storeId: string,
+  paymentId: string,
+  input: RecordPaymentReturnInput
+): Promise<SupplierPaymentReturnView> {
+  return client.request(ApiRoutes.supplierPayments.returns(enc(paymentId)), {
+    method: 'POST',
+    body: input,
+    schema: paymentReturnSchema,
+    storeId
+  })
+}
+
+// HIGH tier of the destructive actions: the screen asks first. The reason is the memo of the reversal in the books.
+export function voidSupplierPaymentReturn(
+  client: ApiClient,
+  storeId: string,
+  returnId: string,
+  input: VoidPaymentReturnInput
+): Promise<SupplierPaymentReturnView> {
+  return client.request(ApiRoutes.supplierPaymentReturns.void(enc(returnId)), {
+    method: 'POST',
+    body: input,
+    schema: paymentReturnSchema,
     storeId
   })
 }
