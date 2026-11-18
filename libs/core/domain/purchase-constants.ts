@@ -74,6 +74,8 @@ export const PurchaseConflicts = {
   RETURN_EXCEEDS_PAYMENT: 'return_exceeds_payment',
   RETURN_ALREADY_VOIDED: 'return_already_voided',
   PAYMENT_HAS_RETURNS: 'payment_has_returns',
+  // The debt a return reopened was paid again: voiding the return would put the payments above what is owed
+  RETURN_VOID_WOULD_OVERPAY: 'return_void_would_overpay',
   PAYMENT_VOIDED: 'payment_voided',
   // The entry of a receipt or a payment is reversed through the purchase (its permission, its audit row), never alone
   ENTRY_OWNED_BY_PURCHASE: 'entry_owned_by_purchase'

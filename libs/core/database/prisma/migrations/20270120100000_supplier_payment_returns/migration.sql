@@ -21,10 +21,10 @@ CREATE TABLE "supplier_payment_returns" (
 );
 
 -- CreateIndex
-CREATE INDEX "supplier_payment_returns_organization_id_supplier_id_returned_on_idx" ON "supplier_payment_returns"("organization_id", "supplier_id", "returned_on");
+CREATE INDEX "supplier_payment_returns_organization_id_supplier_id_return_idx" ON "supplier_payment_returns"("organization_id", "supplier_id", "returned_on");
 
 -- CreateIndex
-CREATE INDEX "supplier_payment_returns_organization_id_supplier_payment_id_idx" ON "supplier_payment_returns"("organization_id", "supplier_payment_id");
+CREATE INDEX "supplier_payment_returns_organization_id_supplier_payment_i_idx" ON "supplier_payment_returns"("organization_id", "supplier_payment_id");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "supplier_payment_returns_organization_id_id_key" ON "supplier_payment_returns"("organization_id", "id");
@@ -45,16 +45,16 @@ ALTER TABLE "supplier_payment_returns" ADD CONSTRAINT "supplier_payment_returns_
 ALTER TABLE "supplier_payment_returns" ADD CONSTRAINT "supplier_payment_returns_organization_id_supplier_id_fkey" FOREIGN KEY ("organization_id", "supplier_id") REFERENCES "suppliers"("organization_id", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "supplier_payment_returns" ADD CONSTRAINT "supplier_payment_returns_organization_id_supplier_payment_id_fkey" FOREIGN KEY ("organization_id", "supplier_payment_id") REFERENCES "supplier_payments"("organization_id", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "supplier_payment_returns" ADD CONSTRAINT "supplier_payment_returns_organization_id_supplier_payment__fkey" FOREIGN KEY ("organization_id", "supplier_payment_id") REFERENCES "supplier_payments"("organization_id", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "supplier_payment_returns" ADD CONSTRAINT "supplier_payment_returns_organization_id_received_into_account_id_fkey" FOREIGN KEY ("organization_id", "received_into_account_id") REFERENCES "ledger_accounts"("organization_id", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "supplier_payment_returns" ADD CONSTRAINT "supplier_payment_returns_organization_id_received_into_acc_fkey" FOREIGN KEY ("organization_id", "received_into_account_id") REFERENCES "ledger_accounts"("organization_id", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "supplier_payment_returns" ADD CONSTRAINT "supplier_payment_returns_organization_id_entry_id_fkey" FOREIGN KEY ("organization_id", "entry_id") REFERENCES "journal_entries"("organization_id", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "supplier_payment_returns" ADD CONSTRAINT "supplier_payment_returns_organization_id_voided_by_entry_id_fkey" FOREIGN KEY ("organization_id", "voided_by_entry_id") REFERENCES "journal_entries"("organization_id", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "supplier_payment_returns" ADD CONSTRAINT "supplier_payment_returns_organization_id_voided_by_entry_i_fkey" FOREIGN KEY ("organization_id", "voided_by_entry_id") REFERENCES "journal_entries"("organization_id", "id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- ============================================================================================================
 -- The sets of values frozen with an entry gain the type and the source of the return (finance-schema.spec compares them with the enums)

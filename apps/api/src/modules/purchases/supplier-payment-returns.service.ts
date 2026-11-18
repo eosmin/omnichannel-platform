@@ -32,6 +32,7 @@ import { encodeCursor } from '../customers/list-cursor'
 import { lockScope } from '../finance/finance.support'
 import type { Actor } from '../tenancy'
 
+import { PayablesService } from './payables.service'
 import type {
   ListPaymentsQuery,
   RecordPaymentReturnBody,
@@ -63,7 +64,8 @@ export class SupplierPaymentReturnsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ledger: LedgerService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly payables: PayablesService
   ) {}
 
   // The returns of one payment, the newest first
@@ -166,11 +168,32 @@ export class SupplierPaymentReturnsService {
     const reversalEntryId = await this.prisma.transaction(async tx => {
       const original = await tx.supplierPaymentReturn.findFirst({
         where: { id, organizationId },
-        select: { supplierId: true, entryId: true, voidedByEntryId: true }
+        select: {
+          supplierId: true,
+          entryId: true,
+          voidedByEntryId: true,
+          amountCents: true,
+          payment: { select: { purchaseReceiptId: true } }
+        }
       })
       if (original === null) throw resourceNotFound('supplier payment return')
       await lockScope(tx, `${organizationId}:supplier:${original.supplierId}`)
       if (original.voidedByEntryId !== null) throw this.alreadyVoided()
+      // The return reopened a debt that may have been paid again: voiding it takes that money back out of the debt, so the payments would
+      // pass what is owed (to the supplier in all, or on the bill the payment named) and the payable account would stop agreeing with them
+      const { supplier: balance, bills } = await this.payables.openBalance(
+        tx,
+        organizationId,
+        original.supplierId
+      )
+      const billId = original.payment.purchaseReceiptId
+      const billOpen = bills.find(bill => bill.id === billId)?.openCents ?? Number.POSITIVE_INFINITY
+      if (original.amountCents > balance.openCents || original.amountCents > billOpen) {
+        throw resourceConflict('the debt it reopened was paid again', {
+          conflict: PurchaseConflicts.RETURN_VOID_WOULD_OVERPAY,
+          openCents: Math.min(balance.openCents, billOpen)
+        })
+      }
       const reversal = await this.ledger
         .reverse(
           {

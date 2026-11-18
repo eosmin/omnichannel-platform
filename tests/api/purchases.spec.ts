@@ -1236,6 +1236,25 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       expect((await giveBack(paymentId, { amountCents: 10_000 })).status).toBe(CREATED)
     })
 
+    it('does not void a return whose debt was paid again: the payments would pass what is owed', async () => {
+      const { supplierId, paymentId, receiptId } = await paidBill()
+      const returned = (await giveBack(paymentId, { amountCents: 10_000 })).body as ReturnBody
+      expect(
+        (await pay(supplierId, { amountCents: 10_000, purchaseReceiptId: receiptId })).status
+      ).toBe(CREATED)
+
+      const voided = await asAdminA()
+        .post(ApiRoutes.supplierPaymentReturns.void(returned.id))
+        .send({ reason: 'Too late' })
+
+      expect(voided.status).toBe(CONFLICT)
+      expect(errorOf(voided).metadata).toMatchObject({
+        conflict: PurchaseConflicts.RETURN_VOID_WOULD_OVERPAY,
+        openCents: 0
+      })
+      expect(await balanceOf(supplierId)).toMatchObject({ paidCents: 10_000, openCents: 0 })
+    })
+
     it('voids a payment only after its returns, and gives nothing back of a voided payment', async () => {
       const { paymentId } = await paidBill()
       const returned = (await giveBack(paymentId, { amountCents: 2000 })).body as ReturnBody

@@ -99,17 +99,14 @@ export class PayablesService {
         _sum: { amountCents: true }
       }),
       // What the suppliers gave back and nobody voided, by the bill the payment named (or none)
-      db.supplierPaymentReturn.findMany({
+      db.supplierPaymentReturn.groupBy({
+        by: ['supplierId', 'supplierPaymentId'],
         where: {
           organizationId,
           voidedByEntryId: null,
           ...(supplierId === null ? {} : { supplierId })
         },
-        select: {
-          amountCents: true,
-          supplierId: true,
-          payment: { select: { purchaseReceiptId: true } }
-        }
+        _sum: { amountCents: true }
       }),
       // "Overdue" is against the day of the books (the store furthest behind), like the close: the browser clock decides nothing
       organizationDay(db, organizationId, new Date())
@@ -126,16 +123,20 @@ export class PayablesService {
         paidOnBill.set(group.purchaseReceiptId, amount)
       }
     }
-    for (const given of returns) {
-      const receiptId = given.payment.purchaseReceiptId
-      paidBySupplier.set(
-        given.supplierId,
-        (paidBySupplier.get(given.supplierId) ?? 0) - given.amountCents
-      )
+    // One row per returned payment (not per return): the bill each of those payments named is read once
+    const returned = await db.supplierPayment.findMany({
+      where: { organizationId, id: { in: returns.map(group => group.supplierPaymentId) } },
+      select: { id: true, purchaseReceiptId: true }
+    })
+    const billOfPayment = new Map(returned.map(payment => [payment.id, payment.purchaseReceiptId]))
+    for (const group of returns) {
+      const amount = group._sum.amountCents ?? 0
+      const receiptId = billOfPayment.get(group.supplierPaymentId) ?? null
+      paidBySupplier.set(group.supplierId, (paidBySupplier.get(group.supplierId) ?? 0) - amount)
       if (receiptId === null) {
-        unapplied.set(given.supplierId, (unapplied.get(given.supplierId) ?? 0) - given.amountCents)
+        unapplied.set(group.supplierId, (unapplied.get(group.supplierId) ?? 0) - amount)
       } else {
-        paidOnBill.set(receiptId, (paidOnBill.get(receiptId) ?? 0) - given.amountCents)
+        paidOnBill.set(receiptId, (paidOnBill.get(receiptId) ?? 0) - amount)
       }
     }
     const facts = new Map(receipts.map(receipt => [receipt.id, receipt]))
