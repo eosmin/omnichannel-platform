@@ -5,7 +5,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { LegalBookHeaders, LegalBookKind } from '@platform/core/domain'
-import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
+import { HttpStatusCodes } from '@platform/core/errors'
 import { ExportContentTypes, ExportFileExtensions } from '@platform/core/exports'
 import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
@@ -48,7 +48,7 @@ const kind = () => new ZodValidationPipe(legalBookKindSchema)
 // book is the organization's own data until the accountant confirms it; the proposal says it is unvalidated in every answer.
 // A book lists supplier names and tax ids, so reading it (as JSON, from the frozen list or as a file) asks for finance:view_reports AND
 // finance:export; the layouts need only the first, and writing a layout for
-// finance:manage_accounts (the settings of the books).
+// finance:manage_accounts (the settings of the books); confirming a layout, or writing over a confirmed one, also finance:confirm_books.
 @Controller()
 export class FinanceBooksController {
   constructor(private readonly books: FinanceBooksService) {}
@@ -74,16 +74,13 @@ export class FinanceBooksController {
     @CurrentPermissions() held: readonly Permission[],
     @Req() req: AuthenticatedRequest
   ): Promise<BookLayoutView> {
-    // Saying the accountant vouched for the layout takes the permission of its own: whoever manages the settings may write a layout, not
-    // make a draft look validated (QA FIS-426)
-    if (body.accountantConfirmed && !held.includes(Permissions.FINANCE_CONFIRM_BOOKS)) {
-      throw new PlatformException(
-        ErrorCodes.PERMISSION_DENIED,
-        'confirming the layout of a book needs finance:confirm_books',
-        HttpStatusCodes.FORBIDDEN
-      )
-    }
-    return this.books.writeLayout(organization.id, bookKind, body, actorOf(user, store, req))
+    return this.books.writeLayout(
+      organization.id,
+      bookKind,
+      body,
+      actorOf(user, store, req),
+      held.includes(Permissions.FINANCE_CONFIRM_BOOKS)
+    )
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW_REPORTS, Permissions.FINANCE_EXPORT)
