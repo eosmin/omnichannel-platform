@@ -161,7 +161,39 @@ export interface ReversedLine {
 export type ReversedLinesResult =
   { ok: true; lines: ReversedLine[] } | { ok: false; reason: FinancePostingFailureReason }
 
-// The same running-total split as `reversalOf`, kept line by line (the credit note of a return, Step 4B.7b, names each line). The lines come
+// What the first `units` of a line stand for, net and tax, on the running total (the parts of the returns of a line add up to the line
+// to the cent whatever the order or size of the returns). The line is split on what the customer paid for the units (net and tax together)
+// and on the tax, both half up, the net being the rest: 2 units at 10.00 with 15 % included give 10.00 + 10.00 and not 10.01 + 9.99 (net and
+// tax each rounded half up: 8.70 + 1.31, then 8.69 + 1.30), which left the credit note a cent short of the entry (HC-107). When a line is so
+// small that this split would take a cent of net back (a net of 5 cents over 7 units), the net and the tax are each prorated on their own, as
+// before: never a negative part. The choice depends on the line alone, so every return of a line is split the same way.
+function cumulativeSplitOf(basis: LineBasis): (units: number) => ReversalPart {
+  const { quantity } = basis
+  const paid = basis.netCents + basis.vatCents
+  const byPaid = (units: number): ReversalPart => {
+    const vatCents = prorate(basis.vatCents, units, quantity)
+    return { netCents: prorate(paid, units, quantity) - vatCents, vatCents }
+  }
+  let previous = 0
+  for (let units = 1; units <= quantity; units += 1) {
+    const { netCents } = byPaid(units)
+    if (netCents < previous) {
+      return units => ({
+        netCents: prorate(basis.netCents, units, quantity),
+        vatCents: prorate(basis.vatCents, units, quantity)
+      })
+    }
+    previous = netCents
+  }
+  return byPaid
+}
+
+interface ReversalPart {
+  netCents: number
+  vatCents: number
+}
+
+// The same running-total split as `reversalOf` (`cumulativeSplitOf`), kept line by line (the credit note of a return, Step 4B.7b, names each line). The lines come
 // out in the order of `bases`, so two runs name them the same way, and the sum of the parts is what `reversalOf` gives for the same input.
 export function reversalLinesOf(input: {
   bases: readonly LineBasis[]
@@ -176,12 +208,14 @@ export function reversalLinesOf(input: {
     if (earlier + back > basis.quantity) {
       return { ok: false, reason: FinancePostingFailureReason.AMOUNTS_DISAGREE }
     }
-    const upTo = (cents: number, units: number): number => prorate(cents, units, basis.quantity)
+    const upTo = cumulativeSplitOf(basis)
+    const now = upTo(earlier + back)
+    const before = upTo(earlier)
     lines.push({
       orderItemId: basis.orderItemId,
       quantity: back,
-      netCents: upTo(basis.netCents, earlier + back) - upTo(basis.netCents, earlier),
-      vatCents: upTo(basis.vatCents, earlier + back) - upTo(basis.vatCents, earlier)
+      netCents: now.netCents - before.netCents,
+      vatCents: now.vatCents - before.vatCents
     })
   }
   // A unit that is not on the order is refused, never ignored

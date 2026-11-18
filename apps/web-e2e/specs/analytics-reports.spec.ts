@@ -5,6 +5,7 @@ import { ReportLimits } from '@platform/core/analytics'
 
 import en from '../../web/messages/en.json' with { type: 'json' }
 import analytics from '../../web/messages/routes/analytics.en.json' with { type: 'json' }
+import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
@@ -25,6 +26,30 @@ async function enter(browser: Browser, email: string) {
 const words = analytics.analytics
 
 test.describe('analytics reports and export', () => {
+  test('the dashboard and the export dialog fit a phone of 390 px', async ({ browser }) => {
+    const { context, page, storeId } = await enter(browser, ADMIN)
+    try {
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.goto(AppPaths.store.analytics(storeId))
+      await expect(page.getByRole('img', { name: /Conversations that came in/ })).toBeVisible()
+      // The table of numbers behind the chart is for a screen reader: it must not widen the layout viewport
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+          )
+        )
+        .toBeLessThanOrEqual(0)
+      await page.getByRole('button', { name: words.pageActions.export }).click()
+      await expectDialogFitsThePhoneWidth(
+        page,
+        page.getByRole('dialog', { name: words.export.title })
+      )
+    } finally {
+      await context.close()
+    }
+  })
+
   test('an admin exports the figures as a file and is sent to the exports center', async ({
     browser
   }) => {

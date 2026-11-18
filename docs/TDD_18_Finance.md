@@ -78,7 +78,8 @@ total) except stored balances, which are `BigInt` because a sum of cents passes 
 | `Supplier`, `PurchaseOrder`, `PurchaseReceipt`, `SupplierPayment` | `organizationId` | same |
 | `PurchaseOrderLine`, `PurchaseReceiptLine` | `organizationId` + `storeId` (the product's store) | only members of that store see the lines of that store, as `StockTransferLine` in `TDD_16` |
 | `BankStatementImport`, `BankStatementLine`, `ReconciliationMatch`, `BankImportProfile` | `organizationId` | same |
-| `FiscalIssuer`, `FiscalDocument` | `organizationId` (`FiscalDocument` also `storeId`) | same |
+| `FiscalIssuer` | `organizationId` | same |
+| `FiscalDocument` | `organizationId` and `storeId` | **only members of the store of the sale holding the permission** (owner, 2026-11-18, HC-128): a document of another store is a 404; the list and the reconciliation are cut by the same stores |
 
 **Organization context without a new mechanism:** as `TDD_16 §1`. Organization-scoped routes still send `X-Store-Id`;
 `TenantGuard` resolves the store's organization and the permission is read from the user's role in that store;
@@ -451,7 +452,7 @@ settles E4's payable), never cleared from the receivable. A carrier that reports
 **E7 and E8 as built (Step 4B.6b-2).** E7: the amount is what the books still hold as owed by the carrier for the guide (what it had to collect less what
 every confirmed remittance cleared), never a figure in the request; a surplus is written the other way round; the guide takes the terminal status
 `written_off` and its remittance can no longer be voided. E8: a return posts its share of the revenue and the tax in proportion to the units back (running
-total, half up, so the returns add up to the sale); the refund is credited to `CUSTOMER_ADVANCES` (the business owes it until the person records what they paid out when completing the return, E14),
+total, half up, on what the units were sold for and on their tax, the net being the rest, so the returns add up to the sale and a credit note never credits a cent less than its entry **[ACCOUNTANT]**); the refund is credited to `CUSTOMER_ADVANCES` (the business owes it until the person records what they paid out when completing the return, E14),
 or to `RECEIVABLE_CARRIERS` when the guide is a COD guide the carrier will never remit; the shipping fee is not reversed **[ACCOUNTANT]**; the cost put back is
 the cost of the `RETURN_IN` movement. An order returned as a whole with no return row posts `order:<id>:return` (before the sale, only the cost from transit back to
 inventory). The charges of the guide of a return are E4 with no commission.

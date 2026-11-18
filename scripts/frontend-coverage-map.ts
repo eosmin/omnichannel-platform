@@ -126,6 +126,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'finance.reports.journalCsv': { step: '4B.9' },
   'finance.reports.verifyChain': { step: '4B.9' },
   'finance.reports.chainStatus': { step: '4B.9' },
+  'finance.reports.resolveChain': { step: '4B.9' },
   'finance.reports.incomeStatement': { step: '4B.9' },
   'finance.reports.balanceSheet': { step: '4B.9' },
   'finance.reports.cashFlow': { step: '4B.9' },

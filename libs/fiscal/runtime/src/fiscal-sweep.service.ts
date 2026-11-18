@@ -46,10 +46,15 @@ const pageOf = (data: FiscalFinding[], nextCursor: string | null): FiscalFinding
   hasMore: nextCursor !== null
 })
 
+// The filter of the stores a caller reaches, or nothing for the whole organization
+type StoreReach = { storeId?: { in: string[] } }
+
 export interface FiscalSweepOptions {
   cursor?: string
   limit?: number
   now?: Date
+  // The stores the caller reaches (HC-128); absent = the whole organization (the nightly check of the worker)
+  storeIds?: readonly string[]
 }
 
 // The fiscal documents the lifecycle lost (TDD_18 §8.3, §11; Step 4B.8b-2b). It READS: it says which sales have no document, which
@@ -74,15 +79,16 @@ export class FiscalSweepService {
       FiscalSweepLimits.PAGE_SIZE_MAX
     )
     const now = options.now ?? new Date()
+    const reach = options.storeIds === undefined ? {} : { storeId: { in: [...options.storeIds] } }
     switch (kind) {
       case FiscalSweepKind.SALE_WITHOUT_DOCUMENT:
-        return this.salesWithoutDocument(organizationId, now, options.cursor, limit)
+        return this.salesWithoutDocument(organizationId, now, options.cursor, limit, reach)
       case FiscalSweepKind.STALLED_DOCUMENT:
-        return this.stalledDocuments(organizationId, now, options.cursor, limit)
+        return this.stalledDocuments(organizationId, now, options.cursor, limit, reach)
       case FiscalSweepKind.CREDIT_NOTE_MISSING:
-        return this.creditNotesMissing(organizationId, now, options.cursor, limit)
+        return this.creditNotesMissing(organizationId, now, options.cursor, limit, reach)
       case FiscalSweepKind.ENTRY_MISMATCH:
-        return this.entryMismatches(organizationId, now, options.cursor, limit)
+        return this.entryMismatches(organizationId, now, options.cursor, limit, reach)
     }
   }
 
@@ -127,7 +133,8 @@ export class FiscalSweepService {
     organizationId: string,
     now: Date,
     cursor: string | undefined,
-    limit: number
+    limit: number,
+    reach: StoreReach
   ): Promise<FiscalFindingsPage> {
     const window = await this.window(organizationId, now)
     if (window === null) return empty()
@@ -140,6 +147,7 @@ export class FiscalSweepService {
     const rows = await this.prisma.client.order.findMany({
       where: {
         store: { organizationId },
+        ...reach,
         status: { notIn: [OrderStatus.CANCELLED as string] },
         OR: recognized,
         // Any sale document of the order, voided or not: a voided one is replaced by a person, never by the sweep
@@ -161,7 +169,8 @@ export class FiscalSweepService {
     organizationId: string,
     now: Date,
     cursor: string | undefined,
-    limit: number
+    limit: number,
+    reach: StoreReach
   ): Promise<FiscalFindingsPage> {
     const queuedBefore = new Date(
       now.getTime() - FiscalSweepLimits.QUEUED_STALL_MINUTES * MINUTE_MS
@@ -172,6 +181,7 @@ export class FiscalSweepService {
     const rows = await this.prisma.client.fiscalDocument.findMany({
       where: {
         organizationId,
+        ...reach,
         OR: [
           { status: FiscalDocumentStatus.QUEUED, updatedAt: { lt: queuedBefore } },
           { status: FiscalDocumentStatus.SUBMITTED, updatedAt: { lt: submittedBefore } }
@@ -198,7 +208,8 @@ export class FiscalSweepService {
     organizationId: string,
     now: Date,
     cursor: string | undefined,
-    limit: number
+    limit: number,
+    reach: StoreReach
   ): Promise<FiscalFindingsPage> {
     const window = await this.window(organizationId, now)
     if (window === null) return empty()
@@ -207,6 +218,7 @@ export class FiscalSweepService {
     const rows = await this.prisma.client.orderReturn.findMany({
       where: {
         store: { organizationId },
+        ...reach,
         receivedAt: { gte: since },
         status: {
           in: [OrderReturnStatus.RECEIVED as string, OrderReturnStatus.COMPLETED as string]
@@ -240,7 +252,8 @@ export class FiscalSweepService {
     organizationId: string,
     now: Date,
     cursor: string | undefined,
-    limit: number
+    limit: number,
+    reach: StoreReach
   ): Promise<FiscalFindingsPage> {
     const db = this.prisma.client
     const mappings = await db.accountRoleMapping.findMany({
@@ -266,6 +279,7 @@ export class FiscalSweepService {
       const docs = await db.fiscalDocument.findMany({
         where: {
           organizationId,
+          ...reach,
           kind: FiscalDocumentKind.SALE,
           status: { notIn: [FiscalDocumentStatus.VOIDED, FiscalDocumentStatus.DRAFT] },
           createdAt: { gte: since },

@@ -8,6 +8,7 @@ import {
   Patch,
   Post,
   Put,
+  Query,
   Req
 } from '@nestjs/common'
 
@@ -47,6 +48,7 @@ import {
   type CreateTagBody,
   createTagSchema,
   idSchema,
+  noQuerySchema,
   type PutBusinessHoursBody,
   putBusinessHoursSchema,
   type PutRetentionSettingsBody,
@@ -89,7 +91,10 @@ export class SettingsController {
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
   @NoStore()
   @Get(ApiRoutes.settings.tags)
-  listTags(@CurrentStore() store: Store): Promise<TagView[]> {
+  listTags(
+    @CurrentStore() store: Store,
+    @Query(new ZodValidationPipe(noQuerySchema)) _query: Record<string, never>
+  ): Promise<TagView[]> {
     return this.tags.list(store.id)
   }
 
@@ -139,7 +144,10 @@ export class SettingsController {
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
   @NoStore()
   @Get(ApiRoutes.settings.snippets)
-  listSnippets(@CurrentStore() store: Store): Promise<SnippetView[]> {
+  listSnippets(
+    @CurrentStore() store: Store,
+    @Query(new ZodValidationPipe(noQuerySchema)) _query: Record<string, never>
+  ): Promise<SnippetView[]> {
     return this.snippets.list(store.id)
   }
 
