@@ -15,8 +15,11 @@ import {
   FinanceSourceType,
   InventoryAdjustmentReason,
   InventoryMovementType,
+  InventoryReferenceType,
   ShipmentStatus,
-  ShippingPayer
+  ShippingPayer,
+  TransferShortageAction,
+  TransferStatus
 } from '@platform/core/domain'
 import {
   FinanceCloseGuard,
@@ -33,7 +36,8 @@ import {
   createOrder,
   createProduct,
   createReturn,
-  createShipment
+  createShipment,
+  createTransfer
 } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
@@ -270,6 +274,66 @@ describe('The sweep of the books and the guard of the close', () => {
       ])
       for (const job of found) await posting.post(job)
       expect(await queuedOf(movement.id)).toEqual([])
+    })
+
+    it('finds a transfer shortage written off with no entry, and stops once it is posted (AUT-911)', async () => {
+      const made = await createTransfer(owner, {
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        status: TransferStatus.RECEIVED
+      })
+      const lineId = made.lineId as string
+      const line = await owner.stockTransferLine.update({
+        where: { id: lineId },
+        data: {
+          quantity: 4,
+          receivedQuantity: 3,
+          shortageAction: TransferShortageAction.WRITE_OFF
+        },
+        select: { productId: true }
+      })
+      const header = await owner.stockTransfer.findUniqueOrThrow({
+        where: { id: made.id },
+        select: { fromWarehouseId: true, toWarehouseId: true }
+      })
+      await owner.inventoryMovement.create({
+        data: {
+          storeId: ctx.storeA.id,
+          productId: line.productId,
+          warehouseId: header.fromWarehouseId,
+          type: InventoryMovementType.TRANSFER_OUT,
+          quantity: 4,
+          referenceType: InventoryReferenceType.TRANSFER,
+          referenceId: made.id,
+          idempotencyKey: `transfer:${made.id}:${lineId}:dispatch`,
+          unitCostCents: 250,
+          valueCents: 1000n,
+          onHandAfter: 0,
+          reservedAfter: 0
+        }
+      })
+      await owner.inventoryMovement.create({
+        data: {
+          storeId: ctx.storeA.id,
+          productId: line.productId,
+          warehouseId: header.toWarehouseId,
+          type: InventoryMovementType.TRANSFER_IN,
+          quantity: 3,
+          referenceType: InventoryReferenceType.TRANSFER,
+          referenceId: made.id,
+          idempotencyKey: `transfer:${made.id}:${lineId}:receive:r1`,
+          unitCostCents: 250,
+          valueCents: 750n,
+          onHandAfter: 0,
+          reservedAfter: 0
+        }
+      })
+      const found = await queuedOf(lineId)
+      expect(found.map(job => [job.sourceType, job.kind])).toEqual([
+        [FinanceSourceType.TRANSFER_LINE, FinanceEventKind.TRANSFER_WRITE_OFF]
+      ])
+      for (const job of found) await posting.post(job)
+      expect(await queuedOf(lineId)).toEqual([])
     })
 
     it('finds the voiding of a remittance only when its confirmation was posted and nothing reversed it', async () => {

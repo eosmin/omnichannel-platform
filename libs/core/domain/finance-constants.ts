@@ -93,6 +93,8 @@ export enum FinanceSourceType {
   REMITTANCE = 'remittance',
   RETURN = 'return',
   INVENTORY_MOVEMENT = 'inventory_movement',
+  // A line of a stock transfer closed with units that did not arrive and were written off (E9, TDD_18 §4.2)
+  TRANSFER_LINE = 'transfer_line',
   PURCHASE_RECEIPT = 'purchase_receipt',
   SUPPLIER_PAYMENT = 'supplier_payment',
   FINANCE_TRANSACTION = 'finance_transaction',

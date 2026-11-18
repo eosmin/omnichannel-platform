@@ -30,10 +30,13 @@ import {
   RemittanceStatus,
   SaleRecognition,
   SettlingOutcomes,
+  TRANSFER_WRITE_OFF_POSTING_START,
   ShipmentInactiveStatuses,
   ShipmentKind,
   ShipmentStatus,
-  ShippingPayer
+  ShippingPayer,
+  TransferShortageAction,
+  TransferStatus
 } from '@platform/core/domain'
 import { errorName, PlatformException } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
@@ -41,6 +44,7 @@ import { Events } from '@platform/core/events'
 
 import {
   adjustmentLines,
+  transferWriteOffLines,
   type AutoEntry,
   issueCost,
   orderPaymentLines,
@@ -138,6 +142,8 @@ const keyOf = (input: PostSourceInput): string => {
       return FinancePostingKey.RETURN_REFUND(input.sourceId)
     case FinanceEventKind.ADJUST:
       return FinancePostingKey.MOVEMENT_ADJUST(input.sourceId)
+    case FinanceEventKind.TRANSFER_WRITE_OFF:
+      return FinancePostingKey.TRANSFER_LINE_WRITE_OFF(input.sourceId)
   }
 }
 
@@ -442,6 +448,8 @@ export class FinancePostingService {
         return this.loadSale(tx, input, recognizeSaleOn)
       case FinanceEventKind.ADJUST:
         return this.loadAdjustment(tx, input)
+      case FinanceEventKind.TRANSFER_WRITE_OFF:
+        return this.loadTransferWriteOff(tx, input)
       case FinanceEventKind.CHARGES:
         return this.loadCharges(tx, input)
       case FinanceEventKind.REMITTANCE_CONFIRM:
@@ -1185,6 +1193,88 @@ export class FinancePostingService {
       key: FinancePostingKey.MOVEMENT_ADJUST(input.sourceId),
       memo: FinanceAutoMemo.ADJUST,
       result: adjustmentLines({ accounts, movement, storeId: movement.storeId })
+    }
+  }
+
+  // E9: the units of a transfer line that did not arrive and were written off when the transfer was closed. The value is the one the
+  // dispatch took out of the source (its TRANSFER_OUT movement) less what came in at the same unit cost, read from the rows as they are
+  private async loadTransferWriteOff(
+    tx: PrismaTransaction,
+    input: PostSourceInput
+  ): Promise<Candidate> {
+    const line = await tx.stockTransferLine.findFirst({
+      where: {
+        id: input.sourceId,
+        shortageAction: TransferShortageAction.WRITE_OFF,
+        store: { organizationId: input.organizationId },
+        transfer: { organizationId: input.organizationId, status: TransferStatus.RECEIVED }
+      },
+      select: {
+        id: true,
+        storeId: true,
+        transferId: true,
+        productId: true,
+        variantId: true,
+        quantity: true,
+        receivedQuantity: true,
+        transfer: { select: { closedAt: true, fromWarehouseId: true, toWarehouseId: true } },
+        store: { select: { timezone: true } }
+      }
+    })
+    if (line === null || line.transfer.closedAt === null) return NOTHING
+    if (line.transfer.closedAt < TRANSFER_WRITE_OFF_POSTING_START) return NOTHING
+    const dispatch = await tx.inventoryMovement.findFirst({
+      where: {
+        storeId: line.storeId,
+        type: InventoryMovementType.TRANSFER_OUT,
+        referenceType: InventoryReferenceType.TRANSFER,
+        referenceId: line.transferId,
+        warehouseId: line.transfer.fromWarehouseId,
+        productId: line.productId,
+        variantId: line.variantId
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { unitCostCents: true, valueCents: true }
+    })
+    if (dispatch === null) return NOTHING
+    // What the receipts put in the destination, as they recorded it: the loss is what the stock lost, to the cent
+    const receipts = await tx.inventoryMovement.findMany({
+      where: {
+        storeId: line.storeId,
+        type: InventoryMovementType.TRANSFER_IN,
+        referenceType: InventoryReferenceType.TRANSFER,
+        referenceId: line.transferId,
+        warehouseId: line.transfer.toWarehouseId,
+        productId: line.productId,
+        variantId: line.variantId
+      },
+      select: { quantity: true, unitCostCents: true, valueCents: true }
+    })
+    const receivedValueCents = receipts.reduce(
+      (total, receipt) =>
+        total +
+        (receipt.valueCents ?? BigInt(receipt.quantity) * BigInt(receipt.unitCostCents ?? 0)),
+      0n
+    )
+    const accounts = await this.accountsOf(tx, input.organizationId)
+    return {
+      kind: 'entry',
+      sourceDay: dayInZone(line.transfer.closedAt, line.store.timezone),
+      type: JournalEntryType.INVENTORY_ADJUSTMENT,
+      sourceType: FinanceSourceType.TRANSFER_LINE,
+      key: FinancePostingKey.TRANSFER_LINE_WRITE_OFF(line.id),
+      memo: FinanceAutoMemo.TRANSFER_WRITE_OFF,
+      result: transferWriteOffLines({
+        accounts,
+        row: {
+          quantity: line.quantity,
+          receivedQuantity: line.receivedQuantity,
+          unitCostCents: dispatch.unitCostCents,
+          valueCents: dispatch.valueCents,
+          receivedValueCents
+        },
+        storeId: line.storeId
+      })
     }
   }
 

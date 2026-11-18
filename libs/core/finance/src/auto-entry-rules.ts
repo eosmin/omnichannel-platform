@@ -350,3 +350,60 @@ export function adjustmentLines(input: {
     { storeId }
   )
 }
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// E9, the transfer write-off: a transfer closed with units that did not arrive and that a person wrote off. The units left the source
+// at the dispatch (one TRANSFER_OUT at the cost of that warehouse) and only the received ones came in (TRANSFER_IN at the same unit
+// cost), so the stock lost exactly the dispatched value minus the received units at their cost, and the books must say so: Dr
+// INVENTORY_LOSS · Cr INVENTORY. No movement is written for it (the units are already out of every level), which is why this event has
+// its own source: the line of the transfer, once.
+
+export interface TransferWriteOffRow {
+  // What the line dispatched and what arrived of it
+  quantity: number
+  receivedQuantity: number
+  // The cost of the dispatch movement (TRANSFER_OUT): null when the source had nothing on hand to average
+  unitCostCents: number | null
+  valueCents?: bigint | null
+  // The value the receipts actually put in the destination (the sum of what its TRANSFER_IN movements recorded), when the service has it:
+  // the loss is then exactly what the stock lost. Absent, the received units at the dispatch unit cost
+  receivedValueCents?: bigint | null
+}
+
+// The value the stock lost with the units that never arrived, in cents (0 when it lost none)
+export function transferWriteOffCents(row: TransferWriteOffRow): number {
+  if (row.quantity - row.receivedQuantity <= 0) return 0
+  let dispatched: number
+  if (row.valueCents !== null && row.valueCents !== undefined) {
+    dispatched = movementCostCents(row.quantity, row.unitCostCents ?? 0, row.valueCents)
+  } else if (row.unitCostCents !== null) {
+    dispatched = row.quantity * row.unitCostCents
+  } else {
+    return 0
+  }
+  let received: number
+  if (row.receivedValueCents !== null && row.receivedValueCents !== undefined) {
+    received = Number(row.receivedValueCents)
+    if (!Number.isSafeInteger(received))
+      throw new RangeError('the value of a receipt is out of range')
+  } else {
+    received = row.receivedQuantity * (row.unitCostCents ?? 0)
+  }
+  const cents = dispatched - received
+  return cents > 0 ? cents : 0
+}
+
+export function transferWriteOffLines(input: {
+  accounts: RoleAccounts
+  row: TransferWriteOffRow
+  storeId: string
+}): AutoEntry {
+  const cents = transferWriteOffCents(input.row)
+  if (cents === 0) return { ok: true, lines: [] }
+  return linesOf(
+    input.accounts,
+    [{ role: AccountRole.INVENTORY_LOSS, cents }],
+    [{ role: AccountRole.INVENTORY, cents }],
+    { storeId: input.storeId }
+  )
+}
