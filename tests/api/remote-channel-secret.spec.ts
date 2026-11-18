@@ -187,6 +187,36 @@ describe('The command secret of a remote channel plugin', () => {
       expect(JSON.stringify(entries)).not.toContain(setup.commandSecret ?? 'x')
     })
 
+    it('lets one of three rotations at once through, and keeps the chain of secrets of the winner', async () => {
+      const { setup } = await setUp()
+
+      const answers = await Promise.all([
+        rotate(setup.installationId),
+        rotate(setup.installationId),
+        rotate(setup.installationId)
+      ])
+
+      expect(answers.filter(answer => answer.status === OK)).toHaveLength(1)
+      expect(answers.filter(answer => answer.status === CONFLICT)).toHaveLength(2)
+      const winner = answers.find(answer => answer.status === OK)?.body as RotationBody
+      const row = await owner.pluginInstallation.findUniqueOrThrow({
+        where: { id: setup.installationId }
+      })
+      // The original is the previous one, and the secret the winner was given is the current one
+      expect(row.commandSecretRotatedAt?.toISOString()).toBe(winner.rotatedAt)
+      const sync = app.get(RemoteChannelSync)
+      await sync.refresh()
+      await expect(sync.secretsOf(ctx.storeA.id, row.pluginId)).resolves.toMatchObject({
+        current: winner.commandSecret,
+        previous: setup.commandSecret
+      })
+      const entries = await waitForAuditEntries(owner, {
+        action: AuditAction.PLUGIN_COMMAND_SECRET_ROTATED,
+        resourceId: setup.installationId
+      })
+      expect(entries).toHaveLength(1)
+    })
+
     it('refuses a second rotation while the first one is open: the plugin has not replaced its secret yet', async () => {
       const { id, setup } = await setUp()
       const first = (await rotate(setup.installationId).expect(OK)).body as RotationBody

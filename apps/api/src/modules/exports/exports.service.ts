@@ -4,7 +4,12 @@ import type { Queue } from 'bullmq'
 
 import { type Permission, Permissions } from '@platform/core/auth'
 import { DataRetentionPolicies } from '@platform/core/compliance'
-import { type ExportWhereInput, lockStoreForWrite, PrismaService } from '@platform/core/database'
+import {
+  type ExportWhereInput,
+  lockStoreForWrite,
+  lockStoreScope,
+  PrismaService
+} from '@platform/core/database'
 import { type CursorPage, PLUGIN_ACTOR_PREFIX } from '@platform/core/domain'
 import {
   ErrorCodes,
@@ -12,7 +17,7 @@ import {
   PlatformException,
   resourceNotFound
 } from '@platform/core/errors'
-import { ExportLimits, ExportTypePermissions } from '@platform/core/exports'
+import { ExportLimits, ExportLockScopes, ExportTypePermissions } from '@platform/core/exports'
 import {
   type ExportFormat,
   ExportStatus,
@@ -89,8 +94,9 @@ export class ExportsService {
   async request(params: RequestExport): Promise<ExportView> {
     const { storeId, userId, type, format, filters } = params
     const created = await this.prisma.transaction(async tx => {
-      // Taking turns per store: two requests at once cannot both pass the limit
       await lockStoreForWrite(tx, storeId)
+      // Taking turns per store: the lock above is a shared one and lets two requests at once both pass the ceilings
+      await lockStoreScope(tx, storeId, ExportLockScopes.REQUEST)
       const since = new Date(Date.now() - ExportLimits.ACTIVE_WINDOW_MINUTES * 60_000)
       const active = await tx.export.count({
         where: { storeId, status: ExportStatus.PENDING, createdAt: { gt: since } }

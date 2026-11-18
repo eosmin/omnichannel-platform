@@ -270,7 +270,8 @@ describe('The sweep of the books and the guard of the close', () => {
         storeId: ctx.storeA.id,
         status: ShipmentStatus.DELIVERED,
         codAmountCents: 1000,
-        deliveredAt: NOON(TODAY)
+        // Delivered before the books began: its sale is in the opening balance, so the remittance does not wait for an E3
+        deliveredAt: NOON('2019-06-01')
       })
       const author = await owner.membership.findFirstOrThrow({
         where: { storeId: ctx.storeA.id },

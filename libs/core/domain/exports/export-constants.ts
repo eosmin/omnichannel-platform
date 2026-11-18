@@ -15,6 +15,9 @@ export const ExportLimits = {
   CLEANUP_BATCH: 100
 } as const
 
+// The scope of the exclusive lock that makes the requests of one store take turns, so the ceilings above are checked one at a time
+export const ExportLockScopes = { REQUEST: 'exports:request' } as const
+
 // What the download tells the browser the bytes are
 export const ExportContentTypes = {
   CSV: 'text/csv; charset=utf-8',
