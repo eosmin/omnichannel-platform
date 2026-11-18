@@ -306,6 +306,7 @@ export class CarrierConnectionsService {
             minShippingFeeCents: body.minShippingFeeCents,
             maxShippingFeeCents: body.maxShippingFeeCents,
             remittanceDeductsFee: body.remittanceDeductsFee,
+            chargeModel: body.chargeModel,
             commissionBps: commissionToKeep(
               this.registry.feeSettingsOf(plugin.id),
               body.commissionBps
@@ -554,6 +555,10 @@ export class CarrierConnectionsService {
             minShippingFeeCents: body.minShippingFeeCents,
             maxShippingFeeCents: body.maxShippingFeeCents,
             remittanceDeductsFee: body.remittanceDeductsFee,
+            // A change of model starts from now: the books read the guides and the purchases made since (HC-101)
+            ...(body.chargeModel === undefined || body.chargeModel === row.chargeModel
+              ? {}
+              : { chargeModel: body.chargeModel, chargeModelSince: new Date() }),
             commissionBps: commissionToKeep(
               this.registry.feeSettingsOf(row.carrierId),
               body.commissionBps
@@ -1143,6 +1148,7 @@ export class CarrierConnectionsService {
       minShippingFeeCents: row.minShippingFeeCents,
       maxShippingFeeCents: row.maxShippingFeeCents,
       remittanceDeductsFee: row.remittanceDeductsFee,
+      chargeModel: row.chargeModel,
       commissionBps: row.commissionBps,
       serviceRatesCents: ratesViewOf(
         row.serviceRatesCents,
