@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Param, Put, Query, Req, Res } from '@n
 import type { Response } from 'express'
 
 import { ApiRoutes } from '@platform/core/api'
-import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
+import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { LegalBookHeaders, LegalBookKind } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
@@ -13,6 +13,7 @@ import type { AuthenticatedRequest } from '@platform/core/logger'
 import {
   actorOf,
   CurrentOrganization,
+  CurrentPermissions,
   CurrentStore,
   RequirePermissions,
   type ResolvedTenant
@@ -47,7 +48,7 @@ const kind = () => new ZodValidationPipe(legalBookKindSchema)
 // book is the organization's own data until the accountant confirms it; the proposal says it is unvalidated in every answer.
 // A book lists supplier names and tax ids, so reading it (as JSON, from the frozen list or as a file) asks for finance:view_reports AND
 // finance:export; the layouts need only the first, and writing a layout for
-// finance:manage_accounts (the settings of the books).
+// finance:manage_accounts (the settings of the books); confirming a layout, or writing over a confirmed one, also finance:confirm_books.
 @Controller()
 export class FinanceBooksController {
   constructor(private readonly books: FinanceBooksService) {}
@@ -70,9 +71,16 @@ export class FinanceBooksController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('kind', kind()) bookKind: LegalBookKind,
     @Body(new ZodValidationPipe(bookLayoutBodySchema)) body: BookLayoutBody,
+    @CurrentPermissions() held: readonly Permission[],
     @Req() req: AuthenticatedRequest
   ): Promise<BookLayoutView> {
-    return this.books.writeLayout(organization.id, bookKind, body, actorOf(user, store, req))
+    return this.books.writeLayout(
+      organization.id,
+      bookKind,
+      body,
+      actorOf(user, store, req),
+      held.includes(Permissions.FINANCE_CONFIRM_BOOKS)
+    )
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW_REPORTS, Permissions.FINANCE_EXPORT)
