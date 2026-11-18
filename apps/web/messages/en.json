@@ -6131,6 +6131,7 @@
           "cost_of_goods_sold": "Cost of goods sold",
           "inventory_loss": "Inventory loss",
           "inventory_gain": "Inventory gain",
+          "prepaid_carrier_guides": "Prepaid carrier guides",
           "carrier_freight_expense": "Carrier freight expense",
           "carrier_commission_expense": "Carrier commission expense",
           "cod_differences": "Cash on delivery differences",
@@ -7312,7 +7313,7 @@
         "salesWithoutTaxSnapshot": "{count, plural, one {# sale has no tax detail (it was made before the detail was kept) and is not listed.} other {# sales have no tax detail (they were made before the detail was kept) and are not listed.}}",
         "salesNotReadable": "{count, plural, one {# sale has a tax detail that does not add up and is not listed.} other {# sales have a tax detail that does not add up and are not listed.}}",
         "voidedDocuments": "{count, plural, one {# sale whose fiscal document was voided is left out.} other {# sales whose fiscal document was voided are left out.}}",
-        "unclassifiedDocuments": "{count, plural, one {# sale has a document of a type this system does not know, or a credit note: it is counted apart and not listed.} other {# sales have a document of a type this system does not know, or a credit note: they are counted apart and not listed.}}",
+        "unclassifiedDocuments": "{count, plural, one {# sale has a document of a type this system does not know: it is counted apart and not listed.} other {# sales have a document of a type this system does not know: they are counted apart and not listed.}}",
         "returnsNotListed": "{count, plural, one {# return of the month is not listed: credit notes are not in the books yet.} other {# returns of the month are not listed: credit notes are not in the books yet.}}"
       },
       "yes": "Yes",

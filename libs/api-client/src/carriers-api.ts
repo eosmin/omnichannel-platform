@@ -42,6 +42,7 @@ const connectionSchema = z.object({
   minShippingFeeCents: z.number().int().nullable(),
   maxShippingFeeCents: z.number().int().nullable(),
   remittanceDeductsFee: z.boolean(),
+  chargeModel: z.string(),
   // What was agreed with the carrier (TDD_17 §4.15): its commission over the cash it collects in basis points (450 = 4.5 %) and the cost
   // of a guide in cents by rate service of the carrier
   commissionBps: z.number().int().nullable(),
@@ -166,6 +167,7 @@ export interface CarrierSettingsInput {
   minShippingFeeCents?: number | null
   maxShippingFeeCents?: number | null
   remittanceDeductsFee?: boolean
+  chargeModel?: string
   // Null clears it; absent leaves it as it is
   commissionBps?: number | null
   serviceRatesCents?: Record<string, number> | null
