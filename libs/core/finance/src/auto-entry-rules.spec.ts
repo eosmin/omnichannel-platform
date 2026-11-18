@@ -110,6 +110,68 @@ describe('saleAmounts', () => {
     })
   })
 
+  it('refuses an order with a line whose net is negative even when the total net is not (HC-203)', () => {
+    // The tax of the first line is above its price: its net is -1.00, and the second line hides it in the total. A return of
+    // the sale refuses a line like this, so a sale that posted it could never be returned
+    const order: SaleOrderRow = {
+      subtotalCents: 6000,
+      shippingCents: 0,
+      discountCents: 0,
+      totalCents: 6000,
+      taxCents: 1100,
+      pricesIncludeTax: true,
+      lines: [
+        { quantity: 1, unitPriceCents: 1000, taxCents: 1100 },
+        { quantity: 1, unitPriceCents: 5000, taxCents: 0 }
+      ]
+    }
+    expect(saleAmounts(order)).toEqual({
+      ok: false,
+      reason: FinancePostingFailureReason.AMOUNTS_DISAGREE
+    })
+  })
+
+  it('refuses a negative line net when the prices exclude the tax, and accepts a line whose net is exactly zero (HC-203)', () => {
+    const base = {
+      shippingCents: 0,
+      pricesIncludeTax: false,
+      subtotalCents: 6000,
+      lines: [
+        { quantity: 1, unitPriceCents: 1000, taxCents: 0 },
+        { quantity: 1, unitPriceCents: 5000, taxCents: 0 }
+      ]
+    }
+    // The discount is shared by weight, so no line goes below zero from it: the zero is the boundary, a line that costs nothing
+    const free: SaleOrderRow = {
+      ...base,
+      discountCents: 0,
+      totalCents: 6000,
+      taxCents: 0,
+      subtotalCents: 5000,
+      lines: [
+        { quantity: 1, unitPriceCents: 0, taxCents: 0 },
+        { quantity: 1, unitPriceCents: 5000, taxCents: 0 }
+      ]
+    }
+    expect(saleAmounts({ ...free, totalCents: 5000 }).ok).toBe(true)
+    // A line whose tax is above its price with the prices including it: the other branch of the same veto
+    const negative: SaleOrderRow = {
+      ...base,
+      pricesIncludeTax: true,
+      discountCents: 0,
+      totalCents: 6000,
+      taxCents: 1001,
+      lines: [
+        { quantity: 1, unitPriceCents: 1000, taxCents: 1001 },
+        { quantity: 1, unitPriceCents: 5000, taxCents: 0 }
+      ]
+    }
+    expect(saleAmounts(negative)).toEqual({
+      ok: false,
+      reason: FinancePostingFailureReason.AMOUNTS_DISAGREE
+    })
+  })
+
   it('refuses a tax of the shipping fee that is negative or above the fee', () => {
     const order: SaleOrderRow = {
       subtotalCents: 1000,
