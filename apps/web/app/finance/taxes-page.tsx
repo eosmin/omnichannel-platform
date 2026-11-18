@@ -111,7 +111,12 @@ function TaxRateRow({
   const toggle = useSetFinanceTaxRateActive(storeId)
   const makeDefault = useUpdateFinanceTaxRate(storeId)
   const busy = toggle.isPending || makeDefault.isPending
-  const [confirmingToggle, setConfirmingToggle] = useState(false)
+  // What the question asks is kept after it closes, so its text does not flip while it fades out and the rate is read again
+  const [toggling, setToggling] = useState<{ open: boolean; turningOn: boolean }>({
+    open: false,
+    turningOn: false
+  })
+  const closeToggle = (): void => setToggling(current => ({ ...current, open: false }))
   const fail = (error: Error): void => {
     toast.error(errorText(error))
   }
@@ -175,28 +180,30 @@ function TaxRateRow({
             size="sm"
             variant="outline"
             disabled={busy}
-            onClick={() => setConfirmingToggle(true)}
+            onClick={() => setToggling({ open: true, turningOn: !rate.active })}
           >
             {rate.active ? t('deactivate') : t('reactivate')}
           </Button>
         </span>
       ) : null}
       <TaxRateToggleDialog
-        open={confirmingToggle}
-        onOpenChange={setConfirmingToggle}
+        open={toggling.open}
+        onOpenChange={open => {
+          if (!open) closeToggle()
+        }}
         name={rate.name}
-        turningOn={!rate.active}
+        turningOn={toggling.turningOn}
         busy={toggle.isPending}
         onConfirm={() =>
           toggle.mutate(
             { id: rate.id, active: !rate.active },
             {
               onSuccess: () => {
-                setConfirmingToggle(false)
+                closeToggle()
                 toast.success(rate.active ? t('deactivated') : t('reactivated'))
               },
               onError: error => {
-                setConfirmingToggle(false)
+                closeToggle()
                 fail(error)
               }
             }

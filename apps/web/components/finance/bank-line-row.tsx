@@ -108,22 +108,25 @@ export function BankLineRow({
             <Undo2 aria-hidden />
             {t('undo')}
           </Button>
-          <BankConfirmDialog
-            open={undoing}
-            onOpenChange={setUndoing}
-            title={t('undoTitle')}
-            description={t('undoDescription')}
-            confirmLabel={t('undo')}
-            busy={undo.isPending}
-            onConfirm={() => {
-              if (line.match === null) return
-              void decide(() => undo.mutateAsync(line.match?.id ?? ''), t('undone')).then(() =>
-                setUndoing(false)
-              )
-            }}
-          />
         </div>
       )}
+
+      <BankConfirmDialog
+        open={undoing}
+        onOpenChange={setUndoing}
+        title={t('undoTitle')}
+        description={t('undoDescription')}
+        confirmLabel={t('undo')}
+        busy={undo.isPending}
+        onConfirm={() => {
+          const matchId = line.match?.id
+          if (matchId === undefined) {
+            setUndoing(false)
+            return
+          }
+          void decide(() => undo.mutateAsync(matchId), t('undone')).then(() => setUndoing(false))
+        }}
+      />
 
       {state === LineStates.SUGGESTED ? (
         <ul className="flex flex-col gap-2" aria-label={t('suggestionsLabel')}>

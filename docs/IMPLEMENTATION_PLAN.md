@@ -1445,13 +1445,13 @@ above is a failing test that passes, and no code outside `libs/core/finance` wri
 **PR fix/web-finance-confirmations (N-BR1-63/64, HC-215 web part; HC-212 was already closed by hardening A)**
 - [x] Turning a tax rate off or on asks first (`TaxRateToggleDialog`, `finance.taxes.toggle`): a stray click on a phone no longer changes
       the setting (N-BR1-63). Undoing a bank match asks first (`finance.reconciliation.lines.undoTitle`; HC-215).
-- [x] The row of buttons at the foot of a long dialog stays visible while the content scrolls (`stickyDialogActionsClass`, also in
-      `DialogFooter`): transaction, document, bank profile, manual entry, fiscal dialogs (N-BR1-64).
+- [x] The row of buttons at the foot of a long dialog stays visible while the content scrolls (`stickyDialogActionsClass`, used by the
+      dialogs that write their own row; `DialogFooter` is unchanged): transaction, document, bank profile, manual entry, fiscal dialogs (N-BR1-64).
 - [ ] **Debt (HC-215, owner decision P-25):** `PurchaseConflicts.ORDER_HAS_RECEIPTS` is never raised by the api for a cancel, because the
       screen hides Cancel when the order has receipts (`orderActionsOf`); decide whether the api must refuse it too (then use the code)
       or whether the code and its two messages are deleted. "New purchase" creating an empty order, paying from the screen needing
       `move_money` and `finance:view`, and order totals that sum only the lines visible by store stay open, owned by 4B.9a follow-up.
-- [ ] **Debt:** other dialogs with a custom row of buttons (`justify-end`) outside finance and fiscal still scroll with their content; they
+- [ ] **Debt:** other dialogs with a custom row of buttons (`justify-end`) and the ones that use `DialogFooter` still scroll with their content; they
       take `stickyDialogActionsClass` when one of them proves long.
 
 ### Step 4B.3 — VAT and the tax snapshot (api)
