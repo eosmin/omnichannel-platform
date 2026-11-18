@@ -245,6 +245,7 @@ async function createPurchaseOrderOf(
 }
 // The supplier a payment of the suite was made to: the payments are read in the list of their supplier
 const supplierOfPayment = new Map<string, string>()
+const paymentOfReturn = new Map<string, string>()
 // The order a row of the purchases belongs to: a line, a receipt and the line of a receipt are reached through their order
 const orderOfPurchaseRow = new Map<string, string>()
 const purchaseOrderPathOf = (build: (id: string) => string) => (id: string) =>
@@ -2126,6 +2127,75 @@ const resources: IsolationResource[] = [
     untouched: async (owner, id) =>
       (
         await owner.supplierPayment.findUnique({
+          where: { id },
+          select: { voidedByEntryId: true }
+        })
+      )?.voidedByEntryId === null
+  },
+  // What a supplier gave back of a payment is the organization's: listed under its payment, voided by id, never read or voided by another
+  {
+    name: 'supplierPaymentReturn',
+    create: async (owner, { storeId }) => {
+      const books = await booksOfStore(owner, storeId)
+      const supplier = await createSupplierOf(owner, books.organizationId)
+      const paymentId = randomUUID()
+      const paymentEntry = await postTestEntry(
+        owner,
+        simpleEntry(books, 800, {
+          type: JournalEntryType.SUPPLIER_PAYMENT,
+          sourceType: FinanceSourceType.SUPPLIER_PAYMENT,
+          sourceId: paymentId
+        })
+      )
+      await owner.supplierPayment.create({
+        data: {
+          id: paymentId,
+          organizationId: books.organizationId,
+          supplierId: supplier.id,
+          paidFromAccountId: books.accounts.cash,
+          amountCents: 800,
+          paidOn: day(FINANCE_ENTRY_DATE),
+          clientKey: `iso-${paymentId}`,
+          entryId: paymentEntry.id,
+          createdBy: 'isolation-suite'
+        }
+      })
+      const id = randomUUID()
+      const entry = await postTestEntry(
+        owner,
+        simpleEntry(books, 300, {
+          type: JournalEntryType.SUPPLIER_PAYMENT_RETURN,
+          sourceType: FinanceSourceType.SUPPLIER_PAYMENT_RETURN,
+          sourceId: id
+        })
+      )
+      await owner.supplierPaymentReturn.create({
+        data: {
+          id,
+          organizationId: books.organizationId,
+          supplierId: supplier.id,
+          supplierPaymentId: paymentId,
+          receivedIntoAccountId: books.accounts.cash,
+          amountCents: 300,
+          returnedOn: day(FINANCE_ENTRY_DATE),
+          clientKey: `iso-${id}`,
+          entryId: entry.id,
+          createdBy: 'isolation-suite'
+        }
+      })
+      paymentOfReturn.set(id, paymentId)
+      return { id }
+    },
+    scope: 'organization',
+    readPath: id => ApiRoutes.supplierPayments.returns(paymentOfReturn.get(id) ?? randomUUID()),
+    modify: {
+      path: ApiRoutes.supplierPaymentReturns.void,
+      method: 'post',
+      body: { reason: 'Voided by the suite' }
+    },
+    untouched: async (owner, id) =>
+      (
+        await owner.supplierPaymentReturn.findUnique({
           where: { id },
           select: { voidedByEntryId: true }
         })

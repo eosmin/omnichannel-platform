@@ -209,6 +209,15 @@ export class SupplierPaymentsService {
       // The supplier is locked like in a payment: a bill is never read half way between the void and its payments
       await lockScope(tx, `${organizationId}:supplier:${original.supplierId}`)
       if (original.voidedByEntryId !== null) throw this.alreadyVoided()
+      // A return of this payment that nobody voided already reopened its debt: it is voided first, or the debt would be reopened twice
+      const live = await tx.supplierPaymentReturn.count({
+        where: { organizationId, supplierPaymentId: id, voidedByEntryId: null }
+      })
+      if (live > 0) {
+        throw resourceConflict('the payment has a return: void the return first', {
+          conflict: PurchaseConflicts.PAYMENT_HAS_RETURNS
+        })
+      }
       // The reversal found under the entry is another request's (another person or another reason got the lock first): the payment was
       // voided already, the typed answer of this route
       const reversal = await this.ledger
@@ -310,10 +319,17 @@ export class SupplierPaymentsService {
         where: { organizationId, purchaseReceiptId: bill.id, voidedByEntryId: null },
         _sum: { amountCents: true }
       })
-      if (body.amountCents > bill.totalCents - (named._sum.amountCents ?? 0)) {
+      // What the supplier gave back of those payments is owed again on the bill
+      const given = await tx.supplierPaymentReturn.aggregate({
+        where: { organizationId, voidedByEntryId: null, payment: { purchaseReceiptId: bill.id } },
+        _sum: { amountCents: true }
+      })
+      const openOnBill =
+        bill.totalCents - (named._sum.amountCents ?? 0) + (given._sum.amountCents ?? 0)
+      if (body.amountCents > openOnBill) {
         throw resourceConflict('a payment is never above what is open on its bill', {
           conflict: PurchaseConflicts.PAYMENT_EXCEEDS_RECEIPT,
-          openCents: bill.totalCents - (named._sum.amountCents ?? 0)
+          openCents: openOnBill
         })
       }
     } else if (orderId !== null) {
