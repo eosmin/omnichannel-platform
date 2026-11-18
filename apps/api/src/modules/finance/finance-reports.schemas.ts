@@ -89,7 +89,10 @@ export const journalQuerySchema = z
     cursor: z
       .string()
       .regex(/^\d{1,19}$/)
-      .refine(value => BigInt(value) <= MAX_BIGINT, { message: 'not an entry number' })
+      // A refine runs even when the regex failed, and BigInt throws on what is not digits
+      .refine(value => !/^\d{1,19}$/.test(value) || BigInt(value) <= MAX_BIGINT, {
+        message: 'not an entry number'
+      })
       .optional(),
     limit: queryIntSchema(1, FinanceReportLimits.JOURNAL_PAGE_MAX).default(50)
   })
