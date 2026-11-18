@@ -224,7 +224,15 @@ test.describe('Finance → bank reconciliation', () => {
     await first.getByTestId('bank-suggestion-confirm').click()
     await expect(first).toHaveAttribute('data-state', 'matched')
     await expect(first.getByTestId('bank-line-match')).toBeVisible()
+    // Taking a pair back asks first: Cancel leaves it confirmed
     await first.getByTestId('bank-line-undo').click()
+    const undoing = page.getByRole('alertdialog')
+    await expect(undoing.getByText(lines.undoDescription)).toBeVisible()
+    await undoing.getByRole('button', { name: reconciliation.cancel, exact: true }).click()
+    await expect(undoing).toHaveCount(0)
+    await expect(first).toHaveAttribute('data-state', 'matched')
+    await first.getByTestId('bank-line-undo').click()
+    await undoing.getByRole('button', { name: lines.undo, exact: true }).click()
     await expect(first).toHaveAttribute('data-state', 'suggested')
 
     // The third line is a day apart and has no reference: a suggestion that is not exact. Rejecting asks first and can be cancelled

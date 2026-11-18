@@ -5943,6 +5943,19 @@
       "reactivate": "Turn on",
       "deactivated": "Rate turned off.",
       "reactivated": "Rate turned on.",
+      "toggle": {
+        "cancel": "Cancel",
+        "off": {
+          "title": "Turn off {name}?",
+          "description": "A rate that is off can no longer be chosen. What was already posted does not change. You can turn it on again.",
+          "confirm": "Turn off"
+        },
+        "on": {
+          "title": "Turn on {name}?",
+          "description": "The rate can be chosen again.",
+          "confirm": "Turn on"
+        }
+      },
       "percent": "{percent} %",
       "accounts": "Tax on sales to {output} · tax on purchases to {input}",
       "badges": {
@@ -6693,6 +6706,8 @@
           "unmatched": "Open"
         },
         "matchedWith": "Matched with the entry {number} of {date}",
+        "undoTitle": "Undo this match?",
+        "undoDescription": "The entry and the line of the statement stay as they are, but the pair stops counting as reconciled.",
         "undo": "Undo",
         "undone": "The decision was taken back.",
         "suggestionsLabel": "Suggested entries",

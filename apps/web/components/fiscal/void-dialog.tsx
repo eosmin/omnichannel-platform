@@ -28,7 +28,14 @@ import { SelectField, TextField } from '../finance/fields'
 import { useStore } from '../providers/store-context'
 import { useDestructiveAction } from '../shared/destructive-action'
 import { Button } from '../ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  stickyDialogActionsClass
+} from '../ui/dialog'
 
 // Voids an accepted fiscal document (TDD_18 §8.3, HIGH tier). The effect is shown before anything is sent, the reason is written, and the
 // action asks to be confirmed again: the invalidation goes to the authority through the provider and cannot be taken back.
@@ -299,7 +306,7 @@ function VoidForm({
           {refusal}
         </p>
       )}
-      <div className="flex justify-end gap-2">
+      <div className={`${stickyDialogActionsClass} flex justify-end gap-2`}>
         <Button type="button" variant="outline" onClick={onDone} disabled={pending}>
           {t('cancel')}
         </Button>

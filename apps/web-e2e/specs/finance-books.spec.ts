@@ -96,6 +96,19 @@ test.describe('Finance → the books of the organization', () => {
     const created = page.locator(`[data-testid="finance-tax-rate-row"][data-code="T${run}"]`)
     await expect(created.getByTestId('finance-tax-rate-percent')).toHaveText('7.5 %')
 
+    // Turning a rate off asks first: Cancel leaves it on, the button of the question turns it off
+    await created.getByRole('button', { name: finance.taxes.deactivate, exact: true }).click()
+    const toggle = page.getByRole('alertdialog')
+    await expect(toggle.getByText(finance.taxes.toggle.off.description)).toBeVisible()
+    await toggle.getByRole('button', { name: finance.taxes.toggle.cancel, exact: true }).click()
+    await expect(toggle).toHaveCount(0)
+    await expect(created.getByText(finance.taxes.badges.inactive, { exact: true })).toHaveCount(0)
+    await created.getByRole('button', { name: finance.taxes.deactivate, exact: true }).click()
+    await toggle
+      .getByRole('button', { name: finance.taxes.toggle.off.confirm, exact: true })
+      .click()
+    await expect(created.getByText(finance.taxes.badges.inactive, { exact: true })).toBeVisible()
+
     // A month opened ahead of time
     await page.getByRole('link', { name: nav.periods, exact: true }).click()
     await expect(page.getByRole('heading', { name: finance.periods.title, level: 1 })).toBeVisible()

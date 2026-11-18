@@ -39,7 +39,14 @@ import { useSubmitGuard } from '../../lib/submit-guard'
 import { toast } from '../../lib/toast'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  stickyDialogActionsClass
+} from '../ui/dialog'
 import { Label } from '../ui/label'
 
 import { BankPreviewTable } from './bank-preview-table'
@@ -441,7 +448,9 @@ function BankProfileForm({
           {refusal}
         </p>
       )}
-      <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      <div
+        className={`${stickyDialogActionsClass} flex flex-col-reverse gap-2 sm:flex-row sm:justify-end`}
+      >
         <Button type="button" variant="outline" onClick={onDone} disabled={pending}>
           {t('cancel')}
         </Button>

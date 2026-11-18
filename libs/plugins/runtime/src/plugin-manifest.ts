@@ -357,6 +357,21 @@ export interface ManifestWebhook {
   signatureHeader: string
 }
 
+// The cap of deliveries a day that the manifest declares (`limits.maxWebhooksPerDay`), read from a stored manifest the way
+// `manifestWebhookOf` reads the block of webhooks: anything that is not a whole number in the accepted range is no cap
+export function manifestMaxWebhooksPerDay(manifest: unknown): number | null {
+  if (typeof manifest !== 'object' || manifest === null) return null
+  const limits = (manifest as { limits?: unknown }).limits
+  if (typeof limits !== 'object' || limits === null) return null
+  const cap = (limits as { maxWebhooksPerDay?: unknown }).maxWebhooksPerDay
+  return typeof cap === 'number' &&
+    Number.isInteger(cap) &&
+    cap >= PluginManifestLimits.MIN_WEBHOOKS_PER_DAY &&
+    cap <= PluginManifestLimits.MAX_WEBHOOKS_PER_DAY
+    ? cap
+    : null
+}
+
 export function manifestWebhookOf(manifest: unknown): ManifestWebhook | null {
   if (typeof manifest !== 'object' || manifest === null) return null
   const block = (manifest as { webhooks?: unknown }).webhooks

@@ -4,6 +4,7 @@ import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
 import {
+  FinanceAutoMemo,
   FinancePostingKey,
   FinanceReportLimits,
   FinanceResourceTypes,
@@ -634,6 +635,7 @@ export class FinanceBooksService {
       const [{ returns }] = await this.prisma.client.$queryRaw<[{ returns: bigint }]>`
         SELECT COUNT(*)::bigint AS returns FROM journal_entries
         WHERE organization_id = ${organizationId} AND type = ${JournalEntryType.SALE_RETURN}
+          AND memo IS DISTINCT FROM ${FinanceAutoMemo.RETURN_REFUND}
           AND entry_date BETWEEN ${from}::date AND ${to}::date`
       warnings.returnsNotListed = Number(returns)
     }
