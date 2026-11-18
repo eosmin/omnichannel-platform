@@ -12,16 +12,18 @@ import { Reflector } from '@nestjs/core'
 import type { ThrottlerStorage } from '@nestjs/throttler'
 import type { Counter } from '@prometheus-io/client'
 
-import { RETRY_AFTER_METADATA_KEY, type UserRateLimitProfile } from '@platform/core/auth'
+import {
+  RETRY_AFTER_METADATA_KEY,
+  USER_RATE_LIMIT_METADATA_KEY,
+  type UserRateLimitProfile,
+  userRateLimitThrottler
+} from '@platform/core/auth'
 import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 
 export const USER_RATE_LIMIT_STORAGE = Symbol('USER_RATE_LIMIT_STORAGE')
-const USER_RATE_LIMIT_KEY = 'userRateLimit'
-// The `throttler` label and the counter name of a profile, so that it never meets the counters of the per-address layer
-const USER_LAYER = 'user'
 
 // Like the per-address layer it is a protection and not a dependency: when Redis fails the request goes on and the failure is
 // logged. What it refuses is answered 429 with the time to wait, as the other layer does.
@@ -37,7 +39,7 @@ export class UserRateLimitGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const profile = this.reflector.getAllAndOverride<UserRateLimitProfile | undefined>(
-      USER_RATE_LIMIT_KEY,
+      USER_RATE_LIMIT_METADATA_KEY,
       [context.getHandler(), context.getClass()]
     )
     if (profile === undefined) return true
@@ -58,7 +60,7 @@ export class UserRateLimitGuard implements CanActivate {
         profile.ttlMs,
         profile.limit,
         0,
-        `${USER_LAYER}:${profile.name}`
+        userRateLimitThrottler(profile)
       )
     } catch (error) {
       this.logger.error(
@@ -67,7 +69,7 @@ export class UserRateLimitGuard implements CanActivate {
       return true
     }
     if (!record.isBlocked) return true
-    this.hits.inc({ throttler: `${USER_LAYER}:${profile.name}` })
+    this.hits.inc({ throttler: userRateLimitThrottler(profile) })
     throw new PlatformException(
       ErrorCodes.RATE_LIMIT_EXCEEDED,
       'Too many requests',
@@ -81,4 +83,4 @@ export class UserRateLimitGuard implements CanActivate {
 // runs after the global ones (token, store, permission), so `request.user` is known; the first layer, per address, is
 // @RateLimit() and runs before them.
 export const UserRateLimit = (profile: UserRateLimitProfile): MethodDecorator & ClassDecorator =>
-  applyDecorators(SetMetadata(USER_RATE_LIMIT_KEY, profile), UseGuards(UserRateLimitGuard))
+  applyDecorators(SetMetadata(USER_RATE_LIMIT_METADATA_KEY, profile), UseGuards(UserRateLimitGuard))

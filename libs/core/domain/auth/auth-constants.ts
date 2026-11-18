@@ -50,6 +50,10 @@ export interface UserRateLimitProfile {
   readonly limit: number
   readonly ttlMs: number
 }
+// The name a profile is counted under (the key in Redis and the `throttler` label of the metric): apart from the per-address ones
+export const userRateLimitThrottler = (profile: UserRateLimitProfile): string =>
+  `user:${profile.name}`
+export const USER_RATE_LIMIT_METADATA_KEY = 'userRateLimit'
 export const UserRateLimits = {
   SEARCH: { name: 'search', limit: 180, ttlMs: 60_000 },
   SEARCH_CLICKS: { name: 'search_clicks', limit: 120, ttlMs: 60_000 },
