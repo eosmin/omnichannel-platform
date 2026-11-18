@@ -238,12 +238,15 @@ export class FinanceBooksService {
     return resolved.map(item => item.view)
   }
 
-  // A layout is never changed: the answer is the new version. The pure rules refuse a column the kind of book may not show.
+  // A layout is never changed: the answer is the new version. The pure rules refuse a column the kind of book may not show. Saying the
+  // accountant vouched for a layout, and writing over a layout the accountant vouched for (the new version would drop the word), take
+  // `finance:confirm_books`: `mayConfirm` says the caller holds it (QA FIS-426).
   async writeLayout(
     organizationId: string,
     kind: LegalBookKind,
     body: BookLayoutBody,
-    actor: Actor
+    actor: Actor,
+    mayConfirm: boolean
   ): Promise<BookLayoutView> {
     const layout: LegalBookLayout = {
       columns: body.columns,
@@ -264,15 +267,23 @@ export class FinanceBooksService {
     const row = await this.prisma.transaction(async tx => {
       // The versions of a kind are numbered one request at a time
       await lockScope(tx, `${organizationId}:finance_book_layout:${kind}`)
-      const latest = await tx.financeBookLayout.aggregate({
+      const latest = await tx.financeBookLayout.findFirst({
         where: { organizationId, bookKind: kind },
-        _max: { version: true }
+        orderBy: { version: 'desc' },
+        select: { version: true, accountantConfirmed: true }
       })
+      if (!mayConfirm && (body.accountantConfirmed || latest?.accountantConfirmed === true)) {
+        throw new PlatformException(
+          ErrorCodes.PERMISSION_DENIED,
+          'confirming a layout, or writing over a confirmed one, needs finance:confirm_books',
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
       return tx.financeBookLayout.create({
         data: {
           organizationId,
           bookKind: kind,
-          version: (latest._max.version ?? 0) + 1,
+          version: (latest?.version ?? 0) + 1,
           columns: body.columns.map(column => ({ field: column.field, label: column.label })),
           sort: body.sort,
           correlativeStart: body.correlativeStart,
