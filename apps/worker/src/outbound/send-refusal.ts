@@ -42,11 +42,16 @@ export function refusalOf(error: unknown): Refusal {
   return { code: ErrorCodes.CHANNEL_MESSAGE_FAILED, retryable: true }
 }
 
-// Whether a failed send of a message to a customer may be repeated by the job. The provider has no key that stops a
-// second send, so a repeat after a doubt shows the customer the message twice. Only the plugin's own word counts:
-// a PluginError that says `retryable` and does not say the outcome is unknown (a throttle, a file that could not be
-// stored). A timeout of the worker, an error that is not the plugin's and a retry the plugin flags as unknown fail
-// the send as one that may have gone, and the agent decides.
+// Whether a failed send of a message to a customer may be repeated by the job. A repeat after a doubt shows the
+// customer the message twice unless the other side deduplicates it. Only the plugin's own word counts: a PluginError
+// that says `retryable` and either does not say the outcome is unknown (a throttle, a file that could not be stored)
+// or says the call was `idempotent` (a remote plugin got the same `Idempotency-Key` it promised to deduplicate,
+// TDD_10 §6.7.4: a 5xx or a timeout). A timeout of the worker, an error that is not the plugin's and a retry of a
+// provider with no key that is flagged as unknown fail the send as one that may have gone, and the agent decides.
 export function isRepeatableSend(error: unknown): boolean {
-  return error instanceof PluginError && error.retryable === true && !error.outcomeUnknown
+  return (
+    error instanceof PluginError &&
+    error.retryable === true &&
+    (!error.outcomeUnknown || error.idempotent)
+  )
 }

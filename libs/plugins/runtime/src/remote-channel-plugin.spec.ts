@@ -379,6 +379,30 @@ describe('RemoteChannelPlugin: the answers to a send', () => {
     }
   })
 
+  it('marks a doubt of a send as idempotent: the same key goes again and the plugin promised not to send twice', async () => {
+    for (const answer of [
+      new PinnedExchangeFailed('too_slow'),
+      new PinnedExchangeFailed('no_answer:ECONNRESET'),
+      refusal(500, { code: 'rejected', message: 'm' }),
+      refusal(503, { code: 'rejected', message: 'm' })
+    ]) {
+      const error = await failureOf(send(harness(() => answer).plugin))
+      expect(error.outcomeUnknown).toBe(true)
+      expect(error.idempotent).toBe(true)
+    }
+  })
+
+  it('does not call idempotent a refusal, a throttle or an answer that cannot be read', async () => {
+    for (const answer of [
+      refusal(429, { code: 'rate_limited', message: 'm' }),
+      refusal(422, { code: 'rejected', message: 'm' }),
+      ok({}),
+      { status: 200, body: 'nope' }
+    ]) {
+      expect((await failureOf(send(harness(() => answer).plugin))).idempotent).toBe(false)
+    }
+  })
+
   it('does not carry what the plugin said in the error', async () => {
     const { plugin } = harness(() =>
       refusal(422, { code: 'rejected', message: 'token plg_live_secret was refused' })
@@ -477,6 +501,15 @@ describe('RemoteChannelPlugin: files', () => {
         filename: 'photo.png'
       }
     })
+  })
+
+  it('marks a doubt of a media send as idempotent too', async () => {
+    const { plugin } = harness(() => refusal(502, { code: 'rejected', message: 'm' }))
+    const error = await failureOf(
+      plugin.sendMedia(ctx, { ...file, signedUrl: () => Promise.resolve('https://f.example/x') })
+    )
+    expect(error.outcomeUnknown).toBe(true)
+    expect(error.idempotent).toBe(true)
   })
 
   it('names the kind of the file by its content type', async () => {
