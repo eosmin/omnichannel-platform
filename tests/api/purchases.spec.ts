@@ -600,6 +600,34 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       })
     })
 
+    it('receives an order whose tax rate was switched off after it was placed (HC-124)', async () => {
+      const seller = await supplier()
+      const rate = await asAdminA()
+        .post(ApiRoutes.finance.taxRates.create)
+        .send({
+          code: `T${key().replaceAll('-', '').slice(0, 8)}`,
+          name: 'Rate switched off later',
+          rateBps: 500,
+          outputAccountId: accounts['2201'],
+          inputAccountId: accounts['1401']
+        })
+      expect(rate.status).toBe(CREATED)
+      const rateId = (rate.body as { id: string }).id
+      const item = await product()
+      const order = await placedOrder(seller.id, {
+        lines: [{ productId: item.id, quantity: 2, unitCostCents: 500, taxRateId: rateId }]
+      })
+      const off = await asAdminA().post(ApiRoutes.finance.taxRates.deactivate(rateId))
+      expect(off.status).toBeLessThan(300)
+
+      const received = await receive(order.id, {
+        supplierDocumentNumber: `D-${key()}`,
+        lines: [{ orderLineId: order.lines[0]?.id, quantity: 2 }]
+      })
+
+      expect(received.status).toBe(CREATED)
+    })
+
     it('does not post anything when the stock refuses the receipt', async () => {
       const seller = await supplier()
       const item = await product()

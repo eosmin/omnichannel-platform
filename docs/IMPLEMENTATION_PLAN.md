@@ -1765,6 +1765,13 @@ append-only and its rows are never deleted); the integration suite proves every 
 refused one until this step) and checks it is the organization's. The column `finance_settings.next_purchase_number` is granted to the application roles by this
 migration, as the ledger migration asks of every new column.
 
+**PR fix/receipt-inactive-rate (HC-124, second part)**
+- [x] A tax rate switched off after the order was placed no longer blocks the receipt (there was no way out: a placed order cannot be edited). The
+      draft still refuses a rate that is off; the receipt posts the tax with the rate and the input account the order took, and the accounts of a
+      rate stay active while the rate exists (`usedBySetting`). Decision, **[ACCOUNTANT]** to confirm: the tax follows the invoice the order
+      was placed with, not the law of the day of the receipt; rejected: refusing and asking to cancel the order (the stock is already coming).
+      Test in `tests/api/purchases.spec.ts`.
+
 ### Step 4B.6 — The automatic entries (api and worker)
 The step is cut in two PRs by what each needs (rule 12; one session, one PR; the cut is mine): **4B.6a** is the machinery and the entries that
 need nothing from the carriers' side; **4B.6b** is everything that waits on the remittance, the return and the carrier's charge model.

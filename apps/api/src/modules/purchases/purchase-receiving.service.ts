@@ -191,7 +191,7 @@ export class PurchaseReceivingService {
       (
         await tx.taxRate.findMany({
           where: { id: { in: rateIds }, organizationId },
-          select: { id: true, rateBps: true, inputAccountId: true, active: true }
+          select: { id: true, rateBps: true, inputAccountId: true }
         })
       ).map(rate => [rate.id, rate])
     )
@@ -206,9 +206,8 @@ export class PurchaseReceivingService {
     const taxCreditable = body.taxCreditable ?? document !== null
     const problems: PurchaseRuleName[] = [
       ...receiptProblems(inputs, money),
-      ...(chosen.some(line => line.taxRateId !== null && rates.get(line.taxRateId)?.active !== true)
-        ? [PurchaseRule.TAX_RATE_INACTIVE]
-        : []),
+      // A rate switched off after the order was placed does not stop the receipt: the order took it while it was on (a draft refuses a rate
+      // that is off) and the supplier's invoice carries that tax; the accounts of a rate stay active as long as the rate exists (HC-124)
       // The tax is credited only against a supplier document, and its number is what says there is one [ACCOUNTANT]
       ...(taxCreditable && document === null ? [PurchaseRule.CREDITABLE_NEEDS_DOCUMENT] : []),
       ...(body.receivedOn > latestDay() ? [PurchaseRule.DATE_IN_FUTURE] : [])
