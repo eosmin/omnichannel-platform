@@ -835,6 +835,32 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       })
     })
 
+    it('does not answer the retry of a payment that was voided with the voided payment (HC-213)', async () => {
+      const { supplierId, receipt } = await billed()
+      const idempotencyKey = key()
+      const body = { amountCents: 10_000, purchaseReceiptId: receipt.id, idempotencyKey }
+      const paid = await pay(supplierId, body)
+      expect(paid.status).toBe(CREATED)
+      await asAdminA()
+        .post(ApiRoutes.supplierPayments.void((paid.body as PaymentBody).id))
+        .send({ reason: 'Wrong account' })
+
+      const retry = await pay(supplierId, body)
+
+      expect(retry.status).toBe(CONFLICT)
+      expect(errorOf(retry).metadata).toMatchObject({
+        conflict: PurchaseConflicts.PAYMENT_ALREADY_VOIDED
+      })
+      // The key of a payment that is live still answers the same payment
+      const liveKey = key()
+      const liveBody = { amountCents: 100, purchaseReceiptId: receipt.id, idempotencyKey: liveKey }
+      const live = await pay(supplierId, liveBody)
+      const replay = await pay(supplierId, liveBody)
+      expect(live.status).toBe(CREATED)
+      expect(replay.status).toBe(CREATED)
+      expect((replay.body as PaymentBody).id).toBe((live.body as PaymentBody).id)
+    })
+
     it('voids a payment once when two people void it at the same moment with other reasons', async () => {
       const { supplierId, receipt } = await billed()
       const paid = await pay(supplierId, { amountCents: 100, purchaseReceiptId: receipt.id })

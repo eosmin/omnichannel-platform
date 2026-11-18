@@ -157,6 +157,9 @@ export class SupplierPaymentsService {
             conflict: PurchaseConflicts.KEY_REUSED
           })
         }
+        // A retry with the key of a payment that was voided meanwhile is not the payment it asked for: answering 201 with the voided
+        // payment would tell the caller that the supplier was paid. A new payment takes a new key (HC-213)
+        if (found.voidedByEntryId !== null) throw this.alreadyVoided()
         return { id: found.id, replayed: true, entryNumber: null }
       }
       return this.recordIn(tx, organizationId, supplierId, body, actor, orderId)
