@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common'
 
+import { BUCKET_PROTECTION_RECHECK_MS } from '@platform/core/storage'
 import type { StorageService } from '@platform/core/storage-module'
 
 import { BucketProtectionCheck } from './bucket-protection.check'
@@ -24,7 +25,8 @@ describe('BucketProtectionCheck', () => {
   it('asks nothing outside a deployed environment', async () => {
     const inspect = jest.fn()
     const { check, set } = build(false, inspect)
-    await check.onApplicationBootstrap()
+    check.onApplicationBootstrap()
+    check.onApplicationShutdown()
     expect(inspect).not.toHaveBeenCalled()
     expect(set).not.toHaveBeenCalled()
   })
@@ -34,7 +36,7 @@ describe('BucketProtectionCheck', () => {
       true,
       jest.fn().mockResolvedValue({ encryption: 'on', versioning: 'on' })
     )
-    await check.onApplicationBootstrap()
+    await check.run()
     expect(warn).not.toHaveBeenCalled()
     expect(set).toHaveBeenCalledWith({ protection: 'encryption' }, 0)
     expect(set).toHaveBeenCalledWith({ protection: 'versioning' }, 0)
@@ -45,7 +47,7 @@ describe('BucketProtectionCheck', () => {
       true,
       jest.fn().mockResolvedValue({ encryption: 'off', versioning: 'unknown' })
     )
-    await check.onApplicationBootstrap()
+    await check.run()
     expect(set).toHaveBeenCalledWith({ protection: 'encryption' }, 1)
     expect(set).toHaveBeenCalledWith({ protection: 'versioning' }, 1)
     expect(warn).toHaveBeenCalledTimes(2)
@@ -55,7 +57,24 @@ describe('BucketProtectionCheck', () => {
 
   it('never fails the boot when the bucket cannot be reached', async () => {
     const { check } = build(true, jest.fn().mockRejectedValue(new Error('down')))
-    await expect(check.onApplicationBootstrap()).resolves.toBeUndefined()
+    await expect(check.run()).resolves.toBeUndefined()
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('could not be checked: down'))
+  })
+
+  it('asks again every hour while it runs, and stops when the app does', () => {
+    jest.useFakeTimers()
+    try {
+      const inspect = jest.fn().mockResolvedValue({ encryption: 'on', versioning: 'on' })
+      const { check } = build(true, inspect)
+      check.onApplicationBootstrap()
+      expect(inspect).toHaveBeenCalledTimes(1)
+      jest.advanceTimersByTime(BUCKET_PROTECTION_RECHECK_MS)
+      expect(inspect).toHaveBeenCalledTimes(2)
+      check.onApplicationShutdown()
+      jest.advanceTimersByTime(BUCKET_PROTECTION_RECHECK_MS)
+      expect(inspect).toHaveBeenCalledTimes(2)
+    } finally {
+      jest.useRealTimers()
+    }
   })
 })

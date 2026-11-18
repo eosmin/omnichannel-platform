@@ -1112,12 +1112,19 @@ aws s3api put-bucket-replication --bucket platform-production \
 ```
 
 Nothing in the repository creates the production bucket (only SeaweedFS makes the local one), so the two
-protections above are checked, not applied. When the api starts in `staging` or `production` it asks the
-bucket (`GetBucketVersioning`, `GetBucketEncryption`) and, for each protection that is off or that the store
-does not answer for, writes a warning to the log and sets `platform_storage_bucket_protection_gap{protection}`
-to 1 (to 0 when it is on). Alert on any value above 0. The check never stops the api from starting. The
-role of the api needs `s3:GetBucketVersioning` and `s3:GetEncryptionConfiguration`; without them the answer
-is "unknown" and counts as a gap. The 7-year cold retention of the audit archive is a separate feature and
+protections above are checked, not applied. When the api or the worker starts in `staging` or `production` it
+asks the bucket (`GetBucketVersioning`, `GetBucketEncryption`) and, for each protection that is off, has no
+encryption algorithm or that the store does not answer for, writes a warning to the log (with the name of the
+error when it did not answer) and sets `platform_storage_bucket_protection_gap{protection}` to 1 (to 0 when it
+is on). It asks again every hour, so a protection turned off later is seen without a deploy. Alert on any value
+above 0. The check never waits for the answer to finish the start and never stops it. The role of the api and
+of the worker needs `s3:GetBucketVersioning` and `s3:GetEncryptionConfiguration` on the bucket ARN itself (they
+are bucket-level actions, not `bucket/*`); without them the answer is "unknown" and counts as a gap.
+
+Versioning keeps what the application deletes: the conversation-deletion and retention jobs only add a delete
+marker. Add a lifecycle rule `NoncurrentVersionExpiration` (days chosen with the retention policy) so the
+deleted bytes of a customer do not stay for ever; until then a deletion is recoverable by whoever holds the
+bucket. Replication is not checked here. The 7-year cold retention of the audit archive is a separate feature and
 is not part of this check.
 
 ### 7.4 Kubernetes backups (Phase 2 only)

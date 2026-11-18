@@ -25,7 +25,9 @@ describe('StorageService', () => {
         return Promise.resolve().then(answer)
       }
     const encrypted = () => ({
-      ServerSideEncryptionConfiguration: { Rules: [{ ApplyServerSideEncryptionByDefault: {} }] }
+      ServerSideEncryptionConfiguration: {
+        Rules: [{ ApplyServerSideEncryptionByDefault: { SSEAlgorithm: 'AES256' } }]
+      }
     })
     const named = (name: string) => () => {
       throw Object.assign(new Error(name), { name })
@@ -60,6 +62,18 @@ describe('StorageService', () => {
           answering({ encryption: encrypted, versioning: () => ({ Status: 'Suspended' }) })
         )
       expect((await serviceWith(suspended).inspectProtection(1000)).versioning).toBe('off')
+    })
+
+    it('is off for a rule that names no algorithm', async () => {
+      const send = jest.fn().mockImplementation(
+        answering({
+          encryption: () => ({
+            ServerSideEncryptionConfiguration: { Rules: [{ BucketKeyEnabled: true }] }
+          }),
+          versioning: () => ({ Status: 'Enabled' })
+        })
+      )
+      expect((await serviceWith(send).inspectProtection(1000)).encryption).toBe('off')
     })
 
     it('is unknown, never on, when the store does not answer the question', async () => {

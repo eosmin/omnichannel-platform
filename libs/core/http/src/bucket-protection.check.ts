@@ -1,9 +1,16 @@
-import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common'
+import {
+  Inject,
+  Injectable,
+  Logger,
+  type OnApplicationBootstrap,
+  type OnApplicationShutdown
+} from '@nestjs/common'
 import type { Gauge } from '@prometheus-io/client'
 
 import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 import {
+  BUCKET_PROTECTION_RECHECK_MS,
   bucketProtectionGaps,
   BucketProtections,
   BucketProtectionStates
@@ -14,13 +21,15 @@ export const BUCKET_PROTECTION_CHECK_ENABLED = Symbol('BUCKET_PROTECTION_CHECK_E
 
 const TIMEOUT_MS = 5000
 
-// Nothing in the repository provisions the production bucket, so when the api starts it asks the bucket for the two
+// Nothing in the repository provisions the production bucket, so when the api or the worker starts it asks the bucket for the two
 // protections TDD_03 §7.3 requires (encryption at rest, versioning) and says what is missing: a warning in the log and a
-// gauge to alert on. It never stops the api: a bucket without them still serves, and the person who can fix it is not
+// gauge to alert on, and asks again every hour (BUCKET_PROTECTION_RECHECK_MS), so a protection turned off later is seen without a deploy. It
+// never waits for the answer to finish the start and never stops it: a bucket without them still serves, and the person who can fix it is not
 // the one a failed boot would reach. Only a deployed environment is judged: the local store has neither.
 @Injectable()
-export class BucketProtectionCheck implements OnApplicationBootstrap {
+export class BucketProtectionCheck implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly logger = new Logger(BucketProtectionCheck.name)
+  private timer: NodeJS.Timeout | undefined
 
   constructor(
     private readonly storage: StorageService,
@@ -28,8 +37,20 @@ export class BucketProtectionCheck implements OnApplicationBootstrap {
     @InjectMetric(MetricNames.STORAGE_BUCKET_PROTECTION_GAP) private readonly gap: Gauge<string>
   ) {}
 
-  async onApplicationBootstrap(): Promise<void> {
+  onApplicationBootstrap(): void {
     if (!this.enabled) return
+    void this.run()
+    this.timer = setInterval(() => void this.run(), BUCKET_PROTECTION_RECHECK_MS)
+    // A timer must not keep the process alive
+    this.timer.unref()
+  }
+
+  onApplicationShutdown(): void {
+    if (this.timer !== undefined) clearInterval(this.timer)
+  }
+
+  // Never throws: it runs off the start
+  async run(): Promise<void> {
     try {
       const report = await this.storage.inspectProtection(TIMEOUT_MS)
       const gaps = bucketProtectionGaps(report)

@@ -5,6 +5,9 @@ export const BucketProtections = {
   ENCRYPTION: 'encryption',
   VERSIONING: 'versioning'
 } as const
+// How often the running api looks again: a protection turned off (or on) after the start is seen within this time, not at the next deploy
+export const BUCKET_PROTECTION_RECHECK_MS = 3_600_000
+
 export type BucketProtection = (typeof BucketProtections)[keyof typeof BucketProtections]
 
 // `unknown` is a store that does not answer the question (a role without s3:GetEncryptionConfiguration, a compatible
@@ -14,7 +17,8 @@ export const BucketProtectionStates = {
   OFF: 'off',
   UNKNOWN: 'unknown'
 } as const
-export type BucketProtectionState = (typeof BucketProtectionStates)[keyof typeof BucketProtectionStates]
+export type BucketProtectionState =
+  (typeof BucketProtectionStates)[keyof typeof BucketProtectionStates]
 
 export type BucketProtectionReport = Record<BucketProtection, BucketProtectionState>
 
