@@ -16,7 +16,7 @@ import {
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { InventoryService } from '@platform/core/inventory'
-import { PluginScopes } from '@platform/plugins/sdk'
+import { type PluginScope, PluginScopes } from '@platform/plugins/sdk'
 
 import { createPluginKey, createProduct, createWarehouse, linkWarehouse } from '../builders'
 import { createTestApp } from '../helpers/app'
@@ -389,7 +389,7 @@ describe('Transfers and counts written with the key of a plugin', () => {
   // every key that lacks one of its scopes: it must be refused for the scope, and nothing may change.
   describe('a scope does not lend the permission of another', () => {
     const S = PluginScopes
-    const keyScopes: Record<string, string[]> = {
+    const keyScopes: Record<string, PluginScope[]> = {
       't-read': [S.TRANSFERS_READ],
       't-write': [S.TRANSFERS_READ, S.TRANSFERS_WRITE],
       't-receive': [S.TRANSFERS_READ, S.TRANSFERS_RECEIVE],
@@ -421,7 +421,7 @@ describe('Transfers and counts written with the key of a plugin', () => {
       const count = created.body as CountBody
       const T = PluginApiRoutes.transfers
       const C = PluginApiRoutes.counts
-      const routes: { method: 'post' | 'patch'; path: string; needs: string[] }[] = [
+      const routes: { method: 'post' | 'patch'; path: string; needs: PluginScope[] }[] = [
         { method: 'post', path: T.create, needs: [S.TRANSFERS_WRITE, S.TRANSFERS_READ] },
         {
           method: 'patch',
