@@ -6952,6 +6952,7 @@
         "orderedOn": "Ordered on {date}",
         "expectedOn": "expected on {date}",
         "markOrdered": "Mark as ordered",
+        "noCancelHint": "An order with goods received is not cancelled. Close what is still to arrive with “Close short”; if goods must go back to the supplier, the way out is a return or credit note from the supplier.",
         "markedOrdered": "Marked as ordered.",
         "receive": "Receive goods",
         "close": "Close short",
