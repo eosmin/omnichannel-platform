@@ -716,6 +716,7 @@ database holds one live sale document per order, one live credit note per return
 | `FINANCE_POST_MANUAL` | manual entries and reversals |
 | `FINANCE_CLOSE_PERIODS` | close and reopen |
 | `FINANCE_EXPORT` | the CSV exports of the journal and the ledger |
+| `FINANCE_CONFIRM_BOOKS` | say that the accountant vouched for the layout of a legal book (`accountantConfirmed`); without it a layout can be written, never confirmed |
 | `FINANCE_VIEW_CARRIER_FEES` | read the commission and the rates of a carrier connection (closes debt (c3)(i) of Step 4.15: `shipping:view` stops showing them) |
 | `FISCAL_VIEW` | read fiscal documents |
 | `FISCAL_MANAGE` | issuer settings and credentials, retry, void |

@@ -224,8 +224,8 @@ describe('The fiscal data of a customer (Step 4B.7b-3)', () => {
       const view = await asAdminA().get(ApiRoutes.fiscal.documents.byId(document.id))
       expect(view.status).toBe(OK)
       const receiver = (view.body as { data: { receiver: Record<string, unknown> } }).data.receiver
-      // The fiscal name wins over the customer's contact name; the tax id travels masked
-      expect(receiver['name']).toBe('Zq Fiscal Name')
+      // The fiscal name wins over the customer's contact name; the name and the tax id travel masked
+      expect(receiver['name']).toBe('Z* F***** N***')
       expect(String(receiver['taxIdMasked'])).toContain(TAX_ID.slice(-4))
       expect(String(receiver['taxIdMasked'])).not.toContain(TAX_ID)
 
