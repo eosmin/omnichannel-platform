@@ -394,19 +394,38 @@ const FINANCE_MARKERS = {
   A: { start: '2026-01-01', cents: 111 },
   B: { start: '2026-01-02', cents: 222 }
 } as const
-// One entry of the organization of the store, told apart by an amount only its set posts: the marker the report cases look for
+// One entry of the organization of the store, on two accounts and with a memo of its own and an amount no other case posts, so that
+// the report cases tell two organizations apart without touching the sums the other cases read
 async function postMarkedEntry(owner: OwnerClient, storeId: string, marker: string): Promise<void> {
   const books = await booksOfStore(owner, storeId)
-  const cents = marker === 'A' ? FINANCE_MARKERS.A.cents : FINANCE_MARKERS.B.cents
+  const label = `${REPORT_MARKER_PREFIX}${marker}`
+  const cents = marker === 'A' ? 333 : 444
+  const account = async (type: string, normalSide: string) =>
+    (
+      await owner.ledgerAccount.create({
+        data: {
+          organizationId: books.organizationId,
+          code: `M${randomUUID().slice(0, 8)}`,
+          name: label,
+          type,
+          normalSide
+        },
+        select: { id: true }
+      })
+    ).id
   await postTestEntry(owner, {
     organizationId: books.organizationId,
     periodId: books.periodId,
+    memo: label,
     lines: [
-      { accountId: books.accounts.expense, debitCents: cents },
-      { accountId: books.accounts.liability, creditCents: cents }
+      { accountId: await account('expense', 'debit'), debitCents: cents },
+      { accountId: await account('liability', 'credit'), creditCents: cents }
     ]
   })
 }
+const REPORT_MARKER_PREFIX = 'Report marker '
+const reportMarkerOf = (text: string | null | undefined): string | null =>
+  text?.startsWith(REPORT_MARKER_PREFIX) === true ? text.slice(REPORT_MARKER_PREFIX.length) : null
 let financeBooksA: FinanceFixture | null = null
 
 let viewerRoleId = ''
@@ -2283,16 +2302,10 @@ const resources: IsolationResource[] = [
     readPath: () => `${ApiRoutes.finance.reports.accountBalances}?asOf=2026-12-31`,
     own: {
       set: (owner, storeId, marker) => postMarkedEntry(owner, storeId, marker),
-      markerIn: body => {
-        const credits = (body as { rows: { creditCents: string }[] }).rows.map(
-          row => row.creditCents
-        )
-        return credits.includes(String(FINANCE_MARKERS.A.cents))
-          ? 'A'
-          : credits.includes(String(FINANCE_MARKERS.B.cents))
-            ? 'B'
-            : null
-      }
+      markerIn: body =>
+        (body as { rows: { name: string }[] }).rows
+          .map(row => reportMarkerOf(row.name))
+          .find(found => found !== null) ?? null
     },
     untouched: () => Promise.resolve(true)
   },
@@ -2307,16 +2320,10 @@ const resources: IsolationResource[] = [
     readPath: () => `${ApiRoutes.finance.reports.journal}?from=2026-11-01&to=2026-11-30`,
     own: {
       set: (owner, storeId, marker) => postMarkedEntry(owner, storeId, marker),
-      markerIn: body => {
-        const credits = (body as { data: { lines: { creditCents: number }[] }[] }).data.flatMap(
-          entry => entry.lines.map(line => line.creditCents)
-        )
-        return credits.includes(FINANCE_MARKERS.A.cents)
-          ? 'A'
-          : credits.includes(FINANCE_MARKERS.B.cents)
-            ? 'B'
-            : null
-      }
+      markerIn: body =>
+        (body as { data: { memo: string | null }[] }).data
+          .map(entry => reportMarkerOf(entry.memo))
+          .find(found => found !== null) ?? null
     },
     untouched: () => Promise.resolve(true)
   },
@@ -3198,6 +3205,44 @@ describe('Tenant isolation', () => {
       const ids = (fromSibling.body as { data: { id: string }[] }).data.map(row => row.id)
       expect(ids).toContain(own.id)
       expect(ids).not.toContain(foreign.id)
+    })
+
+    it('give the ledger of a party only its own organization: another organization asking by the party or by the account sees nothing', async () => {
+      const books = await booksOf(owner, ctx.orgA.id)
+      const booksOfB = await booksOf(owner, ctx.orgB.id)
+      const partyId = randomUUID()
+      await postTestEntry(owner, {
+        organizationId: ctx.orgA.id,
+        periodId: books.periodId,
+        lines: [
+          {
+            accountId: books.accounts.expense,
+            debitCents: 5151,
+            partyType: 'supplier',
+            partyId
+          },
+          { accountId: books.accounts.cash, creditCents: 5151 }
+        ]
+      })
+      const party = { partyType: 'supplier', partyId }
+
+      const own = await api(app, ctx.adminA, ctx.storeA)
+        .get(ApiRoutes.finance.reports.ledger)
+        .query({ accountId: books.accounts.expense, ...party })
+      const byAccountOfA = await api(app, ctx.adminB, ctx.storeB)
+        .get(ApiRoutes.finance.reports.ledger)
+        .query({ accountId: books.accounts.expense, ...party })
+      const byPartyOfA = await api(app, ctx.adminB, ctx.storeB)
+        .get(ApiRoutes.finance.reports.ledger)
+        .query({ accountId: booksOfB.accounts.expense, ...party })
+
+      // The filter finds the line for the organization that posted it ...
+      expect((own.body as { lines: unknown[] }).lines).toHaveLength(1)
+      // ... and the other organization gets 404 for the account and no line for the party, with no figure of the first
+      expect(byAccountOfA.status).toBe(404)
+      expect(byPartyOfA.status).toBe(200)
+      expect((byPartyOfA.body as { lines: unknown[] }).lines).toEqual([])
+      expect(JSON.stringify([byAccountOfA.body, byPartyOfA.body])).not.toContain('5151')
     })
 
     it('show every line of an entry whatever store the line is tagged with: the store of a line is a dimension and not a scope', async () => {
