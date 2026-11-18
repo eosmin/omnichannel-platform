@@ -490,8 +490,13 @@ describe('The check of the fiscal documents', () => {
         sourceId: sale.id,
         kind: FinanceEventKind.SALE
       })
-      // The sale and its document agree
+      // The sale and its document agree. The entry was posted after the document, so the column that links them stays null for good (an
+      // immutable one, HC-109): the check finds the entry by its key, never by that column
       expect(await idsOf(FiscalSweepKind.ENTRY_MISMATCH)).not.toContain(sale.documentId)
+      expect(
+        (await owner.fiscalDocument.findUniqueOrThrow({ where: { id: sale.documentId } }))
+          .journalEntryId
+      ).toBeNull()
 
       await owner.fiscalDocument.update({
         where: { id: sale.documentId },

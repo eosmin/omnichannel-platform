@@ -3,8 +3,12 @@
 import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useId, useState } from 'react'
 
-import { CarrierGuideLimits } from '@platform/core/domain'
+import { ClientPermissions } from '@platform/core/auth'
+import { CarrierChargeModel, CarrierGuideLimits } from '@platform/core/domain'
 
+import { accountLabelsOf } from '../../lib/finance/account-form'
+import { moneyAccountsOf } from '../../lib/finance/transaction-form'
+import { useFinanceAccounts } from '../../lib/finance/use-finance'
 import {
   type AdjustmentDraft,
   adjustmentBody,
@@ -37,6 +41,7 @@ import {
   DialogHeader,
   DialogTitle
 } from '../ui/dialog'
+import { Label } from '../ui/label'
 
 import { GuideField } from './guide-field'
 
@@ -49,15 +54,29 @@ interface DialogProps {
   onClose: () => void
 }
 
+interface PurchaseDialogProps extends DialogProps {
+  // How the carrier charges the guides: a prepaid connection's purchase is carried by the books
+  chargeModel: string
+}
+
 export function GuidePurchaseDialog({
   connectionId,
   connectionName,
+  chargeModel,
   onClose
-}: DialogProps): ReactElement {
+}: PurchaseDialogProps): ReactElement {
   const t = useTranslations('settings.carriers.guides.purchase')
   const tAll = useTranslations()
-  const { storeId } = useStore()
+  const { storeId, can } = useStore()
   const record = useRecordPurchase(storeId, connectionId)
+  // A prepaid connection's purchase is carried by the books: who may move money says which account it left (the default bank account otherwise)
+  const carried = chargeModel === CarrierChargeModel.PREPAID
+  // The list of accounts needs the permission to view the books too
+  const picksAccount =
+    carried && can(ClientPermissions.FINANCE_MOVE_MONEY) && can(ClientPermissions.FINANCE_VIEW)
+  const accounts = useFinanceAccounts(storeId, picksAccount)
+  const moneyAccounts = moneyAccountsOf(accounts.data ?? [], [])
+  const label = accountLabelsOf(accounts.data ?? [])
   const guard = useSubmitGuard()
   const id = useId()
   const [draft, setDraft] = useState<PurchaseDraft>(EMPTY_PURCHASE_DRAFT)
@@ -69,7 +88,8 @@ export function GuidePurchaseDialog({
 
   const submit = (event: FormEvent): void => {
     event.preventDefault()
-    if (pending || !guard.enter()) return
+    // The account list is not ready: the choice is not known yet
+    if (pending || (picksAccount && accounts.isPending) || !guard.enter()) return
     if (problems.length > 0) {
       setShowProblems(true)
       guard.leave()
@@ -128,6 +148,27 @@ export function GuidePurchaseDialog({
             invalid={showProblems && problems.includes(PurchaseProblems.COST)}
             disabled={pending}
           />
+          {carried ? <p className="text-muted-foreground text-xs">{t('carriedHint')}</p> : null}
+          {picksAccount ? (
+            <div className="grid gap-1.5">
+              <Label htmlFor={`${id}-account`}>{t('paidFrom')}</Label>
+              <select
+                id={`${id}-account`}
+                value={draft.paidFromAccountId}
+                onChange={event => set({ paidFromAccountId: event.target.value })}
+                disabled={pending || accounts.isPending}
+                className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+              >
+                <option value="">{t('paidFromDefault')}</option>
+                {moneyAccounts.map(account => (
+                  <option key={account.id} value={account.id}>
+                    {label(account.id)}
+                  </option>
+                ))}
+              </select>
+              <p className="text-muted-foreground text-xs">{t('paidFromHint')}</p>
+            </div>
+          ) : null}
           <GuideField
             id={`${id}-note`}
             label={t('note')}

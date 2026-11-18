@@ -14,6 +14,7 @@ import {
   FinancePostingKey,
   FinancePostingOutcome,
   FinanceSourceType,
+  GuideMovementKind,
   hasReceivedUnits,
   InventoryMovementType,
   InventoryReferenceType,
@@ -30,10 +31,13 @@ import {
   RemittanceStatus,
   SaleRecognition,
   SettlingOutcomes,
+  TRANSFER_WRITE_OFF_POSTING_START,
   ShipmentInactiveStatuses,
   ShipmentKind,
   ShipmentStatus,
-  ShippingPayer
+  ShippingPayer,
+  TransferShortageAction,
+  TransferStatus
 } from '@platform/core/domain'
 import { errorName, PlatformException } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
@@ -41,6 +45,7 @@ import { Events } from '@platform/core/events'
 
 import {
   adjustmentLines,
+  transferWriteOffLines,
   type AutoEntry,
   issueCost,
   orderPaymentLines,
@@ -53,6 +58,7 @@ import { type ChargeBasisRow, chargeBasisOf, chargeBasisSelect } from './carrier
 import {
   chargeAmounts,
   chargeLines,
+  guidePurchaseLines,
   remittanceLines,
   type RemittanceLineSettlement,
   replaySettlements,
@@ -138,6 +144,12 @@ const keyOf = (input: PostSourceInput): string => {
       return FinancePostingKey.RETURN_REFUND(input.sourceId)
     case FinanceEventKind.ADJUST:
       return FinancePostingKey.MOVEMENT_ADJUST(input.sourceId)
+    case FinanceEventKind.GUIDE_PURCHASE:
+      return FinancePostingKey.GUIDE_PURCHASE(input.sourceId)
+    case FinanceEventKind.GUIDE_PURCHASE_VOID:
+      return FinancePostingKey.GUIDE_PURCHASE_VOID(input.sourceId)
+    case FinanceEventKind.TRANSFER_WRITE_OFF:
+      return FinancePostingKey.TRANSFER_LINE_WRITE_OFF(input.sourceId)
   }
 }
 
@@ -315,6 +327,17 @@ export class FinancePostingService {
         dryRun
       )
     }
+    if (input.kind === FinanceEventKind.GUIDE_PURCHASE_VOID) {
+      return this.reverseGuidePurchase(
+        tx,
+        input,
+        {
+          accountingStartDate: dateToDay(settings.accountingStartDate),
+          lockedThrough: settings.lockedThrough === null ? null : dateToDay(settings.lockedThrough)
+        },
+        dryRun
+      )
+    }
     const candidate = await this.load(tx, input, settings)
     if (candidate.kind === 'nothing') return this.done(FinancePostingOutcome.NOTHING_TO_POST)
     if (candidate.kind === 'failed') {
@@ -442,6 +465,8 @@ export class FinancePostingService {
         return this.loadSale(tx, input, recognizeSaleOn)
       case FinanceEventKind.ADJUST:
         return this.loadAdjustment(tx, input)
+      case FinanceEventKind.TRANSFER_WRITE_OFF:
+        return this.loadTransferWriteOff(tx, input)
       case FinanceEventKind.CHARGES:
         return this.loadCharges(tx, input)
       case FinanceEventKind.REMITTANCE_CONFIRM:
@@ -464,6 +489,8 @@ export class FinancePostingService {
         return this.loadOrderReturn(tx, input, settings)
       case FinanceEventKind.RETURN_REFUND:
         return this.loadReturnRefund(tx, input)
+      case FinanceEventKind.GUIDE_PURCHASE:
+        return this.loadGuidePurchase(tx, input)
       default:
         return NOTHING
     }
@@ -1188,6 +1215,88 @@ export class FinancePostingService {
     }
   }
 
+  // E9: the units of a transfer line that did not arrive and were written off when the transfer was closed. The value is the one the
+  // dispatch took out of the source (its TRANSFER_OUT movement) less what came in at the same unit cost, read from the rows as they are
+  private async loadTransferWriteOff(
+    tx: PrismaTransaction,
+    input: PostSourceInput
+  ): Promise<Candidate> {
+    const line = await tx.stockTransferLine.findFirst({
+      where: {
+        id: input.sourceId,
+        shortageAction: TransferShortageAction.WRITE_OFF,
+        store: { organizationId: input.organizationId },
+        transfer: { organizationId: input.organizationId, status: TransferStatus.RECEIVED }
+      },
+      select: {
+        id: true,
+        storeId: true,
+        transferId: true,
+        productId: true,
+        variantId: true,
+        quantity: true,
+        receivedQuantity: true,
+        transfer: { select: { closedAt: true, fromWarehouseId: true, toWarehouseId: true } },
+        store: { select: { timezone: true } }
+      }
+    })
+    if (line === null || line.transfer.closedAt === null) return NOTHING
+    if (line.transfer.closedAt < TRANSFER_WRITE_OFF_POSTING_START) return NOTHING
+    const dispatch = await tx.inventoryMovement.findFirst({
+      where: {
+        storeId: line.storeId,
+        type: InventoryMovementType.TRANSFER_OUT,
+        referenceType: InventoryReferenceType.TRANSFER,
+        referenceId: line.transferId,
+        warehouseId: line.transfer.fromWarehouseId,
+        productId: line.productId,
+        variantId: line.variantId
+      },
+      orderBy: { createdAt: 'asc' },
+      select: { unitCostCents: true, valueCents: true }
+    })
+    if (dispatch === null) return NOTHING
+    // What the receipts put in the destination, as they recorded it: the loss is what the stock lost, to the cent
+    const receipts = await tx.inventoryMovement.findMany({
+      where: {
+        storeId: line.storeId,
+        type: InventoryMovementType.TRANSFER_IN,
+        referenceType: InventoryReferenceType.TRANSFER,
+        referenceId: line.transferId,
+        warehouseId: line.transfer.toWarehouseId,
+        productId: line.productId,
+        variantId: line.variantId
+      },
+      select: { quantity: true, unitCostCents: true, valueCents: true }
+    })
+    const receivedValueCents = receipts.reduce(
+      (total, receipt) =>
+        total +
+        (receipt.valueCents ?? BigInt(receipt.quantity) * BigInt(receipt.unitCostCents ?? 0)),
+      0n
+    )
+    const accounts = await this.accountsOf(tx, input.organizationId)
+    return {
+      kind: 'entry',
+      sourceDay: dayInZone(line.transfer.closedAt, line.store.timezone),
+      type: JournalEntryType.INVENTORY_ADJUSTMENT,
+      sourceType: FinanceSourceType.TRANSFER_LINE,
+      key: FinancePostingKey.TRANSFER_LINE_WRITE_OFF(line.id),
+      memo: FinanceAutoMemo.TRANSFER_WRITE_OFF,
+      result: transferWriteOffLines({
+        accounts,
+        row: {
+          quantity: line.quantity,
+          receivedQuantity: line.receivedQuantity,
+          unitCostCents: dispatch.unitCostCents,
+          valueCents: dispatch.valueCents,
+          receivedValueCents
+        },
+        storeId: line.storeId
+      })
+    }
+  }
+
   // The entry an event already left: the one under its key, or, for the voiding of a remittance (which reverses E5 under the
   // ledger's own key), the reversal of the entry of the confirmation
   private async entryUnderKey(
@@ -1203,6 +1312,21 @@ export class FinancePostingService {
       if (confirmed === null) return null
       const reversal = await tx.journalEntry.findFirst({
         where: { organizationId: input.organizationId, reversesEntryId: confirmed.id },
+        select: { id: true }
+      })
+      return reversal?.id ?? null
+    }
+    if (input.kind === FinanceEventKind.GUIDE_PURCHASE_VOID) {
+      const found = await this.purchaseOfVoid(tx, input)
+      if (found === null) return null
+      const original = await this.entryOf(
+        tx,
+        input.organizationId,
+        FinancePostingKey.GUIDE_PURCHASE(found.purchase.id)
+      )
+      if (original === null) return null
+      const reversal = await tx.journalEntry.findFirst({
+        where: { organizationId: input.organizationId, reversesEntryId: original.id },
         select: { id: true }
       })
       return reversal?.id ?? null
@@ -1277,6 +1401,146 @@ export class FinancePostingService {
         storeId: shipment.storeId
       })
     }
+  }
+
+  // The account the money of a purchase of guides left: the one named when it was recorded, which must still be a cash, bank or wallet
+  // account the books can post to; null reads the default bank role. A failure says which of the two went wrong.
+  private async paidFromOf(
+    tx: PrismaTransaction,
+    organizationId: string,
+    accountId: string | null
+  ): Promise<{ kind: 'paid'; accountId: string | null } | Extract<Candidate, { kind: 'failed' }>> {
+    if (accountId === null) return { kind: 'paid', accountId: null }
+    const account = await tx.ledgerAccount.findFirst({
+      where: { id: accountId, organizationId },
+      select: { id: true, cashKind: true, active: true, isPostable: true }
+    })
+    if (account === null) return failed(FinancePostingFailureReason.ACCOUNT_NOT_POSTABLE)
+    const problem = remittanceDestinationProblem(account)
+    if (problem === RemittanceDestinationProblem.INACTIVE) {
+      return failed(FinancePostingFailureReason.ACCOUNT_INACTIVE)
+    }
+    if (problem === RemittanceDestinationProblem.NOT_CASH) {
+      return failed(FinancePostingFailureReason.ACCOUNT_NOT_POSTABLE)
+    }
+    return { kind: 'paid', accountId: account.id }
+  }
+
+  // E15: guides bought in advance by a prepaid connection. A purchase made while the connection did not prepay (`onAdvance` false) is
+  // not the books' business here: it is in the opening balance, or in the entry the accountant makes when the model is switched on.
+  private async loadGuidePurchase(
+    tx: PrismaTransaction,
+    input: PostSourceInput
+  ): Promise<Candidate> {
+    const purchase = await tx.carrierGuideMovement.findFirst({
+      where: {
+        id: input.sourceId,
+        kind: GuideMovementKind.PURCHASE,
+        store: { organizationId: input.organizationId }
+      },
+      select: {
+        storeId: true,
+        costCentsDelta: true,
+        onAdvance: true,
+        paidFromAccountId: true,
+        occurredAt: true,
+        store: { select: { timezone: true } }
+      }
+    })
+    if (purchase === null || !purchase.onAdvance || purchase.costCentsDelta === 0) return NOTHING
+    const paid = await this.paidFromOf(tx, input.organizationId, purchase.paidFromAccountId)
+    if (paid.kind === 'failed') return paid
+    const accounts = await this.accountsOf(tx, input.organizationId)
+    return {
+      kind: 'entry',
+      sourceDay: dayInZone(purchase.occurredAt, purchase.store.timezone),
+      type: JournalEntryType.CARRIER_GUIDES,
+      sourceType: FinanceSourceType.CARRIER_GUIDE_MOVEMENT,
+      key: FinancePostingKey.GUIDE_PURCHASE(input.sourceId),
+      memo: FinanceAutoMemo.GUIDE_PURCHASE,
+      result: guidePurchaseLines({
+        accounts,
+        paidFromAccountId: paid.accountId,
+        cents: purchase.costCentsDelta,
+        storeId: purchase.storeId,
+        reversal: false
+      })
+    }
+  }
+
+  // The purchase a void movement undoes, when the books carried it with something to undo: the purchase and the void both stand on the
+  // prepaid connection (`onAdvance`) and the purchase cost money (a purchase of all gifts has no entry)
+  private async purchaseOfVoid(tx: PrismaTransaction, input: PostSourceInput) {
+    const voided = await tx.carrierGuideMovement.findFirst({
+      where: {
+        id: input.sourceId,
+        kind: GuideMovementKind.VOID,
+        store: { organizationId: input.organizationId }
+      },
+      select: {
+        occurredAt: true,
+        store: { select: { timezone: true } },
+        voids: { select: { id: true, costCentsDelta: true, onAdvance: true, occurredAt: true } }
+      }
+    })
+    const purchase = voided?.voids ?? null
+    if (
+      voided === null ||
+      purchase === null ||
+      !purchase.onAdvance ||
+      purchase.costCentsDelta === 0
+    ) {
+      return null
+    }
+    return { voided, purchase }
+  }
+
+  // E16: the purchase was voided. Like E6 it is not a new entry built from rows: it reverses the one E15 wrote, line by line, so the money
+  // goes back to the account it left even if the default bank was re-mapped or the account switched off since. It waits for the entry of the
+  // purchase (a purchase before the books began has no entry to undo).
+  private async reverseGuidePurchase(
+    tx: PrismaTransaction,
+    input: PostSourceInput,
+    calendar: { accountingStartDate: string; lockedThrough: string | null },
+    dryRun = false
+  ): Promise<PostSourceResult> {
+    const found = await this.purchaseOfVoid(tx, input)
+    if (found === null) return this.done(FinancePostingOutcome.NOTHING_TO_POST)
+    const original = await this.entryOf(
+      tx,
+      input.organizationId,
+      FinancePostingKey.GUIDE_PURCHASE(found.purchase.id)
+    )
+    if (original === null) {
+      const day = dayInZone(found.purchase.occurredAt, found.voided.store.timezone)
+      return day < calendar.accountingStartDate
+        ? this.done(FinancePostingOutcome.NOTHING_TO_POST)
+        : {
+            outcome: FinancePostingOutcome.FAILED,
+            entryId: null,
+            reason: FinancePostingFailureReason.SOURCE_NOT_READY
+          }
+    }
+    const date = automaticEntryDate(
+      dayInZone(found.voided.occurredAt, found.voided.store.timezone),
+      calendar
+    )
+    if (dryRun) return this.done(FinancePostingOutcome.PENDING)
+    const reversed = await this.ledger.reverse(
+      {
+        organizationId: input.organizationId,
+        entryId: original.id,
+        memo: FinanceAutoMemo.GUIDE_PURCHASE_VOID,
+        entryDate:
+          date.post && date.entryDate >= dateToDay(original.entryDate) ? date.entryDate : null,
+        createdBy: null
+      },
+      tx
+    )
+    return this.done(
+      reversed.replayed ? FinancePostingOutcome.REPLAYED : FinancePostingOutcome.POSTED,
+      reversed.id
+    )
   }
 
   // E5: a remittance that was confirmed. The loader reads the lines as the confirmation settled them and, for each guide, what E4

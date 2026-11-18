@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Put, Query, Req } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
-import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
+import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import {
   type CursorPage,
@@ -14,11 +14,17 @@ import {
   type VoidGuidePurchaseBody,
   voidGuidePurchaseSchema
 } from '@platform/core/domain'
-import { HttpStatusCodes } from '@platform/core/errors'
+import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 
-import { actorOf, CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
+import {
+  actorOf,
+  CurrentPermissions,
+  CurrentStore,
+  RequirePermissions,
+  type ResolvedTenant
+} from '../tenancy'
 
 import {
   carrierIdSchema,
@@ -76,8 +82,20 @@ export class CarrierGuidesController {
     @Param('id', id()) connectionId: string,
     @Body(new ZodValidationPipe(recordGuidePurchaseSchema)) body: RecordGuidePurchaseBody,
     @CurrentUser() user: AuthenticatedUser,
+    @CurrentPermissions() permissions: readonly Permission[],
     @Req() req: AuthenticatedRequest
   ): Promise<GuideMovementView> {
+    // Naming the account the money left moves money in the books, which the person who manages the balance of guides may not do
+    if (
+      body.paidFromAccountId !== undefined &&
+      !permissions.includes(Permissions.FINANCE_MOVE_MONEY)
+    ) {
+      throw new PlatformException(
+        ErrorCodes.PERMISSION_DENIED,
+        'naming the account of a purchase of guides needs the permission to move money',
+        HttpStatusCodes.FORBIDDEN
+      )
+    }
     return this.guides.recordPurchase(store.id, connectionId, body, actorOf(user, store, req))
   }
 
