@@ -2279,9 +2279,10 @@ const resources: IsolationResource[] = [
     untouched: async (owner, id) =>
       (await owner.reconciliationMatch.count({ where: { statementLine: { importId: id } } })) === 0
   },
-  // A statement line is matched with a GROUP of lines of the books by one request (HC-121): a request of another organization finds no line
+  // A statement line is matched with a GROUP of lines of the books by one request (HC-121): the route writes the decisions of the model, and
+  // a request of another organization finds no line (the id of this case is the statement line's)
   {
-    name: 'bankStatementLineGroup',
+    name: 'reconciliationMatch',
     create: async (owner, { storeId }) => {
       return { id: (await bankStatementOf(owner, storeId, 700)).lineId }
     },
