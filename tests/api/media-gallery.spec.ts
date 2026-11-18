@@ -37,7 +37,8 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { type Actor, api } from '../helpers/http'
 import { queueOf } from '../helpers/queue'
-import { createWorkerPrisma, workerServices } from '../helpers/worker-db'
+import { createWorkerPrisma } from '../helpers/worker-db'
+import { workerServices } from '../helpers/worker-services'
 
 interface ErrorBody {
   error: { code: string }

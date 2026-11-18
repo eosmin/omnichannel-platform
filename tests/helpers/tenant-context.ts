@@ -1,11 +1,15 @@
 import type { PrismaService, PrismaTransaction } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 
-// The context a unit of work runs in once Row-Level Security is enforced: the stores and organizations it may see, and the person
-// (for the rows that belong to a person and not to a store, like an avatar upload).
+// The context a unit of work runs in once Row-Level Security is enforced: the stores and organizations it may see.
 export interface TestTenantContext {
   storeIds: readonly string[]
   organizationIds: readonly string[]
+}
+
+// A raw client can also carry the person (PrismaService.tenantTransaction does not set it yet: the helpers above take no userId
+// until it does)
+export interface RawTenantContext extends TestTenantContext {
   userId?: string
 }
 
@@ -38,7 +42,7 @@ export function transactionInContext<T>(
 // keep for the next client).
 export function inTenantContext<T>(
   client: OwnerClient,
-  context: TestTenantContext,
+  context: RawTenantContext,
   work: (tx: PrismaTransaction) => Promise<T>
 ): Promise<T> {
   // A client that is not a PrismaService has no tenant transaction of its own: this is the one the suite opens by hand

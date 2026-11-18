@@ -24,7 +24,8 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { transactionInContext } from '../helpers/tenant-context'
-import { createWorkerPrisma, workerServices } from '../helpers/worker-db'
+import { createWorkerPrisma } from '../helpers/worker-db'
+import { workerServices } from '../helpers/worker-services'
 
 const OK = 200
 const BAD_REQUEST = 400

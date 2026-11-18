@@ -14,6 +14,8 @@ export function createOwnerClient(connectionString: string): OwnerClient {
   return new PrismaClient({ adapter: new PrismaPg({ connectionString }) })
 }
 
+const ID = /^[\w-]+$/
+
 // What a connection of a suite may see once Row-Level Security is enforced (see tests/helpers/tenant-context.ts for a unit of work).
 export interface AppClientContext {
   storeIds?: readonly string[]
@@ -33,15 +35,26 @@ export interface AppClientContext {
 export function createAppClient(connectionString: string, context?: AppClientContext): OwnerClient {
   if (context === undefined) return createOwnerClient(connectionString)
   const url = new URL(connectionString)
-  if (poolerUrl() !== undefined && url.port === poolerUrl()?.port) {
+  const pooler = poolerUrl()
+  if (pooler !== undefined && url.hostname === pooler.hostname && url.port === pooler.port) {
     throw new Error('createAppClient with a context needs a direct connection, not the pooler')
   }
-  const settings: string[] = []
-  if (context.storeIds !== undefined) settings.push(`app.store_ids=${context.storeIds.join(',')}`)
-  if (context.organizationIds !== undefined) {
-    settings.push(`app.organization_ids=${context.organizationIds.join(',')}`)
+  // The ids go into a startup option: a space or a comma would add a setting or split an id
+  const checked = (values: readonly string[]): string => {
+    for (const value of values) {
+      if (!ID.test(value)) throw new Error(`createAppClient: "${value}" is not an id`)
+    }
+    return values.join(',')
   }
-  if (context.userId !== undefined) settings.push(`app.user_id=${context.userId}`)
+  if (url.searchParams.has('options')) {
+    throw new Error('createAppClient with a context takes no options of its own')
+  }
+  const settings: string[] = []
+  if (context.storeIds !== undefined) settings.push(`app.store_ids=${checked(context.storeIds)}`)
+  if (context.organizationIds !== undefined) {
+    settings.push(`app.organization_ids=${checked(context.organizationIds)}`)
+  }
+  if (context.userId !== undefined) settings.push(`app.user_id=${checked([context.userId])}`)
   url.searchParams.set('options', settings.map(setting => `-c ${setting}`).join(' '))
   return createOwnerClient(url.toString())
 }

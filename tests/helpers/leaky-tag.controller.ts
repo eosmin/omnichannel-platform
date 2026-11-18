@@ -5,7 +5,7 @@ import { resourceNotFound } from '@platform/core/errors'
 
 import { CurrentStore, RequirePermissions } from '../../apps/api/src/modules/tenancy'
 
-import { createWorkerPrisma } from './worker-db'
+import { createWorkerClient } from './worker-db'
 
 export const LeakyRoutes = {
   tags: '/leaky/tags',
@@ -23,13 +23,15 @@ export class LeakyTagController {
   // hide the rows of other stores from a query that forgot to filter, and this controller would stop leaking, so the suite that
   // shows the isolation checks catch a leak would have nothing to catch. The leak is the code's (a service written without
   // thinking about tenants); the policies are the second wall, proven by tests/security/rls-isolation.spec.ts
-  private readonly prisma = createWorkerPrisma(2)
+  // A client of its own, not a PrismaService: the tenant transaction of the request lives in a store every PrismaService shares, so
+  // the `client` of a second service would join it and the query would run as platform_app after all
+  private readonly db = createWorkerClient()
 
   // Lists every tag of the platform
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
   @Get(LeakyRoutes.tags)
   list(): Promise<{ id: string }[]> {
-    return this.prisma.client.tag.findMany({ select: { id: true } })
+    return this.db.tag.findMany({ select: { id: true } })
   }
 
   // Trusts the store the body names
@@ -40,7 +42,7 @@ export class LeakyTagController {
     @Body() body: Record<string, unknown>
   ): Promise<{ id: string }> {
     const storeId = typeof body['storeId'] === 'string' ? body['storeId'] : store.id
-    return this.prisma.client.tag.create({
+    return this.db.tag.create({
       data: { storeId, name: nameOf(body), color: '#8b5cf6' },
       select: { id: true }
     })
@@ -50,7 +52,7 @@ export class LeakyTagController {
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
   @Get(LeakyRoutes.businessHours)
   async firstBusinessHours(): Promise<unknown> {
-    const hours = await this.prisma.client.businessHours.findFirst({
+    const hours = await this.db.businessHours.findFirst({
       orderBy: { updatedAt: 'desc' },
       select: { timezone: true }
     })
@@ -62,7 +64,7 @@ export class LeakyTagController {
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
   @Get(LeakyRoutes.tagById(':id'))
   async tag(@Param('id') id: string): Promise<unknown> {
-    const tag = await this.prisma.client.tag.findUnique({
+    const tag = await this.db.tag.findUnique({
       where: { id },
       select: { id: true, storeId: true }
     })
@@ -78,7 +80,7 @@ export class LeakyTagController {
     @Param('id') id: string,
     @Body() body: Record<string, unknown>
   ): Promise<{ id: string }> {
-    await this.prisma.client.tag.update({ where: { id }, data: { name: nameOf(body) } })
+    await this.db.tag.update({ where: { id }, data: { name: nameOf(body) } })
     return { id }
   }
 
@@ -91,7 +93,7 @@ export class LeakyTagController {
     @Param('id') id: string,
     @Body() body: Record<string, unknown>
   ): Promise<{ id: string }> {
-    const tag = await this.prisma.client.tag.update({
+    const tag = await this.db.tag.update({
       where: { id },
       data: { name: nameOf(body) },
       select: { storeId: true }

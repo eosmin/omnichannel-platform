@@ -35,7 +35,8 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { type CapturedEmails, emailsOf } from '../helpers/email'
 import { api } from '../helpers/http'
 import { type CapturedQueue, queueOf } from '../helpers/queue'
-import { createWorkerPrisma, workerServices } from '../helpers/worker-db'
+import { createWorkerPrisma } from '../helpers/worker-db'
+import { workerServices } from '../helpers/worker-services'
 
 interface ErrorBody {
   error: { code: string }

@@ -1,12 +1,11 @@
-import type { INestApplication } from '@nestjs/common'
-import { EventEmitter2 } from '@nestjs/event-emitter'
 import type { TestingModuleBuilder } from '@nestjs/testing'
-import { PinoLogger } from 'nestjs-pino'
 
-import { AuditService } from '@platform/core/audit-module'
 import { PrismaService } from '@platform/core/database'
-import { connectionUrls } from '@platform/core/database-testing'
-import { DomainEvents, EventsBridge } from '@platform/core/event-bus'
+import {
+  connectionUrls,
+  createOwnerClient,
+  type OwnerClient
+} from '@platform/core/database-testing'
 
 // What the worker runs on. In production the worker connects as platform_worker, which skips Row-Level Security (BYPASSRLS), and
 // the api connects as platform_app, which does not. A suite that builds a class of the worker (a processor, a sweep, a status
@@ -15,20 +14,38 @@ import { DomainEvents, EventsBridge } from '@platform/core/event-bus'
 //
 // createWorkerPrisma is for the piece of a suite that stands in for the worker. The app under test keeps platform_app, so that
 // what the suite asks of the api over HTTP is still checked by the database. It is closed when the file ends (worker-db-teardown.ts).
+//
+// One per pool size in a file: a helper that a suite calls in every case does not open a pool each time.
 export function createWorkerPrisma(poolSize = 4): PrismaService {
+  const known = shared.get(poolSize)
+  if (known !== undefined) return known
   const prisma = new PrismaService({ databaseUrl: connectionUrls().worker, poolSize })
-  opened.add(prisma)
+  shared.set(poolSize, prisma)
   return prisma
+}
+
+// A plain client on the connection of the worker, for what must NOT see the tenant context of the request that is running: the
+// transaction of a request is kept in a store that every PrismaService shares, so `.client` of a second service would join it.
+// One per file, closed with the others.
+let workerClient: OwnerClient | undefined
+export function createWorkerClient(): OwnerClient {
+  workerClient ??= createOwnerClient(connectionUrls().worker)
+  return workerClient
 }
 
 // Every one the suite made, closed by the file the jest config lists in setupFilesAfterEnv (worker-db-teardown.ts): a suite does not
 // have to remember to
-const opened = new Set<PrismaService>()
+const shared = new Map<number, PrismaService>()
 
 export async function closeWorkerPrisma(): Promise<void> {
-  const all = [...opened]
-  opened.clear()
-  await Promise.all(all.map(prisma => prisma.onModuleDestroy()))
+  const all = [...shared.values()]
+  shared.clear()
+  const client = workerClient
+  workerClient = undefined
+  await Promise.all([
+    ...all.map(prisma => prisma.onModuleDestroy()),
+    ...(client === undefined ? [] : [client.$disconnect()])
+  ])
 }
 
 // For a suite whose whole subject is the worker side: the whole app runs on the connection of the worker, so that every class the
@@ -40,26 +57,4 @@ export function onWorkerDatabase(
 ): (builder: TestingModuleBuilder) => TestingModuleBuilder {
   return builder =>
     override(builder).overrideProvider(PrismaService).useValue(createWorkerPrisma(8))
-}
-
-// The two services a class of the worker gets with its database: the events (a hook after the commit only runs for a transaction
-// that the same PrismaService opened, so a DomainEvents of the api cannot serve a transaction of the worker) and the audit trail.
-// They publish to the bridge and the emitter of the app, so a suite still hears what the worker would announce.
-export async function workerServices(
-  app: INestApplication,
-  prisma: PrismaService
-): Promise<{ events: DomainEvents; audit: AuditService }> {
-  // The logger of the container and the one the constructors name differ only in a generic: the same object
-  const logger = (await app.resolve(PinoLogger)) as unknown as ConstructorParameters<
-    typeof DomainEvents
-  >[2]
-  return {
-    events: new DomainEvents(
-      prisma,
-      app.get(EventEmitter2),
-      logger,
-      app.get(EventsBridge, { strict: false })
-    ),
-    audit: new AuditService(prisma, logger)
-  }
 }

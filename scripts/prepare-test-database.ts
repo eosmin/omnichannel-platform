@@ -6,7 +6,7 @@ import pg from 'pg'
 
 import {
   DatabaseRoles,
-  enforceRlsIfRequested,
+  applyRlsEnforcement,
   isCiRun,
   TEST_DATABASE_NAME,
   testOwnerUrl
@@ -100,10 +100,9 @@ execFileSync('pnpm', ['exec', 'prisma', 'migrate', 'deploy'], {
   stdio: 'inherit',
   env: { ...process.env, DIRECT_DATABASE_URL: ownerUrl }
 })
-// Row-Level Security: the policies came with the migrations; they bind only when the owner turns enforcement on
+// Row-Level Security: the policies came with the migrations; they bind only when the owner turns enforcement on. Without
+// TEST_RLS_ENFORCE=1 this switches it off again, so the log is the state of the database and not of an earlier run
 console.log(
-  enforceRlsIfRequested(ownerUrl)
-    ? `${databaseName}: row-level security enforced`
-    : `${databaseName}: row-level security not enforced (set TEST_RLS_ENFORCE=1 to enforce it)`
+  `${databaseName}: row-level security ${applyRlsEnforcement(ownerUrl) === 'on' ? 'enforced' : 'not enforced (set TEST_RLS_ENFORCE=1 to enforce it)'}`
 )
 console.log(`${databaseName}: ready`)

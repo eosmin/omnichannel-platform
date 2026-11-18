@@ -4,7 +4,6 @@ import pg from 'pg'
 
 import { connectionUrls } from './connection-urls'
 import { repositoryRoot } from './repository-root'
-import { enforceRlsIfRequested } from './rls-enforcement'
 
 const REPLICA_SUFFIX = '_replica'
 const MAX_IDENTIFIER_BYTES = 63
@@ -65,7 +64,5 @@ export async function ensureReplicaDatabase(): Promise<{ owner: string; app: str
     stdio: 'pipe',
     env: { ...process.env, DIRECT_DATABASE_URL: urls.owner }
   })
-  // The replica serves reads through the same policies as the primary: the same switch, or a suite would pass here and fail there
-  enforceRlsIfRequested(urls.owner)
   return urls
 }
