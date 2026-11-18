@@ -1,4 +1,6 @@
--- Rolls back 20270121300000_rls_phase3_orders_inventory_shipping: drops the policies of the 34 tables of phase 3 (and turns row
+-- Rolls back 20270121300000_rls_phase3_orders_inventory_shipping. ORDER: deploy the previous build of the api FIRST, because the
+-- current one calls rls_resolve_carrier_connection (carrier webhooks) and rls_store_tables_with_rows (delete of a store) and both
+-- would fail with 'function does not exist' the moment they are dropped here. Drops the policies of the 34 tables of phase 3 (and turns row
 -- security off on the ones that have a standard policy) and the two functions. Nothing else changed in that migration, so no data
 -- is touched. Safe to run twice.
 BEGIN;

@@ -290,6 +290,19 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
     expect(await failureCode({}, insert, values)).toBe('42501')
   })
 
+  it('refuses to point a line of an order of this store at a product of another store (the foreign key does not see row security)', async () => {
+    const foreign = await owner.product.findFirstOrThrow({
+      where: { storeId: ctx.storeB.id },
+      select: { id: true }
+    })
+    const code = await failureCode(
+      A(),
+      'UPDATE order_items SET product_id = $1 WHERE order_id = $2',
+      [foreign.id, seen.orderA]
+    )
+    expect(code).toBe('42501')
+  })
+
   it('does not let a row move to another store', async () => {
     const code = await failureCode(A(), 'UPDATE shipments SET store_id = $1 WHERE store_id = $2', [
       ctx.storeB.id,
@@ -499,6 +512,25 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
       ).rejects.toThrow(/cannot see every row/)
     })
 
+    it('fails closed when a policy of a table could hide rows from the owner', async () => {
+      await expect(
+        underRls(
+          {},
+          db =>
+            db.query('SELECT * FROM rls_store_tables_with_rows($1::text, $2::text[])', [
+              ctx.storeA.id,
+              SKIP
+            ]),
+          async db => {
+            // A restrictive policy that applies to everybody, the owner included
+            await db.query(
+              'CREATE POLICY hide_everything ON shipments AS RESTRICTIVE FOR SELECT USING (false)'
+            )
+          }
+        )
+      ).rejects.toThrow(/may hide rows from this role/)
+    })
+
     it('refuses an empty store id and cannot be called by PUBLIC', async () => {
       await expect(
         underRls({}, db =>
@@ -528,11 +560,7 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
         'status',
         'store_id'
       ])
-      expect(rows[0]).toMatchObject({
-        id: connection.id,
-        store_id: ctx.storeA.id,
-        organization_id: ctx.orgA.id
-      })
+      expect(rows[0]).toMatchObject({ id: connection.id, store_id: ctx.storeA.id })
     })
 
     it('answers nothing for an id that is not a connection, and the table itself stays closed without a context', async () => {

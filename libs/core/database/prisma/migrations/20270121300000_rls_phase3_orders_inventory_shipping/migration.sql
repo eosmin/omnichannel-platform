@@ -47,10 +47,20 @@ SELECT rls_apply_policy('store_warehouses', 'store_or_organization');
 
 -- The tables with no owner column: the same two policies as rls_apply_policy gives (<table>_tenant for the application roles,
 -- <table>_owner for the owner of the table, which is the role that runs this migration), the predicate being the parent.
+-- order_items also checks what a line points at: a foreign key is verified with no row security, so without this a line of an order
+-- of this store could name a product or a variant of another store. The referenced product and variant must be seen too.
+DROP POLICY IF EXISTS order_items_tenant ON order_items;
+DROP POLICY IF EXISTS order_items_owner ON order_items;
 CREATE POLICY order_items_tenant ON order_items AS PERMISSIVE FOR ALL TO platform_app, platform_worker
   USING (EXISTS (SELECT 1 FROM orders p WHERE p.id = order_items.order_id))
-  WITH CHECK (EXISTS (SELECT 1 FROM orders p WHERE p.id = order_items.order_id));
+  WITH CHECK (
+    EXISTS (SELECT 1 FROM orders p WHERE p.id = order_items.order_id)
+    AND EXISTS (SELECT 1 FROM products pr WHERE pr.id = order_items.product_id)
+    AND (order_items.variant_id IS NULL OR EXISTS (SELECT 1 FROM product_variants v WHERE v.id = order_items.variant_id))
+  );
 CREATE POLICY order_items_owner ON order_items AS PERMISSIVE FOR ALL TO CURRENT_USER USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS product_variants_tenant ON product_variants;
+DROP POLICY IF EXISTS product_variants_owner ON product_variants;
 CREATE POLICY product_variants_tenant ON product_variants AS PERMISSIVE FOR ALL TO platform_app, platform_worker
   USING (EXISTS (SELECT 1 FROM products p WHERE p.id = product_variants.product_id))
   WITH CHECK (EXISTS (SELECT 1 FROM products p WHERE p.id = product_variants.product_id));
@@ -89,6 +99,23 @@ CREATE FUNCTION rls_store_tables_with_rows(p_store_id text, p_skip text[])
       IF NOT coalesce(sees_all, false) AND rel.relowner <> (SELECT r.oid FROM pg_roles r WHERE r.rolname = current_user) THEN
         RAISE EXCEPTION 'rls_store_tables_with_rows: cannot see every row of %', rel.relname;
       END IF;
+      -- A table with row security on must have, for this role, a permissive policy that shows every row and no restrictive one:
+      -- the count of a table whose policies hide rows from its own owner would be a wrong zero
+      IF NOT coalesce(sees_all, false)
+         AND (SELECT c2.relrowsecurity FROM pg_class c2 WHERE c2.oid = rel.oid)
+         AND (
+           NOT EXISTS (
+             SELECT 1 FROM pg_policy p
+             WHERE p.polrelid = rel.oid AND p.polpermissive AND p.polcmd IN ('*', 'r')
+               AND (p.polroles = ARRAY[0::oid] OR (SELECT r.oid FROM pg_roles r WHERE r.rolname = current_user) = ANY (p.polroles))
+               AND pg_get_expr(p.polqual, p.polrelid) = 'true')
+           OR EXISTS (
+             SELECT 1 FROM pg_policy p
+             WHERE p.polrelid = rel.oid AND NOT p.polpermissive
+               AND (p.polroles = ARRAY[0::oid] OR (SELECT r.oid FROM pg_roles r WHERE r.rolname = current_user) = ANY (p.polroles)))
+         ) THEN
+        RAISE EXCEPTION 'rls_store_tables_with_rows: row security of % may hide rows from this role', rel.relname;
+      END IF;
       found_any := true;
       EXECUTE format('SELECT count(*)::integer FROM public.%I WHERE store_id = $1', rel.relname) INTO n USING p_store_id;
       IF n > 0 THEN
@@ -107,18 +134,18 @@ REVOKE ALL ON FUNCTION rls_store_tables_with_rows(text, text[]) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION rls_store_tables_with_rows(text, text[]) TO platform_app, platform_worker;
 
 -- The webhook of a carrier names a connection and nothing else: no store, no session. This answers the ids that open the context
--- of that store, and the status; never the credentials or the webhook secret (the service reads them once the context is open).
+-- of that store (the store alone: the secret is read in a context of one store), and the status; never the credentials or the webhook secret (the service reads them once the context is open).
 -- The id is a uuid, which nobody can list. It only reads.
 CREATE FUNCTION rls_resolve_carrier_connection(p_connection_id text)
-  RETURNS TABLE (id text, store_id text, organization_id text, carrier_id text, status text)
+  RETURNS TABLE (id text, store_id text, carrier_id text, status text)
   LANGUAGE sql STABLE SECURITY DEFINER
   SET search_path = pg_catalog, pg_temp
   AS $$
-    SELECT cc.id, cc.store_id, s.organization_id, cc.carrier_id, cc.status
+    SELECT cc.id, cc.store_id, cc.carrier_id, cc.status
     FROM public.carrier_connections cc
-    JOIN public.stores s ON s.id = cc.store_id
     WHERE cc.id = p_connection_id
   $$;
 
+-- Only the api answers a webhook: the worker has no use for a lookup across tenants
 REVOKE ALL ON FUNCTION rls_resolve_carrier_connection(text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION rls_resolve_carrier_connection(text) TO platform_app, platform_worker;
+GRANT EXECUTE ON FUNCTION rls_resolve_carrier_connection(text) TO platform_app;

@@ -1,4 +1,4 @@
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto'
 
 import { InjectQueue } from '@nestjs/bullmq'
 import { Injectable } from '@nestjs/common'
@@ -174,30 +174,15 @@ export class CarrierWebhookService {
       return { rejection: CarrierWebhookRejections.MALFORMED_ADDRESS }
     }
     // The address names a connection and no store, so there is no context to read it in: rls_resolve_carrier_connection answers
-    // the ids that open the context of its store (never a credential), and the secret is read inside that context.
+    // the store of the connection (never a credential), and the secret is read inside a context of that one store. An id that
+    // is nobody's goes through the same two steps with a store that does not exist, so that the time it takes does not say whether
+    // a connection exists (the signature is what proves the caller, not the id).
     const [resolved] = await this.prisma.client.$queryRaw<
-      {
-        id: string
-        store_id: string
-        organization_id: string
-        carrier_id: string
-        status: string
-      }[]
-    >`SELECT id, store_id, organization_id, carrier_id, status FROM rls_resolve_carrier_connection(${connectionId}::text)`
+      { id: string; store_id: string; carrier_id: string; status: string }[]
+    >`SELECT id, store_id, carrier_id, status FROM rls_resolve_carrier_connection(${connectionId}::text)`
+    const storeId = resolved?.store_id ?? randomUUID()
+    const webhookSecret = await this.readWebhookSecret(connectionId, storeId)
     if (resolved === undefined) return { rejection: CarrierWebhookRejections.UNKNOWN_CONNECTION }
-    const readSecret = async (): Promise<Uint8Array | null> =>
-      (
-        await this.prisma.client.carrierConnection.findFirst({
-          where: { id: resolved.id, storeId: resolved.store_id },
-          select: { webhookSecret: true }
-        })
-      )?.webhookSecret ?? null
-    const webhookSecret = this.prisma.hasTenantContext()
-      ? await readSecret()
-      : await this.prisma.tenantTransaction(
-          { storeIds: [resolved.store_id], organizationIds: [resolved.organization_id] },
-          readSecret
-        )
     const row = {
       id: resolved.id,
       storeId: resolved.store_id,
@@ -234,6 +219,29 @@ export class CarrierWebhookService {
       )
       return { rejection: CarrierWebhookRejections.SECRET_UNREADABLE }
     }
+  }
+
+  // The secret of a connection, read in a context of ONE store (no organization: nothing else is needed). A public request has
+  // no context of its own; one that already has a context of another store is a bug, said loudly, not a missing secret.
+  private async readWebhookSecret(
+    connectionId: string,
+    storeId: string
+  ): Promise<Uint8Array | null> {
+    const read = async (): Promise<Uint8Array | null> =>
+      (
+        await this.prisma.client.carrierConnection.findFirst({
+          where: { id: connectionId, storeId },
+          select: { webhookSecret: true }
+        })
+      )?.webhookSecret ?? null
+    const current = this.prisma.currentTenantContext()
+    if (current === undefined) {
+      return this.prisma.tenantTransaction({ storeIds: [storeId], organizationIds: [] }, read)
+    }
+    if (!current.storeIds.includes(storeId)) {
+      throw new Error('a carrier webhook was received inside the tenant context of another store')
+    }
+    return read()
   }
 
   // A body the plugin cannot read is acknowledged and said, not failed: the signature is good, so it is the carrier's real
