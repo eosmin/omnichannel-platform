@@ -132,6 +132,40 @@ describe('agingOf', () => {
     creditCents: 0n
   })
 
+  it('settles a reversal against the entry it reverses, not against the oldest open item (HC-108)', () => {
+    const aging = agingOf(
+      [
+        { ...credit('2026-09-01', 1_000n), entryId: 'old' },
+        { ...credit('2026-11-10', 500n), entryId: 'recent' },
+        { ...debit('2026-11-12', 500n), entryId: 'reversal', reversesEntryId: 'recent' }
+      ],
+      '2026-11-15',
+      true,
+      AgingBucketDays
+    )
+    // The recent invoice is cancelled: what is open is the old 1000, 75 days old, and nothing of the recent one
+    expect(aging.bucketsCents).toEqual([0n, 0n, 1_000n, 0n])
+    expect(aging.totalCents).toBe(1_000n)
+    expect(aging.unappliedCents).toBe(0n)
+  })
+
+  it('settles what the reversed entry no longer has open oldest first, and a payment as before', () => {
+    const aging = agingOf(
+      [
+        { ...credit('2026-09-01', 1_000n), entryId: 'old' },
+        { ...credit('2026-11-10', 500n), entryId: 'recent' },
+        { ...debit('2026-11-11', 200n), entryId: 'payment' },
+        { ...debit('2026-11-12', 500n), entryId: 'reversal', reversesEntryId: 'recent' }
+      ],
+      '2026-11-15',
+      true,
+      AgingBucketDays
+    )
+    // The payment took 200 of the old one; the reversal cancels the 500 of the recent one
+    expect(aging.bucketsCents).toEqual([0n, 0n, 800n, 0n])
+    expect(aging.totalCents).toBe(800n)
+  })
+
   it('settles the oldest open item first and ages what is left', () => {
     const aging = agingOf(
       [credit('2026-06-01', 1_000n), credit('2026-09-20', 500n), debit('2026-10-01', 1_200n)],
