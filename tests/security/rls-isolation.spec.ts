@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 import pg from 'pg'
 
@@ -20,7 +21,8 @@ import { coveredTables } from '../../scripts/lib/rls'
 // tests/helpers is extended by each phase), and the CI job that enforces every table runs the whole of tenant-isolation.spec.ts
 // as platform_app.
 
-const MIGRATIONS = 'libs/core/database/prisma/migrations'
+// From the file, not from the working directory: jest runs this project from tests/
+const MIGRATIONS = resolve(__dirname, '../../libs/core/database/prisma/migrations')
 
 interface Probe {
   table: string
