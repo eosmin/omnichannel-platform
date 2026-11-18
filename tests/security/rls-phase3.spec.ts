@@ -423,13 +423,20 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
     const values = [level.storeId, level.productId, level.warehouseId]
     const inside = await underRls(A(), db => db.query<{ on_hand: number }>(statement, values))
     expect(inside.rows[0]?.on_hand).toBe(6)
-    expect(
-      await failureCode(
-        { stores: [ctx.storeB.id], organizations: [ctx.orgB.id] },
-        statement,
-        values
-      )
-    ).toBe('42501')
+    // From the context of another store the statement is refused: the stock trigger (23000) may answer before the policy (42501)
+    const outside = await failureCode(
+      { stores: [ctx.storeB.id], organizations: [ctx.orgB.id] },
+      statement,
+      values
+    )
+    expect(['42501', '23000']).toContain(outside)
+    // ... and with no context at all, nothing is written either
+    expect(['42501', '23000']).toContain(await failureCode({}, statement, values))
+    const after = await raw.query<{ on_hand: number }>(
+      'SELECT on_hand FROM inventory_levels WHERE store_id = $1 AND product_id = $2 AND warehouse_id = $3 AND variant_id IS NULL',
+      values
+    )
+    expect(after.rows[0]?.on_hand).toBe(5)
   })
 
   describe('rls_store_tables_with_rows (the delete of a store)', () => {
