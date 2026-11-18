@@ -1610,6 +1610,77 @@ describe('The channel connections of a store', () => {
       )
     })
 
+    it('never gives the words of a plugin to anybody but whoever manages plugins, and then cleaned', async () => {
+      const { id } = register({
+        healthCheck: () =>
+          Promise.resolve({
+            healthy: false,
+            checkedAt: new Date().toISOString(),
+            error: `<b>Click http://evil.example</b> (access_token=${SECRET})`
+          })
+      })
+      const made = (await connect(id)).body as ConnectionBody
+
+      const test = await asAdmin().post(ApiRoutes.channels.test(made.id))
+      const one = await asAdmin().get(ApiRoutes.channels.connectionById(made.id))
+      const list = await asAdmin().get(ApiRoutes.channels.connections)
+      const detail = await asAdmin().get(ApiRoutes.channels.connectionErrorDetail(made.id))
+      const asViewer = await api(app, ctx.viewerA, ctx.storeA).get(
+        ApiRoutes.channels.connectionErrorDetail(made.id)
+      )
+
+      expect(test.body).toMatchObject({
+        healthy: false,
+        error: ChannelHealthErrors.PLUGIN_REPORTED
+      })
+      expect(one.body).toMatchObject({ lastError: ChannelHealthErrors.PLUGIN_REPORTED })
+      for (const body of [test.body, one.body, list.body]) {
+        expect(JSON.stringify(body)).not.toMatch(/evil|Click|access_token|<b>/)
+      }
+      expect(detail.status).toBe(OK)
+      const text = (detail.body as { detail: string }).detail
+      expect(text).toContain('Click')
+      expect(text).not.toContain(SECRET)
+      expect(text).not.toContain('<b>')
+      expect(asViewer.status).toBe(FORBIDDEN)
+    })
+
+    it('does not let a plugin pass for one of our codes by answering its name, and serves no detail of a disconnected connection', async () => {
+      const { id } = register({
+        healthCheck: () =>
+          Promise.resolve({
+            healthy: false,
+            checkedAt: new Date().toISOString(),
+            error: ChannelHealthErrors.TOKEN_REJECTED
+          })
+      })
+      const made = (await connect(id)).body as ConnectionBody
+      await asAdmin().post(ApiRoutes.channels.test(made.id))
+
+      const one = await asAdmin().get(ApiRoutes.channels.connectionById(made.id))
+      const detail = await asAdmin().get(ApiRoutes.channels.connectionErrorDetail(made.id))
+      await asAdmin().post(ApiRoutes.channels.disconnect(made.id))
+      const afterDisconnect = await asAdmin().get(ApiRoutes.channels.connectionErrorDetail(made.id))
+
+      expect(one.body).toMatchObject({ lastError: ChannelHealthErrors.PLUGIN_REPORTED })
+      expect(detail.body).toEqual({ detail: `[${ChannelHealthErrors.TOKEN_REJECTED}]` })
+      expect(afterDisconnect.status).toBe(NOT_FOUND)
+    })
+
+    it('has no detail to give for a failure that is one of our codes, nor for a connection of another store', async () => {
+      const { id } = register({
+        healthCheck: () => Promise.resolve({ healthy: false, checkedAt: new Date().toISOString() })
+      })
+      const made = (await connect(id)).body as ConnectionBody
+      await asAdmin().post(ApiRoutes.channels.test(made.id))
+
+      const own = await asAdmin().get(ApiRoutes.channels.connectionErrorDetail(made.id))
+      const other = await asAdminB().get(ApiRoutes.channels.connectionErrorDetail(made.id))
+
+      expect(own.body).toEqual({ detail: null })
+      expect(other.status).toBe(NOT_FOUND)
+    })
+
     it('counts a plugin that throws or answers nonsense as not well, and keeps what it said out', async () => {
       const throwing = register({ healthCheck: () => Promise.reject(new Error(`bad ${SECRET}`)) })
       const nonsense = register({ healthCheck: () => Promise.resolve({ ok: true } as never) })

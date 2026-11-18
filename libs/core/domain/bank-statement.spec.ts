@@ -1,5 +1,6 @@
 import {
   type BankStatementProfileShape,
+  BankGroupRule,
   BankStatementErrors,
   BankStatementLimits,
   BankThousandsSeparators,
@@ -7,6 +8,7 @@ import {
   bankProfileProblem,
   canPair,
   daysBetween,
+  groupProblems,
   parseBankAmountCents,
   parseBankStatement,
   referencesAgree,
@@ -952,5 +954,66 @@ describe('a statement that starts with a lead of report lines', () => {
       { row: 1, field: null, code: BankStatementErrors.SKIP_PAST_END, value: '8' }
     ])
     expect(all.lines).toEqual([])
+  })
+})
+
+describe('groupProblems (one statement line against several lines of the books)', () => {
+  const lines = (...cents: number[]) =>
+    cents.map((signedCents, index) => ({ id: `l${index}`, signedCents }))
+
+  it('accepts a group that adds up to the cent, a deposit net of a fee included', () => {
+    expect(
+      groupProblems({ statementCents: 150_000, lines: lines(50_000, 60_000, 40_000) })
+    ).toEqual([])
+    expect(groupProblems({ statementCents: 149_700, lines: lines(150_000, -300) })).toEqual([])
+  })
+
+  it('refuses a sum that is off by one cent, in either direction and with the wrong sign', () => {
+    expect(groupProblems({ statementCents: 100, lines: lines(60, 39) })).toEqual([
+      BankGroupRule.SUM
+    ])
+    expect(groupProblems({ statementCents: 100, lines: lines(60, 41) })).toEqual([
+      BankGroupRule.SUM
+    ])
+    expect(groupProblems({ statementCents: -100, lines: lines(60, 40) })).toEqual([
+      BankGroupRule.SUM
+    ])
+  })
+
+  it('refuses a group of fewer than two lines, of more than the most, and a line named twice', () => {
+    expect(groupProblems({ statementCents: 100, lines: lines(100) })).toEqual([BankGroupRule.SIZE])
+    expect(groupProblems({ statementCents: 0, lines: [] })).toEqual([BankGroupRule.SIZE])
+    const many = lines(...new Array<number>(BankStatementLimits.MAX_GROUP + 1).fill(1))
+    expect(groupProblems({ statementCents: many.length, lines: many })).toEqual([
+      BankGroupRule.SIZE
+    ])
+    const twice = [
+      { id: 'same', signedCents: 50 },
+      { id: 'same', signedCents: 50 }
+    ]
+    expect(groupProblems({ statementCents: 100, lines: twice })).toEqual([BankGroupRule.DUPLICATE])
+  })
+
+  it('accepts exactly the smallest and the largest group, and refuses a sum that is not a safe integer', () => {
+    const smallest = lines(30, 70)
+    expect(groupProblems({ statementCents: 100, lines: smallest })).toEqual([])
+    const largest = lines(...new Array<number>(BankStatementLimits.MAX_GROUP).fill(2))
+    expect(
+      groupProblems({ statementCents: BankStatementLimits.MAX_GROUP * 2, lines: largest })
+    ).toEqual([])
+    const huge = [
+      { id: 'a', signedCents: Number.MAX_SAFE_INTEGER },
+      { id: 'b', signedCents: Number.MAX_SAFE_INTEGER }
+    ]
+    expect(groupProblems({ statementCents: Number.MAX_SAFE_INTEGER * 2, lines: huge })).toEqual([
+      BankGroupRule.SUM
+    ])
+  })
+
+  it('reports every problem at once', () => {
+    expect(groupProblems({ statementCents: 5, lines: [{ id: 'a', signedCents: 1 }] })).toEqual([
+      BankGroupRule.SIZE,
+      BankGroupRule.SUM
+    ])
   })
 })

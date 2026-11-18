@@ -265,6 +265,51 @@ export const paymentView = (row: PaymentRow): PaymentView => ({
   createdAt: row.createdAt.toISOString()
 })
 
+export const PAYMENT_RETURN_SELECT = {
+  id: true,
+  supplierId: true,
+  supplierPaymentId: true,
+  receivedIntoAccountId: true,
+  amountCents: true,
+  returnedOn: true,
+  reference: true,
+  entryId: true,
+  voidedByEntryId: true,
+  createdBy: true,
+  createdAt: true
+} as const
+
+export interface PaymentReturnRow {
+  id: string
+  supplierId: string
+  supplierPaymentId: string
+  receivedIntoAccountId: string
+  amountCents: number
+  returnedOn: Date
+  reference: string | null
+  entryId: string
+  voidedByEntryId: string | null
+  createdBy: string
+  createdAt: Date
+}
+
+export interface PaymentReturnView extends Omit<PaymentReturnRow, 'returnedOn' | 'createdAt'> {
+  returnedOn: string
+  createdAt: string
+}
+
+export const paymentReturnView = (row: PaymentReturnRow): PaymentReturnView => ({
+  ...row,
+  returnedOn: dateToDay(row.returnedOn),
+  createdAt: row.createdAt.toISOString()
+})
+
+export interface PaymentReturnPage {
+  data: PaymentReturnView[]
+  nextCursor: string | null
+  hasMore: boolean
+}
+
 export interface PaymentPage {
   data: PaymentView[]
   nextCursor: string | null

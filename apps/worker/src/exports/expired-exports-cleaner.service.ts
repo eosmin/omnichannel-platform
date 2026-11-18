@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
 import { errorName } from '@platform/channels/connections'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, assertSeesEveryRow } from '@platform/core/database'
 import { ErrorCodes } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
@@ -32,6 +32,7 @@ export class ExpiredExportsCleaner {
   }
 
   async run(now: Date = new Date()): Promise<ExportCleanupReport> {
+    await assertSeesEveryRow(this.prisma, ['exports'])
     const expired = await this.prisma.client.export.findMany({
       where: { status: ExportStatus.READY, expiresAt: { lte: now } },
       select: { id: true, storeId: true, key: true },

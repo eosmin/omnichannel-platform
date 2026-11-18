@@ -886,11 +886,37 @@ describe('The team of a store', () => {
       ['a permission that does not exist', { name: 'x1', permissions: ['everything:all'] }],
       ['no permissions list', { name: 'x2' }],
       ['an empty name', { name: ' ', permissions: [] }],
-      ['another store in the body', { name: 'x3', permissions: [], storeId: randomUUID() }]
+      ['another store in the body', { name: 'x3', permissions: [], storeId: randomUUID() }],
+      [
+        'a permission that registers transactions without seeing them',
+        { name: 'x4', permissions: [Permissions.FINANCE_MANAGE_TRANSACTIONS] }
+      ]
     ])('are refused with %s', async (_label, body) => {
       const response = await asAdmin().post(ApiRoutes.settings.roles).send(body)
 
       expect([400, 409]).toContain(response.status)
+    })
+
+    it('keep the pair of registering and seeing a transaction, on creating and on changing them (HC-journal)', async () => {
+      const pair = [Permissions.FINANCE_MOVE_MONEY, Permissions.FINANCE_VIEW_JOURNAL]
+      const created = await asAdmin()
+        .post(ApiRoutes.settings.roles)
+        .send({ name: `${prefix}-${next('pair')}`, permissions: pair })
+      expect(created.status).toBe(201)
+      const id = (created.body as RoleBody).id
+
+      for (const permissions of [
+        [Permissions.FINANCE_MOVE_MONEY],
+        [Permissions.FINANCE_POST_MANUAL]
+      ]) {
+        const refused = await asAdmin().patch(ApiRoutes.settings.roleById(id)).send({ permissions })
+        expect(refused.status).toBe(400)
+      }
+      // Seeing without registering is fine
+      const viewOnly = await asAdmin()
+        .patch(ApiRoutes.settings.roleById(id))
+        .send({ permissions: [Permissions.FINANCE_VIEW_JOURNAL] })
+      expect(viewOnly.status).toBe(200)
     })
 
     it('are refused when a role of that name exists in the store', async () => {

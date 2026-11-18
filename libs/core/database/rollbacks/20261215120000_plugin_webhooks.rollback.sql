@@ -14,6 +14,10 @@ BEGIN
 END
 $$;
 
+-- The row-level security policy of webhook_deliveries (migration 20270121110000_rls_phase1) reads the column that goes: it goes first,
+-- or the column cannot be dropped. Nothing to drop when that migration is not there.
+DROP POLICY IF EXISTS "webhook_deliveries_tenant" ON "webhook_deliveries";
+
 DROP INDEX IF EXISTS "webhook_deliveries_plugin_installation_id_created_at_idx";
 ALTER TABLE "webhook_deliveries" DROP CONSTRAINT IF EXISTS "webhook_deliveries_one_owner_check";
 ALTER TABLE "webhook_deliveries" DROP CONSTRAINT IF EXISTS "webhook_deliveries_plugin_installation_id_fkey";

@@ -49,7 +49,10 @@ export const BankStatementLimits = {
   // A page of statement lines, and how many suggestions one line shows
   MAX_SUGGESTIONS_PER_LINE: 5,
   // The most statement lines one bulk confirmation settles
-  MAX_BULK_CONFIRM: 1000
+  MAX_BULK_CONFIRM: 1000,
+  // A group is one statement line against 2 to this many lines of the books (HC-121): a person chooses them one by one
+  MIN_GROUP: 2,
+  MAX_GROUP: 50
 } as const
 
 // How the bytes of the file become text. A bank of the region may still send Latin-1 (Windows-1252): the profile says so, nothing is guessed.
@@ -729,6 +732,32 @@ export function unambiguousExactPairs(
     }
   }
   return pairs.sort((a, b) => a.lineId.localeCompare(b.lineId))
+}
+
+// A group (HC-121): ONE statement line against several lines of the books of the same account that a person chose. It is a pair when the
+// signed sums agree to the cent (a deposit that groups three collections, or a deposit net of a fee the person booked as an expense
+// from the same account: +150000 and -300 make +149700). Never a residue: the server confirms a group that adds up exactly, or none.
+export const BankGroupRule = {
+  SIZE: 'size',
+  DUPLICATE: 'duplicate',
+  SUM: 'sum'
+} as const
+export type BankGroupRuleName = (typeof BankGroupRule)[keyof typeof BankGroupRule]
+
+export function groupProblems(input: {
+  statementCents: number
+  lines: readonly { id: string; signedCents: number }[]
+}): BankGroupRuleName[] {
+  const problems: BankGroupRuleName[] = []
+  const size = input.lines.length
+  if (size < BankStatementLimits.MIN_GROUP || size > BankStatementLimits.MAX_GROUP) {
+    problems.push(BankGroupRule.SIZE)
+  }
+  if (new Set(input.lines.map(line => line.id)).size !== size)
+    problems.push(BankGroupRule.DUPLICATE)
+  const sum = input.lines.reduce((total, line) => total + line.signedCents, 0)
+  if (!Number.isSafeInteger(sum) || sum !== input.statementCents) problems.push(BankGroupRule.SUM)
+  return problems
 }
 
 // Whether a statement line and a line of the books can be a pair at all (the check a person's confirmation must pass, whatever the

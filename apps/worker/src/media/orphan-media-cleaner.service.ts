@@ -6,7 +6,7 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { errorName } from '@platform/channels/connections'
 import { CacheKeys } from '@platform/core/cache'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, assertSeesEveryRow } from '@platform/core/database'
 import { MediaStatus } from '@platform/core/domain'
 import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
 import { REDIS_CLIENT } from '@platform/core/redis'
@@ -78,6 +78,8 @@ export class OrphanMediaCleaner {
   }
 
   private async sweepAll(now: Date, scope: CleanupScope | undefined): Promise<CleanupReport> {
+    // A file is orphan when no row names it: a row that row security hides would make every file of the bucket an orphan
+    await assertSeesEveryRow(this.prisma, ['media', 'users'])
     const report: CleanupReport = {
       objectsDeleted: 0,
       scansRequeued: 0,

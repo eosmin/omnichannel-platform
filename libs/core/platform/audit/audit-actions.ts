@@ -51,6 +51,8 @@ export const AuditAction = {
   MEDIA_UNSCANNABLE: 'media.unscannable',
   AUDIT_LOG_VIEWED: 'audit_log.viewed',
   AUDIT_LOG_EXPORTED: 'audit_log.exported',
+  // Written by purge_audit_logs() itself (the database function the cold export deletes through), never by the application
+  AUDIT_LOG_PURGED: 'audit_log.purged',
 
   // Data modification
   CUSTOMER_DELETED: 'customer.deleted',
@@ -255,8 +257,12 @@ export const AuditAction = {
   PURCHASE_ORDER_CANCELLED: 'purchase_order.cancelled',
   SUPPLIER_PAID: 'supplier.paid',
   SUPPLIER_PAYMENT_VOIDED: 'supplier.payment_voided',
+  // A supplier gave back part or all of a payment (the bank returned it, it bounced), and that return was voided
+  SUPPLIER_PAYMENT_RETURNED: 'supplier.payment_returned',
+  SUPPLIER_PAYMENT_RETURN_VOIDED: 'supplier.payment_return_voided',
   FINANCE_BANK_STATEMENT_IMPORTED: 'finance.bank_statement_imported',
   FINANCE_RECONCILIATION_CONFIRMED: 'finance.reconciliation_confirmed',
+  FINANCE_RECONCILIATION_GROUP_CONFIRMED: 'finance.reconciliation_group_confirmed',
   FINANCE_RECONCILIATION_REJECTED: 'finance.reconciliation_rejected',
   FINANCE_RECONCILIATION_UNDONE: 'finance.reconciliation_undone',
 

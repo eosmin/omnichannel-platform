@@ -7,6 +7,9 @@ export {
   needsUncreditableTaxAccount,
   paymentLines,
   paymentProblems,
+  paymentReturnLines,
+  paymentReturnProblems,
+  PaymentReturnRule,
   PaymentRule,
   PurchaseRule,
   receiptEntryLines,
@@ -17,6 +20,7 @@ export {
 export type {
   BillBalance,
   BillFacts,
+  PaymentReturnRuleName,
   PaymentRuleName,
   PurchaseRuleName,
   ReceiptEntryAccounts,

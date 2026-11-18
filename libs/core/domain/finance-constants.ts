@@ -97,6 +97,7 @@ export enum FinanceSourceType {
   TRANSFER_LINE = 'transfer_line',
   PURCHASE_RECEIPT = 'purchase_receipt',
   SUPPLIER_PAYMENT = 'supplier_payment',
+  SUPPLIER_PAYMENT_RETURN = 'supplier_payment_return',
   // A line of the ledger of guides of a carrier connection: a purchase of guides, or the void of one (Step 4B.6b-4)
   CARRIER_GUIDE_MOVEMENT = 'carrier_guide_movement',
   FINANCE_TRANSACTION = 'finance_transaction',
@@ -293,6 +294,7 @@ export enum JournalEntryType {
   COD_WRITE_OFF = 'cod_write_off',
   PURCHASE_RECEIPT = 'purchase_receipt',
   SUPPLIER_PAYMENT = 'supplier_payment',
+  SUPPLIER_PAYMENT_RETURN = 'supplier_payment_return',
   // Guides bought in advance from a carrier, and the void of the purchase
   CARRIER_GUIDES = 'carrier_guides',
   INVENTORY_ADJUSTMENT = 'inventory_adjustment',
@@ -532,6 +534,10 @@ export const FinanceConflicts = {
   BANK_PAIR_NOT_ALLOWED: 'bank_pair_not_allowed',
   BANK_LINE_ALREADY_MATCHED: 'bank_line_already_matched',
   BANK_BOOK_LINE_ALREADY_MATCHED: 'bank_book_line_already_matched',
+  // A group of lines of the books for ONE statement line (HC-121): the signed sum of the group is not the amount of the line, the group is
+  // too small or too big, or a line of it is of another account or reversed
+  BANK_GROUP_NOT_ALLOWED: 'bank_group_not_allowed',
+  BANK_GROUP_SUM_MISMATCH: 'bank_group_sum_mismatch',
   // A decision that was taken back already
   BANK_DECISION_ALREADY_UNDONE: 'bank_decision_already_undone',
   // The line is matched: only a line without a confirmed match is registered as a transaction
@@ -549,6 +555,7 @@ export const FinanceConflicts = {
 // prefix of a message is the database's: Prisma echoes the query, which can carry typed text)
 export const BankTriggerPrefixes = {
   MATCH: 'RECONCILIATION_MATCH',
+  GROUP: 'RECONCILIATION_GROUP',
   ENTRY_RECONCILED: 'FINANCE_ENTRY_RECONCILED'
 } as const
 

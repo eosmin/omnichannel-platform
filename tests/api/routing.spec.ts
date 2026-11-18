@@ -26,6 +26,7 @@ import { waitForAuditEntries } from '../helpers/audit'
 import { createActor, seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { anonymousApi, api } from '../helpers/http'
+import { transactionInContext } from '../helpers/tenant-context'
 
 interface RuleBody {
   id: string
@@ -1595,8 +1596,10 @@ describe('The routing rules of a store', () => {
         const conversations = app.get(ConversationsService, { strict: false })
         const prisma = app.get(PrismaService, { strict: false })
 
-        const given = await prisma.transaction(tx =>
-          conversations.assignIfFree(tx, storeId(), made.id, ana.id)
+        const given = await transactionInContext(
+          prisma,
+          { storeIds: [storeId()], organizationIds: [ctx.orgA.id] },
+          tx => conversations.assignIfFree(tx, storeId(), made.id, ana.id)
         )
 
         expect(given).toBe(false)

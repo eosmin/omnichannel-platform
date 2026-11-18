@@ -10,11 +10,15 @@ import type { PayablesQuery } from './purchases.schemas'
 import { daysPastDue } from './purchases.support'
 import type { PayableBillView, PayablesView, SupplierBalanceView } from './purchases.views'
 
-type Reader = Pick<PrismaTransaction, 'purchaseReceipt' | 'supplierPayment' | 'store'>
+type Reader = Pick<
+  PrismaTransaction,
+  'purchaseReceipt' | 'supplierPayment' | 'supplierPaymentReturn' | 'store'
+>
 
 // What is owed to the suppliers (TDD_18 §2.7): bills (the receipts) minus the live payments, with the due day of each bill. The
 // open balance of a supplier is exactly bills - payments, however the payments were named: a payment that names no bill is applied to
-// the oldest due first (`billBalances`). Read from the operational rows; the ledger's payable account (party = the supplier) holds the
+// the oldest due first (`billBalances`). What a supplier gave back of a payment (a live return) is taken from what that payment paid, on the
+// same bill or in the same unapplied part, so the debt is owed again. Read from the operational rows; the ledger's payable account (party = the supplier) holds the
 // same sums, and the reconciliation of Step 4B.6 compares the two.
 @Injectable()
 export class PayablesService {
@@ -72,7 +76,7 @@ export class PayablesService {
     organizationId: string,
     supplierId: string | null
   ): Promise<{ bills: Bill[]; suppliers: SupplierBalanceView[] }> {
-    const [receipts, payments, day] = await Promise.all([
+    const [receipts, payments, returns, day] = await Promise.all([
       db.purchaseReceipt.findMany({
         where: { organizationId, ...(supplierId === null ? {} : { supplierId }) },
         select: {
@@ -94,6 +98,16 @@ export class PayablesService {
         },
         _sum: { amountCents: true }
       }),
+      // What the suppliers gave back and nobody voided, by the bill the payment named (or none)
+      db.supplierPaymentReturn.groupBy({
+        by: ['supplierId', 'supplierPaymentId'],
+        where: {
+          organizationId,
+          voidedByEntryId: null,
+          ...(supplierId === null ? {} : { supplierId })
+        },
+        _sum: { amountCents: true }
+      }),
       // "Overdue" is against the day of the books (the store furthest behind), like the close: the browser clock decides nothing
       organizationDay(db, organizationId, new Date())
     ])
@@ -107,6 +121,22 @@ export class PayablesService {
         unapplied.set(group.supplierId, (unapplied.get(group.supplierId) ?? 0) + amount)
       } else {
         paidOnBill.set(group.purchaseReceiptId, amount)
+      }
+    }
+    // One row per returned payment (not per return): the bill each of those payments named is read once
+    const returned = await db.supplierPayment.findMany({
+      where: { organizationId, id: { in: returns.map(group => group.supplierPaymentId) } },
+      select: { id: true, purchaseReceiptId: true }
+    })
+    const billOfPayment = new Map(returned.map(payment => [payment.id, payment.purchaseReceiptId]))
+    for (const group of returns) {
+      const amount = group._sum.amountCents ?? 0
+      const receiptId = billOfPayment.get(group.supplierPaymentId) ?? null
+      paidBySupplier.set(group.supplierId, (paidBySupplier.get(group.supplierId) ?? 0) - amount)
+      if (receiptId === null) {
+        unapplied.set(group.supplierId, (unapplied.get(group.supplierId) ?? 0) - amount)
+      } else {
+        paidOnBill.set(receiptId, (paidOnBill.get(receiptId) ?? 0) - amount)
       }
     }
     const facts = new Map(receipts.map(receipt => [receipt.id, receipt]))

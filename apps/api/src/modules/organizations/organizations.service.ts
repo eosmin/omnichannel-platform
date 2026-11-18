@@ -53,18 +53,6 @@ const STORE_FIELDS = {
   createdAt: true
 } as const
 
-// Tables whose rows go with the store and are not data of the business: the rest of the tables that
-// have a store_id hold what the store did, and a store that has any of it is not deleted
-const TABLES_OF_THE_STORE_ITSELF = [
-  'store_settings',
-  'retention_settings',
-  'business_hours',
-  'memberships',
-  'invitations',
-  'roles',
-  'audit_logs' // History: it has no foreign key to the store and outlives it
-]
-
 // The stores of the organization the caller manages: those where they are an active member and the
 // role holds ORG_MANAGE_STORES. The permission comes with the store it was given in, so a store the
 // caller does not belong to is one that does not exist for them, as a store of another organization.
@@ -339,17 +327,12 @@ function definedOnly<T extends Record<string, unknown>>(fields: T): Partial<T> {
   ) as Partial<T> // Same keys, minus the undefined ones
 }
 
-// Every table with a store_id, found in the catalog so that a table added by a later step is counted
-// without anyone remembering to list it. The identifiers come from the catalog and are quoted by
-// format(%I); the store id is a literal (%L).
+// Every table with a store_id, found in the catalog so that a table added by a later step is counted without anyone remembering to
+// list it. It is counted by rls_store_tables_with_rows, which reads with the rights of the owner of the tables: with Row-Level
+// Security on, a count made with the rights of the caller would see no row of any table and let the delete cascade through the data
+// of the store. The tables that are the store itself (settings, members, roles, audit) are fixed inside the function. It raises when it cannot see every row, so this fails closed: the error stops the delete.
 async function storesTablesWithRows(tx: PrismaTransaction, storeId: string): Promise<string[]> {
-  const rows = await tx.$queryRaw<{ table_name: string; n: number }[]>`
-    SELECT c.table_name,
-      (xpath('/row/n/text()', query_to_xml(
-        format('SELECT count(*) AS n FROM %I WHERE store_id = %L', c.table_name, ${storeId}::text),
-        false, true, '')))[1]::text::int AS n
-    FROM information_schema.columns c
-    WHERE c.table_schema = 'public' AND c.column_name = 'store_id'
-      AND c.table_name <> ALL (${TABLES_OF_THE_STORE_ITSELF})`
-  return rows.filter(row => row.n > 0).map(row => row.table_name)
+  const rows = await tx.$queryRaw<{ table_name: string; row_count: number }[]>`
+    SELECT table_name, row_count FROM rls_store_tables_with_rows(${storeId}::text)`
+  return rows.filter(row => row.row_count > 0).map(row => row.table_name)
 }

@@ -3,7 +3,9 @@ import { randomUUID } from 'node:crypto'
 import { PrismaPg } from '@prisma/adapter-pg'
 import pg from 'pg'
 
+import { AuditAction } from '@platform/core/audit'
 import { RoleNames, RolePresets } from '@platform/core/auth'
+import { AuditColdExport } from '@platform/core/compliance'
 import { parseEncryptionKey } from '@platform/core/crypto'
 import { WebhookSources } from '@platform/core/domain'
 
@@ -12,7 +14,7 @@ import { connectionUrls } from '../testing/connection-urls'
 
 import { bootstrapOwner, ensureSystemRoles } from './bootstrap-owner'
 import { loadDevFixtures } from './dev-fixtures'
-import { PrismaService } from './prisma.service'
+import { PrismaService, TenantContextRequiredError } from './prisma.service'
 import { ProcessedWebhookEventsService } from './processed-webhook-events.service'
 
 const urls = connectionUrls()
@@ -68,8 +70,8 @@ describe('database roles', () => {
     })
   })
 
-  // The audit log is append-only for the whole application: the worker may delete (the cold export of a month it has copied) and
-  // nothing else. Until the QA review of 2026-11-16 nothing asserted the worker side, and the worker kept UPDATE. The privileges are
+  // The audit log is append-only for the whole application: no role holds UPDATE, DELETE or TRUNCATE on it; the cold export of a
+  // month it has copied deletes through purge_audit_logs() and nothing else. Until the QA review of 2026-11-16 nothing asserted the worker side, and the worker kept UPDATE. The privileges are
   // read as the owner (nothing destructive runs as an application role, so a privilege that comes back cannot empty the table), and
   // one UPDATE is tried on a row of the test, which is removed at the end whatever happens.
   it.each([
@@ -82,10 +84,13 @@ describe('database roles', () => {
         const { rows } = await owner.query<Record<string, boolean>>(
           `SELECT has_table_privilege($1, 'audit_logs', 'UPDATE') AS "update",
                   has_table_privilege($1, 'audit_logs', 'TRUNCATE') AS "truncate",
+                  has_table_privilege($1, 'audit_logs', 'DELETE') AS "delete",
                   has_any_column_privilege($1, 'audit_logs', 'UPDATE') AS "columnUpdate"`,
           [role]
         )
-        expect(rows).toEqual([{ update: false, truncate: false, columnUpdate: false }])
+        expect(rows).toEqual([
+          { update: false, truncate: false, delete: false, columnUpdate: false }
+        ])
         await owner.query("INSERT INTO audit_logs (id, action) VALUES ($1, 'integration.frozen')", [
           id
         ])
@@ -94,6 +99,9 @@ describe('database roles', () => {
         await expect(
           client.query("UPDATE audit_logs SET action = 'tampered' WHERE id = $1", [id])
         ).rejects.toThrow(/permission denied/)
+        await expect(client.query('DELETE FROM audit_logs WHERE id = $1', [id])).rejects.toThrow(
+          /permission denied/
+        )
       })
       await withClient(urls.owner, async owner => {
         const { rows } = await owner.query<{ action: string }>(
@@ -109,10 +117,225 @@ describe('database roles', () => {
     }
   })
 
-  it('lets platform_worker delete from audit_logs', async () => {
-    await withClient(urls.worker, async worker => {
-      const result = await worker.query('DELETE FROM audit_logs WHERE id = $1', [AUDIT_ID])
-      expect(result.rowCount).toBe(1)
+  it('refuses an UPDATE or a TRUNCATE of audit_logs to the owner too, and keeps the user_id clearing of the foreign key', async () => {
+    const id = `${AUDIT_ID}-owner`
+    const userId = `user-${runId}-audit`
+    try {
+      await withClient(urls.owner, async owner => {
+        await owner.query(
+          'INSERT INTO users (id, email, name, updated_at) VALUES ($1, $2, $3, now())',
+          [userId, `${userId}@example.test`, 'Audit FK']
+        )
+        await owner.query(
+          "INSERT INTO audit_logs (id, action, user_id) VALUES ($1, 'integration.owner', $2)",
+          [id, userId]
+        )
+        await expect(
+          owner.query("UPDATE audit_logs SET action = 'tampered' WHERE id = $1", [id])
+        ).rejects.toThrow(/AUDIT_LOG_IMMUTABLE/)
+        await expect(
+          owner.query("UPDATE audit_logs SET user_id = NULL, action = 'x' WHERE id = $1", [id])
+        ).rejects.toThrow(/AUDIT_LOG_IMMUTABLE/)
+        // The TRUNCATE itself is not run (it would empty the log of every suite if the trigger were missing): the trigger is read
+        const { rows: triggers } = await owner.query<{ tgname: string; truncate: boolean }>(
+          `SELECT tgname, (tgtype & 32) <> 0 AS "truncate" FROM pg_trigger
+           WHERE tgrelid = 'audit_logs'::regclass AND NOT tgisinternal ORDER BY tgname`
+        )
+        expect(triggers).toEqual([
+          { tgname: 'trg_audit_logs_no_truncate', truncate: true },
+          { tgname: 'trg_audit_logs_no_update', truncate: false },
+          { tgname: 'trg_audit_logs_purge_entry', truncate: false }
+        ])
+        // And it is run, inside a transaction that is rolled back whatever happens
+        await owner.query('BEGIN')
+        try {
+          await expect(owner.query('TRUNCATE audit_logs')).rejects.toThrow(/AUDIT_LOG_IMMUTABLE/)
+        } finally {
+          await owner.query('ROLLBACK')
+        }
+        // A bare UPDATE that clears user_id of a person who still exists is refused too
+        await expect(
+          owner.query('UPDATE audit_logs SET user_id = NULL WHERE id = $1', [id])
+        ).rejects.toThrow(/AUDIT_LOG_IMMUTABLE/)
+        // A new id of the user follows into the entry (ON UPDATE CASCADE) and a statement of a person cannot do the same
+        await owner.query('UPDATE users SET id = $2 WHERE id = $1', [userId, `${userId}-new`])
+        const moved = await owner.query<{ user_id: string }>(
+          'SELECT user_id FROM audit_logs WHERE id = $1',
+          [id]
+        )
+        expect(moved.rows).toEqual([{ user_id: `${userId}-new` }])
+        await owner.query('UPDATE users SET id = $2 WHERE id = $1', [`${userId}-new`, userId])
+        // Deleting the person clears user_id of the entry (ON DELETE SET NULL) and nothing else
+        await owner.query('DELETE FROM users WHERE id = $1', [userId])
+        const { rows } = await owner.query<{ action: string; user_id: string | null }>(
+          'SELECT action, user_id FROM audit_logs WHERE id = $1',
+          [id]
+        )
+        expect(rows).toEqual([{ action: 'integration.owner', user_id: null }])
+      })
+    } finally {
+      await withClient(urls.owner, async owner => {
+        await owner.query('DELETE FROM audit_logs WHERE id = $1', [id])
+        await owner.query('DELETE FROM users WHERE id = $1', [userId])
+      })
+    }
+  })
+
+  describe('purge_audit_logs()', () => {
+    const SHA = 'a'.repeat(64)
+    const KEY = `audit/${runId}/purge-test.jsonl.gz`
+    const OLD = `${AUDIT_ID}-purge-old`
+    const RECENT = `${AUDIT_ID}-purge-recent`
+    const purge = (
+      client: pg.Client,
+      ids: string[],
+      rows = ids.length,
+      sha = SHA,
+      key = KEY,
+      days: number = AuditColdExport.HOT_DAYS
+    ) =>
+      client.query<{ n: number }>('SELECT purge_audit_logs($1::text[], $2, $3, $4, $5) AS n', [
+        ids,
+        key,
+        sha,
+        rows,
+        days
+      ])
+    const purgeEntries = (owner: pg.Client) =>
+      owner.query<{ id: string; metadata: Record<string, unknown>; action: string }>(
+        `SELECT id, action, metadata FROM audit_logs WHERE action = $1 AND metadata->>'exportKey' = $2`,
+        [AuditAction.AUDIT_LOG_PURGED, KEY]
+      )
+
+    beforeEach(async () => {
+      await withClient(urls.owner, async owner => {
+        await owner.query(
+          "INSERT INTO audit_logs (id, action, timestamp) VALUES ($1, 'integration.purge', now() - interval '800 days'), ($2, 'integration.purge', now() - interval '10 days')",
+          [OLD, RECENT]
+        )
+      })
+    })
+
+    afterEach(async () => {
+      await withClient(urls.owner, async owner => {
+        await owner.query('DELETE FROM audit_logs WHERE id = ANY($1::text[])', [[OLD, RECENT]])
+        const entries = await purgeEntries(owner)
+        await owner.query('DELETE FROM audit_logs WHERE id = ANY($1::text[])', [
+          entries.rows.map(entry => entry.id)
+        ])
+      })
+    })
+
+    it('purges what is past the hot window, writes the entry of the purge and keeps what is inside the window', async () => {
+      await withClient(urls.worker, async worker => {
+        const result = await purge(worker, [OLD, RECENT], 2)
+        expect(result.rows[0]?.n).toBe(1)
+      })
+      await withClient(urls.owner, async owner => {
+        const left = await owner.query<{ id: string }>(
+          'SELECT id FROM audit_logs WHERE id = ANY($1::text[])',
+          [[OLD, RECENT]]
+        )
+        expect(left.rows).toEqual([{ id: RECENT }])
+        const entries = await purgeEntries(owner)
+        expect(entries.rows).toHaveLength(1)
+        expect(entries.rows[0]?.metadata).toMatchObject({
+          rule: AuditColdExport.PURGE_RULE,
+          windowDays: AuditColdExport.HOT_DAYS,
+          requested: 2,
+          deleted: 1,
+          exportKey: KEY,
+          exportSha256: SHA,
+          exportRows: 2
+        })
+      })
+    })
+
+    it('is idempotent: a second call deletes nothing and writes no second entry', async () => {
+      await withClient(urls.worker, async worker => {
+        await purge(worker, [OLD])
+        const again = await purge(worker, [OLD])
+        expect(again.rows[0]?.n).toBe(0)
+      })
+      await withClient(urls.owner, async owner => {
+        expect((await purgeEntries(owner)).rows).toHaveLength(1)
+      })
+    })
+
+    it('does not delete an entry inside the hot window, whatever the caller passes', async () => {
+      await withClient(urls.worker, async worker => {
+        const result = await purge(worker, [RECENT])
+        expect(result.rows[0]?.n).toBe(0)
+      })
+      await withClient(urls.owner, async owner => {
+        const left = await owner.query('SELECT id FROM audit_logs WHERE id = $1', [RECENT])
+        expect(left.rows).toHaveLength(1)
+        expect((await purgeEntries(owner)).rows).toHaveLength(0)
+      })
+    })
+
+    it.each([
+      ['no ids', [], 1, SHA, KEY],
+      ['no key', [OLD], 1, SHA, ''],
+      ['a malformed SHA-256', [OLD], 1, 'xyz', KEY],
+      ['an export with fewer rows than ids', [OLD], 0, SHA, KEY]
+    ] as const)('refuses %s and deletes nothing', async (_name, ids, rows, sha, key) => {
+      await withClient(urls.worker, async worker => {
+        await expect(purge(worker, [...ids], rows, sha, key)).rejects.toThrow(/AUDIT_PURGE_INPUT/)
+      })
+      await withClient(urls.owner, async owner => {
+        const left = await owner.query('SELECT id FROM audit_logs WHERE id = $1', [OLD])
+        expect(left.rows).toHaveLength(1)
+      })
+    })
+
+    it('refuses a hot window under 730 days, so a recent entry is never reached', async () => {
+      await withClient(urls.worker, async worker => {
+        await expect(purge(worker, [RECENT], 1, SHA, KEY, 5)).rejects.toThrow(/AUDIT_PURGE_INPUT/)
+      })
+      expect(AuditColdExport.HOT_DAYS).toBeGreaterThanOrEqual(730)
+    })
+
+    it('can be called by platform_worker only: the api role has no EXECUTE', async () => {
+      await withClient(urls.app, async app => {
+        await expect(purge(app, [OLD])).rejects.toThrow(/permission denied/)
+      })
+      await withClient(urls.owner, async owner => {
+        const { rows } = await owner.query<{ id: string }>(
+          'SELECT id FROM audit_logs WHERE id = $1',
+          [OLD]
+        )
+        expect(rows).toHaveLength(1)
+      })
+    })
+
+    it('refuses an entry of a purge written by a role of the application', async () => {
+      for (const url of [urls.app, urls.worker]) {
+        await withClient(url, async client => {
+          await expect(
+            client.query('INSERT INTO audit_logs (id, action) VALUES ($1, $2)', [
+              `${AUDIT_ID}-forged`,
+              AuditAction.AUDIT_LOG_PURGED
+            ])
+          ).rejects.toThrow(/AUDIT_LOG_IMMUTABLE/)
+        })
+      }
+    })
+
+    it('has a fixed search_path, and the worker cannot delete directly', async () => {
+      await withClient(urls.owner, async owner => {
+        const { rows } = await owner.query<{ prosecdef: boolean; proconfig: string[] }>(
+          "SELECT prosecdef, proconfig FROM pg_proc WHERE proname = 'purge_audit_logs'"
+        )
+        expect(rows[0]?.prosecdef).toBe(true)
+        expect(rows[0]?.proconfig).toContain('search_path=pg_catalog, pg_temp')
+        expect(rows[0]?.proconfig).toContain('lock_timeout=5s')
+      })
+      await withClient(urls.worker, async worker => {
+        await expect(worker.query('DELETE FROM audit_logs WHERE id = $1', [OLD])).rejects.toThrow(
+          /permission denied/
+        )
+      })
     })
   })
 
@@ -174,9 +397,84 @@ describe('PrismaService', () => {
     expect(rows[0]?.current_user).toBe('platform_app')
   })
 
-  it('answers replica() from the primary when there is no replica', async () => {
-    const rows = await service.replica().$queryRaw<{ n: number }[]>`SELECT 1::int AS n`
-    expect(rows[0]?.n).toBe(1)
+  it('answers replicaTenantRead() from the primary when there is no replica, with the context set', async () => {
+    const rows = await service.replicaTenantRead(
+      { storeIds: ['s-1', 's-2'], organizationIds: ['o-1'], userId: 'u-1' },
+      db =>
+        db.$queryRaw<{ stores: string; organizations: string; person: string }[]>`
+          SELECT current_setting('app.store_ids') AS stores,
+                 current_setting('app.organization_ids') AS organizations,
+                 current_setting('app.user_id') AS person`
+    )
+    expect(rows[0]).toEqual({ stores: 's-1,s-2', organizations: 'o-1', person: 'u-1' })
+  })
+
+  it('runs the callback of replicaTenantRead and of tenantTransaction on the one connection and transaction that got the context', async () => {
+    type Probe = { stores: string; pid: number; txid: string }
+    const context = { storeIds: ['s-77'], organizationIds: ['o-77'], userId: 'u-77' }
+    // Two statements inside the callback: if the second ran on another connection or transaction (a pooler, the adapter) the pid or
+    // the transaction id would differ and the transaction-local context would be missing
+    const replica = await service.replicaTenantRead(context, async db => [
+      ...(await db.$queryRaw<
+        Probe[]
+      >`SELECT current_setting('app.store_ids') AS stores, pg_backend_pid() AS pid, txid_current()::text AS txid`),
+      ...(await db.$queryRaw<
+        Probe[]
+      >`SELECT current_setting('app.store_ids') AS stores, pg_backend_pid() AS pid, txid_current()::text AS txid`)
+    ])
+    expect(replica[0]?.stores).toBe('s-77')
+    expect(replica[1]).toEqual(replica[0])
+    const tenant = await service.tenantTransaction(context, async () => [
+      ...(await service.client.$queryRaw<
+        Probe[]
+      >`SELECT current_setting('app.store_ids') AS stores, pg_backend_pid() AS pid, txid_current()::text AS txid`),
+      ...(await service.client.$queryRaw<
+        Probe[]
+      >`SELECT current_setting('app.store_ids') AS stores, pg_backend_pid() AS pid, txid_current()::text AS txid`)
+    ])
+    expect(tenant[0]?.stores).toBe('s-77')
+    expect(tenant[1]).toEqual(tenant[0])
+    expect(replica[0]?.txid).not.toBe(tenant[0]?.txid)
+  })
+
+  it('refuses replicaTenantRead inside a tenant transaction (two connections of one pool)', async () => {
+    const context = { storeIds: ['s-1'], organizationIds: ['o-1'] }
+    await expect(
+      service.tenantTransaction(context, () =>
+        service.replicaTenantRead(context, () => Promise.resolve(1))
+      )
+    ).rejects.toThrow('replicaTenantRead inside a tenant transaction')
+  })
+
+  it('answers the person of the context through app_user_id(), and NULL when there is none', async () => {
+    const rows = await service.tenantTransaction(
+      { storeIds: [], organizationIds: [], userId: 'u-3' },
+      () => service.client.$queryRaw<{ person: string | null }[]>`SELECT app_user_id() AS person`
+    )
+    expect(rows[0]?.person).toBe('u-3')
+    const none = await service.tenantTransaction(
+      { storeIds: [], organizationIds: [] },
+      () => service.client.$queryRaw<{ person: string | null }[]>`SELECT app_user_id() AS person`
+    )
+    expect(none[0]?.person).toBeNull()
+  })
+
+  it('sets the tenant context in the transaction only, with the person when it is given', async () => {
+    const inside = await service.tenantTransaction(
+      { storeIds: ['s-9'], organizationIds: ['o-9'], userId: 'u-9' },
+      async () => {
+        expect(service.hasTenantContext()).toBe(true)
+        expect(service.currentTenantContext()?.userId).toBe('u-9')
+        return service.client.$queryRaw<{ person: string; stores: string }[]>`
+          SELECT current_setting('app.user_id') AS person, current_setting('app.store_ids') AS stores`
+      }
+    )
+    expect(inside[0]).toEqual({ person: 'u-9', stores: 's-9' })
+    expect(service.hasTenantContext()).toBe(false)
+    // Outside the transaction nothing is left on the pooled connection
+    const after = await service.client.$queryRaw<{ stores: string | null }[]>`
+      SELECT nullif(current_setting('app.store_ids', true), '') AS stores`
+    expect(after[0]?.stores).toBeNull()
   })
 
   it('rolls a transaction back as one unit', async () => {
@@ -232,6 +530,44 @@ describe('PrismaService', () => {
       })
     ).rejects.toThrow('abort')
     expect(await service.client.organization.count({ where: { slug } })).toBe(0)
+  })
+
+  it('runs a detached tenant transaction on its own: it keeps its write when the outer one rolls back, and has its own context', async () => {
+    const slug = `it-${runId}-detached`
+    const read = async (): Promise<string | null> => {
+      const rows = await service.client.$queryRaw<{ value: string | null }[]>`
+        SELECT nullif(current_setting('app.store_ids', true), '') AS value`
+      return rows[0]?.value ?? null
+    }
+    let inner: string | null = null
+    await expect(
+      service.tenantTransaction({ storeIds: ['outer'], organizationIds: [] }, async () => {
+        await service.detachedTenantTransaction(
+          { storeIds: ['inner'], organizationIds: [] },
+          async () => {
+            inner = await read()
+            await service.client.organization.create({ data: { name: 'Detached', slug } })
+          }
+        )
+        // Back in the outer transaction, with its own context
+        expect(await read()).toBe('outer')
+        throw new Error('abort')
+      })
+    ).rejects.toThrow('abort')
+    expect(inner).toBe('inner')
+    expect(await service.client.organization.count({ where: { slug } })).toBe(1)
+  })
+
+  it('sets the catalog flag, and no tenant context, only inside a catalog transaction', async () => {
+    const read = async (): Promise<{ flag: string | null; stores: string | null }> => {
+      const rows = await service.client.$queryRaw<{ flag: string | null; stores: string | null }[]>`
+        SELECT nullif(current_setting('app.platform_catalog', true), '') AS flag,
+               nullif(current_setting('app.store_ids', true), '') AS stores`
+      return rows[0] ?? { flag: null, stores: null }
+    }
+    expect(await read()).toEqual({ flag: null, stores: null })
+    expect(await service.catalogTransaction(read)).toEqual({ flag: 'on', stores: null })
+    expect(await read()).toEqual({ flag: null, stores: null })
   })
 
   describe('afterCommit', () => {
@@ -388,6 +724,68 @@ describe('PrismaService', () => {
 
       expect(hook).toHaveBeenCalledTimes(1)
     })
+  })
+})
+
+describe('PrismaService with requireContext', () => {
+  const guarded = new PrismaService({ databaseUrl: urls.app, poolSize: 4, requireContext: true })
+  const open = new PrismaService({ databaseUrl: urls.app, poolSize: 2 })
+  const context = { storeIds: ['s-1'], organizationIds: ['o-1'] }
+
+  beforeAll(async () => {
+    await guarded.onModuleInit()
+    await open.onModuleInit()
+  })
+  afterAll(async () => {
+    await guarded.onModuleDestroy()
+    await open.onModuleDestroy()
+  })
+
+  it('throws, naming the model, for a model that is not global when there is no context', async () => {
+    const error: unknown = await guarded.client.conversation.count().then(
+      () => undefined,
+      (caught: unknown) => caught
+    )
+    expect(error).toBeInstanceOf(TenantContextRequiredError)
+    expect((error as Error).message).toContain('Conversation.count')
+  })
+
+  it('runs inside tenantTransaction, replicaTenantRead and withoutTenantContext', async () => {
+    expect(
+      await guarded.tenantTransaction(context, () => guarded.client.conversation.count())
+    ).toBeGreaterThanOrEqual(0)
+    expect(
+      await guarded.replicaTenantRead(context, db => db.conversation.count())
+    ).toBeGreaterThanOrEqual(0)
+    expect(
+      await guarded.withoutTenantContext('a lookup with no tenant yet', () =>
+        guarded.client.conversation.count()
+      )
+    ).toBeGreaterThanOrEqual(0)
+  })
+
+  it('lets the global models through, and asks for a reason to call without a context', async () => {
+    expect(await guarded.client.store.count()).toBeGreaterThanOrEqual(0)
+    expect(await guarded.client.user.count()).toBeGreaterThanOrEqual(0)
+    expect(() => guarded.withoutTenantContext('  ', () => Promise.resolve(1))).toThrow(
+      'needs a reason'
+    )
+  })
+
+  it('does nothing while the switch is off', async () => {
+    expect(await open.client.conversation.count()).toBeGreaterThanOrEqual(0)
+  })
+
+  it('lets a catalog transaction query a model that is not global, even when it returns the lazy query as it is', async () => {
+    expect(
+      await guarded.catalogTransaction(() => guarded.client.plugin.count())
+    ).toBeGreaterThanOrEqual(0)
+  })
+
+  it('refuses to open a catalog transaction inside a tenant transaction', () => {
+    return expect(
+      guarded.tenantTransaction(context, () => guarded.catalogTransaction(() => Promise.resolve(1)))
+    ).rejects.toThrow('inside a tenant transaction')
   })
 })
 

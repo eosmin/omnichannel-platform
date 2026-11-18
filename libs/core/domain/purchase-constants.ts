@@ -29,7 +29,8 @@ export const PurchaseResourceTypes = {
   SUPPLIER: 'supplier',
   PURCHASE_ORDER: 'purchase_order',
   PURCHASE_RECEIPT: 'purchase_receipt',
-  SUPPLIER_PAYMENT: 'supplier_payment'
+  SUPPLIER_PAYMENT: 'supplier_payment',
+  SUPPLIER_PAYMENT_RETURN: 'supplier_payment_return'
 } as const
 
 // The idempotency key of the entry each event posts (TDD_18 §4.1): `receipt:<id>:receive`, `payment:<id>:pay`, and the reversal of a
@@ -37,6 +38,8 @@ export const PurchaseResourceTypes = {
 export const PurchaseIdempotencyKey = {
   RECEIPT: (receiptId: string): string => `receipt:${receiptId}:receive`,
   PAYMENT: (paymentId: string): string => `payment:${paymentId}:pay`,
+  // The entry of the money a supplier gave back (E11b): once per return, the retry of a request finds it and posts nothing
+  PAYMENT_RETURN: (returnId: string): string => `payment_return:${returnId}`,
   // The key of the stock movement one line of a receipt makes: inventory keys are unique per store
   RECEIPT_LINE: (receiptId: string, lineId: string): string => `receipt:${receiptId}:${lineId}`
 } as const
@@ -66,6 +69,14 @@ export const PurchaseConflicts = {
   PAYMENT_EXCEEDS_BALANCE: 'payment_exceeds_balance',
   PAYMENT_EXCEEDS_RECEIPT: 'payment_exceeds_receipt',
   PAYMENT_ALREADY_VOIDED: 'payment_already_voided',
+  // A return is never above what is left of its payment (the payment minus its live returns), and a payment with live returns is not
+  // voided: the return is voided first
+  RETURN_EXCEEDS_PAYMENT: 'return_exceeds_payment',
+  RETURN_ALREADY_VOIDED: 'return_already_voided',
+  PAYMENT_HAS_RETURNS: 'payment_has_returns',
+  // The debt a return reopened was paid again: voiding the return would put the payments above what is owed
+  RETURN_VOID_WOULD_OVERPAY: 'return_void_would_overpay',
+  PAYMENT_VOIDED: 'payment_voided',
   // The entry of a receipt or a payment is reversed through the purchase (its permission, its audit row), never alone
   ENTRY_OWNED_BY_PURCHASE: 'entry_owned_by_purchase'
 } as const

@@ -408,6 +408,8 @@ export default defineConfig([
       'scripts/queue-env.ts',
       'libs/core/database/testing/connection-urls.ts',
       'libs/core/database/testing/replica-database.ts',
+      // The switch of the suites for Row-Level Security (TEST_RLS_ENFORCE), read where the other test variables are
+      'libs/core/database/testing/rls-enforcement.ts',
       // Its spec sets and restores the variables the function reads
       'libs/core/database/testing/connection-urls.spec.ts',
       // Tooling that starts a process with the env of the shell (`pnpm dev`) or points the tests at a

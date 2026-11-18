@@ -44,6 +44,7 @@ export const DestructiveActionTiers = {
   CLOSE_FISCAL_PERIOD: HIGH, // TDD_18 §5.1; the month is frozen: no entry is accepted in it and its report does not move
   REOPEN_FISCAL_PERIOD: HIGH, // TDD_18 §5.3; only the latest closed month, with the reason typed; the books of that month can change again
   VOID_SUPPLIER_PAYMENT: HIGH, // TDD_18 §4.2 E11; voiding a payment to a supplier writes a reversing entry that stays in the journal for good and makes the bill owed again, and a voided one is not voided again
+  VOID_SUPPLIER_PAYMENT_RETURN: HIGH, // TDD_18 §4.2 E11b; voiding the return of a payment writes a reversing entry that stays in the journal for good and takes the debt back to what it was, and a voided one is not voided again
   VOID_FISCAL_DOCUMENT: HIGH, // TDD_18 §8.3; the invalidation of an accepted fiscal document with the authority: it cannot be taken back and is audited
   CONFIRM_FISCAL_ISSUER_CHANGE: HIGH, // TDD_18 §8.3; a person states that a document is not at the issuer it was made with, so it is sent to the new one: if it was there, the sale ends up with two documents
   VOID_FINANCE_TRANSACTION: HIGH, // TDD_18 §4.3; voiding an expense, an income or a transfer writes a reversing entry that stays in the journal for good, and a voided one is not voided again

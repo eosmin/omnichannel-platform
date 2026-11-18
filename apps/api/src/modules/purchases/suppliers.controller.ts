@@ -28,20 +28,27 @@ import {
   type PayablesQuery,
   payablesQuerySchema,
   type RecordPaymentBody,
+  type RecordPaymentReturnBody,
+  recordPaymentReturnSchema,
   recordPaymentSchema,
   type UpdateSupplierBody,
   updateSupplierSchema,
   type VoidPaymentBody,
+  type VoidPaymentReturnBody,
+  voidPaymentReturnSchema,
   voidPaymentSchema
 } from './purchases.schemas'
 import type {
   PayablesView,
   PaymentPage,
+  PaymentReturnPage,
+  PaymentReturnView,
   PaymentView,
   SupplierBalanceView,
   SupplierPage,
   SupplierView
 } from './purchases.views'
+import { SupplierPaymentReturnsService } from './supplier-payment-returns.service'
 import { SupplierPaymentsService } from './supplier-payments.service'
 import { SuppliersService } from './suppliers.service'
 
@@ -60,7 +67,8 @@ export class SuppliersController {
   constructor(
     private readonly suppliers: SuppliersService,
     private readonly payables: PayablesService,
-    private readonly payments: SupplierPaymentsService
+    private readonly payments: SupplierPaymentsService,
+    private readonly returns: SupplierPaymentReturnsService
   ) {}
 
   @RequirePermissions(Permissions.FINANCE_MANAGE_PURCHASES)
@@ -171,5 +179,48 @@ export class SuppliersController {
     @Req() req: AuthenticatedRequest
   ): Promise<PaymentView> {
     return this.payments.voidPayment(organization.id, paymentId, body, actorOf(user, store, req))
+  }
+
+  @RequireAnyPermission(Permissions.FINANCE_MANAGE_PURCHASES, Permissions.FINANCE_MOVE_MONEY)
+  @NoStore()
+  @Get(ApiRoutes.supplierPayments.returns(':id'))
+  listReturns(
+    @CurrentOrganization() organization: Organization,
+    @Param('id', id()) paymentId: string,
+    @Query(new ZodValidationPipe(listPaymentsQuerySchema)) query: ListPaymentsQuery
+  ): Promise<PaymentReturnPage> {
+    return this.returns.list(organization.id, paymentId, query)
+  }
+
+  // What the supplier gave back of a payment (HC-121): moves money like the payment itself, so it takes the same permission
+  @RequirePermissions(Permissions.FINANCE_MOVE_MONEY)
+  @NoStore()
+  @Post(ApiRoutes.supplierPayments.returns(':id'))
+  @HttpCode(HttpStatusCodes.CREATED)
+  recordReturn(
+    @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) paymentId: string,
+    @Body(new ZodValidationPipe(recordPaymentReturnSchema)) body: RecordPaymentReturnBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<PaymentReturnView> {
+    return this.returns.record(organization.id, paymentId, body, actorOf(user, store, req))
+  }
+
+  // HIGH tier of DestructiveActionTiers (VOID_SUPPLIER_PAYMENT_RETURN): the interface asks before it sends this
+  @RequirePermissions(Permissions.FINANCE_MOVE_MONEY)
+  @NoStore()
+  @Post(ApiRoutes.supplierPaymentReturns.void(':id'))
+  @HttpCode(HttpStatusCodes.CREATED)
+  voidReturn(
+    @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) returnId: string,
+    @Body(new ZodValidationPipe(voidPaymentReturnSchema)) body: VoidPaymentReturnBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<PaymentReturnView> {
+    return this.returns.voidReturn(organization.id, returnId, body, actorOf(user, store, req))
   }
 }

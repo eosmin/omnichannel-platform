@@ -6,6 +6,8 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { exit } from 'node:process'
 
+import { RlsGlobalModels } from '@platform/core/domain'
+
 import {
   checkRlsCoverage,
   coveredTables,
@@ -46,7 +48,22 @@ const migrations = readdirSync(MIGRATIONS)
 const covered = coveredTables(migrations)
 
 const report = checkRlsCoverage(tables, covered, RLS_EXEMPTIONS, RLS_PHASES)
-const roles = [...roleViolations(migrations), ...scopeMismatches(tables, migrations)]
+const globalModels = tables
+  .filter(({ table }) => RLS_EXEMPTIONS[table]?.kind === 'global')
+  .map(({ model }) => model)
+const globalMismatch = [
+  ...globalModels
+    .filter(model => !RlsGlobalModels.includes(model))
+    .map(model => `${model}: global in scripts/rls-exceptions.ts but not in RlsGlobalModels`),
+  ...RlsGlobalModels.filter(model => !globalModels.includes(model)).map(
+    model => `${model}: in RlsGlobalModels but not a global table of scripts/rls-exceptions.ts`
+  )
+]
+const roles = [
+  ...roleViolations(migrations),
+  ...scopeMismatches(tables, migrations),
+  ...globalMismatch
+]
 const sessions = sessionSettingViolations(
   SOURCE_ROOTS.flatMap(root => [...sourceFiles(root)]).map(path => ({
     path,

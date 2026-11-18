@@ -3,7 +3,7 @@ import { Cron } from '@nestjs/schedule'
 import { PinoLogger } from 'nestjs-pino'
 
 import { errorName } from '@platform/channels/connections'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, assertSeesEveryRow } from '@platform/core/database'
 import { DeletedMessageRetention } from '@platform/core/domain'
 import { LockNames, Schedules } from '@platform/core/queues'
 
@@ -42,6 +42,7 @@ export class DeletedMessagePurgeScheduler {
   }
 
   async purge(now: Date = new Date()): Promise<number> {
+    await assertSeesEveryRow(this.prisma, ['messages', 'message_revisions', 'media'])
     const due = await this.prisma.client.message.findMany({
       where: {
         deletedAt: { lt: new Date(now.getTime() - DeletedMessageRetention.DAYS * DAY_MS) },

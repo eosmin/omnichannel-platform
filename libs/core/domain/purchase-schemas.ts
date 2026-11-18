@@ -114,3 +114,15 @@ export const recordPaymentSchema = z.strictObject({
 })
 
 export const voidPaymentSchema = z.strictObject({ reason })
+
+// What a supplier gave back of one payment (HC-121): the bank returned it or it bounced. The payment is the one of the route.
+export const recordPaymentReturnSchema = z.strictObject({
+  idempotencyKey: purchaseIdempotencyKey,
+  // The cash, bank or wallet account the money came back into
+  receivedIntoAccountId: lowercasedUuidSchema,
+  amountCents: z.number().int().min(1).max(FinanceLimits.MAX_LINE_CENTS),
+  returnedOn: day,
+  reference: singleLineText(PurchaseLimits.REFERENCE_MAX_LENGTH, 1).optional()
+})
+
+export const voidPaymentReturnSchema = z.strictObject({ reason })

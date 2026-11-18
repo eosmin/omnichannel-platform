@@ -16,11 +16,17 @@ import {
 import type { Response } from 'express'
 
 import { ApiRoutes } from '@platform/core/api'
-import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
+import {
+  type AuthenticatedUser,
+  EnumerationIpThrottle,
+  type Permission,
+  Permissions,
+  UserRateLimits
+} from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { CHANNEL_ANONYMITY, type ChannelAnonymitySource } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { NoStore, ZodValidationPipe } from '@platform/core/http'
+import { NoStore, RateLimit, UserRateLimit, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
 import {
   type ConversationPage,
@@ -147,6 +153,8 @@ export class CustomersController {
     })
   }
 
+  @RateLimit(EnumerationIpThrottle)
+  @UserRateLimit(UserRateLimits.CUSTOMER_LIST)
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
   @NoStore()
   @Get(ApiRoutes.customers.list)

@@ -2806,11 +2806,19 @@
           "check_failed": "The last check could not be completed.",
           "invalid_report": "The channel answered the check in an unexpected way.",
           "unspecified": "The channel reported a problem without saying which.",
+          "plugin_reported": "The channel reported a problem. Your team can read the technical detail.",
           "token_rejected": "Meta no longer accepts the token: it expired or was revoked. Update the token of this connection.",
           "permission_missing": "The token lacks a permission or a task on the Page or account. Check them and update the token of this connection.",
           "other_account": "The token is now of another account than the connected one. Update the token with the one of that same account.",
           "account_not_linked": "The account is no longer linked to the Page of the token. Link it again or update the token.",
           "request_rejected": "Meta no longer accepts what it accepted before: a permission or the link of the Page may have been taken away. Update the token of this connection."
+        },
+        "detail": {
+          "toggle": "Technical detail",
+          "warning": "This is what the plugin wrote, cleaned of markup and credentials. The platform has not verified it: do not follow links or instructions in it.",
+          "loading": "Loading…",
+          "failed": "The technical detail could not be loaded.",
+          "empty": "The plugin gave no text for this failure."
         }
       },
       "profile": {
@@ -4059,6 +4067,20 @@
           "deductsFee": "The carrier keeps its fee from the cash it collects",
           "deductsFeeHint": "The remittance then arrives net of the shipping fee."
         },
+        "chargeModel": {
+          "legend": "How the carrier charges the guides",
+          "label": "Charge model",
+          "models": {
+            "invoiced": "The carrier bills me later",
+            "remittance": "The carrier deducts it from the cash it remits",
+            "prepaid": "I buy guides in advance (prepaid)"
+          },
+          "hints": {
+            "invoiced": "What the carrier charges is owed to it until you pay the invoice.",
+            "remittance": "The charge is settled when the remittance that deducts it is confirmed.",
+            "prepaid": "Each guide uses what you paid when you bought the package: the books do not owe the carrier its cost again. Ask the accountant to map the account of the prepaid guides and to enter the opening balance when you switch it on. It applies to the guides and purchases from then on."
+          }
+        },
         "services": {
           "legend": "Services",
           "default": "Default service",
@@ -4216,6 +4238,10 @@
           "giftHint": "The guides that came free with the purchase. Use 0 if none.",
           "cost": "Total paid (US$)",
           "costHint": "With taxes included, for example 45.50.",
+          "carriedHint": "The books carry this purchase as an advance that each guide then uses.",
+          "paidFrom": "Paid from",
+          "paidFromDefault": "The default bank account",
+          "paidFromHint": "The account the money left. If you leave it empty, the default bank account is used.",
           "note": "Note (optional)",
           "submit": "Record purchase",
           "done": "Purchase recorded",
@@ -6208,6 +6234,7 @@
       "cod_write_off": "Cash on delivery write-off",
       "purchase_receipt": "Purchase received",
       "supplier_payment": "Supplier payment",
+      "supplier_payment_return": "Supplier payment returned",
       "carrier_guides": "Carrier guides bought",
       "inventory_adjustment": "Inventory adjustment",
       "reversal": "Reversal"
@@ -6237,6 +6264,7 @@
         "transfer_line": "A transfer shortage written off",
         "purchase_receipt": "A purchase received",
         "supplier_payment": "A supplier payment",
+        "supplier_payment_return": "A supplier payment returned",
         "carrier_guide_movement": "A purchase of carrier guides",
         "finance_transaction": "An expense, income or transfer",
         "manual": "An entry written by hand"
@@ -6471,6 +6499,8 @@
         "bank_pair_not_allowed": "This pair is not allowed: the amount, the direction, the account or the dates do not agree.",
         "bank_line_already_matched": "This line of the statement is already matched. Reload to see it.",
         "bank_book_line_already_matched": "That line of the books is already matched with another line of a statement.",
+        "bank_group_not_allowed": "These lines cannot be one group: they must be of the same account, none reversed, and two or more.",
+        "bank_group_sum_mismatch": "The lines of the group do not add up to the amount of the statement line, to the cent.",
         "bank_decision_already_undone": "That decision was already taken back.",
         "bank_line_matched": "This line is matched: only a line with no match can be recorded as a transaction.",
         "bank_no_closing_balance": "This statement has no closing balance to compare the books with.",
@@ -6759,7 +6789,9 @@
         "from": "From the account",
         "to": "To the account",
         "document": "Document number",
-        "memo": "Memo"
+        "memo": "Memo",
+        "useAsMemo": "Use the statement text as memo",
+        "dropMemo": "Leave the memo empty"
       }
     },
     "purchases": {
@@ -6872,6 +6904,55 @@
         "confirmDescription": "This cannot be undone: the reversal stays in the books for good and the bill is owed again.",
         "confirm": "Void payment",
         "done": "Payment voided."
+      },
+      "paymentReturn": {
+        "title": "Register a return of a payment",
+        "description": "The supplier gave back all or part of this payment: the bank returned it or it bounced. The payment stays as it was and what is owed to the supplier goes up again.",
+        "formLabel": "Return of a payment",
+        "ofPayment": "Payment of {amount}.",
+        "needsBooks": "Choosing the account the money came back into needs permission to read the books (finance:view). Ask an administrator.",
+        "loading": "Reading the accounts…",
+        "fields": {
+          "account": "Money came back into",
+          "accountHint": "An account of cash, a bank or a wallet.",
+          "pickAccount": "Choose an account…",
+          "amount": "Amount (USD)",
+          "amountHint": "Never more than what is left of the payment.",
+          "returnedOn": "Returned on",
+          "dateHint": "Year-month-day, not before the payment and not in the future.",
+          "reference": "Reference (optional)"
+        },
+        "problems": {
+          "receivedIntoAccountId": "Choose the account the money came back into.",
+          "amount": "Write an amount above 0 and not above the payment, with at most two decimals.",
+          "returnedOn": "Write a real day as year-month-day, not before the payment and not in the future.",
+          "reference": "The reference is too long."
+        },
+        "cancel": "Cancel",
+        "submit": "Register return",
+        "done": "Return registered.",
+        "accountsFailed": "The accounts could not be read. Close this and try again."
+      },
+      "paymentReturns": {
+        "toggle": "Returns",
+        "record": "Register a return",
+        "loading": "Reading the returns…",
+        "none": "Nothing has been given back of this payment.",
+        "voided": "Voided",
+        "void": "Void",
+        "loadMore": "Load more",
+        "voidTitle": "Void this return",
+        "voidDescription": "The return stays in the journal and a reversing entry is posted. The debt to the supplier goes back to what it was.",
+        "voidReason": "Reason",
+        "voidSubmit": "Void return",
+        "voidConfirmTitle": "Void this return?",
+        "voidConfirmDescription": "This cannot be undone: the reversal stays in the books for good.",
+        "voidConfirm": "Void return",
+        "voidDone": "Return voided.",
+        "loadMoreFailed": "The next returns could not be read. Try again.",
+        "recordOf": "Register a return of the payment of {amount}",
+        "voidOf": "Void the return of {amount}",
+        "toggleOf": "Returns of the payment of {amount}"
       },
       "reason": {
         "required": "Write the reason.",
@@ -7057,6 +7138,11 @@
         "payment_exceeds_balance": "The payment is above what is owed to this supplier.",
         "payment_exceeds_receipt": "The payment is above what is open on that bill.",
         "payment_already_voided": "This payment was already voided.",
+        "return_exceeds_payment": "The return is above what is left of that payment.",
+        "return_already_voided": "This return was already voided.",
+        "payment_has_returns": "This payment has a return: void the return first.",
+        "payment_voided": "A voided payment has nothing to give back.",
+        "return_void_would_overpay": "The debt this return reopened was paid again: voiding it would pay the supplier above what is owed.",
         "entry_owned_by_purchase": "This entry belongs to a purchase: change it from the purchase."
       },
       "rules": {
@@ -7071,7 +7157,9 @@
         "amount": "The amount is not valid.",
         "bill_required": "Choose the bill this payment is for.",
         "payable_account_type": "The account for what is owed must be a liability account.",
-        "from_not_cash": "The account the money leaves must be one of cash, a bank or a wallet."
+        "from_not_cash": "The account the money leaves must be one of cash, a bank or a wallet.",
+        "into_not_cash": "The account the money comes back into must be one of cash, a bank or a wallet.",
+        "before_payment": "The money cannot come back before the day it was paid."
       }
     },
     "reports": {
@@ -7263,6 +7351,7 @@
         "transfer_line": "Transfer shortage written off",
         "purchase_receipt": "Purchase received",
         "supplier_payment": "Supplier payment",
+        "supplier_payment_return": "Supplier payment returned",
         "carrier_guide_movement": "Carrier guides",
         "finance_transaction": "Expense, income or transfer",
         "manual": "Manual entry"

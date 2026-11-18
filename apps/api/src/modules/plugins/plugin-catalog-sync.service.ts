@@ -55,65 +55,73 @@ export class PluginCatalogSync implements OnApplicationBootstrap {
   }
 
   async onApplicationBootstrap(): Promise<void> {
+    // At boot there is no request and no store: every statement below runs in a catalog transaction, which carries no tenant
+    // context and the flag the policies of `plugins` ask for
     await this.sync()
   }
 
   async sync(): Promise<void> {
     const plugins = this.registry.listFromCode()
+    // One transaction per plugin, in the catalog mode: the rows with no organization are the platform's, and only this
+    // transaction may write them (the policies of `plugins`)
     for (const plugin of plugins) {
-      // The status is written once, on creation: a plugin the owner suspended stays suspended
-      const { status, ...data } = officialRow(plugin)
-      // A row that is not the platform's own belongs to whoever published it: this one is written when it is not
-      // there, and refreshed only while it carries the marker of a row the code wrote (an address nobody else can
-      // have, not a name the publisher chooses), in one statement so that nothing is read and then overwritten
-      if (!isOfficialChannelId(plugin.id)) {
-        await this.prisma.client.plugin.createMany({
-          data: [{ id: plugin.id, ...data, status }],
-          skipDuplicates: true
-        })
-        await this.prisma.client.plugin.updateMany({
-          where: {
-            id: plugin.id,
-            isOfficial: false,
-            organizationId: null,
-            authorEmail: CodePluginAuthor.EMAIL
-          },
-          data
-        })
-        // The id of a plugin of the code that an organization registered first stays the organization's
-        const taken = await this.prisma.client.plugin.findFirst({
-          where: { id: plugin.id, organizationId: { not: null } },
-          select: { id: true }
-        })
-        if (taken !== null) {
-          this.logger.error(
-            { pluginId: plugin.id },
-            'the id of a plugin of the platform is taken by a plugin an organization registered'
-          )
-        }
-        continue
-      }
-      // Written when it is not there, and refreshed only while it is not an organization's: the id of an official plugin
-      // that an organization registered before the platform shipped it stays the organization's, and the row is never
-      // turned into the platform's with the organization's installations and keys under it. Two statements that
-      // each decide on the row in the database, so nothing is read and then overwritten.
+      await this.prisma.catalogTransaction(() => this.syncOne(plugin))
+    }
+    await this.syncShipping()
+    this.logger.info({ count: plugins.length }, 'plugins of the platform written to the catalog')
+  }
+
+  private async syncOne(plugin: ReturnType<PluginRegistry['listFromCode']>[number]): Promise<void> {
+    // The status is written once, on creation: a plugin the owner suspended stays suspended
+    const { status, ...data } = officialRow(plugin)
+    // A row that is not the platform's own belongs to whoever published it: this one is written when it is not
+    // there, and refreshed only while it carries the marker of a row the code wrote (an address nobody else can
+    // have, not a name the publisher chooses), in one statement so that nothing is read and then overwritten
+    if (!isOfficialChannelId(plugin.id)) {
       await this.prisma.client.plugin.createMany({
         data: [{ id: plugin.id, ...data, status }],
         skipDuplicates: true
       })
-      const refreshed = await this.prisma.client.plugin.updateMany({
-        where: { id: plugin.id, organizationId: null },
+      await this.prisma.client.plugin.updateMany({
+        where: {
+          id: plugin.id,
+          isOfficial: false,
+          organizationId: null,
+          authorEmail: CodePluginAuthor.EMAIL
+        },
         data
       })
-      if (refreshed.count === 0) {
+      // The id of a plugin of the code that an organization registered first stays the organization's
+      const taken = await this.prisma.client.plugin.findFirst({
+        where: { id: plugin.id, organizationId: { not: null } },
+        select: { id: true }
+      })
+      if (taken !== null) {
         this.logger.error(
           { pluginId: plugin.id },
-          'the id of an official plugin is taken by a plugin an organization registered'
+          'the id of a plugin of the platform is taken by a plugin an organization registered'
         )
       }
+      return
     }
-    await this.syncShipping()
-    this.logger.info({ count: plugins.length }, 'plugins of the platform written to the catalog')
+    // Written when it is not there, and refreshed only while it is not an organization's: the id of an official plugin
+    // that an organization registered before the platform shipped it stays the organization's, and the row is never
+    // turned into the platform's with the organization's installations and keys under it. Two statements that
+    // each decide on the row in the database, so nothing is read and then overwritten.
+    await this.prisma.client.plugin.createMany({
+      data: [{ id: plugin.id, ...data, status }],
+      skipDuplicates: true
+    })
+    const refreshed = await this.prisma.client.plugin.updateMany({
+      where: { id: plugin.id, organizationId: null },
+      data
+    })
+    if (refreshed.count === 0) {
+      this.logger.error(
+        { pluginId: plugin.id },
+        'the id of an official plugin is taken by a plugin an organization registered'
+      )
+    }
   }
 
   // The carriers are one entry of the catalog, `shipping` (D19): a store installs it once and connects the carriers it needs.
@@ -123,10 +131,12 @@ export class PluginCatalogSync implements OnApplicationBootstrap {
     const carriers = this.carriers.list()
     if (carriers.length === 0) return
     // The id belongs to the platform: a row of that id that is not official was written by someone else and is left alone
-    const existing = await this.prisma.client.plugin.findUnique({
-      where: { id: ShippingPlugin.ID },
-      select: { isOfficial: true }
-    })
+    const existing = await this.prisma.catalogTransaction(() =>
+      this.prisma.client.plugin.findUnique({
+        where: { id: ShippingPlugin.ID },
+        select: { isOfficial: true }
+      })
+    )
     if (existing !== null && !existing.isOfficial) {
       this.logger.error(
         { pluginId: ShippingPlugin.ID },
@@ -154,12 +164,15 @@ export class PluginCatalogSync implements OnApplicationBootstrap {
       },
       pricingModel: PluginPricingModels.FREE
     }
+    // Its own catalog transaction each time: a unique violation aborts a transaction, and the second try must start a new one
     const write = () =>
-      this.prisma.client.plugin.upsert({
-        where: { id: ShippingPlugin.ID },
-        create: { id: ShippingPlugin.ID, ...data, status: PluginStatus.APPROVED },
-        update: data
-      })
+      this.prisma.catalogTransaction(() =>
+        this.prisma.client.plugin.upsert({
+          where: { id: ShippingPlugin.ID },
+          create: { id: ShippingPlugin.ID, ...data, status: PluginStatus.APPROVED },
+          update: data
+        })
+      )
     try {
       await write()
     } catch (error) {

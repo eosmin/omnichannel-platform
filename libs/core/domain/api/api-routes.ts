@@ -276,6 +276,8 @@ export const ApiRoutes = {
       difference: (id: string) => `/finance/bank-imports/${id}/difference`,
       // POST confirms the pair of a statement line and a line of the journal
       lineMatches: (id: string) => `/finance/bank-lines/${id}/matches`,
+      // POST confirms ONE statement line against SEVERAL lines of the journal whose signed sum is exactly its amount (HC-121)
+      lineGroupMatches: (id: string) => `/finance/bank-lines/${id}/group-matches`,
       lineRejections: (id: string) => `/finance/bank-lines/${id}/rejections`,
       // GET: the transaction of 4B.4a an unmatched line would be, prefilled (nothing is posted)
       lineRegisterDraft: (id: string) => `/finance/bank-lines/${id}/register-draft`,
@@ -346,7 +348,12 @@ export const ApiRoutes = {
     recordPayment: (id: string) => `/suppliers/${id}/payments`
   },
   supplierPayments: {
-    void: (id: string) => `/supplier-payments/${id}/void`
+    void: (id: string) => `/supplier-payments/${id}/void`,
+    // POST records what the supplier gave back of this payment; GET lists the returns of the payment (HC-121)
+    returns: (id: string) => `/supplier-payments/${id}/returns`
+  },
+  supplierPaymentReturns: {
+    void: (id: string) => `/supplier-payment-returns/${id}/void`
   },
   purchaseOrders: {
     list: '/purchase-orders',
@@ -528,6 +535,9 @@ export const ApiRoutes = {
     directory: '/channels/directory',
     connect: (pluginId: string) => `/channels/${pluginId}/connect`,
     connectionById: (id: string) => `/channels/connections/${id}`,
+    // The text a plugin gave for a failed check, cleaned (GET). Only for whoever manages plugins: the connection itself carries
+    // a code of ours and never the words of a third party
+    connectionErrorDetail: (id: string) => `/channels/connections/${id}/error-detail`,
     test: (id: string) => `/channels/connections/${id}/test`,
     disconnect: (id: string) => `/channels/connections/${id}/disconnect`,
     // Replaces the token of one connection, checked against the account it already has

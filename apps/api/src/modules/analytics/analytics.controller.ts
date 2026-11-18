@@ -25,7 +25,12 @@ import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import { ExportTypes } from '@platform/core/queues'
 
 import { ExportsService, type ExportView } from '../exports'
-import { CurrentStore, RequirePermissions, type ResolvedTenant } from '../tenancy'
+import {
+  CurrentStore,
+  NoTenantTransaction,
+  RequirePermissions,
+  type ResolvedTenant
+} from '../tenancy'
 
 import { MetricsQueryService, type MetricsResult } from './metrics-query.service'
 import { type MetricsQuery, metricsQuerySchema } from './metrics.schemas'
@@ -48,23 +53,25 @@ export class AnalyticsController {
 
   @RequirePermissions(Permissions.ANALYTICS_VIEW)
   @NoStore()
+  @NoTenantTransaction('reads the replica in its own transaction (PrismaService.replicaTenantRead)')
   @Get(ApiRoutes.analytics.metrics)
   metricsOf(
     @CurrentStore() store: ResolvedTenant['store'],
     @Query(new ZodValidationPipe(metricsQuerySchema)) query: MetricsQuery
   ): Promise<MetricsResult> {
-    return this.metrics.query(store.id, query)
+    return this.metrics.query(store, query)
   }
 
   // What was searched in the store: volume, searches that found nothing, clicks, and the texts of the catalog nobody found
   @RequirePermissions(Permissions.ANALYTICS_VIEW)
   @NoStore()
+  @NoTenantTransaction('reads the replica in its own transaction (PrismaService.replicaTenantRead)')
   @Get(ApiRoutes.analytics.search)
   searchReport(
     @CurrentStore() store: ResolvedTenant['store'],
     @Query(new ZodValidationPipe(searchReportQuerySchema)) query: SearchReportQuery
   ): Promise<SearchReport> {
-    return this.searches.report(store.id, query.days)
+    return this.searches.report(store, query.days)
   }
 
   // The figures of the person who asks, for the widget of the inbox: an agent has no analytics:view, and sees only their own

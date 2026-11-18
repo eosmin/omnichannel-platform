@@ -6,13 +6,10 @@ import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
-import { AuditService } from '@platform/core/audit-module'
 import { type Permission, Permissions } from '@platform/core/auth'
-import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { ChannelIds, ConversationStatus } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
-import { DomainEvents } from '@platform/core/event-bus'
 import {
   ExportFormats,
   ExportStatus,
@@ -40,6 +37,8 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { type Actor, api } from '../helpers/http'
 import { queueOf } from '../helpers/queue'
+import { createWorkerPrisma } from '../helpers/worker-db'
+import { workerServices } from '../helpers/worker-services'
 
 interface ErrorBody {
   error: { code: string }
@@ -97,15 +96,16 @@ describe('Media gallery', () => {
     storage = app.get(StorageService, { strict: false })
     warn = jest.fn()
     const logger = { setContext: jest.fn(), error: jest.fn(), warn } as unknown as PinoLogger
-    const prisma = app.get(PrismaService, { strict: false })
+    const prisma = createWorkerPrisma()
+    const { events, audit } = await workerServices(app, prisma)
     generator = new ExportGenerator(
       prisma,
       new CsvExportWriter(storage),
       new ZipExportWriter(storage, logger),
       new AnalyticsExportWriter(prisma, storage, new CsvExportWriter(storage)),
       storage,
-      app.get(AuditService, { strict: false }),
-      app.get(DomainEvents, { strict: false }),
+      audit,
+      events,
       logger
     )
   })
@@ -550,7 +550,7 @@ describe('Media gallery', () => {
       })
       expect(queueOf(app, QueueNames.EXPORTS).jobs).toContainEqual({
         name: JobNames.GENERATE_EXPORT,
-        data: { exportId: view.id },
+        data: { exportId: view.id, storeId: ctx.storeA.id },
         opts: { jobId: `${JobNames.GENERATE_EXPORT}-${view.id}` }
       })
     })
