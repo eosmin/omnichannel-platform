@@ -7,11 +7,11 @@ import { CacheKeys } from '@platform/core/cache'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { ErrorCodes } from '@platform/core/errors'
 
+import { REDIS_URL } from '../../libs/core/redis/src/testing/test-env'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
-import { REDIS_URL } from '../../libs/core/redis/src/testing/test-env'
 
 const OK = 200
 const TOO_MANY_REQUESTS = 429
