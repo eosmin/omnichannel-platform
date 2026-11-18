@@ -2853,6 +2853,10 @@ Split in two PRs (coordinator, 2026-11-15; one PR would pass 40 files and mixes 
 call it makes through the port is scope-checked server-side. This step is independent of 5.6's
 API and can be moved after the MVP launch if the schedule requires it.
 
+- [x] **QA notes of the M1 fix session (2026-11-18, rule 12; no code change unless said):**
+  - **ANA-168, `GET /exports/:id` and `/download` answer 403 for a role with no export permission, even for an id that does not exist: kept on purpose.** The controller requires any export permission (`ExportListPermissions`) before it looks at a row (rule 5), so the answer is the same 403 for every id, existing or not, of this store or another: it tells nothing about which ids exist. The 404 of `ExportsService.find` is for a member who holds a permission but not the one of that kind, or who asks for another member's or another store's export. The matrix expected a 404 in the first case; the matrix was wrong.
+  - **R2-ANA-006, money with two decimals in the CSV and the XLSX (fixed):** 50 cents came out as `0.5`. The CSV now writes money as text with two decimals (`csvFigure`); the XLSX keeps the number and shows it through the cell format `0.00`, as the PDF already did.
+
 ---
 
 ## Milestone 6 — Monetization — DEFERRED (Phase 2)

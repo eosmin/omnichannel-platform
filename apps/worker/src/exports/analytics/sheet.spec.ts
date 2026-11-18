@@ -1,6 +1,6 @@
 import { AnalyticsMetrics, MetricUnits, RolledUpMetricUnits } from '@platform/core/analytics'
 
-import { displayValue } from './sheet'
+import { csvFigure, displayValue } from './sheet'
 
 describe('displayValue', () => {
   it('keeps money as the rollup holds it: whole units of the currency, never divided again', () => {
@@ -21,6 +21,21 @@ describe('displayValue', () => {
     expect(displayValue(7, MetricUnits.COUNT)).toBe(7)
     expect(displayValue(222, MetricUnits.SECONDS)).toBe(222)
     expect(displayValue(null, MetricUnits.CURRENCY)).toBeNull()
+  })
+})
+
+describe('csvFigure', () => {
+  it('writes money with two decimals, as the PDF does', () => {
+    expect(csvFigure(0.5, MetricUnits.CURRENCY)).toBe('0.50')
+    expect(csvFigure(0.01, MetricUnits.CURRENCY)).toBe('0.01')
+    expect(csvFigure(120, MetricUnits.CURRENCY)).toBe('120.00')
+    expect(csvFigure(0, MetricUnits.CURRENCY)).toBe('0.00')
+  })
+
+  it('leaves a count and a time as numbers and an unknown figure empty', () => {
+    expect(csvFigure(3, MetricUnits.COUNT)).toBe(3)
+    expect(csvFigure(90, MetricUnits.SECONDS)).toBe(90)
+    expect(csvFigure(null, MetricUnits.CURRENCY)).toBeNull()
   })
 })
 

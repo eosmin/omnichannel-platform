@@ -38,6 +38,15 @@ export function displayValue(value: number | null, unit: MetricUnit): number | n
   return unit === MetricUnits.CURRENCY ? Math.round(value * CENTS_PER_UNIT) / CENTS_PER_UNIT : value
 }
 
+// The same figure as the text of a CSV cell: money always with its two decimals (50 cents is 0.50, as in the PDF), because a CSV
+// has no cell format to show the cents a number drops; every other figure is the number of `displayValue`
+export function csvFigure(value: number | null, unit: MetricUnit): number | string | null {
+  const shown = displayValue(value, unit)
+  return shown !== null && unit === MetricUnits.CURRENCY && Number.isFinite(shown)
+    ? shown.toFixed(2)
+    : shown
+}
+
 export function sheetOf(table: ReportTable, texts: SheetTexts): ReportSheet {
   return {
     title: texts.title,
