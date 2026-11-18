@@ -171,11 +171,18 @@ export function reversalLinesOf(input: {
       return { ok: false, reason: FinancePostingFailureReason.AMOUNTS_DISAGREE }
     }
     const upTo = (cents: number, units: number): number => prorate(cents, units, basis.quantity)
+    // What the units back stand for is split on the running total of the line (net and tax together, which is what the customer paid), and
+    // the tax is split on its own running total: the net is what is left. Rounding the net and the tax each half up would let a part come
+    // out a cent over (2 units at 10.00 with 15 % included: 8.70 + 1.31 for the first, 8.69 + 1.30 for the second) and a credit note, which
+    // cannot credit more than a unit was sold for, would then be a cent short of the entry (HC-107). The parts still add up to the line to the cent.
+    const grossBefore = upTo(basis.netCents + basis.vatCents, earlier)
+    const grossAfter = upTo(basis.netCents + basis.vatCents, earlier + back)
+    const vatCents = upTo(basis.vatCents, earlier + back) - upTo(basis.vatCents, earlier)
     lines.push({
       orderItemId: basis.orderItemId,
       quantity: back,
-      netCents: upTo(basis.netCents, earlier + back) - upTo(basis.netCents, earlier),
-      vatCents: upTo(basis.vatCents, earlier + back) - upTo(basis.vatCents, earlier)
+      netCents: grossAfter - grossBefore - vatCents,
+      vatCents
     })
   }
   // A unit that is not on the order is refused, never ignored

@@ -672,6 +672,16 @@ describe('the rounding of the books in a credit note', () => {
     expect(saleAddsUp(first.sale)).toBe(true)
     expect(saleAddsUp(second.sale)).toBe(true)
   })
+
+  it('credits the whole sale across the notes of 2 returns of one unit, to the cent (HC-107)', () => {
+    const first = creditNoteSaleOf(odd, new Map(), new Map([['a', 1]]))
+    const second = creditNoteSaleOf(odd, new Map([['a', 1]]), new Map([['a', 1]]))
+    expect(first.ok && second.ok).toBe(true)
+    if (!first.ok || !second.ok) return
+    expect(first.sale.totalCents + second.sale.totalCents).toBe(2000)
+    expect(first.sale.taxCents + second.sale.taxCents).toBe(261)
+    expect(first.sale.discountCents + second.sale.discountCents).toBe(0)
+  })
 })
 
 describe('the original of a credit note', () => {
