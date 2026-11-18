@@ -36,10 +36,12 @@ import {
 } from './finance-bank-imports.service'
 import { type BankProfileView, FinanceBankProfilesService } from './finance-bank-profiles.service'
 import {
+  type BankBookCandidatesQuery,
   type BankGroupBody,
   type BankPairBody,
   bankImportQuerySchema,
   type BankImportQuery,
+  bankBookCandidatesQuerySchema,
   bankGroupSchema,
   bankPairSchema,
   bankPreviewSchema,
@@ -60,6 +62,7 @@ import {
   updateBankProfileSchema
 } from './finance-bank.schemas'
 import {
+  type BankBookCandidatesView,
   type BankDifferenceView,
   type BankLinePage,
   type BankLineView,
@@ -268,6 +271,18 @@ export class FinanceBankController {
       body,
       actorOf(user, store, req)
     )
+  }
+
+  // The lines of the books of the account of the statement line that nothing matched: what a group is chosen from (HC-121)
+  @RequirePermissions(Permissions.FINANCE_RECONCILE)
+  @NoStore()
+  @Get(ApiRoutes.finance.bank.lineBookCandidates(':id'))
+  bookCandidates(
+    @CurrentOrganization() organization: Organization,
+    @Param('id', id()) lineId: string,
+    @Query(new ZodValidationPipe(bankBookCandidatesQuerySchema)) query: BankBookCandidatesQuery
+  ): Promise<BankBookCandidatesView> {
+    return this.reconciliation.bookCandidates(organization.id, lineId, query)
   }
 
   @RequirePermissions(Permissions.FINANCE_RECONCILE)

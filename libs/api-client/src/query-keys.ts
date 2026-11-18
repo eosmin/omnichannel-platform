@@ -408,6 +408,8 @@ export const QueryKeys = {
         ['finance', storeId, 'bank', 'difference', importId] as const,
       draft: (storeId: string, lineId: string, useDescriptionAsMemo: boolean) =>
         ['finance', storeId, 'bank', 'draft', lineId, useDescriptionAsMemo] as const,
+      candidates: (storeId: string, lineId: string) =>
+        ['finance', storeId, 'bank', 'candidates', lineId] as const,
       // The mapper's preview of a sample: outside the family a decision makes stale (it reads nothing of the books)
       preview: (storeId: string, request: unknown) =>
         ['finance', storeId, 'bank-preview', request] as const,

@@ -457,6 +457,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'finance.bank.difference': { none: FINANCE },
   'finance.bank.lineMatches': { none: FINANCE },
   'finance.bank.lineGroupMatches': { none: FINANCE },
+  'finance.bank.lineBookCandidates': { none: FINANCE },
   'finance.bank.lineRejections': { none: FINANCE },
   'finance.bank.lineRegisterDraft': { none: FINANCE },
   'finance.bank.matchUndo': { none: FINANCE },

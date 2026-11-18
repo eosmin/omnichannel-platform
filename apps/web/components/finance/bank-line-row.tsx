@@ -1,6 +1,6 @@
 'use client'
 
-import { Check, FilePlus, Undo2, X } from 'lucide-react'
+import { Check, FilePlus, Layers, Undo2, X } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, useState } from 'react'
 
@@ -24,6 +24,7 @@ import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
 
 import { BankConfirmDialog } from './bank-confirm-dialog'
+import { BankGroupDialog } from './bank-group-dialog'
 
 // One line of the statement and what the person can decide about it (TDD_18 §4.4). Nothing here is automatic: a suggestion is a pair the
 // rules found (the same amount to the cent, a date inside the window, a reference that agrees) and it counts only when the person
@@ -45,6 +46,7 @@ export function BankLineRow({
   const reject = useRejectBankMatch(storeId)
   const state = lineStateOf(line)
   const [undoing, setUndoing] = useState(false)
+  const [grouping, setGrouping] = useState(false)
   // One decision at a time for a line: two suggestions of it cannot be confirmed together. The answer is awaited here, in a component
   // that stays mounted, because the row of a decision leaves the list (or the filter) once the lines are read again.
   const busy = undo.isPending || confirm.isPending || reject.isPending
@@ -94,9 +96,31 @@ export function BankLineRow({
 
       {line.match === null ? null : (
         <div className="flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm" data-testid="bank-line-match">
-            {t('matchedWith', { number: line.match.entryNumber, date: line.match.entryDate })}
-          </p>
+          {line.group === null ? (
+            <p className="text-sm" data-testid="bank-line-match">
+              {t('matchedWith', { number: line.match.entryNumber, date: line.match.entryDate })}
+            </p>
+          ) : (
+            <div className="flex min-w-0 flex-col gap-1" data-testid="bank-line-group-pieces">
+              <p className="text-sm font-medium" data-testid="bank-line-match">
+                {t('matchedWithGroup', { count: line.group.pieces.length })}
+              </p>
+              <ul className="flex flex-col gap-0.5" aria-label={t('groupPiecesLabel')}>
+                {line.group.pieces.map(piece => (
+                  <li
+                    key={piece.matchId}
+                    data-entry={piece.entryNumber}
+                    className="text-muted-foreground flex justify-between gap-3 text-xs"
+                  >
+                    <span className="min-w-0 wrap-anywhere">
+                      {t('entry', { number: piece.entryNumber, date: piece.entryDate })}
+                    </span>
+                    <span className="shrink-0 tabular-nums">{money(piece.signedCents)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <Button
             type="button"
             size="sm"
@@ -106,7 +130,7 @@ export function BankLineRow({
             onClick={() => setUndoing(true)}
           >
             <Undo2 aria-hidden />
-            {t('undo')}
+            {line.group === null ? t('undo') : t('undoGroup')}
           </Button>
         </div>
       )}
@@ -114,9 +138,9 @@ export function BankLineRow({
       <BankConfirmDialog
         open={undoing}
         onOpenChange={setUndoing}
-        title={t('undoTitle')}
-        description={t('undoDescription')}
-        confirmLabel={t('undo')}
+        title={line.group === null ? t('undoTitle') : t('undoGroupTitle')}
+        description={line.group === null ? t('undoDescription') : t('undoGroupDescription')}
+        confirmLabel={line.group === null ? t('undo') : t('undoGroup')}
         busy={undo.isPending}
         onConfirm={() => {
           const matchId = line.match?.id
@@ -127,6 +151,23 @@ export function BankLineRow({
           void decide(() => undo.mutateAsync(matchId), t('undone')).then(() => setUndoing(false))
         }}
       />
+
+      {line.match === null ? (
+        <div className="flex sm:justify-end">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            data-testid="bank-line-group"
+            onClick={() => setGrouping(true)}
+          >
+            <Layers aria-hidden />
+            {t('group')}
+          </Button>
+        </div>
+      ) : null}
+      <BankGroupDialog line={grouping ? line : null} onOpenChange={setGrouping} />
 
       {state === LineStates.SUGGESTED ? (
         <ul className="flex flex-col gap-2" aria-label={t('suggestionsLabel')}>
