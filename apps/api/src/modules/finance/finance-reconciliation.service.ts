@@ -6,12 +6,14 @@ import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { isUniqueViolation, type PrismaTransaction, PrismaService } from '@platform/core/database'
 import {
+  BankGroupRule,
   BankLineFilters,
   BankStatementLimits,
   BankStatementTransaction,
   BankTriggerPrefixes,
   canPair,
   DAY_MS,
+  groupProblems,
   FinanceConflicts,
   FinanceResourceTypes,
   FinanceTransactionKind,
@@ -28,6 +30,7 @@ import { dateToDay } from '@platform/core/finance'
 import type { Actor } from '../tenancy'
 
 import {
+  type BankGroupBody,
   type BankPairBody,
   type BankStatusQuery,
   type ListBankLinesQuery
@@ -52,6 +55,10 @@ function raceRefusal(error: unknown): PlatformException | null {
   const prefix = [...message.matchAll(TRIGGER_PREFIX)].at(-1)?.[1]
   if (prefix === BankTriggerPrefixes.MATCH || prefix === BankTriggerPrefixes.ENTRY_RECONCILED) {
     return conflict('the lines cannot be the same movement', FinanceConflicts.BANK_PAIR_NOT_ALLOWED)
+  }
+  // The group the database refused when the transaction ended (it does not add up, or the statement line was matched in the same moment)
+  if (prefix === BankTriggerPrefixes.GROUP) {
+    return conflict('the lines cannot be one group', FinanceConflicts.BANK_GROUP_NOT_ALLOWED)
   }
   if (/deadlock detected|40P01/.test(message)) {
     return conflict(
@@ -87,6 +94,18 @@ export interface BankLineView {
     entryDate: string
     decidedBy: string
     decidedAt: string
+  } | null
+  // Set when the line was matched with a group of lines of the books (`match` is then the first of them): the pieces of the group
+  group: {
+    id: string
+    pieces: {
+      matchId: string
+      journalLineId: string
+      entryId: string
+      entryNumber: string
+      entryDate: string
+      signedCents: number
+    }[]
   } | null
   suggestions: BankSuggestionView[]
 }
@@ -435,6 +454,136 @@ export class FinanceReconciliationService {
     return this.lineView(organizationId, lineId)
   }
 
+  // A person says ONE statement line is the sum of SEVERAL lines of the books of the same account (HC-121): a deposit that groups three
+  // collections, or one net of a fee that was booked as an expense from the same account. The signed sum of the lines has to be exactly the
+  // amount of the statement line, whatever the screen sent (the database checks it again when the transaction ends and refuses what does
+  // not add up); the lines are taken in the order of their ids so that two groups never wait for each other's lines. There is no window
+  // of days here: the person chose the lines one by one. The group is taken back whole (`undo` on any of its decisions).
+  async confirmGroup(
+    organizationId: string,
+    lineId: string,
+    body: BankGroupBody,
+    actor: Actor
+  ): Promise<BankLineView> {
+    const requested = [...body.journalLineIds].sort()
+    const groupId = randomUUID()
+    try {
+      await this.prisma.transaction(async tx => {
+        const line = await this.requireLine(tx, organizationId, lineId)
+        const books = await tx.journalLine.findMany({
+          where: { id: { in: requested }, organizationId, accountId: line.accountId },
+          select: BOOK_WITH_REVERSAL_SELECT,
+          orderBy: [{ id: 'asc' }]
+        })
+        const byId = new Map(books.map(book => [book.id, book]))
+        // A line of another account or organization is not a candidate and does not exist for this request
+        if (byId.size !== new Set(requested).size) throw resourceNotFound('journal line')
+        const lines = requested.map(id => ({
+          id,
+          signedCents: (byId.get(id)?.debitCents ?? 0) - (byId.get(id)?.creditCents ?? 0)
+        }))
+        const problems = groupProblems({ statementCents: line.amountCents, lines })
+        if (problems.includes(BankGroupRule.SUM)) {
+          throw resourceConflict('the lines do not add up to the statement line', {
+            conflict: FinanceConflicts.BANK_GROUP_SUM_MISMATCH,
+            statementCents: line.amountCents,
+            sumCents: lines.reduce((total, each) => total + each.signedCents, 0)
+          })
+        }
+        const dead = books.some(
+          book => book.entry.reversesEntryId !== null || book.entry.reversedBy !== null
+        )
+        if (problems.length > 0 || dead) {
+          throw conflict('the lines cannot be one group', FinanceConflicts.BANK_GROUP_NOT_ALLOWED)
+        }
+        const taken = await tx.reconciliationMatch.findFirst({
+          where: {
+            organizationId,
+            status: CONFIRMED,
+            OR: [{ statementLineId: lineId }, { journalLineId: { in: requested } }]
+          },
+          select: { statementLineId: true }
+        })
+        if (taken !== null) {
+          throw conflict(
+            taken.statementLineId === lineId
+              ? 'the statement line is matched already'
+              : 'a line of the books is matched already',
+            taken.statementLineId === lineId
+              ? FinanceConflicts.BANK_LINE_ALREADY_MATCHED
+              : FinanceConflicts.BANK_BOOK_LINE_ALREADY_MATCHED
+          )
+        }
+        // A rejection of one of these pairs is retired by choosing it, like for a pair
+        await tx.reconciliationMatch.updateMany({
+          where: {
+            organizationId,
+            statementLineId: lineId,
+            journalLineId: { in: requested },
+            status: REJECTED
+          },
+          data: {
+            status: ReconciliationMatchStatus.UNDONE,
+            undoneBy: actor.userId,
+            undoneAt: new Date()
+          }
+        })
+        await tx.reconciliationMatch.createMany({
+          data: requested.map(journalLineId => ({
+            organizationId,
+            statementLineId: lineId,
+            journalLineId,
+            status: CONFIRMED,
+            decidedBy: actor.userId,
+            groupId
+          }))
+        })
+      })
+    } catch (error) {
+      const refused = raceRefusal(error)
+      if (refused !== null) throw refused
+      if (isUniqueViolation(error)) {
+        // Two decisions took the same line at the same moment and a unique index held: what is there now says the answer
+        const takenLine = await this.prisma.client.reconciliationMatch.findFirst({
+          where: { organizationId, statementLineId: lineId, status: CONFIRMED },
+          select: { id: true }
+        })
+        if (takenLine !== null) {
+          throw conflict(
+            'the statement line is matched already',
+            FinanceConflicts.BANK_LINE_ALREADY_MATCHED
+          )
+        }
+        const takenBook = await this.prisma.client.reconciliationMatch.findFirst({
+          where: { organizationId, journalLineId: { in: requested }, status: CONFIRMED },
+          select: { id: true }
+        })
+        throw takenBook === null
+          ? conflict(
+              'the books changed in the same moment: read again',
+              FinanceConflicts.BANK_CHANGED
+            )
+          : conflict(
+              'a line of the books is matched already',
+              FinanceConflicts.BANK_BOOK_LINE_ALREADY_MATCHED
+            )
+      }
+      throw error
+    }
+    this.audit.log({
+      action: AuditAction.FINANCE_RECONCILIATION_GROUP_CONFIRMED,
+      actor: { userId: actor.userId },
+      organizationId,
+      storeId: actor.storeId,
+      resourceType: FinanceResourceTypes.RECONCILIATION_MATCH,
+      resourceId: groupId,
+      metadata: { statementLineId: lineId, groupId, journalLineIds: requested },
+      ipAddress: actor.ipAddress,
+      userAgent: actor.userAgent
+    })
+    return this.lineView(organizationId, lineId)
+  }
+
   // A person says this suggestion is not it: the pair is never suggested again (until the decision is taken back)
   async reject(
     organizationId: string,
@@ -470,15 +619,21 @@ export class FinanceReconciliationService {
   async undo(organizationId: string, matchId: string, actor: Actor): Promise<BankLineView> {
     const match = await this.prisma.client.reconciliationMatch.findFirst({
       where: { id: matchId, organizationId },
-      select: { id: true, status: true, statementLineId: true, journalLineId: true }
+      select: {
+        id: true,
+        status: true,
+        statementLineId: true,
+        journalLineId: true,
+        groupId: true
+      }
     })
     if (match === null) throw resourceNotFound('reconciliation decision')
+    // A group is taken back whole in one statement: the database checks it at the commit, and a group with one piece left would not add up
     const taken = await this.prisma.client.reconciliationMatch.updateMany({
-      where: {
-        id: matchId,
-        organizationId,
-        status: { in: [CONFIRMED, REJECTED] }
-      },
+      where:
+        match.groupId === null
+          ? { id: matchId, organizationId, status: { in: [CONFIRMED, REJECTED] } }
+          : { organizationId, groupId: match.groupId, status: CONFIRMED },
       data: {
         status: ReconciliationMatchStatus.UNDONE,
         undoneBy: actor.userId,
@@ -501,7 +656,8 @@ export class FinanceReconciliationService {
       metadata: {
         was: match.status,
         statementLineId: match.statementLineId,
-        journalLineId: match.journalLineId
+        journalLineId: match.journalLineId,
+        ...(match.groupId === null ? {} : { groupId: match.groupId })
       },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
@@ -850,6 +1006,7 @@ export class FinanceReconciliationService {
     options: { window?: number; truncate?: boolean } = {}
   ): Promise<{
     matched: Map<string, MatchedRow>
+    groups: Map<string, MatchedRow[]>
     suggestions: Map<string, BankSuggestionView[]>
     book: Map<string, BookRow>
   }> {
@@ -865,16 +1022,27 @@ export class FinanceReconciliationService {
         status: true,
         statementLineId: true,
         journalLineId: true,
+        groupId: true,
         decidedBy: true,
         decidedAt: true,
         journalLine: { select: BOOK_SELECT }
-      }
+      },
+      orderBy: [{ decidedAt: 'asc' }, { id: 'asc' }]
     })
     const matched = new Map<string, MatchedRow>()
+    const groups = new Map<string, MatchedRow[]>()
     const rejected = new Set<string>()
     for (const decision of decisions) {
-      if (decision.status === String(CONFIRMED)) matched.set(decision.statementLineId, decision)
-      else rejected.add(`${decision.statementLineId}:${decision.journalLineId}`)
+      if (decision.status === String(CONFIRMED)) {
+        // The first piece of a group stands for the line (`match`), the others are in its group
+        if (!matched.has(decision.statementLineId)) matched.set(decision.statementLineId, decision)
+        if (decision.groupId !== null) {
+          groups.set(decision.statementLineId, [
+            ...(groups.get(decision.statementLineId) ?? []),
+            decision
+          ])
+        }
+      } else rejected.add(`${decision.statementLineId}:${decision.journalLineId}`)
     }
     const open = rows.filter(row => !matched.has(row.id))
     const book = new Map<string, BookRow>()
@@ -937,14 +1105,19 @@ export class FinanceReconciliationService {
         )
       }
     }
-    return { matched, suggestions, book }
+    return { matched, groups, suggestions, book }
   }
 
   private view(
     row: LineRow,
-    state: { matched: Map<string, MatchedRow>; suggestions: Map<string, BankSuggestionView[]> }
+    state: {
+      matched: Map<string, MatchedRow>
+      groups: Map<string, MatchedRow[]>
+      suggestions: Map<string, BankSuggestionView[]>
+    }
   ): BankLineView {
     const decision = state.matched.get(row.id)
+    const pieces = state.groups.get(row.id)
     return {
       id: row.id,
       importId: row.importId,
@@ -965,6 +1138,20 @@ export class FinanceReconciliationService {
               decidedBy: decision.decidedBy,
               decidedAt: decision.decidedAt.toISOString()
             },
+      group:
+        pieces === undefined || pieces[0]?.groupId === null || pieces[0]?.groupId === undefined
+          ? null
+          : {
+              id: pieces[0].groupId,
+              pieces: pieces.map(piece => ({
+                matchId: piece.id,
+                journalLineId: piece.journalLineId,
+                entryId: piece.journalLine.entry.id,
+                entryNumber: String(piece.journalLine.entry.number),
+                entryDate: isoDay(piece.journalLine.entry.entryDate),
+                signedCents: piece.journalLine.debitCents - piece.journalLine.creditCents
+              }))
+            },
       suggestions: state.suggestions.get(row.id) ?? []
     }
   }
@@ -983,6 +1170,7 @@ export class FinanceReconciliationService {
 interface MatchedRow {
   id: string
   journalLineId: string
+  groupId: string | null
   decidedBy: string
   decidedAt: Date
   journalLine: BookRow

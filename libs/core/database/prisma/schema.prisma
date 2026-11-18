@@ -3090,6 +3090,8 @@ model ReconciliationMatch {
   decidedAt       DateTime  @default(now()) @map("decided_at")
   undoneBy        String?   @map("undone_by")
   undoneAt        DateTime? @map("undone_at")
+  // The decisions that confirmed ONE statement line against several lines of the journal share it (HC-121); null for a pair
+  groupId         String?   @map("group_id")
 
   organization  Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   statementLine BankStatementLine @relation(fields: [organizationId, statementLineId], references: [organizationId, id], onDelete: Restrict)
@@ -3097,6 +3099,7 @@ model ReconciliationMatch {
 
   @@index([organizationId, statementLineId])
   @@index([journalLineId])
+  @@index([organizationId, groupId])
   @@map("reconciliation_matches")
 }
 

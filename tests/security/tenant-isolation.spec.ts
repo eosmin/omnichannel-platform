@@ -2279,6 +2279,21 @@ const resources: IsolationResource[] = [
     untouched: async (owner, id) =>
       (await owner.reconciliationMatch.count({ where: { statementLine: { importId: id } } })) === 0
   },
+  // A statement line is matched with a GROUP of lines of the books by one request (HC-121): a request of another organization finds no line
+  {
+    name: 'bankStatementLineGroup',
+    create: async (owner, { storeId }) => {
+      return { id: (await bankStatementOf(owner, storeId, 700)).lineId }
+    },
+    scope: 'organization',
+    modify: {
+      path: ApiRoutes.finance.bank.lineGroupMatches,
+      method: 'post',
+      body: { journalLineIds: [randomUUID(), randomUUID()] }
+    },
+    untouched: async (owner, id) =>
+      (await owner.reconciliationMatch.count({ where: { statementLineId: id } })) === 0
+  },
   // A decision of a person: no route reads one; the change a stranger could try is to take it back
   {
     name: 'reconciliationMatch',
