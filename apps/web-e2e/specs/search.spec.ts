@@ -58,6 +58,28 @@ test.describe('the search of the store', () => {
     await expect(palette).toBeHidden()
   })
 
+  // N-BR2-14: Mod+K is a chord with a modifier, so it does not collide with what is typed
+  test('Ctrl+K opens the palette from a text field, a textarea and a select, and Escape gives the focus back', async () => {
+    await openStorePage(page, AppPaths.store.customers(storeId))
+    const field = page.getByRole('searchbox', { name: en.search.box.label, exact: true })
+    await page.evaluate(() => {
+      const extra = document.createElement('div')
+      extra.innerHTML =
+        '<textarea id="pa-textarea" aria-label="pa-textarea"></textarea>' +
+        '<select id="pa-select" aria-label="pa-select"><option>a</option></select>'
+      document.body.appendChild(extra)
+    })
+    const palette = page.getByRole('dialog', { name: en.search.palette.title })
+    for (const target of [field, page.locator('#pa-textarea'), page.locator('#pa-select')]) {
+      await target.focus()
+      await page.keyboard.press('Control+k')
+      await expect(palette).toBeVisible()
+      await page.keyboard.press('Escape')
+      await expect(palette).toBeHidden()
+      await expect(target).toBeFocused()
+    }
+  })
+
   test('waits for the minimum length before it asks, and says so', async () => {
     await openStorePage(page, AppPaths.store.orders(storeId))
     await page.keyboard.press('Control+k')
