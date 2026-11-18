@@ -6946,7 +6946,11 @@
         "voidConfirmTitle": "¿Anular esta devolución?",
         "voidConfirmDescription": "Esto no se puede deshacer: la reversa queda en los libros para siempre.",
         "voidConfirm": "Anular devolución",
-        "voidDone": "Devolución anulada."
+        "voidDone": "Devolución anulada.",
+        "loadMoreFailed": "No se pudieron leer las siguientes devoluciones. Inténtalo de nuevo.",
+        "recordOf": "Registrar una devolución del pago de {amount}",
+        "voidOf": "Anular la devolución de {amount}",
+        "toggleOf": "Devoluciones del pago de {amount}"
       },
       "reason": {
         "required": "Escribe el motivo.",

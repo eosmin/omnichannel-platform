@@ -1,12 +1,21 @@
 import { ApiError } from '@platform/api-client'
-import { PaymentRule, PurchaseConflicts, PurchaseRule } from '@platform/core/domain'
+import {
+  PaymentReturnRule,
+  PaymentRule,
+  PurchaseConflicts,
+  PurchaseRule
+} from '@platform/core/domain'
 
 // What the api says about a purchase that its error code alone does not: why a valid request was refused by the state of the purchase
 // (`metadata.conflict`, one of PurchaseConflicts) and which rule of purchases a request broke (`metadata.problems`, the names of
 // PurchaseRule and PaymentRule). Each has its own message, so the person reads what to change and not "something went wrong". Null when
 // the error carries none the screen knows: the caller then shows the message of its code.
 const CONFLICTS: readonly string[] = Object.values(PurchaseConflicts)
-const RULES: readonly string[] = [...Object.values(PurchaseRule), ...Object.values(PaymentRule)]
+const RULES: readonly string[] = [
+  ...Object.values(PurchaseRule),
+  ...Object.values(PaymentRule),
+  ...Object.values(PaymentReturnRule)
+]
 
 export type PurchaseErrorKey = `conflicts.${string}` | `rules.${string}`
 

@@ -97,7 +97,10 @@ function ReturnForm({
     onBusy(pending)
     return () => onBusy(false)
   }, [pending, onBusy])
-  const choices = useMemo(() => cashAccountsOf(accounts.data ?? [], []), [accounts.data])
+  const choices = useMemo(
+    () => cashAccountsOf(accounts.data ?? [], [payment.paidFromAccountId]),
+    [accounts.data, payment.paidFromAccountId]
+  )
 
   const set = (patch: Partial<ReturnDraft>): void => {
     setDraft(current => ({ ...current, ...patch }))

@@ -46,6 +46,7 @@ export function PaymentReturns({
           size="sm"
           variant="ghost"
           aria-expanded={open}
+          aria-label={t('toggleOf', { amount: moneyText(locale, payment.amountCents) })}
           data-testid="payment-returns-toggle"
           onClick={() => setOpen(current => !current)}
         >
@@ -58,6 +59,7 @@ export function PaymentReturns({
             size="sm"
             variant="outline"
             data-testid="payment-return-record"
+            aria-label={t('recordOf', { amount: moneyText(locale, payment.amountCents) })}
             onClick={() => setRecording(true)}
           >
             {t('record')}
@@ -96,7 +98,13 @@ export function PaymentReturns({
                   </span>
                 </div>
                 {canMoveMoney && row.voidedByEntryId === null ? (
-                  <Button type="button" size="sm" variant="outline" onClick={() => setVoiding(row)}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    aria-label={t('voidOf', { amount: moneyText(locale, row.amountCents) })}
+                    onClick={() => setVoiding(row)}
+                  >
                     {t('void')}
                   </Button>
                 ) : null}
@@ -104,6 +112,11 @@ export function PaymentReturns({
             ))}
           </ul>
         )
+      ) : null}
+      {open && returns.isFetchNextPageError ? (
+        <p role="alert" className="text-destructive text-sm">
+          {t('loadMoreFailed')}
+        </p>
       ) : null}
       {open && returns.hasNextPage ? (
         <Button

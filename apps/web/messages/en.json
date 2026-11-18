@@ -6946,7 +6946,11 @@
         "voidConfirmTitle": "Void this return?",
         "voidConfirmDescription": "This cannot be undone: the reversal stays in the books for good.",
         "voidConfirm": "Void return",
-        "voidDone": "Return voided."
+        "voidDone": "Return voided.",
+        "loadMoreFailed": "The next returns could not be read. Try again.",
+        "recordOf": "Register a return of the payment of {amount}",
+        "voidOf": "Void the return of {amount}",
+        "toggleOf": "Returns of the payment of {amount}"
       },
       "reason": {
         "required": "Write the reason.",
