@@ -14,7 +14,7 @@ import { connectionUrls } from '../testing/connection-urls'
 
 import { bootstrapOwner, ensureSystemRoles } from './bootstrap-owner'
 import { loadDevFixtures } from './dev-fixtures'
-import { PrismaService } from './prisma.service'
+import { PrismaService, TenantContextRequiredError } from './prisma.service'
 import { ProcessedWebhookEventsService } from './processed-webhook-events.service'
 
 const urls = connectionUrls()
@@ -724,6 +724,56 @@ describe('PrismaService', () => {
 
       expect(hook).toHaveBeenCalledTimes(1)
     })
+  })
+})
+
+describe('PrismaService with requireContext', () => {
+  const guarded = new PrismaService({ databaseUrl: urls.app, poolSize: 4, requireContext: true })
+  const open = new PrismaService({ databaseUrl: urls.app, poolSize: 2 })
+  const context = { storeIds: ['s-1'], organizationIds: ['o-1'] }
+
+  beforeAll(async () => {
+    await guarded.onModuleInit()
+    await open.onModuleInit()
+  })
+  afterAll(async () => {
+    await guarded.onModuleDestroy()
+    await open.onModuleDestroy()
+  })
+
+  it('throws, naming the model, for a model that is not global when there is no context', async () => {
+    const error: unknown = await guarded.client.conversation.count().then(
+      () => undefined,
+      (caught: unknown) => caught
+    )
+    expect(error).toBeInstanceOf(TenantContextRequiredError)
+    expect((error as Error).message).toContain('Conversation.count')
+  })
+
+  it('runs inside tenantTransaction, replicaTenantRead and withoutTenantContext', async () => {
+    expect(
+      await guarded.tenantTransaction(context, () => guarded.client.conversation.count())
+    ).toBeGreaterThanOrEqual(0)
+    expect(
+      await guarded.replicaTenantRead(context, db => db.conversation.count())
+    ).toBeGreaterThanOrEqual(0)
+    expect(
+      await guarded.withoutTenantContext('a lookup with no tenant yet', () =>
+        guarded.client.conversation.count()
+      )
+    ).toBeGreaterThanOrEqual(0)
+  })
+
+  it('lets the global models through, and asks for a reason to call without a context', async () => {
+    expect(await guarded.client.store.count()).toBeGreaterThanOrEqual(0)
+    expect(await guarded.client.user.count()).toBeGreaterThanOrEqual(0)
+    expect(() => guarded.withoutTenantContext('  ', () => Promise.resolve(1))).toThrow(
+      'needs a reason'
+    )
+  })
+
+  it('does nothing while the switch is off', async () => {
+    expect(await open.client.conversation.count()).toBeGreaterThanOrEqual(0)
   })
 })
 

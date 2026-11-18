@@ -55,7 +55,10 @@ export class PluginCatalogSync implements OnApplicationBootstrap {
   }
 
   async onApplicationBootstrap(): Promise<void> {
-    await this.sync()
+    // At boot there is no request and no store: the catalog of the platform's own plugins is written with no tenant context
+    await this.prisma.withoutTenantContext('writes the catalog of official plugins at boot', () =>
+      this.sync()
+    )
   }
 
   async sync(): Promise<void> {

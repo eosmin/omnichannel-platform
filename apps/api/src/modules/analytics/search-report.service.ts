@@ -44,7 +44,7 @@ export class SearchReportService {
 
   async report(store: { id: string; organizationId: string }, days: number): Promise<SearchReport> {
     const storeId = store.id
-    // Both statements in ONE read-only transaction of the replica, with the context of the store
+    // Both statements in ONE transaction of the replica, with the context of the store
     const { scopeRows, zeroRows } = await this.prisma.replicaTenantRead(
       { storeIds: [storeId], organizationIds: [store.organizationId] },
       async db => {
