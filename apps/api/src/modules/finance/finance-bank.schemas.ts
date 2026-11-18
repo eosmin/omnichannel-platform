@@ -154,7 +154,7 @@ export type ListBankImportsQuery = z.output<typeof listBankImportsQuerySchema>
 export const listBankLinesQuerySchema = z.strictObject({
   filter: z.enum(BankLineFilters).default(BankLineFilters.ALL),
   // The row of the last line of the page: the lines are read in the order of the file
-  after: queryIntSchema(0, 999_999_999).optional(),
+  after: queryIntSchema(0).optional(),
   limit: queryIntSchema(1, 200).default(50)
 })
 export type ListBankLinesQuery = z.output<typeof listBankLinesQuerySchema>

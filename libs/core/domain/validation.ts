@@ -14,6 +14,9 @@ export const uuidSchema = lowercasedUuidSchema
 // A whole number a query string carries (a page size, a version, a year): decimal digits and nothing else. `z.coerce.number()` reads
 // ' ' as 0, '1e2' as 100, '0x10' as 16 and ' 5' as 5, so a value no screen sends passed as a number (QA HC-207). The bounds are the
 // caller's and both ends are included. At most nine digits, so the number is exact and no bound needs a bigger one.
+// The largest whole number `queryIntSchema` reads: nine digits
+export const QUERY_INT_MAX = 999_999_999
+
 export function queryIntSchema(min: number, max: number): z.ZodPipe<z.ZodString, z.ZodNumber> {
   return z
     .string()
