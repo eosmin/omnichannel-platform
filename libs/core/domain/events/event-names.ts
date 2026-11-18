@@ -118,6 +118,8 @@ export const Events = {
   // The goods are on their way back: the people who receive them are told (`return.awaiting_receipt`)
   RETURN_IN_TRANSIT: 'return.in_transit',
   RETURN_RECEIVED: 'return.received',
+  // A person recorded the refund they paid out when completing a return (TDD_18 §4.2 E14): the books settle the customer's advance
+  RETURN_REFUND_RECORDED: 'return.refund_recorded',
   REMITTANCE_CONFIRMED: 'remittance.confirmed',
   REMITTANCE_VOIDED: 'remittance.voided',
   // A person wrote off the difference of a guide that did not match its remittance (TDD_18 §4.2 E7): the books follow

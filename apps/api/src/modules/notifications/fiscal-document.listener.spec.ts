@@ -25,11 +25,18 @@ const stuck: FiscalDocumentStuckPayload = {
   attempts: 6
 }
 
-function build(members: { userId: string; storeId: string }[], options: { fails?: boolean } = {}) {
+function build(
+  members: { userId: string; storeId: string }[],
+  options: { fails?: boolean; documentStore?: string | null } = {}
+) {
   const asked: unknown[] = []
   const sent: { users: readonly string[]; input: Record<string, unknown> }[] = []
+  const documentStore = options.documentStore === undefined ? 's1' : options.documentStore
   const prisma = {
     client: {
+      fiscalDocument: {
+        findFirst: () => Promise.resolve(documentStore === null ? null : { storeId: documentStore })
+      },
       membership: {
         findMany: (args: unknown) => {
           asked.push(args)
@@ -76,6 +83,17 @@ describe('the notice of a fiscal document that needs a person', () => {
     // Only people of the organization who hold the permission to manage the fiscal documents are told
     expect(JSON.stringify(asked[0])).toContain(ORG)
     expect(JSON.stringify(asked[0])).toContain('fiscal:manage')
+    // A document is told only to the managers of the store of its sale (HC-128), never to those of another store
+    expect(JSON.stringify(asked[0])).toContain('"storeId":"s1"')
+  })
+
+  it("tells no one of a document that is not the organization's, and asks no member", async () => {
+    const { listener, sent, asked } = build([{ userId: 'u1', storeId: 's1' }], {
+      documentStore: null
+    })
+    await listener.onFiscalEntryMismatch({ organizationId: ORG, documentId: DOCUMENT, count: 1 })
+    expect(sent).toEqual([])
+    expect(asked).toEqual([])
   })
 
   it('says a document that ran out of attempts with its own type, and names no receiver, no amount and no reason', async () => {

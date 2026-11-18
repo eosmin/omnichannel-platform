@@ -576,9 +576,21 @@ export class NotificationsEventsListener {
     resourceType: string = FiscalResourceTypes.DOCUMENT
   ): Promise<void> {
     try {
+      // A document is reached by the store of its sale (HC-128): only who manages the fiscal documents in THAT store is told of it, so the
+      // id of a document of another store never reaches them. A contingency is the issuer's, the organization's.
+      let documentStoreId: string | undefined
+      if (resourceType === (FiscalResourceTypes.DOCUMENT as string)) {
+        const document = await this.prisma.client.fiscalDocument.findFirst({
+          where: { id: documentId, organizationId },
+          select: { storeId: true }
+        })
+        if (document === null) return
+        documentStoreId = document.storeId
+      }
       const members = await this.prisma.client.membership.findMany({
         where: {
           organizationId,
+          ...(documentStoreId === undefined ? {} : { storeId: documentStoreId }),
           status: MembershipStatus.ACTIVE,
           revokedAt: null,
           role: { permissions: { some: { name: Permissions.FISCAL_MANAGE } } }

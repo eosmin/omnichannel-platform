@@ -1030,6 +1030,17 @@ export class ReturnsService {
         ...(notes === undefined ? {} : { notes: await this.withNote(tx, loaded.id, notes) })
       }
     })
+    // The money a person paid out leaves the books in the same commit as the record of it: the entry settles the customer's advance
+    // (TDD_18 §4.2 E14). A refund of zero moved nothing.
+    if (refundCents !== undefined && refundCents > 0) {
+      this.events.publish(tx, Events.RETURN_REFUND_RECORDED, {
+        storeId,
+        orderId: loaded.orderId,
+        orderNumber: loaded.orderNumber,
+        returnId: loaded.id,
+        actor: actorRef(actor)
+      })
+    }
     return {
       orderId: loaded.orderId,
       orderNumber: loaded.orderNumber,
