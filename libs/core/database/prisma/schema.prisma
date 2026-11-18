@@ -22,40 +22,41 @@ model Organization {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  stores                Store[]
-  memberships           Membership[]
-  invitations           Invitation[]
-  dataSubjectRequests   DataSubjectRequest[]
-  warehouses            Warehouse[]
-  stockCounts           StockCount[]
-  stockTransfers        StockTransfer[]
-  financeSettings       FinanceSettings?
-  ledgerAccounts        LedgerAccount[]
-  taxRates              TaxRate[]
-  accountRoles          AccountRoleMapping[]
-  paymentAccounts       PaymentMethodAccount[]
-  fiscalPeriods         FiscalPeriod[]
-  fiscalIssuer          FiscalIssuer?
-  fiscalSequences       FiscalSequence[]
-  fiscalContingencies   FiscalContingency[]
-  fiscalDocuments       FiscalDocument[]
-  financeBookLayouts    FinanceBookLayout[]
-  financeBookSnapshots  FinanceBookSnapshot[]
-  journalEntries        JournalEntry[]
-  journalLines          JournalLine[]
-  periodBalances        AccountPeriodBalance[]
-  postingFailures       FinancePostingFailure[]
-  chainIncidents        FinanceChainIncident[]
-  bankProfiles          BankImportProfile[]
-  bankImports           BankStatementImport[]
-  bankLines             BankStatementLine[]
-  reconciliationMatches ReconciliationMatch[]
-  financeTransactions   FinanceTransaction[]
-  suppliers             Supplier[]
-  purchaseOrders        PurchaseOrder[]
-  purchaseReceipts      PurchaseReceipt[]
-  supplierPayments      SupplierPayment[]
-  plugins               Plugin[]
+  stores                 Store[]
+  memberships            Membership[]
+  invitations            Invitation[]
+  dataSubjectRequests    DataSubjectRequest[]
+  warehouses             Warehouse[]
+  stockCounts            StockCount[]
+  stockTransfers         StockTransfer[]
+  financeSettings        FinanceSettings?
+  ledgerAccounts         LedgerAccount[]
+  taxRates               TaxRate[]
+  accountRoles           AccountRoleMapping[]
+  paymentAccounts        PaymentMethodAccount[]
+  fiscalPeriods          FiscalPeriod[]
+  fiscalIssuer           FiscalIssuer?
+  fiscalSequences        FiscalSequence[]
+  fiscalContingencies    FiscalContingency[]
+  fiscalDocuments        FiscalDocument[]
+  financeBookLayouts     FinanceBookLayout[]
+  financeBookSnapshots   FinanceBookSnapshot[]
+  journalEntries         JournalEntry[]
+  journalLines           JournalLine[]
+  periodBalances         AccountPeriodBalance[]
+  postingFailures        FinancePostingFailure[]
+  chainIncidents         FinanceChainIncident[]
+  bankProfiles           BankImportProfile[]
+  bankImports            BankStatementImport[]
+  bankLines              BankStatementLine[]
+  reconciliationMatches  ReconciliationMatch[]
+  financeTransactions    FinanceTransaction[]
+  suppliers              Supplier[]
+  purchaseOrders         PurchaseOrder[]
+  purchaseReceipts       PurchaseReceipt[]
+  supplierPayments       SupplierPayment[]
+  supplierPaymentReturns SupplierPaymentReturn[]
+  plugins                Plugin[]
 
   @@map("organizations")
 }
@@ -2458,22 +2459,23 @@ model LedgerAccount {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  organization         Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  parent               LedgerAccount?         @relation("AccountTree", fields: [organizationId, parentId], references: [organizationId, id], onDelete: Restrict)
-  children             LedgerAccount[]        @relation("AccountTree")
+  organization         Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  parent               LedgerAccount?          @relation("AccountTree", fields: [organizationId, parentId], references: [organizationId, id], onDelete: Restrict)
+  children             LedgerAccount[]         @relation("AccountTree")
   roleMappings         AccountRoleMapping[]
   paymentAccounts      PaymentMethodAccount[]
   settings             FinanceSettings[]
   lines                JournalLine[]
   balances             AccountPeriodBalance[]
-  taxRatesOutput       TaxRate[]              @relation("TaxRateOutputAccount")
-  taxRatesInput        TaxRate[]              @relation("TaxRateInputAccount")
-  transactionsFrom     FinanceTransaction[]   @relation("TransactionFromAccount")
-  transactionsTo       FinanceTransaction[]   @relation("TransactionToAccount")
-  transactionsCategory FinanceTransaction[]   @relation("TransactionCategoryAccount")
+  taxRatesOutput       TaxRate[]               @relation("TaxRateOutputAccount")
+  taxRatesInput        TaxRate[]               @relation("TaxRateInputAccount")
+  transactionsFrom     FinanceTransaction[]    @relation("TransactionFromAccount")
+  transactionsTo       FinanceTransaction[]    @relation("TransactionToAccount")
+  transactionsCategory FinanceTransaction[]    @relation("TransactionCategoryAccount")
   suppliersPayable     Supplier[]
-  remittancesTo        CodRemittance[]        @relation("RemittanceDestinationAccount")
+  remittancesTo        CodRemittance[]         @relation("RemittanceDestinationAccount")
   supplierPaymentsFrom SupplierPayment[]
+  supplierReturnsInto  SupplierPaymentReturn[]
   bankProfiles         BankImportProfile[]
   bankImports          BankStatementImport[]
   bankLines            BankStatementLine[]
@@ -2596,17 +2598,19 @@ model JournalEntry {
   prevHash        String?   @map("prev_hash") // hash of the previous entry of the organization
   hash            String // sha256 over the canonical entry and its lines and prevHash (TDD_18 §11)
 
-  organization      Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  period            FiscalPeriod        @relation(fields: [organizationId, periodId], references: [organizationId, id], onDelete: Restrict)
-  reverses          JournalEntry?       @relation("Reversal", fields: [organizationId, reversesEntryId], references: [organizationId, id], onDelete: Restrict)
-  reversedBy        JournalEntry?       @relation("Reversal")
-  lines             JournalLine[]
-  transaction       FinanceTransaction? @relation("TransactionEntry")
-  voidedTransaction FinanceTransaction? @relation("TransactionVoidEntry")
-  purchaseReceipt   PurchaseReceipt?    @relation("ReceiptEntry")
-  supplierPayment   SupplierPayment?    @relation("PaymentEntry")
-  voidedPayment     SupplierPayment?    @relation("PaymentVoidEntry")
-  fiscalDocuments   FiscalDocument[]
+  organization          Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  period                FiscalPeriod           @relation(fields: [organizationId, periodId], references: [organizationId, id], onDelete: Restrict)
+  reverses              JournalEntry?          @relation("Reversal", fields: [organizationId, reversesEntryId], references: [organizationId, id], onDelete: Restrict)
+  reversedBy            JournalEntry?          @relation("Reversal")
+  lines                 JournalLine[]
+  transaction           FinanceTransaction?    @relation("TransactionEntry")
+  voidedTransaction     FinanceTransaction?    @relation("TransactionVoidEntry")
+  purchaseReceipt       PurchaseReceipt?       @relation("ReceiptEntry")
+  supplierPayment       SupplierPayment?       @relation("PaymentEntry")
+  voidedPayment         SupplierPayment?       @relation("PaymentVoidEntry")
+  supplierPaymentReturn SupplierPaymentReturn? @relation("ReturnEntry")
+  voidedPaymentReturn   SupplierPaymentReturn? @relation("ReturnVoidEntry")
+  fiscalDocuments       FiscalDocument[]
 
   @@unique([organizationId, number])
   @@unique([organizationId, idempotencyKey])
@@ -2741,11 +2745,12 @@ model Supplier {
   createdAt               DateTime @default(now()) @map("created_at")
   updatedAt               DateTime @updatedAt @map("updated_at")
 
-  organization          Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  defaultPayableAccount LedgerAccount?    @relation(fields: [organizationId, defaultPayableAccountId], references: [organizationId, id], onDelete: Restrict)
+  organization          Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  defaultPayableAccount LedgerAccount?          @relation(fields: [organizationId, defaultPayableAccountId], references: [organizationId, id], onDelete: Restrict)
   orders                PurchaseOrder[]
   receipts              PurchaseReceipt[]
   payments              SupplierPayment[]
+  paymentReturns        SupplierPaymentReturn[]
 
   // So that every table that names a supplier can name its organization with it. The name is unique ignoring case: a raw index of the migration
   @@unique([organizationId, id])
@@ -2889,12 +2894,13 @@ model SupplierPayment {
   createdBy         String   @map("created_by")
   createdAt         DateTime @default(now()) @map("created_at")
 
-  organization  Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  supplier      Supplier         @relation(fields: [organizationId, supplierId], references: [organizationId, id], onDelete: Restrict)
-  receipt       PurchaseReceipt? @relation(fields: [organizationId, purchaseReceiptId], references: [organizationId, id], onDelete: Restrict)
-  paidFrom      LedgerAccount    @relation(fields: [organizationId, paidFromAccountId], references: [organizationId, id], onDelete: Restrict)
-  entry         JournalEntry     @relation("PaymentEntry", fields: [organizationId, entryId], references: [organizationId, id], onDelete: Restrict)
-  voidedByEntry JournalEntry?    @relation("PaymentVoidEntry", fields: [organizationId, voidedByEntryId], references: [organizationId, id], onDelete: Restrict)
+  organization  Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  supplier      Supplier                @relation(fields: [organizationId, supplierId], references: [organizationId, id], onDelete: Restrict)
+  receipt       PurchaseReceipt?        @relation(fields: [organizationId, purchaseReceiptId], references: [organizationId, id], onDelete: Restrict)
+  paidFrom      LedgerAccount           @relation(fields: [organizationId, paidFromAccountId], references: [organizationId, id], onDelete: Restrict)
+  entry         JournalEntry            @relation("PaymentEntry", fields: [organizationId, entryId], references: [organizationId, id], onDelete: Restrict)
+  voidedByEntry JournalEntry?           @relation("PaymentVoidEntry", fields: [organizationId, voidedByEntryId], references: [organizationId, id], onDelete: Restrict)
+  returns       SupplierPaymentReturn[]
 
   @@unique([organizationId, id])
   @@unique([organizationId, clientKey])
@@ -2903,6 +2909,41 @@ model SupplierPayment {
   @@index([organizationId, supplierId, paidOn])
   @@index([purchaseReceiptId])
   @@map("supplier_payments")
+}
+
+// What a supplier gave back of a payment (TDD_18 §4.2 E11b, HC-121): the bank returned it or the payment bounced. It is a fact of its own,
+// never the voiding of the payment (the payment happened and the bank saw it): one entry (Dr the account the money came back into, Cr the
+// payable account with the supplier as party) that the bank statement can match, and the debt is owed again by that amount. Never edited;
+// voiding it writes the reversing entry. The sum of the live returns of a payment never exceeds the payment.
+model SupplierPaymentReturn {
+  id                    String   @id @default(uuid())
+  organizationId        String   @map("organization_id")
+  supplierId            String   @map("supplier_id")
+  supplierPaymentId     String   @map("supplier_payment_id")
+  receivedIntoAccountId String   @map("received_into_account_id")
+  amountCents           Int      @map("amount_cents")
+  returnedOn            DateTime @map("returned_on") @db.Date
+  reference             String?
+  clientKey             String   @map("client_key")
+  entryId               String   @map("entry_id")
+  voidedByEntryId       String?  @map("voided_by_entry_id")
+  createdBy             String   @map("created_by")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  organization  Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  supplier      Supplier        @relation(fields: [organizationId, supplierId], references: [organizationId, id], onDelete: Restrict)
+  payment       SupplierPayment @relation(fields: [organizationId, supplierPaymentId], references: [organizationId, id], onDelete: Restrict)
+  receivedInto  LedgerAccount   @relation(fields: [organizationId, receivedIntoAccountId], references: [organizationId, id], onDelete: Restrict)
+  entry         JournalEntry    @relation("ReturnEntry", fields: [organizationId, entryId], references: [organizationId, id], onDelete: Restrict)
+  voidedByEntry JournalEntry?   @relation("ReturnVoidEntry", fields: [organizationId, voidedByEntryId], references: [organizationId, id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, clientKey])
+  @@unique([organizationId, entryId])
+  @@unique([organizationId, voidedByEntryId])
+  @@index([organizationId, supplierId, returnedOn])
+  @@index([organizationId, supplierPaymentId])
+  @@map("supplier_payment_returns")
 }
 
 // A source whose automatic entry could not be posted (TDD_18 §6.1): visible, never silent, and a period will not close

@@ -490,6 +490,8 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'suppliers.payments': { none: FINANCE },
   'suppliers.recordPayment': { none: FINANCE },
   'supplierPayments.void': { none: FINANCE },
+  'supplierPayments.returns': { none: FINANCE },
+  'supplierPaymentReturns.void': { none: FINANCE },
   'purchaseOrders.list': { none: FINANCE },
   'purchaseOrders.create': { none: FINANCE },
   'purchaseOrders.byId': { none: FINANCE },

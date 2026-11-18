@@ -1062,6 +1062,231 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
     })
   })
 
+  describe('a supplier gives a payment back (E11b, HC-121)', () => {
+    interface ReturnBody {
+      id: string
+      supplierPaymentId: string
+      amountCents: number
+      entryId: string
+      voidedByEntryId: string | null
+    }
+    async function paidBill(
+      amountCents = 10_000
+    ): Promise<{ supplierId: string; paymentId: string; receiptId: string }> {
+      const seller = await supplier()
+      const order = await placedOrder(seller.id, {
+        lines: [{ productId: (await product()).id, quantity: 10, unitCostCents: 1000 }]
+      })
+      const received = await receive(order.id, {
+        supplierDocumentNumber: `D-${key()}`,
+        lines: [{ orderLineId: order.lines[0]?.id, quantity: 10 }]
+      })
+      const receipt = (received.body as OrderBody).receipts[0]
+      if (receipt === undefined) throw new Error('no receipt')
+      const paid = await pay(seller.id, { amountCents, purchaseReceiptId: receipt.id })
+      expect(paid.status).toBe(CREATED)
+      return {
+        supplierId: seller.id,
+        paymentId: (paid.body as PaymentBody).id,
+        receiptId: receipt.id
+      }
+    }
+    const giveBack = (paymentId: string, body: Record<string, unknown>, who = asAdminA()) =>
+      who.post(ApiRoutes.supplierPayments.returns(paymentId)).send({
+        idempotencyKey: key(),
+        receivedIntoAccountId: accounts[BANK],
+        returnedOn: TODAY,
+        ...body
+      })
+    const balanceOf = async (supplierId: string): Promise<BalanceBody> =>
+      (await asAdminA().get(ApiRoutes.suppliers.balance(supplierId))).body as BalanceBody
+
+    it('owes the debt again by what came back, with one entry the bank can match', async () => {
+      const { supplierId, paymentId, receiptId } = await paidBill()
+      expect(await balanceOf(supplierId)).toMatchObject({ paidCents: 10_000, openCents: 0 })
+
+      const returned = await giveBack(paymentId, { amountCents: 4000, reference: 'Bounced' })
+
+      expect(returned.status).toBe(CREATED)
+      const body = returned.body as ReturnBody
+      expect(await linesOf(body.entryId)).toEqual([
+        [BANK, 4000, 0],
+        [PAYABLE, 0, 4000]
+      ])
+      const entry = await owner.journalEntry.findUniqueOrThrow({ where: { id: body.entryId } })
+      expect(entry).toMatchObject({
+        type: JournalEntryType.SUPPLIER_PAYMENT_RETURN,
+        sourceId: body.id,
+        idempotencyKey: `payment_return:${body.id}`
+      })
+      expect(await balanceOf(supplierId)).toMatchObject({ paidCents: 6000, openCents: 4000 })
+      // The bill is open again by 4000 and no more
+      const payables = await asAdminA().get(
+        `${ApiRoutes.suppliers.payables}?supplierId=${supplierId}`
+      )
+      expect((payables.body as PayablesBody).bills).toMatchObject([{ receiptId, openCents: 4000 }])
+      expect(
+        (await pay(supplierId, { amountCents: 4001, purchaseReceiptId: receiptId })).status
+      ).toBe(CONFLICT)
+      expect(
+        (await pay(supplierId, { amountCents: 4000, purchaseReceiptId: receiptId })).status
+      ).toBe(CREATED)
+      // The payable account of the books says what the payables say
+      const ledger = await owner.journalLine.aggregate({
+        where: { organizationId: ctx.orgA.id, partyType: PartyType.SUPPLIER, partyId: supplierId },
+        _sum: { debitCents: true, creditCents: true }
+      })
+      expect((await balanceOf(supplierId)).openCents).toBe(
+        (ledger._sum.creditCents ?? 0) - (ledger._sum.debitCents ?? 0)
+      )
+      await waitForAuditEntries(owner, {
+        action: AuditAction.SUPPLIER_PAYMENT_RETURNED,
+        resourceId: body.id
+      })
+      const listed = await asAdminA().get(ApiRoutes.supplierPayments.returns(paymentId))
+      expect((listed.body as { data: { id: string }[] }).data.map(row => row.id)).toEqual([body.id])
+    })
+
+    it('is one return for a retry and refuses the key of another request', async () => {
+      const { paymentId } = await paidBill()
+      const body = { idempotencyKey: key(), amountCents: 1000 }
+      const first = await giveBack(paymentId, body)
+      const retry = await giveBack(paymentId, body)
+      expect((retry.body as ReturnBody).id).toBe((first.body as ReturnBody).id)
+      expect(
+        await owner.supplierPaymentReturn.count({ where: { supplierPaymentId: paymentId } })
+      ).toBe(1)
+      const reused = await giveBack(paymentId, { ...body, amountCents: 2000 })
+      expect(reused.status).toBe(CONFLICT)
+      expect(errorOf(reused).metadata).toMatchObject({ conflict: PurchaseConflicts.KEY_REUSED })
+    })
+
+    it('refuses more than the payment, a day before it, a future day and an account that is not cash', async () => {
+      const { paymentId } = await paidBill()
+      expect((await giveBack(paymentId, { amountCents: 6000 })).status).toBe(CREATED)
+      const over = await giveBack(paymentId, { amountCents: 4001 })
+      expect(over.status).toBe(CONFLICT)
+      expect(errorOf(over).metadata).toMatchObject({
+        conflict: PurchaseConflicts.RETURN_EXCEEDS_PAYMENT,
+        leftCents: 4000
+      })
+      expect((await giveBack(paymentId, { amountCents: 100, returnedOn: isoDay(-5) })).status).toBe(
+        BAD_REQUEST
+      )
+      expect((await giveBack(paymentId, { amountCents: 100, returnedOn: isoDay(30) })).status).toBe(
+        BAD_REQUEST
+      )
+      expect(
+        (
+          await giveBack(paymentId, {
+            amountCents: 100,
+            receivedIntoAccountId: accounts[INVENTORY]
+          })
+        ).status
+      ).toBe(BAD_REQUEST)
+      expect((await giveBack(randomUUID(), { amountCents: 100 })).status).toBe(NOT_FOUND)
+    })
+
+    it('never gives back more than the payment when three returns arrive at the same moment', async () => {
+      const { paymentId } = await paidBill()
+
+      const answers = await Promise.all(
+        [1, 2, 3].map(() => giveBack(paymentId, { amountCents: 5000 }))
+      )
+
+      expect(answers.filter(answer => answer.status === CREATED)).toHaveLength(2)
+      for (const refused of answers.filter(answer => answer.status !== CREATED)) {
+        expect(refused.status).toBe(CONFLICT)
+        expect(errorOf(refused).metadata).toMatchObject({
+          conflict: PurchaseConflicts.RETURN_EXCEEDS_PAYMENT
+        })
+      }
+      const sum = await owner.supplierPaymentReturn.aggregate({
+        where: { supplierPaymentId: paymentId },
+        _sum: { amountCents: true }
+      })
+      expect(sum._sum.amountCents).toBe(10_000)
+    })
+
+    it('voids a return once, with a reversing entry, and the debt goes back to what it was', async () => {
+      const { supplierId, paymentId } = await paidBill()
+      const returned = (await giveBack(paymentId, { amountCents: 3000 })).body as ReturnBody
+      const voided = await asAdminA()
+        .post(ApiRoutes.supplierPaymentReturns.void(returned.id))
+        .send({ reason: 'The bank corrected it' })
+      expect(voided.status).toBe(CREATED)
+      expect((voided.body as ReturnBody).voidedByEntryId).not.toBeNull()
+      expect(await balanceOf(supplierId)).toMatchObject({ paidCents: 10_000, openCents: 0 })
+      const again = await asAdminA()
+        .post(ApiRoutes.supplierPaymentReturns.void(returned.id))
+        .send({ reason: 'Twice' })
+      expect(again.status).toBe(CONFLICT)
+      expect(errorOf(again).metadata).toMatchObject({
+        conflict: PurchaseConflicts.RETURN_ALREADY_VOIDED
+      })
+      // The retry of a voided return is not answered with it
+      const retry = await giveBack(paymentId, {
+        idempotencyKey: (
+          await owner.supplierPaymentReturn.findUniqueOrThrow({ where: { id: returned.id } })
+        ).clientKey,
+        amountCents: 3000
+      })
+      expect(retry.status).toBe(CONFLICT)
+      // ... and the room it took is free again
+      expect((await giveBack(paymentId, { amountCents: 10_000 })).status).toBe(CREATED)
+    })
+
+    it('voids a payment only after its returns, and gives nothing back of a voided payment', async () => {
+      const { paymentId } = await paidBill()
+      const returned = (await giveBack(paymentId, { amountCents: 2000 })).body as ReturnBody
+      const refused = await asAdminA()
+        .post(ApiRoutes.supplierPayments.void(paymentId))
+        .send({ reason: 'Too early' })
+      expect(refused.status).toBe(CONFLICT)
+      expect(errorOf(refused).metadata).toMatchObject({
+        conflict: PurchaseConflicts.PAYMENT_HAS_RETURNS
+      })
+      await asAdminA()
+        .post(ApiRoutes.supplierPaymentReturns.void(returned.id))
+        .send({ reason: 'First the return' })
+      const voided = await asAdminA()
+        .post(ApiRoutes.supplierPayments.void(paymentId))
+        .send({ reason: 'Now the payment' })
+      expect(voided.status).toBe(CREATED)
+      const late = await giveBack(paymentId, { amountCents: 100 })
+      expect(late.status).toBe(CONFLICT)
+      expect(errorOf(late).metadata).toMatchObject({ conflict: PurchaseConflicts.PAYMENT_VOIDED })
+    })
+
+    it('keeps the entry of a return out of a reversal made alone, and the route out of other hands', async () => {
+      const { paymentId } = await paidBill()
+      const returned = (await giveBack(paymentId, { amountCents: 500 })).body as ReturnBody
+      const reversed = await asAdminA()
+        .post(ApiRoutes.finance.entries.reverse(returned.entryId))
+        .send({ memo: 'Reverse it' })
+      expect(reversed.status).toBe(CONFLICT)
+      expect(errorOf(reversed).metadata).toMatchObject({
+        conflict: PurchaseConflicts.ENTRY_OWNED_BY_PURCHASE
+      })
+      // Another organization neither sees the payment nor gives anything back of it
+      expect((await giveBack(paymentId, { amountCents: 100 }, asAdminB())).status).toBe(NOT_FOUND)
+      expect((await asAdminB().get(ApiRoutes.supplierPayments.returns(paymentId))).status).toBe(
+        NOT_FOUND
+      )
+      expect(
+        (
+          await asAdminB()
+            .post(ApiRoutes.supplierPaymentReturns.void(returned.id))
+            .send({ reason: 'Not mine' })
+        ).status
+      ).toBe(NOT_FOUND)
+      // Moving money is the permission of the payment: managing purchases alone does not give money back
+      const buyer = await asRole('returns-buyer', [Permissions.FINANCE_MANAGE_PURCHASES])
+      expect((await giveBack(paymentId, { amountCents: 100 }, buyer)).status).toBe(FORBIDDEN)
+      expect((await buyer.get(ApiRoutes.supplierPayments.returns(paymentId))).status).toBe(OK)
+    })
+  })
+
   describe('the books and the stock agree', () => {
     it('leaves the payable account of the supplier equal to what the payables say it owes', async () => {
       const seller = await supplier()

@@ -7,6 +7,9 @@ import {
   needsUncreditableTaxAccount,
   paymentLines,
   paymentProblems,
+  paymentReturnLines,
+  paymentReturnProblems,
+  PaymentReturnRule,
   PaymentRule,
   PurchaseRule,
   receiptEntryLines,
@@ -273,5 +276,55 @@ describe('the key of a supplier document (HC-124)', () => {
   it('has no key for a text with no letter or digit', () => {
     expect(documentNumberKey('---')).toBe('')
     expect(documentNumberKey('')).toBe('')
+  })
+})
+
+describe('the return of a supplier payment (E11b)', () => {
+  const input = {
+    amountCents: 4000,
+    intoIsCash: true,
+    returnedOn: '2026-11-10',
+    paidOn: '2026-11-10',
+    today: '2026-11-18'
+  }
+
+  it('debits the account the money came back into and credits the payable of the supplier, to the cent', () => {
+    const lines = paymentReturnLines({
+      payableAccountId: 'payable',
+      receivedIntoAccountId: 'bank',
+      supplierId: 'supplier',
+      amountCents: 4000
+    })
+    expect(lines).toEqual([
+      { accountId: 'bank', debitCents: 4000, creditCents: 0 },
+      {
+        accountId: 'payable',
+        debitCents: 0,
+        creditCents: 4000,
+        partyType: PartyType.SUPPLIER,
+        partyId: 'supplier'
+      }
+    ])
+  })
+
+  it('accepts a return of a whole payment on the day it was paid, or later', () => {
+    expect(paymentReturnProblems(input)).toEqual([])
+    expect(paymentReturnProblems({ ...input, returnedOn: '2026-11-18' })).toEqual([])
+  })
+
+  it('refuses an amount that is not whole positive cents, a day ahead of the books, a day before the payment and an account that is not cash', () => {
+    expect(paymentReturnProblems({ ...input, amountCents: 0 })).toEqual([PaymentReturnRule.AMOUNT])
+    expect(paymentReturnProblems({ ...input, amountCents: 1.5 })).toEqual([
+      PaymentReturnRule.AMOUNT
+    ])
+    expect(paymentReturnProblems({ ...input, intoIsCash: false })).toEqual([
+      PaymentReturnRule.INTO_NOT_CASH
+    ])
+    expect(paymentReturnProblems({ ...input, returnedOn: '2026-11-19' })).toEqual([
+      PaymentReturnRule.DATE_IN_FUTURE
+    ])
+    expect(paymentReturnProblems({ ...input, returnedOn: '2026-11-09' })).toEqual([
+      PaymentReturnRule.BEFORE_PAYMENT
+    ])
   })
 })

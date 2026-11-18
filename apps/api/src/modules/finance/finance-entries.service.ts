@@ -158,11 +158,12 @@ export class FinanceEntriesService {
     }
     // The entry of a purchase receipt or a supplier payment is the same: the receipt moved stock and the payment is voided through its own
     // route (permission, audit row and the pointer that makes the bill owed again), so a reversal made here would leave them out of step
-    const [receipts, payments] = await Promise.all([
+    const [receipts, payments, paymentReturns] = await Promise.all([
       this.prisma.client.purchaseReceipt.count({ where: { organizationId, entryId } }),
-      this.prisma.client.supplierPayment.count({ where: { organizationId, entryId } })
+      this.prisma.client.supplierPayment.count({ where: { organizationId, entryId } }),
+      this.prisma.client.supplierPaymentReturn.count({ where: { organizationId, entryId } })
     ])
-    if (receipts + payments > 0) {
+    if (receipts + payments + paymentReturns > 0) {
       throw resourceConflict('the entry belongs to a purchase: use the purchase', {
         conflict: PurchaseConflicts.ENTRY_OWNED_BY_PURCHASE
       })

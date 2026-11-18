@@ -255,6 +255,9 @@ export const AuditAction = {
   PURCHASE_ORDER_CANCELLED: 'purchase_order.cancelled',
   SUPPLIER_PAID: 'supplier.paid',
   SUPPLIER_PAYMENT_VOIDED: 'supplier.payment_voided',
+  // A supplier gave back part or all of a payment (the bank returned it, it bounced), and that return was voided
+  SUPPLIER_PAYMENT_RETURNED: 'supplier.payment_returned',
+  SUPPLIER_PAYMENT_RETURN_VOIDED: 'supplier.payment_return_voided',
   FINANCE_BANK_STATEMENT_IMPORTED: 'finance.bank_statement_imported',
   FINANCE_RECONCILIATION_CONFIRMED: 'finance.reconciliation_confirmed',
   FINANCE_RECONCILIATION_REJECTED: 'finance.reconciliation_rejected',

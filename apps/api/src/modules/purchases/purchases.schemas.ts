@@ -12,9 +12,11 @@ import {
   createPurchaseOrderSchema,
   createSupplierSchema,
   receivePurchaseOrderSchema,
+  recordPaymentReturnSchema,
   recordPaymentSchema,
   updatePurchaseOrderSchema,
   updateSupplierSchema,
+  voidPaymentReturnSchema,
   voidPaymentSchema
 } from '@platform/core/finance'
 
@@ -26,9 +28,11 @@ export {
   createPurchaseOrderSchema,
   createSupplierSchema,
   receivePurchaseOrderSchema,
+  recordPaymentReturnSchema,
   recordPaymentSchema,
   updatePurchaseOrderSchema,
   updateSupplierSchema,
+  voidPaymentReturnSchema,
   voidPaymentSchema
 }
 
@@ -78,6 +82,8 @@ export type ListPurchaseOrdersQuery = z.infer<typeof listPurchaseOrdersQuerySche
 export type ReceivePurchaseOrderBody = z.infer<typeof receivePurchaseOrderSchema>
 export type ClosePurchaseOrderBody = z.infer<typeof closePurchaseOrderSchema>
 export type RecordPaymentBody = z.infer<typeof recordPaymentSchema>
+export type RecordPaymentReturnBody = z.infer<typeof recordPaymentReturnSchema>
+export type VoidPaymentReturnBody = z.infer<typeof voidPaymentReturnSchema>
 export type VoidPaymentBody = z.infer<typeof voidPaymentSchema>
 export type PayablesQuery = z.infer<typeof payablesQuerySchema>
 export type ListPaymentsQuery = z.infer<typeof listPaymentsQuerySchema>

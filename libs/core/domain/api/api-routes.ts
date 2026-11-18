@@ -343,7 +343,12 @@ export const ApiRoutes = {
     recordPayment: (id: string) => `/suppliers/${id}/payments`
   },
   supplierPayments: {
-    void: (id: string) => `/supplier-payments/${id}/void`
+    void: (id: string) => `/supplier-payments/${id}/void`,
+    // POST records what the supplier gave back of this payment; GET lists the returns of the payment (HC-121)
+    returns: (id: string) => `/supplier-payments/${id}/returns`
+  },
+  supplierPaymentReturns: {
+    void: (id: string) => `/supplier-payment-returns/${id}/void`
   },
   purchaseOrders: {
     list: '/purchase-orders',

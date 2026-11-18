@@ -95,6 +95,7 @@ export enum FinanceSourceType {
   INVENTORY_MOVEMENT = 'inventory_movement',
   PURCHASE_RECEIPT = 'purchase_receipt',
   SUPPLIER_PAYMENT = 'supplier_payment',
+  SUPPLIER_PAYMENT_RETURN = 'supplier_payment_return',
   FINANCE_TRANSACTION = 'finance_transaction',
   MANUAL = 'manual'
 }
@@ -249,6 +250,7 @@ export enum JournalEntryType {
   COD_WRITE_OFF = 'cod_write_off',
   PURCHASE_RECEIPT = 'purchase_receipt',
   SUPPLIER_PAYMENT = 'supplier_payment',
+  SUPPLIER_PAYMENT_RETURN = 'supplier_payment_return',
   INVENTORY_ADJUSTMENT = 'inventory_adjustment',
   REVERSAL = 'reversal'
 }

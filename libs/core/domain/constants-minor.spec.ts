@@ -147,7 +147,8 @@ describe('DestructiveActionTiers', () => {
       'VOID_FINANCE_TRANSACTION',
       'VOID_FISCAL_DOCUMENT',
       'CONFIRM_FISCAL_ISSUER_CHANGE',
-      'VOID_SUPPLIER_PAYMENT'
+      'VOID_SUPPLIER_PAYMENT',
+      'VOID_SUPPLIER_PAYMENT_RETURN'
     ]) {
       expect(tierOf[action]).toBe(DestructiveActionTierLevels.HIGH)
     }
