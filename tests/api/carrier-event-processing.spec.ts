@@ -38,6 +38,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { queueOf } from '../helpers/queue'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 const CREATED = 201
 
@@ -67,7 +68,7 @@ describe('What the worker makes of what a carrier says', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    app = await createTestApp([], onWorkerDatabase())
     ctx = await seedTestContext(owner, app, prefix)
     const registry = app.get(CarrierRegistry, { strict: false })
     fakeForza = buildFakeCarrier({ id: CarrierId.FORZA, webhook: true, fetchStatus: true })

@@ -37,6 +37,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { CapturedQueue } from '../helpers/queue'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const { APPLIED, DUPLICATE, STORED, IGNORED } = CarrierEventOutcomes
@@ -59,7 +60,7 @@ describe('The status flow from the carrier: engine, poll and schedule (TDD_17 §
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    app = await createTestApp([], onWorkerDatabase())
     ctx = await seedTestContext(owner, app, prefix)
     prisma = app.get(PrismaService, { strict: false })
     const registry = app.get(CarrierRegistry, { strict: false })

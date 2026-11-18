@@ -111,6 +111,27 @@ describe('checkReplicaUse', () => {
 })
 
 describe('staleReaders', () => {
+  it('counts and checks a replicaTenantRead call like a replica call', () => {
+    const ok = check(
+      'class S { list() { return this.prisma.replicaTenantRead(ctx, db => db.a.findMany()) } }',
+      'apps/api/src/modules/analytics/x.service.ts',
+      ['apps/api/src/modules/analytics/x.service.ts']
+    )
+    expect(ok.calls).toBe(1)
+    expect(ok.violations).toEqual([])
+    const outside = check(
+      'class S { list() { return this.prisma.replicaTenantRead(ctx, db => db.a.findMany()) } }',
+      'apps/api/src/modules/orders/orders.service.ts',
+      []
+    )
+    expect(outside.violations).toHaveLength(1)
+  })
+
+  it('counts a replicaTenantRead call that passes its arguments by spread', () => {
+    const { calls } = check('class S { m(...a) { return this.prisma.replicaTenantRead(...a) } }')
+    expect(calls).toBe(1)
+  })
+
   it('names a listed file that no longer calls replica()', () => {
     expect(staleReaders(['a', 'b'], new Map([['a', 2]]))).toEqual(['b'])
   })

@@ -10,6 +10,7 @@ export const SKIP_TENANT_KEY = 'skipTenant'
 export const PERMISSIONS_KEY = 'requiredPermissions'
 export const ANY_PERMISSION_KEY = 'requiredAnyPermission'
 export const MEMBER_ONLY_KEY = 'memberOnly'
+export const NO_TENANT_TRANSACTION_KEY = 'noTenantTransaction'
 
 // For the routes that belong to a person and not to a store (the session, the account): they need a
 // logged-in user but no X-Store-Id. Both tenancy guards are global and refuse everything else, so
@@ -35,6 +36,15 @@ export const RequireAnyPermission = (
 // that route-protection.spec refuses.
 export const MemberOfStore = (): MethodDecorator & ClassDecorator =>
   SetMetadata(MEMBER_ONLY_KEY, true)
+
+// For a route that must NOT run inside the one transaction of the request (Row-Level Security, Step 7.1): it calls something outside
+// the database (a carrier, a channel, the bucket, the mail) or commits a row before it does, or it streams. The reason is
+// required and written in the code; the route then opens its own short contexts with PrismaService.tenantTransaction and every
+// query that is not inside one finds no rows once RLS is on. Without this the interceptor wraps the whole handler.
+export const NoTenantTransaction = (reason: string): MethodDecorator & ClassDecorator => {
+  if (reason.trim() === '') throw new Error('NoTenantTransaction needs a reason')
+  return SetMetadata(NO_TENANT_TRANSACTION_KEY, reason)
+}
 
 function tenantRequest(context: ExecutionContext): AuthenticatedRequest {
   return context.switchToHttp().getRequest<AuthenticatedRequest>()

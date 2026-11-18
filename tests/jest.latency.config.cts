@@ -8,5 +8,7 @@ module.exports = {
   testEnvironment: '<rootDir>/helpers/test-environment.cjs',
   testMatch: ['<rootDir>/api/products-search-performance.spec.ts'],
   setupFiles: ['<rootDir>/helpers/env.ts'],
+  // Closes the connections of createWorkerPrisma when a file ends
+  setupFilesAfterEnv: ['<rootDir>/helpers/worker-db-teardown.ts'],
   testTimeout: 30_000
 }
