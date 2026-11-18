@@ -565,6 +565,19 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
           })
         ).status
       ).toBe(CREATED)
+      // The same order takes the rest of its invoice, however it is written; another supplier may have the same number
+      const sameOrder = await receive(first.id, {
+        supplierDocumentNumber: `fac ${tag.toLowerCase()}`,
+        lines: [{ orderLineId: first.lines[0]?.id, quantity: 1 }]
+      })
+      expect(sameOrder.status).toBe(CREATED)
+      const other = await supplier()
+      const otherOrder = await placedOrder(other.id)
+      const otherSupplier = await receive(otherOrder.id, {
+        supplierDocumentNumber: `FAC-${tag}`,
+        lines: [{ orderLineId: otherOrder.lines[0]?.id, quantity: 1 }]
+      })
+      expect(otherSupplier.status).toBe(CREATED)
       for (const variant of [`fac ${tag.toLowerCase()}`, `FAC${tag}`, ` Fac - ${tag} `]) {
         const elsewhere = await receive(second.id, {
           supplierDocumentNumber: variant,

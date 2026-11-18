@@ -255,7 +255,8 @@ describe('the key of a supplier document (HC-124)', () => {
     ['FAC 001', 'FAC001'],
     ['  Fac_001 ', 'FAC001'],
     ['f.a.c/001', 'FAC001'],
-    ['Nº 12', 'Nº12']
+    ['Nº 12', 'Nº12'],
+    ['１２３', '123']
   ])('reads %j as %j', (text, key) => {
     expect(documentNumberKey(text)).toBe(key)
   })
@@ -265,7 +266,12 @@ describe('the key of a supplier document (HC-124)', () => {
     expect(documentNumberKey('AB-1')).not.toBe(documentNumberKey('AB-10'))
   })
 
+  it('ignores where the separators are, so two such numbers share a key (accepted, to be confirmed by the accountant)', () => {
+    expect(documentNumberKey('12-3')).toBe(documentNumberKey('1-23'))
+  })
+
   it('has no key for a text with no letter or digit', () => {
     expect(documentNumberKey('---')).toBe('')
+    expect(documentNumberKey('')).toBe('')
   })
 })

@@ -1761,7 +1761,10 @@ migration, as the ledger migration asks of every new column.
 **PR fix/supplier-document-normalized (HC-124, first part)**
 - [x] The duplicate check of the invoice of a supplier on another order compares `documentNumberKey` (letters and digits, in capitals, NFC), not the
       text as typed: `fac-001`, `FAC 001` and `Fac001` are one invoice (`purchase-receiving.service.ts`; unit spec and `tests/api/purchases.spec.ts`).
-      A number with no letter or digit is compared as typed. Compared in code over the distinct numbers of the supplier, not in SQL, so the
+      A number with no letter or digit is compared as typed. Decisions: numbers that differ only in where the
+      separators are (`12-3`, `1-23`) share a key and the second is refused (no override in the receive path): **[ACCOUNTANT]** to confirm
+      (P-13); rejected: keeping the separators (the hole HC-124 reports). The check runs under the existing supplier lock, so two receipts
+      cannot both pass; receipts are never voided, so a number is never released. A fuller key is NFKC, capitals, letters and digits. Compared in code over the distinct numbers of the supplier, not in SQL, so the
       rule is the same on every database locale; no migration. The replay of the same receipt keeps its exact comparison.
 - [ ] **Debt (HC-124, other parts):** a rate switched off after the order was placed blocks the receipt with no way out (own PR, next); a supplier
       payment dated before the invoice is accepted (`supplier-payments.service.ts`) and the bank reconciliation does not compare the supplier
