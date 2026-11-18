@@ -1197,6 +1197,15 @@ describe('The fiscal documents (Step 4B.7)', () => {
       })
       const asReader = api(app, reader, ctx.storeA)
       expect((await asReader.get(ApiRoutes.fiscal.documents.list)).status).toBe(OK)
+      // Whoever reads the documents with FISCAL_VIEW alone reads no customer's name (QA HC-206)
+      const named = await sale()
+      await patchReceiver(named.documentId, { taxId: '0614-010101-101-1', name: 'Zoila Lectora' })
+      const readerList = await asReader.get(ApiRoutes.fiscal.documents.list)
+      const readerOne = await asReader.get(ApiRoutes.fiscal.documents.byId(named.documentId))
+      for (const body of [readerList.body, readerOne.body]) {
+        expect(JSON.stringify(body)).not.toContain('Lectora')
+        expect(JSON.stringify(body)).not.toContain('Zoila')
+      }
       expect((await asReader.put(ApiRoutes.fiscal.issuer).send(ISSUER)).status).toBe(FORBIDDEN)
       const { documentId } = await sale()
       expect((await asReader.post(ApiRoutes.fiscal.documents.retry(documentId))).status).toBe(

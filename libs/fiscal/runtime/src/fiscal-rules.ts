@@ -545,11 +545,18 @@ export function maskTaxId(taxId: string | null): string | null {
 // only by the provider at issue time and, with `fiscal:view_customer_data`, in the customer's fiscal data.
 export function maskPersonName(name: string | null): string | null {
   if (name === null) return null
-  return name
+  const words = name
     .trim()
     .split(/\s+/)
     .filter(word => word.length > 0)
-    .map(word => `${word.charAt(0)}${'*'.repeat(word.length - 1)}`)
+  // A blank name is no name: it is not shown as an empty one
+  if (words.length === 0) return null
+  // By characters, not by UTF-16 units: an accent or a character outside the basic plane is one
+  return words
+    .map(word => {
+      const characters = Array.from(word)
+      return `${characters[0] ?? ''}${'*'.repeat(characters.length - 1)}`
+    })
     .join(' ')
 }
 
