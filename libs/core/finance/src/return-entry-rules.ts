@@ -172,11 +172,10 @@ function cumulativeSplitOf(basis: LineBasis): (units: number) => ReversalPart {
   for (let units = 1; units <= quantity; units += 1) {
     const { netCents } = byPaid(units)
     if (netCents < previous) {
-      return units =>
-        ({
-          netCents: prorate(basis.netCents, units, quantity),
-          vatCents: prorate(basis.vatCents, units, quantity)
-        })
+      return units => ({
+        netCents: prorate(basis.netCents, units, quantity),
+        vatCents: prorate(basis.vatCents, units, quantity)
+      })
     }
     previous = netCents
   }
