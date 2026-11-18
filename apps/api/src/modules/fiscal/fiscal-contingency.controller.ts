@@ -10,7 +10,8 @@ import {
   type EnterFiscalContingencyBody,
   enterFiscalContingencySchema,
   fiscalIdSchema,
-  FiscalLimits
+  FiscalLimits,
+  queryIntSchema
 } from '@platform/core/domain'
 import { HttpStatusCodes } from '@platform/core/errors'
 import { NoStore, ZodValidationPipe } from '@platform/core/http'
@@ -31,12 +32,7 @@ interface Organization {
 }
 
 const listQuerySchema = z.object({
-  limit: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(FiscalLimits.LIST_MAX_PAGE_SIZE)
-    .default(FiscalLimits.LIST_PAGE_SIZE)
+  limit: queryIntSchema(1, FiscalLimits.LIST_MAX_PAGE_SIZE).default(FiscalLimits.LIST_PAGE_SIZE)
 })
 
 // The contingency of the issuer of the organization (Step 4B.7c-7, TDD_18 §8.3): the time the authority cannot be reached and documents are
