@@ -11,6 +11,7 @@ import {
   FinanceEventKind,
   FinancePostingFailureReason,
   FinancePostingKey,
+  FinancePostingOutcome,
   FinanceSourceType,
   InventoryAdjustmentReason,
   InventoryMovementType,
@@ -27,7 +28,13 @@ import { JobNames, reconcileFinanceJobId } from '@platform/core/queues'
 
 import { FinanceReconciler } from '../../apps/worker/src/finance/finance-reconciler.service'
 import { FinanceReconcileScheduler } from '../../apps/worker/src/schedulers/finance-reconcile.scheduler'
-import { createCarrierConnection, createOrder, createProduct, createShipment } from '../builders'
+import {
+  createCarrierConnection,
+  createOrder,
+  createProduct,
+  createReturn,
+  createShipment
+} from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
@@ -329,6 +336,29 @@ describe('The sweep of the books and the guard of the close', () => {
         since: new Date('2026-06-01T00:00:00Z')
       })
       expect(recent.toQueue.some(job => job.sourceId === id)).toBe(false)
+    })
+
+    it('never queues the refund of a completed return: a refund from before E14 may be booked by hand (HC-105)', async () => {
+      const made = await createReturn(owner, { storeId: ctx.storeA.id, status: 'completed' })
+      await owner.orderReturn.update({
+        where: { id: made.id },
+        data: { refundAmountCents: 500, receivedAt: new Date() }
+      })
+      const jobs = (await sweep.sweep(ctx.orgA.id)).toQueue.filter(job => job.sourceId === made.id)
+      expect(jobs.some(job => job.kind === FinanceEventKind.RETURN_REFUND)).toBe(false)
+      // The refund is posted under its own key, once: a second job finds the entry
+      const input = {
+        organizationId: ctx.orgA.id,
+        sourceType: FinanceSourceType.RETURN,
+        sourceId: made.id,
+        kind: FinanceEventKind.RETURN_REFUND
+      }
+      const first = await posting.post(input)
+      expect(first.outcome).toBe(FinancePostingOutcome.POSTED)
+      expect(await posting.post(input)).toMatchObject({
+        outcome: FinancePostingOutcome.REPLAYED,
+        entryId: first.entryId
+      })
     })
 
     it('never reads another organization', async () => {

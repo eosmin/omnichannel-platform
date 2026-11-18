@@ -157,6 +157,25 @@ describe('FinancePostingListener, the returns (E8)', () => {
     ])
   })
 
+  it('queues the entry of the refund a person paid out when the return was completed (E14)', async () => {
+    const { listener, queued } = build()
+    await listener.onReturnRefund({
+      storeId: STORE,
+      orderId: 'order-1',
+      orderNumber: '1001',
+      returnId: 'ret-1',
+      actor: { type: 'user', id: 'user-1' }
+    })
+    expect(queued).toMatchObject([
+      {
+        organizationId: ORG,
+        sourceType: FinanceSourceType.RETURN,
+        sourceId: 'ret-1',
+        kind: FinanceEventKind.RETURN_REFUND
+      }
+    ])
+  })
+
   it('queues the entry of an order put back as a whole, and none of E2 or E3 for it', async () => {
     const { listener, queued } = build()
     const payload: OrderStatusChangedPayload = {

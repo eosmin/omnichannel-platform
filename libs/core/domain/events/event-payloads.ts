@@ -652,6 +652,7 @@ export interface DomainEventPayloads {
   [Events.RETURN_APPROVED]: ReturnEventPayload
   [Events.RETURN_IN_TRANSIT]: ReturnEventPayload
   [Events.RETURN_RECEIVED]: ReturnEventPayload
+  [Events.RETURN_REFUND_RECORDED]: ReturnEventPayload
   [Events.SHIPMENT_CREATED]: ShipmentEventPayload
   [Events.SHIPMENT_STATUS_CHANGED]: ShipmentStatusChangedPayload
   [Events.SHIPMENT_CANCELLED]: ShipmentEventPayload

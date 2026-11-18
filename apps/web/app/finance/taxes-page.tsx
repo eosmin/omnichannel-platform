@@ -9,6 +9,7 @@ import { ClientPermissions } from '@platform/core/auth'
 
 import { FinanceGate } from '../../components/finance/finance-gate'
 import { TaxRateDialog } from '../../components/finance/tax-rate-dialog'
+import { TaxRateToggleDialog } from '../../components/finance/tax-rate-toggle-dialog'
 import { useStore } from '../../components/providers/store-context'
 import { LoadFailed, PageLoading } from '../../components/settings/states'
 import { Button } from '../../components/ui/button'
@@ -110,6 +111,12 @@ function TaxRateRow({
   const toggle = useSetFinanceTaxRateActive(storeId)
   const makeDefault = useUpdateFinanceTaxRate(storeId)
   const busy = toggle.isPending || makeDefault.isPending
+  // What the question asks is kept after it closes, so its text does not flip while it fades out and the rate is read again
+  const [toggling, setToggling] = useState<{ open: boolean; turningOn: boolean }>({
+    open: false,
+    turningOn: false
+  })
+  const closeToggle = (): void => setToggling(current => ({ ...current, open: false }))
   const fail = (error: Error): void => {
     toast.error(errorText(error))
   }
@@ -173,20 +180,36 @@ function TaxRateRow({
             size="sm"
             variant="outline"
             disabled={busy}
-            onClick={() =>
-              toggle.mutate(
-                { id: rate.id, active: !rate.active },
-                {
-                  onSuccess: () => toast.success(rate.active ? t('deactivated') : t('reactivated')),
-                  onError: fail
-                }
-              )
-            }
+            onClick={() => setToggling({ open: true, turningOn: !rate.active })}
           >
             {rate.active ? t('deactivate') : t('reactivate')}
           </Button>
         </span>
       ) : null}
+      <TaxRateToggleDialog
+        open={toggling.open}
+        onOpenChange={open => {
+          if (!open) closeToggle()
+        }}
+        name={rate.name}
+        turningOn={toggling.turningOn}
+        busy={toggle.isPending}
+        onConfirm={() =>
+          toggle.mutate(
+            { id: rate.id, active: !rate.active },
+            {
+              onSuccess: () => {
+                closeToggle()
+                toast.success(rate.active ? t('deactivated') : t('reactivated'))
+              },
+              onError: error => {
+                closeToggle()
+                fail(error)
+              }
+            }
+          )
+        }
+      />
     </li>
   )
 }
