@@ -88,6 +88,13 @@ export function worksWhileTyping(binding: string): boolean {
   return binding === Shortcuts.conversation.CLOSE || binding === Shortcuts.global.SEND_MESSAGE
 }
 
+// A binding with Cmd/Ctrl does not collide with what is typed, so it works from any field, the way the palette
+// of Slack, Linear or GitHub does. No field of the app is a rich text editor where Mod+K would mean "insert a
+// link" (the composer is plain text); one that is must stay out of this.
+export function worksFromAnyField(binding: string): boolean {
+  return binding === Shortcuts.global.COMMAND_PALETTE
+}
+
 // The composer's box carries this attribute: it is the only field where Escape and Cmd/Ctrl+Enter act
 export const SHORTCUT_FIELD_ATTRIBUTE = 'data-shortcuts-field'
 
