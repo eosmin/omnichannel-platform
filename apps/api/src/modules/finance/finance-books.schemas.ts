@@ -7,7 +7,8 @@ import {
   LegalBookLimits,
   LegalBookSort,
   LegalBookUnissuedSales,
-  lowercasedUuidSchema
+  lowercasedUuidSchema,
+  queryIntSchema
 } from '@platform/core/domain'
 
 // The legal books (TDD_18 §7; Step 4B.8b-3). A layout is data the organization writes, so every field of it is a closed value or a
@@ -43,13 +44,13 @@ export const bookQuerySchema = z.strictObject({
   // An empty value is no value (a bare `layoutVersion=` must not read as 0, the proposal)
   layoutVersion: z.preprocess(
     value => (value === '' ? undefined : value),
-    z.coerce.number().int().min(0).max(1_000_000).optional()
+    queryIntSchema(0, 1_000_000).optional()
   )
 })
 
 export const frozenBooksQuerySchema = z.strictObject({
   periodId: lowercasedUuidSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(50)
+  limit: queryIntSchema(1, 100).default(50)
 })
 
 export type BookLayoutBody = z.infer<typeof bookLayoutBodySchema>
