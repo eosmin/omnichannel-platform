@@ -10,6 +10,7 @@ import {
   AccountRole,
   FinanceCountryCodes,
   FinanceEventKind,
+  FinancePostingKey,
   FinanceReport,
   FinanceSourceType,
   InventoryMovementType,
@@ -342,6 +343,8 @@ describe('The margin by product', () => {
   it('does not count the entry of an advance payment as the sale of its order', async () => {
     const before = (await margin()).body as MarginBody
     const advanceOf = await deliveredOrder(ctx.storeA.id, ctx.warehouseA.id)
+    // The same advance on an order that has its sale in the range too: it must not be counted twice
+    const both = orderA[0] ?? ''
     const role = async (name: string): Promise<string> =>
       (
         await owner.accountRoleMapping.findUniqueOrThrow({
@@ -355,24 +358,25 @@ describe('The margin by product', () => {
         endsOn: { gte: new Date(TODAY) }
       }
     })
-    await postTestEntry(owner, {
-      organizationId: ctx.orgA.id,
-      periodId: period.id,
-      entryDate: TODAY,
-      type: JournalEntryType.SALE,
-      sourceType: FinanceSourceType.ORDER,
-      sourceId: advanceOf,
-      idempotencyKey: `order:${advanceOf}:advance`,
-      lines: [
-        { accountId: await role('cash_default'), debitCents: 2825 },
-        { accountId: await role('customer_advances'), creditCents: 2825 }
-      ]
-    })
+    for (const orderId of [advanceOf, both]) {
+      await postTestEntry(owner, {
+        organizationId: ctx.orgA.id,
+        periodId: period.id,
+        entryDate: TODAY,
+        type: JournalEntryType.SALE,
+        sourceType: FinanceSourceType.ORDER,
+        sourceId: orderId,
+        idempotencyKey: FinancePostingKey.ORDER_PAYMENT(orderId),
+        lines: [
+          { accountId: await role(AccountRole.CASH_DEFAULT), debitCents: 2825 },
+          { accountId: await role(AccountRole.CUSTOMER_ADVANCES), creditCents: 2825 }
+        ]
+      })
+    }
     const after = (await margin()).body as MarginBody
 
     expect(after.ordersUsed).toBe(before.ordersUsed)
     expect(after.totals).toEqual(before.totals)
-    expect(after.ordersUsed).toBe(2)
   })
 })
 

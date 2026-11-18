@@ -112,6 +112,8 @@ export class FinanceMarginService {
           type: JournalEntryType.SALE,
           sourceType: FinanceSourceType.ORDER,
           sourceId: { not: null },
+          // The sale key ends so; the exact key is checked below
+          idempotencyKey: { endsWith: ':sale' },
           entryDate: { gte: new Date(query.from), lte: new Date(query.to) },
           number: { gt: after }
         },
