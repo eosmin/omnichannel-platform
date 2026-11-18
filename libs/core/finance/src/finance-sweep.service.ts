@@ -11,6 +11,7 @@ import {
   FinanceSourceType,
   FinanceSweepLimits,
   InventoryMovementType,
+  OrderReturnStatus,
   OrderStatus,
   RemittanceStatus,
   SaleRecognition,
@@ -591,6 +592,35 @@ export class FinanceSweepService {
             FinanceEventKind.RETURN_RESTOCK,
             FinancePostingKey.RETURN_RESTOCK(row.id),
             row.receivedAt ?? since
+          )
+        ]
+      },
+      out
+    )
+    // E14: a return completed with a refund the person paid out (its day is the day it was last written, the completion)
+    await this.collect(
+      {
+        ...common,
+        page: (after, take) =>
+          db.orderReturn.findMany({
+            where: {
+              ...storeOf,
+              status: OrderReturnStatus.COMPLETED,
+              refundAmountCents: { gt: 0 },
+              updatedAt: { gte: since }
+            },
+            select: { id: true, updatedAt: true },
+            orderBy: { id: 'asc' },
+            take,
+            ...cursor(after)
+          }),
+        of: row => [
+          make(
+            FinanceSourceType.RETURN,
+            row.id,
+            FinanceEventKind.RETURN_REFUND,
+            FinancePostingKey.RETURN_REFUND(row.id),
+            row.updatedAt
           )
         ]
       },

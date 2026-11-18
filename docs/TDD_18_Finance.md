@@ -441,6 +441,7 @@ the operational rows, never from the client. Where the order is delivered, `reco
 | E11 | **Supplier paid** (`SupplierPayment`) | Dr `PAYABLE_SUPPLIERS` · Cr the account the owner chose (cash, bank or wallet). Partial payments allowed; a payment above the open balance is refused. |
 | E12 | **Expense, income, transfer** registered by a person (§2.6) | Expense: Dr the category account · Dr `VAT_INPUT` (if creditable) · Cr the source account. Income: Dr the destination account · Cr the category account · Cr `VAT_OUTPUT` (if the income carries tax). Transfer: Dr the destination · Cr the source (both cash-kind accounts, distinct). |
 | E13 | **Manual entry** (an accountant's adjustment, opening balances) | Free lines, at least two, balanced, with a required memo; permission `FINANCE_POST_MANUAL`; HIGH-tier confirmation. |
+| E14 | **Refund paid out** (a return completed with the refund a person recorded, `OrderReturn.refundAmountCents`) | Dr `CUSTOMER_ADVANCES` · Cr the account the order's payment method receives into (a cash order's `CASH_DEFAULT`-kind account, a card's bank, ...; cash on delivery: `BANK_DEFAULT`), for exactly the amount recorded. Key `return:<id>:refund`. **[ACCOUNTANT]** which account, and what a retention (a refund smaller than what E8 owed) is: it stays in the advance until she says. |
 
 **E5, what the carrier can take out of the cash (fix `remittance-fee-guard`).** The receivable of a guide is cleared for what the carrier reported plus what it took out of the
 cash it collected, and that is at most what was left of the gross after the earlier remittances and the reported amount: `max(0, gross - cleared before - reported)`. A charge
@@ -450,7 +451,7 @@ settles E4's payable), never cleared from the receivable. A carrier that reports
 **E7 and E8 as built (Step 4B.6b-2).** E7: the amount is what the books still hold as owed by the carrier for the guide (what it had to collect less what
 every confirmed remittance cleared), never a figure in the request; a surplus is written the other way round; the guide takes the terminal status
 `written_off` and its remittance can no longer be voided. E8: a return posts its share of the revenue and the tax in proportion to the units back (running
-total, half up, so the returns add up to the sale); the refund is credited to `CUSTOMER_ADVANCES` (the business owes it until a person pays it out by hand),
+total, half up, so the returns add up to the sale); the refund is credited to `CUSTOMER_ADVANCES` (the business owes it until the person records what they paid out when completing the return, E14),
 or to `RECEIVABLE_CARRIERS` when the guide is a COD guide the carrier will never remit; the shipping fee is not reversed **[ACCOUNTANT]**; the cost put back is
 the cost of the `RETURN_IN` movement. An order returned as a whole with no return row posts `order:<id>:return` (before the sale, only the cost from transit back to
 inventory). The charges of the guide of a return are E4 with no commission.

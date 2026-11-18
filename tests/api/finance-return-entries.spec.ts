@@ -878,4 +878,70 @@ describe('The entries of a difference written off and of a return (Step 4B.6b-2)
       ).toBe(FinancePostingOutcome.NOTHING_TO_POST)
     })
   })
+
+  // E14 (HC-105): the refund a person paid out when completing a return
+  describe('E14: the refund a person paid out', () => {
+    async function completed(refundAmountCents: number | null): Promise<string> {
+      const made = await sold()
+      const returnId = await received(made, { quantity: 1, receivedAt: new Date() })
+      await owner.orderReturn.update({
+        where: { id: returnId },
+        data: { status: OrderReturnStatus.COMPLETED, refundAmountCents }
+      })
+      return returnId
+    }
+
+    it('settles the customer advance with the money that left the bank, for the amount recorded and no other', async () => {
+      const returnId = await completed(800)
+      const result = await post(FinanceSourceType.RETURN, returnId, FinanceEventKind.RETURN_REFUND)
+      expect(result.outcome).toBe(FinancePostingOutcome.POSTED)
+      const entry = await entryOf(FinancePostingKey.RETURN_REFUND(returnId))
+      expect(entry).toMatchObject({
+        type: JournalEntryType.SALE_RETURN,
+        origin: EntryOrigin.SYSTEM,
+        sourceType: FinanceSourceType.RETURN,
+        sourceId: returnId,
+        totalCents: 800
+      })
+      expect(linesOf(entry as NonNullable<typeof entry>)).toEqual(
+        sorted([
+          [code(AccountRole.CUSTOMER_ADVANCES), 800, 0],
+          [code(AccountRole.BANK_DEFAULT), 0, 800]
+        ])
+      )
+      expect(entry?.lines.every(line => line.storeId === ctx.storeA.id)).toBe(true)
+      expect(
+        await post(FinanceSourceType.RETURN, returnId, FinanceEventKind.RETURN_REFUND)
+      ).toMatchObject({ outcome: FinancePostingOutcome.REPLAYED, entryId: result.entryId })
+    })
+
+    it('posts nothing for a return with no refund recorded, or one that is not completed', async () => {
+      const none = await completed(null)
+      expect(
+        (await post(FinanceSourceType.RETURN, none, FinanceEventKind.RETURN_REFUND)).outcome
+      ).toBe(FinancePostingOutcome.NOTHING_TO_POST)
+      const open = await completed(500)
+      await owner.orderReturn.update({
+        where: { id: open },
+        data: { status: OrderReturnStatus.RECEIVED }
+      })
+      expect(
+        (await post(FinanceSourceType.RETURN, open, FinanceEventKind.RETURN_REFUND)).outcome
+      ).toBe(FinancePostingOutcome.NOTHING_TO_POST)
+    })
+
+    it('is not posted for a return of another organization', async () => {
+      const returnId = await completed(300)
+      expect(
+        (
+          await post(
+            FinanceSourceType.RETURN,
+            returnId,
+            FinanceEventKind.RETURN_REFUND,
+            ctx.orgB.id
+          )
+        ).outcome
+      ).toBe(FinancePostingOutcome.NOTHING_TO_POST)
+    })
+  })
 })

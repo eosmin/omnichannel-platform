@@ -6,7 +6,13 @@ import {
   ReturnSettlementKind
 } from '@platform/core/domain'
 
-import { type AutoEntry, linesOf, type RoleAccounts, type SaleOrderRow } from './auto-entry-rules'
+import {
+  type AutoEntry,
+  linesOf,
+  missing,
+  type RoleAccounts,
+  type SaleOrderRow
+} from './auto-entry-rules'
 import { movementCostCents } from './movement-cost'
 import { allocateByWeight } from './tax-rules'
 
@@ -291,4 +297,38 @@ export function returnLines(input: {
     }
   ]
   return linesOf(input.accounts, debits, credits, { storeId: input.storeId })
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// E14: the refund a person paid out when completing a return. E8 left what the customer is owed in `CUSTOMER_ADVANCES` (or the order's
+// own E1 advance is still there, for a parcel that never became a sale); the money leaves the account the payment came into and the
+// advance is settled by exactly the amount the person recorded. What the customer keeps back (a refund smaller than what E8 owed) stays
+// in the advance, never invented as an income [ACCOUNTANT].
+export function refundLines(input: {
+  accounts: RoleAccounts
+  // The account the refund is paid from: the one the method of the order receives into
+  paymentAccountId: string
+  refundCents: number
+  storeId: string
+}): AutoEntry {
+  if (input.refundCents <= 0) return { ok: true, lines: [] }
+  const advances = input.accounts(AccountRole.CUSTOMER_ADVANCES)
+  if (advances === null) return missing(AccountRole.CUSTOMER_ADVANCES)
+  return {
+    ok: true,
+    lines: [
+      {
+        accountId: advances,
+        debitCents: input.refundCents,
+        creditCents: 0,
+        storeId: input.storeId
+      },
+      {
+        accountId: input.paymentAccountId,
+        debitCents: 0,
+        creditCents: input.refundCents,
+        storeId: input.storeId
+      }
+    ]
+  }
 }
