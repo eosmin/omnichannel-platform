@@ -13,6 +13,7 @@ const payload = (to: OrderStatus): OrderStatusChangedPayload => ({
   orderId: ORDER,
   orderNumber: '1001',
   actor: { type: 'user', id: 'user-1' },
+  notifyCustomer: false,
   from: OrderStatus.CONFIRMED,
   to
 })
