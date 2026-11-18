@@ -12,6 +12,7 @@ import {
 } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import {
+  type CarrierGuidesMovementPayload,
   Events,
   type InventoryMovedPayload,
   type OrderPaymentPayload,
@@ -135,6 +136,32 @@ export class FinancePostingListener {
       sourceType: FinanceSourceType.SHIPMENT,
       sourceId: payload.shipmentId,
       kind: FinanceEventKind.COD_WRITE_OFF,
+      occurredAt: new Date().toISOString()
+    })
+  }
+
+  // E15 and E16: a person recorded a purchase of guides, or voided one
+  @OnEvent(Events.CARRIER_GUIDES_PURCHASED)
+  async onGuidesPurchased(payload: CarrierGuidesMovementPayload): Promise<void> {
+    await this.enqueueGuideMovement(payload, FinanceEventKind.GUIDE_PURCHASE)
+  }
+
+  @OnEvent(Events.CARRIER_GUIDES_PURCHASE_VOIDED)
+  async onGuidesPurchaseVoided(payload: CarrierGuidesMovementPayload): Promise<void> {
+    await this.enqueueGuideMovement(payload, FinanceEventKind.GUIDE_PURCHASE_VOID)
+  }
+
+  private async enqueueGuideMovement(
+    payload: CarrierGuidesMovementPayload,
+    kind: FinanceEventKind
+  ): Promise<void> {
+    const organizationId = await this.organizationOf(payload.storeId)
+    if (organizationId === null) return
+    await this.enqueue({
+      organizationId,
+      sourceType: FinanceSourceType.CARRIER_GUIDE_MOVEMENT,
+      sourceId: payload.movementId,
+      kind,
       occurredAt: new Date().toISOString()
     })
   }

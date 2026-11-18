@@ -4,6 +4,7 @@ import {
   chargeAmounts,
   chargeLines,
   type DraftLine,
+  guidePurchaseLines,
   remittanceLines,
   type RemittanceLineFacts,
   replaySettlements,
@@ -735,5 +736,64 @@ describe('replaySettlements', () => {
   it('does not count a fee of nothing as the payable settled, so a later remittance may settle it', () => {
     const replay = replaySettlements([{ reportedCents: 1000, reportedFeeCents: 0 }], guide)
     expect(replay).toMatchObject({ clearedCents: 1000, feeSettled: false })
+  })
+})
+
+describe('guidePurchaseLines (E15, E16)', () => {
+  const base = { accounts, storeId: STORE, cents: 5000, paidFromAccountId: null }
+
+  it('a purchase grows the advance and takes the money out of the default bank account', () => {
+    const result = guidePurchaseLines({ ...base, reversal: false })
+    if (!result.ok) throw new Error('expected lines')
+    expect(lineOf(result.lines, `acc-${AccountRole.PREPAID_CARRIER_GUIDES}`)).toMatchObject({
+      debitCents: 5000,
+      creditCents: 0,
+      storeId: STORE
+    })
+    expect(lineOf(result.lines, `acc-${AccountRole.BANK_DEFAULT}`)).toMatchObject({
+      debitCents: 0,
+      creditCents: 5000
+    })
+  })
+
+  it('takes the money out of the account the person named, not the default', () => {
+    const result = guidePurchaseLines({ ...base, paidFromAccountId: 'acc-cash', reversal: false })
+    if (!result.ok) throw new Error('expected lines')
+    expect(lineOf(result.lines, 'acc-cash')?.creditCents).toBe(5000)
+    expect(lineOf(result.lines, `acc-${AccountRole.BANK_DEFAULT}`)).toBeUndefined()
+  })
+
+  it('the void is the same entry the other way round', () => {
+    const result = guidePurchaseLines({ ...base, paidFromAccountId: 'acc-cash', reversal: true })
+    if (!result.ok) throw new Error('expected lines')
+    expect(lineOf(result.lines, `acc-${AccountRole.PREPAID_CARRIER_GUIDES}`)).toMatchObject({
+      debitCents: 0,
+      creditCents: 5000
+    })
+    expect(lineOf(result.lines, 'acc-cash')).toMatchObject({ debitCents: 5000, creditCents: 0 })
+  })
+
+  it('a purchase that cost nothing (all gifts) posts nothing', () => {
+    expect(guidePurchaseLines({ ...base, cents: 0, reversal: false })).toEqual({
+      ok: true,
+      lines: []
+    })
+  })
+
+  it('names the role that has no account: the advance first, then the default bank', () => {
+    expect(
+      guidePurchaseLines({
+        ...base,
+        accounts: role => (role === AccountRole.PREPAID_CARRIER_GUIDES ? null : `acc-${role}`),
+        reversal: false
+      })
+    ).toMatchObject({ ok: false, role: AccountRole.PREPAID_CARRIER_GUIDES })
+    expect(
+      guidePurchaseLines({
+        ...base,
+        accounts: role => (role === AccountRole.BANK_DEFAULT ? null : `acc-${role}`),
+        reversal: false
+      })
+    ).toMatchObject({ ok: false, role: AccountRole.BANK_DEFAULT })
   })
 })

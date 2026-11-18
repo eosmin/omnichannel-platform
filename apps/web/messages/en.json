@@ -6205,6 +6205,7 @@
       "cod_write_off": "Cash on delivery write-off",
       "purchase_receipt": "Purchase received",
       "supplier_payment": "Supplier payment",
+      "carrier_guides": "Carrier guides bought",
       "inventory_adjustment": "Inventory adjustment",
       "reversal": "Reversal"
     },
@@ -6232,6 +6233,7 @@
         "inventory_movement": "A stock movement",
         "purchase_receipt": "A purchase received",
         "supplier_payment": "A supplier payment",
+        "carrier_guide_movement": "A purchase of carrier guides",
         "finance_transaction": "An expense, income or transfer",
         "manual": "An entry written by hand"
       },
@@ -7255,6 +7257,7 @@
         "inventory_movement": "Inventory movement",
         "purchase_receipt": "Purchase received",
         "supplier_payment": "Supplier payment",
+        "carrier_guide_movement": "Carrier guides",
         "finance_transaction": "Expense, income or transfer",
         "manual": "Manual entry"
       }

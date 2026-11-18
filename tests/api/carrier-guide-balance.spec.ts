@@ -175,6 +175,43 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
     expect(await balanceOf(id)).toMatchObject({ balance: 160, averageCostCents: 81 })
   })
 
+  it("keeps the account the money left and whether the books carry the purchase (E15), and refuses an account that is not the organization's", async () => {
+    const { id } = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
+    // A connection that does not prepay: the purchase is recorded, the books do not carry it
+    const plain = await buy(id, 10, 1000)
+    expect(plain.status).toBe(201)
+    const plainRow = await owner.carrierGuideMovement.findUniqueOrThrow({
+      where: { id: (plain.body as { id: string }).id }
+    })
+    expect(plainRow).toMatchObject({ onAdvance: false, paidFromAccountId: null })
+    // A connection that prepays: the purchase is carried
+    await owner.carrierConnection.update({ where: { id }, data: { chargeModel: 'prepaid' } })
+    const carried = await buy(id, 10, 1000)
+    const carriedRow = await owner.carrierGuideMovement.findUniqueOrThrow({
+      where: { id: (carried.body as { id: string }).id }
+    })
+    expect(carriedRow.onAdvance).toBe(true)
+    // The void follows what the purchase was
+    const voided = await admin()
+      .post(ApiRoutes.carriers.guidePurchaseVoid(id, carriedRow.id))
+      .send({ note: 'typed twice' })
+    expect(voided.status).toBe(201)
+    const voidRow = await owner.carrierGuideMovement.findFirstOrThrow({
+      where: { voidsMovementId: carriedRow.id }
+    })
+    expect(voidRow.onAdvance).toBe(true)
+    // An account that is not one of the organization's is a 404, and nothing is written
+    const before = await owner.carrierGuideMovement.count({ where: { connectionId: id } })
+    const unknown = await admin().post(ApiRoutes.carriers.guidePurchases(id)).send({
+      paidQuantity: 5,
+      giftQuantity: 0,
+      totalCostCents: 500,
+      paidFromAccountId: '00000000-0000-4000-8000-000000000000'
+    })
+    expect(unknown.status).toBe(404)
+    expect(await owner.carrierGuideMovement.count({ where: { connectionId: id } })).toBe(before)
+  })
+
   it('voids a purchase once and writes a movement, never an edit', async () => {
     const { id } = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
     const purchase = (await buy(id, 10, 1000)).body as { id: string }
