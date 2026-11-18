@@ -10,6 +10,7 @@ import { RLS_EXEMPTIONS } from '../../scripts/rls-exceptions'
 import {
   createInventoryLevel,
   createOrder,
+  createOrderMessageTemplate,
   createProductVariant,
   createShipment,
   createTransfer
@@ -77,7 +78,14 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
   let app: Awaited<ReturnType<typeof createTestApp>>
   let ctx: TestContext
   let raw: pg.Client
-  const seen: { orderA: string; orderB: string; transferA: string; transferA2: string } = {
+  const seen: {
+    orderA: string
+    orderB: string
+    transferA: string
+    transferA2: string
+    templateA: string
+  } = {
+    templateA: '',
     orderA: '',
     orderB: '',
     transferA: '',
@@ -134,6 +142,7 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
 
     const orderA = await createOrder(owner, { storeId: ctx.storeA.id })
     const orderB = await createOrder(owner, { storeId: ctx.storeB.id })
+    seen.templateA = (await createOrderMessageTemplate(owner, { storeId: ctx.storeA.id })).id
     seen.orderA = orderA.id
     seen.orderB = orderB.id
     await createProductVariant(owner, { productId: orderA.productId })
@@ -238,8 +247,12 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
     }))
     expect(ids(result.orders)).toContain(seen.orderA)
     expect(ids(result.orders)).not.toContain(seen.orderB)
-    expect(result.items.every(row => row.order_id === seen.orderA)).toBe(true)
-    expect(result.items.length).toBeGreaterThan(0)
+    const itemsOfA = await raw.query<{ id: string }>(
+      'SELECT i.id FROM order_items i JOIN orders o ON o.id = i.order_id WHERE o.store_id = $1',
+      [ctx.storeA.id]
+    )
+    expect(itemsOfA.rows.length).toBeGreaterThan(0)
+    expect(ids(result.items)).toEqual(ids(itemsOfA.rows))
     expect(result.variants.length).toBeGreaterThan(0)
     for (const rows of [result.levels, result.shipments, result.connections]) {
       expect(rows.length).toBeGreaterThan(0)
@@ -254,6 +267,12 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
   })
 
   it('finds no row of the other store by id, and changes or deletes none', async () => {
+    const itemIdsOfB = (
+      await raw.query<{ id: string }>('SELECT id FROM order_items WHERE order_id = $1', [
+        seen.orderB
+      ])
+    ).rows.map(row => row.id)
+    expect(itemIdsOfB.length).toBeGreaterThan(0)
     const outcome = await underRls(A(), async db => ({
       byId: (await db.query('SELECT id FROM orders WHERE id = $1', [seen.orderB])).rows,
       itemsById: (await db.query('SELECT id FROM order_items WHERE order_id = $1', [seen.orderB]))
@@ -262,8 +281,10 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
         await db.query("UPDATE orders SET internal_notes = 'hacked' WHERE id = $1", [seen.orderB])
       ).rowCount,
       deleted: (await db.query('DELETE FROM orders WHERE id = $1', [seen.orderB])).rowCount,
-      itemsDeleted: (await db.query('DELETE FROM order_items WHERE order_id = $1', [seen.orderB]))
-        .rowCount
+      // By the ids of the items of that order (the owner knows them), never by a wide filter
+      itemsDeleted: (
+        await db.query('DELETE FROM order_items WHERE id = ANY ($1::text[])', [itemIdsOfB])
+      ).rowCount
     }))
     expect(outcome.byId).toEqual([])
     expect(outcome.itemsById).toEqual([])
@@ -285,8 +306,14 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
     })
     const insert = `INSERT INTO inventory_levels (id, store_id, product_id, warehouse_id, on_hand, reserved) VALUES (gen_random_uuid()::text, $1, $2, $3, 1, 0)`
     const values = [ctx.storeB.id, product.id, ctx.warehouseB.id]
-    expect(await failureCode(A(), insert, values)).toBe('42501')
-    expect(await failureCode({}, insert, values)).toBe('42501')
+    // The stock levels have a trigger that checks the product belongs to the store: it may answer (23000) before the policy does
+    expect(['42501', '23000']).toContain(await failureCode(A(), insert, values))
+    expect(['42501', '23000']).toContain(await failureCode({}, insert, values))
+    // A table with no trigger shows what the policy itself says
+    const template = `INSERT INTO order_message_templates (id, store_id, kind, locale, body, updated_at)
+      VALUES (gen_random_uuid()::text, $1, 'order_shipped', 'en', 'hello', now())`
+    expect(await failureCode(A(), template, [ctx.storeB.id])).toBe('42501')
+    expect(await failureCode({}, template, [ctx.storeA.id])).toBe('42501')
   })
 
   it('refuses to point a line of an order of this store at a product of another store (the foreign key does not see row security)', async () => {
@@ -303,11 +330,19 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
   })
 
   it('does not let a row move to another store', async () => {
-    const code = await failureCode(A(), 'UPDATE shipments SET store_id = $1 WHERE store_id = $2', [
-      ctx.storeB.id,
-      ctx.storeA.id
-    ])
+    const code = await failureCode(
+      A(),
+      'UPDATE order_message_templates SET store_id = $1 WHERE id = $2',
+      [ctx.storeB.id, seen.templateA]
+    )
     expect(code).toBe('42501')
+    // Shipments have a trigger that may answer first
+    const shipment = await failureCode(
+      A(),
+      'UPDATE shipments SET store_id = $1 WHERE store_id = $2',
+      [ctx.storeB.id, ctx.storeA.id]
+    )
+    expect(['42501', '23000']).toContain(shipment)
   })
 
   it('sees the warehouses of the organization of the context and nobody else (scope organization)', async () => {
@@ -381,8 +416,8 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
       where: { storeId: ctx.storeA.id },
       select: { storeId: true, productId: true, warehouseId: true }
     })
-    const statement = `INSERT INTO inventory_levels (id, store_id, product_id, warehouse_id, on_hand, reserved)
-      VALUES (gen_random_uuid()::text, $1, $2, $3, 1, 0)
+    const statement = `INSERT INTO inventory_levels (id, store_id, product_id, warehouse_id, on_hand, reserved, updated_at)
+      VALUES (gen_random_uuid()::text, $1, $2, $3, 1, 0, now())
       ON CONFLICT (store_id, product_id, warehouse_id) WHERE variant_id IS NULL DO UPDATE SET on_hand = inventory_levels.on_hand + 1
       RETURNING on_hand`
     const values = [level.storeId, level.productId, level.warehouseId]
@@ -504,15 +539,27 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
       ).rejects.toThrow(/cannot see every row/)
     })
 
-    it('fails closed when a policy of a table could hide rows from the owner', async () => {
+    it('fails closed when a table with row security has no policy that shows every row to its owner', async () => {
       await expect(
         underRls(
           {},
           db => db.query('SELECT * FROM rls_store_tables_with_rows($1::text)', [ctx.storeA.id]),
           async db => {
-            // A restrictive policy that applies to everybody, the owner included
+            // The owner of the database is a superuser in the suites and skips row security: this is a role that owns every table
+            // with a store_id (and the function) but has no policy of its own, as a table whose owner policy was forgotten
+            await db.query('CREATE ROLE rls_probe_owner NOLOGIN')
             await db.query(
-              'CREATE POLICY hide_everything ON shipments AS RESTRICTIVE FOR SELECT USING (false)'
+              `DO $$ DECLARE t text; BEGIN
+                 FOR t IN SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                   JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'store_id' AND NOT a.attisdropped
+                   WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') LOOP
+                   EXECUTE format('ALTER TABLE public.%I OWNER TO rls_probe_owner', t);
+                 END LOOP;
+               END $$`
+            )
+            await db.query('GRANT CREATE ON SCHEMA public TO rls_probe_owner')
+            await db.query(
+              'ALTER FUNCTION rls_store_tables_with_rows(text) OWNER TO rls_probe_owner'
             )
           }
         )
