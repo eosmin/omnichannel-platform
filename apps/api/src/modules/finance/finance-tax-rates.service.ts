@@ -106,11 +106,17 @@ export class FinanceTaxRatesService {
       this.prisma.transaction(async tx => {
         await lockChart(tx, organizationId)
         const current = await this.lock(tx, organizationId, id)
-        if (body.code !== undefined) await this.assertCodeFree(tx, organizationId, body.code, id)
+        // The same code in another case is not a change (it would only collide with the twin that already holds it): a rate with a
+        // twin of another case stays editable in its other fields. Only a code that moves is checked
+        const codeMoves =
+          body.code !== undefined && body.code.toUpperCase() !== current.code.toUpperCase()
+        if (codeMoves && body.code !== undefined) {
+          await this.assertCodeFree(tx, organizationId, body.code, id)
+        }
         const changed: Record<string, { from: unknown; to: unknown }> = {}
         const data: Record<string, unknown> = {}
         for (const field of ['code', 'name', 'rateBps'] as const) {
-          const next = body[field]
+          const next = field === 'code' && !codeMoves ? undefined : body[field]
           if (next !== undefined && next !== current[field]) {
             changed[field] = { from: current[field], to: next }
             data[field] = next
@@ -209,7 +215,6 @@ export class FinanceTaxRatesService {
     return taxRateView(outcome.row)
   }
 
-  // The rate of the organization, locked for update until the transaction ends; one of another organization does not exist
   // The code is one whatever its case: a rate made before the codes were kept in capitals (`iva`) still holds `IVA` back. The
   // check runs under the chart lock that every write of a rate takes, so two writes cannot pass it together (HC-210)
   private async assertCodeFree(
@@ -234,6 +239,7 @@ export class FinanceTaxRatesService {
     }
   }
 
+  // The rate of the organization, locked for update until the transaction ends; one of another organization does not exist
   private async lock(tx: PrismaTransaction, organizationId: string, id: string) {
     await tx.$queryRaw`SELECT 1 AS locked FROM tax_rates WHERE id = ${id} AND organization_id = ${organizationId} FOR UPDATE`
     const row = await tx.taxRate.findFirst({

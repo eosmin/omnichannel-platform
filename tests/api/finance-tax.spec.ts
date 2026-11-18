@@ -187,6 +187,40 @@ describe('The tax rates, the tax of a product and the tax settings of a store (S
       }
     })
 
+    it('lets a rate with a twin of another case be edited (HC-210)', async () => {
+      const twin = code().toLowerCase()
+      const legacy = (codeText: string) =>
+        owner.taxRate.create({
+          data: {
+            organizationId: ctx.orgA.id,
+            code: codeText,
+            name: 'Legacy',
+            rateBps: 100,
+            kind: 'vat',
+            outputAccountId: accounts['2201'] ?? '',
+            inputAccountId: accounts['1401'] ?? ''
+          }
+        })
+      const lower = await legacy(twin)
+      await legacy(twin.toUpperCase())
+
+      const renamed = await asAdminA()
+        .patch(ApiRoutes.finance.taxRates.byId(lower.id))
+        .send({ name: 'Only the name' })
+      const sameCode = await asAdminA()
+        .patch(ApiRoutes.finance.taxRates.byId(lower.id))
+        .send({ code: twin, name: 'Again' })
+      // Its own code in capitals is the same code, not a change: it would only collide with the twin that holds it
+      const intoTwin = await asAdminA()
+        .patch(ApiRoutes.finance.taxRates.byId(lower.id))
+        .send({ code: twin.toUpperCase() })
+
+      expect(renamed.status).toBe(OK)
+      expect(sameCode.status).toBe(OK)
+      expect(intoTwin.status).toBe(OK)
+      expect((intoTwin.body as { code: string }).code).toBe(twin)
+    })
+
     it('creates one, and a second one with the same code is a conflict', async () => {
       const rate = await createRate({ rateBps: 0, name: 'Zero' })
       const again = await asAdminA()
