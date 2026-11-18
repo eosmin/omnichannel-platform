@@ -76,6 +76,7 @@ export class FinanceTaxRatesService {
             FinanceConflicts.TAX_RATE_LIMIT
           )
         }
+        await this.assertCodeFree(tx, organizationId, body.code)
         await this.assertAccounts(tx, organizationId, body.outputAccountId, body.inputAccountId)
         if (body.isDefault === true) await this.clearDefault(tx, organizationId)
         return tx.taxRate.create({
@@ -111,10 +112,17 @@ export class FinanceTaxRatesService {
       this.prisma.transaction(async tx => {
         await lockChart(tx, organizationId)
         const current = await this.lock(tx, organizationId, id)
+        // The same code in another case is not a change (it would only collide with the twin that already holds it): a rate with a
+        // twin of another case stays editable in its other fields. Only a code that moves is checked
+        const codeMoves =
+          body.code !== undefined && body.code.toUpperCase() !== current.code.toUpperCase()
+        if (codeMoves && body.code !== undefined) {
+          await this.assertCodeFree(tx, organizationId, body.code, id)
+        }
         const changed: Record<string, { from: unknown; to: unknown }> = {}
         const data: Record<string, unknown> = {}
         for (const field of ['code', 'name', 'rateBps'] as const) {
-          const next = body[field]
+          const next = field === 'code' && !codeMoves ? undefined : body[field]
           if (next !== undefined && next !== current[field]) {
             changed[field] = { from: current[field], to: next }
             data[field] = next
@@ -228,6 +236,30 @@ export class FinanceTaxRatesService {
     })
     if (outcome.changed) this.log(organizationId, actor, id, { change: 'reactivated' })
     return taxRateView(outcome.row)
+  }
+
+  // The code is one whatever its case: a rate made before the codes were kept in capitals (`iva`) still holds `IVA` back. The
+  // check runs under the chart lock that every write of a rate takes, so two writes cannot pass it together (HC-210)
+  private async assertCodeFree(
+    tx: PrismaTransaction,
+    organizationId: string,
+    code: string,
+    exceptId?: string
+  ): Promise<void> {
+    const taken = await tx.taxRate.findFirst({
+      where: {
+        organizationId,
+        code: { equals: code, mode: 'insensitive' },
+        ...(exceptId === undefined ? {} : { id: { not: exceptId } })
+      },
+      select: { id: true }
+    })
+    if (taken !== null) {
+      throw conflict(
+        'a tax rate of the organization already has that code',
+        FinanceConflicts.TAX_RATE_CODE_IN_USE
+      )
+    }
   }
 
   // The rate of the organization, locked for update until the transaction ends; one of another organization does not exist

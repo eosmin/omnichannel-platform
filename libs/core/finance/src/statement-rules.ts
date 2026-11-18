@@ -211,6 +211,16 @@ export interface AgingLine {
   entryDate: string
   debitCents: bigint
   creditCents: bigint
+  // The entry of the line, and the entry it reverses when it is a reversal: a reversal settles what the entry it reverses opened, before
+  // anything older (an invoice that is reversed is not paid by the oldest one still open)
+  entryId?: string
+  reversesEntryId?: string | null
+}
+
+interface OpenItem {
+  date: string
+  cents: bigint
+  entryId: string | null
 }
 
 export interface Aging {
@@ -224,7 +234,7 @@ export interface Aging {
 
 // Settles `cents` against the open items, oldest first, and returns what was left over. The settled items are dropped from the front in
 // one move, not one at a time.
-function settleOldest(open: { date: string; cents: bigint }[], cents: bigint): bigint {
+function settleOldest(open: OpenItem[], cents: bigint): bigint {
   let settle = cents
   let settled = 0
   while (settle > 0n) {
@@ -239,28 +249,55 @@ function settleOldest(open: { date: string; cents: bigint }[], cents: bigint): b
   return settle
 }
 
+// Settles `cents` against the open items the entry opened, and returns what was left over. The emptied items are dropped.
+function settleOfEntry(open: OpenItem[], cents: bigint, entryId: string): bigint {
+  let settle = cents
+  for (const item of open) {
+    if (settle === 0n) break
+    if (item.entryId !== entryId) continue
+    const used = item.cents < settle ? item.cents : settle
+    item.cents -= used
+    settle -= used
+  }
+  if (settle !== cents) {
+    let kept = 0
+    for (const item of open) {
+      if (item.cents > 0n) open[kept++] = item
+    }
+    open.length = kept
+  }
+  return settle
+}
+
 const DAY_MS = 86_400_000
 const daysBetween = (from: string, to: string): number =>
   Math.floor((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS)
 
 // The age of what one party owes (or is owed) at a date. The lines come in the order of the ledger. The side that grows the balance
 // opens an item dated by its entry; the other side settles the oldest open items first (the usual first-in, first-out; whether the
-// accountant ages by another rule is **[ACCOUNTANT]**). `cuts` are the upper bounds in days of every bucket but the last.
+// accountant ages by another rule is **[ACCOUNTANT]**). A reversal is the exception: it cancels the items of the entry it reverses first,
+// and only what is left of it settles oldest first. The lines of a reversal and of its entry are of the same party, and the reversal
+// comes after its entry in the ledger. `cuts` are the upper bounds in days of every bucket but the last.
 export function agingOf(
   lines: readonly AgingLine[],
   asOf: string,
   growsOnCredit: boolean,
   cuts: readonly number[]
 ): Aging {
-  const open: { date: string; cents: bigint }[] = []
+  const open: OpenItem[] = []
   let unappliedCents = 0n
   for (const line of lines) {
     const net = normalBalance(line, !growsOnCredit)
     if (net > 0n) {
-      open.push({ date: line.entryDate, cents: net })
+      open.push({ date: line.entryDate, cents: net, entryId: line.entryId ?? null })
       continue
     }
-    unappliedCents += settleOldest(open, -net)
+    // A reversal first cancels what the entry it reverses opened (that is its age); what that entry no longer has open is settled oldest first
+    const left =
+      line.reversesEntryId === undefined || line.reversesEntryId === null
+        ? -net
+        : settleOfEntry(open, -net, line.reversesEntryId)
+    unappliedCents += settleOldest(open, left)
   }
   // A payment dated before the item it pays (an advance, or a date typed earlier) waited as unapplied: it pays what is open now
   unappliedCents = settleOldest(open, unappliedCents)

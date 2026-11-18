@@ -7312,7 +7312,7 @@
         "salesWithoutTaxSnapshot": "{count, plural, one {# venta no tiene el detalle del impuesto (se hizo antes de guardarlo) y no se lista.} other {# ventas no tienen el detalle del impuesto (se hicieron antes de guardarlo) y no se listan.}}",
         "salesNotReadable": "{count, plural, one {# venta tiene un detalle de impuesto que no cuadra y no se lista.} other {# ventas tienen un detalle de impuesto que no cuadra y no se listan.}}",
         "voidedDocuments": "{count, plural, one {# venta cuyo documento fiscal se anuló queda fuera.} other {# ventas cuyo documento fiscal se anuló quedan fuera.}}",
-        "unclassifiedDocuments": "{count, plural, one {# venta tiene un documento de un tipo que este sistema no conoce, o una nota de crédito: se cuenta aparte y no se lista.} other {# ventas tienen un documento de un tipo que este sistema no conoce, o una nota de crédito: se cuentan aparte y no se listan.}}",
+        "unclassifiedDocuments": "{count, plural, one {# venta tiene un documento de un tipo que este sistema no conoce: se cuenta aparte y no se lista.} other {# ventas tienen un documento de un tipo que este sistema no conoce: se cuentan aparte y no se listan.}}",
         "returnsNotListed": "{count, plural, one {# devolución del mes no se lista: las notas de crédito todavía no están en los libros.} other {# devoluciones del mes no se listan: las notas de crédito todavía no están en los libros.}}"
       },
       "yes": "Sí",
