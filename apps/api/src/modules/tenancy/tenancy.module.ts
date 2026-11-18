@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common'
-import { APP_GUARD } from '@nestjs/core'
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
 
 import { AccessDenialAuditor } from './access-denial-auditor'
 import { PermissionGuard } from './permission.guard'
+import { TenantContextInterceptor } from './tenant-context.interceptor'
 import { TenantContextService } from './tenant-context.service'
 import { TenantGuard } from './tenant.guard'
 
@@ -17,7 +18,10 @@ import { TenantGuard } from './tenant.guard'
     TenantGuard,
     PermissionGuard,
     { provide: APP_GUARD, useExisting: TenantGuard },
-    { provide: APP_GUARD, useExisting: PermissionGuard }
+    { provide: APP_GUARD, useExisting: PermissionGuard },
+    // After the guards (an interceptor always runs after them): with RLS_CONTEXT on, the handler runs in one tenant transaction
+    TenantContextInterceptor,
+    { provide: APP_INTERCEPTOR, useExisting: TenantContextInterceptor }
   ],
   exports: [TenantContextService]
 })

@@ -20,6 +20,7 @@ import { createConversationOf } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 const DAY_MS = 86_400_000
 const HOUR_MS = 3_600_000
@@ -40,7 +41,7 @@ describe('Conversation sweeps', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    app = await createTestApp([], onWorkerDatabase())
     ctx = await seedTestContext(owner, app, prefix)
     for (const [storeId, autoArchiveAfterDays] of [
       [ctx.storeA.id, ARCHIVE_AFTER_DAYS],

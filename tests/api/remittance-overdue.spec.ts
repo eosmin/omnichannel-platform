@@ -22,6 +22,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { CapturedQueue } from '../helpers/queue'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const OK = 200
@@ -53,8 +54,11 @@ describe('The daily check of overdue remittances', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp([], builder =>
-      builder.overrideProvider(getQueueToken(QueueNames.NOTIFICATIONS)).useValue(pushQueue)
+    app = await createTestApp(
+      [],
+      onWorkerDatabase(builder =>
+        builder.overrideProvider(getQueueToken(QueueNames.NOTIFICATIONS)).useValue(pushQueue)
+      )
     )
     ctx = await seedTestContext(owner, app, prefix)
     const logger = { setContext: () => undefined, info: () => undefined } as unknown as PinoLogger
