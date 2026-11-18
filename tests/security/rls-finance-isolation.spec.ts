@@ -2,10 +2,16 @@ import { randomUUID } from 'node:crypto'
 
 import pg from 'pg'
 
-import { connectionUrls, createAppClient, type OwnerClient } from '@platform/core/database-testing'
+import {
+  connectionUrls,
+  createAppClient,
+  ensureStore,
+  type OwnerClient
+} from '@platform/core/database-testing'
 
 import {
   createFinanceFixture,
+  day,
   type FinanceFixture,
   postTestEntry,
   purgeFinance,
@@ -475,6 +481,178 @@ describe('row-level security, the books of an organization (phase 4)', () => {
       } finally {
         await other.$disconnect()
       }
+    })
+  })
+
+  describe('a group of the bank reconciliation, checked at the COMMIT (check_reconciliation_group)', () => {
+    // A statement line of the bank account of the organization A of `statementCents`, and one entry per amount of `pieces` that debits
+    // that account: the lines of the books a group can be made of. Seeded as the owner, the way the import and the posting write them.
+    async function seedGroup(
+      statementCents: number,
+      pieces: number[]
+    ): Promise<{ statementLineId: string; journalLineIds: string[] }> {
+      if (!booksA) throw new Error('the books of the organization were not seeded')
+      const store = await ensureStore(owner, orgA, `${prefix}-bank`)
+      const mediaId = randomUUID()
+      await owner.media.create({
+        data: {
+          id: mediaId,
+          storeId: store.id,
+          purpose: 'finance_document',
+          key: `${prefix}/rls-bank/${mediaId}`,
+          filename: 'statement.csv',
+          contentType: 'text/csv',
+          fileSize: 10,
+          status: 'clean'
+        }
+      })
+      const imported = await owner.bankStatementImport.create({
+        data: {
+          organizationId: orgA,
+          accountId: booksA.accounts.bank,
+          mediaId,
+          lineCount: 1,
+          newLineCount: 1,
+          firstDay: day('2026-11-10'),
+          lastDay: day('2026-11-10'),
+          createdBy: 'rls-suite'
+        },
+        select: { id: true }
+      })
+      const statement = await owner.bankStatementLine.create({
+        data: {
+          organizationId: orgA,
+          importId: imported.id,
+          accountId: booksA.accounts.bank,
+          lineNo: 2,
+          postedOn: day('2026-11-10'),
+          amountCents: statementCents,
+          lineHash: randomUUID().replaceAll('-', '').padEnd(64, '0')
+        },
+        select: { id: true }
+      })
+      const journalLineIds: string[] = []
+      for (const cents of pieces) {
+        const entry = await postTestEntry(owner, {
+          organizationId: orgA,
+          periodId: booksA.periodId,
+          idempotencyKey: `${prefix}-grp-${randomUUID()}`,
+          lines: [
+            { accountId: booksA.accounts.bank, debitCents: cents },
+            { accountId: booksA.accounts.revenue, creditCents: cents }
+          ]
+        })
+        const line = entry.lines.find(row => row.accountId === booksA?.accounts.bank)
+        if (!line) throw new Error('the entry has no line of the bank account')
+        journalLineIds.push(line.id)
+      }
+      return { statementLineId: statement.id, journalLineIds }
+    }
+
+    // The rows of a group as the service writes them, in one transaction of the context of the organization: the constraint trigger
+    // runs when the transaction commits, with the settings of the transaction still in force
+    async function writeGroup(
+      organizationId: string,
+      group: { statementLineId: string; journalLineIds: string[] },
+      groupId: string,
+      leads: readonly number[] = [0]
+    ): Promise<void> {
+      const client = await appClient()
+      await inContext(client, { organizations: [organizationId] }, async () => {
+        for (const [index, journalLineId] of group.journalLineIds.entries()) {
+          await client.query(
+            `INSERT INTO reconciliation_matches
+               (id, organization_id, statement_line_id, journal_line_id, status, decided_by, group_id, is_group_lead)
+             VALUES ($1, $2, $3, $4, 'confirmed', 'rls-suite', $5, $6)`,
+            [
+              randomUUID(),
+              organizationId,
+              group.statementLineId,
+              journalLineId,
+              groupId,
+              leads.includes(index)
+            ]
+          )
+        }
+      })
+    }
+
+    const confirmedOf = (groupId: string): Promise<number> =>
+      count(db, 'reconciliation_matches', "group_id = $1 AND status = 'confirmed'", [groupId])
+
+    it('keeps a group whose lines add up to the statement line, confirmed at the COMMIT of the context of its organization', async () => {
+      const group = await seedGroup(1000, [600, 400])
+      const groupId = randomUUID()
+      await writeGroup(orgA, group, groupId)
+      expect(await confirmedOf(groupId)).toBe(2)
+    })
+
+    it('refuses at the COMMIT a group that does not add up, and keeps none of its rows', async () => {
+      const group = await seedGroup(1000, [600, 300])
+      const groupId = randomUUID()
+      await expect(writeGroup(orgA, group, groupId)).rejects.toThrow(/RECONCILIATION_GROUP/)
+      expect(await confirmedOf(groupId)).toBe(0)
+    })
+
+    it('refuses at the COMMIT a group of one piece, one with two leads and one with no lead', async () => {
+      for (const [pieces, leads] of [
+        [[1000], [0]],
+        [
+          [600, 400],
+          [0, 1]
+        ],
+        [[600, 400], []]
+      ] as Array<[number[], number[]]>) {
+        const group = await seedGroup(1000, pieces)
+        const groupId = randomUUID()
+        await expect(writeGroup(orgA, group, groupId, leads)).rejects.toThrow(
+          /RECONCILIATION_GROUP/
+        )
+        expect(await confirmedOf(groupId)).toBe(0)
+      }
+    })
+
+    it('takes a group back whole or not at all: one piece alone is refused at the COMMIT, every piece goes together', async () => {
+      const group = await seedGroup(1000, [600, 400])
+      const groupId = randomUUID()
+      await writeGroup(orgA, group, groupId)
+      const client = await appClient()
+      const takeBack = (which: string): Promise<void> =>
+        inContext(client, { organizations: [orgA] }, async () => {
+          await client.query(
+            `UPDATE reconciliation_matches SET status = 'undone', undone_by = 'rls-suite', undone_at = now()
+             WHERE group_id = $1 AND journal_line_id = ANY($2::text[])`,
+            [groupId, which === 'one' ? [group.journalLineIds[1]] : group.journalLineIds]
+          )
+        })
+      await expect(takeBack('one')).rejects.toThrow(/RECONCILIATION_GROUP/)
+      expect(await confirmedOf(groupId)).toBe(2)
+      await takeBack('all')
+      expect(await confirmedOf(groupId)).toBe(0)
+    })
+
+    it('does not let the context of another organization write a group of the lines of this one', async () => {
+      const group = await seedGroup(1000, [550, 450])
+      const groupId = randomUUID()
+      // the rows say organization B: the lines they name are not of B (the BEFORE trigger of the row says so, before any policy), so no
+      // row of the group is ever confirmed
+      await expect(writeGroup(orgB, group, groupId)).rejects.toThrow(/RECONCILIATION_MATCH/)
+      expect(await confirmedOf(groupId)).toBe(0)
+    })
+
+    it('shows the pieces of a group to the context of its organization only (enforced database)', async () => {
+      if (!enforced) return
+      const group = await seedGroup(900, [500, 400])
+      const groupId = randomUUID()
+      await writeGroup(orgA, group, groupId)
+      const client = await appClient()
+      const mine = await inContext(client, { organizations: [orgA] }, () =>
+        count(client, 'reconciliation_matches', 'group_id = $1', [groupId])
+      )
+      const other = await inContext(client, { organizations: [orgB] }, () =>
+        count(client, 'reconciliation_matches', 'group_id = $1', [groupId])
+      )
+      expect([mine, other]).toEqual([2, 0])
     })
   })
 
