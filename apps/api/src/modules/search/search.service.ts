@@ -2,13 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import { type Permission, Permissions } from '@platform/core/auth'
-import {
-  PrismaService,
-  type RawSql,
-  rawSql,
-  SEARCH_LANGUAGE_SQL,
-  SEARCH_LITERAL_LANGUAGE_SQL
-} from '@platform/core/database'
+import { PrismaService, SEARCH_LANGUAGE_SQL } from '@platform/core/database'
 import {
   ConversationHiddenStatuses,
   MessageType,
@@ -61,101 +55,98 @@ const SNIPPET_OPTIONS =
   `StartSel=${SearchSnippetMarks.START}, StopSel=${SearchSnippetMarks.STOP}, ` +
   `MaxWords=${SearchConfig.SNIPPET_MAX_WORDS}, MinWords=${SearchConfig.SNIPPET_MIN_WORDS}`
 
-// The search of the store of the request (TDD_08 §5.4). Every statement filters by the store that TenantGuard put in
-// the request, never by anything in the query string, and the text is ALWAYS a bind parameter, with the wildcards of
-// LIKE (% _ and the backslash) escaped, so it is only ever read as the characters it is. The pieces of SQL that are
-// spliced in are the text-search configurations and the conditions of visibility built here with bind parameters. Everything is read accent-insensitive: the
-// text and the stored text are folded the same way (`immutable_unaccent`, migration search_unaccent).
+// The search of the store of the request (TDD_08 §5.4). Every read goes through a SQL function of the database
+// (migration rls_search_functions) that runs as the owner of the tables, so that Row-Level Security does not take the search
+// off its indexes, and that filters by itself what the policy would: the store is the one of the transaction context (the one
+// TenantGuard put in the request, see `inContext`), never an argument, and a call with no context raises. What stays here is what the code
+// decides: the permissions of the viewer, as booleans, and the text, ALWAYS a bind parameter, with the wildcards of LIKE
+// (% _ and the backslash) escaped, so it is only ever read as the characters it is. Everything is read accent-insensitive:
+// the text and the stored text are folded the same way (`immutable_unaccent`, migration search_unaccent).
 @Injectable()
 export class SearchService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // The messages of the conversations the viewer may see. What a message search must NOT show is decided here, in the
-  // statement: deleted messages (the text stays until the retention sweep, but it is not shown), internal notes for
-  // who may not read them, conversations assigned to someone else for who may not see all, and the hidden ones (spam,
-  // archived) for who may not archive. Without that, search would be a way around every rule of the thread.
-  async searchMessages(
+  // The messages of the conversations the viewer may see. What a message search must NOT show is decided by the function:
+  // deleted messages (the text stays until the retention sweep, but it is not shown), internal notes for who may not read
+  // them, conversations assigned to someone else for who may not see all, and the hidden ones (spam, archived) for who may
+  // not archive. Without that, search would be a way around every rule of the thread.
+  searchMessages(
     storeId: string,
     viewer: SearchViewer,
     params: { q: string; limit: number; conversationId?: string }
   ): Promise<SearchResult<MessageSearchHit>> {
-    const visible = this.visibleMessages(storeId, viewer, params.conversationId)
+    return this.inContext(storeId, viewer.userId, () => this.messagesInContext(viewer, params))
+  }
+
+  private async messagesInContext(
+    viewer: SearchViewer,
+    params: { q: string; limit: number; conversationId?: string }
+  ): Promise<SearchResult<MessageSearchHit>> {
+    const visibility = [
+      params.conversationId ?? null,
+      viewer.held.includes(Permissions.CONVERSATIONS_VIEW_ALL),
+      viewer.held.includes(Permissions.CONVERSATIONS_ARCHIVE),
+      viewer.held.includes(Permissions.MESSAGES_INTERNAL_NOTE),
+      // The line of an order says its number and its total: only who may read orders finds it (as the thread shows it)
+      viewer.held.includes(Permissions.ORDERS_VIEW)
+    ] as const
+    const [conversationId, canViewAll, canSeeHidden, canReadNotes, canReadOrders] = visibility
+    const hidden = [...ConversationHiddenStatuses]
     // A text of only stop words ("cuando") leaves the tsquery empty, and an empty tsquery matches nothing: the person
     // typed something real and would be told there is none. Those texts are read as the words they are instead.
     const reading = await this.readQuery(params.q)
-    if (reading.empty) return this.searchMessagesAsTyped(storeId, visible, params, reading.folded)
-    // The candidates are the newest messages that match, ranked afterwards: ranking needs the text of each one folded
-    // and parsed again, so it is never asked of every match of a common word. The snippet is made for the page only.
-    // The tsquery is made once. `hits` leaves one more row than the page, to know if there is more.
-    const rows = await this.prisma.client.$queryRaw<unknown[]>`
-      WITH q AS (
-        SELECT
-          websearch_to_tsquery(${SEARCH_LANGUAGE_SQL}, immutable_unaccent(${params.q})) AS folded,
-          -- The marks come from the folded text and from the typed one, because the stemmer folds accents unevenly
-          -- and a word may be a match in one and not in the other
-          websearch_to_tsquery(${SEARCH_LANGUAGE_SQL}, ${params.q})
-            || websearch_to_tsquery(${SEARCH_LANGUAGE_SQL}, immutable_unaccent(${params.q})) AS marked
-      ),
-      candidates AS (
-        SELECT m.id, m.conversation_id, m.type, m.created_at, m.content, c.customer_id,
-          to_tsvector(${SEARCH_LANGUAGE_SQL}, immutable_unaccent(coalesce(m.content, ''))) AS vector
-        FROM messages m
-        JOIN conversations c ON c.id = m.conversation_id AND c.store_id = m.store_id
-        JOIN customers cust ON cust.id = c.customer_id AND cust.store_id = c.store_id
-        CROSS JOIN q
-        WHERE ${visible}
-          AND to_tsvector(${SEARCH_LANGUAGE_SQL}, immutable_unaccent(coalesce(m.content, ''))) @@ q.folded
-        ORDER BY m.created_at DESC, m.id DESC
-        LIMIT ${SearchConfig.MESSAGE_CANDIDATES}
-      ),
-      page AS (
-        SELECT cand.*, ts_rank(cand.vector, q.folded) AS rank
-        FROM candidates cand CROSS JOIN q
-        ORDER BY rank DESC, cand.created_at DESC, cand.id DESC
-        LIMIT ${params.limit + 1}
-      )
-      SELECT
-        page.id, page.conversation_id, page.type, page.created_at,
-        cust.id AS customer_id, cust.name AS customer_name,
-        ts_headline(${SEARCH_LANGUAGE_SQL}, page.content, q.marked, ${SNIPPET_OPTIONS}) AS snippet
-      FROM page
-      CROSS JOIN q
-      JOIN customers cust ON cust.id = page.customer_id AND cust.store_id = ${storeId}
-      ORDER BY page.rank DESC, page.created_at DESC, page.id DESC
-    `
-    const all = z.array(messageRow).parse(rows).map(toMessageHit)
-    return pageOf(params.q, all, params.limit)
+    let rows: unknown[]
+    if (reading.empty) {
+      // The words are what is compared ("¿cuándo?" finds "cuándo"): the punctuation around them is not part of what the
+      // person looks for. A text with no letter or digit at all ("!!!") is compared as the symbols it is.
+      const words = reading.folded.match(/[\p{L}\p{N}]+/gu)
+      const needle = words ? words.join(' ') : reading.folded.trim()
+      if ([...needle].length < SearchConfig.MESSAGE_AS_TYPED_MIN_LENGTH) {
+        return pageOf(params.q, [], params.limit)
+      }
+      rows = await this.prisma.client.$queryRaw<unknown[]>`
+        SELECT f.* FROM public.rls_search_messages_typed(
+          ${`%${escapeLike(needle)}%`}, ${params.q}, ${params.limit}::integer, ${conversationId}::text,
+          ${canViewAll}::boolean, ${canSeeHidden}::boolean, ${canReadNotes}::boolean, ${canReadOrders}::boolean,
+          ${hidden}::text[], ${MessageType.SYSTEM}, ${MessageType.INTERNAL_NOTE}, ${MessageType.ORDER_SUMMARY},
+          ${SNIPPET_OPTIONS}
+        ) WITH ORDINALITY AS f ORDER BY f.ordinality`
+    } else {
+      // The candidates are the newest messages that match, ranked afterwards (inside the function): ranking needs the
+      // text of each one folded and parsed again, so it is never asked of every match of a common word.
+      rows = await this.prisma.client.$queryRaw<unknown[]>`
+        SELECT f.* FROM public.rls_search_messages(
+          ${params.q}, ${params.limit}::integer, ${SearchConfig.MESSAGE_CANDIDATES}::integer, ${conversationId}::text,
+          ${canViewAll}::boolean, ${canSeeHidden}::boolean, ${canReadNotes}::boolean, ${canReadOrders}::boolean,
+          ${hidden}::text[], ${MessageType.SYSTEM}, ${MessageType.INTERNAL_NOTE}, ${MessageType.ORDER_SUMMARY},
+          ${SNIPPET_OPTIONS}
+        ) WITH ORDINALITY AS f ORDER BY f.ordinality`
+    }
+    return pageOf(params.q, z.array(messageRow).parse(rows).map(toMessageHit), params.limit)
   }
 
-  // What a message search must NOT show, as one condition for the statements of both ways of searching (`m` is the
-  // message, `c` its conversation, `cust` its customer). The store is the one of the request.
-  private visibleMessages(
+  // The search functions read the store from the context of the transaction, so they run in one. The request already has it when the
+  // interceptor of the context is on (then it must be the context of THIS store alone: the functions answer for every store of the
+  // context); with the switch off the search opens its own, for the store the TenantGuard put in the request.
+  private inContext<T>(
     storeId: string,
-    viewer: SearchViewer,
-    conversationId: string | undefined
-  ): RawSql {
-    const canViewAll = viewer.held.includes(Permissions.CONVERSATIONS_VIEW_ALL)
-    const canSeeHidden = viewer.held.includes(Permissions.CONVERSATIONS_ARCHIVE)
-    const canReadNotes = viewer.held.includes(Permissions.MESSAGES_INTERNAL_NOTE)
-    // The line of an order says its number and its total: only who may read orders finds it (as the thread shows it)
-    const canReadOrders = viewer.held.includes(Permissions.ORDERS_VIEW)
-    const hidden = [...ConversationHiddenStatuses]
-    const only = conversationId ?? null
-    return rawSql`m.store_id = ${storeId}
-          AND m.deleted_at IS NULL
-          AND m.discarded_at IS NULL
-          -- The lines the platform writes into the thread (assignments, status changes) are not messages
-          AND m.type <> ${MessageType.SYSTEM}
-          AND cust.erased_at IS NULL
-          AND (${canReadNotes}::boolean OR m.type <> ${MessageType.INTERNAL_NOTE})
-          AND (${canReadOrders}::boolean OR m.type <> ${MessageType.ORDER_SUMMARY})
-          AND (${canViewAll}::boolean OR c.assigned_to IS NULL OR c.assigned_to = ${viewer.userId})
-          AND (${canSeeHidden}::boolean OR NOT (c.status = ANY(${hidden}::text[])))
-          AND (${only}::text IS NULL OR m.conversation_id = ${only}::text)`
+    userId: string | undefined,
+    work: () => Promise<T>
+  ): Promise<T> {
+    const current = this.prisma.currentTenantContext()
+    if (current) {
+      if (current.storeIds.length !== 1 || current.storeIds[0] !== storeId) {
+        throw new Error(
+          'the search runs in the context of the store of the request, and of that store alone'
+        )
+      }
+      return work()
+    }
+    return this.prisma.tenantTransaction({ storeIds: [storeId], organizationIds: [], userId }, work)
   }
 
   // One round trip: whether the text has no word the index can look for (only stop words, or only symbols, so its
-  // tsquery is empty) and the text folded the way the database folds the stored one
+  // tsquery is empty) and the text folded the way the database folds the stored one. It reads no table.
   private async readQuery(q: string): Promise<{ empty: boolean; folded: string }> {
     const rows = await this.prisma.client.$queryRaw<{ empty: boolean; folded: string }[]>`
       SELECT
@@ -164,101 +155,32 @@ export class SearchService {
     return { empty: rows[0]?.empty === true, folded: rows[0]?.folded ?? '' }
   }
 
-  // The fallback of a text with no searchable word: the messages that contain it as typed, folded for accents and case
-  // on both sides, newest first, with the same visibility as the search by words. There is no index on the folded text
-  // of a message, but such texts are common words, so the newest rows that match fill the page at once and the
-  // scan stops there (LIMIT), and a text shorter than MESSAGE_AS_TYPED_MIN_LENGTH matches too much to be one.
-  // The words are what is compared ("¿cuándo?" finds "cuándo"): the punctuation around them is not part of what the
-  // person looks for. A text with no letter or digit at all ("!!!") is compared as the symbols it is.
-  // The snippet is read in the literal configuration, which keeps the stop words the search by words drops.
-  private async searchMessagesAsTyped(
-    storeId: string,
-    visible: RawSql,
-    params: { q: string; limit: number },
-    folded: string
-  ): Promise<SearchResult<MessageSearchHit>> {
-    const words = folded.match(/[\p{L}\p{N}]+/gu)
-    const needle = words ? words.join(' ') : folded.trim()
-    if ([...needle].length < SearchConfig.MESSAGE_AS_TYPED_MIN_LENGTH) {
-      return pageOf(params.q, [], params.limit)
-    }
-    const contains = `%${escapeLike(needle)}%`
-    const rows = await this.prisma.client.$queryRaw<unknown[]>`
-      WITH candidates AS (
-        SELECT m.id, m.conversation_id, m.type, m.created_at, m.content, c.customer_id
-        FROM messages m
-        JOIN conversations c ON c.id = m.conversation_id AND c.store_id = m.store_id
-        JOIN customers cust ON cust.id = c.customer_id AND cust.store_id = c.store_id
-        WHERE ${visible}
-          AND lower(immutable_unaccent(coalesce(m.content, ''))) LIKE ${contains} ESCAPE '\\'
-        ORDER BY m.created_at DESC, m.id DESC
-        LIMIT ${params.limit + 1}
-      )
-      SELECT
-        cand.id, cand.conversation_id, cand.type, cand.created_at,
-        cust.id AS customer_id, cust.name AS customer_name,
-        ts_headline(
-          ${SEARCH_LITERAL_LANGUAGE_SQL}, cand.content,
-          websearch_to_tsquery(${SEARCH_LITERAL_LANGUAGE_SQL}, ${params.q})
-            || websearch_to_tsquery(${SEARCH_LITERAL_LANGUAGE_SQL}, immutable_unaccent(${params.q})),
-          ${SNIPPET_OPTIONS}
-        ) AS snippet
-      FROM candidates cand
-      JOIN customers cust ON cust.id = cand.customer_id AND cust.store_id = ${storeId}
-      ORDER BY cand.created_at DESC, cand.id DESC
-    `
-    return pageOf(params.q, z.array(messageRow).parse(rows).map(toMessageHit), params.limit)
-  }
-
   // Customers by name (a part of it, with no accents, or a typo), by email and by a run of digits of their phone. The
   // ones erased and the ones a merge absorbed are not found. The name is compared in its folded column, which the
   // database generates, so the order of results does not depend on how a name was typed.
-  async searchCustomers(
+  searchCustomers(
     storeId: string,
     params: { q: string; limit: number }
   ): Promise<SearchResult<CustomerSearchHit>> {
+    return this.inContext(storeId, undefined, () => this.customersInContext(params))
+  }
+
+  private async customersInContext(params: {
+    q: string
+    limit: number
+  }): Promise<SearchResult<CustomerSearchHit>> {
     const folded = await foldInDatabase(this.prisma.client, params.q)
     // The database may fold to nothing a text that looks like one here: an empty LIKE would match every customer
     if (folded === '') return pageOf(params.q, [], params.limit)
-    const contains = `%${escapeLike(folded)}%`
-    const startsWith = `${escapeLike(folded)}%`
-    // The email is compared as typed (the list of customers does the same): it is not a name, and it has no accents to fold
-    const typed = `%${escapeLike(params.q)}%`
     const digits = phoneDigitsOf(params.q)
-    const byPhone = digits !== ''
-    const byWord = [...folded].length >= SearchConfig.WORD_SIMILARITY_MIN_LENGTH
     const rows = await this.prisma.client.$queryRaw<unknown[]>`
-      SELECT c.id, c.name, c.email, c.phone
-      FROM customers c
-      WHERE c.store_id = ${storeId}
-        AND c.erased_at IS NULL
-        AND c.merged_into_id IS NULL
-        AND (
-          c.name_search LIKE ${contains} ESCAPE '\\'
-          OR c.email ILIKE ${typed} ESCAPE '\\'
-          -- The % operator can use the index and reads pg_trgm.similarity_threshold, whose default is the constant
-          -- (the integration spec checks it); the second test keeps a lower setting from widening the match
-          OR (c.name_search % ${folded} AND similarity(c.name_search, ${folded}) > ${SearchConfig.SIMILARITY_THRESHOLD})
-          -- A typo in one word of a longer name ("sebastain" for "sebastian pena"): the whole name is not similar to the
-          -- word, the best run of its words is. The <% operator can use the index and reads pg_trgm.word_similarity_threshold
-          OR (
-            ${byWord}::boolean
-            AND ${folded} <% c.name_search
-            AND word_similarity(${folded}, c.name_search) >= ${SearchConfig.WORD_SIMILARITY_THRESHOLD}
-          )
-          OR (${byPhone}::boolean AND c.phone_normalized LIKE ${`%${digits}%`} ESCAPE '\\')
-        )
-      ORDER BY
-        CASE
-          WHEN c.name_search = ${folded} THEN 0
-          WHEN c.name_search LIKE ${startsWith} ESCAPE '\\' THEN 1
-          WHEN c.name_search LIKE ${contains} ESCAPE '\\' THEN 2
-          ELSE 3
-        END,
-        similarity(c.name_search, ${folded}) DESC,
-        c.name_search, c.id
-      LIMIT ${params.limit + 1}
-    `
+      SELECT f.* FROM public.rls_search_customers(
+        ${folded}, ${`%${escapeLike(folded)}%`}, ${`${escapeLike(folded)}%`},
+        -- The email is compared as typed (the list of customers does the same): it is not a name, and it has no accents to fold
+        ${`%${escapeLike(params.q)}%`}, ${`%${digits}%`}, ${digits !== ''}::boolean,
+        ${[...folded].length >= SearchConfig.WORD_SIMILARITY_MIN_LENGTH}::boolean, ${params.limit}::integer,
+        ${SearchConfig.SIMILARITY_THRESHOLD}::real, ${SearchConfig.WORD_SIMILARITY_THRESHOLD}::real
+      ) WITH ORDINALITY AS f ORDER BY f.ordinality`
     return pageOf(params.q, z.array(customerRow).parse(rows), params.limit)
   }
 
@@ -266,40 +188,28 @@ export class SearchService {
   // of digits of their phone. The newest first among the ones that match the number the same way.
   // `byCustomer` false (a plugin whose key lacks `customers:read`): the order is found by its number only, and the name and the
   // phone of the customer are not even compared, so the answer cannot tell who an order is for
-  async searchOrders(
+  searchOrders(
     storeId: string,
     params: { q: string; limit: number },
     // Required on purpose: the caller says whether the customer may be searched; there is no default that opens it
     byCustomer: boolean
   ): Promise<SearchResult<OrderSearchHit>> {
+    return this.inContext(storeId, undefined, () => this.ordersInContext(params, byCustomer))
+  }
+
+  private async ordersInContext(
+    params: { q: string; limit: number },
+    byCustomer: boolean
+  ): Promise<SearchResult<OrderSearchHit>> {
     const folded = await foldInDatabase(this.prisma.client, params.q)
     if (folded === '') return pageOf(params.q, [], params.limit)
     const escaped = escapeLike(folded)
-    const contains = `%${escaped}%`
     const digits = phoneDigitsOf(params.q)
-    const byPhone = byCustomer && digits !== ''
     const rows = await this.prisma.client.$queryRaw<unknown[]>`
-      SELECT
-        o.id, o.order_number, o.status, o.total_cents, o.currency, o.created_at,
-        cust.id AS customer_id,
-        CASE WHEN cust.erased_at IS NULL THEN cust.name END AS customer_name
-      FROM orders o
-      JOIN customers cust ON cust.id = o.customer_id AND cust.store_id = o.store_id
-      WHERE o.store_id = ${storeId}
-        AND (
-          o.order_number ILIKE ${contains} ESCAPE '\\'
-          OR (${byCustomer}::boolean AND cust.erased_at IS NULL AND cust.name_search LIKE ${contains} ESCAPE '\\')
-          OR (${byPhone}::boolean AND cust.erased_at IS NULL AND cust.phone_normalized LIKE ${`%${digits}%`} ESCAPE '\\')
-        )
-      ORDER BY
-        CASE
-          WHEN lower(o.order_number) = ${folded} THEN 0
-          WHEN o.order_number ILIKE ${`${escaped}%`} ESCAPE '\\' THEN 1
-          ELSE 2
-        END,
-        o.created_at DESC, o.id DESC
-      LIMIT ${params.limit + 1}
-    `
+      SELECT f.* FROM public.rls_search_orders(
+        ${folded}, ${`%${escaped}%`}, ${`${escaped}%`}, ${`%${digits}%`},
+        ${byCustomer}::boolean, ${byCustomer && digits !== ''}::boolean, ${params.limit}::integer
+      ) WITH ORDINALITY AS f ORDER BY f.ordinality`
     const all = z
       .array(orderRow)
       .parse(rows)
