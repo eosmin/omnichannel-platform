@@ -52,7 +52,7 @@ import {
 } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { ChannelDisconnectedReasons, Events } from '@platform/core/events'
-import { enumValueOf } from '@platform/core/messaging'
+import { enumValueOf, findConnectionHolder } from '@platform/core/messaging'
 import { PluginRegistry, RemoteChannelPlugin } from '@platform/plugins/runtime'
 import {
   ChannelCapability,
@@ -501,6 +501,20 @@ export class ChannelConnectionsService {
             displayName: true
           }
         })
+        if (existing === null) {
+          // A row of another store is invisible to this transaction once row security is enforced: ask the resolver, which
+          // answers the ids and the status of the holder and nothing else
+          const holder = await findConnectionHolder(tx, pluginId, result.connectionId)
+          if (holder !== null && holder.storeId !== storeId) {
+            existing = {
+              id: holder.id,
+              storeId: holder.storeId,
+              status: holder.status,
+              connectionId: result.connectionId,
+              displayName: result.connectionId
+            }
+          }
+        }
         if (existing !== null && existing.storeId !== storeId) {
           if (existing.status !== String(ChannelConnectionStatus.DISCONNECTED)) {
             throw await this.accountInUse(tx, existing.storeId, actor.userId)
@@ -858,10 +872,7 @@ export class ChannelConnectionsService {
   ): Promise<void> {
     try {
       // An account that a row holds, of this store or of another, is not ours to release
-      const holder = await this.prisma.client.channelConnection.findUnique({
-        where: { pluginId_connectionId: { pluginId, connectionId: result.connectionId } },
-        select: { id: true }
-      })
+      const holder = await findConnectionHolder(this.prisma.client, pluginId, result.connectionId)
       if (holder !== null) return
       await withTimeout(
         plugin.disconnect(

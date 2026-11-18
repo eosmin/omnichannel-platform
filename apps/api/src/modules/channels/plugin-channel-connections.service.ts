@@ -25,6 +25,7 @@ import {
 } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { ChannelDisconnectedReasons, Events } from '@platform/core/events'
+import { findConnectionHolder } from '@platform/core/messaging'
 import { PluginTypes } from '@platform/plugins/sdk'
 
 import { type Actor, auditActorOf, auditViaOf } from '../tenancy/actor'
@@ -184,6 +185,13 @@ export class PluginChannelConnectionsService {
         where: { pluginId_connectionId: { pluginId, connectionId } },
         select: { id: true, storeId: true, installationId: true, status: true }
       })
+      if (existing === null) {
+        // Another store's row is invisible to this transaction once row security is enforced: the same answer as before for it
+        const holder = await findConnectionHolder(tx, pluginId, connectionId)
+        if (holder !== null && holder.storeId !== storeId) {
+          throw resourceConflict('this account is already linked')
+        }
+      }
       if (existing !== null) {
         // An account is linked to one store at a time, and to one installation of it: another store's, or an installation that is
         // not this one's and is still live, is the plugin's to resolve with a new connectionId. The answer does not say whose.

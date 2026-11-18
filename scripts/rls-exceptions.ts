@@ -2,18 +2,12 @@ import type { RlsExemption } from './lib/rls'
 
 // The phases of the RLS step (docs/IMPLEMENTATION_PLAN.md, Step 7.1): 1 configuration, catalogs and audit, 2 conversations and
 // customers, 3 orders, inventory and shipping, 4 finance and fiscal. Each phase is a migration that calls rls_apply_policy for its
-// tables and deletes their lines from RLS_PENDING in the same change. The list only shrinks; it ends empty.
+// tables and deletes their lines from this list in the same change. The four phases have landed, so no table is pending now: a new
+// table that is neither covered nor global fails validate:rls. A `pending(phase, reason)` helper comes back with the next phase.
 export const RLS_PHASES: readonly number[] = [1, 2, 3, 4]
 
-const pending = (phase: number, reason: string): RlsExemption => ({
-  kind: 'pending',
-  phase,
-  reason
-})
 const neverPolicy = (reason: string): RlsExemption => ({ kind: 'global', reason })
 
-const BY_PARENT =
-  'No store column: its policy goes through its parent (EXISTS on the parent, whose own policy applies)'
 const GUARD_READS = 'Read by a guard or a public flow before any tenant context exists'
 const OF_A_PERSON = 'A row of a person, not of a store: the id always comes from the token'
 
@@ -39,21 +33,5 @@ export const RLS_EXEMPTIONS: Readonly<Record<string, RlsExemption>> = {
   roles: neverPolicy(
     `${GUARD_READS}: the permissions of a member are resolved from it before the context is set`
   ),
-  permissions: neverPolicy(`${GUARD_READS}, with its role`),
-
-  // Phase 2: conversations, customers, media
-  conversations: pending(2, 'Inbox'),
-  conversation_origins: pending(2, 'Inbox'),
-  messages: pending(2, 'Inbox'),
-  message_reactions: pending(2, 'Inbox'),
-  message_revisions: pending(2, 'Inbox'),
-  channel_connections: pending(2, 'Channels; inbound webhooks run in the worker'),
-  customers: pending(2, 'Customers'),
-  customer_identities: pending(2, 'Customers'),
-  customer_merges: pending(2, 'Customers'),
-  customer_fiscal_data: pending(2, 'Customers'),
-  customer_notes: pending(2, BY_PARENT),
-  addresses: pending(2, BY_PARENT),
-  media: pending(2, 'Files of a store'),
-  notifications: pending(2, 'Inbox')
+  permissions: neverPolicy(`${GUARD_READS}, with its role`)
 }
