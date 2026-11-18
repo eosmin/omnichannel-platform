@@ -1,4 +1,4 @@
-import { httpUrl, singleLineText } from './validation'
+import { httpUrl, queryIntSchema, singleLineText } from './validation'
 
 const schema = httpUrl(2048)
 
@@ -97,5 +97,42 @@ describe('singleLineText', () => {
     ['a pile of combining marks', `A${'\u0300'.repeat(8)}`]
   ])('refuses %s', (_name, value) => {
     expect(line.safeParse(value).success).toBe(false)
+  })
+})
+
+describe('queryIntSchema', () => {
+  const page = queryIntSchema(1, 100).default(50)
+
+  it.each([
+    ['1', 1],
+    ['100', 100],
+    ['007', 7]
+  ])('reads %s as %d', (value, expected) => {
+    expect(page.parse(value)).toBe(expected)
+  })
+
+  it('takes the default only when the value is absent', () => {
+    expect(page.parse(undefined)).toBe(50)
+  })
+
+  it.each([
+    ['blank', ' '],
+    ['empty', ''],
+    ['padded', ' 5'],
+    ['exponent', '1e1'],
+    ['hexadecimal', '0x10'],
+    ['signed', '+5'],
+    ['negative', '-5'],
+    ['decimal', '1.0'],
+    ['below the range', '0'],
+    ['above the range', '101'],
+    ['too many digits', '1234567890'],
+    ['text', 'abc']
+  ])('refuses a %s value', (_name, value) => {
+    expect(page.safeParse(value).success).toBe(false)
+  })
+
+  it('lets the caller start the range at 0', () => {
+    expect(queryIntSchema(0, 1_000_000).parse('0')).toBe(0)
   })
 })

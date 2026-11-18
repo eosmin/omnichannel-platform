@@ -406,6 +406,126 @@ describe('The legal books', () => {
     })
   })
 
+  describe('the warnings of a sales book', () => {
+    // February is its own month, so the January suite above keeps its sales. Each case is one sale with the documents it came to have.
+    let februaryA = ''
+    const documentOf = (
+      orderId: string,
+      entryId: string,
+      override: {
+        kind?: string
+        external: string
+        issuedAt: string
+        voidedAt?: string
+        parentDocumentId?: string
+        replacesDocumentId?: string
+      }
+    ) =>
+      owner.fiscalDocument.create({
+        data: {
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA.id,
+          orderId,
+          journalEntryId: entryId,
+          sequenceNumber: (sequence += 1),
+          kind: override.kind ?? 'sale',
+          documentType: SimulatorDocumentTypes.CONSUMER,
+          status: 'accepted',
+          providerId: 'simulator',
+          environment: 'sandbox',
+          externalNumber: override.external,
+          issuerSnapshot: {},
+          linesSnapshot: { lines: [] },
+          receiverEncrypted: Buffer.from('suite'),
+          totalCents: 1999,
+          taxCents: 230,
+          issuedAt: new Date(override.issuedAt),
+          voidedAt: override.voidedAt === undefined ? null : new Date(override.voidedAt),
+          parentDocumentId: override.parentDocumentId ?? null,
+          replacesDocumentId: override.replacesDocumentId ?? null
+        },
+        select: { id: true }
+      })
+
+    async function februarySale(day: string): Promise<{ orderId: string; entryId: string }> {
+      const order = await createOrder(owner, { storeId: ctx.storeA.id })
+      await owner.order.update({
+        where: { id: order.id },
+        data: { taxCents: 230, pricesIncludeTax: true }
+      })
+      await owner.orderItem.update({
+        where: { id: order.itemId },
+        data: { taxTreatment: 'taxed', taxRateBps: 1300, taxCents: 230 }
+      })
+      const entry = await postTestEntry(owner, {
+        organizationId: ctx.orgA.id,
+        periodId: februaryA,
+        entryDate: day,
+        type: JournalEntryType.SALE,
+        sourceType: FinanceSourceType.ORDER,
+        sourceId: order.id,
+        idempotencyKey: FinancePostingKey.ORDER_SALE(order.id),
+        lines: [
+          { accountId: accountsA[CASH] ?? '', debitCents: 1999 },
+          { accountId: accountsA[SALES] ?? '', creditCents: 1999 }
+        ]
+      })
+      return { orderId: order.id, entryId: entry.id }
+    }
+
+    it('count a credit note as no unknown document, list the sale once, and count a voided document only when the sale has no other', async () => {
+      // The month may exist already (the setup makes the months since the start); the builder makes it when it does not
+      const existing = await owner.fiscalPeriod.findFirst({
+        where: { organizationId: ctx.orgA.id, year: 2026, month: 2 },
+        select: { id: true }
+      })
+      februaryA = existing?.id ?? (await createPeriod(owner, ctx.orgA.id, 2026, 2))
+      // 1. A sale with its credit note: one row, nothing unclassified
+      const credited = await februarySale('2026-02-03')
+      const invoice = await documentOf(credited.orderId, credited.entryId, {
+        external: 'FEB-1',
+        issuedAt: '2026-02-03T12:00:00Z'
+      })
+      await documentOf(credited.orderId, credited.entryId, {
+        kind: 'credit_note',
+        external: 'NC-1',
+        issuedAt: '2026-02-04T12:00:00Z',
+        parentDocumentId: invoice.id
+      })
+      // 2. A sale whose document was voided and made again: listed once, with the new document, and not a voided sale
+      const replaced = await februarySale('2026-02-05')
+      // The replacement is issued while the original is alive, and the original is voided after it (the order of the real flow)
+      const first = await documentOf(replaced.orderId, replaced.entryId, {
+        external: 'FEB-2',
+        issuedAt: '2026-02-05T12:00:00Z',
+        voidedAt: '2026-02-06T14:00:00Z'
+      })
+      await documentOf(replaced.orderId, replaced.entryId, {
+        external: 'FEB-2B',
+        issuedAt: '2026-02-06T13:00:00Z',
+        replacesDocumentId: first.id
+      })
+      // 3. A sale whose only document was voided: left out and counted
+      const voided = await februarySale('2026-02-07')
+      await documentOf(voided.orderId, voided.entryId, {
+        external: 'FEB-3',
+        issuedAt: '2026-02-07T12:00:00Z',
+        voidedAt: '2026-02-08T12:00:00Z'
+      })
+
+      const response = await asAdminA().get(
+        `${ApiRoutes.finance.books.byKind(LegalBookKind.SALES_CONSUMERS)}?periodId=${februaryA}`
+      )
+      expect(response.status).toBe(OK)
+      const february = response.body as BookBody
+      const numbers = february.rows.map(row => row[february.header.indexOf('document_number')])
+
+      expect(numbers).toEqual(['FEB-1', 'FEB-2B'])
+      expect(february.warnings.unclassifiedDocuments).toBe(0)
+      expect(february.warnings.voidedDocuments).toBe(1)
+    })
+  })
+
   describe('the files', () => {
     it('are a CSV with the state of the book beside them, and leave an audit row', async () => {
       const response = await asAdminA().get(
@@ -550,6 +670,51 @@ describe('The legal books', () => {
       await expect(
         owner.financeBookSnapshot.deleteMany({ where: { organizationId: ctx.orgA.id } })
       ).rejects.toThrow(/never changed or deleted/)
+    })
+  })
+
+  describe('the confirmation of a layout (FIS-426)', () => {
+    it('takes finance:confirm_books, for confirming and for writing over a confirmed layout', async () => {
+      const manager = await asRole('books-manager', [
+        Permissions.FINANCE_MANAGE_ACCOUNTS,
+        Permissions.FINANCE_VIEW_REPORTS
+      ])
+      const confirmer = await asRole('books-confirmer', [
+        Permissions.FINANCE_MANAGE_ACCOUNTS,
+        Permissions.FINANCE_CONFIRM_BOOKS
+      ])
+      const onlyConfirm = await asRole('books-only-confirm', [Permissions.FINANCE_CONFIRM_BOOKS])
+      const columns = [{ field: LegalBookField.TOTAL, label: null }]
+      const route = ApiRoutes.finance.bookLayouts.byKind(LegalBookKind.PURCHASES)
+      const put = (who: typeof manager, confirmed: boolean) =>
+        who.put(route).send(layoutBody(columns, 1, confirmed))
+      const latest = async (): Promise<LayoutBody> => {
+        const list = await asAdminA().get(ApiRoutes.finance.bookLayouts.list)
+        return (list.body as LayoutBody[]).find(
+          item => String(item.kind) === String(LegalBookKind.PURCHASES)
+        ) as LayoutBody
+      }
+
+      // Whoever manages the settings writes a layout, never a confirmed one
+      expect((await put(manager, true)).status).toBe(FORBIDDEN)
+      expect((await put(manager, false)).status).toBe(OK)
+      expect((await latest()).accountantConfirmed).toBe(false)
+      // The permission to confirm alone does not write: the route asks for the settings too
+      expect((await put(onlyConfirm, true)).status).toBe(FORBIDDEN)
+      // The Admin preset holds both, and so does a role with the two
+      expect((await put(confirmer, true)).status).toBe(OK)
+      const confirmed = await latest()
+      expect(confirmed.accountantConfirmed).toBe(true)
+      // A confirmed layout is not written over by a person who cannot confirm: the new version would drop the accountant's word
+      expect((await put(manager, false)).status).toBe(FORBIDDEN)
+      expect((await latest()).version).toBe(confirmed.version)
+      expect(
+        (
+          await asAdminA()
+            .put(route)
+            .send(layoutBody(columns, 1, true))
+        ).status
+      ).toBe(OK)
     })
   })
 })

@@ -27,25 +27,41 @@ export interface ChargeBasis {
   carrierCostCents: number | null
   carrierRateCents: number | null
   commissionBps: number | null
+  // What the guide took out of the advance the business paid for its guides (the average cost of the guides it holds when it was made,
+  // `carrier_guide_movements`, Step 4.16): null or absent when no advance covered it (the connection does not prepay, or no purchase was
+  // on record). A guide the advance covered is paid: the carrier is not owed its cost again (HC-101).
+  prepaidGuideCostCents?: number | null
 }
 
 export interface ChargeAmounts {
-  // The guide's cost, only when the sender pays it
+  // The guide's cost, only when the sender pays it, or what the advance gave up for it
   freightCents: number
   // The commission over the cash the carrier collected, whoever pays the guide
   commissionCents: number
+  // Of the guide's cost, what the advance already paid (so it is credited to the advance, not owed). Present only for a guide the advance covered
+  advanceCents?: number
 }
 
 // The cost the carrier reported, else the rate the connection had when the guide was made; the commission is half up over the amount
 // collected (the same function that estimates the expected amount of the remittance, so the two never disagree by a cent)
 export function chargeAmounts(basis: ChargeBasis): ChargeAmounts {
+  const commission =
+    basis.codAmountCents === null || basis.commissionBps === null
+      ? 0
+      : commissionCents(basis.codAmountCents, basis.commissionBps)
+  // A guide the advance covered costs the business what the advance gave up for it, whoever pays the guide: it was bought and it is gone.
+  // The cost the carrier reports is not read, the money was paid when the guides were bought
+  if (basis.prepaidGuideCostCents !== undefined && basis.prepaidGuideCostCents !== null) {
+    return {
+      freightCents: basis.prepaidGuideCostCents,
+      advanceCents: basis.prepaidGuideCostCents,
+      commissionCents: commission
+    }
+  }
   const cost = basis.carrierCostCents ?? basis.carrierRateCents ?? 0
   return {
     freightCents: basis.shippingPayer === (ShippingPayer.SENDER as string) ? cost : 0,
-    commissionCents:
-      basis.codAmountCents === null || basis.commissionBps === null
-        ? 0
-        : commissionCents(basis.codAmountCents, basis.commissionBps)
+    commissionCents: commission
   }
 }
 
@@ -58,6 +74,8 @@ export function chargeLines(input: {
   const { amounts } = input
   const total = amounts.freightCents + amounts.commissionCents
   if (total === 0) return { ok: true, lines: [] }
+  // What the advance already paid is not owed: it is credited to the advance, and the carrier is owed the rest (HC-101)
+  const advance = amounts.advanceCents ?? 0
   return linesOf(
     input.accounts,
     [
@@ -65,9 +83,10 @@ export function chargeLines(input: {
       { role: AccountRole.CARRIER_COMMISSION_EXPENSE, cents: amounts.commissionCents }
     ],
     [
+      { role: AccountRole.PREPAID_CARRIER_GUIDES, cents: advance },
       {
         role: AccountRole.PAYABLE_CARRIERS,
-        cents: total,
+        cents: total - advance,
         party: { partyType: PartyType.CARRIER_CONNECTION, partyId: input.carrierConnectionId }
       }
     ],
