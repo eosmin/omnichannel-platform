@@ -11,7 +11,12 @@ import { Events } from '@platform/core/events'
 import { allowLocalCommandsUrl } from '@platform/core/url-safety'
 import { PluginScopes } from '@platform/plugins/sdk'
 
-import { isNewerVersion, manifestWebhookOf, pluginManifestSchema } from './plugin-manifest'
+import {
+  isNewerVersion,
+  manifestMaxWebhooksPerDay,
+  manifestWebhookOf,
+  pluginManifestSchema
+} from './plugin-manifest'
 
 // A manifest that is valid; each case changes one thing
 function manifest(over: Record<string, unknown> = {}): Record<string, unknown> {
@@ -271,6 +276,23 @@ describe('pluginManifestSchema', () => {
           })
         )
       ).toBe(true)
+    })
+  })
+
+  describe('the daily cap of webhooks of a stored manifest', () => {
+    it.each([
+      [{ limits: { maxWebhooksPerDay: 10 } }, 10],
+      [{ limits: { maxWebhooksPerDay: 1 } }, 1],
+      [{ limits: { maxWebhooksPerDay: 0 } }, null],
+      [{ limits: { maxWebhooksPerDay: 1.5 } }, null],
+      [{ limits: { maxWebhooksPerDay: '5' } }, null],
+      [{ limits: { maxWebhooksPerDay: PluginManifestLimits.MAX_WEBHOOKS_PER_DAY + 1 } }, null],
+      [{ limits: {} }, null],
+      [{}, null],
+      [null, null],
+      ['x', null]
+    ])('reads %j as %j', (manifest, expected) => {
+      expect(manifestMaxWebhooksPerDay(manifest)).toBe(expected)
     })
   })
 

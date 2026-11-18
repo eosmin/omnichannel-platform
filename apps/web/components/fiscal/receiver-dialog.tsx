@@ -22,7 +22,14 @@ import { toast } from '../../lib/toast'
 import { TextField } from '../finance/fields'
 import { useStore } from '../providers/store-context'
 import { Button } from '../ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  stickyDialogActionsClass
+} from '../ui/dialog'
 
 import { AddressRowsField } from './address-rows-field'
 
@@ -181,7 +188,7 @@ function ReceiverForm({
           {refusal}
         </p>
       )}
-      <div className="flex justify-end gap-2">
+      <div className={`${stickyDialogActionsClass} flex justify-end gap-2`}>
         <Button type="button" variant="outline" onClick={onDone} disabled={patch.isPending}>
           {t('cancel')}
         </Button>
