@@ -2,7 +2,13 @@ import { Injectable } from '@nestjs/common'
 import { z } from 'zod'
 
 import { type Permission, Permissions } from '@platform/core/auth'
-import { PrismaService, SEARCH_LANGUAGE_SQL } from '@platform/core/database'
+import {
+  PrismaService,
+  type RawSql,
+  rawSql,
+  SEARCH_LANGUAGE_SQL,
+  SEARCH_LITERAL_LANGUAGE_SQL
+} from '@platform/core/database'
 import {
   ConversationHiddenStatuses,
   MessageType,
@@ -57,8 +63,8 @@ const SNIPPET_OPTIONS =
 
 // The search of the store of the request (TDD_08 §5.4). Every statement filters by the store that TenantGuard put in
 // the request, never by anything in the query string, and the text is ALWAYS a bind parameter, with the wildcards of
-// LIKE (% _ and the backslash) escaped, so it is only ever read as the characters it is. The one piece of SQL that is
-// spliced in is the text-search configuration, a constant of the platform. Everything is read accent-insensitive: the
+// LIKE (% _ and the backslash) escaped, so it is only ever read as the characters it is. The pieces of SQL that are
+// spliced in are the text-search configurations and the conditions of visibility built here with bind parameters. Everything is read accent-insensitive: the
 // text and the stored text are folded the same way (`immutable_unaccent`, migration search_unaccent).
 @Injectable()
 export class SearchService {
@@ -73,13 +79,11 @@ export class SearchService {
     viewer: SearchViewer,
     params: { q: string; limit: number; conversationId?: string }
   ): Promise<SearchResult<MessageSearchHit>> {
-    const canViewAll = viewer.held.includes(Permissions.CONVERSATIONS_VIEW_ALL)
-    const canSeeHidden = viewer.held.includes(Permissions.CONVERSATIONS_ARCHIVE)
-    const canReadNotes = viewer.held.includes(Permissions.MESSAGES_INTERNAL_NOTE)
-    // The line of an order says its number and its total: only who may read orders finds it (as the thread shows it)
-    const canReadOrders = viewer.held.includes(Permissions.ORDERS_VIEW)
-    const hidden = [...ConversationHiddenStatuses]
-    const conversationId = params.conversationId ?? null
+    const visible = this.visibleMessages(storeId, viewer, params.conversationId)
+    // A text of only stop words ("cuando") leaves the tsquery empty, and an empty tsquery matches nothing: the person
+    // typed something real and would be told there is none. Those texts are read as the words they are instead.
+    const reading = await this.readQuery(params.q)
+    if (reading.empty) return this.searchMessagesAsTyped(storeId, visible, params, reading.folded)
     // The candidates are the newest messages that match, ranked afterwards: ranking needs the text of each one folded
     // and parsed again, so it is never asked of every match of a common word. The snippet is made for the page only.
     // The tsquery is made once. `hits` leaves one more row than the page, to know if there is more.
@@ -99,17 +103,7 @@ export class SearchService {
         JOIN conversations c ON c.id = m.conversation_id AND c.store_id = m.store_id
         JOIN customers cust ON cust.id = c.customer_id AND cust.store_id = c.store_id
         CROSS JOIN q
-        WHERE m.store_id = ${storeId}
-          AND m.deleted_at IS NULL
-          AND m.discarded_at IS NULL
-          -- The lines the platform writes into the thread (assignments, status changes) are not messages
-          AND m.type <> ${MessageType.SYSTEM}
-          AND cust.erased_at IS NULL
-          AND (${canReadNotes}::boolean OR m.type <> ${MessageType.INTERNAL_NOTE})
-          AND (${canReadOrders}::boolean OR m.type <> ${MessageType.ORDER_SUMMARY})
-          AND (${canViewAll}::boolean OR c.assigned_to IS NULL OR c.assigned_to = ${viewer.userId})
-          AND (${canSeeHidden}::boolean OR NOT (c.status = ANY(${hidden}::text[])))
-          AND (${conversationId}::text IS NULL OR m.conversation_id = ${conversationId}::text)
+        WHERE ${visible}
           AND to_tsvector(${SEARCH_LANGUAGE_SQL}, immutable_unaccent(coalesce(m.content, ''))) @@ q.folded
         ORDER BY m.created_at DESC, m.id DESC
         LIMIT ${SearchConfig.MESSAGE_CANDIDATES}
@@ -129,19 +123,91 @@ export class SearchService {
       JOIN customers cust ON cust.id = page.customer_id AND cust.store_id = ${storeId}
       ORDER BY page.rank DESC, page.created_at DESC, page.id DESC
     `
-    const all = z
-      .array(messageRow)
-      .parse(rows)
-      .map((row): MessageSearchHit => ({
-        id: row.id,
-        conversationId: row.conversation_id,
-        type: row.type,
-        createdAt: row.created_at.toISOString(),
-        customerId: row.customer_id,
-        customerName: row.customer_name,
-        snippet: row.snippet
-      }))
+    const all = z.array(messageRow).parse(rows).map(toMessageHit)
     return pageOf(params.q, all, params.limit)
+  }
+
+  // What a message search must NOT show, as one condition for the statements of both ways of searching (`m` is the
+  // message, `c` its conversation, `cust` its customer). The store is the one of the request.
+  private visibleMessages(
+    storeId: string,
+    viewer: SearchViewer,
+    conversationId: string | undefined
+  ): RawSql {
+    const canViewAll = viewer.held.includes(Permissions.CONVERSATIONS_VIEW_ALL)
+    const canSeeHidden = viewer.held.includes(Permissions.CONVERSATIONS_ARCHIVE)
+    const canReadNotes = viewer.held.includes(Permissions.MESSAGES_INTERNAL_NOTE)
+    // The line of an order says its number and its total: only who may read orders finds it (as the thread shows it)
+    const canReadOrders = viewer.held.includes(Permissions.ORDERS_VIEW)
+    const hidden = [...ConversationHiddenStatuses]
+    const only = conversationId ?? null
+    return rawSql`m.store_id = ${storeId}
+          AND m.deleted_at IS NULL
+          AND m.discarded_at IS NULL
+          -- The lines the platform writes into the thread (assignments, status changes) are not messages
+          AND m.type <> ${MessageType.SYSTEM}
+          AND cust.erased_at IS NULL
+          AND (${canReadNotes}::boolean OR m.type <> ${MessageType.INTERNAL_NOTE})
+          AND (${canReadOrders}::boolean OR m.type <> ${MessageType.ORDER_SUMMARY})
+          AND (${canViewAll}::boolean OR c.assigned_to IS NULL OR c.assigned_to = ${viewer.userId})
+          AND (${canSeeHidden}::boolean OR NOT (c.status = ANY(${hidden}::text[])))
+          AND (${only}::text IS NULL OR m.conversation_id = ${only}::text)`
+  }
+
+  // One round trip: whether the text has no word the index can look for (only stop words, or only symbols, so its
+  // tsquery is empty) and the text folded the way the database folds the stored one
+  private async readQuery(q: string): Promise<{ empty: boolean; folded: string }> {
+    const rows = await this.prisma.client.$queryRaw<{ empty: boolean; folded: string }[]>`
+      SELECT
+        numnode(websearch_to_tsquery(${SEARCH_LANGUAGE_SQL}, immutable_unaccent(${q}))) = 0 AS empty,
+        lower(immutable_unaccent(${q})) AS folded`
+    return { empty: rows[0]?.empty === true, folded: rows[0]?.folded ?? '' }
+  }
+
+  // The fallback of a text with no searchable word: the messages that contain it as typed, folded for accents and case
+  // on both sides, newest first, with the same visibility as the search by words. There is no index on the folded text
+  // of a message, but such texts are common words, so the newest rows that match fill the page at once and the
+  // scan stops there (LIMIT), and a text shorter than MESSAGE_AS_TYPED_MIN_LENGTH matches too much to be one.
+  // The words are what is compared ("¿cuándo?" finds "cuándo"): the punctuation around them is not part of what the
+  // person looks for. A text with no letter or digit at all ("!!!") is compared as the symbols it is.
+  // The snippet is read in the literal configuration, which keeps the stop words the search by words drops.
+  private async searchMessagesAsTyped(
+    storeId: string,
+    visible: RawSql,
+    params: { q: string; limit: number },
+    folded: string
+  ): Promise<SearchResult<MessageSearchHit>> {
+    const words = folded.match(/[\p{L}\p{N}]+/gu)
+    const needle = words ? words.join(' ') : folded.trim()
+    if ([...needle].length < SearchConfig.MESSAGE_AS_TYPED_MIN_LENGTH) {
+      return pageOf(params.q, [], params.limit)
+    }
+    const contains = `%${escapeLike(needle)}%`
+    const rows = await this.prisma.client.$queryRaw<unknown[]>`
+      WITH candidates AS (
+        SELECT m.id, m.conversation_id, m.type, m.created_at, m.content, c.customer_id
+        FROM messages m
+        JOIN conversations c ON c.id = m.conversation_id AND c.store_id = m.store_id
+        JOIN customers cust ON cust.id = c.customer_id AND cust.store_id = c.store_id
+        WHERE ${visible}
+          AND lower(immutable_unaccent(coalesce(m.content, ''))) LIKE ${contains} ESCAPE '\\'
+        ORDER BY m.created_at DESC, m.id DESC
+        LIMIT ${params.limit + 1}
+      )
+      SELECT
+        cand.id, cand.conversation_id, cand.type, cand.created_at,
+        cust.id AS customer_id, cust.name AS customer_name,
+        ts_headline(
+          ${SEARCH_LITERAL_LANGUAGE_SQL}, cand.content,
+          websearch_to_tsquery(${SEARCH_LITERAL_LANGUAGE_SQL}, ${params.q})
+            || websearch_to_tsquery(${SEARCH_LITERAL_LANGUAGE_SQL}, immutable_unaccent(${params.q})),
+          ${SNIPPET_OPTIONS}
+        ) AS snippet
+      FROM candidates cand
+      JOIN customers cust ON cust.id = cand.customer_id AND cust.store_id = ${storeId}
+      ORDER BY cand.created_at DESC, cand.id DESC
+    `
+    return pageOf(params.q, z.array(messageRow).parse(rows).map(toMessageHit), params.limit)
   }
 
   // Customers by name (a part of it, with no accents, or a typo), by email and by a run of digits of their phone. The
@@ -248,6 +314,18 @@ export class SearchService {
         customerName: row.customer_name
       }))
     return pageOf(params.q, all, params.limit)
+  }
+}
+
+function toMessageHit(row: z.infer<typeof messageRow>): MessageSearchHit {
+  return {
+    id: row.id,
+    conversationId: row.conversation_id,
+    type: row.type,
+    createdAt: row.created_at.toISOString(),
+    customerId: row.customer_id,
+    customerName: row.customer_name,
+    snippet: row.snippet
   }
 }
 
