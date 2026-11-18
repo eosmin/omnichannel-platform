@@ -89,6 +89,16 @@ test.describe('the search of the store', () => {
     await expect(page.getByRole('button', { name: new RegExp(name) })).toBeVisible()
   })
 
+  test('an empty box and Enter open the results page, which says what to type', async () => {
+    await openStorePage(page, AppPaths.store.orders(storeId))
+    await page.keyboard.press('/')
+    const box = page.getByRole('searchbox', { name: en.search.box.label, exact: true })
+    await expect(box).toBeFocused()
+    await box.press('Enter')
+    await expect(page).toHaveURL(new RegExp(`${AppPaths.store.search(storeId)}$`))
+    await expect(page.getByText(en.search.page.start)).toBeVisible()
+  })
+
   test('narrows the results page to one kind of thing and keeps the text in the address', async () => {
     const name = uniqueName('Alcance')
     await newCustomerIn(storeId, { name })

@@ -143,7 +143,7 @@ export function ShipmentSettleDialog(props: DialogProps): ReactElement {
         </DialogHeader>
         <fieldset className="flex flex-col gap-2">
           <legend className="sr-only">{t('title')}</legend>
-          <label className="flex items-start gap-2 text-sm pointer-coarse:min-h-10">
+          <label className="flex items-start gap-2 text-sm pointer-coarse:min-h-11">
             <input
               type="radio"
               name={`${id}-outcome`}
@@ -153,7 +153,7 @@ export function ShipmentSettleDialog(props: DialogProps): ReactElement {
             />
             <span>{t('found')}</span>
           </label>
-          <label className="flex items-start gap-2 text-sm pointer-coarse:min-h-10">
+          <label className="flex items-start gap-2 text-sm pointer-coarse:min-h-11">
             <input
               type="radio"
               name={`${id}-outcome`}

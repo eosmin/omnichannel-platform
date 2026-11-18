@@ -68,6 +68,93 @@ describe('chargeAmounts (E4)', () => {
   })
 })
 
+describe('chargeAmounts of a guide paid out of the advance (E4, HC-101)', () => {
+  const base = {
+    shippingPayer: 'sender',
+    codAmountCents: 2515,
+    carrierCostCents: 300,
+    carrierRateCents: 250,
+    commissionBps: 450
+  }
+
+  it('takes the cost of the guide from the advance at what the advance cost, not from what the carrier reported', () => {
+    expect(chargeAmounts({ ...base, prepaidGuideCostCents: 273 })).toEqual({
+      freightCents: 273,
+      advanceCents: 273,
+      commissionCents: 113
+    })
+  })
+
+  it('consumes the advance whoever pays the guide: the guide was bought and is gone either way', () => {
+    expect(
+      chargeAmounts({ ...base, shippingPayer: 'recipient', prepaidGuideCostCents: 273 })
+    ).toEqual({ freightCents: 273, advanceCents: 273, commissionCents: 113 })
+  })
+
+  it('is the plain charge when no advance covered the guide (no purchase on record, a connection that is not prepaid)', () => {
+    expect(chargeAmounts({ ...base, prepaidGuideCostCents: null })).toEqual({
+      freightCents: 300,
+      commissionCents: 113
+    })
+    expect(chargeAmounts(base)).toEqual({ freightCents: 300, commissionCents: 113 })
+  })
+
+  it('a free guide (a gift) takes nothing from the advance', () => {
+    expect(chargeAmounts({ ...base, prepaidGuideCostCents: 0 })).toEqual({
+      freightCents: 0,
+      advanceCents: 0,
+      commissionCents: 113
+    })
+  })
+})
+
+describe('chargeLines of a guide paid out of the advance (E4, HC-101)', () => {
+  it('credits the advance for the guide and the payable only for the commission: no payable for a freight already paid', () => {
+    const result = chargeLines({
+      accounts,
+      carrierConnectionId: CARRIER,
+      amounts: { freightCents: 273, advanceCents: 273, commissionCents: 113 },
+      storeId: STORE
+    })
+    if (!result.ok) throw new Error('expected lines')
+    expect(sum(result.lines, 'debitCents')).toBe(386)
+    expect(sum(result.lines, 'creditCents')).toBe(386)
+    expect(lineOf(result.lines, `acc-${AccountRole.CARRIER_FREIGHT_EXPENSE}`)?.debitCents).toBe(273)
+    expect(lineOf(result.lines, `acc-${AccountRole.PREPAID_CARRIER_GUIDES}`)?.creditCents).toBe(273)
+    expect(lineOf(result.lines, `acc-${AccountRole.PAYABLE_CARRIERS}`)).toMatchObject({
+      creditCents: 113,
+      partyType: PartyType.CARRIER_CONNECTION,
+      partyId: CARRIER
+    })
+  })
+
+  it('a guide with no commission posts no payable line at all', () => {
+    const result = chargeLines({
+      accounts,
+      carrierConnectionId: CARRIER,
+      amounts: { freightCents: 273, advanceCents: 273, commissionCents: 0 },
+      storeId: STORE
+    })
+    if (!result.ok) throw new Error('expected lines')
+    expect(result.lines).toHaveLength(2)
+    expect(lineOf(result.lines, `acc-${AccountRole.PAYABLE_CARRIERS}`)).toBeUndefined()
+  })
+
+  it('names the advance when it has no account: the entry fails visibly, it never falls back to the payable', () => {
+    const result = chargeLines({
+      accounts: role => (role === AccountRole.PREPAID_CARRIER_GUIDES ? null : `acc-${role}`),
+      carrierConnectionId: CARRIER,
+      amounts: { freightCents: 273, advanceCents: 273, commissionCents: 0 },
+      storeId: STORE
+    })
+    expect(result).toEqual({
+      ok: false,
+      reason: FinancePostingFailureReason.ROLE_NOT_MAPPED,
+      role: AccountRole.PREPAID_CARRIER_GUIDES
+    })
+  })
+})
+
 describe('chargeLines (E4)', () => {
   it('debits freight and commission and credits the payable with the carrier as the party', () => {
     const result = chargeLines({

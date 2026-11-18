@@ -187,6 +187,9 @@ export const ApiRoutes = {
       // The trial balance of a period (debits and credits by account), and the ledger of one account with its running balance (Step 4B.8)
       trialBalance: '/finance/reports/trial-balance',
       ledger: '/finance/reports/ledger',
+      // Each account's balance at a date, and the journal of a range with the lines of every entry (TDD_18 §10)
+      accountBalances: '/finance/reports/account-balances',
+      journal: '/finance/reports/journal',
       // What the auditor takes out (TDD_18 §10, §11): CSV files, audited, and the check of the hash chain
       trialBalanceCsv: '/finance/reports/trial-balance.csv',
       ledgerCsv: '/finance/reports/ledger.csv',

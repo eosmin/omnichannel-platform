@@ -138,7 +138,7 @@ export default function AudioPlayer({ src, label }: { src: string; label: string
       <button
         type="button"
         aria-label={isPlaying ? t('pause') : t('play')}
-        className="bg-primary text-primary-foreground focus-visible:ring-ring flex size-8 shrink-0 items-center justify-center rounded-full outline-none focus-visible:ring-2 pointer-coarse:size-10"
+        className="bg-primary text-primary-foreground focus-visible:ring-ring flex size-8 shrink-0 items-center justify-center rounded-full outline-none focus-visible:ring-2 pointer-coarse:size-11"
         onClick={toggle}
       >
         {isPlaying ? (

@@ -19,6 +19,7 @@ import {
   ImageVariantSpecs,
   AvatarProcessing,
   AvatarUpload,
+  isEvidenceMedia,
   keepsAnimation,
   MAX_IMAGE_PIXELS,
   MediaPurpose,
@@ -113,6 +114,14 @@ export class MediaPipeline {
       )
       // Never throws, so the delete below always runs
       await this.announce(media, Events.MEDIA_INFECTED)
+      // Financial evidence is never deleted: it stays in the bucket as a quarantine, never served (the row is the gate)
+      if (isEvidenceMedia(media.purpose)) {
+        this.logger.error(
+          { mediaId: media.id, storeId: media.storeId },
+          'an infected financial document was kept in quarantine and not deleted'
+        )
+        return
+      }
       await this.storage.delete(media.key)
       return
     }
@@ -144,6 +153,7 @@ export class MediaPipeline {
     key: string
     contentType: string
     storeId: string | null
+    purpose: string
     scanResult: unknown
   }): Promise<boolean> {
     // Cleaned by an earlier attempt of this scan (it died before the row was marked clean): encoding
@@ -176,7 +186,7 @@ export class MediaPipeline {
   // (the gate for serving), then the file goes, as for an infected file; it ends as `unscannable`
   // with its own reason, and the team is told so that the thread stops showing a placeholder.
   private async rejectImage(
-    media: { id: string; key: string; storeId: string | null },
+    media: { id: string; key: string; storeId: string | null; purpose: string },
     error: ImageNotSanitizable
   ): Promise<void> {
     const marked = await this.prisma.client.media.updateMany({
@@ -200,6 +210,8 @@ export class MediaPipeline {
     // The team is told first (it never throws). A delete that fails leaves the original in the bucket,
     // unserved: the hourly cleanup deletes the file of an unscannable row.
     await this.announce(media, Events.MEDIA_UNSCANNABLE)
+    // A receipt that cannot be decoded is still the evidence of a transaction: it stays, unserved
+    if (isEvidenceMedia(media.purpose)) return
     try {
       await this.storage.delete(media.key)
     } catch (deleteError) {
@@ -214,7 +226,22 @@ export class MediaPipeline {
   // at, so it is never queued again, and the file leaves the bucket: it was never scanned, so it is
   // never served. The row is written first (the gate), as for an infected file. The error of the scan
   // still propagates, so the job ends as failed and goes to the dead-letter queue.
-  private async giveUp(media: { id: string; key: string; storeId: string | null }): Promise<void> {
+  private async giveUp(media: {
+    id: string
+    key: string
+    storeId: string | null
+    purpose: string
+  }): Promise<void> {
+    // Financial evidence is never given up nor deleted: the row stays `pending` (never served) and the hourly
+    // cleanup queues the scan again until the daemon answers (a fiscal document's evidence is scanned again
+    // when it is asked for, `FiscalEvidenceService`). The alarm is the error log of every give-up.
+    if (isEvidenceMedia(media.purpose)) {
+      this.logger.error(
+        { mediaId: media.id, storeId: media.storeId },
+        'a financial document could not be scanned: kept pending and the scan will be tried again'
+      )
+      return
+    }
     try {
       const marked = await this.prisma.client.media.updateMany({
         where: { id: media.id, status: MediaStatus.PENDING },

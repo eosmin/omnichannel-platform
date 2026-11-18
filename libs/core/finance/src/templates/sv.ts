@@ -58,6 +58,7 @@ export const SvTemplate: FinanceTemplate = {
     posting('1401', 'IVA crédito fiscal', ASSET, '14'),
     header('15', 'Anticipos', ASSET, '1'),
     posting('1501', 'Anticipos a proveedores', ASSET, '15'),
+    posting('1502', 'Guías prepagadas de transportistas', ASSET, '15'),
 
     header('2', 'Pasivo', LIABILITY, null),
     header('21', 'Cuentas por pagar', LIABILITY, '2'),
@@ -117,6 +118,7 @@ export const SvTemplate: FinanceTemplate = {
     [AccountRole.COST_OF_GOODS_SOLD]: '5101',
     [AccountRole.INVENTORY_LOSS]: '6109',
     [AccountRole.INVENTORY_GAIN]: '4106',
+    [AccountRole.PREPAID_CARRIER_GUIDES]: '1502',
     [AccountRole.CARRIER_FREIGHT_EXPENSE]: '6101',
     [AccountRole.CARRIER_COMMISSION_EXPENSE]: '6102',
     [AccountRole.COD_DIFFERENCES]: '6110',

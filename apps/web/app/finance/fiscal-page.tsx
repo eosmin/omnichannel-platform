@@ -76,7 +76,7 @@ function Fiscal(): ReactElement {
           {t('noIssuer')}{' '}
           <Link
             href={AppPaths.finance.fiscalIssuer}
-            className="text-primary underline underline-offset-2"
+            className="text-primary inline-flex items-center underline underline-offset-2 pointer-coarse:min-h-11"
           >
             {t('noIssuerLink')}
           </Link>

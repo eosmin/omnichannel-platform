@@ -26,7 +26,9 @@ export enum FinanceEventKind {
   // E14: the refund a person paid out when a return was completed (the money left, the customer's advance is settled)
   RETURN_REFUND = 'return_refund',
   // E9: a stock adjustment, a count variance or a transfer write-off
-  ADJUST = 'adjust'
+  ADJUST = 'adjust',
+  // E9: the units of a transfer line that did not arrive and were written off when the transfer was closed
+  TRANSFER_WRITE_OFF = 'transfer_write_off'
 }
 
 // The kind of source each event reads: a job that pairs another kind with an event has nothing to post (the job's schema is not
@@ -42,7 +44,8 @@ export const FinanceEventSource: Readonly<Record<FinanceEventKind, FinanceSource
   [FinanceEventKind.RETURN_RESTOCK]: FinanceSourceType.RETURN,
   [FinanceEventKind.ORDER_RETURN]: FinanceSourceType.ORDER,
   [FinanceEventKind.RETURN_REFUND]: FinanceSourceType.RETURN,
-  [FinanceEventKind.ADJUST]: FinanceSourceType.INVENTORY_MOVEMENT
+  [FinanceEventKind.ADJUST]: FinanceSourceType.INVENTORY_MOVEMENT,
+  [FinanceEventKind.TRANSFER_WRITE_OFF]: FinanceSourceType.TRANSFER_LINE
 }
 
 // What the job does with a source whose date is before `accountingStartDate` or whose event has nothing to post
@@ -58,11 +61,15 @@ export enum FinancePostingOutcome {
   PENDING = 'pending'
 }
 
+// The two ends of the key of the sale of an order, for a query that must find every sale entry at once (the VAT report)
+export const FinanceSaleKeyParts = { PREFIX: 'order:', SUFFIX: ':sale' } as const
+
 // The idempotency key of the entry each event posts (TDD_18 §4.1)
 export const FinancePostingKey = {
   ORDER_PAYMENT: (orderId: string): string => `order:${orderId}:payment`,
   ORDER_SENT: (orderId: string): string => `order:${orderId}:sent`,
-  ORDER_SALE: (orderId: string): string => `order:${orderId}:sale`,
+  ORDER_SALE: (orderId: string): string =>
+    `${FinanceSaleKeyParts.PREFIX}${orderId}${FinanceSaleKeyParts.SUFFIX}`,
   SHIPMENT_CHARGES: (shipmentId: string): string => `shipment:${shipmentId}:charges`,
   REMITTANCE_CONFIRM: (remittanceId: string): string => `remittance:${remittanceId}:confirm`,
   REMITTANCE_VOID: (remittanceId: string): string => `remittance:${remittanceId}:void`,
@@ -70,8 +77,13 @@ export const FinancePostingKey = {
   RETURN_RESTOCK: (returnId: string): string => `return:${returnId}:restock`,
   ORDER_RETURN: (orderId: string): string => `order:${orderId}:return`,
   RETURN_REFUND: (returnId: string): string => `return:${returnId}:refund`,
-  MOVEMENT_ADJUST: (movementId: string): string => `movement:${movementId}:adjust`
+  MOVEMENT_ADJUST: (movementId: string): string => `movement:${movementId}:adjust`,
+  TRANSFER_LINE_WRITE_OFF: (lineId: string): string => `transfer_line:${lineId}:write_off`
 } as const
+
+// E9 of a transfer shortage is NOT retroactive (AUT-911): a transfer closed before this instant had its write-off accepted with no entry, and the
+// books of those months may already be adjusted by hand (E13) or closed, so neither the queue nor the sweep posts it unless the owner decides so.
+export const TRANSFER_WRITE_OFF_POSTING_START = new Date('2026-11-18T00:00:00.000Z')
 
 // The daily sweep of the books (TDD_18 §6.1)
 export const FinanceSweepLimits = {
@@ -106,7 +118,8 @@ export const FinanceAutoMemo = {
   RETURN_RESTOCK: 'auto:return_restock',
   ORDER_RETURN: 'auto:order_return',
   RETURN_REFUND: 'auto:return_refund',
-  ADJUST: 'auto:adjust'
+  ADJUST: 'auto:adjust',
+  TRANSFER_WRITE_OFF: 'auto:transfer_write_off'
 } as const
 
 // How a posting job is asked again when the database was unavailable: a few attempts with a growing pause. A failure of the BOOKS (a

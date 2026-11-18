@@ -6,7 +6,12 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { FinanceCountryCodes, JournalEntryType, PeriodStatus } from '@platform/core/domain'
+import {
+  FinanceCountryCodes,
+  JournalEntryType,
+  PartyType,
+  PeriodStatus
+} from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { type ChainEntry, verifyChain } from '@platform/core/finance-hash'
 
@@ -19,7 +24,7 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 
 interface ErrorBody {
-  error: { code: string }
+  error: { code: string; metadata?: Record<string, unknown> }
 }
 interface PeriodBody {
   id: string
@@ -39,6 +44,15 @@ interface EntryBody {
 interface TrialBody {
   rows: { code: string; debitCents: string; creditCents: string; balanceCents: string }[]
   totals: { debitCents: string; creditCents: string; balanced: boolean }
+}
+interface AccountBalancesBody {
+  rows: { accountId: string; cashKind: string | null; balanceCents: string }[]
+  totals: { debitCents: string; creditCents: string; balanced: boolean | null }
+}
+interface JournalBody {
+  data: { hash: string; lines: { debitCents: number; creditCents: number }[] }[]
+  nextCursor: string | null
+  hasMore: boolean
 }
 interface LedgerBody {
   openingCents: string
@@ -163,6 +177,23 @@ describe('Closing the months, the reports and the auditor files', () => {
     await owner.$disconnect()
   })
 
+  describe('the body and the query of a close and of the chain status', () => {
+    it('refuses an organizationId, as every other route of the finance does (LED-753)', async () => {
+      const february = await periodOf(ctx.orgA.id, 2026, 2)
+
+      const close = await asAdminA()
+        .post(ApiRoutes.finance.periods.close(february.id))
+        .send({ organizationId: ctx.orgB.id })
+      const status = await asAdminA().get(
+        `${ApiRoutes.finance.reports.chainStatus}?organizationId=${ctx.orgB.id}`
+      )
+
+      expect(close.status).toBe(BAD_REQUEST)
+      expect(status.status).toBe(BAD_REQUEST)
+      expect((await periodOf(ctx.orgA.id, 2026, 2)).status).toBe(PeriodStatus.OPEN)
+    })
+  })
+
   describe('the preconditions of a close', () => {
     it('closes in order: February waits for January', async () => {
       const february = await periodOf(ctx.orgA.id, 2026, 2)
@@ -190,6 +221,12 @@ describe('Closing the months, the reports and the auditor files', () => {
       })
 
       expect(errorOf(refused).code).toBe(ErrorCodes.FINANCE_CLOSE_PENDING_POSTINGS)
+      expect(errorOf(refused).metadata).toMatchObject({
+        failureCount: 1,
+        failures: [{ reason: 'role_not_mapped', count: 1 }],
+        pendingSources: 0,
+        truncated: false
+      })
       expect((await periodOf(ctx.orgA.id, 2026, 1)).status).toBe(PeriodStatus.OPEN)
     })
 
@@ -414,6 +451,110 @@ describe('Closing the months, the reports and the auditor files', () => {
       const two = next.body as LedgerBody
       expect(one.hasMore).toBe(true)
       expect(two.openingCents).toBe(one.lines.at(-1)?.runningCents)
+    })
+
+    it('gives the balance of each account at a date, carried since the start and not cut by period', async () => {
+      const at = (asOf: string) =>
+        asAdminA().get(ApiRoutes.finance.reports.accountBalances).query({ asOf })
+
+      const january31 = await at('2026-01-31')
+      const before = await at('2026-01-14')
+
+      const report = january31.body as AccountBalancesBody
+      const cash = report.rows.find(row => row.accountId === accountsA[CASH])
+      const rent = report.rows.find(row => row.accountId === accountsA[RENT])
+      expect(january31.status).toBe(OK)
+      // Cash is an asset every line credits; rent is an expense every line debits
+      expect(cash?.balanceCents).toBe('-1325')
+      expect(rent?.balanceCents).toBe('1325')
+      expect(report.totals).toEqual({ debitCents: '1325', creditCents: '1325', balanced: true })
+      // Before the first entry no account has a line: only the accounts of money stay, at zero
+      expect((before.body as AccountBalancesBody).rows.every(row => row.cashKind !== null)).toBe(
+        true
+      )
+      expect((before.body as AccountBalancesBody).rows.every(row => row.balanceCents === '0')).toBe(
+        true
+      )
+    })
+
+    it('narrows the balances to one store, and says it cannot add them up then', async () => {
+      const response = await asAdminA()
+        .get(ApiRoutes.finance.reports.accountBalances)
+        .query({ asOf: '2026-01-31', storeId: ctx.storeA.id })
+
+      expect(response.status).toBe(OK)
+      expect((response.body as AccountBalancesBody).totals.balanced).toBeNull()
+    })
+
+    it('answers 404 to the store of another organization, and 400 to a date that does not exist', async () => {
+      const other = await asAdminA()
+        .get(ApiRoutes.finance.reports.accountBalances)
+        .query({ asOf: '2026-01-31', storeId: ctx.storeB.id })
+      const bad = await asAdminA()
+        .get(ApiRoutes.finance.reports.accountBalances)
+        .query({ asOf: '2026-02-31' })
+
+      expect([other.status, bad.status]).toEqual([NOT_FOUND, BAD_REQUEST])
+    })
+
+    it('filters the ledger by party, and takes a party id only with its type', async () => {
+      const query = { accountId: accountsA[CASH], from: '2026-01-01', to: '2026-01-31' }
+      const unknown = await asAdminA()
+        .get(ApiRoutes.finance.reports.ledger)
+        .query({ ...query, partyType: PartyType.SUPPLIER, partyId: randomUUID() })
+      const ofType = await asAdminA()
+        .get(ApiRoutes.finance.reports.ledger)
+        .query({ ...query, partyType: PartyType.CUSTOMER })
+      const idOnly = await asAdminA()
+        .get(ApiRoutes.finance.reports.ledger)
+        .query({ ...query, partyId: randomUUID() })
+
+      // The lines of the suite name no party: a filter by one leaves none, and the opening is the one of that party
+      expect((unknown.body as LedgerBody).lines).toEqual([])
+      expect((ofType.body as LedgerBody).lines).toEqual([])
+      expect(idOnly.status).toBe(BAD_REQUEST)
+    })
+
+    it('gives the journal of a range with the lines of every entry, in number order and by pages of whole entries', async () => {
+      const first = await asAdminA()
+        .get(ApiRoutes.finance.reports.journal)
+        .query({ from: '2026-01-01', to: '2026-01-31', limit: 2 })
+      const next = await asAdminA()
+        .get(ApiRoutes.finance.reports.journal)
+        .query({
+          from: '2026-01-01',
+          to: '2026-01-31',
+          limit: 2,
+          cursor: (first.body as JournalBody).nextCursor ?? ''
+        })
+
+      const one = first.body as JournalBody
+      const two = next.body as JournalBody
+      expect(first.status).toBe(OK)
+      expect(one.hasMore).toBe(true)
+      expect(two.hasMore).toBe(false)
+      const all = [...one.data, ...two.data]
+      expect(all.map(entry => entry.hash)).toEqual(janHashes)
+      expect(all.every(entry => entry.lines.length === 2)).toBe(true)
+      expect(all.map(entry => entry.lines.reduce((sum, line) => sum + line.debitCents, 0))).toEqual(
+        all.map(entry => entry.lines.reduce((sum, line) => sum + line.creditCents, 0))
+      )
+    })
+
+    it('reads the journal only with finance:view_journal and never shows the entries of another organization', async () => {
+      const viewer = await asRole('viewer-only-journal', [Permissions.FINANCE_VIEW])
+      const journal = await asRole('journal-reader', [Permissions.FINANCE_VIEW_JOURNAL])
+
+      const refused = await viewer
+        .get(ApiRoutes.finance.reports.journal)
+        .query({ from: '2026-01-01', to: '2026-01-31' })
+      const allowed = await journal
+        .get(ApiRoutes.finance.reports.journal)
+        .query({ from: '2026-01-01', to: '2026-12-31', limit: 100 })
+
+      expect(refused.status).toBe(FORBIDDEN)
+      expect(allowed.status).toBe(OK)
+      expect(JSON.stringify(allowed.body)).not.toContain('Only of B')
     })
 
     it('reads the ledger only with finance:view_journal, and the trial balance with finance:view', async () => {

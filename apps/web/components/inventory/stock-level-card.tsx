@@ -64,7 +64,7 @@ export function StockLevelCard({
           type="button"
           variant="outline"
           size="sm"
-          className="pointer-coarse:min-h-10"
+          className="pointer-coarse:min-h-11"
           aria-pressed={isShown}
           aria-label={tStock('movementsOf', { item, warehouse: level.warehouseCode })}
           onClick={onToggleMovements}
@@ -77,7 +77,7 @@ export function StockLevelCard({
             type="button"
             variant="outline"
             size="sm"
-            className="pointer-coarse:min-h-10"
+            className="pointer-coarse:min-h-11"
             aria-label={tStock('adjustFor', { item, warehouse: level.warehouseCode })}
             onClick={onAdjust}
           >
@@ -90,7 +90,7 @@ export function StockLevelCard({
             type="button"
             variant="ghost"
             size="sm"
-            className="pointer-coarse:min-h-10"
+            className="pointer-coarse:min-h-11"
             aria-label={t('thresholdFor', { product: level.productName })}
             onClick={onThreshold}
           >

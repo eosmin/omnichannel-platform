@@ -69,11 +69,12 @@ export type EntryDateProblem =
 // Whether an entry dated `date` may be written: not before the day the books start, and not in a closed period. The
 // lock is a date because closes are in order (TDD_18 §5.1): everything up to `lockedThrough` is closed, nothing after.
 export function entryDateProblem(date: string, calendar: LedgerCalendar): EntryDateProblem | null {
-  // The order of the database trigger: the lock first, then the start of the books
+  // The start of the books first: a day before it is wrong whatever the lock says, and that is the cause worth naming (LED-831).
+  // The trigger of the database keeps the lock first, but it only answers for a write that got past this check.
+  if (date < calendar.accountingStartDate) return ErrorCodes.FINANCE_BEFORE_START_DATE
   if (calendar.lockedThrough !== null && date <= calendar.lockedThrough) {
     return ErrorCodes.FINANCE_PERIOD_CLOSED
   }
-  if (date < calendar.accountingStartDate) return ErrorCodes.FINANCE_BEFORE_START_DATE
   return null
 }
 

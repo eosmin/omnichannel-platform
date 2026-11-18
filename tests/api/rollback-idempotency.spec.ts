@@ -15,7 +15,9 @@ const ROLLBACKS = join(__dirname, '../../libs/core/database/rollbacks')
 const IDEMPOTENT = [
   ['20261028120000_plugin_installations.rollback.sql', 'channel_connections', 'installation_id'],
   ['20261215120000_plugin_webhooks.rollback.sql', 'plugin_installations', 'webhook_secret'],
-  ['20261215120000_plugin_webhooks.rollback.sql', 'webhook_deliveries', 'plugin_installation_id']
+  ['20261215120000_plugin_webhooks.rollback.sql', 'webhook_deliveries', 'plugin_installation_id'],
+  ['20261217100000_finance_receipts.rollback.sql', 'finance_transactions', 'document_media_id'],
+  ['20261217100000_finance_receipts.rollback.sql', 'media', 'finance_transaction_id']
 ] as const
 
 // The script has its own BEGIN and COMMIT: the case wraps it in the transaction it throws away
