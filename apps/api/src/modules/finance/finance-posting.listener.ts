@@ -67,6 +67,20 @@ export class FinancePostingListener {
     })
   }
 
+  // E14: a person recorded the refund they paid out when completing a return
+  @OnEvent(Events.RETURN_REFUND_RECORDED)
+  async onReturnRefund(payload: ReturnEventPayload): Promise<void> {
+    const organizationId = await this.organizationOf(payload.storeId)
+    if (organizationId === null) return
+    await this.enqueue({
+      organizationId,
+      sourceType: FinanceSourceType.RETURN,
+      sourceId: payload.returnId,
+      kind: FinanceEventKind.RETURN_REFUND,
+      occurredAt: new Date().toISOString()
+    })
+  }
+
   // E2 and E3: the goods left, the order was delivered. Shipping asks for both: the service decides which of the two the setting of the
   // organization wants at that moment, and an event that has not come yet posts nothing. E8: an order put back as a whole (a parcel that
   // came back, or an order an agent returned with no return row) asks for its own entry; an order whose returns were received has none,
