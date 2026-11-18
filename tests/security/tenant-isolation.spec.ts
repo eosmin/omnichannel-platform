@@ -246,6 +246,7 @@ async function createPurchaseOrderOf(
 // The supplier a payment of the suite was made to: the payments are read in the list of their supplier
 const supplierOfPayment = new Map<string, string>()
 const paymentOfReturn = new Map<string, string>()
+const importOfGroupLine = new Map<string, string>()
 // The order a row of the purchases belongs to: a line, a receipt and the line of a receipt are reached through their order
 const orderOfPurchaseRow = new Map<string, string>()
 const purchaseOrderPathOf = (build: (id: string) => string) => (id: string) =>
@@ -2284,9 +2285,13 @@ const resources: IsolationResource[] = [
   {
     name: 'reconciliationMatch',
     create: async (owner, { storeId }) => {
-      return { id: (await bankStatementOf(owner, storeId, 700)).lineId }
+      const statement = await bankStatementOf(owner, storeId, 700)
+      importOfGroupLine.set(statement.lineId, statement.importId)
+      return { id: statement.lineId }
     },
     scope: 'organization',
+    // The line is read with its import
+    readPath: id => ApiRoutes.finance.bank.importLines(importOfGroupLine.get(id) ?? randomUUID()),
     modify: {
       path: ApiRoutes.finance.bank.lineGroupMatches,
       method: 'post',
