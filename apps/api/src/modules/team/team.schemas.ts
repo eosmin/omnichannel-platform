@@ -14,8 +14,13 @@ const permissionList = z
   .array(z.string().refine(isPermission, { message: 'not a permission' }))
   .transform(permissions => [...new Set(permissions)]) // A repeated one is the same permission
   // A permission that needs another is never held without it (registering a transaction needs seeing it)
-  .refine(permissions => unmetPermissionRequirements(permissions).length === 0, {
-    message: 'a permission needs another one the role does not hold'
+  .superRefine((permissions, context) => {
+    for (const { permission, requires } of unmetPermissionRequirements(permissions)) {
+      context.addIssue({
+        code: 'custom',
+        message: `${permission} needs ${requires.join(', ')}`
+      })
+    }
   })
 
 const roleName = z.string().trim().min(1).max(MAX_NAME_LENGTH)
