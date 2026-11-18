@@ -101,6 +101,13 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     fn: (db: ReplicaTransaction) => Promise<T>,
     options?: TransactionOptions
   ): Promise<T> {
+    // Inside the tenant transaction of a request this would hold a second connection of the same pool (with no replica, the same
+    // database) while the first waits: a route that reads the replica is marked @NoTenantTransaction
+    if (this.hasTenantContext()) {
+      throw new Error(
+        'replicaTenantRead inside a tenant transaction: mark the route @NoTenantTransaction, or read from this.client'
+      )
+    }
     return this.base.$replica().$transaction(
       async tx => {
         await applyTenantContext(tx, context)
