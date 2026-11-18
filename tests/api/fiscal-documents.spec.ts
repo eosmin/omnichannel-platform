@@ -393,8 +393,12 @@ describe('The fiscal documents (Step 4B.7)', () => {
     it('makes no document, takes no number and leaves the order untouched, and makes it once the snapshot is complete', async () => {
       const first = await deliveredOrder()
       const gaps: ((orderId: string) => Promise<unknown>)[] = [
-        orderId => owner.order.update({ where: { id: orderId }, data: { taxCents: null } }),
-        orderId => owner.order.update({ where: { id: orderId }, data: { pricesIncludeTax: null } }),
+        // The database holds the two columns of the order null together (`orders_tax_snapshot_check`)
+        orderId =>
+          owner.order.update({
+            where: { id: orderId },
+            data: { taxCents: null, pricesIncludeTax: null }
+          }),
         orderId => owner.orderItem.updateMany({ where: { orderId }, data: { taxCents: null } })
       ]
       for (const makeGap of gaps) {
@@ -758,6 +762,31 @@ describe('The fiscal documents (Step 4B.7)', () => {
       expect(after.status).toBe(FiscalDocumentStatus.REJECTED)
       expect(after.rejectionReason).toBe(FiscalRejectionReasons.SALE_INCONSISTENT)
       expect(after.builtPayloadEncrypted).toBeNull()
+    })
+
+    it('does not queue again a refused sale whose order has no tax snapshot: the retry answers a conflict and the document is as it was (HC-006)', async () => {
+      const { documentId, orderId } = await sale()
+      await patchReceiver(documentId, { taxId: '12345-6', name: 'Ana' })
+      const row = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+      await owner.fiscalDocument.update({
+        where: { id: documentId },
+        data: { linesSnapshot: { ...(row.linesSnapshot as object), discountCents: 1 } }
+      })
+      await documents.submit(ctx.orgA.id, documentId)
+      await owner.order.update({
+        where: { id: orderId },
+        data: { taxCents: null, pricesIncludeTax: null }
+      })
+
+      const retry = await asAdminA().post(ApiRoutes.fiscal.documents.retry(documentId))
+
+      expect(retry.status).toBe(CONFLICT)
+      expect(
+        (retry.body as { error: { metadata?: { reason?: string } } }).error.metadata?.reason
+      ).toBe(FiscalConflictReasons.TAX_SNAPSHOT_MISSING)
+      const after = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+      expect(after.status).toBe(FiscalDocumentStatus.REJECTED)
+      expect(after.rejectionReason).toBe(FiscalRejectionReasons.SALE_INCONSISTENT)
     })
 
     it('refuses a sale whose tax is more than its lines and its shipping can carry, as the entry of the sale does', async () => {

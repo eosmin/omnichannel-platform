@@ -437,10 +437,18 @@ export class FiscalDocumentsService {
     }
     // The fiscal data of the customer, as it is at this moment, is copied into the receiver: the document keeps its own sealed copy and a
     // later change of the customer's data never reaches it
+    const taxSnapshotMissing =
+      order.taxCents === null ||
+      order.pricesIncludeTax === null ||
+      order.items.some(item => item.taxCents === null)
     const receiver = receiverWithFiscalData(
       contact,
-      // A customer that was erased or merged into another has no fiscal data to copy: it must not come back in a new document
-      !withFiscalData || order.customer.erasedAt !== null || order.customer.mergedIntoId !== null
+      // A customer that was erased or merged into another has no fiscal data to copy: it must not come back in a new document. Nor is the
+      // sealed data opened for an order that makes no document (no tax snapshot): a key that changed must not hide that answer
+      !withFiscalData ||
+        taxSnapshotMissing ||
+        order.customer.erasedAt !== null ||
+        order.customer.mergedIntoId !== null
         ? null
         : await this.customerFiscalReceiver(tx, order.storeId, order.customerId)
     )
@@ -448,10 +456,7 @@ export class FiscalDocumentsService {
       storeId: order.storeId,
       // An order made before the tax snapshot (HC-006): its tax is not known, so no document is made of it with a tax of 0. The credit
       // note, the legal books and the entry of the sale refuse such an order too (TAX_MISSING)
-      taxSnapshotMissing:
-        order.taxCents === null ||
-        order.pricesIncludeTax === null ||
-        order.items.some(item => item.taxCents === null),
+      taxSnapshotMissing,
       currency: order.currency,
       totalCents: order.totalCents,
       taxCents: Math.min(orderTax, order.totalCents),
@@ -1739,6 +1744,15 @@ export class FiscalDocumentsService {
           : isNote
             ? await this.readCreditNote(tx, organizationId, doc.orderId, doc.returnId)
             : await this.readSale(tx, organizationId, doc.orderId, false)
+        // The same answer as `replace`: a sale read again with no tax snapshot is not queued to be refused again with the same snapshot
+        if (!isNote && sale !== null && 'taxSnapshotMissing' in sale && sale.taxSnapshotMissing) {
+          throw new PlatformException(
+            ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+            'the order has no tax snapshot: no document can be made of it',
+            HttpStatusCodes.CONFLICT,
+            { reason: FiscalConflictReasons.TAX_SNAPSHOT_MISSING }
+          )
+        }
         if (isNote && inconsistent && (sale === null || ('ok' in sale && !sale.ok))) {
           throw new PlatformException(
             ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
@@ -1755,8 +1769,7 @@ export class FiscalDocumentsService {
             parentDocumentId,
             // A refused document made in a contingency is made again as any other: the contingency is over for it
             contingencyId: null,
-            // A sale with no tax snapshot keeps the document it has: it is never made again with a tax of 0
-            ...(sale === null || ('taxSnapshotMissing' in sale && sale.taxSnapshotMissing)
+            ...(sale === null
               ? {}
               : {
                   linesSnapshot: sale.linesSnapshot,
