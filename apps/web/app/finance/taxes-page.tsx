@@ -9,6 +9,7 @@ import { ClientPermissions } from '@platform/core/auth'
 
 import { FinanceGate } from '../../components/finance/finance-gate'
 import { TaxRateDialog } from '../../components/finance/tax-rate-dialog'
+import { TaxRateToggleDialog } from '../../components/finance/tax-rate-toggle-dialog'
 import { useStore } from '../../components/providers/store-context'
 import { LoadFailed, PageLoading } from '../../components/settings/states'
 import { Button } from '../../components/ui/button'
@@ -110,6 +111,7 @@ function TaxRateRow({
   const toggle = useSetFinanceTaxRateActive(storeId)
   const makeDefault = useUpdateFinanceTaxRate(storeId)
   const busy = toggle.isPending || makeDefault.isPending
+  const [confirmingToggle, setConfirmingToggle] = useState(false)
   const fail = (error: Error): void => {
     toast.error(errorText(error))
   }
@@ -173,20 +175,34 @@ function TaxRateRow({
             size="sm"
             variant="outline"
             disabled={busy}
-            onClick={() =>
-              toggle.mutate(
-                { id: rate.id, active: !rate.active },
-                {
-                  onSuccess: () => toast.success(rate.active ? t('deactivated') : t('reactivated')),
-                  onError: fail
-                }
-              )
-            }
+            onClick={() => setConfirmingToggle(true)}
           >
             {rate.active ? t('deactivate') : t('reactivate')}
           </Button>
         </span>
       ) : null}
+      <TaxRateToggleDialog
+        open={confirmingToggle}
+        onOpenChange={setConfirmingToggle}
+        name={rate.name}
+        turningOn={!rate.active}
+        busy={toggle.isPending}
+        onConfirm={() =>
+          toggle.mutate(
+            { id: rate.id, active: !rate.active },
+            {
+              onSuccess: () => {
+                setConfirmingToggle(false)
+                toast.success(rate.active ? t('deactivated') : t('reactivated'))
+              },
+              onError: error => {
+                setConfirmingToggle(false)
+                fail(error)
+              }
+            }
+          )
+        }
+      />
     </li>
   )
 }

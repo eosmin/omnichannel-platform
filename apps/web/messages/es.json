@@ -5942,6 +5942,19 @@
       "reactivate": "Activar",
       "deactivated": "Tasa desactivada.",
       "reactivated": "Tasa activada.",
+      "toggle": {
+        "cancel": "Cancelar",
+        "off": {
+          "title": "¿Desactivar {name}?",
+          "description": "Una tasa desactivada ya no se puede elegir. Lo ya registrado no cambia. Puedes activarla de nuevo.",
+          "confirm": "Desactivar"
+        },
+        "on": {
+          "title": "¿Activar {name}?",
+          "description": "La tasa se podrá elegir otra vez.",
+          "confirm": "Activar"
+        }
+      },
       "percent": "{percent} %",
       "accounts": "Impuesto de ventas a {output} · impuesto de compras a {input}",
       "badges": {
@@ -6688,6 +6701,8 @@
           "unmatched": "Abierta"
         },
         "matchedWith": "Conciliada con el asiento {number} del {date}",
+        "undoTitle": "¿Deshacer esta conciliación?",
+        "undoDescription": "El asiento y la línea del extracto quedan como están, pero el par deja de contar como conciliado.",
         "undo": "Deshacer",
         "undone": "Se deshizo la decisión.",
         "suggestionsLabel": "Asientos sugeridos",

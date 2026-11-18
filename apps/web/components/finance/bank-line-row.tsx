@@ -44,6 +44,7 @@ export function BankLineRow({
   const confirm = useConfirmBankMatch(storeId)
   const reject = useRejectBankMatch(storeId)
   const state = lineStateOf(line)
+  const [undoing, setUndoing] = useState(false)
   // One decision at a time for a line: two suggestions of it cannot be confirmed together. The answer is awaited here, in a component
   // that stays mounted, because the row of a decision leaves the list (or the filter) once the lines are read again.
   const busy = undo.isPending || confirm.isPending || reject.isPending
@@ -102,14 +103,25 @@ export function BankLineRow({
             variant="outline"
             disabled={busy}
             data-testid="bank-line-undo"
-            onClick={() => {
-              if (line.match !== null)
-                void decide(() => undo.mutateAsync(line.match?.id ?? ''), t('undone'))
-            }}
+            onClick={() => setUndoing(true)}
           >
             <Undo2 aria-hidden />
             {t('undo')}
           </Button>
+          <BankConfirmDialog
+            open={undoing}
+            onOpenChange={setUndoing}
+            title={t('undoTitle')}
+            description={t('undoDescription')}
+            confirmLabel={t('undo')}
+            busy={undo.isPending}
+            onConfirm={() => {
+              if (line.match === null) return
+              void decide(() => undo.mutateAsync(line.match?.id ?? ''), t('undone')).then(() =>
+                setUndoing(false)
+              )
+            }}
+          />
         </div>
       )}
 

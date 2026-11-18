@@ -27,7 +27,14 @@ import { useStore } from '../providers/store-context'
 import { LoadFailed, PageLoading } from '../settings/states'
 import { useDestructiveAction } from '../shared/destructive-action'
 import { Button } from '../ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  stickyDialogActionsClass
+} from '../ui/dialog'
 
 import { EntryLines } from './entry-lines'
 import { TextField } from './fields'
@@ -161,7 +168,7 @@ function TransactionBody({
       {voiding ? (
         <VoidForm transaction={transaction} onDone={onClose} onCancel={() => setVoiding(false)} />
       ) : (
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className={`${stickyDialogActionsClass} flex flex-wrap justify-end gap-2`}>
           <Button type="button" variant="outline" onClick={onClose}>
             {t('detail.close')}
           </Button>
@@ -345,7 +352,7 @@ function VoidForm({
           {refusal}
         </p>
       )}
-      <div className="flex justify-end gap-2">
+      <div className={`${stickyDialogActionsClass} flex justify-end gap-2`}>
         <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>
           {t('cancel')}
         </Button>
