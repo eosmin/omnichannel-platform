@@ -4,6 +4,7 @@ import {
   RolledUpMetricUnits,
   type ReportMetric
 } from '@platform/core/analytics'
+import { CsvDecimal } from '@platform/core/exports'
 
 import type { ReportTable } from './report-table'
 
@@ -29,6 +30,7 @@ export interface SheetTexts {
 }
 
 const CENTS_PER_UNIT = 100
+const MONEY_DECIMALS = 2
 
 // What a spreadsheet or a CSV holds for a figure: money in whole units of the currency (the rollup already keeps it that way, so it is
 // not divided again), a time in seconds, a count as it is. Money is cut to the cent here and only here, from the four decimals the
@@ -36,6 +38,16 @@ const CENTS_PER_UNIT = 100
 export function displayValue(value: number | null, unit: MetricUnit): number | null {
   if (value === null) return null
   return unit === MetricUnits.CURRENCY ? Math.round(value * CENTS_PER_UNIT) / CENTS_PER_UNIT : value
+}
+
+// The same figure for a CSV cell: money always with its two decimals (50 cents is 0.50, as in the PDF), because a CSV has no cell
+// format to show the cents a number drops; a `CsvDecimal` stays a number, so a negative one takes no quote. Every other figure is the
+// number of `displayValue`
+export function csvFigure(value: number | null, unit: MetricUnit): number | CsvDecimal | null {
+  const shown = displayValue(value, unit)
+  return shown !== null && unit === MetricUnits.CURRENCY && Number.isFinite(shown)
+    ? new CsvDecimal(shown, MONEY_DECIMALS)
+    : shown
 }
 
 export function sheetOf(table: ReportTable, texts: SheetTexts): ReportSheet {

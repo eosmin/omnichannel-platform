@@ -1290,7 +1290,7 @@ is no `/webhooks/channels/` route for a remote plugin (the route answers `404` f
 
 *Retries.* A send is a job of the `OUTBOUND` queue, whose policy is the same for every plugin: 5
 attempts, exponential backoff from 5 seconds. A network error, a timeout, an HTTP 429 or 5xx is tried
-again; any other answer is final. If the plugin says `retryable`, the flag wins over the status
+again; for a send, the `Idempotency-Key` is the same on every attempt, so a 5xx or a timeout is safe to repeat (an answer of 200 that cannot be read is not repeated); any other answer is final. If the plugin says `retryable`, the flag wins over the status
 (`retryable: true` on a 4xx is tried again, `retryable: false` on a 5xx is not). After the last
 attempt the message is `failed`. **Sending again** is the agent's choice and reuses the same
 `Message`: it goes back to `queued` and is sent with `Idempotency-Key = <Message.id>.<n>`, where `n`

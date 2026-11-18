@@ -233,8 +233,9 @@ export class FinancePostingService {
     // E4 is what a remittance of the guide waits for (its payable is the estimate the remittance settles): once it is posted, the
     // remittances that settled the guide and could not post are asked again
     // (also when the entry was already there: a job that died after the commit and before this re-ask is retried and must still do it)
+    // E3 is the other thing it waits for (the receivable the cash clears): the same re-ask when the sale is posted
     if (
-      input.kind === FinanceEventKind.CHARGES &&
+      (input.kind === FinanceEventKind.CHARGES || input.kind === FinanceEventKind.SALE) &&
       (result.outcome === FinancePostingOutcome.POSTED ||
         result.outcome === FinancePostingOutcome.REPLAYED)
     ) {
@@ -436,7 +437,12 @@ export class FinancePostingService {
       case FinanceEventKind.CHARGES:
         return this.loadCharges(tx, input)
       case FinanceEventKind.REMITTANCE_CONFIRM:
-        return this.loadRemittanceConfirm(tx, input, dateToDay(settings.accountingStartDate))
+        return this.loadRemittanceConfirm(
+          tx,
+          input,
+          dateToDay(settings.accountingStartDate),
+          recognizeSaleOn
+        )
       case FinanceEventKind.COD_WRITE_OFF:
         return this.loadWriteOff(
           tx,
@@ -739,26 +745,21 @@ export class FinancePostingService {
     }
     // The receivable is there only when E3 put it there (or the guide was delivered before the books began, and the opening balance
     // holds it): a sale that is not posted yet makes this wait, it never clears a receivable that does not exist
-    // The sale of the order is recognized when the setting says (shipping or delivery): a sale from before the books began is in the
-    // opening balance whatever the day of the guide
-    const order = await tx.order.findFirst({
-      where: { id: shipment.orderId, storeId: shipment.storeId },
-      select: { shippedAt: true, deliveredAt: true }
-    })
-    const recognizedAt =
-      recognizeSaleOn === (SaleRecognition.SHIPPED as string)
-        ? (order?.shippedAt ?? null)
-        : (order?.deliveredAt ?? shipment.deliveredAt)
-    const deliveredDay =
-      recognizedAt === null ? null : dayInZone(recognizedAt, shipment.store.timezone)
-    if (deliveredDay === null || deliveredDay >= accountingStartDate) {
-      const sale = await this.entryOf(
-        tx,
-        input.organizationId,
-        FinancePostingKey.ORDER_SALE(shipment.orderId)
-      )
-      if (sale === null) return failed(FinancePostingFailureReason.SOURCE_NOT_READY)
-    }
+    const awaiting = await this.ordersAwaitingSale(
+      tx,
+      input.organizationId,
+      [
+        {
+          orderId: shipment.orderId,
+          storeId: shipment.storeId,
+          deliveredAt: shipment.deliveredAt,
+          timezone: shipment.store.timezone
+        }
+      ],
+      accountingStartDate,
+      recognizeSaleOn
+    )
+    if (awaiting) return failed(FinancePostingFailureReason.SOURCE_NOT_READY)
     const lines = await tx.codRemittanceLine.findMany({
       where: {
         shipmentId: input.sourceId,
@@ -1201,7 +1202,8 @@ export class FinancePostingService {
   private async loadRemittanceConfirm(
     tx: PrismaTransaction,
     input: PostSourceInput,
-    accountingStartDate: string
+    accountingStartDate: string,
+    recognizeSaleOn: string
   ): Promise<Candidate> {
     const remittance = await tx.codRemittance.findFirst({
       where: { id: input.sourceId, store: { organizationId: input.organizationId } },
@@ -1255,6 +1257,7 @@ export class FinancePostingService {
         reportedFeeCents: true,
         shipment: {
           select: {
+            orderId: true,
             deliveredAt: true,
             shippingPayer: true,
             codAmountCents: true,
@@ -1266,6 +1269,27 @@ export class FinancePostingService {
       }
     })
     const shipmentIds = lines.flatMap(line => (line.shipmentId === null ? [] : [line.shipmentId]))
+    // The cash clears the receivable that E3 put there: a remittance whose sale is not posted yet (or failed) waits, it never credits a
+    // receivable that does not exist (QA HC-103). The failure row it leaves is the alarm, and the sale posting asks this one again.
+    const awaitingSale = await this.ordersAwaitingSale(
+      tx,
+      input.organizationId,
+      lines.flatMap(line =>
+        line.shipment === null
+          ? []
+          : [
+              {
+                orderId: line.shipment.orderId,
+                storeId: remittance.storeId,
+                deliveredAt: line.shipment.deliveredAt,
+                timezone: remittance.store.timezone
+              }
+            ]
+      ),
+      accountingStartDate,
+      recognizeSaleOn
+    )
+    if (awaitingSale) return failed(FinancePostingFailureReason.SOURCE_NOT_READY)
     // What E4 posted for every guide and the lines of earlier confirmed remittances for them: one query each, not one per line (a
     // file can carry thousands of guides and this runs inside the transaction that holds the lock of the books)
     const charged = await tx.journalEntry.findMany({
@@ -1353,6 +1377,44 @@ export class FinancePostingService {
         lines: settlements
       })
     }
+  }
+
+  // Whether any of the orders is a sale of the books that E3 has not posted yet. A sale recognized (on shipping or on delivery, as the
+  // setting says) before the books began is in the opening balance and is never waited for; the day of the guide does not matter then.
+  // One query for the orders and one for the entries, however many guides a remittance carries.
+  private async ordersAwaitingSale(
+    tx: PrismaTransaction,
+    organizationId: string,
+    guides: { orderId: string; storeId: string; deliveredAt: Date | null; timezone: string }[],
+    accountingStartDate: string,
+    recognizeSaleOn: string
+  ): Promise<boolean> {
+    if (guides.length === 0) return false
+    const orders = await tx.order.findMany({
+      where: {
+        id: { in: [...new Set(guides.map(guide => guide.orderId))] },
+        storeId: { in: [...new Set(guides.map(guide => guide.storeId))] }
+      },
+      select: { id: true, storeId: true, shippedAt: true, deliveredAt: true }
+    })
+    const orderOf = new Map(orders.map(order => [`${order.storeId}:${order.id}`, order]))
+    const needed = new Set<string>()
+    for (const guide of guides) {
+      const order = orderOf.get(`${guide.storeId}:${guide.orderId}`)
+      const recognizedAt =
+        recognizeSaleOn === (SaleRecognition.SHIPPED as string)
+          ? (order?.shippedAt ?? null)
+          : (order?.deliveredAt ?? guide.deliveredAt)
+      const day = recognizedAt === null ? null : dayInZone(recognizedAt, guide.timezone)
+      if (day === null || day >= accountingStartDate) {
+        needed.add(FinancePostingKey.ORDER_SALE(guide.orderId))
+      }
+    }
+    if (needed.size === 0) return false
+    const posted = await tx.journalEntry.count({
+      where: { organizationId, idempotencyKey: { in: [...needed] } }
+    })
+    return posted < needed.size
   }
 
   // What E4 posted as payable for a guide (`posted`, read in one query for the whole remittance). A guide delivered before the start of
@@ -1444,16 +1506,29 @@ export class FinancePostingService {
 
   // The confirmed remittances that settled a guide and whose entry waited for its E4: asked again, each one under its own failure row
   private async repostRemittancesOf(input: PostSourceInput): Promise<void> {
-    const lines = await this.prisma.client.codRemittanceLine.findMany({
-      where: {
-        shipmentId: input.sourceId,
-        remittance: {
-          status: RemittanceStatus.CONFIRMED,
-          store: { organizationId: input.organizationId }
-        }
-      },
-      select: { remittanceId: true }
-    })
+    let lines: { remittanceId: string }[]
+    try {
+      lines = await this.prisma.client.codRemittanceLine.findMany({
+        where: {
+          // E4 is the source of a guide, E3 the one of an order: the remittances of the guides of that order
+          ...(input.kind === FinanceEventKind.SALE
+            ? { shipment: { orderId: input.sourceId } }
+            : { shipmentId: input.sourceId }),
+          remittance: {
+            status: RemittanceStatus.CONFIRMED,
+            store: { organizationId: input.organizationId }
+          }
+        },
+        select: { remittanceId: true }
+      })
+    } catch (error) {
+      // The entry that asked is committed and stays the answer of its job: the sweep asks the waiting remittances again
+      this.logger.warn(
+        { sourceId: input.sourceId, errorName: errorName(error) },
+        'the remittances that waited for a posting could not be listed'
+      )
+      return
+    }
     for (const remittanceId of new Set(lines.map(line => line.remittanceId))) {
       try {
         await this.post({

@@ -85,6 +85,9 @@ describe('The entries that depend on a carrier (Step 4B.6b-1)', () => {
       commissionBps?: number | null
       cost?: number
       cod?: number
+      // The sale of the order is in the books (E3 must post it before a remittance clears its receivable); by default it is in
+      // the opening balance, as a guide of an order sold before the books began
+      saleInBooks?: boolean
     } = {}
   ) {
     const built = await createShipment(owner, {
@@ -102,6 +105,12 @@ describe('The entries that depend on a carrier (Step 4B.6b-1)', () => {
       where: { id: built.connectionId },
       data: { remittanceDeductsFee: input.deductsFee ?? true }
     })
+    if (input.saleInBooks !== true) {
+      await owner.order.update({
+        where: { id: built.orderId },
+        data: { shippedAt: NOON('2019-06-01'), deliveredAt: NOON('2019-06-01') }
+      })
+    }
     return built
   }
 
@@ -577,6 +586,28 @@ describe('The entries that depend on a carrier (Step 4B.6b-1)', () => {
           [code(AccountRole.RECEIVABLE_CARRIERS), 0, 200]
         ])
       )
+    })
+
+    it('waits for the sale of the order: no cash is credited before E3, and the failure is on the list (HC-103)', async () => {
+      const shipment = await delivered({ saleInBooks: true })
+      await post(FinanceSourceType.SHIPMENT, shipment.id, FinanceEventKind.CHARGES)
+      const remittanceId = await confirmed(shipment.connectionId, [
+        { shipmentId: shipment.id, reported: 2102 }
+      ])
+      const waiting = await post(
+        FinanceSourceType.REMITTANCE,
+        remittanceId,
+        FinanceEventKind.REMITTANCE_CONFIRM
+      )
+      expect(waiting).toMatchObject({
+        outcome: FinancePostingOutcome.FAILED,
+        reason: FinancePostingFailureReason.SOURCE_NOT_READY
+      })
+      expect(await entryOf(FinancePostingKey.REMITTANCE_CONFIRM(remittanceId))).toBeNull()
+      const failure = await owner.financePostingFailure.findFirst({
+        where: { organizationId: ctx.orgA.id, sourceId: remittanceId, resolvedAt: null }
+      })
+      expect(failure?.reason).toBe(FinancePostingFailureReason.SOURCE_NOT_READY)
     })
 
     it('waits for the charges of the guide, and posts by itself when they are posted', async () => {

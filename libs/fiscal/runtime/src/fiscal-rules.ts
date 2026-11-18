@@ -382,9 +382,10 @@ export function creditNoteSaleOf(
     if (row === undefined || described === undefined) return { ok: false }
     const gross = back.quantity * row.unitPriceCents
     const rawBase = back.netCents + (includesTax ? back.vatCents : 0)
-    // The books round the net and the tax of the units back up separately, so together they can pass the gross of the units by one cent
-    // (net 1739 and tax 261 of 2 units sold at 1000: one unit back is 870 + 131 against 1000). That cent is the rounding of the books, not
-    // a discount: the line is credited for what the units were sold for. More than a cent over is not a rounding and is refused.
+    // The books split the units back on what they were sold for (`reversalLinesOf`), so net and tax together are the gross of the units. Only
+    // a line so small that its net and tax are each prorated on their own (a cent of net would otherwise come back negative) can pass the
+    // gross by a cent: that cent is the rounding of the books, not a discount, and the line is credited for what the units were sold for.
+    // More than a cent over is not a rounding and is refused.
     if (rawBase > gross + 1) return { ok: false }
     const base = Math.min(rawBase, gross)
     lines.push({

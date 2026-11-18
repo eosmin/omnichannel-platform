@@ -15,6 +15,10 @@ import {
 
 export const idSchema = lowercasedUuidSchema
 
+// A list with no filter: a query parameter it does not know is refused, like every other list of the plugin API, so a typo in a filter
+// is a 400 and not an answer that looks filtered
+export const noQuerySchema = z.strictObject({})
+
 const nothingToChange = { message: 'nothing to change' }
 const changesSomething = (body: object): boolean =>
   Object.values(body).some(value => value !== undefined)

@@ -49,12 +49,16 @@ import { isRepeatableSend, type Refusal, refusalOf, SendAttemptFailed } from './
 // What a plugin answers is checked: it may be a third party's. The provider may report the message
 // as already delivered or read (an email, a widget), never as queued.
 const resultSchema = z.object({
-  externalId: z.string().min(1).max(255),
+  externalId: z.string().min(1).max(OutboundLimits.EXTERNAL_ID_MAX_LENGTH),
   status: z.enum([DeliveryStatus.SENT, DeliveryStatus.DELIVERED, DeliveryStatus.READ]),
   // Only what the core uses is read; anything else the plugin adds is dropped
   metadata: z
     .object({
-      [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: z.string().min(1).max(255).optional(),
+      [ChannelResultMetadata.CAPTION_EXTERNAL_ID]: z
+        .string()
+        .min(1)
+        .max(OutboundLimits.EXTERNAL_ID_MAX_LENGTH)
+        .optional(),
       [ChannelResultMetadata.CAPTION_STATE]: z.enum(ReportedCaptionStates).optional()
     })
     .optional()
