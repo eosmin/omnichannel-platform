@@ -1256,7 +1256,7 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
 
       const undone = await asAdmin().post(ApiRoutes.finance.bank.matchUndo(piece)).send({})
 
-      expect(undone.status).toBe(CREATED)
+      expect(undone.status).toBe(OK)
       expect((undone.body as LineBody).match).toBeNull()
       expect((undone.body as LineBody).group).toBeNull()
       expect(await confirmedOf(line.id)).toHaveLength(0)

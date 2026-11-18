@@ -537,6 +537,11 @@ export class FinanceReconciliationService {
           signedCents: (byId.get(id)?.debitCents ?? 0) - (byId.get(id)?.creditCents ?? 0)
         }))
         const problems = groupProblems({ statementCents: line.amountCents, lines })
+        // The shape of the group first (a line named twice, too few, too many): a sum that is wrong for a group that cannot be one is
+        // not the answer to give, because what the person has to change is the group and not an amount
+        if (problems.some(rule => rule !== BankGroupRule.SUM)) {
+          throw conflict('the lines cannot be one group', FinanceConflicts.BANK_GROUP_NOT_ALLOWED)
+        }
         if (problems.includes(BankGroupRule.SUM)) {
           throw resourceConflict('the lines do not add up to the statement line', {
             conflict: FinanceConflicts.BANK_GROUP_SUM_MISMATCH,
