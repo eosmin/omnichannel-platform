@@ -31,6 +31,9 @@ export const SearchConfig = {
   // The newest messages that match a text are ranked; ranking reads and parses the text of each one again, so a word
   // of every conversation ("pedido") must not ask it of every match
   MESSAGE_CANDIDATES: 500,
+  // A text with no word to look for (only stop words, like "cuando") is searched in the messages as typed: shorter than
+  // this many characters (folded) it matches nearly every message, so it finds none
+  MESSAGE_AS_TYPED_MIN_LENGTH: 3,
   // A digit run shorter than this is not looked for in phones: three digits match half the book
   MIN_PHONE_DIGITS: 4
 } as const
@@ -39,6 +42,8 @@ export const SearchConfig = {
 // statement as a literal because `websearch_to_tsquery` and `ts_headline` take a `regconfig`, and a bind
 // parameter arrives as `text`. Nothing a user typed is ever part of it.
 export const SearchLanguage = 'spanish' as const
+// The configuration that keeps every word (no stop words, no stemming): the snippet of a text made only of stop words
+export const SearchLiteralLanguage = 'simple' as const
 
 // The marks around a match in a snippet. The web draws them with these, and escapes every other character
 // of the snippet: the text of a message is the customer's, never markup.
