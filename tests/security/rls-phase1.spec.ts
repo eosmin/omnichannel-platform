@@ -400,9 +400,16 @@ describe('row-level security, phase 1', () => {
     it('has no policy for UPDATE or DELETE, so the trail cannot be changed through a policy', async () => {
       await inCopies(['audit_logs'], async app => {
         await app.seed('audit_logs', rowsOf())
-        const update = await app.as({ stores: [A] }, `UPDATE audit_logs SET action = 'y'`)
+        const mine = `audit-%-${run}`
+        const update = await app.as(
+          { stores: [A] },
+          `UPDATE audit_logs SET action = 'y' WHERE id LIKE $1`,
+          [mine]
+        )
         expect(update.rowCount).toBe(0)
-        const remove = await app.as({ stores: [A] }, 'DELETE FROM audit_logs')
+        const remove = await app.as({ stores: [A] }, 'DELETE FROM audit_logs WHERE id LIKE $1', [
+          mine
+        ])
         expect(remove.rowCount).toBe(0)
       })
     })
