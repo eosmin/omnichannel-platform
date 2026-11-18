@@ -633,6 +633,7 @@
     "FINANCE_PRICE_MODE_CHANGE_UNCONFIRMED": "Cambiar si los precios incluyen el impuesto cambia el total de todo el catálogo: confirma el cambio de modo de precios",
     "PURCHASE_ORDER_INVALID_STATUS_TRANSITION": "La orden de compra no puede pasar a ese estado desde el que tiene",
     "PURCHASE_RECEIPT_EXCEEDS_ORDER": "Una recepción no puede ingresar más unidades de las que siguen abiertas en la orden",
+    "SEARCH_TOO_BROAD": "Esa búsqueda coincide con demasiado: escribe un poco más",
     "SUPPLIER_HAS_HISTORY": "Este proveedor ya tiene facturas o pagos, así que su cuenta por pagar no puede cambiar",
     "INTERNAL_ERROR": "Algo salió mal. Inténtalo de nuevo",
     "NETWORK_UNAVAILABLE": "Sin conexión. Lo que escribiste sigue aquí: inténtalo de nuevo cuando vuelva",
