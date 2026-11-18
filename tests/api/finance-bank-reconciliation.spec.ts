@@ -47,6 +47,10 @@ interface LineBody {
   lineNo: number
   amountCents: number
   match: { id: string; journalLineId: string } | null
+  group: {
+    id: string
+    pieces: { matchId: string; journalLineId: string; signedCents: number }[]
+  } | null
   suggestions: SuggestionBody[]
 }
 interface PageBody {
@@ -1136,6 +1140,323 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
 
   // The file of a bank that prints a time after the day on most rows, thousands with a comma inside quotes, and no header row
   // (synthetic: only the shape of a real statement; a day past the 12th, so the order of the day and the month is not asked). Its own account, so the lines of the other cases are not in its way.
+  describe('one statement line against several lines of the books (HC-121)', () => {
+    const group = (lineId: string, journalLineIds: string[], who = asAdmin) =>
+      who().post(ApiRoutes.finance.bank.lineGroupMatches(lineId)).send({ journalLineIds })
+    const lineOf = async (importId: string) =>
+      owner.bankStatementLine.findFirstOrThrow({ where: { importId } })
+    const confirmedOf = (lineId: string) =>
+      owner.reconciliationMatch.findMany({
+        where: { statementLineId: lineId, status: 'confirmed' },
+        select: { id: true, journalLineId: true, groupId: true }
+      })
+
+    it('confirms a deposit that groups three collections, and the books are untouched', async () => {
+      const [a, b, c] = [
+        await bookLine('in', 50_000, day(-4)),
+        await bookLine('in', 60_000, day(-3)),
+        await bookLine('in', 40_000, day(-2))
+      ]
+      const made = await imported([`${day(-2)},Grouped deposit,,1500.00`])
+      const line = await lineOf(made.id)
+      const entriesBefore = await owner.journalEntry.count({
+        where: { organizationId: ctx.orgA.id }
+      })
+
+      const ok = await group(line.id, [c, a, b])
+
+      expect(ok.status).toBe(CREATED)
+      const body = ok.body as LineBody
+      expect(body.match).not.toBeNull()
+      expect(body.group?.pieces.map(piece => piece.journalLineId).sort()).toEqual([a, b, c].sort())
+      expect(body.group?.pieces.reduce((total, piece) => total + piece.signedCents, 0)).toBe(
+        150_000
+      )
+      const rows = await confirmedOf(line.id)
+      expect(rows).toHaveLength(3)
+      expect(new Set(rows.map(row => row.groupId)).size).toBe(1)
+      expect(await owner.journalEntry.count({ where: { organizationId: ctx.orgA.id } })).toBe(
+        entriesBefore
+      )
+      expect((await linesOf(made.id)).counts).toMatchObject({ matched: 1, unmatched: 0 })
+      await waitForAuditEntries(owner, {
+        action: AuditAction.FINANCE_RECONCILIATION_GROUP_CONFIRMED,
+        resourceType: FinanceResourceTypes.RECONCILIATION_MATCH,
+        resourceId: body.match?.id ?? ''
+      })
+    })
+
+    it('confirms a deposit net of a fee the person booked as an expense from the same account', async () => {
+      const sale = await bookLine('in', 150_000, day(-3))
+      const fee = await bookLine('out', 300, day(-3))
+      const made = await imported([`${day(-2)},Net deposit,,1497.00`])
+      const line = await lineOf(made.id)
+
+      const ok = await group(line.id, [sale, fee])
+
+      expect(ok.status).toBe(CREATED)
+      expect((ok.body as LineBody).group?.pieces).toHaveLength(2)
+    })
+
+    it('refuses a group that is off by one cent, and writes nothing', async () => {
+      const [a, b] = [await bookLine('in', 60_000, day(-3)), await bookLine('in', 39_999, day(-3))]
+      const made = await imported([`${day(-2)},Short,,1000.00`])
+      const line = await lineOf(made.id)
+
+      const refused = await group(line.id, [a, b])
+
+      expect(refused.status).toBe(CONFLICT)
+      expect(conflictOf(refused.body)).toBe(FinanceConflicts.BANK_GROUP_SUM_MISMATCH)
+      expect((refused.body as ErrorBody).error.metadata).toMatchObject({
+        statementCents: 100_000,
+        sumCents: 99_999
+      })
+      expect(await confirmedOf(line.id)).toHaveLength(0)
+    })
+
+    it('refuses a group of one, a line named twice, a line of another account and a line that does not exist', async () => {
+      const [a, b] = [await bookLine('in', 600, day(-3)), await bookLine('in', 400, day(-3))]
+      const cash = await bookLineOnCash(400, day(-3))
+      const made = await imported([`${day(-2)},Small,,10.00`])
+      const line = await lineOf(made.id)
+
+      expect((await group(line.id, [a])).status).toBe(BAD_REQUEST)
+      const twice = await group(line.id, [a, a])
+      expect(twice.status).toBe(CONFLICT)
+      expect(conflictOf(twice.body)).toBe(FinanceConflicts.BANK_GROUP_NOT_ALLOWED)
+      expect((await group(line.id, [a, cash])).status).toBe(NOT_FOUND)
+      expect((await group(line.id, [a, randomUUID()])).status).toBe(NOT_FOUND)
+      expect((await group(randomUUID(), [a, b])).status).toBe(NOT_FOUND)
+      expect(await confirmedOf(line.id)).toHaveLength(0)
+    })
+
+    it('refuses a line that is matched already, and a line of the books that is matched already', async () => {
+      const [a, b, c] = [
+        await bookLine('in', 600, day(-3)),
+        await bookLine('in', 400, day(-3)),
+        await bookLine('in', 1000, day(-3))
+      ]
+      const made = await imported([`${day(-2)},First,,10.00`, `${day(-2)},Second,,20.00`])
+      const [first, second] = (await linesOf(made.id)).items
+      expect((await confirm(first?.id ?? '', c)).status).toBe(CREATED)
+      expect((await group(first?.id ?? '', [a, b])).status).toBe(CONFLICT)
+      // The line c is matched: it cannot be in a group of another line
+      const other = await bookLine('in', 1000, day(-3))
+      const taken = await group(second?.id ?? '', [c, other])
+      expect(taken.status).toBe(CONFLICT)
+      expect(await confirmedOf(second?.id ?? '')).toHaveLength(0)
+    })
+
+    it('is taken back whole from any of its decisions, and the line is open again', async () => {
+      const [a, b] = [await bookLine('in', 700, day(-3)), await bookLine('in', 300, day(-3))]
+      const made = await imported([`${day(-2)},Undo,,10.00`])
+      const line = await lineOf(made.id)
+      const ok = (await group(line.id, [a, b])).body as LineBody
+      const piece = ok.group?.pieces[0]?.matchId ?? ''
+
+      const undone = await asAdmin().post(ApiRoutes.finance.bank.matchUndo(piece)).send({})
+
+      expect(undone.status).toBe(OK)
+      expect((undone.body as LineBody).match).toBeNull()
+      expect((undone.body as LineBody).group).toBeNull()
+      expect(await confirmedOf(line.id)).toHaveLength(0)
+      // Open again: it can be matched as a group once more
+      expect((await group(line.id, [a, b])).status).toBe(CREATED)
+    })
+
+    it('lets exactly one of two groups win when two people decide the same line at the same moment', async () => {
+      const [a, b, c, d] = [
+        await bookLine('in', 40_000, day(-3)),
+        await bookLine('in', 60_000, day(-3)),
+        await bookLine('in', 30_000, day(-3)),
+        await bookLine('in', 70_000, day(-3))
+      ]
+      const made = await imported([`${day(-2)},Race,,1000.00`])
+      const line = await lineOf(made.id)
+
+      const answers = await Promise.all([group(line.id, [a, b]), group(line.id, [c, d])])
+
+      expect(answers.filter(answer => answer.status === CREATED)).toHaveLength(1)
+      const refused = answers.find(answer => answer.status !== CREATED)
+      expect(refused?.status).toBe(CONFLICT)
+      expect([FinanceConflicts.BANK_LINE_ALREADY_MATCHED, FinanceConflicts.BANK_CHANGED]).toContain(
+        conflictOf(refused?.body)
+      )
+      const rows = await confirmedOf(line.id)
+      expect(rows).toHaveLength(2)
+      expect(new Set(rows.map(row => row.groupId)).size).toBe(1)
+    })
+
+    it('keeps a group that straddles the closing day as a difference of that day, like a pair that does', async () => {
+      const date = '2022-07-10'
+      const [early, late] = [
+        await bookLine('in', 60_000, date),
+        await bookLine('in', 40_000, '2022-07-15')
+      ]
+      const made = await imported(
+        [`${date},Straddle,,1000.00`],
+        profile.id,
+        `&closingBalanceCents=100000&closingOn=${date}`
+      )
+      const line = await lineOf(made.id)
+      type Difference = {
+        unmatchedStatement: { lines: number; cents: number }
+        unmatchedBook: { lines: number; cents: number }
+        unexplainedCents: number
+      }
+      const differenceOf = async (): Promise<Difference> =>
+        (await asAdmin().get(ApiRoutes.finance.bank.difference(made.id))).body as Difference
+      const before = await differenceOf()
+
+      expect((await group(line.id, [early, late])).status).toBe(CREATED)
+
+      // The line of the later day was not on the books at the closing day: the group is not matched at that day and nothing moves
+      expect(await differenceOf()).toEqual(before)
+    })
+
+    it('does not reach the lines of another organization, and asks for the permission to reconcile', async () => {
+      const [a, b] = [await bookLine('in', 700, day(-3)), await bookLine('in', 300, day(-3))]
+      const made = await imported([`${day(-2)},Mine,,10.00`])
+      const line = await lineOf(made.id)
+
+      expect((await group(line.id, [a, b], () => api(app, ctx.adminB, ctx.storeB))).status).toBe(
+        NOT_FOUND
+      )
+      expect((await group(line.id, [a, b], () => api(app, journalReader, ctx.storeA))).status).toBe(
+        FORBIDDEN
+      )
+      expect((await group(line.id, [a, b], asReconciler)).status).toBe(CREATED)
+    })
+
+    describe('what the database holds whoever writes', () => {
+      const rowOf = (
+        lineId: string,
+        journalLineId: string,
+        groupId: string | null,
+        isGroupLead = false
+      ) => ({
+        organizationId: ctx.orgA.id,
+        statementLineId: lineId,
+        journalLineId,
+        status: 'confirmed',
+        decidedBy: 'db-suite',
+        groupId,
+        isGroupLead
+      })
+
+      it('keeps a group that does not add up out of the books at the commit, in any order, and a group of one', async () => {
+        const [a, b] = [await bookLine('in', 600, day(-3)), await bookLine('in', 399, day(-3))]
+        const made = await imported([`${day(-2)},Strict,,10.00`])
+        const line = await lineOf(made.id)
+        const groupId = randomUUID()
+
+        await expect(
+          // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+          owner.$transaction(async tx => {
+            await tx.reconciliationMatch.create({ data: rowOf(line.id, b, groupId, true) })
+            await tx.reconciliationMatch.create({ data: rowOf(line.id, a, groupId) })
+          })
+        ).rejects.toThrow(/RECONCILIATION_GROUP/)
+        await expect(
+          owner.reconciliationMatch.create({ data: rowOf(line.id, a, randomUUID(), true) })
+        ).rejects.toThrow(/RECONCILIATION_GROUP/)
+        expect(await confirmedOf(line.id)).toHaveLength(0)
+      })
+
+      it('keeps a pair and a group, or two groups, of one statement line apart', async () => {
+        const [a, b, c, d, e] = [
+          await bookLine('in', 600, day(-3)),
+          await bookLine('in', 400, day(-3)),
+          await bookLine('in', 1000, day(-3)),
+          await bookLine('in', 700, day(-3)),
+          await bookLine('in', 300, day(-3))
+        ]
+        const made = await imported([`${day(-2)},Apart,,10.00`])
+        const line = await lineOf(made.id)
+        const first = randomUUID()
+        // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+        await owner.$transaction(async tx => {
+          await tx.reconciliationMatch.create({ data: rowOf(line.id, a, first, true) })
+          await tx.reconciliationMatch.create({ data: rowOf(line.id, b, first) })
+        })
+
+        await expect(
+          owner.reconciliationMatch.create({ data: rowOf(line.id, c, null) })
+        ).rejects.toThrow(/matched by a group/)
+        // A second group that is valid on its own (it adds up to the line) is refused all the same: the line has its group
+        const second = randomUUID()
+        await expect(
+          // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+          owner.$transaction(async tx => {
+            await tx.reconciliationMatch.create({ data: rowOf(line.id, d, second, true) })
+            await tx.reconciliationMatch.create({ data: rowOf(line.id, e, second) })
+          })
+        ).rejects.toThrow(/statement line is matched already/)
+        expect(await confirmedOf(line.id)).toHaveLength(2)
+      })
+
+      it('holds exactly one lead per group, and a group with none or two is not kept', async () => {
+        const [a, b] = [await bookLine('in', 600, day(-3)), await bookLine('in', 400, day(-3))]
+        const made = await imported([`${day(-2)},Lead,,10.00`])
+        const line = await lineOf(made.id)
+
+        for (const [leads, refusal] of [
+          [[false, false], /RECONCILIATION_GROUP/],
+          // Two leads of one statement line: the unique index of the confirmed decisions holds the second
+          [[true, true], /Unique constraint|uq_reconciliation_confirmed_statement_line/]
+        ] as const) {
+          const groupId = randomUUID()
+          await expect(
+            // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+            owner.$transaction(async tx => {
+              await tx.reconciliationMatch.create({ data: rowOf(line.id, a, groupId, leads[0]) })
+              await tx.reconciliationMatch.create({ data: rowOf(line.id, b, groupId, leads[1]) })
+            })
+          ).rejects.toThrow(refusal)
+        }
+        expect(await confirmedOf(line.id)).toHaveLength(0)
+      })
+
+      it('takes a group back whole or not at all', async () => {
+        const [a, b] = [await bookLine('in', 600, day(-3)), await bookLine('in', 400, day(-3))]
+        const made = await imported([`${day(-2)},Whole,,10.00`])
+        const line = await lineOf(made.id)
+        const groupId = randomUUID()
+        // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+        await owner.$transaction(async tx => {
+          await tx.reconciliationMatch.create({ data: rowOf(line.id, a, groupId, true) })
+          await tx.reconciliationMatch.create({ data: rowOf(line.id, b, groupId) })
+        })
+        const [one] = await confirmedOf(line.id)
+
+        await expect(
+          owner.reconciliationMatch.update({
+            where: { id: one?.id ?? '' },
+            data: { status: 'undone', undoneBy: 'db-suite', undoneAt: new Date() }
+          })
+        ).rejects.toThrow(/RECONCILIATION_GROUP/)
+        expect(await confirmedOf(line.id)).toHaveLength(2)
+        await owner.reconciliationMatch.updateMany({
+          where: { groupId, status: 'confirmed' },
+          data: { status: 'undone', undoneBy: 'db-suite', undoneAt: new Date() }
+        })
+        expect(await confirmedOf(line.id)).toHaveLength(0)
+      })
+
+      it('never gives a rejection to a group', async () => {
+        const a = await bookLine('in', 600, day(-3))
+        const made = await imported([`${day(-2)},Rejected,,6.00`])
+        const line = await lineOf(made.id)
+
+        await expect(
+          owner.reconciliationMatch.create({
+            data: { ...rowOf(line.id, a, randomUUID()), status: 'rejected' }
+          })
+        ).rejects.toThrow(/chk_reconciliation_group/)
+      })
+    })
+  })
+
   describe('a statement with a time in its dates and quoted thousands', () => {
     const rows = {
       first: [

@@ -246,6 +246,7 @@ async function createPurchaseOrderOf(
 // The supplier a payment of the suite was made to: the payments are read in the list of their supplier
 const supplierOfPayment = new Map<string, string>()
 const paymentOfReturn = new Map<string, string>()
+const importOfGroupLine = new Map<string, string>()
 // The order a row of the purchases belongs to: a line, a receipt and the line of a receipt are reached through their order
 const orderOfPurchaseRow = new Map<string, string>()
 const purchaseOrderPathOf = (build: (id: string) => string) => (id: string) =>
@@ -2278,6 +2279,26 @@ const resources: IsolationResource[] = [
     modify: { path: ApiRoutes.finance.bank.confirmExact, method: 'post', body: {} },
     untouched: async (owner, id) =>
       (await owner.reconciliationMatch.count({ where: { statementLine: { importId: id } } })) === 0
+  },
+  // A statement line is matched with a GROUP of lines of the books by one request (HC-121): the route writes the decisions of the model, and
+  // a request of another organization finds no line (the id of this case is the statement line's)
+  {
+    name: 'reconciliationMatch',
+    create: async (owner, { storeId }) => {
+      const statement = await bankStatementOf(owner, storeId, 700)
+      importOfGroupLine.set(statement.lineId, statement.importId)
+      return { id: statement.lineId }
+    },
+    scope: 'organization',
+    // The line is read with its import
+    readPath: id => ApiRoutes.finance.bank.importLines(importOfGroupLine.get(id) ?? randomUUID()),
+    modify: {
+      path: ApiRoutes.finance.bank.lineGroupMatches,
+      method: 'post',
+      body: { journalLineIds: [randomUUID(), randomUUID()] }
+    },
+    untouched: async (owner, id) =>
+      (await owner.reconciliationMatch.count({ where: { statementLineId: id } })) === 0
   },
   // A decision of a person: no route reads one; the change a stranger could try is to take it back
   {

@@ -36,9 +36,11 @@ import {
 } from './finance-bank-imports.service'
 import { type BankProfileView, FinanceBankProfilesService } from './finance-bank-profiles.service'
 import {
+  type BankGroupBody,
   type BankPairBody,
   bankImportQuerySchema,
   type BankImportQuery,
+  bankGroupSchema,
   bankPairSchema,
   bankPreviewSchema,
   type BankPreviewBody,
@@ -243,6 +245,27 @@ export class FinanceBankController {
     @Req() req: AuthenticatedRequest
   ): Promise<BankLineView> {
     return this.reconciliation.confirm(organization.id, lineId, body, actorOf(user, store, req))
+  }
+
+  // One statement line against several lines of the journal whose signed sum is exactly its amount (HC-121): taken back whole by `matchUndo`
+  @RequirePermissions(Permissions.FINANCE_RECONCILE)
+  @NoStore()
+  @Post(ApiRoutes.finance.bank.lineGroupMatches(':id'))
+  @HttpCode(HttpStatusCodes.CREATED)
+  confirmGroup(
+    @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', id()) lineId: string,
+    @Body(new ZodValidationPipe(bankGroupSchema)) body: BankGroupBody,
+    @Req() req: AuthenticatedRequest
+  ): Promise<BankLineView> {
+    return this.reconciliation.confirmGroup(
+      organization.id,
+      lineId,
+      body,
+      actorOf(user, store, req)
+    )
   }
 
   @RequirePermissions(Permissions.FINANCE_RECONCILE)

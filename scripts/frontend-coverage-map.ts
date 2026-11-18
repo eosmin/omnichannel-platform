@@ -173,6 +173,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'finance.bank.confirmExact': { step: '4B.9' },
   'finance.bank.difference': { step: '4B.9' },
   'finance.bank.lineMatches': { step: '4B.9' },
+  'finance.bank.lineGroupMatches': { step: '4B.9' },
   'finance.bank.lineRejections': { step: '4B.9' },
   'finance.bank.lineRegisterDraft': { step: '4B.9' },
   'finance.bank.matchUndo': { step: '4B.9' },

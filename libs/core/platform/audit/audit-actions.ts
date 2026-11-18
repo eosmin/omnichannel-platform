@@ -262,6 +262,7 @@ export const AuditAction = {
   SUPPLIER_PAYMENT_RETURN_VOIDED: 'supplier.payment_return_voided',
   FINANCE_BANK_STATEMENT_IMPORTED: 'finance.bank_statement_imported',
   FINANCE_RECONCILIATION_CONFIRMED: 'finance.reconciliation_confirmed',
+  FINANCE_RECONCILIATION_GROUP_CONFIRMED: 'finance.reconciliation_group_confirmed',
   FINANCE_RECONCILIATION_REJECTED: 'finance.reconciliation_rejected',
   FINANCE_RECONCILIATION_UNDONE: 'finance.reconciliation_undone',
 

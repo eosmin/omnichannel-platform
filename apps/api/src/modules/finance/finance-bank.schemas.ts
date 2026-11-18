@@ -163,6 +163,15 @@ export type ListBankLinesQuery = z.output<typeof listBankLinesQuerySchema>
 export const bankPairSchema = z.strictObject({ journalLineId: lowercasedUuidSchema })
 export type BankPairBody = z.output<typeof bankPairSchema>
 
+// A group: the lines of the journal that, together, are the movement of the statement line of the path (HC-121)
+export const bankGroupSchema = z.strictObject({
+  journalLineIds: z
+    .array(lowercasedUuidSchema)
+    .min(BankStatementLimits.MIN_GROUP)
+    .max(BankStatementLimits.MAX_GROUP)
+})
+export type BankGroupBody = z.output<typeof bankGroupSchema>
+
 export const bankStatusQuerySchema = z.strictObject({
   accountId: lowercasedUuidSchema,
   year: queryIntSchema(FinanceLimits.MIN_YEAR, FinanceLimits.MAX_YEAR),
