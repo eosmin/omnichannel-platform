@@ -9,6 +9,7 @@ import {
   FinanceReportLimits,
   FinanceResourceTypes,
   FinanceSourceType,
+  FiscalDocumentKind,
   JournalEntryType,
   LegalBookCorrelativeRestart,
   LegalBookField,
@@ -70,7 +71,7 @@ export interface BookWarnings {
   salesNotReadable: number
   // Sales whose fiscal document was voided before the period ended: left out, the sale is not one
   voidedDocuments: number
-  // Sales whose document is of a provider or a type this deployment does not know, or is a credit note
+  // Sales whose document is of a provider or a type this deployment does not know (a credit note is not the sale's document)
   unclassifiedDocuments: number
   // The returns of the period (entries of a return): the credit notes of a return are not listed yet (Step 4B.7b)
   returnsNotListed: number
@@ -237,12 +238,15 @@ export class FinanceBooksService {
     return resolved.map(item => item.view)
   }
 
-  // A layout is never changed: the answer is the new version. The pure rules refuse a column the kind of book may not show.
+  // A layout is never changed: the answer is the new version. The pure rules refuse a column the kind of book may not show. Saying the
+  // accountant vouched for a layout, and writing over a layout the accountant vouched for (the new version would drop the word), take
+  // `finance:confirm_books`: `mayConfirm` says the caller holds it (QA FIS-426).
   async writeLayout(
     organizationId: string,
     kind: LegalBookKind,
     body: BookLayoutBody,
-    actor: Actor
+    actor: Actor,
+    mayConfirm: boolean
   ): Promise<BookLayoutView> {
     const layout: LegalBookLayout = {
       columns: body.columns,
@@ -263,15 +267,23 @@ export class FinanceBooksService {
     const row = await this.prisma.transaction(async tx => {
       // The versions of a kind are numbered one request at a time
       await lockScope(tx, `${organizationId}:finance_book_layout:${kind}`)
-      const latest = await tx.financeBookLayout.aggregate({
+      const latest = await tx.financeBookLayout.findFirst({
         where: { organizationId, bookKind: kind },
-        _max: { version: true }
+        orderBy: { version: 'desc' },
+        select: { version: true, accountantConfirmed: true }
       })
+      if (!mayConfirm && (body.accountantConfirmed || latest?.accountantConfirmed === true)) {
+        throw new PlatformException(
+          ErrorCodes.PERMISSION_DENIED,
+          'confirming a layout, or writing over a confirmed one, needs finance:confirm_books',
+          HttpStatusCodes.FORBIDDEN
+        )
+      }
       return tx.financeBookLayout.create({
         data: {
           organizationId,
           bookKind: kind,
-          version: (latest._max.version ?? 0) + 1,
+          version: (latest?.version ?? 0) + 1,
           columns: body.columns.map(column => ({ field: column.field, label: column.label })),
           sort: body.sort,
           correlativeStart: body.correlativeStart,
@@ -687,8 +699,19 @@ export class FinanceBooksService {
       CROSS JOIN LATERAL (
         SELECT (date_trunc('month', e.entry_date::timestamp) + interval '1 month') AS next_month
       ) m
-      LEFT JOIN fiscal_documents d ON d.organization_id = e.organization_id AND d.order_id = o.id
-        AND d.issued_at IS NOT NULL AND d.issued_at < m.next_month
+      -- One document stands for the sale: a document of the sale (never the credit note of a return, which is not the sale's document),
+      -- the one still alive at the end of the month, else the newest. A voided document that was replaced does not make the sale a
+      -- voided one, and a credit note does not make it a second row.
+      LEFT JOIN LATERAL (
+        SELECT f.provider_id, f.document_type, f.external_number, f.sequence_number, f.voided_at
+        FROM fiscal_documents f
+        WHERE f.organization_id = e.organization_id AND f.order_id = o.id
+          AND f.kind = ${FiscalDocumentKind.SALE}
+          AND f.issued_at IS NOT NULL AND f.issued_at < m.next_month
+        ORDER BY (f.voided_at IS NOT NULL AND f.voided_at < m.next_month) ASC,
+                 f.issued_at DESC, f.created_at DESC, f.id DESC
+        LIMIT 1
+      ) d ON TRUE
       WHERE e.organization_id = ${organizationId}
         AND e.type = ${JournalEntryType.SALE} AND e.source_type = ${FinanceSourceType.ORDER}
         AND e.reverses_entry_id IS NULL

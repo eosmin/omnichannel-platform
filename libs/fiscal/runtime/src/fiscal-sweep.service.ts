@@ -150,6 +150,10 @@ export class FiscalSweepService {
         ...reach,
         status: { notIn: [OrderStatus.CANCELLED as string] },
         OR: recognized,
+        // An order with no tax snapshot makes no document (HC-006): it is not a finding the sweep could ever close
+        taxCents: { not: null },
+        pricesIncludeTax: { not: null },
+        items: { none: { taxCents: null } },
         // Any sale document of the order, voided or not: a voided one is replaced by a person, never by the sweep
         fiscalDocuments: { none: { organizationId, kind: FiscalDocumentKind.SALE } },
         ...(cursor === undefined ? {} : { id: { gt: cursor } })

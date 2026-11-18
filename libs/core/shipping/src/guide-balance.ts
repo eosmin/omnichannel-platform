@@ -8,6 +8,7 @@ import {
   type BenefitLossRuleType,
   type BenefitPeriodKindType,
   BenefitRefundRule,
+  CarrierChargeModel,
   type BenefitRefundRuleType,
   benefitAlertOf,
   balanceAlertOf,
@@ -239,6 +240,12 @@ async function consumeGuide(
     `${ShipmentLockScopes.GUIDE_BALANCE}:${shipment.connectionId}`
   )
   const before = await guideBalanceOf(tx, shipment.storeId, shipment.connectionId)
+  // A prepaid connection's guide takes its cost out of the advance, and the movement says so for good: the books read it, so a later change
+  // of how the carrier charges moves no guide already made (HC-101)
+  const connection = await tx.carrierConnection.findFirst({
+    where: { id: shipment.connectionId, storeId: shipment.storeId },
+    select: { chargeModel: true }
+  })
   const written = await tx.carrierGuideMovement.createMany({
     data: [
       {
@@ -247,6 +254,7 @@ async function consumeGuide(
         kind: GuideMovementKind.CONSUME,
         guidesDelta: -1,
         unitCostCents: before.averageCostCents,
+        onAdvance: connection?.chargeModel === (CarrierChargeModel.PREPAID as string),
         shipmentId: shipment.shipmentId,
         createdBy: SYSTEM
       }

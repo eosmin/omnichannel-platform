@@ -82,6 +82,14 @@ describe('matchesDeclaredType', () => {
     expect(matchesDeclaredType(type, body)).toBe(false)
   })
 
+  it('refuses a fake PDF: HTML, plain text or a late marker declared as application/pdf', () => {
+    expect(matchesDeclaredType('application/pdf', HTML)).toBe(false)
+    expect(matchesDeclaredType('application/pdf', Buffer.from('not a pdf at all'))).toBe(false)
+    // The marker must be the first bytes, not somewhere after a preamble
+    expect(matchesDeclaredType('application/pdf', Buffer.from('<html>%PDF-1.7'))).toBe(false)
+    expect(matchesDeclaredType('application/pdf', Buffer.from('%PDF'))).toBe(false)
+  })
+
   it('refuses an empty file and a head that stops inside the signature', () => {
     expect(matchesDeclaredType('image/png', Buffer.alloc(0))).toBe(false)
     expect(matchesDeclaredType('image/png', bytes(0x89, 'PNG'))).toBe(false)
