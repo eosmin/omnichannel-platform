@@ -94,23 +94,34 @@ export function StoreNav(): ReactElement {
   ].filter(entry => entry.isShown)
   const nav = useRef<HTMLElement>(null)
   // On a phone the links are one row that scrolls (four rows over the thread left no room to read it, N-BR2-63).
-  // The row opens with the current page in view, and its end has room so that the last link can scroll clear
-  // of the fade that tells the person there is more (a row cut with no sign cut a word: "Custome").
+  // When the row overflows it fades at its end and has room there, so that the last link can scroll clear of the
+  // fade (a row cut with no sign cut a word: "Custome"); a row that fits has neither. It opens with the current
+  // page in view.
   const current = entries.find(entry => pathname.startsWith(entry.match ?? entry.href))?.href
+  const count = entries.length
   useEffect(() => {
     const row = nav.current
-    if (row === null || current === undefined) return
+    if (row === null) return
+    const mark = (): void => {
+      row.dataset.overflow = String(row.scrollWidth > row.clientWidth)
+    }
+    mark()
     const link = Array.from(row.querySelectorAll('a')).find(
       item => item.getAttribute('aria-current') === 'page'
     )
-    if (link === undefined || row.scrollWidth <= row.clientWidth) return
-    row.scrollTo({ left: link.offsetLeft - row.clientWidth / 2 + link.clientWidth / 2 })
-  }, [current])
+    const isPhone = window.matchMedia('(max-width: 767px)').matches
+    if (isPhone && link !== undefined && row.scrollWidth > row.clientWidth) {
+      row.scrollTo({ left: link.offsetLeft - row.clientWidth / 2 + link.clientWidth / 2 })
+    }
+    const observer = new ResizeObserver(mark)
+    observer.observe(row)
+    return () => observer.disconnect()
+  }, [current, count])
   return (
     <nav
       ref={nav}
       aria-label={t('label')}
-      className="relative flex min-w-0 items-center gap-1 overflow-x-auto max-md:[mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)] max-md:pe-8"
+      className="relative flex min-w-0 items-center gap-1 overflow-x-auto max-md:data-[overflow=true]:[mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)] max-md:data-[overflow=true]:pe-8"
     >
       {entries.map(entry => {
         const isCurrent = pathname.startsWith(entry.match ?? entry.href)
