@@ -173,11 +173,38 @@ export class CarrierWebhookService {
     if (!uuidSchema.safeParse(connectionId).success) {
       return { rejection: CarrierWebhookRejections.MALFORMED_ADDRESS }
     }
-    const row = await this.prisma.client.carrierConnection.findUnique({
-      where: { id: connectionId },
-      select: { id: true, storeId: true, carrierId: true, status: true, webhookSecret: true }
-    })
-    if (row === null) return { rejection: CarrierWebhookRejections.UNKNOWN_CONNECTION }
+    // The address names a connection and no store, so there is no context to read it in: rls_resolve_carrier_connection answers
+    // the ids that open the context of its store (never a credential), and the secret is read inside that context.
+    const [resolved] = await this.prisma.client.$queryRaw<
+      {
+        id: string
+        store_id: string
+        organization_id: string
+        carrier_id: string
+        status: string
+      }[]
+    >`SELECT id, store_id, organization_id, carrier_id, status FROM rls_resolve_carrier_connection(${connectionId}::text)`
+    if (resolved === undefined) return { rejection: CarrierWebhookRejections.UNKNOWN_CONNECTION }
+    const readSecret = async (): Promise<Uint8Array | null> =>
+      (
+        await this.prisma.client.carrierConnection.findFirst({
+          where: { id: resolved.id, storeId: resolved.store_id },
+          select: { webhookSecret: true }
+        })
+      )?.webhookSecret ?? null
+    const webhookSecret = this.prisma.hasTenantContext()
+      ? await readSecret()
+      : await this.prisma.tenantTransaction(
+          { storeIds: [resolved.store_id], organizationIds: [resolved.organization_id] },
+          readSecret
+        )
+    const row = {
+      id: resolved.id,
+      storeId: resolved.store_id,
+      carrierId: resolved.carrier_id,
+      status: resolved.status,
+      webhookSecret
+    }
     // A connection that was let go has no secret and takes nothing, whatever arrives for it (one with a failing health check
     // still gets what its carrier pushes: the status of its packages does not wait for the credentials)
     if (row.status === String(CarrierConnectionStatus.DISABLED) || row.webhookSecret === null) {

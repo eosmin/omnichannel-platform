@@ -339,17 +339,12 @@ function definedOnly<T extends Record<string, unknown>>(fields: T): Partial<T> {
   ) as Partial<T> // Same keys, minus the undefined ones
 }
 
-// Every table with a store_id, found in the catalog so that a table added by a later step is counted
-// without anyone remembering to list it. The identifiers come from the catalog and are quoted by
-// format(%I); the store id is a literal (%L).
+// Every table with a store_id, found in the catalog so that a table added by a later step is counted without anyone remembering to
+// list it. It is counted by rls_store_tables_with_rows, which reads with the rights of the owner of the tables: with Row-Level
+// Security on, a count made with the rights of the caller would see no row of any table and let the delete cascade through the data
+// of the store. The function raises when it cannot see every row, so this fails closed: the error stops the delete.
 async function storesTablesWithRows(tx: PrismaTransaction, storeId: string): Promise<string[]> {
-  const rows = await tx.$queryRaw<{ table_name: string; n: number }[]>`
-    SELECT c.table_name,
-      (xpath('/row/n/text()', query_to_xml(
-        format('SELECT count(*) AS n FROM %I WHERE store_id = %L', c.table_name, ${storeId}::text),
-        false, true, '')))[1]::text::int AS n
-    FROM information_schema.columns c
-    WHERE c.table_schema = 'public' AND c.column_name = 'store_id'
-      AND c.table_name <> ALL (${TABLES_OF_THE_STORE_ITSELF})`
-  return rows.filter(row => row.n > 0).map(row => row.table_name)
+  const rows = await tx.$queryRaw<{ table_name: string; row_count: number }[]>`
+    SELECT table_name, row_count FROM rls_store_tables_with_rows(${storeId}::text, ${TABLES_OF_THE_STORE_ITSELF}::text[])`
+  return rows.filter(row => row.row_count > 0).map(row => row.table_name)
 }
