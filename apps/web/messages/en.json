@@ -7521,7 +7521,8 @@
         "note_not_voided": "Only a voided credit note can be made again.",
         "note_already_replaced": "The return of this credit note already has a live credit note.",
         "replace_first_unavailable": "This provider does not ask for the replacement before an invalidation, or this document is itself a replacement. Void it and make the new document after.",
-        "replacement_pending": "This sale already has a replacement made first. Invalidate the original first."
+        "replacement_pending": "This sale already has a replacement made first. Invalidate the original first.",
+        "tax_snapshot_missing": "This order has no tax snapshot (it was made before orders kept their tax), so no sale document can be made of it."
       },
       "receiver": {
         "title": "Fix the receiver of document No. {number}",
