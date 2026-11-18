@@ -100,16 +100,20 @@ function hasOnlyTheTwoLanguages(value: unknown): boolean {
 }
 
 // The name in each language the interface speaks (es and en). Read once and copied: what is stored is what was checked.
-const localizedName = z.unknown().transform((value, ctx): LocalizedText => {
-  const text = hasOnlyTheTwoLanguages(value)
-    ? readLocalizedText(value, PluginManifestLimits.NAME_MAX_LENGTH)
-    : null
-  if (text === null) {
-    ctx.addIssue({ code: 'custom', message: 'a plain text in es and en' })
-    return z.NEVER
-  }
-  return text
-})
+const localizedText = (max: number) =>
+  z.unknown().transform((value, ctx): LocalizedText => {
+    if (!hasOnlyTheTwoLanguages(value)) {
+      ctx.addIssue({ code: 'custom', message: 'only es and en are accepted' })
+      return z.NEVER
+    }
+    const text = readLocalizedText(value, max)
+    if (text === null) {
+      ctx.addIssue({ code: 'custom', message: 'a plain text in es and en' })
+      return z.NEVER
+    }
+    return text
+  })
+const localizedName = localizedText(PluginManifestLimits.NAME_MAX_LENGTH)
 
 const author = z.strictObject({
   name: plainText(PluginManifestLimits.NAME_MAX_LENGTH),
@@ -168,16 +172,7 @@ const CHANNEL_CAPABILITIES: ReadonlySet<string> = new Set(ManifestChannelCapabil
 
 // The text of a connection field, in each language the interface speaks (the web draws it when it has no message of
 // its own for the field, `fieldLabelOf`)
-const fieldLabel = z.unknown().transform((value, ctx): LocalizedText => {
-  const text = hasOnlyTheTwoLanguages(value)
-    ? readLocalizedText(value, PluginManifestLimits.FIELD_LABEL_MAX_LENGTH)
-    : null
-  if (text === null) {
-    ctx.addIssue({ code: 'custom', message: 'a plain text in es and en' })
-    return z.NEVER
-  }
-  return text
-})
+const fieldLabel = localizedText(PluginManifestLimits.FIELD_LABEL_MAX_LENGTH)
 
 // A field of the form that connects an account of the provider, as the registry keeps it (`ConnectFieldSnapshot`),
 // except that a third party names it with a text and never with a message key of the web app

@@ -151,9 +151,13 @@ describe('pluginManifestSchema', () => {
     })
 
     it('refuses a third language instead of dropping it without a word', () => {
-      expect(pathsOf(manifest({ names: { es: 'Mi POS', en: 'My POS', fr: 'Mon POS' } }))).toContain(
-        'names'
+      const parsed = pluginManifestSchema.safeParse(
+        manifest({ names: { es: 'Mi POS', en: 'My POS', fr: 'Mon POS' } })
       )
+      expect(parsed.success).toBe(false)
+      expect(parsed.error?.issues.map(issue => issue.message)).toEqual([
+        'only es and en are accepted'
+      ])
     })
 
     it('copies the object it read', () => {
@@ -568,6 +572,7 @@ describe('pluginManifestSchema, channel plugins', () => {
       ['a label in one language', field({ label: { en: 'Account name' } })],
       ['a label that is a message key', field({ label: 'channels.fields.token' })],
       ['a label with markup', field({ label: { es: '<i>Nombre</i>', en: 'Name' } })],
+      ['a label with a third language', field({ label: { es: 'Nombre', en: 'Name', fr: 'Nom' } })],
       ['a label with a control character', field({ label: { es: 'Nombre\u0000', en: 'Name' } })],
       [
         'a label past the limit',
