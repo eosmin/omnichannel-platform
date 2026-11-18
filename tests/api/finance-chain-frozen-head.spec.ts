@@ -95,11 +95,12 @@ describe('The frozen head of a reopened month (HC-115)', () => {
     )
 
     // Someone with the owner role of the database removes the last entry and puts the head of the books back where it was
-    const org = ctx.orgA.id
+    // Quoted here, so the statements bind it as the suites' cleanups do
+    const org = `'${ctx.orgA.id}'`
     await tamperWithLedger(owner, [
-      `DELETE FROM journal_lines WHERE organization_id = '${org}' AND entry_id = (SELECT id FROM journal_entries WHERE organization_id = '${org}' ORDER BY number DESC LIMIT 1)`,
-      `DELETE FROM journal_entries WHERE organization_id = '${org}' AND number = (SELECT MAX(number) FROM journal_entries WHERE organization_id = '${org}')`,
-      `UPDATE finance_settings SET last_entry_hash = (SELECT hash FROM journal_entries WHERE organization_id = '${org}' ORDER BY number DESC LIMIT 1), next_entry_number = (SELECT MAX(number) + 1 FROM journal_entries WHERE organization_id = '${org}') WHERE organization_id = '${org}'`
+      `DELETE FROM journal_lines WHERE organization_id = ${org} AND entry_id = (SELECT id FROM journal_entries WHERE organization_id = ${org} ORDER BY number DESC LIMIT 1)`,
+      `DELETE FROM journal_entries WHERE organization_id = ${org} AND number = (SELECT MAX(number) FROM journal_entries WHERE organization_id = ${org})`,
+      `UPDATE finance_settings SET last_entry_hash = (SELECT hash FROM journal_entries WHERE organization_id = ${org} ORDER BY number DESC LIMIT 1), next_entry_number = (SELECT MAX(number) + 1 FROM journal_entries WHERE organization_id = ${org}) WHERE organization_id = ${org}`
     ])
 
     const cut = (await asAdminA().post(ApiRoutes.finance.reports.verifyChain).send({}))
