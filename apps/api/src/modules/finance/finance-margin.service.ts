@@ -7,6 +7,7 @@ import {
   AccountRole,
   FinanceReport,
   FinanceReportLimits,
+  FinancePostingKey,
   FinanceResourceTypes,
   FinanceSourceType,
   InventoryMovementType,
@@ -111,16 +112,27 @@ export class FinanceMarginService {
           type: JournalEntryType.SALE,
           sourceType: FinanceSourceType.ORDER,
           sourceId: { not: null },
+          // The sale key ends so; the exact key is checked below
+          idempotencyKey: { endsWith: ':sale' },
           entryDate: { gte: new Date(query.from), lte: new Date(query.to) },
           number: { gt: after }
         },
-        select: { number: true, sourceId: true },
+        select: { number: true, sourceId: true, idempotencyKey: true },
         orderBy: { number: 'asc' },
         take: FinanceReportLimits.MARGIN_PAGE_SIZE
       })
       if (entries.length === 0) break
+      // Only the entry of the sale itself (`order:<id>:sale`): the advance payment of an order (E1) is also a SALE entry of source ORDER
+      // and would count the order twice or in the month of the payment (HC-005); the books read the sale the same way
       const ids = [
-        ...new Set(entries.flatMap(entry => (entry.sourceId === null ? [] : [entry.sourceId])))
+        ...new Set(
+          entries.flatMap(entry =>
+            entry.sourceId === null ||
+            entry.idempotencyKey !== FinancePostingKey.ORDER_SALE(entry.sourceId)
+              ? []
+              : [entry.sourceId]
+          )
+        )
       ]
       const everyOrder = await db.order.findMany({
         // The organization is the store's: an order of another organization is never read, whatever the entry says

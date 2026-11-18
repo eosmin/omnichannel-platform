@@ -178,7 +178,7 @@ export class FinanceAccountsService {
           (await this.usedBySetting(tx, organizationId, accountId))
         ) {
           throw resourceConflict(
-            'a role, a payment method, a tax rate or the rounding setting uses the account',
+            'a role, a payment method, a tax rate, a supplier or the rounding setting uses the account',
             {
               conflict: FinanceConflicts.ACCOUNT_IN_USE_BY_SETTING
             }
@@ -242,7 +242,7 @@ export class FinanceAccountsService {
       if (!current.active) return false
       if (await this.usedBySetting(tx, organizationId, accountId)) {
         throw resourceConflict(
-          'a role, a payment method, a tax rate or the rounding setting uses the account',
+          'a role, a payment method, a tax rate, a supplier or the rounding setting uses the account',
           {
             conflict: FinanceConflicts.ACCOUNT_IN_USE_BY_SETTING
           }
@@ -311,7 +311,7 @@ export class FinanceAccountsService {
     organizationId: string,
     accountId: string
   ): Promise<boolean> {
-    const [roles, payments, rounding, taxRates] = await Promise.all([
+    const [roles, payments, rounding, taxRates, suppliers] = await Promise.all([
       tx.accountRoleMapping.count({ where: { organizationId, accountId } }),
       tx.paymentMethodAccount.count({ where: { organizationId, accountId } }),
       tx.financeSettings.count({ where: { organizationId, roundingAccountId: accountId } }),
@@ -321,9 +321,12 @@ export class FinanceAccountsService {
           organizationId,
           OR: [{ outputAccountId: accountId }, { inputAccountId: accountId }]
         }
-      })
+      }),
+      // A supplier owes into its own payable account: switching it off or retyping it would stop the receipts and payments of a supplier
+      // with history (its account cannot be changed once it has any, PUR-413) (HC-120)
+      tx.supplier.count({ where: { organizationId, defaultPayableAccountId: accountId } })
     ])
-    return roles + payments + rounding + taxRates > 0
+    return roles + payments + rounding + taxRates + suppliers > 0
   }
 
   // The rules of a place in the chart (TDD_18 §2.3): the parent is a header of the same type of the organization, the account
