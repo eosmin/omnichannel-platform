@@ -78,8 +78,8 @@ function WidgetRow({ widget }: { widget: PluginWidgetSettingsView }): ReactEleme
   return (
     <li className="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4">
       <div className="flex min-w-0 flex-col gap-0.5">
-        <h3 className="font-medium">{widget.name}</h3>
-        <span className="text-muted-foreground text-sm">
+        <h3 className="font-medium wrap-anywhere">{widget.name}</h3>
+        <span className="text-muted-foreground text-sm wrap-anywhere">
           {t('from', { plugin: widget.pluginName })}
         </span>
         <span className="text-muted-foreground text-xs break-all">{widget.origin}</span>
