@@ -2,18 +2,12 @@ import type { RlsExemption } from './lib/rls'
 
 // The phases of the RLS step (docs/IMPLEMENTATION_PLAN.md, Step 7.1): 1 configuration, catalogs and audit, 2 conversations and
 // customers, 3 orders, inventory and shipping, 4 finance and fiscal. Each phase is a migration that calls rls_apply_policy for its
-// tables and deletes their lines from RLS_PENDING in the same change. The list only shrinks; it ends empty.
+// tables and deletes their lines from this list in the same change. The four phases have landed, so no table is pending now: a new
+// table that is neither covered nor global fails validate:rls. A `pending(phase, reason)` helper comes back with the next phase.
 export const RLS_PHASES: readonly number[] = [1, 2, 3, 4]
 
-const pending = (phase: number, reason: string): RlsExemption => ({
-  kind: 'pending',
-  phase,
-  reason
-})
 const neverPolicy = (reason: string): RlsExemption => ({ kind: 'global', reason })
 
-const BY_PARENT =
-  'No store column: its policy goes through its parent (EXISTS on the parent, whose own policy applies)'
 const GUARD_READS = 'Read by a guard or a public flow before any tenant context exists'
 const OF_A_PERSON = 'A row of a person, not of a store: the id always comes from the token'
 
@@ -39,41 +33,5 @@ export const RLS_EXEMPTIONS: Readonly<Record<string, RlsExemption>> = {
   roles: neverPolicy(
     `${GUARD_READS}: the permissions of a member are resolved from it before the context is set`
   ),
-  permissions: neverPolicy(`${GUARD_READS}, with its role`),
-
-  // Phase 3: orders, inventory, shipping
-  orders: pending(3, 'Orders'),
-  order_items: pending(3, BY_PARENT),
-  order_item_allocations: pending(3, 'Orders'),
-  order_message_templates: pending(3, 'Orders'),
-  order_message_dispatches: pending(3, 'Orders'),
-  order_returns: pending(3, 'Returns'),
-  order_return_lines: pending(3, 'Returns'),
-  return_reception_batches: pending(3, 'Returns'),
-  return_reception_items: pending(3, 'Returns'),
-  products: pending(3, 'Catalog of products'),
-  product_variants: pending(3, BY_PARENT),
-  inventory_levels: pending(3, 'Inventory'),
-  inventory_movements: pending(3, 'Inventory; append only'),
-  stock_counts: pending(3, 'Inventory'),
-  stock_count_lines: pending(3, 'Inventory'),
-  stock_transfers: pending(3, 'Inventory, organization scope'),
-  stock_transfer_lines: pending(3, 'Inventory'),
-  warehouses: pending(3, 'Inventory, organization scope'),
-  store_warehouses: pending(3, 'Inventory'),
-  carrier_connections: pending(3, 'Shipping'),
-  carrier_services: pending(3, 'Shipping'),
-  carrier_status_mappings: pending(3, 'Shipping'),
-  carrier_unmapped_statuses: pending(3, 'Shipping'),
-  carrier_guide_movements: pending(3, 'Shipping; append only'),
-  carrier_guide_policies: pending(3, 'Shipping'),
-  carrier_benefit_periods: pending(3, 'Shipping'),
-  guide_sequences: pending(3, 'Shipping'),
-  shipments: pending(3, 'Shipping'),
-  shipment_events: pending(3, 'Shipping'),
-  pickup_requests: pending(3, 'Shipping'),
-  bulk_label_jobs: pending(3, 'Shipping'),
-  cod_remittances: pending(3, 'Remittances'),
-  cod_remittance_lines: pending(3, 'Remittances'),
-  remittance_import_profiles: pending(3, 'Remittances')
+  permissions: neverPolicy(`${GUARD_READS}, with its role`)
 }
