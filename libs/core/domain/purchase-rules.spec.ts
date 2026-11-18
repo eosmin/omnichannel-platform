@@ -1,4 +1,4 @@
-import { PartyType, PurchaseOrderStatus, TaxRounding } from './finance-constants'
+import { FinanceLimits, PartyType, PurchaseOrderStatus, TaxRounding } from './finance-constants'
 import {
   billBalances,
   canTransition,
@@ -316,6 +316,24 @@ describe('the return of a supplier payment (E11b)', () => {
     expect(paymentReturnProblems({ ...input, amountCents: 0 })).toEqual([PaymentReturnRule.AMOUNT])
     expect(paymentReturnProblems({ ...input, amountCents: 1.5 })).toEqual([
       PaymentReturnRule.AMOUNT
+    ])
+    expect(
+      paymentReturnProblems({ ...input, amountCents: FinanceLimits.MAX_LINE_CENTS + 1 })
+    ).toEqual([PaymentReturnRule.AMOUNT])
+    expect(paymentReturnProblems({ ...input, amountCents: Number.NaN })).toEqual([
+      PaymentReturnRule.AMOUNT
+    ])
+    expect(
+      paymentReturnProblems({
+        ...input,
+        amountCents: -1,
+        intoIsCash: false,
+        returnedOn: '2026-11-01'
+      })
+    ).toEqual([
+      PaymentReturnRule.AMOUNT,
+      PaymentReturnRule.INTO_NOT_CASH,
+      PaymentReturnRule.BEFORE_PAYMENT
     ])
     expect(paymentReturnProblems({ ...input, intoIsCash: false })).toEqual([
       PaymentReturnRule.INTO_NOT_CASH

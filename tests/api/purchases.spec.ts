@@ -1255,6 +1255,24 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       expect(await balanceOf(supplierId)).toMatchObject({ paidCents: 10_000, openCents: 0 })
     })
 
+    it('audits the void of a return and asks for the permission of the payment', async () => {
+      const { paymentId } = await paidBill()
+      const returned = (await giveBack(paymentId, { amountCents: 700 })).body as ReturnBody
+      const buyer = await asRole('returns-void-buyer', [Permissions.FINANCE_MANAGE_PURCHASES])
+      const refused = await buyer
+        .post(ApiRoutes.supplierPaymentReturns.void(returned.id))
+        .send({ reason: 'No money rights' })
+      expect(refused.status).toBe(FORBIDDEN)
+      const voided = await asAdminA()
+        .post(ApiRoutes.supplierPaymentReturns.void(returned.id))
+        .send({ reason: 'Wrong amount' })
+      expect(voided.status).toBe(CREATED)
+      await waitForAuditEntries(owner, {
+        action: AuditAction.SUPPLIER_PAYMENT_RETURN_VOIDED,
+        resourceId: returned.id
+      })
+    })
+
     it('voids a payment only after its returns, and gives nothing back of a voided payment', async () => {
       const { paymentId } = await paidBill()
       const returned = (await giveBack(paymentId, { amountCents: 2000 })).body as ReturnBody
