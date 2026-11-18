@@ -46,6 +46,7 @@ import { Input } from '../ui/input'
 import { Label } from '../ui/label'
 import { Textarea } from '../ui/textarea'
 
+import { CarrierChargeModelField } from './carrier-charge-model'
 import { CarrierFeeInputs } from './carrier-fee-inputs'
 import { CarrierFieldInputs } from './carrier-field-inputs'
 
@@ -347,6 +348,11 @@ export function CarrierRulesDialog({
                   </label>
                 ) : null}
               </fieldset>
+              <CarrierChargeModelField
+                value={draft.chargeModel}
+                onChange={chargeModel => set({ chargeModel })}
+                disabled={pending}
+              />
               <CarrierFeeInputs
                 fees={shape.fees}
                 commission={draft.commission}

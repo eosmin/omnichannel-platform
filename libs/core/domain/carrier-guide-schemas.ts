@@ -24,6 +24,8 @@ export const recordGuidePurchaseSchema = z
     paidQuantity: guides,
     giftQuantity: guides.default(0),
     totalCostCents: z.number().int().min(0).max(CarrierGuideLimits.MAX_COST_CENTS),
+    // The cash, bank or wallet account the money left (TDD_18 §4.2 E15); the default bank account when it is not named. Only a prepaid connection books it
+    paidFromAccountId: z.uuid().optional(),
     note: note.optional()
   })
   .refine(body => body.paidQuantity + body.giftQuantity >= 1, {

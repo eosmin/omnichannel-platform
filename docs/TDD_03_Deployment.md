@@ -736,6 +736,21 @@ gcloud run services update worker-service --region=us-central1 --min-instances=1
 curl https://api.platform.com/health/ready
 ```
 
+### 5.4a Turning Row-Level Security on and off
+
+The migrations of the RLS step create the policies and bind nobody (`TDD_01 §3.2`, layer 3). Enforcement is a separate, reversible act of the **owner** of the database (`DIRECT_DATABASE_URL`; the application roles cannot run it):
+
+```bash
+pnpm db:rls:enforce status   # what is protected now: tables with a policy, and which are enabled and forced
+pnpm db:rls:enforce on       # ENABLE + FORCE on every table with a <table>_tenant policy
+pnpm db:rls:enforce off      # the way back: NO FORCE + DISABLE on all of them
+```
+
+- **Order:** the CI database first (the job that runs the whole suite as `platform_app` runs `on` right after `pnpm db:migrate`; that job is built in phase 6 of the step, until then only `tests/security/rls-isolation.spec.ts` enforces, on its own probe tables), then staging, then production, each only after the one before is green. A deploy that adds tables needs `on` again, because a new table is created with its policy but not enabled.
+- **Guard:** `on` refuses to run, and changes nothing, when `platform_app` is missing, a superuser, `BYPASSRLS`, a member of such a role or the owner of a table, because row security would not bind it.
+- **Revert in one minute:** `pnpm db:rls:enforce off`. The script switches one table per call, each its own transaction with a 5 s `lock_timeout`: if a long transaction holds a table, that table fails alone instead of queueing (a queued `ACCESS EXCLUSIVE` lock blocks every query behind it), it is retried at the end, the tables before it stay switched, and the exit code is 1 while any is left (running it again finishes the job). Policies stay in place, so `on` brings everything back. Rolling back a migration of a group of tables is a different act: it calls `rls_drop_policy` for each table (see `rollbacks/`).
+- **What `off` does not do:** it does not undo the context interceptor. With enforcement off, the interceptor still sets the context and the queries run as before.
+
 ### 5.5 Seed data
 
 Seeds must be **idempotent** — safe to run repeatedly. The seed is a script, so
@@ -1086,10 +1101,31 @@ gcloud sql instances clone platform-db platform-db-pitr \
 aws s3api put-bucket-versioning --bucket platform-production \
   --versioning-configuration Status=Enabled
 
+# Encryption at rest by default (SSE-S3; use aws:kms and a key id to hold the key yourself)
+aws s3api put-bucket-encryption --bucket platform-production \
+  --server-side-encryption-configuration \
+  '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"},"BucketKeyEnabled":true}]}'
+
 # Cross-region replication to platform-production-replica (us-west-2)
 aws s3api put-bucket-replication --bucket platform-production \
   --replication-configuration file://s3-replication.json
 ```
+
+Nothing in the repository creates the production bucket (only SeaweedFS makes the local one), so the two
+protections above are checked, not applied. When the api or the worker starts in `staging` or `production` it
+asks the bucket (`GetBucketVersioning`, `GetBucketEncryption`) and, for each protection that is off, has no
+encryption algorithm or that the store does not answer for, writes a warning to the log (with the name of the
+error when it did not answer) and sets `platform_storage_bucket_protection_gap{protection}` to 1 (to 0 when it
+is on). It asks again every hour, so a protection turned off later is seen without a deploy. Alert on any value
+above 0. The check never waits for the answer to finish the start and never stops it. The role of the api and
+of the worker needs `s3:GetBucketVersioning` and `s3:GetEncryptionConfiguration` on the bucket ARN itself (they
+are bucket-level actions, not `bucket/*`); without them the answer is "unknown" and counts as a gap.
+
+Versioning keeps what the application deletes: the conversation-deletion and retention jobs only add a delete
+marker. Add a lifecycle rule `NoncurrentVersionExpiration` (days chosen with the retention policy) so the
+deleted bytes of a customer do not stay for ever; until then a deletion is recoverable by whoever holds the
+bucket. Replication is not checked here. The 7-year cold retention of the audit archive is a separate feature and
+is not part of this check.
 
 ### 7.4 Kubernetes backups (Phase 2 only)
 

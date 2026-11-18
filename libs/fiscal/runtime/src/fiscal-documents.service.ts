@@ -2011,8 +2011,14 @@ export class FiscalDocumentsService {
     // asked first, so that a second invalidation is never sent for it. A provider that cannot tell leaves it to the answer of `void`.
     // `recovered`: the authority had it invalidated before this request sent anything (or answered only to the consultation); the audit
     // trail says so, so the act is not read as this person's invalidation alone
+    // One invalidation at a time per document (HC-205): the key above carries the reason, so two requests with different reasons would
+    // reach the authority at once. The claim is taken under the row lock before the provider is asked; a request with the same key (a double
+    // click, an answer that was lost) is the same invalidation and goes on, any other waits for the lease or for the answer of this one.
+    const voidKey = contextOf(1).idempotencyKey
+    await this.claimVoid(organizationId, id, voidKey)
     let recovered = false
-    let outcome: VoidResult | null = await this.consultedVoid(provider, id, stored, contextOf(1))
+    let outcome: VoidResult | null = null
+    outcome = await this.consultedVoid(provider, id, stored, contextOf(1))
     if (outcome !== null) recovered = true
     else {
       outcome = await this.attempt('void', id, () =>
@@ -2032,6 +2038,9 @@ export class FiscalDocumentsService {
       )
     }
     if (!outcome.voided) {
+      // Only a refusal frees the document at once: with no answer the invalidation may still be at the authority, and the claim is
+      // kept until its lease ends
+      await this.releaseVoidClaim(organizationId, id, voidKey)
       throw new PlatformException(
         ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
         'the provider did not accept the invalidation',
@@ -2048,6 +2057,8 @@ export class FiscalDocumentsService {
         where: { id },
         data: {
           status: FiscalDocumentStatus.VOIDED,
+          voidClaimKey: null,
+          voidClaimUntil: null,
           voidReason: plainText(reason).slice(0, FiscalLimits.VOID_REASON_MAX_LENGTH),
           voidedBy: actor.userId,
           voidedAt: new Date(),
@@ -2601,6 +2612,63 @@ export class FiscalDocumentsService {
   }
 
   // ---------------------------------------------------------------- helpers
+
+  // Takes the claim of the invalidation of a document, under its row lock (see `void`). Refused when the document is no longer accepted,
+  // when it has credit notes that are not voided (read again under the lock: one may have been made since), or when ANY request holds a
+  // live claim, this one's key included: a double click is the same invalidation, and the first request is already asking the provider.
+  // The lease is read and written with the clock of the database, one for every instance.
+  private async claimVoid(organizationId: string, id: string, key: string): Promise<void> {
+    await this.prisma.transaction(async tx => {
+      const locked = await this.lock(tx, organizationId, id)
+      if (locked.status !== (FiscalDocumentStatus.ACCEPTED as string)) {
+        throw this.invalid(locked.status as FiscalDocumentStatus)
+      }
+      if ((await this.notesAtAuthority(tx, organizationId, id)) > 0) {
+        throw new PlatformException(
+          ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+          'a document with credit notes that are not voided cannot be voided',
+          HttpStatusCodes.CONFLICT,
+          { reason: FiscalConflictReasons.HAS_CREDIT_NOTES }
+        )
+      }
+      const held = await tx.$queryRaw<{ held: boolean }[]>`
+        SELECT (void_claim_until IS NOT NULL AND void_claim_until > now()) AS held
+        FROM fiscal_documents WHERE id = ${id} AND organization_id = ${organizationId}`
+      if (held[0]?.held === true) {
+        throw new PlatformException(
+          ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+          'another invalidation of this document is in progress',
+          HttpStatusCodes.CONFLICT,
+          { reason: FiscalConflictReasons.VOID_IN_PROGRESS }
+        )
+      }
+      const leaseSeconds = FiscalLimits.VOID_CLAIM_LEASE_MS / 1000
+      await tx.$executeRaw`
+        UPDATE fiscal_documents
+        SET void_claim_key = ${key}, void_claim_until = now() + make_interval(secs => ${leaseSeconds})
+        WHERE id = ${id} AND organization_id = ${organizationId}`
+    })
+  }
+
+  // Frees the claim of this request, only if it is still the one that holds it
+  private async releaseVoidClaim(organizationId: string, id: string, key: string): Promise<void> {
+    try {
+      await this.prisma.client.fiscalDocument.updateMany({
+        where: {
+          id,
+          organizationId,
+          status: FiscalDocumentStatus.ACCEPTED,
+          voidClaimKey: key
+        },
+        data: { voidClaimKey: null, voidClaimUntil: null }
+      })
+    } catch (error) {
+      this.logger.warn(
+        { documentId: id, err: errorName(error) },
+        'the claim of an invalidation was not released'
+      )
+    }
+  }
 
   private async lock(tx: PrismaTransaction, organizationId: string, id: string) {
     await tx.$queryRaw`SELECT id FROM fiscal_documents WHERE id = ${id} AND organization_id = ${organizationId} FOR UPDATE`

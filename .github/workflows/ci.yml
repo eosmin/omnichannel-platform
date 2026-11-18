@@ -94,6 +94,7 @@ jobs:
       - run: pnpm validate:translations
       - run: pnpm validate:env
       - run: pnpm validate:isolation
+      - run: pnpm validate:rls
       - run: pnpm validate:frontend
       # Rule 13: no new knowledge of a channel or Meta outside libs/channels/*; the baseline only shrinks
       - run: pnpm validate:channel-agnostic --require-main

@@ -1890,22 +1890,23 @@ model CarrierGuidePolicy {
 // The ledger of guides of a connection: append-only (a trigger refuses an update or a delete). The balance is the sum of
 // guidesDelta; the average cost is what the purchases and their voids paid over the guides they brought.
 model CarrierGuideMovement {
-  id              String   @id @default(uuid())
-  storeId         String   @map("store_id")
-  connectionId    String   @map("connection_id")
-  kind            String // GuideMovementKind
-  guidesDelta     Int      @map("guides_delta")
-  costCentsDelta  Int      @default(0) @map("cost_cents_delta") // Whole cents of USD; only a purchase and its void move it
-  paidQuantity    Int?     @map("paid_quantity") // purchase
-  giftQuantity    Int?     @map("gift_quantity") // purchase
-  unitCostCents   Int?     @map("unit_cost_cents") // consume: the weighted average cost of that moment, when there was one
-  shipmentId      String?  @map("shipment_id") // consume and refund: the guide it is about (one of each per shipment)
-  voidsMovementId String?  @unique @map("voids_movement_id") // void: the purchase it undoes (once)
-  onAdvance       Boolean  @default(false) @map("on_advance") // consume: the connection was prepaid when the guide was made, so its cost came out of the advance (E4 credits the advance, not the carrier)
-  note            String?
-  createdBy       String   @map("created_by") // A user id or 'system'
-  occurredAt      DateTime @default(now()) @map("occurred_at")
-  createdAt       DateTime @default(now()) @map("created_at")
+  id                String   @id @default(uuid())
+  storeId           String   @map("store_id")
+  connectionId      String   @map("connection_id")
+  kind              String // GuideMovementKind
+  guidesDelta       Int      @map("guides_delta")
+  costCentsDelta    Int      @default(0) @map("cost_cents_delta") // Whole cents of USD; only a purchase and its void move it
+  paidQuantity      Int?     @map("paid_quantity") // purchase
+  giftQuantity      Int?     @map("gift_quantity") // purchase
+  unitCostCents     Int?     @map("unit_cost_cents") // consume: the weighted average cost of that moment, when there was one
+  shipmentId        String?  @map("shipment_id") // consume and refund: the guide it is about (one of each per shipment)
+  voidsMovementId   String?  @unique @map("voids_movement_id") // void: the purchase it undoes (once)
+  paidFromAccountId String?  @map("paid_from_account_id") // purchase: the account the money left (the books default to the bank role); not a foreign key, the books validate it when they post
+  onAdvance         Boolean  @default(false) @map("on_advance") // consume: the connection was prepaid when the guide was made, so its cost came out of the advance (E4 credits the advance, not the carrier); purchase: it was prepaid when bought, so the books carry it (E15)
+  note              String?
+  createdBy         String   @map("created_by") // A user id or 'system'
+  occurredAt        DateTime @default(now()) @map("occurred_at")
+  createdAt         DateTime @default(now()) @map("created_at")
 
   store      Store                 @relation(fields: [storeId], references: [id], onDelete: Restrict)
   connection CarrierConnection     @relation(fields: [storeId, connectionId], references: [storeId, id], onDelete: Restrict)
@@ -3184,6 +3185,8 @@ model FiscalDocument {
   voidReason            String?   @map("void_reason")
   voidedBy              String?   @map("voided_by")
   voidedAt              DateTime? @map("voided_at")
+  voidClaimKey          String?   @map("void_claim_key") // the idempotency key of the invalidation that holds the document, until voidClaimUntil
+  voidClaimUntil        DateTime? @map("void_claim_until") // the lease of that claim: no other invalidation of this document is sent before it
   voidResponse          Json?     @map("void_response") // what the authority answered to the invalidation: the evidence of the void, kept apart because the accepted row cannot change
   issuedAt              DateTime? @map("issued_at")
   contingencyId         String?   @map("contingency_id") // set when the document was made in contingency (the deferred model); fixed for ever once it is

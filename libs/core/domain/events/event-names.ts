@@ -124,6 +124,9 @@ export const Events = {
   REMITTANCE_VOIDED: 'remittance.voided',
   // A person wrote off the difference of a guide that did not match its remittance (TDD_18 §4.2 E7): the books follow
   REMITTANCE_DIFFERENCE_WRITTEN_OFF: 'remittance.difference_written_off',
+  // A person recorded a purchase of guides of a prepaid connection, or voided one (TDD_18 §4.2 E15, E16): the books follow. Api only
+  CARRIER_GUIDES_PURCHASED: 'carrier.guides_purchased',
+  CARRIER_GUIDES_PURCHASE_VOIDED: 'carrier.guides_purchase_voided',
   // A carrier has kept cash on delivery for longer than the store allows (the daily check, TDD_17 §4.15)
   REMITTANCE_OVERDUE: 'remittance.overdue',
 

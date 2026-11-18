@@ -3,12 +3,7 @@ import type { Gauge } from '@prometheus-io/client'
 import { PinoLogger } from 'nestjs-pino'
 
 import { isUniqueViolation, PrismaService } from '@platform/core/database'
-import {
-  ChainIncidentChange,
-  ChainProblem,
-  FinanceReportLimits,
-  PeriodStatus
-} from '@platform/core/domain'
+import { ChainIncidentChange, ChainProblem, FinanceReportLimits } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
@@ -177,8 +172,10 @@ export class FinanceChainVerifier {
       }
     }
 
+    // Every period that was ever closed keeps the head it froze (a reopen keeps the record of the close, a trigger holds it), open again or
+    // not: the entries up to that head are immutable, so a head that is no longer in the chain means entries were removed (HC-115)
     const closed = await db.fiscalPeriod.findMany({
-      where: { organizationId, status: PeriodStatus.CLOSED, closingHash: { not: null } },
+      where: { organizationId, closingHash: { not: null } },
       select: { id: true, year: true, month: true, closingHash: true },
       orderBy: [{ year: 'asc' }, { month: 'asc' }]
     })

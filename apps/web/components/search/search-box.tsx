@@ -27,9 +27,9 @@ export function SearchBox(): ReactElement | null {
 
   function submit(event: FormEvent): void {
     event.preventDefault()
-    const ready = readySearchText(text)
-    if (ready === null) return
-    router.push(AppPaths.store.search(storeId, ready))
+    // Too little text still opens the page of results: it explains what to type (an Enter that did nothing left the
+    // person with no sign that it had been heard)
+    router.push(AppPaths.store.search(storeId, readySearchText(text) ?? text.trim()))
     // The results page has its own box with the text: this one is for the next search
     setText('')
   }
