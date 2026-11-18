@@ -411,12 +411,27 @@ describe('RemoteChannelPlugin: the answers to a send', () => {
     }
   })
 
-  it('a refused connection is tried again and the plugin heard nothing', async () => {
-    const error = await failureOf(
-      send(harness(() => new PinnedExchangeFailed('no_answer:ECONNREFUSED')).plugin)
-    )
-    expect(error.retryable).toBe(true)
-    expect(error.outcomeUnknown).toBe(false)
+  it('a connection that was refused or a name that did not resolve is tried again, and the failure is definitive (N-39-02)', async () => {
+    for (const reason of ['no_answer:ECONNREFUSED', 'not_resolved:EAI_AGAIN']) {
+      const error = await failureOf(send(harness(() => new PinnedExchangeFailed(reason)).plugin))
+      expect(error.retryable).toBe(true)
+      expect(error.outcomeUnknown).toBe(false)
+      expect(error.refused).toBe(true)
+    }
+  })
+
+  it('keeps the doubt when the code does not prove the socket never opened: tried again, not refused', async () => {
+    for (const reason of [
+      'no_answer:EHOSTUNREACH',
+      'no_answer:ENETUNREACH',
+      'no_answer:ECONNRESET',
+      'no_answer:ETIMEDOUT',
+      'no_answer'
+    ]) {
+      const error = await failureOf(send(harness(() => new PinnedExchangeFailed(reason)).plugin))
+      expect(error.retryable).toBe(true)
+      expect(error.refused).toBe(false)
+    }
   })
 
   it('an answer too long to read is mapped by its status: a gateway page that refuses is a refusal', async () => {
