@@ -14,6 +14,7 @@ import { HttpErrorsModule } from './http-errors.module'
 import { applyLocalCommandsUrlPolicy } from './local-commands-url-policy'
 import { MagicLinkLimitPlatformModule } from './magic-link-limit-platform.module'
 import { OutboundFlagsPlatformModule } from './outbound-flags-platform.module'
+import { RlsContextPlatformModule } from './rls-context-platform.module'
 import { StoragePlatformModule } from './storage-platform.module'
 import { ThrottlerPlatformModule } from './throttler'
 import { TrustProxyModule } from './trust-proxy.module'
@@ -57,6 +58,7 @@ export class HttpPlatformModule {
         StoragePlatformModule,
         MagicLinkLimitPlatformModule,
         OutboundFlagsPlatformModule,
+        RlsContextPlatformModule,
         ThrottlerPlatformModule, // Before the auth module: the rate limit is checked first
         AuthPlatformModule,
         TrustProxyModule,

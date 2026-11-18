@@ -15,6 +15,7 @@ import {
   HttpHeaders,
   HttpStatusCodes,
   isLockTimeoutError,
+  isTransactionWaitError,
   PlatformException
 } from '@platform/core/errors'
 import type { AuthenticatedRequest } from '@platform/core/logger'
@@ -182,9 +183,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       return
     }
 
-    // The database gave up waiting for a lock: the caller is asked to come back, and it is a warning,
-    // not a page (a blocked table is the symptom of something else, which has its own alert)
-    if (isLockTimeoutError(exception)) {
+    // The database gave up waiting for a lock, or a transaction waited too long for a connection (a burst of writes on one lock of the
+    // books): the caller is asked to come back, and it is a warning, not a page (a blocked table is the symptom of something else,
+    // which has its own alert)
+    if (isLockTimeoutError(exception) || isTransactionWaitError(exception)) {
       this.logger.warn(
         { route: this.routeOf(request) },
         'a request gave up waiting for a database lock'

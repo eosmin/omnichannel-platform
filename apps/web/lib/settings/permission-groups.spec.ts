@@ -61,3 +61,16 @@ describe('the names of the permission matrix', () => {
     })
   }
 })
+
+describe('toggled', () => {
+  it('ticks what a permission needs with it, and unticks what depends on a permission', () => {
+    const ticked = toggled([], Permissions.FINANCE_MANAGE_TRANSACTIONS)
+    expect(ticked.sort()).toEqual(
+      [Permissions.FINANCE_MANAGE_TRANSACTIONS, Permissions.FINANCE_VIEW_JOURNAL].sort()
+    )
+    expect(toggled(ticked, Permissions.FINANCE_VIEW_JOURNAL)).toEqual([])
+    expect(toggled(ticked, Permissions.FINANCE_MANAGE_TRANSACTIONS)).toEqual([
+      Permissions.FINANCE_VIEW_JOURNAL
+    ])
+  })
+})

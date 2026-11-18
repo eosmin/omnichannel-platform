@@ -65,7 +65,13 @@ describe('usedGuides', () => {
 })
 
 describe('a purchase', () => {
-  const ok = { paidQuantity: '100', giftQuantity: '10', totalCost: '45.50', note: ' bulk ' }
+  const ok = {
+    paidQuantity: '100',
+    giftQuantity: '10',
+    totalCost: '45.50',
+    paidFromAccountId: '',
+    note: ' bulk '
+  }
 
   it('turns into a body in whole cents, with the note trimmed', () => {
     expect(purchaseProblems(ok)).toEqual([])
@@ -75,6 +81,13 @@ describe('a purchase', () => {
       totalCostCents: 4550,
       note: 'bulk'
     })
+  })
+
+  it('sends the account the money left only when one was chosen', () => {
+    expect(purchaseBody(ok)).not.toHaveProperty('paidFromAccountId')
+    expect(
+      purchaseBody({ ...ok, paidFromAccountId: '5b1d7f0e-8f7b-4a0e-9a53-1f6d5d1c2a10' })
+    ).toMatchObject({ paidFromAccountId: '5b1d7f0e-8f7b-4a0e-9a53-1f6d5d1c2a10' })
   })
 
   it('leaves the note out when it is empty', () => {

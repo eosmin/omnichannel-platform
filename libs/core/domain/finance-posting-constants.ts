@@ -27,6 +27,10 @@ export enum FinanceEventKind {
   RETURN_REFUND = 'return_refund',
   // E9: a stock adjustment, a count variance or a transfer write-off
   ADJUST = 'adjust',
+  // E15: guides bought in advance from a carrier (the advance, an asset, grows by what was paid)
+  GUIDE_PURCHASE = 'guide_purchase',
+  // E16: the purchase of guides was voided (the advance gives the money back)
+  GUIDE_PURCHASE_VOID = 'guide_purchase_void',
   // E9: the units of a transfer line that did not arrive and were written off when the transfer was closed
   TRANSFER_WRITE_OFF = 'transfer_write_off'
 }
@@ -45,6 +49,8 @@ export const FinanceEventSource: Readonly<Record<FinanceEventKind, FinanceSource
   [FinanceEventKind.ORDER_RETURN]: FinanceSourceType.ORDER,
   [FinanceEventKind.RETURN_REFUND]: FinanceSourceType.RETURN,
   [FinanceEventKind.ADJUST]: FinanceSourceType.INVENTORY_MOVEMENT,
+  [FinanceEventKind.GUIDE_PURCHASE]: FinanceSourceType.CARRIER_GUIDE_MOVEMENT,
+  [FinanceEventKind.GUIDE_PURCHASE_VOID]: FinanceSourceType.CARRIER_GUIDE_MOVEMENT,
   [FinanceEventKind.TRANSFER_WRITE_OFF]: FinanceSourceType.TRANSFER_LINE
 }
 
@@ -78,6 +84,8 @@ export const FinancePostingKey = {
   ORDER_RETURN: (orderId: string): string => `order:${orderId}:return`,
   RETURN_REFUND: (returnId: string): string => `return:${returnId}:refund`,
   MOVEMENT_ADJUST: (movementId: string): string => `movement:${movementId}:adjust`,
+  GUIDE_PURCHASE: (movementId: string): string => `guide_movement:${movementId}:purchase`,
+  GUIDE_PURCHASE_VOID: (movementId: string): string => `guide_movement:${movementId}:void`,
   TRANSFER_LINE_WRITE_OFF: (lineId: string): string => `transfer_line:${lineId}:write_off`
 } as const
 
@@ -119,6 +127,8 @@ export const FinanceAutoMemo = {
   ORDER_RETURN: 'auto:order_return',
   RETURN_REFUND: 'auto:return_refund',
   ADJUST: 'auto:adjust',
+  GUIDE_PURCHASE: 'auto:guide_purchase',
+  GUIDE_PURCHASE_VOID: 'auto:guide_purchase_void',
   TRANSFER_WRITE_OFF: 'auto:transfer_write_off'
 } as const
 

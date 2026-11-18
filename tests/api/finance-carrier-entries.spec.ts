@@ -439,6 +439,225 @@ describe('The entries that depend on a carrier (Step 4B.6b-1)', () => {
     })
   })
 
+  // E15 and E16: guides bought in advance by a prepaid connection, and the void of the purchase
+  describe('the purchase of guides (Step 4B.6b-4)', () => {
+    async function purchase(
+      input: { onAdvance?: boolean; paidFrom?: string | null; cents?: number; day?: string } = {}
+    ) {
+      const { connectionId } = await delivered()
+      const row = await owner.carrierGuideMovement.create({
+        data: {
+          storeId: ctx.storeA.id,
+          connectionId,
+          kind: GuideMovementKind.PURCHASE,
+          guidesDelta: 110,
+          costCentsDelta: input.cents ?? 8000,
+          paidQuantity: 100,
+          giftQuantity: 10,
+          onAdvance: input.onAdvance ?? true,
+          paidFromAccountId: input.paidFrom ?? null,
+          occurredAt: NOON(input.day ?? TODAY),
+          createdBy: 'system'
+        }
+      })
+      return { connectionId, row }
+    }
+    async function voidOf(connectionId: string, purchaseId: string, onAdvance = true) {
+      return owner.carrierGuideMovement.create({
+        data: {
+          storeId: ctx.storeA.id,
+          connectionId,
+          kind: GuideMovementKind.VOID,
+          guidesDelta: -110,
+          costCentsDelta: -8000,
+          voidsMovementId: purchaseId,
+          onAdvance,
+          note: 'typed twice',
+          createdBy: 'system'
+        }
+      })
+    }
+    const postPurchase = (id: string, kind = FinanceEventKind.GUIDE_PURCHASE, org = ctx.orgA.id) =>
+      post(FinanceSourceType.CARRIER_GUIDE_MOVEMENT, id, kind, org)
+
+    it('grows the advance and takes the money out of the default bank account', async () => {
+      const { row } = await purchase()
+      expect((await postPurchase(row.id)).outcome).toBe(FinancePostingOutcome.POSTED)
+      const entry = await entryOf(FinancePostingKey.GUIDE_PURCHASE(row.id))
+      expect(entry).toMatchObject({
+        type: JournalEntryType.CARRIER_GUIDES,
+        origin: EntryOrigin.SYSTEM,
+        sourceType: FinanceSourceType.CARRIER_GUIDE_MOVEMENT,
+        sourceId: row.id,
+        totalCents: 8000
+      })
+      expect(linesOf(entry as NonNullable<typeof entry>)).toEqual(
+        sorted([
+          [code(AccountRole.PREPAID_CARRIER_GUIDES), 8000, 0],
+          [code(AccountRole.BANK_DEFAULT), 0, 8000]
+        ])
+      )
+      expect((await postPurchase(row.id)).outcome).toBe(FinancePostingOutcome.REPLAYED)
+    })
+
+    it('takes the money out of the account the person named', async () => {
+      const cash = await owner.ledgerAccount.findFirstOrThrow({
+        where: { organizationId: ctx.orgA.id, code: '1101' }
+      })
+      const { row } = await purchase({ paidFrom: cash.id })
+      await postPurchase(row.id)
+      const entry = await entryOf(FinancePostingKey.GUIDE_PURCHASE(row.id))
+      expect(linesOf(entry as NonNullable<typeof entry>)).toEqual(
+        sorted([
+          [code(AccountRole.PREPAID_CARRIER_GUIDES), 8000, 0],
+          ['1101', 0, 8000]
+        ])
+      )
+    })
+
+    it('fails when the account named is not one the books can post to, and posts nothing', async () => {
+      const header = await owner.ledgerAccount.findFirstOrThrow({
+        where: { organizationId: ctx.orgA.id, isPostable: false }
+      })
+      const { row } = await purchase({ paidFrom: header.id })
+      expect((await postPurchase(row.id)).outcome).toBe(FinancePostingOutcome.FAILED)
+      expect(await entryOf(FinancePostingKey.GUIDE_PURCHASE(row.id))).toBeNull()
+    })
+
+    it('posts nothing for a purchase the books do not carry, one of all gifts, or one of another organization', async () => {
+      const plain = await purchase({ onAdvance: false })
+      expect((await postPurchase(plain.row.id)).outcome).toBe(FinancePostingOutcome.NOTHING_TO_POST)
+      const gifts = await purchase({ cents: 0 })
+      expect((await postPurchase(gifts.row.id)).outcome).toBe(FinancePostingOutcome.NOTHING_TO_POST)
+      const mine = await purchase()
+      const other = await postPurchase(mine.row.id, FinanceEventKind.GUIDE_PURCHASE, ctx.orgB.id)
+      expect(other.outcome).toBe(FinancePostingOutcome.NOTHING_TO_POST)
+      expect(
+        await owner.journalEntry.count({
+          where: {
+            sourceId: { in: [plain.row.id, gifts.row.id, mine.row.id] },
+            organizationId: ctx.orgB.id
+          }
+        })
+      ).toBe(0)
+    })
+
+    it('fails naming the advance when it is not mapped, and posts once it is', async () => {
+      const { row } = await purchase()
+      const mapping = await owner.accountRoleMapping.findFirstOrThrow({
+        where: { organizationId: ctx.orgA.id, role: AccountRole.PREPAID_CARRIER_GUIDES }
+      })
+      await owner.accountRoleMapping.delete({
+        where: {
+          organizationId_role: { organizationId: mapping.organizationId, role: mapping.role }
+        }
+      })
+      try {
+        expect(await postPurchase(row.id)).toMatchObject({
+          outcome: FinancePostingOutcome.FAILED,
+          reason: FinancePostingFailureReason.ROLE_NOT_MAPPED
+        })
+      } finally {
+        await owner.accountRoleMapping.create({
+          data: {
+            organizationId: mapping.organizationId,
+            role: mapping.role,
+            accountId: mapping.accountId
+          }
+        })
+      }
+      expect((await postPurchase(row.id)).outcome).toBe(FinancePostingOutcome.POSTED)
+    })
+
+    it('the void gives the money back to the account the purchase used, once the purchase is in the books', async () => {
+      const { connectionId, row } = await purchase()
+      const voided = await voidOf(connectionId, row.id)
+      // The purchase is not posted yet: the void waits for it
+      expect(await postPurchase(voided.id, FinanceEventKind.GUIDE_PURCHASE_VOID)).toMatchObject({
+        outcome: FinancePostingOutcome.FAILED,
+        reason: FinancePostingFailureReason.SOURCE_NOT_READY
+      })
+      await postPurchase(row.id)
+      expect((await postPurchase(voided.id, FinanceEventKind.GUIDE_PURCHASE_VOID)).outcome).toBe(
+        FinancePostingOutcome.POSTED
+      )
+      // The void is the reversal of the entry of the purchase, line by line
+      const original = await entryOf(FinancePostingKey.GUIDE_PURCHASE(row.id))
+      const entry = await owner.journalEntry.findFirstOrThrow({
+        where: { organizationId: ctx.orgA.id, reversesEntryId: original?.id },
+        include: { lines: { include: { account: { select: { code: true } } } } }
+      })
+      expect(linesOf(entry)).toEqual(
+        sorted([
+          [code(AccountRole.PREPAID_CARRIER_GUIDES), 0, 8000],
+          [code(AccountRole.BANK_DEFAULT), 8000, 0]
+        ])
+      )
+    })
+
+    it('the void goes back to the account the purchase used even if the default bank was re-mapped or the account switched off since', async () => {
+      const { connectionId, row } = await purchase()
+      await postPurchase(row.id)
+      const otherBank = await owner.ledgerAccount.findFirstOrThrow({
+        where: { organizationId: ctx.orgA.id, code: '1101' }
+      })
+      const bank = await owner.accountRoleMapping.findFirstOrThrow({
+        where: { organizationId: ctx.orgA.id, role: AccountRole.BANK_DEFAULT }
+      })
+      await owner.accountRoleMapping.update({
+        where: { organizationId_role: { organizationId: bank.organizationId, role: bank.role } },
+        data: { accountId: otherBank.id }
+      })
+      try {
+        const voided = await voidOf(connectionId, row.id)
+        expect((await postPurchase(voided.id, FinanceEventKind.GUIDE_PURCHASE_VOID)).outcome).toBe(
+          FinancePostingOutcome.POSTED
+        )
+        const entry = await entryOf(FinancePostingKey.GUIDE_PURCHASE(row.id))
+        const reversal = await owner.journalEntry.findFirstOrThrow({
+          where: { organizationId: ctx.orgA.id, reversesEntryId: entry?.id },
+          include: { lines: { include: { account: { select: { code: true } } } } }
+        })
+        // The old bank is credited back by the reversal, not the account the role points at now
+        expect(
+          sorted(
+            reversal.lines.map((line): Line => [
+              line.account.code,
+              line.debitCents,
+              line.creditCents
+            ])
+          )
+        ).toEqual(
+          sorted([
+            [code(AccountRole.PREPAID_CARRIER_GUIDES), 0, 8000],
+            [code(AccountRole.BANK_DEFAULT), 8000, 0]
+          ])
+        )
+      } finally {
+        await owner.accountRoleMapping.update({
+          where: { organizationId_role: { organizationId: bank.organizationId, role: bank.role } },
+          data: { accountId: bank.accountId }
+        })
+      }
+    })
+
+    it('a void of a purchase of all gifts has nothing to undo: it never waits', async () => {
+      const { connectionId, row } = await purchase({ cents: 0 })
+      const voided = await voidOf(connectionId, row.id)
+      expect((await postPurchase(voided.id, FinanceEventKind.GUIDE_PURCHASE_VOID)).outcome).toBe(
+        FinancePostingOutcome.NOTHING_TO_POST
+      )
+    })
+
+    it('a void of a purchase the books never carried posts nothing', async () => {
+      const { connectionId, row } = await purchase({ onAdvance: false })
+      const voided = await voidOf(connectionId, row.id, false)
+      expect((await postPurchase(voided.id, FinanceEventKind.GUIDE_PURCHASE_VOID)).outcome).toBe(
+        FinancePostingOutcome.NOTHING_TO_POST
+      )
+    })
+  })
+
   describe('E5: a confirmed remittance', () => {
     it('brings the cash, settles the fee the carrier kept and clears the receivable of the guide', async () => {
       const shipment = await delivered()

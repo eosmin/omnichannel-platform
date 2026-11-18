@@ -7,6 +7,7 @@ import {
   FinanceEventKind,
   FinancePostingFailureReason,
   FinancePostingKey,
+  GuideMovementKind,
   FinancePostingOutcome,
   FinanceSourceType,
   FinanceSweepLimits,
@@ -495,6 +496,54 @@ export class FinanceSweepService {
       },
       out
     )
+    // E15 and E16: the purchases of guides a prepaid connection made, and the voids of them. A purchase made while the connection did not
+    // prepay is not the books' business (`onAdvance`), and a void of one is not either.
+    for (const [kind, ledgerKind, keyOf] of [
+      [
+        FinanceEventKind.GUIDE_PURCHASE,
+        GuideMovementKind.PURCHASE,
+        FinancePostingKey.GUIDE_PURCHASE
+      ],
+      [
+        FinanceEventKind.GUIDE_PURCHASE_VOID,
+        GuideMovementKind.VOID,
+        FinancePostingKey.GUIDE_PURCHASE_VOID
+      ]
+    ] as const) {
+      await this.collect(
+        {
+          ...common,
+          page: (after, take) =>
+            db.carrierGuideMovement.findMany({
+              where: {
+                ...storeOf,
+                kind: ledgerKind,
+                occurredAt: { gte: since },
+                // A purchase of all gifts cost nothing and has no entry: there is nothing to queue (nor to void)
+                costCentsDelta: { not: 0 },
+                // A void is of the purchase it undoes: it counts only when that purchase was carried by the books
+                ...(ledgerKind === GuideMovementKind.VOID
+                  ? { voids: { onAdvance: true } }
+                  : { onAdvance: true })
+              },
+              select: { id: true, occurredAt: true },
+              orderBy: { id: 'asc' },
+              take,
+              ...cursor(after)
+            }),
+          of: movement => [
+            make(
+              FinanceSourceType.CARRIER_GUIDE_MOVEMENT,
+              movement.id,
+              kind,
+              keyOf(movement.id),
+              movement.occurredAt
+            )
+          ]
+        },
+        out
+      )
+    }
     // E5: a remittance confirmed
     await this.collect(
       {
