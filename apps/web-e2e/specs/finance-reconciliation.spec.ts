@@ -258,6 +258,8 @@ test.describe('Finance → bank reconciliation', () => {
     await second.getByTestId('bank-line-register').click()
     const draft = page.getByTestId('bank-draft-dialog')
     await expect(draft.getByTestId('bank-draft')).toBeVisible()
+    // The bank's text is not copied into the memo until the person asks for it
+    await expect(draft.getByTestId('bank-draft')).not.toContainText(reconciliation.draft.memo)
     await expectDialogFitsThePhoneWidth(page, draft)
     await draft.getByRole('button', { name: reconciliation.draft.close, exact: true }).click()
     await expect(draft).toHaveCount(0)
