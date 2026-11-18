@@ -22,8 +22,11 @@ import { CapturedQueue } from '../helpers/queue'
 // orders. They run as the owner (SECURITY DEFINER) and filter by themselves: the store is the one of the transaction context, so
 //  - a call with no store in the context RAISES (never an empty answer that looks like "nothing found");
 //  - the context of one store never reads a row of another, with the rows of both in the same tables;
-//  - the statement inside uses the GIN / trigram index of what it searches (the reason of the functions: with the policies enforced
-//    the planner does not push the text operators below the policy, and the search fell back to the store index).
+//  - the statement inside the message search reads the GIN index (the reason of the functions: with the policies enforced the planner
+//    does not push the text operators below the policy, and the search fell back to the store index). It is measured with volume (two
+//    stores of 15000 messages, ANALYZE) from the plan that auto_explain logs for the statement INSIDE the function. The customers and
+//    the orders have no such case: the real customer query is an OR of LIKE/ILIKE/%/similarity that the planner reads by the store index
+//    even with the policies off (8e, rls-search-plan.spec), so there is no baseline to compare with (plan-notas-76.md).
 // The calls are made as platform_app, the role of the api.
 
 const FUNCTION_ARGS = {
@@ -44,6 +47,8 @@ const FUNCTION_ARGS = {
       'MaxWords=20, MinWords=5'
     ] as const
 }
+const VOLUME_ROWS = 15000
+const VOLUME_MARKED = 4
 const MESSAGES_CALL = `SELECT * FROM public.rls_search_messages($1, $2::integer, $3::integer, $4::text, $5::boolean, $6::boolean,
   $7::boolean, $8::boolean, $9::text[], $10, $11, $12, $13)`
 const TYPED_CALL = `SELECT * FROM public.rls_search_messages_typed($1, $2, $3::integer, $4::text, $5::boolean, $6::boolean,
@@ -52,12 +57,6 @@ const CUSTOMERS_CALL = `SELECT * FROM public.rls_search_customers($1, $2, $3, $4
   $9::real, $10::real)`
 const ORDERS_CALL = `SELECT * FROM public.rls_search_orders($1, $2, $3, $4, $5::boolean, $6::boolean, $7::integer)`
 
-const INDEXES = {
-  messages: 'idx_messages_search_unaccent',
-  customers: 'idx_customers_name_search_trgm',
-  orders: 'idx_orders_order_number_trgm'
-} as const
-
 describe('the search functions of row-level security', () => {
   const prefix = newRunPrefix()
   const urls = connectionUrls()
@@ -65,6 +64,7 @@ describe('the search functions of row-level security', () => {
   let owner: OwnerClient
   let ctx: TestContext
   let appDb: pg.Client
+  let ownerDb: pg.Client
   const tag = `zs${Math.random()
     .toString(36)
     .slice(2, 10)
@@ -77,10 +77,13 @@ describe('the search functions of row-level security', () => {
     )
     ctx = await seedTestContext(owner, app, prefix)
     appDb = new pg.Client({ connectionString: urls.app })
+    ownerDb = new pg.Client({ connectionString: urls.owner })
     await appDb.connect()
+    await ownerDb.connect()
   })
   afterAll(async () => {
     await appDb.end()
+    await ownerDb.end()
     await cleanUp(owner, prefix)
     await app.close()
     await owner.$disconnect()
@@ -315,82 +318,88 @@ describe('the search functions of row-level security', () => {
     expect(await idsAs(undefined)).not.toContain(message.id)
   })
 
-  // The index each search reads, counted INSIDE the transaction of the call (`pg_stat_get_xact_numscans`: the scans of this transaction
-  // only, visible at once, so no other suite can move it and nothing waits for the shared counters). The sequential scan is switched
-  // off for the call so that a table this small does not take it for want of rows.
-  async function readsIndex(index: string, call: () => Promise<unknown>): Promise<boolean> {
-    const scans = async (): Promise<number> =>
-      Number(
-        (
-          await appDb.query<{ scans: string }>(
-            'SELECT pg_stat_get_xact_numscans($1::regclass)::text AS scans',
-            [index]
-          )
-        ).rows[0]?.scans ?? '0'
-      )
-    await appDb.query('BEGIN')
-    try {
-      await appDb.query(
-        `SELECT set_config('app.store_ids', $1, true), set_config('app.organization_ids', '', true)`,
-        [ctx.storeA.id]
-      )
-      await appDb.query('SET LOCAL enable_seqscan = off')
-      const before = await scans()
-      await call()
-      const after = await scans()
-      await appDb.query('COMMIT')
-      return after > before
-    } catch (error) {
-      await appDb.query('ROLLBACK')
-      throw error
-    }
+  // Rows of a store that look like the ones of a real inbox, copied from one the builders made (so every NOT NULL column has a valid
+  // value) with a new id and a text of their own, one second apart. The generated columns are left out of the column list.
+  async function seedVolume(storeId: string, template: string, rows: number, marked: number) {
+    const { rows: columns } = await ownerDb.query<{ list: string }>(
+      `SELECT string_agg(quote_ident(attname), ',' ORDER BY attnum) AS list FROM pg_attribute
+        WHERE attrelid = 'public.messages'::regclass AND attnum > 0 AND NOT attisdropped AND attgenerated = ''`
+    )
+    const list = columns[0]?.list ?? ''
+    await ownerDb.query(
+      `INSERT INTO public.messages (${list})
+       SELECT ${list} FROM (
+         SELECT (jsonb_populate_record(NULL::public.messages, to_jsonb(t) || jsonb_build_object(
+           'id', gen_random_uuid()::text,
+           'content', CASE WHEN g <= $3 THEN $4 || ' pedido de camión ' || g ELSE 'relleno número ' || g || ' del almacén' END,
+           'created_at', t.created_at - g * interval '1 second',
+           'channel_message_id', NULL, 'idempotency_key', NULL))).*
+         FROM public.messages t CROSS JOIN generate_series(1, $2::integer) g
+         WHERE t.id = $1
+       ) x`,
+      [template, rows, marked, tag]
+    )
+    await ownerDb.query('ANALYZE public.messages')
+    return storeId
   }
 
-  it('reads the full-text index of the messages', async () => {
-    await seedMessages()
+  // The plan of the statements INSIDE a function, as auto_explain logs them (the outer plan only says "Function Scan"). Run on the
+  // connection of the owner of the database, which can load it; the plan of a SECURITY DEFINER function does not depend on who calls.
+  async function planOf(store: string, call: string, args: readonly unknown[]): Promise<string> {
+    const plans: string[] = []
+    const collect = (notice: { message?: string }) => plans.push(notice.message ?? '')
+    ownerDb.on('notice', collect)
+    try {
+      await ownerDb.query('BEGIN')
+      await ownerDb.query(
+        `SELECT set_config('app.store_ids', $1, true), set_config('app.organization_ids', '', true)`,
+        [store]
+      )
+      await ownerDb.query(`LOAD 'auto_explain'`)
+      await ownerDb.query('SET LOCAL auto_explain.log_min_duration = 0')
+      await ownerDb.query('SET LOCAL auto_explain.log_nested_statements = on')
+      await ownerDb.query('SET LOCAL client_min_messages = log')
+      await ownerDb.query(call, [...args])
+      await ownerDb.query('COMMIT')
+    } catch (error) {
+      await ownerDb.query('ROLLBACK')
+      throw error
+    } finally {
+      ownerDb.off('notice', collect)
+    }
+    return plans.join('\n')
+  }
+
+  it('reads the full-text index of the messages with the rows of two stores in the table, and not the store index', async () => {
+    const mine = await createConversationOf(owner, { storeId: ctx.storeA.id })
+    const theirs = await createConversationOf(owner, { storeId: ctx.storeB.id })
+    const first = await createMessage(owner, {
+      storeId: ctx.storeA.id,
+      conversationId: mine.id,
+      content: 'semilla'
+    })
+    const second = await createMessage(owner, {
+      storeId: ctx.storeB.id,
+      conversationId: theirs.id,
+      content: 'semilla'
+    })
+    await seedVolume(ctx.storeA.id, first.id, VOLUME_ROWS, VOLUME_MARKED)
+    await seedVolume(ctx.storeB.id, second.id, VOLUME_ROWS, VOLUME_MARKED)
+
     const [q, ...rest] = FUNCTION_ARGS.messages(`camion ${tag}`)
-    expect(await readsIndex(INDEXES.messages, () => appDb.query(MESSAGES_CALL, [q, ...rest]))).toBe(
-      true
+    const plan = await planOf(ctx.storeA.id, MESSAGES_CALL, [q, ...rest])
+    // The message of the plan is what failed, so it travels with the assertion
+    expect({ usesGin: plan.includes('idx_messages_search_unaccent'), plan }).toMatchObject({
+      usesGin: true
+    })
+    expect(plan).not.toMatch(/Seq Scan on messages/)
+    // And it answers: the marked rows of the store of the context, and none of the other store
+    const ids = (await messagesIn([ctx.storeA.id], `camion ${tag}`)).map(row => row.id)
+    expect(ids.length).toBe(VOLUME_MARKED)
+    const alien = await ownerDb.query<{ n: string }>(
+      'SELECT count(*)::text AS n FROM public.messages WHERE id = ANY($1::text[]) AND store_id <> $2',
+      [ids, ctx.storeA.id]
     )
-  })
-
-  it('reads the trigram index of the names of the customers', async () => {
-    await createCustomer(owner, { storeId: ctx.storeA.id, name: `Indexado ${tag}` })
-    const folded = `indexado ${tag}`
-    expect(
-      await readsIndex(INDEXES.customers, () =>
-        appDb.query(CUSTOMERS_CALL, [
-          folded,
-          `%${folded}%`,
-          `${folded}%`,
-          `%${folded}%`,
-          '%0%',
-          false,
-          false,
-          25,
-          SearchConfig.SIMILARITY_THRESHOLD,
-          SearchConfig.WORD_SIMILARITY_THRESHOLD
-        ])
-      )
-    ).toBe(true)
-  })
-
-  it('reads the trigram index of the numbers of the orders', async () => {
-    const order = await createOrder(owner, { storeId: ctx.storeA.id })
-    const number = `IX-${tag}-5`
-    await owner.order.update({ where: { id: order.id }, data: { orderNumber: number } })
-    expect(
-      await readsIndex(INDEXES.orders, () =>
-        appDb.query(ORDERS_CALL, [
-          number.toLowerCase(),
-          `%${number}%`,
-          `${number}%`,
-          '%0%',
-          false,
-          false,
-          25
-        ])
-      )
-    ).toBe(true)
+    expect(alien.rows[0]?.n).toBe('0')
   })
 })
