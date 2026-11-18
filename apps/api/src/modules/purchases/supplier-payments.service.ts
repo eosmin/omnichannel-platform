@@ -187,6 +187,8 @@ export class SupplierPaymentsService {
       select: PAYMENT_SELECT
     })
     if (row === null) throw resourceNotFound('supplier payment')
+    // A void may commit between the replay and this read (the two take different locks): the row read here decides
+    if (recorded.replayed && row.voidedByEntryId !== null) throw this.alreadyVoided()
     return paymentView(row)
   }
 
