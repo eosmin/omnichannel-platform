@@ -5,8 +5,17 @@ import type { Queue } from 'bullmq'
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { PrismaService } from '@platform/core/database'
-import { FinanceConflicts, FinanceResourceTypes } from '@platform/core/domain'
-import { resourceConflict } from '@platform/core/errors'
+import {
+  CHAIN_RESOLVE_COOLDOWN_SECONDS,
+  FinanceConflicts,
+  FinanceResourceTypes
+} from '@platform/core/domain'
+import {
+  ErrorCodes,
+  HttpStatusCodes,
+  PlatformException,
+  resourceConflict
+} from '@platform/core/errors'
 import {
   type ChainCheck,
   type ChainVerification,
@@ -77,7 +86,8 @@ export class FinanceChainService {
   // The way out of an incident that is a false alarm or a chain restored (N-B8-1): the API role cannot close one (the database takes
   // UPDATE(resolved_at) away from it, so an application taken over cannot declare the books sound), so a person with the right to close
   // periods asks the worker, which walks the chain again and closes the incident only if it passes. The caller decides nothing about the
-  // verdict. Refused when nothing is open; asked again while the job waits, it is the same job. The request is audited with who asked.
+  // verdict. Refused when nothing is open, and with a 429 for ten minutes after the last request (the job of that request stays in the queue
+  // that long, so a failure is not lost either). The request is audited with who asked; the worker audits what its check found.
   async requestResolution(organizationId: string, actor: Actor): Promise<{ queued: true }> {
     const open = await this.prisma.client.financeChainIncident.count({
       where: { organizationId, resolvedAt: null }
@@ -87,14 +97,20 @@ export class FinanceChainService {
         conflict: FinanceConflicts.CHAIN_NO_OPEN_INCIDENT
       })
     }
+    // The job of the last request is still there (waiting, running, or done or failed less than the cooldown ago): no second walk
+    const jobId = requestedVerifyLedgerChainJobId(organizationId)
+    if ((await this.heavyQueue.getJob(jobId)) !== undefined) {
+      throw new PlatformException(
+        ErrorCodes.RATE_LIMIT_EXCEEDED,
+        'a check of the chain was asked a moment ago',
+        HttpStatusCodes.TOO_MANY_REQUESTS
+      )
+    }
+    const keep = { age: CHAIN_RESOLVE_COOLDOWN_SECONDS }
     await this.heavyQueue.add(
       JobNames.VERIFY_LEDGER_CHAIN,
       { organizationId, requestedBy: actor.userId },
-      {
-        jobId: requestedVerifyLedgerChainJobId(organizationId),
-        removeOnComplete: true,
-        removeOnFail: true
-      }
+      { jobId, removeOnComplete: keep, removeOnFail: keep }
     )
     this.audit.log({
       action: AuditAction.FINANCE_CHAIN_RESOLVE_REQUESTED,

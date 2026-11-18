@@ -124,7 +124,7 @@ const reconcileJobSchema = exactly<ReconcileInventoryJob>()(
 const reconcileFinanceJobSchema = exactly<ReconcileFinanceJob>()(
   z.object({ organizationId: z.uuid(), correlationId: z.string().optional() })
 )
-const verifyLedgerChainJobSchema = exactly<VerifyLedgerChainJob>()(
+export const verifyLedgerChainJobSchema = exactly<VerifyLedgerChainJob>()(
   z.object({
     organizationId: z.uuid(),
     requestedBy: z.uuid().optional(),

@@ -6,6 +6,7 @@ import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
+import { AuditService } from '@platform/core/audit-module'
 import { PrismaService } from '@platform/core/database'
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
 import {
@@ -31,6 +32,7 @@ import {
 } from '@platform/core/queues'
 
 import { FinanceChainChecker } from '../../apps/worker/src/finance/finance-chain-checker.service'
+import { verifyLedgerChainJobSchema } from '../../apps/worker/src/processors/heavy-processing.processor'
 import { FinanceChainScheduler } from '../../apps/worker/src/schedulers/finance-chain.scheduler'
 import { tamperWithLedger } from '../builders/finance'
 import { createTestApp } from '../helpers/app'
@@ -44,6 +46,7 @@ const CREATED = 201
 const ACCEPTED = 202
 const FORBIDDEN = 403
 const CONFLICT = 409
+const TOO_MANY = 429
 const START = '2026-01-01'
 const CASH = '1101'
 const RENT = '6105'
@@ -284,7 +287,11 @@ describe('The weekly check of the chain, its incident and the guard of the close
         } as never,
         logger
       )
-      const checker = new FinanceChainChecker(counting, logger)
+      const checker = new FinanceChainChecker(
+        counting,
+        logger,
+        app.get(AuditService, { strict: false })
+      )
       await tamperWithLedger(owner, [firstMemo(ctx.orgA.id, 'Rewritten again')])
       await checker.check(ctx.orgA.id)
       await tamperWithLedger(owner, [firstMemo(ctx.orgA.id, 'Original memo')])
@@ -372,6 +379,7 @@ describe('The weekly check of the chain, its incident and the guard of the close
       })
 
     it('refuses a member without the right to close periods', async () => {
+      await resolveAll(ctx.orgA.id)
       await openIncidentFor(ctx.orgA.id)
 
       const response = await api(app, ctx.agentA, ctx.storeA).post(
@@ -380,6 +388,7 @@ describe('The weekly check of the chain, its incident and the guard of the close
 
       expect(response.status).toBe(FORBIDDEN)
       expect(asked(ctx.orgA.id)).toEqual([])
+      await resolveAll(ctx.orgA.id)
     })
 
     it('refuses when no incident is open', async () => {
@@ -404,31 +413,39 @@ describe('The weekly check of the chain, its incident and the guard of the close
       const first = await api(app, ctx.adminB, ctx.storeB).post(
         ApiRoutes.finance.reports.resolveChain
       )
-      const second = await api(app, ctx.adminB, ctx.storeB).post(
-        ApiRoutes.finance.reports.resolveChain
-      )
 
       expect(first.status).toBe(ACCEPTED)
-      expect(second.status).toBe(ACCEPTED)
       const jobs = asked(ctx.orgB.id)
-      // Twice asked, the same job id: the queue keeps one while it waits
-      expect(new Set(jobs.map(job => job.opts?.jobId))).toEqual(
-        new Set([requestedVerifyLedgerChainJobId(ctx.orgB.id)])
-      )
+      expect(jobs).toHaveLength(1)
+      expect(jobs[0]?.opts?.jobId).toBe(requestedVerifyLedgerChainJobId(ctx.orgB.id))
       expect(jobs[0]?.data).toEqual({ organizationId: ctx.orgB.id, requestedBy: ctx.adminB.id })
+      // Asked again while the job of the first is still in the queue (the real queue keeps it for the cooldown): a 429, no second job and
+      // no second audit row
+      jest.spyOn(heavy(), 'getJob').mockResolvedValueOnce({ id: 'x' } as never)
+      const again = await api(app, ctx.adminB, ctx.storeB).post(
+        ApiRoutes.finance.reports.resolveChain
+      )
+      expect(again.status).toBe(TOO_MANY)
+      expect(asked(ctx.orgB.id)).toHaveLength(1)
       // The api did not close it: that is the worker's, and the api role has no right to
       expect(await openIncidents(ctx.orgB.id)).toHaveLength(1)
-      const [entry] = await waitForAuditEntries(owner, {
+      const entries = await waitForAuditEntries(owner, {
         action: AuditAction.FINANCE_CHAIN_RESOLVE_REQUESTED,
         resourceId: ctx.orgB.id
       })
-      expect(entry?.userId).toBe(ctx.adminB.id)
+      expect(entries).toHaveLength(1)
+      expect(entries[0]?.userId).toBe(ctx.adminB.id)
       // Nothing was asked for the other organization
       expect(asked(ctx.orgA.id)).toEqual([])
     })
 
     it('is closed by the job of the worker when the chain verifies, and stays open when it does not', async () => {
-      const checker = new FinanceChainChecker(monitor, logger)
+      const checker = new FinanceChainChecker(
+        monitor,
+        logger,
+        app.get(AuditService, { strict: false })
+      )
+      await resolveAll(ctx.orgB.id)
       await tamperWithLedger(owner, [firstMemo(ctx.orgB.id, 'Rewritten')])
       const broken = await checker.check(ctx.orgB.id, new Date(), ctx.adminB.id)
       expect(broken.verification.ok).toBe(false)
@@ -440,6 +457,33 @@ describe('The weekly check of the chain, its incident and the guard of the close
       expect(sound.verification.ok).toBe(true)
       expect(sound.incident).toBe(ChainIncidentChange.RESOLVED)
       expect(await openIncidents(ctx.orgB.id)).toEqual([])
+      // Each check a person asked for leaves a row with who asked and what it found, the one that closed it included
+      const checked = await waitForAuditEntries(
+        owner,
+        { action: AuditAction.FINANCE_CHAIN_RESOLVE_CHECKED, resourceId: ctx.orgB.id },
+        2
+      )
+      expect(checked.map(entry => entry.userId)).toEqual([ctx.adminB.id, ctx.adminB.id])
+      expect(checked.map(entry => (entry.metadata as { incident: string }).incident)).toEqual([
+        ChainIncidentChange.OPENED,
+        ChainIncidentChange.RESOLVED
+      ])
+    })
+
+    it('reads the job a person asked for with who asked, and still reads the weekly one without', () => {
+      const asker = randomUUID()
+
+      expect(
+        verifyLedgerChainJobSchema.safeParse({ organizationId: ctx.orgB.id, requestedBy: asker })
+          .success
+      ).toBe(true)
+      expect(verifyLedgerChainJobSchema.safeParse({ organizationId: ctx.orgB.id }).success).toBe(
+        true
+      )
+      expect(
+        verifyLedgerChainJobSchema.safeParse({ organizationId: ctx.orgB.id, requestedBy: 'x' })
+          .success
+      ).toBe(false)
     })
   })
 })
