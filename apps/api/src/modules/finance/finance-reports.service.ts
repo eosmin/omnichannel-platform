@@ -518,6 +518,10 @@ export class FinanceReportsService {
       accountId: query.accountId,
       from: query.from,
       to: query.to,
+      // A narrowed file is told from a whole one in the audit row
+      storeId: query.storeId ?? null,
+      partyType: query.partyType ?? null,
+      partyId: query.partyId ?? null,
       rows: rows.length
     })
     return { account, rows }

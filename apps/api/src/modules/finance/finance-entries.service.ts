@@ -89,7 +89,8 @@ export class FinanceEntriesService {
     }
   }
 
-  // The journal of a range of days (TDD_18 §10): every entry with its lines, oldest first, by pages of entries. The lines come with the
+  // The journal of a range of days (TDD_18 §10): every entry with its lines, in the order of the chain (the gapless number, which is the order
+  // they were posted: a back-dated entry comes after the ones posted before it), by pages of entries. The lines come with the
   // entry so a page is whole: an entry is never split between two pages.
   async journal(organizationId: string, query: JournalQuery): Promise<JournalPage> {
     const rows = await this.prisma.client.journalEntry.findMany({
