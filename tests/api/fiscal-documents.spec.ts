@@ -387,6 +387,36 @@ describe('The fiscal documents (Step 4B.7)', () => {
     })
   })
 
+  // HC-006: an order made before the tax snapshot has no tax to put in a document: the credit note, the legal books and the entry of the
+  // sale refuse it (TAX_MISSING), so the sale document is not made either, with a tax of 0
+  describe('an order with no tax snapshot', () => {
+    it('makes no document, takes no number and leaves the order untouched, and makes it once the snapshot is complete', async () => {
+      const first = await deliveredOrder()
+      const gaps: ((orderId: string) => Promise<unknown>)[] = [
+        orderId => owner.order.update({ where: { id: orderId }, data: { taxCents: null } }),
+        orderId => owner.order.update({ where: { id: orderId }, data: { pricesIncludeTax: null } }),
+        orderId => owner.orderItem.updateMany({ where: { orderId }, data: { taxCents: null } })
+      ]
+      for (const makeGap of gaps) {
+        const order = await deliveredOrder()
+        await makeGap(order.id)
+        const before = await owner.fiscalDocument.count({ where: { organizationId: ctx.orgA.id } })
+
+        const made = await documents.createForOrder(ctx.orgA.id, order.id, FiscalIssueOn.DELIVERED)
+
+        expect(made).toBeNull()
+        expect(await owner.fiscalDocument.count({ where: { orderId: order.id } })).toBe(0)
+        expect(await owner.fiscalDocument.count({ where: { organizationId: ctx.orgA.id } })).toBe(
+          before
+        )
+      }
+      // The control: an order with its snapshot makes its document
+      expect(
+        await documents.createForOrder(ctx.orgA.id, first.id, FiscalIssueOn.DELIVERED)
+      ).not.toBeNull()
+    })
+  })
+
   describe('the detail and the period of a document (Step 4B.7b-4)', () => {
     it('reads the lines, the tax by rate and the issuer as they were sealed, and nothing else', async () => {
       const { documentId } = await sale()

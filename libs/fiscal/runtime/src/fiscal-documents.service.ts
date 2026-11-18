@@ -334,6 +334,11 @@ export class FiscalDocumentsService {
       if (existing !== null) return null
       const sale = await this.readSale(tx, organizationId, orderId)
       if (sale === null) return null
+      if (sale.taxSnapshotMissing) {
+        // No number is taken and no document is made: the tax of the order must be completed first, then the sale is asked again
+        this.logger.warn({ orderId }, 'no sale document was made: the order has no tax snapshot')
+        return null
+      }
       const sequenceNumber = await this.takeSequence(tx, organizationId)
       const entry = await tx.journalEntry.findFirst({
         where: { organizationId, idempotencyKey: FinancePostingKey.ORDER_SALE(orderId) },
@@ -435,6 +440,12 @@ export class FiscalDocumentsService {
     )
     return {
       storeId: order.storeId,
+      // An order made before the tax snapshot (HC-006): its tax is not known, so no document is made of it with a tax of 0. The credit
+      // note, the legal books and the entry of the sale refuse such an order too (TAX_MISSING)
+      taxSnapshotMissing:
+        order.taxCents === null ||
+        order.pricesIncludeTax === null ||
+        order.items.some(item => item.taxCents === null),
       currency: order.currency,
       totalCents: order.totalCents,
       taxCents: Math.min(orderTax, order.totalCents),
@@ -1738,7 +1749,8 @@ export class FiscalDocumentsService {
             parentDocumentId,
             // A refused document made in a contingency is made again as any other: the contingency is over for it
             contingencyId: null,
-            ...(sale === null
+            // A sale with no tax snapshot keeps the document it has: it is never made again with a tax of 0
+            ...(sale === null || ('taxSnapshotMissing' in sale && sale.taxSnapshotMissing)
               ? {}
               : {
                   linesSnapshot: sale.linesSnapshot,
@@ -2318,6 +2330,14 @@ export class FiscalDocumentsService {
         }
         const sale = await this.readSale(tx, organizationId, old.orderId, false)
         if (sale === null) throw resourceNotFound('order')
+        if (sale.taxSnapshotMissing) {
+          throw new PlatformException(
+            ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+            'the order has no tax snapshot: no document can be made of it',
+            HttpStatusCodes.CONFLICT,
+            { reason: FiscalConflictReasons.TAX_SNAPSHOT_MISSING }
+          )
+        }
         const sequenceNumber = await this.takeSequence(tx, organizationId)
         const entry = await tx.journalEntry.findFirst({
           where: {
