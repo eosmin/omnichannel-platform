@@ -163,12 +163,14 @@ describe('the plan of the searches with row-level security on', () => {
          AND to_tsvector('spanish'::regconfig, immutable_unaccent(coalesce(m.content, '')))
              @@ websearch_to_tsquery('spanish'::regconfig, immutable_unaccent($2))
        ORDER BY m.created_at DESC, m.id DESC LIMIT 200`
+  // One trigram condition, the way the name search starts: the whole search is an OR of several (name, email, similarity) that the
+  // planner reads through the index of the store even with the policies off, so it cannot tell what the policy changes
   const CUSTOMERS = `SELECT c.id FROM customers c
        WHERE c.store_id = $1 AND c.erased_at IS NULL AND c.merged_into_id IS NULL
-         AND (c.name_search LIKE $2 ESCAPE '\\' OR c.email ILIKE $3 ESCAPE '\\' OR (c.name_search % $4 AND similarity(c.name_search, $4) > 0.3))
+         AND c.name_search LIKE $2 ESCAPE '\\'
        LIMIT 21`
   const MESSAGES_VALUES = (): unknown[] => [storeA, 'zorbalux']
-  const CUSTOMERS_VALUES = (): unknown[] => [storeA, '%zorbalux%', '%zorbalux%', 'zorbalux']
+  const CUSTOMERS_VALUES = (): unknown[] => [storeA, '%zorbalux%']
   const MESSAGES_INDEX = 'idx_messages_search_unaccent'
   const CUSTOMERS_INDEX = /idx_customers_(name_search|email)_trgm/
 

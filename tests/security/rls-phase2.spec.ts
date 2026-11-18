@@ -76,6 +76,8 @@ describe('row-level security, phase 2: conversations, customers, files, channel 
     _CustomerTags: { a: ['', ''], b: ['', ''] }
   }
   const ids: Record<string, Record<string, string>> = {}
+  // The second message of each store, the one that the conversation origin points at: `messages` has two rows per store
+  const secondMessage: Record<Side, string> = { a: '', b: '' }
   let avatar = ''
   const pluginId = `${prefix}-plugin`
 
@@ -192,6 +194,7 @@ describe('row-level security, phase 2: conversations, customers, files, channel 
         },
         select: { id: true }
       })
+      secondMessage[side] = second.id
       const origin = await owner.conversationOrigin.create({
         data: {
           storeId: store[side],
@@ -393,9 +396,11 @@ describe('row-level security, phase 2: conversations, customers, files, channel 
       })
       for (const [table, sides] of Object.entries(row)) {
         // media: the avatar has no store and belongs to a person, not shown to a context that names no person
-        expect(seen.found[table]).toEqual(expect.arrayContaining([sides[side]]))
-        expect(seen.found[table]).not.toContain(sides[other])
-        expect(seen.found[table]).toHaveLength(1)
+        const mine = table === 'messages' ? [sides[side], secondMessage[side]] : [sides[side]]
+        const theirs = table === 'messages' ? [sides[other], secondMessage[other]] : [sides[other]]
+        // Exactly the rows of the store of the context: none missing, none of the other store
+        expect([table, [...(seen.found[table] ?? [])].sort()]).toEqual([table, [...mine].sort()])
+        for (const id of theirs) expect(seen.found[table]).not.toContain(id)
       }
       expect(seen.conversationTags).toEqual([
         { A: pair._ConversationTags[side][0], B: pair._ConversationTags[side][1] }
