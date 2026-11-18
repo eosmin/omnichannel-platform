@@ -7,7 +7,7 @@ import { PrismaService } from '@platform/core/database'
 import { WebhookLimits, WebhookStatus } from '@platform/core/domain'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
-import { MetricNames } from '@platform/core/metrics'
+import { MetricNames, WebhookMetricTarget } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 import type { TriggerWebhookJob } from '@platform/core/queues'
 
@@ -106,7 +106,7 @@ export class TenantWebhookDeliverer {
     durationMs: number,
     attempt: number
   ): Promise<void> {
-    this.deliveries.inc({ success: 'true' })
+    this.deliveries.inc({ target: WebhookMetricTarget.TENANT, success: 'true' })
     await this.guarded(webhookId, async () => {
       await this.prisma.client.webhookDelivery.create({
         data: { webhookId, event, statusCode, durationMs, success: true, attempt }
@@ -128,7 +128,7 @@ export class TenantWebhookDeliverer {
     final: boolean
   ): Promise<boolean> {
     const { webhookId, storeId, event } = job
-    this.deliveries.inc({ success: 'false' })
+    this.deliveries.inc({ target: WebhookMetricTarget.TENANT, success: 'false' })
     let disabled = false
     await this.guarded(webhookId, async () => {
       disabled = await this.prisma.transaction(async tx => {

@@ -20,6 +20,7 @@ import {
   type TrialBalanceCsvRow
 } from './finance-reports.csv'
 import type {
+  AccountBalancesQuery,
   JournalCsvQuery,
   LedgerCsvQuery,
   LedgerQuery,
@@ -44,6 +45,39 @@ export interface TrialBalanceView {
   storeId: string | null
   rows: TrialBalanceRowView[]
   totals: { debitCents: string; creditCents: string; balanced: boolean }
+}
+
+export interface AccountBalanceRowView {
+  accountId: string
+  code: string
+  name: string
+  type: string
+  isPostable: boolean
+  // cash | bank | wallet for the accounts of money, null for the rest: the screen highlights the ones with a value
+  cashKind: string | null
+  debitCents: string
+  creditCents: string
+  // On the side where the account normally sits
+  balanceCents: string
+}
+
+export interface AccountBalancesView {
+  asOf: string
+  storeId: string | null
+  rows: AccountBalanceRowView[]
+  totals: { debitCents: string; creditCents: string; balanced: boolean | null }
+}
+
+interface AccountBalanceSqlRow {
+  id: string
+  code: string
+  name: string
+  type: string
+  normal_side: string
+  is_postable: boolean
+  cash_kind: string | null
+  debit: bigint
+  credit: bigint
 }
 
 export interface LedgerLineView {
@@ -179,6 +213,65 @@ export class FinanceReportsService {
     }
   }
 
+  // What each account holds at the end of a day, since the books started (TDD_18 §10, "balances by account"): the sum of its lines up to the
+  // date, so it does not depend on how the periods were cut. One store narrows the lines; then the totals need not balance (an entry may put
+  // its lines in two stores or in none), so `balanced` is null, as in the balance sheet. Accounts with no line and no cash kind are left out.
+  async accountBalances(
+    organizationId: string,
+    query: AccountBalancesQuery
+  ): Promise<AccountBalancesView> {
+    const storeId = query.storeId ?? null
+    if (storeId !== null) {
+      const store = await this.prisma.client.store.count({ where: { id: storeId, organizationId } })
+      if (store === 0) throw resourceNotFound('store')
+    }
+    const found = await this.prisma.client.$queryRaw<AccountBalanceSqlRow[]>`
+      SELECT a.id, a.code, a.name, a.type, a.normal_side, a.is_postable, a.cash_kind,
+             COALESCE(s.debit, 0)::bigint AS debit, COALESCE(s.credit, 0)::bigint AS credit
+      FROM ledger_accounts a
+      LEFT JOIN (
+        SELECT l.account_id, SUM(l.debit_cents) AS debit, SUM(l.credit_cents) AS credit
+        FROM journal_lines l
+        JOIN journal_entries e ON e.id = l.entry_id AND e.organization_id = l.organization_id
+        WHERE l.organization_id = ${organizationId}
+          AND e.entry_date <= ${query.asOf}::date
+          AND (${storeId}::text IS NULL OR l.store_id = ${storeId}::text)
+        GROUP BY l.account_id
+      ) s ON s.account_id = a.id
+      WHERE a.organization_id = ${organizationId} AND (s.account_id IS NOT NULL OR a.cash_kind IS NOT NULL)
+      ORDER BY a.code`
+    const rows = found.map(row => ({
+      row,
+      balance: normalBalance(
+        { debitCents: row.debit, creditCents: row.credit },
+        (row.normal_side as NormalSide) === NormalSide.DEBIT
+      )
+    }))
+    const totals = trialBalanceTotals(
+      rows.map(({ row }) => ({ debitCents: row.debit, creditCents: row.credit }))
+    )
+    return {
+      asOf: query.asOf,
+      storeId,
+      rows: rows.map(({ row, balance }) => ({
+        accountId: row.id,
+        code: row.code,
+        name: row.name,
+        type: row.type,
+        isPostable: row.is_postable,
+        cashKind: row.cash_kind,
+        debitCents: row.debit.toString(),
+        creditCents: row.credit.toString(),
+        balanceCents: balance.toString()
+      })),
+      totals: {
+        debitCents: totals.debitCents.toString(),
+        creditCents: totals.creditCents.toString(),
+        balanced: storeId === null ? totals.balanced : null
+      }
+    }
+  }
+
   // `carriedOpening` is the balance the caller already knows at the start of this page: the CSV walks the pages and carries it
   async ledger(
     organizationId: string,
@@ -189,6 +282,8 @@ export class FinanceReportsService {
     const normalIsDebit = (account.normalSide as NormalSide) === NormalSide.DEBIT
     const cursor = query.cursor === undefined ? null : parseCursor(query.cursor)
     const storeId = query.storeId ?? null
+    const partyType = query.partyType ?? null
+    const partyId = query.partyId ?? null
     const from = query.from ?? null
     const to = query.to ?? null
     const db = this.prisma.client
@@ -201,6 +296,8 @@ export class FinanceReportsService {
       JOIN journal_entries e ON e.id = l.entry_id AND e.organization_id = l.organization_id
       WHERE l.organization_id = ${organizationId} AND l.account_id = ${query.accountId}
         AND (${storeId}::text IS NULL OR l.store_id = ${storeId}::text)
+        AND (${partyType}::text IS NULL OR l.party_type = ${partyType}::text)
+        AND (${partyId}::text IS NULL OR l.party_id = ${partyId}::text)
         AND (
           (${cursor?.date ?? null}::date IS NOT NULL
             AND (e.entry_date, e.number, l.line_no) <= (${cursor?.date ?? null}::date, ${cursor?.number ?? null}::bigint, ${cursor?.lineNo ?? null}::int))
@@ -220,6 +317,8 @@ export class FinanceReportsService {
       JOIN journal_entries e ON e.id = l.entry_id AND e.organization_id = l.organization_id
       WHERE l.organization_id = ${organizationId} AND l.account_id = ${query.accountId}
         AND (${storeId}::text IS NULL OR l.store_id = ${storeId}::text)
+        AND (${partyType}::text IS NULL OR l.party_type = ${partyType}::text)
+        AND (${partyId}::text IS NULL OR l.party_id = ${partyId}::text)
         AND (${from}::date IS NULL OR e.entry_date >= ${from}::date)
         AND (${to}::date IS NULL OR e.entry_date <= ${to}::date)
         AND (${cursor?.date ?? null}::date IS NULL
@@ -385,6 +484,8 @@ export class FinanceReportsService {
           from: query.from,
           to: query.to,
           ...(query.storeId === undefined ? {} : { storeId: query.storeId }),
+          ...(query.partyType === undefined ? {} : { partyType: query.partyType }),
+          ...(query.partyId === undefined ? {} : { partyId: query.partyId }),
           ...(cursor === undefined ? {} : { cursor }),
           limit: FinanceReportLimits.LEDGER_PAGE_MAX
         },
@@ -417,6 +518,10 @@ export class FinanceReportsService {
       accountId: query.accountId,
       from: query.from,
       to: query.to,
+      // A narrowed file is told from a whole one in the audit row
+      ...(query.storeId === undefined ? {} : { storeId: query.storeId }),
+      ...(query.partyType === undefined ? {} : { partyType: query.partyType }),
+      ...(query.partyId === undefined ? {} : { partyId: query.partyId }),
       rows: rows.length
     })
     return { account, rows }

@@ -57,7 +57,7 @@ export function SettingsFrame({
             <Link
               href={backTo.href}
               onClick={event => guard(event, backTo.href)}
-              className="text-muted-foreground hover:bg-accent mb-2 flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm pointer-coarse:min-h-10"
+              className="text-muted-foreground hover:bg-accent mb-2 flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm pointer-coarse:min-h-11"
             >
               <ArrowLeft aria-hidden className="size-4" />
               {backTo.label}
@@ -76,7 +76,7 @@ export function SettingsFrame({
                     onClick={event => guard(event, entry.href)}
                     aria-current={isCurrent ? 'page' : undefined}
                     className={cn(
-                      'hover:bg-accent flex items-center rounded-md px-2 py-1.5 text-sm whitespace-nowrap pointer-coarse:min-h-10',
+                      'hover:bg-accent flex items-center rounded-md px-2 py-1.5 text-sm whitespace-nowrap md:whitespace-normal pointer-coarse:min-h-11',
                       isCurrent ? 'bg-accent font-semibold' : 'text-muted-foreground'
                     )}
                   >

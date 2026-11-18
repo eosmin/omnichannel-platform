@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
 import { CarrierFeeLimits } from './carrier-fee-rules'
+import { CarrierChargeModel } from './carrier-guide-constants'
 import { CLOCK_TIME_PATTERN } from './settings-constants'
 import { CarrierConnectionLimits, CarrierId, LabelFormat } from './shipping-constants'
 import { ShippingPayer } from './status-enums'
@@ -89,6 +90,8 @@ const settings = {
   minShippingFeeCents: feeCents.nullable().optional(),
   maxShippingFeeCents: feeCents.nullable().optional(),
   remittanceDeductsFee: z.boolean().optional(),
+  // How the carrier charges the business for its guides: it decides the entry of the books (TDD_18 §4.2, E4). Needs the permission to agree fees
+  chargeModel: z.enum(Object.values(CarrierChargeModel) as [string, ...string[]]).optional(),
   // What the carrier keeps of the cash it collects (TDD_17 §4.15). Null clears it. Which of them a carrier takes is the plugin's declaration
   commissionBps: commissionBps.nullable().optional(),
   serviceRatesCents: serviceRatesCents.nullable().optional(),

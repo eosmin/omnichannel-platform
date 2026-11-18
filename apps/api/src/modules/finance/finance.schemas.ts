@@ -10,6 +10,7 @@ import {
   FinanceTransactionKind,
   JournalEntryType,
   lowercasedUuidSchema,
+  queryIntSchema,
   PaginationLimits,
   SaleRecognition,
   singleLineText,
@@ -30,12 +31,7 @@ const memo = singleLineText(FinanceLimits.MEMO_MAX_LENGTH, 1)
 // Whole cents of one line, like an order total: an Int of the database
 const cents = z.number().int().min(0).max(FinanceLimits.MAX_LINE_CENTS)
 
-const limit = z.coerce
-  .number()
-  .int()
-  .min(1)
-  .max(PaginationLimits.MAX)
-  .default(PaginationLimits.DEFAULT)
+const limit = queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
 const flag = z.enum(['true', 'false']).transform(value => value === 'true')
 const nothingToChange = { message: 'nothing to change' }
 
@@ -89,7 +85,11 @@ const taxRateBps = z
   .int()
   .min(FinanceTaxLimits.MIN_RATE_BPS)
   .max(FinanceTaxLimits.MAX_RATE_BPS)
-const taxRateCode = z.string().regex(FinanceTaxLimits.CODE_PATTERN)
+// A code is kept in capitals: `IVA` and `iva` are one code, so the two cannot live side by side (HC-210)
+const taxRateCode = z
+  .string()
+  .regex(FinanceTaxLimits.CODE_PATTERN)
+  .transform(code => code.toUpperCase())
 const taxRateName = singleLineText(FinanceTaxLimits.NAME_MAX_LENGTH, 1)
 
 export const createTaxRateSchema = z.strictObject({

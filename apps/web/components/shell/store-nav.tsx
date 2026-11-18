@@ -1,9 +1,10 @@
 'use client'
 
+import { Menu } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import type { ReactElement } from 'react'
+import { lazy, type ReactElement } from 'react'
 
 import { AppPaths } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
@@ -14,6 +15,11 @@ import { mayOpenStoreSettings } from '../../lib/settings/may-open-settings'
 import { useProfile } from '../../lib/use-profile'
 import { cn } from '../../lib/utils'
 import { useStore } from '../providers/store-context'
+import { OnDemandMenu } from '../shared/on-demand-menu'
+import { Button } from '../ui/button'
+
+const loadPopup = () => import('./store-nav-popup')
+const StoreNavPopup = lazy(loadPopup)
 
 // The pages of the store that exist, for who may open them.  Settings is shown when the person may open at least one of its pages.
 export function StoreNav(): ReactElement {
@@ -92,29 +98,52 @@ export function StoreNav(): ReactElement {
       isShown: mayOpenStoreSettings(can)
     }
   ].filter(entry => entry.isShown)
-  // On a phone the links wrap onto a second line instead of scrolling: five of them do not fit one line at
-  // 360 px, and a scrolling row cut a word ("Custome"). From `md` they scroll if they ever overflow.
+  const currentEntry = entries.find(entry => pathname.startsWith(entry.match ?? entry.href))
+  // From `md` the links are a row that scrolls if it ever overflows. On a phone they are one button with the page
+  // the person is on, and the links open under it: four rows of links over the thread left no room to read it
+  // (N-BR2-63), and one row that scrolls cut a word ("Custome"), so neither shows a link cut by an edge.
   return (
-    <nav
-      aria-label={t('label')}
-      className="flex min-w-0 items-center gap-1 max-md:flex-wrap md:overflow-x-auto"
-    >
-      {entries.map(entry => {
-        const isCurrent = pathname.startsWith(entry.match ?? entry.href)
-        return (
-          <Link
-            key={entry.href}
-            href={entry.href}
-            aria-current={isCurrent ? 'page' : undefined}
-            className={cn(
-              'hover:bg-accent inline-flex shrink-0 items-center rounded-md px-2 py-1 text-sm whitespace-nowrap pointer-coarse:min-h-10',
-              isCurrent ? 'font-semibold' : 'text-muted-foreground'
-            )}
-          >
-            {entry.label}
-          </Link>
-        )
-      })}
-    </nav>
+    <>
+      <nav
+        aria-label={t('label')}
+        className="hidden min-w-0 items-center gap-1 overflow-x-auto md:flex"
+      >
+        {entries.map(entry => {
+          const isCurrent = pathname.startsWith(entry.match ?? entry.href)
+          return (
+            <Link
+              key={entry.href}
+              href={entry.href}
+              aria-current={isCurrent ? 'page' : undefined}
+              className={cn(
+                'hover:bg-accent inline-flex shrink-0 items-center rounded-md px-2 py-1 text-sm whitespace-nowrap pointer-coarse:min-h-11',
+                isCurrent ? 'font-semibold' : 'text-muted-foreground'
+              )}
+            >
+              {entry.label}
+            </Link>
+          )
+        })}
+      </nav>
+      <nav aria-label={t('label')} className="min-w-0 md:hidden">
+        <OnDemandMenu
+          Popup={StoreNavPopup}
+          preload={loadPopup}
+          popupProps={{
+            entries: entries.map(entry => ({
+              href: entry.href,
+              label: entry.label,
+              isCurrent: entry === currentEntry
+            }))
+          }}
+          trigger={extra => (
+            <Button variant="ghost" className="max-w-full px-2" {...extra}>
+              <Menu aria-hidden />
+              <span className="truncate">{currentEntry?.label ?? t('menu')}</span>
+            </Button>
+          )}
+        />
+      </nav>
+    </>
   )
 }
