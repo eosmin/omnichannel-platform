@@ -60,11 +60,17 @@ export async function ensurePluginInstallation(
 // is Step 5.6; the suites that need one build it here. A second call changes the scopes and the url.
 export async function ensureWidgetPlugin(
   owner: OwnerClient,
-  input: { storeId: string; pluginId: string; widgetUrl: string; scopes: string[] }
+  input: {
+    storeId: string
+    pluginId: string
+    widgetUrl: string
+    scopes: string[]
+    widgetName?: string | undefined
+  }
 ): Promise<{ id: string }> {
   const manifest = {
     ui: { widget: input.widgetUrl },
-    widgets: [{ id: 'info', name: 'Info panel', defaultHeight: 300 }]
+    widgets: [{ id: 'info', name: input.widgetName ?? 'Info panel', defaultHeight: 300 }]
   }
   // An integration plugin belongs to the organization that registered it (D10; a check enforces it)
   const store = await owner.store.findUniqueOrThrow({
