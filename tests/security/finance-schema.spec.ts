@@ -1431,7 +1431,7 @@ describe('The tables of the ledger', () => {
       const finance: string[] = Object.values(Permissions).filter(
         permission => permission.startsWith('finance:') || permission.startsWith('fiscal:')
       )
-      expect(finance).toHaveLength(16)
+      expect(finance).toHaveLength(17)
       for (const [role, permissions] of Object.entries(RolePresets)) {
         const held = permissions.filter(permission => finance.includes(permission))
         expect([role, held.length]).toEqual([role, role === RoleNames.ADMIN ? finance.length : 0])

@@ -3366,6 +3366,7 @@
           "manage_accounts": "Gestionar el catálogo de cuentas y los ajustes",
           "post_manual": "Registrar asientos manuales",
           "close_periods": "Cerrar y reabrir periodos",
+          "confirm_books": "Confirmar el formato de los libros legales como el del contador",
           "export": "Exportar los libros",
           "view_carrier_fees": "Ver las tarifas de transportistas"
         },
