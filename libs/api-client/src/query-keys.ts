@@ -329,6 +329,8 @@ export const QueryKeys = {
       ['finance', storeId, 'purchases', 'supplier', id, 'balance'] as const,
     supplierPayments: (storeId: string, id: string) =>
       ['finance', storeId, 'purchases', 'supplier', id, 'payments'] as const,
+    paymentReturns: (storeId: string, paymentId: string) =>
+      ['finance', storeId, 'purchases', 'payment', paymentId, 'returns'] as const,
     payables: (storeId: string, filters: Record<string, string>) =>
       ['finance', storeId, 'purchases', 'payables', filters] as const,
     orders: (storeId: string, filters: Record<string, string>) =>
