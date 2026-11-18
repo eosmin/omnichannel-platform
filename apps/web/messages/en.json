@@ -7820,7 +7820,8 @@
         "taxed": "Taxed",
         "exempt": "Exempt",
         "not_subject": "Not subject",
-        "shipping_not_taxed": "Shipping, not taxed"
+        "shipping_not_taxed": "Shipping, not taxed",
+        "returns": "Returns"
       },
       "balance": "Balance of the month",
       "balanceKinds": {

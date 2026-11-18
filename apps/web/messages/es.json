@@ -7820,7 +7820,8 @@
         "taxed": "Gravada",
         "exempt": "Exenta",
         "not_subject": "No sujeta",
-        "shipping_not_taxed": "Envío, sin impuesto"
+        "shipping_not_taxed": "Envío, sin impuesto",
+        "returns": "Devoluciones"
       },
       "balance": "Saldo del mes",
       "balanceKinds": {

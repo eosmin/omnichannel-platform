@@ -161,7 +161,9 @@ export enum VatLineKind {
   TAXED = 'taxed',
   EXEMPT = 'exempt',
   NOT_SUBJECT = 'not_subject',
-  SHIPPING_NOT_TAXED = 'shipping_not_taxed'
+  SHIPPING_NOT_TAXED = 'shipping_not_taxed',
+  // What the returns (E8) take back, one line without a rate (HC-003)
+  RETURNS = 'returns'
 }
 
 // The keys of AccountRoleMapping: which account each automatic entry posts to. A role without a mapping makes the

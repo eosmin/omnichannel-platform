@@ -702,6 +702,51 @@ describe('The tax of an order and the VAT report (Step 4B.3b)', () => {
         ])
       })
 
+      it('takes the tax a return gave back off the output side, in the month of its entry (HC-003)', async () => {
+        const role = async (name: string): Promise<string> =>
+          (
+            await owner.accountRoleMapping.findUniqueOrThrow({
+              where: { organizationId_role: { organizationId: ctx.orgA.id, role: name } }
+            })
+          ).accountId
+        const period = await owner.fiscalPeriod.findFirstOrThrow({
+          where: { organizationId: ctx.orgA.id },
+          orderBy: { startsOn: 'asc' }
+        })
+        const entry = await postTestEntry(owner, {
+          organizationId: ctx.orgA.id,
+          periodId: period.id,
+          entryDate: '2026-01-20',
+          type: 'sale_return',
+          lines: [
+            { accountId: await role('sales_returns'), debitCents: 1000 },
+            { accountId: await role('vat_output'), debitCents: 130 },
+            { accountId: await role('customer_advances'), creditCents: 1130 }
+          ]
+        })
+        const body = (await report('2026-01-01', '2026-01-31')).body as ReportBody
+        const returns = body.rows.filter(row => row.kind === (VatLineKind.RETURNS as string))
+
+        expect(returns).toEqual([
+          {
+            month: '2026-01',
+            side: VatSide.OUTPUT,
+            kind: VatLineKind.RETURNS,
+            rateBps: null,
+            baseCents: -1000,
+            taxCents: -130,
+            documents: 1
+          }
+        ])
+        const month = body.months.find(row => row.month === '2026-01')
+        expect(month?.outputTaxCents).toBe(
+          body.rows
+            .filter(row => row.side === (VatSide.OUTPUT as string))
+            .reduce((sum, row) => sum + row.taxCents, 0)
+        )
+        expect(entry.id).toBeDefined()
+      })
+
       it('counts a returned order apart, and tells the date the books start from', async () => {
         const order = await place(1130, 1)
         await delivered(order.id, '2027-05-10T15:00:00Z')
