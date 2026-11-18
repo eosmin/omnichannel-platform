@@ -53,9 +53,7 @@ export class AnalyticsController {
 
   @RequirePermissions(Permissions.ANALYTICS_VIEW)
   @NoStore()
-  @NoTenantTransaction(
-    'reads the replica in its own READ ONLY transaction (PrismaService.replicaTenantRead)'
-  )
+  @NoTenantTransaction('reads the replica in its own transaction (PrismaService.replicaTenantRead)')
   @Get(ApiRoutes.analytics.metrics)
   metricsOf(
     @CurrentStore() store: ResolvedTenant['store'],
@@ -67,9 +65,7 @@ export class AnalyticsController {
   // What was searched in the store: volume, searches that found nothing, clicks, and the texts of the catalog nobody found
   @RequirePermissions(Permissions.ANALYTICS_VIEW)
   @NoStore()
-  @NoTenantTransaction(
-    'reads the replica in its own READ ONLY transaction (PrismaService.replicaTenantRead)'
-  )
+  @NoTenantTransaction('reads the replica in its own transaction (PrismaService.replicaTenantRead)')
   @Get(ApiRoutes.analytics.search)
   searchReport(
     @CurrentStore() store: ResolvedTenant['store'],
