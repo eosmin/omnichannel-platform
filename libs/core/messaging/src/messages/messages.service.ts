@@ -76,7 +76,7 @@ import {
 } from './messages.views'
 import { cleanNickname, type PluginMessageOrigin } from './plugin-message-origin'
 import { isDistinctFile } from './provider-message-match'
-import { storedKeyOf } from './stored-key'
+import { rawKeyOf, storedKeyOf } from './stored-key'
 import {
   type RenderedTemplate,
   type TemplateMetadata,
@@ -526,7 +526,7 @@ export class MessagesService {
         messageId,
         // The person it was sent as; a plugin has no user id, and the author of a message of the system is nobody
         authorId: viewer.pluginId === undefined ? viewer.userId : row.authorId,
-        clientMessageId: updated.idempotencyKey,
+        clientMessageId: rawKeyOf(updated.idempotencyKey),
         createdAt: row.createdAt.toISOString(),
         // A reply reopens the conversation, so it is in the inbox of whoever sees it
         visibility: { hidden: false, assignedTo: current.assignedTo }
@@ -693,7 +693,13 @@ export class MessagesService {
       where: {
         storeId,
         conversationId: body.conversationId,
-        idempotencyKey: storedKeyOf(body.idempotencyKey, pluginId)
+        OR: [
+          { idempotencyKey: storedKeyOf(body.idempotencyKey, pluginId) },
+          // A message of this plugin written before the keys of plugins had their namespace was stored with the key as it came
+          ...(pluginId === null
+            ? []
+            : [{ idempotencyKey: body.idempotencyKey, authorPluginId: pluginId }])
+        ]
       },
       select: { ...MESSAGE_SELECT, discardedAt: true }
     })

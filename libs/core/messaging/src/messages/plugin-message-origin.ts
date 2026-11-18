@@ -63,7 +63,8 @@ export function pluginMessageViewOf(message: MessageView, readsMessages: boolean
             authorId: null,
             content: quote.type === MessageType.INTERNAL_NOTE ? null : quote.content,
             file: null,
-            deleted: quote.deleted
+            // A deleted quote never gets here: it is dropped above
+            deleted: false
           },
     mentions: [],
     editedById: null,
