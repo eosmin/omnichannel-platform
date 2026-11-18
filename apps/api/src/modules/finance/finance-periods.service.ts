@@ -87,11 +87,9 @@ export class FinancePeriodsService {
       if (bounds.endsOn < isoDay(settings.accountingStartDate)) {
         throw financeRefusal(ErrorCodes.FINANCE_BEFORE_START_DATE)
       }
-      const existed =
-        (await tx.fiscalPeriod.count({
-          where: { organizationId, year: bounds.year, month: bounds.month }
-        })) > 0
-      await tx.fiscalPeriod.createMany({
+      // `skipDuplicates` answers how many rows THIS call inserted: two opens of the same month at once both see it missing, but only one
+      // inserts it, and only that one is the open that is audited (HC-211)
+      const { count } = await tx.fiscalPeriod.createMany({
         data: [
           {
             organizationId,
@@ -109,7 +107,7 @@ export class FinancePeriodsService {
         },
         select: { id: true }
       })
-      return { id: period.id, created: !existed }
+      return { id: period.id, created: count > 0 }
     })
     if (created) {
       this.audit.log({

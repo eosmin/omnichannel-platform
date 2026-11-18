@@ -21,6 +21,7 @@ import {
   OrderStatus,
   PaymentMethod,
   PaymentStatus,
+  OrderEditablePriceStatuses,
   PriceApprovalStatus,
   ShipmentStatus
 } from '@platform/core/domain'
@@ -80,7 +81,9 @@ function StatusBadge({ order }: { order: OrderSummaryView }): ReactElement {
         {isKnown(OrderStatus, order.status) ? t(`status.${order.status}`) : t('list.unknownStatus')}
       </span>
       {isKnown(PriceApprovalStatus, order.priceApprovalStatus) &&
-      order.priceApprovalStatus === PriceApprovalStatus.PENDING ? (
+      order.priceApprovalStatus === PriceApprovalStatus.PENDING &&
+      isKnown(OrderStatus, order.status) &&
+      OrderEditablePriceStatuses.includes(order.status) ? (
         <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
           {t('list.awaitingPriceApproval')}
         </span>
