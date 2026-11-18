@@ -4775,7 +4775,7 @@
           "nameRequired": "Write a name.",
           "nameTooLong": "The name is too long (80 characters at most).",
           "noScopes": "Choose at least one permission.",
-          "expiryPast": "The last day must be after today.",
+          "expiryPast": "The last day cannot be before today.",
           "expiryInvalid": "That is not a valid day."
         }
       }

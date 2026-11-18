@@ -104,11 +104,14 @@ export function ApiKeyDialog({
               value={draft.name}
               maxLength={ApiKeyLimits.NAME_MAX_LENGTH * 2}
               autoComplete="off"
+              aria-describedby={`${idPrefix}-name-hint`}
               onChange={event => setDraft(current => ({ ...current, name: event.target.value }))}
               disabled={saving}
               required
             />
-            <p className="text-muted-foreground text-xs">{t('nameHint')}</p>
+            <p id={`${idPrefix}-name-hint`} className="text-muted-foreground text-xs">
+              {t('nameHint')}
+            </p>
           </div>
           <div className="grid grid-cols-1 gap-1.5">
             <Label htmlFor={`${idPrefix}-expires`}>{t('expires')}</Label>
@@ -116,17 +119,26 @@ export function ApiKeyDialog({
               id={`${idPrefix}-expires`}
               type="date"
               min={todayInput(new Date())}
+              aria-describedby={`${idPrefix}-expires-hint`}
               value={draft.expiresOn}
               onChange={event =>
                 setDraft(current => ({ ...current, expiresOn: event.target.value }))
               }
               disabled={saving}
             />
-            <p className="text-muted-foreground text-xs">{t('expiresHint', { today })}</p>
+            <p id={`${idPrefix}-expires-hint`} className="text-muted-foreground text-xs">
+              {t('expiresHint', { today })}
+            </p>
           </div>
-          <fieldset className="flex flex-col gap-3" disabled={saving}>
+          <fieldset
+            className="flex flex-col gap-3"
+            disabled={saving}
+            aria-describedby={`${idPrefix}-scopes-hint`}
+          >
             <legend className="text-sm font-medium">{t('scopes')}</legend>
-            <p className="text-muted-foreground text-xs">{t('scopesHint')}</p>
+            <p id={`${idPrefix}-scopes-hint`} className="text-muted-foreground text-xs">
+              {t('scopesHint')}
+            </p>
             {groups.length === 0 ? (
               <p className="text-sm">{t('noScopesHeld')}</p>
             ) : (
