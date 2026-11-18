@@ -82,7 +82,10 @@ export const PlatformCleanup = {
 export const AuditColdExport = {
   HOT_DAYS: DataRetentionPolicies.AUDIT_LOGS_HOT.defaultDays,
   READ_BATCH: 1000,
-  DELETE_BATCH: 500,
+  // One purge entry is written for each batch, so the batch is the most the function takes (5000)
+  DELETE_BATCH: 5000,
+  // The purge rule the database function writes in the audit entry of a purge (migration 20270121100000)
+  PURGE_RULE: 'audit-cold-export',
   MAX_MONTHS_PER_RUN: 3,
   CONTENT_TYPE: 'application/gzip',
   // The most a month may hold its lock (the transaction that holds it). Past it the database ends the transaction and
