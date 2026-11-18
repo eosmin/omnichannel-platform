@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto'
 import { once } from 'node:events'
-import { createInterface } from 'node:readline'
-import { Transform, Writable } from 'node:stream'
+import { Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { createGunzip, createGzip } from 'node:zlib'
 
@@ -189,8 +188,9 @@ export class AuditColdExporter {
       throw error
     }
 
+    let ids: string[]
     try {
-      await this.verify(key, sha256, rows, expected)
+      ids = await this.verify(key, sha256, rows, expected)
       // Rows that reached the month after the count (a late writer) are not in this copy and must not be deleted
       // with it: they wait for the next run, which writes them in the next part
       if ((await this.prisma.client.auditLog.count({ where })) !== rows) {
@@ -202,7 +202,7 @@ export class AuditColdExporter {
       throw error
     }
     await held()
-    await this.deleteExportedRows(key, sha256, rows)
+    await this.deleteExportedRows(ids, key, sha256, rows)
     this.logger.info({ year, month, rows, key }, 'a month of the audit log went to cold storage')
     return { year, month, rows, key }
   }
@@ -215,15 +215,29 @@ export class AuditColdExporter {
     }
   }
 
-  // The object read back is the one that was written: the same bytes, and as many lines as rows in the database
-  private async verify(key: string, sha256: string, rows: number, expected: number): Promise<void> {
+  // The object read back is the one that was written: the same bytes, and as many lines as rows in the database. The ids
+  // of the rows to delete are taken from these same bytes, in this one read, so that the evidence the purge records (the
+  // SHA-256 and the rows of the object) describes exactly where the ids come from
+  private async verify(
+    key: string,
+    sha256: string,
+    rows: number,
+    expected: number
+  ): Promise<string[]> {
     if (rows !== expected) {
       throw new Error(`the cold export read ${rows} rows and the month holds ${expected}`)
     }
     const body = await this.storage.stream(key)
     if (body === null) throw new Error('the cold export is not in the bucket after the upload')
     const stored = createHash('sha256')
-    let lines = 0
+    const ids: string[] = []
+    let tail = Buffer.alloc(0)
+    const take = (line: Buffer): void => {
+      if (line.length === 0) return
+      const id = (JSON.parse(line.toString('utf8')) as { id?: unknown }).id
+      if (typeof id !== 'string') throw new Error('a line of the cold export has no id')
+      ids.push(id)
+    }
     // One pipeline: a failure of any stream (a corrupt gzip, a broken connection) destroys all of them
     await pipeline(
       body,
@@ -234,45 +248,33 @@ export class AuditColdExporter {
         }
       }),
       createGunzip(),
-      new Writable({
-        write(chunk: Buffer, _encoding, done) {
-          for (const byte of chunk) if (byte === NEWLINE) lines += 1
-          done()
+      async function readLines(source: AsyncIterable<Buffer>) {
+        for await (const chunk of source) {
+          tail = Buffer.concat([tail, chunk])
+          for (let end = tail.indexOf(NEWLINE); end !== -1; end = tail.indexOf(NEWLINE)) {
+            take(tail.subarray(0, end))
+            tail = tail.subarray(end + 1)
+          }
         }
-      })
+        take(tail)
+      }
     )
-    if (stored.digest('hex') !== sha256 || lines !== rows) {
+    if (stored.digest('hex') !== sha256 || ids.length !== rows) {
       throw new Error('the cold export in the bucket is not the one that was written')
     }
+    return ids
   }
 
   // Deletes the rows that are in the object, and only those: a row that reached the month after the export read it is
-  // not in the object and stays for the next run. The ids are read back from the verified object, a batch at a time
-  private async deleteExportedRows(key: string, sha256: string, rows: number): Promise<void> {
-    const body = await this.storage.stream(key)
-    if (body === null) throw new Error('the cold export is not in the bucket to delete its rows')
-    const gunzip = createGunzip()
-    // A failure of the object stream reaches the loop through the gunzip stream, which pipe() does not do by itself
-    body.on('error', (error: Error) => gunzip.destroy(error))
-    const lines = createInterface({ input: body.pipe(gunzip), crlfDelay: Infinity })
-    let ids: string[] = []
-    try {
-      for await (const line of lines) {
-        if (line.length === 0) continue
-        const id = (JSON.parse(line) as { id?: unknown }).id
-        if (typeof id !== 'string') throw new Error('a line of the cold export has no id')
-        ids.push(id)
-        if (ids.length >= AuditColdExport.DELETE_BATCH) {
-          await this.deleteIds(ids, key, sha256, rows)
-          ids = []
-        }
-      }
-      if (ids.length > 0) await this.deleteIds(ids, key, sha256, rows)
-    } finally {
-      // An error in the loop must not leave the bucket connection open
-      lines.close()
-      gunzip.destroy()
-      body.destroy()
+  // not in the object and stays for the next run
+  private async deleteExportedRows(
+    ids: string[],
+    key: string,
+    sha256: string,
+    rows: number
+  ): Promise<void> {
+    for (let from = 0; from < ids.length; from += AuditColdExport.DELETE_BATCH) {
+      await this.deleteIds(ids.slice(from, from + AuditColdExport.DELETE_BATCH), key, sha256, rows)
     }
   }
 
@@ -282,6 +284,11 @@ export class AuditColdExporter {
     const result = await this.prisma.client.$queryRaw<{ deleted: number }[]>`
       SELECT purge_audit_logs(${ids}::text[], ${key}, ${sha256}, ${rows}::integer, ${AuditColdExport.HOT_DAYS}::integer) AS deleted`
     const deleted = result[0]?.deleted ?? 0
+    // Nothing deleted from a batch of rows that were just read is not a month that is done: it would be exported again,
+    // part after part, on every run. It stops the run with an error instead
+    if (deleted === 0) {
+      throw new Error('the audit purge deleted none of the rows of the cold export')
+    }
     // Fewer than asked is normal after a run that stopped half way (those rows are gone); it is logged so that a month that
     // keeps coming back (a window that does not match) is seen
     if (deleted < ids.length) {

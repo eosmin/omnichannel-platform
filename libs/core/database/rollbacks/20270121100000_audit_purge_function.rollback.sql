@@ -6,6 +6,8 @@ BEGIN;
 
 DROP TRIGGER IF EXISTS trg_audit_logs_no_update ON audit_logs;
 DROP TRIGGER IF EXISTS trg_audit_logs_no_truncate ON audit_logs;
+DROP TRIGGER IF EXISTS trg_audit_logs_purge_entry ON audit_logs;
+DROP FUNCTION IF EXISTS forbid_forged_purge_entry();
 DROP FUNCTION IF EXISTS forbid_audit_log_change();
 DROP FUNCTION IF EXISTS purge_audit_logs(text[], text, text, integer, integer);
 GRANT DELETE ON TABLE audit_logs TO platform_worker;

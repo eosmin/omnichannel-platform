@@ -143,12 +143,28 @@ describe('database roles', () => {
         )
         expect(triggers).toEqual([
           { tgname: 'trg_audit_logs_no_truncate', truncate: true },
-          { tgname: 'trg_audit_logs_no_update', truncate: false }
+          { tgname: 'trg_audit_logs_no_update', truncate: false },
+          { tgname: 'trg_audit_logs_purge_entry', truncate: false }
         ])
+        // And it is run, inside a transaction that is rolled back whatever happens
+        await owner.query('BEGIN')
+        try {
+          await expect(owner.query('TRUNCATE audit_logs')).rejects.toThrow(/AUDIT_LOG_IMMUTABLE/)
+        } finally {
+          await owner.query('ROLLBACK')
+        }
         // A bare UPDATE that clears user_id of a person who still exists is refused too
         await expect(
           owner.query('UPDATE audit_logs SET user_id = NULL WHERE id = $1', [id])
         ).rejects.toThrow(/AUDIT_LOG_IMMUTABLE/)
+        // A new id of the user follows into the entry (ON UPDATE CASCADE) and a statement of a person cannot do the same
+        await owner.query('UPDATE users SET id = $2 WHERE id = $1', [userId, `${userId}-new`])
+        const moved = await owner.query<{ user_id: string }>(
+          'SELECT user_id FROM audit_logs WHERE id = $1',
+          [id]
+        )
+        expect(moved.rows).toEqual([{ user_id: `${userId}-new` }])
+        await owner.query('UPDATE users SET id = $2 WHERE id = $1', [`${userId}-new`, userId])
         // Deleting the person clears user_id of the entry (ON DELETE SET NULL) and nothing else
         await owner.query('DELETE FROM users WHERE id = $1', [userId])
         const { rows } = await owner.query<{ action: string; user_id: string | null }>(
@@ -293,13 +309,27 @@ describe('database roles', () => {
       })
     })
 
+    it('refuses an entry of a purge written by a role of the application', async () => {
+      for (const url of [urls.app, urls.worker]) {
+        await withClient(url, async client => {
+          await expect(
+            client.query('INSERT INTO audit_logs (id, action) VALUES ($1, $2)', [
+              `${AUDIT_ID}-forged`,
+              AuditAction.AUDIT_LOG_PURGED
+            ])
+          ).rejects.toThrow(/AUDIT_LOG_IMMUTABLE/)
+        })
+      }
+    })
+
     it('has a fixed search_path, and the worker cannot delete directly', async () => {
       await withClient(urls.owner, async owner => {
         const { rows } = await owner.query<{ prosecdef: boolean; proconfig: string[] }>(
           "SELECT prosecdef, proconfig FROM pg_proc WHERE proname = 'purge_audit_logs'"
         )
         expect(rows[0]?.prosecdef).toBe(true)
-        expect(rows[0]?.proconfig).toContain('search_path=pg_catalog, public, pg_temp')
+        expect(rows[0]?.proconfig).toContain('search_path=pg_catalog, pg_temp')
+        expect(rows[0]?.proconfig).toContain('lock_timeout=5s')
       })
       await withClient(urls.worker, async worker => {
         await expect(worker.query('DELETE FROM audit_logs WHERE id = $1', [OLD])).rejects.toThrow(

@@ -28,7 +28,8 @@ CREATE FUNCTION purge_audit_logs(
 ) RETURNS integer
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = pg_catalog, public, pg_temp AS $$
+SET search_path = pg_catalog, pg_temp
+SET lock_timeout = '5s' AS $$
 DECLARE
   v_window_end timestamp;
   v_deleted integer;
@@ -55,8 +56,7 @@ BEGIN
     RAISE EXCEPTION 'AUDIT_PURGE_INPUT: the cold export holds fewer rows than the ids to purge';
   END IF;
 
-  -- A purge waits at most a few seconds for another one: it fails and the exporter retries on its next run
-  PERFORM set_config('lock_timeout', '5s', true);
+  -- A purge waits at most the lock_timeout of the function (5 s) for another one: it fails and the exporter retries
   PERFORM pg_advisory_xact_lock(hashtextextended('audit-purge', 0));
 
   WITH gone AS (
@@ -92,16 +92,16 @@ GRANT EXECUTE ON FUNCTION purge_audit_logs(text[], text, text, integer, integer)
 
 -- Nobody changes an entry: not the application (the privileges), and not the owner of the table (this trigger), who could
 -- UPDATE until now. The one exception is the action of the foreign key to users, ON DELETE SET NULL, which clears user_id of
--- an entry whose user is already gone and touches nothing else: a direct UPDATE that clears the user_id of a person who
--- still exists is refused. The owner can still DELETE (the test suites clean up after themselves as the owner); that is a
+-- an entry (ON DELETE SET NULL) or follows a new id of the user (ON UPDATE CASCADE) and touches nothing else: a direct UPDATE,
+-- even of user_id alone, is refused. The owner can still DELETE (the test suites clean up after themselves as the owner); that is a
 -- credential of migrations and operators, never of the application.
 CREATE FUNCTION forbid_audit_log_change() RETURNS trigger
 LANGUAGE plpgsql
-SET search_path = pg_catalog, public, pg_temp AS $$
+SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
-  IF TG_OP = 'UPDATE'
-     AND OLD.user_id IS NOT NULL AND NEW.user_id IS NULL
-     AND NOT EXISTS (SELECT 1 FROM public.users u WHERE u.id = OLD.user_id)
+  -- pg_trigger_depth() > 1: the UPDATE is made by the trigger of a foreign key (ON DELETE SET NULL / ON UPDATE CASCADE of
+  -- users), not by a statement of a person or of the application, which runs at depth 1
+  IF TG_OP = 'UPDATE' AND pg_trigger_depth() > 1
      AND (to_jsonb(NEW) - 'user_id') = (to_jsonb(OLD) - 'user_id') THEN
     RETURN NEW;
   END IF;
@@ -112,3 +112,19 @@ CREATE TRIGGER trg_audit_logs_no_update BEFORE UPDATE ON audit_logs
   FOR EACH ROW EXECUTE FUNCTION forbid_audit_log_change();
 CREATE TRIGGER trg_audit_logs_no_truncate BEFORE TRUNCATE ON audit_logs
   FOR EACH STATEMENT EXECUTE FUNCTION forbid_audit_log_change();
+
+-- An entry that says a purge happened can be written by purge_audit_logs() only: the roles of the application hold INSERT on
+-- the table, and one of them could otherwise write an entry with invented evidence. Inside the definer function the current
+-- user is the owner, so the check tells the function from the roles.
+CREATE FUNCTION forbid_forged_purge_entry() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp AS $$
+BEGIN
+  IF NEW.action = 'audit_log.purged' AND current_user IN ('platform_app', 'platform_worker') THEN
+    RAISE EXCEPTION 'AUDIT_LOG_IMMUTABLE: an entry of a purge is written by purge_audit_logs() only';
+  END IF;
+  RETURN NEW;
+END $$;
+
+CREATE TRIGGER trg_audit_logs_purge_entry BEFORE INSERT ON audit_logs
+  FOR EACH ROW EXECUTE FUNCTION forbid_forged_purge_entry();
