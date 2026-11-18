@@ -38,24 +38,23 @@ CREATE FUNCTION public.rls_search_messages(
   LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp SET plan_cache_mode = force_custom_plan
   AS $$
   #variable_conflict use_column
+  DECLARE
+    -- The queries are variables, not a CTE: a CTE column is not a constant to the planner, which then cannot know that the word is
+    -- rare and reads every message of the store instead of the GIN index. With force_custom_plan a variable is a constant at plan time.
+    v_folded tsquery := websearch_to_tsquery('spanish'::regconfig, public.immutable_unaccent(p_q));
+    -- The marks come from the folded text and from the typed one, because the stemmer folds accents unevenly
+    v_marked tsquery := websearch_to_tsquery('spanish'::regconfig, p_q) || v_folded;
   BEGIN
     IF cardinality(public.app_store_ids()) = 0 THEN
       RAISE EXCEPTION 'SEARCH_CONTEXT_REQUIRED' USING ERRCODE = '42501';
     END IF;
     RETURN QUERY
-    WITH q AS (
-      SELECT
-        websearch_to_tsquery('spanish'::regconfig, public.immutable_unaccent(p_q)) AS folded,
-        websearch_to_tsquery('spanish'::regconfig, p_q)
-          || websearch_to_tsquery('spanish'::regconfig, public.immutable_unaccent(p_q)) AS marked
-    ),
-    candidates AS (
+    WITH candidates AS (
       SELECT m.id, m.conversation_id, m.type, m.created_at, m.content, c.customer_id,
         to_tsvector('spanish'::regconfig, public.immutable_unaccent(coalesce(m.content, ''))) AS vector
       FROM public.messages m
       JOIN public.conversations c ON c.id = m.conversation_id AND c.store_id = m.store_id
       JOIN public.customers cust ON cust.id = c.customer_id AND cust.store_id = c.store_id
-      CROSS JOIN q
       WHERE m.store_id = ANY ((SELECT public.app_store_ids())::text[])
         AND m.deleted_at IS NULL
         AND m.discarded_at IS NULL
@@ -66,22 +65,21 @@ CREATE FUNCTION public.rls_search_messages(
         AND (p_can_view_all OR c.assigned_to IS NULL OR c.assigned_to = (SELECT public.app_user_id()))
         AND (p_can_see_hidden OR NOT (c.status = ANY (p_hidden)))
         AND (p_conversation_id IS NULL OR m.conversation_id = p_conversation_id)
-        AND to_tsvector('spanish'::regconfig, public.immutable_unaccent(coalesce(m.content, ''))) @@ q.folded
+        AND to_tsvector('spanish'::regconfig, public.immutable_unaccent(coalesce(m.content, ''))) @@ v_folded
       ORDER BY m.created_at DESC, m.id DESC
       LIMIT p_candidates
     ),
     page AS (
-      SELECT cand.*, ts_rank(cand.vector, q.folded) AS rank
-      FROM candidates cand CROSS JOIN q
+      SELECT cand.*, ts_rank(cand.vector, v_folded) AS rank
+      FROM candidates cand
       ORDER BY rank DESC, cand.created_at DESC, cand.id DESC
       LIMIT p_limit + 1
     )
     SELECT
       page.id, page.conversation_id, page.type, page.created_at,
       cust.id, cust.name,
-      ts_headline('spanish'::regconfig, page.content, q.marked, p_snippet_options)
+      ts_headline('spanish'::regconfig, page.content, v_marked, p_snippet_options)
     FROM page
-    CROSS JOIN q
     JOIN public.customers cust ON cust.id = page.customer_id AND cust.store_id = ANY ((SELECT public.app_store_ids())::text[])
     ORDER BY page.rank DESC, page.created_at DESC, page.id DESC;
   END
