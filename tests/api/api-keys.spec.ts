@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 import { Controller, Get, UseGuards } from '@nestjs/common'
 import type { INestApplication } from '@nestjs/common'
@@ -135,6 +135,37 @@ describe('The API keys of a store', () => {
       expect(JSON.stringify(list.body)).not.toContain(made.key)
       expect(JSON.stringify(list.body)).not.toContain('keyHash')
       expect((list.body as Made[]).map(item => item.id)).toEqual([made.id])
+    })
+
+    it('lists every key that counts against the limit even under a pile of newer revoked ones', async () => {
+      const active: string = ApiKeyStatus.ACTIVE
+      const row = (index: number, status: string) => ({
+        storeId: ctx.storeA.id,
+        name: `pile-${index}`,
+        keyPrefix: `pile-${index}`,
+        keyHash: randomUUID(),
+        scopes: [Permissions.CUSTOMERS_VIEW],
+        status,
+        createdBy: ctx.adminA.id,
+        // The active ones are the oldest: a list of the newest rows alone would drop them
+        createdAt: new Date(Date.now() - (status === active ? 1e7 : 1e6) + index)
+      })
+      await owner.apiKey.createMany({
+        data: [
+          ...Array.from({ length: 3 }, (_, index) => row(index, ApiKeyStatus.ACTIVE)),
+          ...Array.from({ length: ApiKeyLimits.LIST_MAX + 10 }, (_, index) =>
+            row(index + 10, ApiKeyStatus.REVOKED)
+          )
+        ]
+      })
+
+      const list = (await asAdmin().get(ApiRoutes.settings.apiKeys).expect(OK)).body as Made[]
+
+      expect(list.filter(item => item.status === active)).toHaveLength(3)
+      expect(list).toHaveLength(ApiKeyLimits.LIST_MAX)
+      // Newest first, as before
+      const times = list.map(item => (item as Made & { createdAt: string }).createdAt)
+      expect([...times].sort().reverse()).toEqual(times)
     })
 
     it('lists a key past its date as expired', async () => {
