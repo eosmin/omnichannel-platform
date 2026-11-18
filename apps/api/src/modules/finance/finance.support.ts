@@ -93,6 +93,32 @@ export async function usableAccount(
   return { id: account.id }
 }
 
+// What an account holds, debit minus credit, over every entry (a reversed one nets out), optionally only the lines that carry a tax
+// rate. A change of where a role or a rate points is refused while this is not zero and allowed once a reclassifying entry has
+// emptied it (HC-119).
+export async function netBalanceCents(
+  tx: PrismaTransaction,
+  organizationId: string,
+  filter: { accountId?: string; taxRateId?: string }
+): Promise<number> {
+  const sums = await tx.journalLine.aggregate({
+    where: { organizationId, ...filter },
+    _sum: { debitCents: true, creditCents: true }
+  })
+  return (sums._sum.debitCents ?? 0) - (sums._sum.creditCents ?? 0)
+}
+
+// The settings row of the organization locked until the end of the transaction: the ledger takes the same lock to post, so a change
+// that checks the books waits for the entry in flight and the entries after it wait for the change.
+export async function lockSettingsRow(
+  tx: PrismaTransaction,
+  organizationId: string
+): Promise<void> {
+  const rows = await tx.$queryRaw<{ locked: number }[]>`
+    SELECT 1 AS locked FROM finance_settings WHERE organization_id = ${organizationId} FOR UPDATE`
+  if (rows.length === 0) throw financeRefusal(ErrorCodes.FINANCE_SETUP_REQUIRED)
+}
+
 // The finance settings of the organization, or the answer that says it has none yet
 export async function requireSettings(
   tx: PrismaTransaction,

@@ -387,6 +387,45 @@ describe('The fiscal documents (Step 4B.7)', () => {
     })
   })
 
+  // HC-006: an order made before the tax snapshot has no tax to put in a document: the credit note, the legal books and the entry of the
+  // sale refuse it (TAX_MISSING), so the sale document is not made either, with a tax of 0
+  describe('an order with no tax snapshot', () => {
+    it('makes no document, takes no number and leaves the order untouched, and makes it once the snapshot is complete', async () => {
+      const first = await deliveredOrder()
+      const gaps: ((orderId: string) => Promise<unknown>)[] = [
+        // The database holds the two columns of the order null together (`orders_tax_snapshot_check`)
+        orderId =>
+          owner.order.update({
+            where: { id: orderId },
+            data: { taxCents: null, pricesIncludeTax: null }
+          }),
+        // The three columns of a line go null together (`order_items_tax_snapshot_check`)
+        orderId =>
+          owner.orderItem.updateMany({
+            where: { orderId },
+            data: { taxTreatment: null, taxRateBps: null, taxCents: null }
+          })
+      ]
+      for (const makeGap of gaps) {
+        const order = await deliveredOrder()
+        await makeGap(order.id)
+        const before = await owner.fiscalDocument.count({ where: { organizationId: ctx.orgA.id } })
+
+        const made = await documents.createForOrder(ctx.orgA.id, order.id, FiscalIssueOn.DELIVERED)
+
+        expect(made).toBeNull()
+        expect(await owner.fiscalDocument.count({ where: { orderId: order.id } })).toBe(0)
+        expect(await owner.fiscalDocument.count({ where: { organizationId: ctx.orgA.id } })).toBe(
+          before
+        )
+      }
+      // The control: an order with its snapshot makes its document
+      expect(
+        await documents.createForOrder(ctx.orgA.id, first.id, FiscalIssueOn.DELIVERED)
+      ).not.toBeNull()
+    })
+  })
+
   describe('the detail and the period of a document (Step 4B.7b-4)', () => {
     it('reads the lines, the tax by rate and the issuer as they were sealed, and nothing else', async () => {
       const { documentId } = await sale()
@@ -728,6 +767,31 @@ describe('The fiscal documents (Step 4B.7)', () => {
       expect(after.status).toBe(FiscalDocumentStatus.REJECTED)
       expect(after.rejectionReason).toBe(FiscalRejectionReasons.SALE_INCONSISTENT)
       expect(after.builtPayloadEncrypted).toBeNull()
+    })
+
+    it('does not queue again a refused sale whose order has no tax snapshot: the retry answers a conflict and the document is as it was (HC-006)', async () => {
+      const { documentId, orderId } = await sale()
+      await patchReceiver(documentId, { taxId: '12345-6', name: 'Ana' })
+      const row = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+      await owner.fiscalDocument.update({
+        where: { id: documentId },
+        data: { linesSnapshot: { ...(row.linesSnapshot as object), discountCents: 1 } }
+      })
+      await documents.submit(ctx.orgA.id, documentId)
+      await owner.order.update({
+        where: { id: orderId },
+        data: { taxCents: null, pricesIncludeTax: null }
+      })
+
+      const retry = await asAdminA().post(ApiRoutes.fiscal.documents.retry(documentId))
+
+      expect(retry.status).toBe(CONFLICT)
+      expect(
+        (retry.body as { error: { metadata?: { reason?: string } } }).error.metadata?.reason
+      ).toBe(FiscalConflictReasons.TAX_SNAPSHOT_MISSING)
+      const after = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+      expect(after.status).toBe(FiscalDocumentStatus.REJECTED)
+      expect(after.rejectionReason).toBe(FiscalRejectionReasons.SALE_INCONSISTENT)
     })
 
     it('refuses a sale whose tax is more than its lines and its shipping can carry, as the entry of the sale does', async () => {
