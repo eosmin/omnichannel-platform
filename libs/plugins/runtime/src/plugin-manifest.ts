@@ -92,15 +92,28 @@ const urlOf = (accepts: (raw: string) => boolean) =>
     .refine(accepts, { message: 'an https address on the public internet' })
 const publicUrl = urlOf(isWellFormedPublicHttpsUrl)
 
+// The reader of a localized text copies es and en and leaves the rest, so a third language would be dropped without a word: the
+// manifest refuses it instead, as it refuses a key that no code reads
+function hasOnlyTheTwoLanguages(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return true
+  return Object.keys(value).every(key => key === 'es' || key === 'en')
+}
+
 // The name in each language the interface speaks (es and en). Read once and copied: what is stored is what was checked.
-const localizedName = z.unknown().transform((value, ctx): LocalizedText => {
-  const text = readLocalizedText(value, PluginManifestLimits.NAME_MAX_LENGTH)
-  if (text === null) {
-    ctx.addIssue({ code: 'custom', message: 'a plain text in es and en' })
-    return z.NEVER
-  }
-  return text
-})
+const localizedText = (max: number) =>
+  z.unknown().transform((value, ctx): LocalizedText => {
+    if (!hasOnlyTheTwoLanguages(value)) {
+      ctx.addIssue({ code: 'custom', message: 'only es and en are accepted' })
+      return z.NEVER
+    }
+    const text = readLocalizedText(value, max)
+    if (text === null) {
+      ctx.addIssue({ code: 'custom', message: 'a plain text in es and en' })
+      return z.NEVER
+    }
+    return text
+  })
+const localizedName = localizedText(PluginManifestLimits.NAME_MAX_LENGTH)
 
 const author = z.strictObject({
   name: plainText(PluginManifestLimits.NAME_MAX_LENGTH),
@@ -159,14 +172,7 @@ const CHANNEL_CAPABILITIES: ReadonlySet<string> = new Set(ManifestChannelCapabil
 
 // The text of a connection field, in each language the interface speaks (the web draws it when it has no message of
 // its own for the field, `fieldLabelOf`)
-const fieldLabel = z.unknown().transform((value, ctx): LocalizedText => {
-  const text = readLocalizedText(value, PluginManifestLimits.FIELD_LABEL_MAX_LENGTH)
-  if (text === null) {
-    ctx.addIssue({ code: 'custom', message: 'a plain text in es and en' })
-    return z.NEVER
-  }
-  return text
-})
+const fieldLabel = localizedText(PluginManifestLimits.FIELD_LABEL_MAX_LENGTH)
 
 // A field of the form that connects an account of the provider, as the registry keeps it (`ConnectFieldSnapshot`),
 // except that a third party names it with a text and never with a message key of the web app
