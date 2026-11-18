@@ -519,9 +519,9 @@ export class FinanceReportsService {
       from: query.from,
       to: query.to,
       // A narrowed file is told from a whole one in the audit row
-      storeId: query.storeId ?? null,
-      partyType: query.partyType ?? null,
-      partyId: query.partyId ?? null,
+      ...(query.storeId === undefined ? {} : { storeId: query.storeId }),
+      ...(query.partyType === undefined ? {} : { partyType: query.partyType }),
+      ...(query.partyId === undefined ? {} : { partyId: query.partyId }),
       rows: rows.length
     })
     return { account, rows }
