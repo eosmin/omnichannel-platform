@@ -131,6 +131,17 @@ const matchSchema = z.object({
 })
 export type BankMatchView = z.output<typeof matchSchema>
 
+// A statement line matched with a group of lines of the books: `match` is then the lead of the group and undoing any piece takes it all back
+const groupPieceSchema = z.object({
+  matchId: z.string(),
+  journalLineId: z.string(),
+  entryId: z.string(),
+  entryNumber: z.string(),
+  entryDate: z.string(),
+  signedCents: z.number().int()
+})
+export type BankGroupPieceView = z.output<typeof groupPieceSchema>
+
 const lineSchema = z.object({
   id: z.string(),
   importId: z.string(),
@@ -140,6 +151,7 @@ const lineSchema = z.object({
   description: z.string().nullable(),
   reference: z.string().nullable(),
   match: matchSchema.nullable(),
+  group: z.object({ id: z.string(), pieces: z.array(groupPieceSchema) }).nullable(),
   suggestions: z.array(suggestionSchema)
 })
 export type BankLineView = z.output<typeof lineSchema>
@@ -388,6 +400,52 @@ export function confirmBankMatch(
     body: { journalLineId },
     schema: lineSchema,
     storeId
+  })
+}
+
+// A person says ONE statement line is the sum of SEVERAL lines of the books of the same account (HC-121)
+export function confirmBankGroup(
+  client: ApiClient,
+  storeId: string,
+  lineId: string,
+  journalLineIds: readonly string[]
+): Promise<BankLineView> {
+  return client.request(ApiRoutes.finance.bank.lineGroupMatches(encode(lineId)), {
+    method: 'POST',
+    body: { journalLineIds },
+    schema: lineSchema,
+    storeId
+  })
+}
+
+const bookCandidatesSchema = z.object({
+  items: z.array(
+    z.object({
+      journalLineId: z.string(),
+      entryId: z.string(),
+      entryNumber: z.string(),
+      entryDate: z.string(),
+      memo: z.string().nullable(),
+      documentNumber: z.string().nullable(),
+      signedCents: z.number().int()
+    })
+  ),
+  hasMore: z.boolean()
+})
+export type BankBookCandidatesView = z.output<typeof bookCandidatesSchema>
+export type BankBookCandidateView = BankBookCandidatesView['items'][number]
+
+// The lines of the books of the account of a statement line that nothing matched, newest first: what a group is chosen from
+export function fetchBankBookCandidates(
+  client: ApiClient,
+  storeId: string,
+  lineId: string,
+  signal?: AbortSignal
+): Promise<BankBookCandidatesView> {
+  return client.request(ApiRoutes.finance.bank.lineBookCandidates(encode(lineId)), {
+    schema: bookCandidatesSchema,
+    storeId,
+    signal
   })
 }
 
