@@ -153,6 +153,8 @@ describe('The API keys of a store', () => {
       await owner.apiKey.createMany({
         data: [
           ...Array.from({ length: 3 }, (_, index) => row(index, ApiKeyStatus.ACTIVE)),
+          // Active by status but past its date: it does not count, so it may fall under the ceiling like a revoked one
+          { ...row(5, ApiKeyStatus.ACTIVE), expiresAt: new Date(Date.now() - 1000) },
           ...Array.from({ length: ApiKeyLimits.LIST_MAX + 10 }, (_, index) =>
             row(index + 10, ApiKeyStatus.REVOKED)
           )
@@ -161,6 +163,7 @@ describe('The API keys of a store', () => {
 
       const list = (await asAdmin().get(ApiRoutes.settings.apiKeys).expect(OK)).body as Made[]
 
+      // The expired one reads as expired, so only the three that count read as active
       expect(list.filter(item => item.status === active)).toHaveLength(3)
       expect(list).toHaveLength(ApiKeyLimits.LIST_MAX)
       // Newest first, as before

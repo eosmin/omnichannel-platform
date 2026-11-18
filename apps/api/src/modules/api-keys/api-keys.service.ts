@@ -55,19 +55,25 @@ export class ApiKeysService {
   // ceiling of the list: a pile of revoked keys must not push an active one out of sight, because the page and the person
   // reason about the limit from what they see
   async list(storeId: string): Promise<ApiKeyView[]> {
-    const counted = await this.prisma.client.apiKey.findMany({
-      where: { storeId, ...COUNTS_AGAINST_LIMIT(new Date()) },
-      select: API_KEY_SELECT,
-      take: ApiKeyLimits.MAX_PER_STORE
-    })
-    const rest = await this.prisma.client.apiKey.findMany({
-      where: { storeId, NOT: { id: { in: counted.map(row => row.id) } } },
-      select: API_KEY_SELECT,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      // Revoked keys stay for the record: the page shows the newest ones
-      take: Math.max(ApiKeyLimits.LIST_MAX - counted.length, 0)
-    })
-    return [...counted, ...rest]
+    const now = new Date()
+    const newestFirst = [{ createdAt: 'desc' as const }, { id: 'desc' as const }]
+    const [counted, rest] = await Promise.all([
+      this.prisma.client.apiKey.findMany({
+        where: { storeId, ...COUNTS_AGAINST_LIMIT(now) },
+        select: API_KEY_SELECT,
+        orderBy: newestFirst,
+        take: ApiKeyLimits.MAX_PER_STORE
+      }),
+      // The rest are the keys that do not count (revoked, or past their date): the same predicate, the same instant
+      this.prisma.client.apiKey.findMany({
+        where: { storeId, NOT: COUNTS_AGAINST_LIMIT(now) },
+        select: API_KEY_SELECT,
+        orderBy: newestFirst,
+        // Revoked keys stay for the record: the page shows the newest ones
+        take: ApiKeyLimits.LIST_MAX
+      })
+    ])
+    return [...counted, ...rest.slice(0, Math.max(ApiKeyLimits.LIST_MAX - counted.length, 0))]
       .sort(
         (a, b) =>
           b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
