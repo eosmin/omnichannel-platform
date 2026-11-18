@@ -340,7 +340,9 @@ describe('The entries that depend on a carrier (Step 4B.6b-1)', () => {
         where: {
           organizationId: ctx.orgA.id,
           partyType: PartyType.CARRIER_CONNECTION,
-          partyId: connectionId
+          partyId: connectionId,
+          // Only what is owed to the carrier: the receivable of a remittance names the same carrier
+          account: { code: code(AccountRole.PAYABLE_CARRIERS) }
         },
         select: { creditCents: true, debitCents: true }
       })
