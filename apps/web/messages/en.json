@@ -4775,7 +4775,7 @@
           "nameRequired": "Write a name.",
           "nameTooLong": "The name is too long (80 characters at most).",
           "noScopes": "Choose at least one permission.",
-          "expiryPast": "The last day must be after today.",
+          "expiryPast": "The last day cannot be before today.",
           "expiryInvalid": "That is not a valid day."
         }
       }
@@ -6288,6 +6288,7 @@
       "confirmTitle": "Post this entry?",
       "confirmDescription": "An entry written by hand cannot be edited or erased afterwards, only reversed by another entry.",
       "confirm": "Post entry",
+      "maybePosted": "The answer was lost, so this entry may already be posted. Check the journal. Pressing Post entry again sends this same entry and cannot duplicate it; to change it, close this window after checking.",
       "done": "Entry {number} posted."
     },
     "transactions": {
@@ -7796,7 +7797,7 @@
       "notices": {
         "withoutSnapshot": "{count, plural, one {# order was made before orders kept their tax and is not in this report.} other {# orders were made before orders kept their tax and are not in this report.}}",
         "notReadable": "{count, plural, one {# order has a tax that does not add up and is not in this report.} other {# orders have a tax that does not add up and are not in this report.}}",
-        "returned": "{count, plural, one {# returned order is still counted on the sales side.} other {# returned orders are still counted on the sales side.}} The tax of returns is not taken off here yet."
+        "returned": "{count, plural, one {# returned order is still counted on the sales side.} other {# returned orders are still counted on the sales side.}} Its return is taken off in the month of the return, on the line of returns."
       },
       "sides": {
         "output": "Tax charged on sales",
@@ -7820,7 +7821,8 @@
         "taxed": "Taxed",
         "exempt": "Exempt",
         "not_subject": "Not subject",
-        "shipping_not_taxed": "Shipping, not taxed"
+        "shipping_not_taxed": "Shipping, not taxed",
+        "returns": "Returns"
       },
       "balance": "Balance of the month",
       "balanceKinds": {

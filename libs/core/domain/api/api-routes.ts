@@ -194,6 +194,8 @@ export const ApiRoutes = {
       verifyChain: '/finance/reports/verify-chain',
       // The incident of the chain the weekly check left open, or none (Step 4B.8b-2)
       chainStatus: '/finance/reports/chain-status',
+      // Ask the worker to check the chain again and close the incident if it passes (N-B8-1): the api role cannot close one itself
+      resolveChain: '/finance/reports/chain-status/resolve',
       // The statements and the lists with age (Step 4B.8b), by store when asked, as of a date or over a range, with their CSV files
       incomeStatement: '/finance/reports/income-statement',
       balanceSheet: '/finance/reports/balance-sheet',

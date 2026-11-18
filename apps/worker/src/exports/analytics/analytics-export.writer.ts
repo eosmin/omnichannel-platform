@@ -18,7 +18,7 @@ import { isPluginRequester } from '../export-requester'
 import { buildPdf } from './pdf-writer'
 import { readReportTable } from './report-table'
 import { localeOf, reportTexts } from './report-texts'
-import { displayValue, type ReportSheet, sheetOf } from './sheet'
+import { csvFigure, type ReportSheet, sheetOf } from './sheet'
 import { buildXlsx } from './xlsx-writer'
 
 // The CSV of a report: the headers of the sheet, the figures in seconds and in whole money units, and a last row with the totals.
@@ -32,7 +32,7 @@ export function csvSourceOf(sheet: ReportSheet): CsvSource {
         yield [
           row.label,
           ...row.values.map((value, index) =>
-            displayValue(value, sheet.units[index] ?? MetricUnits.COUNT)
+            csvFigure(value, sheet.units[index] ?? MetricUnits.COUNT)
           )
         ]
       }

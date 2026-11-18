@@ -1,4 +1,4 @@
-import type { ManualFinanceEntryInput } from '@platform/api-client'
+import { ApiError, type ManualFinanceEntryInput } from '@platform/api-client'
 import { FinanceLimits, JournalEntryType } from '@platform/core/domain'
 
 import { isCalendarDay } from './dates'
@@ -148,4 +148,13 @@ export function manualEntryInputOf(
       ...(line.memo.trim() === '' ? {} : { memo: line.memo.trim() })
     }))
   }
+}
+
+// Whether an attempt that failed may have posted the entry anyway: the answer was lost (no answer, a timeout, a server error, or a success
+// the page could not read), so the entry may be in the journal. A refusal of the api (4xx) wrote nothing, and an error that is not the
+// api's was thrown before anything was sent. From the first attempt that may have posted, the form is locked and keeps its key, so the
+// retry is the same entry (answered with the first), never a second one (HC-114).
+export function attemptMayHavePosted(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false
+  return error.status === 0 || error.status === 408 || error.status >= 500 || error.status < 400
 }

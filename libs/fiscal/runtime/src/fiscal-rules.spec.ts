@@ -640,7 +640,7 @@ describe('the credit note of a return', () => {
 })
 
 describe('the rounding of the books in a credit note', () => {
-  // 2 units at 10.00, tax included: net 17.39 and tax 2.61 are odd, so one unit back rounds both up (8.70 + 1.31 against 10.00)
+  // 2 units at 10.00, tax included: net 17.39 and tax 2.61 are odd, so the split is on what was paid (10.00 and 10.00), never 10.01 + 9.99
   const odd: CreditNoteOrder = {
     subtotalCents: 2000,
     discountCents: 0,
@@ -662,7 +662,7 @@ describe('the rounding of the books in a credit note', () => {
     ]
   }
 
-  it('credits a unit for what it was sold for, not a cent more, and adds up', () => {
+  it('credits a unit for what it was sold for, to the cent, and adds up', () => {
     const first = creditNoteSaleOf(odd, new Map(), new Map([['a', 1]]))
     const second = creditNoteSaleOf(odd, new Map([['a', 1]]), new Map([['a', 1]]))
     expect(first.ok && second.ok).toBe(true)
@@ -671,6 +671,16 @@ describe('the rounding of the books in a credit note', () => {
     expect(first.sale.discountCents).toBe(0)
     expect(saleAddsUp(first.sale)).toBe(true)
     expect(saleAddsUp(second.sale)).toBe(true)
+  })
+
+  it('credits the whole sale across the notes of 2 returns of one unit, to the cent (HC-107)', () => {
+    const first = creditNoteSaleOf(odd, new Map(), new Map([['a', 1]]))
+    const second = creditNoteSaleOf(odd, new Map([['a', 1]]), new Map([['a', 1]]))
+    expect(first.ok && second.ok).toBe(true)
+    if (!first.ok || !second.ok) return
+    expect(first.sale.totalCents + second.sale.totalCents).toBe(2000)
+    expect(first.sale.taxCents + second.sale.taxCents).toBe(261)
+    expect(first.sale.discountCents + second.sale.discountCents).toBe(0)
   })
 })
 

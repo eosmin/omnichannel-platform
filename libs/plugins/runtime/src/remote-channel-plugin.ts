@@ -20,6 +20,7 @@ import {
   type RemoteChannelCommand,
   RemoteChannelErrorCodes,
   RemoteChannelHeaders,
+  OutboundLimits,
   RemoteChannelLimits,
   RemoteChannelSendTypes,
   type RemoteChannelSendType,
@@ -100,7 +101,7 @@ export interface RemoteChannelDeps {
 
 // Only the platform's own words, never what the plugin said: a plugin is a third party's and its text could carry anything
 const sendAnswer = z.object({
-  externalId: z.string().min(1).max(512),
+  externalId: z.string().min(1).max(OutboundLimits.EXTERNAL_ID_MAX_LENGTH),
   status: z.literal(DeliveryStatus.SENT),
   sentAt: z.iso.datetime({ offset: true }).optional()
 })
@@ -123,6 +124,8 @@ const SEND_TYPE_OF_KIND: Readonly<Record<ChannelMediaKind, RemoteChannelSendType
 }
 
 // Failures of the connection before a byte of the request left: the plugin is down or unreachable, and it heard nothing
+// The one code that proves the socket never opened
+const CONNECTION_REFUSED_CODE = 'ECONNREFUSED'
 const CONNECT_PHASE_CODES: ReadonlySet<string> = new Set([
   'ECONNREFUSED',
   'EHOSTUNREACH',
@@ -513,7 +516,9 @@ export class RemoteChannelPlugin implements ChannelPlugin {
     return this.failure(this.codeOf(said?.code), {
       retryable,
       // A 5xx may have done the work before it failed; a 4xx is the plugin saying it did not take the request
-      ...(serverSide && options.changesProvider ? { outcomeUnknown: true } : { refused: true })
+      ...(serverSide && options.changesProvider
+        ? { outcomeUnknown: true, idempotent: options.idempotencyKey !== undefined }
+        : { refused: true })
     })
   }
 
@@ -534,9 +539,10 @@ export class RemoteChannelPlugin implements ChannelPlugin {
     if (PERMANENT_NETWORK_CODES.has(networkCode)) {
       return this.failure(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false, refused: true })
     }
-    // The name did not resolve, or the request could not be made: nothing reached the plugin
+    // The name did not resolve, or the request could not be made: nothing reached the plugin, so the failure is definitive
+    // (`refused`) even though trying again may help: a message that ends here was never taken (N-39-02)
     if (kind === PinnedExchangeReasons.NOT_RESOLVED) {
-      return this.failure(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true })
+      return this.failure(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true, refused: true })
     }
     if (kind === PinnedExchangeReasons.REQUEST_REFUSED) {
       return this.failure(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: false, refused: true })
@@ -551,20 +557,32 @@ export class RemoteChannelPlugin implements ChannelPlugin {
         outcomeUnknown: options.changesProvider
       })
     }
-    // Nobody answered before the connection was made: nothing was sent
+    // The connection was refused: the socket never opened, so nothing was sent and a message that runs out of tries here
+    // failed for good, which the agent may discard (N-39-02). Only this code says so: an unreachable host or network can
+    // also be reported once the request is on its way, and it keeps the doubt below.
+    if (kind === PinnedExchangeReasons.NO_ANSWER && networkCode === CONNECTION_REFUSED_CODE) {
+      return this.failure(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true, refused: true })
+    }
+    // Nobody answered before the connection was made, as far as the code tells: tried again, outcome not affirmed
     if (kind === PinnedExchangeReasons.NO_ANSWER && CONNECT_PHASE_CODES.has(networkCode)) {
       return this.failure(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true })
     }
     // A timeout, a connection that dropped: the plugin may have taken the message
     return this.failure(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
       retryable: true,
-      outcomeUnknown: options.changesProvider
+      outcomeUnknown: options.changesProvider,
+      idempotent: options.changesProvider && options.idempotencyKey !== undefined
     })
   }
 
   private failure(
     code: PluginErrorCode,
-    options: { retryable: boolean; refused?: boolean; outcomeUnknown?: boolean }
+    options: {
+      retryable: boolean
+      refused?: boolean
+      outcomeUnknown?: boolean
+      idempotent?: boolean
+    }
   ): PluginError {
     return new PluginError(code, options)
   }

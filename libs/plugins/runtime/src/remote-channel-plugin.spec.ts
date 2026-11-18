@@ -1,4 +1,4 @@
-import { ChannelCapability, RemoteChannelLimits } from '@platform/core/domain'
+import { ChannelCapability, OutboundLimits, RemoteChannelLimits } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { PinnedExchangeFailed, PinnedFetchFailed, UnsafeUrlError } from '@platform/core/url-safety'
 import { type ChannelPlugin, PluginError } from '@platform/plugins/sdk'
@@ -379,6 +379,30 @@ describe('RemoteChannelPlugin: the answers to a send', () => {
     }
   })
 
+  it('marks a doubt of a send as idempotent: the same key goes again and the plugin promised not to send twice', async () => {
+    for (const answer of [
+      new PinnedExchangeFailed('too_slow'),
+      new PinnedExchangeFailed('no_answer:ECONNRESET'),
+      refusal(500, { code: 'rejected', message: 'm' }),
+      refusal(503, { code: 'rejected', message: 'm' })
+    ]) {
+      const error = await failureOf(send(harness(() => answer).plugin))
+      expect(error.outcomeUnknown).toBe(true)
+      expect(error.idempotent).toBe(true)
+    }
+  })
+
+  it('does not call idempotent a refusal, a throttle or an answer that cannot be read', async () => {
+    for (const answer of [
+      refusal(429, { code: 'rate_limited', message: 'm' }),
+      refusal(422, { code: 'rejected', message: 'm' }),
+      ok({}),
+      { status: 200, body: 'nope' }
+    ]) {
+      expect((await failureOf(send(harness(() => answer).plugin))).idempotent).toBe(false)
+    }
+  })
+
   it('does not carry what the plugin said in the error', async () => {
     const { plugin } = harness(() =>
       refusal(422, { code: 'rejected', message: 'token plg_live_secret was refused' })
@@ -386,6 +410,17 @@ describe('RemoteChannelPlugin: the answers to a send', () => {
     const error = await failureOf(send(plugin))
     expect(JSON.stringify(error)).not.toContain('plg_live_secret')
     expect(error.message).not.toContain('plg_live_secret')
+  })
+
+  it('takes the id of a message up to the shared bound, the one the worker stores, and refuses a longer one', async () => {
+    // The literal pins the contract: the worker stores up to 512 characters of an id
+    expect(OutboundLimits.EXTERNAL_ID_MAX_LENGTH).toBe(512)
+    const longest = 'x'.repeat(512)
+    const fits = harness(() => ok({ externalId: longest, status: 'sent' }))
+    expect((await send(fits.plugin)).externalId).toBe(longest)
+    const tooLong = harness(() => ok({ externalId: `${longest}x`, status: 'sent' }))
+    const error = await failureOf(send(tooLong.plugin))
+    expect(error.outcomeUnknown).toBe(true)
   })
 
   it('takes an answer that is not what the table says as a failure whose outcome is not known', async () => {
@@ -411,12 +446,27 @@ describe('RemoteChannelPlugin: the answers to a send', () => {
     }
   })
 
-  it('a refused connection is tried again and the plugin heard nothing', async () => {
-    const error = await failureOf(
-      send(harness(() => new PinnedExchangeFailed('no_answer:ECONNREFUSED')).plugin)
-    )
-    expect(error.retryable).toBe(true)
-    expect(error.outcomeUnknown).toBe(false)
+  it('a connection that was refused or a name that did not resolve is tried again, and the failure is definitive (N-39-02)', async () => {
+    for (const reason of ['no_answer:ECONNREFUSED', 'not_resolved:EAI_AGAIN']) {
+      const error = await failureOf(send(harness(() => new PinnedExchangeFailed(reason)).plugin))
+      expect(error.retryable).toBe(true)
+      expect(error.outcomeUnknown).toBe(false)
+      expect(error.refused).toBe(true)
+    }
+  })
+
+  it('keeps the doubt when the code does not prove the socket never opened: tried again, not refused', async () => {
+    for (const reason of [
+      'no_answer:EHOSTUNREACH',
+      'no_answer:ENETUNREACH',
+      'no_answer:ECONNRESET',
+      'no_answer:ETIMEDOUT',
+      'no_answer'
+    ]) {
+      const error = await failureOf(send(harness(() => new PinnedExchangeFailed(reason)).plugin))
+      expect(error.retryable).toBe(true)
+      expect(error.refused).toBe(false)
+    }
   })
 
   it('an answer too long to read is mapped by its status: a gateway page that refuses is a refusal', async () => {
@@ -466,6 +516,15 @@ describe('RemoteChannelPlugin: files', () => {
         filename: 'photo.png'
       }
     })
+  })
+
+  it('marks a doubt of a media send as idempotent too', async () => {
+    const { plugin } = harness(() => refusal(502, { code: 'rejected', message: 'm' }))
+    const error = await failureOf(
+      plugin.sendMedia(ctx, { ...file, signedUrl: () => Promise.resolve('https://f.example/x') })
+    )
+    expect(error.outcomeUnknown).toBe(true)
+    expect(error.idempotent).toBe(true)
   })
 
   it('names the kind of the file by its content type', async () => {
