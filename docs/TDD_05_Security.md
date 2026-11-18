@@ -208,6 +208,23 @@ Public unauthenticated endpoints (`ApiRoutes.referrals.trackClick`, `ApiRoutes.c
 `ApiRoutes.widget.*`, `ApiRoutes.invitations.byToken`) get `@Throttle` by IP with the
 `PUBLIC` profile (30/min).
 
+**Routes that can enumerate data: two layers (v1.2 MVP, HC-136).** The search (`ApiRoutes.search.*`, the click of a
+result included) and the list of customers (`ApiRoutes.customers.list`) can be walked to read what a store holds. A
+limit per address alone fails both ways: an office shares one address, and an attacker with many addresses is never
+held by it. These routes therefore have:
+
+1. **Per address, before authentication** (`@RateLimit(EnumerationIpThrottle)`, 600/min): only the flood guard,
+   well above the default of 100/min so that a shared address does not starve its own people.
+2. **Per authenticated user, after the token, the store and the permission** (`@UserRateLimit(profile)`,
+   `UserRateLimitGuard`, counted in the same Redis, `UserRateLimits` in `libs/core/domain/auth/auth-constants.ts`):
+   `SEARCH` 180/min (one counter for every search route, so the global search and the search of customers spend the
+   same budget), `SEARCH_CLICKS` 120/min and `CUSTOMER_LIST` 120/min. The address is irrelevant here.
+
+Both answer `429` with `Retry-After` (and `retryAfterSeconds` in the metadata). Each refusal of the second layer adds
+to `platform_rate_limit_hits_total{throttler="user:<profile>"}`. Like the first layer, it lets the request through and
+logs when Redis fails: it is a protection, not a dependency. A new route that returns a list or a search over data of a
+store takes both decorators; the guard sits after the global ones, so it needs no `@Public()` handling.
+
 **Plan-aware limits for authenticated traffic.** The tracker is the store (so one busy
 agent cannot starve a colleague) and the limit comes from the effective plan:
 
