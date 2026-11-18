@@ -3281,8 +3281,47 @@ describe('Tenant isolation', () => {
         await fromSibling
           .post(ApiRoutes.fiscal.documents.void(document.id))
           .send({ reason: 'isolation check' }),
-        await fromSibling.post(ApiRoutes.fiscal.documents.replace(document.id)).send({})
+        await fromSibling.post(ApiRoutes.fiscal.documents.replace(document.id)).send({}),
+        await fromSibling
+          .post(ApiRoutes.fiscal.documents.confirmIssuerChange(document.id))
+          .send({ reason: 'isolation check' })
       ]
+      // A document of the store of the caller that names a replacement of another store: the replacement is out of reach too
+      const own = await owner.fiscalDocument.create({
+        data: {
+          organizationId,
+          storeId: ctx.storeA2.id,
+          orderId: (await createOrder(owner, { storeId: ctx.storeA2.id })).id,
+          sequenceNumber: randomInt(1_000_000, 2_000_000_000),
+          documentType: 'pending',
+          status: 'accepted',
+          providerId: 'simulator',
+          environment: 'sandbox',
+          issuerSnapshot: {},
+          linesSnapshot: { lines: [] },
+          receiverEncrypted: Buffer.from('isolation-fixture'),
+          totalCents: 1999,
+          taxCents: 0
+        },
+        select: { id: true }
+      })
+      const withForeignReplacement = await fromSibling
+        .post(ApiRoutes.fiscal.documents.void(own.id))
+        .send({ reason: 'isolation check', replacementDocumentId: document.id })
+      expect(withForeignReplacement.status).toBe(missing.status)
+      expect(
+        (await owner.fiscalDocument.findUniqueOrThrow({ where: { id: own.id } })).status
+      ).toBe('accepted')
+      // The reconciliation of the sibling never names the order of the other store (a queued document stalled long ago is a finding)
+      await owner.fiscalDocument.update({
+        where: { id: document.id },
+        data: { updatedAt: new Date(Date.now() - 24 * 3_600_000) }
+      })
+      const findings = await fromSibling
+        .get(ApiRoutes.fiscal.reconciliation)
+        .query({ kind: 'stalled_document', limit: 100 })
+      expect(findings.status).toBe(200)
+      expect(JSON.stringify(findings.body)).not.toContain(document.id)
       const listed = await fromSibling.get(ApiRoutes.fiscal.documents.list).query({ limit: 100 })
 
       // The same answer as a document that does not exist: nothing says it is there
