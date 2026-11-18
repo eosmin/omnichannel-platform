@@ -8,7 +8,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions, RoleNames } from '@platform/core/auth'
 import { DataRetentionPolicies } from '@platform/core/compliance'
-import { PrismaService } from '@platform/core/database'
+import type { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
@@ -94,6 +94,8 @@ describe('Exports', () => {
   let owner: OwnerClient
   let ctx: TestContext
   let storage: StorageService
+  // The database the generator reads from: the worker's, where the grouped read is counted
+  let workerPrisma: PrismaService
   let generator: ExportGenerator
   let cleaner: ExpiredExportsCleaner
   const keys: string[] = []
@@ -103,6 +105,7 @@ describe('Exports', () => {
     app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
     const prisma = createWorkerPrisma()
+    workerPrisma = prisma
     storage = app.get(StorageService, { strict: false })
     const { events, audit } = await workerServices(app, prisma)
     const logger = {
@@ -233,7 +236,7 @@ describe('Exports', () => {
       await make(OrderStatus.PENDING_CONFIRMATION, 7000, '2026-01-04T10:00:00.000Z')
       await make(OrderStatus.CANCELLED, 9000, '2026-01-05T10:00:00.000Z')
       await make(OrderStatus.RETURNED, 500, '2026-01-06T10:00:00.000Z')
-      const groupBy = jest.spyOn(app.get(PrismaService, { strict: false }).client.order, 'groupBy')
+      const groupBy = jest.spyOn(workerPrisma.client.order, 'groupBy')
 
       const view = await request(ApiRoutes.customers.export)
       const file = await made(view.id)
