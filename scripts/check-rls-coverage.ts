@@ -6,7 +6,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { exit } from 'node:process'
 
-import { RlsGlobalModels } from '@platform/core/domain'
+import { RlsGlobalModels, RlsPolicyTables } from '@platform/core/domain'
 
 import {
   checkRlsCoverage,
@@ -67,10 +67,29 @@ const globalMismatch = [
     model => `${model}: in RlsGlobalModels but not a global table of scripts/rls-exceptions.ts`
   )
 ]
+// The raw SQL guard of PrismaService reads RlsPolicyTables: it must be every table that is not global, and the join tables of the tags
+const expectedPolicyTables = [
+  ...tables
+    .filter(({ table }) => RLS_EXEMPTIONS[table]?.kind !== 'global')
+    .map(({ table }) => table),
+  ...implicitJoinTables(schemaText)
+]
+const policyTablesMismatch = [
+  ...expectedPolicyTables
+    .filter(table => !RlsPolicyTables.includes(table))
+    .map(
+      table =>
+        `${table}: has a policy but is not in RlsPolicyTables (libs/core/domain/rls-policy-tables.ts)`
+    ),
+  ...RlsPolicyTables.filter(table => !expectedPolicyTables.includes(table)).map(
+    table => `${table}: in RlsPolicyTables but not a table with a policy`
+  )
+]
 const roles = [
   ...roleViolations(migrations),
   ...scopeMismatches(tables, migrations),
-  ...globalMismatch
+  ...globalMismatch,
+  ...policyTablesMismatch
 ]
 const sessions = sessionSettingViolations(
   SOURCE_ROOTS.flatMap(root => [...sourceFiles(root)]).map(path => ({

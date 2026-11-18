@@ -13,6 +13,12 @@ export function isRlsContextOn(): boolean {
   return env.RLS_CONTEXT && env.APP_ROLE === AppRoles.API
 }
 
+// The guard of PrismaService (`requireContext`): the switch of the api when the process is the api, and the one of the worker when it is
+// the worker, each with its own flag, so that the worker can adopt its contexts without the api changing
+export function isRequireContextOn(): boolean {
+  return env.APP_ROLE === AppRoles.API ? env.RLS_CONTEXT : env.WORKER_RLS_CONTEXT
+}
+
 @Global()
 @Module({
   providers: [{ provide: RLS_CONTEXT_ENABLED, useFactory: isRlsContextOn }],
