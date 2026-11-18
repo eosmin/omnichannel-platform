@@ -251,7 +251,7 @@ export class PurchaseOrdersService {
     return this.get(organizationId, id, actor)
   }
 
-  // A purchase with a receipt cannot be cancelled, only closed (its status is not on the way to CANCELLED, so the table says it)
+  // A purchase with a receipt cannot be cancelled, only closed: 409 with `metadata.conflict` = ORDER_HAS_RECEIPTS (`finish` says it)
   async cancel(
     organizationId: string,
     id: string,
@@ -289,6 +289,15 @@ export class PurchaseOrdersService {
     await this.prisma.transaction(async tx => {
       await lockScope(tx, `${organizationId}:purchase:${id}`)
       const order = await this.row(tx, organizationId, id)
+      // An order with a receipt is never cancelled (owner decision): what arrived is in the stock and the books, so the way out is to
+      // close what is still pending, and a return or credit note of the supplier for what must go back. Said before the table of states
+      // so the client tells this refusal from a wrong status
+      if (
+        to === PurchaseOrderStatus.CANCELLED &&
+        (await tx.purchaseReceipt.count({ where: { organizationId, purchaseOrderId: id } })) > 0
+      ) {
+        throw invalidTransition(order.status, to, PurchaseConflicts.ORDER_HAS_RECEIPTS)
+      }
       this.requireTransition(order.status, to)
       // Ending an order gives up every line that was still to arrive, so those lines must be wholly the caller's, like an edit or a
       // receipt of them: a person who does not see the lines of another store cannot end them for the people who do (N-AA-03). A line

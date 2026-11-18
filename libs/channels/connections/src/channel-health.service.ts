@@ -20,7 +20,7 @@ import {
   type ConnectionRow,
   CredentialsUnreadableError
 } from './channel-context.factory'
-import { providerErrorText } from './provider-text'
+import { pluginHealthReason } from './stored-health-reason'
 import { errorName, withTimeout } from './timeout'
 
 export interface CheckedHealth {
@@ -72,11 +72,7 @@ export class ChannelHealthService {
       }
       if (report.data.healthy) return { healthy: true }
       // Cleaned first, then the fallback: a reason made of invisible characters is no reason
-      const reason = providerErrorText(
-        report.data.error ?? '',
-        ChannelHealthLimits.ERROR_MAX_LENGTH
-      )
-      return { healthy: false, error: reason === '' ? ChannelHealthErrors.UNSPECIFIED : reason }
+      return { healthy: false, error: pluginHealthReason(report.data.error ?? '') }
     } catch (error) {
       // The message of the error may hold a token: only its name is logged, and none of it is stored
       this.logger.warn(
