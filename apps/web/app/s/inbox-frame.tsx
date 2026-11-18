@@ -4,9 +4,11 @@ import { useParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { type ReactElement, type ReactNode, useState } from 'react'
 
+import { ClientPermissions } from '@platform/core/auth'
 import { Shortcuts } from '@platform/core/domain'
 
 import { ConversationList } from '../../components/inbox/conversation-list'
+import { DeletedConversationWatcher } from '../../components/inbox/deleted-conversation-watcher'
 import { InboxFilters } from '../../components/inbox/inbox-filters'
 import { InboxSidebar } from '../../components/inbox/inbox-sidebar'
 import { ConversationPane, ShortcutHelp } from '../../components/inbox/lazy-dialogs'
@@ -44,7 +46,7 @@ export function InboxFrame({ children }: { children: ReactNode }): ReactElement 
 
 function InboxLayout({ children }: { children: ReactNode }): ReactElement {
   const t = useTranslations('inbox')
-  const { storeId } = useStore()
+  const { storeId, can } = useStore()
   const { conversationId } = useParams<{ conversationId?: string }>()
   const { filters, onlyDrafts, search, setFilters, setOnlyDrafts, clearAll } = useInboxFilters()
   const counts = useConversationCounts(storeId)
@@ -67,17 +69,21 @@ function InboxLayout({ children }: { children: ReactNode }): ReactElement {
           isOpen && 'hidden md:flex'
         )}
       >
-        <InboxFilters
-          filters={filters}
-          onChange={setFilters}
-          onlyDrafts={onlyDrafts}
-          onOnlyDraftsChange={setOnlyDrafts}
-          onClearAll={clearAll}
-          counts={counts.data}
-          channels={channels.data ?? NO_CHANNELS}
-          members={members.data ?? NO_MEMBERS}
-          tags={tags.data ?? NO_TAGS}
-        />
+        {/* Without the permission to see conversations the list says so; filters and tabs over it would offer
+            what the person cannot use (N-BR2-12) */}
+        {can(ClientPermissions.CONVERSATIONS_VIEW) ? (
+          <InboxFilters
+            filters={filters}
+            onChange={setFilters}
+            onlyDrafts={onlyDrafts}
+            onOnlyDraftsChange={setOnlyDrafts}
+            onClearAll={clearAll}
+            counts={counts.data}
+            channels={channels.data ?? NO_CHANNELS}
+            members={members.data ?? NO_MEMBERS}
+            tags={tags.data ?? NO_TAGS}
+          />
+        ) : null}
         <ConversationList
           storeId={storeId}
           filters={filters}
@@ -99,6 +105,7 @@ function InboxLayout({ children }: { children: ReactNode }): ReactElement {
       </section>
       <InboxSidebar />
       <RealtimeAnnouncer />
+      <DeletedConversationWatcher openId={conversationId} />
       {isHelpMounted ? (
         <ShortcutHelp open={isHelpOpen} onOpenChange={setHelpOpen} isConversationOpen={isOpen} />
       ) : null}
