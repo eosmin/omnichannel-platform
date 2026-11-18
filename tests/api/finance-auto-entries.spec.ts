@@ -346,34 +346,46 @@ describe('The automatic entries (Step 4B.6a)', () => {
     })
   })
 
-  describe('an order delivered after its payment was refunded (HC-105, AUT-R2-010)', () => {
-    it('posts no sale and tells a person, whether or not E1 was posted: the sale would be a credit sale', async () => {
-      const paid = await order({
+  describe('an order whose payment was refunded (HC-105, AUT-R2-010)', () => {
+    it('posts the sale of an order paid and delivered, then refunded: the money was received, E1 holds it', async () => {
+      const id = await order({
         method: 'TRANSFER',
         paymentStatus: 'COMPLETED',
         status: 'CONFIRMED'
       })
-      expect((await run(paid, FinanceEventKind.PAYMENT)).outcome).toBe(FinancePostingOutcome.POSTED)
+      expect((await run(id, FinanceEventKind.PAYMENT)).outcome).toBe(FinancePostingOutcome.POSTED)
+      // Delivered, and the payment goes back before the sale job runs (a return after delivery marks it so)
       await owner.order.update({
-        where: { id: paid },
+        where: { id },
         data: { paymentStatus: 'REFUNDED', status: 'DELIVERED', deliveredAt: new Date() }
       })
-      const unseen = await order({ method: 'TRANSFER', paymentStatus: 'REFUNDED' })
-      for (const id of [paid, unseen]) {
-        await issue(id)
-        expect(await run(id, FinanceEventKind.SALE)).toMatchObject({
-          outcome: FinancePostingOutcome.FAILED,
-          reason: FinancePostingFailureReason.PAYMENT_REFUNDED
-        })
-        expect(await entryOf(FinancePostingKey.ORDER_SALE(id))).toBeNull()
-        const row = await owner.financePostingFailure.findFirstOrThrow({
-          where: { organizationId: ctx.orgA.id, sourceId: id, eventKind: FinanceEventKind.SALE }
-        })
-        expect(row).toMatchObject({
-          reason: FinancePostingFailureReason.PAYMENT_REFUNDED,
-          resolvedAt: null
-        })
-      }
+      await issue(id)
+      expect((await run(id, FinanceEventKind.SALE)).outcome).toBe(FinancePostingOutcome.POSTED)
+      const e1 = await entryOf(FinancePostingKey.ORDER_PAYMENT(id))
+      const e3 = await entryOf(FinancePostingKey.ORDER_SALE(id))
+      const advances = code(AccountRole.CUSTOMER_ADVANCES)
+      expect(e3?.lines.find(line => line.debitCents === 2825)?.account.code).toBe(advances)
+      const net = [...(e1?.lines ?? []), ...(e3?.lines ?? [])]
+        .filter(line => line.account.code === advances)
+        .reduce((sum, line) => sum + line.creditCents - line.debitCents, 0)
+      expect(net).toBe(0)
+    })
+
+    it('tells a person when there is no advance to clear, instead of waiting for ever', async () => {
+      const id = await order({ method: 'TRANSFER', paymentStatus: 'REFUNDED' })
+      await issue(id)
+      expect(await run(id, FinanceEventKind.SALE)).toMatchObject({
+        outcome: FinancePostingOutcome.FAILED,
+        reason: FinancePostingFailureReason.PAYMENT_REFUNDED
+      })
+      expect(await entryOf(FinancePostingKey.ORDER_SALE(id))).toBeNull()
+      const row = await owner.financePostingFailure.findFirstOrThrow({
+        where: { organizationId: ctx.orgA.id, sourceId: id, eventKind: FinanceEventKind.SALE }
+      })
+      expect(row).toMatchObject({
+        reason: FinancePostingFailureReason.PAYMENT_REFUNDED,
+        resolvedAt: null
+      })
     })
 
     it('does not touch an order that was never delivered, or was cancelled', async () => {

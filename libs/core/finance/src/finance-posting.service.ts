@@ -653,14 +653,14 @@ export class FinancePostingService {
       const carrierConnectionId = shipment?.connectionId ?? order.carrierConnectionId
       if (carrierConnectionId === null) return failed(FinancePostingFailureReason.CARRIER_MISSING)
       collection = { kind: 'carrier', carrierConnectionId }
-    } else if (order.paymentStatus === (PaymentStatus.REFUNDED as string)) {
-      // The goods were delivered after the money went back: the sale would be a credit sale (TDD_18 §4.2 E3, not built) and recognizing
-      // it would put revenue and tax on money that left, so nothing is posted. Waiting changes nothing (E1 posts only a completed
-      // payment), so this is no wait: a person is told [ACCOUNTANT] (HC-105)
-      return failed(FinancePostingFailureReason.PAYMENT_REFUNDED)
-    } else if (order.paymentStatus === (PaymentStatus.COMPLETED as string)) {
+    } else if (
+      order.paymentStatus === (PaymentStatus.COMPLETED as string) ||
+      order.paymentStatus === (PaymentStatus.REFUNDED as string)
+    ) {
       // The advance is cleared only when E1 put it there: a debit of an advance that was never credited (a payment before the start of the
       // books, or an E1 that failed) would leave the account negative for good. The payment event posts E1 and queues the sale again.
+      // A REFUNDED payment is a paid one that went back (a return after delivery, or a refund before it): the money WAS received, E1 holds
+      // it, and the refund is E14's, so the sale clears the advance as always
       const advance = await tx.journalEntry.findUnique({
         where: {
           organizationId_idempotencyKey: {
@@ -670,7 +670,15 @@ export class FinancePostingService {
         },
         select: { id: true }
       })
-      if (advance === null) return failed(FinancePostingFailureReason.SOURCE_NOT_READY)
+      if (advance === null) {
+        // A refunded payment never gets its advance later (E1 posts only a completed payment): waiting changes nothing, so a person is told
+        // [ACCOUNTANT] (HC-105). A payment that is still completed does wait for its E1
+        return failed(
+          order.paymentStatus === (PaymentStatus.REFUNDED as string)
+            ? FinancePostingFailureReason.PAYMENT_REFUNDED
+            : FinancePostingFailureReason.SOURCE_NOT_READY
+        )
+      }
       collection = { kind: 'advance' }
     } else {
       // Not collected on delivery and not paid: a sale on credit, which the MVP does not build (TDD_18 §4.2 E3). It is a failure a
