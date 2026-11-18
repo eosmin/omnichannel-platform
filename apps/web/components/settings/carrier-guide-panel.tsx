@@ -289,6 +289,7 @@ export function CarrierGuidePanel({
         <GuidePurchaseDialog
           connectionId={connection.id}
           connectionName={connection.displayName}
+          chargeModel={connection.chargeModel}
           onClose={close}
         />
       ) : null}

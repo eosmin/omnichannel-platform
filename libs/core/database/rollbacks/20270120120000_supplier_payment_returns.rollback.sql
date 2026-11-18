@@ -1,4 +1,4 @@
--- Rolls back 20270120100000_supplier_payment_returns. DESTRUCTIVE: every return of a supplier payment is DROPPED with its rows (the journal entries
+-- Rolls back 20270120120000_supplier_payment_returns. DESTRUCTIVE: every return of a supplier payment is DROPPED with its rows (the journal entries
 -- they posted stay: the journal is append-only, so those entries have no operational header after this). The sets of types and sources of the
 -- journal go back to what they were; the posting failures recorded for a return are deleted (they name a source that no longer exists); if an entry
 -- of the type `supplier_payment_return` exists the check cannot be added again and the whole
@@ -22,11 +22,11 @@ ALTER TABLE journal_entries
 ALTER TABLE journal_entries
   ADD CONSTRAINT chk_journal_entries_type CHECK (type IN (
     'manual', 'opening_balance', 'expense', 'income', 'transfer', 'sale', 'sale_shipment', 'sale_return', 'cod_remittance',
-    'cod_write_off', 'purchase_receipt', 'supplier_payment', 'inventory_adjustment', 'reversal'
+    'cod_write_off', 'purchase_receipt', 'supplier_payment', 'carrier_guides', 'inventory_adjustment', 'reversal'
   )),
   ADD CONSTRAINT chk_journal_entries_source_type CHECK (source_type IS NULL OR source_type IN (
     'order', 'shipment', 'remittance', 'return', 'inventory_movement', 'purchase_receipt', 'supplier_payment',
-    'finance_transaction', 'manual'
+    'carrier_guide_movement', 'finance_transaction', 'manual', 'transfer_line'
   ));
 DELETE FROM finance_posting_failures WHERE source_type = 'supplier_payment_return';
 ALTER TABLE finance_posting_failures
@@ -34,7 +34,7 @@ ALTER TABLE finance_posting_failures
 ALTER TABLE finance_posting_failures
   ADD CONSTRAINT chk_finance_posting_failures_source_type CHECK (source_type IN (
     'order', 'shipment', 'remittance', 'return', 'inventory_movement', 'purchase_receipt', 'supplier_payment',
-    'finance_transaction', 'manual'
+    'carrier_guide_movement', 'finance_transaction', 'manual', 'transfer_line'
   ));
 
 COMMIT;

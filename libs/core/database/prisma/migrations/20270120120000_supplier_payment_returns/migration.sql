@@ -65,18 +65,18 @@ ALTER TABLE journal_entries
 ALTER TABLE journal_entries
   ADD CONSTRAINT chk_journal_entries_type CHECK (type IN (
     'manual', 'opening_balance', 'expense', 'income', 'transfer', 'sale', 'sale_shipment', 'sale_return', 'cod_remittance',
-    'cod_write_off', 'purchase_receipt', 'supplier_payment', 'supplier_payment_return', 'inventory_adjustment', 'reversal'
+    'cod_write_off', 'purchase_receipt', 'supplier_payment', 'supplier_payment_return', 'carrier_guides', 'inventory_adjustment', 'reversal'
   )),
   ADD CONSTRAINT chk_journal_entries_source_type CHECK (source_type IS NULL OR source_type IN (
     'order', 'shipment', 'remittance', 'return', 'inventory_movement', 'purchase_receipt', 'supplier_payment', 'supplier_payment_return',
-    'finance_transaction', 'manual'
+    'carrier_guide_movement', 'finance_transaction', 'manual', 'transfer_line'
   ));
 ALTER TABLE finance_posting_failures
   DROP CONSTRAINT chk_finance_posting_failures_source_type;
 ALTER TABLE finance_posting_failures
   ADD CONSTRAINT chk_finance_posting_failures_source_type CHECK (source_type IN (
     'order', 'shipment', 'remittance', 'return', 'inventory_movement', 'purchase_receipt', 'supplier_payment', 'supplier_payment_return',
-    'finance_transaction', 'manual'
+    'carrier_guide_movement', 'finance_transaction', 'manual', 'transfer_line'
   ));
 
 -- ============================================================================================================

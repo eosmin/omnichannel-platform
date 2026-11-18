@@ -152,6 +152,13 @@ export interface ShipmentEventPayload {
   actor: ActorRef
 }
 
+// A line of the ledger of guides that the books follow: a purchase, or the void of one
+export interface CarrierGuidesMovementPayload {
+  storeId: string
+  connectionId: string
+  movementId: string
+}
+
 // The guide whose difference was written off, and who did it
 export interface RemittanceDifferenceWrittenOffPayload {
   storeId: string
@@ -661,6 +668,8 @@ export interface DomainEventPayloads {
   [Events.REMITTANCE_CONFIRMED]: RemittanceEventPayload
   [Events.REMITTANCE_VOIDED]: RemittanceEventPayload
   [Events.REMITTANCE_DIFFERENCE_WRITTEN_OFF]: RemittanceDifferenceWrittenOffPayload
+  [Events.CARRIER_GUIDES_PURCHASED]: CarrierGuidesMovementPayload
+  [Events.CARRIER_GUIDES_PURCHASE_VOIDED]: CarrierGuidesMovementPayload
   [Events.REMITTANCE_OVERDUE]: RemittanceOverduePayload
   [Events.FINANCE_ENTRY_POSTED]: FinanceEntryPayload
   [Events.FINANCE_ENTRY_REVERSED]: FinanceEntryPayload

@@ -98,6 +98,8 @@ export enum FinanceSourceType {
   PURCHASE_RECEIPT = 'purchase_receipt',
   SUPPLIER_PAYMENT = 'supplier_payment',
   SUPPLIER_PAYMENT_RETURN = 'supplier_payment_return',
+  // A line of the ledger of guides of a carrier connection: a purchase of guides, or the void of one (Step 4B.6b-4)
+  CARRIER_GUIDE_MOVEMENT = 'carrier_guide_movement',
   FINANCE_TRANSACTION = 'finance_transaction',
   MANUAL = 'manual'
 }
@@ -293,6 +295,8 @@ export enum JournalEntryType {
   PURCHASE_RECEIPT = 'purchase_receipt',
   SUPPLIER_PAYMENT = 'supplier_payment',
   SUPPLIER_PAYMENT_RETURN = 'supplier_payment_return',
+  // Guides bought in advance from a carrier, and the void of the purchase
+  CARRIER_GUIDES = 'carrier_guides',
   INVENTORY_ADJUSTMENT = 'inventory_adjustment',
   REVERSAL = 'reversal'
 }

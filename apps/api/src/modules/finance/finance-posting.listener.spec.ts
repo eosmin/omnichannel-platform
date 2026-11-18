@@ -120,6 +120,27 @@ describe('FinancePostingListener, the carrier events (E4 to E6)', () => {
     ])
   })
 
+  it('queues the purchase of guides and its void, each as an event of the movement of the ledger of guides (E15, E16)', async () => {
+    const { listener, queued } = build()
+    const payload = { storeId: STORE, connectionId: 'conn-1', movementId: 'mov-1' }
+    await listener.onGuidesPurchased(payload)
+    await listener.onGuidesPurchaseVoided({ ...payload, movementId: 'mov-2' })
+    expect(queued).toMatchObject([
+      {
+        organizationId: ORG,
+        sourceType: FinanceSourceType.CARRIER_GUIDE_MOVEMENT,
+        sourceId: 'mov-1',
+        kind: FinanceEventKind.GUIDE_PURCHASE
+      },
+      {
+        organizationId: ORG,
+        sourceType: FinanceSourceType.CARRIER_GUIDE_MOVEMENT,
+        sourceId: 'mov-2',
+        kind: FinanceEventKind.GUIDE_PURCHASE_VOID
+      }
+    ])
+  })
+
   it('queues nothing for a store it cannot place', async () => {
     const { listener, queued } = build({ organization: null })
     await listener.onShipmentStatus(shipmentPayload(ShipmentStatus.DELIVERED))
