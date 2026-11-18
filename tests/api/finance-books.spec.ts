@@ -474,7 +474,12 @@ describe('The legal books', () => {
     }
 
     it('count a credit note as no unknown document, list the sale once, and count a voided document only when the sale has no other', async () => {
-      februaryA = await createPeriod(owner, ctx.orgA.id, 2026, 2)
+      // The month may exist already (the setup makes the months since the start); the builder makes it when it does not
+      const existing = await owner.fiscalPeriod.findFirst({
+        where: { organizationId: ctx.orgA.id, year: 2026, month: 2 },
+        select: { id: true }
+      })
+      februaryA = existing?.id ?? (await createPeriod(owner, ctx.orgA.id, 2026, 2))
       // 1. A sale with its credit note: one row, nothing unclassified
       const credited = await februarySale('2026-02-03')
       const invoice = await documentOf(credited.orderId, credited.entryId, {
