@@ -21,6 +21,8 @@ import {
   CARRIER_WEBHOOK_SECRET_BYTES,
   CarrierCapability,
   type CarrierCapabilityType,
+  AccountRole,
+  CarrierChargeModel,
   CarrierConnectionLimits,
   CarrierConnectionStatus,
   CarrierHealthReasons,
@@ -282,6 +284,8 @@ export class CarrierConnectionsService {
         await this.lockInstallation(tx, storeId)
         await this.assertInstalled(tx, storeId)
         await this.assertRoom(tx, storeId, displayName)
+        if (body.chargeModel === CarrierChargeModel.PREPAID)
+          await this.assertAdvanceMapped(tx, storeId)
         if (local !== null) await this.assertPrefixFree(tx, storeId, local.prefix, null)
         const row = await tx.carrierConnection.create({
           data: {
@@ -306,6 +310,7 @@ export class CarrierConnectionsService {
             minShippingFeeCents: body.minShippingFeeCents,
             maxShippingFeeCents: body.maxShippingFeeCents,
             remittanceDeductsFee: body.remittanceDeductsFee,
+            chargeModel: body.chargeModel,
             commissionBps: commissionToKeep(
               this.registry.feeSettingsOf(plugin.id),
               body.commissionBps
@@ -462,6 +467,7 @@ export class CarrierConnectionsService {
       commissionBps: null,
       serviceRatesCents: {}
     }
+    let chargeModelBefore: string | null = null
     try {
       await this.prisma.transaction(async tx => {
         await lockStoreForWrite(tx, storeId)
@@ -471,6 +477,13 @@ export class CarrierConnectionsService {
         feesBefore = {
           commissionBps: row.commissionBps,
           serviceRatesCents: ratesViewOf(row.serviceRatesCents)
+        }
+        chargeModelBefore = row.chargeModel
+        if (
+          body.chargeModel === CarrierChargeModel.PREPAID &&
+          row.chargeModel !== body.chargeModel
+        ) {
+          await this.assertAdvanceMapped(tx, storeId)
         }
         if (row.status === String(CarrierConnectionStatus.DISABLED) && !onlyRename) {
           throw notActive()
@@ -554,6 +567,7 @@ export class CarrierConnectionsService {
             minShippingFeeCents: body.minShippingFeeCents,
             maxShippingFeeCents: body.maxShippingFeeCents,
             remittanceDeductsFee: body.remittanceDeductsFee,
+            chargeModel: body.chargeModel,
             commissionBps: commissionToKeep(
               this.registry.feeSettingsOf(row.carrierId),
               body.commissionBps
@@ -629,8 +643,44 @@ export class CarrierConnectionsService {
     if (changedFees !== null) {
       this.record(AuditAction.CARRIER_FEES_CHANGED, storeId, connectionId, actor, changedFees)
     }
+    // How the guides are charged moves money in the books: the audit trail says from what to what (HC-101)
+    if (
+      body.chargeModel !== undefined &&
+      chargeModelBefore !== null &&
+      body.chargeModel !== chargeModelBefore
+    ) {
+      this.record(AuditAction.CARRIER_FEES_CHANGED, storeId, connectionId, actor, {
+        chargeModel: { from: chargeModelBefore, to: body.chargeModel }
+      })
+    }
     await this.dropLocations(storeId, connectionId)
     return this.get(storeId, connectionId)
+  }
+
+  // A connection that prepays books each guide against the account of the guides bought in advance: without that account mapped every guide
+  // would fail to post, so the model is not switched on until the accountant has it (the organization may predate the role)
+  private async assertAdvanceMapped(tx: PrismaTransaction, storeId: string): Promise<void> {
+    const store = await tx.store.findUnique({
+      where: { id: storeId },
+      select: { organizationId: true }
+    })
+    const mapping =
+      store === null
+        ? null
+        : await tx.accountRoleMapping.findUnique({
+            where: {
+              organizationId_role: {
+                organizationId: store.organizationId,
+                role: AccountRole.PREPAID_CARRIER_GUIDES
+              }
+            },
+            select: { accountId: true }
+          })
+    if (mapping === null) {
+      throw invalidInput(
+        'map the account of the prepaid carrier guides in the books before using this model'
+      )
+    }
   }
 
   // What the carrier listed with the old credentials or settings is not served again. The change is already committed and audited:
@@ -1143,6 +1193,7 @@ export class CarrierConnectionsService {
       minShippingFeeCents: row.minShippingFeeCents,
       maxShippingFeeCents: row.maxShippingFeeCents,
       remittanceDeductsFee: row.remittanceDeductsFee,
+      chargeModel: row.chargeModel,
       commissionBps: row.commissionBps,
       serviceRatesCents: ratesViewOf(
         row.serviceRatesCents,

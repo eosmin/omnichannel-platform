@@ -186,6 +186,8 @@ export enum AccountRole {
   COST_OF_GOODS_SOLD = 'cost_of_goods_sold',
   INVENTORY_LOSS = 'inventory_loss',
   INVENTORY_GAIN = 'inventory_gain',
+  // Guides bought in advance and not used yet (an asset): the purchase of guides debits it (the next PR of Step 4B.6b-4), each guide a prepaid connection makes credits it
+  PREPAID_CARRIER_GUIDES = 'prepaid_carrier_guides',
   CARRIER_FREIGHT_EXPENSE = 'carrier_freight_expense',
   CARRIER_COMMISSION_EXPENSE = 'carrier_commission_expense',
   COD_DIFFERENCES = 'cod_differences',
@@ -193,6 +195,41 @@ export enum AccountRole {
   ROUNDING = 'rounding',
   UNCATEGORIZED_EXPENSE = 'uncategorized_expense'
 }
+
+// The roles that hold a balance a reader adds up on one account: moving one of them once its account has entries splits the balance
+// (the debt of a supplier on two accounts, the stock on two). The rest are in RolesFreeOfHistory (HC-119).
+export const RolesPinnedByHistory: readonly AccountRole[] = [
+  AccountRole.INVENTORY,
+  AccountRole.INVENTORY_IN_TRANSIT,
+  AccountRole.RECEIVABLE_CARRIERS,
+  AccountRole.CUSTOMER_ADVANCES,
+  AccountRole.PAYABLE_SUPPLIERS,
+  AccountRole.PAYABLE_CARRIERS,
+  AccountRole.VAT_OUTPUT,
+  AccountRole.VAT_INPUT,
+  AccountRole.OPENING_EQUITY
+]
+
+// The other roles, free to move with history on purpose: the defaults of cash and bank only say where a new payment lands (an
+// account of the organization that is not the default keeps its own balance), the roles of the income statement keep their past in
+// the period it was posted to, the rounding and the differences of cash on delivery are settled by their own entries. Every role is in one list or the other: a spec
+// holds it, so a new role is classified when it is born (HC-119).
+export const RolesFreeOfHistory: readonly AccountRole[] = [
+  AccountRole.CASH_DEFAULT,
+  AccountRole.BANK_DEFAULT,
+  AccountRole.SALES_REVENUE,
+  AccountRole.SHIPPING_REVENUE,
+  AccountRole.SALES_DISCOUNTS,
+  AccountRole.SALES_RETURNS,
+  AccountRole.COST_OF_GOODS_SOLD,
+  AccountRole.INVENTORY_LOSS,
+  AccountRole.INVENTORY_GAIN,
+  AccountRole.CARRIER_FREIGHT_EXPENSE,
+  AccountRole.CARRIER_COMMISSION_EXPENSE,
+  AccountRole.COD_DIFFERENCES,
+  AccountRole.ROUNDING,
+  AccountRole.UNCATEGORIZED_EXPENSE
+]
 
 // The types of account each role may point at, and the payment methods (LED-154, LED-163). The TDD does not tabulate them, so the
 // table is read off the template of the chart (`templates/sv.ts`): what each role holds there is its type here, widened only where a
@@ -217,6 +254,7 @@ export const AccountTypesOfRole: Readonly<Record<AccountRole, readonly AccountTy
   [AccountRole.COST_OF_GOODS_SOLD]: [COST_OF_SALES, EXPENSE],
   [AccountRole.INVENTORY_LOSS]: [EXPENSE, COST_OF_SALES],
   [AccountRole.INVENTORY_GAIN]: [INCOME],
+  [AccountRole.PREPAID_CARRIER_GUIDES]: [ASSET],
   [AccountRole.CARRIER_FREIGHT_EXPENSE]: [EXPENSE, COST_OF_SALES],
   [AccountRole.CARRIER_COMMISSION_EXPENSE]: [EXPENSE, COST_OF_SALES],
   // A shortfall debits it and a surplus credits it (`return-entry-rules.ts`), so a chart may book it as an expense or as income
@@ -454,6 +492,12 @@ export const FinanceConflicts = {
   TAX_RATE_INACTIVE: 'tax_rate_inactive',
   // The accounts of a rate: the tax owed is a liability, the tax to credit is an asset, and they are not the same account
   TAX_RATE_ACCOUNT_TYPE: 'tax_rate_account_type',
+  // A rate that already has posted entries keeps its accounts: moving them would split the tax between two accounts and take the
+  // posted tax out of the report of VAT (HC-119)
+  TAX_RATE_ACCOUNT_HAS_HISTORY: 'tax_rate_account_has_history',
+  // A role that holds a balance (what is owed, the stock, the tax) keeps its account once the account has entries: the balance would
+  // be split between two accounts. The way out is a reclassifying entry, then the change (HC-119)
+  ROLE_HAS_HISTORY: 'role_has_history',
   // The key of a request that registered another transaction: a retry sends the same content, never another
   TRANSACTION_KEY_REUSED: 'transaction_key_reused',
   // A transaction is voided once; the reversing entry is in the journal

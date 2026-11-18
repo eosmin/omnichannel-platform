@@ -6132,6 +6132,7 @@
           "cost_of_goods_sold": "Cost of goods sold",
           "inventory_loss": "Inventory loss",
           "inventory_gain": "Inventory gain",
+          "prepaid_carrier_guides": "Prepaid carrier guides",
           "carrier_freight_expense": "Carrier freight expense",
           "carrier_commission_expense": "Carrier commission expense",
           "cod_differences": "Cash on delivery differences",
