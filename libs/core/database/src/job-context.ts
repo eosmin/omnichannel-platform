@@ -41,6 +41,7 @@ export type AnchorKind = 'media' | 'export' | 'scheduled_report'
 interface ActiveContext {
   storeIds: readonly string[]
   organizationIds: readonly string[]
+  userId?: string
 }
 
 const active = new AsyncLocalStorage<ActiveContext>()
@@ -134,7 +135,8 @@ export class JobContext {
     return this.open(
       {
         storeIds: [...new Set(memberships.map(row => row.storeId))],
-        organizationIds: [...new Set(memberships.map(row => row.store.organizationId))]
+        organizationIds: [...new Set(memberships.map(row => row.store.organizationId))],
+        userId
       },
       work,
       options

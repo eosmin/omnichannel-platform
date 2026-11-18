@@ -1,6 +1,4 @@
 {
-  "apps/worker/src/analytics/analytics-event.writer.ts": 1,
-  "apps/worker/src/analytics/analytics-rollup.service.ts": 15,
   "apps/worker/src/carriers/carrier-event-applier.service.ts": 5,
   "apps/worker/src/carriers/carrier-event-replay.service.ts": 2,
   "apps/worker/src/carriers/carrier-event-resolver.service.ts": 2,
@@ -23,7 +21,6 @@
   "apps/worker/src/media/origin-media-fetcher.service.ts": 3,
   "apps/worker/src/media/unavailable-file-marker.service.ts": 3,
   "apps/worker/src/notifications/email-digest.service.ts": 10,
-  "apps/worker/src/notifications/remittance-checker.service.ts": 4,
   "apps/worker/src/notifications/web-push-sender.service.ts": 5,
   "apps/worker/src/outbound/channel-receipts.service.ts": 7,
   "apps/worker/src/outbound/message-change-sender.service.ts": 1,

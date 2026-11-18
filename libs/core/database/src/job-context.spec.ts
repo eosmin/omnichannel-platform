@@ -106,7 +106,9 @@ describe('JobContext', () => {
       ]
     })
     await new JobContext(found.prisma).forUser('u', () => Promise.resolve(undefined))
-    expect(found.contexts).toEqual([{ storeIds: [STORE, OTHER], organizationIds: [ORG] }])
+    expect(found.contexts).toEqual([
+      { storeIds: [STORE, OTHER], organizationIds: [ORG], userId: 'u' }
+    ])
 
     const missing = fakePrisma({ user: null })
     await expect(
