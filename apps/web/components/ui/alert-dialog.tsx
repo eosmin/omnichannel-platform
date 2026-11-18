@@ -17,7 +17,20 @@ export function AlertDialog({
   return <AlertDialogPrimitive.Root open={open} onOpenChange={onOpenChange} {...props} />
 }
 
-export function AlertDialogContent({
+export function AlertDialogContent(
+  props: ComponentProps<typeof AlertDialogPrimitive.Content>
+): ReactElement {
+  return (
+    <AlertDialogPrimitive.Portal>
+      <AlertDialogPrimitive.Overlay className="data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50" />
+      <AlertDialogContentBody {...props} />
+    </AlertDialogPrimitive.Portal>
+  )
+}
+
+// Apart from the content, because the focus to give back is read while this renders: it must render once
+// per opening, and `AlertDialogContent` renders also while the dialog is closed (the palette stays mounted)
+function AlertDialogContentBody({
   className,
   onOpenAutoFocus,
   onCloseAutoFocus,
@@ -25,18 +38,15 @@ export function AlertDialogContent({
 }: ComponentProps<typeof AlertDialogPrimitive.Content>): ReactElement {
   const focus = useFocusReturn({ onOpenAutoFocus, onCloseAutoFocus })
   return (
-    <AlertDialogPrimitive.Portal>
-      <AlertDialogPrimitive.Overlay className="data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50" />
-      <AlertDialogPrimitive.Content
-        className={cn(
-          'bg-background data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border p-6 shadow-lg sm:max-w-lg',
-          className
-        )}
-        {...props}
-        onOpenAutoFocus={focus.onOpenAutoFocus}
-        onCloseAutoFocus={focus.onCloseAutoFocus}
-      />
-    </AlertDialogPrimitive.Portal>
+    <AlertDialogPrimitive.Content
+      className={cn(
+        'bg-background data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border p-6 shadow-lg sm:max-w-lg',
+        className
+      )}
+      {...props}
+      onOpenAutoFocus={focus.onOpenAutoFocus}
+      onCloseAutoFocus={focus.onCloseAutoFocus}
+    />
   )
 }
 

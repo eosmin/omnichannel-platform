@@ -20,7 +20,18 @@ export const SheetClose = DialogPrimitive.Close
 // A panel that slides over the right side of the page (the customer profile of TDD_09 §6): it takes
 // the full width on a phone and about 65% of the screen from `md`. Same Radix dialog as `Dialog`, so
 // focus is trapped and Escape closes it.
-export function SheetContent({
+export function SheetContent(props: ComponentProps<typeof DialogPrimitive.Content>): ReactElement {
+  return (
+    <DialogPrimitive.Portal>
+      <DialogPrimitive.Overlay className="data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50" />
+      <SheetContentBody {...props} />
+    </DialogPrimitive.Portal>
+  )
+}
+
+// Apart from the content, because the focus to give back is read while this renders: it must render once
+// per opening, and `SheetContent` renders also while the dialog is closed (the palette stays mounted)
+function SheetContentBody({
   className,
   onOpenAutoFocus,
   onCloseAutoFocus,
@@ -28,18 +39,15 @@ export function SheetContent({
 }: ComponentProps<typeof DialogPrimitive.Content>): ReactElement {
   const focus = useFocusReturn({ onOpenAutoFocus, onCloseAutoFocus })
   return (
-    <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50" />
-      <DialogPrimitive.Content
-        className={cn(
-          'bg-background data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:animate-in data-[state=open]:slide-in-from-right fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l shadow-lg md:w-[65vw] md:max-w-5xl',
-          className
-        )}
-        {...props}
-        onOpenAutoFocus={focus.onOpenAutoFocus}
-        onCloseAutoFocus={focus.onCloseAutoFocus}
-      />
-    </DialogPrimitive.Portal>
+    <DialogPrimitive.Content
+      className={cn(
+        'bg-background data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:animate-in data-[state=open]:slide-in-from-right fixed inset-y-0 right-0 z-50 flex w-full flex-col border-l shadow-lg md:w-[65vw] md:max-w-5xl',
+        className
+      )}
+      {...props}
+      onOpenAutoFocus={focus.onOpenAutoFocus}
+      onCloseAutoFocus={focus.onCloseAutoFocus}
+    />
   )
 }
 

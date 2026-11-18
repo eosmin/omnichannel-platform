@@ -17,7 +17,18 @@ export function Dialog({
 export const DialogTrigger = DialogPrimitive.Trigger
 export const DialogClose = DialogPrimitive.Close
 
-export function DialogContent({
+export function DialogContent(props: ComponentProps<typeof DialogPrimitive.Content>): ReactElement {
+  return (
+    <DialogPrimitive.Portal>
+      <DialogPrimitive.Overlay className="data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50" />
+      <DialogContentBody {...props} />
+    </DialogPrimitive.Portal>
+  )
+}
+
+// Apart from the content, because the focus to give back is read while this renders: it must render once
+// per opening, and `DialogContent` renders also while the dialog is closed (the palette stays mounted)
+function DialogContentBody({
   className,
   onOpenAutoFocus,
   onCloseAutoFocus,
@@ -25,18 +36,15 @@ export function DialogContent({
 }: ComponentProps<typeof DialogPrimitive.Content>): ReactElement {
   const focus = useFocusReturn({ onOpenAutoFocus, onCloseAutoFocus })
   return (
-    <DialogPrimitive.Portal>
-      <DialogPrimitive.Overlay className="data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50" />
-      <DialogPrimitive.Content
-        className={cn(
-          'bg-background data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 fixed top-1/2 left-1/2 z-50 grid max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 grid-cols-1 gap-4 overflow-y-auto rounded-lg border p-6 wrap-anywhere shadow-lg *:min-w-0 sm:max-w-lg [&_table]:wrap-normal',
-          className
-        )}
-        {...props}
-        onOpenAutoFocus={focus.onOpenAutoFocus}
-        onCloseAutoFocus={focus.onCloseAutoFocus}
-      />
-    </DialogPrimitive.Portal>
+    <DialogPrimitive.Content
+      className={cn(
+        'bg-background data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 fixed top-1/2 left-1/2 z-50 grid max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 grid-cols-1 gap-4 overflow-y-auto rounded-lg border p-6 wrap-anywhere shadow-lg *:min-w-0 sm:max-w-lg [&_table]:wrap-normal',
+        className
+      )}
+      {...props}
+      onOpenAutoFocus={focus.onOpenAutoFocus}
+      onCloseAutoFocus={focus.onCloseAutoFocus}
+    />
   )
 }
 
