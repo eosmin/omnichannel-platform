@@ -28,12 +28,16 @@ CREATE FUNCTION public.rls_search_products(
   variant_sku text,
   variant_price_cents public.product_variants.price_cents%TYPE
 )
-  LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp SET plan_cache_mode = force_custom_plan
+  LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp SET plan_cache_mode = force_custom_plan SET standard_conforming_strings = on
   AS $$
   #variable_conflict use_column
   BEGIN
     IF cardinality(public.app_store_ids()) = 0 THEN
       RAISE EXCEPTION 'SEARCH_CONTEXT_REQUIRED' USING ERRCODE = '42501';
+    END IF;
+    -- The size of the answer is bounded here, not only by the caller: NULL would be LIMIT NULL, which is no limit
+    IF p_limit IS NULL OR p_limit < 1 OR p_limit > 100 THEN
+      RAISE EXCEPTION 'SEARCH_LIMIT_INVALID' USING ERRCODE = '22023';
     END IF;
     RETURN QUERY
     SELECT
@@ -108,12 +112,15 @@ CREATE FUNCTION public.rls_search_product_matches(
   kind text,
   id text
 )
-  LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp SET plan_cache_mode = force_custom_plan
+  LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp SET plan_cache_mode = force_custom_plan SET standard_conforming_strings = on
   AS $$
   #variable_conflict use_column
   BEGIN
     IF cardinality(public.app_store_ids()) = 0 THEN
       RAISE EXCEPTION 'SEARCH_CONTEXT_REQUIRED' USING ERRCODE = '42501';
+    END IF;
+    IF p_limit IS NULL OR p_limit < 1 OR p_limit > 10001 THEN
+      RAISE EXCEPTION 'SEARCH_LIMIT_INVALID' USING ERRCODE = '22023';
     END IF;
     RETURN QUERY
     (

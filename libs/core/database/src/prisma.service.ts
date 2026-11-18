@@ -190,7 +190,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   // For a read that needs the context of ONE store (the search functions of the database read the store from it): the context of the
   // request when the interceptor opened it, which must then be the context of THIS store alone (the functions answer for every store
   // of the context), or its own, for the store the TenantGuard put in the request, when the interceptor is off.
-  inStoreContext<T>(storeId: string, work: () => Promise<T>, userId?: string): Promise<T> {
+  async inStoreContext<T>(storeId: string, work: () => Promise<T>, userId?: string): Promise<T> {
     const current = this.currentTenantContext()
     if (current !== undefined) {
       if (current.storeIds.length !== 1 || current.storeIds[0] !== storeId) {
