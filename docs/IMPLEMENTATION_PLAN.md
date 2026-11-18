@@ -1777,6 +1777,18 @@ append-only and its rows are never deleted); the integration suite proves every 
 refused one until this step) and checks it is the organization's. The column `finance_settings.next_purchase_number` is granted to the application roles by this
 migration, as the ledger migration asks of every new column.
 
+**PR fix/supplier-document-normalized (HC-124, first part)**
+- [x] The duplicate check of the invoice of a supplier on another order compares `documentNumberKey` (letters and digits, in capitals, NFC), not the
+      text as typed: `fac-001`, `FAC 001` and `Fac001` are one invoice (`purchase-receiving.service.ts`; unit spec and `tests/api/purchases.spec.ts`).
+      A number with no letter or digit is compared as typed. Decisions: numbers that differ only in where the
+      separators are (`12-3`, `1-23`) share a key and the second is refused (no override in the receive path): **[ACCOUNTANT]** to confirm
+      (P-13); rejected: keeping the separators (the hole HC-124 reports). The check runs under the existing supplier lock, so two receipts
+      cannot both pass; receipts are never voided, so a number is never released. A fuller key is NFKC, capitals, letters and digits. Compared in code over the distinct numbers of the supplier, not in SQL, so the
+      rule is the same on every database locale; no migration. The replay of the same receipt keeps its exact comparison.
+- [ ] **Debt (HC-124, other parts):** a rate switched off after the order was placed blocks the receipt with no way out (own PR, next); a supplier
+      payment dated before the invoice is accepted (`supplier-payments.service.ts`) and the bank reconciliation does not compare the supplier
+      document number (`finance-reconciliation.service.ts`): both wait for the accountant's answers P-13/P-17 and the owner; closes in Step 4B.9b-5d.
+
 ### Step 4B.6 — The automatic entries (api and worker)
 The step is cut in two PRs by what each needs (rule 12; one session, one PR; the cut is mine): **4B.6a** is the machinery and the entries that
 need nothing from the carriers' side; **4B.6b** is everything that waits on the remittance, the return and the carrier's charge model.
@@ -1986,6 +1998,7 @@ difference means; 4B.6b-4 or 4B.8. (as) The metric `FINANCE_POSTING_FAILURES` co
 counters do. (at) Specs still to write: the sweep's cap with several kinds of source, and E6's dating in a closed period (debt (aa) of 4B.6b-1). (au) **4B.6b-4:** the charge
 model of a connection and the prepaid purchase and consumption of guides: an account role for the advance of guides that the accountant chooses, off by default and marked
 [ACCOUNTANT]; with debts (ac), (ae), (aj) of 4B.6b-2.
+- [x] **Fix `fix/fiscal-list-receiver-mask` (QA 2026-11-16, HC-206 / FIS-092; rule 12).** The document list and detail showed the full name of the receiver and masked only the tax id; with `fiscal:view` alone a person read the name of every customer. `maskPersonName` (`fiscal-rules.ts`) now shows the first letter of each word (`Maria Receptora` -> `M**** R********`); `complete` is still read from the real name. Proved by `fiscal-rules.spec.ts` and the list and detail case of `tests/api/fiscal-documents.spec.ts`. Decisions: the name is masked in both the list and the detail (the finding named the list; the detail leaked the same), as D-39 of the questions says ("mask the name"); the full fiscal name stays visible only in the customer's fiscal data, behind `fiscal:view_customer_data`. Debt (Step 7.7): the evidence file in the bucket still holds the receiver in the clear until the bucket is encrypted (the other half of D-39) [OWNER].
 - [x] **Fix PR `refund-entry` (QA 2026-11-16, HC-105 point 1, AUT-R2-013; no step number: a defect found by reading and by running).** A return completed with `refundAmountCents`
   moved the order's payment to `REFUNDED` and left the books with the customer's advance still owed, and the money already out of the bank. New entry **E14** (`return_refund`, key `return:<id>:refund`, queued by
   `Events.RETURN_REFUND_RECORDED`, published in the commit of the completion): Dr `CUSTOMER_ADVANCES` · Cr the account the order's payment method receives into, for exactly the amount the person
