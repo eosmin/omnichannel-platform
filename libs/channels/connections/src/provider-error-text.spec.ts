@@ -17,6 +17,34 @@ const VERIFY_VALUE = ['mySecret', 'Verify123'].join('')
 const INSTAGRAM_TOKEN = ['IG', 'QVJYabcdefghijklmnopqrstuvwxyz0123456789'].join('')
 
 describe('providerErrorText', () => {
+  it('does not keep the tags of a markup a plugin put in the reason (N-39-04)', () => {
+    expect(providerErrorText('<b>token expired</b><br>log in <script>x</script>', 100)).toBe(
+      'token expired log in x'
+    )
+    expect(providerErrorText('a < b and c > d', 100)).toBe('a < b and c > d')
+  })
+
+  it('does not let a tag that another one split come out whole', () => {
+    for (const text of [
+      '<scr<b>ipt>alert(1)</scr</b>ipt>',
+      '<scr<!--x-->ipt>y',
+      '<<<<<<<<<<a<b>>>>>>>>>>>>'
+    ]) {
+      expect(providerErrorText(text, 100)).not.toMatch(/<[A-Za-z/!]/)
+    }
+  })
+
+  it('removes a tag with a credential in it, and keeps a lone angle bracket', () => {
+    expect(providerErrorText('<a href="x?access_token=abc123">link</a> failed', 100)).toBe(
+      'link failed'
+    )
+    expect(providerErrorText('unterminated <script', 100)).toBe('unterminated <script')
+  })
+
+  it('is empty for a text that is only tags', () => {
+    expect(providerErrorText('<b></b>', 100)).toBe('')
+  })
+
   it('replaces a bearer credential', () => {
     expect(providerErrorText('401 with Bearer abc.DEF-123_xyz rejected', 100)).toBe(
       `401 with Bearer ${R} rejected`

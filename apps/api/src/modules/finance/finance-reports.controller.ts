@@ -200,6 +200,21 @@ export class FinanceReportsController {
     return this.chain.status(organization.id)
   }
 
+  // Asks the worker to check the chain again and close the open incident if it passes (N-B8-1). 202: the closing is the worker's, read it
+  // back from `chain-status`. The right is the one the incident takes away: closing periods.
+  @RequirePermissions(Permissions.FINANCE_CLOSE_PERIODS)
+  @NoStore()
+  @Post(ApiRoutes.finance.reports.resolveChain)
+  @HttpCode(HttpStatusCodes.ACCEPTED)
+  resolveChain(
+    @CurrentOrganization() organization: Organization,
+    @CurrentStore() store: Store,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: AuthenticatedRequest
+  ): Promise<{ queued: true }> {
+    return this.chain.requestResolution(organization.id, actorOf(user, store, req))
+  }
+
   // The check of the hash chain, on demand for the auditor (TDD_18 §11): the verdict, the head, and whether every frozen head is still there
   @RequirePermissions(Permissions.FINANCE_EXPORT)
   @NoStore()

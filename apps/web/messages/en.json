@@ -629,6 +629,7 @@
     "FINANCE_CURRENCY_UNSUPPORTED": "Only USD is supported",
     "FINANCE_SETUP_REQUIRED": "Finance has not been set up for this organization yet",
     "FINANCE_TAX_RATE_NOT_CONFIGURED": "A product of this order is taxed and no tax rate is set for it: choose a default tax rate in Finance first",
+    "FINANCE_PRICE_MODE_CHANGE_UNCONFIRMED": "Changing whether the prices include the tax moves the total of the whole catalog: confirm the change of price mode",
     "PURCHASE_ORDER_INVALID_STATUS_TRANSITION": "The purchase order cannot move to that status from where it is",
     "PURCHASE_RECEIPT_EXCEEDS_ORDER": "A receipt cannot take in more units than are still open on the order",
     "SUPPLIER_HAS_HISTORY": "This supplier already has bills or payments, so its payable account cannot change",
@@ -4775,7 +4776,7 @@
           "nameRequired": "Write a name.",
           "nameTooLong": "The name is too long (80 characters at most).",
           "noScopes": "Choose at least one permission.",
-          "expiryPast": "The last day must be after today.",
+          "expiryPast": "The last day cannot be before today.",
           "expiryInvalid": "That is not a valid day."
         }
       }
@@ -6138,7 +6139,11 @@
         "title": "Taxes of this store",
         "pricesIncludeTax": "The prices of this store already include the tax",
         "pricesIncludeTaxHint": "It only changes how the tax is separated from the price of what is sold from now on.",
-        "saved": "Preference saved."
+        "saved": "Preference saved.",
+        "confirmTitle": "Change the price mode?",
+        "confirmDescription": "The same catalog will total another amount: with prices that exclude the tax it is added on top; with prices that include it, it is separated from them. It only affects what is sold from now on; existing orders keep their mode. Check the catalog prices before you confirm.",
+        "confirmAction": "Change mode",
+        "confirmCancel": "Cancel"
       }
     },
     "journal": {

@@ -16,7 +16,7 @@ import {
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { InventoryService } from '@platform/core/inventory'
-import { PluginScopes } from '@platform/plugins/sdk'
+import { type PluginScope, PluginScopes } from '@platform/plugins/sdk'
 
 import { createPluginKey, createProduct, createWarehouse, linkWarehouse } from '../builders'
 import { createTestApp } from '../helpers/app'
@@ -45,6 +45,7 @@ interface CountBody {
 
 const OK = 200
 const CREATED = 201
+const FORBIDDEN = 403
 const NOT_FOUND = 404
 const CONFLICT = 409
 
@@ -94,10 +95,10 @@ describe('Transfers and counts written with the key of a plugin', () => {
     await owner.$disconnect()
   })
 
-  const call = (method: 'get' | 'post' | 'patch', path: string) =>
+  const call = (method: 'get' | 'post' | 'patch', path: string, withKey = key) =>
     supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
       [method](`${API_PREFIX}${path}`)
-      .set('authorization', `Bearer ${key}`)
+      .set('authorization', `Bearer ${withKey}`)
   const codeOf = (response: { body: unknown }) => (response.body as ErrorBody).error.code
 
   async function stocked(quantity: number, warehouseId = ctx.warehouseA.id) {
@@ -378,6 +379,106 @@ describe('Transfers and counts written with the key of a plugin', () => {
       expect(codeOf(applied)).toBe(ErrorCodes.INSUFFICIENT_INVENTORY)
       expect((await owner.stockCount.findUniqueOrThrow({ where: { id } })).status).toBe(
         CountStatus.REVIEW
+      )
+    })
+  })
+
+  // `transfers:read` and `counts:read` stand for the permissions of writing too (who reads a transfer is who may send or receive
+  // it), and a write route names its own scope and the read one: the permissions of a request are those of the scopes of the ROUTE,
+  // so a key that reads, or that writes one step, is not lent the permission of another step. Every write route is tried with
+  // every key that lacks one of its scopes: it must be refused for the scope, and nothing may change.
+  describe('a scope does not lend the permission of another', () => {
+    const S = PluginScopes
+    const keyScopes: Record<string, PluginScope[]> = {
+      't-read': [S.TRANSFERS_READ],
+      't-write': [S.TRANSFERS_READ, S.TRANSFERS_WRITE],
+      't-receive': [S.TRANSFERS_READ, S.TRANSFERS_RECEIVE],
+      't-write-only': [S.TRANSFERS_WRITE],
+      'c-read': [S.COUNTS_READ],
+      'c-write': [S.COUNTS_READ, S.COUNTS_WRITE],
+      'c-apply': [S.COUNTS_READ, S.COUNTS_APPLY],
+      'c-write-only': [S.COUNTS_WRITE]
+    }
+    const keys: Record<string, string> = {}
+    beforeAll(async () => {
+      for (const [name, scopes] of Object.entries(keyScopes)) {
+        keys[name] = (
+          await createPluginKey(owner, {
+            storeId: ctx.storeA.id,
+            pluginId: `${pluginId}-${name}`,
+            scopes
+          })
+        ).key
+      }
+    })
+
+    it('refuses every write route to a key that lacks a scope of the route, for the scope, and changes nothing', async () => {
+      const transfer = await draft(await stocked(10), 3)
+      const created = await call('post', PluginApiRoutes.counts.create).send({
+        warehouseId: ctx.warehouseA.id
+      })
+      expect(created.status).toBe(CREATED)
+      const count = created.body as CountBody
+      const T = PluginApiRoutes.transfers
+      const C = PluginApiRoutes.counts
+      const routes: { method: 'post' | 'patch'; path: string; needs: PluginScope[] }[] = [
+        { method: 'post', path: T.create, needs: [S.TRANSFERS_WRITE, S.TRANSFERS_READ] },
+        {
+          method: 'patch',
+          path: T.byId(transfer.id),
+          needs: [S.TRANSFERS_WRITE, S.TRANSFERS_READ]
+        },
+        {
+          method: 'post',
+          path: T.dispatch(transfer.id),
+          needs: [S.TRANSFERS_WRITE, S.TRANSFERS_READ]
+        },
+        {
+          method: 'post',
+          path: T.cancel(transfer.id),
+          needs: [S.TRANSFERS_WRITE, S.TRANSFERS_READ]
+        },
+        {
+          method: 'post',
+          path: T.receive(transfer.id),
+          needs: [S.TRANSFERS_RECEIVE, S.TRANSFERS_READ]
+        },
+        {
+          method: 'post',
+          path: T.close(transfer.id),
+          needs: [S.TRANSFERS_RECEIVE, S.TRANSFERS_READ]
+        },
+        { method: 'post', path: C.create, needs: [S.COUNTS_WRITE, S.COUNTS_READ] },
+        { method: 'post', path: C.start(count.id), needs: [S.COUNTS_WRITE, S.COUNTS_READ] },
+        { method: 'patch', path: C.lines(count.id), needs: [S.COUNTS_WRITE, S.COUNTS_READ] },
+        { method: 'post', path: C.submit(count.id), needs: [S.COUNTS_WRITE, S.COUNTS_READ] },
+        { method: 'post', path: C.reopen(count.id), needs: [S.COUNTS_WRITE, S.COUNTS_READ] },
+        { method: 'post', path: C.cancel(count.id), needs: [S.COUNTS_WRITE, S.COUNTS_READ] },
+        { method: 'post', path: C.apply(count.id), needs: [S.COUNTS_APPLY, S.COUNTS_READ] }
+      ]
+      const wrong: string[] = []
+      let tried = 0
+      for (const [name, scopes] of Object.entries(keyScopes)) {
+        for (const route of routes) {
+          // A key that holds every scope of the route would write: those are the cases of the tests above
+          if (route.needs.every(scope => scopes.includes(scope))) continue
+          tried += 1
+          const response = await call(route.method, route.path, keys[name]).send({})
+          if (
+            response.status !== FORBIDDEN ||
+            codeOf(response) !== ErrorCodes.PLUGIN_SCOPE_DENIED
+          ) {
+            wrong.push(`${name} ${route.method} ${route.path}: ${response.status}`)
+          }
+        }
+      }
+      expect(tried).toBeGreaterThan(50)
+      expect(wrong).toEqual([])
+      expect(
+        (await owner.stockTransfer.findUniqueOrThrow({ where: { id: transfer.id } })).status
+      ).toBe(TransferStatus.DRAFT)
+      expect((await owner.stockCount.findUniqueOrThrow({ where: { id: count.id } })).status).toBe(
+        CountStatus.DRAFT
       )
     })
   })

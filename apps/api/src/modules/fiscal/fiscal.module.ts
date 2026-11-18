@@ -9,6 +9,7 @@ import { TenancyModule } from '../tenancy'
 import { CustomerFiscalDataController } from './customer-fiscal-data.controller'
 import { FiscalContingencyController } from './fiscal-contingency.controller'
 import { FiscalEvidenceUrlsService } from './fiscal-evidence-urls.service'
+import { FiscalReachService } from './fiscal-reach.service'
 import { FiscalSubmissionQueue } from './fiscal-submission.queue'
 import { FiscalController } from './fiscal.controller'
 import { FiscalListener } from './fiscal.listener'
@@ -18,6 +19,6 @@ import { FiscalListener } from './fiscal.listener'
 @Module({
   imports: [FiscalRuntimeModule, MediaModule, QueuesPlatformModule, TenancyModule],
   controllers: [FiscalController, FiscalContingencyController, CustomerFiscalDataController],
-  providers: [FiscalEvidenceUrlsService, FiscalSubmissionQueue, FiscalListener]
+  providers: [FiscalEvidenceUrlsService, FiscalReachService, FiscalSubmissionQueue, FiscalListener]
 })
 export class FiscalModule {}

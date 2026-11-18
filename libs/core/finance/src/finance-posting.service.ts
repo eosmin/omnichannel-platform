@@ -62,6 +62,7 @@ import { automaticEntryDate, dateToDay } from './period-rules'
 import {
   lineBases,
   openReceivableCents,
+  refundLines,
   restockCost,
   returnLines,
   type ReturnReversal,
@@ -105,7 +106,10 @@ type Candidate =
 type PostingSettings = { accountingStartDate: Date; recognizeSaleOn: string }
 
 const NOTHING: Candidate = { kind: 'nothing' }
-const failed = (reason: FinancePostingFailureReason): Candidate => ({ kind: 'failed', reason })
+const failed = (reason: FinancePostingFailureReason): Extract<Candidate, { kind: 'failed' }> => ({
+  kind: 'failed',
+  reason
+})
 
 // The key of the entry an event posts (the same the loaders use)
 const keyOf = (input: PostSourceInput): string => {
@@ -128,6 +132,8 @@ const keyOf = (input: PostSourceInput): string => {
       return FinancePostingKey.RETURN_RESTOCK(input.sourceId)
     case FinanceEventKind.ORDER_RETURN:
       return FinancePostingKey.ORDER_RETURN(input.sourceId)
+    case FinanceEventKind.RETURN_REFUND:
+      return FinancePostingKey.RETURN_REFUND(input.sourceId)
     case FinanceEventKind.ADJUST:
       return FinancePostingKey.MOVEMENT_ADJUST(input.sourceId)
   }
@@ -454,6 +460,8 @@ export class FinancePostingService {
         return this.loadReturn(tx, input, settings)
       case FinanceEventKind.ORDER_RETURN:
         return this.loadOrderReturn(tx, input, settings)
+      case FinanceEventKind.RETURN_REFUND:
+        return this.loadReturnRefund(tx, input)
       default:
         return NOTHING
     }
@@ -533,24 +541,8 @@ export class FinancePostingService {
     ) {
       return NOTHING
     }
-    const methods = await tx.paymentMethodAccount.findMany({
-      where: {
-        organizationId: input.organizationId,
-        paymentMethod: order.paymentMethod,
-        OR: [{ storeId: order.storeId }, { storeId: null }]
-      },
-      select: { storeId: true, accountId: true }
-    })
-    // A store's own account wins over the organization's default
-    const chosen = methods.find(m => m.storeId !== null) ?? methods[0]
-    if (chosen === undefined) return failed(FinancePostingFailureReason.PAYMENT_ACCOUNT_MISSING)
-    const account = await tx.ledgerAccount.findFirst({
-      where: { id: chosen.accountId, organizationId: input.organizationId },
-      select: { active: true, isPostable: true }
-    })
-    if (account === null || !account.active || !account.isPostable) {
-      return failed(FinancePostingFailureReason.ACCOUNT_INACTIVE)
-    }
+    const paying = await this.paymentAccountOf(tx, input.organizationId, order)
+    if (paying.kind === 'failed') return paying
     const accounts = await this.accountsOf(tx, input.organizationId)
     const when = input.occurredAt === undefined ? new Date() : new Date(input.occurredAt)
     return {
@@ -562,8 +554,92 @@ export class FinancePostingService {
       memo: FinanceAutoMemo.PAYMENT,
       result: orderPaymentLines({
         accounts,
-        paymentAccountId: chosen.accountId,
+        paymentAccountId: paying.accountId,
         totalCents: order.totalCents,
+        storeId: order.storeId
+      })
+    }
+  }
+
+  // The account a payment method receives into (PaymentMethodAccount; a store's own wins over the organization's), checked to be usable. Cash on
+  // delivery is not a destination: the money came with a remittance into the account the owner chose, so a refund of such an order is paid
+  // from the default bank account [ACCOUNTANT].
+  private async paymentAccountOf(
+    tx: PrismaTransaction,
+    organizationId: string,
+    order: { storeId: string; paymentMethod: string }
+  ): Promise<
+    { kind: 'account'; accountId: string } | { kind: 'failed'; reason: FinancePostingFailureReason }
+  > {
+    if (order.paymentMethod === (PaymentMethod.CASH_ON_DELIVERY as string)) {
+      const bank = (await this.accountsOf(tx, organizationId))(AccountRole.BANK_DEFAULT)
+      return bank === null
+        ? failed(FinancePostingFailureReason.PAYMENT_ACCOUNT_MISSING)
+        : { kind: 'account', accountId: bank }
+    }
+    const methods = await tx.paymentMethodAccount.findMany({
+      where: {
+        organizationId,
+        paymentMethod: order.paymentMethod,
+        OR: [{ storeId: order.storeId }, { storeId: null }]
+      },
+      select: { storeId: true, accountId: true }
+    })
+    const chosen = methods.find(m => m.storeId !== null) ?? methods[0]
+    if (chosen === undefined)
+      return { kind: 'failed', reason: FinancePostingFailureReason.PAYMENT_ACCOUNT_MISSING }
+    const account = await tx.ledgerAccount.findFirst({
+      where: { id: chosen.accountId, organizationId },
+      select: { active: true, isPostable: true }
+    })
+    if (account === null || !account.active || !account.isPostable) {
+      return failed(FinancePostingFailureReason.ACCOUNT_INACTIVE)
+    }
+    return { kind: 'account', accountId: chosen.accountId }
+  }
+
+  // E14: the refund a person paid out when completing a return (the amount they recorded, never one computed here). The money leaves the
+  // account the order's payment came into and the customer's advance is settled by it. It does not wait for E8: the advance it settles
+  // is E1's (a parcel that never became a sale) or E8's, and the account balances whichever posts first.
+  private async loadReturnRefund(
+    tx: PrismaTransaction,
+    input: PostSourceInput
+  ): Promise<Candidate> {
+    const found = await tx.orderReturn.findFirst({
+      where: { id: input.sourceId, store: { organizationId: input.organizationId } },
+      select: {
+        id: true,
+        storeId: true,
+        orderId: true,
+        status: true,
+        refundAmountCents: true,
+        store: { select: { timezone: true } }
+      }
+    })
+    if (
+      found === null ||
+      found.status !== (OrderReturnStatus.COMPLETED as string) ||
+      found.refundAmountCents === null ||
+      found.refundAmountCents <= 0
+    ) {
+      return NOTHING
+    }
+    const order = await this.orderOf(tx, input.organizationId, found.orderId)
+    if (order === null) return NOTHING
+    const paying = await this.paymentAccountOf(tx, input.organizationId, order)
+    if (paying.kind === 'failed') return paying
+    const accounts = await this.accountsOf(tx, input.organizationId)
+    return {
+      kind: 'entry',
+      sourceDay: this.dayOfJob(input, found.store.timezone),
+      type: JournalEntryType.SALE_RETURN,
+      sourceType: FinanceSourceType.RETURN,
+      key: FinancePostingKey.RETURN_REFUND(found.id),
+      memo: FinanceAutoMemo.RETURN_REFUND,
+      result: refundLines({
+        accounts,
+        paymentAccountId: paying.accountId,
+        refundCents: found.refundAmountCents,
         storeId: order.storeId
       })
     }
