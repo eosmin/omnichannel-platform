@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Req } from '@nestjs/common'
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req
+} from '@nestjs/common'
 
 import { PluginApiRoutes } from '@platform/core/api'
 import { Permissions } from '@platform/core/auth'
@@ -17,6 +28,7 @@ import {
   type CreateTagBody,
   createTagSchema,
   idSchema,
+  noQuerySchema,
   type UpdateTagBody,
   updateTagSchema
 } from './settings.schemas'
@@ -61,7 +73,10 @@ export class PluginSettingsController {
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
   @NoStore()
   @Get(PluginApiRoutes.settings.tags)
-  listTags(@CurrentStore() store: { id: string }): Promise<TagView[]> {
+  listTags(
+    @CurrentStore() store: { id: string },
+    @Query(new ZodValidationPipe(noQuerySchema)) _query: Record<string, never>
+  ): Promise<TagView[]> {
     return this.tags.list(store.id)
   }
 
@@ -82,7 +97,10 @@ export class PluginSettingsController {
   @RequirePermissions(Permissions.CONVERSATIONS_VIEW)
   @NoStore()
   @Get(PluginApiRoutes.settings.snippets)
-  listSnippets(@CurrentStore() store: { id: string }): Promise<SnippetView[]> {
+  listSnippets(
+    @CurrentStore() store: { id: string },
+    @Query(new ZodValidationPipe(noQuerySchema)) _query: Record<string, never>
+  ): Promise<SnippetView[]> {
     return this.snippets.list(store.id)
   }
 

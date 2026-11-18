@@ -2854,6 +2854,10 @@ Split in two PRs (coordinator, 2026-11-15; one PR would pass 40 files and mixes 
 call it makes through the port is scope-checked server-side. This step is independent of 5.6's
 API and can be moved after the MVP launch if the schedule requires it.
 
+- [x] **QA notes of the M1 fix session, search and plugin lists (2026-11-18, rule 12):**
+  - **SRCH-096, the maximum of `limit` of `GET /products/search` (20) and of `GET /search/products` (100): kept on purpose, no code change.** They are two different things with two constants of `libs/core`: the product autocomplete (`ProductSearchConfig.MAX_LIMIT` = 20, a dropdown) and the global search (`SearchConfig.MAX_LIMIT` = 100, `TDD_08 §5`). `GET /search/products` does validate the limit (`searchQuerySchema` is strict and bounds it to 1..100). The matrix was wrong when it asked for one maximum.
+  - **OPS-RD-026, `?foo=1` on `GET /plugin-api/settings/tags` and `/snippets` (fixed):** the other 15 lists of the plugin API answer 400; these two ignored the parameter. They now take `noQuerySchema` (a strict empty object), and so do the screen's own routes `GET /settings/tags` and `/settings/snippets` (the web sends no query on them).
+
 ---
 
 ## Milestone 6 — Monetization — DEFERRED (Phase 2)
