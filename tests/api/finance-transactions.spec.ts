@@ -262,7 +262,9 @@ describe('The expenses, incomes and transfers registered by hand (Step 4B.4)', (
         ['no source', expense({ fromAccountId: undefined })],
         ['a destination', expense({ toAccountId: accounts[BANK] })],
         ['a creditable tax with no rate', expense({ taxCreditable: true })],
-        ['a date in the future', expense({ occurredOn: isoDay(10) })]
+        ['a date in the future', expense({ occurredOn: isoDay(10) })],
+        // One day of slack is allowed (the person's clock); the second day ahead is not
+        ['two days ahead, past the slack', expense({ occurredOn: isoDay(2) })]
       ]
       for (const [, body] of cases) {
         const response = await record(body)

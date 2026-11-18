@@ -12,7 +12,7 @@ import {
 } from '@platform/core/domain'
 import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
-import { MetricNames } from '@platform/core/metrics'
+import { MetricNames, WebhookMetricTarget } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 import type { TriggerPluginWebhookJob } from '@platform/core/queues'
 import { manifestMaxWebhooksPerDay, manifestWebhookOf } from '@platform/plugins/runtime'
@@ -214,7 +214,7 @@ export class PluginWebhookDeliverer {
     durationMs: number,
     attempt: number
   ): Promise<void> {
-    this.deliveries.inc({ success: 'true' })
+    this.deliveries.inc({ target: WebhookMetricTarget.PLUGIN, success: 'true' })
     await this.guarded(installationId, async () => {
       await this.prisma.client.webhookDelivery.create({
         data: {
@@ -242,7 +242,7 @@ export class PluginWebhookDeliverer {
   ): Promise<boolean> {
     const { pluginInstallationId: installationId, storeId, event } = job
     const { failure, durationMs, attempt, over, final } = result
-    this.deliveries.inc({ success: 'false' })
+    this.deliveries.inc({ target: WebhookMetricTarget.PLUGIN, success: 'false' })
     let disabled = false
     await this.guarded(installationId, async () => {
       disabled = await this.prisma.transaction(async tx => {

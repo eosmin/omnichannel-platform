@@ -345,6 +345,13 @@ export interface EntryPage {
   hasMore: boolean
 }
 
+// A page of the journal report: whole entries, each with its lines
+export interface JournalPage {
+  data: EntryDetailView[]
+  nextCursor: string | null
+  hasMore: boolean
+}
+
 export interface BalanceRow {
   accountId: string
   normalSide: string

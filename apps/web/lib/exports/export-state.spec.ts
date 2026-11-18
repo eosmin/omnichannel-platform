@@ -3,7 +3,8 @@ import {
   exportTypeKey,
   isExportReady,
   mayOpenExports,
-  UNKNOWN_EXPORT_LABEL
+  UNKNOWN_EXPORT_LABEL,
+  visibleExportTypes
 } from './export-state'
 
 describe('export state', () => {
@@ -28,5 +29,17 @@ describe('export state', () => {
     expect(mayOpenExports(permission => permission === 'orders:export')).toBe(true)
     expect(mayOpenExports(permission => permission === 'analytics:export')).toBe(true)
     expect(mayOpenExports(() => false)).toBe(false)
+  })
+
+  it('offers in the filter only the kinds the member may see, every permission of the kind asked', () => {
+    expect(visibleExportTypes(() => false)).toEqual([])
+    // analytics:export alone is not enough: the kind also asks for analytics:view, as the api lists it
+    expect(visibleExportTypes(permission => permission === 'analytics:export')).toEqual([])
+    expect(
+      visibleExportTypes(permission => ['analytics:export', 'analytics:view'].includes(permission))
+    ).toEqual(['analytics'])
+    expect(visibleExportTypes(permission => permission === 'customers:export')).toEqual([
+      'customers'
+    ])
   })
 })

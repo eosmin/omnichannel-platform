@@ -17,6 +17,12 @@ export const SearchConfig = {
   MAX_LIMIT: 100,
   // A name with a typo still counts when its trigram similarity to the text is above this
   SIMILARITY_THRESHOLD: 0.3,
+  // A word with a typo finds a name that has more words (a first name misspelled, with the surname stored after it)
+  // when its trigram similarity to the best run of words of the name reaches this. It is the default of
+  // `pg_trgm.word_similarity_threshold`, which the `<%` operator reads (the integration spec checks it)
+  WORD_SIMILARITY_THRESHOLD: 0.6,
+  // Fewer letters than this match half the book by word similarity: those texts are only found by what they contain
+  WORD_SIMILARITY_MIN_LENGTH: 4,
   SNIPPET_MAX_WORDS: 20,
   SNIPPET_MIN_WORDS: 5,
   DEBOUNCE_MS: 250,

@@ -59,6 +59,7 @@ const connection = {
   minShippingFeeCents: null,
   maxShippingFeeCents: null,
   remittanceDeductsFee: false,
+  chargeModel: 'invoiced',
   commissionBps: null,
   serviceRatesCents: {},
   openShipments: 0,
