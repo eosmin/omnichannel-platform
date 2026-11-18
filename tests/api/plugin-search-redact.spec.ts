@@ -165,6 +165,19 @@ describe('Customer data in the search and customer routes of the plugin API', ()
       expect((response.body as Hits<OrderHit>).hits.map(hit => hit.id)).not.toContain(order.id)
     })
 
+    it('does not find the order by any form of the phone (full with the country code, a fragment, the last digits) with orders:read alone', async () => {
+      const order = await orderOf(ctx.storeA.id, `Elena ${unique()}`, '50370001234')
+
+      for (const q of ['50370001234', '+503 7000-1234', '7000', '0001234', '1234']) {
+        const response = await call('get', PluginApiRoutes.search.orders, 'ordersOnly')
+          .query({ q })
+          .expect(OK)
+
+        // Another order of the run may carry these digits in its number: only the order of that phone must stay out
+        expect((response.body as Hits<OrderHit>).hits.map(hit => hit.id)).not.toContain(order.id)
+      }
+    })
+
     it('searches by the name and the phone and names the customer when the key also holds customers:read', async () => {
       const word = unique()
       const order = await orderOf(ctx.storeA.id, `Diana ${word}`, '76543210')
