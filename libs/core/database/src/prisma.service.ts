@@ -269,7 +269,9 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     return this.open(
       async tx => {
         await applyTenantContext(tx, context)
-        return tenantScope.run({ tx, context }, fn)
+        // `fn` is awaited INSIDE the scope: a Prisma query is lazy, and one that is only started after run() returns (a callback that
+        // returns `client.model.findMany()` as it is) would run its hooks with no scope
+        return tenantScope.run({ tx, context }, async () => await fn())
       },
       { ...TENANT_TRANSACTION, ...options }
     )
