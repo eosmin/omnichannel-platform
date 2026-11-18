@@ -801,10 +801,16 @@ fiscal document with its entry; sweep unposted sources (§6.1). A mismatch raise
 "fixes" itself.
 
 `VERIFY_LEDGER_CHAIN` (weekly and on demand for the auditor): recompute every `hash` and check each `prevHash`.
-The canonical form is `sha256(prevHash | number | entryDate | type | sourceType | sourceId | each line: account,
-debit, credit, store, party)`; one break is a `FINANCE_CHAIN_BREAKS` incident. **Honest limit:** the chain proves
+The canonical form (`canonicalEntry`, `libs/core/finance/src/ledger-hash.ts`) is `sha256` of the hash version, `prevHash`, `number`,
+`entryDate`, `periodId`, `totalCents`, `currency`, `type`, `sourceType`, `sourceId`, `sourceDate`, `reversesEntryId`,
+`idempotencyKey`, `memo`, `origin`, `createdBy`, and then each line (`lineNo`, account, debit, credit, store, party type and id,
+tax rate, memo), every field escaped so two different entries never share a string and a missing value hashes differently from an
+empty one; one break is a `FINANCE_CHAIN_BREAKS` incident. **Honest limit:** the chain proves
 that an entry was not changed in place and that none was removed from the middle; it does not prove that the last
-entries were not truncated, which the closed periods' frozen head hash and the external CSV the auditor holds cover.
+entries were not truncated, which the frozen head hash of every period that was ever closed and the external CSV the auditor holds
+cover. The head of a month is kept when it is reopened (a reopen keeps the record of the close), so it keeps being watched: what
+is cut below it is found. What a month collects after it is reopened and before it is closed again is covered only by the
+external CSV until the next close freezes a new head.
 
 ---
 
