@@ -35,37 +35,11 @@ export const RLS_EXEMPTIONS: Readonly<Record<string, RlsExemption>> = {
   user_notification_settings: neverPolicy(OF_A_PERSON),
   push_subscriptions: neverPolicy(OF_A_PERSON),
 
-  // Phase 1: configuration, catalogs, audit, analytics
-  audit_logs: pending(
-    1,
-    'Insert with a null store_id or user_id stays allowed (MVP_TRIM_CHECKLIST pending item 16)'
-  ),
-  tags: pending(1, 'Catalog'),
-  snippets: pending(1, 'Catalog'),
-  business_hours: pending(1, 'Settings'),
-  routing_rules: pending(1, 'Settings'),
-  store_settings: pending(1, 'Settings'),
-  retention_settings: pending(1, 'Settings'),
-  notification_preferences: pending(1, 'Settings'),
+  // Phase 1 (configuration, catalogs, audit, analytics) has its policies: migration 20270121110000_rls_phase1. These two stay global.
   roles: neverPolicy(
     `${GUARD_READS}: the permissions of a member are resolved from it before the context is set`
   ),
   permissions: neverPolicy(`${GUARD_READS}, with its role`),
-  api_keys: pending(
-    1,
-    'Settings; the key lookup by hash runs with no context (SECURITY DEFINER function, as the spike showed)'
-  ),
-  webhooks: pending(1, 'Settings'),
-  webhook_deliveries: pending(1, BY_PARENT),
-  plugins: pending(1, 'Organization catalog'),
-  plugin_installations: pending(1, 'Settings; plugin requests carry a context of one store'),
-  scheduled_reports: pending(1, 'Analytics'),
-  analytics_events: pending(1, 'Analytics'),
-  metrics_daily: pending(1, 'Analytics'),
-  metrics_hourly: pending(1, 'Analytics'),
-  exports: pending(1, 'Files of a store'),
-  consent_records: pending(1, 'Compliance'),
-  data_subject_requests: pending(1, 'Compliance'),
 
   // Phase 2: conversations, customers, media
   conversations: pending(2, 'Inbox'),
@@ -107,6 +81,7 @@ export const RLS_EXEMPTIONS: Readonly<Record<string, RlsExemption>> = {
   purchase_receipts: pending(4, 'Purchases'),
   purchase_receipt_lines: pending(4, 'Purchases'),
   supplier_payments: pending(4, 'Purchases'),
+  supplier_payment_returns: pending(4, 'Purchases'),
   fiscal_periods: pending(4, 'Fiscal'),
   fiscal_issuers: pending(4, 'Fiscal'),
   fiscal_sequences: pending(4, 'Fiscal'),

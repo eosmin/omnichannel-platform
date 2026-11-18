@@ -138,20 +138,3 @@ CREATE FUNCTION rls_store_tables_with_rows(p_store_id text)
 -- Only the api deletes a store
 REVOKE ALL ON FUNCTION rls_store_tables_with_rows(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION rls_store_tables_with_rows(text) TO platform_app;
-
--- The webhook of a carrier names a connection and nothing else: no store, no session. This answers the ids that open the context
--- of that store (the store alone: the secret is read in a context of one store), and the status; never the credentials or the webhook secret (the service reads them once the context is open).
--- The id is a uuid, which nobody can list. It only reads.
-CREATE FUNCTION rls_resolve_carrier_connection(p_connection_id text)
-  RETURNS TABLE (id text, store_id text, carrier_id text, status text)
-  LANGUAGE sql STABLE SECURITY DEFINER
-  SET search_path = pg_catalog, public, pg_temp
-  AS $$
-    SELECT cc.id, cc.store_id, cc.carrier_id, cc.status
-    FROM public.carrier_connections cc
-    WHERE cc.id = p_connection_id
-  $$;
-
--- Only the api answers a webhook: the worker has no use for a lookup across tenants
-REVOKE ALL ON FUNCTION rls_resolve_carrier_connection(text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION rls_resolve_carrier_connection(text) TO platform_app;

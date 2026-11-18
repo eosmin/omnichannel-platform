@@ -440,7 +440,7 @@ describe('Analytics reports and export', () => {
       expect(queue.jobs).toEqual([
         {
           name: JobNames.GENERATE_SCHEDULED_REPORT,
-          data: { reportId: due.id, day: '2026-11-10' },
+          data: { reportId: due.id, day: '2026-11-10', storeId: ctx.storeA.id },
           opts: { jobId: `${JobNames.GENERATE_SCHEDULED_REPORT}-${due.id}-2026-11-10` }
         }
       ])
@@ -521,7 +521,11 @@ describe('Analytics reports and export', () => {
       expect(await scheduler(justClosed).dispatch(new Date('2026-11-16T00:05:00.000Z'))).toBe(0)
       const ready = freshQueue()
       expect(await scheduler(ready).dispatch(new Date('2026-11-16T01:00:00.000Z'))).toBe(1)
-      expect(ready.jobs[0]?.data).toEqual({ reportId: report.id, day: '2026-11-16' })
+      expect(ready.jobs[0]?.data).toEqual({
+        reportId: report.id,
+        day: '2026-11-16',
+        storeId: ctx.storeA.id
+      })
     })
 
     it('does not send at 00:05 UTC, before the rollup of 00:15, and sends from the hour after', async () => {
@@ -538,7 +542,11 @@ describe('Analytics reports and export', () => {
       const tuesday = freshQueue()
       expect(await scheduler(tuesday).dispatch(new Date('2026-11-10T08:00:00.000Z'))).toBe(1)
       // the week it covers is the one of Monday the 9th, not the one of Tuesday
-      expect(tuesday.jobs[0]?.data).toEqual({ reportId: report.id, day: '2026-11-09' })
+      expect(tuesday.jobs[0]?.data).toEqual({
+        reportId: report.id,
+        day: '2026-11-09',
+        storeId: ctx.storeA.id
+      })
       await owner.scheduledReport.update({
         where: { id: report.id },
         data: { lastSentAt: new Date('2026-11-10T08:05:00.000Z') }
@@ -555,7 +563,11 @@ describe('Analytics reports and export', () => {
       const report = await make({ frequency: ReportFrequency.MONTHLY })
       const queue = freshQueue()
       expect(await scheduler(queue).dispatch(new Date('2026-12-02T08:00:00.000Z'))).toBe(1)
-      expect(queue.jobs[0]?.data).toEqual({ reportId: report.id, day: '2026-12-01' })
+      expect(queue.jobs[0]?.data).toEqual({
+        reportId: report.id,
+        day: '2026-12-01',
+        storeId: ctx.storeA.id
+      })
     })
 
     it('does not make up a period that ended before the report existed', async () => {

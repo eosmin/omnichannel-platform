@@ -8,7 +8,7 @@ import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
 import { AuditColdExport, auditColdExportLockKey } from '@platform/core/compliance'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, assertSeesEveryRow } from '@platform/core/database'
 import { DAY_MS } from '@platform/core/domain'
 import { StorageKeys } from '@platform/core/storage'
 import { StorageService } from '@platform/core/storage-module'
@@ -50,6 +50,7 @@ export class AuditColdExporter {
 
   // `before`: the entries older than this instant may leave the database (the caller says now minus the hot window)
   async run(before: Date, now: Date = new Date()): Promise<AuditColdExportReport> {
+    await assertSeesEveryRow(this.prisma, ['audit_logs'])
     // The window is held here, where the delete is, and not only by the scheduler that queues the job: a job that
     // names a later instant (a hand-added or retried one) is held to the end of the hot window
     const hotEnd = new Date(now.getTime() - AuditColdExport.HOT_DAYS * DAY_MS)

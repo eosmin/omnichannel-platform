@@ -8,7 +8,6 @@ import { connectionUrls, ensureStore, type OwnerClient } from '@platform/core/da
 import { coveredTables } from '../../scripts/lib/rls'
 import { RLS_EXEMPTIONS } from '../../scripts/rls-exceptions'
 import {
-  createCarrierConnection,
   createInventoryLevel,
   createOrder,
   createProductVariant,
@@ -548,6 +547,28 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
       expect(rows[0]).toEqual({ app: true, worker: false, pub: false })
     })
 
+    it('is not fooled by a temporary table of the caller with the name of a real one (the search path of a definer function)', async () => {
+      const truth = await raw.query<{ n: number }>(
+        'SELECT count(*)::int AS n FROM orders WHERE store_id = $1',
+        [ctx.storeA.id]
+      )
+      const counted = await underRls({}, async db => {
+        // The caller is platform_app, who may create temporary tables: this one shadows the real one for any code that does not pin
+        // the schema
+        await db.query('CREATE TEMP TABLE orders (store_id text)')
+        await db.query('INSERT INTO pg_temp.orders SELECT $1 FROM generate_series(1, 1000)', [
+          ctx.storeA.id
+        ])
+        return (
+          await db.query<{ table_name: string; row_count: number }>(
+            'SELECT table_name, row_count FROM rls_store_tables_with_rows($1::text)',
+            [ctx.storeA.id]
+          )
+        ).rows
+      })
+      expect(counted.find(row => row.table_name === 'orders')?.row_count).toBe(truth.rows[0]?.n)
+    })
+
     it('refuses an empty store id and cannot be called by PUBLIC', async () => {
       await expect(
         underRls({}, db => db.query("SELECT * FROM rls_store_tables_with_rows('')"))
@@ -556,77 +577,6 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
         "SELECT proacl::text AS acl FROM pg_proc WHERE proname = 'rls_store_tables_with_rows'"
       )
       expect(rows[0]?.acl).not.toMatch(/(^|,)=X/)
-    })
-  })
-
-  describe('rls_resolve_carrier_connection (the webhook of a carrier)', () => {
-    it('answers the ids of a connection with no context and none of its credentials', async () => {
-      const connection = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
-      const { rows } = await underRls({}, db =>
-        db.query<Record<string, string>>('SELECT * FROM rls_resolve_carrier_connection($1::text)', [
-          connection.id
-        ])
-      )
-      expect(rows).toHaveLength(1)
-      expect(Object.keys(rows[0] ?? {}).sort()).toEqual([
-        'carrier_id',
-        'id',
-        'organization_id',
-        'status',
-        'store_id'
-      ])
-      expect(rows[0]).toMatchObject({ id: connection.id, store_id: ctx.storeA.id })
-    })
-
-    it('is not fooled by a temporary table of the caller with the name of a real one (the search path of a definer function)', async () => {
-      const connection = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
-      const truth = await raw.query<{ n: number }>(
-        'SELECT count(*)::int AS n FROM orders WHERE store_id = $1',
-        [ctx.storeA.id]
-      )
-      const seenByTheFunctions = await underRls({}, async db => {
-        // The caller is platform_app, who may create temporary tables: these shadow the real ones for any code that does not pin
-        // the schema
-        await db.query(
-          'CREATE TEMP TABLE carrier_connections (id text, store_id text, carrier_id text, status text)'
-        )
-        await db.query(
-          "INSERT INTO pg_temp.carrier_connections VALUES ('fake-id', 'fake-store', 'x', 'active')"
-        )
-        await db.query('CREATE TEMP TABLE orders (store_id text)')
-        await db.query('INSERT INTO pg_temp.orders SELECT $1 FROM generate_series(1, 1000)', [
-          ctx.storeA.id
-        ])
-        return {
-          fake: (await db.query("SELECT * FROM rls_resolve_carrier_connection('fake-id')")).rows,
-          real: (
-            await db.query<{ id: string }>(
-              'SELECT id FROM rls_resolve_carrier_connection($1::text)',
-              [connection.id]
-            )
-          ).rows,
-          counted: (
-            await db.query<{ table_name: string; row_count: number }>(
-              'SELECT table_name, row_count FROM rls_store_tables_with_rows($1::text)',
-              [ctx.storeA.id]
-            )
-          ).rows
-        }
-      })
-      expect(seenByTheFunctions.fake).toEqual([])
-      expect(seenByTheFunctions.real.map(row => row.id)).toEqual([connection.id])
-      expect(seenByTheFunctions.counted.find(row => row.table_name === 'orders')?.row_count).toBe(
-        truth.rows[0]?.n
-      )
-    })
-
-    it('answers nothing for an id that is not a connection, and the table itself stays closed without a context', async () => {
-      const { rows } = await underRls({}, db =>
-        db.query("SELECT * FROM rls_resolve_carrier_connection('not-a-connection')")
-      )
-      expect(rows).toEqual([])
-      const direct = await underRls({}, db => db.query('SELECT id FROM carrier_connections'))
-      expect(direct.rows).toEqual([])
     })
   })
 })

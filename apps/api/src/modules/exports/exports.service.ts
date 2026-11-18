@@ -137,7 +137,7 @@ export class ExportsService {
     try {
       await this.queue.add(
         JobNames.GENERATE_EXPORT,
-        { exportId: created.id },
+        { exportId: created.id, storeId },
         { jobId: `${JobNames.GENERATE_EXPORT}-${created.id}` }
       )
     } catch (error) {

@@ -52,6 +52,14 @@ export class ProcessorSupport {
     this.duration.observe({ queue, job: job.name }, (Date.now() - startedAt) / MS_PER_SECOND)
   }
 
+  // A job whose store, organization or person is gone ends here as done: it is said once, not counted as a failure
+  subjectGone(queue: QueueName, job: Job, error: Error): void {
+    this.logger.warn(
+      { queue, jobId: job.id, job: job.name, reason: error.message },
+      'the subject of a job was deleted; the job is done'
+    )
+  }
+
   completed(queue: QueueName, job: Job): void {
     this.processed.inc({ queue, job: job.name })
   }

@@ -9,6 +9,7 @@ import { PayablesService } from './payables.service'
 import { PurchaseOrdersController } from './purchase-orders.controller'
 import { PurchaseOrdersService } from './purchase-orders.service'
 import { PurchaseReceivingService } from './purchase-receiving.service'
+import { SupplierPaymentReturnsService } from './supplier-payment-returns.service'
 import { SupplierPaymentsService } from './supplier-payments.service'
 import { SuppliersController } from './suppliers.controller'
 import { SuppliersService } from './suppliers.service'
@@ -24,7 +25,8 @@ import { SuppliersService } from './suppliers.service'
     PurchaseOrdersService,
     PurchaseReceivingService,
     PayablesService,
-    SupplierPaymentsService
+    SupplierPaymentsService,
+    SupplierPaymentReturnsService
   ]
 })
 export class PurchasesModule {}

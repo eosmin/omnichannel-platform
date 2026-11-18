@@ -242,6 +242,56 @@ export function paymentProblems(input: {
   return problems
 }
 
+// E11b (HC-121): the supplier gave back money it had been paid. Dr the account the money came back into · Cr payable to the supplier
+// (party), so the debt is owed again by that amount
+export function paymentReturnLines(input: {
+  payableAccountId: string
+  receivedIntoAccountId: string
+  supplierId: string
+  amountCents: number
+}): DraftLine[] {
+  return [
+    { accountId: input.receivedIntoAccountId, debitCents: input.amountCents, creditCents: 0 },
+    {
+      accountId: input.payableAccountId,
+      debitCents: 0,
+      creditCents: input.amountCents,
+      partyType: PartyType.SUPPLIER,
+      partyId: input.supplierId
+    }
+  ]
+}
+
+export const PaymentReturnRule = {
+  AMOUNT: 'amount',
+  INTO_NOT_CASH: 'into_not_cash',
+  DATE_IN_FUTURE: 'date_in_future',
+  // Money cannot come back before it went out
+  BEFORE_PAYMENT: 'before_payment'
+} as const
+export type PaymentReturnRuleName = (typeof PaymentReturnRule)[keyof typeof PaymentReturnRule]
+
+export function paymentReturnProblems(input: {
+  amountCents: number
+  intoIsCash: boolean
+  returnedOn: string
+  paidOn: string
+  today: string
+}): PaymentReturnRuleName[] {
+  const problems: PaymentReturnRuleName[] = []
+  if (
+    !Number.isInteger(input.amountCents) ||
+    input.amountCents <= 0 ||
+    input.amountCents > FinanceLimits.MAX_LINE_CENTS
+  ) {
+    problems.push(PaymentReturnRule.AMOUNT)
+  }
+  if (!input.intoIsCash) problems.push(PaymentReturnRule.INTO_NOT_CASH)
+  if (input.returnedOn > input.today) problems.push(PaymentReturnRule.DATE_IN_FUTURE)
+  if (input.returnedOn < input.paidOn) problems.push(PaymentReturnRule.BEFORE_PAYMENT)
+  return problems
+}
+
 // The day a bill falls due: the day the goods were received plus the supplier's terms
 export function dueDay(receivedOn: string, termsDays: number): string {
   const due = dayToDate(receivedOn)
