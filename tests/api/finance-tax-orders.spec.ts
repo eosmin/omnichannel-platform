@@ -702,49 +702,69 @@ describe('The tax of an order and the VAT report (Step 4B.3b)', () => {
         ])
       })
 
-      it('takes the tax a return gave back off the output side, in the month of its entry (HC-003)', async () => {
+      it('takes the tax a return gave back off the output side, in the month of its entry, and a void gives it back (HC-003)', async () => {
         const role = async (name: string): Promise<string> =>
           (
             await owner.accountRoleMapping.findUniqueOrThrow({
               where: { organizationId_role: { organizationId: ctx.orgA.id, role: name } }
             })
           ).accountId
+        // A month of its own: the entries of the books cannot be removed, so no other test reads it
         const period = await owner.fiscalPeriod.findFirstOrThrow({
-          where: { organizationId: ctx.orgA.id },
-          orderBy: { startsOn: 'asc' }
+          where: { organizationId: ctx.orgA.id, year: 2026, month: 2 }
         })
-        const entry = await postTestEntry(owner, {
+        const post = async (day: string, vat: number, net: number): Promise<{ id: string }> =>
+          postTestEntry(owner, {
+            organizationId: ctx.orgA.id,
+            periodId: period.id,
+            entryDate: day,
+            type: JournalEntryType.SALE_RETURN,
+            lines: [
+              { accountId: await role('sales_returns'), debitCents: net },
+              ...(vat > 0 ? [{ accountId: await role('vat_output'), debitCents: vat }] : []),
+              { accountId: await role('customer_advances'), creditCents: net + vat }
+            ]
+          })
+        const first = await post('2026-02-10', 130, 1000)
+        // Goods with no tax: no tax to take off, but the base and the document are still there
+        await post('2026-02-11', 0, 500)
+        const row = async (): Promise<ReportBody['rows'][number] | undefined> =>
+          ((await report('2026-02-01', '2026-02-28')).body as ReportBody).rows.find(
+            line => line.kind === (VatLineKind.RETURNS as string)
+          )
+        expect(await row()).toEqual({
+          month: '2026-02',
+          side: VatSide.OUTPUT,
+          kind: VatLineKind.RETURNS,
+          rateBps: null,
+          baseCents: -1500,
+          taxCents: -130,
+          documents: 2
+        })
+        const month = ((await report('2026-02-01', '2026-02-28')).body as ReportBody).months.find(
+          line => line.month === '2026-02'
+        )
+        expect(month).toEqual({
+          month: '2026-02',
+          outputTaxCents: -130,
+          inputTaxCents: 0,
+          balanceCents: -130
+        })
+
+        // The void of the first return is its reversing entry: it gives the tax back in its own month
+        await postTestEntry(owner, {
           organizationId: ctx.orgA.id,
           periodId: period.id,
-          entryDate: '2026-01-20',
-          type: 'sale_return',
+          entryDate: '2026-02-12',
+          type: JournalEntryType.REVERSAL,
+          reversesEntryId: first.id,
           lines: [
-            { accountId: await role('sales_returns'), debitCents: 1000 },
-            { accountId: await role('vat_output'), debitCents: 130 },
-            { accountId: await role('customer_advances'), creditCents: 1130 }
+            { accountId: await role('sales_returns'), creditCents: 1000 },
+            { accountId: await role('vat_output'), creditCents: 130 },
+            { accountId: await role('customer_advances'), debitCents: 1130 }
           ]
         })
-        const body = (await report('2026-01-01', '2026-01-31')).body as ReportBody
-        const returns = body.rows.filter(row => row.kind === (VatLineKind.RETURNS as string))
-
-        expect(returns).toEqual([
-          {
-            month: '2026-01',
-            side: VatSide.OUTPUT,
-            kind: VatLineKind.RETURNS,
-            rateBps: null,
-            baseCents: -1000,
-            taxCents: -130,
-            documents: 1
-          }
-        ])
-        const month = body.months.find(row => row.month === '2026-01')
-        expect(month?.outputTaxCents).toBe(
-          body.rows
-            .filter(row => row.side === (VatSide.OUTPUT as string))
-            .reduce((sum, row) => sum + row.taxCents, 0)
-        )
-        expect(entry.id).toBeDefined()
+        expect(await row()).toMatchObject({ baseCents: -500, taxCents: 0, documents: 1 })
       })
 
       it('counts a returned order apart, and tells the date the books start from', async () => {

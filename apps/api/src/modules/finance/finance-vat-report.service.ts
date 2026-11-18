@@ -249,39 +249,45 @@ export class FinanceVatReportService {
 
     // The tax the returns (E8) give back (HC-003): the books debit VAT_OUTPUT for it, so the report takes it off the output side, in the
     // month of the entry of the return (the default of the books; whether the accountant wants it in the month of the sale is open, see
-    // the plan, 4B.8b-2c). An E8 entry has no rate on its lines, so the tax is one line of its own, `returns`, with no rate; its base is
+    // the plan, 4B.8b-2c). An E8 entry has no rate on its lines, so the tax is one line of its own, `returns`, with no rate, and a return of goods with no tax still has its base and its document; its base is
     // what the return took off the revenue and the shipping, without tax, negative. A void of a return is its reversing entry, which gives
     // the tax back to the sale in its own month, so the sum is of debits less credits over the return and its reversal.
     {
       const rows = await db.$queryRaw<
         { month: string; base: bigint; cents: bigint; documents: bigint }[]
       >`
+        WITH roles AS (
+          SELECT m.account_id, m.role FROM account_role_mappings m
+          WHERE m.organization_id = ${organizationId}
+            AND m.role IN (${AccountRole.VAT_OUTPUT}, ${AccountRole.SALES_RETURNS}, ${AccountRole.SHIPPING_REVENUE})
+        ),
+        sale_returns AS (
+          SELECT e.id FROM journal_entries e
+          WHERE e.organization_id = ${organizationId} AND e.type = ${JournalEntryType.SALE_RETURN}
+        ),
+        voided AS (
+          SELECT e.reverses_entry_id AS id FROM journal_entries e
+          WHERE e.organization_id = ${organizationId} AND e.reverses_entry_id IS NOT NULL
+        ),
+        entries AS (
+          SELECT id FROM sale_returns
+          UNION
+          SELECT e.id FROM journal_entries e JOIN sale_returns r ON r.id = e.reverses_entry_id
+          WHERE e.organization_id = ${organizationId}
+        )
         SELECT to_char(e.entry_date, 'YYYY-MM') AS month,
-               SUM(CASE WHEN l.account_id IN (
-                     SELECT m.account_id FROM account_role_mappings m
-                     WHERE m.organization_id = ${organizationId}
-                       AND m.role IN (${AccountRole.SALES_RETURNS}, ${AccountRole.SHIPPING_REVENUE}))
-                   THEN l.debit_cents - l.credit_cents ELSE 0 END)::bigint AS base,
-               SUM(CASE WHEN l.account_id IN (
-                     SELECT m.account_id FROM account_role_mappings m
-                     WHERE m.organization_id = ${organizationId} AND m.role = ${AccountRole.VAT_OUTPUT})
-                   THEN l.debit_cents - l.credit_cents ELSE 0 END)::bigint AS cents,
-               (COUNT(DISTINCT e.id) FILTER (WHERE e.reverses_entry_id IS NULL))::bigint AS documents
-        FROM journal_lines l
-        JOIN journal_entries e ON e.id = l.entry_id AND e.organization_id = l.organization_id
-        WHERE l.organization_id = ${organizationId}
-          AND e.entry_date BETWEEN ${query.from}::date AND ${query.to}::date
-          AND (
-            e.type = ${JournalEntryType.SALE_RETURN}
-            OR e.reverses_entry_id IN (
-              SELECT r.id FROM journal_entries r
-              WHERE r.organization_id = ${organizationId} AND r.type = ${JournalEntryType.SALE_RETURN})
-          )
+               COALESCE(SUM(l.debit_cents - l.credit_cents) FILTER (WHERE ro.role <> ${AccountRole.VAT_OUTPUT}), 0)::bigint AS base,
+               COALESCE(SUM(l.debit_cents - l.credit_cents) FILTER (WHERE ro.role = ${AccountRole.VAT_OUTPUT}), 0)::bigint AS cents,
+               (COUNT(DISTINCT e.id) FILTER (WHERE e.reverses_entry_id IS NULL AND v.id IS NULL))::bigint AS documents
+        FROM entries x
+        JOIN journal_entries e ON e.id = x.id AND e.organization_id = ${organizationId}
+        JOIN journal_lines l ON l.entry_id = e.id AND l.organization_id = e.organization_id
+        JOIN roles ro ON ro.account_id = l.account_id
+        LEFT JOIN (SELECT DISTINCT id FROM voided) v ON v.id = e.id
+        WHERE e.entry_date BETWEEN ${query.from}::date AND ${query.to}::date
         GROUP BY 1
-        HAVING SUM(CASE WHEN l.account_id IN (
-                     SELECT m.account_id FROM account_role_mappings m
-                     WHERE m.organization_id = ${organizationId} AND m.role = ${AccountRole.VAT_OUTPUT})
-                   THEN l.debit_cents - l.credit_cents ELSE 0 END) <> 0`
+        -- A return and its void inside one month cancel out: no row of zeros. A return of goods with no tax still has its base.
+        HAVING COALESCE(SUM(l.debit_cents - l.credit_cents), 0) <> 0`
       for (const row of rows) {
         // A return takes tax out: the figures of the line are negative
         const bucket = touch(row.month, VatSide.OUTPUT, VatLineKind.RETURNS, null)
