@@ -2272,9 +2272,9 @@ const resources: IsolationResource[] = [
     },
     untouched: () => Promise.resolve(true)
   },
-  // The balances of the accounts at a date (TDD_18 §10): the lines of the organization of the request and no other
+  // Same model as the case above, read by the report of a date (the case names must be models): the lines of the organization of the request and no other
   {
-    name: 'financeAccountBalancesAtDate',
+    name: 'accountPeriodBalance',
     create: async (owner, { storeId }) => {
       await booksOfStore(owner, storeId)
       return { id: storeId }
@@ -2296,9 +2296,9 @@ const resources: IsolationResource[] = [
     },
     untouched: () => Promise.resolve(true)
   },
-  // The journal of a range with its lines (TDD_18 §10): the entries of the organization of the request and no other
+  // Same model as the case of the entries, read by the journal report with its lines (TDD_18 §10): the entries of the organization of the request and no other
   {
-    name: 'financeJournalWithLines',
+    name: 'journalEntry',
     create: async (owner, { storeId }) => {
       await booksOfStore(owner, storeId)
       return { id: storeId }
