@@ -150,10 +150,16 @@ describe('pluginManifestSchema', () => {
       expect(pathsOf(manifest({ names }))).toContain('names')
     })
 
-    it('copies the object it read, so nothing else a pasted one carries survives', () => {
-      const pasted = { es: 'Mi POS', en: 'My POS', fr: 'Mon POS' }
+    it('refuses a third language instead of dropping it without a word', () => {
+      expect(pathsOf(manifest({ names: { es: 'Mi POS', en: 'My POS', fr: 'Mon POS' } }))).toContain(
+        'names'
+      )
+    })
+
+    it('copies the object it read', () => {
+      const pasted = { es: 'Mi POS', en: 'My POS' }
       const parsed = pluginManifestSchema.parse(manifest({ names: pasted }))
-      expect(parsed.names).toEqual({ es: 'Mi POS', en: 'My POS' })
+      expect(parsed.names).toEqual(pasted)
       expect(parsed.names).not.toBe(pasted)
     })
   })
