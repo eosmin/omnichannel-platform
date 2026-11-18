@@ -9,6 +9,7 @@ import { AppPaths } from '@platform/api-client'
 import { RealtimeEvents } from '@platform/core/realtime'
 
 import { forgetDraft } from '../../lib/inbox/composer-draft-index'
+import { wasDeletedHere } from '../../lib/inbox/deleted-here'
 import { useInboxFilters } from '../../lib/inbox/use-inbox-filters'
 import { useRealtime } from '../../lib/realtime/realtime-context'
 import { toast } from '../../lib/toast'
@@ -43,7 +44,7 @@ export function DeletedConversationWatcher({
       if (!parsed.success) return
       const { conversationId } = parsed.data
       if (userId !== undefined) forgetDraft({ userId, storeId, conversationId })
-      if (conversationId !== openId) return
+      if (conversationId !== openId || wasDeletedHere(conversationId)) return
       toast.info(t('deletedElsewhere'))
       router.replace(`${AppPaths.store.inbox(storeId)}${search}`)
     }

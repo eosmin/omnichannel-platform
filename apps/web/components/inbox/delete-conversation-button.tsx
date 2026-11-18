@@ -11,6 +11,7 @@ import { AppPaths, QueryKeys } from '@platform/api-client'
 import { apiClient } from '../../lib/api'
 import { forgetDraft } from '../../lib/inbox/composer-draft-index'
 import { deleteConversation } from '../../lib/inbox/delete-conversation'
+import { markDeletedHere } from '../../lib/inbox/deleted-here'
 import { useInboxFilters } from '../../lib/inbox/use-inbox-filters'
 import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
@@ -55,6 +56,7 @@ export default function DeleteConversationButton({
           toast.error(errorText(error))
           return
         }
+        markDeletedHere(conversationId)
         toast.success(t('done'))
         // Its unsent draft has nowhere to go (the filter "With draft" would still count it)
         if (userId !== undefined) forgetDraft({ userId, storeId, conversationId })

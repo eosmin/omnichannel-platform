@@ -260,6 +260,12 @@ describe('The search of the store', () => {
       expect(ids).not.toContain(other.id)
     })
 
+    it('does not find, by a typo of a word, a customer of another store', async () => {
+      await createCustomer(owner, { storeId: ctx.storeB.id, name: `Anselmo Peña ${tag}x` })
+      const { body } = await customersFor('anselmu')
+      expect(body.hits.map(hit => hit.name)).not.toContain(`Anselmo Peña ${tag}x`)
+    })
+
     it('finds a customer by the email and by a run of digits of the phone', async () => {
       const customer = await createCustomer(owner, {
         storeId: ctx.storeA.id,

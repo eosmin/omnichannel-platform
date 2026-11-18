@@ -58,7 +58,11 @@ export const FILTERABLE_TYPES: readonly ExportType[] = [
 // The kinds this member may see, as the api lists them (`ExportTypePermissions`: every permission of the kind). A
 // filter that offered a kind the member can never see would answer with an empty list (N-BR2-17).
 export function visibleExportTypes(can: (permission: Permission) => boolean): ExportType[] {
-  return FILTERABLE_TYPES.filter(type => (ExportTypePermissions[type] ?? []).every(can))
+  return FILTERABLE_TYPES.filter(type => {
+    const needed = ExportTypePermissions[type]
+    // A kind with no entry is not served (the api shows nobody its rows): it is not offered either
+    return needed !== undefined && needed.every(can)
+  })
 }
 
 export const FILTERABLE_STATUSES: readonly ExportStatusType[] = [

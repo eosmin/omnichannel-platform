@@ -178,7 +178,7 @@ export class SearchService {
           OR (
             ${byWord}::boolean
             AND ${folded} <% c.name_search
-            AND word_similarity(${folded}, c.name_search) > ${SearchConfig.WORD_SIMILARITY_THRESHOLD}
+            AND word_similarity(${folded}, c.name_search) >= ${SearchConfig.WORD_SIMILARITY_THRESHOLD}
           )
           OR (${byPhone}::boolean AND c.phone_normalized LIKE ${`%${digits}%`} ESCAPE '\\')
         )

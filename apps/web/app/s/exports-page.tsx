@@ -118,12 +118,16 @@ export function ExportsPage(): ReactElement {
   const tCommon = useTranslations('common')
   const { storeId, can } = useStore()
   const mayAsk = mayOpenExports(can)
+  const visibleTypes = visibleExportTypes(can)
   const [type, setType] = useState<string>(ALL_EXPORTS)
   const [status, setStatus] = useState<string>(ALL_EXPORTS)
   const isFiltered = type !== ALL_EXPORTS || status !== ALL_EXPORTS
   const exports = useExportList(
     storeId,
-    { type: exportTypeFilter(type), status: exportStatusFilter(status) },
+    {
+      type: visibleTypes.find(kind => kind === exportTypeFilter(type)) ?? null,
+      status: exportStatusFilter(status)
+    },
     mayAsk
   )
   const rows = exports.data?.pages.flatMap(page => page.data) ?? []
@@ -145,7 +149,7 @@ export function ExportsPage(): ReactElement {
             onChange={event => setType(event.target.value)}
           >
             <option value={ALL_EXPORTS}>{t('filters.allTypes')}</option>
-            {visibleExportTypes(can).map(value => (
+            {visibleTypes.map(value => (
               <option key={value} value={value}>
                 {t(`types.${value}`)}
               </option>
