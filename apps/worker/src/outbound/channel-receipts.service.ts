@@ -105,7 +105,7 @@ export class ChannelReceipts {
     }
     // A plugin that holds the id of the platform (`messageId`, the one it was given with the send) and whose provider id the
     // platform does not have, or has differently: the message is found by that id, inside this connection and among the
-    // replies of the agents, so it still cannot reach a message of another account (TDD_10 §6.7.5)
+    // replies of the team (an agent's, or a plugin's as the system), so it still cannot reach a message of another account (TDD_10 §6.7.5)
     if (message === null && event.messageId !== undefined) {
       message = await this.prisma.client.message.findFirst({
         where: {

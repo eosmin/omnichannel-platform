@@ -2963,7 +2963,7 @@ describe('Replies on their way to a channel', () => {
       return { ...reply, externalId: channelMessageId ?? '' }
     }
 
-    it('applies the receipts of a reply a plugin wrote as the system, and not those of a customer message', async () => {
+    it('applies the receipts of a reply a plugin wrote as the system', async () => {
       const reply = await queuedReply({ systemOfPlugin: 'a-plugin' })
       await sender.send(job(reply), false)
       const { channelMessageId } = await stored(reply.id)
@@ -2971,6 +2971,18 @@ describe('Replies on their way to a channel', () => {
       expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.DELIVERED)
       await receipt(reply, 'message_read', channelMessageId ?? '')
       expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.READ)
+    })
+
+    it('applies no receipt to a system line that no plugin wrote', async () => {
+      const reply = await queuedReply()
+      await sender.send(job(reply), false)
+      const { channelMessageId } = await stored(reply.id)
+      await owner.message.update({
+        where: { id: reply.id },
+        data: { authorType: AuthorType.SYSTEM, authorPluginId: null }
+      })
+      await receipt(reply, 'message_delivered', channelMessageId ?? '', true)
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
     })
 
     it('moves a file by its own receipt, and the message only once every file has reached that state', async () => {
