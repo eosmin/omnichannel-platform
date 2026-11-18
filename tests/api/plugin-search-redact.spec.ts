@@ -165,18 +165,38 @@ describe('Customer data in the search and customer routes of the plugin API', ()
       expect((response.body as Hits<OrderHit>).hits.map(hit => hit.id)).not.toContain(order.id)
     })
 
-    it('does not find the order by any form of the phone (full with the country code, a fragment, the last digits) with orders:read alone', async () => {
-      const order = await orderOf(ctx.storeA.id, `Elena ${unique()}`, '50370001234')
+    describe.each(['50370001234', '+503 7000-1234', '7000', '0001234', '1234'])(
+      'the phone as %s',
+      q => {
+        it('does not find the order with orders:read alone, and tells nothing of the customer', async () => {
+          const name = `Elena ${unique()}`
+          const order = await orderOf(ctx.storeA.id, name, '50370001234')
 
-      for (const q of ['50370001234', '+503 7000-1234', '7000', '0001234', '1234']) {
-        const response = await call('get', PluginApiRoutes.search.orders, 'ordersOnly')
-          .query({ q })
-          .expect(OK)
+          const response = await call('get', PluginApiRoutes.search.orders, 'ordersOnly')
+            .query({ q })
+            .expect(OK)
 
-        // Another order of the run may carry these digits in its number: only the order of that phone must stay out
-        expect((response.body as Hits<OrderHit>).hits.map(hit => hit.id)).not.toContain(order.id)
+          // Another order of the run may carry these digits in its number: only the order of that phone must stay out
+          expect((response.body as Hits<OrderHit>).hits.map(hit => hit.id)).not.toContain(order.id)
+          const text = JSON.stringify(response.body)
+          for (const secret of [order.customerId, name, '50370001234', 'customerName']) {
+            expect(text).not.toContain(secret)
+          }
+        })
+
+        // The control: the same phone finds the order for a key that may read customers, so the empty answer above is the rule and
+        // not a form that matches nothing
+        it('finds the order with customers:read', async () => {
+          const order = await orderOf(ctx.storeA.id, `Elena ${unique()}`, '50370001234')
+
+          const response = await call('get', PluginApiRoutes.search.orders, 'ordersWithCustomers')
+            .query({ q: q.replace(/\D/g, '') })
+            .expect(OK)
+
+          expect((response.body as Hits<OrderHit>).hits.map(hit => hit.id)).toContain(order.id)
+        })
       }
-    })
+    )
 
     it('searches by the name and the phone and names the customer when the key also holds customers:read', async () => {
       const word = unique()
