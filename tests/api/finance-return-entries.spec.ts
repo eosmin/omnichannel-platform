@@ -915,6 +915,32 @@ describe('The entries of a difference written off and of a return (Step 4B.6b-2)
       ).toMatchObject({ outcome: FinancePostingOutcome.REPLAYED, entryId: result.entryId })
     })
 
+    it('pays a refund from the account the payment method of the order receives into', async () => {
+      const returnId = await completed(500)
+      const order = await owner.orderReturn.findUniqueOrThrow({
+        where: { id: returnId },
+        select: { orderId: true }
+      })
+      await owner.order.update({
+        where: { id: order.orderId },
+        data: { paymentMethod: 'CARD', paymentStatus: 'COMPLETED' }
+      })
+      const mapped = await owner.paymentMethodAccount.findFirstOrThrow({
+        where: { organizationId: ctx.orgA.id, paymentMethod: 'CARD', storeId: null },
+        include: { account: { select: { code: true } } }
+      })
+      expect(
+        (await post(FinanceSourceType.RETURN, returnId, FinanceEventKind.RETURN_REFUND)).outcome
+      ).toBe(FinancePostingOutcome.POSTED)
+      const entry = await entryOf(FinancePostingKey.RETURN_REFUND(returnId))
+      expect(linesOf(entry as NonNullable<typeof entry>)).toEqual(
+        sorted([
+          [code(AccountRole.CUSTOMER_ADVANCES), 500, 0],
+          [mapped.account.code, 0, 500]
+        ])
+      )
+    })
+
     it('posts nothing for a return with no refund recorded, or one that is not completed', async () => {
       const none = await completed(null)
       expect(

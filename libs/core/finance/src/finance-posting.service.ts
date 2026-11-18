@@ -106,7 +106,10 @@ type Candidate =
 type PostingSettings = { accountingStartDate: Date; recognizeSaleOn: string }
 
 const NOTHING: Candidate = { kind: 'nothing' }
-const failed = (reason: FinancePostingFailureReason): Candidate => ({ kind: 'failed', reason })
+const failed = (reason: FinancePostingFailureReason): Extract<Candidate, { kind: 'failed' }> => ({
+  kind: 'failed',
+  reason
+})
 
 // The key of the entry an event posts (the same the loaders use)
 const keyOf = (input: PostSourceInput): string => {
@@ -565,7 +568,7 @@ export class FinancePostingService {
     if (order.paymentMethod === (PaymentMethod.CASH_ON_DELIVERY as string)) {
       const bank = (await this.accountsOf(tx, organizationId))(AccountRole.BANK_DEFAULT)
       return bank === null
-        ? { kind: 'failed', reason: FinancePostingFailureReason.PAYMENT_ACCOUNT_MISSING }
+        ? failed(FinancePostingFailureReason.PAYMENT_ACCOUNT_MISSING)
         : { kind: 'account', accountId: bank }
     }
     const methods = await tx.paymentMethodAccount.findMany({
@@ -584,7 +587,7 @@ export class FinancePostingService {
       select: { active: true, isPostable: true }
     })
     if (account === null || !account.active || !account.isPostable) {
-      return { kind: 'failed', reason: FinancePostingFailureReason.ACCOUNT_INACTIVE }
+      return failed(FinancePostingFailureReason.ACCOUNT_INACTIVE)
     }
     return { kind: 'account', accountId: chosen.accountId }
   }
