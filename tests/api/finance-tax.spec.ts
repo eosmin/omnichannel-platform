@@ -98,7 +98,7 @@ describe('The tax rates, the tax of a product and the tax settings of a store (S
 
   const asAdminA = () => api(app, ctx.adminA, ctx.storeA)
   const errorOf = (response: { body: unknown }) => (response.body as ErrorBody).error
-  const code = (): string => `T${randomUUID().slice(0, 8)}`
+  const code = (): string => `T${randomUUID().slice(0, 8).toUpperCase()}`
   const asRole = async (
     name: string,
     permissions: readonly (typeof Permissions)[keyof typeof Permissions][]
@@ -150,6 +150,77 @@ describe('The tax rates, the tax of a product and the tax settings of a store (S
   })
 
   describe('the rates', () => {
+    it('keeps a code in capitals and holds back the same code in another case (HC-210)', async () => {
+      const lower = code().toLowerCase()
+      const rate = await createRate({ code: lower })
+      const upperAgain = await asAdminA()
+        .post(ApiRoutes.finance.taxRates.create)
+        .send(newRate({ code: lower.toUpperCase() }))
+      const mixed = await asAdminA()
+        .post(ApiRoutes.finance.taxRates.create)
+        .send(newRate({ code: `${lower.slice(0, 3)}${lower.slice(3).toUpperCase()}` }))
+      // A rate made before the codes were kept in capitals still holds its code back, and renaming onto it is refused too
+      const legacy = await owner.taxRate.create({
+        data: {
+          organizationId: ctx.orgA.id,
+          code: `old${code().slice(1, 6).toLowerCase()}`,
+          name: 'Legacy',
+          rateBps: 100,
+          kind: 'vat',
+          outputAccountId: accounts['2201'] ?? '',
+          inputAccountId: accounts['1401'] ?? ''
+        }
+      })
+      const againstLegacy = await asAdminA()
+        .post(ApiRoutes.finance.taxRates.create)
+        .send(newRate({ code: legacy.code.toUpperCase() }))
+      const renamed = await asAdminA()
+        .patch(ApiRoutes.finance.taxRates.byId(rate.id))
+        .send({ code: legacy.code })
+
+      expect(rate.code).toBe(lower.toUpperCase())
+      for (const refused of [upperAgain, mixed, againstLegacy, renamed]) {
+        expect(refused.status).toBe(CONFLICT)
+        expect(errorOf(refused).metadata).toMatchObject({
+          conflict: FinanceConflicts.TAX_RATE_CODE_IN_USE
+        })
+      }
+    })
+
+    it('lets a rate with a twin of another case be edited (HC-210)', async () => {
+      const twin = code().toLowerCase()
+      const legacy = (codeText: string) =>
+        owner.taxRate.create({
+          data: {
+            organizationId: ctx.orgA.id,
+            code: codeText,
+            name: 'Legacy',
+            rateBps: 100,
+            kind: 'vat',
+            outputAccountId: accounts['2201'] ?? '',
+            inputAccountId: accounts['1401'] ?? ''
+          }
+        })
+      const lower = await legacy(twin)
+      await legacy(twin.toUpperCase())
+
+      const renamed = await asAdminA()
+        .patch(ApiRoutes.finance.taxRates.byId(lower.id))
+        .send({ name: 'Only the name' })
+      const sameCode = await asAdminA()
+        .patch(ApiRoutes.finance.taxRates.byId(lower.id))
+        .send({ code: twin, name: 'Again' })
+      // Its own code in capitals is the same code, not a change: it would only collide with the twin that holds it
+      const intoTwin = await asAdminA()
+        .patch(ApiRoutes.finance.taxRates.byId(lower.id))
+        .send({ code: twin.toUpperCase() })
+
+      expect(renamed.status).toBe(OK)
+      expect(sameCode.status).toBe(OK)
+      expect(intoTwin.status).toBe(OK)
+      expect((intoTwin.body as { code: string }).code).toBe(twin)
+    })
+
     it('creates one, and a second one with the same code is a conflict', async () => {
       const rate = await createRate({ rateBps: 0, name: 'Zero' })
       const again = await asAdminA()
