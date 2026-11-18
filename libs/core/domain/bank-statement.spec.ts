@@ -202,12 +202,31 @@ describe('parseBankStatement', () => {
     ])
   })
 
+  it('reads a padded dash and a dash next to a 0.00 the same way as an empty cell (HC-125)', () => {
+    const parsed = parseBankStatement(
+      'Date,Description,Ref,Debit,Credit\n2026-11-02,A,, - ,7.00\n2026-11-02,B,,-,0.00\n2026-11-02,C,,4.00,-\n',
+      split
+    )
+    expect(parsed.lines.map(line => line.amountCents)).toEqual([700, -400])
+    expect(parsed.errors.map(error => [error.row, error.code])).toEqual([
+      [3, BankStatementErrors.ZERO_AMOUNT]
+    ])
+  })
+
   it('still refuses a dash that is not alone, and a dash in the one signed amount column', () => {
     const split2 = parseBankStatement(
       'Date,Description,Ref,Debit,Credit\n2026-11-02,A,,-5.00,\n2026-11-02,B,,---,7.00\n',
       split
     )
     expect(split2.errors.map(error => error.code)).toEqual([
+      BankStatementErrors.INVALID_AMOUNT,
+      BankStatementErrors.INVALID_AMOUNT
+    ])
+    const typographic = parseBankStatement(
+      'Date,Description,Ref,Debit,Credit\n2026-11-02,A,,5.00,\u2013\n2026-11-02,B,,\u2014,7.00\n',
+      split
+    )
+    expect(typographic.errors.map(error => error.code)).toEqual([
       BankStatementErrors.INVALID_AMOUNT,
       BankStatementErrors.INVALID_AMOUNT
     ])
