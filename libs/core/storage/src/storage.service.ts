@@ -3,6 +3,9 @@ import type { Readable } from 'node:stream'
 import {
   CopyObjectCommand,
   DeleteObjectCommand,
+  GetBucketEncryptionCommand,
+  BucketVersioningStatus,
+  GetBucketVersioningCommand,
   GetObjectCommand,
   HeadBucketCommand,
   HeadObjectCommand,
@@ -12,12 +15,18 @@ import {
 } from '@aws-sdk/client-s3'
 import { Upload } from '@aws-sdk/lib-storage'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
-import { Inject, Injectable, type OnApplicationShutdown } from '@nestjs/common'
+import { Inject, Injectable, Logger, type OnApplicationShutdown } from '@nestjs/common'
 
 import { HttpStatusCodes } from '@platform/core/errors'
-import { attachmentDisposition, UploadLimits } from '@platform/core/storage'
+import {
+  attachmentDisposition,
+  type BucketProtectionReport,
+  BucketProtections,
+  BucketProtectionStates,
+  UploadLimits
+} from '@platform/core/storage'
 
-import { S3_CLIENT, STORAGE_BUCKET } from './storage.constants'
+import { ENCRYPTION_NOT_CONFIGURED, S3_CLIENT, STORAGE_BUCKET } from './storage.constants'
 
 export interface UploadUrlParams {
   key: string
@@ -61,6 +70,8 @@ function statusOf(error: unknown): number | undefined {
 // only talks to S3. File bytes never go through the api: a client PUTs to a signed URL.
 @Injectable()
 export class StorageService implements OnApplicationShutdown {
+  private readonly logger = new Logger(StorageService.name)
+
   constructor(
     @Inject(S3_CLIENT) private readonly s3: S3Client,
     @Inject(STORAGE_BUCKET) private readonly bucket: string
@@ -257,6 +268,51 @@ export class StorageService implements OnApplicationShutdown {
     await this.s3.send(new HeadBucketCommand({ Bucket: this.bucket }), {
       abortSignal: AbortSignal.timeout(timeoutMs)
     })
+  }
+
+  // What the bucket has of the protections TDD_03 §7.3 asks for. Each one is asked on its own, and a question the
+  // store does not answer (no permission, a compatible store without the call) is `unknown`, never `on`.
+  async inspectProtection(timeoutMs: number): Promise<BucketProtectionReport> {
+    const options = { abortSignal: AbortSignal.timeout(timeoutMs) }
+    const [encryption, versioning] = await Promise.all([
+      this.s3
+        .send(new GetBucketEncryptionCommand({ Bucket: this.bucket }), options)
+        .then(answer =>
+          // A rule that names no algorithm encrypts nothing (one that only sets BucketKeyEnabled)
+          (answer.ServerSideEncryptionConfiguration?.Rules ?? []).some(
+            rule => rule.ApplyServerSideEncryptionByDefault?.SSEAlgorithm !== undefined
+          )
+            ? BucketProtectionStates.ON
+            : BucketProtectionStates.OFF
+        )
+        .catch((error: unknown) => {
+          if ((error as { name?: string }).name === ENCRYPTION_NOT_CONFIGURED) {
+            return BucketProtectionStates.OFF
+          }
+          return this.unanswered(BucketProtections.ENCRYPTION, error)
+        }),
+      this.s3
+        .send(new GetBucketVersioningCommand({ Bucket: this.bucket }), options)
+        .then(answer =>
+          answer.Status === BucketVersioningStatus.Enabled
+            ? BucketProtectionStates.ON
+            : BucketProtectionStates.OFF
+        )
+        .catch((error: unknown) => this.unanswered(BucketProtections.VERSIONING, error))
+    ])
+    return {
+      [BucketProtections.ENCRYPTION]: encryption,
+      [BucketProtections.VERSIONING]: versioning
+    }
+  }
+
+  // Why a question was not answered (no permission on the bucket, a timeout, a store without the call) is in the log by the
+  // name of the error: the gauge says only that the protection is not shown to be on
+  private unanswered(protection: string, error: unknown): typeof BucketProtectionStates.UNKNOWN {
+    this.logger.warn(
+      `the bucket did not answer about ${protection}: ${(error as { name?: string }).name ?? 'unknown error'}`
+    )
+    return BucketProtectionStates.UNKNOWN
   }
 
   onApplicationShutdown(): void {

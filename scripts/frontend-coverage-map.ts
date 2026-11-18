@@ -359,6 +359,7 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'channels.directory': { step: '3.2' },
   'channels.connect': { step: '3.6' },
   'channels.connectionById': { step: '3.6' },
+  'channels.connectionErrorDetail': { step: '3.6' },
   'channels.test': { step: '3.6' },
   'channels.disconnect': { step: '3.6' },
   'channels.updateToken': { step: '3.6' },
