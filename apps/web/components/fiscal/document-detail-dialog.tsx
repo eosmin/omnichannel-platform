@@ -40,7 +40,8 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle
+  DialogTitle,
+  stickyDialogActionsClass
 } from '../ui/dialog'
 
 import { EvidencePanel } from './evidence-panel'
@@ -325,7 +326,7 @@ function Actions({
                   : 'replaceConfirmDescription'
             )}
           </p>
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className={`${stickyDialogActionsClass} flex flex-wrap justify-end gap-2`}>
             <Button
               variant="outline"
               size="sm"
