@@ -58,7 +58,9 @@ type Prepared =
   | { refusedWith: ErrorCode }
 
 // What the channel answered to a text sent again: its id, or nothing usable
-const captionResultSchema = z.object({ externalId: z.string().min(1).max(255) })
+const captionResultSchema = z.object({
+  externalId: z.string().min(1).max(OutboundLimits.EXTERNAL_ID_MAX_LENGTH)
+})
 
 // The worker half of an agent's edit or deletion of a message the customer has: reads the request as
 // it stands now, asks the plugin of the channel, and settles it as taken or refused so that the thread

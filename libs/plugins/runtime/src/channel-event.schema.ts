@@ -6,6 +6,7 @@ import {
   InboundMessageTypes,
   isWholeEmoji,
   MessageType,
+  OutboundLimits,
   OriginKinds,
   OriginMediaTypes,
   ReactionActors,
@@ -22,6 +23,9 @@ const hasNoNul = (value: string): boolean => !value.includes('\0')
 const NO_NUL = { message: 'a NUL character is not allowed here' }
 const name = (schema: z.ZodString): z.ZodString => schema.refine(hasNoNul, NO_NUL)
 const id = name(z.string().min(1).max(InboundLimits.ID_MAX_LENGTH))
+// The id of a message: as long as the one a send returns (OutboundLimits), so that what the provider reports about it later
+// (delivered, a reaction, a reply, an edit) is not refused for an id the send accepted
+const messageId = name(z.string().min(1).max(OutboundLimits.EXTERNAL_ID_MAX_LENGTH))
 const text = (max: number) => z.string().max(max).transform(safeText)
 
 const metadata = z
@@ -64,7 +68,7 @@ const origin = z.strictObject({
 })
 
 const message = z.strictObject({
-  externalId: id,
+  externalId: messageId,
   // A plugin says what the customer sent, not what only the platform writes (SYSTEM, INTERNAL_NOTE)
   type: z.enum(InboundMessageTypes),
   content: text(InboundLimits.CONTENT_MAX_LENGTH).nullable(),
@@ -81,18 +85,18 @@ const message = z.strictObject({
     )
     .optional(),
   origin: origin.optional(),
-  replyToExternalId: id.optional(),
+  replyToExternalId: messageId.optional(),
   metadata: metadata.optional(),
   timestamp: z.iso.datetime({ offset: true })
 })
 
 const status = z.strictObject({
-  externalId: id,
+  externalId: messageId,
   error: z.strictObject({ code: text(64), message: text(500) }).optional()
 })
 
 const reaction = z.strictObject({
-  targetExternalId: id,
+  targetExternalId: messageId,
   // An emoji is a short string; null takes the reaction back
   emoji: z
     .string()
@@ -108,14 +112,14 @@ const reaction = z.strictObject({
 })
 
 const edit = z.strictObject({
-  targetExternalId: id,
+  targetExternalId: messageId,
   content: text(InboundLimits.CONTENT_MAX_LENGTH),
   from: z.enum(ReactionActors).optional(),
   eventId: id.optional()
 })
 
 const deletion = z.strictObject({
-  targetExternalId: id,
+  targetExternalId: messageId,
   from: z.enum(ReactionActors).optional(),
   eventId: id.optional()
 })
