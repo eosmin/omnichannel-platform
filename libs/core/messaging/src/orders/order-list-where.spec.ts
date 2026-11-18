@@ -25,8 +25,17 @@ describe('orderListWhere', () => {
       paymentStatus: 'PENDING',
       priceApprovalStatus: 'pending',
       customerId: 'c1',
-      createdAt: { gte: from, lt: before }
+      createdAt: { gte: from, lt: before },
+      AND: [{ status: { in: ['PENDING_CONFIRMATION', 'CONFIRMED', 'PREPARING'] } }]
     })
+  })
+
+  it('does not list as waiting for a price an order whose price can no longer be decided', () => {
+    // A cancelled order keeps the `pending` it had; the filter of the orders that wait must not return it
+    expect(orderListWhere(STORE, { priceApprovalStatus: 'pending' }).AND).toEqual([
+      { status: { in: ['PENDING_CONFIRMATION', 'CONFIRMED', 'PREPARING'] } }
+    ])
+    expect(orderListWhere(STORE, { priceApprovalStatus: 'approved' }).AND).toBeUndefined()
   })
 
   it('filters by the planned carrier and by whether a live outbound guide holds the order', () => {
