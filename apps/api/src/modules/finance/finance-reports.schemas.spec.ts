@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto'
 
 import {
   accountBalancesQuerySchema,
+  chainStatusQuerySchema,
+  closePeriodSchema,
   journalCsvQuerySchema,
   journalQuerySchema,
   ledgerCsvQuerySchema,
@@ -24,6 +26,19 @@ describe('the reopen of a period', () => {
 
   it('refuses a reason on two lines', () => {
     expect(reopenPeriodSchema.safeParse({ reason: 'one\ntwo' }).success).toBe(false)
+  })
+})
+
+describe('the close of a period and the chain status (LED-753)', () => {
+  it('takes no body, sent empty or not sent', () => {
+    expect(closePeriodSchema.safeParse({}).success).toBe(true)
+    expect(closePeriodSchema.safeParse(undefined).success).toBe(true)
+  })
+
+  it('refuses an organizationId in the body of a close and in the query of the chain status', () => {
+    expect(closePeriodSchema.safeParse({ organizationId: randomUUID() }).success).toBe(false)
+    expect(chainStatusQuerySchema.safeParse({}).success).toBe(true)
+    expect(chainStatusQuerySchema.safeParse({ organizationId: randomUUID() }).success).toBe(false)
   })
 })
 

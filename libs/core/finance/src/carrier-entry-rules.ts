@@ -95,6 +95,38 @@ export function chargeLines(input: {
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------
+// E15 and E16: guides bought in advance from a carrier, and the void of the purchase (Step 4B.6b-4):
+//   Dr PREPAID_CARRIER_GUIDES ........ what was paid for the purchase, VAT included (gifts cost nothing)
+//   Cr the account the money left .... the one the person named, else the default bank
+// The void is the same entry the other way round. No input VAT: the recharge carries it only with the carrier's document, which the
+// accountant has to confirm (TDD_18 §4.2 note on E4, §13 row 2).
+
+export function guidePurchaseLines(input: {
+  accounts: RoleAccounts
+  // The cash, bank or wallet account the money left, already checked by the service; null reads the default bank role
+  paidFromAccountId: string | null
+  cents: number
+  storeId: string
+  reversal: boolean
+}): AutoEntry {
+  if (input.cents === 0) return { ok: true, lines: [] }
+  const advance = input.accounts(AccountRole.PREPAID_CARRIER_GUIDES)
+  if (advance === null) return missing(AccountRole.PREPAID_CARRIER_GUIDES)
+  const paid = input.paidFromAccountId ?? input.accounts(AccountRole.BANK_DEFAULT)
+  if (paid === null) return missing(AccountRole.BANK_DEFAULT)
+  const line = (accountId: string, debit: boolean) => ({
+    accountId,
+    debitCents: debit ? input.cents : 0,
+    creditCents: debit ? 0 : input.cents,
+    storeId: input.storeId
+  })
+  return {
+    ok: true,
+    lines: [line(advance, !input.reversal), line(paid, input.reversal)]
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------
 // E5: a COD remittance confirmed. One entry per remittance:
 //   Dr the account the money went to ........ what the carrier reported (what it remitted)
 //   Dr PAYABLE_CARRIERS ...................... what the carrier kept, up to the estimate E4 posted

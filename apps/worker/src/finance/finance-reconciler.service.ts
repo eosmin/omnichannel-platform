@@ -22,7 +22,8 @@ const INVENTORY_EVENTS: ReadonlySet<string> = new Set([
   FinanceEventKind.SALE,
   FinanceEventKind.RETURN_RESTOCK,
   FinanceEventKind.ORDER_RETURN,
-  FinanceEventKind.ADJUST
+  FinanceEventKind.ADJUST,
+  FinanceEventKind.TRANSFER_WRITE_OFF
 ])
 
 export interface FinanceReconcileReport {

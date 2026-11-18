@@ -1,4 +1,4 @@
-import { ApiLockTimeout, isLockTimeoutError } from './database-errors'
+import { ApiLockTimeout, isLockTimeoutError, isTransactionWaitError } from './database-errors'
 
 // The shape Prisma gave for a raw query that hit lock_timeout, captured against a real PostgreSQL
 const FROM_PRISMA_RAW = {
@@ -61,5 +61,45 @@ describe('ApiLockTimeout', () => {
   it('tells the client to come back after the time the database waits', () => {
     expect(ApiLockTimeout.RETRY_AFTER_SECONDS * 1000).toBe(ApiLockTimeout.MS)
     expect(ApiLockTimeout.SQL).toBe(`${ApiLockTimeout.MS / 1000}s`)
+  })
+})
+
+describe('isTransactionWaitError', () => {
+  it.each([
+    [
+      'what Prisma gives when no connection came free in time',
+      { code: 'P2028', message: 'Unable to start a transaction in the given time.' }
+    ],
+    ['the same wrapped as the cause of another error', { cause: { code: 'P2028' } }],
+    [
+      'an expired transaction',
+      {
+        name: 'PrismaClientKnownRequestError',
+        code: 'P2028',
+        meta: { error: 'Transaction already closed' }
+      }
+    ]
+  ])('knows %s', (_name, error) => {
+    expect(isTransactionWaitError(error)).toBe(true)
+  })
+
+  it.each([
+    ['a lock timeout, which has its own check', { code: '55P03' }],
+    ['a unique violation', { code: 'P2002' }],
+    [
+      'a message that only says the code (text a user typed can say it)',
+      { message: 'Unique constraint failed on the name "P2028"' }
+    ],
+    ['a string', 'P2028'],
+    ['nothing', undefined]
+  ])('does not take %s for one', (_name, error) => {
+    expect(isTransactionWaitError(error)).toBe(false)
+  })
+
+  it('stops on an error that points back at itself', () => {
+    const loop: Record<string, unknown> = { code: 'X' }
+    loop['cause'] = loop
+
+    expect(isTransactionWaitError(loop)).toBe(false)
   })
 })

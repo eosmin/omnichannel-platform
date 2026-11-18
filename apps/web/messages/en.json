@@ -621,7 +621,7 @@
     "FINANCE_ENTRY_ALREADY_REVERSED": "This entry was already reversed",
     "FINANCE_REOPEN_NOT_LATEST": "Only the latest closed period can be reopened",
     "FINANCE_CLOSE_CHAIN_BROKEN": "The check of the books found the journal altered: it cannot be closed until the chain verifies again",
-    "FINANCE_CLOSE_PENDING_POSTINGS": "There are postings pending or failed in this period: resolve them first",
+    "FINANCE_CLOSE_PENDING_POSTINGS": "There are postings pending or failed: retry or fix the failed ones in the list of automatic postings; the pending ones are posted by the daily sweep, then close again",
     "FINANCE_CLOSE_PREVIOUS_OPEN": "The previous period is still open: close periods in order",
     "FINANCE_CLOSE_NOT_ENDED": "The period has not ended yet: a month is not closed before its last day",
     "FINANCE_BALANCE_MISMATCHES": "The balances of the period do not match: it is an incident, it is not closed over",
@@ -6208,6 +6208,7 @@
       "cod_write_off": "Cash on delivery write-off",
       "purchase_receipt": "Purchase received",
       "supplier_payment": "Supplier payment",
+      "carrier_guides": "Carrier guides bought",
       "inventory_adjustment": "Inventory adjustment",
       "reversal": "Reversal"
     },
@@ -6233,8 +6234,10 @@
         "remittance": "A remittance",
         "return": "A return",
         "inventory_movement": "A stock movement",
+        "transfer_line": "A transfer shortage written off",
         "purchase_receipt": "A purchase received",
         "supplier_payment": "A supplier payment",
+        "carrier_guide_movement": "A purchase of carrier guides",
         "finance_transaction": "An expense, income or transfer",
         "manual": "An entry written by hand"
       },
@@ -6951,6 +6954,7 @@
         "orderedOn": "Ordered on {date}",
         "expectedOn": "expected on {date}",
         "markOrdered": "Mark as ordered",
+        "noCancelHint": "An order with goods received is not cancelled. Close what is still to arrive with “Close short”; if goods must go back to the supplier, the way out is a return or credit note from the supplier.",
         "markedOrdered": "Marked as ordered.",
         "receive": "Receive goods",
         "close": "Close short",
@@ -7256,8 +7260,10 @@
         "remittance": "Cash on delivery remittance",
         "return": "Return",
         "inventory_movement": "Inventory movement",
+        "transfer_line": "Transfer shortage written off",
         "purchase_receipt": "Purchase received",
         "supplier_payment": "Supplier payment",
+        "carrier_guide_movement": "Carrier guides",
         "finance_transaction": "Expense, income or transfer",
         "manual": "Manual entry"
       }
