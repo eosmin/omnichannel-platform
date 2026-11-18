@@ -552,6 +552,51 @@ describe('The legal books', () => {
       ).rejects.toThrow(/never changed or deleted/)
     })
   })
+
+  describe('the confirmation of a layout (FIS-426)', () => {
+    it('takes finance:confirm_books, for confirming and for writing over a confirmed layout', async () => {
+      const manager = await asRole('books-manager', [
+        Permissions.FINANCE_MANAGE_ACCOUNTS,
+        Permissions.FINANCE_VIEW_REPORTS
+      ])
+      const confirmer = await asRole('books-confirmer', [
+        Permissions.FINANCE_MANAGE_ACCOUNTS,
+        Permissions.FINANCE_CONFIRM_BOOKS
+      ])
+      const onlyConfirm = await asRole('books-only-confirm', [Permissions.FINANCE_CONFIRM_BOOKS])
+      const columns = [{ field: LegalBookField.TOTAL, label: null }]
+      const route = ApiRoutes.finance.bookLayouts.byKind(LegalBookKind.PURCHASES)
+      const put = (who: typeof manager, confirmed: boolean) =>
+        who.put(route).send(layoutBody(columns, 1, confirmed))
+      const latest = async (): Promise<LayoutBody> => {
+        const list = await asAdminA().get(ApiRoutes.finance.bookLayouts.list)
+        return (list.body as LayoutBody[]).find(
+          item => String(item.kind) === String(LegalBookKind.PURCHASES)
+        ) as LayoutBody
+      }
+
+      // Whoever manages the settings writes a layout, never a confirmed one
+      expect((await put(manager, true)).status).toBe(FORBIDDEN)
+      expect((await put(manager, false)).status).toBe(OK)
+      expect((await latest()).accountantConfirmed).toBe(false)
+      // The permission to confirm alone does not write: the route asks for the settings too
+      expect((await put(onlyConfirm, true)).status).toBe(FORBIDDEN)
+      // The Admin preset holds both, and so does a role with the two
+      expect((await put(confirmer, true)).status).toBe(OK)
+      const confirmed = await latest()
+      expect(confirmed.accountantConfirmed).toBe(true)
+      // A confirmed layout is not written over by a person who cannot confirm: the new version would drop the accountant's word
+      expect((await put(manager, false)).status).toBe(FORBIDDEN)
+      expect((await latest()).version).toBe(confirmed.version)
+      expect(
+        (
+          await asAdminA()
+            .put(route)
+            .send(layoutBody(columns, 1, true))
+        ).status
+      ).toBe(OK)
+    })
+  })
 })
 
 function layoutBody(
