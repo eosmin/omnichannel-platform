@@ -91,6 +91,8 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: printf '%s\n' "$PR_TITLE" | pnpm exec commitlint
       - run: pnpm validate:deprecations
+      # No backup a tool leaves beside a file (*.md-e, .orig, .rej, .bak, ~)
+      - run: pnpm validate:stray-files
       - run: pnpm validate:translations
       - run: pnpm validate:env
       - run: pnpm validate:isolation

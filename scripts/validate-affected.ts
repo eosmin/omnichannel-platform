@@ -94,6 +94,7 @@ const STEPS: AffectedStep[] = [
   { name: 'format:check', command: ['format:check'] },
   { name: 'validate:env', command: ['validate:env'] },
   { name: 'validate:deprecations', command: ['validate:deprecations'] },
+  { name: 'validate:stray-files', command: ['validate:stray-files'] },
   { name: 'validate:translations', command: ['validate:translations'] },
   { name: 'validate:rollbacks', command: ['validate:rollbacks'] },
   { name: 'validate:isolation', command: ['validate:isolation'] },
