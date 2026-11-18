@@ -3,7 +3,7 @@ import { type Job, UnrecoverableError } from 'bullmq'
 import { z } from 'zod'
 
 import { AnalyticsEventNames } from '@platform/core/analytics'
-import { JobContext, LongJobTransaction } from '@platform/core/database'
+import { JobContext } from '@platform/core/database'
 import { searchClickDataSchema, searchEventDataSchema } from '@platform/core/domain'
 import { JobNames, QueueNames, type RollupJob, type TrackAnalyticsJob } from '@platform/core/queues'
 
@@ -102,10 +102,8 @@ export class AnalyticsProcessor extends BaseProcessor<TrackAnalyticsJob | Rollup
     // latest closed ones
     if (end > new Date()) throw new UnrecoverableError('the rollup period has not closed')
     const { storeId } = parsed.data
-    await this.jobContext.forStore(
-      storeId,
-      () => this.rollups.rollup(granularity, storeId, { start, end }),
-      LongJobTransaction
+    await this.jobContext.forStore(storeId, () =>
+      this.rollups.rollup(granularity, storeId, { start, end })
     )
   }
 

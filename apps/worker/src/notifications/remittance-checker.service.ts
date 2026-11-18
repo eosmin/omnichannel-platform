@@ -1,3 +1,4 @@
+// rls-context: every access of this file runs inside the JobContext that its processor opens (forStore)
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 

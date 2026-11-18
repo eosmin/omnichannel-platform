@@ -34,6 +34,7 @@
   "apps/worker/src/outbound/reaction-status.writer.ts": 1,
   "apps/worker/src/outbound/read-receipt-sender.service.ts": 1,
   "apps/worker/src/outbound/typing-sender.service.ts": 3,
+  "apps/worker/src/retention/store-retention-enforcer.service.ts": 11,
   "apps/worker/src/schedulers/analytics-rollup.scheduler.ts": 2,
   "apps/worker/src/schedulers/auto-archive.scheduler.ts": 3,
   "apps/worker/src/schedulers/benefit-close.scheduler.ts": 2,

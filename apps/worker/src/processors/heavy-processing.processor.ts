@@ -2,7 +2,7 @@ import { Processor } from '@nestjs/bullmq'
 import { type Job, UnrecoverableError } from 'bullmq'
 import { z } from 'zod'
 
-import { JobContext, LongJobTransaction } from '@platform/core/database'
+import { JobContext } from '@platform/core/database'
 import {
   bulkLocationIdsSchema,
   bulkLocationsByConnectionSchema,
@@ -245,12 +245,10 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       const reconcile = reconcileJobSchema.safeParse(job.data)
       if (!reconcile.success)
         throw new UnrecoverableError('the reconcile job does not fit its schema')
-      const { storeId } = reconcile.data
-      await this.jobContext.forStore(
-        storeId,
-        () => this.reconciler.reconcileStore(storeId),
-        LongJobTransaction
-      )
+      // Not inside one context for the whole walk: the check catches the error of one level so that it does not hide the rest, and in a
+      // single transaction the first failed statement would abort every later one (25P02). Its reads move to a context per page in
+      // the step that lets the worker lose BYPASSRLS (see rls-worker-baseline.json)
+      await this.reconciler.reconcileStore(reconcile.data.storeId)
       return
     }
     if (job.name === JobNames.RECONCILE_FINANCE) {
@@ -263,14 +261,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       const failures: Error[] = []
       for (const check of [this.financeReconciler, this.fiscalReconciler]) {
         try {
-          const { organizationId } = reconcile.data
-          await this.jobContext.forOrganization(
-            organizationId,
-            async () => {
-              await check.reconcile(organizationId)
-            },
-            LongJobTransaction
-          )
+          await check.reconcile(reconcile.data.organizationId)
         } catch (error) {
           failures.push(error instanceof Error ? error : new Error(String(error)))
         }
@@ -292,12 +283,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
         throw new UnrecoverableError('the chain check job does not fit its schema')
       }
       // A break is an incident the check records and returns; only an error of the infrastructure rejects, and the queue asks again
-      const { organizationId, requestedBy } = verify.data
-      await this.jobContext.forOrganization(
-        organizationId,
-        () => this.financeChain.check(organizationId, new Date(), requestedBy),
-        LongJobTransaction
-      )
+      await this.financeChain.check(verify.data.organizationId, new Date(), verify.data.requestedBy)
       return
     }
     if (job.name === JobNames.SUBMIT_FISCAL_DOCUMENT) {
@@ -345,18 +331,12 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       if (!post.success) throw new UnrecoverableError('the posting job does not fit its schema')
       // A failure of the books is recorded for a person and returns; only an error of the infrastructure rejects, and the queue asks again
       try {
-        const event = post.data
-        await this.jobContext.forOrganization(event.organizationId, () =>
-          this.financePosting.post(event)
-        )
+        await this.financePosting.post(post.data)
       } catch (error) {
         // The last attempt of an error of the infrastructure: the source goes on the list of failures instead of the dead-letter queue
         if (isLastAttempt(job)) {
           // The same database may be what failed: the original error stays the one the queue sees
-          const event = post.data
-          await this.jobContext
-            .forOrganization(event.organizationId, () => this.financePosting.markUnposted(event))
-            .catch(() => undefined)
+          await this.financePosting.markUnposted(post.data).catch(() => undefined)
         }
         throw error
       }

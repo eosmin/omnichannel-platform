@@ -1,4 +1,4 @@
-import { assertSeesEveryRow, JobContext, JobContextError } from './job-context'
+import { assertSeesEveryRow, JobContext, JobContextError, JobContextGoneError } from './job-context'
 import type { PrismaService } from './prisma.service'
 
 const STORE = '11111111-1111-4111-8111-111111111111'
@@ -52,12 +52,13 @@ describe('JobContext', () => {
     expect(contexts).toEqual([{ storeIds: [STORE], organizationIds: [ORG] }])
   })
 
-  it('fails closed for a store that does not exist, and opens no context', async () => {
+  it('says gone for a store that does not exist, and opens no context', async () => {
     const { prisma, contexts } = fakePrisma({ store: null })
     const work = jest.fn()
-    await expect(new JobContext(prisma).forStore(STORE, work)).rejects.toBeInstanceOf(
-      JobContextError
-    )
+    // Another id than the other cases: the organization of a store is remembered for the life of the process
+    await expect(
+      new JobContext(prisma).forStore('99999999-9999-4999-8999-999999999999', work)
+    ).rejects.toBeInstanceOf(JobContextGoneError)
     expect(work).not.toHaveBeenCalled()
     expect(contexts).toEqual([])
   })

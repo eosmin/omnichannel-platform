@@ -36,7 +36,7 @@ export class BulkLabelsCleaner {
   }
 
   async run(now: Date = new Date()): Promise<BulkLabelsCleanupReport> {
-    await assertSeesEveryRow(this.prisma, ['media', 'bulk_label_jobs'])
+    await assertSeesEveryRow(this.prisma, ['media', 'bulk_label_jobs', 'store_settings'])
     return {
       filesDeleted: await this.deleteExpiredFiles(now),
       jobsClosed: await this.closeLostRuns(now)

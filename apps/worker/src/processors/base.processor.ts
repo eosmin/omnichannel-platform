@@ -1,7 +1,7 @@
 import { OnWorkerEvent, WorkerHost } from '@nestjs/bullmq'
-import { type Job, UnrecoverableError } from 'bullmq'
+import type { Job } from 'bullmq'
 
-import { JobContextError } from '@platform/core/database'
+import { JobContextGoneError } from '@platform/core/database'
 import type { BaseJob, QueueName } from '@platform/core/queues'
 
 import type { ProcessorSupport } from './processor-support'
@@ -27,9 +27,10 @@ export abstract class BaseProcessor<T extends BaseJob> extends WorkerHost {
     try {
       await this.support.run(this.queue, job, current => this.handle(current))
     } catch (error) {
-      // A job that names a store, an organization or a person that is not there will not find them when it is tried again
-      if (error instanceof JobContextError) throw new UnrecoverableError(error.message)
-      throw error
+      // The store, the organization or the person of the job was deleted after it was queued: there is nothing left to do. Any other
+      // error of the context is a failure and goes to the queue, which retries it and lets the handler close the job on the last try
+      if (!(error instanceof JobContextGoneError)) throw error
+      this.support.subjectGone(this.queue, job, error)
     }
   }
 

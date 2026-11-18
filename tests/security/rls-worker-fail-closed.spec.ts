@@ -60,18 +60,30 @@ describe('the worker fails closed when row security hides rows', () => {
     expect(await rowsLeft()).toBe(2)
   })
 
-  it('answers a store, a file, an export, a report and a connection that do not exist with no row, not with an error', async () => {
+  it('answers a file, an export and a report that do not exist with no row, for the worker', async () => {
+    const none = randomUUID()
+    const q = asWorker.client
+    expect(await q.$queryRaw<unknown[]>`SELECT * FROM rls_store_of_media(${none})`).toEqual([])
+    expect(await q.$queryRaw<unknown[]>`SELECT * FROM rls_store_of_export(${none})`).toEqual([])
+    expect(
+      await q.$queryRaw<unknown[]>`SELECT * FROM rls_store_of_scheduled_report(${none})`
+    ).toEqual([])
+  })
+
+  it('does not let the api role ask which store owns an arbitrary id', async () => {
+    const none = randomUUID()
+    for (const lookup of [
+      () => asApp.client.$queryRaw`SELECT * FROM rls_store_of_media(${none})`,
+      () => asApp.client.$queryRaw`SELECT * FROM rls_store_of_export(${none})`,
+      () => asApp.client.$queryRaw`SELECT * FROM rls_store_of_scheduled_report(${none})`
+    ]) {
+      await expect(lookup()).rejects.toThrow(/permission denied/)
+    }
+  })
+
+  it('answers the lookup of a channel connection that does not exist with no row, for both roles', async () => {
     for (const role of [asApp, asWorker]) {
       const none = randomUUID()
-      expect(
-        await role.client.$queryRaw<unknown[]>`SELECT * FROM rls_store_of_media(${none})`
-      ).toEqual([])
-      expect(
-        await role.client.$queryRaw<unknown[]>`SELECT * FROM rls_store_of_export(${none})`
-      ).toEqual([])
-      expect(
-        await role.client.$queryRaw<unknown[]>`SELECT * FROM rls_store_of_scheduled_report(${none})`
-      ).toEqual([])
       expect(
         await role.client.$queryRaw<unknown[]>`
           SELECT * FROM rls_resolve_channel_connection(${none}, ${none})`

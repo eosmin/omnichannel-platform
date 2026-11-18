@@ -1,12 +1,15 @@
 // The accesses of the worker to the database that still run with no tenant context (RLS phase 0b). A file of apps/worker/src counts
-// its accesses (`prisma.client`, `prisma.transaction`, raw queries) unless it has adopted a context: it names `JobContext` (the work is
-// done inside forStore / forOrganization / forUser) or `assertSeesEveryRow` (a sweep that proves it sees every row, or does not run).
+// its accesses (`prisma.client`, `prisma.transaction`, raw queries) unless it has adopted a context in one of two ways that a reviewer
+// can see: it calls `assertSeesEveryRow` (a sweep that proves it sees every row, or does not run), or it carries the marker
+// `rls-context:` in a comment, which says that EVERY access of the file runs inside a JobContext that the caller opens. Naming
+// JobContext is not enough: a file that wraps one read and leaves ten others bare is still counted.
 // The count of each file is frozen in scripts/rls-worker-baseline.json and can only go down; the worker loses BYPASSRLS in the last
 // phase, when the baseline is empty.
 export type WorkerBaseline = Record<string, number>
 
 const ACCESS = /\bprisma\.(?:client|transaction)\b|\$queryRaw|\$executeRaw/g
-const ADOPTED = /\bJobContext\b|\bjobContext\b|\bassertSeesEveryRow\b/
+const SWEEP = /\bassertSeesEveryRow\(/
+const MARKER = /rls-context:/
 
 const stripComments = (source: string): string =>
   source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
@@ -22,8 +25,9 @@ export function isScanned(file: string): boolean {
 
 // How many accesses of a file run with no context: all of them, unless the file adopted one
 export function countContextFree(source: string): number {
+  if (MARKER.test(source)) return 0
   const code = stripComments(source)
-  if (ADOPTED.test(code)) return 0
+  if (SWEEP.test(code)) return 0
   return code.match(ACCESS)?.length ?? 0
 }
 

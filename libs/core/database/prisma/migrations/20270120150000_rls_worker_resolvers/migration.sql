@@ -37,5 +37,8 @@ CREATE FUNCTION rls_resolve_channel_connection(p_plugin_id text, p_connection_id
 
 REVOKE ALL ON FUNCTION rls_store_of_media(text), rls_store_of_export(text), rls_store_of_scheduled_report(text),
   rls_resolve_channel_connection(text, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION rls_store_of_media(text), rls_store_of_export(text), rls_store_of_scheduled_report(text),
-  rls_resolve_channel_connection(text, text) TO platform_app, platform_worker;
+-- The three that learn the store of any id are the worker's alone: the api always has the store from the TenantGuard, and a role of the
+-- request path must not be able to ask which store owns an arbitrary id. The channel lookup is also the api's (the public webhooks and
+-- the outbound targets resolve a connection before any context), as the query it replaces was.
+GRANT EXECUTE ON FUNCTION rls_store_of_media(text), rls_store_of_export(text), rls_store_of_scheduled_report(text) TO platform_worker;
+GRANT EXECUTE ON FUNCTION rls_resolve_channel_connection(text, text) TO platform_app, platform_worker;

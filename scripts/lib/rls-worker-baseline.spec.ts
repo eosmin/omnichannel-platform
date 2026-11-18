@@ -17,13 +17,17 @@ describe('countContextFree', () => {
     expect(countContextFree(source)).toBe(4)
   })
 
-  it('counts nothing in a file that works inside a context or proves that it sees every row', () => {
-    expect(
-      countContextFree('this.jobContext.forStore(id, () => this.prisma.client.x.find())')
-    ).toBe(0)
+  it('counts nothing in a file that proves that it sees every row, or that says every access runs in a context', () => {
     expect(
       countContextFree('await assertSeesEveryRow(this.prisma, []); this.prisma.client.a')
     ).toBe(0)
+    expect(countContextFree('// rls-context: the caller opens it\nthis.prisma.client.a')).toBe(0)
+  })
+
+  it('still counts a file that only names JobContext', () => {
+    expect(
+      countContextFree('this.jobContext.forStore(id, () => 1)\nthis.prisma.client.x.find()')
+    ).toBe(1)
   })
 
   it('ignores comments', () => {

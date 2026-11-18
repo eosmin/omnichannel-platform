@@ -12,8 +12,11 @@ export interface TransactionOptions {
 
 // The tenant context of a unit of work that is not an HTTP request: a job of a queue, a step of a schedule (Step 7.1, RLS phase 0b).
 // The api sets it from the TenantGuard; here the worker sets it from what the job names. Three rules:
-//  - Fail closed. A job that names a store, an organization or a person that does not exist is an error, never "nothing to do":
-//    with row security on, a query with no context reads no row, and that must never be read as "already done".
+//  - Fail closed. With row security on, a query with no context reads no row, and that must never be read as "already done". The
+//    store, the organization and the person are looked up in tables that row security never hides (stores, organizations, users,
+//    memberships), so "not there" is real: JobContextGoneError, which a processor treats as a job whose subject was deleted (done,
+//    with a warning). Any other JobContextError (a store that does not match its row, a row hidden from its own context, a sweep
+//    that cannot see every row) is a failure that the queue retries and that the handler's last-attempt cleanup still sees.
 //  - The context is as short as the database work: it holds a connection and a transaction (maxWait 5 s, timeout 15 s), so the
 //    call to a carrier, a channel, the storage, a scanner or the mailer goes outside of it, before or after.
 //  - One context at a time. Inside one, a second call for the same store joins it; a call for another store is refused, because
@@ -25,9 +28,13 @@ export class JobContextError extends Error {
   }
 }
 
-// The database work of a check that walks the books of an organization: minutes, not the 15 seconds of a request. Only for jobs with no
-// call outside the database, whose concurrency is low (the heavy queue runs two at a time).
-export const LongJobTransaction: TransactionOptions = { maxWait: 10_000, timeout: 300_000 }
+// The store, organization or person of the job was deleted after the job was queued: nothing is left to do
+export class JobContextGoneError extends JobContextError {
+  constructor(message: string) {
+    super(message)
+    this.name = 'JobContextGoneError'
+  }
+}
 
 export type AnchorKind = 'media' | 'export' | 'scheduled_report'
 
@@ -37,6 +44,10 @@ interface ActiveContext {
 }
 
 const active = new AsyncLocalStorage<ActiveContext>()
+
+// The organization of a store never changes, and the busiest job (a raw analytics event) would otherwise look it up every time
+const ORGANIZATION_OF_STORE_MAX = 10_000
+const organizationOfStore = new Map<string, string>()
 
 function sameSet(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every(id => b.includes(id))
@@ -57,16 +68,18 @@ export class JobContext {
       if (sameSet(open.storeIds, [storeId])) return work()
       throw new JobContextError('a context of another store is already open')
     }
-    const store = await this.prisma.client.store.findUnique({
-      where: { id: storeId },
-      select: { organizationId: true }
-    })
-    if (store === null) throw new JobContextError('the store of the job does not exist')
-    return this.open(
-      { storeIds: [storeId], organizationIds: [store.organizationId] },
-      work,
-      options
-    )
+    let organizationId = organizationOfStore.get(storeId)
+    if (organizationId === undefined) {
+      const store = await this.prisma.client.store.findUnique({
+        where: { id: storeId },
+        select: { organizationId: true }
+      })
+      if (store === null) throw new JobContextGoneError('the store of the job does not exist')
+      organizationId = store.organizationId
+      if (organizationOfStore.size >= ORGANIZATION_OF_STORE_MAX) organizationOfStore.clear()
+      organizationOfStore.set(storeId, organizationId)
+    }
+    return this.open({ storeIds: [storeId], organizationIds: [organizationId] }, work, options)
   }
 
   // The work of one organization: the books and the fiscal documents (organization scope), which also read the rows of every store
@@ -88,7 +101,7 @@ export class JobContext {
       select: { id: true }
     })
     if (organization === null)
-      throw new JobContextError('the organization of the job does not exist')
+      throw new JobContextGoneError('the organization of the job does not exist')
     const stores = await this.prisma.client.store.findMany({
       where: { organizationId },
       select: { id: true }
@@ -113,7 +126,7 @@ export class JobContext {
       where: { id: userId },
       select: { id: true }
     })
-    if (user === null) throw new JobContextError('the user of the job does not exist')
+    if (user === null) throw new JobContextGoneError('the user of the job does not exist')
     const memberships = await this.prisma.client.membership.findMany({
       where: { userId },
       select: { storeId: true, store: { select: { organizationId: true } } }
@@ -129,7 +142,9 @@ export class JobContext {
   }
 
   // The first thing a job that carries only the id of a row does (a file, an export, a report): learn the store of the row, with a
-  // function of the database that sees every row, and prove that the row is visible from the context of that store. Answers
+  // function of the database that sees every row, and prove that the row is visible from the context of that store. It proves the
+  // row and not the rest of the job: the work that follows runs with no context until its service adopts one (see the baseline of
+  // scripts/validate-rls-worker.ts). Answers
   // 'gone' when the row does not exist (the job then takes its usual way for a missing row), 'unowned' for a row with no store (the
   // avatar of a person) and 'visible' otherwise. A row that exists but cannot be read from its own context is an error: the job
   // would otherwise read "no row" and call it done. A `storeId` in the payload must be the one of the row.
