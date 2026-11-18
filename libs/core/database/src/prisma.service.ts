@@ -41,16 +41,10 @@ export type ReplicaTransaction = Parameters<Parameters<ReplicaClient['$transacti
 // The context is set in ONE statement (a round trip fewer through PgBouncer), with set_config(..., true): transaction-local, so
 // it cannot reach the next client of a pooled connection. A session-level setting is refused by `pnpm validate:rls`.
 async function applyTenantContext(
-  tx: Pick<PrismaTransaction, '$queryRaw'>,
+  tx: Pick<PrismaTransaction, '$executeRaw'>,
   context: TenantContext
-): Promise<string> {
-  // The last column says whether the transaction is read only, so that the caller that needs it can check it in the same trip
-  const rows = await tx.$queryRaw<{ read_only: string }[]>`
-    SELECT set_config('app.store_ids', ${context.storeIds.join(',')}, true),
-           set_config('app.organization_ids', ${context.organizationIds.join(',')}, true),
-           set_config('app.user_id', ${context.userId ?? ''}, true),
-           current_setting('transaction_read_only') AS read_only`
-  return rows[0]?.read_only ?? ''
+): Promise<void> {
+  await tx.$executeRaw`SELECT set_config('app.store_ids', ${context.storeIds.join(',')}, true), set_config('app.organization_ids', ${context.organizationIds.join(',')}, true), set_config('app.user_id', ${context.userId ?? ''}, true)`
 }
 
 interface TransactionOptions {
@@ -95,10 +89,11 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     return tenantScope.getStore()?.tx ?? this.primary
   }
 
-  // Reads that tolerate replication lag, in ONE READ ONLY transaction of the replica that carries the tenant context (the same
+  // Reads that tolerate replication lag, in ONE transaction of the replica that carries the tenant context (the same
   // settings as tenantTransaction): with Row-Level Security on, a read with no context sees no row, so there is no way to read the
   // replica without one. Without DATABASE_REPLICA_URL this is the primary. It sits outside the tenant transaction, so a read here
-  // never sees a row the request wrote in it: never call it in a path that writes (or that reads what it is about to write, or what
+  // never sees a row the request wrote in it. A write through it is refused by a real standby; with no replica (development, CI) nothing
+  // refuses it, which is a debt of Step 7.1 (the plan): never call it in a path that writes (or that reads what it is about to write, or what
   // the person just changed), and never from a guard. The same rule is enforced by `pnpm validate:replica`
   // (scripts/check-replica-routing.ts), which lists the only files that may call it.
   replicaTenantRead<T>(

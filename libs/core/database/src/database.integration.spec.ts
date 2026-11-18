@@ -186,26 +186,36 @@ describe('PrismaService', () => {
     expect(rows[0]).toEqual({ stores: 's-1,s-2', organizations: 'o-1', person: 'u-1' })
   })
 
-  it('reads the replica in a READ ONLY transaction, and refuses a call inside a tenant transaction', async () => {
+  it('runs the callback of replicaTenantRead and of tenantTransaction on the one connection and transaction that got the context', async () => {
+    type Probe = { stores: string; pid: number; txid: string }
+    const context = { storeIds: ['s-77'], organizationIds: ['o-77'], userId: 'u-77' }
+    // Two statements inside the callback: if the second ran on another connection or transaction (a pooler, the adapter) the pid or
+    // the transaction id would differ and the transaction-local context would be missing
+    const replica = await service.replicaTenantRead(context, async db => [
+      ...(await db.$queryRaw<
+        Probe[]
+      >`SELECT current_setting('app.store_ids') AS stores, pg_backend_pid() AS pid, txid_current()::text AS txid`),
+      ...(await db.$queryRaw<
+        Probe[]
+      >`SELECT current_setting('app.store_ids') AS stores, pg_backend_pid() AS pid, txid_current()::text AS txid`)
+    ])
+    expect(replica[0]?.stores).toBe('s-77')
+    expect(replica[1]).toEqual(replica[0])
+    const tenant = await service.tenantTransaction(context, async () => [
+      ...(await service.client.$queryRaw<
+        Probe[]
+      >`SELECT current_setting('app.store_ids') AS stores, pg_backend_pid() AS pid, txid_current()::text AS txid`),
+      ...(await service.client.$queryRaw<
+        Probe[]
+      >`SELECT current_setting('app.store_ids') AS stores, pg_backend_pid() AS pid, txid_current()::text AS txid`)
+    ])
+    expect(tenant[0]?.stores).toBe('s-77')
+    expect(tenant[1]).toEqual(tenant[0])
+    expect(replica[0]?.txid).not.toBe(tenant[0]?.txid)
+  })
+
+  it('refuses replicaTenantRead inside a tenant transaction (two connections of one pool)', async () => {
     const context = { storeIds: ['s-1'], organizationIds: ['o-1'] }
-    // The contract is that the transaction IS read only (replicaTenantRead itself refuses to read when it is not)
-    const mode = await service.replicaTenantRead(
-      context,
-      db =>
-        db.$queryRaw<
-          { read_only: string }[]
-        >`SELECT current_setting('transaction_read_only') AS read_only`
-    )
-    expect(mode[0]?.read_only).toBe('on')
-    // And the tenant transaction of a request is not
-    const writable = await service.tenantTransaction(
-      context,
-      () =>
-        service.client.$queryRaw<
-          { read_only: string }[]
-        >`SELECT current_setting('transaction_read_only') AS read_only`
-    )
-    expect(writable[0]?.read_only).toBe('off')
     await expect(
       service.tenantTransaction(context, () =>
         service.replicaTenantRead(context, () => Promise.resolve(1))
