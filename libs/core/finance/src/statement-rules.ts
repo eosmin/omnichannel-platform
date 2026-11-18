@@ -274,8 +274,10 @@ const daysBetween = (from: string, to: string): number =>
   Math.floor((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY_MS)
 
 // The age of what one party owes (or is owed) at a date. The lines come in the order of the ledger. The side that grows the balance
-// opens an item dated by its entry; the other side settles the oldest open items first (a reversal, the items of the entry it reverses) (the usual first-in, first-out; whether the
-// accountant ages by another rule is **[ACCOUNTANT]**). `cuts` are the upper bounds in days of every bucket but the last.
+// opens an item dated by its entry; the other side settles the oldest open items first (the usual first-in, first-out; whether the
+// accountant ages by another rule is **[ACCOUNTANT]**). A reversal is the exception: it cancels the items of the entry it reverses first,
+// and only what is left of it settles oldest first. The lines of a reversal and of its entry are of the same party, and the reversal
+// comes after its entry in the ledger. `cuts` are the upper bounds in days of every bucket but the last.
 export function agingOf(
   lines: readonly AgingLine[],
   asOf: string,
