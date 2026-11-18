@@ -276,6 +276,8 @@ export const ApiRoutes = {
       difference: (id: string) => `/finance/bank-imports/${id}/difference`,
       // POST confirms the pair of a statement line and a line of the journal
       lineMatches: (id: string) => `/finance/bank-lines/${id}/matches`,
+      // POST confirms ONE statement line against SEVERAL lines of the journal whose signed sum is exactly its amount (HC-121)
+      lineGroupMatches: (id: string) => `/finance/bank-lines/${id}/group-matches`,
       lineRejections: (id: string) => `/finance/bank-lines/${id}/rejections`,
       // GET: the transaction of 4B.4a an unmatched line would be, prefilled (nothing is posted)
       lineRegisterDraft: (id: string) => `/finance/bank-lines/${id}/register-draft`,

@@ -6499,6 +6499,8 @@
         "bank_pair_not_allowed": "Este par no se permite: el monto, el sentido, la cuenta o las fechas no coinciden.",
         "bank_line_already_matched": "Esta línea del extracto ya está conciliada. Recarga para verla.",
         "bank_book_line_already_matched": "Esa línea de los libros ya está conciliada con otra línea de un extracto.",
+        "bank_group_not_allowed": "Estas líneas no pueden ser un grupo: deben ser de la misma cuenta, ninguna revertida, y dos o más.",
+        "bank_group_sum_mismatch": "Las líneas del grupo no suman el monto de la línea del extracto, al centavo.",
         "bank_decision_already_undone": "Esa decisión ya se deshizo.",
         "bank_line_matched": "Esta línea está conciliada: solo una línea sin par se puede registrar como transacción.",
         "bank_no_closing_balance": "Este extracto no tiene saldo final con el que comparar los libros.",
@@ -6787,7 +6789,9 @@
         "from": "De la cuenta",
         "to": "A la cuenta",
         "document": "Número de documento",
-        "memo": "Nota"
+        "memo": "Nota",
+        "useAsMemo": "Usar el texto del extracto como nota",
+        "dropMemo": "Dejar la nota vacía"
       }
     },
     "purchases": {
