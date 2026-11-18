@@ -110,6 +110,7 @@
           "unscannable": "File could not be scanned"
         },
         "finance": {
+          "advance_owed": "An advance to refund",
           "posting_failed": "Entry of the books failed",
           "chain_broken": "The books look altered"
         },
@@ -1047,6 +1048,10 @@
       "body": "Open it to see the details."
     },
     "finance": {
+      "advance_owed": {
+        "title": "A cancelled order has an advance to refund",
+        "body": "Order {number} was cancelled after its payment was booked. The books owe that money to the customer until it is refunded: refund it and record the refund as an entry or a transfer."
+      },
       "posting_failed": {
         "title": "Entry of the books failed",
         "body": "An entry of the books could not be posted automatically. Open the list of failed postings, fix its cause and post it again: the month cannot be closed until then."
@@ -3366,6 +3371,7 @@
           "manage_accounts": "Manage the chart of accounts and settings",
           "post_manual": "Post manual entries",
           "close_periods": "Close and reopen periods",
+          "confirm_books": "Confirm the layout of the legal books as the accountant's",
           "export": "Export the books",
           "view_carrier_fees": "View carrier fees"
         },
@@ -7521,7 +7527,8 @@
         "note_not_voided": "Only a voided credit note can be made again.",
         "note_already_replaced": "The return of this credit note already has a live credit note.",
         "replace_first_unavailable": "This provider does not ask for the replacement before an invalidation, or this document is itself a replacement. Void it and make the new document after.",
-        "replacement_pending": "This sale already has a replacement made first. Invalidate the original first."
+        "replacement_pending": "This sale already has a replacement made first. Invalidate the original first.",
+        "tax_snapshot_missing": "This order has no tax snapshot (it was made before orders kept their tax), so no sale document can be made of it."
       },
       "receiver": {
         "title": "Fix the receiver of document No. {number}",

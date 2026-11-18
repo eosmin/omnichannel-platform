@@ -110,6 +110,7 @@
           "unscannable": "No se pudo analizar un archivo"
         },
         "finance": {
+          "advance_owed": "Un anticipo por devolver",
           "posting_failed": "Falló un asiento contable",
           "chain_broken": "Los libros parecen alterados"
         },
@@ -1047,6 +1048,10 @@
       "body": "Ábrela para ver los detalles."
     },
     "finance": {
+      "advance_owed": {
+        "title": "Un pedido cancelado tiene un anticipo por devolver",
+        "body": "El pedido {number} se canceló después de registrar su pago. Los libros deben ese dinero al cliente hasta que se devuelva: devuélvelo y registra la devolución como un asiento o una transferencia."
+      },
       "posting_failed": {
         "title": "Falló un asiento contable",
         "body": "Un asiento de los libros no se pudo registrar automáticamente. Abre la lista de asientos fallidos, corrige la causa y regístralo de nuevo: el mes no se puede cerrar hasta entonces."
@@ -3366,6 +3371,7 @@
           "manage_accounts": "Gestionar el catálogo de cuentas y los ajustes",
           "post_manual": "Registrar asientos manuales",
           "close_periods": "Cerrar y reabrir periodos",
+          "confirm_books": "Confirmar el formato de los libros legales como el del contador",
           "export": "Exportar los libros",
           "view_carrier_fees": "Ver las tarifas de transportistas"
         },
@@ -7521,7 +7527,8 @@
         "note_not_voided": "Solo una nota de crédito anulada se puede hacer de nuevo.",
         "note_already_replaced": "La devolución de esta nota de crédito ya tiene una nota de crédito vigente.",
         "replace_first_unavailable": "Este proveedor no pide el reemplazo antes de invalidar, o este documento ya es un reemplazo. Anúlalo y haz el documento nuevo después.",
-        "replacement_pending": "Esta venta ya tiene un reemplazo hecho primero. Invalida primero el original."
+        "replacement_pending": "Esta venta ya tiene un reemplazo hecho primero. Invalida primero el original.",
+        "tax_snapshot_missing": "Este pedido no tiene el impuesto guardado (se hizo antes de que los pedidos guardaran su impuesto), así que no se puede hacer un documento de venta de él."
       },
       "receiver": {
         "title": "Corregir el receptor del documento N.º {number}",

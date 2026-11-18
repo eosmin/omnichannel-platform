@@ -25,6 +25,7 @@ export const ClientPermissions = {
   CUSTOMERS_MERGE: 'customers:merge',
   CUSTOMERS_VIEW: 'customers:view',
   FINANCE_CLOSE_PERIODS: 'finance:close_periods',
+  FINANCE_CONFIRM_BOOKS: 'finance:confirm_books',
   FINANCE_EXPORT: 'finance:export',
   FINANCE_MANAGE_ACCOUNTS: 'finance:manage_accounts',
   FINANCE_MANAGE_PURCHASES: 'finance:manage_purchases',
