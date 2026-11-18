@@ -22,7 +22,7 @@ describe('BucketProtectionCheck', () => {
   })
   afterEach(() => jest.restoreAllMocks())
 
-  it('asks nothing outside a deployed environment', async () => {
+  it('asks nothing outside a deployed environment', () => {
     const inspect = jest.fn()
     const { check, set } = build(false, inspect)
     check.onApplicationBootstrap()
