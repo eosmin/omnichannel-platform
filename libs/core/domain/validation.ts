@@ -17,7 +17,7 @@ export const uuidSchema = lowercasedUuidSchema
 // The largest whole number `queryIntSchema` reads: nine digits
 export const QUERY_INT_MAX = 999_999_999
 
-export function queryIntSchema(min: number, max: number): z.ZodPipe<z.ZodString, z.ZodNumber> {
+export function queryIntSchema(min: number, max: number): z.ZodType<number, string> {
   return z
     .string()
     .regex(/^\d{1,9}$/, { message: 'a whole number, in digits only' })
