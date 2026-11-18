@@ -187,6 +187,18 @@ describe('The command secret of a remote channel plugin', () => {
       expect(JSON.stringify(entries)).not.toContain(setup.commandSecret ?? 'x')
     })
 
+    it('lets one of two rotations at once through: the other finds the window open', async () => {
+      const { setup } = await setUp()
+
+      const answers = await Promise.all([
+        rotate(setup.installationId),
+        rotate(setup.installationId),
+        rotate(setup.installationId)
+      ])
+
+      expect(answers.map(answer => answer.status).sort()).toEqual([OK, CONFLICT, CONFLICT].sort())
+    })
+
     it('refuses a second rotation while the first one is open: the plugin has not replaced its secret yet', async () => {
       const { id, setup } = await setUp()
       const first = (await rotate(setup.installationId).expect(OK)).body as RotationBody

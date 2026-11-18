@@ -4,12 +4,13 @@ import { newCommandSecret, RemoteChannelSync, sealCommandSecret } from '@platfor
 import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { CredentialCipher } from '@platform/core/crypto'
-import { lockStoreForWrite, PrismaService } from '@platform/core/database'
+import { lockStoreForWrite, lockStoreScope, PrismaService } from '@platform/core/database'
 import {
   PluginCatalogTypes,
   PluginInstallationStatus,
   PluginStatus,
-  RemoteChannelLimits
+  RemoteChannelLimits,
+  RemoteChannelLockScopes
 } from '@platform/core/domain'
 import { resourceConflict, resourceNotFound } from '@platform/core/errors'
 
@@ -44,6 +45,12 @@ export class PluginCommandSecretService {
     const graceMs = RemoteChannelLimits.ROTATION_GRACE_SECONDS * 1000
     const { pluginId, now } = await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, store.id)
+      // The store lock is a shared one: two rotations at once would both find the window closed. This one makes them take turns
+      await lockStoreScope(
+        tx,
+        store.id,
+        `${RemoteChannelLockScopes.COMMAND_SECRET}:${installationId}`
+      )
       // Taken under the lock: the grace window counts from the moment the rotation is visible
       const now = new Date()
       // The installation is the one of this store and of a remote channel that is up: another store's id is "not found"

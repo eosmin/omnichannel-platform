@@ -118,7 +118,11 @@ export const RemoteChannelApiLimits = {
 
 // One writer at a time per account of a remote channel in a store: the store lock of the writers is a shared one, so two `PUT`s of the
 // same new account at once would both find nothing and race on the unique index (QA N-4A-06)
-export const RemoteChannelLockScopes = { CONNECTION: 'remote_channel_connection' } as const
+// `COMMAND_SECRET` does the same for two rotations of the secret of one installation (the window of cooling is checked, then written)
+export const RemoteChannelLockScopes = {
+  CONNECTION: 'remote_channel_connection',
+  COMMAND_SECRET: 'plugin-command-secret'
+} as const
 
 // `connectionId` is the plugin's own identifier of the account: letters, digits and . _ : + @ -
 export const REMOTE_CONNECTION_ID_PATTERN = /^[A-Za-z0-9._:+@-]+$/
