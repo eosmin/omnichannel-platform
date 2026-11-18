@@ -6234,6 +6234,7 @@
       "cod_write_off": "Baja de contra entrega",
       "purchase_receipt": "Compra recibida",
       "supplier_payment": "Pago a proveedor",
+      "supplier_payment_return": "Devolución de pago a proveedor",
       "carrier_guides": "Compra de guías de transportista",
       "inventory_adjustment": "Ajuste de inventario",
       "reversal": "Reversión"
@@ -6263,6 +6264,7 @@
         "transfer_line": "Un faltante de transferencia dado de baja",
         "purchase_receipt": "Una compra recibida",
         "supplier_payment": "Un pago a proveedor",
+        "supplier_payment_return": "Una devolución de un pago a proveedor",
         "carrier_guide_movement": "Una compra de guías de transportista",
         "finance_transaction": "Un gasto, ingreso o transferencia",
         "manual": "Un asiento escrito a mano"
@@ -7289,6 +7291,7 @@
         "transfer_line": "Faltante de transferencia dado de baja",
         "purchase_receipt": "Compra recibida",
         "supplier_payment": "Pago a proveedor",
+        "supplier_payment_return": "Devolución de pago a proveedor",
         "carrier_guide_movement": "Guías de transportista",
         "finance_transaction": "Gasto, ingreso o transferencia",
         "manual": "Asiento manual"
