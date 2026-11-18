@@ -5,6 +5,7 @@ import {
   FinanceLimits,
   FinanceReportLimits,
   lowercasedUuidSchema,
+  queryIntSchema,
   singleLineText
 } from '@platform/core/domain'
 import { isIsoDate } from '@platform/core/finance'
@@ -55,7 +56,7 @@ export const ledgerQuerySchema = z
     to: day.optional(),
     storeId: lowercasedUuidSchema.optional(),
     cursor: ledgerCursorSchema.optional(),
-    limit: z.coerce.number().int().min(1).max(FinanceReportLimits.LEDGER_PAGE_MAX).default(100)
+    limit: queryIntSchema(1, FinanceReportLimits.LEDGER_PAGE_MAX).default(100)
   })
   .refine(value => value.from === undefined || value.to === undefined || value.from <= value.to, {
     message: 'from is after to'
