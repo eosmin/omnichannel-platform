@@ -2,7 +2,10 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 
 import { Injectable } from '@nestjs/common'
 
+import { MembershipStatus } from '@platform/core/domain'
+
 import { PrismaService } from './prisma.service'
+import type { TenantContext } from './tenant-context'
 
 // The two limits of an interactive transaction (the same names as PrismaService's own, which it does not export)
 export interface TransactionOptions {
@@ -28,6 +31,14 @@ export class JobContextError extends Error {
   }
 }
 
+// The payload and the row it names disagree (a store that is not the row's): deterministic, so a retry cannot help
+export class JobContextMismatchError extends JobContextError {
+  constructor(message: string) {
+    super(message)
+    this.name = 'JobContextMismatchError'
+  }
+}
+
 // The store, organization or person of the job was deleted after the job was queued: nothing is left to do
 export class JobContextGoneError extends JobContextError {
   constructor(message: string) {
@@ -39,6 +50,9 @@ export class JobContextGoneError extends JobContextError {
 export type AnchorKind = 'media' | 'export' | 'scheduled_report'
 
 interface ActiveContext {
+  // What opened it: only a context of the same kind and subject is joined (an organization needs every store of it, which the context of a
+  // store does not have)
+  kind: 'store' | 'organization' | 'user'
   storeIds: readonly string[]
   organizationIds: readonly string[]
   userId?: string
@@ -47,8 +61,10 @@ interface ActiveContext {
 const active = new AsyncLocalStorage<ActiveContext>()
 
 // The organization of a store never changes, and the busiest job (a raw analytics event) would otherwise look it up every time
+// It is remembered for a minute and no longer, so a store that is deleted is gone again for the next job after that.
 const ORGANIZATION_OF_STORE_MAX = 10_000
-const organizationOfStore = new Map<string, string>()
+const ORGANIZATION_OF_STORE_TTL_MS = 60_000
+const organizationOfStore = new Map<string, { organizationId: string; until: number }>()
 
 function sameSet(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every(id => b.includes(id))
@@ -66,10 +82,14 @@ export class JobContext {
   ): Promise<T> {
     const open = active.getStore()
     if (open !== undefined) {
-      if (sameSet(open.storeIds, [storeId])) return work()
+      if (open.kind === 'store' && sameSet(open.storeIds, [storeId])) return work()
       throw new JobContextError('a context of another store is already open')
     }
-    let organizationId = organizationOfStore.get(storeId)
+    const remembered = organizationOfStore.get(storeId)
+    let organizationId =
+      remembered !== undefined && remembered.until > Date.now()
+        ? remembered.organizationId
+        : undefined
     if (organizationId === undefined) {
       const store = await this.prisma.client.store.findUnique({
         where: { id: storeId },
@@ -78,9 +98,16 @@ export class JobContext {
       if (store === null) throw new JobContextGoneError('the store of the job does not exist')
       organizationId = store.organizationId
       if (organizationOfStore.size >= ORGANIZATION_OF_STORE_MAX) organizationOfStore.clear()
-      organizationOfStore.set(storeId, organizationId)
+      organizationOfStore.set(storeId, {
+        organizationId,
+        until: Date.now() + ORGANIZATION_OF_STORE_TTL_MS
+      })
     }
-    return this.open({ storeIds: [storeId], organizationIds: [organizationId] }, work, options)
+    return this.open(
+      { kind: 'store', storeIds: [storeId], organizationIds: [organizationId] },
+      work,
+      options
+    )
   }
 
   // The work of one organization: the books and the fiscal documents (organization scope), which also read the rows of every store
@@ -92,9 +119,7 @@ export class JobContext {
   ): Promise<T> {
     const open = active.getStore()
     if (open !== undefined) {
-      if (open.organizationIds.length === 1 && open.organizationIds[0] === organizationId) {
-        return work()
-      }
+      if (open.kind === 'organization' && open.organizationIds[0] === organizationId) return work()
       throw new JobContextError('a context of another organization is already open')
     }
     const organization = await this.prisma.client.organization.findUnique({
@@ -108,7 +133,11 @@ export class JobContext {
       select: { id: true }
     })
     return this.open(
-      { storeIds: stores.map(store => store.id), organizationIds: [organizationId] },
+      {
+        kind: 'organization',
+        storeIds: stores.map(store => store.id),
+        organizationIds: [organizationId]
+      },
       work,
       options
     )
@@ -129,11 +158,13 @@ export class JobContext {
     })
     if (user === null) throw new JobContextGoneError('the user of the job does not exist')
     const memberships = await this.prisma.client.membership.findMany({
-      where: { userId },
+      // Only a membership in force: a person who was removed or suspended must not carry that store's id into the context
+      where: { userId, status: MembershipStatus.ACTIVE, revokedAt: null },
       select: { storeId: true, store: { select: { organizationId: true } } }
     })
     return this.open(
       {
+        kind: 'user',
         storeIds: [...new Set(memberships.map(row => row.storeId))],
         organizationIds: [...new Set(memberships.map(row => row.store.organizationId))],
         userId
@@ -157,10 +188,10 @@ export class JobContext {
   ): Promise<'gone' | 'unowned' | 'visible'> {
     const found = await this.storeOfRow(kind, id)
     if (found === null) return 'gone'
-    if (found.storeId === null) return 'unowned'
     if (payloadStoreId !== undefined && payloadStoreId !== found.storeId) {
-      throw new JobContextError(`the store of the job is not the store of its ${kind}`)
+      throw new JobContextMismatchError(`the store of the job is not the store of its ${kind}`)
     }
+    if (found.storeId === null) return 'unowned'
     const storeId = found.storeId
     const seen = await this.forStore(storeId, () => this.visible(kind, id))
     if (!seen) throw new JobContextError(`the ${kind} of the job is hidden from its own store`)
@@ -205,7 +236,12 @@ export class JobContext {
     work: () => Promise<T>,
     options: TransactionOptions | undefined
   ): Promise<T> {
-    return this.prisma.tenantTransaction(context, () => active.run(context, work), options)
+    const tenant: TenantContext = {
+      storeIds: context.storeIds,
+      organizationIds: context.organizationIds,
+      userId: context.userId
+    }
+    return this.prisma.tenantTransaction(tenant, () => active.run(context, work), options)
   }
 }
 

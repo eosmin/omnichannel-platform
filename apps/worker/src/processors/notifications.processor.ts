@@ -67,7 +67,9 @@ export class NotificationsProcessor extends BaseProcessor<NotificationsJob> {
         if (!parsed.success)
           throw new UnrecoverableError('the remittance check does not fit its schema')
         const { storeId } = parsed.data
-        await this.jobContext.forStore(storeId, () => this.remittances.check(storeId, new Date()))
+        await this.skipIfGone(job, () =>
+          this.jobContext.forStore(storeId, () => this.remittances.check(storeId, new Date()))
+        )
         return
       }
       default:

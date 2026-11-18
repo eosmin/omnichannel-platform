@@ -9,7 +9,7 @@ export type WorkerBaseline = Record<string, number>
 
 const ACCESS = /\bprisma\.(?:client|transaction)\b|\$queryRaw|\$executeRaw/g
 const SWEEP = /\bassertSeesEveryRow\(/
-const MARKER = /rls-context:/
+const MARKER = /^\s*\/\/ rls-context: /m
 
 const stripComments = (source: string): string =>
   source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')

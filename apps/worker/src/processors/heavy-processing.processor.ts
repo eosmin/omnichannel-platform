@@ -347,7 +347,7 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       if (!enforce.success)
         throw new UnrecoverableError('the retention job does not fit its schema')
       // Rejects when a category failed (after the others ran): the queue asks again and finds what is left
-      await this.retention.enforce(enforce.data.storeId)
+      await this.skipIfGone(job, () => this.retention.enforce(enforce.data.storeId))
       return
     }
     if (job.name === JobNames.POLL_SHIPMENT_STATUS) {

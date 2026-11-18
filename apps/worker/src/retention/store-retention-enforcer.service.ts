@@ -47,9 +47,9 @@ export class StoreRetentionEnforcer {
   }
 
   async enforce(storeId: string, now: Date = new Date()): Promise<RetentionReport> {
-    // Read in the context of the store, and a store that is not there is an error: with no row of settings the defaults apply, so a
-    // read that row security hid would delete at the default what the owner asked to keep longer. The deletes below only ever remove
-    // less when they see less.
+    // Read in the context of the store: with no row of settings the defaults apply, so a read that row security hid would delete at the
+    // default what the owner asked to keep longer. A store that is not there ends the job (the processor treats it as done: its rows
+    // went with it). The deletes below only ever remove less when they see less.
     const row = await this.jobContext.forStore(storeId, () =>
       this.prisma.client.retentionSettings.findUnique({
         where: { storeId },

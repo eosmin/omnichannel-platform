@@ -24,6 +24,11 @@ describe('countContextFree', () => {
     expect(countContextFree('// rls-context: the caller opens it\nthis.prisma.client.a')).toBe(0)
   })
 
+  it('does not take a marker that is not a comment line of its own', () => {
+    expect(countContextFree('const a = 1 // rls-context: x\nthis.prisma.client.a')).toBe(1)
+    expect(countContextFree('const s = "rls-context: "\nthis.prisma.client.a')).toBe(1)
+  })
+
   it('still counts a file that only names JobContext', () => {
     expect(
       countContextFree('this.jobContext.forStore(id, () => 1)\nthis.prisma.client.x.find()')

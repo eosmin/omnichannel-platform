@@ -1,4 +1,10 @@
-import { assertSeesEveryRow, JobContext, JobContextError, JobContextGoneError } from './job-context'
+import {
+  assertSeesEveryRow,
+  JobContext,
+  JobContextError,
+  JobContextGoneError,
+  JobContextMismatchError
+} from './job-context'
 import type { PrismaService } from './prisma.service'
 
 const STORE = '11111111-1111-4111-8111-111111111111'
@@ -77,6 +83,20 @@ describe('JobContext', () => {
     expect(jobs.isOpen()).toBe(false)
   })
 
+  it('does not join the context of a store when an organization is asked for', async () => {
+    const { prisma } = fakePrisma({
+      store: { organizationId: ORG },
+      organization: { id: ORG },
+      stores: [{ id: STORE }, { id: OTHER }]
+    })
+    const jobs = new JobContext(prisma)
+    await jobs.forStore(STORE, async () => {
+      await expect(jobs.forOrganization(ORG, () => Promise.resolve(1))).rejects.toBeInstanceOf(
+        JobContextError
+      )
+    })
+  })
+
   it('keeps no context after the work fails', async () => {
     const { prisma } = fakePrisma({ store: { organizationId: ORG } })
     const jobs = new JobContext(prisma)
@@ -106,6 +126,9 @@ describe('JobContext', () => {
       ]
     })
     await new JobContext(found.prisma).forUser('u', () => Promise.resolve(undefined))
+    expect(found.prisma.client.membership.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId: 'u', status: 'ACTIVE', revokedAt: null } })
+    )
     expect(found.contexts).toEqual([
       { storeIds: [STORE, OTHER], organizationIds: [ORG], userId: 'u' }
     ])
@@ -142,6 +165,14 @@ describe('JobContext.anchor', () => {
     queryRaw.mockResolvedValueOnce([{ store_id: STORE }]).mockResolvedValueOnce([])
     await expect(new JobContext(prisma).anchor('scheduled_report', 'x')).rejects.toBeInstanceOf(
       JobContextError
+    )
+  })
+
+  it('refuses a payload that names a store for a row that has none', async () => {
+    const { prisma, queryRaw } = fakePrisma()
+    queryRaw.mockResolvedValueOnce([{ store_id: null }])
+    await expect(new JobContext(prisma).anchor('media', 'x', STORE)).rejects.toBeInstanceOf(
+      JobContextMismatchError
     )
   })
 
