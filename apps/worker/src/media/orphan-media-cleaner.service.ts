@@ -11,6 +11,7 @@ import { MediaStatus } from '@platform/core/domain'
 import { JobNames, QueueNames, type ScanFileJob } from '@platform/core/queues'
 import { REDIS_CLIENT } from '@platform/core/redis'
 import {
+  EvidenceMediaPurposes,
   MediaObjectAreas,
   MediaPurpose,
   objectKeysOf,
@@ -367,6 +368,8 @@ export class OrphanMediaCleaner {
     const infected = await this.prisma.client.media.findMany({
       where: {
         status: { in: [MediaStatus.INFECTED, MediaStatus.UNSCANNABLE] },
+        // Financial evidence stays in the bucket, unserved (HC-122)
+        purpose: { notIn: [...EvidenceMediaPurposes] },
         scannedAt: {
           gt: new Date(Date.now() - UploadLimits.INFECTED_CLEANUP_WINDOW_HOURS * HOUR_MS)
         },
@@ -401,19 +404,26 @@ export class OrphanMediaCleaner {
     now: Date,
     scope?: CleanupScope
   ): Promise<{ requeued: number; dropped: number }> {
-    const stuck = await this.prisma.client.media.findMany({
-      where: {
-        status: MediaStatus.PENDING,
-        // The evidence of a fiscal document is never dropped (the database says so) and is repaired and scanned again when it is asked for,
-        // so it never fills the batch of this sweep
-        purpose: { not: MediaPurpose.FISCAL_EVIDENCE },
-        createdAt: { lt: new Date(now.getTime() - UploadLimits.STUCK_SCAN_MINUTES * MINUTE_MS) },
-        ...ownedBy(scope)
-      },
-      select: { id: true, key: true, createdAt: true },
-      orderBy: { createdAt: 'asc' },
-      take: UploadLimits.ORPHAN_CLEANUP_BATCH
+    // The evidence of a fiscal document is never dropped (the database says so) and is repaired and scanned again when it is asked for,
+    // so it never fills the batch of this sweep. A finance document (a receipt, a statement) whose scan keeps failing stays pending and
+    // is queued again here every pass (HC-122): it has a batch of its own, so a pile of them never starves the scans of other files
+    const stuckWhere = (purpose: string | object) => ({
+      status: MediaStatus.PENDING,
+      purpose,
+      createdAt: { lt: new Date(now.getTime() - UploadLimits.STUCK_SCAN_MINUTES * MINUTE_MS) },
+      ...ownedBy(scope)
     })
+    const pick = (purpose: string | object) =>
+      this.prisma.client.media.findMany({
+        where: stuckWhere(purpose),
+        select: { id: true, key: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
+        take: UploadLimits.ORPHAN_CLEANUP_BATCH
+      })
+    const stuck = [
+      ...(await pick({ notIn: [MediaPurpose.FISCAL_EVIDENCE, MediaPurpose.FINANCE_DOCUMENT] })),
+      ...(await pick(MediaPurpose.FINANCE_DOCUMENT))
+    ]
     const dropBefore = now.getTime() - UploadLimits.UNCONFIRMED_UPLOAD_TTL_HOURS * HOUR_MS
     let requeued = 0
     let dropped = 0

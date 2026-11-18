@@ -12,6 +12,7 @@ import {
   FinancePostingKey,
   FinancePostingOutcome,
   FinanceSourceType,
+  GuideMovementKind,
   JournalEntryType,
   PartyType,
   RemittanceLineOutcome,
@@ -311,6 +312,130 @@ describe('The entries that depend on a carrier (Step 4B.6b-1)', () => {
         where: { organizationId: ctx.orgA.id, sourceId: shipment.id }
       })
       expect(failure?.resolvedAt).not.toBeNull()
+    })
+  })
+
+  // HC-101: a guide a prepaid connection made took its cost out of the advance when it was made, so the carrier is not owed it again
+  describe('E4 of a guide paid out of the advance (Step 4B.6b-4)', () => {
+    async function prepaid(
+      input: { unitCost: number | null; onAdvance?: boolean } = { unitCost: 273 }
+    ) {
+      const shipment = await delivered()
+      await owner.carrierGuideMovement.create({
+        data: {
+          storeId: ctx.storeA.id,
+          connectionId: shipment.connectionId,
+          kind: GuideMovementKind.CONSUME,
+          guidesDelta: -1,
+          unitCostCents: input.unitCost,
+          onAdvance: input.onAdvance ?? true,
+          shipmentId: shipment.id,
+          createdBy: 'system'
+        }
+      })
+      return shipment
+    }
+    const payableOf = async (connectionId: string): Promise<number> => {
+      const lines = await owner.journalLine.findMany({
+        where: {
+          organizationId: ctx.orgA.id,
+          partyType: PartyType.CARRIER_CONNECTION,
+          partyId: connectionId,
+          // Only what is owed to the carrier: the receivable of a remittance names the same carrier
+          account: { code: code(AccountRole.PAYABLE_CARRIERS) }
+        },
+        select: { creditCents: true, debitCents: true }
+      })
+      return lines.reduce((total, line) => total + line.creditCents - line.debitCents, 0)
+    }
+
+    it('credits the advance for the guide at its cost and owes the carrier only the commission', async () => {
+      const shipment = await prepaid()
+      const result = await post(FinanceSourceType.SHIPMENT, shipment.id, FinanceEventKind.CHARGES)
+      expect(result.outcome).toBe(FinancePostingOutcome.POSTED)
+      const entry = await entryOf(FinancePostingKey.SHIPMENT_CHARGES(shipment.id))
+      expect(linesOf(entry as NonNullable<typeof entry>)).toEqual(
+        sorted([
+          [code(AccountRole.CARRIER_FREIGHT_EXPENSE), 273, 0],
+          [code(AccountRole.CARRIER_COMMISSION_EXPENSE), 113, 0],
+          [code(AccountRole.PREPAID_CARRIER_GUIDES), 0, 273],
+          [code(AccountRole.PAYABLE_CARRIERS), 0, 113]
+        ])
+      )
+      // Nothing is owed for a freight that was already paid: the payable of the carrier is the commission
+      expect(await payableOf(shipment.connectionId)).toBe(113)
+    })
+
+    it('charges a guide no advance covered as an invoice, as before: no purchase on record, nothing to take', async () => {
+      const shipment = await prepaid({ unitCost: null })
+      await post(FinanceSourceType.SHIPMENT, shipment.id, FinanceEventKind.CHARGES)
+      const entry = await entryOf(FinancePostingKey.SHIPMENT_CHARGES(shipment.id))
+      expect(linesOf(entry as NonNullable<typeof entry>)).toEqual(
+        sorted([
+          [code(AccountRole.CARRIER_FREIGHT_EXPENSE), 300, 0],
+          [code(AccountRole.CARRIER_COMMISSION_EXPENSE), 113, 0],
+          [code(AccountRole.PAYABLE_CARRIERS), 0, 413]
+        ])
+      )
+    })
+
+    it('does not read the advance for a guide that was not made on it, whatever the connection is now', async () => {
+      const shipment = await prepaid({ unitCost: 273, onAdvance: false })
+      await post(FinanceSourceType.SHIPMENT, shipment.id, FinanceEventKind.CHARGES)
+      expect(await payableOf(shipment.connectionId)).toBe(413)
+    })
+
+    it('fails naming the advance when it is not mapped, and never owes the carrier the guide instead', async () => {
+      const shipment = await prepaid()
+      const mapping = await owner.accountRoleMapping.findFirstOrThrow({
+        where: { organizationId: ctx.orgA.id, role: AccountRole.PREPAID_CARRIER_GUIDES }
+      })
+      await owner.accountRoleMapping.delete({
+        where: {
+          organizationId_role: { organizationId: mapping.organizationId, role: mapping.role }
+        }
+      })
+      try {
+        const failed = await post(FinanceSourceType.SHIPMENT, shipment.id, FinanceEventKind.CHARGES)
+        expect(failed).toMatchObject({
+          outcome: FinancePostingOutcome.FAILED,
+          reason: FinancePostingFailureReason.ROLE_NOT_MAPPED
+        })
+        expect(await entryOf(FinancePostingKey.SHIPMENT_CHARGES(shipment.id))).toBeNull()
+      } finally {
+        await owner.accountRoleMapping.create({
+          data: {
+            organizationId: mapping.organizationId,
+            role: mapping.role,
+            accountId: mapping.accountId
+          }
+        })
+      }
+    })
+
+    it('settles in the remittance only what the carrier is owed: the commission, not the guide that was paid', async () => {
+      const shipment = await prepaid()
+      await post(FinanceSourceType.SHIPMENT, shipment.id, FinanceEventKind.CHARGES)
+      // The carrier collected $25.15 and kept only its commission ($1.13): the guide was prepaid
+      const remittanceId = await confirmed(shipment.connectionId, [
+        { shipmentId: shipment.id, reported: 2402 }
+      ])
+      const result = await post(
+        FinanceSourceType.REMITTANCE,
+        remittanceId,
+        FinanceEventKind.REMITTANCE_CONFIRM
+      )
+      expect(result.outcome).toBe(FinancePostingOutcome.POSTED)
+      const entry = await entryOf(FinancePostingKey.REMITTANCE_CONFIRM(remittanceId))
+      expect(linesOf(entry as NonNullable<typeof entry>)).toEqual(
+        sorted([
+          [code(AccountRole.BANK_DEFAULT), 2402, 0],
+          [code(AccountRole.PAYABLE_CARRIERS), 113, 0],
+          [code(AccountRole.RECEIVABLE_CARRIERS), 0, 2515]
+        ])
+      )
+      // The payable of the carrier is closed: what it was owed it kept out of the cash
+      expect(await payableOf(shipment.connectionId)).toBe(0)
     })
   })
 

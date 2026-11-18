@@ -8,6 +8,7 @@ import {
   CarrierId,
   CodStatus,
   commissionCents,
+  FinanceCountryCodes,
   OrderStatus,
   PaymentMethod,
   ShipmentStatus,
@@ -44,6 +45,7 @@ interface ErrorBody {
 }
 interface ConnectionBody {
   id: string
+  chargeModel: string
   commissionBps: number | null
   serviceRatesCents: Record<string, number>
 }
@@ -331,6 +333,61 @@ describe('Settings → Carriers: commission and rates', () => {
       expect(refused.status).toBe(FORBIDDEN)
       const row = await owner.carrierConnection.findUniqueOrThrow({ where: { id: body.id } })
       expect(row.commissionBps).toBe(450)
+    })
+  })
+
+  describe('how the carrier charges the guides (Step 4B.6b-4)', () => {
+    it('starts invoiced, changes only with the permission to agree fees, refuses an unknown model or an unmapped advance, and audits the change', async () => {
+      const body = made(await connect(CarrierId.FORZA))
+      expect(body.chargeModel).toBe('invoiced')
+      const as = async (
+        name: string,
+        permissions: readonly (typeof Permissions)[keyof typeof Permissions][]
+      ) =>
+        api(
+          app,
+          await actorWithPermissions(owner, app, {
+            prefix,
+            name,
+            organizationId: ctx.orgA.id,
+            storeId: ctx.storeA.id,
+            permissions
+          }),
+          ctx.storeA
+        )
+      const manager = await as('model-manager', [
+        Permissions.SHIPPING_VIEW,
+        Permissions.SETTINGS_MANAGE_CARRIERS
+      ])
+      // A manager who cannot view the fees cannot move how the guides are charged: it decides what the books owe the carrier
+      const refused = await manager
+        .patch(ApiRoutes.carriers.byId(body.id))
+        .send({ chargeModel: 'prepaid' })
+      expect(refused.status).toBe(FORBIDDEN)
+      expect((await edit(body.id, { chargeModel: 'free-for-all' })).status).toBe(BAD_REQUEST)
+      const before = await owner.carrierConnection.findUniqueOrThrow({ where: { id: body.id } })
+      expect(before.chargeModel).toBe('invoiced')
+
+      // An organization whose books do not map the advance yet (none are set up here) cannot switch the model on: every guide would fail to post
+      expect((await edit(body.id, { chargeModel: 'prepaid' })).status).toBe(BAD_REQUEST)
+      const setup = await asAdmin()
+        .post(ApiRoutes.finance.setup)
+        .send({ countryCode: FinanceCountryCodes.EL_SALVADOR, accountingStartDate: '2020-01-01' })
+      expect(setup.status).toBe(CREATED)
+
+      const changed = await edit(body.id, { chargeModel: 'prepaid' })
+      expect(changed.status).toBe(OK)
+      expect(changed.body).toMatchObject({ chargeModel: 'prepaid' })
+      const after = await owner.carrierConnection.findUniqueOrThrow({ where: { id: body.id } })
+      expect(after.chargeModel).toBe('prepaid')
+      const audited = await waitForAuditEntries(
+        owner,
+        { action: AuditAction.CARRIER_FEES_CHANGED, resourceId: body.id },
+        1
+      )
+      expect(audited.map(row => row.metadata)).toContainEqual({
+        chargeModel: { from: 'invoiced', to: 'prepaid' }
+      })
     })
   })
 

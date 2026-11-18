@@ -134,7 +134,7 @@ export function StockPage(): ReactElement {
             <option value={InventoryLevelSorts.RECENT}>{t('filter.sortRecent')}</option>
           </select>
         </div>
-        <label className="flex min-h-9 items-center gap-2 text-sm pointer-coarse:min-h-10">
+        <label className="flex min-h-9 items-center gap-2 text-sm pointer-coarse:min-h-11">
           <input
             type="checkbox"
             className="size-4"

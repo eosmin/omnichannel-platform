@@ -22,6 +22,7 @@ import {
 import { errorName } from '@platform/core/errors'
 
 import { isAdjustmentType } from './auto-entry-rules'
+import { chargeBasisOf, chargeBasisSelect } from './carrier-charge-basis'
 import { chargeAmounts } from './carrier-entry-rules'
 import { FinancePostingService, type PostSourceInput } from './finance-posting.service'
 import { dateToDay } from './period-rules'
@@ -472,18 +473,14 @@ export class FinanceSweepService {
               id: true,
               deliveredAt: true,
               updatedAt: true,
-              shippingPayer: true,
-              codAmountCents: true,
-              carrierCostCents: true,
-              carrierRateCents: true,
-              commissionBps: true
+              ...chargeBasisSelect
             },
             orderBy: { id: 'asc' },
             take,
             ...cursor(after)
           }),
         of: shipment => {
-          const amounts = chargeAmounts(shipment)
+          const amounts = chargeAmounts(chargeBasisOf(shipment))
           if (amounts.freightCents + amounts.commissionCents === 0) return []
           return [
             make(

@@ -377,6 +377,23 @@ describe('OrphanMediaCleaner', () => {
     expect(await storage.head(key)).toBeNull()
   })
 
+  // HC-122: a receipt or a statement is evidence of the books; a verdict never takes its file away
+  it.each(['infected', 'unscannable'])(
+    'keeps the file of a finance document marked %s',
+    async status => {
+      const key = await object(StorageKeys.message(storeId, randomUUID(), 'receipt.txt'))
+      const id = await row(status, key)
+      await owner.query(
+        `UPDATE media SET scanned_at = now(), purpose = 'finance_document' WHERE id = $1`,
+        [id]
+      )
+
+      await sweep()
+
+      expect(await storage.head(key)).not.toBeNull()
+    }
+  )
+
   it('deletes the file an unscannable row left behind and never queues it again', async () => {
     const key = await object(StorageKeys.message(storeId, randomUUID(), 'unreadable.txt'))
     const id = await row('unscannable', key)

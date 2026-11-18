@@ -61,11 +61,15 @@ export enum FinancePostingOutcome {
   PENDING = 'pending'
 }
 
+// The two ends of the key of the sale of an order, for a query that must find every sale entry at once (the VAT report)
+export const FinanceSaleKeyParts = { PREFIX: 'order:', SUFFIX: ':sale' } as const
+
 // The idempotency key of the entry each event posts (TDD_18 §4.1)
 export const FinancePostingKey = {
   ORDER_PAYMENT: (orderId: string): string => `order:${orderId}:payment`,
   ORDER_SENT: (orderId: string): string => `order:${orderId}:sent`,
-  ORDER_SALE: (orderId: string): string => `order:${orderId}:sale`,
+  ORDER_SALE: (orderId: string): string =>
+    `${FinanceSaleKeyParts.PREFIX}${orderId}${FinanceSaleKeyParts.SUFFIX}`,
   SHIPMENT_CHARGES: (shipmentId: string): string => `shipment:${shipmentId}:charges`,
   REMITTANCE_CONFIRM: (remittanceId: string): string => `remittance:${remittanceId}:confirm`,
   REMITTANCE_VOID: (remittanceId: string): string => `remittance:${remittanceId}:void`,

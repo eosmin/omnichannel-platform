@@ -18,6 +18,7 @@ import {
   InventoryMovementType,
   InventoryReferenceType,
   JournalEntryType,
+  PartyType,
   OrderReturnStatus,
   OrderStatus,
   PaymentMethod,
@@ -52,6 +53,7 @@ import {
   saleLines,
   sentLines
 } from './auto-entry-rules'
+import { type ChargeBasisRow, chargeBasisOf, chargeBasisSelect } from './carrier-charge-basis'
 import {
   chargeAmounts,
   chargeLines,
@@ -823,12 +825,8 @@ export class FinancePostingService {
         orderId: true,
         connectionId: true,
         codStatus: true,
-        codAmountCents: true,
         deliveredAt: true,
-        shippingPayer: true,
-        carrierCostCents: true,
-        carrierRateCents: true,
-        commissionBps: true,
+        ...chargeBasisSelect,
         store: { select: { timezone: true } },
         connection: { select: { remittanceDeductsFee: true } }
       }
@@ -878,13 +876,10 @@ export class FinancePostingService {
     })
     if (postedKeys.length < wanted.length)
       return failed(FinancePostingFailureReason.SOURCE_NOT_READY)
-    const charged = await this.entryOf(
-      tx,
-      input.organizationId,
-      FinancePostingKey.SHIPMENT_CHARGES(input.sourceId)
-    )
+    const chargesKey = FinancePostingKey.SHIPMENT_CHARGES(input.sourceId)
+    const payables = await this.payablesOfCharges(tx, input.organizationId, [chargesKey])
     const estimate = this.estimateOf(
-      charged?.totalCents,
+      payables.get(chargesKey),
       accountingStartDate,
       shipment,
       shipment.store.timezone
@@ -1317,8 +1312,9 @@ export class FinancePostingService {
     })
   }
 
-  // E4: what the carrier charges for a guide that was delivered (of the way out or of a return, Step 4B.6b-2). Posted as the TDD writes it: gross, no input VAT [ACCOUNTANT], and
-  // the same for every charge model of the connection (the model is the owner's information to confirm, debt of the plan)
+  // E4: what the carrier charges for a guide that was delivered (of the way out or of a return, Step 4B.6b-2). Posted gross, no input VAT
+  // [ACCOUNTANT]. A guide the connection prepaid (its charge model, Step 4B.6b-4) took its cost out of the advance when it was made: the cost
+  // is credited to the advance, not owed (HC-101), and only the commission is a payable
   private async loadCharges(tx: PrismaTransaction, input: PostSourceInput): Promise<Candidate> {
     const shipment = await tx.shipment.findFirst({
       where: { id: input.sourceId, store: { organizationId: input.organizationId } },
@@ -1328,11 +1324,7 @@ export class FinancePostingService {
         kind: true,
         status: true,
         deliveredAt: true,
-        shippingPayer: true,
-        codAmountCents: true,
-        carrierCostCents: true,
-        carrierRateCents: true,
-        commissionBps: true,
+        ...chargeBasisSelect,
         store: { select: { timezone: true } }
       }
     })
@@ -1347,16 +1339,17 @@ export class FinancePostingService {
     ) {
       return NOTHING
     }
+    const basis = chargeBasisOf(shipment)
     const amounts = chargeAmounts(
       shipment.kind === (ShipmentKind.RETURN as string)
         ? {
-            ...shipment,
+            ...basis,
             shippingPayer:
               shipment.shippingPayer === (ShippingPayer.SENDER as string)
                 ? ShippingPayer.RECIPIENT
                 : ShippingPayer.SENDER
           }
-        : shipment
+        : basis
     )
     if (amounts.freightCents + amounts.commissionCents === 0) return NOTHING
     const accounts = await this.accountsOf(tx, input.organizationId)
@@ -1438,11 +1431,7 @@ export class FinancePostingService {
           select: {
             orderId: true,
             deliveredAt: true,
-            shippingPayer: true,
-            codAmountCents: true,
-            carrierCostCents: true,
-            carrierRateCents: true,
-            commissionBps: true
+            ...chargeBasisSelect
           }
         }
       }
@@ -1471,14 +1460,11 @@ export class FinancePostingService {
     if (awaitingSale) return failed(FinancePostingFailureReason.SOURCE_NOT_READY)
     // What E4 posted for every guide and the lines of earlier confirmed remittances for them: one query each, not one per line (a
     // file can carry thousands of guides and this runs inside the transaction that holds the lock of the books)
-    const charged = await tx.journalEntry.findMany({
-      where: {
-        organizationId: input.organizationId,
-        idempotencyKey: { in: shipmentIds.map(id => FinancePostingKey.SHIPMENT_CHARGES(id)) }
-      },
-      select: { idempotencyKey: true, totalCents: true }
-    })
-    const chargedOf = new Map(charged.map(entry => [entry.idempotencyKey, entry.totalCents]))
+    const chargedOf = await this.payablesOfCharges(
+      tx,
+      input.organizationId,
+      shipmentIds.map(id => FinancePostingKey.SHIPMENT_CHARGES(id))
+    )
     const earlier = await tx.codRemittanceLine.findMany({
       where: {
         storeId: remittance.storeId,
@@ -1596,26 +1582,46 @@ export class FinancePostingService {
     return posted < needed.size
   }
 
+  // What E4 posted as payable to the carrier for each guide, by the key of its entry, in one query: the credits it made to the carrier's
+  // account (the lines that name the carrier connection). It is NOT the total of the entry: a guide the advance paid for is credited to the
+  // advance, and the carrier is owed only the rest (HC-101). An entry with no payable line is there with zero.
+  private async payablesOfCharges(
+    tx: PrismaTransaction,
+    organizationId: string,
+    keys: readonly string[]
+  ): Promise<Map<string, number>> {
+    const entries = await tx.journalEntry.findMany({
+      where: { organizationId, idempotencyKey: { in: [...keys] } },
+      select: {
+        idempotencyKey: true,
+        lines: {
+          where: { partyType: PartyType.CARRIER_CONNECTION },
+          select: { creditCents: true, debitCents: true }
+        }
+      }
+    })
+    return new Map(
+      entries.map(entry => [
+        entry.idempotencyKey,
+        entry.lines.reduce((total, line) => total + line.creditCents - line.debitCents, 0)
+      ])
+    )
+  }
+
   // What E4 posted as payable for a guide (`posted`, read in one query for the whole remittance). A guide delivered before the start of
   // the books has no E4 (its charges are in the opening balance), so the estimate is read from the guide; one delivered after it whose
   // E4 has not been posted yet makes the remittance wait: null. A guide with nothing to charge has an estimate of zero.
   private estimateOf(
     posted: number | undefined,
     accountingStartDate: string,
-    shipment: {
-      deliveredAt: Date | null
-      shippingPayer: string
-      codAmountCents: number | null
-      carrierCostCents: number | null
-      carrierRateCents: number | null
-      commissionBps: number | null
-    },
+    shipment: ChargeBasisRow & { deliveredAt: Date | null },
     timeZone: string
   ): number | null {
     // What the books carry wins over what the guide says now (a commission edited since): the payable is the entry's
     if (posted !== undefined) return posted
-    const amounts = chargeAmounts(shipment)
-    const wanted = amounts.freightCents + amounts.commissionCents
+    const amounts = chargeAmounts(chargeBasisOf(shipment))
+    // What the advance paid is not owed to the carrier: the estimate is the payable E4 would have posted (HC-101)
+    const wanted = amounts.freightCents + amounts.commissionCents - (amounts.advanceCents ?? 0)
     if (wanted === 0) return 0
     const deliveredDay =
       shipment.deliveredAt === null ? null : dayInZone(shipment.deliveredAt, timeZone)
