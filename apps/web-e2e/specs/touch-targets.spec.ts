@@ -8,11 +8,11 @@ import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
 const FIRST_STORE = 'Main Store'
-const MIN_TOUCH = 40
+const MIN_TOUCH = 44
 const inbox = en.inbox
 
-// On a phone (a coarse pointer) every control outside the top bar has a touch area of at least 40 px on each
-// side, as the owner chose and checked on a real phone. The sizes are real boxes, not a pseudo-element, so the
+// On a phone (a coarse pointer) every control outside the top bar has a touch area of at least 44 px on each
+// side, (44 px, the size the QA matrix asks for; it was 40 px until the browser QA of 2026-11-18, N-BR2-61). The sizes are real boxes, not a pseudo-element, so the
 // bounding box tells the truth. One session for the cases: the magic link is limited for each address.
 test.describe.serial('touch targets on a phone', () => {
   let context: BrowserContext
@@ -72,7 +72,7 @@ test.describe.serial('touch targets on a phone', () => {
         row.getByRole('button', { name: new RegExp(`^${label.split('{')[0] ?? ''}`) })
       )
     }
-    // The checkbox glyph is drawn small on purpose; the control a finger hits is the label around it (40 px)
+    // The checkbox glyph is drawn small on purpose; the control a finger hits is the label around it (44 px)
     await expectTouchable(row.locator('label:has(input[type="checkbox"])'))
   })
 
@@ -106,9 +106,9 @@ test.describe.serial('touch targets on a phone', () => {
   })
 
   // A finger that lands while the conversation loads must hit the back link as well: the link of the loading header
-  // is another element than the one of the loaded header, and it has to be 40 px too. This is also why the case
+  // is another element than the one of the loaded header, and it has to be 44 px too. This is also why the case
   // of the loaded header waits for its heading: without it, it would measure whichever of the two is there.
-  test('the back link of the loading header is 40 px too', async () => {
+  test('the back link of the loading header is 44 px too', async () => {
     const isDetail = (url: URL): boolean =>
       url.pathname.endsWith(`/conversations/${conversationId}`)
     let wasHeld = false

@@ -101,6 +101,27 @@
   }
 }
 
+/* On a touch screen a checkbox or a radio is drawn at 20 px, and the label that holds it is the control a finger hits:
+   it is 44 px tall (N-BR1-61, N-BR2-61). The native glyph is 13 px, too small to aim at. A `min-height` does
+   nothing on an inline label, so the label is a flex box that centres its glyph and its text. It sits in the base layer so that a page's own
+   utilities (`items-start`, `min-h-12`) still win. */
+@layer base {
+  @media (pointer: coarse) {
+    input[type='checkbox'],
+    input[type='radio'] {
+      width: 1.25rem;
+      height: 1.25rem;
+    }
+    label:has(input[type='checkbox']),
+    label:has(input[type='radio']) {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      min-height: 2.75rem;
+    }
+  }
+}
+
 /* The spinner of a button that waits for the server (`busy`): it is laid over the button, so it takes no room,
    and it shows nothing for the first 400 ms, so an answer that comes at once never flashes it. When it shows,
    the label gives way to it (it keeps its place, so the button does not change size at any moment) */

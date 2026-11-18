@@ -30,7 +30,7 @@ export function RowCheckbox({
   return (
     <label
       className={cn(
-        'bg-background absolute top-2 left-3 flex size-10 cursor-pointer items-center justify-center rounded-full border',
+        'bg-background absolute top-2 left-3 flex size-10 cursor-pointer items-center justify-center rounded-full border pointer-coarse:top-1.5 pointer-coarse:left-2.5 pointer-coarse:size-11',
         'group-hover:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100',
         isChecked || isSelecting ? 'opacity-100' : 'opacity-0'
       )}

@@ -672,7 +672,7 @@ export function Composer({ conversationId }: { conversationId: string }): ReactE
                 type="button"
                 variant="ghost"
                 size="icon"
-                className="size-6 shrink-0 pointer-coarse:size-9"
+                className="size-6 shrink-0 pointer-coarse:size-11"
                 aria-label={t('cancelReply')}
                 onClick={cancelReply}
               >

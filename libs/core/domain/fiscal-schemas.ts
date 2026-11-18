@@ -9,7 +9,7 @@ import {
   FiscalLimits,
   FiscalVoidKind
 } from './fiscal-constants'
-import { lowercasedUuidSchema, singleLineText } from './validation'
+import { lowercasedUuidSchema, queryIntSchema, singleLineText } from './validation'
 
 // The bodies and the query of the fiscal routes (TDD_18 §8, §12). They live here, not in the api, so the web form that sends one is
 // tested against the very schema that reads it (the purchases do the same).
@@ -85,12 +85,7 @@ export const listFiscalDocumentsQuerySchema = z
       .regex(/^\d{1,10}$/)
       .refine(value => Number(value) <= FiscalLimits.MAX_SEQUENCE, { message: 'not a correlative' })
       .optional(),
-    limit: z.coerce
-      .number()
-      .int()
-      .min(1)
-      .max(FiscalLimits.LIST_MAX_PAGE_SIZE)
-      .default(FiscalLimits.LIST_PAGE_SIZE),
+    limit: queryIntSchema(1, FiscalLimits.LIST_MAX_PAGE_SIZE).default(FiscalLimits.LIST_PAGE_SIZE),
     // The period of the creation of the document, both ends included, as ISO instants (the screen sends the start and the end of the day
     // of the person's own time zone)
     from: z.iso.datetime({ offset: true }).optional(),
