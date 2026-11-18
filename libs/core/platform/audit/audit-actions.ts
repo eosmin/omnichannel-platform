@@ -51,6 +51,8 @@ export const AuditAction = {
   MEDIA_UNSCANNABLE: 'media.unscannable',
   AUDIT_LOG_VIEWED: 'audit_log.viewed',
   AUDIT_LOG_EXPORTED: 'audit_log.exported',
+  // Written by purge_audit_logs() itself (the database function the cold export deletes through), never by the application
+  AUDIT_LOG_PURGED: 'audit_log.purged',
 
   // Data modification
   CUSTOMER_DELETED: 'customer.deleted',
