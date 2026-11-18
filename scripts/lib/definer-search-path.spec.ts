@@ -35,7 +35,7 @@ SET search_path = public, pg_temp AS $$ BEGIN UPDATE finance_settings SET x = 1;
 SET search_path = pg_catalog, pg_temp
 SET lock_timeout = '5s' AS $$
 BEGIN
-  WITH gone AS (DELETE FROM public.audit_logs WHERE id = 'x' RETURNING id)
+  WITH gone AS (UPDATE public.audit_logs SET id = id WHERE id = 'x' RETURNING id)
   SELECT count(*) FROM gone;
   INSERT INTO public.audit_logs (id) VALUES ('y');
   RETURN 1;
@@ -46,7 +46,7 @@ END $$;`)
   it('refuses a body with an unqualified table when public is not in the search_path', () => {
     const problems =
       check(`CREATE FUNCTION f() RETURNS int LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
-BEGIN DELETE FROM audit_logs WHERE true; INSERT INTO media (id) VALUES ('a'); RETURN 1; END $$;`)
+BEGIN UPDATE audit_logs SET id = id WHERE id = 'x'; INSERT INTO media (id) VALUES ('a'); RETURN 1; END $$;`)
     expect(problems).toHaveLength(1)
     expect(problems[0]).toContain('audit_logs, media')
   })
