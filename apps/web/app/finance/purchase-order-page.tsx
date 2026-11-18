@@ -205,6 +205,11 @@ function PurchaseOrder(): ReactElement {
           </Button>
         ) : null}
       </div>
+      {view.receipts.length > 0 && has(OrderActions.CLOSE) ? (
+        <p className="text-muted-foreground text-sm" data-testid="no-cancel-hint">
+          {t('noCancelHint')}
+        </p>
+      ) : null}
       {has(OrderActions.EDIT) ? (
         <OrderLinesEditor
           // Saving makes new line ids: the editor starts again from what was saved, with the names of the new lines

@@ -510,6 +510,9 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       expect(errorOf(over).code).toBe(ErrorCodes.PURCHASE_RECEIPT_EXCEEDS_ORDER)
       const cancel = await asAdminA().post(ApiRoutes.purchaseOrders.cancel(order.id)).send({})
       expect(cancel.status).toBe(CONFLICT)
+      expect(errorOf(cancel).metadata).toMatchObject({
+        conflict: PurchaseConflicts.ORDER_HAS_RECEIPTS
+      })
       const closed = await asAdminA()
         .post(ApiRoutes.purchaseOrders.close(order.id))
         .send({ reason: 'Supplier short' })

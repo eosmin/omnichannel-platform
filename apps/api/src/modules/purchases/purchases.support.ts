@@ -60,12 +60,12 @@ export const invalidPurchase = (problems: readonly string[]): PlatformException 
     { problems }
   )
 
-export const invalidTransition = (from: string, to: string): PlatformException =>
+export const invalidTransition = (from: string, to: string, conflict?: string): PlatformException =>
   new PlatformException(
     ErrorCodes.PURCHASE_ORDER_INVALID_STATUS_TRANSITION,
     'a purchase order does not move that way',
     HttpStatusCodes.CONFLICT,
-    { from, to }
+    conflict === undefined ? { from, to } : { from, to, conflict }
   )
 
 // A row of the organization, or the answer that it does not exist (an id of another organization is an id that does not exist)
