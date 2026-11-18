@@ -42,6 +42,7 @@ import {
 } from '../tenancy'
 
 import { FiscalEvidenceUrlsService } from './fiscal-evidence-urls.service'
+import { FiscalReachService } from './fiscal-reach.service'
 import { FiscalSubmissionQueue } from './fiscal-submission.queue'
 import {
   type ConfirmIssuerChangeBody,
@@ -77,9 +78,28 @@ export class FiscalController {
     private readonly sweep: FiscalSweepService,
     private readonly queue: FiscalSubmissionQueue,
     private readonly evidenceUrls: FiscalEvidenceUrlsService,
+    private readonly reach: FiscalReachService,
     private readonly logger: PinoLogger
   ) {
     this.logger.setContext(FiscalController.name)
+  }
+
+  // A document by id is the caller's only when it belongs to a store where they hold the permission of the route (HC-128): another store's
+  // is a 404, as a document that does not exist
+  private async mayRead(organizationId: string, userId: string, ids: readonly string[]) {
+    await this.reach.assertDocuments(
+      organizationId,
+      ids,
+      await this.reach.stores(organizationId, userId, Permissions.FISCAL_VIEW)
+    )
+  }
+
+  private async mayManage(organizationId: string, userId: string, ids: readonly string[]) {
+    await this.reach.assertDocuments(
+      organizationId,
+      ids,
+      await this.reach.stores(organizationId, userId, Permissions.FISCAL_MANAGE)
+    )
   }
 
   @RequirePermissions(Permissions.FISCAL_VIEW)
@@ -126,24 +146,28 @@ export class FiscalController {
   @RequirePermissions(Permissions.FISCAL_VIEW)
   @NoStore()
   @Get(ApiRoutes.fiscal.reconciliation)
-  reconciliation(
+  async reconciliation(
     @CurrentOrganization() organization: Organization,
+    @CurrentUser() user: AuthenticatedUser,
     @Query(new ZodValidationPipe(reconciliationQuerySchema)) query: ReconciliationQuery
   ): Promise<FiscalFindingsPage> {
     return this.sweep.find(organization.id, query.kind, {
       cursor: query.cursor,
-      limit: query.limit
+      limit: query.limit,
+      storeIds: await this.reach.stores(organization.id, user.id, Permissions.FISCAL_VIEW)
     })
   }
 
   @RequirePermissions(Permissions.FISCAL_VIEW)
   @NoStore()
   @Get(ApiRoutes.fiscal.documents.list)
-  list(
+  async list(
     @CurrentOrganization() organization: Organization,
+    @CurrentUser() user: AuthenticatedUser,
     @Query(new ZodValidationPipe(listDocumentsQuerySchema)) query: ListDocumentsQuery
   ): Promise<FiscalDocumentPage> {
-    return this.documents.list(organization.id, query)
+    const stores = await this.reach.stores(organization.id, user.id, Permissions.FISCAL_VIEW)
+    return this.documents.list(organization.id, query, stores)
   }
 
   @RequirePermissions(Permissions.FISCAL_VIEW)
@@ -151,8 +175,10 @@ export class FiscalController {
   @Get(ApiRoutes.fiscal.documents.byId(':id'))
   async byId(
     @CurrentOrganization() organization: Organization,
+    @CurrentUser() user: AuthenticatedUser,
     @Param('id', id()) documentId: string
   ): Promise<{ data: FiscalDocumentDetailView }> {
+    await this.mayRead(organization.id, user.id, [documentId])
     return { data: await this.documents.getDetail(organization.id, documentId) }
   }
 
@@ -170,6 +196,7 @@ export class FiscalController {
     @Param('kind', new ZodValidationPipe(evidenceKindSchema)) kind: FiscalEvidenceKind,
     @Req() req: AuthenticatedRequest
   ): Promise<{ data: MediaUrls }> {
+    await this.mayRead(organization.id, user.id, [documentId])
     return {
       data: await this.evidenceUrls.urls(
         organization.id,
@@ -192,6 +219,7 @@ export class FiscalController {
     @Body(new ZodValidationPipe(receiverPatchSchema)) body: ReceiverPatchBody,
     @Req() req: AuthenticatedRequest
   ): Promise<{ data: FiscalDocumentView }> {
+    await this.mayManage(organization.id, user.id, [documentId])
     return {
       data: await this.documents.updateReceiver(
         organization.id,
@@ -213,6 +241,7 @@ export class FiscalController {
     @Param('id', id()) documentId: string,
     @Req() req: AuthenticatedRequest
   ): Promise<{ data: { queued: true } }> {
+    await this.mayManage(organization.id, user.id, [documentId])
     const retried = await this.documents.retry(
       organization.id,
       documentId,
@@ -237,6 +266,7 @@ export class FiscalController {
     @Body(new ZodValidationPipe(confirmIssuerChangeSchema)) body: ConfirmIssuerChangeBody,
     @Req() req: AuthenticatedRequest
   ): Promise<{ data: { queued: true } }> {
+    await this.mayManage(organization.id, user.id, [documentId])
     const confirmed = await this.documents.confirmIssuerChange(
       organization.id,
       documentId,
@@ -260,6 +290,14 @@ export class FiscalController {
     @Body(new ZodValidationPipe(voidDocumentSchema)) body: VoidDocumentBody,
     @Req() req: AuthenticatedRequest
   ): Promise<{ data: FiscalDocumentView }> {
+    // The document that takes the place of this one is a document of the caller's reach too
+    await this.mayManage(
+      organization.id,
+      user.id,
+      body.replacementDocumentId === undefined
+        ? [documentId]
+        : [documentId, body.replacementDocumentId]
+    )
     return {
       data: await this.documents.void(
         organization.id,
@@ -290,6 +328,7 @@ export class FiscalController {
     @Param('id', id()) documentId: string,
     @Req() req: AuthenticatedRequest
   ): Promise<{ data: FiscalDocumentView }> {
+    await this.mayManage(organization.id, user.id, [documentId])
     const made = await this.documents.replace(
       organization.id,
       documentId,
