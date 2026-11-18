@@ -1,4 +1,5 @@
 import { ApiError } from '@platform/api-client'
+import { ClientErrorCodes } from '@platform/core/errors'
 
 import {
   attemptMayHavePosted,
@@ -148,17 +149,22 @@ describe('where a problem of the entry is drawn (LED-822)', () => {
 })
 
 describe('the key of a retry after a lost answer (HC-114)', () => {
-  it('may have posted when no answer came or the server failed', () => {
-    expect(attemptMayHavePosted(new TypeError('network'))).toBe(true)
-    expect(attemptMayHavePosted(new ApiError(0, 'NETWORK_ERROR', 'x'))).toBe(true)
-    expect(attemptMayHavePosted(new ApiError(408, 'TIMEOUT', 'x'))).toBe(true)
-    expect(attemptMayHavePosted(new ApiError(500, 'INTERNAL_ERROR', 'x'))).toBe(true)
-    expect(attemptMayHavePosted(new ApiError(503, 'INTERNAL_ERROR', 'x'))).toBe(true)
+  it('may have posted when no answer came, the server failed or the answer was unreadable', () => {
+    expect(attemptMayHavePosted(new ApiError(0, ClientErrorCodes.NETWORK_UNAVAILABLE, 'x'))).toBe(
+      true
+    )
+    expect(attemptMayHavePosted(new ApiError(408, ClientErrorCodes.INTERNAL_ERROR, 'x'))).toBe(true)
+    expect(attemptMayHavePosted(new ApiError(500, ClientErrorCodes.INTERNAL_ERROR, 'x'))).toBe(true)
+    expect(attemptMayHavePosted(new ApiError(503, ClientErrorCodes.INTERNAL_ERROR, 'x'))).toBe(true)
+    expect(attemptMayHavePosted(ApiError.unreadable(201))).toBe(true)
   })
 
-  it('wrote nothing when the api refused it', () => {
+  it('wrote nothing when the api refused it or the error was not from the api', () => {
     expect(attemptMayHavePosted(new ApiError(400, 'VALIDATION_FAILED', 'x'))).toBe(false)
-    expect(attemptMayHavePosted(new ApiError(409, 'RESOURCE_CONFLICT', 'x'))).toBe(false)
     expect(attemptMayHavePosted(new ApiError(403, 'FORBIDDEN', 'x'))).toBe(false)
+    expect(attemptMayHavePosted(new ApiError(409, ClientErrorCodes.RESOURCE_CONFLICT, 'x'))).toBe(
+      false
+    )
+    expect(attemptMayHavePosted(new TypeError('thrown before sending'))).toBe(false)
   })
 })

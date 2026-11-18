@@ -6288,7 +6288,7 @@
       "confirmTitle": "Post this entry?",
       "confirmDescription": "An entry written by hand cannot be edited or erased afterwards, only reversed by another entry.",
       "confirm": "Post entry",
-      "maybePosted": "This entry may already be posted: the answer was lost. Check the journal; if it is not there, close this window and write it again.",
+      "maybePosted": "The answer was lost, so this entry may already be posted. Check the journal. Pressing Post entry again sends this same entry and cannot duplicate it; to change it, close this window after checking.",
       "done": "Entry {number} posted."
     },
     "transactions": {

@@ -150,11 +150,11 @@ export function manualEntryInputOf(
   }
 }
 
-// Whether an attempt that failed may have posted the entry anyway: the answer was lost (no answer, a timeout or a server error), so the
-// entry may be in the journal. A refusal of the api (4xx) wrote nothing. While the attempt may have posted, the key of the form is kept
-// through every edit: the retry is then the same entry (answered with the first) or, once edited, a conflict the person is told about,
-// never a second entry (HC-114).
+// Whether an attempt that failed may have posted the entry anyway: the answer was lost (no answer, a timeout, a server error, or a success
+// the page could not read), so the entry may be in the journal. A refusal of the api (4xx) wrote nothing, and an error that is not the
+// api's was thrown before anything was sent. From the first attempt that may have posted, the form is locked and keeps its key, so the
+// retry is the same entry (answered with the first), never a second one (HC-114).
 export function attemptMayHavePosted(error: unknown): boolean {
-  if (!(error instanceof ApiError)) return true
-  return error.status === 0 || error.status === 408 || error.status >= 500
+  if (!(error instanceof ApiError)) return false
+  return error.status === 0 || error.status === 408 || error.status >= 500 || error.status < 400
 }
