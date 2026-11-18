@@ -24,7 +24,9 @@ export function CarrierChargeModelField({
   const id = useId()
   const { can } = useStore()
   if (!can(ClientPermissions.FINANCE_VIEW_CARRIER_FEES)) return null
-  // An unknown model (a newer server) reads as the default one
+  // A model this screen does not know (a newer server) stays shown as it is, never as another one
+  const known = (Object.values(CarrierChargeModel) as string[]).includes(value)
+  // Its hint is the default one's
   const hint = (model: string): string =>
     model === String(CarrierChargeModel.PREPAID)
       ? t('hints.prepaid')
@@ -47,6 +49,7 @@ export function CarrierChargeModelField({
           <option value={CarrierChargeModel.INVOICED}>{t('models.invoiced')}</option>
           <option value={CarrierChargeModel.REMITTANCE}>{t('models.remittance')}</option>
           <option value={CarrierChargeModel.PREPAID}>{t('models.prepaid')}</option>
+          {known ? null : <option value={value}>{value}</option>}
         </select>
         <p id={`${id}-hint`} className="text-muted-foreground text-xs">
           {hint(value)}

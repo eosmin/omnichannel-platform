@@ -4233,7 +4233,7 @@
           "carriedHint": "Los libros llevan esta compra como un anticipo que cada guía va usando.",
           "paidFrom": "Pagado desde",
           "paidFromDefault": "La cuenta de banco por defecto",
-          "paidFromHint": "La cuenta de la que salió el dinero. Solo para quien puede mover dinero.",
+          "paidFromHint": "La cuenta de la que salió el dinero. Si la dejas vacía, se usa la cuenta de banco por defecto.",
           "note": "Nota (opcional)",
           "submit": "Registrar recarga",
           "done": "Recarga registrada",

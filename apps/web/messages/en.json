@@ -4233,7 +4233,7 @@
           "carriedHint": "The books carry this purchase as an advance that each guide then uses.",
           "paidFrom": "Paid from",
           "paidFromDefault": "The default bank account",
-          "paidFromHint": "The account the money left. Only for who may move money.",
+          "paidFromHint": "The account the money left. If you leave it empty, the default bank account is used.",
           "note": "Note (optional)",
           "submit": "Record purchase",
           "done": "Purchase recorded",
