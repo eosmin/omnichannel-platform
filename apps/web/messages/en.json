@@ -1954,6 +1954,7 @@
     "accountMenu": "Account menu",
     "nav": {
       "label": "Store pages",
+      "menu": "Menu",
       "inbox": "Inbox",
       "customers": "Customers",
       "products": "Products",

@@ -1,9 +1,10 @@
 'use client'
 
+import { Menu } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { type ReactElement, useEffect, useRef } from 'react'
+import type { ReactElement } from 'react'
 
 import { AppPaths } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
@@ -14,6 +15,13 @@ import { mayOpenStoreSettings } from '../../lib/settings/may-open-settings'
 import { useProfile } from '../../lib/use-profile'
 import { cn } from '../../lib/utils'
 import { useStore } from '../providers/store-context'
+import { Button } from '../ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
+} from '../ui/dropdown-menu'
 
 // The pages of the store that exist, for who may open them.  Settings is shown when the person may open at least one of its pages.
 export function StoreNav(): ReactElement {
@@ -92,53 +100,56 @@ export function StoreNav(): ReactElement {
       isShown: mayOpenStoreSettings(can)
     }
   ].filter(entry => entry.isShown)
-  const nav = useRef<HTMLElement>(null)
-  // On a phone the links are one row that scrolls (four rows over the thread left no room to read it, N-BR2-63).
-  // When the row overflows it fades at its end and has room there, so that the last link can scroll clear of the
-  // fade (a row cut with no sign cut a word: "Custome"); a row that fits has neither. It opens with the current
-  // page in view.
-  const current = entries.find(entry => pathname.startsWith(entry.match ?? entry.href))?.href
-  const count = entries.length
-  useEffect(() => {
-    const row = nav.current
-    if (row === null) return
-    const mark = (): void => {
-      row.dataset.overflow = String(row.scrollWidth > row.clientWidth)
-    }
-    mark()
-    const link = Array.from(row.querySelectorAll('a')).find(
-      item => item.getAttribute('aria-current') === 'page'
-    )
-    const isPhone = window.matchMedia('(max-width: 767px)').matches
-    if (isPhone && link !== undefined && row.scrollWidth > row.clientWidth) {
-      row.scrollTo({ left: link.offsetLeft - row.clientWidth / 2 + link.clientWidth / 2 })
-    }
-    const observer = new ResizeObserver(mark)
-    observer.observe(row)
-    return () => observer.disconnect()
-  }, [current, count])
+  const currentEntry = entries.find(entry => pathname.startsWith(entry.match ?? entry.href))
+  // From `md` the links are a row that scrolls if it ever overflows. On a phone they are one button with the page
+  // the person is on, and the links open under it: four rows of links over the thread left no room to read it
+  // (N-BR2-63), and one row that scrolls cut a word ("Custome"), so neither shows a link cut by an edge.
   return (
-    <nav
-      ref={nav}
-      aria-label={t('label')}
-      className="relative flex min-w-0 items-center gap-1 overflow-x-auto max-md:data-[overflow=true]:[mask-image:linear-gradient(to_right,black_calc(100%-2rem),transparent)] max-md:data-[overflow=true]:pe-8"
-    >
-      {entries.map(entry => {
-        const isCurrent = pathname.startsWith(entry.match ?? entry.href)
-        return (
-          <Link
-            key={entry.href}
-            href={entry.href}
-            aria-current={isCurrent ? 'page' : undefined}
-            className={cn(
-              'hover:bg-accent inline-flex shrink-0 items-center rounded-md px-2 py-1 text-sm whitespace-nowrap pointer-coarse:min-h-11',
-              isCurrent ? 'font-semibold' : 'text-muted-foreground'
-            )}
-          >
-            {entry.label}
-          </Link>
-        )
-      })}
-    </nav>
+    <>
+      <nav
+        aria-label={t('label')}
+        className="hidden min-w-0 items-center gap-1 overflow-x-auto md:flex"
+      >
+        {entries.map(entry => {
+          const isCurrent = pathname.startsWith(entry.match ?? entry.href)
+          return (
+            <Link
+              key={entry.href}
+              href={entry.href}
+              aria-current={isCurrent ? 'page' : undefined}
+              className={cn(
+                'hover:bg-accent inline-flex shrink-0 items-center rounded-md px-2 py-1 text-sm whitespace-nowrap pointer-coarse:min-h-11',
+                isCurrent ? 'font-semibold' : 'text-muted-foreground'
+              )}
+            >
+              {entry.label}
+            </Link>
+          )
+        })}
+      </nav>
+      <nav aria-label={t('label')} className="min-w-0 md:hidden">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="max-w-full">
+              <Menu aria-hidden />
+              <span className="truncate">{currentEntry?.label ?? t('menu')}</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {entries.map(entry => (
+              <DropdownMenuItem key={entry.href} asChild className="min-h-11">
+                <Link
+                  href={entry.href}
+                  aria-current={entry === currentEntry ? 'page' : undefined}
+                  className={entry === currentEntry ? 'font-semibold' : undefined}
+                >
+                  {entry.label}
+                </Link>
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </nav>
+    </>
   )
 }

@@ -93,26 +93,6 @@ test.describe.serial('touch targets on a phone', () => {
     await expectTouchable(page.getByRole('tab'))
   })
 
-  // Four rows of links over the thread left no room to read it (N-BR2-63): the menu is one row that scrolls
-  test('the top menu is one row of links and does not push the thread down', async () => {
-    await page.goto(AppPaths.store.inbox(storeId))
-    const menu = page.getByRole('navigation', { name: en.shell.nav.label })
-    const links = menu.getByRole('link')
-    await expect(links.first()).toBeVisible()
-    const count = await links.count()
-    expect(count).toBeGreaterThan(1)
-    const tops = new Set<number>()
-    for (let at = 0; at < count; at++) {
-      const box = await links.nth(at).boundingBox()
-      expect(box).not.toBeNull()
-      tops.add(Math.round(box?.y ?? -1))
-    }
-    expect(tops.size).toBe(1)
-    // One row: the menu is as tall as a link (44 px), not several of them
-    const menuBox = await menu.boundingBox()
-    expect(menuBox?.height ?? Infinity).toBeLessThan(2 * MIN_TOUCH)
-  })
-
   test('the customers page and the settings navigation', async () => {
     await page.goto(AppPaths.store.customers(storeId))
     await expect(page.getByRole('main')).toBeVisible()
