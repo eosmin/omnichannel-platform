@@ -135,6 +135,8 @@ interface AgingLineRow {
   party_type: string | null
   party_id: string | null
   entry_date: Date
+  entry_id: string
+  reverses_entry_id: string | null
   debit_cents: number
   credit_cents: number
 }
@@ -252,7 +254,9 @@ export class FinanceStatementsService {
         group.lines.map(line => ({
           entryDate: isoDay(line.entry_date),
           debitCents: BigInt(line.debit_cents),
-          creditCents: BigInt(line.credit_cents)
+          creditCents: BigInt(line.credit_cents),
+          entryId: line.entry_id,
+          reversesEntryId: line.reverses_entry_id
         })),
         query.asOf,
         growsOnCredit,
@@ -446,7 +450,7 @@ export class FinanceStatementsService {
     storeId: string | null
   ): Promise<AgingLineRow[]> {
     const rows = await this.prisma.client.$queryRaw<AgingLineRow[]>`
-      SELECT l.party_type, l.party_id, e.entry_date, l.debit_cents, l.credit_cents
+      SELECT l.party_type, l.party_id, e.entry_date, e.id AS entry_id, e.reverses_entry_id, l.debit_cents, l.credit_cents
       FROM journal_lines l
       JOIN journal_entries e ON e.id = l.entry_id AND e.organization_id = l.organization_id
       WHERE l.organization_id = ${organizationId}
