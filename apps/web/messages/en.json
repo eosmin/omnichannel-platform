@@ -6499,6 +6499,8 @@
         "bank_pair_not_allowed": "This pair is not allowed: the amount, the direction, the account or the dates do not agree.",
         "bank_line_already_matched": "This line of the statement is already matched. Reload to see it.",
         "bank_book_line_already_matched": "That line of the books is already matched with another line of a statement.",
+        "bank_group_not_allowed": "These lines cannot be one group: they must be of the same account, none reversed, and two or more.",
+        "bank_group_sum_mismatch": "The lines of the group do not add up to the amount of the statement line, to the cent.",
         "bank_decision_already_undone": "That decision was already taken back.",
         "bank_line_matched": "This line is matched: only a line with no match can be recorded as a transaction.",
         "bank_no_closing_balance": "This statement has no closing balance to compare the books with.",
@@ -6787,7 +6789,9 @@
         "from": "From the account",
         "to": "To the account",
         "document": "Document number",
-        "memo": "Memo"
+        "memo": "Memo",
+        "useAsMemo": "Use the statement text as memo",
+        "dropMemo": "Leave the memo empty"
       }
     },
     "purchases": {

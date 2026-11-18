@@ -159,9 +159,27 @@ export const listBankLinesQuerySchema = z.strictObject({
 })
 export type ListBankLinesQuery = z.output<typeof listBankLinesQuerySchema>
 
+// The memo of the draft is empty unless the person asks for the description of the statement line, which is the bank's text
+export const bankRegisterDraftQuerySchema = z.strictObject({
+  useDescriptionAsMemo: z
+    .enum(['true', 'false'])
+    .transform(value => value === 'true')
+    .default(false)
+})
+export type BankRegisterDraftQuery = z.output<typeof bankRegisterDraftQuerySchema>
+
 // A pair: the journal line a person says is the same movement as the statement line of the path
 export const bankPairSchema = z.strictObject({ journalLineId: lowercasedUuidSchema })
 export type BankPairBody = z.output<typeof bankPairSchema>
+
+// A group: the lines of the journal that, together, are the movement of the statement line of the path (HC-121)
+export const bankGroupSchema = z.strictObject({
+  journalLineIds: z
+    .array(lowercasedUuidSchema)
+    .min(BankStatementLimits.MIN_GROUP)
+    .max(BankStatementLimits.MAX_GROUP)
+})
+export type BankGroupBody = z.output<typeof bankGroupSchema>
 
 export const bankStatusQuerySchema = z.strictObject({
   accountId: lowercasedUuidSchema,
