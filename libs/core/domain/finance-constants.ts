@@ -195,8 +195,7 @@ export enum AccountRole {
 }
 
 // The roles that hold a balance a reader adds up on one account: moving one of them once its account has entries splits the balance
-// (the debt of a supplier on two accounts, the stock on two). A role of the income statement is not here: its past stays in the
-// period it was posted to (HC-119).
+// (the debt of a supplier on two accounts, the stock on two). The rest are in RolesFreeOfHistory (HC-119).
 export const RolesPinnedByHistory: readonly AccountRole[] = [
   AccountRole.INVENTORY,
   AccountRole.INVENTORY_IN_TRANSIT,
@@ -206,6 +205,28 @@ export const RolesPinnedByHistory: readonly AccountRole[] = [
   AccountRole.PAYABLE_CARRIERS,
   AccountRole.VAT_OUTPUT,
   AccountRole.VAT_INPUT
+]
+
+// The other roles, free to move with history on purpose: the defaults of cash and bank only say where a new payment lands (an
+// account of the organization that is not the default keeps its own balance), the roles of the income statement keep their past in
+// the period it was posted to, the rounding and the opening equity are one-off. Every role is in one list or the other: a spec
+// holds it, so a new role is classified when it is born (HC-119).
+export const RolesFreeOfHistory: readonly AccountRole[] = [
+  AccountRole.CASH_DEFAULT,
+  AccountRole.BANK_DEFAULT,
+  AccountRole.SALES_REVENUE,
+  AccountRole.SHIPPING_REVENUE,
+  AccountRole.SALES_DISCOUNTS,
+  AccountRole.SALES_RETURNS,
+  AccountRole.COST_OF_GOODS_SOLD,
+  AccountRole.INVENTORY_LOSS,
+  AccountRole.INVENTORY_GAIN,
+  AccountRole.CARRIER_FREIGHT_EXPENSE,
+  AccountRole.CARRIER_COMMISSION_EXPENSE,
+  AccountRole.COD_DIFFERENCES,
+  AccountRole.OPENING_EQUITY,
+  AccountRole.ROUNDING,
+  AccountRole.UNCATEGORIZED_EXPENSE
 ]
 
 // The types of account each role may point at, and the payment methods (LED-154, LED-163). The TDD does not tabulate them, so the

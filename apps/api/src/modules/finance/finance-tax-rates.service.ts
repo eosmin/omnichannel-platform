@@ -14,7 +14,13 @@ import { resourceConflict, resourceNotFound } from '@platform/core/errors'
 import type { Actor } from '../tenancy'
 
 import type { CreateTaxRateBody, UpdateTaxRateBody } from './finance.schemas'
-import { lockChart, requireSettings, usableAccount } from './finance.support'
+import {
+  lockChart,
+  lockSettingsRow,
+  netBalanceCents,
+  requireSettings,
+  usableAccount
+} from './finance.support'
 import { TAX_RATE_SELECT, type TaxRateView, taxRateView } from './finance.views'
 
 const conflict = (message: string, kind: string) => resourceConflict(message, { conflict: kind })
@@ -122,23 +128,21 @@ export class FinanceTaxRatesService {
           }
         }
         if (data['outputAccountId'] !== undefined || data['inputAccountId'] !== undefined) {
-          // The tax already posted stays where it was: the report of VAT and the account would disagree (HC-119)
-          const posted = await tx.journalLine.findFirst({
-            where: { organizationId, taxRateId: id },
-            select: { id: true }
-          })
-          if (posted !== null) {
-            throw conflict(
-              'the tax rate has posted entries',
-              FinanceConflicts.TAX_RATE_ACCOUNT_HAS_HISTORY
-            )
-          }
           await this.assertAccounts(
             tx,
             organizationId,
             body.outputAccountId ?? current.outputAccountId,
             body.inputAccountId ?? current.inputAccountId
           )
+          // The tax already posted stays where it was: the purchases and the entries by hand read the accounts of the rate, so a move
+          // with tax on them splits it. Once it nets to zero (a reversal, a reclassification) the rate moves (HC-119)
+          await lockSettingsRow(tx, organizationId)
+          if ((await netBalanceCents(tx, organizationId, { taxRateId: id })) !== 0) {
+            throw conflict(
+              'the tax rate holds posted tax',
+              FinanceConflicts.TAX_RATE_ACCOUNT_HAS_HISTORY
+            )
+          }
         }
         if (body.isDefault === true && !current.isDefault) {
           // A switched-off rate cannot be the default: it would tax nothing

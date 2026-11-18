@@ -19,7 +19,13 @@ import { financeRefusal } from '@platform/core/finance-ledger'
 import type { Actor } from '../tenancy'
 
 import type { MapRoleBody, SetPaymentAccountBody, UpdateSettingsBody } from './finance.schemas'
-import { lockChart, requireSettings, usableAccount } from './finance.support'
+import {
+  lockChart,
+  lockSettingsRow,
+  netBalanceCents,
+  requireSettings,
+  usableAccount
+} from './finance.support'
 import {
   type PaymentAccountView,
   type RoleMappingView,
@@ -161,13 +167,12 @@ export class FinanceSettingsService {
         current.accountId !== body.accountId &&
         (RolesPinnedByHistory as readonly string[]).includes(role)
       ) {
-        // The balance of the role is on its account: pointing the role elsewhere splits it between two (HC-119)
-        const used = await tx.journalLine.findFirst({
-          where: { organizationId, accountId: current.accountId },
-          select: { id: true }
-        })
-        if (used !== null) {
-          throw resourceConflict('the account of the role has entries', {
+        // The balance of the role is on its account: pointing the role elsewhere splits it between two (HC-119). Once a
+        // reclassifying entry has emptied the account the role moves; the settings row is locked like the ledger does to post
+        await lockSettingsRow(tx, organizationId)
+        const held = await netBalanceCents(tx, organizationId, { accountId: current.accountId })
+        if (held !== 0) {
+          throw resourceConflict('the account of the role holds a balance', {
             conflict: FinanceConflicts.ROLE_HAS_HISTORY,
             role,
             accountId: current.accountId

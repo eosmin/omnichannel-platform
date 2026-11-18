@@ -214,37 +214,65 @@ describe('The tax rates, the tax of a product and the tax settings of a store (S
       })
     })
 
-    it('keeps the accounts of a rate that has posted entries, and still edits its name (HC-119)', async () => {
+    it('keeps the accounts of a rate that holds posted tax, moves them once it nets to zero, and still edits its name (HC-119)', async () => {
       const rate = await createRate()
-      const posted = await asAdminA()
-        .post(ApiRoutes.finance.entries.manual)
-        .send({
-          idempotencyKey: randomUUID(),
-          entryDate: new Date().toISOString().slice(0, 10),
-          type: JournalEntryType.MANUAL,
-          memo: 'Tax of the suite',
-          lines: [
-            { accountId: accounts['1401'], debitCents: 50, taxRateId: rate.id },
-            { accountId: accounts['1101'], creditCents: 50 }
-          ]
+      const post = async (side: 'tax-in' | 'tax-back') => {
+        const posted = await asAdminA()
+          .post(ApiRoutes.finance.entries.manual)
+          .send({
+            idempotencyKey: randomUUID(),
+            entryDate: new Date().toISOString().slice(0, 10),
+            type: JournalEntryType.MANUAL,
+            memo: 'Tax of the suite',
+            lines:
+              side === 'tax-in'
+                ? [
+                    { accountId: accounts['1401'], debitCents: 50, taxRateId: rate.id },
+                    { accountId: accounts['1101'], creditCents: 50 }
+                  ]
+                : [
+                    { accountId: accounts['1401'], creditCents: 50, taxRateId: rate.id },
+                    { accountId: accounts['1101'], debitCents: 50 }
+                  ]
+          })
+        expect(posted.status).toBe(CREATED)
+      }
+      await post('tax-in')
+
+      for (const body of [
+        { inputAccountId: accounts['1301'] },
+        { outputAccountId: accounts['2101'] }
+      ]) {
+        const moved = await asAdminA().patch(ApiRoutes.finance.taxRates.byId(rate.id)).send(body)
+        expect(moved.status).toBe(CONFLICT)
+        expect(errorOf(moved).metadata).toMatchObject({
+          conflict: FinanceConflicts.TAX_RATE_ACCOUNT_HAS_HISTORY
         })
-      expect(posted.status).toBe(CREATED)
-
-      const moved = await asAdminA()
-        .patch(ApiRoutes.finance.taxRates.byId(rate.id))
-        .send({ inputAccountId: accounts['1301'] })
-
-      expect(moved.status).toBe(CONFLICT)
-      expect(errorOf(moved).metadata).toMatchObject({
-        conflict: FinanceConflicts.TAX_RATE_ACCOUNT_HAS_HISTORY
-      })
+      }
       expect(
         (await owner.taxRate.findUniqueOrThrow({ where: { id: rate.id } })).inputAccountId
       ).toBe(accounts['1401'])
-      const renamed = await asAdminA()
+      expect(
+        (
+          await asAdminA()
+            .patch(ApiRoutes.finance.taxRates.byId(rate.id))
+            .send({ name: 'Still editable' })
+        ).status
+      ).toBe(OK)
+      // An account the rate cannot take is told as such, with or without history
+      const invalid = await asAdminA()
         .patch(ApiRoutes.finance.taxRates.byId(rate.id))
-        .send({ name: 'Still editable' })
-      expect(renamed.status).toBe(OK)
+        .send({ outputAccountId: accounts['1101'] })
+      expect(errorOf(invalid).metadata).not.toMatchObject({
+        conflict: FinanceConflicts.TAX_RATE_ACCOUNT_HAS_HISTORY
+      })
+
+      // The tax is taken back by another entry: it nets to zero and the accounts move
+      await post('tax-back')
+      const free = await asAdminA()
+        .patch(ApiRoutes.finance.taxRates.byId(rate.id))
+        .send({ inputAccountId: accounts['1301'] })
+      expect(free.status).toBe(OK)
     })
 
     it('moves the default to the rate chosen, so there is never more than one', async () => {
