@@ -230,6 +230,23 @@ export function disconnectConnection(
   })
 }
 
+const errorDetailSchema = z.object({ detail: z.string().nullable() })
+export type ChannelErrorDetailView = z.output<typeof errorDetailSchema>
+
+// What the plugin said when its check failed: a third party's text, for whoever manages plugins (the api refuses anyone else)
+export function fetchConnectionErrorDetail(
+  client: ApiClient,
+  storeId: string,
+  connectionId: string,
+  signal?: AbortSignal
+): Promise<ChannelErrorDetailView> {
+  return client.request(ApiRoutes.channels.connectionErrorDetail(enc(connectionId)), {
+    schema: errorDetailSchema,
+    storeId,
+    signal
+  })
+}
+
 export function fetchWidget(
   client: ApiClient,
   storeId: string,

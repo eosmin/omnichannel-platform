@@ -9,6 +9,7 @@ const EXPECTED: Record<string, boolean> = {
   [ChannelHealthErrors.CREDENTIALS_UNREADABLE]: true,
   [ChannelHealthErrors.INVALID_REPORT]: false,
   [ChannelHealthErrors.UNSPECIFIED]: false,
+  [ChannelHealthErrors.PLUGIN_REPORTED]: false,
   [ChannelHealthErrors.TOKEN_REJECTED]: true,
   [ChannelHealthErrors.PERMISSION_MISSING]: true,
   [ChannelHealthErrors.OTHER_ACCOUNT]: true,

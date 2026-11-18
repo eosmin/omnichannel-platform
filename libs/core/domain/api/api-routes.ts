@@ -528,6 +528,9 @@ export const ApiRoutes = {
     directory: '/channels/directory',
     connect: (pluginId: string) => `/channels/${pluginId}/connect`,
     connectionById: (id: string) => `/channels/connections/${id}`,
+    // The text a plugin gave for a failed check, cleaned (GET). Only for whoever manages plugins: the connection itself carries
+    // a code of ours and never the words of a third party
+    connectionErrorDetail: (id: string) => `/channels/connections/${id}/error-detail`,
     test: (id: string) => `/channels/connections/${id}/test`,
     disconnect: (id: string) => `/channels/connections/${id}/disconnect`,
     // Replaces the token of one connection, checked against the account it already has

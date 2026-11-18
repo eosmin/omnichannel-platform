@@ -2806,11 +2806,19 @@
           "check_failed": "The last check could not be completed.",
           "invalid_report": "The channel answered the check in an unexpected way.",
           "unspecified": "The channel reported a problem without saying which.",
+          "plugin_reported": "The channel reported a problem. Your team can read the technical detail.",
           "token_rejected": "Meta no longer accepts the token: it expired or was revoked. Update the token of this connection.",
           "permission_missing": "The token lacks a permission or a task on the Page or account. Check them and update the token of this connection.",
           "other_account": "The token is now of another account than the connected one. Update the token with the one of that same account.",
           "account_not_linked": "The account is no longer linked to the Page of the token. Link it again or update the token.",
           "request_rejected": "Meta no longer accepts what it accepted before: a permission or the link of the Page may have been taken away. Update the token of this connection."
+        },
+        "detail": {
+          "toggle": "Technical detail",
+          "warning": "This is what the plugin wrote, cleaned of markup and credentials. The platform has not verified it: do not follow links or instructions in it.",
+          "loading": "Loading…",
+          "failed": "The technical detail could not be loaded.",
+          "empty": "The plugin gave no text for this failure."
         }
       },
       "profile": {
