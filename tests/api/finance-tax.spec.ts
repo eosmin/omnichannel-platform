@@ -9,7 +9,6 @@ import type { OwnerClient } from '@platform/core/database-testing'
 import {
   FinanceConflicts,
   FinanceCountryCodes,
-  JournalEntryType,
   ProductConflicts,
   TaxKind,
   TaxRounding,
@@ -17,7 +16,7 @@ import {
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 
-import { createFinanceFixture, type FinanceFixture } from '../builders/finance'
+import { createFinanceFixture, type FinanceFixture, postTestEntry } from '../builders/finance'
 import { createOrder } from '../builders/order'
 import { createProduct } from '../builders/product'
 import { actorWithPermissions } from '../helpers/actors'
@@ -216,26 +215,27 @@ describe('The tax rates, the tax of a product and the tax settings of a store (S
 
     it('keeps the accounts of a rate that holds posted tax, moves them once it nets to zero, and still edits its name (HC-119)', async () => {
       const rate = await createRate()
+      // Tax on a line is what the system derives from a purchase; the entry by hand takes none, so it is posted as the system does
+      const period = await owner.fiscalPeriod.findFirstOrThrow({
+        where: { organizationId: ctx.orgA.id },
+        orderBy: { startsOn: 'asc' }
+      })
       const post = async (side: 'tax-in' | 'tax-back') => {
-        const posted = await asAdminA()
-          .post(ApiRoutes.finance.entries.manual)
-          .send({
-            idempotencyKey: randomUUID(),
-            entryDate: new Date().toISOString().slice(0, 10),
-            type: JournalEntryType.MANUAL,
-            memo: 'Tax of the suite',
-            lines:
-              side === 'tax-in'
-                ? [
-                    { accountId: accounts['1401'], debitCents: 50, taxRateId: rate.id },
-                    { accountId: accounts['1101'], creditCents: 50 }
-                  ]
-                : [
-                    { accountId: accounts['1401'], creditCents: 50, taxRateId: rate.id },
-                    { accountId: accounts['1101'], debitCents: 50 }
-                  ]
-          })
-        expect(posted.status).toBe(CREATED)
+        await postTestEntry(owner, {
+          organizationId: ctx.orgA.id,
+          periodId: period.id,
+          entryDate: '2026-01-15',
+          lines:
+            side === 'tax-in'
+              ? [
+                  { accountId: accounts['1401'] ?? '', debitCents: 50, taxRateId: rate.id },
+                  { accountId: accounts['1101'] ?? '', creditCents: 50 }
+                ]
+              : [
+                  { accountId: accounts['1401'] ?? '', creditCents: 50, taxRateId: rate.id },
+                  { accountId: accounts['1101'] ?? '', debitCents: 50 }
+                ]
+        })
       }
       await post('tax-in')
 
