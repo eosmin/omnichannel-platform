@@ -23,6 +23,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { TEST_IDENTITY_KINDS } from '../helpers/identity-kinds'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 describe('Edits and deletions that a channel delivers', () => {
   const prefix = newRunPrefix()
@@ -35,7 +36,7 @@ describe('Edits and deletions that a channel delivers', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    app = await createTestApp([], onWorkerDatabase())
     ctx = await seedTestContext(owner, app, prefix)
     app.get(PluginRegistry, { strict: false }).register(buildChannelPlugin())
     const prisma = app.get(PrismaService, { strict: false })

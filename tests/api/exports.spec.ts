@@ -6,10 +6,9 @@ import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
-import { AuditService } from '@platform/core/audit-module'
 import { Permissions, RoleNames } from '@platform/core/auth'
 import { DataRetentionPolicies } from '@platform/core/compliance'
-import { PrismaService } from '@platform/core/database'
+import type { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AuthorType,
@@ -21,7 +20,6 @@ import {
   PaymentMethod
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
-import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { ExportLimits } from '@platform/core/exports'
 import {
@@ -54,6 +52,8 @@ import { createActor, seedTestContext, type TestContext } from '../helpers/conte
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { queueOf } from '../helpers/queue'
+import { createWorkerPrisma } from '../helpers/worker-db'
+import { workerServices } from '../helpers/worker-services'
 
 interface ErrorBody {
   error: { code: string }
@@ -94,6 +94,8 @@ describe('Exports', () => {
   let owner: OwnerClient
   let ctx: TestContext
   let storage: StorageService
+  // The database the generator reads from: the worker's, where the grouped read is counted
+  let workerPrisma: PrismaService
   let generator: ExportGenerator
   let cleaner: ExpiredExportsCleaner
   const keys: string[] = []
@@ -102,9 +104,10 @@ describe('Exports', () => {
     owner = ownerClient()
     app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
-    const prisma = app.get(PrismaService, { strict: false })
+    const prisma = createWorkerPrisma()
+    workerPrisma = prisma
     storage = app.get(StorageService, { strict: false })
-    const events = app.get(DomainEvents, { strict: false })
+    const { events, audit } = await workerServices(app, prisma)
     const logger = {
       setContext: jest.fn(),
       error: jest.fn(),
@@ -116,7 +119,7 @@ describe('Exports', () => {
       new ZipExportWriter(storage, logger),
       new AnalyticsExportWriter(prisma, storage, new CsvExportWriter(storage)),
       storage,
-      app.get(AuditService, { strict: false }),
+      audit,
       events,
       logger
     )
@@ -233,7 +236,7 @@ describe('Exports', () => {
       await make(OrderStatus.PENDING_CONFIRMATION, 7000, '2026-01-04T10:00:00.000Z')
       await make(OrderStatus.CANCELLED, 9000, '2026-01-05T10:00:00.000Z')
       await make(OrderStatus.RETURNED, 500, '2026-01-06T10:00:00.000Z')
-      const groupBy = jest.spyOn(app.get(PrismaService, { strict: false }).client.order, 'groupBy')
+      const groupBy = jest.spyOn(workerPrisma.client.order, 'groupBy')
 
       const view = await request(ApiRoutes.customers.export)
       const file = await made(view.id)

@@ -130,6 +130,32 @@ export const Permissions = {
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions]
 
+// A permission that needs another one to be of use: whoever registers a transaction must be able to see it (to create is to see, as
+// in the books of any ERP). The separation of duties is between registering and approving or closing, never between registering and
+// seeing what was registered. The role editor ticks the needed one by itself and the server refuses a role that lacks it.
+export const PermissionRequires: Readonly<Partial<Record<Permission, readonly Permission[]>>> = {
+  [Permissions.FINANCE_MANAGE_TRANSACTIONS]: [Permissions.FINANCE_VIEW_JOURNAL],
+  [Permissions.FINANCE_MOVE_MONEY]: [Permissions.FINANCE_VIEW_JOURNAL],
+  [Permissions.FINANCE_POST_MANUAL]: [Permissions.FINANCE_VIEW_JOURNAL]
+}
+
+// The permissions of a set that lack what they need, each with what it needs and the set does not hold
+export function unmetPermissionRequirements(
+  names: readonly string[]
+): { permission: Permission; requires: Permission[] }[] {
+  const held = new Set(names)
+  const unmet: { permission: Permission; requires: Permission[] }[] = []
+  for (const [permission, needed] of Object.entries(PermissionRequires) as [
+    Permission,
+    readonly Permission[]
+  ][]) {
+    if (!held.has(permission)) continue
+    const missing = needed.filter(each => !held.has(each))
+    if (missing.length > 0) unmet.push({ permission, requires: missing })
+  }
+  return unmet
+}
+
 // What a person needs to be given a conversation, by hand or by a routing rule: to open it and to
 // answer it. A role that only reads would hold the conversation with nobody able to work it, and one
 // that answers but cannot open conversations could never find it.

@@ -30,9 +30,7 @@ export class PluginAnalyticsController {
   @PluginApi(PluginScopes.ANALYTICS_READ)
   @RequirePermissions(Permissions.ANALYTICS_VIEW)
   @NoStore()
-  @NoTenantTransaction(
-    'reads the replica in its own READ ONLY transaction (PrismaService.replicaTenantRead)'
-  )
+  @NoTenantTransaction('reads the replica in its own transaction (PrismaService.replicaTenantRead)')
   @Get(PluginApiRoutes.analytics.metrics)
   metricsOf(
     @CurrentStore() store: { id: string; organizationId: string },

@@ -49,6 +49,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { type CapturedQueue, queueOf } from '../helpers/queue'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 const OK = 200
 const ACCEPTED = 202
@@ -113,7 +114,7 @@ describe('Bulk labels and "print labels" (TDD_17 §4.6)', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    app = await createTestApp([], onWorkerDatabase())
     ctx = await seedTestContext(owner, app, prefix)
     prisma = app.get(PrismaService, { strict: false })
     const registry = app.get(CarrierRegistry, { strict: false })

@@ -43,6 +43,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { queueOf } from '../helpers/queue'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 const OK = 200
 const FORBIDDEN = 403
@@ -64,7 +65,7 @@ describe('Sending only the text under a file again', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    app = await createTestApp([], onWorkerDatabase())
     ctx = await seedTestContext(owner, app, prefix)
     const prisma = app.get(PrismaService, { strict: false })
     const registry = app.get(PluginRegistry, { strict: false })

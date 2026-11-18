@@ -1,6 +1,6 @@
 // The keyboard bindings, shared by the help sheet and the handlers (TDD_09 §9). `Mod` is Cmd on
 // macOS and Ctrl elsewhere; "g i" is a two-key sequence. Bindings are ignored while a text input
-// has focus, except Mod+Enter and Escape.
+// has focus, except Escape, Mod+Enter (in the composer) and Mod+K (from any field).
 export const Shortcuts = {
   list: {
     FOCUS_SEARCH: '/',

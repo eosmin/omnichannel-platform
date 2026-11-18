@@ -1,4 +1,11 @@
-import { Permissions, RoleNames, RolePresets, type Permission } from './permissions'
+import {
+  PermissionRequires,
+  Permissions,
+  RoleNames,
+  RolePresets,
+  type Permission,
+  unmetPermissionRequirements
+} from './permissions'
 
 const allPermissions: readonly Permission[] = Object.values(Permissions)
 
@@ -50,5 +57,38 @@ describe('RolePresets', () => {
     expect(supervisor).toContain(Permissions.INVENTORY_MANAGE_COUNTS)
     expect(supervisor).toContain(Permissions.ORDERS_APPROVE_PRICE)
     expect(supervisor).not.toContain(Permissions.INVENTORY_APPLY_COUNTS)
+  })
+})
+
+describe('PermissionRequires', () => {
+  it('asks for a permission that exists, and none asks for itself', () => {
+    for (const [permission, needed] of Object.entries(PermissionRequires)) {
+      for (const each of needed ?? []) {
+        expect(allPermissions).toContain(each)
+        expect(each).not.toBe(permission)
+      }
+    }
+  })
+
+  it('says what a set lacks: registering a transaction needs seeing the journal', () => {
+    expect(unmetPermissionRequirements([Permissions.FINANCE_MANAGE_TRANSACTIONS])).toEqual([
+      {
+        permission: Permissions.FINANCE_MANAGE_TRANSACTIONS,
+        requires: [Permissions.FINANCE_VIEW_JOURNAL]
+      }
+    ])
+    expect(
+      unmetPermissionRequirements([
+        Permissions.FINANCE_MOVE_MONEY,
+        Permissions.FINANCE_POST_MANUAL,
+        Permissions.FINANCE_VIEW_JOURNAL
+      ])
+    ).toEqual([])
+  })
+
+  it('is held by every preset', () => {
+    for (const preset of Object.values(RolePresets)) {
+      expect(unmetPermissionRequirements(preset)).toEqual([])
+    }
   })
 })

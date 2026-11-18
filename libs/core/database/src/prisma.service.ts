@@ -4,6 +4,8 @@ import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@ne
 import { PrismaPg } from '@prisma/adapter-pg'
 import { readReplicas } from '@prisma/extension-read-replicas'
 
+import { RlsGlobalModels } from '@platform/core/domain'
+
 import { PrismaClient } from '../generated/client/client'
 
 import type { TenantContext } from './tenant-context'
@@ -13,11 +15,48 @@ export interface PrismaServiceOptions {
   // Without a replica, replica() answers from the primary
   replicaUrl?: string | undefined
   poolSize?: number
+  // Row-Level Security (Step 7.1): a query on a model that is not global (RlsGlobalModels), made outside a tenant transaction, a
+  // read of the replica or a withoutTenantContext call, throws TenantContextRequiredError instead of answering no rows. The api
+  // turns it on with RLS_CONTEXT; the worker has its own contexts in a later phase and leaves it off.
+  requireContext?: boolean
 }
 
-function createClient({ databaseUrl, replicaUrl, poolSize = 20 }: PrismaServiceOptions) {
-  const primary = new PrismaClient({
+// The guard covers the model operations (findMany, create, ...). A raw statement ($queryRaw, $executeRaw) is not seen by it: on a
+// table with a policy it gets no rows from the database itself (RLS fails closed) and nothing throws; classifying the raw SQL of the
+// api is a debt of the RLS step (the plan). Inside replicaTenantRead and withoutTenantContext the guard is off for the whole
+// callback, so use the handle you were given and nothing else of this service in there.
+// What the guard throws: a query that the database would answer with no row (RLS fails closed) is a bug in the code that
+// made it, and it is better to see it than to get an empty list or a write that matched nothing
+export class TenantContextRequiredError extends Error {
+  constructor(model: string, operation: string) {
+    super(
+      `${model}.${operation} was queried with no tenant context: run it inside tenantTransaction, replicaTenantRead or withoutTenantContext`
+    )
+    this.name = 'TenantContextRequiredError'
+  }
+}
+
+function createClient({
+  databaseUrl,
+  replicaUrl,
+  poolSize = 20,
+  requireContext = false
+}: PrismaServiceOptions) {
+  const unguarded = new PrismaClient({
     adapter: new PrismaPg({ connectionString: databaseUrl, max: poolSize })
+  })
+  // The guard of the context: it runs before every operation of every model (the ones inside a transaction too, which inherit it)
+  const primary = unguarded.$extends({
+    query: {
+      $allModels: {
+        $allOperations({ model, operation, args, query }) {
+          if (requireContext && !RlsGlobalModels.includes(model) && !hasQueryScope()) {
+            throw new TenantContextRequiredError(model, operation)
+          }
+          return query(args)
+        }
+      }
+    }
   })
   // With a driver adapter the extension takes client instances, not URLs
   const replica =
@@ -61,6 +100,13 @@ interface UnitOfWork {
 // The transaction that a unit of work runs in, once there is one. Prisma queries are lazy: they run
 // when awaited, so every await must happen inside the scope of run().
 const tenantScope = new AsyncLocalStorage<{ tx: PrismaTransaction; context: TenantContext }>()
+// The other two ways to be inside a context: a read of the replica (it opens its own transaction with the context) and a call
+// that says why it has none (withoutTenantContext)
+const querySource = new AsyncLocalStorage<string>()
+
+function hasQueryScope(): boolean {
+  return tenantScope.getStore() !== undefined || querySource.getStore() !== undefined
+}
 
 // A tenant transaction holds a connection for its whole duration, so its limits are set above
 // Prisma's defaults on purpose and no external I/O (carriers, channels, S3, e-mail) runs inside it.
@@ -108,13 +154,27 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
         'replicaTenantRead inside a tenant transaction: mark the route @NoTenantTransaction, or read from this.client'
       )
     }
-    return this.base.$replica().$transaction(
-      async tx => {
-        await applyTenantContext(tx, context)
-        return fn(tx)
-      },
-      { ...TENANT_TRANSACTION, ...options }
+    return querySource.run(
+      'replica',
+      async () =>
+        await this.base.$replica().$transaction(
+          async tx => {
+            await applyTenantContext(tx, context)
+            return fn(tx)
+          },
+          { ...TENANT_TRANSACTION, ...options }
+        )
     )
+  }
+
+  // For the few flows that have no tenant to name before they run (a lookup that finds the store of an external id, a guard that
+  // writes the audit of a refusal): they say why, in the code, and the guard of the context lets them through. Everything inside
+  // `fn` is exempt, so keep it to one lookup. With RLS enforced the database still answers what the role may see: this does not
+  // open a row, it only silences the guard that would have thrown. Needs a reason, as @NoTenantTransaction does.
+  withoutTenantContext<T>(reason: string, fn: () => Promise<T>): Promise<T> {
+    if (reason.trim() === '') throw new Error('withoutTenantContext needs a reason')
+    // `fn` is awaited INSIDE the scope: a Prisma query is lazy, and one that is only started after run() returns would find no scope
+    return querySource.run(reason, async () => await fn())
   }
 
   // Whether the code that is running is inside a tenant transaction (and so inside a context): a job or a helper that may be
@@ -209,7 +269,9 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     return this.open(
       async tx => {
         await applyTenantContext(tx, context)
-        return tenantScope.run({ tx, context }, fn)
+        // `fn` is awaited INSIDE the scope: a Prisma query is lazy, and one that is only started after run() returns (a callback that
+        // returns `client.model.findMany()` as it is) would run its hooks with no scope
+        return tenantScope.run({ tx, context }, async () => await fn())
       },
       { ...TENANT_TRANSACTION, ...options }
     )
