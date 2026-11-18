@@ -269,6 +269,8 @@ describe('Replies on their way to a channel', () => {
       content?: string
       type?: MessageType
       deliveryStatus?: DeliveryStatus
+      // What a plugin wrote as the system goes out like any reply
+      systemOfPlugin?: string
       createdAt?: Date
       resentAt?: Date
       metadata?: { template: { name: string; language?: string; variables?: string[] } }
@@ -313,7 +315,8 @@ describe('Replies on their way to a channel', () => {
         conversationId: conversation.id,
         type: over.type ?? MessageType.TEXT,
         content: over.content ?? 'hello there',
-        authorType: AuthorType.AGENT,
+        authorType: over.systemOfPlugin === undefined ? AuthorType.AGENT : AuthorType.SYSTEM,
+        ...(over.systemOfPlugin === undefined ? {} : { authorPluginId: over.systemOfPlugin }),
         deliveryStatus: over.deliveryStatus ?? DeliveryStatus.QUEUED,
         ...(over.createdAt === undefined ? {} : { createdAt: over.createdAt }),
         ...(over.resentAt === undefined ? {} : { resentAt: over.resentAt }),
@@ -3010,6 +3013,28 @@ describe('Replies on their way to a channel', () => {
       heard = []
       return { ...reply, externalId: channelMessageId ?? '' }
     }
+
+    it('applies the receipts of a reply a plugin wrote as the system', async () => {
+      const reply = await queuedReply({ systemOfPlugin: 'a-plugin' })
+      await sender.send(job(reply), false)
+      const { channelMessageId } = await stored(reply.id)
+      await receipt(reply, 'message_delivered', channelMessageId ?? '')
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.DELIVERED)
+      await receipt(reply, 'message_read', channelMessageId ?? '')
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.READ)
+    })
+
+    it('applies no receipt to a system line that no plugin wrote', async () => {
+      const reply = await queuedReply()
+      await sender.send(job(reply), false)
+      const { channelMessageId } = await stored(reply.id)
+      await owner.message.update({
+        where: { id: reply.id },
+        data: { authorType: AuthorType.SYSTEM, authorPluginId: null }
+      })
+      await receipt(reply, 'message_delivered', channelMessageId ?? '', true)
+      expect((await stored(reply.id)).deliveryStatus).toBe(DeliveryStatus.SENT)
+    })
 
     it('moves a file by its own receipt, and the message only once every file has reached that state', async () => {
       const reply = await queuedReply({ pluginId: MULTI_MEDIA_CHANNEL_ID, type: MessageType.IMAGE })

@@ -23,6 +23,15 @@ import { ChannelEventTypes } from '@platform/plugins/sdk'
 
 import { MessageStatusWriter, statesBefore } from './message-status.writer'
 
+// A reply that went out to the customer: an agent's, or what a plugin wrote as the system (it goes out like any reply). Notes
+// and the customer's own messages never get a receipt
+const TEAM_REPLY = {
+  OR: [
+    { authorType: AuthorType.AGENT },
+    { authorType: AuthorType.SYSTEM, authorPluginId: { not: null } }
+  ]
+}
+
 const RECEIPT_STATES = {
   [ChannelEventTypes.MESSAGE_SENT]: DeliveryStatus.SENT,
   [ChannelEventTypes.MESSAGE_DELIVERED]: DeliveryStatus.DELIVERED,
@@ -62,7 +71,7 @@ export class ChannelReceipts {
       where: {
         storeId: connection.storeId,
         channelMessageId: externalId,
-        authorType: AuthorType.AGENT,
+        ...TEAM_REPLY,
         conversation: { channelConnectionId: connection.id }
       },
       select: { id: true },
@@ -84,7 +93,7 @@ export class ChannelReceipts {
           storeId: connection.storeId,
           channelMessageId: externalId,
           message: {
-            authorType: AuthorType.AGENT,
+            ...TEAM_REPLY,
             conversation: { channelConnectionId: connection.id }
           }
         },
@@ -96,13 +105,13 @@ export class ChannelReceipts {
     }
     // A plugin that holds the id of the platform (`messageId`, the one it was given with the send) and whose provider id the
     // platform does not have, or has differently: the message is found by that id, inside this connection and among the
-    // replies of the agents, so it still cannot reach a message of another account (TDD_10 §6.7.5)
+    // replies of the team (an agent's, or a plugin's as the system), so it still cannot reach a message of another account (TDD_10 §6.7.5)
     if (message === null && event.messageId !== undefined) {
       message = await this.prisma.client.message.findFirst({
         where: {
           id: event.messageId,
           storeId: connection.storeId,
-          authorType: AuthorType.AGENT,
+          ...TEAM_REPLY,
           conversation: { channelConnectionId: connection.id }
         },
         select: { id: true }
@@ -169,7 +178,7 @@ export class ChannelReceipts {
       where: {
         storeId: connection.storeId,
         deliveryStatus: DeliveryStatus.QUEUED,
-        authorType: AuthorType.AGENT,
+        ...TEAM_REPLY,
         createdAt: { gt: new Date(Date.now() - OutboundLimits.RECEIPT_WAIT_MS) },
         conversation: { channelConnectionId: connection.id }
       }
