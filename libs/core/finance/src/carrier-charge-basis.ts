@@ -1,4 +1,4 @@
-import { CarrierChargeModel, GuideMovementKind } from '@platform/core/domain'
+import { GuideMovementKind } from '@platform/core/domain'
 
 import type { ChargeBasis } from './carrier-entry-rules'
 
@@ -11,11 +11,10 @@ export const chargeBasisSelect = {
   carrierCostCents: true,
   carrierRateCents: true,
   commissionBps: true,
-  connection: { select: { chargeModel: true, chargeModelSince: true } },
   // One consume per guide (a partial unique index of the ledger of guides); a return guide consumes nothing
   guideMovements: {
     where: { kind: GuideMovementKind.CONSUME },
-    select: { unitCostCents: true, occurredAt: true },
+    select: { unitCostCents: true, onAdvance: true },
     take: 1
   }
 } as const
@@ -26,21 +25,17 @@ export interface ChargeBasisRow {
   carrierCostCents: number | null
   carrierRateCents: number | null
   commissionBps: number | null
-  connection: { chargeModel: string; chargeModelSince: Date }
-  guideMovements: readonly { unitCostCents: number | null; occurredAt: Date }[]
+  guideMovements: readonly { unitCostCents: number | null; onAdvance: boolean }[]
 }
 
-// The cost of the guide the advance gave up, or null when no advance covered it: the connection does not prepay, the guide was made
-// before the connection began to (what came before is in the opening balance), or it was made with no purchase on record (no average cost
-// to take: the carrier will bill it, so it is charged as an invoice, as before)
+// The cost of the guide the advance gave up, or null when no advance covered it: the guide was made while the connection did not prepay
+// (the consume says so, `onAdvance`, and a later change of the model moves nothing), or it was made with no purchase on record (no
+// average cost to take: the carrier will bill it, so it is charged as an invoice, as before)
 export function prepaidGuideCostOf(
-  connection: { chargeModel: string; chargeModelSince: Date },
-  consumed: readonly { unitCostCents: number | null; occurredAt: Date }[]
+  consumed: readonly { unitCostCents: number | null; onAdvance: boolean }[]
 ): number | null {
-  if (connection.chargeModel !== (CarrierChargeModel.PREPAID as string)) return null
   const guide = consumed[0]
-  if (guide === undefined || guide.occurredAt < connection.chargeModelSince) return null
-  return guide.unitCostCents
+  return guide !== undefined && guide.onAdvance ? guide.unitCostCents : null
 }
 
 export function chargeBasisOf(row: ChargeBasisRow): ChargeBasis {
@@ -50,6 +45,6 @@ export function chargeBasisOf(row: ChargeBasisRow): ChargeBasis {
     carrierCostCents: row.carrierCostCents,
     carrierRateCents: row.carrierRateCents,
     commissionBps: row.commissionBps,
-    prepaidGuideCostCents: prepaidGuideCostOf(row.connection, row.guideMovements)
+    prepaidGuideCostCents: prepaidGuideCostOf(row.guideMovements)
   }
 }

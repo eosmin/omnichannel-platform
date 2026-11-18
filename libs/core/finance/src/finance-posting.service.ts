@@ -807,9 +807,7 @@ export class FinancePostingService {
         deliveredAt: true,
         ...chargeBasisSelect,
         store: { select: { timezone: true } },
-        connection: {
-          select: { remittanceDeductsFee: true, chargeModel: true, chargeModelSince: true }
-        }
+        connection: { select: { remittanceDeductsFee: true } }
       }
     })
     if (
@@ -1519,7 +1517,8 @@ export class FinancePostingService {
     // What the books carry wins over what the guide says now (a commission edited since): the payable is the entry's
     if (posted !== undefined) return posted
     const amounts = chargeAmounts(chargeBasisOf(shipment))
-    const wanted = amounts.freightCents + amounts.commissionCents
+    // What the advance paid is not owed to the carrier: the estimate is the payable E4 would have posted (HC-101)
+    const wanted = amounts.freightCents + amounts.commissionCents - (amounts.advanceCents ?? 0)
     if (wanted === 0) return 0
     const deliveredDay =
       shipment.deliveredAt === null ? null : dayInZone(shipment.deliveredAt, timeZone)

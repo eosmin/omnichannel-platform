@@ -14,7 +14,7 @@ ALTER TABLE account_role_mappings
   ));
 
 ALTER TABLE carrier_connections DROP CONSTRAINT IF EXISTS chk_carrier_connections_charge_model;
-ALTER TABLE carrier_connections DROP COLUMN IF EXISTS charge_model_since;
+ALTER TABLE carrier_guide_movements DROP COLUMN IF EXISTS on_advance;
 ALTER TABLE carrier_connections DROP COLUMN IF EXISTS charge_model;
 
 COMMIT;

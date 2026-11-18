@@ -4,7 +4,6 @@ import { ApiRoutes } from '@platform/core/api'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AccountRole,
-  CarrierChargeModel,
   CodStatus,
   EntryOrigin,
   FinanceCountryCodes,
@@ -318,12 +317,10 @@ describe('The entries that depend on a carrier (Step 4B.6b-1)', () => {
 
   // HC-101: a guide a prepaid connection made took its cost out of the advance when it was made, so the carrier is not owed it again
   describe('E4 of a guide paid out of the advance (Step 4B.6b-4)', () => {
-    async function prepaid(input: { unitCost: number | null; model?: string } = { unitCost: 273 }) {
+    async function prepaid(
+      input: { unitCost: number | null; onAdvance?: boolean } = { unitCost: 273 }
+    ) {
       const shipment = await delivered()
-      await owner.carrierConnection.update({
-        where: { id: shipment.connectionId },
-        data: { chargeModel: input.model ?? CarrierChargeModel.PREPAID }
-      })
       await owner.carrierGuideMovement.create({
         data: {
           storeId: ctx.storeA.id,
@@ -331,6 +328,7 @@ describe('The entries that depend on a carrier (Step 4B.6b-1)', () => {
           kind: GuideMovementKind.CONSUME,
           guidesDelta: -1,
           unitCostCents: input.unitCost,
+          onAdvance: input.onAdvance ?? true,
           shipmentId: shipment.id,
           createdBy: 'system'
         }
@@ -379,8 +377,8 @@ describe('The entries that depend on a carrier (Step 4B.6b-1)', () => {
       )
     })
 
-    it('does not read the advance of a connection that is not prepaid', async () => {
-      const shipment = await prepaid({ unitCost: 273, model: CarrierChargeModel.INVOICED })
+    it('does not read the advance for a guide that was not made on it, whatever the connection is now', async () => {
+      const shipment = await prepaid({ unitCost: 273, onAdvance: false })
       await post(FinanceSourceType.SHIPMENT, shipment.id, FinanceEventKind.CHARGES)
       expect(await payableOf(shipment.connectionId)).toBe(413)
     })

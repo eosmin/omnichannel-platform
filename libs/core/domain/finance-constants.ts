@@ -186,7 +186,7 @@ export enum AccountRole {
   COST_OF_GOODS_SOLD = 'cost_of_goods_sold',
   INVENTORY_LOSS = 'inventory_loss',
   INVENTORY_GAIN = 'inventory_gain',
-  // Guides bought in advance and not used yet (an asset): a prepaid connection's purchase debits it, each guide it makes credits it
+  // Guides bought in advance and not used yet (an asset): the purchase of guides debits it (the next PR of Step 4B.6b-4), each guide a prepaid connection makes credits it
   PREPAID_CARRIER_GUIDES = 'prepaid_carrier_guides',
   CARRIER_FREIGHT_EXPENSE = 'carrier_freight_expense',
   CARRIER_COMMISSION_EXPENSE = 'carrier_commission_expense',

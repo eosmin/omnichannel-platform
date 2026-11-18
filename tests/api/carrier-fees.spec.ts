@@ -8,6 +8,7 @@ import {
   CarrierId,
   CodStatus,
   commissionCents,
+  FinanceCountryCodes,
   OrderStatus,
   PaymentMethod,
   ShipmentStatus,
@@ -336,7 +337,7 @@ describe('Settings → Carriers: commission and rates', () => {
   })
 
   describe('how the carrier charges the guides (Step 4B.6b-4)', () => {
-    it('starts invoiced, changes only with the permission to agree fees, refuses an unknown model and restarts its date only when it changes', async () => {
+    it('starts invoiced, changes only with the permission to agree fees, refuses an unknown model or an unmapped advance, and audits the change', async () => {
       const body = made(await connect(CarrierId.FORZA))
       expect(body.chargeModel).toBe('invoiced')
       const as = async (
@@ -367,17 +368,26 @@ describe('Settings → Carriers: commission and rates', () => {
       const before = await owner.carrierConnection.findUniqueOrThrow({ where: { id: body.id } })
       expect(before.chargeModel).toBe('invoiced')
 
+      // An organization whose books do not map the advance yet (none are set up here) cannot switch the model on: every guide would fail to post
+      expect((await edit(body.id, { chargeModel: 'prepaid' })).status).toBe(BAD_REQUEST)
+      const setup = await asAdmin()
+        .post(ApiRoutes.finance.setup)
+        .send({ countryCode: FinanceCountryCodes.EL_SALVADOR, accountingStartDate: '2020-01-01' })
+      expect(setup.status).toBe(CREATED)
+
       const changed = await edit(body.id, { chargeModel: 'prepaid' })
       expect(changed.status).toBe(OK)
       expect(changed.body).toMatchObject({ chargeModel: 'prepaid' })
       const after = await owner.carrierConnection.findUniqueOrThrow({ where: { id: body.id } })
       expect(after.chargeModel).toBe('prepaid')
-      expect(after.chargeModelSince.getTime()).toBeGreaterThan(before.chargeModelSince.getTime())
-
-      // Saying the same model again moves nothing: the books read the guides from the date of the last real change
-      expect((await edit(body.id, { chargeModel: 'prepaid' })).status).toBe(OK)
-      const same = await owner.carrierConnection.findUniqueOrThrow({ where: { id: body.id } })
-      expect(same.chargeModelSince.getTime()).toBe(after.chargeModelSince.getTime())
+      const audited = await waitForAuditEntries(
+        owner,
+        { action: AuditAction.CARRIER_FEES_CHANGED, resourceId: body.id },
+        1
+      )
+      expect(audited.map(row => row.metadata)).toContainEqual({
+        chargeModel: { from: 'invoiced', to: 'prepaid' }
+      })
     })
   })
 
