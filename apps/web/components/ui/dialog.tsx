@@ -44,6 +44,11 @@ export function DialogHeader({ className, ...props }: ComponentProps<'div'>): Re
   return <div className={cn('flex flex-col gap-2 text-left', className)} {...props} />
 }
 
+// The classes of the row of buttons at the bottom of a long dialog: it stays at the foot of the visible dialog while the content
+// scrolls, so the actions are never a scroll away (N-BR1-64), and is used by the long dialogs that write their own row. It cancels the padding of the content so it reaches the edges.
+export const stickyDialogActionsClass =
+  'bg-background sticky bottom-0 z-10 -mx-6 -mb-6 border-t px-6 pt-3 pb-6'
+
 export function DialogFooter({ className, ...props }: ComponentProps<'div'>): ReactElement {
   return (
     <div

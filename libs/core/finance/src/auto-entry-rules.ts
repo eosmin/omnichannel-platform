@@ -126,12 +126,17 @@ export function saleAmounts(order: SaleOrderRow): SaleAmountsResult {
   const shares = allocateByWeight(order.discountCents, gross)
   let revenueNet = 0
   let lineTax = 0
+  let negativeLine = false
   gross.forEach((cents, index) => {
     const tax = order.lines[index]?.taxCents ?? 0
     const base = cents - (shares[index] ?? 0)
-    revenueNet += order.pricesIncludeTax ? base - tax : base
+    const lineNet = order.pricesIncludeTax ? base - tax : base
+    // Each line alone: a sale with a line below zero is refused like the return of it is (HC-203), the total would hide it
+    if (lineNet < 0) negativeLine = true
+    revenueNet += lineNet
     lineTax += tax
   })
+  if (negativeLine) return bad(FinancePostingFailureReason.AMOUNTS_DISAGREE)
   // The order's tax is the tax of its lines plus the tax of the shipping fee
   const shippingTax = order.taxCents - lineTax
   if (shippingTax < 0 || shippingTax > order.shippingCents) {

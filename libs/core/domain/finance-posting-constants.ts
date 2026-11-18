@@ -23,6 +23,8 @@ export enum FinanceEventKind {
   RETURN_RESTOCK = 'return_restock',
   // E8: an order returned as a whole, with no return row (a parcel that came back, or a delivered order put back by an agent)
   ORDER_RETURN = 'order_return',
+  // E14: the refund a person paid out when a return was completed (the money left, the customer's advance is settled)
+  RETURN_REFUND = 'return_refund',
   // E9: a stock adjustment, a count variance or a transfer write-off
   ADJUST = 'adjust'
 }
@@ -39,6 +41,7 @@ export const FinanceEventSource: Readonly<Record<FinanceEventKind, FinanceSource
   [FinanceEventKind.COD_WRITE_OFF]: FinanceSourceType.SHIPMENT,
   [FinanceEventKind.RETURN_RESTOCK]: FinanceSourceType.RETURN,
   [FinanceEventKind.ORDER_RETURN]: FinanceSourceType.ORDER,
+  [FinanceEventKind.RETURN_REFUND]: FinanceSourceType.RETURN,
   [FinanceEventKind.ADJUST]: FinanceSourceType.INVENTORY_MOVEMENT
 }
 
@@ -66,6 +69,7 @@ export const FinancePostingKey = {
   SHIPMENT_WRITE_OFF: (shipmentId: string): string => `shipment:${shipmentId}:write_off`,
   RETURN_RESTOCK: (returnId: string): string => `return:${returnId}:restock`,
   ORDER_RETURN: (orderId: string): string => `order:${orderId}:return`,
+  RETURN_REFUND: (returnId: string): string => `return:${returnId}:refund`,
   MOVEMENT_ADJUST: (movementId: string): string => `movement:${movementId}:adjust`
 } as const
 
@@ -101,6 +105,7 @@ export const FinanceAutoMemo = {
   COD_WRITE_OFF: 'auto:cod_write_off',
   RETURN_RESTOCK: 'auto:return_restock',
   ORDER_RETURN: 'auto:order_return',
+  RETURN_REFUND: 'auto:return_refund',
   ADJUST: 'auto:adjust'
 } as const
 

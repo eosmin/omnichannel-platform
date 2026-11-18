@@ -10,6 +10,7 @@ import {
   type DraftLine,
   lineBases,
   openReceivableCents,
+  refundLines,
   returnLines,
   restockCost,
   reversalLinesOf,
@@ -515,5 +516,51 @@ describe('returnLines with the shipping fee (E8)', () => {
     expect(lineOf(result.lines, AccountRole.VAT_OUTPUT)?.debitCents).toBe(325)
     expect(lineOf(result.lines, AccountRole.RECEIVABLE_CARRIERS)?.creditCents).toBe(2825)
     expect(sum(result.lines, 'debitCents')).toBe(sum(result.lines, 'creditCents'))
+  })
+})
+
+describe('refundLines (E14, HC-105)', () => {
+  it('settles the advance with the money that left the account the payment came into', () => {
+    const result = refundLines({
+      accounts,
+      paymentAccountId: 'acc-card',
+      refundCents: 800,
+      storeId: STORE
+    })
+    expect(result).toEqual({
+      ok: true,
+      lines: [
+        {
+          accountId: `acc-${AccountRole.CUSTOMER_ADVANCES}`,
+          debitCents: 800,
+          creditCents: 0,
+          storeId: STORE
+        },
+        { accountId: 'acc-card', debitCents: 0, creditCents: 800, storeId: STORE }
+      ]
+    })
+  })
+
+  it('posts nothing for a refund of zero', () => {
+    expect(
+      refundLines({ accounts, paymentAccountId: 'acc-card', refundCents: 0, storeId: STORE })
+    ).toEqual({ ok: true, lines: [] })
+  })
+
+  it('names the role with no account instead of guessing one', () => {
+    const noAdvances: RoleAccounts = role =>
+      role === AccountRole.CUSTOMER_ADVANCES ? null : `acc-${role}`
+    expect(
+      refundLines({
+        accounts: noAdvances,
+        paymentAccountId: 'acc-card',
+        refundCents: 5,
+        storeId: STORE
+      })
+    ).toEqual({
+      ok: false,
+      reason: FinancePostingFailureReason.ROLE_NOT_MAPPED,
+      role: AccountRole.CUSTOMER_ADVANCES
+    })
   })
 })
