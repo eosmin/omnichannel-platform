@@ -41,6 +41,7 @@
     "validate:rollbacks": "tsx scripts/check-rollbacks.ts",
     "validate:isolation": "tsx scripts/check-isolation-coverage.ts",
     "validate:rls": "tsx scripts/check-rls-coverage.ts",
+    "validate:definer": "tsx scripts/check-definer-search-path.ts",
     "db:rls:enforce": "tsx scripts/rls-enforce.ts",
     "validate:frontend": "tsx scripts/check-frontend-coverage.ts",
     "validate:channel-agnostic": "tsx scripts/validate-channel-agnostic.ts",
@@ -52,7 +53,7 @@
     "gen:image-hosts": "tsx libs/plugins/runtime/tools/generate-image-hosts.ts",
     "validate:image-hosts": "tsx libs/plugins/runtime/tools/generate-image-hosts.ts --check",
     "fiscal:conformance": "tsx libs/fiscal/conformance/src/run-conformance.ts",
-    "validate:all": "pnpm lint && pnpm type-check && pnpm format:check && pnpm validate:translations && pnpm validate:deprecations && pnpm validate:rollbacks && pnpm validate:isolation && pnpm validate:rls && pnpm validate:frontend && pnpm validate:channel-agnostic && pnpm validate:rls-worker && pnpm validate:carrier-agnostic && pnpm validate:fiscal-agnostic && pnpm validate:plugin-api && pnpm validate:replica && pnpm validate:image-hosts && pnpm test && pnpm test:contracts",
+    "validate:all": "pnpm lint && pnpm type-check && pnpm format:check && pnpm validate:translations && pnpm validate:deprecations && pnpm validate:rollbacks && pnpm validate:isolation && pnpm validate:rls && pnpm validate:definer && pnpm validate:frontend && pnpm validate:channel-agnostic && pnpm validate:rls-worker && pnpm validate:carrier-agnostic && pnpm validate:fiscal-agnostic && pnpm validate:plugin-api && pnpm validate:replica && pnpm validate:image-hosts && pnpm test && pnpm test:contracts",
     "validate:affected": "tsx scripts/validate-affected.ts"
   },
   "devDependencies": {
