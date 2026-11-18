@@ -76,4 +76,26 @@ describe('The per-user limit of the search and the customer list', () => {
     expect(otherSearch.status).toBe(TOO_MANY_REQUESTS)
     expect(list.status).toBe(OK)
   })
+
+  it('stops the click of a result and the list of customers at their own budget', async () => {
+    const clicksKey = CacheKeys.rateLimit(
+      userRateLimitThrottler(UserRateLimits.SEARCH_CLICKS),
+      ctx.adminA.id
+    )
+    const listKey = CacheKeys.rateLimit(
+      userRateLimitThrottler(UserRateLimits.CUSTOMER_LIST),
+      ctx.adminA.id
+    )
+    await redis.set(clicksKey, String(UserRateLimits.SEARCH_CLICKS.limit), 'EX', WINDOW_SECONDS)
+    await redis.set(listKey, String(UserRateLimits.CUSTOMER_LIST.limit), 'EX', WINDOW_SECONDS)
+    try {
+      const click = await api(app, ctx.adminA, ctx.storeA).post(ApiRoutes.search.clicks).send({})
+      const list = await api(app, ctx.adminA, ctx.storeA).get(ApiRoutes.customers.list)
+
+      expect(click.status).toBe(TOO_MANY_REQUESTS)
+      expect(list.status).toBe(TOO_MANY_REQUESTS)
+    } finally {
+      await redis.del(clicksKey, listKey)
+    }
+  })
 })
