@@ -118,29 +118,32 @@ export function TrendChart({
           </li>
         ))}
       </ul>
-      <table className="sr-only">
-        <caption>{caption}</caption>
-        <thead>
-          <tr>
-            <th scope="col">{t('day')}</th>
-            {series.map(line => (
-              <th key={line.id} scope="col">
-                {line.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {days.map((day, index) => (
-            <tr key={day}>
-              <th scope="row">{label(day)}</th>
+      {/* A table is not clipped by `sr-only` itself (it is wider than 1 px): the box around it clips it, so it never widens the page */}
+      <div className="sr-only">
+        <table>
+          <caption>{caption}</caption>
+          <thead>
+            <tr>
+              <th scope="col">{t('day')}</th>
               {series.map(line => (
-                <td key={line.id}>{format.number(line.values[index] ?? 0)}</td>
+                <th key={line.id} scope="col">
+                  {line.label}
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {days.map((day, index) => (
+              <tr key={day}>
+                <th scope="row">{label(day)}</th>
+                {series.map(line => (
+                  <td key={line.id}>{format.number(line.values[index] ?? 0)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </figure>
   )
 }
