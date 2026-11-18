@@ -194,6 +194,41 @@ export enum AccountRole {
   UNCATEGORIZED_EXPENSE = 'uncategorized_expense'
 }
 
+// The roles that hold a balance a reader adds up on one account: moving one of them once its account has entries splits the balance
+// (the debt of a supplier on two accounts, the stock on two). The rest are in RolesFreeOfHistory (HC-119).
+export const RolesPinnedByHistory: readonly AccountRole[] = [
+  AccountRole.INVENTORY,
+  AccountRole.INVENTORY_IN_TRANSIT,
+  AccountRole.RECEIVABLE_CARRIERS,
+  AccountRole.CUSTOMER_ADVANCES,
+  AccountRole.PAYABLE_SUPPLIERS,
+  AccountRole.PAYABLE_CARRIERS,
+  AccountRole.VAT_OUTPUT,
+  AccountRole.VAT_INPUT,
+  AccountRole.OPENING_EQUITY
+]
+
+// The other roles, free to move with history on purpose: the defaults of cash and bank only say where a new payment lands (an
+// account of the organization that is not the default keeps its own balance), the roles of the income statement keep their past in
+// the period it was posted to, the rounding and the differences of cash on delivery are settled by their own entries. Every role is in one list or the other: a spec
+// holds it, so a new role is classified when it is born (HC-119).
+export const RolesFreeOfHistory: readonly AccountRole[] = [
+  AccountRole.CASH_DEFAULT,
+  AccountRole.BANK_DEFAULT,
+  AccountRole.SALES_REVENUE,
+  AccountRole.SHIPPING_REVENUE,
+  AccountRole.SALES_DISCOUNTS,
+  AccountRole.SALES_RETURNS,
+  AccountRole.COST_OF_GOODS_SOLD,
+  AccountRole.INVENTORY_LOSS,
+  AccountRole.INVENTORY_GAIN,
+  AccountRole.CARRIER_FREIGHT_EXPENSE,
+  AccountRole.CARRIER_COMMISSION_EXPENSE,
+  AccountRole.COD_DIFFERENCES,
+  AccountRole.ROUNDING,
+  AccountRole.UNCATEGORIZED_EXPENSE
+]
+
 // The types of account each role may point at, and the payment methods (LED-154, LED-163). The TDD does not tabulate them, so the
 // table is read off the template of the chart (`templates/sv.ts`): what each role holds there is its type here, widened only where a
 // chart can reasonably book the same thing in a neighbour type (a cost of goods in expenses, a rounding that goes either way). A
@@ -399,6 +434,9 @@ export enum FinancePostingFailureReason {
   CARRIER_MISSING = 'carrier_missing',
   // The source is not in the state the event says (a sale not yet paid, a prepaid sale whose advance is not posted)
   SOURCE_NOT_READY = 'source_not_ready',
+  // The order was delivered with its payment refunded: waiting changes nothing, the sale would be a credit sale (not built), so nothing
+  // is posted and a person is told [ACCOUNTANT]
+  PAYMENT_REFUNDED = 'payment_refunded',
   // The ledger refused the entry (the period, the dimensions): the cause is in the logs
   LEDGER_REFUSED = 'ledger_refused',
   // The event never reached the queue, or the queue ran out of attempts: a person, or the sweep of 4B.6b, posts it again
@@ -451,6 +489,12 @@ export const FinanceConflicts = {
   TAX_RATE_INACTIVE: 'tax_rate_inactive',
   // The accounts of a rate: the tax owed is a liability, the tax to credit is an asset, and they are not the same account
   TAX_RATE_ACCOUNT_TYPE: 'tax_rate_account_type',
+  // A rate that already has posted entries keeps its accounts: moving them would split the tax between two accounts and take the
+  // posted tax out of the report of VAT (HC-119)
+  TAX_RATE_ACCOUNT_HAS_HISTORY: 'tax_rate_account_has_history',
+  // A role that holds a balance (what is owed, the stock, the tax) keeps its account once the account has entries: the balance would
+  // be split between two accounts. The way out is a reclassifying entry, then the change (HC-119)
+  ROLE_HAS_HISTORY: 'role_has_history',
   // The key of a request that registered another transaction: a retry sends the same content, never another
   TRANSACTION_KEY_REUSED: 'transaction_key_reused',
   // A transaction is voided once; the reversing entry is in the journal

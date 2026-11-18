@@ -656,6 +656,70 @@ describe('The books of an organization', () => {
       expect(logged[0]?.metadata).toMatchObject({ role: AccountRole.CASH_DEFAULT, to: target })
     })
 
+    it('keeps the account of a role that holds a balance, moves it once a reclassification empties it, and lets the same account go through (HC-119)', async () => {
+      const inventory = accounts['1301'] ?? ''
+      const other = accounts['1401'] ?? ''
+      await postEntry(entryBody('1301', CASH, 100))
+      const put = (accountId: string) =>
+        asAdminA()
+          .put(ApiRoutes.finance.accountRoles.byRole(AccountRole.INVENTORY))
+          .send({ accountId })
+      const held = async (accountId: string) => {
+        const sums = await owner.journalLine.aggregate({
+          where: { organizationId: ctx.orgA.id, accountId },
+          _sum: { debitCents: true, creditCents: true }
+        })
+        return (sums._sum.debitCents ?? 0) - (sums._sum.creditCents ?? 0)
+      }
+      // The entry that carries the balance of an account to the other one (or back)
+      const carry = async (from: string, to: string) => {
+        const net = await held(accounts[from] ?? '')
+        if (net > 0) await postEntry(entryBody(to, from, net))
+        if (net < 0) await postEntry(entryBody(from, to, -net))
+      }
+
+      const moved = await put(other)
+
+      expect(moved.status).toBe(CONFLICT)
+      expect(errorOf(moved).metadata).toMatchObject({
+        conflict: FinanceConflicts.ROLE_HAS_HISTORY,
+        role: AccountRole.INVENTORY,
+        accountId: inventory
+      })
+      const stored = await owner.accountRoleMapping.findUniqueOrThrow({
+        where: {
+          organizationId_role: { organizationId: ctx.orgA.id, role: AccountRole.INVENTORY }
+        }
+      })
+      expect(stored.accountId).toBe(inventory)
+      // The same account is no move
+      expect((await put(inventory)).status).toBe(OK)
+      // A reclassifying entry empties the account and the role moves; and back, the same way
+      try {
+        await carry('1301', '1401')
+        expect((await put(other)).status).toBe(OK)
+      } finally {
+        await carry('1401', '1301')
+        expect((await put(inventory)).status).toBe(OK)
+      }
+    })
+
+    it('moves a role that is free of history while its account has entries (HC-119)', async () => {
+      await postEntry(entryBody(RENT, CASH, 10))
+      const rounding = accounts['6111'] ?? ''
+      const moved = await asAdminA()
+        .put(ApiRoutes.finance.accountRoles.byRole(AccountRole.ROUNDING))
+        .send({ accountId: accounts['4106'] ?? '' })
+      expect(moved.status).toBe(OK)
+      expect(
+        (
+          await asAdminA()
+            .put(ApiRoutes.finance.accountRoles.byRole(AccountRole.ROUNDING))
+            .send({ accountId: rounding })
+        ).status
+      ).toBe(OK)
+    })
+
     it('refuses a role or a payment method an account of a type that does not fit (LED-154, LED-163)', async () => {
       const expense = accounts['6112'] ?? ''
       const income = accounts['4101'] ?? ''
@@ -873,6 +937,28 @@ describe('The books of an organization', () => {
         organizationId: ctx.orgA.id,
         action: AuditAction.FINANCE_PERIOD_OPENED,
         resourceId: (opened.body as { id: string }).id
+      })
+      await settle()
+      expect(await auditCount(logged)).toBe(1)
+    })
+
+    it('leaves one record when two opens of the same month run at once (HC-211)', async () => {
+      const [one, two, three] = await Promise.all(
+        [1, 2, 3].map(() =>
+          asAdminA().post(ApiRoutes.finance.periods.open).send({ year: 2028, month: 9 })
+        )
+      )
+
+      expect([one?.status, two?.status, three?.status]).toEqual([OK, OK, OK])
+      const id = (one?.body as { id: string }).id
+      expect([two?.body, three?.body]).toEqual([
+        expect.objectContaining({ id }),
+        expect.objectContaining({ id })
+      ])
+      const logged = await waitForAuditEntries(owner, {
+        organizationId: ctx.orgA.id,
+        action: AuditAction.FINANCE_PERIOD_OPENED,
+        resourceId: id
       })
       await settle()
       expect(await auditCount(logged)).toBe(1)

@@ -337,6 +337,9 @@ describe('Orders written through the plugin API', () => {
 
       expect(confirm.status).toBe(FORBIDDEN)
       expect(cancel.status).toBe(FORBIDDEN)
+      // The refusal names the route that does the work, not only the permission the key already has as a scope
+      expect(JSON.stringify(confirm.body)).toContain('use the confirm route')
+      expect(JSON.stringify(cancel.body)).toContain('use the cancel route')
       expect((await rowOf(order.id)).status).toBe(OrderStatus.PENDING_CONFIRMATION)
     })
 

@@ -600,6 +600,40 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       })
     })
 
+    it('receives an order whose tax rate was switched off after it was placed (HC-124)', async () => {
+      const seller = await supplier()
+      const rate = await asAdminA()
+        .post(ApiRoutes.finance.taxRates.create)
+        .send({
+          code: `T${key().replaceAll('-', '').slice(0, 8)}`,
+          name: 'Rate switched off later',
+          rateBps: 500,
+          outputAccountId: accounts['2201'],
+          inputAccountId: accounts['1401']
+        })
+      expect(rate.status).toBe(CREATED)
+      const rateId = (rate.body as { id: string }).id
+      const item = await product()
+      const order = await placedOrder(seller.id, {
+        lines: [{ productId: item.id, quantity: 2, unitCostCents: 500, taxRateId: rateId }]
+      })
+      const off = await asAdminA().post(ApiRoutes.finance.taxRates.deactivate(rateId))
+      expect(off.status).toBeLessThan(300)
+
+      const received = await receive(order.id, {
+        supplierDocumentNumber: `D-${key()}`,
+        lines: [{ orderLineId: order.lines[0]?.id, quantity: 2 }]
+      })
+
+      expect(received.status).toBe(CREATED)
+      // 2 x 5.00 at 5 %: the tax is posted, not read as zero
+      expect((received.body as { receipts: ReceiptBody[] }).receipts[0]).toMatchObject({
+        subtotalCents: 1000,
+        taxCents: 50,
+        totalCents: 1050
+      })
+    })
+
     it('reads the same invoice written with other capitals, spaces or hyphens as the same invoice (HC-124)', async () => {
       const seller = await supplier()
       const first = await placedOrder(seller.id)
@@ -1023,6 +1057,42 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
         action: AuditAction.SUPPLIER_PAYMENT_VOIDED,
         resourceId: id
       })
+    })
+
+    it('does not answer the retry of a payment that was voided with the voided payment (HC-213)', async () => {
+      const { supplierId, receipt } = await billed()
+      const idempotencyKey = key()
+      const body = { amountCents: 10_000, purchaseReceiptId: receipt.id, idempotencyKey }
+      const paid = await pay(supplierId, body)
+      expect(paid.status).toBe(CREATED)
+      const voided = await asAdminA()
+        .post(ApiRoutes.supplierPayments.void((paid.body as PaymentBody).id))
+        .send({ reason: 'Wrong account' })
+      expect(voided.status).toBe(CREATED)
+      expect((voided.body as PaymentBody).voidedByEntryId).not.toBeNull()
+
+      const retry = await pay(supplierId, body)
+
+      expect(retry.status).toBe(CONFLICT)
+      expect(errorOf(retry).metadata).toMatchObject({
+        conflict: PurchaseConflicts.PAYMENT_ALREADY_VOIDED
+      })
+      // Nothing was posted again: the bill is still owed in full and no second payment exists
+      expect((await asAdminA().get(ApiRoutes.suppliers.balance(supplierId))).body).toMatchObject({
+        openCents: 10_000,
+        paidCents: 0
+      })
+      expect(await owner.supplierPayment.count({ where: { supplierId } })).toBe(1)
+    })
+
+    it('still answers the same payment to the retry of one that is live', async () => {
+      const { supplierId, receipt } = await billed()
+      const body = { amountCents: 100, purchaseReceiptId: receipt.id, idempotencyKey: key() }
+      const live = await pay(supplierId, body)
+      const replay = await pay(supplierId, body)
+      expect(live.status).toBe(CREATED)
+      expect(replay.status).toBe(CREATED)
+      expect((replay.body as PaymentBody).id).toBe((live.body as PaymentBody).id)
     })
 
     it('voids a payment once when two people void it at the same moment with other reasons', async () => {

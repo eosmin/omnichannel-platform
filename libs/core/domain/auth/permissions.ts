@@ -118,6 +118,7 @@ export const Permissions = {
   FINANCE_POST_MANUAL: 'finance:post_manual', // manual entries and reversals
   FINANCE_CLOSE_PERIODS: 'finance:close_periods', // close and reopen
   FINANCE_EXPORT: 'finance:export', // the CSV of the journal and the ledger
+  FINANCE_CONFIRM_BOOKS: 'finance:confirm_books', // says the accountant vouched for the layout of a legal book (the book stops being a draft)
   FINANCE_VIEW_CARRIER_FEES: 'finance:view_carrier_fees', // the commission and the rates of a carrier connection
   FISCAL_VIEW: 'fiscal:view',
   FISCAL_MANAGE: 'fiscal:manage', // issuer settings and credentials, retry, void
