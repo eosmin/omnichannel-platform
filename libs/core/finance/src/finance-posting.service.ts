@@ -321,6 +321,17 @@ export class FinancePostingService {
         dryRun
       )
     }
+    if (input.kind === FinanceEventKind.GUIDE_PURCHASE_VOID) {
+      return this.reverseGuidePurchase(
+        tx,
+        input,
+        {
+          accountingStartDate: dateToDay(settings.accountingStartDate),
+          lockedThrough: settings.lockedThrough === null ? null : dateToDay(settings.lockedThrough)
+        },
+        dryRun
+      )
+    }
     const candidate = await this.load(tx, input, settings)
     if (candidate.kind === 'nothing') return this.done(FinancePostingOutcome.NOTHING_TO_POST)
     if (candidate.kind === 'failed') {
@@ -472,8 +483,6 @@ export class FinancePostingService {
         return this.loadReturnRefund(tx, input)
       case FinanceEventKind.GUIDE_PURCHASE:
         return this.loadGuidePurchase(tx, input)
-      case FinanceEventKind.GUIDE_PURCHASE_VOID:
-        return this.loadGuidePurchaseVoid(tx, input, dateToDay(settings.accountingStartDate))
       default:
         return NOTHING
     }
@@ -1217,6 +1226,21 @@ export class FinancePostingService {
       })
       return reversal?.id ?? null
     }
+    if (input.kind === FinanceEventKind.GUIDE_PURCHASE_VOID) {
+      const found = await this.purchaseOfVoid(tx, input)
+      if (found === null) return null
+      const original = await this.entryOf(
+        tx,
+        input.organizationId,
+        FinancePostingKey.GUIDE_PURCHASE(found.purchase.id)
+      )
+      if (original === null) return null
+      const reversal = await tx.journalEntry.findFirst({
+        where: { organizationId: input.organizationId, reversesEntryId: original.id },
+        select: { id: true }
+      })
+      return reversal?.id ?? null
+    }
     const entry = await this.entryOf(tx, input.organizationId, keyOf(input))
     return entry?.id ?? null
   }
@@ -1301,8 +1325,9 @@ export class FinancePostingService {
       where: { id: accountId, organizationId },
       select: { id: true, cashKind: true, active: true, isPostable: true }
     })
-    const problem = account === null ? null : remittanceDestinationProblem(account)
-    if (account === null || problem === RemittanceDestinationProblem.INACTIVE) {
+    if (account === null) return failed(FinancePostingFailureReason.ACCOUNT_NOT_POSTABLE)
+    const problem = remittanceDestinationProblem(account)
+    if (problem === RemittanceDestinationProblem.INACTIVE) {
       return failed(FinancePostingFailureReason.ACCOUNT_INACTIVE)
     }
     if (problem === RemittanceDestinationProblem.NOT_CASH) {
@@ -1332,7 +1357,7 @@ export class FinancePostingService {
         store: { select: { timezone: true } }
       }
     })
-    if (purchase === null || !purchase.onAdvance) return NOTHING
+    if (purchase === null || !purchase.onAdvance || purchase.costCentsDelta === 0) return NOTHING
     const paid = await this.paidFromOf(tx, input.organizationId, purchase.paidFromAccountId)
     if (paid.kind === 'failed') return paid
     const accounts = await this.accountsOf(tx, input.organizationId)
@@ -1353,13 +1378,9 @@ export class FinancePostingService {
     }
   }
 
-  // E16: the purchase was voided: the same entry the other way round, with the account the purchase used. It waits for the entry of the
-  // purchase (a void of a purchase the books never carried posts nothing, and a purchase before the books began has no entry to undo).
-  private async loadGuidePurchaseVoid(
-    tx: PrismaTransaction,
-    input: PostSourceInput,
-    accountingStartDate: string
-  ): Promise<Candidate> {
+  // The purchase a void movement undoes, when the books carried it with something to undo: the purchase and the void both stand on the
+  // prepaid connection (`onAdvance`) and the purchase cost money (a purchase of all gifts has no entry)
+  private async purchaseOfVoid(tx: PrismaTransaction, input: PostSourceInput) {
     const voided = await tx.carrierGuideMovement.findFirst({
       where: {
         id: input.sourceId,
@@ -1367,51 +1388,69 @@ export class FinancePostingService {
         store: { organizationId: input.organizationId }
       },
       select: {
-        storeId: true,
         occurredAt: true,
         store: { select: { timezone: true } },
-        voids: {
-          select: {
-            id: true,
-            costCentsDelta: true,
-            onAdvance: true,
-            paidFromAccountId: true,
-            occurredAt: true
-          }
-        }
+        voids: { select: { id: true, costCentsDelta: true, onAdvance: true, occurredAt: true } }
       }
     })
     const purchase = voided?.voids ?? null
-    if (voided === null || purchase === null || !purchase.onAdvance) return NOTHING
+    if (
+      voided === null ||
+      purchase === null ||
+      !purchase.onAdvance ||
+      purchase.costCentsDelta === 0
+    ) {
+      return null
+    }
+    return { voided, purchase }
+  }
+
+  // E16: the purchase was voided. Like E6 it is not a new entry built from rows: it reverses the one E15 wrote, line by line, so the money
+  // goes back to the account it left even if the default bank was re-mapped or the account switched off since. It waits for the entry of the
+  // purchase (a purchase before the books began has no entry to undo).
+  private async reverseGuidePurchase(
+    tx: PrismaTransaction,
+    input: PostSourceInput,
+    calendar: { accountingStartDate: string; lockedThrough: string | null },
+    dryRun = false
+  ): Promise<PostSourceResult> {
+    const found = await this.purchaseOfVoid(tx, input)
+    if (found === null) return this.done(FinancePostingOutcome.NOTHING_TO_POST)
     const original = await this.entryOf(
       tx,
       input.organizationId,
-      FinancePostingKey.GUIDE_PURCHASE(purchase.id)
+      FinancePostingKey.GUIDE_PURCHASE(found.purchase.id)
     )
     if (original === null) {
-      const day = dayInZone(purchase.occurredAt, voided.store.timezone)
-      return day < accountingStartDate
-        ? NOTHING
-        : failed(FinancePostingFailureReason.SOURCE_NOT_READY)
+      const day = dayInZone(found.purchase.occurredAt, found.voided.store.timezone)
+      return day < calendar.accountingStartDate
+        ? this.done(FinancePostingOutcome.NOTHING_TO_POST)
+        : {
+            outcome: FinancePostingOutcome.FAILED,
+            entryId: null,
+            reason: FinancePostingFailureReason.SOURCE_NOT_READY
+          }
     }
-    const paid = await this.paidFromOf(tx, input.organizationId, purchase.paidFromAccountId)
-    if (paid.kind === 'failed') return paid
-    const accounts = await this.accountsOf(tx, input.organizationId)
-    return {
-      kind: 'entry',
-      sourceDay: dayInZone(voided.occurredAt, voided.store.timezone),
-      type: JournalEntryType.CARRIER_GUIDES,
-      sourceType: FinanceSourceType.CARRIER_GUIDE_MOVEMENT,
-      key: FinancePostingKey.GUIDE_PURCHASE_VOID(input.sourceId),
-      memo: FinanceAutoMemo.GUIDE_PURCHASE_VOID,
-      result: guidePurchaseLines({
-        accounts,
-        paidFromAccountId: paid.accountId,
-        cents: purchase.costCentsDelta,
-        storeId: voided.storeId,
-        reversal: true
-      })
-    }
+    const date = automaticEntryDate(
+      dayInZone(found.voided.occurredAt, found.voided.store.timezone),
+      calendar
+    )
+    if (dryRun) return this.done(FinancePostingOutcome.PENDING)
+    const reversed = await this.ledger.reverse(
+      {
+        organizationId: input.organizationId,
+        entryId: original.id,
+        memo: FinanceAutoMemo.GUIDE_PURCHASE_VOID,
+        entryDate:
+          date.post && date.entryDate >= dateToDay(original.entryDate) ? date.entryDate : null,
+        createdBy: null
+      },
+      tx
+    )
+    return this.done(
+      reversed.replayed ? FinancePostingOutcome.REPLAYED : FinancePostingOutcome.POSTED,
+      reversed.id
+    )
   }
 
   // E5: a remittance that was confirmed. The loader reads the lines as the confirmation settled them and, for each guide, what E4

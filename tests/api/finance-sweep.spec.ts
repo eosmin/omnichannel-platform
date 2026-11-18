@@ -13,6 +13,7 @@ import {
   FinancePostingKey,
   FinancePostingOutcome,
   FinanceSourceType,
+  GuideMovementKind,
   InventoryAdjustmentReason,
   InventoryMovementType,
   ShipmentStatus,
@@ -397,6 +398,67 @@ describe('The sweep of the books and the guard of the close', () => {
       })
       expect((await queuedOf(charged.id)).map(job => job.kind)).toEqual([FinanceEventKind.CHARGES])
       expect(await queuedOf(free.id)).toEqual([])
+    })
+
+    it('finds the purchase of guides of a prepaid connection and its void, and not one the books do not carry or one that cost nothing (E15, E16)', async () => {
+      const { connectionId } = await createShipment(owner, {
+        storeId: ctx.storeA.id,
+        status: ShipmentStatus.DELIVERED,
+        deliveredAt: NOON(TODAY)
+      })
+      const movement = (over: {
+        kind: string
+        cents: number
+        onAdvance: boolean
+        voids?: string
+      }) =>
+        owner.carrierGuideMovement.create({
+          data: {
+            storeId: ctx.storeA.id,
+            connectionId,
+            kind: over.kind,
+            guidesDelta: over.kind === GuideMovementKind.VOID ? -10 : 10,
+            costCentsDelta: over.kind === GuideMovementKind.VOID ? -over.cents : over.cents,
+            paidQuantity: over.kind === GuideMovementKind.PURCHASE ? 10 : null,
+            giftQuantity: over.kind === GuideMovementKind.PURCHASE ? 0 : null,
+            onAdvance: over.onAdvance,
+            voidsMovementId: over.voids ?? null,
+            note: over.kind === GuideMovementKind.VOID ? 'typed twice' : null,
+            createdBy: 'system'
+          }
+        })
+      const carried = await movement({
+        kind: GuideMovementKind.PURCHASE,
+        cents: 1000,
+        onAdvance: true
+      })
+      const carriedVoid = await movement({
+        kind: GuideMovementKind.VOID,
+        cents: 1000,
+        onAdvance: true,
+        voids: carried.id
+      })
+      const plain = await movement({
+        kind: GuideMovementKind.PURCHASE,
+        cents: 1000,
+        onAdvance: false
+      })
+      const plainVoid = await movement({
+        kind: GuideMovementKind.VOID,
+        cents: 1000,
+        onAdvance: false,
+        voids: plain.id
+      })
+      const gifts = await movement({ kind: GuideMovementKind.PURCHASE, cents: 0, onAdvance: true })
+      expect((await queuedOf(carried.id)).map(job => job.kind)).toEqual([
+        FinanceEventKind.GUIDE_PURCHASE
+      ])
+      expect((await queuedOf(carriedVoid.id)).map(job => job.kind)).toEqual([
+        FinanceEventKind.GUIDE_PURCHASE_VOID
+      ])
+      expect(await queuedOf(plain.id)).toEqual([])
+      expect(await queuedOf(plainVoid.id)).toEqual([])
+      expect(await queuedOf(gifts.id)).toEqual([])
     })
 
     it('closes the failure of a source that waited once the source needs nothing any more', async () => {

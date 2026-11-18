@@ -590,6 +590,60 @@ describe('The entries that depend on a carrier (Step 4B.6b-1)', () => {
       )
     })
 
+    it('the void goes back to the account the purchase used even if the default bank was re-mapped or the account switched off since', async () => {
+      const { connectionId, row } = await purchase()
+      await postPurchase(row.id)
+      const otherBank = await owner.ledgerAccount.findFirstOrThrow({
+        where: { organizationId: ctx.orgA.id, code: '1101' }
+      })
+      const bank = await owner.accountRoleMapping.findFirstOrThrow({
+        where: { organizationId: ctx.orgA.id, role: AccountRole.BANK_DEFAULT }
+      })
+      await owner.accountRoleMapping.update({
+        where: { organizationId_role: { organizationId: bank.organizationId, role: bank.role } },
+        data: { accountId: otherBank.id }
+      })
+      try {
+        const voided = await voidOf(connectionId, row.id)
+        expect((await postPurchase(voided.id, FinanceEventKind.GUIDE_PURCHASE_VOID)).outcome).toBe(
+          FinancePostingOutcome.POSTED
+        )
+        const entry = await entryOf(FinancePostingKey.GUIDE_PURCHASE(row.id))
+        const reversal = await owner.journalEntry.findFirstOrThrow({
+          where: { organizationId: ctx.orgA.id, reversesEntryId: entry?.id },
+          include: { lines: { include: { account: { select: { code: true } } } } }
+        })
+        // The old bank is credited back by the reversal, not the account the role points at now
+        expect(
+          sorted(
+            reversal.lines.map((line): Line => [
+              line.account.code,
+              line.debitCents,
+              line.creditCents
+            ])
+          )
+        ).toEqual(
+          sorted([
+            [code(AccountRole.PREPAID_CARRIER_GUIDES), 0, 8000],
+            [code(AccountRole.BANK_DEFAULT), 8000, 0]
+          ])
+        )
+      } finally {
+        await owner.accountRoleMapping.update({
+          where: { organizationId_role: { organizationId: bank.organizationId, role: bank.role } },
+          data: { accountId: bank.accountId }
+        })
+      }
+    })
+
+    it('a void of a purchase of all gifts has nothing to undo: it never waits', async () => {
+      const { connectionId, row } = await purchase({ cents: 0 })
+      const voided = await voidOf(connectionId, row.id)
+      expect((await postPurchase(voided.id, FinanceEventKind.GUIDE_PURCHASE_VOID)).outcome).toBe(
+        FinancePostingOutcome.NOTHING_TO_POST
+      )
+    })
+
     it('a void of a purchase the books never carried posts nothing', async () => {
       const { connectionId, row } = await purchase({ onAdvance: false })
       const voided = await voidOf(connectionId, row.id, false)

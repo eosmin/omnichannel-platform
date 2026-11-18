@@ -134,6 +134,9 @@ export class CarrierGuidesApiService {
   ): Promise<GuideMovementView> {
     await this.assertConnection(storeId, connectionId)
     const row = await this.prisma.transaction(async tx => {
+      await lockStoreForWrite(tx, storeId)
+      // The same lock the guides and a switch of the charge model take: the flag below is the model in force when the purchase commits
+      await lockStoreScope(tx, storeId, `${ShipmentLockScopes.GUIDE_BALANCE}:${connectionId}`)
       // Whether the books carry this purchase is fixed now, from how the connection charges today: a purchase made before the connection
       // prepaid is in the opening balance, and one made after is the advance the guides are paid from (TDD_18 §4.2 E15)
       const connection = await tx.carrierConnection.findFirst({
@@ -187,8 +190,8 @@ export class CarrierGuidesApiService {
       where: { id: accountId, organizationId },
       select: { active: true, isPostable: true, cashKind: true }
     })
-    if (account === null) throw resourceNotFound('Account')
-    if (remittanceDestinationProblem(account) !== null) {
+    // An account that is not the organization's and one that cannot take the money answer the same, so the answer tells nothing of other accounts
+    if (account === null || remittanceDestinationProblem(account) !== null) {
       throw new PlatformException(
         ErrorCodes.VALIDATION_FAILED,
         'the money of a purchase of guides leaves a cash, bank or wallet account that is on',

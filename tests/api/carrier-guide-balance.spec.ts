@@ -200,7 +200,7 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
       where: { voidsMovementId: carriedRow.id }
     })
     expect(voidRow.onAdvance).toBe(true)
-    // An account that is not one of the organization's is a 404, and nothing is written
+    // An account that is not one of the organization's is refused like one that cannot take the money, and nothing is written
     const before = await owner.carrierGuideMovement.count({ where: { connectionId: id } })
     const unknown = await admin().post(ApiRoutes.carriers.guidePurchases(id)).send({
       paidQuantity: 5,
@@ -208,8 +208,29 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
       totalCostCents: 500,
       paidFromAccountId: '00000000-0000-4000-8000-000000000000'
     })
-    expect(unknown.status).toBe(404)
+    expect(unknown.status).toBe(400)
     expect(await owner.carrierGuideMovement.count({ where: { connectionId: id } })).toBe(before)
+  })
+
+  it('lets only who may move money name the account of a purchase', async () => {
+    const { id } = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
+    const manager = api(
+      app,
+      await actorWithPermissions(owner, app, {
+        prefix,
+        name: 'guides-manager',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions: [Permissions.CARRIERS_MANAGE_GUIDE_BALANCE]
+      }),
+      ctx.storeA
+    )
+    const body = { paidQuantity: 5, giftQuantity: 0, totalCostCents: 500 }
+    const named = await manager
+      .post(ApiRoutes.carriers.guidePurchases(id))
+      .send({ ...body, paidFromAccountId: '00000000-0000-4000-8000-000000000000' })
+    expect(named.status).toBe(403)
+    expect((await manager.post(ApiRoutes.carriers.guidePurchases(id)).send(body)).status).toBe(201)
   })
 
   it('voids a purchase once and writes a movement, never an edit', async () => {

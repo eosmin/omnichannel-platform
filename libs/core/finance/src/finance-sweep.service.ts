@@ -516,6 +516,8 @@ export class FinanceSweepService {
                 ...storeOf,
                 kind: ledgerKind,
                 occurredAt: { gte: since },
+                // A purchase of all gifts cost nothing and has no entry: there is nothing to queue (nor to void)
+                costCentsDelta: { not: 0 },
                 // A void is of the purchase it undoes: it counts only when that purchase was carried by the books
                 ...(ledgerKind === GuideMovementKind.VOID
                   ? { voids: { onAdvance: true } }
