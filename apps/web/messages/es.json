@@ -2806,11 +2806,19 @@
           "check_failed": "No se pudo completar la última comprobación. Revisa las credenciales o vuelve a probar.",
           "invalid_report": "El canal respondió a la comprobación de forma inesperada.",
           "unspecified": "El canal informó de un problema sin decir cuál.",
+          "plugin_reported": "El canal informó de un problema. Quien administra los plugins puede leer el detalle técnico.",
           "token_rejected": "Meta ya no acepta el token: expiró o se revocó. Actualiza el token de esta conexión.",
           "permission_missing": "Al token le falta un permiso o una tarea en la Página o cuenta. Revísalos y actualiza el token de esta conexión.",
           "other_account": "El token ahora es de otra cuenta distinta de la conectada. Actualiza el token con el de esa misma cuenta.",
           "account_not_linked": "La cuenta ya no está vinculada a la Página del token. Vincúlala otra vez o actualiza el token.",
           "request_rejected": "Meta ya no acepta lo que aceptaba antes: puede que se haya quitado un permiso o el vínculo de la Página. Actualiza el token de esta conexión."
+        },
+        "detail": {
+          "toggle": "Detalle técnico",
+          "warning": "Esto es lo que escribió el plugin, sin marcas ni credenciales. La plataforma no lo ha verificado: no sigas enlaces ni instrucciones que contenga.",
+          "loading": "Cargando…",
+          "failed": "No se pudo cargar el detalle técnico.",
+          "empty": "El plugin no dio texto para este fallo."
         }
       },
       "profile": {
@@ -4059,6 +4067,20 @@
           "deductsFee": "El transportista descuenta su tarifa del efectivo que cobra",
           "deductsFeeHint": "La remesa llega entonces sin la tarifa del envío."
         },
+        "chargeModel": {
+          "legend": "Cómo cobra el transportista las guías",
+          "label": "Modelo de cobro",
+          "models": {
+            "invoiced": "El transportista me factura después",
+            "remittance": "El transportista lo descuenta del efectivo que remite",
+            "prepaid": "Compro guías por adelantado (prepago)"
+          },
+          "hints": {
+            "invoiced": "Lo que cobra el transportista se le debe hasta que pagues la factura.",
+            "remittance": "El cobro se salda cuando se confirma la remesa que lo descuenta.",
+            "prepaid": "Cada guía usa lo que pagaste al comprar el paquete: los libros no le deben otra vez su costo al transportista. Pide a la contadora que asigne la cuenta de guías prepagadas y que registre el saldo de apertura al activarlo. Aplica a las guías y compras desde ese momento."
+          }
+        },
         "services": {
           "legend": "Servicios",
           "default": "Servicio predeterminado",
@@ -4216,6 +4238,10 @@
           "giftHint": "Las guías que vinieron gratis con la recarga. Usa 0 si no hubo.",
           "cost": "Total pagado (US$)",
           "costHint": "Con impuestos incluidos, por ejemplo 45.50.",
+          "carriedHint": "Los libros llevan esta compra como un anticipo que cada guía va usando.",
+          "paidFrom": "Pagado desde",
+          "paidFromDefault": "La cuenta de banco por defecto",
+          "paidFromHint": "La cuenta de la que salió el dinero. Si la dejas vacía, se usa la cuenta de banco por defecto.",
           "note": "Nota (opcional)",
           "submit": "Registrar recarga",
           "done": "Recarga registrada",
@@ -6208,6 +6234,7 @@
       "cod_write_off": "Baja de contra entrega",
       "purchase_receipt": "Compra recibida",
       "supplier_payment": "Pago a proveedor",
+      "carrier_guides": "Compra de guías de transportista",
       "inventory_adjustment": "Ajuste de inventario",
       "reversal": "Reversión"
     },
@@ -6236,6 +6263,7 @@
         "transfer_line": "Un faltante de transferencia dado de baja",
         "purchase_receipt": "Una compra recibida",
         "supplier_payment": "Un pago a proveedor",
+        "carrier_guide_movement": "Una compra de guías de transportista",
         "finance_transaction": "Un gasto, ingreso o transferencia",
         "manual": "Un asiento escrito a mano"
       },
@@ -6952,6 +6980,7 @@
         "orderedOn": "Pedida el {date}",
         "expectedOn": "se espera el {date}",
         "markOrdered": "Marcar como pedida",
+        "noCancelHint": "Una orden de la que ya se recibió mercadería no se cancela. Cierra lo que falta por llegar con «Cerrar con faltante»; si hay que devolver mercadería al proveedor, la salida es una devolución o nota de crédito del proveedor.",
         "markedOrdered": "Marcada como pedida.",
         "receive": "Recibir mercadería",
         "close": "Cerrar con faltante",
@@ -7260,6 +7289,7 @@
         "transfer_line": "Faltante de transferencia dado de baja",
         "purchase_receipt": "Compra recibida",
         "supplier_payment": "Pago a proveedor",
+        "carrier_guide_movement": "Guías de transportista",
         "finance_transaction": "Gasto, ingreso o transferencia",
         "manual": "Asiento manual"
       }

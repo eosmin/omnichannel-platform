@@ -737,6 +737,7 @@ export const PLUGIN_API_COVERAGE: Readonly<Record<string, PluginApiCoverage>> = 
   'channels.directory': { scope: 'channels:read', exposed: '/plugin-api/channels/directory' },
   'channels.connect': { none: CHANNEL_ADMIN },
   'channels.connectionById': { none: CHANNEL_ADMIN },
+  'channels.connectionErrorDetail': { none: CHANNEL_ADMIN },
   'channels.test': { none: CHANNEL_ADMIN },
   'channels.disconnect': { none: CHANNEL_ADMIN },
   'channels.updateToken': { none: CHANNEL_ADMIN },

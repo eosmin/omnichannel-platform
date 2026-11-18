@@ -36,6 +36,30 @@ export const CarrierWebhookThrottle = { limit: 600, ttlMs: 60_000 } as const
 // limit of the installation (PluginApiKeyGuard) are what authenticate and bound each call, so this is only the flood guard
 export const PluginApiIpThrottle = { limit: 3000, ttlMs: 60_000 } as const
 
+// The routes that can be used to enumerate what a store holds (the search, the click of a result, the list of customers) are
+// limited in two layers (TDD_05 §3.1). The first is per address, before anybody is authenticated: it is only the flood guard, so
+// it is far above the default, because an office shares one address and many people type in a search box at once. It cannot be
+// the only one: an attacker with many addresses is never held by it.
+export const EnumerationIpThrottle = { limit: 600, ttlMs: 60_000 } as const
+
+// The second layer counts per authenticated user, after the token, the store and the permission were checked (UserRateLimitGuard),
+// so the address does not matter: a person who types fast does not reach it, a script that walks the data does. `name` is the
+// counter, shared by every route that names the same profile (the search of customers and the global search spend one budget).
+export interface UserRateLimitProfile {
+  readonly name: string
+  readonly limit: number
+  readonly ttlMs: number
+}
+// The name a profile is counted under (the key in Redis and the `throttler` label of the metric): apart from the per-address ones
+export const userRateLimitThrottler = (profile: UserRateLimitProfile): string =>
+  `user:${profile.name}`
+export const USER_RATE_LIMIT_METADATA_KEY = 'userRateLimit'
+export const UserRateLimits = {
+  SEARCH: { name: 'search', limit: 180, ttlMs: 60_000 },
+  SEARCH_CLICKS: { name: 'search_clicks', limit: 120, ttlMs: 60_000 },
+  CUSTOMER_LIST: { name: 'customer_list', limit: 120, ttlMs: 60_000 }
+} as const satisfies Record<string, UserRateLimitProfile>
+
 // The login profile of D2: 5 a minute per IP, and the same per hashed email, so the endpoint cannot
 // be used to mail-bomb an address from many IPs
 export const MagicLinkThrottle = { limit: 5, ttlMs: 60_000 } as const

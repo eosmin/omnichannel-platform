@@ -27,6 +27,7 @@ import {
   CarrierConnectionStatus,
   CarrierHealthReasons,
   CarrierLockScopes,
+  ShipmentLockScopes,
   feeSettingsProblem,
   singleLineText,
   type ConnectCarrierBody,
@@ -479,6 +480,10 @@ export class CarrierConnectionsService {
           serviceRatesCents: ratesViewOf(row.serviceRatesCents)
         }
         chargeModelBefore = row.chargeModel
+        if (body.chargeModel !== undefined && body.chargeModel !== row.chargeModel) {
+          // A guide or a purchase being written reads the model: it commits first or reads the new one
+          await lockStoreScope(tx, storeId, `${ShipmentLockScopes.GUIDE_BALANCE}:${connectionId}`)
+        }
         if (
           body.chargeModel === CarrierChargeModel.PREPAID &&
           row.chargeModel !== body.chargeModel

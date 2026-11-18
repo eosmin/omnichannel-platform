@@ -4,14 +4,12 @@ import { PinoLogger } from 'nestjs-pino'
 import {
   CONNECTION_ROW_SELECT,
   ChannelHealthService,
-  providerErrorText
+  pluginHealthReason
 } from '@platform/channels/connections'
 import { PrismaService } from '@platform/core/database'
 import {
   AuthorType,
   ChannelConnectionStatus,
-  ChannelHealthErrors,
-  ChannelHealthLimits,
   DeliveryStatus,
   OutboundLimits,
   OfActiveInstallation
@@ -204,13 +202,9 @@ export class ChannelReceipts {
       select: CONNECTION_ROW_SELECT
     })
     if (row === null) return
-    const reason = providerErrorText(
-      event.status?.error?.message ?? '',
-      ChannelHealthLimits.ERROR_MAX_LENGTH
-    )
     await this.health.record(row, {
       healthy: false,
-      error: reason === '' ? ChannelHealthErrors.UNSPECIFIED : reason
+      error: pluginHealthReason(event.status?.error?.message ?? '')
     })
   }
 }

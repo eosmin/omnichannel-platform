@@ -79,6 +79,18 @@ export class ChannelConnectionsController {
     return this.connections.get(store.id, connectionId)
   }
 
+  // The words a plugin used for a failed check: a third party's text, so it is a technical detail for whoever manages plugins
+  // and not part of the connection every settings reader sees
+  @RequirePermissions(Permissions.SETTINGS_MANAGE_PLUGINS)
+  @NoStore()
+  @Get(ApiRoutes.channels.connectionErrorDetail(':id'))
+  errorDetail(
+    @CurrentStore() store: Store,
+    @Param('id', id()) connectionId: string
+  ): Promise<{ detail: string | null }> {
+    return this.connections.errorDetail(store.id, connectionId)
+  }
+
   @RequirePermissions(Permissions.SETTINGS_EDIT)
   @Post(ApiRoutes.channels.connect(':pluginId'))
   @HttpCode(HttpStatusCodes.CREATED)

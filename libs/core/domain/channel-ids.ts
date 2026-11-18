@@ -69,6 +69,9 @@ export const ChannelHealthErrors = {
   CREDENTIALS_UNREADABLE: 'credentials_unreadable',
   INVALID_REPORT: 'invalid_report',
   UNSPECIFIED: 'unspecified',
+  // The plugin said something in its own words (a free text of a third party): it is kept apart for whoever manages the
+  // plugins (`ChannelConnectionView.errorDetail` route), and everybody else is told only this code
+  PLUGIN_REPORTED: 'plugin_reported',
   // What the plugin says the owner has to fix (see ChannelConnectFailureReasons, same names): the token
   // no longer works, a permission or task is missing, the token is of another account than the
   // connected one, or the account is no longer linked
@@ -128,6 +131,19 @@ export const OutboundLimits = {
   // A typing job that waited longer than this in the queue is dropped: it would show the wrong thing
   TYPING_STALE_MS: 10_000
 } as const
+
+export type ChannelHealthError = (typeof ChannelHealthErrors)[keyof typeof ChannelHealthErrors]
+
+const CHANNEL_HEALTH_ERRORS: readonly string[] = Object.values(ChannelHealthErrors)
+
+// The vocabulary of ours that a person reads for what is stored in `ChannelConnection.lastError`: a code of the list stays
+// as it is, and any other text is what a plugin said, which is never shown as written (it is `plugin_reported`).
+export function healthCodeOf(stored: string | null): ChannelHealthError | null {
+  if (stored === null) return null
+  return CHANNEL_HEALTH_ERRORS.includes(stored)
+    ? (stored as ChannelHealthError)
+    : ChannelHealthErrors.PLUGIN_REPORTED
+}
 
 // What `lastError` says for a failure of a plugin that has a reason: only the ones the owner can fix.
 // A busy or unavailable provider, or an answer that was not expected, stays the plain `check_failed`:
