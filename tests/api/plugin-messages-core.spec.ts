@@ -206,7 +206,7 @@ describe('A message written by a plugin', () => {
       expect((await row(id)).assignedTo).toBeNull()
     })
 
-    it('answers a retry with the same key with the message that was made, and refuses it to another plugin', async () => {
+    it('answers a retry with the same key with the message that was made, and never tells another plugin the key exists', async () => {
       const { id } = await mk()
       const body = text(id)
 
@@ -215,10 +215,12 @@ describe('A message written by a plugin', () => {
 
       expect(again.created).toBe(false)
       expect(again.message.id).toBe(first.message.id)
-      await expect(send(body, { ...system(), pluginId: otherPluginId })).rejects.toBeInstanceOf(
-        PlatformException
-      )
-      expect(await owner.message.count({ where: { conversationId: id } })).toBe(1)
+      // HC-216: the key of a plugin is its own. Another plugin using the same value makes its own message: no conflict that would tell
+      // it the key was used by someone else in this conversation
+      const other = await send(body, { ...system(), pluginId: otherPluginId })
+      expect(other.created).toBe(true)
+      expect(other.message.id).not.toBe(first.message.id)
+      expect(await owner.message.count({ where: { conversationId: id } })).toBe(2)
     })
   })
 
