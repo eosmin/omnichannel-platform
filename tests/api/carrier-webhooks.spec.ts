@@ -4,7 +4,6 @@ import type { INestApplication } from '@nestjs/common'
 import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
-import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   CarrierConnectionStatus,
@@ -26,6 +25,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { anonymousApi, api } from '../helpers/http'
 import { queueOf } from '../helpers/queue'
+import { createWorkerPrisma } from '../helpers/worker-db'
 
 const OK = 200
 const CREATED = 201
@@ -417,10 +417,7 @@ describe('The webhook of a carrier', () => {
     const noise = { setContext: () => undefined, info: () => undefined, warn: () => undefined }
 
     beforeAll(() => {
-      resolver = new CarrierEventResolver(
-        app.get(PrismaService, { strict: false }),
-        noise as unknown as PinoLogger
-      )
+      resolver = new CarrierEventResolver(createWorkerPrisma(), noise as unknown as PinoLogger)
     })
 
     const job = (

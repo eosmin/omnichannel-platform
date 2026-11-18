@@ -278,6 +278,25 @@ describe('GlobalExceptionFilter, a database lock that was waited for too long', 
     expect(Sentry.captureException).not.toHaveBeenCalled()
   })
 
+  it('answers the same 503 when a transaction waited too long for a connection (a burst of writes, HC-021)', () => {
+    const { response } = run({
+      name: 'PrismaClientKnownRequestError',
+      code: 'P2028',
+      message: 'Transaction API error: Unable to start a transaction in the given time.'
+    })
+
+    expect(response.status).toHaveBeenCalledWith(503)
+    expect(response.json).toHaveBeenCalledWith({
+      error: {
+        code: ErrorCodes.DATABASE_BUSY,
+        message: 'The service is busy, try again in a moment',
+        metadata: { retryAfterSeconds: 5 }
+      },
+      correlationId: 'c-9'
+    })
+    expect(Sentry.captureException).not.toHaveBeenCalled()
+  })
+
   it('leaves any other database error as the 500 it is', () => {
     const { response } = run({
       code: 'P2010',

@@ -1,24 +1,13 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
 
 import pg from 'pg'
 
 import { connectionUrls } from './connection-urls'
+import { repositoryRoot } from './repository-root'
 
 const REPLICA_SUFFIX = '_replica'
 const MAX_IDENTIFIER_BYTES = 63
 const DUPLICATE_DATABASE = '42P04'
-
-// The root of the repository, where prisma.config.ts is: the suites run from tests/ and the scripts from the root, and this
-// file is loaded both as CommonJS (jest) and as a module (tsx), so it cannot ask where it sits
-function repositoryRoot(): string {
-  for (let dir = process.cwd(); ; dir = dirname(dir)) {
-    if (existsSync(join(dir, 'prisma.config.ts'))) return dir
-    if (dirname(dir) === dir)
-      throw new Error('prisma.config.ts not found above the working directory')
-  }
-}
 
 function inReplica(url: string, name: string): string {
   const parsed = new URL(url)

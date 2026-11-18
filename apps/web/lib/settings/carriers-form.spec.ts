@@ -127,6 +127,15 @@ describe('carrier shipping settings', () => {
     maxShippingFeeCents: 900
   }
 
+  it('reads how the carrier charges the guides and sends it only when it changed', () => {
+    const draft = carrierRulesDraftOf(withServices)
+    expect(draft.chargeModel).toBe('invoiced')
+    expect(carrierRulesChanges(withServices, draft)).not.toHaveProperty('chargeModel')
+    expect(carrierRulesChanges(withServices, { ...draft, chargeModel: 'prepaid' })).toEqual({
+      chargeModel: 'prepaid'
+    })
+  })
+
   it('shows the money as dollars and sends cents, only for what changed', () => {
     const draft = carrierRulesDraftOf(withServices)
     expect(draft.defaultFee).toBe('5.00')

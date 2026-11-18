@@ -18,6 +18,7 @@ import { waitForAuditEntries } from '../helpers/audit'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { transactionInContext } from '../helpers/tenant-context'
 
 interface ErrorBody {
   error: { code: string; metadata?: Record<string, unknown> }
@@ -786,11 +787,15 @@ describe('The stock of a store', () => {
       const prisma = app.get(PrismaService, { strict: false })
       const base = { storeId: ctx.storeA.id, productId: made.id, warehouseId: ctx.warehouseA.id }
       // An order reserves, then changes its mind: three movements with one created_at
-      await prisma.transaction(async tx => {
-        await inventory.reserve({ ...base, quantity: 4, idempotencyKey: randomUUID() }, tx)
-        await inventory.release({ ...base, quantity: 1, idempotencyKey: randomUUID() }, tx)
-        await inventory.reserve({ ...base, quantity: 2, idempotencyKey: randomUUID() }, tx)
-      })
+      await transactionInContext(
+        prisma,
+        { storeIds: [ctx.storeA.id], organizationIds: [ctx.orgA.id] },
+        async tx => {
+          await inventory.reserve({ ...base, quantity: 4, idempotencyKey: randomUUID() }, tx)
+          await inventory.release({ ...base, quantity: 1, idempotencyKey: randomUUID() }, tx)
+          await inventory.reserve({ ...base, quantity: 2, idempotencyKey: randomUUID() }, tx)
+        }
+      )
 
       const kardex = await asAdmin()
         .get(ApiRoutes.inventory.kardex)
@@ -812,11 +817,15 @@ describe('The stock of a store', () => {
       const prisma = app.get(PrismaService, { strict: false })
       const base = { storeId: ctx.storeA.id, productId: made.id, warehouseId: ctx.warehouseA.id }
       // Four movements with one created_at: only the order of the ledger can page them
-      await prisma.transaction(async tx => {
-        for (let index = 0; index < 4; index += 1) {
-          await inventory.reserve({ ...base, quantity: 1, idempotencyKey: randomUUID() }, tx)
+      await transactionInContext(
+        prisma,
+        { storeIds: [ctx.storeA.id], organizationIds: [ctx.orgA.id] },
+        async tx => {
+          for (let index = 0; index < 4; index += 1) {
+            await inventory.reserve({ ...base, quantity: 1, idempotencyKey: randomUUID() }, tx)
+          }
         }
-      })
+      )
       const whole = (
         (
           await asAdmin()

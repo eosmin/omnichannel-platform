@@ -17,13 +17,16 @@ import {
   FinanceSourceType,
   InventoryAdjustmentReason,
   InventoryMovementType,
+  InventoryReferenceType,
   JournalEntryType,
-  PeriodStatus
+  PeriodStatus,
+  TransferShortageAction,
+  TransferStatus
 } from '@platform/core/domain'
 import { FinancePostingService } from '@platform/core/finance-ledger'
 import { JobNames, QueueNames } from '@platform/core/queues'
 
-import { createCarrierConnection, createOrder, createPeriod } from '../builders'
+import { createCarrierConnection, createOrder, createPeriod, createTransfer } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
 import { createTestApp } from '../helpers/app'
 import { waitForAuditEntries } from '../helpers/audit'
@@ -759,6 +762,111 @@ describe('The automatic entries (Step 4B.6a)', () => {
       const id = await movement(InventoryMovementType.TRANSFER_OUT, 1, 100)
       expect((await adjust(id)).outcome).toBe(FinancePostingOutcome.NOTHING_TO_POST)
       expect(await entryOf(FinancePostingKey.MOVEMENT_ADJUST(id))).toBeNull()
+    })
+
+    // AUT-911: a transfer of 4 units of which 3 arrived, closed with the missing unit written off, left the books with the whole value
+    // in INVENTORY while the stock had lost one unit and no entry said so
+    describe('a transfer shortage written off', () => {
+      async function closedWithShortage(action: TransferShortageAction | null) {
+        const made = await createTransfer(owner, {
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA.id,
+          status: TransferStatus.RECEIVED
+        })
+        const lineId = made.lineId as string
+        const line = await owner.stockTransferLine.update({
+          where: { id: lineId },
+          data: { quantity: 4, receivedQuantity: 3, shortageAction: action },
+          select: { productId: true }
+        })
+        const header = await owner.stockTransfer.findUniqueOrThrow({
+          where: { id: made.id },
+          select: { fromWarehouseId: true, toWarehouseId: true }
+        })
+        await owner.inventoryMovement.create({
+          data: {
+            storeId: ctx.storeA.id,
+            productId: line.productId,
+            warehouseId: header.fromWarehouseId,
+            type: InventoryMovementType.TRANSFER_OUT,
+            quantity: 4,
+            referenceType: InventoryReferenceType.TRANSFER,
+            referenceId: made.id,
+            idempotencyKey: `transfer:${made.id}:${lineId}:dispatch`,
+            unitCostCents: 250,
+            valueCents: 1000n,
+            onHandAfter: 0,
+            reservedAfter: 0
+          }
+        })
+        await owner.inventoryMovement.create({
+          data: {
+            storeId: ctx.storeA.id,
+            productId: line.productId,
+            warehouseId: header.toWarehouseId,
+            type: InventoryMovementType.TRANSFER_IN,
+            quantity: 3,
+            referenceType: InventoryReferenceType.TRANSFER,
+            referenceId: made.id,
+            idempotencyKey: `transfer:${made.id}:${lineId}:receive:r1`,
+            unitCostCents: 250,
+            valueCents: 750n,
+            onHandAfter: 0,
+            reservedAfter: 0
+          }
+        })
+        return lineId
+      }
+      const writeOff = (lineId: string, organizationId = ctx.orgA.id) =>
+        run(lineId, FinanceEventKind.TRANSFER_WRITE_OFF, {
+          organizationId,
+          sourceType: FinanceSourceType.TRANSFER_LINE
+        })
+
+      it('is a loss of the missing units at the cost they left with, once', async () => {
+        const lineId = await closedWithShortage(TransferShortageAction.WRITE_OFF)
+        expect((await writeOff(lineId)).outcome).toBe(FinancePostingOutcome.POSTED)
+        const entry = await entryOf(FinancePostingKey.TRANSFER_LINE_WRITE_OFF(lineId))
+        expect(entry?.type).toBe(JournalEntryType.INVENTORY_ADJUSTMENT)
+        expect(linesOf(entry as NonNullable<typeof entry>)).toEqual(
+          sorted([
+            [code(AccountRole.INVENTORY_LOSS), 250, 0],
+            [code(AccountRole.INVENTORY), 0, 250]
+          ])
+        )
+        expect((await writeOff(lineId)).outcome).toBe(FinancePostingOutcome.REPLAYED)
+        expect(
+          await owner.journalEntry.count({
+            where: { organizationId: ctx.orgA.id, sourceId: lineId }
+          })
+        ).toBe(1)
+      })
+
+      it('is not retroactive: a transfer closed before the entry existed posts nothing', async () => {
+        const lineId = await closedWithShortage(TransferShortageAction.WRITE_OFF)
+        const line = await owner.stockTransferLine.findUniqueOrThrow({
+          where: { id: lineId },
+          select: { transferId: true }
+        })
+        await owner.stockTransfer.update({
+          where: { id: line.transferId },
+          data: { closedAt: new Date('2026-11-17T12:00:00.000Z') }
+        })
+        expect((await writeOff(lineId)).outcome).toBe(FinancePostingOutcome.NOTHING_TO_POST)
+        expect(await entryOf(FinancePostingKey.TRANSFER_LINE_WRITE_OFF(lineId))).toBeNull()
+      })
+
+      it('posts nothing for a shortage sent back to the source', async () => {
+        const lineId = await closedWithShortage(TransferShortageAction.RETURN_TO_SOURCE)
+        expect((await writeOff(lineId)).outcome).toBe(FinancePostingOutcome.NOTHING_TO_POST)
+      })
+
+      it('cannot be posted by another organization', async () => {
+        const lineId = await closedWithShortage(TransferShortageAction.WRITE_OFF)
+        expect((await writeOff(lineId, ctx.orgB.id)).outcome).toBe(
+          FinancePostingOutcome.NOTHING_TO_POST
+        )
+      })
     })
   })
 

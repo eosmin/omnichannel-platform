@@ -4,7 +4,7 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
 import { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, type PrismaTransaction } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   CarrierConnectionLimits,
@@ -40,6 +40,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { standalone } from '../helpers/leaks'
+import { transactionInContext } from '../helpers/tenant-context'
 
 const OK = 200
 const CREATED = 201
@@ -87,6 +88,16 @@ describe('Settings → Carriers: the connections of a store', () => {
   let app: INestApplication
   let owner: OwnerClient
   let ctx: TestContext
+  // takeLocalGuideNumber runs in the transaction of a request of store A: the context of the store, once Row-Level Security is enforced
+  const inStoreA = <T>(
+    prisma: PrismaService,
+    work: (tx: PrismaTransaction) => Promise<T>
+  ): Promise<T> =>
+    transactionInContext(
+      prisma,
+      { storeIds: [ctx.storeA.id], organizationIds: [ctx.orgA.id] },
+      work
+    )
   let fake: FakeCarrier
   let counter = 0
   let installationId = ''
@@ -827,7 +838,7 @@ describe('Settings → Carriers: the connections of a store', () => {
     it('changes the prefix and the contact of a courier while the numbering goes on', async () => {
       const body = made(await local({}, { prefix: 'JN' }))
       const prisma = app.get(PrismaService, { strict: false })
-      const first = await prisma.transaction(tx => takeLocalGuideNumber(tx, ctx.storeA.id, body.id))
+      const first = await inStoreA(prisma, tx => takeLocalGuideNumber(tx, ctx.storeA.id, body.id))
       expect(first).toBe('JN-000001')
       const response = await asAdmin()
         .patch(ApiRoutes.carriers.byId(body.id))
@@ -838,9 +849,7 @@ describe('Settings → Carriers: the connections of a store', () => {
         contact: { phone: '70002222' },
         displayName: body.displayName
       })
-      const second = await prisma.transaction(tx =>
-        takeLocalGuideNumber(tx, ctx.storeA.id, body.id)
-      )
+      const second = await inStoreA(prisma, tx => takeLocalGuideNumber(tx, ctx.storeA.id, body.id))
       expect(second).toBe('AB-000002')
       const bad = await asAdmin()
         .patch(ApiRoutes.carriers.byId(body.id))
@@ -1132,6 +1141,16 @@ describe('The numbering of the guides of a local courier', () => {
   let app: INestApplication
   let owner: OwnerClient
   let ctx: TestContext
+  // takeLocalGuideNumber runs in the transaction of a request of store A: the context of the store, once Row-Level Security is enforced
+  const inStoreA = <T>(
+    prisma: PrismaService,
+    work: (tx: PrismaTransaction) => Promise<T>
+  ): Promise<T> =>
+    transactionInContext(
+      prisma,
+      { storeIds: [ctx.storeA.id], organizationIds: [ctx.orgA.id] },
+      work
+    )
 
   beforeAll(async () => {
     owner = ownerClient()
@@ -1149,7 +1168,7 @@ describe('The numbering of the guides of a local courier', () => {
     const prisma = app.get(PrismaService, { strict: false })
     const numbers = await Promise.all(
       Array.from({ length: 20 }, () =>
-        prisma.transaction(tx => takeLocalGuideNumber(tx, ctx.storeA.id, connection.id))
+        inStoreA(prisma, tx => takeLocalGuideNumber(tx, ctx.storeA.id, connection.id))
       )
     )
     expect(new Set(numbers).size).toBe(20)
@@ -1166,13 +1185,13 @@ describe('The numbering of the guides of a local courier', () => {
     const connection = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
     const prisma = app.get(PrismaService, { strict: false })
     await expect(
-      prisma.transaction(async tx => {
+      inStoreA(prisma, async tx => {
         await takeLocalGuideNumber(tx, ctx.storeA.id, connection.id)
         throw new Error('the shipment could not be written')
       })
     ).rejects.toThrow('could not be written')
     expect(
-      await prisma.transaction(tx => takeLocalGuideNumber(tx, ctx.storeA.id, connection.id))
+      await inStoreA(prisma, tx => takeLocalGuideNumber(tx, ctx.storeA.id, connection.id))
     ).toBe('T-000001')
   })
 
@@ -1182,7 +1201,7 @@ describe('The numbering of the guides of a local courier', () => {
     const prisma = app.get(PrismaService, { strict: false })
     // The row of another store is not found under the store of the request: the update names the store
     await expect(
-      prisma.transaction(tx => takeLocalGuideNumber(tx, ctx.storeA.id, theirs.id))
+      inStoreA(prisma, tx => takeLocalGuideNumber(tx, ctx.storeA.id, theirs.id))
     ).rejects.toMatchObject({ code: 'P2025' })
     expect(
       (await owner.guideSequence.findUniqueOrThrow({ where: { connectionId: theirs.id } }))
@@ -1193,7 +1212,7 @@ describe('The numbering of the guides of a local courier', () => {
       carrierId: CarrierId.FORZA
     })
     await expect(
-      prisma.transaction(tx => takeLocalGuideNumber(tx, ctx.storeA.id, courier.id))
+      inStoreA(prisma, tx => takeLocalGuideNumber(tx, ctx.storeA.id, courier.id))
     ).rejects.toMatchObject({ code: 'P2025' })
     // And what it did not touch is as it was
     expect(

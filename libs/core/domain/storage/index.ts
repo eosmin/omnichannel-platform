@@ -1,3 +1,4 @@
+export * from './bucket-protection'
 export * from './conversation-files'
 export * from './media-gallery'
 export * from './media-message'

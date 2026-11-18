@@ -13,6 +13,82 @@ function serviceWith(send: jest.Mock): StorageService {
 }
 
 describe('StorageService', () => {
+  describe('inspectProtection', () => {
+    // Answers each command by its class, as the store would
+    const answering =
+      (answers: { encryption: () => unknown; versioning: () => unknown }) =>
+      (command: { constructor: { name: string } }) => {
+        const answer =
+          command.constructor.name === 'GetBucketEncryptionCommand'
+            ? answers.encryption
+            : answers.versioning
+        return Promise.resolve().then(answer)
+      }
+    const encrypted = () => ({
+      ServerSideEncryptionConfiguration: {
+        Rules: [{ ApplyServerSideEncryptionByDefault: { SSEAlgorithm: 'AES256' } }]
+      }
+    })
+    const named = (name: string) => () => {
+      throw Object.assign(new Error(name), { name })
+    }
+
+    it('is on for both when the bucket is encrypted and versioned', async () => {
+      const send = jest
+        .fn()
+        .mockImplementation(
+          answering({ encryption: encrypted, versioning: () => ({ Status: 'Enabled' }) })
+        )
+      expect(await serviceWith(send).inspectProtection(1000)).toEqual({
+        encryption: 'on',
+        versioning: 'on'
+      })
+    })
+
+    it('is off for a bucket with no default encryption and with versioning never set or suspended', async () => {
+      const send = jest.fn().mockImplementation(
+        answering({
+          encryption: named('ServerSideEncryptionConfigurationNotFoundError'),
+          versioning: () => ({})
+        })
+      )
+      expect(await serviceWith(send).inspectProtection(1000)).toEqual({
+        encryption: 'off',
+        versioning: 'off'
+      })
+      const suspended = jest
+        .fn()
+        .mockImplementation(
+          answering({ encryption: encrypted, versioning: () => ({ Status: 'Suspended' }) })
+        )
+      expect((await serviceWith(suspended).inspectProtection(1000)).versioning).toBe('off')
+    })
+
+    it('is off for a rule that names no algorithm', async () => {
+      const send = jest.fn().mockImplementation(
+        answering({
+          encryption: () => ({
+            ServerSideEncryptionConfiguration: { Rules: [{ BucketKeyEnabled: true }] }
+          }),
+          versioning: () => ({ Status: 'Enabled' })
+        })
+      )
+      expect((await serviceWith(send).inspectProtection(1000)).encryption).toBe('off')
+    })
+
+    it('is unknown, never on, when the store does not answer the question', async () => {
+      const send = jest
+        .fn()
+        .mockImplementation(
+          answering({ encryption: named('AccessDenied'), versioning: named('NotImplemented') })
+        )
+      expect(await serviceWith(send).inspectProtection(1000)).toEqual({
+        encryption: 'unknown',
+        versioning: 'unknown'
+      })
+    })
+  })
+
   describe('head', () => {
     it('describes the object, with the ETag that identifies its bytes', async () => {
       const send = jest

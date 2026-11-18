@@ -7,6 +7,7 @@ import {
   FinanceEventKind,
   FinancePostingFailureReason,
   FinancePostingKey,
+  GuideMovementKind,
   FinancePostingOutcome,
   FinanceSourceType,
   FinanceSweepLimits,
@@ -14,7 +15,10 @@ import {
   OrderStatus,
   RemittanceStatus,
   SaleRecognition,
-  ShipmentStatus
+  ShipmentStatus,
+  TRANSFER_WRITE_OFF_POSTING_START,
+  TransferShortageAction,
+  TransferStatus
 } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 
@@ -492,6 +496,54 @@ export class FinanceSweepService {
       },
       out
     )
+    // E15 and E16: the purchases of guides a prepaid connection made, and the voids of them. A purchase made while the connection did not
+    // prepay is not the books' business (`onAdvance`), and a void of one is not either.
+    for (const [kind, ledgerKind, keyOf] of [
+      [
+        FinanceEventKind.GUIDE_PURCHASE,
+        GuideMovementKind.PURCHASE,
+        FinancePostingKey.GUIDE_PURCHASE
+      ],
+      [
+        FinanceEventKind.GUIDE_PURCHASE_VOID,
+        GuideMovementKind.VOID,
+        FinancePostingKey.GUIDE_PURCHASE_VOID
+      ]
+    ] as const) {
+      await this.collect(
+        {
+          ...common,
+          page: (after, take) =>
+            db.carrierGuideMovement.findMany({
+              where: {
+                ...storeOf,
+                kind: ledgerKind,
+                occurredAt: { gte: since },
+                // A purchase of all gifts cost nothing and has no entry: there is nothing to queue (nor to void)
+                costCentsDelta: { not: 0 },
+                // A void is of the purchase it undoes: it counts only when that purchase was carried by the books
+                ...(ledgerKind === GuideMovementKind.VOID
+                  ? { voids: { onAdvance: true } }
+                  : { onAdvance: true })
+              },
+              select: { id: true, occurredAt: true },
+              orderBy: { id: 'asc' },
+              take,
+              ...cursor(after)
+            }),
+          of: movement => [
+            make(
+              FinanceSourceType.CARRIER_GUIDE_MOVEMENT,
+              movement.id,
+              kind,
+              keyOf(movement.id),
+              movement.occurredAt
+            )
+          ]
+        },
+        out
+      )
+    }
     // E5: a remittance confirmed
     await this.collect(
       {
@@ -623,6 +675,42 @@ export class FinanceSweepService {
             FinanceEventKind.ADJUST,
             FinancePostingKey.MOVEMENT_ADJUST(movement.id),
             movement.createdAt
+          )
+        ]
+      },
+      out
+    )
+    // E9, the units of a transfer line written off when the transfer was closed (the day is the day of the close)
+    await this.collect(
+      {
+        ...common,
+        page: (after, take) =>
+          db.stockTransferLine.findMany({
+            where: {
+              ...storeOf,
+              shortageAction: TransferShortageAction.WRITE_OFF,
+              transfer: {
+                status: TransferStatus.RECEIVED,
+                closedAt: {
+                  gte:
+                    since > TRANSFER_WRITE_OFF_POSTING_START
+                      ? since
+                      : TRANSFER_WRITE_OFF_POSTING_START
+                }
+              }
+            },
+            select: { id: true, transfer: { select: { closedAt: true } } },
+            orderBy: { id: 'asc' },
+            take,
+            ...cursor(after)
+          }),
+        of: line => [
+          make(
+            FinanceSourceType.TRANSFER_LINE,
+            line.id,
+            FinanceEventKind.TRANSFER_WRITE_OFF,
+            FinancePostingKey.TRANSFER_LINE_WRITE_OFF(line.id),
+            line.transfer.closedAt ?? since
           )
         ]
       },
