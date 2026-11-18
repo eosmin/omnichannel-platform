@@ -30,7 +30,7 @@ import { UploadLimits } from '@platform/core/storage'
 import {
   type PinnedExchangeOptions,
   type PinnedExchangeResult,
-  pinnedHttpsExchange,
+  commandsExchange,
   pinnedHttpsGet,
   PinnedExchangeFailed,
   PinnedFetchFailed,
@@ -198,7 +198,7 @@ export class RemoteChannelPlugin implements ChannelPlugin {
     this.commandsUrl = channel.commandsUrl
     this.settingsUrl = manifest.ui?.settings ?? null
     this.secrets = deps.secrets
-    this.exchange = deps.exchange ?? pinnedHttpsExchange
+    this.exchange = deps.exchange ?? commandsExchange
     this.get = deps.get ?? pinnedHttpsGet
     this.now = deps.now ?? Date.now
     this.deliveryId = deps.deliveryId ?? randomUUID

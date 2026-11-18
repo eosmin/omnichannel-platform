@@ -86,6 +86,58 @@ describe('parseEnv', () => {
     )
   })
 
+  describe('PLUGIN_ALLOW_LOCAL_COMMANDS_URL, a plugin that answers on this machine, for the suites', () => {
+    // What a deployed environment requires, so that the only thing wrong with it is the switch
+    const deployed = {
+      ...validEnv,
+      RESEND_API_KEY: 're_key',
+      FRONTEND_URL: 'https://app.example.com',
+      WIDGET_SCRIPT_URL: 'https://cdn.example.com/widget.js',
+      TRUST_PROXY_HOPS: '1'
+    }
+    const issueOf = (env: Record<string, string>): string => {
+      try {
+        parseEnv(env)
+      } catch (error) {
+        return (error as Error).message
+      }
+      return ''
+    }
+
+    it('is off by default and only the test environment may turn it on', () => {
+      expect(parseEnv(validEnv).PLUGIN_ALLOW_LOCAL_COMMANDS_URL).toBe(false)
+      expect(
+        parseEnv({ ...validEnv, NODE_ENV: 'test', PLUGIN_ALLOW_LOCAL_COMMANDS_URL: 'true' })
+          .PLUGIN_ALLOW_LOCAL_COMMANDS_URL
+      ).toBe(true)
+      expect(
+        parseEnv({ ...deployed, NODE_ENV: 'production', PLUGIN_ALLOW_LOCAL_COMMANDS_URL: 'false' })
+          .PLUGIN_ALLOW_LOCAL_COMMANDS_URL
+      ).toBe(false)
+    })
+
+    it.each(['development', 'production', 'staging'])(
+      'is refused, not ignored, when NODE_ENV is %s',
+      nodeEnv => {
+        expect(
+          issueOf({ ...deployed, NODE_ENV: nodeEnv, PLUGIN_ALLOW_LOCAL_COMMANDS_URL: 'true' })
+        ).toContain('PLUGIN_ALLOW_LOCAL_COMMANDS_URL is for NODE_ENV=test only')
+      }
+    )
+
+    it('is refused where mail is really sent, even with NODE_ENV=test (a copy of the CI settings)', () => {
+      expect(
+        issueOf({ ...deployed, NODE_ENV: 'test', PLUGIN_ALLOW_LOCAL_COMMANDS_URL: 'true' })
+      ).toContain('cannot be set where mail is really sent')
+    })
+
+    it.each(['1', 'yes', 'on', 'maybe'])('takes only true or false, not %s', value => {
+      expect(
+        issueOf({ ...validEnv, NODE_ENV: 'test', PLUGIN_ALLOW_LOCAL_COMMANDS_URL: value })
+      ).toContain('PLUGIN_ALLOW_LOCAL_COMMANDS_URL')
+    })
+  })
+
   it('refuses to start without a required variable, naming it', () => {
     const withoutDatabase = { ...validEnv }
     delete withoutDatabase.DATABASE_URL
