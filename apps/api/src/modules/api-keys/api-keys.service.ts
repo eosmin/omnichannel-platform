@@ -34,6 +34,12 @@ const SCOPE = API_KEY_LOCK_SCOPE
 // The status column is text: compared with the value of the enum as text
 const REVOKED: string = ApiKeyStatus.REVOKED
 
+// A key past its date cannot authenticate any more, so it does not take room
+const COUNTS_AGAINST_LIMIT = (now: Date) => ({
+  status: ApiKeyStatus.ACTIVE,
+  OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
+})
+
 // The keys with which a store's own systems call its public API (Settings → API keys, TDD_05 §4.3). Only the prefix and
 // the SHA-256 of a key are kept: the key has 256 bits of entropy, so there is nothing to brute-force, and what leaks from
 // the database cannot be used. It is shown once, when it is made. A key never holds a scope that its maker lacks, and
@@ -45,15 +51,34 @@ export class ApiKeysService {
     private readonly audit: AuditService
   ) {}
 
+  // The keys that count against the limit come first and whole (they are 50 at most), then the newest of the rest up to the
+  // ceiling of the list: a pile of revoked keys must not push an active one out of sight, because the page and the person
+  // reason about the limit from what they see
   async list(storeId: string): Promise<ApiKeyView[]> {
-    const rows = await this.prisma.client.apiKey.findMany({
-      where: { storeId },
-      select: API_KEY_SELECT,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      // Revoked keys stay for the record: the page shows the newest ones
-      take: ApiKeyLimits.LIST_MAX
-    })
-    return rows.map(apiKeyView)
+    const now = new Date()
+    const newestFirst = [{ createdAt: 'desc' as const }, { id: 'desc' as const }]
+    const [counted, rest] = await Promise.all([
+      this.prisma.client.apiKey.findMany({
+        where: { storeId, ...COUNTS_AGAINST_LIMIT(now) },
+        select: API_KEY_SELECT,
+        orderBy: newestFirst,
+        take: ApiKeyLimits.MAX_PER_STORE
+      }),
+      // The rest are the keys that do not count (revoked, or past their date): the same predicate, the same instant
+      this.prisma.client.apiKey.findMany({
+        where: { storeId, NOT: COUNTS_AGAINST_LIMIT(now) },
+        select: API_KEY_SELECT,
+        orderBy: newestFirst,
+        // Revoked keys stay for the record: the page shows the newest ones
+        take: ApiKeyLimits.LIST_MAX
+      })
+    ])
+    return [...counted, ...rest.slice(0, Math.max(ApiKeyLimits.LIST_MAX - counted.length, 0))]
+      .sort(
+        (a, b) =>
+          b.createdAt.getTime() - a.createdAt.getTime() || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0)
+      )
+      .map(apiKeyView)
   }
 
   async create(
@@ -75,13 +100,8 @@ export class ApiKeysService {
     const row = await this.prisma.transaction(async tx => {
       await lockStoreForWrite(tx, storeId)
       await lockStoreScope(tx, storeId, SCOPE)
-      // A key past its date cannot authenticate any more, so it does not take room
       const active = await tx.apiKey.count({
-        where: {
-          storeId,
-          status: ApiKeyStatus.ACTIVE,
-          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }]
-        }
+        where: { storeId, ...COUNTS_AGAINST_LIMIT(new Date()) }
       })
       if (active >= ApiKeyLimits.MAX_PER_STORE) {
         throw resourceConflict(`a store holds at most ${ApiKeyLimits.MAX_PER_STORE} active keys`, {
