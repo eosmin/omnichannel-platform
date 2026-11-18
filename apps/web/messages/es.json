@@ -110,6 +110,7 @@
           "unscannable": "No se pudo analizar un archivo"
         },
         "finance": {
+          "advance_owed": "Un anticipo por devolver",
           "posting_failed": "Falló un asiento contable",
           "chain_broken": "Los libros parecen alterados"
         },
@@ -1047,6 +1048,10 @@
       "body": "Ábrela para ver los detalles."
     },
     "finance": {
+      "advance_owed": {
+        "title": "Un pedido cancelado tiene un anticipo por devolver",
+        "body": "El pedido {orderNumber} se canceló después de registrar su pago. Los libros deben ese dinero al cliente hasta que se devuelva: devuélvelo y registra la devolución como un asiento o una transferencia."
+      },
       "posting_failed": {
         "title": "Falló un asiento contable",
         "body": "Un asiento de los libros no se pudo registrar automáticamente. Abre la lista de asientos fallidos, corrige la causa y regístralo de nuevo: el mes no se puede cerrar hasta entonces."

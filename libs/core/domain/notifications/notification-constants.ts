@@ -49,6 +49,8 @@ export const NotificationTypes = {
   PLUGIN_ERROR: 'plugin.error',
   // An automatic entry of the books failed and a person must fix its cause (TDD_18 §6.1)
   FINANCE_POSTING_FAILED: 'finance.posting_failed',
+  // A prepaid order was cancelled after its payment was booked: the customer's advance is owed and nothing pays it back by itself (TDD_18 §4.2 E1)
+  FINANCE_ADVANCE_OWED: 'finance.advance_owed',
   // The weekly check found the journal altered: nobody can close a month until the chain verifies again (TDD_18 §11)
   FINANCE_CHAIN_BROKEN: 'finance.chain_broken',
   // A fiscal document was refused, or ran out of attempts, and a person must act on it (TDD_18 §8.3, Step 4B.7b-2)
@@ -154,6 +156,7 @@ export const NotificationDefaults: Record<NotificationType, NotificationDefault>
   [NotificationTypes.WEBHOOK_AUTO_DISABLED]: { severity: ERROR, channels: [IN_APP, EMAIL] },
   [NotificationTypes.PLUGIN_ERROR]: { severity: ERROR, channels: [IN_APP] },
   [NotificationTypes.FINANCE_POSTING_FAILED]: { severity: ERROR, channels: [IN_APP, EMAIL] },
+  [NotificationTypes.FINANCE_ADVANCE_OWED]: { severity: WARNING, channels: [IN_APP] },
   [NotificationTypes.FINANCE_CHAIN_BROKEN]: { severity: ERROR, channels: [IN_APP, EMAIL] },
   [NotificationTypes.FISCAL_DOCUMENT_REJECTED]: { severity: ERROR, channels: [IN_APP, EMAIL] },
   [NotificationTypes.FISCAL_DOCUMENT_STUCK]: { severity: ERROR, channels: [IN_APP, EMAIL] },
@@ -235,6 +238,7 @@ export const NotificationGroupTypes: Record<NotificationGroup, readonly Notifica
     NotificationTypes.WEBHOOK_AUTO_DISABLED,
     NotificationTypes.PLUGIN_ERROR,
     NotificationTypes.FINANCE_POSTING_FAILED,
+    NotificationTypes.FINANCE_ADVANCE_OWED,
     NotificationTypes.FINANCE_CHAIN_BROKEN,
     NotificationTypes.FISCAL_DOCUMENT_REJECTED,
     NotificationTypes.FISCAL_DOCUMENT_STUCK,

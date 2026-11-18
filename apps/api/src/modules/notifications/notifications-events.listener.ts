@@ -17,6 +17,7 @@ import {
   CountResourceTypes,
   FinanceResourceTypes,
   FiscalContingencyAlertKind,
+  FinancePostingKey,
   FiscalResourceTypes,
   formatBpsAsPercent,
   GuideBalanceAlertLevel,
@@ -1076,6 +1077,49 @@ export class NotificationsEventsListener {
       this.logger.error(
         { orderId: payload.orderId, err: String(error) },
         'an order notice could not be sent'
+      )
+    }
+  }
+
+  // A prepaid order was cancelled after its payment was booked (TDD_18 §4.2 E1, HC-105): the customer's advance is owed and no entry pays it
+  // back by itself (the money leaves when a person refunds it). Whoever may move money in the store is told, once per order until read. An
+  // order whose payment was never booked (cancelled first, or paid before the books) has no advance and tells nobody.
+  @OnEvent(Events.ORDER_STATUS_CHANGED)
+  async onPaidOrderCancelled(payload: OrderStatusChangedPayload): Promise<void> {
+    if (payload.to !== OrderStatus.CANCELLED) return
+    try {
+      const order = await this.prisma.client.order.findFirst({
+        where: { id: payload.orderId, storeId: payload.storeId },
+        select: { store: { select: { organizationId: true } } }
+      })
+      if (order === null) return
+      const advance = await this.prisma.client.journalEntry.findUnique({
+        where: {
+          organizationId_idempotencyKey: {
+            organizationId: order.store.organizationId,
+            idempotencyKey: FinancePostingKey.ORDER_PAYMENT(payload.orderId)
+          }
+        },
+        select: { id: true }
+      })
+      if (advance === null) return
+      const members = await this.membersWith(
+        payload.storeId,
+        [Permissions.FINANCE_MOVE_MONEY, Permissions.FINANCE_POST_MANUAL],
+        null
+      )
+      await this.notifications.sendToUsersOnce(members, {
+        storeId: payload.storeId,
+        type: NotificationTypes.FINANCE_ADVANCE_OWED,
+        params: { orderNumber: payload.orderNumber },
+        resourceType: OrderResourceTypes.ORDER,
+        resourceId: payload.orderId,
+        actionPath: AppPaths.store.order(payload.storeId, payload.orderId)
+      })
+    } catch (error) {
+      this.logger.error(
+        { orderId: payload.orderId, err: String(error) },
+        'the advance of a cancelled order could not be notified'
       )
     }
   }
