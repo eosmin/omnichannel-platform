@@ -287,6 +287,18 @@ describe('pluginManifestSchema', () => {
     })
 
     // What the reader of a widget list drops without a word must not register: the plugin would vanish from the list
+    it.each([
+      ['defaultWidth', 199, 200, 600, 601],
+      ['defaultHeight', 99, 100, 800, 801],
+      ['refreshInterval', 4999, 5000, 3_600_000, 3_600_001]
+    ])('holds %s to the limits of the reader at both edges', (key, below, low, high, above) => {
+      const one = { id: 'w-one', name: 'W', defaultWidth: 300, defaultHeight: 400 }
+      for (const value of [below, above])
+        expect(refused(manifest({ widgets: [{ ...one, [key]: value }] }))).toBe(true)
+      for (const value of [low, high])
+        expect(refused(manifest({ widgets: [{ ...one, [key]: value }] }))).toBe(false)
+    })
+
     it('refuses what the reader of the widget list would drop: a size the panel cannot hold, a quick refresh, six widgets, an address with a query', () => {
       const one = { id: 'w-one', name: 'W', defaultWidth: 300, defaultHeight: 400 }
       expect(refused(manifest({ widgets: [{ ...one, defaultWidth: 1000 }] }))).toBe(true)

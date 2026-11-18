@@ -132,7 +132,7 @@ const webhooks = z.strictObject({
 })
 
 // The limits of a widget are the reader's (`PluginWidgetLimits`, the ones `pluginWidgetManifestSchema` applies when the
-// panel is listed): one set of numbers, so that a manifest that registers is a manifest whose widgets are shown
+// panel is listed): one set of numbers, so that a manifest that registers is a manifest whose widgets are shown. The sizes stay required here (the reader takes them as optional): stricter on purpose
 const widgetSize = (min: number, max: number) => z.number().int().min(min).max(max)
 
 // Read and kept here; drawn by Step 5.7 (plugin widgets)
