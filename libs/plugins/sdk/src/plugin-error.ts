@@ -43,10 +43,10 @@ export class PluginError extends PlatformException {
   // the same call made again cannot send twice, so a retry after a doubt (`outcomeUnknown`) is safe. Only the
   // adapter that sent the key says it; a provider without a key leaves it false and a doubt is never repeated.
   readonly idempotent: boolean
-  // True when the provider ANSWERED that it did not take the request (a refusal, a throttle): the plugin affirms
-  // it, and nothing else counts. A failed send is definitive, and the reply can be thrown away, only if it is
-  // refused (here, or by a code that is a local check made before anything was sent): a plugin that does not
-  // say so leaves the reply as one that may have gone.
+  // True when the plugin affirms that the provider did not take the request: it ANSWERED with a refusal or a throttle,
+  // or the connection to it was refused before anything was sent (the plugin may be tried again and still say so). A
+  // failed send is definitive, and the reply can be thrown away, only if it is refused (here, or by a code that is a
+  // local check made before anything was sent): a plugin that does not say so leaves the reply as one that may have gone.
   readonly refused: boolean
   // The numeric code and subcode of the provider's own answer, for the logs only (the provider's `code` and
   // `error_subcode`). Numbers and nothing else, so they cannot carry a token; never sent to a client.

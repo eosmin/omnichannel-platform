@@ -661,6 +661,57 @@ describe('Replies on their way to a channel', () => {
       ])
     })
 
+    it('fails for good, and leaves no doubt, a message whose every try found the plugin unreachable (N-39-02)', async () => {
+      const reply = await queuedReply()
+      sendMessage = () =>
+        Promise.reject(
+          new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true, refused: true })
+        )
+
+      await expect(sender.send(job(reply), false)).rejects.toThrow('sending a reply failed')
+      // The attempt that was refused in so many words does not leave the mark of a send that may have gone
+      const between = await owner.message.findUniqueOrThrow({
+        where: { id: reply.id },
+        select: { deliveryStatus: true, failureDefinitive: true }
+      })
+      expect(between).toMatchObject({
+        deliveryStatus: DeliveryStatus.QUEUED,
+        failureDefinitive: null
+      })
+
+      await sender.send(job(reply), true)
+      const failed = await owner.message.findUniqueOrThrow({
+        where: { id: reply.id },
+        select: { deliveryStatus: true, failureDefinitive: true }
+      })
+      expect(failed).toMatchObject({
+        deliveryStatus: DeliveryStatus.FAILED,
+        failureDefinitive: true
+      })
+    })
+
+    it('keeps the doubt of an earlier attempt when a later one finds the plugin unreachable (N-39-02)', async () => {
+      const reply = await queuedReply()
+      // The first try may have reached the plugin (it dropped the connection); the last one is refused in so many words
+      const failures = [
+        new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true }),
+        new PluginError(ErrorCodes.CHANNEL_MESSAGE_FAILED, { retryable: true, refused: true })
+      ]
+      sendMessage = () => Promise.reject(failures.shift() ?? new Error('no failure left'))
+
+      await expect(sender.send(job(reply), false)).rejects.toThrow('sending a reply failed')
+      await sender.send(job(reply), true)
+
+      const failed = await owner.message.findUniqueOrThrow({
+        where: { id: reply.id },
+        select: { deliveryStatus: true, failureDefinitive: true }
+      })
+      expect(failed).toMatchObject({
+        deliveryStatus: DeliveryStatus.FAILED,
+        failureDefinitive: false
+      })
+    })
+
     describe('a doubt is never sent again behind the customer (the provider has no key to stop it)', () => {
       const doubts: [string, Error][] = [
         ['a timeout of the worker', new Error('the call to the provider timed out')],
