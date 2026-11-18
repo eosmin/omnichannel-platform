@@ -104,7 +104,8 @@ export function ShortcutsProvider({ children }: { children: ReactNode }): ReactE
       if (isTypingTarget(event.target)) {
         chordState.current = NO_PENDING
         if (worksFromAnyField(chord) && registered.has(chord)) {
-          run(chord, event)
+          // Held down, the key opens it once, as it does outside a field
+          if (!event.repeat) run(chord, event)
           return
         }
         if (worksWhileTyping(chord) && isShortcutField(event.target) && registered.has(chord)) {
