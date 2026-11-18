@@ -29,7 +29,7 @@ export function StoreRemittanceImportPage(): ReactElement {
     <div className="flex max-w-4xl flex-col gap-5">
       <Link
         href={AppPaths.store.remittances(storeId)}
-        className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm pointer-coarse:min-h-10"
+        className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm pointer-coarse:min-h-11"
       >
         <ArrowLeft aria-hidden className="size-4" />
         {t('back')}
