@@ -269,6 +269,77 @@ describe('reversalLinesOf (E8, line by line)', () => {
     expect(lines.lines.find(line => line.orderItemId === 'a')?.quantity).toBe(2)
   })
 
+  it('splits 2 units at 10.00 with 15 % included into two parts of 10.00 each (HC-107)', () => {
+    const odd = lineBases({
+      ...order,
+      subtotalCents: 2000,
+      discountCents: 0,
+      shippingCents: 0,
+      totalCents: 2000,
+      taxCents: 261,
+      pricesIncludeTax: true,
+      lines: [{ orderItemId: 'x', quantity: 2, unitPriceCents: 1000, taxCents: 261 }]
+    })
+    if (!odd.ok) throw new Error('fixture')
+    const part = (earlier: number): { netCents: number; vatCents: number } | undefined => {
+      const result = reversalLinesOf({
+        bases: odd.lines,
+        before: new Map([['x', earlier]]),
+        returned: new Map([['x', 1]])
+      })
+      return result.ok ? result.lines[0] : undefined
+    }
+    const first = part(0)
+    const second = part(1)
+    expect((first?.netCents ?? 0) + (first?.vatCents ?? 0)).toBe(1000)
+    expect((second?.netCents ?? 0) + (second?.vatCents ?? 0)).toBe(1000)
+    expect((first?.netCents ?? 0) + (second?.netCents ?? 0)).toBe(1739)
+    expect((first?.vatCents ?? 0) + (second?.vatCents ?? 0)).toBe(261)
+  })
+
+  it('never gives a negative part and adds up to the line, one unit at a time, for lines of every size (HC-107)', () => {
+    for (const quantity of [1, 2, 3, 5, 7]) {
+      for (const netCents of [0, 5, 99, 1739, 2501]) {
+        for (const vatCents of [0, 1, 131, 261, 340]) {
+          const result = reversalLinesOf({
+            bases: [{ orderItemId: 'x', quantity, netCents, vatCents }],
+            before: new Map(),
+            returned: new Map([['x', quantity]])
+          })
+          expect(result.ok).toBe(true)
+          let net = 0
+          let vat = 0
+          for (let earlier = 0; earlier < quantity; earlier += 1) {
+            const part = reversalLinesOf({
+              bases: [{ orderItemId: 'x', quantity, netCents, vatCents }],
+              before: new Map([['x', earlier]]),
+              returned: new Map([['x', 1]])
+            })
+            if (!part.ok) throw new Error('fixture')
+            const line = part.lines[0]
+            expect(line?.netCents ?? -1).toBeGreaterThanOrEqual(0)
+            expect(line?.vatCents ?? -1).toBeGreaterThanOrEqual(0)
+            net += line?.netCents ?? 0
+            vat += line?.vatCents ?? 0
+          }
+          expect([net, vat]).toEqual([netCents, vatCents])
+        }
+      }
+    }
+  })
+
+  it('splits a line of 7 units with 5 cents of net and 1 of tax with no negative part (HC-107)', () => {
+    const basis = { orderItemId: 'x', quantity: 7, netCents: 5, vatCents: 1 }
+    for (const earlier of [0, 3]) {
+      const part = reversalLinesOf({
+        bases: [basis],
+        before: new Map([['x', earlier]]),
+        returned: new Map([['x', 1]])
+      })
+      expect(part.ok && (part.lines[0]?.netCents ?? -1) >= 0).toBe(true)
+    }
+  })
+
   it('refuses more units back than were sold and a unit that is not on the order', () => {
     const refused = { ok: false, reason: FinancePostingFailureReason.AMOUNTS_DISAGREE }
     expect(
