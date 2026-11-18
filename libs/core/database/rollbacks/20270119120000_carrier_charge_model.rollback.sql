@@ -1,4 +1,4 @@
--- Rolls back 20270119100000_carrier_charge_model: drops the charge model of the connections and takes the new role out of the roles that
+-- Rolls back 20270119120000_carrier_charge_model: drops the charge model of the connections and takes the new role out of the roles that
 -- may be mapped. A mapping of the new role is deleted first (the old CHECK refuses it): the guides bought in advance are then booked by no
 -- account, so roll this back only with no prepaid connection in use. Idempotent.
 BEGIN;
