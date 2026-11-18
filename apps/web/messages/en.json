@@ -3371,6 +3371,7 @@
           "manage_accounts": "Manage the chart of accounts and settings",
           "post_manual": "Post manual entries",
           "close_periods": "Close and reopen periods",
+          "confirm_books": "Confirm the layout of the legal books as the accountant's",
           "export": "Export the books",
           "view_carrier_fees": "View carrier fees"
         },

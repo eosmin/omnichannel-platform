@@ -23,6 +23,12 @@ test.describe('Finance → a business document with a sealed receiver', () => {
   // The worker makes the document and sends it after the screen answers: each wait below is up to a minute
   test.setTimeout(180_000)
   const run = randomUUID().slice(0, 8)
+  // What the list and the detail show of a receiver's name: the first letter of each word (`maskPersonName`)
+  const maskedName = (name: string): string =>
+    name
+      .split(' ')
+      .map(word => `${word.charAt(0)}${'*'.repeat(word.length - 1)}`)
+      .join(' ')
   const ownerEmail = `e2e-finance-receiver-owner-${run}@example.com`
   let storeId = ''
   let sale = {
@@ -111,9 +117,10 @@ test.describe('Finance → a business document with a sealed receiver', () => {
     const dialog = page.getByRole('dialog')
     await expect(dialog.getByTestId('fiscal-attention')).toBeVisible()
     await expect(dialog.getByTestId('fiscal-rejection-reason')).toContainText('simulated_rejection')
-    // The receiver is customer data: the name and the end of the tax id, never the whole of it
+    // The receiver is customer data: the first letter of each word of the name and the end of the tax id, never the whole of either
     const receiver = dialog.getByTestId('fiscal-receiver')
-    await expect(receiver).toContainText(`E2E Buyer ${run}`)
+    await expect(receiver).toContainText(maskedName(`E2E Buyer ${run}`))
+    await expect(receiver).not.toContainText(`Buyer ${run}`)
     await expect(receiver).not.toContainText('REJECT')
     await expect(dialog.getByTestId('fiscal-detail')).toContainText('Simulated business document')
     await expect(dialog.getByTestId('fiscal-sealed')).toBeVisible()
