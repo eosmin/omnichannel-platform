@@ -12,7 +12,9 @@ import {
   PeriodStatus,
   PeriodStatusTransitions,
   PurchaseOrderStatus,
-  PurchaseOrderStatusTransitions
+  PurchaseOrderStatusTransitions,
+  RolesFreeOfHistory,
+  RolesPinnedByHistory
 } from './finance-constants'
 
 describe('the finance enums', () => {
@@ -32,6 +34,13 @@ describe('the finance enums', () => {
       expect(key).toBe(value.toUpperCase())
       expect(value).toMatch(/^[a-z]+(_[a-z]+)*$/)
     }
+  })
+
+  it('classify every role as pinned by history or free of it, once (HC-119)', () => {
+    const pinned: string[] = [...RolesPinnedByHistory]
+    const free: string[] = [...RolesFreeOfHistory]
+    expect(pinned.filter(role => free.includes(role))).toEqual([])
+    expect([...pinned, ...free].sort()).toEqual(Object.values(AccountRole).sort())
   })
 
   it('name every entry type once', () => {
