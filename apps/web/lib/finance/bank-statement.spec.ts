@@ -7,6 +7,7 @@ import {
   bankDateFormatPromptOf,
   bankImportErrorsOf,
   emptyImportDraft,
+  groupSelectionOf,
   importInputOf,
   lineStateOf,
   monthOf,
@@ -223,6 +224,7 @@ describe('the lines and why a pair is suggested', () => {
     description: null,
     reference: null,
     match: null,
+    group: null,
     suggestions: [],
     ...over
   })
@@ -276,5 +278,62 @@ describe('the lines and why a pair is suggested', () => {
     expect(monthProblem('2026', '13')).toBe('month')
     expect(monthProblem('2026', '0')).toBe('month')
     expect(monthProblem('2026', 'x')).toBe('month')
+  })
+})
+
+describe('groupSelectionOf', () => {
+  const candidate = (journalLineId: string, signedCents: number) => ({
+    journalLineId,
+    entryId: `e-${journalLineId}`,
+    entryNumber: `JE-${journalLineId}`,
+    entryDate: '2026-11-02',
+    memo: null,
+    documentNumber: null,
+    signedCents
+  })
+  const all = [candidate('a', 50_000), candidate('b', 60_000), candidate('c', 40_000)]
+
+  it('adds the chosen lines with their sign and says how far the sum is from the statement line', () => {
+    const none = groupSelectionOf(150_000, all, new Set())
+    expect(none).toMatchObject({ sumCents: 0, differenceCents: 150_000, chosen: 0 })
+    expect(none.canConfirm).toBe(false)
+
+    const two = groupSelectionOf(150_000, all, new Set(['a', 'b']))
+    expect(two).toMatchObject({ sumCents: 110_000, differenceCents: 40_000, chosen: 2 })
+    expect(two.canConfirm).toBe(false)
+  })
+
+  it('allows to confirm only two or more lines that add up to the cent, and gives their ids in the order of the list', () => {
+    const exact = groupSelectionOf(150_000, all, new Set(['c', 'a', 'b']))
+    expect(exact).toMatchObject({ sumCents: 150_000, differenceCents: 0, canConfirm: true })
+    expect(exact.journalLineIds).toEqual(['a', 'b', 'c'])
+    // One line that equals the amount is a pair (the suggestion), not a group
+    expect(groupSelectionOf(50_000, all, new Set(['a'])).canConfirm).toBe(false)
+  })
+
+  it('counts a fee booked as an expense (a negative line) in the sum: a net deposit', () => {
+    const net = [candidate('in', 150_000), candidate('fee', -300)]
+    const picked = groupSelectionOf(149_700, net, new Set(['in', 'fee']))
+    expect(picked).toMatchObject({ sumCents: 149_700, differenceCents: 0, canConfirm: true })
+  })
+
+  it('ignores a chosen id that is no longer in the list (the books were read again)', () => {
+    const picked = groupSelectionOf(150_000, all, new Set(['a', 'b', 'c', 'gone']))
+    expect(picked.chosen).toBe(3)
+    expect(picked.canConfirm).toBe(true)
+  })
+
+  it('refuses a group bigger than the limit of the api', () => {
+    const many = Array.from({ length: BankStatementLimits.MAX_GROUP + 1 }, (_, index) =>
+      candidate(`l${index}`, 1)
+    )
+    const picked = groupSelectionOf(
+      many.length,
+      many,
+      new Set(many.map(item => item.journalLineId))
+    )
+    expect(picked.sumCents).toBe(many.length)
+    expect(picked.canConfirm).toBe(false)
+    expect(picked.tooMany).toBe(true)
   })
 })

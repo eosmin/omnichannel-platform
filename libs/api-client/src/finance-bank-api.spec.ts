@@ -1,10 +1,12 @@
 import { createApiClient } from './api-client'
 import { ApiError } from './api-error'
 import {
+  confirmBankGroup,
   confirmBankMatch,
   confirmExactBankLines,
   createBankProfile,
   deleteBankProfile,
+  fetchBankBookCandidates,
   fetchBankDifference,
   fetchBankImport,
   fetchBankImports,
@@ -86,6 +88,7 @@ const line = {
   description: 'Fuel',
   reference: 'REF-9',
   match: null,
+  group: null,
   suggestions: [
     {
       bookLineId: 'j1',
@@ -293,6 +296,46 @@ describe('finance bank api', () => {
     expect(callOf(fetchImpl, 1).url).toBe(`${BASE}/bank-lines/l1/rejections`)
     expect(callOf(fetchImpl, 2).url).toBe(`${BASE}/bank-matches/m1/undo`)
     expect(callOf(fetchImpl, 2).init.method).toBe('POST')
+  })
+
+  it('confirms a group with the ids of its lines, reads its pieces back, and lists the lines to choose from', async () => {
+    const piece = (n: number) => ({
+      matchId: `m${n}`,
+      journalLineId: `j${n}`,
+      entryId: `e${n}`,
+      entryNumber: `JE-${n}`,
+      entryDate: '2026-11-02',
+      signedCents: 500
+    })
+    const grouped = { ...line, group: { id: 'g1', pieces: [piece(1), piece(2)] } }
+    const candidates = {
+      items: [
+        {
+          journalLineId: 'j1',
+          entryId: 'e1',
+          entryNumber: 'JE-1',
+          entryDate: '2026-11-02',
+          memo: null,
+          documentNumber: 'F-1',
+          signedCents: 500
+        }
+      ],
+      hasMore: true
+    }
+    const { client, fetchImpl } = setup(json(201, grouped), json(200, candidates))
+
+    const confirmed = await confirmBankGroup(client, 's1', 'l1', ['j1', 'j2'])
+    const listed = await fetchBankBookCandidates(client, 's1', 'l1')
+
+    expect(callOf(fetchImpl).url).toBe(`${BASE}/bank-lines/l1/group-matches`)
+    expect(callOf(fetchImpl).init.method).toBe('POST')
+    expect(JSON.parse(callOf(fetchImpl).init.body as string)).toEqual({
+      journalLineIds: ['j1', 'j2']
+    })
+    expect(confirmed.group?.pieces.map(each => each.journalLineId)).toEqual(['j1', 'j2'])
+    expect(callOf(fetchImpl, 1).url).toBe(`${BASE}/bank-lines/l1/book-candidates`)
+    expect(listed.hasMore).toBe(true)
+    expect(listed.items[0]?.documentNumber).toBe('F-1')
   })
 
   it('confirms the exact matches of a statement in one request that sends no list of lines', async () => {

@@ -6772,7 +6772,13 @@
         "rejected": "Se rechazó la sugerencia.",
         "confirm": "Confirmar",
         "confirmNamed": "Confirmar el asiento {number}",
-        "confirmed": "Se confirmó el par."
+        "confirmed": "Se confirmó el par.",
+        "matchedWithGroup": "Conciliada con un grupo de {count} asientos",
+        "groupPiecesLabel": "Asientos del grupo",
+        "undoGroup": "Deshacer el grupo",
+        "undoGroupTitle": "¿Deshacer este grupo?",
+        "undoGroupDescription": "Los asientos y la línea del extracto quedan como están, pero todo el grupo deja de contar como conciliado.",
+        "group": "Conciliar como grupo"
       },
       "draft": {
         "title": "Cómo se registraría esta línea",
@@ -6790,6 +6796,27 @@
         "to": "A la cuenta",
         "document": "Número de documento",
         "memo": "Nota"
+      },
+      "group": {
+        "title": "Conciliar con varios asientos",
+        "description": "Elige los asientos de los libros que, juntos, son este movimiento del extracto. La suma debe ser exacta al centavo.",
+        "line": "Línea del extracto del {date} por {amount}",
+        "feeHint": "Un depósito que llega neto de comisión: registra antes la comisión como gasto desde la misma cuenta y elige aquí ambos asientos.",
+        "candidatesLabel": "Asientos abiertos de los libros",
+        "entry": "Asiento {number} del {date}",
+        "empty": "Los libros no tienen asientos abiertos en esta cuenta para agrupar.",
+        "hasMore": "Solo se muestran los asientos más recientes.",
+        "statement": "Línea del extracto",
+        "chosen": "{count, plural, =0 {Ningún asiento elegido} one {# asiento elegido} other {# asientos elegidos}}",
+        "difference": "Diferencia",
+        "needTwo": "Elige dos o más asientos.",
+        "missing": "Faltan {amount}: elige más asientos.",
+        "over": "Sobran {amount}: quita un asiento.",
+        "exact": "Los asientos suman exactamente.",
+        "tooMany": "Un grupo tiene como máximo {max} asientos.",
+        "cancel": "Cancelar",
+        "confirm": "Confirmar grupo",
+        "confirmed": "El grupo se confirmó."
       }
     },
     "purchases": {

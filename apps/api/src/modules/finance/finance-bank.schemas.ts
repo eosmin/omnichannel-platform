@@ -159,6 +159,12 @@ export const listBankLinesQuerySchema = z.strictObject({
 })
 export type ListBankLinesQuery = z.output<typeof listBankLinesQuerySchema>
 
+// The lines of the books a group can be chosen from: the newest first, `limit` of them (the answer says whether there were more)
+export const bankBookCandidatesQuerySchema = z.strictObject({
+  limit: queryIntSchema(1, 200).default(100)
+})
+export type BankBookCandidatesQuery = z.output<typeof bankBookCandidatesQuerySchema>
+
 // A pair: the journal line a person says is the same movement as the statement line of the path
 export const bankPairSchema = z.strictObject({ journalLineId: lowercasedUuidSchema })
 export type BankPairBody = z.output<typeof bankPairSchema>

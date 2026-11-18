@@ -10,6 +10,7 @@ import {
 } from '@tanstack/react-query'
 
 import {
+  type BankBookCandidatesView,
   type BankConfirmExactView,
   type BankDifferenceView,
   type BankImportView,
@@ -20,11 +21,13 @@ import {
   type BankProfileView,
   type BankRegisterDraftView,
   type BankStatusView,
+  confirmBankGroup,
   confirmBankMatch,
   confirmExactBankLines,
   createBankProfile,
   type CreateBankProfileInput,
   deleteBankProfile,
+  fetchBankBookCandidates,
   fetchBankDifference,
   fetchBankImport,
   fetchBankImports,
@@ -145,6 +148,21 @@ export function useBankRegisterDraft(
   })
 }
 
+// The lines of the books a group can be chosen from (HC-121). Only asked while the dialog of the group is open; read again each time it
+// opens, because a line of the books may have been matched or reversed since.
+export function useBankBookCandidates(
+  storeId: string,
+  lineId: string | null
+): UseQueryResult<BankBookCandidatesView> {
+  return useQuery({
+    queryKey: QueryKeys.finance.bank.candidates(storeId, lineId ?? ''),
+    queryFn: ({ signal }) => fetchBankBookCandidates(apiClient, storeId, lineId as string, signal),
+    enabled: lineId !== null,
+    gcTime: 0,
+    retry: false
+  })
+}
+
 // The key of a sample: its size and a hash of it, so the key stays short (a sample can be 32 KB) and every other sample has its own
 function keyOfSample(request: { text: string; profile: BankPreviewReading }): unknown {
   let hash = 5381
@@ -212,6 +230,11 @@ export const useConfirmBankMatch = (
   storeId: string
 ): Write<{ lineId: string; journalLineId: string }, BankLineView> =>
   useBankWrite(input => confirmBankMatch(apiClient, storeId, input.lineId, input.journalLineId))
+
+export const useConfirmBankGroup = (
+  storeId: string
+): Write<{ lineId: string; journalLineIds: readonly string[] }, BankLineView> =>
+  useBankWrite(input => confirmBankGroup(apiClient, storeId, input.lineId, input.journalLineIds))
 
 export const useRejectBankMatch = (
   storeId: string

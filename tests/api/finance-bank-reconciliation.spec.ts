@@ -988,6 +988,10 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
           asB().get(ApiRoutes.finance.bank.lineRegisterDraft(missing))
         ],
         [
+          asB().get(ApiRoutes.finance.bank.lineBookCandidates(line)),
+          asB().get(ApiRoutes.finance.bank.lineBookCandidates(missing))
+        ],
+        [
           asB().post(ApiRoutes.finance.bank.matchUndo(matchId)),
           asB().post(ApiRoutes.finance.bank.matchUndo(missing))
         ],
@@ -1025,7 +1029,8 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
         asReader().get(`${ApiRoutes.finance.bank.status}?accountId=${someId}&year=2026&month=1`),
         asReader().post(ApiRoutes.finance.bank.lineMatches(someId)).send({ journalLineId: someId }),
         asReader().post(ApiRoutes.finance.bank.matchUndo(someId)),
-        asReader().get(ApiRoutes.finance.bank.lineRegisterDraft(someId))
+        asReader().get(ApiRoutes.finance.bank.lineRegisterDraft(someId)),
+        asReader().get(ApiRoutes.finance.bank.lineBookCandidates(someId))
       ])
       for (const answer of answers) {
         expect(answer.status).toBe(FORBIDDEN)
@@ -1262,6 +1267,52 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
       expect(await confirmedOf(line.id)).toHaveLength(0)
       // Open again: it can be matched as a group once more
       expect((await group(line.id, [a, b])).status).toBe(CREATED)
+    })
+
+    it('lists the lines of the books of the account of the line a group is chosen from, without the matched and the reversed', async () => {
+      const [a, b, taken] = [
+        await bookLine('in', 700, day(-5)),
+        await bookLine('in', 300, day(-3)),
+        await bookLine('in', 900, day(-4))
+      ]
+      // A voided transaction: its entry and its reversal are both out of the list
+      const voidedBook = await bookLine('in', 800, day(-6))
+      const voided = await owner.financeTransaction.findFirstOrThrow({
+        where: { entry: { lines: { some: { id: voidedBook } } } }
+      })
+      await asAdmin().post(ApiRoutes.finance.transactions.void(voided.id)).send({ reason: 'Gone' })
+      const reversalLine = await owner.journalLine.findFirstOrThrow({
+        where: { entry: { reversesEntryId: voided.entryId }, accountId: accounts[BANK] }
+      })
+      const made = await imported([`${day(-2)},Candidates,,10.00`, `${day(-2)},Other,,9.00`])
+      const [first, second] = (await linesOf(made.id)).items
+      expect((await confirm(second?.id ?? '', taken)).status).toBe(CREATED)
+      const candidates = (id: string, query = '') =>
+        asAdmin().get(`${ApiRoutes.finance.bank.lineBookCandidates(id)}${query}`)
+
+      const listed = await candidates(first?.id ?? '')
+
+      expect(listed.status).toBe(OK)
+      const body = listed.body as {
+        items: { journalLineId: string; signedCents: number; entryDate: string }[]
+        hasMore: boolean
+      }
+      const ids = body.items.map(item => item.journalLineId)
+      expect(ids).toContain(a)
+      expect(ids).toContain(b)
+      expect(ids).not.toContain(taken)
+      expect(ids).not.toContain(voidedBook)
+      expect(ids).not.toContain(reversalLine.id)
+      expect(body.items.find(item => item.journalLineId === a)?.signedCents).toBe(700)
+      // Newest first
+      const dates = body.items.map(item => item.entryDate)
+      expect([...dates].sort().reverse()).toEqual(dates)
+      expect(body.hasMore).toBe(false)
+      const one = (await candidates(first?.id ?? '', '?limit=1')).body as typeof body
+      expect(one.items).toHaveLength(1)
+      expect(one.hasMore).toBe(true)
+      expect((await candidates(first?.id ?? '', '?limit=0')).status).toBe(BAD_REQUEST)
+      expect((await candidates(randomUUID())).status).toBe(NOT_FOUND)
     })
 
     it('lets exactly one of two groups win when two people decide the same line at the same moment', async () => {

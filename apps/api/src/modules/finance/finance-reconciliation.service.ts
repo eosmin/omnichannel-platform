@@ -30,6 +30,7 @@ import { dateToDay } from '@platform/core/finance'
 import type { Actor } from '../tenancy'
 
 import {
+  type BankBookCandidatesQuery,
   type BankGroupBody,
   type BankPairBody,
   type BankStatusQuery,
@@ -124,6 +125,23 @@ export interface BankLinePage {
   next: number | null
   // The lines of the import by state (before the page and the filter)
   counts: { total: number; matched: number; unmatched: number; suggested: number }
+}
+
+// A line of the books a group can be chosen from (HC-121): the entry it belongs to and what it moves on the account, debit minus credit
+export interface BankBookCandidateView {
+  journalLineId: string
+  entryId: string
+  entryNumber: string
+  entryDate: string
+  memo: string | null
+  documentNumber: string | null
+  signedCents: number
+}
+
+export interface BankBookCandidatesView {
+  items: BankBookCandidateView[]
+  // There were more lines than `limit`: the oldest are not in the answer
+  hasMore: boolean
 }
 
 export interface BankRegisterDraft {
@@ -276,6 +294,39 @@ export class FinanceReconciliationService {
       items,
       next: rest.length > items.length && last !== undefined ? last.lineNo : null,
       counts
+    }
+  }
+
+  // The lines of the books of the account of a statement line that no confirmed decision holds and that no reversal touches, newest first.
+  // No window of days: a group is chosen by a person and its lines can be weeks apart. The sum is not checked here (confirmGroup does).
+  async bookCandidates(
+    organizationId: string,
+    lineId: string,
+    query: BankBookCandidatesQuery
+  ): Promise<BankBookCandidatesView> {
+    const line = await this.requireLine(this.prisma.client, organizationId, lineId)
+    const rows = await this.prisma.client.journalLine.findMany({
+      where: {
+        organizationId,
+        accountId: line.accountId,
+        matches: { none: { status: CONFIRMED } },
+        entry: LIVE_ENTRY
+      },
+      select: BOOK_SELECT,
+      orderBy: [{ entry: { entryDate: 'desc' } }, { entry: { number: 'desc' } }, { id: 'asc' }],
+      take: query.limit + 1
+    })
+    return {
+      items: rows.slice(0, query.limit).map(row => ({
+        journalLineId: row.id,
+        entryId: row.entry.id,
+        entryNumber: String(row.entry.number),
+        entryDate: isoDay(row.entry.entryDate),
+        memo: row.entry.memo,
+        documentNumber: row.entry.transaction?.documentNumber ?? null,
+        signedCents: row.debitCents - row.creditCents
+      })),
+      hasMore: rows.length > query.limit
     }
   }
 

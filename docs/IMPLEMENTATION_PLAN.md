@@ -2566,6 +2566,16 @@ sale rows follow the ledger: a sale is out of a month's book only when its entry
   need the database run in CI only (Playwright is not run on the shared machine). (j) found by the third `/code-review` pass and left on purpose: the file decoder is the remittance mapper's (the two limits are held equal by a spec) and not one of its own; the
   decision hooks are made in each line row and not lifted to the statement; a failed read after a filter change shows the retry screen and not an inline error; dates are shown as the
   ISO day, like the other finance screens: all of it is the visual and hardening pass of **Step 7.7**.
+- **Decisions and debts of the web of the bank group, HC-121 (rule 12):** (1) the group is chosen from a NEW read, `GET /finance/bank-lines/:id/book-candidates`
+  (`finance:reconcile`, no-store): the lines of the books of the account of the statement line that no confirmed decision holds and no reversal touches,
+  newest first, 100 by default and 200 at most, with `hasMore`. The rejected alternative was the journal report (`finance:view_journal` is another
+  permission, and it does not say which lines are matched). Tenancy: the line is read by organization, a line of another one answers 404 as the rest
+  of the family (case in `finance-bank-reconciliation.spec.ts`). (2) The dialog shows the signed sum against the amount while the person chooses
+  and enables Confirm only when `groupProblems` finds nothing, the same rule as the api; the api decides anyway. Debts: (a) the candidates have no
+  search, no filter by date or amount and no paging beyond the newest 200, so a very old line is out of reach: a search by text, amount and date is
+  **Step 7.7** with the paging of the other lists; (b) the CSV of the reconciliation and the viewer do not show the pieces of a group yet (HC121-k):
+  **Step 7.3**; (c) the sentence of `bank_group_sum_mismatch` does not interpolate `statementCents` and `sumCents` of the answer: the dialog already shows both
+  figures while the person chooses, so it is a polish of **Step 7.7**; (d) the end-to-end case runs in CI only; (e) the candidates are ordered by the date of the entry, which the database reads through a join: on an account with a very long history the read scans it, so a keyset page by date with an index is **Step 7.7** together with (a).
 - **Decisions of PR 4B.9a-4 (rule 12):** (1) the purchase pages open for `finance:manage_purchases` (payables also for `finance:move_money`) and not for
   `finance:view`: they are the api's own routes, and a buyer who does not read the books must still buy; what a form needs of the chart (the account the
   money leaves, the tax rates, the rounding rule) is read only by who holds `finance:view`, and each form says so when the person does not (rejected: gate

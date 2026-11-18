@@ -6772,7 +6772,13 @@
         "rejected": "The suggestion was rejected.",
         "confirm": "Confirm",
         "confirmNamed": "Confirm the entry {number}",
-        "confirmed": "The pair was confirmed."
+        "confirmed": "The pair was confirmed.",
+        "matchedWithGroup": "Matched with a group of {count} entries",
+        "groupPiecesLabel": "Entries of the group",
+        "undoGroup": "Undo the group",
+        "undoGroupTitle": "Undo this group?",
+        "undoGroupDescription": "The entries and the line of the statement stay as they are, but the whole group stops counting as reconciled.",
+        "group": "Match as a group"
       },
       "draft": {
         "title": "How this line would be recorded",
@@ -6790,6 +6796,27 @@
         "to": "To the account",
         "document": "Document number",
         "memo": "Memo"
+      },
+      "group": {
+        "title": "Match with several entries",
+        "description": "Choose the entries of the books that, together, are this movement of the statement. The sum has to be exact to the cent.",
+        "line": "Statement line of {date} for {amount}",
+        "feeHint": "A deposit that arrives net of a fee: book the fee first as an expense from the same account, then choose both entries here.",
+        "candidatesLabel": "Entries of the books that are open",
+        "entry": "Entry {number} of {date}",
+        "empty": "The books have no open entry in this account to group.",
+        "hasMore": "Only the newest entries are shown.",
+        "statement": "Statement line",
+        "chosen": "{count, plural, =0 {No entry chosen} one {# entry chosen} other {# entries chosen}}",
+        "difference": "Difference",
+        "needTwo": "Choose two or more entries.",
+        "missing": "{amount} short: choose more entries.",
+        "over": "{amount} over: take an entry out.",
+        "exact": "The entries add up exactly.",
+        "tooMany": "A group has at most {max} entries.",
+        "cancel": "Cancel",
+        "confirm": "Confirm group",
+        "confirmed": "The group was confirmed."
       }
     },
     "purchases": {
