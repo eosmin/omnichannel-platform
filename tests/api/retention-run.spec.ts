@@ -10,7 +10,7 @@ import {
   auditColdExportLockKey,
   DataRetentionPolicies
 } from '@platform/core/compliance'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
 import { ConversationStatus } from '@platform/core/domain'
 import { ImageVariants, MediaPurpose, StorageKeys } from '@platform/core/storage'
@@ -64,7 +64,7 @@ describe('The retention run of the worker', () => {
     ctx = await seedTestContext(owner, app, prefix)
     worker = new PrismaService({ databaseUrl: connectionUrls().worker })
     storage = app.get(StorageService)
-    enforcer = new StoreRetentionEnforcer(worker, storage, logger)
+    enforcer = new StoreRetentionEnforcer(worker, storage, logger, new JobContext(worker))
     cleaner = new PlatformCleaner(worker, logger)
     exporter = new AuditColdExporter(worker, storage, logger)
   })

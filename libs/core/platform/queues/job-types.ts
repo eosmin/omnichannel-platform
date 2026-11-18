@@ -116,12 +116,16 @@ export const ExportAuditActions: Record<ExportType, AuditActionType> = {
 
 export interface GenerateExportJob extends BaseJob {
   exportId: string // Everything else is on the Export row
+  // The store of the row, for the context of the job. Optional for one release (jobs already in Redis have none: the worker asks the
+  // database), then required
+  storeId?: string
 }
 // `day` is the calendar day of the zone of the report that the dispatcher queued it for: a job that waits or is retried reports
 // the period of that day, never the one of the moment it runs
 export interface GenerateScheduledReportJob extends BaseJob {
   reportId: string
   day: string
+  storeId?: string // As on GenerateExportJob
 }
 export interface DsrExportJob extends BaseJob {
   requestId: string
@@ -136,9 +140,11 @@ export interface ExportAuditLogsJob extends BaseJob {
 // heavy processing
 export interface ScanFileJob extends BaseJob {
   mediaId: string
+  storeId?: string // As on GenerateExportJob; a user's avatar has none
 }
 export interface ProcessImageJob extends BaseJob {
   mediaId: string
+  storeId?: string // As on ScanFileJob
 }
 // The picture of an ad, fetched by the core from the link the provider sent; the link is read from
 // the origin row when the job runs, never carried in the job

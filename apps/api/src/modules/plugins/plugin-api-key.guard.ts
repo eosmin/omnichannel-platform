@@ -7,7 +7,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { AuditService } from '@platform/core/audit-module'
 import { type Permission, RETRY_AFTER_METADATA_KEY } from '@platform/core/auth'
 import { hashToken } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { contextOf, PrismaService, resolvePluginInstallation } from '@platform/core/database'
 import {
   PLUGIN_API_KEY_TOKEN_PREFIX,
   PluginApiDenialReasons,
@@ -71,18 +71,26 @@ export class PluginApiKeyGuard implements CanActivate {
       return this.refuseKey(request, PluginApiDenialReasons.INVALID_KEY)
     }
 
-    const installation = await this.prisma.client.pluginInstallation.findUnique({
-      where: { apiKeyHash: hashToken(token) },
-      select: {
-        id: true,
-        pluginId: true,
-        scopes: true,
-        status: true,
-        rateLimitPerMinute: true,
-        plugin: { select: { status: true } },
-        store: { select: { id: true, organizationId: true, name: true } }
-      }
-    })
+    // The key tells the database, and nobody else, which store it opens: the lookup answers the installation and its store, and the
+    // row is read inside the context of that store (never a store the caller names)
+    const found = await resolvePluginInstallation(this.prisma.client, hashToken(token))
+    const installation =
+      found === null
+        ? null
+        : await this.prisma.tenantTransaction(contextOf(found), () =>
+            this.prisma.client.pluginInstallation.findFirst({
+              where: { id: found.id, storeId: found.storeId },
+              select: {
+                id: true,
+                pluginId: true,
+                scopes: true,
+                status: true,
+                rateLimitPerMinute: true,
+                plugin: { select: { status: true } },
+                store: { select: { id: true, organizationId: true, name: true } }
+              }
+            })
+          )
     if (installation === null) return this.refuseKey(request, PluginApiDenialReasons.INVALID_KEY)
     if (
       installation.status !== String(PluginInstallationStatus.ACTIVE) ||

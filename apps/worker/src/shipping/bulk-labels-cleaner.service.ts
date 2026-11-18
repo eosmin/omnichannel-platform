@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, assertSeesEveryRow } from '@platform/core/database'
 import { BulkLabelJobStatus, BulkLabelLimits } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
@@ -36,6 +36,7 @@ export class BulkLabelsCleaner {
   }
 
   async run(now: Date = new Date()): Promise<BulkLabelsCleanupReport> {
+    await assertSeesEveryRow(this.prisma, ['media', 'bulk_label_jobs', 'store_settings'])
     return {
       filesDeleted: await this.deleteExpiredFiles(now),
       jobsClosed: await this.closeLostRuns(now)

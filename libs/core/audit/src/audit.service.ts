@@ -32,6 +32,8 @@ const MAX_METADATA_BYTES = 8192
 // Writes wait in memory until they finish. A database that stops answering must not take the
 // process down with them: past this many, entries are refused, counted and logged.
 const MAX_PENDING = 1000
+// Writes that hold a connection of their own at once (see write)
+const MAX_DETACHED_WRITES = 4
 
 export const AUDIT_FAILURE_REASONS = {
   WRITE_FAILED: 'write_failed',
@@ -48,6 +50,8 @@ function cut(value: string | undefined, max: number): string | undefined {
 @Injectable()
 export class AuditService implements OnModuleDestroy {
   private readonly pending = new Set<Promise<void>>()
+  private detached = 0
+  private readonly waiting: Array<() => void> = []
 
   constructor(
     private readonly prisma: PrismaService,
@@ -78,7 +82,48 @@ export class AuditService implements OnModuleDestroy {
   }
 
   private async write(entry: AuditEntry): Promise<void> {
-    await this.prisma.client.auditLog.create({ data: toRow(entry) })
+    // Inside the tenant transaction of a request whose context already holds the store of the entry (or an entry with no store),
+    // the entry goes in that transaction: no second connection, and it sees what the request wrote (an entry about a row the
+    // request has just created, with a foreign key to it, is not refused). Without RLS this is what it always did.
+    const current = this.prisma.currentTenantContext()
+    if (
+      current !== undefined &&
+      (entry.storeId === undefined || current.storeIds.includes(entry.storeId))
+    ) {
+      await this.prisma.client.auditLog.createMany({ data: [toRow(entry)] })
+      return
+    }
+    // Everything else (a guard, a public route, a request that audits a store it is not in) runs in a tenant transaction of its
+    // own, outside any request transaction, with the store of the entry as its whole context: the policy of audit_logs lets a
+    // row in with no store or with a store of the context, so the trail of a login, of a refused key or of a request for a store
+    // the person does not belong to is never refused. Without RETURNING (createMany): a returned row would also have to pass the
+    // SELECT policy. At most MAX_DETACHED_WRITES at a time: a burst of denials must not take the pool from the requests.
+    await this.acquire()
+    try {
+      await this.prisma.detachedTenantTransaction(
+        { storeIds: entry.storeId === undefined ? [] : [entry.storeId], organizationIds: [] },
+        async () => {
+          await this.prisma.client.auditLog.createMany({ data: [toRow(entry)] })
+        }
+      )
+    } finally {
+      this.release()
+    }
+  }
+
+  private async acquire(): Promise<void> {
+    if (this.detached < MAX_DETACHED_WRITES) {
+      this.detached += 1
+      return
+    }
+    await new Promise<void>(resolve => this.waiting.push(resolve))
+  }
+
+  private release(): void {
+    const next = this.waiting.shift()
+    // The slot passes to the next writer in line; with none waiting it is free
+    if (next === undefined) this.detached -= 1
+    else next()
   }
 
   private fail(reason: string, action: AuditActionType, error?: unknown): void {

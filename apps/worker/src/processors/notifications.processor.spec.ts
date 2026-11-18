@@ -1,5 +1,6 @@
 import { type Job, UnrecoverableError } from 'bullmq'
 
+import type { JobContext } from '@platform/core/database'
 import { DigestFrequency } from '@platform/core/domain'
 import { JobNames, type SendWebPushJob } from '@platform/core/queues'
 
@@ -22,11 +23,16 @@ describe('NotificationsProcessor', () => {
   const handleQueued = jest.fn<Promise<void>, [string, string, Date]>()
   const sendDigest = jest.fn<Promise<void>, [string, string, Date]>()
   const check = jest.fn<Promise<number>, [string, Date]>()
+  // The context of the job is not what is under test: it runs the work
+  const jobContext = {
+    forStore: (_storeId: string, work: () => Promise<unknown>) => work()
+  } as unknown as JobContext
   const processor = new NotificationsProcessor(
     support as unknown as ProcessorSupport,
     { send } as unknown as WebPushSender,
     { handleQueued, sendDigest } as unknown as EmailDigestService,
-    { check } as unknown as RemittanceChecker
+    { check } as unknown as RemittanceChecker,
+    jobContext
   )
   const job = (name: string, data: unknown): Job<SendWebPushJob> =>
     ({ name, data }) as unknown as Job<SendWebPushJob>

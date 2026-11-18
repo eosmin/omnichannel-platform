@@ -1,6 +1,7 @@
 import { type Job, UnrecoverableError } from 'bullmq'
 
 import { AnalyticsEventNames } from '@platform/core/analytics'
+import type { JobContext } from '@platform/core/database'
 import { JobNames, type RollupJob, type TrackAnalyticsJob } from '@platform/core/queues'
 
 import type { AnalyticsEventWriter } from '../analytics/analytics-event.writer'
@@ -18,10 +19,15 @@ describe('AnalyticsProcessor', () => {
   const support = {
     run: (_queue: string, job: Job, run: (job: Job) => Promise<void>) => run(job)
   }
+  // The context of the job is not what is under test: it runs the work
+  const jobContext = {
+    forStore: (_storeId: string, work: () => Promise<unknown>) => work()
+  } as unknown as JobContext
   const processor = new AnalyticsProcessor(
     support as unknown as ProcessorSupport,
     { write } as unknown as AnalyticsEventWriter,
-    { rollup } as unknown as AnalyticsRollupService
+    { rollup } as unknown as AnalyticsRollupService,
+    jobContext
   )
   const job = (name: string, data: unknown): Job<TrackAnalyticsJob | RollupJob> =>
     ({ name, data }) as unknown as Job<TrackAnalyticsJob | RollupJob>

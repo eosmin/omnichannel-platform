@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
 import { RetentionDefaults, RetentionRun, type RetentionField } from '@platform/core/compliance'
-import { PrismaService } from '@platform/core/database'
+import { JobContext, PrismaService } from '@platform/core/database'
 import { ConversationStatus, DAY_MS } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 import { filesOfConversationsWhere, MediaPurpose } from '@platform/core/storage'
@@ -40,21 +40,27 @@ export class StoreRetentionEnforcer {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
-    private readonly logger: PinoLogger
+    private readonly logger: PinoLogger,
+    private readonly jobContext: JobContext
   ) {
     this.logger.setContext(StoreRetentionEnforcer.name)
   }
 
   async enforce(storeId: string, now: Date = new Date()): Promise<RetentionReport> {
-    const row = await this.prisma.client.retentionSettings.findUnique({
-      where: { storeId },
-      select: {
-        conversationDays: true,
-        mediaDays: true,
-        analyticsDays: true,
-        notificationDays: true
-      }
-    })
+    // Read in the context of the store: with no row of settings the defaults apply, so a read that row security hid would delete at the
+    // default what the owner asked to keep longer. A store that is not there ends the job (the processor treats it as done: its rows
+    // went with it). The deletes below only ever remove less when they see less.
+    const row = await this.jobContext.forStore(storeId, () =>
+      this.prisma.client.retentionSettings.findUnique({
+        where: { storeId },
+        select: {
+          conversationDays: true,
+          mediaDays: true,
+          analyticsDays: true,
+          notificationDays: true
+        }
+      })
+    )
     const days: Record<RetentionField, number> = row ?? RetentionDefaults
     const before = (field: RetentionField): Date => new Date(now.getTime() - days[field] * DAY_MS)
 
