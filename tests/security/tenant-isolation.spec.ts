@@ -3276,7 +3276,9 @@ describe('Tenant isolation', () => {
       const answers = [
         await fromSibling.get(ApiRoutes.fiscal.documents.byId(document.id)),
         await fromSibling.get(ApiRoutes.fiscal.documents.evidence(document.id, 'document')),
-        await fromSibling.patch(ApiRoutes.fiscal.documents.receiver(document.id)).send({ name: 'x' }),
+        await fromSibling
+          .patch(ApiRoutes.fiscal.documents.receiver(document.id))
+          .send({ name: 'x' }),
         await fromSibling.post(ApiRoutes.fiscal.documents.retry(document.id)).send({}),
         await fromSibling
           .post(ApiRoutes.fiscal.documents.void(document.id))
@@ -3309,9 +3311,9 @@ describe('Tenant isolation', () => {
         .post(ApiRoutes.fiscal.documents.void(own.id))
         .send({ reason: 'isolation check', replacementDocumentId: document.id })
       expect(withForeignReplacement.status).toBe(missing.status)
-      expect(
-        (await owner.fiscalDocument.findUniqueOrThrow({ where: { id: own.id } })).status
-      ).toBe('accepted')
+      expect((await owner.fiscalDocument.findUniqueOrThrow({ where: { id: own.id } })).status).toBe(
+        'accepted'
+      )
       // The reconciliation of the sibling never names the order of the other store (a queued document stalled long ago is a finding)
       await owner.fiscalDocument.update({
         where: { id: document.id },
