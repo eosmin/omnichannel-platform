@@ -55,10 +55,9 @@ export class PluginCatalogSync implements OnApplicationBootstrap {
   }
 
   async onApplicationBootstrap(): Promise<void> {
-    // At boot there is no request and no store: the catalog of the platform's own plugins is written with no tenant context
-    await this.prisma.withoutTenantContext('writes the catalog of official plugins at boot', () =>
-      this.sync()
-    )
+    // At boot there is no request and no store: every statement below runs in a catalog transaction, which carries no tenant
+    // context and the flag the policies of `plugins` ask for
+    await this.sync()
   }
 
   async sync(): Promise<void> {
@@ -132,10 +131,12 @@ export class PluginCatalogSync implements OnApplicationBootstrap {
     const carriers = this.carriers.list()
     if (carriers.length === 0) return
     // The id belongs to the platform: a row of that id that is not official was written by someone else and is left alone
-    const existing = await this.prisma.client.plugin.findUnique({
-      where: { id: ShippingPlugin.ID },
-      select: { isOfficial: true }
-    })
+    const existing = await this.prisma.catalogTransaction(() =>
+      this.prisma.client.plugin.findUnique({
+        where: { id: ShippingPlugin.ID },
+        select: { isOfficial: true }
+      })
+    )
     if (existing !== null && !existing.isOfficial) {
       this.logger.error(
         { pluginId: ShippingPlugin.ID },

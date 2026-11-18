@@ -28,7 +28,10 @@ SELECT rls_apply_policy('plugins', 'organization_or_null');
 
 -- 2. plugins: the catalog the platform writes at boot (PluginCatalogSync) has no organization. Those rows are written with the
 -- flag app.platform_catalog, which only PrismaService.catalogTransaction sets (a transaction-local set_config, like the tenant
--- context). A tenant request never sets it, so it cannot write an official plugin.
+-- context). A tenant request does not set it, but that is a convention of the code and not a barrier: RLS here protects against a
+-- filter the code forgot, not against SQL the code was made to run, which could set the flag as it could set the store ids. A
+-- stricter alternative (a SECURITY DEFINER upsert_official_plugin function and no policy for the application roles) is left
+-- for the day the catalog is written by something other than the boot of the api.
 DO $$
 BEGIN
   CREATE POLICY plugins_catalog_ins ON plugins AS PERMISSIVE FOR INSERT TO platform_app, platform_worker
