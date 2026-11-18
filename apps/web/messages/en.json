@@ -6788,7 +6788,8 @@
         "to": "To the account",
         "document": "Document number",
         "memo": "Memo",
-        "useAsMemo": "Use the statement text as memo"
+        "useAsMemo": "Use the statement text as memo",
+        "dropMemo": "Leave the memo empty"
       }
     },
     "purchases": {

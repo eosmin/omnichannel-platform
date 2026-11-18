@@ -149,7 +149,9 @@ export function useBankRegisterDraft(
         signal
       ),
     enabled: lineId !== null,
-    retry: false
+    retry: false,
+    // The memo option changes one row: the draft stays on screen while the other answer arrives
+    placeholderData: keepPreviousData
   })
 }
 

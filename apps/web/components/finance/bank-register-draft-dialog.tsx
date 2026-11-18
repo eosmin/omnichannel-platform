@@ -80,7 +80,7 @@ function Draft({
     [t('document'), draft.data.documentNumber ?? null],
     [t('memo'), draft.data.memo ?? null]
   ]
-  const canUseDescription = line.description !== null && line.description !== ''
+  const canUseDescription = line.description !== null && line.description.trim() !== ''
   return (
     <div className="flex flex-col gap-3">
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm" data-testid="bank-draft">
@@ -97,16 +97,17 @@ function Draft({
               ]
         )}
       </dl>
-      {canUseDescription && !useDescription ? (
+      {canUseDescription ? (
         <Button
           type="button"
           variant="outline"
           size="sm"
           className="self-start"
           data-testid="bank-draft-use-memo"
-          onClick={() => setUseDescription(true)}
+          aria-pressed={useDescription}
+          onClick={() => setUseDescription(!useDescription)}
         >
-          {t('useAsMemo')}
+          {useDescription ? t('dropMemo') : t('useAsMemo')}
         </Button>
       ) : null}
     </div>

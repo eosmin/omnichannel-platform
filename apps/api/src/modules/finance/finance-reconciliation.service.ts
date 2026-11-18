@@ -275,7 +275,9 @@ export class FinanceReconciliationService {
       ...(incoming ? { toAccountId: line.accountId } : { fromAccountId: line.accountId }),
       ...(line.reference === null ? {} : { documentNumber: line.reference }),
       // The bank's text is the memo only when the person asks for it
-      ...(!useDescriptionAsMemo || line.description === null ? {} : { memo: line.description })
+      ...(!useDescriptionAsMemo || line.description === null || line.description.trim() === ''
+        ? {}
+        : { memo: line.description })
     }
   }
 

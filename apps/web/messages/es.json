@@ -6788,7 +6788,8 @@
         "to": "A la cuenta",
         "document": "Número de documento",
         "memo": "Nota",
-        "useAsMemo": "Usar el texto del extracto como nota"
+        "useAsMemo": "Usar el texto del extracto como nota",
+        "dropMemo": "Dejar la nota vacía"
       }
     },
     "purchases": {
