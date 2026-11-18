@@ -210,8 +210,8 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
 
   [MetricNames.WEBHOOK_DELIVERIES]: {
     kind: 'counter',
-    help: 'Outbound webhook deliveries',
-    labels: ['success']
+    help: 'Outbound webhook deliveries, of a store or of a plugin',
+    labels: ['target', 'success']
   },
   [MetricNames.EMAILS_SENT]: {
     kind: 'counter',

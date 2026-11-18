@@ -58,7 +58,8 @@ export function useUpdateReport(
   return useMutation({
     mutationFn: ({ id, input }: { id: string; input: UpdateReportInput }) =>
       updateReport(apiClient, storeId, id, input),
-    onSuccess: refresh
+    // Also after a refusal: a 404 says the report is gone (deleted elsewhere), and the list must not keep showing it
+    onSettled: refresh
   })
 }
 
@@ -66,7 +67,8 @@ export function useDeleteReport(storeId: string): UseMutationResult<undefined, E
   const refresh = useRefreshReports(storeId)
   return useMutation({
     mutationFn: (id: string) => deleteReport(apiClient, storeId, id),
-    onSuccess: refresh
+    // Also after a refusal, for the same reason as the update
+    onSettled: refresh
   })
 }
 

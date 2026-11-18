@@ -2,7 +2,7 @@
 
 import { CornerDownLeft, Search } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { useTranslations } from 'next-intl'
+import { useFormatter, useLocale, useTranslations } from 'next-intl'
 import { type KeyboardEvent, type ReactElement, useEffect, useId, useMemo, useState } from 'react'
 
 import { AppPaths } from '@platform/api-client'
@@ -18,6 +18,7 @@ import {
   pageCommands
 } from '../../lib/search/palette-items'
 import { recordClick } from '../../lib/search/record-click'
+import { searchableKinds } from '../../lib/search/search-target'
 import { readySearchText } from '../../lib/search/search-text'
 import { useGlobalSearch } from '../../lib/search/use-search'
 import { useDebouncedValue } from '../../lib/use-debounced-value'
@@ -41,6 +42,8 @@ export function CommandPalette({
   const t = useTranslations('search')
   const tNav = useTranslations('shell.nav')
   const router = useRouter()
+  const format = useFormatter()
+  const locale = useLocale()
   const { storeId, can } = useStore()
   const { openCustomer } = useCustomerDrawer()
   const listId = useId()
@@ -50,6 +53,13 @@ export function CommandPalette({
   const isTypingMore = ready !== readySearchText(text)
   // As-you-type: not counted as a search; the result the person opens, or the page of results they go to, is
   const search = useGlobalSearch(storeId, ready, true)
+
+  // The description names only what this person may search (N-BR2-15): the api leaves the rest out of every answer
+  const kinds = searchableKinds(can).map(kind => t(`groups.${kind}`).toLocaleLowerCase(locale))
+  const description =
+    kinds.length === 0
+      ? t('palette.descriptionPagesOnly')
+      : t('palette.description', { kinds: format.list(kinds, { type: 'conjunction' }) })
 
   // A closed palette starts empty the next time: yesterday's text is not what the person comes to look for
   useEffect(() => {
@@ -127,7 +137,7 @@ export function CommandPalette({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="top-[15%] translate-y-0 gap-0 p-0 sm:max-w-xl">
         <DialogTitle className="sr-only">{t('palette.title')}</DialogTitle>
-        <DialogDescription className="sr-only">{t('palette.description')}</DialogDescription>
+        <DialogDescription className="sr-only">{description}</DialogDescription>
         <div className="flex items-center gap-2 border-b px-3">
           <Search className="text-muted-foreground size-4 shrink-0" aria-hidden />
           <input

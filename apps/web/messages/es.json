@@ -181,7 +181,7 @@
       "description": "Cómo se ve y en qué idioma se muestra la aplicación para ti, en todos tus dispositivos.",
       "language": "Idioma",
       "timezone": "Zona horaria",
-      "browserZone": "Usar la zona horaria de este navegador",
+      "browserZone": "Automática: la zona horaria de la tienda o, si no hay, la de este navegador",
       "density": "Densidad",
       "densities": {
         "comfortable": "Cómoda",
@@ -1954,6 +1954,7 @@
     "accountMenu": "Menú de la cuenta",
     "nav": {
       "label": "Páginas de la tienda",
+      "menu": "Menú",
       "inbox": "Bandeja",
       "customers": "Clientes",
       "products": "Productos",
@@ -2072,6 +2073,7 @@
     },
     "backToList": "Volver a las conversaciones",
     "openCustomer": "Abrir el perfil del cliente",
+    "deletedElsewhere": "Esta conversación se eliminó.",
     "announce": {
       "newMessage": "Nuevo mensaje en una conversación",
       "assignedToYou": "Se te asignó una conversación"
@@ -5811,7 +5813,8 @@
   "search": {
     "palette": {
       "title": "Buscar",
-      "description": "Busca clientes, pedidos, productos y mensajes, o ve a una página. Usa las flechas y Enter.",
+      "description": "Busca {kinds}, o ve a una página. Usa las flechas y Enter.",
+      "descriptionPagesOnly": "Ve a una página. Usa las flechas y Enter.",
       "label": "Buscar en la tienda",
       "placeholder": "Busca o ve a una página",
       "results": "Resultados",

@@ -419,7 +419,9 @@ test.describe.serial('the inbox list', () => {
       }
       // The page of customers had the same header and overflowed sideways at 485 px (by the app's own link)
       await page.setViewportSize({ width: 485, height: 800 })
-      await page.getByRole('link', { name: en.shell.nav.customers }).click()
+      // Under `md` the links of the bar are behind one button
+      await page.getByRole('navigation', { name: en.shell.nav.label }).getByRole('button').click()
+      await page.getByRole('menuitem', { name: en.shell.nav.customers }).click()
       await expect(page).toHaveURL(new RegExp(`${AppPaths.store.customers(storeId)}`))
       const sideways = await page.evaluate(() => {
         const root = document.scrollingElement ?? document.documentElement
