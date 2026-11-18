@@ -34,6 +34,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { CapturedQueue, queueOf } from '../helpers/queue'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 // El Salvador is UTC-6 all year. The store opens Monday to Friday, 09:00 to 18:00.
 const WEEK = {
@@ -62,14 +63,17 @@ describe('The reply of a store that is closed', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp([], builder =>
-      builder
-        .overrideProvider(getQueueToken(QueueNames.INBOUND))
-        .useValue(new CapturedQueue())
-        .overrideProvider(getQueueToken(QueueNames.HEAVY_PROCESSING))
-        .useValue(new CapturedQueue())
-        .overrideProvider(getQueueToken(QueueNames.OUTBOUND))
-        .useValue(new CapturedQueue())
+    app = await createTestApp(
+      [],
+      onWorkerDatabase(builder =>
+        builder
+          .overrideProvider(getQueueToken(QueueNames.INBOUND))
+          .useValue(new CapturedQueue())
+          .overrideProvider(getQueueToken(QueueNames.HEAVY_PROCESSING))
+          .useValue(new CapturedQueue())
+          .overrideProvider(getQueueToken(QueueNames.OUTBOUND))
+          .useValue(new CapturedQueue())
+      )
     )
     ctx = await seedTestContext(owner, app, prefix)
     app.get(PluginRegistry, { strict: false }).register(buildChannelPlugin())

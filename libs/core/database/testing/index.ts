@@ -3,6 +3,7 @@
 export * from './connection-urls'
 export * from './owner-client'
 export * from './replica-database'
+export * from './rls-enforcement'
 export {
   ensureDefaultWarehouse,
   ensureMembership,

@@ -13,5 +13,7 @@ module.exports = {
   testPathIgnorePatterns: ['/node_modules/', '<rootDir>/api/products-search-performance.spec.ts'],
   // The env of the app is read when it is imported: this runs before any suite does
   setupFiles: ['<rootDir>/helpers/env.ts'],
+  // Closes the connections of createWorkerPrisma when a file ends
+  setupFilesAfterEnv: ['<rootDir>/helpers/worker-db-teardown.ts'],
   testTimeout: 30_000
 }
