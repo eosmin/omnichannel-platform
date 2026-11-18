@@ -93,7 +93,10 @@ test.describe('Finance → the books of the organization', () => {
       .selectOption({ index: 1 })
     await rate.getByRole('button', { name: finance.taxes.dialog.create, exact: true }).click()
     await expect(rate).toHaveCount(0)
-    const created = page.locator(`[data-testid="finance-tax-rate-row"][data-code="T${run}"]`)
+    // The code was typed with lowercase letters (the run id is hexadecimal): the rate keeps it in capitals (HC-210)
+    const created = page.locator(
+      `[data-testid="finance-tax-rate-row"][data-code="${`T${run}`.toUpperCase()}"]`
+    )
     await expect(created.getByTestId('finance-tax-rate-percent')).toHaveText('7.5 %')
 
     // Turning a rate off asks first: Cancel leaves it on, the button of the question turns it off

@@ -245,8 +245,22 @@ export class OrdersStatusService {
   ): Promise<void> {
     // The route asks for the permission to change the status; confirming and cancelling have their own (TDD_17 §4.3):
     // whichever route reaches this, the one of the target applies
-    if (body.status === OrderStatus.CONFIRMED) assertHolds(held, Permissions.ORDERS_CONFIRM)
-    if (body.status === OrderStatus.CANCELLED) assertHolds(held, Permissions.ORDERS_CANCEL)
+    // The status route is granted only what changing a status needs: a key that holds the scope of confirming or cancelling
+    // reaches those through their own routes, and the refusal says so instead of asking for what the key already has
+    if (body.status === OrderStatus.CONFIRMED) {
+      assertHolds(
+        held,
+        Permissions.ORDERS_CONFIRM,
+        'the status route does not grant it, use the confirm route of the order'
+      )
+    }
+    if (body.status === OrderStatus.CANCELLED) {
+      assertHolds(
+        held,
+        Permissions.ORDERS_CANCEL,
+        'the status route does not grant it, use the cancel route of the order'
+      )
+    }
     // Putting units back on the shelf is a movement of stock: whoever chooses it may adjust stock (the return flow of
     // Step 4.12 will own this decision)
     if (body.restock === true) assertHolds(held, Permissions.INVENTORY_ADJUST)

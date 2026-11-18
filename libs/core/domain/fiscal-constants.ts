@@ -245,7 +245,9 @@ export const FiscalConflictReasons = {
   // made for the sale
   REPLACEMENT_PENDING: 'replacement_pending',
   // The return of a credit note has a live note already
-  NOTE_ALREADY_REPLACED: 'note_already_replaced'
+  NOTE_ALREADY_REPLACED: 'note_already_replaced',
+  // The order has no tax snapshot (it was made before the tax columns): no sale document is made of it with a tax of 0
+  TAX_SNAPSHOT_MISSING: 'tax_snapshot_missing'
 } as const
 
 // The type of a document that has not been built yet: the provider picks the real one when it builds (its rule, not core's)

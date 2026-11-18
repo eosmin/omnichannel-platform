@@ -2,7 +2,9 @@ import {
   formatOrderNumber,
   type OrderGuideFilter,
   OrderGuideFilters,
+  OrderEditablePriceStatuses,
   OrderNumber,
+  PriceApprovalStatus,
   ShipmentInactiveStatuses,
   ShipmentKind
 } from '@platform/core/domain'
@@ -97,6 +99,12 @@ export function orderGuideWhere(guide: OrderGuideFilter): Record<string, unknown
   return live
 }
 
+// An order that is waiting for a decision on its price is one whose price can still be decided: a cancelled, shipped or delivered
+// order keeps the `pending` it had (the decision never came and nothing is left to approve), and it is not one that waits
+export function pendingPriceWhere(): Record<string, unknown> {
+  return { status: { in: [...OrderEditablePriceStatuses] } }
+}
+
 export function orderListWhere(storeId: string, filters: ResolvedOrderFilters): OrderListWhere {
   return {
     storeId,
@@ -117,12 +125,17 @@ export function orderListWhere(storeId: string, filters: ResolvedOrderFilters): 
     ...(filters.carrierConnectionId === undefined
       ? {}
       : { carrierConnectionId: filters.carrierConnectionId }),
-    ...(filters.q === undefined && filters.guide === undefined
+    ...(filters.q === undefined &&
+    filters.guide === undefined &&
+    filters.priceApprovalStatus !== PriceApprovalStatus.PENDING
       ? {}
       : {
           AND: [
             ...(filters.q === undefined ? [] : [orderTextWhere(filters.q)]),
-            ...(filters.guide === undefined ? [] : [orderGuideWhere(filters.guide)])
+            ...(filters.guide === undefined ? [] : [orderGuideWhere(filters.guide)]),
+            ...(filters.priceApprovalStatus === PriceApprovalStatus.PENDING
+              ? [pendingPriceWhere()]
+              : [])
           ]
         })
   }
