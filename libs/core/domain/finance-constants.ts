@@ -423,9 +423,15 @@ export const LedgerHash = {
 } as const
 
 // Why a request that is valid in itself is refused by the state of the books: for the client to tell apart (`metadata.conflict`)
+// A person may ask the worker to check the chain again once in this time (N-B8-1): each check walks the whole journal, so a loop of
+// requests while a real break stays open must not keep the worker on it. The job stays in the queue this long, finished or failed.
+export const CHAIN_RESOLVE_COOLDOWN_SECONDS = 600
+
 export const FinanceConflicts = {
   // A check of the hash chain is running for the organization: it scans the whole journal, so one at a time
   CHAIN_CHECK_RUNNING: 'chain_check_running',
+  // There is no open incident of the chain to ask the worker to close
+  CHAIN_NO_OPEN_INCIDENT: 'chain_no_open_incident',
   ALREADY_SET_UP: 'already_set_up',
   ACCOUNT_CODE_IN_USE: 'account_code_in_use',
   ACCOUNT_LIMIT: 'account_limit',

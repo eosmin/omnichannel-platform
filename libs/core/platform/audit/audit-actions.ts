@@ -217,6 +217,9 @@ export const AuditAction = {
   FINANCE_BOOK_LAYOUT_CHANGED: 'finance.book_layout_changed',
   FINANCE_BOOK_FROZEN: 'finance.book_frozen',
   FINANCE_CHAIN_VERIFIED: 'finance.chain_verified',
+  FINANCE_CHAIN_RESOLVE_REQUESTED: 'finance.chain_resolve_requested',
+  // What the check a person asked for found, written by the worker that ran it (N-B8-1)
+  FINANCE_CHAIN_RESOLVE_CHECKED: 'finance.chain_resolve_checked',
   FINANCE_ENTRY_POSTED_MANUAL: 'finance.entry_posted_manual',
   FINANCE_ENTRY_REVERSED: 'finance.entry_reversed',
   FINANCE_POSTING_RETRIED: 'finance.posting_retried',

@@ -78,7 +78,8 @@ total) except stored balances, which are `BigInt` because a sum of cents passes 
 | `Supplier`, `PurchaseOrder`, `PurchaseReceipt`, `SupplierPayment` | `organizationId` | same |
 | `PurchaseOrderLine`, `PurchaseReceiptLine` | `organizationId` + `storeId` (the product's store) | only members of that store see the lines of that store, as `StockTransferLine` in `TDD_16` |
 | `BankStatementImport`, `BankStatementLine`, `ReconciliationMatch`, `BankImportProfile` | `organizationId` | same |
-| `FiscalIssuer`, `FiscalDocument` | `organizationId` (`FiscalDocument` also `storeId`) | same |
+| `FiscalIssuer` | `organizationId` | same |
+| `FiscalDocument` | `organizationId` and `storeId` | **only members of the store of the sale holding the permission** (owner, 2026-11-18, HC-128): a document of another store is a 404; the list and the reconciliation are cut by the same stores |
 
 **Organization context without a new mechanism:** as `TDD_16 §1`. Organization-scoped routes still send `X-Store-Id`;
 `TenantGuard` resolves the store's organization and the permission is read from the user's role in that store;
