@@ -1789,6 +1789,13 @@ migration, as the ledger migration asks of every new column.
 - [ ] **Debt (HC-124, other parts):** a rate switched off after the order was placed blocks the receipt with no way out (own PR, next); a supplier
       payment dated before the invoice is accepted (`supplier-payments.service.ts`) and the bank reconciliation does not compare the supplier
       document number (`finance-reconciliation.service.ts`): both wait for the accountant's answers P-13/P-17 and the owner; closes in Step 4B.9b-5d.
+**PR fix/receipt-inactive-rate (HC-124, second part)**
+- [x] A tax rate switched off after the order was placed no longer blocks the receipt (there was no way out: a placed order cannot be edited). The
+      draft still refuses a rate that is off; the receipt posts the tax with the rate as it is now (percent and input account; a missing rate is
+      refused), and the accounts of a rate stay active while the rate exists (`usedBySetting`). **Debt (Step 7.3):** the rate is not snapshotted on the
+      order line, so editing a rate between the placing and the receipt changes the tax posted; snapshot it or refuse the edit of a rate in use by a placed order. Decision, **[ACCOUNTANT]** to confirm: the tax follows the invoice the order
+      was placed with, not the law of the day of the receipt; rejected: refusing and asking to cancel the order (the stock is already coming).
+      Test in `tests/api/purchases.spec.ts`.
 
 ### Step 4B.6 — The automatic entries (api and worker)
 The step is cut in two PRs by what each needs (rule 12; one session, one PR; the cut is mine): **4B.6a** is the machinery and the entries that
