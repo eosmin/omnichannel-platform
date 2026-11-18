@@ -212,7 +212,13 @@ describe('row-level security, phase 2: conversations, customers, files, channel 
         select: { id: true }
       })
       const reaction = await owner.messageReaction.create({
-        data: { storeId: store[side], messageId: message.id, authorType: 'customer', emoji: '+' },
+        data: {
+          storeId: store[side],
+          messageId: message.id,
+          authorType: 'customer',
+          customerIdentityId: identity.id,
+          emoji: '+'
+        },
         select: { id: true }
       })
       const merge = await owner.customerMerge.create({
@@ -438,7 +444,7 @@ describe('row-level security, phase 2: conversations, customers, files, channel 
       const refused: Record<string, string | undefined> = {}
       refused['customer'] = await savepointed(
         's1',
-        'INSERT INTO customers (id, store_id, name) VALUES ($1, $2, $3)',
+        'INSERT INTO customers (id, store_id, name, updated_at) VALUES ($1, $2, $3, now())',
         [randomUUID(), store.b, 'x']
       )
       refused['note'] = await savepointed(
@@ -470,11 +476,10 @@ describe('row-level security, phase 2: conversations, customers, files, channel 
       // The controls: the same statements with the store of the context go through, so a refusal above is the policy and not a
       // wrong statement or a missing grant
       const own = {
-        customer: await query('INSERT INTO customers (id, store_id, name) VALUES ($1, $2, $3)', [
-          randomUUID(),
-          store.a,
-          'x'
-        ]),
+        customer: await query(
+          'INSERT INTO customers (id, store_id, name, updated_at) VALUES ($1, $2, $3, now())',
+          [randomUUID(), store.a, 'x']
+        ),
         note: await query(
           'INSERT INTO customer_notes (id, customer_id, author_id, content) VALUES ($1, $2, $3, $4)',
           [randomUUID(), row['customers']?.a, user.a, 'x']
