@@ -227,6 +227,34 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       expect(id).toContain(prefix)
     })
 
+    it('is read from the Authorization header only: a key in the address or in another header authenticates nothing', async () => {
+      const { setup } = await setUp()
+      const server = app.getHttpServer() as Parameters<typeof supertest>[0]
+      const route = `${API_PREFIX}${PluginApiRoutes.installation}`
+      const key = encodeURIComponent(setup.apiKey)
+      const without = (suffix = '') =>
+        supertest(server)
+          .get(`${route}${suffix}`)
+          .set('x-forwarded-for', `10.${randomInt(256)}.${randomInt(256)}.${randomInt(1, 255)}`)
+
+      const attempts = [
+        without(`?access_token=${key}`),
+        without(`?token=${key}`),
+        without(`?api_key=${key}&apikey=${key}&bearer=${key}`),
+        without(`?key=${key}&key=${key}`),
+        without().set('x-api-key', setup.apiKey),
+        without().set('x-access-token', setup.apiKey)
+      ]
+      for (const attempt of attempts) {
+        const refused = await attempt.expect(UNAUTHORIZED)
+        expect((refused.body as { error: { code: string } }).error.code).toBe(
+          ErrorCodes.PLUGIN_API_KEY_INVALID
+        )
+      }
+      // The same key in the header is the one that works
+      await callWithKey(setup.apiKey).expect(OK)
+    })
+
     it('does not exist for a plugin that has no webhook endpoint', async () => {
       const { setup } = await setUp({ webhooks: undefined })
 
