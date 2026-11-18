@@ -775,6 +775,18 @@ describe('PrismaService with requireContext', () => {
   it('does nothing while the switch is off', async () => {
     expect(await open.client.conversation.count()).toBeGreaterThanOrEqual(0)
   })
+
+  it('lets a catalog transaction query a model that is not global, even when it returns the lazy query as it is', async () => {
+    expect(
+      await guarded.catalogTransaction(() => guarded.client.plugin.count())
+    ).toBeGreaterThanOrEqual(0)
+  })
+
+  it('refuses to open a catalog transaction inside a tenant transaction', () => {
+    return expect(
+      guarded.tenantTransaction(context, () => guarded.catalogTransaction(() => Promise.resolve(1)))
+    ).rejects.toThrow('inside a tenant transaction')
+  })
 })
 
 describe('ProcessedWebhookEventsService', () => {

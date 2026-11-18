@@ -289,16 +289,22 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   }
 
   // The one transaction that may write the rows of the catalog that belong to the platform (a plugin with no organization): it
-  // sets app.platform_catalog, which the policies of `plugins` ask for, and no tenant context. Only the boot of the api uses it.
+  // sets app.platform_catalog, which the policies of `plugins` ask for, and no tenant context. Only the boot of the api uses it, so
+  // inside a request (a tenant transaction) it refuses to open: a handler cannot reach the flag by calling it.
   catalogTransaction<T>(fn: () => Promise<T>, options?: TransactionOptions): Promise<T> {
-    return tenantScope.exit(() =>
-      this.open(
-        async tx => {
-          await tx.$executeRaw`SELECT set_config('app.platform_catalog', 'on', true)`
-          return tenantScope.run({ tx, context: { storeIds: [], organizationIds: [] } }, fn)
-        },
-        { ...TENANT_TRANSACTION, ...options }
-      )
+    if (this.hasTenantContext()) {
+      throw new Error('catalogTransaction cannot be opened inside a tenant transaction')
+    }
+    return this.open(
+      async tx => {
+        await tx.$executeRaw`SELECT set_config('app.platform_catalog', 'on', true)`
+        // `fn` is awaited INSIDE the scope: a Prisma query is lazy, and one that fn only returns would start after run() ends
+        return tenantScope.run(
+          { tx, context: { storeIds: [], organizationIds: [] } },
+          async () => await fn()
+        )
+      },
+      { ...TENANT_TRANSACTION, ...options }
     )
   }
 
