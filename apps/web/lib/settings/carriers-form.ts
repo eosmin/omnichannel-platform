@@ -76,6 +76,8 @@ export interface CarrierRulesDraft {
   minFee: string
   maxFee: string
   remittanceDeductsFee: boolean
+  // How the carrier charges the business for its guides (CarrierChargeModel): the books read it
+  chargeModel: string
   // The commission as a percent as typed ("4.5"; empty is none) and the cost of a guide in dollars by rate service of the carrier
   commission: string
   rates: Record<string, string>
@@ -140,6 +142,7 @@ export function carrierRulesDraftOf(
     minFee: feeInput(view.minShippingFeeCents),
     maxFee: feeInput(view.maxShippingFeeCents),
     remittanceDeductsFee: view.remittanceDeductsFee,
+    chargeModel: view.chargeModel,
     commission: view.commissionBps === null ? '' : formatBpsAsPercent(view.commissionBps),
     rates: Object.fromEntries(
       fees.rateServices.map(service => [
@@ -471,6 +474,7 @@ export function carrierRulesChanges(
   if (draft.remittanceDeductsFee !== saved.remittanceDeductsFee) {
     changes.remittanceDeductsFee = draft.remittanceDeductsFee
   }
+  if (draft.chargeModel !== saved.chargeModel) changes.chargeModel = draft.chargeModel
   if (shape.fees.commission) {
     const commission = commissionOf(draft.commission)
     if (commission !== undefined && commission !== saved.commissionBps) {

@@ -4059,6 +4059,20 @@
           "deductsFee": "El transportista descuenta su tarifa del efectivo que cobra",
           "deductsFeeHint": "La remesa llega entonces sin la tarifa del envío."
         },
+        "chargeModel": {
+          "legend": "Cómo cobra el transportista las guías",
+          "label": "Modelo de cobro",
+          "models": {
+            "invoiced": "El transportista me factura después",
+            "remittance": "El transportista lo descuenta del efectivo que remite",
+            "prepaid": "Compro guías por adelantado (prepago)"
+          },
+          "hints": {
+            "invoiced": "Lo que cobra el transportista se le debe hasta que pagues la factura.",
+            "remittance": "El cobro se salda cuando se confirma la remesa que lo descuenta.",
+            "prepaid": "Cada guía usa lo que pagaste al comprar el paquete: los libros no le deben otra vez su costo al transportista. Pide a la contadora que asigne la cuenta de guías prepagadas y que registre el saldo de apertura al activarlo. Aplica a las guías y compras desde ese momento."
+          }
+        },
         "services": {
           "legend": "Servicios",
           "default": "Servicio predeterminado",
@@ -4216,6 +4230,10 @@
           "giftHint": "Las guías que vinieron gratis con la recarga. Usa 0 si no hubo.",
           "cost": "Total pagado (US$)",
           "costHint": "Con impuestos incluidos, por ejemplo 45.50.",
+          "carriedHint": "Los libros llevan esta compra como un anticipo que cada guía va usando.",
+          "paidFrom": "Pagado desde",
+          "paidFromDefault": "La cuenta de banco por defecto",
+          "paidFromHint": "La cuenta de la que salió el dinero. Si la dejas vacía, se usa la cuenta de banco por defecto.",
           "note": "Nota (opcional)",
           "submit": "Registrar recarga",
           "done": "Recarga registrada",
