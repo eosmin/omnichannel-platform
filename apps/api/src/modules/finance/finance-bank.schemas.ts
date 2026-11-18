@@ -8,6 +8,7 @@ import {
   BankThousandsSeparators,
   FinanceLimits,
   lowercasedUuidSchema,
+  queryIntSchema,
   PaginationLimits,
   RemittanceDateFormats,
   RemittanceDecimalSeparators,
@@ -146,15 +147,15 @@ export type BankImportQuery = z.output<typeof bankImportQuerySchema>
 
 export const listBankImportsQuerySchema = z.strictObject({
   accountId: lowercasedUuidSchema.optional(),
-  limit: z.coerce.number().int().min(1).max(PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
+  limit: queryIntSchema(1, PaginationLimits.MAX).default(PaginationLimits.DEFAULT)
 })
 export type ListBankImportsQuery = z.output<typeof listBankImportsQuerySchema>
 
 export const listBankLinesQuerySchema = z.strictObject({
   filter: z.enum(BankLineFilters).default(BankLineFilters.ALL),
   // The row of the last line of the page: the lines are read in the order of the file
-  after: z.coerce.number().int().min(0).optional(),
-  limit: z.coerce.number().int().min(1).max(200).default(50)
+  after: queryIntSchema(0).optional(),
+  limit: queryIntSchema(1, 200).default(50)
 })
 export type ListBankLinesQuery = z.output<typeof listBankLinesQuerySchema>
 
@@ -164,7 +165,7 @@ export type BankPairBody = z.output<typeof bankPairSchema>
 
 export const bankStatusQuerySchema = z.strictObject({
   accountId: lowercasedUuidSchema,
-  year: z.coerce.number().int().min(FinanceLimits.MIN_YEAR).max(FinanceLimits.MAX_YEAR),
-  month: z.coerce.number().int().min(FinanceLimits.FIRST_MONTH).max(FinanceLimits.LAST_MONTH)
+  year: queryIntSchema(FinanceLimits.MIN_YEAR, FinanceLimits.MAX_YEAR),
+  month: queryIntSchema(FinanceLimits.FIRST_MONTH, FinanceLimits.LAST_MONTH)
 })
 export type BankStatusQuery = z.output<typeof bankStatusQuerySchema>
