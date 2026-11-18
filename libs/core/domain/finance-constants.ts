@@ -595,6 +595,8 @@ export const FinanceReportLimits = {
   CSV_PAGE_SIZE: 1000,
   // Lines of the ledger of one account one request answers (it pages by line)
   LEDGER_PAGE_MAX: 200,
+  // Entries (each with all its lines) the journal report of one request answers; it pages by entry number
+  JOURNAL_PAGE_MAX: 100,
   // Sale entries (and so orders) the margin report reads at once: it walks the range in pages and never holds the orders of a month
   MARGIN_PAGE_SIZE: 500,
   // The range of days a CSV of the journal or the ledger may cover: a year and a leap day, so a fiscal year always fits. The api

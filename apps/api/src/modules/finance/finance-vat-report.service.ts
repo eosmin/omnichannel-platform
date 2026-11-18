@@ -9,6 +9,8 @@ import {
   FinanceReport,
   FinanceReportLimits,
   FinanceResourceTypes,
+  FinanceSaleKeyParts,
+  FinanceSourceType,
   FinanceTransactionKind,
   JournalEntryType,
   OrderStatus,
@@ -35,7 +37,7 @@ interface Bucket {
 }
 
 // The VAT report of the organization (TDD_18 §7) for a range of days, month by month and by rate. The output side is read from the
-// tax snapshot the orders keep, by the day the sale is recognized in the time zone of its store (`recognizeSaleOn`); the input side
+// tax snapshot the orders keep, by the month of the entry of the sale in the books, or by the day it is recognized in the time zone of its store (`recognizeSaleOn`) while it has no entry; the input side
 // is the VAT_INPUT account of the journal, by the day of the entry and the rate the line names. It reads; it writes nothing.
 //
 // What it does not do yet: the orders made before the tax columns carry
@@ -119,8 +121,11 @@ export class FinanceVatReportService {
       return bucket
     }
 
-    // The orders of the range: the day each one is recognized is in the time zone of its store, which only the database can say for
-    // all stores at once (the column holds a UTC instant without a zone, so it is read as UTC first). A cancelled order is never a sale, and one never delivered (or never shipped) is not one yet.
+    // The orders of the range, in the month the books put their sale in (HC-004, TDD_18 §7: the ledger rules when the report and the books
+    // differ). A sale whose entry exists is in the month of its entry: the books date it the first open day when its month was closed, and
+    // the VAT_OUTPUT account holds its tax there. One with no entry yet (not posted, or the books failed) is in the day it is recognized,
+    // in the time zone of its store, which only the database can say for all stores at once (the column holds a UTC instant without a
+    // zone, so it is read as UTC first). A cancelled order is never a sale, and one never delivered (or never shipped) is not one yet.
     const shipped = recognizedOn === SaleRecognition.SHIPPED
     const recognized = await db.$queryRaw<{ id: string; month: string; status: string }[]>`
       WITH known AS MATERIALIZED (SELECT lower(name) AS name FROM pg_timezone_names),
@@ -132,21 +137,54 @@ export class FinanceVatReportService {
                     THEN s.timezone ELSE 'UTC' END AS timezone
         FROM stores s
         WHERE s.organization_id = ${organizationId}
+      ),
+      -- The sales the books hold, read as the books of the legal sales do (finance-books.service.ts): the original sale entry of an order,
+      -- under its own key, and not one reversed in its own month
+      booked AS (
+        SELECT e.source_id AS order_id, e.entry_date
+        FROM journal_entries e
+        CROSS JOIN LATERAL (
+          SELECT (date_trunc('month', e.entry_date::timestamp) + interval '1 month') AS next_month
+        ) m
+        WHERE e.organization_id = ${organizationId}
+          AND e.type = ${JournalEntryType.SALE} AND e.source_type = ${FinanceSourceType.ORDER}
+          AND e.reverses_entry_id IS NULL
+          AND e.idempotency_key = ${FinanceSaleKeyParts.PREFIX}::text || e.source_id || ${FinanceSaleKeyParts.SUFFIX}::text
+          AND e.entry_date BETWEEN ${query.from}::date AND ${query.to}::date
+          AND NOT EXISTS (
+            SELECT 1 FROM journal_entries rv
+            WHERE rv.organization_id = e.organization_id AND rv.reverses_entry_id = e.id
+              AND rv.entry_date < m.next_month
+          )
+      ),
+      unbooked AS (
+        SELECT x.id, x.status, ((x.at AT TIME ZONE 'UTC') AT TIME ZONE x.timezone)::date AS day
+        FROM (
+          SELECT o.id, z.timezone, o.status,
+                 CASE WHEN ${shipped}::boolean THEN o.shipped_at ELSE o.delivered_at END AS at
+          FROM orders o
+          JOIN zones z ON z.store_id = o.store_id
+        ) x
+        WHERE x.status <> ${OrderStatus.CANCELLED}
+          AND x.at IS NOT NULL
+          -- A plain range first, which an index can serve (the zones of the stores are at most a day away from UTC)
+          AND x.at >= (${query.from}::date - 1)::timestamp
+          AND x.at < (${query.to}::date + 2)::timestamp
+          AND ((x.at AT TIME ZONE 'UTC') AT TIME ZONE x.timezone)::date BETWEEN ${query.from}::date AND ${query.to}::date
+          AND NOT EXISTS (
+            SELECT 1 FROM journal_entries e
+            WHERE e.organization_id = ${organizationId}
+              AND e.idempotency_key = ${FinanceSaleKeyParts.PREFIX}::text || x.id::text || ${FinanceSaleKeyParts.SUFFIX}::text
+          )
       )
-      SELECT x.id, x.status, to_char(((x.at AT TIME ZONE 'UTC') AT TIME ZONE x.timezone)::date, 'YYYY-MM') AS month
-      FROM (
-        SELECT o.id, z.timezone, o.status,
-               CASE WHEN ${shipped}::boolean THEN o.shipped_at ELSE o.delivered_at END AS at
-        FROM orders o
-        JOIN zones z ON z.store_id = o.store_id
-      ) x
-      WHERE x.status <> ${OrderStatus.CANCELLED}
-        AND x.at IS NOT NULL
-        -- A plain range first, which an index can serve (the zones of the stores are at most a day away from UTC)
-        AND x.at >= (${query.from}::date - 1)::timestamp
-        AND x.at < (${query.to}::date + 2)::timestamp
-        AND ((x.at AT TIME ZONE 'UTC') AT TIME ZONE x.timezone)::date BETWEEN ${query.from}::date AND ${query.to}::date
-      ORDER BY x.id`
+      SELECT u.id::text AS id, u.status, to_char(u.day, 'YYYY-MM') AS month FROM unbooked u
+      UNION ALL
+      SELECT o.id::text, o.status, to_char(b.entry_date, 'YYYY-MM')
+      FROM booked b
+      JOIN orders o ON o.id = b.order_id
+      JOIN zones z ON z.store_id = o.store_id
+      WHERE o.status <> ${OrderStatus.CANCELLED}
+      ORDER BY 1`
     let ordersWithoutTaxSnapshot = 0
     let ordersNotReadable = 0
     let returnedOrdersIncluded = 0

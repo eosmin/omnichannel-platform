@@ -431,6 +431,20 @@ describe('The life of an order', () => {
       expect(row.deliveredAt?.toISOString()).toBe(moment)
     })
 
+    it('takes a delivery moment 4 minutes ahead of the server clock and refuses one 6 minutes ahead (the allowance is 5)', async () => {
+      const refused = await shipped()
+      const accepted = await shipped()
+      const ahead = (minutes: number) => new Date(Date.now() + minutes * 60_000).toISOString()
+
+      const tooFar = await status(refused.id, { status: 'DELIVERED', deliveredAt: ahead(6) })
+      const inside = await status(accepted.id, { status: 'DELIVERED', deliveredAt: ahead(4) })
+
+      expect(tooFar.status).toBe(BAD_REQUEST)
+      expect(JSON.stringify(tooFar.body)).toContain('delivered_in_the_future')
+      expect((await get(refused.id)).status).toBe('SHIPPED')
+      expect(inside.status).toBe(OK)
+    })
+
     it('refuses a delivery moment before the order shipped', async () => {
       const order = await shipped()
 
@@ -440,6 +454,7 @@ describe('The life of an order', () => {
       })
 
       expect(response.status).toBe(BAD_REQUEST)
+      expect(JSON.stringify(response.body)).toContain('delivered_before_shipped')
       expect((await get(order.id)).status).toBe('SHIPPED')
     })
 
