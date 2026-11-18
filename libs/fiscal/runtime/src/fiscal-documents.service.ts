@@ -68,6 +68,7 @@ import {
   fiscalSequenceKey,
   isImmutable,
   isStuck,
+  maskPersonName,
   maskTaxId,
   originalStateOf,
   paymentOfSnapshot,
@@ -154,7 +155,7 @@ export interface FiscalDocumentView {
   voidedAt: string | null
   issuedAt: string | null
   createdAt: string
-  // Customer data, minimized: the name and the tax id masked. The full data is read only by the provider, at issue time.
+  // Customer data, minimized: the name and the tax id masked (the first letters of the name, the last characters of the id). The full data is read only by the provider, at issue time.
   receiver: { name: string | null; taxIdMasked: string | null; complete: boolean }
 }
 
@@ -2733,7 +2734,7 @@ export class FiscalDocumentsService {
       issuedAt: row.issuedAt?.toISOString() ?? null,
       createdAt: row.createdAt.toISOString(),
       receiver: {
-        name: receiver.name,
+        name: maskPersonName(receiver.name),
         taxIdMasked: maskTaxId(receiver.taxId),
         complete: receiver.name !== null
       }

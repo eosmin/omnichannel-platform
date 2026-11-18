@@ -1108,14 +1108,21 @@ describe('The fiscal documents (Step 4B.7)', () => {
   describe('reading and permissions', () => {
     it('lists the documents of the organization with the receiver minimized', async () => {
       const { documentId } = await sale()
-      await patchReceiver(documentId, { taxId: '0614-010101-101-1', name: 'Ana' })
+      await patchReceiver(documentId, { taxId: '0614-010101-101-1', name: 'Ana Receptora' })
       const list = await asAdminA().get(ApiRoutes.fiscal.documents.list)
       expect(list.status).toBe(OK)
       expect(JSON.stringify(list.body)).not.toContain('0614-010101-101-1')
+      // The name is minimized as the tax id is: the list and the detail show the first letter of each word
+      expect(JSON.stringify(list.body)).not.toContain('Receptora')
+      expect(JSON.stringify(list.body)).toContain('A** R********')
       const one = await asAdminA().get(ApiRoutes.fiscal.documents.byId(documentId))
       expect(
         (one.body as { data: { receiver: { taxIdMasked: string } } }).data.receiver.taxIdMasked
       ).toBe(`${'*'.repeat(13)}01-1`)
+      expect(JSON.stringify(one.body)).not.toContain('Receptora')
+      expect((one.body as { data: { receiver: { name: string } } }).data.receiver.name).toBe(
+        'A** R********'
+      )
     })
 
     it('flags a document that is stuck, says what a person may do with it, and counts what needs a person over the whole organization', async () => {

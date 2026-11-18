@@ -541,6 +541,18 @@ export function maskTaxId(taxId: string | null): string | null {
   return `${'*'.repeat(id.length - shown)}${shown === 0 ? '' : id.slice(-shown)}`
 }
 
+// The name of a person as the document list and detail show it: the first letter of each word, the rest hidden. The full name is read
+// only by the provider at issue time and, with `fiscal:view_customer_data`, in the customer's fiscal data.
+export function maskPersonName(name: string | null): string | null {
+  if (name === null) return null
+  return name
+    .trim()
+    .split(/\s+/)
+    .filter(word => word.length > 0)
+    .map(word => `${word.charAt(0)}${'*'.repeat(word.length - 1)}`)
+    .join(' ')
+}
+
 // ---------------------------------------------------------------- the detail of a document (the sealed snapshot, read)
 
 export interface FiscalDetailLine {
