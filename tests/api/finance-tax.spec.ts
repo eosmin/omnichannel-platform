@@ -369,7 +369,9 @@ describe('The tax rates, the tax of a product and the tax settings of a store (S
         await viewer.patch(ApiRoutes.finance.taxRates.byId(rate.id)).send({ name: 'No' }),
         await viewer.post(ApiRoutes.finance.taxRates.deactivate(rate.id)),
         await viewer.post(ApiRoutes.finance.taxRates.reactivate(rate.id)),
-        await viewer.patch(ApiRoutes.finance.storeTaxSettings).send({ pricesIncludeTax: false }),
+        await viewer
+          .patch(ApiRoutes.finance.storeTaxSettings)
+          .send({ pricesIncludeTax: false, confirmPriceModeChange: true }),
         await viewer.patch(ApiRoutes.finance.settings).send({ taxRounding: 'down' })
       ]
 
@@ -545,7 +547,7 @@ describe('The tax rates, the tax of a product and the tax settings of a store (S
       const before = await asAdminA().get(ApiRoutes.finance.storeTaxSettings)
       const changed = await asAdminA()
         .patch(ApiRoutes.finance.storeTaxSettings)
-        .send({ pricesIncludeTax: false })
+        .send({ pricesIncludeTax: false, confirmPriceModeChange: true })
       const preferences = await asAdminA().get(ApiRoutes.settings.preferences)
 
       expect(before.body).toEqual({ pricesIncludeTax: true })
@@ -565,18 +567,44 @@ describe('The tax rates, the tax of a product and the tax settings of a store (S
       )
     })
 
+    it('refuse a change of the price mode that nobody confirmed (HC-209)', async () => {
+      const unconfirmed = await asAdminA()
+        .patch(ApiRoutes.finance.storeTaxSettings)
+        .send({ pricesIncludeTax: false })
+      const wrongProof = await asAdminA()
+        .patch(ApiRoutes.finance.storeTaxSettings)
+        .send({ pricesIncludeTax: false, confirmPriceModeChange: false })
+      const same = await asAdminA()
+        .patch(ApiRoutes.finance.storeTaxSettings)
+        .send({ pricesIncludeTax: true })
+      const after = await asAdminA().get(ApiRoutes.finance.storeTaxSettings)
+
+      expect(unconfirmed.status).toBe(CONFLICT)
+      expect(errorOf(unconfirmed).code).toBe(ErrorCodes.FINANCE_PRICE_MODE_CHANGE_UNCONFIRMED)
+      expect(wrongProof.status).toBe(BAD_REQUEST)
+      // Saying the mode it already has changes nothing, so nothing is asked
+      expect(same.status).toBe(OK)
+      expect(after.body).toEqual({ pricesIncludeTax: true })
+    })
+
     it('are not written by the preferences route, which needs another permission', async () => {
       const response = await asAdminA()
         .put(ApiRoutes.settings.preferences)
         .send({ finance: { pricesIncludeTax: true } })
       expect(response.status).toBe(BAD_REQUEST)
-      await asAdminA().patch(ApiRoutes.finance.storeTaxSettings).send({ pricesIncludeTax: true })
+      await asAdminA()
+        .patch(ApiRoutes.finance.storeTaxSettings)
+        .send({ pricesIncludeTax: true, confirmPriceModeChange: true })
     })
 
     it('belong to the store of the request: another store keeps its own', async () => {
-      await asAdminA().patch(ApiRoutes.finance.storeTaxSettings).send({ pricesIncludeTax: false })
+      await asAdminA()
+        .patch(ApiRoutes.finance.storeTaxSettings)
+        .send({ pricesIncludeTax: false, confirmPriceModeChange: true })
       const other = await api(app, ctx.adminB, ctx.storeB).get(ApiRoutes.finance.storeTaxSettings)
-      await asAdminA().patch(ApiRoutes.finance.storeTaxSettings).send({ pricesIncludeTax: true })
+      await asAdminA()
+        .patch(ApiRoutes.finance.storeTaxSettings)
+        .send({ pricesIncludeTax: true, confirmPriceModeChange: true })
 
       expect(other.body).toEqual({ pricesIncludeTax: true })
     })

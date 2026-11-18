@@ -241,11 +241,16 @@ export class FiscalDocumentsService {
       limit: number
       from?: string
       to?: string
-    }
+    },
+    // The stores the caller reaches (HC-128): a document of another store is not listed nor counted. Absent = the whole organization
+    // (the jobs of the worker, which are the organization's).
+    storeIds?: readonly string[]
   ): Promise<FiscalDocumentPage> {
+    const reach = storeIds === undefined ? {} : { storeId: { in: [...storeIds] } }
     const rows = await this.prisma.client.fiscalDocument.findMany({
       where: {
         organizationId,
+        ...reach,
         ...(query.status === undefined ? {} : { status: query.status }),
         ...(query.orderId === undefined ? {} : { orderId: query.orderId }),
         ...(query.from === undefined && query.to === undefined
@@ -269,11 +274,12 @@ export class FiscalDocumentsService {
     // Two counts of the organization, by its index (organization, status): the banner of the screen says how many, not how many of the page
     const [rejected, stuck] = await Promise.all([
       this.prisma.client.fiscalDocument.count({
-        where: { organizationId, status: FiscalDocumentStatus.REJECTED }
+        where: { organizationId, ...reach, status: FiscalDocumentStatus.REJECTED }
       }),
       this.prisma.client.fiscalDocument.count({
         where: {
           organizationId,
+          ...reach,
           status: FiscalDocumentStatus.QUEUED,
           attempts: { gte: FiscalLimits.MAX_ATTEMPTS }
         }

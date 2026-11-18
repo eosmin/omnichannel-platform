@@ -116,8 +116,12 @@ export const updateTaxRateSchema = z
   .refine(body => Object.values(body).some(value => value !== undefined), nothingToChange)
 
 export const updateStoreTaxSettingsSchema = z
-  .strictObject({ pricesIncludeTax: z.boolean().optional() })
-  .refine(body => Object.values(body).some(value => value !== undefined), nothingToChange)
+  .strictObject({
+    pricesIncludeTax: z.boolean().optional(),
+    // The person has been told that the total of the same catalog moves (HC-209); a change of the mode without it is refused
+    confirmPriceModeChange: z.literal(true).optional()
+  })
+  .refine(body => body.pricesIncludeTax !== undefined, nothingToChange)
 
 // A range of days of the report, both ends included: at most a year, so one request is one bounded read
 export const vatReportQuerySchema = z

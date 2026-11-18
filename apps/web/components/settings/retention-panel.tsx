@@ -2,7 +2,7 @@
 
 import { TriangleAlert } from 'lucide-react'
 import { useTranslations } from 'next-intl'
-import { type FormEvent, type ReactElement, useId, useState } from 'react'
+import { type FormEvent, type ReactElement, useEffect, useId, useState } from 'react'
 
 import { ClientPermissions } from '@platform/core/auth'
 import { RetentionBounds } from '@platform/core/domain'
@@ -39,6 +39,9 @@ export function RetentionPanel({ saved }: { saved: RetentionView }): ReactElemen
   const canManage = can(ClientPermissions.SETTINGS_MANAGE_RETENTION)
   const [draft, setDraft] = useState<RetentionDraft>(() => retentionDraftOf(saved))
   const [showProblems, setShowProblems] = useState(false)
+  // The window a refused submit asks the focus for; it moves once the problems are drawn (see the effect below). A new object each
+  // time, so that a second refusal on the same window moves it again.
+  const [focusRequest, setFocusRequest] = useState<{ field: string } | null>(null)
   const guard = useSubmitGuard()
   const problems = retentionProblems(draft)
   const dirty = retentionChanged(saved, draft)
@@ -50,11 +53,19 @@ export function RetentionPanel({ saved }: { saved: RetentionView }): ReactElemen
   const needsAcknowledge = shortened.length > 0 && acknowledged !== shortenedKey
   useUnsavedChanges(dirty)
 
+  // The focus goes to the first window with a problem, once its error and its aria-invalid are in the page, so that a keyboard or
+  // a screen reader lands on what to fix
+  useEffect(() => {
+    if (focusRequest !== null) document.getElementById(`${idPrefix}-${focusRequest.field}`)?.focus()
+  }, [focusRequest, idPrefix])
+
   const submit = (event: FormEvent): void => {
     event.preventDefault()
     if (save.isPending || !dirty || needsAcknowledge) return
     if (Object.keys(problems).length > 0) {
       setShowProblems(true)
+      const first = RETENTION_FIELDS.find(field => problems[field] !== undefined)
+      if (first !== undefined) setFocusRequest({ field: first })
       return
     }
     if (!guard.enter()) return
@@ -93,7 +104,7 @@ export function RetentionPanel({ saved }: { saved: RetentionView }): ReactElemen
                 value={draft[field]}
                 disabled={!canManage || save.isPending}
                 aria-invalid={problem !== undefined}
-                aria-describedby={`${id}-hint`}
+                aria-describedby={problem === undefined ? `${id}-hint` : `${id}-hint ${id}-error`}
                 onChange={event =>
                   setDraft(current => ({ ...current, [field]: event.target.value }))
                 }
@@ -104,7 +115,7 @@ export function RetentionPanel({ saved }: { saved: RetentionView }): ReactElemen
               {t(`fields.${field}.hint`)} {t('range', { min: bounds.min, max: bounds.max })}
             </p>
             {problem === undefined ? null : (
-              <p role="alert" className="text-destructive text-sm">
+              <p id={`${id}-error`} role="alert" className="text-destructive text-sm">
                 {t(`problems.${problem}`, { min: bounds.min, max: bounds.max })}
               </p>
             )}

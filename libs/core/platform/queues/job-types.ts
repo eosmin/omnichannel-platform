@@ -175,6 +175,8 @@ export interface ReconcileFinanceJob extends BaseJob {
 // The weekly check of the hash chain of one organization's journal (TDD_18 §11): read only; a break opens an incident that stops the close
 export interface VerifyLedgerChainJob extends BaseJob {
   organizationId: string
+  // The person who asked for the check to close an open incident (N-B8-1): the worker logs it, and only the weekly schedule leaves it out
+  requestedBy?: string
 }
 // The daily check of the stock of one store against its ledger (TDD_16 §4.8): read only
 export interface ReconcileInventoryJob extends BaseJob {

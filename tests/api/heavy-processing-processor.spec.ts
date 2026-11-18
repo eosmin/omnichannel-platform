@@ -290,7 +290,14 @@ describe('HeavyProcessingProcessor', () => {
     it('hands the organization to the check of the chain, nothing else', async () => {
       checkChain.mockClear()
       await verify({ organizationId: ORG_ID })
-      expect(checkChain).toHaveBeenCalledWith(ORG_ID)
+      expect(checkChain).toHaveBeenCalledWith(ORG_ID, expect.any(Date), undefined)
+    })
+
+    it('hands who asked for the check along, when a person did', async () => {
+      const asker = '1b8f2f1e-6a38-4a4c-9b3e-0d6d3f0f6c11'
+      checkChain.mockClear()
+      await verify({ organizationId: ORG_ID, requestedBy: asker })
+      expect(checkChain).toHaveBeenCalledWith(ORG_ID, expect.any(Date), asker)
     })
 
     it.each([

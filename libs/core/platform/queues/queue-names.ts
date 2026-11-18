@@ -139,6 +139,10 @@ export const reconcileFinanceJobId = (organizationId: string, day: string): stri
 export const verifyLedgerChainJobId = (organizationId: string, day: string): string =>
   `${JobNames.VERIFY_LEDGER_CHAIN}-${organizationId}-${day}`
 
+// One check of the chain asked by a person per organization at a time: asked again while it waits, it is the same job
+export const requestedVerifyLedgerChainJobId = (organizationId: string): string =>
+  `${JobNames.VERIFY_LEDGER_CHAIN}-${organizationId}-requested`
+
 // One submission job per fiscal document and SUBMISSION (the counter of the document): the retries of a submission are one job, and a
 // document that was refused, fixed and sent again is a new one (dashes, no colon)
 export const submitFiscalDocumentJobId = (documentId: string, submission: number): string =>
