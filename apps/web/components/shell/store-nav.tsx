@@ -4,7 +4,7 @@ import { Menu } from 'lucide-react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import type { ReactElement } from 'react'
+import { lazy, type ReactElement } from 'react'
 
 import { AppPaths } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
@@ -15,13 +15,11 @@ import { mayOpenStoreSettings } from '../../lib/settings/may-open-settings'
 import { useProfile } from '../../lib/use-profile'
 import { cn } from '../../lib/utils'
 import { useStore } from '../providers/store-context'
+import { OnDemandMenu } from '../shared/on-demand-menu'
 import { Button } from '../ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from '../ui/dropdown-menu'
+
+const loadPopup = () => import('./store-nav-popup')
+const StoreNavPopup = lazy(loadPopup)
 
 // The pages of the store that exist, for who may open them.  Settings is shown when the person may open at least one of its pages.
 export function StoreNav(): ReactElement {
@@ -128,27 +126,23 @@ export function StoreNav(): ReactElement {
         })}
       </nav>
       <nav aria-label={t('label')} className="min-w-0 md:hidden">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="max-w-full px-2">
+        <OnDemandMenu
+          Popup={StoreNavPopup}
+          preload={loadPopup}
+          popupProps={{
+            entries: entries.map(entry => ({
+              href: entry.href,
+              label: entry.label,
+              isCurrent: entry === currentEntry
+            }))
+          }}
+          trigger={extra => (
+            <Button variant="ghost" className="max-w-full px-2" {...extra}>
               <Menu aria-hidden />
               <span className="truncate">{currentEntry?.label ?? t('menu')}</span>
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            {entries.map(entry => (
-              <DropdownMenuItem key={entry.href} asChild className="min-h-11">
-                <Link
-                  href={entry.href}
-                  aria-current={entry === currentEntry ? 'page' : undefined}
-                  className={entry === currentEntry ? 'font-semibold' : undefined}
-                >
-                  {entry.label}
-                </Link>
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+          )}
+        />
       </nav>
     </>
   )
