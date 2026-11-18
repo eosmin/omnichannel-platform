@@ -16,7 +16,7 @@ export interface MigrationSql {
 const COMMENT = /--.*$/gm
 // The header of a function ends where its body begins (`AS $$` or `AS $tag$`)
 const FUNCTION_START = /CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([\w."]+)\s*\(/gi
-const BODY_START = /\bAS\s+(\$\w*\$)/i
+const BODY_START = /\bAS\s+(\$\w*\$|')/i
 const ALTER_DEFINER = /ALTER\s+FUNCTION\s+[^;]*\bSECURITY\s+DEFINER\b/gi
 // `SELECT ... INTO variable` assigns a PL/pgSQL variable and `IS DISTINCT FROM x` compares: neither names a table
 // `FROM unnest(...)` is a function, and `INSERT INTO t (a, b)` is a table with its columns: only the first is skipped for a `(`
@@ -66,11 +66,13 @@ export function definerViolations(migrations: readonly MigrationSql[]): string[]
   const problems: string[] = []
   for (const { name, sql } of migrations) {
     const text = sql.replace(COMMENT, '')
+    let readHeaders = 0
     for (const m of text.matchAll(FUNCTION_START)) {
       const rest = text.slice(m.index)
       const bodyAt = BODY_START.exec(rest)
-      if (bodyAt === null) continue
-      const header = rest.slice(0, bodyAt.index)
+      // A header with no `AS $$` or `AS '` (a `RETURN` or `BEGIN ATOMIC` body) ends with its statement
+      const header = rest.slice(0, bodyAt === null ? Math.max(rest.indexOf(';'), 0) : bodyAt.index)
+      readHeaders += (header.match(/\bSECURITY\s+DEFINER\b/gi) ?? []).length
       if (!/\bSECURITY\s+DEFINER\b/i.test(header)) continue
       const fn = (m[1] ?? '').replaceAll('"', '')
       const path = searchPathOf(header)
@@ -84,7 +86,7 @@ export function definerViolations(migrations: readonly MigrationSql[]): string[]
         )
         continue
       }
-      if (!path.includes('public')) {
+      if (!path.includes('public') && bodyAt !== null) {
         const delimiter = bodyAt[1] ?? '$$'
         const start = rest.indexOf(delimiter, bodyAt.index) + delimiter.length
         const end = rest.indexOf(delimiter, start)
@@ -96,6 +98,15 @@ export function definerViolations(migrations: readonly MigrationSql[]): string[]
           )
         }
       }
+    }
+    // Fail closed: a SECURITY DEFINER that no header above accounts for (dynamic SQL in a DO block, a statement the patterns do not
+    // read) is refused, because the checker cannot tell whether it is safe
+    const mentions = (text.match(/\bSECURITY\s+DEFINER\b/gi) ?? []).length
+    const altered = (text.match(ALTER_DEFINER) ?? []).length
+    if (mentions > readHeaders + altered) {
+      problems.push(
+        `${name}: a SECURITY DEFINER that this check could not read (dynamic SQL or an unusual statement): write it as a plain CREATE FUNCTION`
+      )
     }
     for (const alter of text.match(ALTER_DEFINER) ?? []) {
       problems.push(

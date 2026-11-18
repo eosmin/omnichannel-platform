@@ -73,6 +73,29 @@ BEGIN DELETE FROM audit_logs WHERE true; INSERT INTO media (id) VALUES ('a'); RE
     expect(problems[0]).toContain('after it was created')
   })
 
+  it('reads SET search_path TO, and a body in quotes, and refuses what it cannot read', () => {
+    expect(
+      check(
+        `CREATE FUNCTION f() RETURNS int LANGUAGE sql SECURITY DEFINER SET search_path TO pg_catalog, pg_temp AS 'SELECT 1';`
+      )
+    ).toEqual([])
+    expect(
+      check(
+        `CREATE FUNCTION f() RETURNS int LANGUAGE sql SECURITY DEFINER SET search_path = public AS 'SELECT 1';`
+      )[0]
+    ).toContain('pg_temp must be the last')
+    // A CREATE FUNCTION inside a string of a DO block is read like any other, and refused for the same reason
+    expect(
+      check(
+        `DO $$ BEGIN EXECUTE 'CREATE FUNCTION f() RETURNS int LANGUAGE sql SECURITY DEFINER AS $x$ SELECT 1 $x$'; END $$;`
+      )[0]
+    ).toContain('no SET search_path')
+    // And a SECURITY DEFINER that no header accounts for is refused because the check cannot tell whether it is safe
+    const unread = check(`DO $$ BEGIN EXECUTE format('%s', 'x SECURITY DEFINER'); END $$;`)
+    expect(unread).toHaveLength(1)
+    expect(unread[0]).toContain('could not read')
+  })
+
   it('judges each function of a file on its own', () => {
     const problems =
       check(`CREATE FUNCTION a() RETURNS int LANGUAGE sql SECURITY DEFINER SET search_path = public, pg_temp AS $$ SELECT 1 $$;
