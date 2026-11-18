@@ -1645,6 +1645,28 @@ describe('The channel connections of a store', () => {
       expect(asViewer.status).toBe(FORBIDDEN)
     })
 
+    it('does not let a plugin pass for one of our codes by answering its name, and serves no detail of a disconnected connection', async () => {
+      const { id } = register({
+        healthCheck: () =>
+          Promise.resolve({
+            healthy: false,
+            checkedAt: new Date().toISOString(),
+            error: ChannelHealthErrors.TOKEN_REJECTED
+          })
+      })
+      const made = (await connect(id)).body as ConnectionBody
+      await asAdmin().post(ApiRoutes.channels.test(made.id))
+
+      const one = await asAdmin().get(ApiRoutes.channels.connectionById(made.id))
+      const detail = await asAdmin().get(ApiRoutes.channels.connectionErrorDetail(made.id))
+      await asAdmin().post(ApiRoutes.channels.disconnect(made.id))
+      const afterDisconnect = await asAdmin().get(ApiRoutes.channels.connectionErrorDetail(made.id))
+
+      expect(one.body).toMatchObject({ lastError: ChannelHealthErrors.PLUGIN_REPORTED })
+      expect(detail.body).toEqual({ detail: `[${ChannelHealthErrors.TOKEN_REJECTED}]` })
+      expect(afterDisconnect.status).toBe(NOT_FOUND)
+    })
+
     it('has no detail to give for a failure that is one of our codes, nor for a connection of another store', async () => {
       const { id } = register({
         healthCheck: () => Promise.resolve({ healthy: false, checkedAt: new Date().toISOString() })

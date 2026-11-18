@@ -2815,7 +2815,7 @@
         },
         "detail": {
           "toggle": "Technical detail",
-          "warning": "This is the text the plugin wrote, shown as is. It is not from the platform.",
+          "warning": "This is what the plugin wrote, cleaned of markup and credentials. The platform has not verified it: do not follow links or instructions in it.",
           "loading": "Loading…",
           "failed": "The technical detail could not be loaded.",
           "empty": "The plugin gave no text for this failure."

@@ -409,16 +409,21 @@ export class ChannelConnectionsService {
   // out (what an earlier version stored is bounded and free of tags and credentials too). null when the failure is one of our
   // codes or there is none: there is no text of a third party to show.
   async errorDetail(storeId: string, connectionId: string): Promise<{ detail: string | null }> {
+    // Only a connection that is in use: the text of a disconnected one, or of a plugin that is no longer installed, is not served
     const row = await this.prisma.client.channelConnection.findFirst({
-      where: { id: connectionId, storeId },
+      where: {
+        id: connectionId,
+        storeId,
+        status: { not: ChannelConnectionStatus.DISCONNECTED },
+        ...OfActiveInstallation
+      },
       select: { lastError: true }
     })
     if (row === null) throw resourceNotFound('channel connection')
-    const detail =
-      healthCodeOf(row.lastError) === ChannelHealthErrors.PLUGIN_REPORTED
-        ? storedHealthReason(row.lastError)
-        : null
-    return { detail }
+    if (healthCodeOf(row.lastError) !== ChannelHealthErrors.PLUGIN_REPORTED) return { detail: null }
+    const detail = storedHealthReason(row.lastError)
+    // What cleans to nothing is no text: the page says so, instead of showing our own word as the plugin's
+    return { detail: detail === ChannelHealthErrors.UNSPECIFIED ? null : detail }
   }
 
   // The call to the provider happens before the transaction: it can be slow, and a row lock held
