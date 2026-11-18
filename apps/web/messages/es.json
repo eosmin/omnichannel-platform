@@ -629,6 +629,7 @@
     "FINANCE_CURRENCY_UNSUPPORTED": "Solo se admite USD",
     "FINANCE_SETUP_REQUIRED": "Las finanzas aún no se han configurado para esta organización",
     "FINANCE_TAX_RATE_NOT_CONFIGURED": "Un producto de este pedido lleva impuesto y no hay una tasa definida para él: define primero una tasa por defecto en Finanzas",
+    "FINANCE_PRICE_MODE_CHANGE_UNCONFIRMED": "Cambiar si los precios incluyen el impuesto cambia el total de todo el catálogo: confirma el cambio de modo de precios",
     "PURCHASE_ORDER_INVALID_STATUS_TRANSITION": "La orden de compra no puede pasar a ese estado desde el que tiene",
     "PURCHASE_RECEIPT_EXCEEDS_ORDER": "Una recepción no puede ingresar más unidades de las que siguen abiertas en la orden",
     "SUPPLIER_HAS_HISTORY": "Este proveedor ya tiene facturas o pagos, así que su cuenta por pagar no puede cambiar",
@@ -6138,7 +6139,11 @@
         "title": "Impuestos de esta tienda",
         "pricesIncludeTax": "Los precios de esta tienda ya incluyen el impuesto",
         "pricesIncludeTaxHint": "Solo cambia cómo se separa el impuesto del precio de lo que se venda desde ahora.",
-        "saved": "Preferencia guardada."
+        "saved": "Preferencia guardada.",
+        "confirmTitle": "¿Cambiar el modo de precios?",
+        "confirmDescription": "El mismo catálogo tendrá otro total: con los precios sin impuesto, el impuesto se suma al precio; con ellos incluido, se separa de él. Solo afecta a lo que se venda desde ahora; los pedidos existentes conservan su modo. Revisa los precios del catálogo antes de confirmar.",
+        "confirmAction": "Cambiar modo",
+        "confirmCancel": "Cancelar"
       }
     },
     "journal": {

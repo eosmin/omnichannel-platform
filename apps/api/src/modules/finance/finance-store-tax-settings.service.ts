@@ -4,7 +4,12 @@ import { AuditAction } from '@platform/core/audit'
 import { AuditService } from '@platform/core/audit-module'
 import { PrismaService } from '@platform/core/database'
 import { FinanceResourceTypes } from '@platform/core/domain'
-import { resourceNotFound } from '@platform/core/errors'
+import {
+  ErrorCodes,
+  HttpStatusCodes,
+  PlatformException,
+  resourceNotFound
+} from '@platform/core/errors'
 import { DomainEvents } from '@platform/core/event-bus'
 import { readFinancePreferences } from '@platform/core/store-preferences'
 
@@ -44,6 +49,14 @@ export class FinanceStoreTaxSettingsService {
     const before = await this.get(storeId)
     if (body.pricesIncludeTax === undefined || body.pricesIncludeTax === before.pricesIncludeTax) {
       return before
+    }
+    // The same catalog costs another total in the other mode (1 130 becomes 1 277): a change nobody confirmed is refused (HC-209)
+    if (body.confirmPriceModeChange !== true) {
+      throw new PlatformException(
+        ErrorCodes.FINANCE_PRICE_MODE_CHANGE_UNCONFIRMED,
+        'changing whether the prices include the tax moves the total of the catalog: send confirmPriceModeChange',
+        HttpStatusCodes.CONFLICT
+      )
     }
     const { from, to } = await writeFinancePricesIncludeTax(
       this.prisma,

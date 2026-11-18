@@ -127,7 +127,7 @@ describe('The tax of an order and the VAT report (Step 4B.3b)', () => {
   const setStorePrices = async (pricesIncludeTax: boolean) => {
     const response = await asAdmin()
       .patch(ApiRoutes.finance.storeTaxSettings)
-      .send({ pricesIncludeTax })
+      .send({ pricesIncludeTax, confirmPriceModeChange: true })
     expect(response.status).toBe(OK)
   }
 
