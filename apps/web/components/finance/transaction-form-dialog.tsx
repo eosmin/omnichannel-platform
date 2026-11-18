@@ -44,7 +44,14 @@ import { useErrorText } from '../../lib/use-error-text'
 import { useStore } from '../providers/store-context'
 import { useDestructiveAction } from '../shared/destructive-action'
 import { Button } from '../ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  stickyDialogActionsClass
+} from '../ui/dialog'
 
 import { SelectField, TextField } from './fields'
 import { ReceiptFileField } from './receipt-file-field'
@@ -407,7 +414,7 @@ function TransactionForm({
           {refusal}
         </p>
       )}
-      <div className="flex justify-end gap-2">
+      <div className={`${stickyDialogActionsClass} flex justify-end gap-2`}>
         <Button type="button" variant="outline" onClick={onCancel} disabled={saving}>
           {t('form.cancel')}
         </Button>

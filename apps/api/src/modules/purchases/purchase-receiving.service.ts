@@ -31,6 +31,7 @@ import {
   canTransition,
   dateToDay,
   dayToDate,
+  documentNumberKey,
   dueDay,
   needsUncreditableTaxAccount,
   PurchaseRule,
@@ -217,14 +218,24 @@ export class PurchaseReceivingService {
     // Several receipts of ONE order may share the supplier's invoice (it arrives in parts); the same invoice on another order would
     // credit its tax twice, so it is refused [ACCOUNTANT]
     if (document !== null) {
-      const elsewhere = await tx.purchaseReceipt.count({
+      // Compared by letters and digits only, so the case, the spaces and the hyphens do not make another invoice (HC-124)
+      const key = documentNumberKey(document)
+      const others = await tx.purchaseReceipt.findMany({
         where: {
           organizationId,
           supplierId: supplier.id,
-          supplierDocumentNumber: document,
+          supplierDocumentNumber: { not: null },
           purchaseOrderId: { not: orderId }
-        }
+        },
+        distinct: ['supplierDocumentNumber'],
+        select: { supplierDocumentNumber: true }
       })
+      // A number with no letter or digit has no key: it is compared as typed
+      const elsewhere = others.filter(other =>
+        key === ''
+          ? other.supplierDocumentNumber === document
+          : documentNumberKey(other.supplierDocumentNumber ?? '') === key
+      ).length
       if (elsewhere > 0) {
         throw resourceConflict('the supplier document belongs to another purchase order', {
           conflict: PurchaseConflicts.DOCUMENT_NUMBER_IN_USE
