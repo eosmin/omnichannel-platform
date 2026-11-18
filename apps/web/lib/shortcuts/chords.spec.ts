@@ -7,6 +7,7 @@ import {
   nextChord,
   NO_PENDING,
   sequencePrefixes,
+  worksFromAnyField,
   worksWhileTyping
 } from './chords'
 
@@ -103,6 +104,22 @@ describe('worksWhileTyping', () => {
     expect(worksWhileTyping(Shortcuts.global.SEND_MESSAGE)).toBe(true)
     expect(worksWhileTyping('j')).toBe(false)
     expect(worksWhileTyping(Shortcuts.conversation.INTERNAL_NOTE)).toBe(false)
+  })
+})
+
+describe('worksFromAnyField', () => {
+  it('lets the palette open from a field, and nothing that is typed', () => {
+    expect(worksFromAnyField(Shortcuts.global.COMMAND_PALETTE)).toBe(true)
+    expect(worksFromAnyField(Shortcuts.global.SEND_MESSAGE)).toBe(false)
+    expect(worksFromAnyField(Shortcuts.list.FOCUS_SEARCH)).toBe(false)
+    expect(worksFromAnyField('k')).toBe(false)
+    expect(worksFromAnyField('Mod+J')).toBe(false)
+  })
+
+  it('is what Cmd+K and Ctrl+K spell on each platform, and not the other modifier', () => {
+    expect(chordOf(press('k', { metaKey: true }), true)).toBe(Shortcuts.global.COMMAND_PALETTE)
+    expect(chordOf(press('k', { ctrlKey: true }), false)).toBe(Shortcuts.global.COMMAND_PALETTE)
+    expect(chordOf(press('k', { ctrlKey: true }), true)).toBeNull()
   })
 })
 
