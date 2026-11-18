@@ -399,7 +399,12 @@ describe('The fiscal documents (Step 4B.7)', () => {
             where: { id: orderId },
             data: { taxCents: null, pricesIncludeTax: null }
           }),
-        orderId => owner.orderItem.updateMany({ where: { orderId }, data: { taxCents: null } })
+        // The three columns of a line go null together (`order_items_tax_snapshot_check`)
+        orderId =>
+          owner.orderItem.updateMany({
+            where: { orderId },
+            data: { taxTreatment: null, taxRateBps: null, taxCents: null }
+          })
       ]
       for (const makeGap of gaps) {
         const order = await deliveredOrder()
