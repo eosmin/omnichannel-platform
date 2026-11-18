@@ -135,13 +135,21 @@ export class FinanceTaxRatesService {
             body.inputAccountId ?? current.inputAccountId
           )
           // The tax already posted stays where it was: the purchases and the entries by hand read the accounts of the rate, so a move
-          // with tax on them splits it. Once it nets to zero (a reversal, a reclassification) the rate moves (HC-119)
+          // with tax on the account splits it. Each account that moves is looked at on its own (the output tax and the input tax
+          // would cancel each other) and, once its tax nets to zero (a reversal, a reclassification), it moves (HC-119)
           await lockSettingsRow(tx, organizationId)
-          if ((await netBalanceCents(tx, organizationId, { taxRateId: id })) !== 0) {
-            throw conflict(
-              'the tax rate holds posted tax',
-              FinanceConflicts.TAX_RATE_ACCOUNT_HAS_HISTORY
-            )
+          for (const field of ['outputAccountId', 'inputAccountId'] as const) {
+            if (data[field] === undefined) continue
+            const held = await netBalanceCents(tx, organizationId, {
+              accountId: current[field],
+              taxRateId: id
+            })
+            if (held !== 0) {
+              throw conflict(
+                'the tax rate holds posted tax',
+                FinanceConflicts.TAX_RATE_ACCOUNT_HAS_HISTORY
+              )
+            }
           }
         }
         if (body.isDefault === true && !current.isDefault) {

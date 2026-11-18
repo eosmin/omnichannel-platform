@@ -239,16 +239,18 @@ describe('The tax rates, the tax of a product and the tax settings of a store (S
       }
       await post('tax-in')
 
-      for (const body of [
-        { inputAccountId: accounts['1301'] },
-        { outputAccountId: accounts['2101'] }
-      ]) {
-        const moved = await asAdminA().patch(ApiRoutes.finance.taxRates.byId(rate.id)).send(body)
-        expect(moved.status).toBe(CONFLICT)
-        expect(errorOf(moved).metadata).toMatchObject({
-          conflict: FinanceConflicts.TAX_RATE_ACCOUNT_HAS_HISTORY
-        })
-      }
+      const moved = await asAdminA()
+        .patch(ApiRoutes.finance.taxRates.byId(rate.id))
+        .send({ inputAccountId: accounts['1301'] })
+      expect(moved.status).toBe(CONFLICT)
+      expect(errorOf(moved).metadata).toMatchObject({
+        conflict: FinanceConflicts.TAX_RATE_ACCOUNT_HAS_HISTORY
+      })
+      // The other side has no tax on it: each account is looked at on its own
+      const output = await asAdminA()
+        .patch(ApiRoutes.finance.taxRates.byId(rate.id))
+        .send({ outputAccountId: accounts['2101'] })
+      expect(output.status).toBe(OK)
       expect(
         (await owner.taxRate.findUniqueOrThrow({ where: { id: rate.id } })).inputAccountId
       ).toBe(accounts['1401'])

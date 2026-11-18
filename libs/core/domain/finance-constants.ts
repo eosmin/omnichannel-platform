@@ -204,12 +204,13 @@ export const RolesPinnedByHistory: readonly AccountRole[] = [
   AccountRole.PAYABLE_SUPPLIERS,
   AccountRole.PAYABLE_CARRIERS,
   AccountRole.VAT_OUTPUT,
-  AccountRole.VAT_INPUT
+  AccountRole.VAT_INPUT,
+  AccountRole.OPENING_EQUITY
 ]
 
 // The other roles, free to move with history on purpose: the defaults of cash and bank only say where a new payment lands (an
 // account of the organization that is not the default keeps its own balance), the roles of the income statement keep their past in
-// the period it was posted to, the rounding and the opening equity are one-off. Every role is in one list or the other: a spec
+// the period it was posted to, the rounding and the differences of cash on delivery are settled by their own entries. Every role is in one list or the other: a spec
 // holds it, so a new role is classified when it is born (HC-119).
 export const RolesFreeOfHistory: readonly AccountRole[] = [
   AccountRole.CASH_DEFAULT,
@@ -224,7 +225,6 @@ export const RolesFreeOfHistory: readonly AccountRole[] = [
   AccountRole.CARRIER_FREIGHT_EXPENSE,
   AccountRole.CARRIER_COMMISSION_EXPENSE,
   AccountRole.COD_DIFFERENCES,
-  AccountRole.OPENING_EQUITY,
   AccountRole.ROUNDING,
   AccountRole.UNCATEGORIZED_EXPENSE
 ]
