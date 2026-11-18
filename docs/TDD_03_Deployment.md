@@ -1101,10 +1101,24 @@ gcloud sql instances clone platform-db platform-db-pitr \
 aws s3api put-bucket-versioning --bucket platform-production \
   --versioning-configuration Status=Enabled
 
+# Encryption at rest by default (SSE-S3; use aws:kms and a key id to hold the key yourself)
+aws s3api put-bucket-encryption --bucket platform-production \
+  --server-side-encryption-configuration \
+  '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"},"BucketKeyEnabled":true}]}'
+
 # Cross-region replication to platform-production-replica (us-west-2)
 aws s3api put-bucket-replication --bucket platform-production \
   --replication-configuration file://s3-replication.json
 ```
+
+Nothing in the repository creates the production bucket (only SeaweedFS makes the local one), so the two
+protections above are checked, not applied. When the api starts in `staging` or `production` it asks the
+bucket (`GetBucketVersioning`, `GetBucketEncryption`) and, for each protection that is off or that the store
+does not answer for, writes a warning to the log and sets `platform_storage_bucket_protection_gap{protection}`
+to 1 (to 0 when it is on). Alert on any value above 0. The check never stops the api from starting. The
+role of the api needs `s3:GetBucketVersioning` and `s3:GetEncryptionConfiguration`; without them the answer
+is "unknown" and counts as a gap. The 7-year cold retention of the audit archive is a separate feature and
+is not part of this check.
 
 ### 7.4 Kubernetes backups (Phase 2 only)
 

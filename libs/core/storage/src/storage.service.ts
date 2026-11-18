@@ -3,6 +3,8 @@ import type { Readable } from 'node:stream'
 import {
   CopyObjectCommand,
   DeleteObjectCommand,
+  GetBucketEncryptionCommand,
+  GetBucketVersioningCommand,
   GetObjectCommand,
   HeadBucketCommand,
   HeadObjectCommand,
@@ -15,9 +17,15 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { Inject, Injectable, type OnApplicationShutdown } from '@nestjs/common'
 
 import { HttpStatusCodes } from '@platform/core/errors'
-import { attachmentDisposition, UploadLimits } from '@platform/core/storage'
+import {
+  attachmentDisposition,
+  type BucketProtectionReport,
+  BucketProtections,
+  BucketProtectionStates,
+  UploadLimits
+} from '@platform/core/storage'
 
-import { S3_CLIENT, STORAGE_BUCKET } from './storage.constants'
+import { ENCRYPTION_NOT_CONFIGURED, S3_CLIENT, STORAGE_BUCKET } from './storage.constants'
 
 export interface UploadUrlParams {
   key: string
@@ -257,6 +265,36 @@ export class StorageService implements OnApplicationShutdown {
     await this.s3.send(new HeadBucketCommand({ Bucket: this.bucket }), {
       abortSignal: AbortSignal.timeout(timeoutMs)
     })
+  }
+
+  // What the bucket has of the protections TDD_03 §7.3 asks for. Each one is asked on its own, and a question the
+  // store does not answer (no permission, a compatible store without the call) is `unknown`, never `on`.
+  async inspectProtection(timeoutMs: number): Promise<BucketProtectionReport> {
+    const options = { abortSignal: AbortSignal.timeout(timeoutMs) }
+    const [encryption, versioning] = await Promise.all([
+      this.s3
+        .send(new GetBucketEncryptionCommand({ Bucket: this.bucket }), options)
+        .then(answer =>
+          (answer.ServerSideEncryptionConfiguration?.Rules ?? []).length > 0
+            ? BucketProtectionStates.ON
+            : BucketProtectionStates.OFF
+        )
+        .catch((error: unknown) =>
+          (error as { name?: string }).name === ENCRYPTION_NOT_CONFIGURED
+            ? BucketProtectionStates.OFF
+            : BucketProtectionStates.UNKNOWN
+        ),
+      this.s3
+        .send(new GetBucketVersioningCommand({ Bucket: this.bucket }), options)
+        .then(answer =>
+          answer.Status === 'Enabled' ? BucketProtectionStates.ON : BucketProtectionStates.OFF
+        )
+        .catch(() => BucketProtectionStates.UNKNOWN)
+    ])
+    return {
+      [BucketProtections.ENCRYPTION]: encryption,
+      [BucketProtections.VERSIONING]: versioning
+    }
   }
 
   onApplicationShutdown(): void {
