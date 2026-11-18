@@ -1279,6 +1279,9 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
       expect(answers.filter(answer => answer.status === CREATED)).toHaveLength(1)
       const refused = answers.find(answer => answer.status !== CREATED)
       expect(refused?.status).toBe(CONFLICT)
+      expect([FinanceConflicts.BANK_LINE_ALREADY_MATCHED, FinanceConflicts.BANK_CHANGED]).toContain(
+        conflictOf(refused?.body)
+      )
       const rows = await confirmedOf(line.id)
       expect(rows).toHaveLength(2)
       expect(new Set(rows.map(row => row.groupId)).size).toBe(1)
@@ -1361,11 +1364,12 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
       })
 
       it('keeps a pair and a group, or two groups, of one statement line apart', async () => {
-        const [a, b, c, d] = [
+        const [a, b, c, d, e] = [
           await bookLine('in', 600, day(-3)),
           await bookLine('in', 400, day(-3)),
           await bookLine('in', 1000, day(-3)),
-          await bookLine('in', 1000, day(-3))
+          await bookLine('in', 700, day(-3)),
+          await bookLine('in', 300, day(-3))
         ]
         const made = await imported([`${day(-2)},Apart,,10.00`])
         const line = await lineOf(made.id)
@@ -1378,10 +1382,16 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
 
         await expect(
           owner.reconciliationMatch.create({ data: rowOf(line.id, c, null) })
-        ).rejects.toThrow(/RECONCILIATION_MATCH/)
+        ).rejects.toThrow(/matched by a group/)
+        // A second group that is valid on its own (it adds up to the line) is refused all the same: the line has its group
+        const second = randomUUID()
         await expect(
-          owner.reconciliationMatch.create({ data: rowOf(line.id, d, randomUUID(), true) })
-        ).rejects.toThrow(/RECONCILIATION_GROUP/)
+          // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+          owner.$transaction(async tx => {
+            await tx.reconciliationMatch.create({ data: rowOf(line.id, d, second, true) })
+            await tx.reconciliationMatch.create({ data: rowOf(line.id, e, second) })
+          })
+        ).rejects.toThrow(/statement line is matched already/)
         expect(await confirmedOf(line.id)).toHaveLength(2)
       })
 
@@ -1390,10 +1400,11 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
         const made = await imported([`${day(-2)},Lead,,10.00`])
         const line = await lineOf(made.id)
 
-        for (const leads of [
-          [false, false],
-          [true, true]
-        ]) {
+        for (const [leads, refusal] of [
+          [[false, false], /RECONCILIATION_GROUP/],
+          // Two leads of one statement line: the unique index of the confirmed decisions holds the second
+          [[true, true], /Unique constraint|uq_reconciliation_confirmed_statement_line/]
+        ] as const) {
           const groupId = randomUUID()
           await expect(
             // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
@@ -1401,7 +1412,7 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
               await tx.reconciliationMatch.create({ data: rowOf(line.id, a, groupId, leads[0]) })
               await tx.reconciliationMatch.create({ data: rowOf(line.id, b, groupId, leads[1]) })
             })
-          ).rejects.toThrow()
+          ).rejects.toThrow(refusal)
         }
         expect(await confirmedOf(line.id)).toHaveLength(0)
       })
@@ -1441,7 +1452,7 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
           owner.reconciliationMatch.create({
             data: { ...rowOf(line.id, a, randomUUID()), status: 'rejected' }
           })
-        ).rejects.toThrow()
+        ).rejects.toThrow(/chk_reconciliation_group/)
       })
     })
   })

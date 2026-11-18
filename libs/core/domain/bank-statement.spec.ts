@@ -994,6 +994,22 @@ describe('groupProblems (one statement line against several lines of the books)'
     expect(groupProblems({ statementCents: 100, lines: twice })).toEqual([BankGroupRule.DUPLICATE])
   })
 
+  it('accepts exactly the smallest and the largest group, and refuses a sum that is not a safe integer', () => {
+    const smallest = lines(30, 70)
+    expect(groupProblems({ statementCents: 100, lines: smallest })).toEqual([])
+    const largest = lines(...new Array<number>(BankStatementLimits.MAX_GROUP).fill(2))
+    expect(
+      groupProblems({ statementCents: BankStatementLimits.MAX_GROUP * 2, lines: largest })
+    ).toEqual([])
+    const huge = [
+      { id: 'a', signedCents: Number.MAX_SAFE_INTEGER },
+      { id: 'b', signedCents: Number.MAX_SAFE_INTEGER }
+    ]
+    expect(groupProblems({ statementCents: Number.MAX_SAFE_INTEGER * 2, lines: huge })).toEqual([
+      BankGroupRule.SUM
+    ])
+  })
+
   it('reports every problem at once', () => {
     expect(groupProblems({ statementCents: 5, lines: [{ id: 'a', signedCents: 1 }] })).toEqual([
       BankGroupRule.SIZE,
