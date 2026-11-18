@@ -28,6 +28,7 @@ const actor = {
 const body = { displayName: 'Main line' }
 
 interface Tx {
+  $queryRaw: jest.Mock
   pluginInstallation: { findFirst: jest.Mock }
   channelConnection: {
     findUnique: jest.Mock
@@ -46,6 +47,8 @@ function build(): {
   log: jest.Mock
 } {
   const tx: Tx = {
+    // The resolver of the holder of an account (rls_resolve_channel_connection): nobody by default
+    $queryRaw: jest.fn().mockResolvedValue([]),
     pluginInstallation: { findFirst: jest.fn().mockResolvedValue({ id: INSTALLATION }) },
     channelConnection: {
       findUnique: jest.fn().mockResolvedValue(null),
@@ -263,6 +266,41 @@ describe('PluginChannelConnectionsService.put', () => {
     tx.channelConnection.create.mockRejectedValue(new Error('the database is down'))
     await expect(service.put(caller, 'acct-1', body, actor)).rejects.toThrow('the database is down')
     expect(tx.channelConnection.create).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('PluginChannelConnectionsService.put, with row security on', () => {
+  it('answers 409 when the account is held by another store whose row this transaction cannot read', async () => {
+    const { service, tx } = build()
+    // Row security hides the row of the other store; the resolver still says who holds the account
+    tx.channelConnection.findUnique.mockResolvedValue(null)
+    tx.$queryRaw.mockResolvedValue([
+      {
+        id: ROW,
+        store_id: OTHER_STORE,
+        status: ChannelConnectionStatus.ACTIVE,
+        installation_status: 'active',
+        plugin_status: 'approved'
+      }
+    ])
+    await expect(service.put(caller, 'acct-1', body, actor)).rejects.toMatchObject({
+      code: ErrorCodes.RESOURCE_CONFLICT
+    })
+    expect(tx.channelConnection.create).not.toHaveBeenCalled()
+  })
+
+  it('does not take the answer of the resolver for a conflict when the account is its own store', async () => {
+    const { service, tx } = build()
+    tx.$queryRaw.mockResolvedValue([
+      {
+        id: ROW,
+        store_id: STORE,
+        status: ChannelConnectionStatus.ACTIVE,
+        installation_status: 'active',
+        plugin_status: 'approved'
+      }
+    ])
+    await expect(service.put(caller, 'acct-1', body, actor)).resolves.toBe(true)
   })
 })
 
