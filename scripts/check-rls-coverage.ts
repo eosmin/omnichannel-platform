@@ -67,7 +67,7 @@ const globalMismatch = [
     model => `${model}: in RlsGlobalModels but not a global table of scripts/rls-exceptions.ts`
   )
 ]
-// The raw SQL guard of PrismaService reads RlsPolicyTables: it must be every table that is not global, and the join tables of the tags
+// The raw SQL guard of PrismaService reads RlsPolicyTables: it must be every table that has a policy (not global, not pending a phase), and the join tables of the tags
 const expectedPolicyTables = [
   ...tables
     .filter(({ table }) => RLS_EXEMPTIONS[table]?.kind !== 'global')

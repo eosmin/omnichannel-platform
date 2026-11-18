@@ -34,6 +34,31 @@ describe('tablesOfRawSql', () => {
   })
 })
 
+describe('tablesOfRawSql, the shapes that are not a plain FROM', () => {
+  it('reads a list of tables, USING, LOCK, COPY and MERGE', () => {
+    expect(tablesOfRawSql('SELECT 1 FROM users u, conversations c WHERE u.id = c.u')).toEqual([
+      'users',
+      'conversations'
+    ])
+    expect(tablesOfRawSql('DELETE FROM users USING messages m WHERE m.u = users.id')).toEqual([
+      'users',
+      'messages'
+    ])
+    expect(tablesOfRawSql('LOCK TABLE orders IN SHARE MODE')).toContain('orders')
+    expect(tablesOfRawSql('COPY media TO STDOUT')).toContain('media')
+    expect(tablesOfRawSql('MERGE INTO inventory_levels t USING x ON true')).toContain(
+      'inventory_levels'
+    )
+  })
+
+  it('does not take a comment inside a string, or a quote inside a comment, for the real thing', () => {
+    expect(tablesOfRawSql("SELECT 1 FROM media WHERE note = 'a--b' AND x = 1")).toEqual(['media'])
+    expect(tablesOfRawSql("SELECT 'x -- ' FROM messages")).toEqual(['messages'])
+    expect(tablesOfRawSql("SELECT 1 -- it's here\nFROM orders")).toEqual(['orders'])
+    expect(tablesOfRawSql("SELECT 'it''s' FROM media")).toEqual(['media'])
+  })
+})
+
 describe('policyTablesOfRawSql', () => {
   it('keeps the tables that have a policy and drops the others', () => {
     expect(
