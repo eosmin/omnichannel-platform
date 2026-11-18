@@ -1,4 +1,4 @@
-import { csvCell, csvCellText, csvHeader, csvLine } from './csv'
+import { CsvDecimal, csvCell, csvCellText, csvHeader, csvLine } from './csv'
 
 describe('csv', () => {
   it('writes empty values as nothing', () => {
@@ -11,6 +11,12 @@ describe('csv', () => {
     expect(csvCell('a,b')).toBe('"a,b"')
     expect(csvCell('say "hi"')).toBe('"say ""hi"""')
     expect(csvCell('one\ntwo')).toBe('"one\ntwo"')
+  })
+
+  it('writes a decimal as a number, a negative one without the quote of a formula', () => {
+    expect(csvCell(new CsvDecimal(0.5, 2))).toBe('0.50')
+    expect(csvCell(new CsvDecimal(-5, 2))).toBe('-5.00')
+    expect(() => new CsvDecimal(Number.NaN, 2)).toThrow(RangeError)
   })
 
   it.each(['=1+1', '+1', '-1', '@SUM(A1)', '\tx', '\rx'])('defuses the formula %j', text => {

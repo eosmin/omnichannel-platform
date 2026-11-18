@@ -1,4 +1,5 @@
 import { AnalyticsMetrics, MetricUnits, RolledUpMetricUnits } from '@platform/core/analytics'
+import { CsvDecimal } from '@platform/core/exports'
 
 import { csvFigure, displayValue } from './sheet'
 
@@ -26,10 +27,16 @@ describe('displayValue', () => {
 
 describe('csvFigure', () => {
   it('writes money with two decimals, as the PDF does', () => {
-    expect(csvFigure(0.5, MetricUnits.CURRENCY)).toBe('0.50')
-    expect(csvFigure(0.01, MetricUnits.CURRENCY)).toBe('0.01')
-    expect(csvFigure(120, MetricUnits.CURRENCY)).toBe('120.00')
-    expect(csvFigure(0, MetricUnits.CURRENCY)).toBe('0.00')
+    expect(csvFigure(0.5, MetricUnits.CURRENCY)).toEqual(new CsvDecimal(0.5, 2))
+    expect(csvFigure(0.5, MetricUnits.CURRENCY)).toHaveProperty('text', '0.50')
+    expect(csvFigure(0.01, MetricUnits.CURRENCY)).toEqual(new CsvDecimal(0.01, 2))
+    expect(csvFigure(0.01, MetricUnits.CURRENCY)).toHaveProperty('text', '0.01')
+    expect(csvFigure(120, MetricUnits.CURRENCY)).toEqual(new CsvDecimal(120, 2))
+    expect(csvFigure(120, MetricUnits.CURRENCY)).toHaveProperty('text', '120.00')
+    expect(csvFigure(0, MetricUnits.CURRENCY)).toEqual(new CsvDecimal(0, 2))
+    expect(csvFigure(0, MetricUnits.CURRENCY)).toHaveProperty('text', '0.00')
+    // A refund-heavy day is negative: it stays a number, never a text that would take the quote of a formula
+    expect(csvFigure(-5, MetricUnits.CURRENCY)).toHaveProperty('text', '-5.00')
   })
 
   it('leaves a count and a time as numbers and an unknown figure empty', () => {
