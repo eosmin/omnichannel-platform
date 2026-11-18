@@ -29,7 +29,7 @@ describe('the finance enums', () => {
   it('name every role once, in lower snake case', () => {
     const roles: string[] = Object.values(AccountRole)
     expect(new Set(roles).size).toBe(roles.length)
-    expect(roles).toHaveLength(23)
+    expect(roles).toHaveLength(24)
     for (const [key, value] of Object.entries(AccountRole)) {
       expect(key).toBe(value.toUpperCase())
       expect(value).toMatch(/^[a-z]+(_[a-z]+)*$/)
