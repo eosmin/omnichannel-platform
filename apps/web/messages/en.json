@@ -6795,7 +6795,9 @@
         "from": "From the account",
         "to": "To the account",
         "document": "Document number",
-        "memo": "Memo"
+        "memo": "Memo",
+        "useAsMemo": "Use the statement text as memo",
+        "dropMemo": "Leave the memo empty"
       },
       "group": {
         "title": "Match with several entries",

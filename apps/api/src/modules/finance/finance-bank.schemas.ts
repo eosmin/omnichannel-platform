@@ -165,6 +165,15 @@ export const bankBookCandidatesQuerySchema = z.strictObject({
 })
 export type BankBookCandidatesQuery = z.output<typeof bankBookCandidatesQuerySchema>
 
+// The memo of the draft is empty unless the person asks for the description of the statement line, which is the bank's text
+export const bankRegisterDraftQuerySchema = z.strictObject({
+  useDescriptionAsMemo: z
+    .enum(['true', 'false'])
+    .transform(value => value === 'true')
+    .default(false)
+})
+export type BankRegisterDraftQuery = z.output<typeof bankRegisterDraftQuerySchema>
+
 // A pair: the journal line a person says is the same movement as the statement line of the path
 export const bankPairSchema = z.strictObject({ journalLineId: lowercasedUuidSchema })
 export type BankPairBody = z.output<typeof bankPairSchema>

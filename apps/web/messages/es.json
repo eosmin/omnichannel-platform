@@ -6795,7 +6795,9 @@
         "from": "De la cuenta",
         "to": "A la cuenta",
         "document": "Número de documento",
-        "memo": "Nota"
+        "memo": "Nota",
+        "useAsMemo": "Usar el texto del extracto como nota",
+        "dropMemo": "Dejar la nota vacía"
       },
       "group": {
         "title": "Conciliar con varios asientos",

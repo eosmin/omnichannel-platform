@@ -863,9 +863,17 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
         occurredOn: day(-11),
         amountCents: 325,
         fromAccountId: accounts[BANK],
-        documentNumber: 'F-9',
-        memo: 'Bank fee'
+        documentNumber: 'F-9'
       })
+      // the bank's text becomes the memo only when the person asks for it
+      const withMemo = await asAdmin().get(
+        `${ApiRoutes.finance.bank.lineRegisterDraft(out?.id ?? '')}?useDescriptionAsMemo=true`
+      )
+      expect(withMemo.body).toMatchObject({ documentNumber: 'F-9', memo: 'Bank fee' })
+      const refused = await asAdmin().get(
+        `${ApiRoutes.finance.bank.lineRegisterDraft(out?.id ?? '')}?useDescriptionAsMemo=yes`
+      )
+      expect(refused.status).toBe(BAD_REQUEST)
       const interest = await asAdmin().get(
         ApiRoutes.finance.bank.lineRegisterDraft(incoming?.id ?? '')
       )

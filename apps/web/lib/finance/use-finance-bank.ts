@@ -138,13 +138,23 @@ export function useBankStatus(
 // What an unmatched line would be as a transaction, prefilled. Only asked when the person opens it (reading it posts nothing)
 export function useBankRegisterDraft(
   storeId: string,
-  lineId: string | null
+  lineId: string | null,
+  useDescriptionAsMemo = false
 ): UseQueryResult<BankRegisterDraftView> {
   return useQuery({
-    queryKey: QueryKeys.finance.bank.draft(storeId, lineId ?? ''),
-    queryFn: ({ signal }) => fetchBankRegisterDraft(apiClient, storeId, lineId as string, signal),
+    queryKey: QueryKeys.finance.bank.draft(storeId, lineId ?? '', useDescriptionAsMemo),
+    queryFn: ({ signal }) =>
+      fetchBankRegisterDraft(
+        apiClient,
+        storeId,
+        lineId as string,
+        { useDescriptionAsMemo },
+        signal
+      ),
     enabled: lineId !== null,
-    retry: false
+    retry: false,
+    // The memo option changes one row: the draft stays on screen while the other answer arrives
+    placeholderData: keepPreviousData
   })
 }
 

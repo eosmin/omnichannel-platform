@@ -481,9 +481,12 @@ export function fetchBankRegisterDraft(
   client: ApiClient,
   storeId: string,
   lineId: string,
+  options: { useDescriptionAsMemo?: boolean } = {},
   signal?: AbortSignal
 ): Promise<BankRegisterDraftView> {
-  return client.request(ApiRoutes.finance.bank.lineRegisterDraft(encode(lineId)), {
+  // The memo is empty unless the person asks for the description of the line
+  const search = options.useDescriptionAsMemo === true ? '?useDescriptionAsMemo=true' : ''
+  return client.request(`${ApiRoutes.finance.bank.lineRegisterDraft(encode(lineId))}${search}`, {
     schema: draftSchema,
     storeId,
     signal
