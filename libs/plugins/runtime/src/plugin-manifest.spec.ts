@@ -7,6 +7,7 @@ import {
   PluginManifestLimits
 } from '@platform/core/domain'
 import { Events } from '@platform/core/events'
+import { allowLocalCommandsUrl } from '@platform/core/url-safety'
 import { PluginScopes } from '@platform/plugins/sdk'
 
 import { isNewerVersion, manifestWebhookOf, pluginManifestSchema } from './plugin-manifest'
@@ -402,6 +403,34 @@ describe('pluginManifestSchema, channel plugins', () => {
         })
       ).success
     ).toBe(true)
+  })
+
+  describe('a commands url on this machine, for the suites (PLUGIN_ALLOW_LOCAL_COMMANDS_URL)', () => {
+    afterEach(() => {
+      allowLocalCommandsUrl({ nodeEnv: 'test', flag: false })
+    })
+    const local = (url: string) =>
+      refused(channelManifest({ channel: { label: 'Acme Chat', commandsUrl: url } }))
+
+    it('is refused by default', () => {
+      expect(local('http://localhost:4000/commands')).toBe(true)
+    })
+
+    it('is accepted with NODE_ENV=test and the switch on, and a private address is not', () => {
+      allowLocalCommandsUrl({ nodeEnv: 'test', flag: true })
+      expect(local('http://localhost:4000/commands')).toBe(false)
+      expect(local('http://127.0.0.1:4000/commands')).toBe(false)
+      expect(local('http://10.0.0.5/commands')).toBe(true)
+    })
+
+    it.each(['production', 'staging', 'development'])(
+      'is still refused in %s, even with the switch on',
+      nodeEnv => {
+        allowLocalCommandsUrl({ nodeEnv, flag: true })
+        expect(local('http://localhost:4000/commands')).toBe(true)
+        expect(local('http://127.0.0.1:4000/commands')).toBe(true)
+      }
+    )
   })
 
   it.each(Object.values(ChannelIds))('refuses the id of the official channel %s', id => {

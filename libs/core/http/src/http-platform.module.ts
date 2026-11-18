@@ -11,6 +11,7 @@ import { RedisModule } from '@platform/core/redis'
 import { AuthPlatformModule } from './auth-platform.module'
 import { HealthModule } from './health/health.module'
 import { HttpErrorsModule } from './http-errors.module'
+import { applyLocalCommandsUrlPolicy } from './local-commands-url-policy'
 import { MagicLinkLimitPlatformModule } from './magic-link-limit-platform.module'
 import { OutboundFlagsPlatformModule } from './outbound-flags-platform.module'
 import { StoragePlatformModule } from './storage-platform.module'
@@ -35,6 +36,8 @@ export interface HttpPlatformOptions {
 @Module({})
 export class HttpPlatformModule {
   static forRoot(options: HttpPlatformOptions = {}): DynamicModule {
+    // Before Nest builds a provider: a manifest is read, and a plugin called, only after this
+    applyLocalCommandsUrlPolicy(env)
     return {
       module: HttpPlatformModule,
       imports: [

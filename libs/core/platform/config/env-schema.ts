@@ -184,6 +184,12 @@ export const envSchema = z
       z.coerce.number().int().min(E2eMagicLinkLimit.min).max(E2eMagicLinkLimit.max).optional()
     ),
 
+    // A channel plugin of the suites answers on this machine over http, which a `commandsUrl` is never allowed to do (TDD_10 §6.7). Off
+    // by default, and any environment but NODE_ENV=test refuses it (checked below). Only the word `true` turns it on.
+    PLUGIN_ALLOW_LOCAL_COMMANDS_URL: z
+      .stringbool({ truthy: ['true'], falsy: ['false'] })
+      .default(false),
+
     // Bull Board and the dead-letter tooling: a JWT plus this allowlist (empty = nobody)
     BULL_BOARD_ENABLED: z.stringbool().default(false),
     BULL_BOARD_ADMIN_EMAILS: z
@@ -214,6 +220,27 @@ export const envSchema = z
           'E2E_MAGIC_LINK_LIMIT is for NODE_ENV=test only: any other environment keeps the real limit',
         path: ['E2E_MAGIC_LINK_LIMIT'],
         input: env.E2E_MAGIC_LINK_LIMIT
+      })
+    }
+    if (env.NODE_ENV !== 'test' && env.PLUGIN_ALLOW_LOCAL_COMMANDS_URL) {
+      // The rule that a plugin is called only on the public internet is what keeps a store's plugin off our own network
+      ctx.issues.push({
+        code: 'custom',
+        message:
+          'PLUGIN_ALLOW_LOCAL_COMMANDS_URL is for NODE_ENV=test only: any other environment calls plugins on the public internet alone',
+        path: ['PLUGIN_ALLOW_LOCAL_COMMANDS_URL'],
+        input: env.PLUGIN_ALLOW_LOCAL_COMMANDS_URL
+      })
+    }
+    if (env.PLUGIN_ALLOW_LOCAL_COMMANDS_URL && env.RESEND_API_KEY !== undefined) {
+      // NODE_ENV=test is also what a copy of the CI settings carries: a real mail transport means a real deployment, where a plugin url
+      // on the machine of the platform is never accepted
+      ctx.issues.push({
+        code: 'custom',
+        message:
+          'PLUGIN_ALLOW_LOCAL_COMMANDS_URL cannot be set where mail is really sent (RESEND_API_KEY is set)',
+        path: ['PLUGIN_ALLOW_LOCAL_COMMANDS_URL'],
+        input: env.PLUGIN_ALLOW_LOCAL_COMMANDS_URL
       })
     }
     if (env.E2E_MAGIC_LINK_LIMIT !== undefined && env.RESEND_API_KEY !== undefined) {

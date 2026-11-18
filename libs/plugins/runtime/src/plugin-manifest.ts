@@ -17,7 +17,7 @@ import {
   WebhookHeaders
 } from '@platform/core/domain'
 import { type EventName, Events } from '@platform/core/events'
-import { isWellFormedPublicHttpsUrl } from '@platform/core/url-safety'
+import { isAcceptableCommandsUrl, isWellFormedPublicHttpsUrl } from '@platform/core/url-safety'
 import { PluginEventScopes, type PluginScope, PluginScopes } from '@platform/plugins/sdk'
 
 // The manifest of an integration plugin, as the owner pastes it (TDD_10 §6.1, `MVP_TRIM_CHECKLIST.md` §7, D10). Nothing in
@@ -83,10 +83,12 @@ const SCOPES: ReadonlySet<string> = new Set(Object.values(PluginScopes))
 const plainText = (max: number) =>
   z.string().refine(value => isPlainDescriptorText(value, max), { message: 'plain text expected' })
 
-const publicUrl = z
-  .string()
-  .max(PluginManifestLimits.URL_MAX_LENGTH)
-  .refine(isWellFormedPublicHttpsUrl, { message: 'an https address on the public internet' })
+const urlOf = (accepts: (raw: string) => boolean) =>
+  z
+    .string()
+    .max(PluginManifestLimits.URL_MAX_LENGTH)
+    .refine(accepts, { message: 'an https address on the public internet' })
+const publicUrl = urlOf(isWellFormedPublicHttpsUrl)
 
 // The name in each language the interface speaks (es and en). Read once and copied: what is stored is what was checked.
 const localizedName = z.unknown().transform((value, ctx): LocalizedText => {
@@ -179,7 +181,7 @@ const channelBlock = z.strictObject({
   // Shown as it is: a plugin does not translate its name
   label: plainText(ChannelManifestLimits.LABEL_MAX_LENGTH),
   // Checked for its shape here; resolved against the network at every call
-  commandsUrl: publicUrl,
+  commandsUrl: urlOf(isAcceptableCommandsUrl),
   // Absent: the channel has no window. `requiresTemplateWhenClosed` is not accepted: a remote plugin sends no template.
   messagingWindow: z
     .strictObject({
