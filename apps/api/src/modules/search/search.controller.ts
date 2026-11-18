@@ -1,10 +1,16 @@
 import { Body, Controller, Get, HttpCode, Post, Query } from '@nestjs/common'
 
 import { ApiRoutes } from '@platform/core/api'
-import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
+import {
+  type AuthenticatedUser,
+  EnumerationIpThrottle,
+  type Permission,
+  Permissions,
+  UserRateLimits
+} from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { HttpStatusCodes } from '@platform/core/errors'
-import { NoStore, ZodValidationPipe } from '@platform/core/http'
+import { NoStore, RateLimit, UserRateLimit, ZodValidationPipe } from '@platform/core/http'
 
 import type { ProductSuggestions } from '../products/products.views'
 import {
@@ -36,12 +42,16 @@ import type {
 
 // The search of the store in X-Store-Id. Each route asks for the permission of what it searches (the messages, for
 // the conversations and the messages they hold), and the global one for any of them: it answers with the groups the
-// member may search and leaves out the rest.
+// member may search and leaves out the rest. The routes can be walked to read what the store holds, so each one has two limits
+// (TDD_05 §3.1): a generous one per address, which an office shares, and one per user (UserRateLimit), which the address cannot
+// dodge. The click spends its own budget: a result opened is not a search.
+@RateLimit(EnumerationIpThrottle)
 @Controller()
 export class SearchController {
   constructor(private readonly runner: SearchRunner) {}
 
   @RequireAnyPermission(...GlobalSearchPermissions)
+  @UserRateLimit(UserRateLimits.SEARCH)
   @NoStore()
   @Get(ApiRoutes.search.global)
   global(
@@ -56,6 +66,7 @@ export class SearchController {
   // The result a person opened, for the report of what was searched. The answer is empty: the event is queued and the
   // click is never worth a wait. The runner checks the kind of result against what the member may search.
   @RequireAnyPermission(...GlobalSearchPermissions)
+  @UserRateLimit(UserRateLimits.SEARCH_CLICKS)
   @NoStore()
   @Post(ApiRoutes.search.clicks)
   @HttpCode(HttpStatusCodes.NO_CONTENT)
@@ -68,6 +79,7 @@ export class SearchController {
   }
 
   @RequirePermissions(...MessageSearchPermissions)
+  @UserRateLimit(UserRateLimits.SEARCH)
   @NoStore()
   @Get(ApiRoutes.search.messages)
   messages(
@@ -80,6 +92,7 @@ export class SearchController {
   }
 
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)
+  @UserRateLimit(UserRateLimits.SEARCH)
   @NoStore()
   @Get(ApiRoutes.search.customers)
   customers(
@@ -90,6 +103,7 @@ export class SearchController {
   }
 
   @RequirePermissions(Permissions.ORDERS_VIEW)
+  @UserRateLimit(UserRateLimits.SEARCH)
   @NoStore()
   @Get(ApiRoutes.search.orders)
   orders(
@@ -100,6 +114,7 @@ export class SearchController {
   }
 
   @RequirePermissions(Permissions.PRODUCTS_VIEW)
+  @UserRateLimit(UserRateLimits.SEARCH)
   @NoStore()
   @Get(ApiRoutes.search.products)
   products(
