@@ -627,7 +627,11 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
 
       expect(received.status).toBe(CREATED)
       // 2 x 5.00 at 5 %: the tax is posted, not read as zero
-      expect(received.body).toMatchObject({ subtotalCents: 1000, taxCents: 50 })
+      expect((received.body as { receipts: ReceiptBody[] }).receipts[0]).toMatchObject({
+        subtotalCents: 1000,
+        taxCents: 50,
+        totalCents: 1050
+      })
     })
 
     it('does not post anything when the stock refuses the receipt', async () => {
