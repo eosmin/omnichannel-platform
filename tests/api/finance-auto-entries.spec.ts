@@ -346,6 +346,37 @@ describe('The automatic entries (Step 4B.6a)', () => {
     })
   })
 
+  describe('an order delivered after its payment was refunded (HC-105, AUT-R2-010)', () => {
+    it('clears the advance of E1 at the sale: the refund settled it, the books show what the customer owes', async () => {
+      const id = await order({
+        method: 'TRANSFER',
+        paymentStatus: 'COMPLETED',
+        status: 'CONFIRMED'
+      })
+      expect((await run(id, FinanceEventKind.PAYMENT)).outcome).toBe(FinancePostingOutcome.POSTED)
+      await owner.order.update({
+        where: { id },
+        data: { paymentStatus: 'REFUNDED', status: 'DELIVERED', deliveredAt: new Date() }
+      })
+      await issue(id)
+      expect((await run(id, FinanceEventKind.SALE)).outcome).toBe(FinancePostingOutcome.POSTED)
+      const e3 = await entryOf(FinancePostingKey.ORDER_SALE(id))
+      expect(e3?.lines.find(line => line.debitCents === 2825)?.account.code).toBe(
+        code(AccountRole.CUSTOMER_ADVANCES)
+      )
+    })
+
+    it('tells a person when there is no advance to clear, instead of waiting for ever', async () => {
+      const id = await order({ method: 'TRANSFER', paymentStatus: 'REFUNDED' })
+      await issue(id)
+      expect(await run(id, FinanceEventKind.SALE)).toMatchObject({
+        outcome: FinancePostingOutcome.FAILED,
+        reason: FinancePostingFailureReason.PAYMENT_REFUNDED
+      })
+      expect(await entryOf(FinancePostingKey.ORDER_SALE(id))).toBeNull()
+    })
+  })
+
   describe('when it cannot post', () => {
     it('a missing mapping fails, is recorded, and "post again" posts it once fixed', async () => {
       const connectionId = await connectionOf()

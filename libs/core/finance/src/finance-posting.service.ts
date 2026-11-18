@@ -653,7 +653,10 @@ export class FinancePostingService {
       const carrierConnectionId = shipment?.connectionId ?? order.carrierConnectionId
       if (carrierConnectionId === null) return failed(FinancePostingFailureReason.CARRIER_MISSING)
       collection = { kind: 'carrier', carrierConnectionId }
-    } else if (order.paymentStatus === (PaymentStatus.COMPLETED as string)) {
+    } else if (
+      order.paymentStatus === (PaymentStatus.COMPLETED as string) ||
+      order.paymentStatus === (PaymentStatus.REFUNDED as string)
+    ) {
       // The advance is cleared only when E1 put it there: a debit of an advance that was never credited (a payment before the start of the
       // books, or an E1 that failed) would leave the account negative for good. The payment event posts E1 and queues the sale again.
       const advance = await tx.journalEntry.findUnique({
@@ -665,7 +668,16 @@ export class FinancePostingService {
         },
         select: { id: true }
       })
-      if (advance === null) return failed(FinancePostingFailureReason.SOURCE_NOT_READY)
+      // A refunded payment never gets its advance later (E1 posts only a completed payment): waiting is pointless and a person is told.
+      // When the advance IS there the sale clears it as always: the refund (E14) already settled it, so the account ends with the debit
+      // balance of what the customer owes for goods delivered after being paid back [ACCOUNTANT]
+      if (advance === null) {
+        return failed(
+          order.paymentStatus === (PaymentStatus.REFUNDED as string)
+            ? FinancePostingFailureReason.PAYMENT_REFUNDED
+            : FinancePostingFailureReason.SOURCE_NOT_READY
+        )
+      }
       collection = { kind: 'advance' }
     } else {
       // Not collected on delivery and not paid: a sale on credit, which the MVP does not build (TDD_18 §4.2 E3). It is a failure a
