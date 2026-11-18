@@ -330,6 +330,105 @@ describe('The tables of purchases', () => {
     })
   })
 
+  describe('the return of a supplier payment (HC-121)', () => {
+    async function giveBack(
+      paymentId: string,
+      supplierId: string,
+      extra: Partial<{
+        amountCents: number
+        receivedIntoAccountId: string
+        returnedOn: string
+        entryCents: number
+        entryType: JournalEntryType
+      }> = {}
+    ): Promise<{ id: string; entryId: string }> {
+      const id = randomUUID()
+      const amountCents = extra.amountCents ?? 200
+      const entry = await postTestEntry(
+        owner,
+        simpleEntry(books, extra.entryCents ?? amountCents, {
+          type: extra.entryType ?? JournalEntryType.SUPPLIER_PAYMENT_RETURN,
+          sourceType: FinanceSourceType.SUPPLIER_PAYMENT_RETURN,
+          sourceId: id
+        })
+      )
+      await owner.supplierPaymentReturn.create({
+        data: {
+          id,
+          organizationId: orgId,
+          supplierId,
+          supplierPaymentId: paymentId,
+          receivedIntoAccountId: extra.receivedIntoAccountId ?? books.accounts.cash,
+          amountCents,
+          returnedOn: day(extra.returnedOn ?? '2026-11-10'),
+          clientKey: `k-${id}`,
+          entryId: entry.id,
+          createdBy: 'schema-suite'
+        }
+      })
+      return { id, entryId: entry.id }
+    }
+
+    it('comes back into a cash, bank or wallet account', async () => {
+      const seller = await supplier()
+      const paid = await payment(seller.id)
+      await expect(
+        giveBack(paid.id, seller.id, { receivedIntoAccountId: books.accounts.expense })
+      ).rejects.toThrow(/SUPPLIER_PAYMENT_RETURN_ACCOUNT/)
+    })
+
+    it('is of a payment of its own supplier, never before it and never for more than it was', async () => {
+      const seller = await supplier()
+      const stranger = await supplier()
+      const paid = await payment(seller.id)
+      await expect(giveBack(paid.id, stranger.id)).rejects.toThrow(
+        /SUPPLIER_PAYMENT_RETURN_PAYMENT/
+      )
+      await expect(giveBack(paid.id, seller.id, { returnedOn: '2026-11-09' })).rejects.toThrow(
+        /SUPPLIER_PAYMENT_RETURN_PAYMENT/
+      )
+      await giveBack(paid.id, seller.id, { amountCents: 300 })
+      await expect(giveBack(paid.id, seller.id, { amountCents: 201 })).rejects.toThrow(
+        /SUPPLIER_PAYMENT_RETURN_AMOUNT/
+      )
+      await giveBack(paid.id, seller.id, { amountCents: 200 })
+    })
+
+    it('posts the entry of its own: its amount, its day and its kind', async () => {
+      const seller = await supplier()
+      const paid = await payment(seller.id)
+      await expect(
+        giveBack(paid.id, seller.id, { amountCents: 200, entryCents: 100 })
+      ).rejects.toThrow(/SUPPLIER_PAYMENT_RETURN_ENTRY/)
+      // The entry of a payment is not the entry of a return, and the day of the entry is the day of the return
+      await expect(
+        giveBack(paid.id, seller.id, { entryType: JournalEntryType.SUPPLIER_PAYMENT })
+      ).rejects.toThrow(/SUPPLIER_PAYMENT_RETURN_ENTRY/)
+      await expect(giveBack(paid.id, seller.id, { returnedOn: '2026-11-11' })).rejects.toThrow(
+        /SUPPLIER_PAYMENT_RETURN_ENTRY/
+      )
+    })
+
+    it('is voided once and never changed or deleted', async () => {
+      const seller = await supplier()
+      const paid = await payment(seller.id)
+      const given = await giveBack(paid.id, seller.id)
+      await expect(
+        owner.supplierPaymentReturn.update({ where: { id: given.id }, data: { amountCents: 1 } })
+      ).rejects.toThrow(/SUPPLIER_PAYMENT_RETURN_IMMUTABLE/)
+      const unrelated = await postTestEntry(owner, simpleEntry(books, 200))
+      await expect(
+        owner.supplierPaymentReturn.update({
+          where: { id: given.id },
+          data: { voidedByEntryId: unrelated.id }
+        })
+      ).rejects.toThrow(/SUPPLIER_PAYMENT_RETURN_ENTRY/)
+      await expect(owner.supplierPaymentReturn.delete({ where: { id: given.id } })).rejects.toThrow(
+        /PURCHASE_IMMUTABLE/
+      )
+    })
+  })
+
   describe('the roles of the application', () => {
     it('add receipts and payments, point a payment at its voiding entry, and change or remove nothing else', async () => {
       const allowed = async (role: string, table: string, privilege: string): Promise<boolean> =>
@@ -337,13 +436,22 @@ describe('The tables of purchases', () => {
           await owner.$queryRaw<{ allowed: boolean }[]>`
             SELECT has_table_privilege(${role}, ${table}, ${privilege}) AS allowed`
         )[0]?.allowed === true
-      const column = async (role: string, name: string): Promise<boolean> =>
+      const column = async (
+        role: string,
+        name: string,
+        table = 'supplier_payments'
+      ): Promise<boolean> =>
         (
           await owner.$queryRaw<{ allowed: boolean }[]>`
-            SELECT has_column_privilege(${role}, 'supplier_payments', ${name}, 'UPDATE') AS allowed`
+            SELECT has_column_privilege(${role}, ${table}, ${name}, 'UPDATE') AS allowed`
         )[0]?.allowed === true
       for (const role of ['platform_app', 'platform_worker']) {
-        for (const table of ['purchase_receipts', 'purchase_receipt_lines', 'supplier_payments']) {
+        for (const table of [
+          'purchase_receipts',
+          'purchase_receipt_lines',
+          'supplier_payments',
+          'supplier_payment_returns'
+        ]) {
           expect(await allowed(role, table, 'SELECT')).toBe(true)
           expect(await allowed(role, table, 'INSERT')).toBe(true)
           for (const privilege of ['UPDATE', 'DELETE', 'TRUNCATE']) {
@@ -361,6 +469,11 @@ describe('The tables of purchases', () => {
           }
         }
         expect(await column(role, 'voided_by_entry_id')).toBe(true)
+        // A return is pointed at the entry that voids it and changes in no other column
+        expect(await column(role, 'voided_by_entry_id', 'supplier_payment_returns')).toBe(true)
+        for (const name of ['amount_cents', 'entry_id', 'supplier_payment_id', 'returned_on']) {
+          expect(await column(role, name, 'supplier_payment_returns')).toBe(false)
+        }
         for (const name of ['amount_cents', 'entry_id', 'supplier_id', 'paid_from_account_id']) {
           expect({ role, name, allowed: await column(role, name) }).toEqual({
             role,

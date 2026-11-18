@@ -6234,6 +6234,7 @@
       "cod_write_off": "Baja de contra entrega",
       "purchase_receipt": "Compra recibida",
       "supplier_payment": "Pago a proveedor",
+      "supplier_payment_return": "Devolución de pago a proveedor",
       "carrier_guides": "Compra de guías de transportista",
       "inventory_adjustment": "Ajuste de inventario",
       "reversal": "Reversión"
@@ -6263,6 +6264,7 @@
         "transfer_line": "Un faltante de transferencia dado de baja",
         "purchase_receipt": "Una compra recibida",
         "supplier_payment": "Un pago a proveedor",
+        "supplier_payment_return": "Una devolución de un pago a proveedor",
         "carrier_guide_movement": "Una compra de guías de transportista",
         "finance_transaction": "Un gasto, ingreso o transferencia",
         "manual": "Un asiento escrito a mano"
@@ -7083,6 +7085,11 @@
         "payment_exceeds_balance": "El pago es mayor que lo que se le debe a este proveedor.",
         "payment_exceeds_receipt": "El pago es mayor que lo que está por pagar de esa factura.",
         "payment_already_voided": "Este pago ya estaba anulado.",
+        "return_exceeds_payment": "La devolución es mayor que lo que queda de ese pago.",
+        "return_already_voided": "Esta devolución ya fue anulada.",
+        "payment_has_returns": "Este pago tiene una devolución: anula primero la devolución.",
+        "payment_voided": "Un pago anulado no tiene nada que devolver.",
+        "return_void_would_overpay": "La deuda que reabrió esta devolución ya se pagó de nuevo: anularla pagaría al proveedor más de lo que se le debe.",
         "entry_owned_by_purchase": "Este asiento es de una compra: cámbialo desde la compra."
       },
       "rules": {
@@ -7097,7 +7104,9 @@
         "amount": "El monto no es válido.",
         "bill_required": "Elige la factura de este pago.",
         "payable_account_type": "La cuenta de lo que se debe tiene que ser de pasivo.",
-        "from_not_cash": "La cuenta de donde sale el dinero tiene que ser de efectivo, banco o billetera."
+        "from_not_cash": "La cuenta de donde sale el dinero tiene que ser de efectivo, banco o billetera.",
+        "into_not_cash": "La cuenta a la que vuelve el dinero tiene que ser de efectivo, banco o billetera.",
+        "before_payment": "El dinero no puede volver antes del día en que se pagó."
       }
     },
     "reports": {
@@ -7289,6 +7298,7 @@
         "transfer_line": "Faltante de transferencia dado de baja",
         "purchase_receipt": "Compra recibida",
         "supplier_payment": "Pago a proveedor",
+        "supplier_payment_return": "Devolución de pago a proveedor",
         "carrier_guide_movement": "Guías de transportista",
         "finance_transaction": "Gasto, ingreso o transferencia",
         "manual": "Asiento manual"

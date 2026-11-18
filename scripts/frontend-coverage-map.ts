@@ -209,6 +209,8 @@ export const ROUTE_COVERAGE: Readonly<Record<string, FrontendCoverage>> = {
   'suppliers.payments': { step: '4B.9' },
   'suppliers.recordPayment': { step: '4B.9' },
   'supplierPayments.void': { step: '4B.9' },
+  'supplierPayments.returns': { step: '4B.9' },
+  'supplierPaymentReturns.void': { step: '4B.9' },
   'purchaseOrders.list': { step: '4B.9' },
   'purchaseOrders.create': { step: '4B.9' },
   'purchaseOrders.byId': { step: '4B.9' },

@@ -550,7 +550,7 @@ describe('Media gallery', () => {
       })
       expect(queueOf(app, QueueNames.EXPORTS).jobs).toContainEqual({
         name: JobNames.GENERATE_EXPORT,
-        data: { exportId: view.id },
+        data: { exportId: view.id, storeId: ctx.storeA.id },
         opts: { jobId: `${JobNames.GENERATE_EXPORT}-${view.id}` }
       })
     })

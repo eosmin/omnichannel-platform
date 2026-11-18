@@ -5,8 +5,10 @@ export {
   createSupplierSchema,
   purchaseIdempotencyKey,
   receivePurchaseOrderSchema,
+  recordPaymentReturnSchema,
   recordPaymentSchema,
   updatePurchaseOrderSchema,
   updateSupplierSchema,
+  voidPaymentReturnSchema,
   voidPaymentSchema
 } from '@platform/core/domain'

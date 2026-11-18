@@ -48,7 +48,13 @@ describe('HeavyProcessingProcessor', () => {
     { check: checkChain } as never, // the weekly check of the chain: what it is handed is what is tested
     { reconcile: reconcileFiscal } as never, // the daily check of the fiscal documents: what it is handed is what is tested
     { submit: submitFiscal } as never, // the fiscal documents: what it is handed is what is tested
-    { report: reportContingency, reportExhausted: reportContingencyExhausted } as never // the contingency of the issuer: what it is handed is what is tested
+    { report: reportContingency, reportExhausted: reportContingencyExhausted } as never, // the contingency of the issuer: what it is handed is what is tested
+    // The context is not what is tested here: it runs the work (rls-worker-fail-closed.spec.ts and job-context.spec.ts test it)
+    {
+      forStore: (_id: string, work: () => Promise<unknown>) => work(),
+      forOrganization: (_id: string, work: () => Promise<unknown>) => work(),
+      anchor: () => Promise.resolve('visible')
+    } as never
   )
 
   const base = {

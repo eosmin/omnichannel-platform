@@ -2,6 +2,7 @@ import { Processor } from '@nestjs/bullmq'
 import { type Job, UnrecoverableError } from 'bullmq'
 import { z } from 'zod'
 
+import { JobContext } from '@platform/core/database'
 import {
   exactly,
   type ExportAuditLogsJob,
@@ -18,8 +19,12 @@ import { AuditColdExporter } from '../retention/audit-cold-exporter.service'
 import { BaseProcessor, isLastAttempt } from './base.processor'
 import { ProcessorSupport } from './processor-support'
 
-const exportJobSchema = z.object({ exportId: z.uuid() })
-const reportJobSchema = z.object({ reportId: z.uuid(), day: z.iso.date() })
+const exportJobSchema = z.object({ exportId: z.uuid(), storeId: z.uuid().optional() })
+const reportJobSchema = z.object({
+  reportId: z.uuid(),
+  day: z.iso.date(),
+  storeId: z.uuid().optional()
+})
 const auditExportJobSchema = exactly<ExportAuditLogsJob>()(
   z.object({ before: z.iso.datetime(), correlationId: z.string().optional() })
 )
@@ -33,7 +38,8 @@ export class ExportsProcessor extends BaseProcessor<
     support: ProcessorSupport,
     private readonly generator: ExportGenerator,
     private readonly reports: ScheduledReportRunner,
-    private readonly auditExport: AuditColdExporter
+    private readonly auditExport: AuditColdExporter,
+    private readonly jobContext: JobContext
   ) {
     super(QueueNames.EXPORTS, support)
   }
@@ -51,6 +57,7 @@ export class ExportsProcessor extends BaseProcessor<
     if (job.name === JobNames.GENERATE_SCHEDULED_REPORT) {
       const parsed = reportJobSchema.safeParse(job.data)
       if (!parsed.success) throw new UnrecoverableError('the report job does not fit its schema')
+      await this.jobContext.anchor('scheduled_report', parsed.data.reportId, parsed.data.storeId)
       await this.reports.run(parsed.data.reportId, parsed.data.day, isLastAttempt(job))
       return
     }
@@ -60,6 +67,7 @@ export class ExportsProcessor extends BaseProcessor<
     const parsed = exportJobSchema.safeParse(job.data)
     // The job crossed Redis: what does not fit now will not fit when it is tried again
     if (!parsed.success) throw new UnrecoverableError('the export job does not fit its schema')
+    await this.jobContext.anchor('export', parsed.data.exportId, parsed.data.storeId)
     return this.generator.generate(parsed.data.exportId, isLastAttempt(job))
   }
 }

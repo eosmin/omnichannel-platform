@@ -1,6 +1,7 @@
 import { OnWorkerEvent, WorkerHost } from '@nestjs/bullmq'
-import type { Job } from 'bullmq'
+import { type Job, UnrecoverableError } from 'bullmq'
 
+import { JobContextGoneError, JobContextMismatchError } from '@platform/core/database'
 import type { BaseJob, QueueName } from '@platform/core/queues'
 
 import type { ProcessorSupport } from './processor-support'
@@ -23,7 +24,25 @@ export abstract class BaseProcessor<T extends BaseJob> extends WorkerHost {
   protected abstract handle(job: Job<T>): Promise<void>
 
   async process(job: Job<T>): Promise<void> {
-    await this.support.run(this.queue, job, current => this.handle(current))
+    try {
+      await this.support.run(this.queue, job, current => this.handle(current))
+    } catch (error) {
+      // A payload that names a store that is not the one of its row will not fit when it is tried again either
+      if (error instanceof JobContextMismatchError) throw new UnrecoverableError(error.message)
+      throw error
+    }
+  }
+
+  // For a job that does only one thing to one store, organization or person: if that subject was deleted after the job was queued
+  // there is nothing left to do, so the job is done (with a warning). Only around the entry of the work: a handler that is half way
+  // (a file uploaded, a row marked) must see the failure and close its job on the last try.
+  protected async skipIfGone(job: Job<T>, work: () => Promise<unknown>): Promise<void> {
+    try {
+      await work()
+    } catch (error) {
+      if (!(error instanceof JobContextGoneError)) throw error
+      this.support.subjectGone(this.queue, job, error)
+    }
   }
 
   @OnWorkerEvent('completed')

@@ -290,6 +290,7 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
       'bank_statement_lines',
       'bank_statement_imports',
       'finance_transactions',
+      'supplier_payment_returns',
       'supplier_payments',
       'purchase_receipts',
       'purchase_receipt_lines',
@@ -318,6 +319,7 @@ export async function purgeFinance(owner: OwnerClient, organizationIds: string[]
     await tx.fiscalContingency.deleteMany({ where })
     await tx.fiscalSequence.deleteMany({ where })
     await tx.fiscalIssuer.deleteMany({ where })
+    await tx.supplierPaymentReturn.deleteMany({ where })
     await tx.supplierPayment.deleteMany({ where })
     await tx.purchaseReceiptLine.deleteMany({ where })
     await tx.purchaseReceipt.deleteMany({ where })

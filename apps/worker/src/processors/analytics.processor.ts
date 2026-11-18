@@ -2,7 +2,8 @@ import { Processor } from '@nestjs/bullmq'
 import { type Job, UnrecoverableError } from 'bullmq'
 import { z } from 'zod'
 
-import { AnalyticsEventNames } from '@platform/core/analytics'
+import { AnalyticsEventNames, RollupLimits } from '@platform/core/analytics'
+import { JobContext } from '@platform/core/database'
 import { searchClickDataSchema, searchEventDataSchema } from '@platform/core/domain'
 import { JobNames, QueueNames, type RollupJob, type TrackAnalyticsJob } from '@platform/core/queues'
 
@@ -67,7 +68,8 @@ export class AnalyticsProcessor extends BaseProcessor<TrackAnalyticsJob | Rollup
   constructor(
     support: ProcessorSupport,
     private readonly events: AnalyticsEventWriter,
-    private readonly rollups: AnalyticsRollupService
+    private readonly rollups: AnalyticsRollupService,
+    private readonly jobContext: JobContext
   ) {
     super(QueueNames.ANALYTICS, support)
   }
@@ -80,7 +82,10 @@ export class AnalyticsProcessor extends BaseProcessor<TrackAnalyticsJob | Rollup
       if (!parsed.success) {
         throw new UnrecoverableError(`the ${job.name} job does not fit its schema`)
       }
-      await this.events.write(parsed.data)
+      const event = parsed.data
+      await this.skipIfGone(job, () =>
+        this.jobContext.forStore(event.storeId, () => this.events.write(event))
+      )
       return
     }
     const granularity = RollupGranularityOf[job.name]
@@ -98,7 +103,18 @@ export class AnalyticsProcessor extends BaseProcessor<TrackAnalyticsJob | Rollup
     // A period that is still running would be written with what it has so far, and the schedulers only come back to the two
     // latest closed ones
     if (end > new Date()) throw new UnrecoverableError('the rollup period has not closed')
-    await this.rollups.rollup(granularity, parsed.data.storeId, { start, end })
+    const { storeId } = parsed.data
+    // The limits of the rollup itself: inside a context its own transaction joins this one and would lose them
+    await this.skipIfGone(job, () =>
+      this.jobContext.forStore(
+        storeId,
+        () => this.rollups.rollup(granularity, storeId, { start, end }),
+        {
+          maxWait: RollupLimits.TRANSACTION_MAX_WAIT_MS,
+          timeout: RollupLimits.TRANSACTION_TIMEOUT_MS
+        }
+      )
+    )
   }
 
   private trackSchemaOf(name: string): z.ZodType<TrackAnalyticsJob, unknown> | undefined {
