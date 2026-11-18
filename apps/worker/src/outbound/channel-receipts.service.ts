@@ -23,6 +23,15 @@ import { ChannelEventTypes } from '@platform/plugins/sdk'
 
 import { MessageStatusWriter, statesBefore } from './message-status.writer'
 
+// A reply that went out to the customer: an agent's, or what a plugin wrote as the system (it goes out like any reply). Notes
+// and the customer's own messages never get a receipt
+const TEAM_REPLY = {
+  OR: [
+    { authorType: AuthorType.AGENT },
+    { authorType: AuthorType.SYSTEM, authorPluginId: { not: null } }
+  ]
+}
+
 const RECEIPT_STATES = {
   [ChannelEventTypes.MESSAGE_SENT]: DeliveryStatus.SENT,
   [ChannelEventTypes.MESSAGE_DELIVERED]: DeliveryStatus.DELIVERED,
@@ -62,7 +71,7 @@ export class ChannelReceipts {
       where: {
         storeId: connection.storeId,
         channelMessageId: externalId,
-        authorType: AuthorType.AGENT,
+        ...TEAM_REPLY,
         conversation: { channelConnectionId: connection.id }
       },
       select: { id: true },
@@ -84,7 +93,7 @@ export class ChannelReceipts {
           storeId: connection.storeId,
           channelMessageId: externalId,
           message: {
-            authorType: AuthorType.AGENT,
+            ...TEAM_REPLY,
             conversation: { channelConnectionId: connection.id }
           }
         },
@@ -102,7 +111,7 @@ export class ChannelReceipts {
         where: {
           id: event.messageId,
           storeId: connection.storeId,
-          authorType: AuthorType.AGENT,
+          ...TEAM_REPLY,
           conversation: { channelConnectionId: connection.id }
         },
         select: { id: true }
@@ -169,7 +178,7 @@ export class ChannelReceipts {
       where: {
         storeId: connection.storeId,
         deliveryStatus: DeliveryStatus.QUEUED,
-        authorType: AuthorType.AGENT,
+        ...TEAM_REPLY,
         createdAt: { gt: new Date(Date.now() - OutboundLimits.RECEIPT_WAIT_MS) },
         conversation: { channelConnectionId: connection.id }
       }
