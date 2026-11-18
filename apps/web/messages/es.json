@@ -1954,6 +1954,7 @@
     "accountMenu": "Menú de la cuenta",
     "nav": {
       "label": "Páginas de la tienda",
+      "menu": "Menú",
       "inbox": "Bandeja",
       "customers": "Clientes",
       "products": "Productos",
@@ -6131,6 +6132,7 @@
           "cost_of_goods_sold": "Costo de ventas",
           "inventory_loss": "Pérdida de inventario",
           "inventory_gain": "Ganancia de inventario",
+          "prepaid_carrier_guides": "Guías prepagadas de transportistas",
           "carrier_freight_expense": "Gasto de flete de transportistas",
           "carrier_commission_expense": "Gasto de comisión de transportistas",
           "cod_differences": "Diferencias de contra entrega",

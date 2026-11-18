@@ -35,6 +35,7 @@ const connection = (): CarrierConnectionView => ({
   minShippingFeeCents: 100,
   maxShippingFeeCents: 900,
   remittanceDeductsFee: true,
+  chargeModel: 'prepaid',
   commissionBps: 250,
   serviceRatesCents: { standard: 777 },
   openShipments: 2,
@@ -60,6 +61,7 @@ describe('the carrier connections a plugin reads', () => {
       'minShippingFeeCents',
       'maxShippingFeeCents',
       'remittanceDeductsFee',
+      'chargeModel',
       'commissionBps',
       'serviceRatesCents'
     ]) {
