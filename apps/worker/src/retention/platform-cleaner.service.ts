@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { PinoLogger } from 'nestjs-pino'
 
 import { DataRetentionPolicies, PlatformCleanup } from '@platform/core/compliance'
-import { PrismaService } from '@platform/core/database'
+import { PrismaService, assertSeesEveryRow } from '@platform/core/database'
 import { DAY_MS } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 
@@ -36,6 +36,12 @@ export class PlatformCleaner {
   }
 
   async run(now: Date = new Date()): Promise<PlatformCleanupReport> {
+    await assertSeesEveryRow(this.prisma, [
+      'webhook_deliveries',
+      'metrics_hourly',
+      'customer_merges',
+      'customers'
+    ])
     const stamp = now.toISOString()
     const report: PlatformCleanupReport = {
       sessions: 0,
