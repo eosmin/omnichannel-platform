@@ -1429,6 +1429,19 @@ above is a failing test that passes, and no code outside `libs/core/finance` wri
 - [ ] **Debt:** the tax-rate accounts (`finance-tax-rates.service.ts`) and the payable account of a supplier (`suppliers.service.ts`) still take
       any postable account; they go with the accountant's answer on the VAT accounts (HC-118, FIS N8).
 
+**PR fix/manual-entry-key-kept (HC-114; HC-111 verified)**
+- [x] An attempt of the manual entry dialog that may have posted (no answer, a timeout, a 5xx, an unreadable success) locks the form and
+      keeps its key: the retry is the same entry, answered with the first if it posted, and an edit cannot make a second one
+      (`attemptMayHavePosted`, spec in `manual-entry-form.spec.ts`; message `finance.manual.maybePosted`). A later refusal does not unlock.
+- [ ] **Debt (a person who closes the dialog after a lost answer and writes the entry again gets a new key and can duplicate it):**
+      the message tells them to check the journal first; a server-side guard (same memo, date and lines within minutes) is not built.
+      The dialog behaviour has no component test (the project has no jest-dom setup for it); it goes with 4B.9b-5d e2e.
+- [x] HC-111 (CSV of the auditor not bijective) was already closed by `csvCell`/`csvCellText` (hardening A, #607); proven by
+      `libs/core/domain/exports/csv.spec.ts` ("reads %j back exactly") and LED-R2-010 PASS in the regression.
+- [ ] **Debt (owner of the book, migration):** at most one `opening_balance` entry per account/organization (LED-R2-042). Needs the
+      accountant's answer (one opening per organization?) and a partial unique index with its rollback. Closes in hardening B.
+- [ ] **Debt:** the CSV of the auditor has no format version; add a version row/column when the accountant fixes the format.
+
 ### Step 4B.3 — VAT and the tax snapshot (api)
 Delivered in two PRs (the step is bigger than one review): **4B.3a** the schema, the constants, the tax math, the rates, the product
 treatment and the store preference; **4B.3b** the snapshot on the orders, the order total, the tax fields of the order routes and the VAT

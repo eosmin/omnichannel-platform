@@ -9,6 +9,7 @@ import type { FinanceAccountView } from '@platform/api-client'
 import { accountLabelsOf, postableAccountsOf } from '../../lib/finance/account-form'
 import { dayOfClock } from '../../lib/finance/dates'
 import {
+  attemptMayHavePosted,
   emptyManualEntryDraft,
   type ManualEntryDraft,
   ManualEntryEntryTypes,
@@ -91,11 +92,15 @@ function ManualEntryForm({
   const [draft, setDraft] = useState<ManualEntryDraft>(() =>
     emptyManualEntryDraft(dayOfClock(new Date()), [newKey(), newKey()])
   )
-  // The key of the form: a double click or a retry after a lost answer is the same entry. A new content is a new key.
+  // The key of the form: a double click or a retry after a lost answer is the same entry. It is renewed by an edit only until an
+  // attempt may have posted (the answer was lost); from then on the form is locked, so a retry is the same entry under the same key
+  // (answered with the first if it posted) and an edit cannot make it a second one (HC-114). A refusal after that does not unlock it.
   const [key, setKey] = useState(newKey)
+  const [mayHavePosted, setMayHavePosted] = useState(false)
   const [wrong, setWrong] = useState<ManualEntryProblem | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const locked = saving || mayHavePosted
   const label = accountLabelsOf(accounts)
   const options = postableAccountsOf(
     accounts,
@@ -106,7 +111,7 @@ function ManualEntryForm({
 
   const change = (next: ManualEntryDraft): void => {
     setDraft(next)
-    setKey(newKey())
+    if (!mayHavePosted) setKey(newKey())
     setWrong(null)
     setRefusal(null)
   }
@@ -124,6 +129,7 @@ function ManualEntryForm({
       toast.success(t('done', { number: posted.number }))
       onDone()
     } catch (error) {
+      if (attemptMayHavePosted(error)) setMayHavePosted(true)
       setRefusal(errorText(error))
     } finally {
       setSaving(false)
@@ -157,14 +163,14 @@ function ManualEntryForm({
           label={t('date')}
           type="date"
           value={draft.entryDate}
-          disabled={saving}
+          disabled={locked}
           problem={problemOf(ManualEntryFields.DATE)}
           onChange={entryDate => change({ ...draft, entryDate })}
         />
         <SelectField
           label={t('type')}
           value={draft.type}
-          disabled={saving}
+          disabled={locked}
           onChange={type => change({ ...draft, type })}
         >
           {ManualEntryEntryTypes.map(type => (
@@ -178,7 +184,7 @@ function ManualEntryForm({
         label={t('memo')}
         value={draft.memo}
         maxLength={500}
-        disabled={saving}
+        disabled={locked}
         hint={t('memoHint')}
         problem={problemOf(ManualEntryFields.MEMO)}
         onChange={memo => change({ ...draft, memo })}
@@ -198,7 +204,7 @@ function ManualEntryForm({
                   type="button"
                   variant="ghost"
                   size="icon"
-                  disabled={saving}
+                  disabled={locked}
                   aria-label={t('removeLine', { number: index + 1 })}
                   onClick={() =>
                     change({ ...draft, lines: draft.lines.filter((_, at) => at !== index) })
@@ -211,7 +217,7 @@ function ManualEntryForm({
             <SelectField
               label={t('account', { number: index + 1 })}
               value={line.accountId}
-              disabled={saving}
+              disabled={locked}
               problem={
                 wrong?.field === ManualEntryFields.LINE && wrong.index === index
                   ? t('problems.line', { number: index + 1 })
@@ -232,7 +238,7 @@ function ManualEntryForm({
                 value={line.debit}
                 inputMode="decimal"
                 maxLength={13}
-                disabled={saving}
+                disabled={locked}
                 onChange={debit => setLine(index, { debit })}
               />
               <TextField
@@ -240,7 +246,7 @@ function ManualEntryForm({
                 value={line.credit}
                 inputMode="decimal"
                 maxLength={13}
-                disabled={saving}
+                disabled={locked}
                 onChange={credit => setLine(index, { credit })}
               />
             </div>
@@ -248,7 +254,7 @@ function ManualEntryForm({
               label={t('lineMemo', { number: index + 1 })}
               value={line.memo}
               maxLength={500}
-              disabled={saving}
+              disabled={locked}
               onChange={memo => setLine(index, { memo })}
             />
           </div>
@@ -258,7 +264,7 @@ function ManualEntryForm({
             type="button"
             variant="outline"
             size="sm"
-            disabled={saving}
+            disabled={locked}
             onClick={() => change({ ...draft, lines: [...draft.lines, newManualLine(newKey())] })}
           >
             <Plus aria-hidden />
@@ -283,6 +289,11 @@ function ManualEntryForm({
       {wrong !== null && isFooterProblem(wrong.field) ? (
         <p role="alert" className="text-destructive text-sm">
           {t(`problems.${wrong.field}`)}
+        </p>
+      ) : null}
+      {mayHavePosted ? (
+        <p role="status" className="text-sm">
+          {t('maybePosted')}
         </p>
       ) : null}
       {refusal === null ? null : (
