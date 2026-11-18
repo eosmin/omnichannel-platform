@@ -7796,7 +7796,7 @@
       "notices": {
         "withoutSnapshot": "{count, plural, one {# pedido se hizo antes de que los pedidos guardaran su impuesto y no está en este reporte.} other {# pedidos se hicieron antes de que los pedidos guardaran su impuesto y no están en este reporte.}}",
         "notReadable": "{count, plural, one {# pedido tiene un impuesto que no cuadra y no está en este reporte.} other {# pedidos tienen un impuesto que no cuadra y no están en este reporte.}}",
-        "returned": "{count, plural, one {# pedido devuelto sigue contado en el lado de ventas.} other {# pedidos devueltos siguen contados en el lado de ventas.}} El impuesto de las devoluciones todavía no se descuenta aquí."
+        "returned": "{count, plural, one {# pedido devuelto sigue contado en el lado de ventas.} other {# pedidos devueltos siguen contados en el lado de ventas.}} Su devolución se descuenta en el mes de la devolución, en la línea de devoluciones."
       },
       "sides": {
         "output": "Impuesto cobrado en ventas",
@@ -7820,7 +7820,8 @@
         "taxed": "Gravada",
         "exempt": "Exenta",
         "not_subject": "No sujeta",
-        "shipping_not_taxed": "Envío, sin impuesto"
+        "shipping_not_taxed": "Envío, sin impuesto",
+        "returns": "Devoluciones"
       },
       "balance": "Saldo del mes",
       "balanceKinds": {

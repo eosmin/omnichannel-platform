@@ -32,6 +32,7 @@ const OK = 200
 const CREATED = 201
 const NO_CONTENT = 204
 const FORBIDDEN = 403
+const BAD_REQUEST = 400
 const NOT_FOUND = 404
 const CONFLICT = 409
 
@@ -570,6 +571,10 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
       })
 
       const list = await call('get', PluginApiRoutes.settings.snippets, reader.key).expect(OK)
+      // A query parameter the list does not know is a 400, as in every other list of the plugin API (OPS-RD-026)
+      await call('get', PluginApiRoutes.settings.snippets, reader.key)
+        .query({ foo: '1' })
+        .expect(BAD_REQUEST)
       const one = await call(
         'get',
         PluginApiRoutes.settings.snippetById(mine.id),
@@ -626,6 +631,9 @@ describe('Catalog, stock and warehouses through the plugin API', () => {
       const theirs = await createTag(owner, { storeId: ctx.storeB.id })
 
       const list = await call('get', PluginApiRoutes.settings.tags, tagReader.key).expect(OK)
+      await call('get', PluginApiRoutes.settings.tags, tagReader.key)
+        .query({ foo: '1' })
+        .expect(BAD_REQUEST)
       const created = await call('post', PluginApiRoutes.settings.tags, tagger.key)
         .send({ name: `${prefix}-vip` })
         .expect(CREATED)

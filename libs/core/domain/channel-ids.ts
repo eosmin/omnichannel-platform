@@ -82,6 +82,9 @@ export const ChannelHealthErrors = {
 
 // The send of a reply is one call to the provider, from a job: bounded like the other calls to it
 export const OutboundLimits = {
+  // The id a provider gives a message it took. One bound for the plugin runtime that reads it from a remote plugin and for the
+  // worker that validates and stores it (a longer id the worker refused would mark failed a message the provider has sent)
+  EXTERNAL_ID_MAX_LENGTH: 512,
   SEND_TIMEOUT_MS: 20_000,
   // A send that uploads its file (up to 100 MB) and then posts a message: the budget of the upload
   // (`MetaLimits.UPLOAD_TIMEOUT_MS`, 180 s), the post that follows it (the caption of Messenger and Instagram,
