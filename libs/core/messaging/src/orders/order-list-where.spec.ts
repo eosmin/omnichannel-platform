@@ -36,6 +36,9 @@ describe('orderListWhere', () => {
       { status: { in: ['PENDING_CONFIRMATION', 'CONFIRMED', 'PREPARING'] } }
     ])
     expect(orderListWhere(STORE, { priceApprovalStatus: 'approved' }).AND).toBeUndefined()
+    expect(orderListWhere(STORE, { priceApprovalStatus: 'rejected' }).AND).toBeUndefined()
+    // It joins the text filter and does not replace it
+    expect(orderListWhere(STORE, { priceApprovalStatus: 'pending', q: 'ana' }).AND).toHaveLength(2)
   })
 
   it('filters by the planned carrier and by whether a live outbound guide holds the order', () => {

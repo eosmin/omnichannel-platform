@@ -248,10 +248,18 @@ export class OrdersStatusService {
     // The status route is granted only what changing a status needs: a key that holds the scope of confirming or cancelling
     // reaches those through their own routes, and the refusal says so instead of asking for what the key already has
     if (body.status === OrderStatus.CONFIRMED) {
-      assertHolds(held, Permissions.ORDERS_CONFIRM, 'confirm the order through its confirm route')
+      assertHolds(
+        held,
+        Permissions.ORDERS_CONFIRM,
+        'the status route does not grant it, use the confirm route of the order'
+      )
     }
     if (body.status === OrderStatus.CANCELLED) {
-      assertHolds(held, Permissions.ORDERS_CANCEL, 'cancel the order through its cancel route')
+      assertHolds(
+        held,
+        Permissions.ORDERS_CANCEL,
+        'the status route does not grant it, use the cancel route of the order'
+      )
     }
     // Putting units back on the shelf is a movement of stock: whoever chooses it may adjust stock (the return flow of
     // Step 4.12 will own this decision)
