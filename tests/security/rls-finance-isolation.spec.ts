@@ -80,7 +80,10 @@ describe('row-level security, the books of an organization (phase 4)', () => {
   let enforced = false
   let booksA: FinanceFixture | undefined
 
+  // One connection for the whole file: the context lives in the transaction, so cases cannot see each other's, and a client per
+  // case would exhaust the connection slots of the database (the suites run in parallel)
   async function appClient(): Promise<pg.Client> {
+    if (opened[0]) return opened[0]
     const client = new pg.Client({ connectionString: urls.app })
     await client.connect()
     opened.push(client)
