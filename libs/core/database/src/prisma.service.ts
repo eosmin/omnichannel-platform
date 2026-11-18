@@ -21,6 +21,10 @@ export interface PrismaServiceOptions {
   requireContext?: boolean
 }
 
+// The guard covers the model operations (findMany, create, ...). A raw statement ($queryRaw, $executeRaw) is not seen by it: on a
+// table with a policy it gets no rows from the database itself (RLS fails closed) and nothing throws; classifying the raw SQL of the
+// api is a debt of the RLS step (the plan). Inside replicaTenantRead and withoutTenantContext the guard is off for the whole
+// callback, so use the handle you were given and nothing else of this service in there.
 // What the guard throws: a query that the database would answer with no row (RLS fails closed) is a bug in the code that
 // made it, and it is better to see it than to get an empty list or a write that matched nothing
 export class TenantContextRequiredError extends Error {
@@ -150,14 +154,16 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
         'replicaTenantRead inside a tenant transaction: mark the route @NoTenantTransaction, or read from this.client'
       )
     }
-    return querySource.run('replica', () =>
-      this.base.$replica().$transaction(
-        async tx => {
-          await applyTenantContext(tx, context)
-          return fn(tx)
-        },
-        { ...TENANT_TRANSACTION, ...options }
-      )
+    return querySource.run(
+      'replica',
+      async () =>
+        await this.base.$replica().$transaction(
+          async tx => {
+            await applyTenantContext(tx, context)
+            return fn(tx)
+          },
+          { ...TENANT_TRANSACTION, ...options }
+        )
     )
   }
 
@@ -167,7 +173,8 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
   // open a row, it only silences the guard that would have thrown. Needs a reason, as @NoTenantTransaction does.
   withoutTenantContext<T>(reason: string, fn: () => Promise<T>): Promise<T> {
     if (reason.trim() === '') throw new Error('withoutTenantContext needs a reason')
-    return querySource.run(reason, fn)
+    // `fn` is awaited INSIDE the scope: a Prisma query is lazy, and one that is only started after run() returns would find no scope
+    return querySource.run(reason, async () => await fn())
   }
 
   // Whether the code that is running is inside a tenant transaction (and so inside a context): a job or a helper that may be

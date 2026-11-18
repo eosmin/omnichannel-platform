@@ -14,7 +14,7 @@ import { HttpErrorsModule } from './http-errors.module'
 import { applyLocalCommandsUrlPolicy } from './local-commands-url-policy'
 import { MagicLinkLimitPlatformModule } from './magic-link-limit-platform.module'
 import { OutboundFlagsPlatformModule } from './outbound-flags-platform.module'
-import { RlsContextPlatformModule } from './rls-context-platform.module'
+import { isRlsContextOn, RlsContextPlatformModule } from './rls-context-platform.module'
 import { StoragePlatformModule } from './storage-platform.module'
 import { ThrottlerPlatformModule } from './throttler'
 import { TrustProxyModule } from './trust-proxy.module'
@@ -53,7 +53,7 @@ export class HttpPlatformModule {
           replicaUrl: env.DATABASE_REPLICA_URL,
           // With RLS_CONTEXT on, a query of the api with no tenant context throws instead of answering no rows. The worker
           // gets its contexts in phase 5 of the RLS step
-          requireContext: env.RLS_CONTEXT && env.APP_ROLE === AppRoles.API
+          requireContext: isRlsContextOn()
         }),
         // The worker has no sockets: what it announces goes to the api instances through Redis
         EventBusModule.forRoot({ mode: BRIDGE_MODES[env.APP_ROLE] }),
