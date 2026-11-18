@@ -59,7 +59,12 @@ export function ApiKeyDialog({
   const guard = useSubmitGuard()
   // Leaving while the key is being made would lose it: the api makes it and the answer has nowhere to go
   useUnsavedChanges(saving)
-  const today = format.dateTime(new Date(), { dateStyle: 'short' })
+  // The day the date field counts from is the one on this device's clock (`todayInput`), so the hint says that day, in
+  // the zone of the device and not in the zone the rest of the page is drawn in (N-BR2-01)
+  const today = format.dateTime(new Date(), {
+    dateStyle: 'short',
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
+  })
 
   const toggle = (scope: string): void =>
     setDraft(current => ({

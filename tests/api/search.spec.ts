@@ -244,6 +244,28 @@ describe('The search of the store', () => {
       expect(body.hits.map(hit => hit.id)).toContain(exact.id)
     })
 
+    it('finds a typo of the first name when the name has a surname after it, and not an unrelated name', async () => {
+      // "ildefonzo" is not a part of "ildefonso" (so the plain match cannot find it) and is not similar to the whole name
+      const found = await createCustomer(owner, {
+        storeId: ctx.storeA.id,
+        name: `Ildefonso Peña ${tag}w`
+      })
+      const other = await createCustomer(owner, {
+        storeId: ctx.storeA.id,
+        name: `Rolando Mejía ${tag}w`
+      })
+      const { body } = await customersFor('ildefonzo')
+      const ids = body.hits.map(hit => hit.id)
+      expect(ids).toContain(found.id)
+      expect(ids).not.toContain(other.id)
+    })
+
+    it('does not find, by a typo of a word, a customer of another store', async () => {
+      await createCustomer(owner, { storeId: ctx.storeB.id, name: `Anselmo Peña ${tag}x` })
+      const { body } = await customersFor('anselmu')
+      expect(body.hits.map(hit => hit.name)).not.toContain(`Anselmo Peña ${tag}x`)
+    })
+
     it('finds a customer by the email and by a run of digits of the phone', async () => {
       const customer = await createCustomer(owner, {
         storeId: ctx.storeA.id,
@@ -316,6 +338,13 @@ describe('The search of the store', () => {
       const rows = await owner.$queryRaw<{ similarity: number; threshold: string }[]>`
         SELECT similarity('a', 'a') AS similarity, current_setting('pg_trgm.similarity_threshold') AS threshold`
       expect(Number(rows[0]?.threshold)).toBe(SearchConfig.SIMILARITY_THRESHOLD)
+    })
+
+    it('uses the word similarity threshold the constant says', async () => {
+      // The statement uses the <% operator, which reads this setting of the database
+      const rows = await owner.$queryRaw<{ threshold: string }[]>`
+        SELECT current_setting('pg_trgm.word_similarity_threshold') AS threshold`
+      expect(Number(rows[0]?.threshold)).toBe(SearchConfig.WORD_SIMILARITY_THRESHOLD)
     })
   })
 

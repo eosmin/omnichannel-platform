@@ -1,5 +1,6 @@
 import {
   conversationIdsWithDraft,
+  forgetDraft,
   previewOfDraft,
   publishDraft,
   resetDraftIndex,
@@ -128,5 +129,26 @@ describe('the conversations with a draft', () => {
     } finally {
       spy.mockRestore()
     }
+  })
+})
+
+describe('forgetting the draft of a conversation that is gone', () => {
+  const scope = { userId: 'u1', storeId: 's1', conversationId: 'c1' }
+  afterEach(() => resetDraftIndex())
+
+  it('takes it out of the ids with a draft and tells the listeners once', () => {
+    publishDraft(scope, { text: 'Hi', isNote: false })
+    publishDraft({ ...scope, conversationId: 'c2' }, { text: 'Other', isNote: false })
+    expect(conversationIdsWithDraft('u1', 's1')).toEqual(['c1', 'c2'])
+    const heard = jest.fn()
+    const stop = subscribeToDrafts(heard)
+
+    forgetDraft(scope)
+    expect(conversationIdsWithDraft('u1', 's1')).toEqual(['c2'])
+    expect(heard).toHaveBeenCalledTimes(1)
+    // A conversation that had no draft changes nothing
+    forgetDraft(scope)
+    expect(heard).toHaveBeenCalledTimes(1)
+    stop()
   })
 })

@@ -181,7 +181,7 @@
       "description": "How the app looks and speaks for you, on every device.",
       "language": "Language",
       "timezone": "Time zone",
-      "browserZone": "Use the time zone of this browser",
+      "browserZone": "Automatic: the time zone of the store, or of this browser",
       "density": "Density",
       "densities": {
         "comfortable": "Comfortable",
@@ -2073,6 +2073,7 @@
     },
     "backToList": "Back to the conversations",
     "openCustomer": "Open the customer profile",
+    "deletedElsewhere": "This conversation was deleted.",
     "announce": {
       "newMessage": "New message in a conversation",
       "assignedToYou": "A conversation was assigned to you"
@@ -5812,7 +5813,8 @@
   "search": {
     "palette": {
       "title": "Search",
-      "description": "Search customers, orders, products and messages, or go to a page. Use the arrow keys and Enter.",
+      "description": "Search {kinds}, or go to a page. Use the arrow keys and Enter.",
+      "descriptionPagesOnly": "Go to a page. Use the arrow keys and Enter.",
       "label": "Search the store",
       "placeholder": "Search or go to a page",
       "results": "Results",
