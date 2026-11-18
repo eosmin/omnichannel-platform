@@ -389,7 +389,9 @@ describe('RemoteChannelPlugin: the answers to a send', () => {
   })
 
   it('takes the id of a message up to the shared bound, the one the worker stores, and refuses a longer one', async () => {
-    const longest = 'x'.repeat(OutboundLimits.EXTERNAL_ID_MAX_LENGTH)
+    // The literal pins the contract: the worker stores up to 512 characters of an id
+    expect(OutboundLimits.EXTERNAL_ID_MAX_LENGTH).toBe(512)
+    const longest = 'x'.repeat(512)
     const fits = harness(() => ok({ externalId: longest, status: 'sent' }))
     expect((await send(fits.plugin)).externalId).toBe(longest)
     const tooLong = harness(() => ok({ externalId: `${longest}x`, status: 'sent' }))
