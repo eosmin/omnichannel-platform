@@ -448,7 +448,9 @@ function BankProfileForm({
           {refusal}
         </p>
       )}
-      <div className={`${stickyDialogActionsClass} flex flex-col-reverse gap-2 sm:flex-row sm:justify-end`}>
+      <div
+        className={`${stickyDialogActionsClass} flex flex-col-reverse gap-2 sm:flex-row sm:justify-end`}
+      >
         <Button type="button" variant="outline" onClick={onDone} disabled={pending}>
           {t('cancel')}
         </Button>
