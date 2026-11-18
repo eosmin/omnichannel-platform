@@ -9,6 +9,7 @@ import {
   FiscalSweepLimits,
   listFiscalDocumentsQuerySchema,
   lowercasedUuidSchema,
+  queryIntSchema,
   putFiscalIssuerSchema,
   type ConfirmFiscalIssuerChangeBody,
   type FiscalReceiverPatchBody,
@@ -36,12 +37,9 @@ export const evidenceKindSchema = z.enum(FiscalEvidenceKind)
 export const reconciliationQuerySchema = z.object({
   kind: z.enum(FiscalSweepKind),
   cursor: lowercasedUuidSchema.optional(),
-  limit: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(FiscalSweepLimits.PAGE_SIZE_MAX)
-    .default(FiscalSweepLimits.PAGE_SIZE_DEFAULT)
+  limit: queryIntSchema(1, FiscalSweepLimits.PAGE_SIZE_MAX).default(
+    FiscalSweepLimits.PAGE_SIZE_DEFAULT
+  )
 })
 export type ReconciliationQuery = z.output<typeof reconciliationQuerySchema>
 
