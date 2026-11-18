@@ -20,6 +20,7 @@ import {
   type RemoteChannelCommand,
   RemoteChannelErrorCodes,
   RemoteChannelHeaders,
+  OutboundLimits,
   RemoteChannelLimits,
   RemoteChannelSendTypes,
   type RemoteChannelSendType,
@@ -100,7 +101,7 @@ export interface RemoteChannelDeps {
 
 // Only the platform's own words, never what the plugin said: a plugin is a third party's and its text could carry anything
 const sendAnswer = z.object({
-  externalId: z.string().min(1).max(512),
+  externalId: z.string().min(1).max(OutboundLimits.EXTERNAL_ID_MAX_LENGTH),
   status: z.literal(DeliveryStatus.SENT),
   sentAt: z.iso.datetime({ offset: true }).optional()
 })
@@ -513,7 +514,9 @@ export class RemoteChannelPlugin implements ChannelPlugin {
     return this.failure(this.codeOf(said?.code), {
       retryable,
       // A 5xx may have done the work before it failed; a 4xx is the plugin saying it did not take the request
-      ...(serverSide && options.changesProvider ? { outcomeUnknown: true } : { refused: true })
+      ...(serverSide && options.changesProvider
+        ? { outcomeUnknown: true, idempotent: options.idempotencyKey !== undefined }
+        : { refused: true })
     })
   }
 
@@ -558,13 +561,19 @@ export class RemoteChannelPlugin implements ChannelPlugin {
     // A timeout, a connection that dropped: the plugin may have taken the message
     return this.failure(ErrorCodes.CHANNEL_MESSAGE_FAILED, {
       retryable: true,
-      outcomeUnknown: options.changesProvider
+      outcomeUnknown: options.changesProvider,
+      idempotent: options.changesProvider && options.idempotencyKey !== undefined
     })
   }
 
   private failure(
     code: PluginErrorCode,
-    options: { retryable: boolean; refused?: boolean; outcomeUnknown?: boolean }
+    options: {
+      retryable: boolean
+      refused?: boolean
+      outcomeUnknown?: boolean
+      idempotent?: boolean
+    }
   ): PluginError {
     return new PluginError(code, options)
   }

@@ -13,6 +13,7 @@ import { api } from '../helpers/http'
 
 const OK = 200
 const CREATED = 201
+const BAD_REQUEST = 400
 
 interface TagBody {
   id: string
@@ -71,6 +72,15 @@ describe('The cached reads of the settings of a store', () => {
   }
 
   describe('tags', () => {
+    it('refuses a query parameter the lists of tags and snippets do not know', async () => {
+      expect((await inA().get(ApiRoutes.settings.tags).query({ foo: '1' })).status).toBe(
+        BAD_REQUEST
+      )
+      expect((await inA().get(ApiRoutes.settings.snippets).query({ foo: '1' })).status).toBe(
+        BAD_REQUEST
+      )
+    })
+
     it('serves the second read from the cache, and a change through the api shows at once', async () => {
       const first = await rawTag(ctx.storeA.id, `${prefix}-one`)
       expect(await namesOf(inA())).toContain(first.name)

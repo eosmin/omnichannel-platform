@@ -24,6 +24,48 @@ describe('channelEventSchema', () => {
     expect(channelEventSchema.safeParse(valid).success).toBe(true)
   })
 
+  it('takes the id of a message up to 512 characters, what a send may return, and no more', () => {
+    const edit = (id: string): object => ({
+      ...valid,
+      type: ChannelEventTypes.MESSAGE_RECEIVED,
+      message: { ...valid.message, externalId: id, replyToExternalId: id }
+    })
+    expect(channelEventSchema.safeParse(edit('x'.repeat(512))).success).toBe(true)
+    expect(channelEventSchema.safeParse(edit('x'.repeat(513))).success).toBe(false)
+    // What names something else (the connection) keeps the shorter bound
+    expect(channelEventSchema.safeParse({ ...valid, connectionId: 'x'.repeat(256) }).success).toBe(
+      false
+    )
+  })
+
+  it('takes the 512 characters in the id every other kind of event points at, and no more', () => {
+    const base = {
+      connectionId: 'c-1',
+      channelIdentity: '50370000000',
+      timestamp: '2026-10-27T10:00:00.000Z'
+    }
+    const kinds = (id: string): object[] => [
+      { ...base, type: ChannelEventTypes.MESSAGE_DELIVERED, status: { externalId: id } },
+      {
+        ...base,
+        type: ChannelEventTypes.MESSAGE_REACTION,
+        reaction: { targetExternalId: id, emoji: '👍' }
+      },
+      {
+        ...base,
+        type: ChannelEventTypes.MESSAGE_EDITED,
+        edit: { targetExternalId: id, content: 'new text' }
+      },
+      { ...base, type: ChannelEventTypes.MESSAGE_DELETED, deletion: { targetExternalId: id } }
+    ]
+    for (const event of kinds('x'.repeat(512))) {
+      expect(channelEventSchema.safeParse(event).success).toBe(true)
+    }
+    for (const event of kinds('x'.repeat(513))) {
+      expect(channelEventSchema.safeParse(event).success).toBe(false)
+    }
+  })
+
   it('keeps a message whose text, name or metadata carries a NUL, with the NUL taken out (N-4A-05)', () => {
     const parsed = channelEventSchema.safeParse({
       ...withMessage({ content: 'hel\0lo', metadata: { ['k\0ey']: ['a\0'] } }),
