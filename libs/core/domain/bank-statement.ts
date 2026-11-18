@@ -213,6 +213,8 @@ export function bankProfileProblem(value: {
 // ------------------------------------------------------------------------------------------------------ the cells
 
 // What banks put between the lines of a memo (and tabs and separators): one space of the description
+// What a bank prints in the debit or credit column that does not apply to the row
+const NOTHING_MARKS: ReadonlySet<string> = new Set(['-', '--'])
 const LINE_BREAKS = /[\r\n\t\v\f\u0085\u2028\u2029]+/g
 
 const escapeForPattern = (character: string): string =>
@@ -500,7 +502,8 @@ export function parseBankStatement(
           [BankStatementFields.CREDIT, cell(BankStatementFields.CREDIT), 1]
         ] as const
       ).map(([field, value, sign]) => {
-        if (value === undefined || value.trim() === '')
+        // A bank that prints a dash in the column that does not apply says nothing there, like an empty cell (HC-125)
+        if (value === undefined || value.trim() === '' || NOTHING_MARKS.has(value.trim()))
           return { field, filled: false, cents: 0, sign }
         const cents = parseBankAmountCents(
           value,

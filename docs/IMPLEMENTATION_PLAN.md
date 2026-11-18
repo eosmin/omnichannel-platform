@@ -1678,6 +1678,12 @@ reference is counted in characters, not UTF-16 units (an emoji is one). (5) `clo
 as 0 and `1e3` or `0x10` are refused). No data model changed. The count in characters is shared by the remittance import (its guide numbers and references count characters too). One date that can only be read in the order of the profile confirms the order for the whole file, by design (a file that mixes orders is the bank's, and every date that cannot be read is still `invalid_date`); the confirmation is audited (`dateFormatConfirmed`). **Debt:** many-to-one deposits and net-of-fee deposits stay the accountant's decision ([ACCOUNTANT], debt c of
 4B.4b-2); the preview of the profile mapper does not yet show the `dateFormatUndecided` warning (the import asks): Step 7.7.
 
+Fix `fix/bank-csv-dash-cells` (HC-125, owner question P-R2-09, decided under rule 12): in a statement with a debit column and a credit column, a lone `-` or `--` in
+the column that does not apply is read as nothing, like an empty cell, so a bank that prints dashes no longer needs its file cleaned. Rejected: accepting any dash
+text (`---`, `-5.00` still refuse; a sign inside the column is a mistake) and changing the signed `amount` column (a dash there says nothing about the money, so it
+refuses). A row with a dash in both columns still says nothing and is refused as `ambiguous_direction`. The other parts of HC-125 (line breaks in a description,
+the closing balance) were closed by #582 (PUR-026/110 PASS). The remittance import (`remittance-import.ts`) keeps its stricter reading; its own question stays with the owner.
+
 Review of 4B.4a (rule 12): the generic `POST finance/entries/:id/reverse` now refuses the entry of a transaction
 (`FinanceConflicts.ENTRY_OWNED_BY_TRANSACTION`), because it would leave the transaction looking live and skip its kind's permission and audit row.
 

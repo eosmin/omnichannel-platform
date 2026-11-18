@@ -190,6 +190,31 @@ describe('parseBankStatement', () => {
     ])
   })
 
+  it('reads a dash in the column that does not apply as nothing (HC-125)', () => {
+    const parsed = parseBankStatement(
+      'Date,Description,Ref,Debit,Credit\n2026-11-02,A,,5.00,-\n2026-11-02,B,,--,7.00\n2026-11-02,C,,-,-\n2026-11-02,D,,3.00,3.00\n',
+      split
+    )
+    expect(parsed.lines.map(line => line.amountCents)).toEqual([-500, 700])
+    expect(parsed.errors.map(error => [error.row, error.code])).toEqual([
+      [4, BankStatementErrors.AMBIGUOUS_DIRECTION],
+      [5, BankStatementErrors.AMBIGUOUS_DIRECTION]
+    ])
+  })
+
+  it('still refuses a dash that is not alone, and a dash in the one signed amount column', () => {
+    const split2 = parseBankStatement(
+      'Date,Description,Ref,Debit,Credit\n2026-11-02,A,,-5.00,\n2026-11-02,B,,---,7.00\n',
+      split
+    )
+    expect(split2.errors.map(error => error.code)).toEqual([
+      BankStatementErrors.INVALID_AMOUNT,
+      BankStatementErrors.INVALID_AMOUNT
+    ])
+    const one = parseBankStatement('Date,Description,Ref,Amount\n2026-11-02,A,,-\n', signed)
+    expect(one.errors.map(error => error.code)).toEqual([BankStatementErrors.INVALID_AMOUNT])
+  })
+
   it('refuses a sign inside a debit or credit column and a zero amount', () => {
     const parsed = parseBankStatement(
       'Date,Description,Ref,Debit,Credit\n2026-11-02,A,,-5.00,\n2026-11-02,B,,,0.00\n',
