@@ -11,6 +11,7 @@ import {
   newConversationIn,
   removeWidgetPlugin
 } from '../support/database'
+import { expectDialogFitsThePhoneWidth } from '../support/dialog-fit'
 import { signIn } from '../support/login'
 import { expect, reachServicesFromOwnAddress, test } from '../support/test'
 
@@ -151,5 +152,47 @@ test.describe('Plugin widgets in the agent sidebar', () => {
     await expect(
       page.getByRole('alert').getByRole('button', { name: en.common.tryAgain })
     ).toBeVisible()
+  })
+
+  test('a long widget name does not widen the Plugins page on a phone', async () => {
+    const longPlugin = `e2e-long-${run}`
+    const longName = 'W'.repeat(60)
+    await addWidgetPlugin(storeId, {
+      pluginId: longPlugin,
+      widgetUrl: `${ORIGIN}/panel`,
+      widgetName: longName
+    })
+    const before = page.viewportSize() ?? { width: 1600, height: 1000 }
+    try {
+      await page.setViewportSize({ width: 390, height: 844 })
+      await page.goto(AppPaths.store.settings(storeId, StoreSettingsSections.PLUGINS))
+      const widgetRow = page
+        .getByRole('listitem')
+        .filter({ has: page.getByRole('heading', { name: longName, level: 3 }) })
+      await expect(widgetRow).toBeVisible()
+      // The name wraps inside its card, and the page does not scroll sideways
+      const inside = await widgetRow.evaluate(row => {
+        const name = row.querySelector('h3')?.getBoundingClientRect()
+        const card = row.getBoundingClientRect()
+        return name !== undefined && name.right <= card.right + 1
+      })
+      expect(inside).toBe(true)
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () => document.documentElement.scrollWidth - document.documentElement.clientWidth
+          )
+        )
+        .toBeLessThanOrEqual(0)
+      await page
+        .getByRole('listitem')
+        .filter({ has: page.getByRole('heading', { name: longPlugin, level: 2 }) })
+        .getByRole('button', { name: new RegExp(en.settings.plugins.detail.action) })
+        .click()
+      await expectDialogFitsThePhoneWidth(page, page.getByRole('dialog'))
+    } finally {
+      await page.setViewportSize(before)
+      await removeWidgetPlugin(longPlugin)
+    }
   })
 })

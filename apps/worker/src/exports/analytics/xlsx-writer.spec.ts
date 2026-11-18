@@ -35,8 +35,19 @@ describe('buildXlsx', () => {
     const xml = sheetXml(buildXlsx(sheet))
     expect(xml).toContain('<c r="B5"><v>3</v></c>')
     // Money is in whole units of the currency, as the rollup keeps it: no division, no early rounding
-    expect(xml).toContain('<c r="C5"><v>120.5</v></c>')
+    expect(xml).toContain('<c r="C5" s="2"><v>120.5</v></c>')
     expect(xml).not.toContain('r="B6"')
+  })
+
+  it('shows money with two decimals through a cell format and leaves counts alone', () => {
+    const xml = sheetXml(buildXlsx(sheet))
+    // 120.5 is a number, shown as 120.50 by the format 2 (0.00); the count has no format
+    expect(xml).toContain('<c r="C5" s="2"><v>120.5</v></c>')
+    expect(xml).toContain('<c r="C7" s="3"><v>120.5</v></c>')
+    expect(xml).toContain('<c r="B5"><v>3</v></c>')
+    const styles = strFromU8(unzipSync(buildXlsx(sheet))['xl/styles.xml'] ?? new Uint8Array())
+    expect(styles).toContain('<cellXfs count="4">')
+    expect(styles.match(/numFmtId="2"/g)).toHaveLength(2)
   })
 
   it('writes every text as an inline string and never a formula', () => {

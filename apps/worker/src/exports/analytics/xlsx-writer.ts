@@ -37,9 +37,9 @@ function columnName(index: number): string {
 
 type Cell = string | number | null
 
-// style 1 is the bold of a header and of the total row
-function cellXml(reference: string, value: Cell, bold: boolean): string {
-  const style = bold ? ' s="1"' : ''
+// style 1 is the bold of a header and of the total row; 2 is a figure of money (two decimals) and 3 the same in bold
+function cellXml(reference: string, value: Cell, bold: boolean, money = false): string {
+  const style = money ? (bold ? ' s="3"' : ' s="2"') : bold ? ' s="1"' : ''
   if (value === null) return bold ? `<c r="${reference}"${style}/>` : ''
   if (typeof value === 'number') {
     return Number.isFinite(value) ? `<c r="${reference}"${style}><v>${value}</v></c>` : ''
@@ -47,9 +47,16 @@ function cellXml(reference: string, value: Cell, bold: boolean): string {
   return `<c r="${reference}"${style} t="inlineStr"><is><t xml:space="preserve">${escapeXml(value)}</t></is></c>`
 }
 
-function rowXml(number: number, cells: readonly Cell[], bold: boolean): string {
+function rowXml(
+  number: number,
+  cells: readonly Cell[],
+  bold: boolean,
+  money: readonly boolean[] = []
+): string {
   const body = cells
-    .map((cell, index) => cellXml(`${columnName(index)}${number}`, cell, bold))
+    .map((cell, index) =>
+      cellXml(`${columnName(index)}${number}`, cell, bold, money[index] === true)
+    )
     .join('')
   return `<row r="${number}">${body}</row>`
 }
@@ -71,6 +78,8 @@ export function sheetNameOf(title: string): string {
 }
 
 export function buildXlsx(sheet: ReportSheet): Uint8Array {
+  // The first column is the day, so the unit of column `n` is `units[n - 1]`
+  const money = [false, ...sheet.units.map(unit => unit === MetricUnits.CURRENCY)]
   const rows = [
     rowXml(1, [sheet.title], true),
     rowXml(2, [sheet.subtitle], false),
@@ -84,7 +93,8 @@ export function buildXlsx(sheet: ReportSheet): Uint8Array {
             displayValue(value, sheet.units[position] ?? MetricUnits.COUNT)
           )
         ],
-        row.total
+        row.total,
+        money
       )
     )
   ]
@@ -103,7 +113,7 @@ export function buildXlsx(sheet: ReportSheet): Uint8Array {
       `${XML_HEADER}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`
     ),
     'xl/styles.xml': strToU8(
-      `${XML_HEADER}<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/></cellXfs></styleSheet>`
+      `${XML_HEADER}<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="2" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="2" fontId="1" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyFont="1"/></cellXfs></styleSheet>`
     ),
     'xl/worksheets/sheet1.xml': strToU8(
       `${XML_HEADER}<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${rows.join('')}</sheetData></worksheet>`

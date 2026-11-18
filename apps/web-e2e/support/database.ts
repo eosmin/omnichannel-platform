@@ -2040,7 +2040,7 @@ export function clearOpenReceptionBatches(storeId: string): Promise<void> {
 // (Step 5.6), so the row is written as the owner. Returns the installation, for the specs that read what it holds.
 export function addWidgetPlugin(
   storeId: string,
-  input: { pluginId: string; widgetUrl: string }
+  input: { pluginId: string; widgetUrl: string; widgetName?: string }
 ): Promise<string> {
   return withOwner(
     async owner =>
@@ -2049,6 +2049,7 @@ export function addWidgetPlugin(
           storeId,
           pluginId: input.pluginId,
           widgetUrl: input.widgetUrl,
+          widgetName: input.widgetName,
           scopes: [PluginScopes.CONVERSATIONS_READ, PluginScopes.CUSTOMERS_READ]
         })
       ).id
