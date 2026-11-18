@@ -110,6 +110,27 @@ describe('saleAmounts', () => {
     })
   })
 
+  it('refuses an order with a line whose net is negative even when the total net is not (HC-203)', () => {
+    // The tax of the first line is above its price: its net is -1.00, and the second line hides it in the total. A return of
+    // the sale refuses a line like this, so a sale that posted it could never be returned
+    const order: SaleOrderRow = {
+      subtotalCents: 6000,
+      shippingCents: 0,
+      discountCents: 0,
+      totalCents: 6000,
+      taxCents: 1100,
+      pricesIncludeTax: true,
+      lines: [
+        { quantity: 1, unitPriceCents: 1000, taxCents: 1100 },
+        { quantity: 1, unitPriceCents: 5000, taxCents: 0 }
+      ]
+    }
+    expect(saleAmounts(order)).toEqual({
+      ok: false,
+      reason: FinancePostingFailureReason.AMOUNTS_DISAGREE
+    })
+  })
+
   it('refuses a tax of the shipping fee that is negative or above the fee', () => {
     const order: SaleOrderRow = {
       subtotalCents: 1000,
