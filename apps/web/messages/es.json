@@ -6288,6 +6288,7 @@
       "confirmTitle": "¿Registrar este asiento?",
       "confirmDescription": "Un asiento escrito a mano no se puede editar ni borrar después, solo revertir con otro asiento.",
       "confirm": "Registrar asiento",
+      "maybePosted": "Es posible que este asiento ya esté registrado: se perdió la respuesta. Revisa el libro diario; si no está, cierra esta ventana y vuélvelo a escribir.",
       "done": "Asiento {number} registrado."
     },
     "transactions": {

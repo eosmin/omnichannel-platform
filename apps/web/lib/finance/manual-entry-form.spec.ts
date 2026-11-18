@@ -1,4 +1,7 @@
+import { ApiError } from '@platform/api-client'
+
 import {
+  attemptMayHavePosted,
   emptyManualEntryDraft,
   isFooterProblem,
   ManualEntryFields,
@@ -141,5 +144,21 @@ describe('where a problem of the entry is drawn (LED-822)', () => {
     expect(Object.keys(ManualEntryPlacement).sort()).toEqual(
       Object.values(ManualEntryFields).sort()
     )
+  })
+})
+
+describe('the key of a retry after a lost answer (HC-114)', () => {
+  it('may have posted when no answer came or the server failed', () => {
+    expect(attemptMayHavePosted(new TypeError('network'))).toBe(true)
+    expect(attemptMayHavePosted(new ApiError(0, 'NETWORK_ERROR', 'x'))).toBe(true)
+    expect(attemptMayHavePosted(new ApiError(408, 'TIMEOUT', 'x'))).toBe(true)
+    expect(attemptMayHavePosted(new ApiError(500, 'INTERNAL_ERROR', 'x'))).toBe(true)
+    expect(attemptMayHavePosted(new ApiError(503, 'INTERNAL_ERROR', 'x'))).toBe(true)
+  })
+
+  it('wrote nothing when the api refused it', () => {
+    expect(attemptMayHavePosted(new ApiError(400, 'VALIDATION_FAILED', 'x'))).toBe(false)
+    expect(attemptMayHavePosted(new ApiError(409, 'RESOURCE_CONFLICT', 'x'))).toBe(false)
+    expect(attemptMayHavePosted(new ApiError(403, 'FORBIDDEN', 'x'))).toBe(false)
   })
 })

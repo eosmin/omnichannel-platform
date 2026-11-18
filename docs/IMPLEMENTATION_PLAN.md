@@ -1429,6 +1429,16 @@ above is a failing test that passes, and no code outside `libs/core/finance` wri
 - [ ] **Debt:** the tax-rate accounts (`finance-tax-rates.service.ts`) and the payable account of a supplier (`suppliers.service.ts`) still take
       any postable account; they go with the accountant's answer on the VAT accounts (HC-118, FIS N8).
 
+**PR fix/manual-entry-key-kept (HC-114; HC-111 verified)**
+- [x] The key of the manual entry dialog is kept through an edit while the last attempt may have posted (no answer, a timeout, a 5xx);
+      it is renewed only after a refusal of the api. An edited retry after a lost answer is a conflict with its own message
+      (`finance.manual.maybePosted`), never a second entry (`attemptMayHavePosted`, spec in `manual-entry-form.spec.ts`).
+- [x] HC-111 (CSV of the auditor not bijective) was already closed by `csvCell`/`csvCellText` (hardening A, #607); proven by
+      `libs/core/domain/exports/csv.spec.ts` ("reads %j back exactly") and LED-R2-010 PASS in the regression.
+- [ ] **Debt (owner of the book, migration):** at most one `opening_balance` entry per account/organization (LED-R2-042). Needs the
+      accountant's answer (one opening per organization?) and a partial unique index with its rollback. Closes in hardening B.
+- [ ] **Debt:** the CSV of the auditor has no format version; add a version row/column when the accountant fixes the format.
+
 ### Step 4B.3 — VAT and the tax snapshot (api)
 Delivered in two PRs (the step is bigger than one review): **4B.3a** the schema, the constants, the tax math, the rates, the product
 treatment and the store preference; **4B.3b** the snapshot on the orders, the order total, the tax fields of the order routes and the VAT

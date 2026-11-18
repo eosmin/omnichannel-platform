@@ -4,11 +4,13 @@ import { Plus, Trash2 } from 'lucide-react'
 import { useTranslations } from 'next-intl'
 import { type FormEvent, type ReactElement, useState } from 'react'
 
-import type { FinanceAccountView } from '@platform/api-client'
+import { ApiError, type FinanceAccountView } from '@platform/api-client'
+import { ClientErrorCodes } from '@platform/core/errors'
 
 import { accountLabelsOf, postableAccountsOf } from '../../lib/finance/account-form'
 import { dayOfClock } from '../../lib/finance/dates'
 import {
+  attemptMayHavePosted,
   emptyManualEntryDraft,
   type ManualEntryDraft,
   ManualEntryEntryTypes,
@@ -91,8 +93,10 @@ function ManualEntryForm({
   const [draft, setDraft] = useState<ManualEntryDraft>(() =>
     emptyManualEntryDraft(dayOfClock(new Date()), [newKey(), newKey()])
   )
-  // The key of the form: a double click or a retry after a lost answer is the same entry. A new content is a new key.
+  // The key of the form: a double click or a retry after a lost answer is the same entry. It is renewed by an edit only when the last
+  // attempt was refused (nothing was written); after a lost answer it is kept, so an edited retry cannot post the entry twice (HC-114).
   const [key, setKey] = useState(newKey)
+  const [mayHavePosted, setMayHavePosted] = useState(false)
   const [wrong, setWrong] = useState<ManualEntryProblem | null>(null)
   const [refusal, setRefusal] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -106,7 +110,7 @@ function ManualEntryForm({
 
   const change = (next: ManualEntryDraft): void => {
     setDraft(next)
-    setKey(newKey())
+    if (!mayHavePosted) setKey(newKey())
     setWrong(null)
     setRefusal(null)
   }
@@ -124,7 +128,11 @@ function ManualEntryForm({
       toast.success(t('done', { number: posted.number }))
       onDone()
     } catch (error) {
-      setRefusal(errorText(error))
+      const lost = attemptMayHavePosted(error)
+      const heldKeyConflict =
+        mayHavePosted && error instanceof ApiError && error.is(ClientErrorCodes.RESOURCE_CONFLICT)
+      setMayHavePosted(lost || heldKeyConflict)
+      setRefusal(heldKeyConflict ? t('maybePosted') : errorText(error))
     } finally {
       setSaving(false)
       guard.leave()
