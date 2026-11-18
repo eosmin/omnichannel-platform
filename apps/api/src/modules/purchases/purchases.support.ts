@@ -1,5 +1,5 @@
 import type { PrismaTransaction } from '@platform/core/database'
-import { type AccountRole, PurchaseLimits } from '@platform/core/domain'
+import { type AccountRole, type PurchaseConflicts, PurchaseLimits } from '@platform/core/domain'
 import {
   ErrorCodes,
   HttpStatusCodes,
@@ -60,7 +60,11 @@ export const invalidPurchase = (problems: readonly string[]): PlatformException 
     { problems }
   )
 
-export const invalidTransition = (from: string, to: string, conflict?: string): PlatformException =>
+export const invalidTransition = (
+  from: string,
+  to: string,
+  conflict?: (typeof PurchaseConflicts)[keyof typeof PurchaseConflicts]
+): PlatformException =>
   new PlatformException(
     ErrorCodes.PURCHASE_ORDER_INVALID_STATUS_TRANSITION,
     'a purchase order does not move that way',
