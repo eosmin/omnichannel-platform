@@ -311,12 +311,7 @@ describe('The weekly check of the chain, its incident and the guard of the close
           return true
         }
       } as never
-      const scheduler = new FinanceChainScheduler(
-        locks,
-        heavy as never,
-        app.get(PrismaService),
-        logger
-      )
+      const scheduler = new FinanceChainScheduler(locks, heavy as never, workerDb, logger)
       await scheduler.enqueueAll(new Date('2026-11-15T05:00:00.000Z'), { pageSize: 1 })
       const mine = heavy.jobs.filter(
         job => (job.data as { organizationId: string }).organizationId === ctx.orgA.id
@@ -347,7 +342,7 @@ describe('The weekly check of the chain, its incident and the guard of the close
           }
         } as never,
         broken as never,
-        app.get(PrismaService),
+        workerDb,
         logger
       )
       await expect(failing.run()).resolves.toBeUndefined()

@@ -49,6 +49,7 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { TEST_IDENTITY_KINDS } from '../helpers/identity-kinds'
 import { CapturedQueue, queueOf } from '../helpers/queue'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 const OK = 200
 const NOT_FOUND = 404
@@ -78,14 +79,17 @@ describe('Echoes and reactions that a channel delivers', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp([], builder =>
-      builder
-        .overrideProvider(getQueueToken(QueueNames.INBOUND))
-        .useValue(new CapturedQueue())
-        .overrideProvider(getQueueToken(QueueNames.HEAVY_PROCESSING))
-        .useValue(new CapturedQueue())
-        .overrideProvider(getQueueToken(QueueNames.OUTBOUND))
-        .useValue(new CapturedQueue())
+    app = await createTestApp(
+      [],
+      onWorkerDatabase(builder =>
+        builder
+          .overrideProvider(getQueueToken(QueueNames.INBOUND))
+          .useValue(new CapturedQueue())
+          .overrideProvider(getQueueToken(QueueNames.HEAVY_PROCESSING))
+          .useValue(new CapturedQueue())
+          .overrideProvider(getQueueToken(QueueNames.OUTBOUND))
+          .useValue(new CapturedQueue())
+      )
     )
     ctx = await seedTestContext(owner, app, prefix)
     app.get(PluginRegistry, { strict: false }).register(buildChannelPlugin())

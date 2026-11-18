@@ -375,6 +375,201 @@ describe('The search of the store', () => {
       expect((await messagesFor(`MARÍA ${tag}i`)).body.hits.map(hit => hit.id)).toEqual([other.id])
     })
 
+    // SRCH-040: a text of only stop words leaves the tsquery empty, which matches nothing; it is read as typed instead
+    describe('a text with no word the index can look for', () => {
+      const messageOf = async (content: string) => {
+        const conversation = await createConversationOf(owner, { storeId: ctx.storeA.id })
+        const message = await createMessage(owner, {
+          storeId: ctx.storeA.id,
+          conversationId: conversation.id,
+          content
+        })
+        return { conversation, message }
+      }
+      const idsFor = async (
+        q: string,
+        actor: Actor = ctx.adminA,
+        extra: Record<string, unknown> = {}
+      ) => (await messagesFor(q, actor, extra)).body.hits.map(hit => hit.id)
+
+      it('finds a stop word whatever the accents and the case, and marks it', async () => {
+        const { message } = await messageOf(`Cuándo llega mi pedido ${tag}`)
+        for (const q of ['cuando', 'cuándo', 'CUÁNDO', 'Cuando']) {
+          const found = await messagesFor(q)
+          expect(found.status).toBe(OK)
+          expect(found.body.hits.map(hit => hit.id)).toContain(message.id)
+        }
+        const hit = (await messagesFor('cuándo')).body.hits.find(row => row.id === message.id)
+        expect(hit?.snippet).toContain(
+          `${SearchSnippetMarks.START}Cuándo${SearchSnippetMarks.STOP}`
+        )
+      })
+
+      it('finds a phrase made only of stop words, as a phrase', async () => {
+        const { message } = await messageOf(`Es que no sé ${tag}`)
+        const { message: apart } = await messageOf(`Que no es, y sé ${tag}`)
+        const ids = await idsFor('es que no')
+        expect(ids).toContain(message.id)
+        expect(ids).not.toContain(apart.id)
+      })
+
+      it('reads a text of symbols as the characters it is, and % _ and the backslash are not wildcards', async () => {
+        const { message } = await messageOf(`Ya pagué!!! ${tag}`)
+        const { message: plain } = await messageOf(`Ya pagué ${tag}`)
+        const ids = await idsFor('!!!')
+        expect(ids).toContain(message.id)
+        expect(ids).not.toContain(plain.id)
+        for (const q of ['%%%', '___', '\\\\\\']) {
+          expect(await idsFor(q)).not.toContain(plain.id)
+        }
+        // And they do find the message that has them, as the characters they are
+        const percent = await messageOf(`Descuento 50%%% ${tag}`)
+        const underscore = await messageOf(`Código a___b ${tag}`)
+        const backslash = await messageOf(`Ruta c\\\\\\d ${tag}`)
+        expect(await idsFor('%%%')).toContain(percent.message.id)
+        expect(await idsFor('___')).toContain(underscore.message.id)
+        expect(await idsFor('\\\\\\')).toContain(backslash.message.id)
+      })
+
+      it('ignores the punctuation around the words: "¿cuándo?" finds "cuándo"', async () => {
+        const { message } = await messageOf(`Cuándo llega ${tag}`)
+        for (const q of ['¿cuándo?', 'cuando,', '"cuando"', '  cuando  ']) {
+          expect(await idsFor(q)).toContain(message.id)
+        }
+      })
+
+      it('finds none for a text too short to mean anything, instead of every message', async () => {
+        await messageOf(`El pedido ${tag}`)
+        expect((await messagesFor('el')).body.hits).toEqual([])
+      })
+
+      it('returns the newest first and says when there is more', async () => {
+        const older = await messageOf(`Cuando sea ${tag} uno`)
+        const newer = await messageOf(`Cuando sea ${tag} dos`)
+        const page = await messagesFor('cuando', ctx.adminA, { limit: 1 })
+        expect(page.body.hits.map(hit => hit.id)).toEqual([newer.message.id])
+        expect(page.body.hasMore).toBe(true)
+        const both = await idsFor('cuando')
+        expect(both.indexOf(newer.message.id)).toBeLessThan(both.indexOf(older.message.id))
+      })
+
+      it('keeps every rule of visibility of the search by words', async () => {
+        const { conversation, message } = await messageOf(`Cuando llega ${tag} visible`)
+        const make = (content: string, type?: MessageType) =>
+          createMessage(owner, {
+            storeId: ctx.storeA.id,
+            conversationId: conversation.id,
+            content,
+            ...(type ? { type } : {})
+          })
+        const deleted = await make(`Cuando llega ${tag} borrado`)
+        await owner.message.update({ where: { id: deleted.id }, data: { deletedAt: new Date() } })
+        const discarded = await make(`Cuando llega ${tag} descartado`)
+        await owner.message.update({
+          where: { id: discarded.id },
+          data: { discardedAt: new Date() }
+        })
+        const system = await make(`Cuando llega ${tag} sistema`, MessageType.SYSTEM)
+        const note = await make(`Cuando llega ${tag} nota`, MessageType.INTERNAL_NOTE)
+
+        const admin = await idsFor('cuando')
+        expect(admin).toContain(message.id)
+        expect(admin).toContain(note.id)
+        for (const hidden of [deleted.id, discarded.id, system.id])
+          expect(admin).not.toContain(hidden)
+
+        const noNotes = await viewerOf('stopword-no-notes', [
+          Permissions.CONVERSATIONS_VIEW,
+          Permissions.CONVERSATIONS_VIEW_ALL,
+          Permissions.MESSAGES_VIEW
+        ])
+        const seen = await idsFor('cuando', noNotes)
+        expect(seen).toContain(message.id)
+        expect(seen).not.toContain(note.id)
+      })
+
+      it('follows the visibility of the inbox: assigned to someone else, the hidden ones, an erased customer', async () => {
+        const make = async (input: object) => {
+          const conversation = await createConversationOf(owner, {
+            storeId: ctx.storeA.id,
+            ...input
+          })
+          const message = await createMessage(owner, {
+            storeId: ctx.storeA.id,
+            conversationId: conversation.id,
+            content: 'Cuando llega'
+          })
+          return { conversation, message }
+        }
+        const free = await make({})
+        const assigned = await make({ assignedTo: storeAUser })
+        const archived = await make({ status: ConversationStatus.ARCHIVED })
+        const spam = await make({ status: ConversationStatus.SPAM })
+        const erased = await make({})
+        await owner.customer.update({
+          where: { id: erased.conversation.customerId },
+          data: { erasedAt: new Date() }
+        })
+        const all = [free, assigned, archived, spam, erased]
+        const base = [Permissions.CONVERSATIONS_VIEW, Permissions.MESSAGES_VIEW] as const
+        const own = await viewerOf('stop-not-all', base)
+        const viewAll = await viewerOf('stop-all', [...base, Permissions.CONVERSATIONS_VIEW_ALL])
+        const archiver = await viewerOf('stop-archiver', [
+          ...base,
+          Permissions.CONVERSATIONS_VIEW_ALL,
+          Permissions.CONVERSATIONS_ARCHIVE
+        ])
+        // Each conversation is asked on its own (`conversationId`), which is also the scope of the thread
+        const seenBy = async (actor: Actor) => {
+          const seen: string[] = []
+          for (const row of all) {
+            const ids = await idsFor('cuando', actor, { conversationId: row.conversation.id })
+            if (ids.includes(row.message.id)) seen.push(row.message.id)
+          }
+          return seen.sort()
+        }
+        expect(await seenBy(own)).toEqual([free.message.id])
+        expect(await seenBy(viewAll)).toEqual([free.message.id, assigned.message.id].sort())
+        expect(await seenBy(archiver)).toEqual(
+          [free.message.id, assigned.message.id, archived.message.id, spam.message.id].sort()
+        )
+        // The scope narrows: the message of another conversation is not in it
+        expect(await idsFor('cuando', archiver, { conversationId: free.conversation.id })).toEqual([
+          free.message.id
+        ])
+      })
+
+      it('shows the line of an order only to who may read orders', async () => {
+        const { conversation } = await messageOf(`Cuando llega ${tag}`)
+        const summary = await createMessage(owner, {
+          storeId: ctx.storeA.id,
+          conversationId: conversation.id,
+          type: MessageType.ORDER_SUMMARY,
+          content: 'Cuando llega el pedido'
+        })
+        const base = [
+          Permissions.CONVERSATIONS_VIEW,
+          Permissions.CONVERSATIONS_VIEW_ALL,
+          Permissions.MESSAGES_VIEW
+        ] as const
+        const plain = await viewerOf('stop-no-orders', base)
+        const reader = await viewerOf('stop-orders', [...base, Permissions.ORDERS_VIEW])
+        const scope = { conversationId: conversation.id }
+        expect(await idsFor('cuando', plain, scope)).not.toContain(summary.id)
+        expect(await idsFor('cuando', reader, scope)).toContain(summary.id)
+      })
+
+      it('never finds a message of another store', async () => {
+        const conversation = await createConversationOf(owner, { storeId: ctx.storeB.id })
+        const foreign = await createMessage(owner, {
+          storeId: ctx.storeB.id,
+          conversationId: conversation.id,
+          content: `Cuando llega ${tag} ajeno`
+        })
+        expect(await idsFor('cuando')).not.toContain(foreign.id)
+      })
+    })
+
     it('never shows a message that was deleted or discarded, nor a line of the platform', async () => {
       const conversation = await createConversationOf(owner, { storeId: ctx.storeA.id })
       const kept = await createMessage(owner, {

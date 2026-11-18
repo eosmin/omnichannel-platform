@@ -40,6 +40,7 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { standalone } from '../helpers/leaks'
 import { type CapturedQueue, queueOf } from '../helpers/queue'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 const OK = 200
 const CREATED = 201
@@ -73,8 +74,11 @@ describe('The webhooks of an integration plugin and its revocation', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp([], builder =>
-      builder.overrideProvider(PluginChallengeService).useValue({ run: jest.fn() })
+    app = await createTestApp(
+      [],
+      onWorkerDatabase(builder =>
+        builder.overrideProvider(PluginChallengeService).useValue({ run: jest.fn() })
+      )
     )
     ctx = await seedTestContext(owner, app, prefix)
     queue = queueOf(app, QueueNames.WEBHOOKS)

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 
+import { unmetPermissionRequirements } from '@platform/core/auth'
 import { lowercasedUuidSchema } from '@platform/core/domain'
 
 import { isPermission } from '../tenancy'
@@ -12,6 +13,15 @@ export const idSchema = lowercasedUuidSchema
 const permissionList = z
   .array(z.string().refine(isPermission, { message: 'not a permission' }))
   .transform(permissions => [...new Set(permissions)]) // A repeated one is the same permission
+  // A permission that needs another is never held without it (registering a transaction needs seeing it)
+  .superRefine((permissions, context) => {
+    for (const { permission, requires } of unmetPermissionRequirements(permissions)) {
+      context.addIssue({
+        code: 'custom',
+        message: `${permission} needs ${requires.join(', ')}`
+      })
+    }
+  })
 
 const roleName = z.string().trim().min(1).max(MAX_NAME_LENGTH)
 const roleDescription = z.string().trim().max(MAX_DESCRIPTION_LENGTH)

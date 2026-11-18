@@ -74,6 +74,8 @@ export class FinanceTransactionsController {
     return this.transactions.get(organization.id, transactionId)
   }
 
+  // Who registers a transaction sees it (PermissionRequires): the roles keep the pair and the route asks for both
+  @RequirePermissions(Permissions.FINANCE_VIEW_JOURNAL)
   @RequireAnyPermission(Permissions.FINANCE_MANAGE_TRANSACTIONS, Permissions.FINANCE_MOVE_MONEY)
   @NoStore()
   @Post(ApiRoutes.finance.transactions.record)
@@ -90,6 +92,8 @@ export class FinanceTransactionsController {
   }
 
   // HIGH tier of DestructiveActionTiers (VOID_FINANCE_TRANSACTION): the interface asks before it sends this
+  // Who registers a transaction sees it (PermissionRequires): the roles keep the pair and the route asks for both
+  @RequirePermissions(Permissions.FINANCE_VIEW_JOURNAL)
   @RequireAnyPermission(Permissions.FINANCE_MANAGE_TRANSACTIONS, Permissions.FINANCE_MOVE_MONEY)
   @NoStore()
   @Post(ApiRoutes.finance.transactions.void(':id'))
@@ -113,6 +117,8 @@ export class FinanceTransactionsController {
   }
 
   // Voids one and registers another: the same HIGH tier as voiding it
+  // Who registers a transaction sees it (PermissionRequires): the roles keep the pair and the route asks for both
+  @RequirePermissions(Permissions.FINANCE_VIEW_JOURNAL)
   @RequireAnyPermission(Permissions.FINANCE_MANAGE_TRANSACTIONS, Permissions.FINANCE_MOVE_MONEY)
   @NoStore()
   @Post(ApiRoutes.finance.transactions.replace(':id'))

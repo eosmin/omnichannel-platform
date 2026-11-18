@@ -18,6 +18,7 @@ import { createProduct, createProductVariant, createWarehouse, linkWarehouse } f
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 // The engine of stock (TDD_16 §4, §9), through the real service on the real database: the movements of an order are
 // not routes yet (Step 4.3), so this is how they are proven.
@@ -34,7 +35,7 @@ describe('InventoryService', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    app = await createTestApp([], onWorkerDatabase())
     ctx = await seedTestContext(owner, app, prefix)
     inventory = app.get(InventoryService, { strict: false })
     emitter = app.get(EventEmitter2, { strict: false })

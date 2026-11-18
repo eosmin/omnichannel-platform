@@ -718,7 +718,10 @@ describe('The expenses, incomes and transfers registered by hand (Step 4B.4)', (
 
   describe('the permissions', () => {
     it('lets a bookkeeper with manage_transactions register an expense and an income, and not a transfer', async () => {
-      const bookkeeper = await asRole('bookkeeper', [Permissions.FINANCE_MANAGE_TRANSACTIONS])
+      const bookkeeper = await asRole('bookkeeper', [
+        Permissions.FINANCE_MANAGE_TRANSACTIONS,
+        Permissions.FINANCE_VIEW_JOURNAL
+      ])
       const send = (body: Record<string, unknown>) =>
         bookkeeper.post(ApiRoutes.finance.transactions.record).send(body)
 
@@ -730,7 +733,10 @@ describe('The expenses, incomes and transfers registered by hand (Step 4B.4)', (
     })
 
     it('lets a treasurer with move_money register a transfer, and not an expense or an income', async () => {
-      const treasurer = await asRole('treasurer', [Permissions.FINANCE_MOVE_MONEY])
+      const treasurer = await asRole('treasurer', [
+        Permissions.FINANCE_MOVE_MONEY,
+        Permissions.FINANCE_VIEW_JOURNAL
+      ])
       const send = (body: Record<string, unknown>) =>
         treasurer.post(ApiRoutes.finance.transactions.record).send(body)
 
@@ -739,9 +745,40 @@ describe('The expenses, incomes and transfers registered by hand (Step 4B.4)', (
       expect((await send(income())).status).toBe(FORBIDDEN)
     })
 
+    it('refuses to register, void or change for a role that cannot see the journal (PermissionRequires)', async () => {
+      const blind = await asRole('blind-writer', [
+        Permissions.FINANCE_MANAGE_TRANSACTIONS,
+        Permissions.FINANCE_MOVE_MONEY
+      ])
+      const spent = await registered(expense())
+      const before = await journalCount(ctx.orgA.id)
+
+      expect((await blind.post(ApiRoutes.finance.transactions.record).send(expense())).status).toBe(
+        FORBIDDEN
+      )
+      expect(
+        (await blind.post(ApiRoutes.finance.transactions.void(spent.id)).send({ reason: 'No' }))
+          .status
+      ).toBe(FORBIDDEN)
+      expect(
+        (
+          await blind
+            .post(ApiRoutes.finance.transactions.replace(spent.id))
+            .send({ reason: 'No', replacement: expense() })
+        ).status
+      ).toBe(FORBIDDEN)
+      expect(await journalCount(ctx.orgA.id)).toBe(before)
+    })
+
     it('voids and changes only what the permission of the kind allows', async () => {
-      const bookkeeper = await asRole('bookkeeper-void', [Permissions.FINANCE_MANAGE_TRANSACTIONS])
-      const treasurer = await asRole('treasurer-void', [Permissions.FINANCE_MOVE_MONEY])
+      const bookkeeper = await asRole('bookkeeper-void', [
+        Permissions.FINANCE_MANAGE_TRANSACTIONS,
+        Permissions.FINANCE_VIEW_JOURNAL
+      ])
+      const treasurer = await asRole('treasurer-void', [
+        Permissions.FINANCE_MOVE_MONEY,
+        Permissions.FINANCE_VIEW_JOURNAL
+      ])
       const moved = await registered(transfer())
       const spent = await registered(expense())
       const voidBody = { reason: 'No' }
