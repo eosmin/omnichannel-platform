@@ -27,9 +27,12 @@ import {
   ChannelConnectionLimits,
   ChannelConnectionListStates,
   ChannelConnectionStatus,
+  type ChannelHealthError,
+  ChannelHealthErrors,
   ChannelHealthLimits,
   type ChannelLimitsView,
   type CursorPage,
+  healthCodeOf,
   isInstallationActive,
   MembershipStatus,
   OfActiveInstallation,
@@ -97,7 +100,9 @@ export interface ChannelConnectionView {
   accountName: string
   status: ChannelConnectionStatus
   lastHealthyAt: Date | null
-  lastError: string | null
+  // Always a code of ours (ChannelHealthErrors): what a plugin said in its own words is `plugin_reported` here, and its text is
+  // read apart (`errorDetail`), by whoever manages plugins
+  lastError: ChannelHealthError | null
   createdAt: Date
   // What the channel can do (`ChannelCapability`), so that the web app decides which actions to draw
   // without knowing any channel by name. Static per plugin.
@@ -144,7 +149,8 @@ export type ChannelDirectoryEntry = Pick<
 export interface ChannelTestResult {
   healthy: boolean
   checkedAt: Date
-  error?: string
+  // A code of ours, like `lastError`: what the plugin said in its own words is `plugin_reported` and is read apart (`errorDetail`)
+  error?: ChannelHealthError
 }
 
 const CONNECTION_ORDER: ({ createdAt: 'asc' } | { id: 'asc' })[] = [
@@ -167,10 +173,12 @@ const VIEW_SELECT = {
 
 type ConnectionRow = Omit<
   ChannelConnectionView,
-  'status' | 'capabilities' | 'profile' | 'accountName' | 'tokenExpiry'
+  'status' | 'capabilities' | 'profile' | 'accountName' | 'tokenExpiry' | 'lastError'
 > & {
   status: string
   metadata: unknown
+  // As stored: a code of ours or the cleaned words of a plugin. The view says only the code (`healthCodeOf`)
+  lastError: string | null
 }
 
 // How long a connect or a token update waits for the provider to say when the token stops. Past it the
@@ -208,8 +216,8 @@ export class ChannelConnectionsService {
       accountName: row.displayName,
       status: enumValueOf(ChannelConnectionStatus, row.status, 'channel connection status'),
       lastHealthyAt: row.lastHealthyAt,
-      // Cleaned again on the way out: what an earlier version stored is bounded and free of tags and credentials too
-      lastError: storedHealthReason(row.lastError),
+      // A code and nothing else: the text of a third party is never part of the view
+      lastError: healthCodeOf(row.lastError),
       createdAt: row.createdAt,
       capabilities: this.registry.capabilitiesOf(row.pluginId),
       profile: this.registry.hasCapability(row.pluginId, ChannelCapability.CUSTOMER_PROFILE)
@@ -395,6 +403,22 @@ export class ChannelConnectionsService {
     })
     if (row === null) throw resourceNotFound('channel connection')
     return this.viewOf(storeId, row)
+  }
+
+  // What the plugin said when its check failed, for the technical detail of whoever manages plugins. Cleaned again on the way
+  // out (what an earlier version stored is bounded and free of tags and credentials too). null when the failure is one of our
+  // codes or there is none: there is no text of a third party to show.
+  async errorDetail(storeId: string, connectionId: string): Promise<{ detail: string | null }> {
+    const row = await this.prisma.client.channelConnection.findFirst({
+      where: { id: connectionId, storeId },
+      select: { lastError: true }
+    })
+    if (row === null) throw resourceNotFound('channel connection')
+    const detail =
+      healthCodeOf(row.lastError) === ChannelHealthErrors.PLUGIN_REPORTED
+        ? storedHealthReason(row.lastError)
+        : null
+    return { detail }
   }
 
   // The call to the provider happens before the transaction: it can be slow, and a row lock held
@@ -973,7 +997,9 @@ export class ChannelConnectionsService {
     return {
       healthy: checked.healthy,
       checkedAt,
-      ...(checked.error === undefined ? {} : { error: checked.error })
+      ...(checked.error === undefined
+        ? {}
+        : { error: healthCodeOf(checked.error) ?? ChannelHealthErrors.UNSPECIFIED })
     }
   }
 

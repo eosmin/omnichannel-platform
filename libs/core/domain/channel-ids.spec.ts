@@ -3,6 +3,7 @@ import {
   channelIdSchema,
   ChannelIds,
   ChannelHealthErrors,
+  healthCodeOf,
   healthErrorOfReason,
   isOfficialChannelId
 } from './channel-ids'
@@ -57,5 +58,27 @@ describe('healthErrorOfReason', () => {
     expect(healthErrorOfReason('a_reason_of_a_newer_plugin' as never)).toBe(
       ChannelHealthErrors.CHECK_FAILED
     )
+  })
+})
+
+describe('healthCodeOf', () => {
+  it('says nothing for a connection with no failure', () => {
+    expect(healthCodeOf(null)).toBeNull()
+  })
+
+  it('keeps every code of ours as it is', () => {
+    for (const code of Object.values(ChannelHealthErrors)) expect(healthCodeOf(code)).toBe(code)
+  })
+
+  it('turns any text a plugin wrote into plugin_reported, whatever it says', () => {
+    expect(healthCodeOf('Invalid OAuth access token - Cannot parse')).toBe(
+      ChannelHealthErrors.PLUGIN_REPORTED
+    )
+    expect(healthCodeOf('Click https://evil.example to fix it')).toBe(
+      ChannelHealthErrors.PLUGIN_REPORTED
+    )
+    // Looking like a code is not being one: only the exact names count
+    expect(healthCodeOf('token_rejected ')).toBe(ChannelHealthErrors.PLUGIN_REPORTED)
+    expect(healthCodeOf('TOKEN_REJECTED')).toBe(ChannelHealthErrors.PLUGIN_REPORTED)
   })
 })

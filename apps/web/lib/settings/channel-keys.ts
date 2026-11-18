@@ -15,6 +15,12 @@ export const ChannelKeys = {
     ...ChannelKeys.connections(storeId),
     state
   ],
+  // The words of a plugin for a failed check; under the root, so a new check (which refreshes the connections) refreshes it too
+  errorDetail: (storeId: string, connectionId: string): readonly string[] => [
+    ...ChannelKeys.root(storeId),
+    'error-detail',
+    connectionId
+  ],
   widget: (storeId: string, connectionId: string): readonly string[] => [
     ...ChannelKeys.root(storeId),
     'widget',

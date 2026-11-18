@@ -2806,11 +2806,19 @@
           "check_failed": "No se pudo completar la última comprobación. Revisa las credenciales o vuelve a probar.",
           "invalid_report": "El canal respondió a la comprobación de forma inesperada.",
           "unspecified": "El canal informó de un problema sin decir cuál.",
+          "plugin_reported": "El canal informó de un problema. Quien administra los plugins puede leer el detalle técnico.",
           "token_rejected": "Meta ya no acepta el token: expiró o se revocó. Actualiza el token de esta conexión.",
           "permission_missing": "Al token le falta un permiso o una tarea en la Página o cuenta. Revísalos y actualiza el token de esta conexión.",
           "other_account": "El token ahora es de otra cuenta distinta de la conectada. Actualiza el token con el de esa misma cuenta.",
           "account_not_linked": "La cuenta ya no está vinculada a la Página del token. Vincúlala otra vez o actualiza el token.",
           "request_rejected": "Meta ya no acepta lo que aceptaba antes: puede que se haya quitado un permiso o el vínculo de la Página. Actualiza el token de esta conexión."
+        },
+        "detail": {
+          "toggle": "Detalle técnico",
+          "warning": "Este es el texto que escribió el plugin, tal cual. No es de la plataforma.",
+          "loading": "Cargando…",
+          "failed": "No se pudo cargar el detalle técnico.",
+          "empty": "El plugin no dio texto para este fallo."
         }
       },
       "profile": {

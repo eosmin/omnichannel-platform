@@ -24,10 +24,12 @@ import {
   cancelOAuth,
   type ChannelConnectionPageView,
   type ChannelConnectionView,
+  type ChannelErrorDetailView,
   type ChannelTestView,
   completeOAuth,
   connectChannel,
   disconnectConnection,
+  fetchConnectionErrorDetail,
   fetchConnections,
   fetchOAuthAssets,
   fetchPluginCatalog,
@@ -159,6 +161,19 @@ export function useDisconnect(
     mutationFn: (connectionId: string) => disconnectConnection(apiClient, storeId, connectionId),
     // Also on failure: a connection another tab already disconnected must leave the active ones
     onSettled: refresh
+  })
+}
+
+// Read only when asked for (`enabled`): the words of a plugin are fetched when a person opens the technical detail
+export function useConnectionErrorDetail(
+  storeId: string,
+  connectionId: string,
+  enabled: boolean
+): UseQueryResult<ChannelErrorDetailView> {
+  return useQuery({
+    queryKey: ChannelKeys.errorDetail(storeId, connectionId),
+    queryFn: ({ signal }) => fetchConnectionErrorDetail(apiClient, storeId, connectionId, signal),
+    enabled
   })
 }
 
