@@ -911,6 +911,12 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       expect(balance.openCents).toBeGreaterThanOrEqual(0)
       expect(balance.paidCents).toBe(live._sum.amountCents ?? 0)
       expect(openOfBills).toBe(balance.openCents)
+      // The books agree with the subledger: what the supplier is owed on the payable account is the open balance
+      const ledger = await owner.journalLine.aggregate({
+        where: { partyType: 'supplier', partyId: supplierId, account: { code: PAYABLE } },
+        _sum: { debitCents: true, creditCents: true }
+      })
+      expect((ledger._sum.creditCents ?? 0) - (ledger._sum.debitCents ?? 0)).toBe(balance.openCents)
       for (const bill of (payables.body as PayablesBody).bills) {
         expect(bill.openCents).toBeGreaterThanOrEqual(0)
       }
@@ -931,7 +937,12 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
         openCents: 0
       })
       for (const body of [{ amountCents: 1 }, { amountCents: 1, purchaseReceiptId: second.id }]) {
-        expect((await pay(supplierId, body)).status).toBe(CONFLICT)
+        const refused = await pay(supplierId, body)
+        expect(refused.status).toBe(CONFLICT)
+        expect([
+          PurchaseConflicts.PAYMENT_EXCEEDS_BALANCE,
+          PurchaseConflicts.PAYMENT_EXCEEDS_RECEIPT
+        ]).toContain((errorOf(refused).metadata as { conflict?: string }).conflict)
       }
       await expectBooksHold(supplierId)
     })
@@ -943,7 +954,7 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       const earlier = await pay(supplierId, { amountCents: 4000 })
       expect(earlier.status).toBe(CREATED)
 
-      // Any order is valid as long as the books hold: a payment above what is owed at its turn is refused
+      // Any order of the payments is valid as long as the books hold: one above what is owed at its turn is refused
       const answers = await Promise.all([
         asAdminA()
           .post(ApiRoutes.supplierPayments.void((earlier.body as PaymentBody).id))
@@ -952,6 +963,12 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
         pay(supplierId, { amountCents: 5000, purchaseReceiptId: first.id })
       ])
       for (const answer of answers) expect([CREATED, CONFLICT]).toContain(answer.status)
+      for (const answer of answers.filter(each => each.status === CONFLICT)) {
+        expect([
+          PurchaseConflicts.PAYMENT_EXCEEDS_BALANCE,
+          PurchaseConflicts.PAYMENT_EXCEEDS_RECEIPT
+        ]).toContain((errorOf(answer).metadata as { conflict?: string }).conflict)
+      }
       expect(answers[0].status).toBe(CREATED)
       const balance = await expectBooksHold(supplierId)
       expect(balance.billedCents).toBe(10_000)
