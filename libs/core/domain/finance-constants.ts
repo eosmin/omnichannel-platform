@@ -205,6 +205,8 @@ export const RolesPinnedByHistory: readonly AccountRole[] = [
   AccountRole.CUSTOMER_ADVANCES,
   AccountRole.PAYABLE_SUPPLIERS,
   AccountRole.PAYABLE_CARRIERS,
+  // An asset with the advance paid to the carrier: pointing the role elsewhere would leave the advance without its account
+  AccountRole.PREPAID_CARRIER_GUIDES,
   AccountRole.VAT_OUTPUT,
   AccountRole.VAT_INPUT,
   AccountRole.OPENING_EQUITY
