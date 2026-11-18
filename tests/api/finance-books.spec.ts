@@ -489,10 +489,11 @@ describe('The legal books', () => {
       })
       // 2. A sale whose document was voided and made again: listed once, with the new document, and not a voided sale
       const replaced = await februarySale('2026-02-05')
+      // The replacement is issued while the original is alive, and the original is voided after it (the order of the real flow)
       const first = await documentOf(replaced.orderId, replaced.entryId, {
         external: 'FEB-2',
         issuedAt: '2026-02-05T12:00:00Z',
-        voidedAt: '2026-02-06T12:00:00Z'
+        voidedAt: '2026-02-06T14:00:00Z'
       })
       await documentOf(replaced.orderId, replaced.entryId, {
         external: 'FEB-2B',

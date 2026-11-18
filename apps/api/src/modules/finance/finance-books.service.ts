@@ -696,7 +696,7 @@ export class FinanceBooksService {
           AND f.kind = ${FiscalDocumentKind.SALE}
           AND f.issued_at IS NOT NULL AND f.issued_at < m.next_month
         ORDER BY (f.voided_at IS NOT NULL AND f.voided_at < m.next_month) ASC,
-                 f.issued_at DESC, f.created_at DESC
+                 f.issued_at DESC, f.created_at DESC, f.id DESC
         LIMIT 1
       ) d ON TRUE
       WHERE e.organization_id = ${organizationId}
