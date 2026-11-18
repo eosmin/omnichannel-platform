@@ -1,4 +1,4 @@
--- Rolls back 20270120120000_supplier_payment_returns. DESTRUCTIVE: every return of a supplier payment is DROPPED with its rows (the journal entries
+-- Rolls back 20270120130000_supplier_payment_returns. DESTRUCTIVE: every return of a supplier payment is DROPPED with its rows (the journal entries
 -- they posted stay: the journal is append-only, so those entries have no operational header after this). The sets of types and sources of the
 -- journal go back to what they were; the posting failures recorded for a return are deleted (they name a source that no longer exists); if an entry
 -- of the type `supplier_payment_return` exists the check cannot be added again and the whole
