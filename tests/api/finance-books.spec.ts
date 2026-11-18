@@ -406,6 +406,120 @@ describe('The legal books', () => {
     })
   })
 
+  describe('the warnings of a sales book', () => {
+    // February is its own month, so the January suite above keeps its sales. Each case is one sale with the documents it came to have.
+    let februaryA = ''
+    const documentOf = (
+      orderId: string,
+      entryId: string,
+      override: {
+        kind?: string
+        external: string
+        issuedAt: string
+        voidedAt?: string
+        parentDocumentId?: string
+        replacesDocumentId?: string
+      }
+    ) =>
+      owner.fiscalDocument.create({
+        data: {
+          organizationId: ctx.orgA.id,
+          storeId: ctx.storeA.id,
+          orderId,
+          journalEntryId: entryId,
+          sequenceNumber: (sequence += 1),
+          kind: override.kind ?? 'sale',
+          documentType: SimulatorDocumentTypes.CONSUMER,
+          status: 'accepted',
+          providerId: 'simulator',
+          environment: 'sandbox',
+          externalNumber: override.external,
+          issuerSnapshot: {},
+          linesSnapshot: { lines: [] },
+          receiverEncrypted: Buffer.from('suite'),
+          totalCents: 1999,
+          taxCents: 230,
+          issuedAt: new Date(override.issuedAt),
+          voidedAt: override.voidedAt === undefined ? null : new Date(override.voidedAt),
+          parentDocumentId: override.parentDocumentId ?? null,
+          replacesDocumentId: override.replacesDocumentId ?? null
+        },
+        select: { id: true }
+      })
+
+    async function februarySale(day: string): Promise<{ orderId: string; entryId: string }> {
+      const order = await createOrder(owner, { storeId: ctx.storeA.id })
+      await owner.order.update({
+        where: { id: order.id },
+        data: { taxCents: 230, pricesIncludeTax: true }
+      })
+      await owner.orderItem.update({
+        where: { id: order.itemId },
+        data: { taxTreatment: 'taxed', taxRateBps: 1300, taxCents: 230 }
+      })
+      const entry = await postTestEntry(owner, {
+        organizationId: ctx.orgA.id,
+        periodId: februaryA,
+        entryDate: day,
+        type: JournalEntryType.SALE,
+        sourceType: FinanceSourceType.ORDER,
+        sourceId: order.id,
+        idempotencyKey: FinancePostingKey.ORDER_SALE(order.id),
+        lines: [
+          { accountId: accountsA[CASH] ?? '', debitCents: 1999 },
+          { accountId: accountsA[SALES] ?? '', creditCents: 1999 }
+        ]
+      })
+      return { orderId: order.id, entryId: entry.id }
+    }
+
+    it('count a credit note as no unknown document, list the sale once, and count a voided document only when the sale has no other', async () => {
+      februaryA = await createPeriod(owner, ctx.orgA.id, 2026, 2)
+      // 1. A sale with its credit note: one row, nothing unclassified
+      const credited = await februarySale('2026-02-03')
+      const invoice = await documentOf(credited.orderId, credited.entryId, {
+        external: 'FEB-1',
+        issuedAt: '2026-02-03T12:00:00Z'
+      })
+      await documentOf(credited.orderId, credited.entryId, {
+        kind: 'credit_note',
+        external: 'NC-1',
+        issuedAt: '2026-02-04T12:00:00Z',
+        parentDocumentId: invoice.id
+      })
+      // 2. A sale whose document was voided and made again: listed once, with the new document, and not a voided sale
+      const replaced = await februarySale('2026-02-05')
+      const first = await documentOf(replaced.orderId, replaced.entryId, {
+        external: 'FEB-2',
+        issuedAt: '2026-02-05T12:00:00Z',
+        voidedAt: '2026-02-06T12:00:00Z'
+      })
+      await documentOf(replaced.orderId, replaced.entryId, {
+        external: 'FEB-2B',
+        issuedAt: '2026-02-06T13:00:00Z',
+        replacesDocumentId: first.id
+      })
+      // 3. A sale whose only document was voided: left out and counted
+      const voided = await februarySale('2026-02-07')
+      await documentOf(voided.orderId, voided.entryId, {
+        external: 'FEB-3',
+        issuedAt: '2026-02-07T12:00:00Z',
+        voidedAt: '2026-02-08T12:00:00Z'
+      })
+
+      const response = await asAdminA().get(
+        `${ApiRoutes.finance.books.byKind(LegalBookKind.SALES_CONSUMERS)}?periodId=${februaryA}`
+      )
+      expect(response.status).toBe(OK)
+      const february = response.body as BookBody
+      const numbers = february.rows.map(row => row[february.header.indexOf('document_number')])
+
+      expect(numbers).toEqual(['FEB-1', 'FEB-2B'])
+      expect(february.warnings.unclassifiedDocuments).toBe(0)
+      expect(february.warnings.voidedDocuments).toBe(1)
+    })
+  })
+
   describe('the files', () => {
     it('are a CSV with the state of the book beside them, and leave an audit row', async () => {
       const response = await asAdminA().get(
