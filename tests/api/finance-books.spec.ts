@@ -309,6 +309,29 @@ describe('The legal books', () => {
       expect(audit.length).toBeGreaterThanOrEqual(2)
     })
 
+    it('are confirmed as the accountant\u2019s only with finance:confirm_books, and written unconfirmed without it (FIS-426)', async () => {
+      const manager = await asRole('books-manager', [
+        Permissions.FINANCE_MANAGE_ACCOUNTS,
+        Permissions.FINANCE_VIEW_REPORTS
+      ])
+      const confirmer = await asRole('books-confirmer', [
+        Permissions.FINANCE_MANAGE_ACCOUNTS,
+        Permissions.FINANCE_CONFIRM_BOOKS
+      ])
+      const columns = [{ field: LegalBookField.TOTAL, label: null }]
+      const route = ApiRoutes.finance.bookLayouts.byKind(LegalBookKind.PURCHASES)
+
+      const refused = await manager.put(route).send(layoutBody(columns, 1, true))
+      const unconfirmed = await manager.put(route).send(layoutBody(columns, 1, false))
+      const confirmed = await confirmer.put(route).send(layoutBody(columns, 1, true))
+
+      expect(refused.status).toBe(FORBIDDEN)
+      expect(unconfirmed.status).toBe(OK)
+      expect((unconfirmed.body as LayoutBody).accountantConfirmed).toBe(false)
+      expect(confirmed.status).toBe(OK)
+      expect((confirmed.body as LayoutBody).accountantConfirmed).toBe(true)
+    })
+
     it('need the permission of the settings to be written and one to be read', async () => {
       const reader = await asRole('books-reader', [Permissions.FINANCE_VIEW_REPORTS])
       const viewer = await asRole('books-viewer', [Permissions.FINANCE_VIEW])

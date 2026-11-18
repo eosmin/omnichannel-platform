@@ -2,10 +2,10 @@ import { Body, Controller, Get, HttpCode, Param, Put, Query, Req, Res } from '@n
 import type { Response } from 'express'
 
 import { ApiRoutes } from '@platform/core/api'
-import { type AuthenticatedUser, Permissions } from '@platform/core/auth'
+import { type AuthenticatedUser, type Permission, Permissions } from '@platform/core/auth'
 import { CurrentUser } from '@platform/core/auth-module'
 import { LegalBookHeaders, LegalBookKind } from '@platform/core/domain'
-import { HttpStatusCodes } from '@platform/core/errors'
+import { ErrorCodes, HttpStatusCodes, PlatformException } from '@platform/core/errors'
 import { ExportContentTypes, ExportFileExtensions } from '@platform/core/exports'
 import { NoStore, ZodValidationPipe } from '@platform/core/http'
 import type { AuthenticatedRequest } from '@platform/core/logger'
@@ -13,6 +13,7 @@ import type { AuthenticatedRequest } from '@platform/core/logger'
 import {
   actorOf,
   CurrentOrganization,
+  CurrentPermissions,
   CurrentStore,
   RequirePermissions,
   type ResolvedTenant
@@ -70,8 +71,18 @@ export class FinanceBooksController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('kind', kind()) bookKind: LegalBookKind,
     @Body(new ZodValidationPipe(bookLayoutBodySchema)) body: BookLayoutBody,
+    @CurrentPermissions() held: readonly Permission[],
     @Req() req: AuthenticatedRequest
   ): Promise<BookLayoutView> {
+    // Saying the accountant vouched for the layout takes the permission of its own: whoever manages the settings may write a layout, not
+    // make a draft look validated (QA FIS-426)
+    if (body.accountantConfirmed && !held.includes(Permissions.FINANCE_CONFIRM_BOOKS)) {
+      throw new PlatformException(
+        ErrorCodes.PERMISSION_DENIED,
+        'confirming the layout of a book needs finance:confirm_books',
+        HttpStatusCodes.FORBIDDEN
+      )
+    }
     return this.books.writeLayout(organization.id, bookKind, body, actorOf(user, store, req))
   }
 
