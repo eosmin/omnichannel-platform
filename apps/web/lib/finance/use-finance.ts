@@ -271,8 +271,10 @@ export const useSetFinanceTaxRateActive = (
 
 export const useUpdateFinanceStoreTax = (
   storeId: string
-): Write<{ pricesIncludeTax: boolean }, FinanceStoreTaxSettingsView> =>
-  useFinanceWrite(input => updateFinanceStoreTaxSettings(apiClient, storeId, input))
+): Write<
+  { pricesIncludeTax: boolean; confirmPriceModeChange: true },
+  FinanceStoreTaxSettingsView
+> => useFinanceWrite(input => updateFinanceStoreTaxSettings(apiClient, storeId, input))
 
 export const useOpenFinancePeriod = (
   storeId: string

@@ -6,8 +6,9 @@ import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
-import { PaymentMethod } from '@platform/core/domain'
+import { FinanceEventKind, FinanceSourceType, PaymentMethod } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
+import { JobNames, QueueNames } from '@platform/core/queues'
 
 import { createCarrierConnection } from '../builders'
 import { actorWithPermissions } from '../helpers/actors'
@@ -23,6 +24,7 @@ import {
   ordersKit,
   type OrdersKit
 } from '../helpers/orders'
+import { queueOf } from '../helpers/queue'
 
 const OK = 200
 const CREATED = 201
@@ -426,6 +428,18 @@ describe('The returns of an order', () => {
         resourceId: ret.id
       })
       expect(entries[0]?.metadata).toMatchObject({ refundAmountCents: detail.totalCents })
+      // The money that left is asked of the books in the same commit (E14, HC-105): the job names the return and the event, no amount
+      const job = queueOf(app, QueueNames.HEAVY_PROCESSING).jobs.find(
+        candidate =>
+          candidate.name === JobNames.POST_FINANCE_EVENT &&
+          (candidate.data as { sourceId?: string; kind?: string }).sourceId === ret.id &&
+          (candidate.data as { kind?: string }).kind === FinanceEventKind.RETURN_REFUND
+      )
+      expect(job?.data).toMatchObject({
+        sourceType: FinanceSourceType.RETURN,
+        sourceId: ret.id,
+        kind: FinanceEventKind.RETURN_REFUND
+      })
     })
   })
 

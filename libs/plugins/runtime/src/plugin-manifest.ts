@@ -10,6 +10,8 @@ import {
   type LocalizedText,
   PluginCatalogTypes,
   PluginManifestLimits,
+  PluginWidgetLimits,
+  pluginWidgetManifestSchema,
   PluginPricingModels,
   readLocalizedText,
   ManifestChannelCapabilities,
@@ -129,23 +131,27 @@ const webhooks = z.strictObject({
     .refine(name => !isReservedHeader(name), { message: 'a header the transport sets' })
 })
 
-const widgetSize = z
-  .number()
-  .int()
-  .min(PluginManifestLimits.MIN_WIDGET_SIZE)
-  .max(PluginManifestLimits.MAX_WIDGET_SIZE)
+// The limits of a widget are the reader's (`PluginWidgetLimits`, the ones `pluginWidgetManifestSchema` applies when the
+// panel is listed): one set of numbers, so that a manifest that registers is a manifest whose widgets are shown. The sizes stay required here (the reader takes them as optional): stricter on purpose
+const widgetSize = (min: number, max: number) => z.number().int().min(min).max(max)
 
 // Read and kept here; drawn by Step 5.7 (plugin widgets)
 const widget = z.strictObject({
-  id: z.string().max(PluginManifestLimits.WIDGET_ID_MAX_LENGTH).regex(PLAIN_ID),
-  name: plainText(PluginManifestLimits.NAME_MAX_LENGTH),
-  defaultWidth: widgetSize,
-  defaultHeight: widgetSize,
+  id: z.string().max(PluginWidgetLimits.WIDGET_ID_MAX_LENGTH).regex(PLAIN_ID),
+  name: plainText(PluginWidgetLimits.WIDGET_NAME_MAX_LENGTH),
+  defaultWidth: widgetSize(
+    PluginWidgetLimits.WIDGET_WIDTH_MIN,
+    PluginWidgetLimits.WIDGET_WIDTH_MAX
+  ),
+  defaultHeight: widgetSize(
+    PluginWidgetLimits.WIDGET_HEIGHT_MIN,
+    PluginWidgetLimits.WIDGET_HEIGHT_MAX
+  ),
   refreshInterval: z
     .number()
     .int()
-    .min(PluginManifestLimits.MIN_WIDGET_REFRESH_MS)
-    .max(PluginManifestLimits.MAX_WIDGET_REFRESH_MS)
+    .min(PluginWidgetLimits.REFRESH_INTERVAL_MIN_MS)
+    .max(PluginWidgetLimits.REFRESH_INTERVAL_MAX_MS)
     .optional()
 })
 
@@ -232,7 +238,8 @@ export const pluginManifestSchema = z
     ui: z.strictObject({ settings: publicUrl.optional(), widget: publicUrl.optional() }).optional(),
     widgets: z
       .array(widget)
-      .max(PluginManifestLimits.MAX_WIDGETS)
+      .min(1)
+      .max(PluginWidgetLimits.WIDGETS_PER_PLUGIN_MAX)
       .refine(list => new Set(list.map(item => item.id)).size === list.length, {
         message: 'repeated widget id'
       })
@@ -304,6 +311,19 @@ export const pluginManifestSchema = z
   .refine(manifest => manifest.widgets === undefined || manifest.ui?.widget !== undefined, {
     path: ['ui', 'widget'],
     message: 'a plugin with widgets names the address of its widget'
+  })
+  // What the list of widgets of an installation reads is parsed by the reader's own schema, which drops without a word what it
+  // does not accept: a manifest is refused here for the same reasons (the address of the frame has no query, for one)
+  .superRefine((manifest, ctx) => {
+    if (manifest.widgets === undefined || manifest.ui?.widget === undefined) return
+    const read = pluginWidgetManifestSchema.safeParse({
+      ui: { widget: manifest.ui.widget },
+      widgets: manifest.widgets
+    })
+    if (read.success) return
+    for (const issue of read.error.issues) {
+      ctx.addIssue({ code: 'custom', path: issue.path, message: issue.message })
+    }
   })
 
 export type PluginManifest = z.output<typeof pluginManifestSchema>

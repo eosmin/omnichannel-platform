@@ -1850,8 +1850,9 @@ const resources: IsolationResource[] = [
         })
       )?.contentSha256 === 'a'.repeat(64)
   },
-  // A fiscal document is the row of a sale of a store of the organization: every store of it reads it with FISCAL_VIEW, another
-  // organization never does. No route makes one (the sale does); the changes a person can try are the receiver, a retry and a void.
+  // A fiscal document is the row of a sale of a store of the organization, and a person reaches it only in the stores where they hold the
+  // permission (HC-128, owner 2026-11-18): the member of a sibling store gets a 404, as another organization does. No route makes one (the
+  // sale does); the changes a person can try are the receiver, a retry and a void.
   {
     name: 'fiscalDocument',
     create: async (owner, { storeId }) => {
@@ -1879,7 +1880,6 @@ const resources: IsolationResource[] = [
       })
       return row
     },
-    scope: 'organization',
     readPath: ApiRoutes.fiscal.documents.byId,
     listPath: ApiRoutes.fiscal.documents.list,
     modify: {
@@ -3246,6 +3246,107 @@ describe('Tenant isolation', () => {
 
   // The purchase orders belong to the organization, their lines to the stores whose products are bought (TDD_18 §2.1): the
   // checks above prove that another organization reaches none of them; these prove that line visibility is the caller's stores
+  describe('fiscal documents of an organization', () => {
+    it('are not read, changed or voided by a member who holds no permission in the store of the sale (HC-128)', async () => {
+      const organizationId = ctx.orgA.id
+      await ensureFiscalIssuer(owner, organizationId)
+      const order = await createOrder(owner, { storeId: ctx.storeA.id })
+      const document = await owner.fiscalDocument.create({
+        data: {
+          organizationId,
+          storeId: ctx.storeA.id,
+          orderId: order.id,
+          sequenceNumber: randomInt(1_000_000, 2_000_000_000),
+          documentType: 'pending',
+          status: 'queued',
+          providerId: 'simulator',
+          environment: 'sandbox',
+          issuerSnapshot: {},
+          linesSnapshot: { lines: [] },
+          receiverEncrypted: Buffer.from('isolation-fixture'),
+          totalCents: 1999,
+          taxCents: 0
+        },
+        select: { id: true }
+      })
+      const fromSibling = api(app, ctx.adminA2, ctx.storeA2)
+      const fromOwn = api(app, ctx.adminA, ctx.storeA)
+      const missing = await fromSibling.get(ApiRoutes.fiscal.documents.byId(randomUUID()))
+
+      const answers = [
+        await fromSibling.get(ApiRoutes.fiscal.documents.byId(document.id)),
+        await fromSibling.get(ApiRoutes.fiscal.documents.evidence(document.id, 'document')),
+        await fromSibling
+          .patch(ApiRoutes.fiscal.documents.receiver(document.id))
+          .send({ name: 'x' }),
+        await fromSibling.post(ApiRoutes.fiscal.documents.retry(document.id)).send({}),
+        await fromSibling
+          .post(ApiRoutes.fiscal.documents.void(document.id))
+          .send({ reason: 'isolation check' }),
+        await fromSibling.post(ApiRoutes.fiscal.documents.replace(document.id)).send({}),
+        await fromSibling
+          .post(ApiRoutes.fiscal.documents.confirmIssuerChange(document.id))
+          .send({ reason: 'isolation check' })
+      ]
+      // A document of the store of the caller that names a replacement of another store: the replacement is out of reach too
+      const own = await owner.fiscalDocument.create({
+        data: {
+          organizationId,
+          storeId: ctx.storeA2.id,
+          orderId: (await createOrder(owner, { storeId: ctx.storeA2.id })).id,
+          sequenceNumber: randomInt(1_000_000, 2_000_000_000),
+          documentType: 'pending',
+          status: 'accepted',
+          providerId: 'simulator',
+          environment: 'sandbox',
+          issuerSnapshot: {},
+          linesSnapshot: { lines: [] },
+          receiverEncrypted: Buffer.from('isolation-fixture'),
+          totalCents: 1999,
+          taxCents: 0
+        },
+        select: { id: true }
+      })
+      const withForeignReplacement = await fromSibling
+        .post(ApiRoutes.fiscal.documents.void(own.id))
+        .send({ reason: 'isolation check', replacementDocumentId: document.id })
+      expect(withForeignReplacement.status).toBe(missing.status)
+      expect((await owner.fiscalDocument.findUniqueOrThrow({ where: { id: own.id } })).status).toBe(
+        'accepted'
+      )
+      // The reconciliation of the sibling never names the order of the other store (a queued document stalled long ago is a finding)
+      await owner.fiscalDocument.update({
+        where: { id: document.id },
+        data: { updatedAt: new Date(Date.now() - 24 * 3_600_000) }
+      })
+      const findings = await fromSibling
+        .get(ApiRoutes.fiscal.reconciliation)
+        .query({ kind: 'stalled_document', limit: 100 })
+      expect(findings.status).toBe(200)
+      expect(JSON.stringify(findings.body)).not.toContain(document.id)
+      const listed = await fromSibling.get(ApiRoutes.fiscal.documents.list).query({ limit: 100 })
+
+      // The same answer as a document that does not exist: nothing says it is there
+      for (const answer of answers) {
+        expect(answer.status).toBe(missing.status)
+        expect((answer.body as { error: unknown }).error).toEqual(
+          (missing.body as { error: unknown }).error
+        )
+      }
+      expect(listed.status).toBe(200)
+      expect((listed.body as { data: { id: string }[] }).data.map(row => row.id)).not.toContain(
+        document.id
+      )
+      const row = await owner.fiscalDocument.findUniqueOrThrow({
+        where: { id: document.id },
+        select: { status: true, attempts: true }
+      })
+      expect(row).toEqual({ status: 'queued', attempts: 0 })
+      // The member of the store of the sale does reach it
+      expect((await fromOwn.get(ApiRoutes.fiscal.documents.byId(document.id))).status).toBe(200)
+    })
+  })
+
   describe('purchase orders of an organization', () => {
     it("show a member only the lines of their stores, though the header is the organization's", async () => {
       const own = await owner.product.create({
