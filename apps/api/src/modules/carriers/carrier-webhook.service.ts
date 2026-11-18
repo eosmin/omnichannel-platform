@@ -8,7 +8,7 @@ import { PinoLogger } from 'nestjs-pino'
 import { z } from 'zod'
 
 import { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
+import { contextOf, PrismaService, resolveCarrierConnection } from '@platform/core/database'
 import {
   CarrierCapability,
   CarrierConnectionStatus,
@@ -173,10 +173,24 @@ export class CarrierWebhookService {
     if (!uuidSchema.safeParse(connectionId).success) {
       return { rejection: CarrierWebhookRejections.MALFORMED_ADDRESS }
     }
-    const row = await this.prisma.client.carrierConnection.findUnique({
-      where: { id: connectionId },
-      select: { id: true, storeId: true, carrierId: true, status: true, webhookSecret: true }
-    })
+    // The address names the connection; the database says which store it belongs to, and the row (with its secret) is read inside
+    // the context of that store
+    const found = await resolveCarrierConnection(this.prisma.client, connectionId)
+    const row =
+      found === null
+        ? null
+        : await this.prisma.tenantTransaction(contextOf(found), () =>
+            this.prisma.client.carrierConnection.findFirst({
+              where: { id: found.id, storeId: found.storeId },
+              select: {
+                id: true,
+                storeId: true,
+                carrierId: true,
+                status: true,
+                webhookSecret: true
+              }
+            })
+          )
     if (row === null) return { rejection: CarrierWebhookRejections.UNKNOWN_CONNECTION }
     // A connection that was let go has no secret and takes nothing, whatever arrives for it (one with a failing health check
     // still gets what its carrier pushes: the status of its packages does not wait for the credentials)
