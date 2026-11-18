@@ -92,10 +92,17 @@ export class FinanceCloseService {
         where: { organizationId, resolvedAt: null }
       })
       if (failed > 0) {
+        const grouped = await tx.financePostingFailure.groupBy({
+          by: ['reason'],
+          where: { organizationId, resolvedAt: null },
+          _count: { _all: true }
+        })
+        // The sweep is not run under the lock: what it finds pending is not said here, the guard before the lock said it
         throw financeRefusal(ErrorCodes.FINANCE_CLOSE_PENDING_POSTINGS, {
           failureCount: failed,
-          pendingSources: 0,
-          truncated: false
+          failures: grouped
+            .map(row => ({ reason: row.reason, count: row._count._all }))
+            .sort((x, y) => x.reason.localeCompare(y.reason))
         })
       }
       // 3. The period balances: from the lines themselves (never from a table a trigger keeps, which is what the check is for) and the

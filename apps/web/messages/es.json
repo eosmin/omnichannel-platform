@@ -621,7 +621,7 @@
     "FINANCE_ENTRY_ALREADY_REVERSED": "Este asiento ya fue reversado",
     "FINANCE_REOPEN_NOT_LATEST": "Solo se puede reabrir el último periodo cerrado",
     "FINANCE_CLOSE_CHAIN_BROKEN": "La revisión de los libros encontró el diario alterado: no se puede cerrar hasta que la cadena verifique de nuevo",
-    "FINANCE_CLOSE_PENDING_POSTINGS": "Hay asientos pendientes o fallidos: reintenta o corrige los fallidos en la lista de asientos automáticos; los pendientes los registra solo el barrido diario (04:30 UTC) y puedes volver a cerrar después",
+    "FINANCE_CLOSE_PENDING_POSTINGS": "Hay asientos pendientes o fallidos: reintenta o corrige los fallidos en la lista de asientos automáticos; los pendientes los registra solo el barrido diario y puedes volver a cerrar después",
     "FINANCE_CLOSE_PREVIOUS_OPEN": "El periodo anterior sigue abierto: cierra los periodos en orden",
     "FINANCE_CLOSE_NOT_ENDED": "El periodo aún no termina: no se cierra un mes antes de su último día",
     "FINANCE_BALANCE_MISMATCHES": "Los saldos del periodo no cuadran: es un incidente, no se cierra sobre él",

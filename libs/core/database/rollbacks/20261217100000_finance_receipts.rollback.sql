@@ -19,6 +19,12 @@ DROP INDEX IF EXISTS media_finance_transaction_id_idx;
 ALTER TABLE IF EXISTS finance_transactions DROP COLUMN IF EXISTS document_media_id;
 ALTER TABLE IF EXISTS media DROP COLUMN IF EXISTS finance_transaction_id;
 
+-- Only while the table exists: after the rollback of 20261216100000 the function is not brought back as an orphan that a new
+-- CREATE FUNCTION of that migration would then fail on
+DO $rb$
+BEGIN
+  IF to_regclass('finance_transactions') IS NOT NULL THEN
+    EXECUTE $fn$
 CREATE OR REPLACE FUNCTION check_finance_transaction_row() RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = public, pg_temp AS $$
@@ -83,5 +89,8 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;
+    $fn$;
+  END IF;
+END $rb$;
 
 COMMIT;
