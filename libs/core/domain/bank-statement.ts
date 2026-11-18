@@ -505,7 +505,8 @@ export function parseBankStatement(
       ).map(([field, value, sign]) => {
         // A bank that prints a dash in the column that does not apply says nothing there, like an empty cell (HC-125)
         const text = value?.trim() ?? ''
-        if (text === '' || NOTHING_MARKS.has(text)) return { field, filled: false, cents: 0, sign }
+        if (value === undefined || text === '' || NOTHING_MARKS.has(text))
+          return { field, filled: false, cents: 0, sign }
         const cents = parseBankAmountCents(
           value,
           profile.decimalSeparator,
