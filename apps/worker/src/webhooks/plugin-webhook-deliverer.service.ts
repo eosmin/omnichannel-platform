@@ -15,7 +15,7 @@ import { Events } from '@platform/core/events'
 import { MetricNames } from '@platform/core/metrics'
 import { InjectMetric } from '@platform/core/metrics-module'
 import type { TriggerPluginWebhookJob } from '@platform/core/queues'
-import { manifestWebhookOf } from '@platform/plugins/runtime'
+import { manifestMaxWebhooksPerDay, manifestWebhookOf } from '@platform/plugins/runtime'
 import { PluginEventScopes } from '@platform/plugins/sdk'
 
 import { pinnedHttpsPost } from './pinned-https-post'
@@ -103,6 +103,27 @@ export class PluginWebhookDeliverer {
       return WebhookOutcome.SKIPPED
     }
     if (endpoint === null || sealed === null) return WebhookOutcome.SKIPPED
+    // The cap of the day the plugin declared (`limits.maxWebhooksPerDay`). Only the first try of a delivery is held to it: a
+    // delivery that began is finished, and the last one of a revocation always goes. What is over the cap is dropped, not failed:
+    // it is not the endpoint's fault, so it counts toward turning nothing off. The count and the send are not one step, so
+    // deliveries at the same instant may pass the cap by the number that raced.
+    const cap = manifestMaxWebhooksPerDay(installation.plugin.manifest)
+    if (!final && attempt <= 1 && cap !== null) {
+      const today = await this.prisma.client.webhookDelivery.count({
+        where: {
+          pluginInstallationId: installationId,
+          attempt: 1,
+          createdAt: { gte: new Date(now() - WebhookLimits.PLUGIN_DAY_MS) }
+        }
+      })
+      if (today >= cap) {
+        this.logger.warn(
+          { installationId, event },
+          'a plugin delivery dropped: its daily cap is reached'
+        )
+        return WebhookOutcome.SKIPPED
+      }
+    }
 
     const startedAt = now()
     let statusCode: number

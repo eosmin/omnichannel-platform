@@ -397,6 +397,44 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       expect(url).toBe('https://hooks.acme.com/platform')
     })
 
+    it('holds the deliveries of a day to the cap of the manifest: the next is dropped, not failed, and a retry of one that began still goes', async () => {
+      const { setup } = await setUp({ limits: { maxWebhooksPerDay: 2 } })
+      const post = answers(200)
+      const deliver = (attempt: number, at: number) =>
+        deliverer.deliver(jobFor(setup.installationId, ctx.storeA.id), attempt, {
+          post,
+          now: () => at
+        })
+      const now = Date.now()
+
+      expect(await deliver(1, now)).toBe(WebhookOutcome.DELIVERED)
+      expect(await deliver(1, now)).toBe(WebhookOutcome.DELIVERED)
+      expect(await deliver(1, now)).toBe(WebhookOutcome.SKIPPED)
+      expect(post).toHaveBeenCalledTimes(2)
+      // A dropped delivery is no failure of the endpoint: nothing is logged and nothing counts toward turning it off
+      expect(await logOf(setup.installationId)).toHaveLength(2)
+      const row = await owner.pluginInstallation.findUniqueOrThrow({
+        where: { id: setup.installationId }
+      })
+      expect(row.webhookConsecutiveFailures).toBe(0)
+      // A delivery that began is finished
+      expect(await deliver(2, now)).toBe(WebhookOutcome.DELIVERED)
+      // A day later the first two are out of the window
+      expect(await deliver(1, now + WebhookLimits.PLUGIN_DAY_MS + 60_000)).toBe(
+        WebhookOutcome.DELIVERED
+      )
+    })
+
+    it('has no cap when the manifest names none', async () => {
+      const { setup } = await setUp()
+      const post = answers(200)
+      for (let i = 0; i < 3; i += 1) {
+        expect(
+          await deliverer.deliver(jobFor(setup.installationId, ctx.storeA.id), 1, { post })
+        ).toBe(WebhookOutcome.DELIVERED)
+      }
+    })
+
     it('sends nothing for an event whose scope the installation no longer holds', async () => {
       const { setup } = await setUp()
       await owner.pluginInstallation.update({

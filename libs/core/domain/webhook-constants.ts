@@ -25,7 +25,9 @@ export const WebhookLimits = {
   DELIVERIES_DEFAULT_PAGE_SIZE: 50,
   DELIVERIES_MAX_PAGE_SIZE: 100,
   // What the log keeps of a failure: it is read by the owner of the endpoint, never a whole response
-  DELIVERY_ERROR_MAX_LENGTH: 500
+  DELIVERY_ERROR_MAX_LENGTH: 500,
+  // The day a plugin's `maxWebhooksPerDay` is counted over: the last 24 hours, so there is no midnight at which a burst doubles
+  PLUGIN_DAY_MS: 86_400_000
 } as const
 
 // What the log of a delivery says when it failed: a code, never a sentence, because the settings page translates it. The code of
