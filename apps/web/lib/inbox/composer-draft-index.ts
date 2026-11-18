@@ -59,6 +59,18 @@ export function publishDraft(
   notify()
 }
 
+// The conversation is gone (deleted here or by someone else): its unsent text has nowhere to go, so the storage
+// and the index let it go, and the filter "With draft" stops counting it (N-BR2-50)
+export function forgetDraft(scope: DraftScope): void {
+  const key = draftKey(scope)
+  try {
+    window.sessionStorage.removeItem(key)
+  } catch {
+    // Storage blocked: there is no draft in it to remove
+  }
+  if (previews.delete(key)) notify()
+}
+
 // When the session ends the drafts are erased (`clearComposerDrafts`) and so is what the rows remember
 export function resetDraftIndex(): void {
   scannedScopes.clear()

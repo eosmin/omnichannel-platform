@@ -110,6 +110,7 @@
           "unscannable": "No se pudo analizar un archivo"
         },
         "finance": {
+          "advance_owed": "Un anticipo por devolver",
           "posting_failed": "Falló un asiento contable",
           "chain_broken": "Los libros parecen alterados"
         },
@@ -180,7 +181,7 @@
       "description": "Cómo se ve y en qué idioma se muestra la aplicación para ti, en todos tus dispositivos.",
       "language": "Idioma",
       "timezone": "Zona horaria",
-      "browserZone": "Usar la zona horaria de este navegador",
+      "browserZone": "Automática: la zona horaria de la tienda o, si no hay, la de este navegador",
       "density": "Densidad",
       "densities": {
         "comfortable": "Cómoda",
@@ -1047,6 +1048,10 @@
       "body": "Ábrela para ver los detalles."
     },
     "finance": {
+      "advance_owed": {
+        "title": "Un pedido cancelado tiene un anticipo por devolver",
+        "body": "El pedido {number} se canceló después de registrar su pago. Los libros deben ese dinero al cliente hasta que se devuelva: devuélvelo y registra la devolución como un asiento o una transferencia."
+      },
       "posting_failed": {
         "title": "Falló un asiento contable",
         "body": "Un asiento de los libros no se pudo registrar automáticamente. Abre la lista de asientos fallidos, corrige la causa y regístralo de nuevo: el mes no se puede cerrar hasta entonces."
@@ -1949,6 +1954,7 @@
     "accountMenu": "Menú de la cuenta",
     "nav": {
       "label": "Páginas de la tienda",
+      "menu": "Menú",
       "inbox": "Bandeja",
       "customers": "Clientes",
       "products": "Productos",
@@ -2067,6 +2073,7 @@
     },
     "backToList": "Volver a las conversaciones",
     "openCustomer": "Abrir el perfil del cliente",
+    "deletedElsewhere": "Esta conversación se eliminó.",
     "announce": {
       "newMessage": "Nuevo mensaje en una conversación",
       "assignedToYou": "Se te asignó una conversación"
@@ -5806,7 +5813,8 @@
   "search": {
     "palette": {
       "title": "Buscar",
-      "description": "Busca clientes, pedidos, productos y mensajes, o ve a una página. Usa las flechas y Enter.",
+      "description": "Busca {kinds}, o ve a una página. Usa las flechas y Enter.",
+      "descriptionPagesOnly": "Ve a una página. Usa las flechas y Enter.",
       "label": "Buscar en la tienda",
       "placeholder": "Busca o ve a una página",
       "results": "Resultados",
@@ -6126,6 +6134,7 @@
           "cost_of_goods_sold": "Costo de ventas",
           "inventory_loss": "Pérdida de inventario",
           "inventory_gain": "Ganancia de inventario",
+          "prepaid_carrier_guides": "Guías prepagadas de transportistas",
           "carrier_freight_expense": "Gasto de flete de transportistas",
           "carrier_commission_expense": "Gasto de comisión de transportistas",
           "cod_differences": "Diferencias de contra entrega",
@@ -7308,7 +7317,7 @@
         "salesWithoutTaxSnapshot": "{count, plural, one {# venta no tiene el detalle del impuesto (se hizo antes de guardarlo) y no se lista.} other {# ventas no tienen el detalle del impuesto (se hicieron antes de guardarlo) y no se listan.}}",
         "salesNotReadable": "{count, plural, one {# venta tiene un detalle de impuesto que no cuadra y no se lista.} other {# ventas tienen un detalle de impuesto que no cuadra y no se listan.}}",
         "voidedDocuments": "{count, plural, one {# venta cuyo documento fiscal se anuló queda fuera.} other {# ventas cuyo documento fiscal se anuló quedan fuera.}}",
-        "unclassifiedDocuments": "{count, plural, one {# venta tiene un documento de un tipo que este sistema no conoce, o una nota de crédito: se cuenta aparte y no se lista.} other {# ventas tienen un documento de un tipo que este sistema no conoce, o una nota de crédito: se cuentan aparte y no se listan.}}",
+        "unclassifiedDocuments": "{count, plural, one {# venta tiene un documento de un tipo que este sistema no conoce: se cuenta aparte y no se lista.} other {# ventas tienen un documento de un tipo que este sistema no conoce: se cuentan aparte y no se listan.}}",
         "returnsNotListed": "{count, plural, one {# devolución del mes no se lista: las notas de crédito todavía no están en los libros.} other {# devoluciones del mes no se listan: las notas de crédito todavía no están en los libros.}}"
       },
       "yes": "Sí",

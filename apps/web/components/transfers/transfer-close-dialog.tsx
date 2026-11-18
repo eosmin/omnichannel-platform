@@ -96,7 +96,7 @@ function CloseDialogBody({
                   {ACTIONS.map(action => (
                     <label
                       key={action}
-                      className="flex items-start gap-2 text-sm pointer-coarse:min-h-10"
+                      className="flex items-start gap-2 text-sm pointer-coarse:min-h-11"
                     >
                       <input
                         type="radio"

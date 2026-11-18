@@ -47,6 +47,8 @@ export interface CarrierConnectionView {
   minShippingFeeCents: number | null
   maxShippingFeeCents: number | null
   remittanceDeductsFee: boolean
+  // CarrierChargeModel: how the carrier charges the business for its guides (the books read it)
+  chargeModel: string
   // What the owner agreed with the carrier (§4.15): its commission over the cash it collects in basis points, and the cost of a guide in
   // cents by rate service. Empty when none was agreed
   commissionBps: number | null
@@ -143,6 +145,7 @@ export const CONNECTION_SELECT = {
   minShippingFeeCents: true,
   maxShippingFeeCents: true,
   remittanceDeductsFee: true,
+  chargeModel: true,
   commissionBps: true,
   serviceRatesCents: true,
   lastHealthyAt: true,
@@ -183,6 +186,7 @@ export interface ConnectionRow {
   minShippingFeeCents: number | null
   maxShippingFeeCents: number | null
   remittanceDeductsFee: boolean
+  chargeModel: string
   commissionBps: number | null
   serviceRatesCents: unknown
   lastHealthyAt: Date | null

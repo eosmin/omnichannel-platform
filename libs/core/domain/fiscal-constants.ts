@@ -68,6 +68,8 @@ export const FiscalLimits = {
   // A call to a provider that does not answer in this time counts as no answer: well under the lease, so a slow provider never outlives
   // the claim of its attempt
   PROVIDER_CALL_TIMEOUT_MS: 60 * 1000,
+  // How long an invalidation holds its document: the consultation, the invalidation and the second consultation, each with the call timeout, and a margin
+  VOID_CLAIM_LEASE_MS: 4 * 60 * 1000,
   // The check of an issuer reads fields and a certificate and runs while the row of the issuer is locked: it never takes long
   ISSUER_CHECK_TIMEOUT_MS: 5 * 1000,
   // The correlative of a document is an INTEGER of the database: a scope that reaches it stops (it never wraps to a number already used)
@@ -220,6 +222,8 @@ export const FiscalRejectionReasons = {
 
 // Why a person's action on a document is refused with a conflict (`details.reason`), for the interface to tell them apart
 export const FiscalConflictReasons = {
+  // Another invalidation of the same document is being sent: one at a time
+  VOID_IN_PROGRESS: 'void_in_progress',
   // A sale document with credit notes that are not voided: the notes go first
   HAS_CREDIT_NOTES: 'has_credit_notes',
   // A voided sale document that already has the document that replaces it

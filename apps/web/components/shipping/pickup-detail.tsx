@@ -121,7 +121,7 @@ function EligibleGuides({
         <ul className="flex flex-col">
           {eligible.map(guide => (
             <li key={guide.id} className="border-b py-1">
-              <label className="flex items-center gap-2 text-sm pointer-coarse:min-h-10">
+              <label className="flex items-center gap-2 text-sm pointer-coarse:min-h-11">
                 <input
                   type="checkbox"
                   className="size-4 accent-current pointer-coarse:size-5"

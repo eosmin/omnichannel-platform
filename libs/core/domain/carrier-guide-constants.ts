@@ -15,6 +15,19 @@ export const GuideMovementKind = {
 } as const
 export type GuideMovementKindType = (typeof GuideMovementKind)[keyof typeof GuideMovementKind]
 
+// How a carrier connection charges the business for its guides (TDD_18 §4.2, note on E4; Step 4B.6b-4). It is a setting of the connection,
+// read by the books: the same guide posts a different entry under each. A new connection is `invoiced`, which is how E4 was written.
+export const CarrierChargeModel = {
+  // The carrier bills the business later: a payable (E4 as written)
+  INVOICED: 'invoiced',
+  // The carrier deducts its charge from the money it remits (E5 settles the payable E4 posted)
+  REMITTANCE: 'remittance',
+  // The business bought guides in advance: the money was paid when they were bought (an advance, an asset) and each guide consumes
+  // part of it, so the guide's cost is never owed again
+  PREPAID: 'prepaid'
+} as const
+export type CarrierChargeModelType = (typeof CarrierChargeModel)[keyof typeof CarrierChargeModel]
+
 // What the percentage of returns is taken over
 export const BenefitBase = {
   CREATED: 'created',

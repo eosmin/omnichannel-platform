@@ -17,6 +17,14 @@ export const poolerEnvSchema = z.object({
 
 export type DbRoleEnv = z.infer<typeof dbRoleEnvSchema>
 
+// What scripts/rls-enforce.ts needs: the owner's URL and nothing else (no password of a role)
+const ownerEnvSchema = dbRoleEnvSchema.pick({ DIRECT_DATABASE_URL: true })
+
+export function loadOwnerDatabaseUrl(): string | undefined {
+  const parsed = ownerEnvSchema.safeParse(process.env)
+  return parsed.success ? parsed.data.DIRECT_DATABASE_URL : undefined
+}
+
 export function loadDbRoleEnv(): DbRoleEnv {
   const parsed = dbRoleEnvSchema.safeParse(process.env)
   if (!parsed.success) {

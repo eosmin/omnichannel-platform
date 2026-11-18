@@ -46,10 +46,10 @@ export function orderRefusal(
 }
 
 // A caller without the permission that the body of the request asks for (the route needs a lower one)
-export function permissionDenied(permission: Permission): PlatformException {
+export function permissionDenied(permission: Permission, hint?: string): PlatformException {
   return new PlatformException(
     ErrorCodes.PERMISSION_DENIED,
-    `this needs ${permission}`,
+    hint === undefined ? `this needs ${permission}` : `this needs ${permission}: ${hint}`,
     HttpStatusCodes.FORBIDDEN
   )
 }
@@ -65,8 +65,12 @@ export function assertShippingFilters(
   }
 }
 
-export function assertHolds(held: readonly Permission[], permission: Permission): void {
-  if (!held.includes(permission)) throw permissionDenied(permission)
+export function assertHolds(
+  held: readonly Permission[],
+  permission: Permission,
+  hint?: string
+): void {
+  if (!held.includes(permission)) throw permissionDenied(permission, hint)
 }
 
 // What the read route protects (contact data, address, phones, reference, the notes) is for the members who may read

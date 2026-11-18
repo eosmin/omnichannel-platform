@@ -150,7 +150,7 @@ function CountSheet({ count, saver }: { count: CountDetailView; saver: CountSave
     <section className="flex max-w-3xl flex-col gap-4">
       <Link
         href={AppPaths.org.counts}
-        className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm pointer-coarse:min-h-10"
+        className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm pointer-coarse:min-h-11"
       >
         <ArrowLeft aria-hidden className="size-4" />
         {t('back')}

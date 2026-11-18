@@ -143,8 +143,8 @@ export function WebhooksPanel({ webhooks }: { webhooks: WebhookView[] }): ReactE
         <ul aria-label={t('listLabel')} className="flex flex-col gap-3">
           {webhooks.map(webhook => (
             <li key={webhook.id} className="flex flex-col gap-3 rounded-lg border p-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <div className="flex flex-col gap-3">
+                <div className="flex min-w-0 flex-col gap-1">
                   <h2 className="font-medium [overflow-wrap:anywhere]">{webhook.url}</h2>
                   <p className="text-muted-foreground text-sm">
                     <span>{statusLabel(webhook.status)}</span>

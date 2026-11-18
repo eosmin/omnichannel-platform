@@ -958,6 +958,42 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       })
     })
 
+    it('does not answer the retry of a payment that was voided with the voided payment (HC-213)', async () => {
+      const { supplierId, receipt } = await billed()
+      const idempotencyKey = key()
+      const body = { amountCents: 10_000, purchaseReceiptId: receipt.id, idempotencyKey }
+      const paid = await pay(supplierId, body)
+      expect(paid.status).toBe(CREATED)
+      const voided = await asAdminA()
+        .post(ApiRoutes.supplierPayments.void((paid.body as PaymentBody).id))
+        .send({ reason: 'Wrong account' })
+      expect(voided.status).toBe(CREATED)
+      expect((voided.body as PaymentBody).voidedByEntryId).not.toBeNull()
+
+      const retry = await pay(supplierId, body)
+
+      expect(retry.status).toBe(CONFLICT)
+      expect(errorOf(retry).metadata).toMatchObject({
+        conflict: PurchaseConflicts.PAYMENT_ALREADY_VOIDED
+      })
+      // Nothing was posted again: the bill is still owed in full and no second payment exists
+      expect((await asAdminA().get(ApiRoutes.suppliers.balance(supplierId))).body).toMatchObject({
+        openCents: 10_000,
+        paidCents: 0
+      })
+      expect(await owner.supplierPayment.count({ where: { supplierId } })).toBe(1)
+    })
+
+    it('still answers the same payment to the retry of one that is live', async () => {
+      const { supplierId, receipt } = await billed()
+      const body = { amountCents: 100, purchaseReceiptId: receipt.id, idempotencyKey: key() }
+      const live = await pay(supplierId, body)
+      const replay = await pay(supplierId, body)
+      expect(live.status).toBe(CREATED)
+      expect(replay.status).toBe(CREATED)
+      expect((replay.body as PaymentBody).id).toBe((live.body as PaymentBody).id)
+    })
+
     it('voids a payment once when two people void it at the same moment with other reasons', async () => {
       const { supplierId, receipt } = await billed()
       const paid = await pay(supplierId, { amountCents: 100, purchaseReceiptId: receipt.id })
