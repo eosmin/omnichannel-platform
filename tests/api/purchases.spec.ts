@@ -8,6 +8,7 @@ import { Permissions } from '@platform/core/auth'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   AccountType,
+  FinanceConflicts,
   FinanceCountryCodes,
   JournalEntryType,
   NormalSide,
@@ -262,6 +263,40 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
         .post(ApiRoutes.suppliers.create)
         .send({ name: `S ${key()}`, defaultPayableAccountId: accounts[CASH] })
       expect(response.status).toBe(BAD_REQUEST)
+    })
+
+    it('does not let the payable account of a supplier be switched off or made a header (HC-120)', async () => {
+      const payable = await owner.ledgerAccount.create({
+        data: {
+          organizationId: ctx.orgA.id,
+          code: `28${randomUUID().slice(0, 4)}`,
+          name: 'Payable of one supplier',
+          type: AccountType.LIABILITY,
+          normalSide: NormalSide.CREDIT
+        },
+        select: { id: true }
+      })
+      const created = await asAdminA()
+        .post(ApiRoutes.suppliers.create)
+        .send({ name: `S ${key()}`, defaultPayableAccountId: payable.id })
+      expect(created.status).toBe(CREATED)
+
+      const off = await asAdminA().post(ApiRoutes.finance.accounts.deactivate(payable.id))
+      const header = await asAdminA()
+        .patch(ApiRoutes.finance.accounts.byId(payable.id))
+        .send({ isPostable: false })
+
+      for (const response of [off, header]) {
+        expect(response.status).toBe(CONFLICT)
+        expect(errorOf(response).metadata).toMatchObject({
+          conflict: FinanceConflicts.ACCOUNT_IN_USE_BY_SETTING
+        })
+      }
+      const row = await owner.ledgerAccount.findUniqueOrThrow({
+        where: { id: payable.id },
+        select: { active: true, isPostable: true }
+      })
+      expect(row).toEqual({ active: true, isPostable: true })
     })
 
     it('does not see a supplier of another organization', async () => {
