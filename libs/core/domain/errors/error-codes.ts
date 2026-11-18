@@ -267,6 +267,9 @@ export const ErrorCodes = {
   FINANCE_SETUP_REQUIRED: 'FINANCE_SETUP_REQUIRED',
   // A taxed product has no tax rate of its own and the organization has no default one: an order never guesses a rate (TDD_18 §7)
   FINANCE_TAX_RATE_NOT_CONFIGURED: 'FINANCE_TAX_RATE_NOT_CONFIGURED',
+  // Switching whether the prices of a store include the tax moves the total of the same catalog: the server asks for the explicit
+  // confirmation of the person that changes it (HC-209)
+  FINANCE_PRICE_MODE_CHANGE_UNCONFIRMED: 'FINANCE_PRICE_MODE_CHANGE_UNCONFIRMED',
   // Purchases (TDD_18 §3, §2.7): a purchase order moves along its table only, a receipt never takes more than was ordered, and a
   // supplier with bills or payments keeps its payable account
   PURCHASE_ORDER_INVALID_STATUS_TRANSITION: 'PURCHASE_ORDER_INVALID_STATUS_TRANSITION',

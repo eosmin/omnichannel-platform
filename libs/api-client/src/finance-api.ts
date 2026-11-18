@@ -436,7 +436,7 @@ export function fetchFinanceStoreTaxSettings(
 export function updateFinanceStoreTaxSettings(
   client: ApiClient,
   storeId: string,
-  input: { pricesIncludeTax: boolean }
+  input: { pricesIncludeTax: boolean; confirmPriceModeChange: true }
 ): Promise<FinanceStoreTaxSettingsView> {
   return client.request(ApiRoutes.finance.storeTaxSettings, {
     method: 'PATCH',
