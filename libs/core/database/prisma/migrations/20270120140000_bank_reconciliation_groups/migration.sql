@@ -97,7 +97,7 @@ BEGIN
   SELECT pg_catalog.count(*), pg_catalog.count(*) FILTER (WHERE m.is_group_lead), pg_catalog.count(DISTINCT m.statement_line_id), COALESCE(pg_catalog.sum(l.debit_cents - l.credit_cents), 0)
   INTO pieces, leads, statement_lines, total
   FROM public.reconciliation_matches m
-  JOIN public.journal_lines l ON l.id = m.journal_line_id
+  JOIN public.journal_lines l ON l.id = m.journal_line_id AND l.organization_id = m.organization_id
   WHERE m.organization_id = NEW.organization_id AND m.group_id = NEW.group_id AND m.status = 'confirmed';
   -- A group taken back whole has nothing confirmed left
   IF pieces = 0 THEN
