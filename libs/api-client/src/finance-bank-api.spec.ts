@@ -326,6 +326,13 @@ describe('finance bank api', () => {
         fromAccountId: 'a1'
       }),
       json(200, {
+        kind: 'expense',
+        occurredOn: '2026-11-03',
+        amountCents: 1500,
+        fromAccountId: 'a1',
+        memo: 'Bank fee'
+      }),
+      json(200, {
         accountId: 'a1',
         year: 2026,
         month: 11,
@@ -337,12 +344,19 @@ describe('finance bank api', () => {
 
     await fetchBankDifference(client, 's1', 'i1')
     const draft = await fetchBankRegisterDraft(client, 's1', 'l1')
+    const withMemo = await fetchBankRegisterDraft(client, 's1', 'l1', {
+      useDescriptionAsMemo: true
+    })
     const status = await fetchBankStatus(client, 's1', { accountId: 'a1', year: 2026, month: 11 })
 
     expect(callOf(fetchImpl).url).toBe(`${BASE}/bank-imports/i1/difference`)
     expect(callOf(fetchImpl, 1).url).toBe(`${BASE}/bank-lines/l1/register-draft`)
     expect(draft.toAccountId).toBeUndefined()
     expect(callOf(fetchImpl, 2).url).toBe(
+      `${BASE}/bank-lines/l1/register-draft?useDescriptionAsMemo=true`
+    )
+    expect(withMemo.memo).toBe('Bank fee')
+    expect(callOf(fetchImpl, 3).url).toBe(
       `${BASE}/bank-reconciliation/status?accountId=a1&year=2026&month=11`
     )
     expect(status.reconciled).toBe(true)

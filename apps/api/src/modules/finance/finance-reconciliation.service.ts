@@ -253,8 +253,12 @@ export class FinanceReconciliationService {
   }
 
   // The transaction of 4B.4a that an unmatched line would be, prefilled: what the bank says is the date, the amount, the account and the
-  // reference; the category, the tax and the rest are the person's. Nothing is posted here.
-  async registerDraft(organizationId: string, lineId: string): Promise<BankRegisterDraft> {
+  // reference; the memo is empty unless the person asks for the description; the category, the tax and the rest are the person's. Nothing is posted here.
+  async registerDraft(
+    organizationId: string,
+    lineId: string,
+    useDescriptionAsMemo = false
+  ): Promise<BankRegisterDraft> {
     const line = await this.requireLine(this.prisma.client, organizationId, lineId)
     const matched = await this.prisma.client.reconciliationMatch.findFirst({
       where: { organizationId, statementLineId: lineId, status: CONFIRMED },
@@ -270,7 +274,8 @@ export class FinanceReconciliationService {
       amountCents: Math.abs(line.amountCents),
       ...(incoming ? { toAccountId: line.accountId } : { fromAccountId: line.accountId }),
       ...(line.reference === null ? {} : { documentNumber: line.reference }),
-      ...(line.description === null ? {} : { memo: line.description })
+      // The bank's text is the memo only when the person asks for it
+      ...(!useDescriptionAsMemo || line.description === null ? {} : { memo: line.description })
     }
   }
 

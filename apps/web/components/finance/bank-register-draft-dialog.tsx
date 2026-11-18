@@ -1,7 +1,7 @@
 'use client'
 
 import { useTranslations } from 'next-intl'
-import type { ReactElement } from 'react'
+import { useState, type ReactElement } from 'react'
 
 import type { BankLineView, FinanceAccountView } from '@platform/api-client'
 
@@ -55,7 +55,9 @@ function Draft({
   const errorText = useBankErrorText()
   const money = useMoney()
   const { storeId } = useStore()
-  const draft = useBankRegisterDraft(storeId, line.id)
+  // The bank's text is not copied into the memo unless the person asks for it
+  const [useDescription, setUseDescription] = useState(false)
+  const draft = useBankRegisterDraft(storeId, line.id, useDescription)
   if (draft.isError) {
     return (
       <p role="alert" className="text-destructive text-sm">
@@ -78,18 +80,35 @@ function Draft({
     [t('document'), draft.data.documentNumber ?? null],
     [t('memo'), draft.data.memo ?? null]
   ]
+  const canUseDescription = line.description !== null && line.description !== ''
   return (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm" data-testid="bank-draft">
-      {rows.flatMap(([label, value]) =>
-        value === null
-          ? []
-          : [
-              <dt key={`${label}-t`} className="text-muted-foreground">
-                {label}
-              </dt>,
-              <dd key={`${label}-d`}>{value}</dd>
-            ]
-      )}
-    </dl>
+    <div className="flex flex-col gap-3">
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm" data-testid="bank-draft">
+        {rows.flatMap(([label, value]) =>
+          value === null
+            ? []
+            : [
+                <dt key={`${label}-t`} className="text-muted-foreground">
+                  {label}
+                </dt>,
+                <dd key={`${label}-d`} className="break-words">
+                  {value}
+                </dd>
+              ]
+        )}
+      </dl>
+      {canUseDescription && !useDescription ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="self-start"
+          data-testid="bank-draft-use-memo"
+          onClick={() => setUseDescription(true)}
+        >
+          {t('useAsMemo')}
+        </Button>
+      ) : null}
+    </div>
   )
 }

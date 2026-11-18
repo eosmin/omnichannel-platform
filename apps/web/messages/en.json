@@ -6787,7 +6787,8 @@
         "from": "From the account",
         "to": "To the account",
         "document": "Document number",
-        "memo": "Memo"
+        "memo": "Memo",
+        "useAsMemo": "Use the statement text as memo"
       }
     },
     "purchases": {

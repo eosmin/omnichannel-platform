@@ -50,6 +50,8 @@ import {
   listBankImportsQuerySchema,
   type ListBankLinesQuery,
   listBankLinesQuerySchema,
+  bankRegisterDraftQuerySchema,
+  type BankRegisterDraftQuery,
   type ListBankProfilesQuery,
   listBankProfilesQuerySchema,
   type UpdateBankProfileBody,
@@ -265,9 +267,10 @@ export class FinanceBankController {
   @Get(ApiRoutes.finance.bank.lineRegisterDraft(':id'))
   registerDraft(
     @CurrentOrganization() organization: Organization,
-    @Param('id', id()) lineId: string
+    @Param('id', id()) lineId: string,
+    @Query(new ZodValidationPipe(bankRegisterDraftQuerySchema)) query: BankRegisterDraftQuery
   ): Promise<BankRegisterDraft> {
-    return this.reconciliation.registerDraft(organization.id, lineId)
+    return this.reconciliation.registerDraft(organization.id, lineId, query.useDescriptionAsMemo)
   }
 
   @RequirePermissions(Permissions.FINANCE_RECONCILE)
