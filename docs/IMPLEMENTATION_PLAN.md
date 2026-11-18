@@ -1777,6 +1777,18 @@ append-only and its rows are never deleted); the integration suite proves every 
 refused one until this step) and checks it is the organization's. The column `finance_settings.next_purchase_number` is granted to the application roles by this
 migration, as the ledger migration asks of every new column.
 
+**PR fix/supplier-document-normalized (HC-124, first part)**
+- [x] The duplicate check of the invoice of a supplier on another order compares `documentNumberKey` (letters and digits, in capitals, NFC), not the
+      text as typed: `fac-001`, `FAC 001` and `Fac001` are one invoice (`purchase-receiving.service.ts`; unit spec and `tests/api/purchases.spec.ts`).
+      A number with no letter or digit is compared as typed. Decisions: numbers that differ only in where the
+      separators are (`12-3`, `1-23`) share a key and the second is refused (no override in the receive path): **[ACCOUNTANT]** to confirm
+      (P-13); rejected: keeping the separators (the hole HC-124 reports). The check runs under the existing supplier lock, so two receipts
+      cannot both pass; receipts are never voided, so a number is never released. A fuller key is NFKC, capitals, letters and digits. Compared in code over the distinct numbers of the supplier, not in SQL, so the
+      rule is the same on every database locale; no migration. The replay of the same receipt keeps its exact comparison.
+- [ ] **Debt (HC-124, other parts):** a rate switched off after the order was placed blocks the receipt with no way out (own PR, next); a supplier
+      payment dated before the invoice is accepted (`supplier-payments.service.ts`) and the bank reconciliation does not compare the supplier
+      document number (`finance-reconciliation.service.ts`): both wait for the accountant's answers P-13/P-17 and the owner; closes in Step 4B.9b-5d.
+
 ### Step 4B.6 — The automatic entries (api and worker)
 The step is cut in two PRs by what each needs (rule 12; one session, one PR; the cut is mine): **4B.6a** is the machinery and the entries that
 need nothing from the carriers' side; **4B.6b** is everything that waits on the remittance, the return and the carrier's charge model.
