@@ -45,6 +45,7 @@ interface CountBody {
 
 const OK = 200
 const CREATED = 201
+const FORBIDDEN = 403
 const NOT_FOUND = 404
 const CONFLICT = 409
 
@@ -94,10 +95,10 @@ describe('Transfers and counts written with the key of a plugin', () => {
     await owner.$disconnect()
   })
 
-  const call = (method: 'get' | 'post' | 'patch', path: string) =>
+  const call = (method: 'get' | 'post' | 'patch', path: string, withKey = key) =>
     supertest(app.getHttpServer() as Parameters<typeof supertest>[0])
       [method](`${API_PREFIX}${path}`)
-      .set('authorization', `Bearer ${key}`)
+      .set('authorization', `Bearer ${withKey}`)
   const codeOf = (response: { body: unknown }) => (response.body as ErrorBody).error.code
 
   async function stocked(quantity: number, warehouseId = ctx.warehouseA.id) {
@@ -379,6 +380,109 @@ describe('Transfers and counts written with the key of a plugin', () => {
       expect((await owner.stockCount.findUniqueOrThrow({ where: { id } })).status).toBe(
         CountStatus.REVIEW
       )
+    })
+  })
+
+  // `transfers:read` and `counts:read` stand for the permissions of writing too (who reads a transfer is who may send or receive
+  // it), and a write route names its own scope and the read one: the permissions of a request are those of the scopes of the ROUTE,
+  // so a key that reads, or that writes one step, is not lent the permission of another step
+  describe('a scope does not lend the permission of another', () => {
+    const keyOf = async (name: string, scopes: string[]): Promise<string> =>
+      (
+        await createPluginKey(owner, {
+          storeId: ctx.storeA.id,
+          pluginId: `${pluginId}-${name}`,
+          scopes
+        })
+      ).key
+
+    it('refuses to send, cancel, receive or close a transfer with a key that only reads, or that only sends', async () => {
+      const readOnly = await keyOf('t-read', [PluginScopes.TRANSFERS_READ])
+      const sendOnly = await keyOf('t-send', [
+        PluginScopes.TRANSFERS_READ,
+        PluginScopes.TRANSFERS_WRITE
+      ])
+      const productId = await stocked(10)
+      const transfer = await draft(productId, 3)
+
+      for (const withKey of [readOnly, sendOnly]) {
+        for (const route of [
+          PluginApiRoutes.transfers.receive(transfer.id),
+          PluginApiRoutes.transfers.close(transfer.id)
+        ]) {
+          const refused = await call('post', route, withKey).send({})
+          expect(refused.status).toBe(FORBIDDEN)
+        }
+      }
+      for (const route of [
+        PluginApiRoutes.transfers.dispatch(transfer.id),
+        PluginApiRoutes.transfers.cancel(transfer.id)
+      ]) {
+        expect((await call('post', route, readOnly).send({})).status).toBe(FORBIDDEN)
+      }
+      expect((await call('post', PluginApiRoutes.transfers.create, readOnly).send({})).status).toBe(
+        FORBIDDEN
+      )
+      const unchanged = await owner.stockTransfer.findUniqueOrThrow({ where: { id: transfer.id } })
+      expect(unchanged.status).toBe(TransferStatus.DRAFT)
+    })
+
+    it('refuses to submit, start or apply a count with a key that only reads, and to apply one with a key that only counts', async () => {
+      const readOnly = await keyOf('c-read', [PluginScopes.COUNTS_READ])
+      const countOnly = await keyOf('c-count', [
+        PluginScopes.COUNTS_READ,
+        PluginScopes.COUNTS_WRITE
+      ])
+      const created = await call('post', PluginApiRoutes.counts.create).send({
+        warehouseId: ctx.warehouseA.id
+      })
+      const count = created.body as CountBody
+
+      for (const route of [
+        PluginApiRoutes.counts.start(count.id),
+        PluginApiRoutes.counts.submit(count.id),
+        PluginApiRoutes.counts.reopen(count.id),
+        PluginApiRoutes.counts.cancel(count.id)
+      ]) {
+        expect((await call('post', route, readOnly).send({})).status).toBe(FORBIDDEN)
+      }
+      for (const withKey of [readOnly, countOnly]) {
+        expect(
+          (await call('post', PluginApiRoutes.counts.apply(count.id), withKey).send({})).status
+        ).toBe(FORBIDDEN)
+      }
+      const unchanged = await owner.stockCount.findUniqueOrThrow({ where: { id: count.id } })
+      expect(unchanged.status).toBe(CountStatus.DRAFT)
+    })
+
+    it('refuses to send a transfer or submit a count with a key that only receives or applies', async () => {
+      const receiveOnly = await keyOf('t-recv', [
+        PluginScopes.TRANSFERS_READ,
+        PluginScopes.TRANSFERS_RECEIVE
+      ])
+      const applyOnly = await keyOf('c-apply', [
+        PluginScopes.COUNTS_READ,
+        PluginScopes.COUNTS_APPLY
+      ])
+      const transfer = await draft(await stocked(5), 2)
+      const count = (
+        await call('post', PluginApiRoutes.counts.create).send({ warehouseId: ctx.warehouseA.id })
+      ).body as CountBody
+
+      expect(
+        (await call('post', PluginApiRoutes.transfers.dispatch(transfer.id), receiveOnly).send({}))
+          .status
+      ).toBe(FORBIDDEN)
+      expect(
+        (await call('post', PluginApiRoutes.transfers.cancel(transfer.id), receiveOnly).send({}))
+          .status
+      ).toBe(FORBIDDEN)
+      expect(
+        (await call('post', PluginApiRoutes.counts.submit(count.id), applyOnly).send({})).status
+      ).toBe(FORBIDDEN)
+      expect(
+        (await call('post', PluginApiRoutes.counts.start(count.id), applyOnly).send({})).status
+      ).toBe(FORBIDDEN)
     })
   })
 })
