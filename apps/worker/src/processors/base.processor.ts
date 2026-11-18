@@ -1,6 +1,7 @@
 import { OnWorkerEvent, WorkerHost } from '@nestjs/bullmq'
-import type { Job } from 'bullmq'
+import { type Job, UnrecoverableError } from 'bullmq'
 
+import { JobContextError } from '@platform/core/database'
 import type { BaseJob, QueueName } from '@platform/core/queues'
 
 import type { ProcessorSupport } from './processor-support'
@@ -23,7 +24,13 @@ export abstract class BaseProcessor<T extends BaseJob> extends WorkerHost {
   protected abstract handle(job: Job<T>): Promise<void>
 
   async process(job: Job<T>): Promise<void> {
-    await this.support.run(this.queue, job, current => this.handle(current))
+    try {
+      await this.support.run(this.queue, job, current => this.handle(current))
+    } catch (error) {
+      // A job that names a store, an organization or a person that is not there will not find them when it is tried again
+      if (error instanceof JobContextError) throw new UnrecoverableError(error.message)
+      throw error
+    }
   }
 
   @OnWorkerEvent('completed')

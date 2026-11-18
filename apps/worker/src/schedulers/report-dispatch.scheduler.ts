@@ -62,6 +62,7 @@ export class ReportDispatchScheduler {
         where: { enabled: true },
         select: {
           id: true,
+          storeId: true,
           frequency: true,
           timezone: true,
           sendAtHour: true,
@@ -96,7 +97,7 @@ export class ReportDispatchScheduler {
         await this.queue.addBulk(
           due.map(({ report, day }) => ({
             name: JobNames.GENERATE_SCHEDULED_REPORT,
-            data: { reportId: report.id, day },
+            data: { reportId: report.id, day, storeId: report.storeId },
             opts: { jobId: scheduledReportJobId(report.id, day) }
           }))
         )

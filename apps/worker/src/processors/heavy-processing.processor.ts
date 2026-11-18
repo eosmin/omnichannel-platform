@@ -2,6 +2,7 @@ import { Processor } from '@nestjs/bullmq'
 import { type Job, UnrecoverableError } from 'bullmq'
 import { z } from 'zod'
 
+import { JobContext, LongJobTransaction } from '@platform/core/database'
 import {
   bulkLocationIdsSchema,
   bulkLocationsByConnectionSchema,
@@ -177,7 +178,11 @@ const reprocessJobSchema = exactly<ReprocessCarrierEventsJob>()(
 )
 // A scan and the variants of an image take the same job
 const mediaJobSchema = exactly<ScanFileJob & ProcessImageJob>()(
-  z.object({ mediaId: z.uuid(), correlationId: z.string().optional() })
+  z.object({
+    mediaId: z.uuid(),
+    storeId: z.uuid().optional(),
+    correlationId: z.string().optional()
+  })
 )
 // The same keys as the job type, checked when it is compiled: zod drops what it is not told about
 const fetchJobSchema = exactly<FetchInboundMediaJob>()(
@@ -218,7 +223,8 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     private readonly financeChain: FinanceChainChecker,
     private readonly fiscalReconciler: FiscalReconciler,
     private readonly fiscalDocuments: FiscalDocumentsService,
-    private readonly fiscalContingencies: FiscalContingencyService
+    private readonly fiscalContingencies: FiscalContingencyService,
+    private readonly jobContext: JobContext
   ) {
     super(QueueNames.HEAVY_PROCESSING, support)
   }
@@ -239,7 +245,12 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       const reconcile = reconcileJobSchema.safeParse(job.data)
       if (!reconcile.success)
         throw new UnrecoverableError('the reconcile job does not fit its schema')
-      await this.reconciler.reconcileStore(reconcile.data.storeId)
+      const { storeId } = reconcile.data
+      await this.jobContext.forStore(
+        storeId,
+        () => this.reconciler.reconcileStore(storeId),
+        LongJobTransaction
+      )
       return
     }
     if (job.name === JobNames.RECONCILE_FINANCE) {
@@ -252,7 +263,14 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       const failures: Error[] = []
       for (const check of [this.financeReconciler, this.fiscalReconciler]) {
         try {
-          await check.reconcile(reconcile.data.organizationId)
+          const { organizationId } = reconcile.data
+          await this.jobContext.forOrganization(
+            organizationId,
+            async () => {
+              await check.reconcile(organizationId)
+            },
+            LongJobTransaction
+          )
         } catch (error) {
           failures.push(error instanceof Error ? error : new Error(String(error)))
         }
@@ -274,7 +292,12 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
         throw new UnrecoverableError('the chain check job does not fit its schema')
       }
       // A break is an incident the check records and returns; only an error of the infrastructure rejects, and the queue asks again
-      await this.financeChain.check(verify.data.organizationId, new Date(), verify.data.requestedBy)
+      const { organizationId, requestedBy } = verify.data
+      await this.jobContext.forOrganization(
+        organizationId,
+        () => this.financeChain.check(organizationId, new Date(), requestedBy),
+        LongJobTransaction
+      )
       return
     }
     if (job.name === JobNames.SUBMIT_FISCAL_DOCUMENT) {
@@ -322,12 +345,18 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
       if (!post.success) throw new UnrecoverableError('the posting job does not fit its schema')
       // A failure of the books is recorded for a person and returns; only an error of the infrastructure rejects, and the queue asks again
       try {
-        await this.financePosting.post(post.data)
+        const event = post.data
+        await this.jobContext.forOrganization(event.organizationId, () =>
+          this.financePosting.post(event)
+        )
       } catch (error) {
         // The last attempt of an error of the infrastructure: the source goes on the list of failures instead of the dead-letter queue
         if (isLastAttempt(job)) {
           // The same database may be what failed: the original error stays the one the queue sees
-          await this.financePosting.markUnposted(post.data).catch(() => undefined)
+          const event = post.data
+          await this.jobContext
+            .forOrganization(event.organizationId, () => this.financePosting.markUnposted(event))
+            .catch(() => undefined)
         }
         throw error
       }
@@ -394,6 +423,9 @@ export class HeavyProcessingProcessor extends BaseProcessor<HeavyJob> {
     const parsed = mediaJobSchema.safeParse(job.data)
     if (!parsed.success) throw new UnrecoverableError('the media job does not fit its schema')
 
+    // A file is found by its id: its store is learnt and proved visible first, so that a row row security hides is an error and not
+    // "no row, nothing to do"
+    await this.jobContext.anchor('media', parsed.data.mediaId, parsed.data.storeId)
     switch (job.name) {
       case JobNames.SCAN_FILE:
         return this.pipeline.scan(parsed.data.mediaId, isLastAttempt(job))

@@ -18,22 +18,29 @@ export class ChannelConnectionResolver {
   constructor(private readonly prisma: PrismaService) {}
 
   async resolve(pluginId: string, connectionId: string): Promise<ResolvedConnection | null> {
-    const row = await this.prisma.client.channelConnection.findUnique({
-      where: { pluginId_connectionId: { pluginId, connectionId } },
-      select: {
-        id: true,
-        storeId: true,
-        status: true,
-        installation: { select: { status: true, plugin: { select: { status: true } } } }
-      }
-    })
-    if (row === null) return null
+    // The store is not known yet, so this is the one lookup that runs before any context: a function of the database that answers
+    // the connection and its statuses, nothing else (row security does not hide it from the role of the worker)
+    const [row] = await this.prisma.client.$queryRaw<
+      {
+        id: string
+        store_id: string
+        status: string
+        installation_status: string
+        plugin_status: string
+      }[]
+    >`SELECT id, store_id, status, installation_status, plugin_status
+      FROM rls_resolve_channel_connection(${pluginId}, ${connectionId})`
+    if (row === undefined) return null
     return {
       id: row.id,
-      storeId: row.storeId,
+      storeId: row.store_id,
       active:
         enumValueOf(ChannelConnectionStatus, row.status, 'channel connection status') !==
-          ChannelConnectionStatus.DISCONNECTED && isInstallationActive(row.installation)
+          ChannelConnectionStatus.DISCONNECTED &&
+        isInstallationActive({
+          status: row.installation_status,
+          plugin: { status: row.plugin_status }
+        })
     }
   }
 }

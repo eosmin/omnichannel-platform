@@ -2,6 +2,7 @@ import { Processor } from '@nestjs/bullmq'
 import { type Job, UnrecoverableError } from 'bullmq'
 import { z } from 'zod'
 
+import { JobContext } from '@platform/core/database'
 import { DigestFrequency } from '@platform/core/domain'
 import {
   type CheckRemittancesJob,
@@ -33,7 +34,8 @@ export class NotificationsProcessor extends BaseProcessor<NotificationsJob> {
     support: ProcessorSupport,
     private readonly push: WebPushSender,
     private readonly digest: EmailDigestService,
-    private readonly remittances: RemittanceChecker
+    private readonly remittances: RemittanceChecker,
+    private readonly jobContext: JobContext
   ) {
     super(QueueNames.NOTIFICATIONS, support)
   }
@@ -64,7 +66,8 @@ export class NotificationsProcessor extends BaseProcessor<NotificationsJob> {
         const parsed = checkRemittancesJobSchema.safeParse(job.data)
         if (!parsed.success)
           throw new UnrecoverableError('the remittance check does not fit its schema')
-        await this.remittances.check(parsed.data.storeId, new Date())
+        const { storeId } = parsed.data
+        await this.jobContext.forStore(storeId, () => this.remittances.check(storeId, new Date()))
         return
       }
       default:
