@@ -19,7 +19,7 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 
 interface ErrorBody {
-  error: { code: string }
+  error: { code: string; metadata?: Record<string, unknown> }
 }
 interface PeriodBody {
   id: string
@@ -163,6 +163,23 @@ describe('Closing the months, the reports and the auditor files', () => {
     await owner.$disconnect()
   })
 
+  describe('the body and the query of a close and of the chain status', () => {
+    it('refuses an organizationId, as every other route of the finance does (LED-753)', async () => {
+      const february = await periodOf(ctx.orgA.id, 2026, 2)
+
+      const close = await asAdminA()
+        .post(ApiRoutes.finance.periods.close(february.id))
+        .send({ organizationId: ctx.orgB.id })
+      const status = await asAdminA().get(
+        `${ApiRoutes.finance.reports.chainStatus}?organizationId=${ctx.orgB.id}`
+      )
+
+      expect(close.status).toBe(BAD_REQUEST)
+      expect(status.status).toBe(BAD_REQUEST)
+      expect((await periodOf(ctx.orgA.id, 2026, 2)).status).toBe(PeriodStatus.OPEN)
+    })
+  })
+
   describe('the preconditions of a close', () => {
     it('closes in order: February waits for January', async () => {
       const february = await periodOf(ctx.orgA.id, 2026, 2)
@@ -190,6 +207,12 @@ describe('Closing the months, the reports and the auditor files', () => {
       })
 
       expect(errorOf(refused).code).toBe(ErrorCodes.FINANCE_CLOSE_PENDING_POSTINGS)
+      expect(errorOf(refused).metadata).toMatchObject({
+        failureCount: 1,
+        failures: [{ reason: 'role_not_mapped', count: 1 }],
+        pendingSources: 0,
+        truncated: false
+      })
       expect((await periodOf(ctx.orgA.id, 2026, 1)).status).toBe(PeriodStatus.OPEN)
     })
 

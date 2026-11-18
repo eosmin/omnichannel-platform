@@ -621,7 +621,7 @@
     "FINANCE_ENTRY_ALREADY_REVERSED": "This entry was already reversed",
     "FINANCE_REOPEN_NOT_LATEST": "Only the latest closed period can be reopened",
     "FINANCE_CLOSE_CHAIN_BROKEN": "The check of the books found the journal altered: it cannot be closed until the chain verifies again",
-    "FINANCE_CLOSE_PENDING_POSTINGS": "There are postings pending or failed in this period: resolve them first",
+    "FINANCE_CLOSE_PENDING_POSTINGS": "There are postings pending or failed: retry or fix the failed ones in the list of automatic postings; the pending ones are posted by the daily sweep (04:30 UTC), then close again",
     "FINANCE_CLOSE_PREVIOUS_OPEN": "The previous period is still open: close periods in order",
     "FINANCE_CLOSE_NOT_ENDED": "The period has not ended yet: a month is not closed before its last day",
     "FINANCE_BALANCE_MISMATCHES": "The balances of the period do not match: it is an incident, it is not closed over",

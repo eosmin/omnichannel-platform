@@ -2,7 +2,7 @@
 -- their bucket and their media rows stay, as files of a store, but nothing says which transaction they were for: take a copy of
 -- finance_transactions.document_media_id and media.finance_transaction_id first if that matters). Brings back the trigger function as
 -- 20261216100000 made it, in which a transaction takes no change but its voiding pointer. Run it before the code that reads the
--- columns is brought back. Safe to run twice.
+-- columns is brought back. Safe to run twice, also after the rollback of 20261216100000 dropped finance_transactions (ALTER TABLE IF EXISTS).
 BEGIN;
 
 -- (the grant on document_media_id goes with the column below)
@@ -10,14 +10,14 @@ DROP TRIGGER IF EXISTS trg_media_finance_receipt_keeps ON media;
 DROP FUNCTION IF EXISTS forbid_finance_receipt_change();
 ALTER TABLE media DROP CONSTRAINT IF EXISTS chk_media_finance_parent;
 ALTER TABLE media DROP CONSTRAINT IF EXISTS media_finance_transaction_id_fkey;
-ALTER TABLE finance_transactions DROP CONSTRAINT IF EXISTS finance_transactions_document_media_id_fkey;
+ALTER TABLE IF EXISTS finance_transactions DROP CONSTRAINT IF EXISTS finance_transactions_document_media_id_fkey;
 DROP INDEX IF EXISTS finance_transactions_document_media_id_key;
 DROP INDEX IF EXISTS media_finance_transaction_id_idx;
 
 -- A receipt cannot be a column the old trigger does not know: it is dropped before the function is replaced, because the old function
 -- reads the row as a whole (to_jsonb) and a column it does not know would count as a change
-ALTER TABLE finance_transactions DROP COLUMN IF EXISTS document_media_id;
-ALTER TABLE media DROP COLUMN IF EXISTS finance_transaction_id;
+ALTER TABLE IF EXISTS finance_transactions DROP COLUMN IF EXISTS document_media_id;
+ALTER TABLE IF EXISTS media DROP COLUMN IF EXISTS finance_transaction_id;
 
 CREATE OR REPLACE FUNCTION check_finance_transaction_row() RETURNS trigger
 LANGUAGE plpgsql

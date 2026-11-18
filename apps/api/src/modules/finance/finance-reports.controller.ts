@@ -38,6 +38,10 @@ import {
 import { FinanceCloseService } from './finance-close.service'
 import { journalCsvHeader, journalCsvRows, ledgerCsv, trialBalanceCsv } from './finance-reports.csv'
 import {
+  type ChainStatusQuery,
+  chainStatusQuerySchema,
+  type ClosePeriodBody,
+  closePeriodSchema,
   type JournalCsvQuery,
   journalCsvQuerySchema,
   type LedgerCsvQuery,
@@ -93,6 +97,7 @@ export class FinanceReportsController {
     @CurrentStore() store: Store,
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', id()) periodId: string,
+    @Body(new ZodValidationPipe(closePeriodSchema)) _body: ClosePeriodBody,
     @Req() req: AuthenticatedRequest
   ): Promise<PeriodView> {
     return this.close.close(organization.id, periodId, actorOf(user, store, req))
@@ -196,7 +201,10 @@ export class FinanceReportsController {
   @RequirePermissions(Permissions.FINANCE_VIEW_REPORTS)
   @NoStore()
   @Get(ApiRoutes.finance.reports.chainStatus)
-  chainStatus(@CurrentOrganization() organization: Organization): Promise<ChainStatusView> {
+  chainStatus(
+    @CurrentOrganization() organization: Organization,
+    @Query(new ZodValidationPipe(chainStatusQuerySchema)) _query: ChainStatusQuery
+  ): Promise<ChainStatusView> {
     return this.chain.status(organization.id)
   }
 
