@@ -4,7 +4,8 @@ import {
   ChannelPluginScopes,
   ChannelManifestLimits,
   ManifestChannelCapabilities,
-  PluginManifestLimits
+  PluginManifestLimits,
+  PluginWidgetLimits
 } from '@platform/core/domain'
 import { Events } from '@platform/core/events'
 import { allowLocalCommandsUrl } from '@platform/core/url-safety'
@@ -275,11 +276,37 @@ describe('pluginManifestSchema', () => {
       expect(refused(manifest({ widgets: [{ ...one, defaultWidth: 10 }] }))).toBe(true)
       expect(refused(manifest({ widgets: [{ ...one, defaultHeight: 99999 }] }))).toBe(true)
       expect(refused(manifest({ widgets: [{ ...one, refreshInterval: 5 }] }))).toBe(true)
-      const many = Array.from({ length: PluginManifestLimits.MAX_WIDGETS + 1 }, (_, index) => ({
-        ...one,
-        id: `w-${String(index).padStart(2, '0')}`
-      }))
+      const many = Array.from(
+        { length: PluginWidgetLimits.WIDGETS_PER_PLUGIN_MAX + 1 },
+        (_, index) => ({
+          ...one,
+          id: `w-${String(index).padStart(2, '0')}`
+        })
+      )
       expect(refused(manifest({ widgets: many }))).toBe(true)
+    })
+
+    // What the reader of a widget list drops without a word must not register: the plugin would vanish from the list
+    it('refuses what the reader of the widget list would drop: a size the panel cannot hold, a quick refresh, six widgets, an address with a query', () => {
+      const one = { id: 'w-one', name: 'W', defaultWidth: 300, defaultHeight: 400 }
+      expect(refused(manifest({ widgets: [{ ...one, defaultWidth: 1000 }] }))).toBe(true)
+      expect(refused(manifest({ widgets: [{ ...one, defaultHeight: 900 }] }))).toBe(true)
+      expect(refused(manifest({ widgets: [{ ...one, refreshInterval: 1000 }] }))).toBe(true)
+      const six = Array.from({ length: 6 }, (_, index) => ({ ...one, id: `w-${index}` }))
+      expect(refused(manifest({ widgets: six }))).toBe(true)
+      expect(refused(manifest({ widgets: [] }))).toBe(true)
+      expect(
+        refused(
+          manifest({ ui: { settings: 'https://acme.com/s', widget: 'https://acme.com/w?x=1' } })
+        )
+      ).toBe(true)
+      expect(
+        refused(
+          manifest({
+            widgets: [{ ...one, defaultWidth: 600, defaultHeight: 800, refreshInterval: 5000 }]
+          })
+        )
+      ).toBe(false)
     })
 
     it.each([
