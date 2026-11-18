@@ -885,6 +885,7 @@ describe('The books of an organization', () => {
         )
       )
 
+      expect([one?.status, two?.status, three?.status]).toEqual([OK, OK, OK])
       const id = (one?.body as { id: string }).id
       expect([two?.body, three?.body]).toEqual([
         expect.objectContaining({ id }),
