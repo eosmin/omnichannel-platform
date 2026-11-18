@@ -105,8 +105,9 @@ export class PluginWebhookDeliverer {
     if (endpoint === null || sealed === null) return WebhookOutcome.SKIPPED
     // The cap of the day the plugin declared (`limits.maxWebhooksPerDay`). Only the first try of a delivery is held to it: a
     // delivery that began is finished, and the last one of a revocation always goes. What is over the cap is dropped, not failed:
-    // it is not the endpoint's fault, so it counts toward turning nothing off. The count and the send are not one step, so
-    // deliveries at the same instant may pass the cap by the number that raced.
+    // it is not the endpoint's fault, so it counts toward turning nothing off. The cap is on deliveries STARTED: a first try
+    // that fails is one of them (its retries are not). The count and the send are not one step, so deliveries at the same
+    // instant may pass the cap by the number that raced (plan: debt of the PR of PLG-256).
     const cap = manifestMaxWebhooksPerDay(installation.plugin.manifest)
     if (!final && attempt <= 1 && cap !== null) {
       const today = await this.prisma.client.webhookDelivery.count({
@@ -117,10 +118,21 @@ export class PluginWebhookDeliverer {
         }
       })
       if (today >= cap) {
-        this.logger.warn(
-          { installationId, event },
-          'a plugin delivery dropped: its daily cap is reached'
-        )
+        // Said in the log the owner reads (`attempt: 0`, which the count above never takes for a delivery), so a capped event is
+        // told from one the endpoint did not get
+        await this.guarded(installationId, async () => {
+          await this.prisma.client.webhookDelivery.create({
+            data: {
+              pluginInstallationId: installationId,
+              event,
+              statusCode: null,
+              durationMs: 0,
+              success: false,
+              error: WebhookLimits.DAILY_CAP_REACHED_CODE,
+              attempt: 0
+            }
+          })
+        })
         return WebhookOutcome.SKIPPED
       }
     }

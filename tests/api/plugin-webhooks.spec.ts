@@ -412,7 +412,12 @@ describe('The webhooks of an integration plugin and its revocation', () => {
       expect(await deliver(1, now)).toBe(WebhookOutcome.SKIPPED)
       expect(post).toHaveBeenCalledTimes(2)
       // A dropped delivery is no failure of the endpoint: nothing is logged and nothing counts toward turning it off
-      expect(await logOf(setup.installationId)).toHaveLength(2)
+      // The dropped one is said in the log, apart from the deliveries
+      const log = await logOf(setup.installationId)
+      expect(log.filter(entry => entry.attempt === 1)).toHaveLength(2)
+      expect(log.filter(entry => entry.attempt === 0)).toMatchObject([
+        { success: false, error: WebhookLimits.DAILY_CAP_REACHED_CODE, statusCode: null }
+      ])
       const row = await owner.pluginInstallation.findUniqueOrThrow({
         where: { id: setup.installationId }
       })
