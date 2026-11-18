@@ -1050,7 +1050,7 @@
     "finance": {
       "advance_owed": {
         "title": "Un pedido cancelado tiene un anticipo por devolver",
-        "body": "El pedido {orderNumber} se canceló después de registrar su pago. Los libros deben ese dinero al cliente hasta que se devuelva: devuélvelo y registra la devolución como un asiento o una transferencia."
+        "body": "El pedido {number} se canceló después de registrar su pago. Los libros deben ese dinero al cliente hasta que se devuelva: devuélvelo y registra la devolución como un asiento o una transferencia."
       },
       "posting_failed": {
         "title": "Falló un asiento contable",

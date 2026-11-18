@@ -1050,7 +1050,7 @@
     "finance": {
       "advance_owed": {
         "title": "A cancelled order has an advance to refund",
-        "body": "Order {orderNumber} was cancelled after its payment was booked. The books owe that money to the customer until it is refunded: refund it and record the refund as an entry or a transfer."
+        "body": "Order {number} was cancelled after its payment was booked. The books owe that money to the customer until it is refunded: refund it and record the refund as an entry or a transfer."
       },
       "posting_failed": {
         "title": "Entry of the books failed",

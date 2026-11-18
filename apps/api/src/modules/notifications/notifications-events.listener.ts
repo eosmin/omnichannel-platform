@@ -1113,7 +1113,7 @@ export class NotificationsEventsListener {
       await this.notifications.sendToUsersOnce(members, {
         storeId: payload.storeId,
         type: NotificationTypes.FINANCE_ADVANCE_OWED,
-        params: { orderNumber: payload.orderNumber },
+        params: { number: payload.orderNumber },
         resourceType: FinanceResourceTypes.POSTING,
         resourceId: `advance:${payload.orderId}`
       })

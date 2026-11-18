@@ -89,7 +89,7 @@ describe('the notice of a cancelled order that has an advance (HC-105)', () => {
     expect(sent[0]?.input).toMatchObject({
       storeId: STORE,
       type: NotificationTypes.FINANCE_ADVANCE_OWED,
-      params: { orderNumber: '1001' },
+      params: { number: '1001' },
       resourceId: `advance:${ORDER}`
     })
     expect(sent[0]?.input).not.toHaveProperty('actionPath')
