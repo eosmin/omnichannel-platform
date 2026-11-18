@@ -1,4 +1,4 @@
-import { ChannelCapability, RemoteChannelLimits } from '@platform/core/domain'
+import { ChannelCapability, OutboundLimits, RemoteChannelLimits } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
 import { PinnedExchangeFailed, PinnedFetchFailed, UnsafeUrlError } from '@platform/core/url-safety'
 import { type ChannelPlugin, PluginError } from '@platform/plugins/sdk'
@@ -386,6 +386,15 @@ describe('RemoteChannelPlugin: the answers to a send', () => {
     const error = await failureOf(send(plugin))
     expect(JSON.stringify(error)).not.toContain('plg_live_secret')
     expect(error.message).not.toContain('plg_live_secret')
+  })
+
+  it('takes the id of a message up to the shared bound, the one the worker stores, and refuses a longer one', async () => {
+    const longest = 'x'.repeat(OutboundLimits.EXTERNAL_ID_MAX_LENGTH)
+    const fits = harness(() => ok({ externalId: longest, status: 'sent' }))
+    expect((await send(fits.plugin)).externalId).toBe(longest)
+    const tooLong = harness(() => ok({ externalId: `${longest}x`, status: 'sent' }))
+    const error = await failureOf(send(tooLong.plugin))
+    expect(error.outcomeUnknown).toBe(true)
   })
 
   it('takes an answer that is not what the table says as a failure whose outcome is not known', async () => {

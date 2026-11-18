@@ -20,6 +20,7 @@ import {
   type RemoteChannelCommand,
   RemoteChannelErrorCodes,
   RemoteChannelHeaders,
+  OutboundLimits,
   RemoteChannelLimits,
   RemoteChannelSendTypes,
   type RemoteChannelSendType,
@@ -100,7 +101,7 @@ export interface RemoteChannelDeps {
 
 // Only the platform's own words, never what the plugin said: a plugin is a third party's and its text could carry anything
 const sendAnswer = z.object({
-  externalId: z.string().min(1).max(512),
+  externalId: z.string().min(1).max(OutboundLimits.EXTERNAL_ID_MAX_LENGTH),
   status: z.literal(DeliveryStatus.SENT),
   sentAt: z.iso.datetime({ offset: true }).optional()
 })
