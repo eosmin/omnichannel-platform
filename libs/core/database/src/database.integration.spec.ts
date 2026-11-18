@@ -3,7 +3,9 @@ import { randomUUID } from 'node:crypto'
 import { PrismaPg } from '@prisma/adapter-pg'
 import pg from 'pg'
 
+import { AuditAction } from '@platform/core/audit'
 import { RoleNames, RolePresets } from '@platform/core/auth'
+import { AuditColdExport } from '@platform/core/compliance'
 import { parseEncryptionKey } from '@platform/core/crypto'
 import { WebhookSources } from '@platform/core/domain'
 
@@ -68,8 +70,8 @@ describe('database roles', () => {
     })
   })
 
-  // The audit log is append-only for the whole application: the worker may delete (the cold export of a month it has copied) and
-  // nothing else. Until the QA review of 2026-11-16 nothing asserted the worker side, and the worker kept UPDATE. The privileges are
+  // The audit log is append-only for the whole application: no role holds UPDATE, DELETE or TRUNCATE on it; the cold export of a
+  // month it has copied deletes through purge_audit_logs() and nothing else. Until the QA review of 2026-11-16 nothing asserted the worker side, and the worker kept UPDATE. The privileges are
   // read as the owner (nothing destructive runs as an application role, so a privilege that comes back cannot empty the table), and
   // one UPDATE is tried on a row of the test, which is removed at the end whatever happens.
   it.each([
@@ -82,10 +84,13 @@ describe('database roles', () => {
         const { rows } = await owner.query<Record<string, boolean>>(
           `SELECT has_table_privilege($1, 'audit_logs', 'UPDATE') AS "update",
                   has_table_privilege($1, 'audit_logs', 'TRUNCATE') AS "truncate",
+                  has_table_privilege($1, 'audit_logs', 'DELETE') AS "delete",
                   has_any_column_privilege($1, 'audit_logs', 'UPDATE') AS "columnUpdate"`,
           [role]
         )
-        expect(rows).toEqual([{ update: false, truncate: false, columnUpdate: false }])
+        expect(rows).toEqual([
+          { update: false, truncate: false, delete: false, columnUpdate: false }
+        ])
         await owner.query("INSERT INTO audit_logs (id, action) VALUES ($1, 'integration.frozen')", [
           id
         ])
@@ -94,6 +99,9 @@ describe('database roles', () => {
         await expect(
           client.query("UPDATE audit_logs SET action = 'tampered' WHERE id = $1", [id])
         ).rejects.toThrow(/permission denied/)
+        await expect(client.query('DELETE FROM audit_logs WHERE id = $1', [id])).rejects.toThrow(
+          /permission denied/
+        )
       })
       await withClient(urls.owner, async owner => {
         const { rows } = await owner.query<{ action: string }>(
@@ -109,10 +117,195 @@ describe('database roles', () => {
     }
   })
 
-  it('lets platform_worker delete from audit_logs', async () => {
-    await withClient(urls.worker, async worker => {
-      const result = await worker.query('DELETE FROM audit_logs WHERE id = $1', [AUDIT_ID])
-      expect(result.rowCount).toBe(1)
+  it('refuses an UPDATE or a TRUNCATE of audit_logs to the owner too, and keeps the user_id clearing of the foreign key', async () => {
+    const id = `${AUDIT_ID}-owner`
+    const userId = `user-${runId}-audit`
+    try {
+      await withClient(urls.owner, async owner => {
+        await owner.query(
+          'INSERT INTO users (id, email, name, updated_at) VALUES ($1, $2, $3, now())',
+          [userId, `${userId}@example.test`, 'Audit FK']
+        )
+        await owner.query(
+          "INSERT INTO audit_logs (id, action, user_id) VALUES ($1, 'integration.owner', $2)",
+          [id, userId]
+        )
+        await expect(
+          owner.query("UPDATE audit_logs SET action = 'tampered' WHERE id = $1", [id])
+        ).rejects.toThrow(/AUDIT_LOG_IMMUTABLE/)
+        await expect(
+          owner.query("UPDATE audit_logs SET user_id = NULL, action = 'x' WHERE id = $1", [id])
+        ).rejects.toThrow(/AUDIT_LOG_IMMUTABLE/)
+        // The TRUNCATE itself is not run (it would empty the log of every suite if the trigger were missing): the trigger is read
+        const { rows: triggers } = await owner.query<{ tgname: string; truncate: boolean }>(
+          `SELECT tgname, (tgtype & 32) <> 0 AS "truncate" FROM pg_trigger
+           WHERE tgrelid = 'audit_logs'::regclass AND NOT tgisinternal ORDER BY tgname`
+        )
+        expect(triggers).toEqual([
+          { tgname: 'trg_audit_logs_no_truncate', truncate: true },
+          { tgname: 'trg_audit_logs_no_update', truncate: false }
+        ])
+        // A bare UPDATE that clears user_id of a person who still exists is refused too
+        await expect(
+          owner.query('UPDATE audit_logs SET user_id = NULL WHERE id = $1', [id])
+        ).rejects.toThrow(/AUDIT_LOG_IMMUTABLE/)
+        // Deleting the person clears user_id of the entry (ON DELETE SET NULL) and nothing else
+        await owner.query('DELETE FROM users WHERE id = $1', [userId])
+        const { rows } = await owner.query<{ action: string; user_id: string | null }>(
+          'SELECT action, user_id FROM audit_logs WHERE id = $1',
+          [id]
+        )
+        expect(rows).toEqual([{ action: 'integration.owner', user_id: null }])
+      })
+    } finally {
+      await withClient(urls.owner, async owner => {
+        await owner.query('DELETE FROM audit_logs WHERE id = $1', [id])
+        await owner.query('DELETE FROM users WHERE id = $1', [userId])
+      })
+    }
+  })
+
+  describe('purge_audit_logs()', () => {
+    const SHA = 'a'.repeat(64)
+    const KEY = `audit/${runId}/purge-test.jsonl.gz`
+    const OLD = `${AUDIT_ID}-purge-old`
+    const RECENT = `${AUDIT_ID}-purge-recent`
+    const purge = (
+      client: pg.Client,
+      ids: string[],
+      rows = ids.length,
+      sha = SHA,
+      key = KEY,
+      days: number = AuditColdExport.HOT_DAYS
+    ) =>
+      client.query<{ n: number }>('SELECT purge_audit_logs($1::text[], $2, $3, $4, $5) AS n', [
+        ids,
+        key,
+        sha,
+        rows,
+        days
+      ])
+    const purgeEntries = (owner: pg.Client) =>
+      owner.query<{ id: string; metadata: Record<string, unknown>; action: string }>(
+        `SELECT id, action, metadata FROM audit_logs WHERE action = $1 AND metadata->>'exportKey' = $2`,
+        [AuditAction.AUDIT_LOG_PURGED, KEY]
+      )
+
+    beforeEach(async () => {
+      await withClient(urls.owner, async owner => {
+        await owner.query(
+          "INSERT INTO audit_logs (id, action, timestamp) VALUES ($1, 'integration.purge', now() - interval '800 days'), ($2, 'integration.purge', now() - interval '10 days')",
+          [OLD, RECENT]
+        )
+      })
+    })
+
+    afterEach(async () => {
+      await withClient(urls.owner, async owner => {
+        await owner.query('DELETE FROM audit_logs WHERE id = ANY($1::text[])', [[OLD, RECENT]])
+        const entries = await purgeEntries(owner)
+        await owner.query('DELETE FROM audit_logs WHERE id = ANY($1::text[])', [
+          entries.rows.map(entry => entry.id)
+        ])
+      })
+    })
+
+    it('purges what is past the hot window, writes the entry of the purge and keeps what is inside the window', async () => {
+      await withClient(urls.worker, async worker => {
+        const result = await purge(worker, [OLD, RECENT], 2)
+        expect(result.rows[0]?.n).toBe(1)
+      })
+      await withClient(urls.owner, async owner => {
+        const left = await owner.query<{ id: string }>(
+          'SELECT id FROM audit_logs WHERE id = ANY($1::text[])',
+          [[OLD, RECENT]]
+        )
+        expect(left.rows).toEqual([{ id: RECENT }])
+        const entries = await purgeEntries(owner)
+        expect(entries.rows).toHaveLength(1)
+        expect(entries.rows[0]?.metadata).toMatchObject({
+          rule: AuditColdExport.PURGE_RULE,
+          windowDays: AuditColdExport.HOT_DAYS,
+          requested: 2,
+          deleted: 1,
+          exportKey: KEY,
+          exportSha256: SHA,
+          exportRows: 2
+        })
+      })
+    })
+
+    it('is idempotent: a second call deletes nothing and writes no second entry', async () => {
+      await withClient(urls.worker, async worker => {
+        await purge(worker, [OLD])
+        const again = await purge(worker, [OLD])
+        expect(again.rows[0]?.n).toBe(0)
+      })
+      await withClient(urls.owner, async owner => {
+        expect((await purgeEntries(owner)).rows).toHaveLength(1)
+      })
+    })
+
+    it('does not delete an entry inside the hot window, whatever the caller passes', async () => {
+      await withClient(urls.worker, async worker => {
+        const result = await purge(worker, [RECENT])
+        expect(result.rows[0]?.n).toBe(0)
+      })
+      await withClient(urls.owner, async owner => {
+        const left = await owner.query('SELECT id FROM audit_logs WHERE id = $1', [RECENT])
+        expect(left.rows).toHaveLength(1)
+        expect((await purgeEntries(owner)).rows).toHaveLength(0)
+      })
+    })
+
+    it.each([
+      ['no ids', [], 1, SHA, KEY],
+      ['no key', [OLD], 1, SHA, ''],
+      ['a malformed SHA-256', [OLD], 1, 'xyz', KEY],
+      ['an export with fewer rows than ids', [OLD], 0, SHA, KEY]
+    ] as const)('refuses %s and deletes nothing', async (_name, ids, rows, sha, key) => {
+      await withClient(urls.worker, async worker => {
+        await expect(purge(worker, [...ids], rows, sha, key)).rejects.toThrow(/AUDIT_PURGE_INPUT/)
+      })
+      await withClient(urls.owner, async owner => {
+        const left = await owner.query('SELECT id FROM audit_logs WHERE id = $1', [OLD])
+        expect(left.rows).toHaveLength(1)
+      })
+    })
+
+    it('refuses a hot window under 730 days, so a recent entry is never reached', async () => {
+      await withClient(urls.worker, async worker => {
+        await expect(purge(worker, [RECENT], 1, SHA, KEY, 5)).rejects.toThrow(/AUDIT_PURGE_INPUT/)
+      })
+      expect(AuditColdExport.HOT_DAYS).toBeGreaterThanOrEqual(730)
+    })
+
+    it('can be called by platform_worker only: the api role has no EXECUTE', async () => {
+      await withClient(urls.app, async app => {
+        await expect(purge(app, [OLD])).rejects.toThrow(/permission denied/)
+      })
+      await withClient(urls.owner, async owner => {
+        const { rows } = await owner.query<{ id: string }>(
+          'SELECT id FROM audit_logs WHERE id = $1',
+          [OLD]
+        )
+        expect(rows).toHaveLength(1)
+      })
+    })
+
+    it('has a fixed search_path, and the worker cannot delete directly', async () => {
+      await withClient(urls.owner, async owner => {
+        const { rows } = await owner.query<{ prosecdef: boolean; proconfig: string[] }>(
+          "SELECT prosecdef, proconfig FROM pg_proc WHERE proname = 'purge_audit_logs'"
+        )
+        expect(rows[0]?.prosecdef).toBe(true)
+        expect(rows[0]?.proconfig).toContain('search_path=pg_catalog, public, pg_temp')
+      })
+      await withClient(urls.worker, async worker => {
+        await expect(worker.query('DELETE FROM audit_logs WHERE id = $1', [OLD])).rejects.toThrow(
+          /permission denied/
+        )
+      })
     })
   })
 

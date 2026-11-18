@@ -29,7 +29,9 @@ const NEWLINE = 0x0a
 // The cold export of the audit log (TDD_05 §9.3, monthly): every entry of a calendar month that is entirely past the
 // hot window (two years) goes to the bucket as a gzipped JSON lines file, the object is read back and compared with
 // what was written (the SHA-256 of its bytes and its number of lines, against the rows counted in the database), and
-// only then are those rows deleted, with the role of the worker (`platform_app` cannot delete from audit_logs).
+// only then are those rows deleted, through purge_audit_logs(), the database function that is the only way to delete from
+// audit_logs (no role of the application holds DELETE on it; the function refuses what is inside the hot window and writes
+// an audit entry of the purge with the evidence of the export).
 // Nothing is deleted early (only whole months older than the window), nothing is patched, and nothing is deleted
 // whose copy was not verified. A month is one object: if a run finds it already there (the delete did not finish)
 // the rows that are left go in the next part, never over the first. A month is exported by one run at a time: the
@@ -147,6 +149,7 @@ export class AuditColdExporter {
       )
     })
     let rows = 0
+    let sha256: string
     try {
       let cursor: { timestamp: Date; id: string } | undefined
       for (;;) {
@@ -176,6 +179,7 @@ export class AuditColdExporter {
       }
       gzip.end()
       await upload
+      sha256 = written.digest('hex')
     } catch (error) {
       gzip.destroy()
       tee.destroy()
@@ -186,7 +190,7 @@ export class AuditColdExporter {
     }
 
     try {
-      await this.verify(key, written.digest('hex'), rows, expected)
+      await this.verify(key, sha256, rows, expected)
       // Rows that reached the month after the count (a late writer) are not in this copy and must not be deleted
       // with it: they wait for the next run, which writes them in the next part
       if ((await this.prisma.client.auditLog.count({ where })) !== rows) {
@@ -198,7 +202,7 @@ export class AuditColdExporter {
       throw error
     }
     await held()
-    await this.deleteExportedRows(key)
+    await this.deleteExportedRows(key, sha256, rows)
     this.logger.info({ year, month, rows, key }, 'a month of the audit log went to cold storage')
     return { year, month, rows, key }
   }
@@ -244,7 +248,7 @@ export class AuditColdExporter {
 
   // Deletes the rows that are in the object, and only those: a row that reached the month after the export read it is
   // not in the object and stays for the next run. The ids are read back from the verified object, a batch at a time
-  private async deleteExportedRows(key: string): Promise<void> {
+  private async deleteExportedRows(key: string, sha256: string, rows: number): Promise<void> {
     const body = await this.storage.stream(key)
     if (body === null) throw new Error('the cold export is not in the bucket to delete its rows')
     const gunzip = createGunzip()
@@ -259,11 +263,11 @@ export class AuditColdExporter {
         if (typeof id !== 'string') throw new Error('a line of the cold export has no id')
         ids.push(id)
         if (ids.length >= AuditColdExport.DELETE_BATCH) {
-          await this.deleteIds(ids)
+          await this.deleteIds(ids, key, sha256, rows)
           ids = []
         }
       }
-      if (ids.length > 0) await this.deleteIds(ids)
+      if (ids.length > 0) await this.deleteIds(ids, key, sha256, rows)
     } finally {
       // An error in the loop must not leave the bucket connection open
       lines.close()
@@ -272,7 +276,19 @@ export class AuditColdExporter {
     }
   }
 
-  private async deleteIds(ids: string[]): Promise<void> {
-    await this.prisma.client.$executeRaw`DELETE FROM audit_logs WHERE id = ANY(${ids}::text[])`
+  // The only delete of the audit log: the function of the database refuses an entry inside the hot window, and writes the
+  // audit entry of the purge with the evidence of the export (its key, SHA-256 and rows)
+  private async deleteIds(ids: string[], key: string, sha256: string, rows: number): Promise<void> {
+    const result = await this.prisma.client.$queryRaw<{ deleted: number }[]>`
+      SELECT purge_audit_logs(${ids}::text[], ${key}, ${sha256}, ${rows}::integer, ${AuditColdExport.HOT_DAYS}::integer) AS deleted`
+    const deleted = result[0]?.deleted ?? 0
+    // Fewer than asked is normal after a run that stopped half way (those rows are gone); it is logged so that a month that
+    // keeps coming back (a window that does not match) is seen
+    if (deleted < ids.length) {
+      this.logger.warn(
+        { key, requested: ids.length, deleted },
+        'the audit purge deleted fewer rows than the export holds'
+      )
+    }
   }
 }
