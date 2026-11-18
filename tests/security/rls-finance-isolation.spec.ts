@@ -2,9 +2,15 @@ import { randomUUID } from 'node:crypto'
 
 import pg from 'pg'
 
-import { connectionUrls, type OwnerClient } from '@platform/core/database-testing'
+import { connectionUrls, createAppClient, type OwnerClient } from '@platform/core/database-testing'
 
-import { createFinanceFixture, postTestEntry, purgeFinance, simpleEntry } from '../builders/finance'
+import {
+  createFinanceFixture,
+  type FinanceFixture,
+  postTestEntry,
+  purgeFinance,
+  simpleEntry
+} from '../builders/finance'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 
 // Row-Level Security, phase 4: the books of an ORGANIZATION (finance and fiscal; TDD_16 section 1). Three layers:
@@ -72,6 +78,7 @@ describe('row-level security, the books of an organization (phase 4)', () => {
   let orgB = ''
   // The CI job of phase 6 enforces the whole database: the real tables are then bound by their policies
   let enforced = false
+  let booksA: FinanceFixture | undefined
 
   async function appClient(): Promise<pg.Client> {
     const client = new pg.Client({ connectionString: urls.app })
@@ -151,6 +158,7 @@ describe('row-level security, the books of an organization (phase 4)', () => {
       .id
     for (const organizationId of [orgA, orgB]) {
       const books = await createFinanceFixture(owner, organizationId)
+      if (organizationId === orgA) booksA = books
       await postTestEntry(owner, simpleEntry(books, 1500))
       await postTestEntry(
         owner,
@@ -427,6 +435,43 @@ describe('row-level security, the books of an organization (phase 4)', () => {
       )
       expect([own.rowCount, other.rowCount]).toEqual([1, 0])
       expect(await count(db, copy, "country_code = 'SV'")).toBe(1)
+    })
+  })
+
+  describe('the ledger, posted as the api role', () => {
+    it('posts an entry as platform_app with the context of its organization: the triggers see their rows and the definer writes the balances', async () => {
+      if (!booksA) throw new Error('the books of the organization were not seeded')
+      const app = createAppClient(urls.app, { organizationIds: [orgA] })
+      try {
+        const posted = await postTestEntry(
+          app,
+          simpleEntry(booksA, 300, { idempotencyKey: `${prefix}-app-${run}` })
+        )
+        expect(posted.organizationId).toBe(orgA)
+        const balances = await app.$queryRaw<
+          Array<{ n: bigint }>
+        >`SELECT count(*) AS n FROM account_period_balances WHERE organization_id = ${orgA}`
+        expect(Number(balances[0]?.n)).toBeGreaterThan(0)
+      } finally {
+        await app.$disconnect()
+      }
+    })
+
+    it('shows the entries to its own organization only, and refuses an entry of the ledger of another one', async () => {
+      if (!enforced) return
+      if (!booksA) throw new Error('the books of the organization were not seeded')
+      const other = createAppClient(urls.app, { organizationIds: [orgB] })
+      try {
+        const seen = await other.$queryRaw<
+          Array<{ n: bigint }>
+        >`SELECT count(*) AS n FROM journal_entries WHERE organization_id = ${orgA}`
+        expect(Number(seen[0]?.n)).toBe(0)
+        await expect(
+          postTestEntry(other, simpleEntry(booksA, 100, { idempotencyKey: `${prefix}-x-${run}` }))
+        ).rejects.toThrow()
+      } finally {
+        await other.$disconnect()
+      }
     })
   })
 
