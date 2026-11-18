@@ -47,7 +47,9 @@ const FUNCTION_ARGS = {
       'MaxWords=20, MinWords=5'
     ] as const
 }
-const VOLUME_ROWS = 15000
+// Seeding two stores of this many rows (a GIN index to maintain) takes longer than the default timeout of a test
+const VOLUME_ROWS = 10000
+const VOLUME_TIMEOUT_MS = 180_000
 const VOLUME_MARKED = 4
 const MESSAGES_CALL = `SELECT * FROM public.rls_search_messages($1, $2::integer, $3::integer, $4::text, $5::boolean, $6::boolean,
   $7::boolean, $8::boolean, $9::text[], $10, $11, $12, $13)`
@@ -370,36 +372,40 @@ describe('the search functions of row-level security', () => {
     return plans.join('\n')
   }
 
-  it('reads the full-text index of the messages with the rows of two stores in the table, and not the store index', async () => {
-    const mine = await createConversationOf(owner, { storeId: ctx.storeA.id })
-    const theirs = await createConversationOf(owner, { storeId: ctx.storeB.id })
-    const first = await createMessage(owner, {
-      storeId: ctx.storeA.id,
-      conversationId: mine.id,
-      content: 'semilla'
-    })
-    const second = await createMessage(owner, {
-      storeId: ctx.storeB.id,
-      conversationId: theirs.id,
-      content: 'semilla'
-    })
-    await seedVolume(ctx.storeA.id, first.id, VOLUME_ROWS, VOLUME_MARKED)
-    await seedVolume(ctx.storeB.id, second.id, VOLUME_ROWS, VOLUME_MARKED)
+  it(
+    'reads the full-text index of the messages with the rows of two stores in the table, and not the store index',
+    async () => {
+      const mine = await createConversationOf(owner, { storeId: ctx.storeA.id })
+      const theirs = await createConversationOf(owner, { storeId: ctx.storeB.id })
+      const first = await createMessage(owner, {
+        storeId: ctx.storeA.id,
+        conversationId: mine.id,
+        content: 'semilla'
+      })
+      const second = await createMessage(owner, {
+        storeId: ctx.storeB.id,
+        conversationId: theirs.id,
+        content: 'semilla'
+      })
+      await seedVolume(ctx.storeA.id, first.id, VOLUME_ROWS, VOLUME_MARKED)
+      await seedVolume(ctx.storeB.id, second.id, VOLUME_ROWS, VOLUME_MARKED)
 
-    const [q, ...rest] = FUNCTION_ARGS.messages(`camion ${tag}`)
-    const plan = await planOf(ctx.storeA.id, MESSAGES_CALL, [q, ...rest])
-    // The message of the plan is what failed, so it travels with the assertion
-    expect({ usesGin: plan.includes('idx_messages_search_unaccent'), plan }).toMatchObject({
-      usesGin: true
-    })
-    expect(plan).not.toMatch(/Seq Scan on messages/)
-    // And it answers: the marked rows of the store of the context, and none of the other store
-    const ids = (await messagesIn([ctx.storeA.id], `camion ${tag}`)).map(row => row.id)
-    expect(ids.length).toBe(VOLUME_MARKED)
-    const alien = await ownerDb.query<{ n: string }>(
-      'SELECT count(*)::text AS n FROM public.messages WHERE id = ANY($1::text[]) AND store_id <> $2',
-      [ids, ctx.storeA.id]
-    )
-    expect(alien.rows[0]?.n).toBe('0')
-  })
+      const [q, ...rest] = FUNCTION_ARGS.messages(`camion ${tag}`)
+      const plan = await planOf(ctx.storeA.id, MESSAGES_CALL, [q, ...rest])
+      // The message of the plan is what failed, so it travels with the assertion
+      expect({ usesGin: plan.includes('idx_messages_search_unaccent'), plan }).toMatchObject({
+        usesGin: true
+      })
+      expect(plan).not.toMatch(/Seq Scan on messages/)
+      // And it answers: the marked rows of the store of the context, and none of the other store
+      const ids = (await messagesIn([ctx.storeA.id], `camion ${tag}`)).map(row => row.id)
+      expect(ids.length).toBe(VOLUME_MARKED)
+      const alien = await ownerDb.query<{ n: string }>(
+        'SELECT count(*)::text AS n FROM public.messages WHERE id = ANY($1::text[]) AND store_id <> $2',
+        [ids, ctx.storeA.id]
+      )
+      expect(alien.rows[0]?.n).toBe('0')
+    },
+    VOLUME_TIMEOUT_MS
+  )
 })
