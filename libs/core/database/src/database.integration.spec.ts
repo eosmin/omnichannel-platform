@@ -174,9 +174,62 @@ describe('PrismaService', () => {
     expect(rows[0]?.current_user).toBe('platform_app')
   })
 
-  it('answers replica() from the primary when there is no replica', async () => {
-    const rows = await service.replica().$queryRaw<{ n: number }[]>`SELECT 1::int AS n`
-    expect(rows[0]?.n).toBe(1)
+  it('answers replicaTenantRead() from the primary when there is no replica, with the context set', async () => {
+    const rows = await service.replicaTenantRead(
+      { storeIds: ['s-1', 's-2'], organizationIds: ['o-1'], userId: 'u-1' },
+      db =>
+        db.$queryRaw<{ stores: string; organizations: string; person: string }[]>`
+          SELECT current_setting('app.store_ids') AS stores,
+                 current_setting('app.organization_ids') AS organizations,
+                 current_setting('app.user_id') AS person`
+    )
+    expect(rows[0]).toEqual({ stores: 's-1,s-2', organizations: 'o-1', person: 'u-1' })
+  })
+
+  it('reads the replica in a READ ONLY transaction, and refuses a write through it and a call inside a tenant transaction', async () => {
+    const context = { storeIds: ['s-1'], organizationIds: ['o-1'] }
+    await expect(
+      service.replicaTenantRead(
+        context,
+        db => db.$executeRaw`CREATE TEMP TABLE should_not_exist (x int)`
+      )
+    ).rejects.toThrow(/read-only/i)
+    await expect(
+      service.tenantTransaction(context, () =>
+        service.replicaTenantRead(context, () => Promise.resolve(1))
+      )
+    ).rejects.toThrow('replicaTenantRead inside a tenant transaction')
+  })
+
+  it('answers the person of the context through app_user_id(), and NULL when there is none', async () => {
+    const rows = await service.tenantTransaction(
+      { storeIds: [], organizationIds: [], userId: 'u-3' },
+      () => service.client.$queryRaw<{ person: string | null }[]>`SELECT app_user_id() AS person`
+    )
+    expect(rows[0]?.person).toBe('u-3')
+    const none = await service.tenantTransaction(
+      { storeIds: [], organizationIds: [] },
+      () => service.client.$queryRaw<{ person: string | null }[]>`SELECT app_user_id() AS person`
+    )
+    expect(none[0]?.person).toBeNull()
+  })
+
+  it('sets the tenant context in the transaction only, with the person when it is given', async () => {
+    const inside = await service.tenantTransaction(
+      { storeIds: ['s-9'], organizationIds: ['o-9'], userId: 'u-9' },
+      async () => {
+        expect(service.hasTenantContext()).toBe(true)
+        expect(service.currentTenantContext()?.userId).toBe('u-9')
+        return service.client.$queryRaw<{ person: string; stores: string }[]>`
+          SELECT current_setting('app.user_id') AS person, current_setting('app.store_ids') AS stores`
+      }
+    )
+    expect(inside[0]).toEqual({ person: 'u-9', stores: 's-9' })
+    expect(service.hasTenantContext()).toBe(false)
+    // Outside the transaction nothing is left on the pooled connection
+    const after = await service.client.$queryRaw<{ stores: string | null }[]>`
+      SELECT nullif(current_setting('app.store_ids', true), '') AS stores`
+    expect(after[0]?.stores).toBeNull()
   })
 
   it('rolls a transaction back as one unit', async () => {
