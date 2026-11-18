@@ -6,6 +6,7 @@ import {
   FinanceReportLimits,
   lowercasedUuidSchema,
   PartyType,
+  queryIntSchema,
   singleLineText
 } from '@platform/core/domain'
 import { isIsoDate } from '@platform/core/finance'
@@ -65,7 +66,7 @@ export const ledgerQuerySchema = z
     storeId: lowercasedUuidSchema.optional(),
     ...partyFilter,
     cursor: ledgerCursorSchema.optional(),
-    limit: z.coerce.number().int().min(1).max(FinanceReportLimits.LEDGER_PAGE_MAX).default(100)
+    limit: queryIntSchema(1, FinanceReportLimits.LEDGER_PAGE_MAX).default(100)
   })
   .refine(value => value.from === undefined || value.to === undefined || value.from <= value.to, {
     message: 'from is after to'
@@ -90,7 +91,7 @@ export const journalQuerySchema = z
       .regex(/^\d{1,19}$/)
       .refine(value => BigInt(value) <= MAX_BIGINT, { message: 'not an entry number' })
       .optional(),
-    limit: z.coerce.number().int().min(1).max(FinanceReportLimits.JOURNAL_PAGE_MAX).default(50)
+    limit: queryIntSchema(1, FinanceReportLimits.JOURNAL_PAGE_MAX).default(50)
   })
   .refine(value => value.from <= value.to, { message: 'from is after to' })
   .refine(value => rangeLength(value) < MAX_RANGE_DAYS, {

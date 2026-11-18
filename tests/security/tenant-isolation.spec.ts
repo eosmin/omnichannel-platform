@@ -394,6 +394,19 @@ const FINANCE_MARKERS = {
   A: { start: '2026-01-01', cents: 111 },
   B: { start: '2026-01-02', cents: 222 }
 } as const
+// One entry of the organization of the store, told apart by an amount only its set posts: the marker the report cases look for
+async function postMarkedEntry(owner: OwnerClient, storeId: string, marker: string): Promise<void> {
+  const books = await booksOfStore(owner, storeId)
+  const cents = marker === 'A' ? FINANCE_MARKERS.A.cents : FINANCE_MARKERS.B.cents
+  await postTestEntry(owner, {
+    organizationId: books.organizationId,
+    periodId: books.periodId,
+    lines: [
+      { accountId: books.accounts.expense, debitCents: cents },
+      { accountId: books.accounts.liability, creditCents: cents }
+    ]
+  })
+}
 let financeBooksA: FinanceFixture | null = null
 
 let viewerRoleId = ''
@@ -2253,6 +2266,54 @@ const resources: IsolationResource[] = [
         return credits.includes(String(FINANCE_MARKERS.A.cents))
           ? 'A'
           : credits.includes(String(FINANCE_MARKERS.B.cents))
+            ? 'B'
+            : null
+      }
+    },
+    untouched: () => Promise.resolve(true)
+  },
+  // The balances of the accounts at a date (TDD_18 §10): the lines of the organization of the request and no other
+  {
+    name: 'financeAccountBalancesAtDate',
+    create: async (owner, { storeId }) => {
+      await booksOfStore(owner, storeId)
+      return { id: storeId }
+    },
+    scope: 'organization',
+    readPath: () => `${ApiRoutes.finance.reports.accountBalances}?asOf=2026-12-31`,
+    own: {
+      set: (owner, storeId, marker) => postMarkedEntry(owner, storeId, marker),
+      markerIn: body => {
+        const credits = (body as { rows: { creditCents: string }[] }).rows.map(
+          row => row.creditCents
+        )
+        return credits.includes(String(FINANCE_MARKERS.A.cents))
+          ? 'A'
+          : credits.includes(String(FINANCE_MARKERS.B.cents))
+            ? 'B'
+            : null
+      }
+    },
+    untouched: () => Promise.resolve(true)
+  },
+  // The journal of a range with its lines (TDD_18 §10): the entries of the organization of the request and no other
+  {
+    name: 'financeJournalWithLines',
+    create: async (owner, { storeId }) => {
+      await booksOfStore(owner, storeId)
+      return { id: storeId }
+    },
+    scope: 'organization',
+    readPath: () => `${ApiRoutes.finance.reports.journal}?from=2026-11-01&to=2026-11-30`,
+    own: {
+      set: (owner, storeId, marker) => postMarkedEntry(owner, storeId, marker),
+      markerIn: body => {
+        const credits = (body as { data: { lines: { creditCents: number }[] }[] }).data.flatMap(
+          entry => entry.lines.map(line => line.creditCents)
+        )
+        return credits.includes(FINANCE_MARKERS.A.cents)
+          ? 'A'
+          : credits.includes(FINANCE_MARKERS.B.cents)
             ? 'B'
             : null
       }

@@ -85,4 +85,20 @@ describe('reading a book', () => {
     expect(frozenBooksQuerySchema.safeParse({ limit: '100' }).success).toBe(true)
     expect(frozenBooksQuerySchema.safeParse({ limit: '101' }).success).toBe(false)
   })
+
+  it.each([' ', '%20', '1e2', '0x10', ' 5', '+1', '-1', '1.0'])(
+    'refuses %j as the version of a layout or the size of a page (QA HC-207)',
+    value => {
+      const periodId = randomUUID()
+      expect(bookQuerySchema.safeParse({ periodId, layoutVersion: value }).success).toBe(false)
+      expect(frozenBooksQuerySchema.safeParse({ limit: value }).success).toBe(false)
+    }
+  )
+
+  it('reads an empty layout version as none, and digits as the number they are', () => {
+    const periodId = randomUUID()
+    expect(bookQuerySchema.parse({ periodId, layoutVersion: '' }).layoutVersion).toBeUndefined()
+    expect(bookQuerySchema.parse({ periodId, layoutVersion: '0' }).layoutVersion).toBe(0)
+    expect(frozenBooksQuerySchema.parse({ limit: '7' }).limit).toBe(7)
+  })
 })
