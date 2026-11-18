@@ -870,6 +870,93 @@ describe('Suppliers, purchase orders, receipts and supplier payments (Step 4B.5)
       expect((payables.body as PayablesBody).suppliers).toMatchObject([{ openCents: 7500 }])
     })
 
+    // Two bills of 5000 of the same supplier, the shape the invariants of HC-023 are checked on
+    async function billedTwice(): Promise<{ supplierId: string; receipts: ReceiptBody[] }> {
+      const seller = await supplier({ paymentTermsDays: 30 })
+      const order = await placedOrder(seller.id, {
+        lines: [{ productId: (await product()).id, quantity: 10, unitCostCents: 1000 }]
+      })
+      const receipts: ReceiptBody[] = []
+      for (let part = 0; part < 2; part += 1) {
+        const received = await receive(order.id, {
+          supplierDocumentNumber: `D-${key()}`,
+          lines: [{ orderLineId: order.lines[0]?.id, quantity: 5 }]
+        })
+        expect(received.status).toBe(CREATED)
+        const latest = (received.body as OrderBody).receipts.find(
+          each => !receipts.some(known => known.id === each.id)
+        )
+        if (latest === undefined) throw new Error('no receipt')
+        receipts.push(latest)
+      }
+      return { supplierId: seller.id, receipts }
+    }
+
+    async function expectBooksHold(supplierId: string): Promise<BalanceBody> {
+      const balance = (await asAdminA().get(ApiRoutes.suppliers.balance(supplierId)))
+        .body as BalanceBody
+      const payables = await asAdminA().get(
+        `${ApiRoutes.suppliers.payables}?supplierId=${supplierId}`
+      )
+      const openOfBills = (payables.body as PayablesBody).bills.reduce(
+        (sum, bill) => sum + bill.openCents,
+        0
+      )
+      const live = await owner.supplierPayment.aggregate({
+        where: { supplierId, voidedByEntryId: null },
+        _sum: { amountCents: true }
+      })
+      // Never paid above billed, never open below zero, and the bills add up to the supplier
+      expect(balance.paidCents).toBeLessThanOrEqual(balance.billedCents)
+      expect(balance.openCents).toBeGreaterThanOrEqual(0)
+      expect(balance.paidCents).toBe(live._sum.amountCents ?? 0)
+      expect(openOfBills).toBe(balance.openCents)
+      for (const bill of (payables.body as PayablesBody).bills) {
+        expect(bill.openCents).toBeGreaterThanOrEqual(0)
+      }
+      return balance
+    }
+
+    it('never pays above what is billed nor leaves a bill open below zero, with named and unnamed payments', async () => {
+      const { supplierId, receipts } = await billedTwice()
+      const second = receipts[1]
+      if (second === undefined) throw new Error('no receipt')
+      expect((await pay(supplierId, { amountCents: 7000 })).status).toBe(CREATED)
+      expect(
+        (await pay(supplierId, { amountCents: 3000, purchaseReceiptId: second.id })).status
+      ).toBe(CREATED)
+      expect(await expectBooksHold(supplierId)).toMatchObject({
+        billedCents: 10_000,
+        paidCents: 10_000,
+        openCents: 0
+      })
+      for (const body of [{ amountCents: 1 }, { amountCents: 1, purchaseReceiptId: second.id }]) {
+        expect((await pay(supplierId, body)).status).toBe(CONFLICT)
+      }
+      await expectBooksHold(supplierId)
+    })
+
+    it('keeps the books when a payment is voided and others are made at the same moment', async () => {
+      const { supplierId, receipts } = await billedTwice()
+      const first = receipts[0]
+      if (first === undefined) throw new Error('no receipt')
+      const earlier = await pay(supplierId, { amountCents: 4000 })
+      expect(earlier.status).toBe(CREATED)
+
+      // Any order is valid as long as the books hold: a payment above what is owed at its turn is refused
+      const answers = await Promise.all([
+        asAdminA()
+          .post(ApiRoutes.supplierPayments.void((earlier.body as PaymentBody).id))
+          .send({ reason: 'Race' }),
+        pay(supplierId, { amountCents: 10_000 }),
+        pay(supplierId, { amountCents: 5000, purchaseReceiptId: first.id })
+      ])
+      for (const answer of answers) expect([CREATED, CONFLICT]).toContain(answer.status)
+      expect(answers[0].status).toBe(CREATED)
+      const balance = await expectBooksHold(supplierId)
+      expect(balance.billedCents).toBe(10_000)
+    })
+
     it('is one payment for a retry, and refuses an account that is not cash and a payment of another supplier', async () => {
       const { supplierId, receipt } = await billed()
       const body = {
