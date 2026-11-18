@@ -340,8 +340,9 @@ describe('Analytics reports and export', () => {
       const { text } = await fileOf(made.id)
       const lines = text.replace('﻿', '').split('\r\n').filter(Boolean)
       expect(lines).toHaveLength(1 + 3 + 1)
-      expect(lines[1]).toBe('2026-11-01,3,0')
-      expect(lines[2]).toBe('2026-11-02,0,0')
+      // Money always has its two decimals (R2-ANA-006), a day with no sales included
+      expect(lines[1]).toBe('2026-11-01,3,0.00')
+      expect(lines[2]).toBe('2026-11-02,0,0.00')
       expect(lines[3]).toBe('2026-11-03,2,123.45')
       expect(lines[4]).toMatch(/,5,123\.45$/)
       expect(text).not.toContain('999')

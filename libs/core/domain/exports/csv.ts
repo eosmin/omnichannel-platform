@@ -1,6 +1,17 @@
 import { CSV_BOM } from './export-constants'
 
-export type CsvValue = string | number | boolean | Date | null | undefined
+// A number with a fixed count of decimals (money: 50 cents is 0.50), written as the number it is and never as a text: a negative one
+// must not take the quote of a formula. Only a plain decimal can be built, so nothing a person wrote can pass as one.
+export class CsvDecimal {
+  readonly text: string
+
+  constructor(value: number, decimals: number) {
+    if (!Number.isFinite(value)) throw new RangeError('a CSV decimal must be a finite number')
+    this.text = value.toFixed(decimals)
+  }
+}
+
+export type CsvValue = string | number | boolean | Date | CsvDecimal | null | undefined
 
 // A text that starts with one of these is a formula to a spreadsheet. Names and messages come from
 // third parties, so the cell is prefixed with a single quote and the program shows it as text.
@@ -17,6 +28,7 @@ export function csvCell(value: CsvValue): string {
   if (value === null || value === undefined) return ''
   if (typeof value === 'number') return Number.isFinite(value) ? String(value) : ''
   if (typeof value === 'boolean') return value ? 'true' : 'false'
+  if (value instanceof CsvDecimal) return value.text
   const text = value instanceof Date ? value.toISOString() : value
   const safe = NEEDS_DEFUSING.test(text) ? `'${text}` : text
   return NEEDS_QUOTES.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe
