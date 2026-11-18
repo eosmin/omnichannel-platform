@@ -178,7 +178,8 @@ describe('Customer data in the search and customer routes of the plugin API', ()
 
           // Another order of the run may carry these digits in its number: only the order of that phone must stay out
           expect((response.body as Hits<OrderHit>).hits.map(hit => hit.id)).not.toContain(order.id)
-          const text = JSON.stringify(response.body)
+          // The answer repeats the query, so only the hits are read for what must stay out
+          const text = JSON.stringify((response.body as Hits<OrderHit>).hits)
           for (const secret of [order.customerId, name, '50370001234', 'customerName']) {
             expect(text).not.toContain(secret)
           }
