@@ -14,7 +14,10 @@ import {
   OrderStatus,
   RemittanceStatus,
   SaleRecognition,
-  ShipmentStatus
+  ShipmentStatus,
+  TRANSFER_WRITE_OFF_POSTING_START,
+  TransferShortageAction,
+  TransferStatus
 } from '@platform/core/domain'
 import { errorName } from '@platform/core/errors'
 
@@ -626,6 +629,42 @@ export class FinanceSweepService {
             FinanceEventKind.ADJUST,
             FinancePostingKey.MOVEMENT_ADJUST(movement.id),
             movement.createdAt
+          )
+        ]
+      },
+      out
+    )
+    // E9, the units of a transfer line written off when the transfer was closed (the day is the day of the close)
+    await this.collect(
+      {
+        ...common,
+        page: (after, take) =>
+          db.stockTransferLine.findMany({
+            where: {
+              ...storeOf,
+              shortageAction: TransferShortageAction.WRITE_OFF,
+              transfer: {
+                status: TransferStatus.RECEIVED,
+                closedAt: {
+                  gte:
+                    since > TRANSFER_WRITE_OFF_POSTING_START
+                      ? since
+                      : TRANSFER_WRITE_OFF_POSTING_START
+                }
+              }
+            },
+            select: { id: true, transfer: { select: { closedAt: true } } },
+            orderBy: { id: 'asc' },
+            take,
+            ...cursor(after)
+          }),
+        of: line => [
+          make(
+            FinanceSourceType.TRANSFER_LINE,
+            line.id,
+            FinanceEventKind.TRANSFER_WRITE_OFF,
+            FinancePostingKey.TRANSFER_LINE_WRITE_OFF(line.id),
+            line.transfer.closedAt ?? since
           )
         ]
       },
