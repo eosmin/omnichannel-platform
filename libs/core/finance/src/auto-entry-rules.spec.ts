@@ -131,6 +131,47 @@ describe('saleAmounts', () => {
     })
   })
 
+  it('refuses a negative line net when the prices exclude the tax, and accepts a line whose net is exactly zero (HC-203)', () => {
+    const base = {
+      shippingCents: 0,
+      pricesIncludeTax: false,
+      subtotalCents: 6000,
+      lines: [
+        { quantity: 1, unitPriceCents: 1000, taxCents: 0 },
+        { quantity: 1, unitPriceCents: 5000, taxCents: 0 }
+      ]
+    }
+    // The discount is shared by weight, so no line goes below zero from it: the zero is the boundary, a line that costs nothing
+    const free: SaleOrderRow = {
+      ...base,
+      discountCents: 0,
+      totalCents: 6000,
+      taxCents: 0,
+      subtotalCents: 5000,
+      lines: [
+        { quantity: 1, unitPriceCents: 0, taxCents: 0 },
+        { quantity: 1, unitPriceCents: 5000, taxCents: 0 }
+      ]
+    }
+    expect(saleAmounts({ ...free, totalCents: 5000 }).ok).toBe(true)
+    // A line whose tax is above its price with the prices including it: the other branch of the same veto
+    const negative: SaleOrderRow = {
+      ...base,
+      pricesIncludeTax: true,
+      discountCents: 0,
+      totalCents: 6000,
+      taxCents: 1001,
+      lines: [
+        { quantity: 1, unitPriceCents: 1000, taxCents: 1001 },
+        { quantity: 1, unitPriceCents: 5000, taxCents: 0 }
+      ]
+    }
+    expect(saleAmounts(negative)).toEqual({
+      ok: false,
+      reason: FinancePostingFailureReason.AMOUNTS_DISAGREE
+    })
+  })
+
   it('refuses a tax of the shipping fee that is negative or above the fee', () => {
     const order: SaleOrderRow = {
       subtotalCents: 1000,
