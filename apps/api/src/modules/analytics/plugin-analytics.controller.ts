@@ -9,7 +9,7 @@ import { PluginScopes } from '@platform/plugins/sdk'
 
 import { ExportsService, type ExportView } from '../exports'
 import { CurrentPluginInstallation, PluginApi } from '../plugins/plugin-api.decorators'
-import { CurrentStore, RequirePermissions } from '../tenancy'
+import { CurrentStore, NoTenantTransaction, RequirePermissions } from '../tenancy'
 import { pluginUserId } from '../tenancy/actor'
 
 import { MetricsQueryService, type MetricsResult } from './metrics-query.service'
@@ -30,12 +30,15 @@ export class PluginAnalyticsController {
   @PluginApi(PluginScopes.ANALYTICS_READ)
   @RequirePermissions(Permissions.ANALYTICS_VIEW)
   @NoStore()
+  @NoTenantTransaction(
+    'reads the replica in its own READ ONLY transaction (PrismaService.replicaTenantRead)'
+  )
   @Get(PluginApiRoutes.analytics.metrics)
   metricsOf(
-    @CurrentStore() store: { id: string },
+    @CurrentStore() store: { id: string; organizationId: string },
     @Query(new ZodValidationPipe(pluginMetricsQuerySchema)) query: MetricsQuery
   ): Promise<MetricsResult> {
-    return this.metrics.query(store.id, query)
+    return this.metrics.query(store, query)
   }
 
   // The figures as a file, made in the background with the retention, the ceiling of active exports and the signed link of the exports of a

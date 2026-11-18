@@ -36,8 +36,10 @@ function isReplicaCall(node: ts.Node): node is ts.CallExpression {
   return (
     ts.isCallExpression(node) &&
     ts.isPropertyAccessExpression(node.expression) &&
-    node.expression.name.text === 'replica' &&
-    node.arguments.length === 0
+    // `replicaTenantRead(context, fn)` is the only way to read the replica (it carries the tenant context); `replica()` with no
+    // argument is the old shape, still recognized so that a call that came back is refused like any other
+    ((node.expression.name.text === 'replica' && node.arguments.length === 0) ||
+      node.expression.name.text === 'replicaTenantRead')
   )
 }
 
@@ -169,7 +171,7 @@ export function checkReplicaUse(
   return { violations: [...unique.values()], calls }
 }
 
-// The readers that no longer call replica(): a stale entry would let the next call in that file through unnoticed
+// The readers that no longer call replicaTenantRead() (or the old replica()): a stale entry would let the next call in that file through unnoticed
 export function staleReaders(
   readers: readonly string[],
   callsByFile: ReadonlyMap<string, number>

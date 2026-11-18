@@ -172,6 +172,11 @@ export const envSchema = z
     CLAMAV_HOST: z.string().default('localhost'),
     CLAMAV_PORT: z.coerce.number().int().min(1).max(65535).default(3310),
 
+    // Row-Level Security (Step 7.1): whether every request of the api runs in one transaction that carries its tenant context
+    // (`TenantContextInterceptor`). Off, a request behaves as before. It is turned on with the CI job of phase 6, then where the
+    // owner decides, and only after the routes that call something outside the database say so with @NoTenantTransaction.
+    RLS_CONTEXT: z.stringbool().default(false),
+
     // Several files in one message to a customer (each channel declares how many it takes). Off until the
     // interface offers it and a real test with the providers passes: with it off a message carries one file.
     OUTBOUND_MULTI_FILE_ENABLED: z.stringbool().default(false),
