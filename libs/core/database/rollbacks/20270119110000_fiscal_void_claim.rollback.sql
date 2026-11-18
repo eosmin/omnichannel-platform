@@ -1,4 +1,4 @@
--- Rolls back 20270119100000_fiscal_void_claim: drops the claim of the invalidation and gives the guard of an accepted document its
+-- Rolls back 20270119110000_fiscal_void_claim: drops the claim of the invalidation and gives the guard of an accepted document its
 -- previous form. Safe to run twice. A claim that is live is lost: it only held the lease of a request, never evidence.
 BEGIN;
 ALTER TABLE fiscal_documents DROP COLUMN IF EXISTS void_claim_key, DROP COLUMN IF EXISTS void_claim_until;

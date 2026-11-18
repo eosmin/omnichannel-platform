@@ -1170,6 +1170,21 @@ describe('The fiscal documents (Step 4B.7)', () => {
 
     // HC-205: the key of an invalidation carries its reason, so a second request with another reason must not reach the authority while
     // the first one holds the document
+    // The guard of the database: an accepted document holds or frees a claim and nothing else
+    it('lets an accepted document change only the claim of its invalidation', async () => {
+      const { documentId } = await sale()
+      await documents.submit(ctx.orgA.id, documentId)
+      await expect(
+        owner.fiscalDocument.update({
+          where: { id: documentId },
+          data: { voidClaimKey: 'k', voidClaimUntil: new Date(Date.now() + 60_000) }
+        })
+      ).resolves.toBeDefined()
+      await expect(
+        owner.fiscalDocument.update({ where: { id: documentId }, data: { voidReason: 'x' } })
+      ).rejects.toThrow()
+    })
+
     it('refuses a second invalidation with another reason while one holds the document, and lets it go after the lease', async () => {
       const { documentId } = await sale()
       await documents.submit(ctx.orgA.id, documentId)
@@ -1184,6 +1199,11 @@ describe('The fiscal documents (Step 4B.7)', () => {
       expect(JSON.stringify(blocked.body)).toContain(FiscalConflictReasons.VOID_IN_PROGRESS)
       const still = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
       expect(still.status).toBe(FiscalDocumentStatus.ACCEPTED)
+      // Not even the same request again while the claim is live: the first one is asking the provider
+      const twin = await asAdminA()
+        .post(ApiRoutes.fiscal.documents.void(documentId))
+        .send({ reason: 'a different reason' })
+      expect(twin.status).toBe(CONFLICT)
 
       await owner.fiscalDocument.update({
         where: { id: documentId },

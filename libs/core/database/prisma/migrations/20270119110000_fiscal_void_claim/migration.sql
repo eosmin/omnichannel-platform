@@ -15,12 +15,16 @@ BEGIN
     IF OLD.status = 'voided' THEN
       RAISE EXCEPTION 'a voided fiscal document does not change' USING ERRCODE = 'integrity_constraint_violation';
     END IF;
-    IF NEW.status NOT IN ('voided', 'accepted')
-       OR (NEW.status = 'accepted' AND (
-            NEW.void_reason IS DISTINCT FROM OLD.void_reason
-            OR NEW.voided_by IS DISTINCT FROM OLD.voided_by
-            OR NEW.voided_at IS DISTINCT FROM OLD.voided_at
-            OR NEW.void_response IS DISTINCT FROM OLD.void_response))
+    -- An accepted row stays accepted only to hold or free the claim of an invalidation: the whole row is compared, so a column that is
+    -- added later is never forgotten
+    IF NEW.status = 'accepted' THEN
+      IF (to_jsonb(NEW) - 'void_claim_key' - 'void_claim_until' - 'updated_at')
+         IS DISTINCT FROM (to_jsonb(OLD) - 'void_claim_key' - 'void_claim_until' - 'updated_at') THEN
+        RAISE EXCEPTION 'an accepted fiscal document is immutable' USING ERRCODE = 'integrity_constraint_violation';
+      END IF;
+      RETURN NEW;
+    END IF;
+    IF NEW.status <> 'voided'
        OR NEW.id IS DISTINCT FROM OLD.id
        OR NEW.organization_id IS DISTINCT FROM OLD.organization_id
        OR NEW.store_id IS DISTINCT FROM OLD.store_id

@@ -2018,38 +2018,35 @@ export class FiscalDocumentsService {
     await this.claimVoid(organizationId, id, voidKey)
     let recovered = false
     let outcome: VoidResult | null = null
-    try {
-      outcome = await this.consultedVoid(provider, id, stored, contextOf(1))
-      if (outcome !== null) recovered = true
-      else {
-        outcome = await this.attempt('void', id, () =>
-          provider.void(stored, reason, contextOf(1), details)
-        )
-        // No answer to the invalidation: it may have reached the authority, so it is asked once before the person is told to try again
-        if (outcome === null) {
-          outcome = await this.consultedVoid(provider, id, stored, contextOf(2))
-          recovered = outcome !== null
-        }
-      }
+    outcome = await this.consultedVoid(provider, id, stored, contextOf(1))
+    if (outcome !== null) recovered = true
+    else {
+      outcome = await this.attempt('void', id, () =>
+        provider.void(stored, reason, contextOf(1), details)
+      )
+      // No answer to the invalidation: it may have reached the authority, so it is asked once before the person is told to try again
       if (outcome === null) {
-        throw new PlatformException(
-          ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
-          'the provider did not answer the invalidation',
-          HttpStatusCodes.CONFLICT
-        )
+        outcome = await this.consultedVoid(provider, id, stored, contextOf(2))
+        recovered = outcome !== null
       }
-      if (!outcome.voided) {
-        throw new PlatformException(
-          ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
-          'the provider did not accept the invalidation',
-          HttpStatusCodes.CONFLICT,
-          { reason: (outcome.reason ?? '').slice(0, FiscalLimits.REASON_MAX_LENGTH) || null }
-        )
-      }
-    } catch (error) {
-      // A refused or unanswered invalidation frees the document for the next request (best effort: the lease ends by itself)
+    }
+    if (outcome === null) {
+      throw new PlatformException(
+        ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
+        'the provider did not answer the invalidation',
+        HttpStatusCodes.CONFLICT
+      )
+    }
+    if (!outcome.voided) {
+      // Only a refusal frees the document at once: with no answer the invalidation may still be at the authority, and the claim is
+      // kept until its lease ends
       await this.releaseVoidClaim(organizationId, id, voidKey)
-      throw error
+      throw new PlatformException(
+        ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+        'the provider did not accept the invalidation',
+        HttpStatusCodes.CONFLICT,
+        { reason: (outcome.reason ?? '').slice(0, FiscalLimits.REASON_MAX_LENGTH) || null }
+      )
     }
     await this.prisma.transaction(async tx => {
       const locked = await this.lock(tx, organizationId, id)
@@ -2616,20 +2613,28 @@ export class FiscalDocumentsService {
 
   // ---------------------------------------------------------------- helpers
 
-  // Takes the claim of the invalidation of a document, under its row lock (see `void`). Refused when the document is no longer accepted or
-  // when another request holds a live claim with another key.
+  // Takes the claim of the invalidation of a document, under its row lock (see `void`). Refused when the document is no longer accepted,
+  // when it has credit notes that are not voided (read again under the lock: one may have been made since), or when ANY request holds a
+  // live claim, this one's key included: a double click is the same invalidation, and the first request is already asking the provider.
+  // The lease is read and written with the clock of the database, one for every instance.
   private async claimVoid(organizationId: string, id: string, key: string): Promise<void> {
     await this.prisma.transaction(async tx => {
       const locked = await this.lock(tx, organizationId, id)
       if (locked.status !== (FiscalDocumentStatus.ACCEPTED as string)) {
         throw this.invalid(locked.status as FiscalDocumentStatus)
       }
-      const now = Date.now()
-      if (
-        locked.voidClaimUntil !== null &&
-        locked.voidClaimUntil.getTime() > now &&
-        locked.voidClaimKey !== key
-      ) {
+      if ((await this.notesAtAuthority(tx, organizationId, id)) > 0) {
+        throw new PlatformException(
+          ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+          'a document with credit notes that are not voided cannot be voided',
+          HttpStatusCodes.CONFLICT,
+          { reason: FiscalConflictReasons.HAS_CREDIT_NOTES }
+        )
+      }
+      const held = await tx.$queryRaw<{ held: boolean }[]>`
+        SELECT (void_claim_until IS NOT NULL AND void_claim_until > now()) AS held
+        FROM fiscal_documents WHERE id = ${id} AND organization_id = ${organizationId}`
+      if (held[0]?.held === true) {
         throw new PlatformException(
           ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
           'another invalidation of this document is in progress',
@@ -2637,13 +2642,11 @@ export class FiscalDocumentsService {
           { reason: FiscalConflictReasons.VOID_IN_PROGRESS }
         )
       }
-      await tx.fiscalDocument.update({
-        where: { id },
-        data: {
-          voidClaimKey: key,
-          voidClaimUntil: new Date(now + FiscalLimits.VOID_CLAIM_LEASE_MS)
-        }
-      })
+      const leaseSeconds = FiscalLimits.VOID_CLAIM_LEASE_MS / 1000
+      await tx.$executeRaw`
+        UPDATE fiscal_documents
+        SET void_claim_key = ${key}, void_claim_until = now() + make_interval(secs => ${leaseSeconds})
+        WHERE id = ${id} AND organization_id = ${organizationId}`
     })
   }
 
