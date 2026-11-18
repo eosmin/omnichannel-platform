@@ -2011,33 +2011,45 @@ export class FiscalDocumentsService {
     // asked first, so that a second invalidation is never sent for it. A provider that cannot tell leaves it to the answer of `void`.
     // `recovered`: the authority had it invalidated before this request sent anything (or answered only to the consultation); the audit
     // trail says so, so the act is not read as this person's invalidation alone
+    // One invalidation at a time per document (HC-205): the key above carries the reason, so two requests with different reasons would
+    // reach the authority at once. The claim is taken under the row lock before the provider is asked; a request with the same key (a double
+    // click, an answer that was lost) is the same invalidation and goes on, any other waits for the lease or for the answer of this one.
+    const voidKey = contextOf(1).idempotencyKey
+    await this.claimVoid(organizationId, id, voidKey)
     let recovered = false
-    let outcome: VoidResult | null = await this.consultedVoid(provider, id, stored, contextOf(1))
-    if (outcome !== null) recovered = true
-    else {
-      outcome = await this.attempt('void', id, () =>
-        provider.void(stored, reason, contextOf(1), details)
-      )
-      // No answer to the invalidation: it may have reached the authority, so it is asked once before the person is told to try again
-      if (outcome === null) {
-        outcome = await this.consultedVoid(provider, id, stored, contextOf(2))
-        recovered = outcome !== null
+    let outcome: VoidResult | null = null
+    try {
+      outcome = await this.consultedVoid(provider, id, stored, contextOf(1))
+      if (outcome !== null) recovered = true
+      else {
+        outcome = await this.attempt('void', id, () =>
+          provider.void(stored, reason, contextOf(1), details)
+        )
+        // No answer to the invalidation: it may have reached the authority, so it is asked once before the person is told to try again
+        if (outcome === null) {
+          outcome = await this.consultedVoid(provider, id, stored, contextOf(2))
+          recovered = outcome !== null
+        }
       }
-    }
-    if (outcome === null) {
-      throw new PlatformException(
-        ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
-        'the provider did not answer the invalidation',
-        HttpStatusCodes.CONFLICT
-      )
-    }
-    if (!outcome.voided) {
-      throw new PlatformException(
-        ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
-        'the provider did not accept the invalidation',
-        HttpStatusCodes.CONFLICT,
-        { reason: (outcome.reason ?? '').slice(0, FiscalLimits.REASON_MAX_LENGTH) || null }
-      )
+      if (outcome === null) {
+        throw new PlatformException(
+          ErrorCodes.FISCAL_PROVIDER_UNAVAILABLE,
+          'the provider did not answer the invalidation',
+          HttpStatusCodes.CONFLICT
+        )
+      }
+      if (!outcome.voided) {
+        throw new PlatformException(
+          ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+          'the provider did not accept the invalidation',
+          HttpStatusCodes.CONFLICT,
+          { reason: (outcome.reason ?? '').slice(0, FiscalLimits.REASON_MAX_LENGTH) || null }
+        )
+      }
+    } catch (error) {
+      // A refused or unanswered invalidation frees the document for the next request (best effort: the lease ends by itself)
+      await this.releaseVoidClaim(organizationId, id, voidKey)
+      throw error
     }
     await this.prisma.transaction(async tx => {
       const locked = await this.lock(tx, organizationId, id)
@@ -2048,6 +2060,8 @@ export class FiscalDocumentsService {
         where: { id },
         data: {
           status: FiscalDocumentStatus.VOIDED,
+          voidClaimKey: null,
+          voidClaimUntil: null,
           voidReason: plainText(reason).slice(0, FiscalLimits.VOID_REASON_MAX_LENGTH),
           voidedBy: actor.userId,
           voidedAt: new Date(),
@@ -2601,6 +2615,57 @@ export class FiscalDocumentsService {
   }
 
   // ---------------------------------------------------------------- helpers
+
+  // Takes the claim of the invalidation of a document, under its row lock (see `void`). Refused when the document is no longer accepted or
+  // when another request holds a live claim with another key.
+  private async claimVoid(organizationId: string, id: string, key: string): Promise<void> {
+    await this.prisma.transaction(async tx => {
+      const locked = await this.lock(tx, organizationId, id)
+      if (locked.status !== (FiscalDocumentStatus.ACCEPTED as string)) {
+        throw this.invalid(locked.status as FiscalDocumentStatus)
+      }
+      const now = Date.now()
+      if (
+        locked.voidClaimUntil !== null &&
+        locked.voidClaimUntil.getTime() > now &&
+        locked.voidClaimKey !== key
+      ) {
+        throw new PlatformException(
+          ErrorCodes.FISCAL_DOCUMENT_INVALID_TRANSITION,
+          'another invalidation of this document is in progress',
+          HttpStatusCodes.CONFLICT,
+          { reason: FiscalConflictReasons.VOID_IN_PROGRESS }
+        )
+      }
+      await tx.fiscalDocument.update({
+        where: { id },
+        data: {
+          voidClaimKey: key,
+          voidClaimUntil: new Date(now + FiscalLimits.VOID_CLAIM_LEASE_MS)
+        }
+      })
+    })
+  }
+
+  // Frees the claim of this request, only if it is still the one that holds it
+  private async releaseVoidClaim(organizationId: string, id: string, key: string): Promise<void> {
+    try {
+      await this.prisma.client.fiscalDocument.updateMany({
+        where: {
+          id,
+          organizationId,
+          status: FiscalDocumentStatus.ACCEPTED,
+          voidClaimKey: key
+        },
+        data: { voidClaimKey: null, voidClaimUntil: null }
+      })
+    } catch (error) {
+      this.logger.warn(
+        { documentId: id, err: errorName(error) },
+        'the claim of an invalidation was not released'
+      )
+    }
+  }
 
   private async lock(tx: PrismaTransaction, organizationId: string, id: string) {
     await tx.$queryRaw`SELECT id FROM fiscal_documents WHERE id = ${id} AND organization_id = ${organizationId} FOR UPDATE`

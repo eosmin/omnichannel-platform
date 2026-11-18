@@ -1167,6 +1167,37 @@ describe('The fiscal documents (Step 4B.7)', () => {
         .send({ reason: 'not accepted yet' })
       expect(early.status).toBe(CONFLICT)
     })
+
+    // HC-205: the key of an invalidation carries its reason, so a second request with another reason must not reach the authority while
+    // the first one holds the document
+    it('refuses a second invalidation with another reason while one holds the document, and lets it go after the lease', async () => {
+      const { documentId } = await sale()
+      await documents.submit(ctx.orgA.id, documentId)
+      await owner.fiscalDocument.update({
+        where: { id: documentId },
+        data: { voidClaimKey: 'another-request', voidClaimUntil: new Date(Date.now() + 180_000) }
+      })
+      const blocked = await asAdminA()
+        .post(ApiRoutes.fiscal.documents.void(documentId))
+        .send({ reason: 'a different reason' })
+      expect(blocked.status).toBe(CONFLICT)
+      expect(JSON.stringify(blocked.body)).toContain(FiscalConflictReasons.VOID_IN_PROGRESS)
+      const still = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+      expect(still.status).toBe(FiscalDocumentStatus.ACCEPTED)
+
+      await owner.fiscalDocument.update({
+        where: { id: documentId },
+        data: { voidClaimUntil: new Date(Date.now() - 1000) }
+      })
+      const voided = await asAdminA()
+        .post(ApiRoutes.fiscal.documents.void(documentId))
+        .send({ reason: 'a different reason' })
+      expect(voided.status).toBe(OK)
+      const done = await owner.fiscalDocument.findUniqueOrThrow({ where: { id: documentId } })
+      expect(done.status).toBe(FiscalDocumentStatus.VOIDED)
+      expect(done.voidClaimKey).toBeNull()
+      expect(done.voidClaimUntil).toBeNull()
+    })
   })
 
   describe('reading and permissions', () => {
