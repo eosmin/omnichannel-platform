@@ -89,7 +89,11 @@ const taxRateBps = z
   .int()
   .min(FinanceTaxLimits.MIN_RATE_BPS)
   .max(FinanceTaxLimits.MAX_RATE_BPS)
-const taxRateCode = z.string().regex(FinanceTaxLimits.CODE_PATTERN)
+// A code is kept in capitals: `IVA` and `iva` are one code, so the two cannot live side by side (HC-210)
+const taxRateCode = z
+  .string()
+  .regex(FinanceTaxLimits.CODE_PATTERN)
+  .transform(code => code.toUpperCase())
 const taxRateName = singleLineText(FinanceTaxLimits.NAME_MAX_LENGTH, 1)
 
 export const createTaxRateSchema = z.strictObject({
