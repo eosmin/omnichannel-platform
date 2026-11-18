@@ -191,7 +191,8 @@ describe('PrismaService', () => {
     await expect(
       service.replicaTenantRead(
         context,
-        db => db.$executeRaw`CREATE TEMP TABLE should_not_exist (x int)`
+        // A temporary table is allowed in a read-only transaction (Postgres says so), so the write is a real table
+        db => db.$executeRaw`CREATE TABLE should_not_exist_read_only (x int)`
       )
     ).rejects.toThrow(/read-only/i)
     await expect(
