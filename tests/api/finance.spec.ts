@@ -878,6 +878,27 @@ describe('The books of an organization', () => {
       expect(await auditCount(logged)).toBe(1)
     })
 
+    it('leaves one record when two opens of the same month run at once (HC-211)', async () => {
+      const [one, two, three] = await Promise.all(
+        [1, 2, 3].map(() =>
+          asAdminA().post(ApiRoutes.finance.periods.open).send({ year: 2028, month: 9 })
+        )
+      )
+
+      const id = (one?.body as { id: string }).id
+      expect([two?.body, three?.body]).toEqual([
+        expect.objectContaining({ id }),
+        expect.objectContaining({ id })
+      ])
+      const logged = await waitForAuditEntries(owner, {
+        organizationId: ctx.orgA.id,
+        action: AuditAction.FINANCE_PERIOD_OPENED,
+        resourceId: id
+      })
+      await settle()
+      expect(await auditCount(logged)).toBe(1)
+    })
+
     it('does not open a month that ended before the books started, nor one of another organization by id', async () => {
       const before = await asAdminA()
         .post(ApiRoutes.finance.periods.open)
