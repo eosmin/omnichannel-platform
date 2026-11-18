@@ -117,6 +117,7 @@ export const RLS_EXEMPTIONS: Readonly<Record<string, RlsExemption>> = {
   purchase_receipts: pending(4, 'Purchases'),
   purchase_receipt_lines: pending(4, 'Purchases'),
   supplier_payments: pending(4, 'Purchases'),
+  supplier_payment_returns: pending(4, 'Purchases'),
   fiscal_periods: pending(4, 'Fiscal'),
   fiscal_issuers: pending(4, 'Fiscal'),
   fiscal_sequences: pending(4, 'Fiscal'),

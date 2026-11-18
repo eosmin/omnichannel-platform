@@ -1,5 +1,10 @@
 import { ApiError } from '@platform/api-client'
-import { PaymentRule, PurchaseConflicts, PurchaseRule } from '@platform/core/domain'
+import {
+  PaymentReturnRule,
+  PaymentRule,
+  PurchaseConflicts,
+  PurchaseRule
+} from '@platform/core/domain'
 
 import messages from '../../messages/en.json'
 import esMessages from '../../messages/es.json'
@@ -45,7 +50,11 @@ describe('the reason an api refusal of a purchase gives', () => {
       for (const conflict of Object.values(PurchaseConflicts)) {
         expect(purchases.conflicts[conflict]).toEqual(expect.any(String))
       }
-      for (const rule of [...Object.values(PurchaseRule), ...Object.values(PaymentRule)]) {
+      for (const rule of [
+        ...Object.values(PurchaseRule),
+        ...Object.values(PaymentRule),
+        ...Object.values(PaymentReturnRule)
+      ]) {
         expect(purchases.rules[rule]).toEqual(expect.any(String))
       }
     }
