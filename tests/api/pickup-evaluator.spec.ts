@@ -42,6 +42,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import type { CapturedQueue } from '../helpers/queue'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 const ATTEMPTS = 80
 const POLL_MS = 100
@@ -92,7 +93,7 @@ describe('The pickup scheduler (TDD_17 §4.10)', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    app = await createTestApp([], onWorkerDatabase())
     ctx = await seedTestContext(owner, app, prefix)
     registry = app.get(CarrierRegistry, { strict: false })
     queue = app.get<CapturedQueue>(getQueueToken(QueueNames.HEAVY_PROCESSING), { strict: false })

@@ -22,5 +22,7 @@ module.exports = {
     '<rootDir>/api/analytics-rollups.spec.ts'
   ],
   setupFiles: ['<rootDir>/helpers/env.ts'],
+  // Closes the connections of createWorkerPrisma when a file ends
+  setupFilesAfterEnv: ['<rootDir>/helpers/worker-db-teardown.ts'],
   testTimeout: 30_000
 }

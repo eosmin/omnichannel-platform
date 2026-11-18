@@ -91,7 +91,20 @@ export class FinanceCloseService {
       const failed = await tx.financePostingFailure.count({
         where: { organizationId, resolvedAt: null }
       })
-      if (failed > 0) throw financeRefusal(ErrorCodes.FINANCE_CLOSE_PENDING_POSTINGS)
+      if (failed > 0) {
+        const grouped = await tx.financePostingFailure.groupBy({
+          by: ['reason'],
+          where: { organizationId, resolvedAt: null },
+          _count: { _all: true }
+        })
+        // The sweep is not run under the lock: what it finds pending is not said here, the guard before the lock said it
+        throw financeRefusal(ErrorCodes.FINANCE_CLOSE_PENDING_POSTINGS, {
+          failureCount: failed,
+          failures: grouped
+            .map(row => ({ reason: row.reason, count: row._count._all }))
+            .sort((x, y) => x.reason.localeCompare(y.reason))
+        })
+      }
       // 3. The period balances: from the lines themselves (never from a table a trigger keeps, which is what the check is for) and the
       // balances the database keeps must say the same
       await this.requireBalanced(tx, organizationId, period.id)
@@ -221,7 +234,16 @@ export class FinanceCloseService {
     const blockers = await this.guard.check(organizationId, { since: period.startsOn })
     // An altered chain is its own refusal: it is not fixed by posting again, a person must find out why (TDD_18 §11)
     if (blockers.chainBroken) throw financeRefusal(ErrorCodes.FINANCE_CLOSE_CHAIN_BROKEN)
-    if (blockers.blocked) throw financeRefusal(ErrorCodes.FINANCE_CLOSE_PENDING_POSTINGS)
+    // What is pending goes in the answer (OPS-WR-134): the screen says how many sources wait for the daily sweep and which failures a
+    // person must retry or fix (the list of postings and its retry route), and not only that "something" is pending
+    if (blockers.blocked) {
+      throw financeRefusal(ErrorCodes.FINANCE_CLOSE_PENDING_POSTINGS, {
+        failureCount: blockers.failureCount,
+        failures: blockers.failures,
+        pendingSources: blockers.pendingSources,
+        truncated: blockers.truncated
+      })
+    }
   }
 
   private async lockSettings(

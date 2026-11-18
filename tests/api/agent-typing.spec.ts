@@ -27,6 +27,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { queueOf } from '../helpers/queue'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 const PLAIN_TEXT_CHANNEL = 'plain_channel'
 
@@ -41,7 +42,7 @@ describe('Showing the customer that an agent is typing', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    app = await createTestApp([], onWorkerDatabase())
     ctx = await seedTestContext(owner, app, prefix)
     const registry = app.get(PluginRegistry, { strict: false })
     registry.register(

@@ -33,6 +33,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 const ATTEMPTS = 60
 const POLL_MS = 100
@@ -60,7 +61,7 @@ describe('The delivery of a webhook', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    app = await createTestApp([], onWorkerDatabase())
     ctx = await seedTestContext(owner, app, prefix)
     cipher = app.get(CredentialCipher)
     const counter = {

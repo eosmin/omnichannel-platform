@@ -13,6 +13,10 @@ export const MetricNames = {
   ORDER_VALUE: 'platform_order_value_usd',
   ORDER_MESSAGES_FAILED_TOTAL: 'platform_order_messages_failed_total',
 
+  // Object storage (TDD_03 §7.3): 1 per protection (encryption at rest, versioning) the bucket does not show as on when the api
+  // starts; a gauge, so an alert clears itself once the bucket is configured and the api restarts
+  STORAGE_BUCKET_PROTECTION_GAP: 'platform_storage_bucket_protection_gap',
+
   // Inventory (TDD_16 §3)
   INVENTORY_RECONCILIATION_MISMATCHES: 'platform_inventory_reconciliation_mismatches_total',
 

@@ -92,6 +92,11 @@ export const MetricDefinitions: Record<MetricName, MetricDefinition> = {
     help: 'What the last daily check of the fiscal documents left, by kind: sales with no document or credit notes the lifecycle could not make, documents left in the queue and documents that disagree with their entry',
     labels: ['organization_id', 'kind']
   },
+  [MetricNames.STORAGE_BUCKET_PROTECTION_GAP]: {
+    kind: 'gauge',
+    help: 'One for each protection (encryption at rest, versioning) the bucket does not show as on when the api starts, zero when it does: any non-zero value in a deployed environment is a configuration to fix',
+    labels: ['protection']
+  },
   [MetricNames.FINANCE_BALANCE_MISMATCHES]: {
     kind: 'gauge',
     help: 'Balances by account and period that do not match the sum of their lines in the last daily check: any non-zero value is an incident',

@@ -27,6 +27,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 const POLICY = {
   balanceEnabled: true,
@@ -54,7 +55,7 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    app = await createTestApp([], onWorkerDatabase())
     ctx = await seedTestContext(owner, app, prefix)
     prisma = app.get(PrismaService, { strict: false })
     writes = app.get(ShipmentWrites, { strict: false })
@@ -173,6 +174,64 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
     // a second package at another price weighs in: 13000 over 160 guides
     expect((await buy(id, 50, 5000)).status).toBe(201)
     expect(await balanceOf(id)).toMatchObject({ balance: 160, averageCostCents: 81 })
+  })
+
+  it("keeps the account the money left and whether the books carry the purchase (E15), and refuses an account that is not the organization's", async () => {
+    const { id } = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
+    // A connection that does not prepay: the purchase is recorded, the books do not carry it
+    const plain = await buy(id, 10, 1000)
+    expect(plain.status).toBe(201)
+    const plainRow = await owner.carrierGuideMovement.findUniqueOrThrow({
+      where: { id: (plain.body as { id: string }).id }
+    })
+    expect(plainRow).toMatchObject({ onAdvance: false, paidFromAccountId: null })
+    // A connection that prepays: the purchase is carried
+    await owner.carrierConnection.update({ where: { id }, data: { chargeModel: 'prepaid' } })
+    const carried = await buy(id, 10, 1000)
+    const carriedRow = await owner.carrierGuideMovement.findUniqueOrThrow({
+      where: { id: (carried.body as { id: string }).id }
+    })
+    expect(carriedRow.onAdvance).toBe(true)
+    // The void follows what the purchase was
+    const voided = await admin()
+      .post(ApiRoutes.carriers.guidePurchaseVoid(id, carriedRow.id))
+      .send({ note: 'typed twice' })
+    expect(voided.status).toBe(200)
+    const voidRow = await owner.carrierGuideMovement.findFirstOrThrow({
+      where: { voidsMovementId: carriedRow.id }
+    })
+    expect(voidRow.onAdvance).toBe(true)
+    // An account that is not one of the organization's is refused like one that cannot take the money, and nothing is written
+    const before = await owner.carrierGuideMovement.count({ where: { connectionId: id } })
+    const unknown = await admin().post(ApiRoutes.carriers.guidePurchases(id)).send({
+      paidQuantity: 5,
+      giftQuantity: 0,
+      totalCostCents: 500,
+      paidFromAccountId: '00000000-0000-4000-8000-000000000000'
+    })
+    expect(unknown.status).toBe(400)
+    expect(await owner.carrierGuideMovement.count({ where: { connectionId: id } })).toBe(before)
+  })
+
+  it('lets only who may move money name the account of a purchase', async () => {
+    const { id } = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
+    const manager = api(
+      app,
+      await actorWithPermissions(owner, app, {
+        prefix,
+        name: 'guides-manager',
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        permissions: [Permissions.CARRIERS_MANAGE_GUIDE_BALANCE]
+      }),
+      ctx.storeA
+    )
+    const body = { paidQuantity: 5, giftQuantity: 0, totalCostCents: 500 }
+    const named = await manager
+      .post(ApiRoutes.carriers.guidePurchases(id))
+      .send({ ...body, paidFromAccountId: '00000000-0000-4000-8000-000000000000' })
+    expect(named.status).toBe(403)
+    expect((await manager.post(ApiRoutes.carriers.guidePurchases(id)).send(body)).status).toBe(201)
   })
 
   it('voids a purchase once and writes a movement, never an edit', async () => {

@@ -70,6 +70,8 @@ export interface PurchaseDraft {
   giftQuantity: string
   // Dollars as typed
   totalCost: string
+  // The account the money left (empty: the default bank account of the books)
+  paidFromAccountId: string
   note: string
 }
 
@@ -77,6 +79,7 @@ export const EMPTY_PURCHASE_DRAFT: PurchaseDraft = {
   paidQuantity: '',
   giftQuantity: '0',
   totalCost: '',
+  paidFromAccountId: '',
   note: ''
 }
 
@@ -107,6 +110,7 @@ export function purchaseBody(draft: PurchaseDraft): RecordGuidePurchaseBody {
     paidQuantity: Number(draft.paidQuantity.trim()),
     giftQuantity: Number(draft.giftQuantity.trim()),
     totalCostCents: parseCents(draft.totalCost) ?? 0,
+    ...(draft.paidFromAccountId === '' ? {} : { paidFromAccountId: draft.paidFromAccountId }),
     ...(note === '' ? {} : { note })
   }
 }

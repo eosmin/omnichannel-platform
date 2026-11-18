@@ -18,6 +18,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { CapturedQueue } from '../helpers/queue'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 // The daily check of the stock against its ledger (TDD_16 §4.8, Step 4.2 PR C): it reads, it reports, it never fixes.
 // Every case works in a store of its own, so what an earlier case forged is not in the way of the next one.
@@ -35,7 +36,7 @@ describe('The reconciliation of the stock', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    app = await createTestApp([], onWorkerDatabase())
     ctx = await seedTestContext(owner, app, prefix)
     inventory = app.get(InventoryService, { strict: false })
     prisma = app.get(PrismaService, { strict: false })

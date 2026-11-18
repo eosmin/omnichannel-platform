@@ -6,11 +6,13 @@ import {
   isUniqueViolation,
   lockStoreForWrite,
   lockStoreScope,
-  PrismaService
+  PrismaService,
+  type PrismaTransaction
 } from '@platform/core/database'
 import {
   type BenefitStateType,
   BenefitPeriodKind,
+  CarrierChargeModel,
   CarrierConfirmKeys,
   CarrierGuideDefaults,
   CarrierResourceTypes,
@@ -22,6 +24,7 @@ import {
   type CursorPage,
   type RecordGuideAdjustmentBody,
   type RecordGuidePurchaseBody,
+  remittanceDestinationProblem,
   ShipmentLockScopes,
   type VoidGuidePurchaseBody
 } from '@platform/core/domain'
@@ -32,6 +35,8 @@ import {
   resourceConflict,
   resourceNotFound
 } from '@platform/core/errors'
+import { DomainEvents } from '@platform/core/event-bus'
+import { Events } from '@platform/core/events'
 import {
   currentBenefit,
   type GuidePolicy,
@@ -64,7 +69,8 @@ const ORDER = [{ createdAt: 'desc' }, { id: 'desc' }] as const
 export class CarrierGuidesApiService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly events: DomainEvents
   ) {}
 
   async balance(storeId: string, connectionId: string): Promise<GuideBalanceView> {
@@ -127,18 +133,43 @@ export class CarrierGuidesApiService {
     actor: Actor
   ): Promise<GuideMovementView> {
     await this.assertConnection(storeId, connectionId)
-    const row = await this.prisma.client.carrierGuideMovement.create({
-      data: {
-        storeId,
-        connectionId,
-        kind: GuideMovementKind.PURCHASE,
-        guidesDelta: body.paidQuantity + body.giftQuantity,
-        costCentsDelta: body.totalCostCents,
-        paidQuantity: body.paidQuantity,
-        giftQuantity: body.giftQuantity,
-        note: body.note ?? null,
-        createdBy: actor.userId
+    const row = await this.prisma.transaction(async tx => {
+      await lockStoreForWrite(tx, storeId)
+      // The same lock the guides and a switch of the charge model take: the flag below is the model in force when the purchase commits
+      await lockStoreScope(tx, storeId, `${ShipmentLockScopes.GUIDE_BALANCE}:${connectionId}`)
+      // Whether the books carry this purchase is fixed now, from how the connection charges today: a purchase made before the connection
+      // prepaid is in the opening balance, and one made after is the advance the guides are paid from (TDD_18 §4.2 E15)
+      const connection = await tx.carrierConnection.findFirst({
+        where: { id: connectionId, storeId },
+        select: { chargeModel: true, store: { select: { organizationId: true } } }
+      })
+      const onAdvance = connection?.chargeModel === (CarrierChargeModel.PREPAID as string)
+      if (body.paidFromAccountId !== undefined && connection !== null) {
+        await this.assertPaidFrom(tx, connection.store.organizationId, body.paidFromAccountId)
       }
+      const created = await tx.carrierGuideMovement.create({
+        data: {
+          storeId,
+          connectionId,
+          kind: GuideMovementKind.PURCHASE,
+          guidesDelta: body.paidQuantity + body.giftQuantity,
+          costCentsDelta: body.totalCostCents,
+          paidQuantity: body.paidQuantity,
+          giftQuantity: body.giftQuantity,
+          onAdvance,
+          paidFromAccountId: body.paidFromAccountId ?? null,
+          note: body.note ?? null,
+          createdBy: actor.userId
+        }
+      })
+      if (onAdvance) {
+        this.events.publish(tx, Events.CARRIER_GUIDES_PURCHASED, {
+          storeId,
+          connectionId,
+          movementId: created.id
+        })
+      }
+      return created
     })
     this.record(AuditAction.CARRIER_GUIDE_PURCHASE_RECORDED, storeId, connectionId, actor, {
       movementId: row.id,
@@ -147,6 +178,26 @@ export class CarrierGuidesApiService {
       totalCostCents: body.totalCostCents
     })
     return this.viewOf(row, false)
+  }
+
+  // The account the money of a purchase left: a cash, bank or wallet account of the organization the books can post to
+  private async assertPaidFrom(
+    tx: PrismaTransaction,
+    organizationId: string,
+    accountId: string
+  ): Promise<void> {
+    const account = await tx.ledgerAccount.findFirst({
+      where: { id: accountId, organizationId },
+      select: { active: true, isPostable: true, cashKind: true }
+    })
+    // An account that is not the organization's and one that cannot take the money answer the same, so the answer tells nothing of other accounts
+    if (account === null || remittanceDestinationProblem(account) !== null) {
+      throw new PlatformException(
+        ErrorCodes.VALIDATION_FAILED,
+        'the money of a purchase of guides leaves a cash, bank or wallet account that is on',
+        HttpStatusCodes.BAD_REQUEST
+      )
+    }
   }
 
   async adjust(
@@ -209,7 +260,7 @@ export class CarrierGuidesApiService {
             HttpStatusCodes.CONFLICT
           )
         }
-        return tx.carrierGuideMovement.create({
+        const created = await tx.carrierGuideMovement.create({
           data: {
             storeId,
             connectionId,
@@ -217,10 +268,20 @@ export class CarrierGuidesApiService {
             guidesDelta: -purchase.guidesDelta,
             costCentsDelta: -purchase.costCentsDelta,
             voidsMovementId: purchase.id,
+            // The void follows the purchase: the books undo what they carried
+            onAdvance: purchase.onAdvance,
             note: body.note,
             createdBy: actor.userId
           }
         })
+        if (purchase.onAdvance) {
+          this.events.publish(tx, Events.CARRIER_GUIDES_PURCHASE_VOIDED, {
+            storeId,
+            connectionId,
+            movementId: created.id
+          })
+        }
+        return created
       })
       this.record(AuditAction.CARRIER_GUIDE_PURCHASE_VOIDED, storeId, connectionId, actor, {
         movementId: row.id,

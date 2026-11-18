@@ -31,7 +31,11 @@ import { ChannelMessagePrefix } from '../../lib/settings/connect-form'
 import { needsNewToken } from '../../lib/settings/health-reconnect'
 import { localizedText } from '../../lib/settings/oauth-descriptor'
 import { tokenNotice } from '../../lib/settings/token-expiry'
-import { useDisconnect, useTestConnection } from '../../lib/settings/use-channels'
+import {
+  useConnectionErrorDetail,
+  useDisconnect,
+  useTestConnection
+} from '../../lib/settings/use-channels'
 import { toast } from '../../lib/toast'
 import { useCodeText, useErrorText } from '../../lib/use-error-text'
 import { MutationError } from '../customers/mutation-error'
@@ -167,11 +171,13 @@ function StatusBadge({ status }: { status: string }): ReactElement {
   return <span className="text-muted-foreground text-sm">{status}</span>
 }
 
-// When it last answered and, if it does not, why. The reasons the platform itself gives are codes; any
-// other text is the provider's, shown as text and nothing else.
+// When it last answered and, if it does not, why. The api only ever says a code of ours (`plugin_reported` when the plugin
+// used its own words), and each code is a text of ours in the language of the reader: nothing a third party wrote is drawn
+// here. Its words are a technical detail for whoever manages plugins (PluginErrorDetail), fetched only when they ask for it.
 function Health({ connection }: { connection: ChannelConnectionView }): ReactElement {
   const t = useTranslations('settings.channels.health')
   const format = useFormatter()
+  const { can } = useStore()
   const error = connection.lastError
   return (
     <div className="flex flex-col gap-1 text-sm">
@@ -190,9 +196,60 @@ function Health({ connection }: { connection: ChannelConnectionView }): ReactEle
       )}
       {error === null ? null : (
         <p role="alert" className="text-destructive break-words">
-          {HEALTH_CODES.includes(error) ? t(`errors.${error}` as 'errors.check_failed') : error}
+          {/* A code this page does not know (a server newer than the page) is the plain failure, never shown as it came */}
+          {t(
+            `errors.${HEALTH_CODES.includes(error) ? error : ChannelHealthErrors.CHECK_FAILED}` as 'errors.check_failed'
+          )}
         </p>
       )}
+      {error === ChannelHealthErrors.PLUGIN_REPORTED &&
+      can(ClientPermissions.SETTINGS_MANAGE_PLUGINS) ? (
+        <PluginErrorDetail connectionId={connection.id} />
+      ) : null}
+    </div>
+  )
+}
+
+// The words the plugin used, cleaned by the api, for whoever manages plugins. Text and nothing else (never markup), asked for
+// only when the section is opened.
+function PluginErrorDetail({ connectionId }: { connectionId: string }): ReactElement {
+  const t = useTranslations('settings.channels.health.detail')
+  const { storeId } = useStore()
+  const [open, setOpen] = useState(false)
+  const panelId = useId()
+  const detail = useConnectionErrorDetail(storeId, connectionId, open)
+  return (
+    <div className="flex flex-col gap-1">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="self-start"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => setOpen(value => !value)}
+      >
+        {open ? (
+          <ChevronDown aria-hidden className="size-4" />
+        ) : (
+          <ChevronRight aria-hidden className="size-4" />
+        )}
+        {t('toggle')}
+      </Button>
+      {open ? (
+        <div id={panelId} className="text-muted-foreground text-xs">
+          <p>{t('warning')}</p>
+          {detail.isPending ? (
+            <p>{t('loading')}</p>
+          ) : detail.isError ? (
+            <p role="alert">{t('failed')}</p>
+          ) : (
+            <p className="text-foreground font-mono break-words whitespace-pre-wrap">
+              {detail.data.detail ?? t('empty')}
+            </p>
+          )}
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -36,8 +36,14 @@ export interface MetricsResult {
 export class MetricsQueryService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async query(storeId: string, query: MetricsQuery): Promise<MetricsResult> {
-    const rows = await readMetricBuckets(this.prisma.replica(), storeId, query)
+  async query(
+    store: { id: string; organizationId: string },
+    query: MetricsQuery
+  ): Promise<MetricsResult> {
+    const rows = await this.prisma.replicaTenantRead(
+      { storeIds: [store.id], organizationIds: [store.organizationId] },
+      db => readMetricBuckets(db, store.id, query)
+    )
     const aggregation = RolledUpMetrics[query.metric]
     const effective =
       query.granularity === TimeGranularity.HOUR

@@ -57,11 +57,11 @@ export function useCarrierConnections(storeId: string): UseQueryResult<CarrierCo
 }
 
 // Not awaited: a slow list read must never hold back the answer of a write, which may carry a secret shown once
-function useRefresh(storeId: string): () => void {
+// The mutation waits for the list to be read again before it counts as done: a dialog that closes on success and is opened again at once
+// must show what was saved, not the list as it was before (the promise returned here is what the mutation awaits)
+function useRefresh(storeId: string): () => Promise<void> {
   const queryClient = useQueryClient()
-  return () => {
-    void queryClient.invalidateQueries({ queryKey: QueryKeys.carriers.all(storeId) })
-  }
+  return () => queryClient.invalidateQueries({ queryKey: QueryKeys.carriers.all(storeId) })
 }
 
 export function useConnectCarrier(

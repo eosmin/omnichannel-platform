@@ -76,6 +76,7 @@ import {
 } from './messages.views'
 import { cleanNickname, type PluginMessageOrigin } from './plugin-message-origin'
 import { isDistinctFile } from './provider-message-match'
+import { rawKeyOf, storedKeyOf } from './stored-key'
 import {
   type RenderedTemplate,
   type TemplateMetadata,
@@ -312,7 +313,7 @@ export class MessagesService {
           // Cleaned here too, so that no caller can store a nickname that reorders text or is too long
           authorNickname:
             plugin?.author === AuthorType.SYSTEM ? cleanNickname(plugin.nickname) : null,
-          idempotencyKey: body.idempotencyKey ?? null,
+          idempotencyKey: storedKeyOf(body.idempotencyKey, plugin?.pluginId ?? null),
           replyToMessageId: replyToMessageId ?? null,
           replyToMediaId,
           ...(isTemplate ? { metadata: templateMetadataOf(body) } : {}),
@@ -525,7 +526,7 @@ export class MessagesService {
         messageId,
         // The person it was sent as; a plugin has no user id, and the author of a message of the system is nobody
         authorId: viewer.pluginId === undefined ? viewer.userId : row.authorId,
-        clientMessageId: updated.idempotencyKey,
+        clientMessageId: rawKeyOf(updated.idempotencyKey),
         createdAt: row.createdAt.toISOString(),
         // A reply reopens the conversation, so it is in the inbox of whoever sees it
         visibility: { hidden: false, assignedTo: current.assignedTo }
@@ -689,7 +690,17 @@ export class MessagesService {
   ): Promise<MessageView | null> {
     if (body.idempotencyKey === undefined) return null
     const existing = await db.message.findFirst({
-      where: { storeId, conversationId: body.conversationId, idempotencyKey: body.idempotencyKey },
+      where: {
+        storeId,
+        conversationId: body.conversationId,
+        OR: [
+          { idempotencyKey: storedKeyOf(body.idempotencyKey, pluginId) },
+          // A message of this plugin written before the keys of plugins had their namespace was stored with the key as it came
+          ...(pluginId === null
+            ? []
+            : [{ idempotencyKey: body.idempotencyKey, authorPluginId: pluginId }])
+        ]
+      },
       select: { ...MESSAGE_SELECT, discardedAt: true }
     })
     if (existing === null) return null
@@ -699,7 +710,8 @@ export class MessagesService {
       throw resourceConflict('this reply was discarded')
     }
     const message = messageView(existing)
-    // The key is the author's: another person, or another plugin, using it is not a retry
+    // The key is the author's: a plugin's is stored under its own namespace (`storedKeyOf`), so another plugin never finds it nor
+    // collides with it; a person or another plugin that still reaches this row is not a retry
     if (
       message.authorId !== authorId ||
       message.authorPluginId !== pluginId ||

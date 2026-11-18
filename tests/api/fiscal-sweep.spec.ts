@@ -41,6 +41,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { CapturedQueue } from '../helpers/queue'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 const OK = 200
 const BAD_REQUEST = 400
@@ -72,7 +73,7 @@ describe('The check of the fiscal documents', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    app = await createTestApp([], onWorkerDatabase())
     ctx = await seedTestContext(owner, app, prefix)
     sweep = app.get(FiscalSweepService)
     documents = app.get(FiscalDocumentsService)
@@ -489,8 +490,13 @@ describe('The check of the fiscal documents', () => {
         sourceId: sale.id,
         kind: FinanceEventKind.SALE
       })
-      // The sale and its document agree
+      // The sale and its document agree. The entry was posted after the document, so the column that links them stays null for good (an
+      // immutable one, HC-109): the check finds the entry by its key, never by that column
       expect(await idsOf(FiscalSweepKind.ENTRY_MISMATCH)).not.toContain(sale.documentId)
+      expect(
+        (await owner.fiscalDocument.findUniqueOrThrow({ where: { id: sale.documentId } }))
+          .journalEntryId
+      ).toBeNull()
 
       await owner.fiscalDocument.update({
         where: { id: sale.documentId },

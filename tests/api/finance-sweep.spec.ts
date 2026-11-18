@@ -13,10 +13,14 @@ import {
   FinancePostingKey,
   FinancePostingOutcome,
   FinanceSourceType,
+  GuideMovementKind,
   InventoryAdjustmentReason,
   InventoryMovementType,
+  InventoryReferenceType,
   ShipmentStatus,
-  ShippingPayer
+  ShippingPayer,
+  TransferShortageAction,
+  TransferStatus
 } from '@platform/core/domain'
 import {
   FinanceCloseGuard,
@@ -33,13 +37,15 @@ import {
   createOrder,
   createProduct,
   createReturn,
-  createShipment
+  createShipment,
+  createTransfer
 } from '../builders'
 import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { CapturedQueue } from '../helpers/queue'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 const CREATED = 201
 const TODAY = new Date().toISOString().slice(0, 10)
@@ -59,7 +65,7 @@ describe('The sweep of the books and the guard of the close', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    app = await createTestApp([], onWorkerDatabase())
     ctx = await seedTestContext(owner, app, prefix)
     sweep = app.get(FinanceSweepService)
     posting = app.get(FinancePostingService)
@@ -272,6 +278,66 @@ describe('The sweep of the books and the guard of the close', () => {
       expect(await queuedOf(movement.id)).toEqual([])
     })
 
+    it('finds a transfer shortage written off with no entry, and stops once it is posted (AUT-911)', async () => {
+      const made = await createTransfer(owner, {
+        organizationId: ctx.orgA.id,
+        storeId: ctx.storeA.id,
+        status: TransferStatus.RECEIVED
+      })
+      const lineId = made.lineId as string
+      const line = await owner.stockTransferLine.update({
+        where: { id: lineId },
+        data: {
+          quantity: 4,
+          receivedQuantity: 3,
+          shortageAction: TransferShortageAction.WRITE_OFF
+        },
+        select: { productId: true }
+      })
+      const header = await owner.stockTransfer.findUniqueOrThrow({
+        where: { id: made.id },
+        select: { fromWarehouseId: true, toWarehouseId: true }
+      })
+      await owner.inventoryMovement.create({
+        data: {
+          storeId: ctx.storeA.id,
+          productId: line.productId,
+          warehouseId: header.fromWarehouseId,
+          type: InventoryMovementType.TRANSFER_OUT,
+          quantity: 4,
+          referenceType: InventoryReferenceType.TRANSFER,
+          referenceId: made.id,
+          idempotencyKey: `transfer:${made.id}:${lineId}:dispatch`,
+          unitCostCents: 250,
+          valueCents: 1000n,
+          onHandAfter: 0,
+          reservedAfter: 0
+        }
+      })
+      await owner.inventoryMovement.create({
+        data: {
+          storeId: ctx.storeA.id,
+          productId: line.productId,
+          warehouseId: header.toWarehouseId,
+          type: InventoryMovementType.TRANSFER_IN,
+          quantity: 3,
+          referenceType: InventoryReferenceType.TRANSFER,
+          referenceId: made.id,
+          idempotencyKey: `transfer:${made.id}:${lineId}:receive:r1`,
+          unitCostCents: 250,
+          valueCents: 750n,
+          onHandAfter: 0,
+          reservedAfter: 0
+        }
+      })
+      const found = await queuedOf(lineId)
+      expect(found.map(job => [job.sourceType, job.kind])).toEqual([
+        [FinanceSourceType.TRANSFER_LINE, FinanceEventKind.TRANSFER_WRITE_OFF]
+      ])
+      for (const job of found) await posting.post(job)
+      expect(await queuedOf(lineId)).toEqual([])
+    })
+
     it('finds the voiding of a remittance only when its confirmation was posted and nothing reversed it', async () => {
       const shipment = await createShipment(owner, {
         storeId: ctx.storeA.id,
@@ -397,6 +463,67 @@ describe('The sweep of the books and the guard of the close', () => {
       })
       expect((await queuedOf(charged.id)).map(job => job.kind)).toEqual([FinanceEventKind.CHARGES])
       expect(await queuedOf(free.id)).toEqual([])
+    })
+
+    it('finds the purchase of guides of a prepaid connection and its void, and not one the books do not carry or one that cost nothing (E15, E16)', async () => {
+      const { connectionId } = await createShipment(owner, {
+        storeId: ctx.storeA.id,
+        status: ShipmentStatus.DELIVERED,
+        deliveredAt: NOON(TODAY)
+      })
+      const movement = (over: {
+        kind: string
+        cents: number
+        onAdvance: boolean
+        voids?: string
+      }) =>
+        owner.carrierGuideMovement.create({
+          data: {
+            storeId: ctx.storeA.id,
+            connectionId,
+            kind: over.kind,
+            guidesDelta: over.kind === GuideMovementKind.VOID ? -10 : 10,
+            costCentsDelta: over.kind === GuideMovementKind.VOID ? -over.cents : over.cents,
+            paidQuantity: over.kind === GuideMovementKind.PURCHASE ? 10 : null,
+            giftQuantity: over.kind === GuideMovementKind.PURCHASE ? 0 : null,
+            onAdvance: over.onAdvance,
+            voidsMovementId: over.voids ?? null,
+            note: over.kind === GuideMovementKind.VOID ? 'typed twice' : null,
+            createdBy: 'system'
+          }
+        })
+      const carried = await movement({
+        kind: GuideMovementKind.PURCHASE,
+        cents: 1000,
+        onAdvance: true
+      })
+      const carriedVoid = await movement({
+        kind: GuideMovementKind.VOID,
+        cents: 1000,
+        onAdvance: true,
+        voids: carried.id
+      })
+      const plain = await movement({
+        kind: GuideMovementKind.PURCHASE,
+        cents: 1000,
+        onAdvance: false
+      })
+      const plainVoid = await movement({
+        kind: GuideMovementKind.VOID,
+        cents: 1000,
+        onAdvance: false,
+        voids: plain.id
+      })
+      const gifts = await movement({ kind: GuideMovementKind.PURCHASE, cents: 0, onAdvance: true })
+      expect((await queuedOf(carried.id)).map(job => job.kind)).toEqual([
+        FinanceEventKind.GUIDE_PURCHASE
+      ])
+      expect((await queuedOf(carriedVoid.id)).map(job => job.kind)).toEqual([
+        FinanceEventKind.GUIDE_PURCHASE_VOID
+      ])
+      expect(await queuedOf(plain.id)).toEqual([])
+      expect(await queuedOf(plainVoid.id)).toEqual([])
+      expect(await queuedOf(gifts.id)).toEqual([])
     })
 
     it('closes the failure of a source that waited once the source needs nothing any more', async () => {

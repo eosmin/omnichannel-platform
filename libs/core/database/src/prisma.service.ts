@@ -35,6 +35,17 @@ type PrimaryClient = ReplicaClient
 // the caller picks the source and the helper stays the same.
 export type SqlReader = Pick<ReplicaClient, '$queryRaw'>
 export type PrismaTransaction = Parameters<Parameters<ExtendedClient['$transaction']>[0]>[0]
+// What a read of the replica gets: the transaction of the replica client, which has no routing of its own
+export type ReplicaTransaction = Parameters<Parameters<ReplicaClient['$transaction']>[0]>[0]
+
+// The context is set in ONE statement (a round trip fewer through PgBouncer), with set_config(..., true): transaction-local, so
+// it cannot reach the next client of a pooled connection. A session-level setting is refused by `pnpm validate:rls`.
+async function applyTenantContext(
+  tx: Pick<PrismaTransaction, '$executeRaw'>,
+  context: TenantContext
+): Promise<void> {
+  await tx.$executeRaw`SELECT set_config('app.store_ids', ${context.storeIds.join(',')}, true), set_config('app.organization_ids', ${context.organizationIds.join(',')}, true), set_config('app.user_id', ${context.userId ?? ''}, true)`
+}
 
 interface TransactionOptions {
   maxWait?: number
@@ -78,12 +89,42 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     return tenantScope.getStore()?.tx ?? this.primary
   }
 
-  // Reads that tolerate replication lag. Without DATABASE_REPLICA_URL this is the primary. It sits outside the tenant
-  // transaction, so a read here never sees a row the request wrote in it: never call it in a path that writes (or that reads
-  // what it is about to write, or what the person just changed), and never from a guard. The same rule is enforced by
-  // `pnpm validate:replica` (scripts/check-replica-routing.ts), which lists the only files that may call it.
-  replica(): ReplicaClient {
-    return this.base.$replica()
+  // Reads that tolerate replication lag, in ONE transaction of the replica that carries the tenant context (the same
+  // settings as tenantTransaction): with Row-Level Security on, a read with no context sees no row, so there is no way to read the
+  // replica without one. Without DATABASE_REPLICA_URL this is the primary. It sits outside the tenant transaction, so a read here
+  // never sees a row the request wrote in it. A write through it is refused by a real standby; with no replica (development, CI) nothing
+  // refuses it, which is a debt of Step 7.1 (the plan): never call it in a path that writes (or that reads what it is about to write, or what
+  // the person just changed), and never from a guard. The same rule is enforced by `pnpm validate:replica`
+  // (scripts/check-replica-routing.ts), which lists the only files that may call it.
+  replicaTenantRead<T>(
+    context: TenantContext,
+    fn: (db: ReplicaTransaction) => Promise<T>,
+    options?: TransactionOptions
+  ): Promise<T> {
+    // Inside the tenant transaction of a request this would hold a second connection of the same pool (with no replica, the same
+    // database) while the first waits: a route that reads the replica is marked @NoTenantTransaction
+    if (this.hasTenantContext()) {
+      throw new Error(
+        'replicaTenantRead inside a tenant transaction: mark the route @NoTenantTransaction, or read from this.client'
+      )
+    }
+    return this.base.$replica().$transaction(
+      async tx => {
+        await applyTenantContext(tx, context)
+        return fn(tx)
+      },
+      { ...TENANT_TRANSACTION, ...options }
+    )
+  }
+
+  // Whether the code that is running is inside a tenant transaction (and so inside a context): a job or a helper that may be
+  // called from both sides asks this before it opens its own, because tenantTransaction refuses to nest
+  hasTenantContext(): boolean {
+    return tenantScope.getStore() !== undefined
+  }
+
+  currentTenantContext(): TenantContext | undefined {
+    return tenantScope.getStore()?.context
   }
 
   // Services never call client.$transaction: they call this, which joins the tenant transaction
@@ -167,8 +208,7 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     }
     return this.open(
       async tx => {
-        await tx.$executeRaw`SELECT set_config('app.store_ids', ${context.storeIds.join(',')}, true)`
-        await tx.$executeRaw`SELECT set_config('app.organization_ids', ${context.organizationIds.join(',')}, true)`
+        await applyTenantContext(tx, context)
         return tenantScope.run({ tx, context }, fn)
       },
       { ...TENANT_TRANSACTION, ...options }

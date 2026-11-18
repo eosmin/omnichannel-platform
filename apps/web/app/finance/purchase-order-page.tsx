@@ -8,7 +8,7 @@ import { type ReactElement, useMemo, useState } from 'react'
 
 import { AppPaths, type PurchaseReceiptView } from '@platform/api-client'
 import { ClientPermissions } from '@platform/core/auth'
-import { TaxRounding } from '@platform/core/domain'
+import { PurchaseOrderStatus, TaxRounding } from '@platform/core/domain'
 
 import { OrderLinesEditor } from '../../components/finance/order-lines-editor'
 import { PaymentDialog, type PaymentTarget } from '../../components/finance/payment-dialog'
@@ -205,6 +205,11 @@ function PurchaseOrder(): ReactElement {
           </Button>
         ) : null}
       </div>
+      {view.receipts.length > 0 && view.status === PurchaseOrderStatus.PARTIALLY_RECEIVED ? (
+        <p className="text-muted-foreground text-sm" data-testid="no-cancel-hint">
+          {t('noCancelHint')}
+        </p>
+      ) : null}
       {has(OrderActions.EDIT) ? (
         <OrderLinesEditor
           // Saving makes new line ids: the editor starts again from what was saved, with the names of the new lines
