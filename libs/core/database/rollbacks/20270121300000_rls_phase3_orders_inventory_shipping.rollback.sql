@@ -40,7 +40,7 @@ SELECT rls_drop_policy('store_warehouses');
 SELECT rls_drop_policy('order_items');
 SELECT rls_drop_policy('product_variants');
 
-DROP FUNCTION IF EXISTS rls_store_tables_with_rows(text, text[]);
+DROP FUNCTION IF EXISTS rls_store_tables_with_rows(text);
 DROP FUNCTION IF EXISTS rls_resolve_carrier_connection(text);
 
 COMMIT;

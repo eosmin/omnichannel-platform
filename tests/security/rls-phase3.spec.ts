@@ -423,8 +423,8 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
         ).rows[0]?.n,
         counted: (
           await db.query<{ table_name: string; row_count: number }>(
-            'SELECT table_name, row_count FROM rls_store_tables_with_rows($1::text, $2::text[])',
-            [ctx.storeA.id, SKIP]
+            'SELECT table_name, row_count FROM rls_store_tables_with_rows($1::text)',
+            [ctx.storeA.id]
           )
         ).rows
       }))
@@ -470,10 +470,9 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
         { stores: [empty.id], organizations: [ctx.orgA.id] },
         async db => {
           const tables = (
-            await db.query(
-              'SELECT table_name FROM rls_store_tables_with_rows($1::text, $2::text[])',
-              [empty.id, SKIP]
-            )
+            await db.query('SELECT table_name FROM rls_store_tables_with_rows($1::text)', [
+              empty.id
+            ])
           ).rows
           const deleted = (
             await db.query('DELETE FROM stores WHERE id = $1 AND organization_id = $2', [
@@ -496,17 +495,11 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
       await expect(
         underRls(
           {},
-          db =>
-            db.query('SELECT * FROM rls_store_tables_with_rows($1::text, $2::text[])', [
-              ctx.storeA.id,
-              SKIP
-            ]),
+          db => db.query('SELECT * FROM rls_store_tables_with_rows($1::text)', [ctx.storeA.id]),
           async db => {
             // The owner of the function is a role that owns no table and cannot bypass row security
             await db.query('GRANT CREATE ON SCHEMA public TO platform_app')
-            await db.query(
-              'ALTER FUNCTION rls_store_tables_with_rows(text, text[]) OWNER TO platform_app'
-            )
+            await db.query('ALTER FUNCTION rls_store_tables_with_rows(text) OWNER TO platform_app')
           }
         )
       ).rejects.toThrow(/cannot see every row/)
@@ -516,11 +509,7 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
       await expect(
         underRls(
           {},
-          db =>
-            db.query('SELECT * FROM rls_store_tables_with_rows($1::text, $2::text[])', [
-              ctx.storeA.id,
-              SKIP
-            ]),
+          db => db.query('SELECT * FROM rls_store_tables_with_rows($1::text)', [ctx.storeA.id]),
           async db => {
             // A restrictive policy that applies to everybody, the owner included
             await db.query(
@@ -531,11 +520,37 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
       ).rejects.toThrow(/may hide rows from this role/)
     })
 
-    it('refuses an empty store id and cannot be called by PUBLIC', async () => {
+    it('takes no list of tables to leave out: the caller cannot hide a table that holds rows', async () => {
+      // A second argument would be the way to make the delete of a store go through with its data: there is none (42883)
       await expect(
         underRls({}, db =>
-          db.query("SELECT * FROM rls_store_tables_with_rows('', $1::text[])", [SKIP])
+          db.query('SELECT * FROM rls_store_tables_with_rows($1::text, $2::text[])', [
+            ctx.storeA.id,
+            ['orders', 'products', 'inventory_levels']
+          ])
         )
+      ).rejects.toThrow(/does not exist/)
+      const { rows } = await underRls({}, db =>
+        db.query<{ table_name: string }>(
+          'SELECT table_name FROM rls_store_tables_with_rows($1::text)',
+          [ctx.storeA.id]
+        )
+      )
+      expect(rows.map(row => row.table_name)).toContain('orders')
+    })
+
+    it('is executable by platform_app only, not by the worker nor PUBLIC', async () => {
+      const { rows } = await raw.query<{ app: boolean; worker: boolean; pub: boolean }>(
+        `SELECT has_function_privilege('platform_app', 'rls_store_tables_with_rows(text)', 'EXECUTE') AS app,
+                has_function_privilege('platform_worker', 'rls_store_tables_with_rows(text)', 'EXECUTE') AS worker,
+                has_function_privilege('public', 'rls_store_tables_with_rows(text)', 'EXECUTE') AS pub`
+      )
+      expect(rows[0]).toEqual({ app: true, worker: false, pub: false })
+    })
+
+    it('refuses an empty store id and cannot be called by PUBLIC', async () => {
+      await expect(
+        underRls({}, db => db.query("SELECT * FROM rls_store_tables_with_rows('')"))
       ).rejects.toThrow(/store id is required/)
       const { rows } = await raw.query<{ acl: string | null }>(
         "SELECT proacl::text AS acl FROM pg_proc WHERE proname = 'rls_store_tables_with_rows'"
@@ -561,6 +576,48 @@ describe('row-level security, phase 3 (orders, inventory, shipping)', () => {
         'store_id'
       ])
       expect(rows[0]).toMatchObject({ id: connection.id, store_id: ctx.storeA.id })
+    })
+
+    it('is not fooled by a temporary table of the caller with the name of a real one (the search path of a definer function)', async () => {
+      const connection = await createCarrierConnection(owner, { storeId: ctx.storeA.id })
+      const truth = await raw.query<{ n: number }>(
+        'SELECT count(*)::int AS n FROM orders WHERE store_id = $1',
+        [ctx.storeA.id]
+      )
+      const seenByTheFunctions = await underRls({}, async db => {
+        // The caller is platform_app, who may create temporary tables: these shadow the real ones for any code that does not pin
+        // the schema
+        await db.query(
+          'CREATE TEMP TABLE carrier_connections (id text, store_id text, carrier_id text, status text)'
+        )
+        await db.query(
+          "INSERT INTO pg_temp.carrier_connections VALUES ('fake-id', 'fake-store', 'x', 'active')"
+        )
+        await db.query('CREATE TEMP TABLE orders (store_id text)')
+        await db.query('INSERT INTO pg_temp.orders SELECT $1 FROM generate_series(1, 1000)', [
+          ctx.storeA.id
+        ])
+        return {
+          fake: (await db.query("SELECT * FROM rls_resolve_carrier_connection('fake-id')")).rows,
+          real: (
+            await db.query<{ id: string }>(
+              'SELECT id FROM rls_resolve_carrier_connection($1::text)',
+              [connection.id]
+            )
+          ).rows,
+          counted: (
+            await db.query<{ table_name: string; row_count: number }>(
+              'SELECT table_name, row_count FROM rls_store_tables_with_rows($1::text)',
+              [ctx.storeA.id]
+            )
+          ).rows
+        }
+      })
+      expect(seenByTheFunctions.fake).toEqual([])
+      expect(seenByTheFunctions.real.map(row => row.id)).toEqual([connection.id])
+      expect(seenByTheFunctions.counted.find(row => row.table_name === 'orders')?.row_count).toBe(
+        truth.rows[0]?.n
+      )
     })
 
     it('answers nothing for an id that is not a connection, and the table itself stays closed without a context', async () => {
