@@ -18,7 +18,14 @@ import { TextField } from '../finance/fields'
 import { useStore } from '../providers/store-context'
 import { useDestructiveAction } from '../shared/destructive-action'
 import { Button } from '../ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '../ui/dialog'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  stickyDialogActionsClass
+} from '../ui/dialog'
 
 // A refused document that may be at the issuer it was made with, which was changed since (TDD_18 §8.3, HIGH tier). The api will not move it
 // by itself: the same number could end up at two authorities. A person who checked with the authority of the first issuer, with the
@@ -178,7 +185,7 @@ function IssuerChangeForm({
           {refusal}
         </p>
       )}
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className={`${stickyDialogActionsClass} flex flex-wrap justify-end gap-2`}>
         <Button type="button" variant="outline" onClick={onDone} disabled={pending}>
           {t('cancel')}
         </Button>

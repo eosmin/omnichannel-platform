@@ -300,3 +300,12 @@ export function statusAfterReceipt(
     ? PurchaseOrderStatus.RECEIVED
     : PurchaseOrderStatus.PARTIALLY_RECEIVED
 }
+
+// What two writings of the same supplier document have in common: letters and digits, in capitals, in NFKC (a full-width digit is the digit). "fac-001", "FAC 001" and
+// "Fac001" are one invoice, so the duplicate check compares this and not the text as it was typed (HC-124). Empty when nothing is left. Two numbers that differ only in where the separators are (`12-3`, `1-23`) share a key: that is the price of ignoring them, [ACCOUNTANT] to confirm.
+export function documentNumberKey(value: string): string {
+  return value
+    .normalize('NFKC')
+    .toUpperCase()
+    .replaceAll(/[^\p{L}\p{N}]/gu, '')
+}
