@@ -255,7 +255,7 @@ describe('the key of a supplier document (HC-124)', () => {
     ['FAC 001', 'FAC001'],
     ['  Fac_001 ', 'FAC001'],
     ['f.a.c/001', 'FAC001'],
-    ['Nº 12', 'Nº12'],
+    ['Nº 12', 'NO12'],
     ['１２３', '123']
   ])('reads %j as %j', (text, key) => {
     expect(documentNumberKey(text)).toBe(key)
