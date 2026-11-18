@@ -19,10 +19,10 @@ import {
   exportTypeFilter,
   exportTypeKey,
   FILTERABLE_STATUSES,
-  FILTERABLE_TYPES,
   isExportReady,
   ExportPermissions,
-  mayOpenExports
+  mayOpenExports,
+  visibleExportTypes
 } from '../../lib/exports/export-state'
 import { useExportList } from '../../lib/exports/use-export-data'
 import { useCodeText, useErrorText } from '../../lib/use-error-text'
@@ -145,7 +145,7 @@ export function ExportsPage(): ReactElement {
             onChange={event => setType(event.target.value)}
           >
             <option value={ALL_EXPORTS}>{t('filters.allTypes')}</option>
-            {FILTERABLE_TYPES.map(value => (
+            {visibleExportTypes(can).map(value => (
               <option key={value} value={value}>
                 {t(`types.${value}`)}
               </option>

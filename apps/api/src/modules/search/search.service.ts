@@ -160,6 +160,7 @@ export class SearchService {
     const typed = `%${escapeLike(params.q)}%`
     const digits = phoneDigitsOf(params.q)
     const byPhone = digits !== ''
+    const byWord = [...folded].length >= SearchConfig.WORD_SIMILARITY_MIN_LENGTH
     const rows = await this.prisma.client.$queryRaw<unknown[]>`
       SELECT c.id, c.name, c.email, c.phone
       FROM customers c
@@ -172,6 +173,13 @@ export class SearchService {
           -- The % operator can use the index and reads pg_trgm.similarity_threshold, whose default is the constant
           -- (the integration spec checks it); the second test keeps a lower setting from widening the match
           OR (c.name_search % ${folded} AND similarity(c.name_search, ${folded}) > ${SearchConfig.SIMILARITY_THRESHOLD})
+          -- A typo in one word of a longer name ("sebastain" for "sebastian pena"): the whole name is not similar to the
+          -- word, the best run of its words is. The <% operator can use the index and reads pg_trgm.word_similarity_threshold
+          OR (
+            ${byWord}::boolean
+            AND ${folded} <% c.name_search
+            AND word_similarity(${folded}, c.name_search) > ${SearchConfig.WORD_SIMILARITY_THRESHOLD}
+          )
           OR (${byPhone}::boolean AND c.phone_normalized LIKE ${`%${digits}%`} ESCAPE '\\')
         )
       ORDER BY

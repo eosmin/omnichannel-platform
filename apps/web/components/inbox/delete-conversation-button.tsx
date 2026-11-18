@@ -9,10 +9,12 @@ import type { ReactElement } from 'react'
 import { AppPaths, QueryKeys } from '@platform/api-client'
 
 import { apiClient } from '../../lib/api'
+import { forgetDraft } from '../../lib/inbox/composer-draft-index'
 import { deleteConversation } from '../../lib/inbox/delete-conversation'
 import { useInboxFilters } from '../../lib/inbox/use-inbox-filters'
 import { toast } from '../../lib/toast'
 import { useErrorText } from '../../lib/use-error-text'
+import { useProfile } from '../../lib/use-profile'
 import { useStore } from '../providers/store-context'
 import { useDestructiveAction } from '../shared/destructive-action'
 import { Button } from '../ui/button'
@@ -36,6 +38,7 @@ export default function DeleteConversationButton({
   const run = useDestructiveAction()
   const { storeId } = useStore()
   const { search } = useInboxFilters()
+  const userId = useProfile().data?.id
 
   const ask = (): void => {
     run('DELETE_CONVERSATION', {
@@ -53,6 +56,8 @@ export default function DeleteConversationButton({
           return
         }
         toast.success(t('done'))
+        // Its unsent draft has nowhere to go (the filter "With draft" would still count it)
+        if (userId !== undefined) forgetDraft({ userId, storeId, conversationId })
         // Out of the thread first: reading it again would answer not found for a conversation that is gone
         router.replace(`${AppPaths.store.inbox(storeId)}${search}`)
         // The lists and counts only: the thread still on screen while the navigation lands must not read the
