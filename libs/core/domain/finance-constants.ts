@@ -399,8 +399,8 @@ export enum FinancePostingFailureReason {
   CARRIER_MISSING = 'carrier_missing',
   // The source is not in the state the event says (a sale not yet paid, a prepaid sale whose advance is not posted)
   SOURCE_NOT_READY = 'source_not_ready',
-  // The order was delivered with its payment refunded and no advance in the books to clear: waiting changes nothing, the sale would be a
-  // credit sale (not built), so a person is told [ACCOUNTANT]
+  // The order was delivered with its payment refunded: waiting changes nothing, the sale would be a credit sale (not built), so nothing
+  // is posted and a person is told [ACCOUNTANT]
   PAYMENT_REFUNDED = 'payment_refunded',
   // The ledger refused the entry (the period, the dimensions): the cause is in the logs
   LEDGER_REFUSED = 'ledger_refused',
