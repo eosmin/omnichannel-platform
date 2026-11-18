@@ -130,7 +130,7 @@ export function StoreNav(): ReactElement {
       <nav aria-label={t('label')} className="min-w-0 md:hidden">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="max-w-full">
+            <Button variant="ghost" className="max-w-full px-2">
               <Menu aria-hidden />
               <span className="truncate">{currentEntry?.label ?? t('menu')}</span>
             </Button>
