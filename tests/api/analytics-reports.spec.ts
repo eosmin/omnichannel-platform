@@ -13,12 +13,9 @@ import {
 } from '@platform/core/analytics'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
-import { AuditService } from '@platform/core/audit-module'
 import { Permissions } from '@platform/core/auth'
-import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import { ErrorCodes } from '@platform/core/errors'
-import { DomainEvents } from '@platform/core/event-bus'
 import { ExportStatus, ExportTypes, JobNames, QueueNames } from '@platform/core/queues'
 import { StorageService } from '@platform/core/storage-module'
 
@@ -38,6 +35,7 @@ import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { type CapturedEmails, emailsOf } from '../helpers/email'
 import { api } from '../helpers/http'
 import { type CapturedQueue, queueOf } from '../helpers/queue'
+import { createWorkerPrisma, workerServices } from '../helpers/worker-db'
 
 interface ErrorBody {
   error: { code: string }
@@ -83,7 +81,7 @@ describe('Analytics reports and export', () => {
     owner = ownerClient()
     app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
-    const prisma = app.get(PrismaService, { strict: false })
+    const prisma = createWorkerPrisma()
     storage = app.get(StorageService, { strict: false })
     const logger = {
       setContext: jest.fn(),
@@ -92,7 +90,7 @@ describe('Analytics reports and export', () => {
       info: jest.fn()
     } as unknown as PinoLogger
     const csv = new CsvExportWriter(storage)
-    const audit = app.get(AuditService, { strict: false })
+    const { events, audit } = await workerServices(app, prisma)
     generator = new ExportGenerator(
       prisma,
       csv,
@@ -100,7 +98,7 @@ describe('Analytics reports and export', () => {
       new AnalyticsExportWriter(prisma, storage, csv),
       storage,
       audit,
-      app.get(DomainEvents, { strict: false }),
+      events,
       logger
     )
     emails = emailsOf(app)
@@ -401,12 +399,11 @@ describe('Analytics reports and export', () => {
 
   describe('the dispatch', () => {
     function scheduler(queue: CapturedQueue): ReportDispatchScheduler {
-      return new ReportDispatchScheduler(
-        {} as never,
-        queue as never,
-        app.get(PrismaService, { strict: false }),
-        { setContext: jest.fn(), info: jest.fn(), error: jest.fn() } as unknown as PinoLogger
-      )
+      return new ReportDispatchScheduler({} as never, queue as never, createWorkerPrisma(), {
+        setContext: jest.fn(),
+        info: jest.fn(),
+        error: jest.fn()
+      } as unknown as PinoLogger)
     }
 
     async function make(data: Record<string, unknown>) {
@@ -485,12 +482,11 @@ describe('Analytics reports and export', () => {
 
   describe('the dispatch of a day that is not whole yet, or that was missed', () => {
     function scheduler(queue: CapturedQueue): ReportDispatchScheduler {
-      return new ReportDispatchScheduler(
-        {} as never,
-        queue as never,
-        app.get(PrismaService, { strict: false }),
-        { setContext: jest.fn(), info: jest.fn(), error: jest.fn() } as unknown as PinoLogger
-      )
+      return new ReportDispatchScheduler({} as never, queue as never, createWorkerPrisma(), {
+        setContext: jest.fn(),
+        info: jest.fn(),
+        error: jest.fn()
+      } as unknown as PinoLogger)
     }
     const freshQueue = () =>
       new (queueOf(app, QueueNames.EXPORTS).constructor as new () => CapturedQueue)()
@@ -753,7 +749,7 @@ describe('Analytics reports and export', () => {
     const REVENUE_FROM = '2026-11-02'
     const REVENUE_TO = '2026-11-04'
     async function seedRevenue(): Promise<void> {
-      const rollups = new AnalyticsRollupService(app.get(PrismaService, { strict: false }))
+      const rollups = new AnalyticsRollupService(createWorkerPrisma())
       // 1999 cents on the first day and one single cent on the second
       const first = await createOrder(owner, { storeId: ctx.storeA.id })
       const second = await createOrder(owner, { storeId: ctx.storeA.id })

@@ -18,6 +18,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { transactionInContext } from '../helpers/tenant-context'
 
 interface ErrorBody {
   error: { code: string; metadata?: { tables?: string[] } }
@@ -97,6 +98,8 @@ describe('Writing data of a store while the store is deleted', () => {
   let app: INestApplication
   let owner: OwnerClient
   let ctx: TestContext
+  // What the request of a store carries, once Row-Level Security is enforced: these transactions stand for the ones of the api
+  const contextOf = (storeId: string) => ({ storeIds: [storeId], organizationIds: [ctx.orgA.id] })
   let counter = 0
 
   beforeAll(async () => {
@@ -156,7 +159,7 @@ describe('Writing data of a store while the store is deleted', () => {
     const storeId = await createStore()
     const prisma = app.get(PrismaService, { strict: false })
     const writer = hold()
-    const writing = prisma.transaction(async tx => {
+    const writing = transactionInContext(prisma, contextOf(storeId), async tx => {
       await lockStoreForWrite(tx, storeId)
       await tx.customer.create({ data: { storeId, name: 'a customer in flight' } })
       writer.ready(await backendPid(tx))
@@ -181,7 +184,7 @@ describe('Writing data of a store while the store is deleted', () => {
     const storeId = await createStore()
     const prisma = app.get(PrismaService, { strict: false })
     const deleter = hold()
-    const deleting = prisma.transaction(async tx => {
+    const deleting = transactionInContext(prisma, contextOf(storeId), async tx => {
       await lockStoreForDelete(tx, storeId)
       deleter.ready(await backendPid(tx))
       await deleter.gate
@@ -217,7 +220,7 @@ describe('Writing data of a store while the store is deleted', () => {
     })
     const prisma = app.get(PrismaService, { strict: false })
     const deleter = hold()
-    const deleting = prisma.transaction(async tx => {
+    const deleting = transactionInContext(prisma, contextOf(storeId), async tx => {
       await lockStoreForDelete(tx, storeId)
       deleter.ready(await backendPid(tx))
       await deleter.gate
@@ -264,7 +267,7 @@ describe('Writing data of a store while the store is deleted', () => {
     // both customers and moved the identity, and waits there with the merge half done
     const prisma = app.get(PrismaService, { strict: false })
     const holder = hold()
-    const holding = prisma.transaction(async tx => {
+    const holding = transactionInContext(prisma, contextOf(storeId), async tx => {
       await tx.$queryRaw`SELECT id FROM conversations WHERE id = ${conversation.id} FOR UPDATE`
       holder.ready(await backendPid(tx))
       await holder.gate
@@ -300,7 +303,7 @@ describe('Writing data of a store while the store is deleted', () => {
     const storeId = await createStore()
     const prisma = app.get(PrismaService, { strict: false })
     const writer = hold()
-    const writing = prisma.transaction(async tx => {
+    const writing = transactionInContext(prisma, contextOf(storeId), async tx => {
       await lockStoreForWrite(tx, storeId)
       writer.ready(await backendPid(tx))
       await writer.gate

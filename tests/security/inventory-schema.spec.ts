@@ -5,7 +5,7 @@ import { resolve } from 'node:path'
 import { RoleNames, RolePresets, Permissions } from '@platform/core/auth'
 import {
   connectionUrls,
-  createOwnerClient,
+  createAppClient,
   ensureDefaultWarehouse,
   ensureStore,
   ensureStoreWarehouse,
@@ -558,7 +558,11 @@ describe('The tables of stock and warehouses', () => {
         quantity: 5
       })
       for (const url of [connectionUrls().app, connectionUrls().worker]) {
-        const asRole = createOwnerClient(url)
+        // The api reads the ledger inside the context of the store (Row-Level Security); the worker skips the policies
+        const asRole = createAppClient(url, {
+          storeIds: [ctx.storeA.id],
+          organizationIds: [ctx.orgA.id]
+        })
         try {
           expect(
             await asRole.inventoryMovement.findUnique({

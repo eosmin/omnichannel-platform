@@ -27,6 +27,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 const POLICY = {
   balanceEnabled: true,
@@ -54,7 +55,7 @@ describe('The balance of prepaid guides and the refund benefit (TDD_17 §4.18)',
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    app = await createTestApp([], onWorkerDatabase())
     ctx = await seedTestContext(owner, app, prefix)
     prisma = app.get(PrismaService, { strict: false })
     writes = app.get(ShipmentWrites, { strict: false })

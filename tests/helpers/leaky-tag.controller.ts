@@ -1,10 +1,11 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common'
 
 import { Permissions } from '@platform/core/auth'
-import { PrismaService } from '@platform/core/database'
 import { resourceNotFound } from '@platform/core/errors'
 
 import { CurrentStore, RequirePermissions } from '../../apps/api/src/modules/tenancy'
+
+import { createWorkerPrisma } from './worker-db'
 
 export const LeakyRoutes = {
   tags: '/leaky/tags',
@@ -18,7 +19,11 @@ export const LeakyRoutes = {
 // the isolation suite can be shown to fail on a leak: a suite that never failed would prove nothing.
 @Controller()
 export class LeakyTagController {
-  constructor(private readonly prisma: PrismaService) {}
+  // On the connection of the worker, which skips Row-Level Security, and on purpose: with the policies enforced the database would
+  // hide the rows of other stores from a query that forgot to filter, and this controller would stop leaking, so the suite that
+  // shows the isolation checks catch a leak would have nothing to catch. The leak is the code's (a service written without
+  // thinking about tenants); the policies are the second wall, proven by tests/security/rls-isolation.spec.ts
+  private readonly prisma = createWorkerPrisma(2)
 
   // Lists every tag of the platform
   @RequirePermissions(Permissions.CUSTOMERS_VIEW)

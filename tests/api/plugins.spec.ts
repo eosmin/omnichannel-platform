@@ -5,7 +5,6 @@ import { MetaAppConfig } from '@platform/channels/meta'
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
 import { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   ChannelConnectFieldKeys,
@@ -28,6 +27,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { createWorkerPrisma } from '../helpers/worker-db'
 
 const OK = 200
 const CREATED = 201
@@ -541,9 +541,10 @@ describe('The plugin catalog and the installations of a store', () => {
     it('receives nothing: the webhook resolves it as inactive', async () => {
       const { id, row } = await strandedConnection()
 
-      const resolved = await new ChannelConnectionResolver(
-        app.get(PrismaService, { strict: false })
-      ).resolve(id, row.connectionId)
+      const resolved = await new ChannelConnectionResolver(createWorkerPrisma()).resolve(
+        id,
+        row.connectionId
+      )
 
       expect(resolved).toMatchObject({ id: row.id, active: false })
     })
@@ -684,9 +685,10 @@ describe('The plugin catalog and the installations of a store', () => {
       await owner.plugin.update({ where: { id }, data: { status: PluginStatus.SUSPENDED } })
       const row = await owner.channelConnection.findUniqueOrThrow({ where: { id: connection.id } })
 
-      const resolved = await new ChannelConnectionResolver(
-        app.get(PrismaService, { strict: false })
-      ).resolve(id, row.connectionId)
+      const resolved = await new ChannelConnectionResolver(createWorkerPrisma()).resolve(
+        id,
+        row.connectionId
+      )
       const probe = await asAdmin().post(ApiRoutes.channels.test(connection.id))
 
       expect(resolved).toMatchObject({ active: false })

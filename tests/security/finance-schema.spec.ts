@@ -1,6 +1,7 @@
 import { Permissions, RoleNames, RolePresets } from '@platform/core/auth'
 import {
   connectionUrls,
+  createAppClient,
   createOwnerClient,
   ensureStore,
   type OwnerClient
@@ -685,11 +686,15 @@ describe('The tables of the ledger', () => {
     // The design stands on privileges and on triggers that run as the owner of the function: this posts as the role of the api
     // and tries what it must not do, so a missing grant shows here and not in the second PR
     it('post an entry, move the head and the balances through the triggers, and can do nothing else to the books', async () => {
-      const app = createOwnerClient(connectionUrls().app)
+      const org = await owner.organization.create({
+        data: { name: `${prefix}-app`, slug: `${prefix}-app` }
+      })
+      // The api posts inside the context of its organization (Row-Level Security): the connection carries it
+      const app = createAppClient(connectionUrls().app, {
+        storeIds: [],
+        organizationIds: [org.id]
+      })
       try {
-        const org = await owner.organization.create({
-          data: { name: `${prefix}-app`, slug: `${prefix}-app` }
-        })
         const f = await createFinanceFixture(owner, org.id)
         const entry = await postTestEntry(app, simpleEntry(f, 777))
         expect(entry.number).toBe(1n)

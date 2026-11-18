@@ -40,6 +40,7 @@ import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { CapturedQueue } from '../helpers/queue'
+import { onWorkerDatabase } from '../helpers/worker-db'
 
 const CREATED = 201
 const TODAY = new Date().toISOString().slice(0, 10)
@@ -59,7 +60,7 @@ describe('The sweep of the books and the guard of the close', () => {
 
   beforeAll(async () => {
     owner = ownerClient()
-    app = await createTestApp()
+    app = await createTestApp([], onWorkerDatabase())
     ctx = await seedTestContext(owner, app, prefix)
     sweep = app.get(FinanceSweepService)
     posting = app.get(FinancePostingService)

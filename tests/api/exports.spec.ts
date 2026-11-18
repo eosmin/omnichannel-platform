@@ -6,7 +6,6 @@ import type { PinoLogger } from 'nestjs-pino'
 
 import { ApiRoutes } from '@platform/core/api'
 import { AuditAction } from '@platform/core/audit'
-import { AuditService } from '@platform/core/audit-module'
 import { Permissions, RoleNames } from '@platform/core/auth'
 import { DataRetentionPolicies } from '@platform/core/compliance'
 import { PrismaService } from '@platform/core/database'
@@ -21,7 +20,6 @@ import {
   PaymentMethod
 } from '@platform/core/domain'
 import { ErrorCodes } from '@platform/core/errors'
-import { DomainEvents } from '@platform/core/event-bus'
 import { Events } from '@platform/core/events'
 import { ExportLimits } from '@platform/core/exports'
 import {
@@ -54,6 +52,7 @@ import { createActor, seedTestContext, type TestContext } from '../helpers/conte
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
 import { queueOf } from '../helpers/queue'
+import { createWorkerPrisma, workerServices } from '../helpers/worker-db'
 
 interface ErrorBody {
   error: { code: string }
@@ -102,9 +101,9 @@ describe('Exports', () => {
     owner = ownerClient()
     app = await createTestApp()
     ctx = await seedTestContext(owner, app, prefix)
-    const prisma = app.get(PrismaService, { strict: false })
+    const prisma = createWorkerPrisma()
     storage = app.get(StorageService, { strict: false })
-    const events = app.get(DomainEvents, { strict: false })
+    const { events, audit } = await workerServices(app, prisma)
     const logger = {
       setContext: jest.fn(),
       error: jest.fn(),
@@ -116,7 +115,7 @@ describe('Exports', () => {
       new ZipExportWriter(storage, logger),
       new AnalyticsExportWriter(prisma, storage, new CsvExportWriter(storage)),
       storage,
-      app.get(AuditService, { strict: false }),
+      audit,
       events,
       logger
     )

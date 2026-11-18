@@ -23,6 +23,8 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { api } from '../helpers/http'
+import { transactionInContext } from '../helpers/tenant-context'
+import { createWorkerPrisma, workerServices } from '../helpers/worker-db'
 
 const OK = 200
 const BAD_REQUEST = 400
@@ -62,10 +64,13 @@ describe('Conversation attention', () => {
         return true
       }
     } as never // the lock is not what is tested
+    // The sweep is the worker's: its database and its conversations service are the ones of the worker
+    const workerPrisma = createWorkerPrisma()
+    const { events } = await workerServices(app, workerPrisma)
     wake = new SnoozeWakeScheduler(
       locks,
-      app.get(PrismaService, { strict: false }),
-      app.get(ConversationsService, { strict: false }),
+      workerPrisma,
+      new ConversationsService(workerPrisma, events),
       await app.resolve(PinoLogger)
     )
     app.get(EventEmitter2).onAny((event, payload) => {
@@ -400,11 +405,14 @@ describe('Conversation attention', () => {
       const conversations = app.get(ConversationsService, { strict: false })
       const prisma = app.get(PrismaService, { strict: false })
 
-      await prisma.transaction(tx =>
-        conversations.applyStatus(tx, ctx.storeA.id, id, ConversationStatus.OPEN, {
-          actor: 'system',
-          reason: 'customer_replied'
-        })
+      await transactionInContext(
+        prisma,
+        { storeIds: [ctx.storeA.id], organizationIds: [ctx.orgA.id] },
+        tx =>
+          conversations.applyStatus(tx, ctx.storeA.id, id, ConversationStatus.OPEN, {
+            actor: 'system',
+            reason: 'customer_replied'
+          })
       )
 
       expect(await row(id)).toMatchObject({ snoozeNote: null, attentionReason: null })
