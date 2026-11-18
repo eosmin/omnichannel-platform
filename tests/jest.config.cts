@@ -10,7 +10,11 @@ module.exports = {
   // The latency spec measures the answer of the api, so it needs a process of its own: after the other specs of a
   // shard the heap of the process is at its limit (3.6 of 4 GB) and the major collections of 300-950 ms land in
   // the measurement. `jest.latency.config.cts` runs it (`pnpm test:latency`)
-  testPathIgnorePatterns: ['/node_modules/', '<rootDir>/api/products-search-performance.spec.ts'],
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '<rootDir>/api/products-search-performance.spec.ts',
+    '<rootDir>/api/rls-search-plan.spec.ts'
+  ],
   // The env of the app is read when it is imported: this runs before any suite does
   setupFiles: ['<rootDir>/helpers/env.ts'],
   // Closes the connections of createWorkerPrisma when a file ends

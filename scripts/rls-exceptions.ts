@@ -41,22 +41,6 @@ export const RLS_EXEMPTIONS: Readonly<Record<string, RlsExemption>> = {
   ),
   permissions: neverPolicy(`${GUARD_READS}, with its role`),
 
-  // Phase 2: conversations, customers, media
-  conversations: pending(2, 'Inbox'),
-  conversation_origins: pending(2, 'Inbox'),
-  messages: pending(2, 'Inbox'),
-  message_reactions: pending(2, 'Inbox'),
-  message_revisions: pending(2, 'Inbox'),
-  channel_connections: pending(2, 'Channels; inbound webhooks run in the worker'),
-  customers: pending(2, 'Customers'),
-  customer_identities: pending(2, 'Customers'),
-  customer_merges: pending(2, 'Customers'),
-  customer_fiscal_data: pending(2, 'Customers'),
-  customer_notes: pending(2, BY_PARENT),
-  addresses: pending(2, BY_PARENT),
-  media: pending(2, 'Files of a store'),
-  notifications: pending(2, 'Inbox'),
-
   // Phase 3: orders, inventory, shipping
   orders: pending(3, 'Orders'),
   order_items: pending(3, BY_PARENT),
