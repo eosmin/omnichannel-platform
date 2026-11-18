@@ -36,14 +36,19 @@ import {
   FinanceChainService
 } from './finance-chain.service'
 import { FinanceCloseService } from './finance-close.service'
+import { FinanceEntriesService } from './finance-entries.service'
 import { journalCsvHeader, journalCsvRows, ledgerCsv, trialBalanceCsv } from './finance-reports.csv'
 import {
+  type AccountBalancesQuery,
+  accountBalancesQuerySchema,
   type ChainStatusQuery,
   chainStatusQuerySchema,
   type ClosePeriodBody,
   closePeriodSchema,
   type JournalCsvQuery,
   journalCsvQuerySchema,
+  type JournalQuery,
+  journalQuerySchema,
   type LedgerCsvQuery,
   ledgerCsvQuerySchema,
   type LedgerQuery,
@@ -55,12 +60,13 @@ import {
   trialBalanceQuerySchema
 } from './finance-reports.schemas'
 import {
+  type AccountBalancesView,
   FinanceReportsService,
   type LedgerView,
   type TrialBalanceView
 } from './finance-reports.service'
 import { idSchema } from './finance.schemas'
-import type { PeriodView } from './finance.views'
+import type { JournalPage, PeriodView } from './finance.views'
 
 type Store = ResolvedTenant['store']
 interface Organization {
@@ -84,6 +90,7 @@ export class FinanceReportsController {
   constructor(
     private readonly close: FinanceCloseService,
     private readonly reports: FinanceReportsService,
+    private readonly entries: FinanceEntriesService,
     private readonly chain: FinanceChainService
   ) {}
 
@@ -137,6 +144,28 @@ export class FinanceReportsController {
     @Query(new ZodValidationPipe(ledgerQuerySchema)) query: LedgerQuery
   ): Promise<LedgerView> {
     return this.reports.ledger(organization.id, query)
+  }
+
+  // What each account holds at a date (TDD_18 §10): the trial balance is of one period's movements, this is the balance carried since the start
+  @RequirePermissions(Permissions.FINANCE_VIEW)
+  @NoStore()
+  @Get(ApiRoutes.finance.reports.accountBalances)
+  accountBalances(
+    @CurrentOrganization() organization: Organization,
+    @Query(new ZodValidationPipe(accountBalancesQuerySchema)) query: AccountBalancesQuery
+  ): Promise<AccountBalancesView> {
+    return this.reports.accountBalances(organization.id, query)
+  }
+
+  // The journal of a range with the lines of every entry, by pages of entries
+  @RequirePermissions(Permissions.FINANCE_VIEW_JOURNAL)
+  @NoStore()
+  @Get(ApiRoutes.finance.reports.journal)
+  journal(
+    @CurrentOrganization() organization: Organization,
+    @Query(new ZodValidationPipe(journalQuerySchema)) query: JournalQuery
+  ): Promise<JournalPage> {
+    return this.entries.journal(organization.id, query)
   }
 
   @RequirePermissions(Permissions.FINANCE_VIEW, Permissions.FINANCE_EXPORT)
