@@ -76,14 +76,16 @@ export class PluginCommandSecretService {
           'the secret was rotated a moment ago: wait until the previous one stops working'
         )
       }
-      await tx.pluginInstallation.update({
-        where: { id: installationId },
+      // A revoke does not take the lock above: the write itself holds the installation to "active", so a secret is never put on a revoked one
+      const written = await tx.pluginInstallation.updateMany({
+        where: { id: installationId, storeId: store.id, status: PluginInstallationStatus.ACTIVE },
         data: {
           commandSecret: sealCommandSecret(this.cipher, secret),
           commandSecretPrevious: installation.commandSecret,
           commandSecretRotatedAt: now
         }
       })
+      if (written.count !== 1) throw resourceNotFound('plugin installation')
       return { pluginId: installation.pluginId, now }
     })
     // Never the secret: only which installation it was rotated for
