@@ -4,7 +4,6 @@ import { PinoLogger } from 'nestjs-pino'
 
 import { ChannelContextFactory } from '@platform/channels/connections'
 import type { CredentialCipher } from '@platform/core/crypto'
-import { PrismaService } from '@platform/core/database'
 import type { OwnerClient } from '@platform/core/database-testing'
 import {
   CHANNEL_IDENTITY_KINDS,
@@ -40,6 +39,7 @@ import { createTestApp } from '../helpers/app'
 import { seedTestContext, type TestContext } from '../helpers/context'
 import { cleanUp, newRunPrefix, ownerClient } from '../helpers/database'
 import { CapturedQueue, queueOf } from '../helpers/queue'
+import { createWorkerPrisma } from '../helpers/worker-db'
 
 const PLAIN_CHANNEL = 'plain_channel'
 
@@ -61,7 +61,7 @@ describe('The name and photo of a customer', () => {
         .useValue(new CapturedQueue())
     )
     ctx = await seedTestContext(owner, app, prefix)
-    const prisma = app.get(PrismaService, { strict: false })
+    const prisma = createWorkerPrisma()
     const registry = app.get(PluginRegistry, { strict: false })
     registry.register(
       buildChannelPlugin({
