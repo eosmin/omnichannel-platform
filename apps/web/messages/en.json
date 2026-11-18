@@ -4059,6 +4059,20 @@
           "deductsFee": "The carrier keeps its fee from the cash it collects",
           "deductsFeeHint": "The remittance then arrives net of the shipping fee."
         },
+        "chargeModel": {
+          "legend": "How the carrier charges the guides",
+          "label": "Charge model",
+          "models": {
+            "invoiced": "The carrier bills me later",
+            "remittance": "The carrier deducts it from the cash it remits",
+            "prepaid": "I buy guides in advance (prepaid)"
+          },
+          "hints": {
+            "invoiced": "What the carrier charges is owed to it until you pay the invoice.",
+            "remittance": "The charge is settled when the remittance that deducts it is confirmed.",
+            "prepaid": "Each guide uses what you paid when you bought the package: the books do not owe the carrier its cost again. Ask the accountant to map the account of the prepaid guides and to enter the opening balance when you switch it on. It applies to the guides and purchases from then on."
+          }
+        },
         "services": {
           "legend": "Services",
           "default": "Default service",
@@ -4216,6 +4230,10 @@
           "giftHint": "The guides that came free with the purchase. Use 0 if none.",
           "cost": "Total paid (US$)",
           "costHint": "With taxes included, for example 45.50.",
+          "carriedHint": "The books carry this purchase as an advance that each guide then uses.",
+          "paidFrom": "Paid from",
+          "paidFromDefault": "The default bank account",
+          "paidFromHint": "The account the money left. If you leave it empty, the default bank account is used.",
           "note": "Note (optional)",
           "submit": "Record purchase",
           "done": "Purchase recorded",
