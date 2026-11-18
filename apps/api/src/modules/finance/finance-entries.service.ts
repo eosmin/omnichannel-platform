@@ -17,6 +17,7 @@ import { encodeCursor } from '../customers/list-cursor'
 import type { Actor } from '../tenancy'
 
 import { FinancePostingQueue } from './finance-posting.queue'
+import type { JournalQuery } from './finance-reports.schemas'
 import type {
   BalancesQuery,
   ListEntriesQuery,
@@ -30,6 +31,7 @@ import {
   balanceView,
   ENTRY_SELECT,
   type EntryDetailView,
+  type JournalPage,
   type EntryPage,
   entryView,
   LINE_SELECT,
@@ -82,6 +84,35 @@ export class FinanceEntriesService {
     )
     return {
       data: page.map(row => entryView(row, reversals.get(row.id) ?? null)),
+      nextCursor: hasMore ? (page.at(-1)?.number.toString() ?? null) : null,
+      hasMore
+    }
+  }
+
+  // The journal of a range of days (TDD_18 §10): every entry with its lines, oldest first, by pages of entries. The lines come with the
+  // entry so a page is whole: an entry is never split between two pages.
+  async journal(organizationId: string, query: JournalQuery): Promise<JournalPage> {
+    const rows = await this.prisma.client.journalEntry.findMany({
+      where: {
+        organizationId,
+        entryDate: { gte: dayDate(query.from), lte: dayDate(query.to) },
+        ...(query.cursor === undefined ? {} : { number: { gt: BigInt(query.cursor) } })
+      },
+      select: { ...ENTRY_SELECT, lines: { select: LINE_SELECT, orderBy: { lineNo: 'asc' } } },
+      take: query.limit + 1,
+      orderBy: { number: 'asc' }
+    })
+    const hasMore = rows.length > query.limit
+    const page = hasMore ? rows.slice(0, query.limit) : rows
+    const reversals = await this.reversalsOf(
+      organizationId,
+      page.map(row => row.id)
+    )
+    return {
+      data: page.map(row => ({
+        ...entryView(row, reversals.get(row.id) ?? null),
+        lines: row.lines.map(lineView)
+      })),
       nextCursor: hasMore ? (page.at(-1)?.number.toString() ?? null) : null,
       hasMore
     }

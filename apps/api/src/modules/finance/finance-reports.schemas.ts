@@ -5,6 +5,7 @@ import {
   FinanceLimits,
   FinanceReportLimits,
   lowercasedUuidSchema,
+  PartyType,
   singleLineText
 } from '@platform/core/domain'
 import { isIsoDate } from '@platform/core/finance'
@@ -48,28 +49,63 @@ export const ledgerCursorSchema = z
     { message: 'not a position of the ledger' }
   )
 
+// The party of a line (a supplier, a carrier connection, a customer): the type alone narrows to its kind, the id needs its type
+const partyFilter = {
+  partyType: z.enum(PartyType).optional(),
+  partyId: lowercasedUuidSchema.optional()
+}
+const partyIdNeedsType = (value: { partyType?: PartyType; partyId?: string }): boolean =>
+  value.partyId === undefined || value.partyType !== undefined
+
 export const ledgerQuerySchema = z
   .strictObject({
     accountId: lowercasedUuidSchema,
     from: day.optional(),
     to: day.optional(),
     storeId: lowercasedUuidSchema.optional(),
+    ...partyFilter,
     cursor: ledgerCursorSchema.optional(),
     limit: z.coerce.number().int().min(1).max(FinanceReportLimits.LEDGER_PAGE_MAX).default(100)
   })
   .refine(value => value.from === undefined || value.to === undefined || value.from <= value.to, {
     message: 'from is after to'
   })
+  .refine(partyIdNeedsType, { message: 'partyId needs partyType' })
 
 export const journalCsvQuerySchema = range
+
+// Each account's balance, since the books started, at the end of a day; optionally of one store
+export const accountBalancesQuerySchema = z.strictObject({
+  asOf: day,
+  storeId: lowercasedUuidSchema.optional()
+})
+
+// The journal of a range, entries with their lines, oldest first, by pages of entries. The cursor is the number of the last entry of the page.
+export const journalQuerySchema = z
+  .strictObject({
+    from: day,
+    to: day,
+    cursor: z
+      .string()
+      .regex(/^\d{1,19}$/)
+      .refine(value => BigInt(value) <= MAX_BIGINT, { message: 'not an entry number' })
+      .optional(),
+    limit: z.coerce.number().int().min(1).max(FinanceReportLimits.JOURNAL_PAGE_MAX).default(50)
+  })
+  .refine(value => value.from <= value.to, { message: 'from is after to' })
+  .refine(value => rangeLength(value) < MAX_RANGE_DAYS, {
+    message: `the range is longer than ${String(MAX_RANGE_DAYS)} days`
+  })
 export const ledgerCsvQuerySchema = z
   .strictObject({
     accountId: lowercasedUuidSchema,
     from: day,
     to: day,
-    storeId: lowercasedUuidSchema.optional()
+    storeId: lowercasedUuidSchema.optional(),
+    ...partyFilter
   })
   .refine(value => value.from <= value.to, { message: 'from is after to' })
+  .refine(partyIdNeedsType, { message: 'partyId needs partyType' })
   .refine(value => rangeLength(value) < MAX_RANGE_DAYS, {
     message: `the range is longer than ${String(MAX_RANGE_DAYS)} days`
   })
@@ -99,6 +135,8 @@ export type BalanceSheetQuery = z.infer<typeof balanceSheetQuerySchema>
 export type AgingQuery = z.infer<typeof agingQuerySchema>
 export type ReopenPeriodBody = z.infer<typeof reopenPeriodSchema>
 export type TrialBalanceQuery = z.infer<typeof trialBalanceQuerySchema>
+export type AccountBalancesQuery = z.infer<typeof accountBalancesQuerySchema>
+export type JournalQuery = z.infer<typeof journalQuerySchema>
 export type LedgerQuery = z.infer<typeof ledgerQuerySchema>
 export type JournalCsvQuery = z.infer<typeof journalCsvQuerySchema>
 export type LedgerCsvQuery = z.infer<typeof ledgerCsvQuerySchema>
