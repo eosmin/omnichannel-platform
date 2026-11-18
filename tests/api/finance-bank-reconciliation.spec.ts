@@ -1182,7 +1182,7 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
       await waitForAuditEntries(owner, {
         action: AuditAction.FINANCE_RECONCILIATION_GROUP_CONFIRMED,
         resourceType: FinanceResourceTypes.RECONCILIATION_MATCH,
-        resourceId: body.group?.id ?? ''
+        resourceId: body.match?.id ?? ''
       })
     })
 
@@ -1284,6 +1284,33 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
       expect(new Set(rows.map(row => row.groupId)).size).toBe(1)
     })
 
+    it('keeps a group that straddles the closing day as a difference of that day, like a pair that does', async () => {
+      const date = '2022-07-10'
+      const [early, late] = [
+        await bookLine('in', 60_000, date),
+        await bookLine('in', 40_000, '2022-07-15')
+      ]
+      const made = await imported(
+        [`${date},Straddle,,1000.00`],
+        profile.id,
+        `&closingBalanceCents=100000&closingOn=${date}`
+      )
+      const line = await lineOf(made.id)
+      type Difference = {
+        unmatchedStatement: { lines: number; cents: number }
+        unmatchedBook: { lines: number; cents: number }
+        unexplainedCents: number
+      }
+      const differenceOf = async (): Promise<Difference> =>
+        (await asAdmin().get(ApiRoutes.finance.bank.difference(made.id))).body as Difference
+      const before = await differenceOf()
+
+      expect((await group(line.id, [early, late])).status).toBe(CREATED)
+
+      // The line of the later day was not on the books at the closing day: the group is not matched at that day and nothing moves
+      expect(await differenceOf()).toEqual(before)
+    })
+
     it('does not reach the lines of another organization, and asks for the permission to reconcile', async () => {
       const [a, b] = [await bookLine('in', 700, day(-3)), await bookLine('in', 300, day(-3))]
       const made = await imported([`${day(-2)},Mine,,10.00`])
@@ -1299,13 +1326,19 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
     })
 
     describe('what the database holds whoever writes', () => {
-      const rowOf = (lineId: string, journalLineId: string, groupId: string | null) => ({
+      const rowOf = (
+        lineId: string,
+        journalLineId: string,
+        groupId: string | null,
+        isGroupLead = false
+      ) => ({
         organizationId: ctx.orgA.id,
         statementLineId: lineId,
         journalLineId,
         status: 'confirmed',
         decidedBy: 'db-suite',
-        groupId
+        groupId,
+        isGroupLead
       })
 
       it('keeps a group that does not add up out of the books at the commit, in any order, and a group of one', async () => {
@@ -1317,12 +1350,12 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
         await expect(
           // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
           owner.$transaction(async tx => {
-            await tx.reconciliationMatch.create({ data: rowOf(line.id, b, groupId) })
+            await tx.reconciliationMatch.create({ data: rowOf(line.id, b, groupId, true) })
             await tx.reconciliationMatch.create({ data: rowOf(line.id, a, groupId) })
           })
         ).rejects.toThrow(/RECONCILIATION_GROUP/)
         await expect(
-          owner.reconciliationMatch.create({ data: rowOf(line.id, a, randomUUID()) })
+          owner.reconciliationMatch.create({ data: rowOf(line.id, a, randomUUID(), true) })
         ).rejects.toThrow(/RECONCILIATION_GROUP/)
         expect(await confirmedOf(line.id)).toHaveLength(0)
       })
@@ -1339,7 +1372,7 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
         const first = randomUUID()
         // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
         await owner.$transaction(async tx => {
-          await tx.reconciliationMatch.create({ data: rowOf(line.id, a, first) })
+          await tx.reconciliationMatch.create({ data: rowOf(line.id, a, first, true) })
           await tx.reconciliationMatch.create({ data: rowOf(line.id, b, first) })
         })
 
@@ -1347,9 +1380,30 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
           owner.reconciliationMatch.create({ data: rowOf(line.id, c, null) })
         ).rejects.toThrow(/RECONCILIATION_MATCH/)
         await expect(
-          owner.reconciliationMatch.create({ data: rowOf(line.id, d, randomUUID()) })
+          owner.reconciliationMatch.create({ data: rowOf(line.id, d, randomUUID(), true) })
         ).rejects.toThrow(/RECONCILIATION_GROUP/)
         expect(await confirmedOf(line.id)).toHaveLength(2)
+      })
+
+      it('holds exactly one lead per group, and a group with none or two is not kept', async () => {
+        const [a, b] = [await bookLine('in', 600, day(-3)), await bookLine('in', 400, day(-3))]
+        const made = await imported([`${day(-2)},Lead,,10.00`])
+        const line = await lineOf(made.id)
+
+        for (const leads of [
+          [false, false],
+          [true, true]
+        ]) {
+          const groupId = randomUUID()
+          await expect(
+            // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
+            owner.$transaction(async tx => {
+              await tx.reconciliationMatch.create({ data: rowOf(line.id, a, groupId, leads[0]) })
+              await tx.reconciliationMatch.create({ data: rowOf(line.id, b, groupId, leads[1]) })
+            })
+          ).rejects.toThrow()
+        }
+        expect(await confirmedOf(line.id)).toHaveLength(0)
       })
 
       it('takes a group back whole or not at all', async () => {
@@ -1359,7 +1413,7 @@ describe('The bank reconciliation by CSV (Step 4B.4b-2)', () => {
         const groupId = randomUUID()
         // eslint-disable-next-line no-restricted-syntax -- the owner client of the suite, not the tenant client of the app
         await owner.$transaction(async tx => {
-          await tx.reconciliationMatch.create({ data: rowOf(line.id, a, groupId) })
+          await tx.reconciliationMatch.create({ data: rowOf(line.id, a, groupId, true) })
           await tx.reconciliationMatch.create({ data: rowOf(line.id, b, groupId) })
         })
         const [one] = await confirmedOf(line.id)

@@ -53,6 +53,13 @@ function raceRefusal(error: unknown): PlatformException | null {
   if (error instanceof PlatformException) return null
   const message = error instanceof Error ? error.message : ''
   const prefix = [...message.matchAll(TRIGGER_PREFIX)].at(-1)?.[1]
+  // The statement line was matched in the same moment, as a pair or as a group: the same answer as when it is read matched
+  if (/RECONCILIATION_(?:MATCH|GROUP): the statement line is matched/.test(message)) {
+    return conflict(
+      'the statement line is matched already',
+      FinanceConflicts.BANK_LINE_ALREADY_MATCHED
+    )
+  }
   if (prefix === BankTriggerPrefixes.MATCH || prefix === BankTriggerPrefixes.ENTRY_RECONCILED) {
     return conflict('the lines cannot be the same movement', FinanceConflicts.BANK_PAIR_NOT_ALLOWED)
   }
@@ -95,7 +102,8 @@ export interface BankLineView {
     decidedBy: string
     decidedAt: string
   } | null
-  // Set when the line was matched with a group of lines of the books (`match` is then the first of them): the pieces of the group
+  // Set when the line was matched with a group of lines of the books (`match` is then the lead of the group, and undoing it takes the whole
+  // group back): the pieces of the group
   group: {
     id: string
     pieces: {
@@ -410,6 +418,51 @@ export class FinanceReconciliationService {
       lines: statementOpen._count,
       cents: statementOpen._sum.amountCents ?? 0
     }
+    // A group that straddles the closing day (the statement line by it, one of its lines of the books after it) is matched only when ALL of
+    // it was on the books: the lines of it that were are still a difference at the day, with the statement line (HC-121)
+    const late = await this.prisma.client.reconciliationMatch.findMany({
+      where: {
+        organizationId,
+        status: CONFIRMED,
+        groupId: { not: null },
+        statementLine: { accountId, postedOn: { lte: closingOn } },
+        journalLine: { entry: { entryDate: { gt: closingOn } } }
+      },
+      select: { groupId: true },
+      distinct: ['groupId']
+    })
+    if (late.length > 0) {
+      const early = await this.prisma.client.reconciliationMatch.findMany({
+        where: {
+          organizationId,
+          status: CONFIRMED,
+          groupId: { in: late.map(row => row.groupId).filter((id): id is string => id !== null) },
+          journalLine: {
+            entry: {
+              entryDate: { lte: closingOn },
+              reversesEntryId: null,
+              NOT: { reversedBy: { is: { entryDate: { lte: closingOn } } } }
+            }
+          }
+        },
+        select: {
+          statementLineId: true,
+          journalLine: { select: { debitCents: true, creditCents: true } }
+        }
+      })
+      const statementIds = [...new Set(early.map(row => row.statementLineId))]
+      const statements = await this.prisma.client.bankStatementLine.findMany({
+        where: { organizationId, id: { in: statementIds } },
+        select: { amountCents: true }
+      })
+      unmatchedBook.lines += early.length
+      unmatchedBook.cents += early.reduce(
+        (total, row) => total + row.journalLine.debitCents - row.journalLine.creditCents,
+        0
+      )
+      unmatchedStatement.lines += statements.length
+      unmatchedStatement.cents += statements.reduce((total, row) => total + row.amountCents, 0)
+    }
     return {
       importId,
       accountId,
@@ -457,7 +510,8 @@ export class FinanceReconciliationService {
   // A person says ONE statement line is the sum of SEVERAL lines of the books of the same account (HC-121): a deposit that groups three
   // collections, or one net of a fee that was booked as an expense from the same account. The signed sum of the lines has to be exactly the
   // amount of the statement line, whatever the screen sent (the database checks it again when the transaction ends and refuses what does
-  // not add up); the lines are taken in the order of their ids so that two groups never wait for each other's lines. There is no window
+  // not add up). The rows are written in the order of the ENTRIES of the lines (the database locks entries), so that two groups that share
+  // entries never take their locks in opposite orders; the first of them is the lead of the group. There is no window
   // of days here: the person chose the lines one by one. The group is taken back whole (`undo` on any of its decisions).
   async confirmGroup(
     organizationId: string,
@@ -528,16 +582,23 @@ export class FinanceReconciliationService {
             undoneAt: new Date()
           }
         })
-        await tx.reconciliationMatch.createMany({
-          data: requested.map(journalLineId => ({
-            organizationId,
-            statementLineId: lineId,
-            journalLineId,
-            status: CONFIRMED,
-            decidedBy: actor.userId,
-            groupId
-          }))
-        })
+        const ordered = [...books].sort(
+          (x, y) => x.entry.id.localeCompare(y.entry.id) || x.id.localeCompare(y.id)
+        )
+        // One statement per row, in that order: a single INSERT of many rows has no promised order
+        for (const [index, book] of ordered.entries()) {
+          await tx.reconciliationMatch.create({
+            data: {
+              organizationId,
+              statementLineId: lineId,
+              journalLineId: book.id,
+              status: CONFIRMED,
+              decidedBy: actor.userId,
+              groupId,
+              isGroupLead: index === 0
+            }
+          })
+        }
       })
     } catch (error) {
       const refused = raceRefusal(error)
@@ -570,13 +631,19 @@ export class FinanceReconciliationService {
       }
       throw error
     }
+    // The audit row names the lead decision of the group (a row of the table, like the undo of the group names the decision it was asked
+    // with); the group is in the metadata
+    const lead = await this.prisma.client.reconciliationMatch.findFirst({
+      where: { organizationId, groupId, isGroupLead: true },
+      select: { id: true }
+    })
     this.audit.log({
       action: AuditAction.FINANCE_RECONCILIATION_GROUP_CONFIRMED,
       actor: { userId: actor.userId },
       organizationId,
       storeId: actor.storeId,
       resourceType: FinanceResourceTypes.RECONCILIATION_MATCH,
-      resourceId: groupId,
+      resourceId: lead?.id ?? groupId,
       metadata: { statementLineId: lineId, groupId, journalLineIds: requested },
       ipAddress: actor.ipAddress,
       userAgent: actor.userAgent
@@ -1023,6 +1090,7 @@ export class FinanceReconciliationService {
         statementLineId: true,
         journalLineId: true,
         groupId: true,
+        isGroupLead: true,
         decidedBy: true,
         decidedAt: true,
         journalLine: { select: BOOK_SELECT }
@@ -1034,8 +1102,10 @@ export class FinanceReconciliationService {
     const rejected = new Set<string>()
     for (const decision of decisions) {
       if (decision.status === String(CONFIRMED)) {
-        // The first piece of a group stands for the line (`match`), the others are in its group
-        if (!matched.has(decision.statementLineId)) matched.set(decision.statementLineId, decision)
+        // The lead of a group stands for the line (`match`: undoing it takes the whole group back), the others are in its group
+        if (!matched.has(decision.statementLineId) || decision.isGroupLead) {
+          matched.set(decision.statementLineId, decision)
+        }
         if (decision.groupId !== null) {
           groups.set(decision.statementLineId, [
             ...(groups.get(decision.statementLineId) ?? []),
@@ -1171,6 +1241,7 @@ interface MatchedRow {
   id: string
   journalLineId: string
   groupId: string | null
+  isGroupLead: boolean
   decidedBy: string
   decidedAt: Date
   journalLine: BookRow

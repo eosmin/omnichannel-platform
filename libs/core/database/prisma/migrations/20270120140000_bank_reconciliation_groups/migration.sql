@@ -5,17 +5,21 @@
 
 -- AlterTable
 ALTER TABLE "reconciliation_matches" ADD COLUMN "group_id" TEXT;
+ALTER TABLE "reconciliation_matches" ADD COLUMN "is_group_lead" BOOLEAN NOT NULL DEFAULT false;
 
 -- CreateIndex
 CREATE INDEX "reconciliation_matches_organization_id_group_id_idx" ON "reconciliation_matches"("organization_id", "group_id");
 
 -- A rejection is of a pair: only a confirmed decision (and the one taken back after) belongs to a group
 ALTER TABLE reconciliation_matches
-  ADD CONSTRAINT chk_reconciliation_group CHECK (group_id IS NULL OR status IN ('confirmed', 'undone'));
+  ADD CONSTRAINT chk_reconciliation_group CHECK (group_id IS NULL OR status IN ('confirmed', 'undone')),
+  ADD CONSTRAINT chk_reconciliation_group_lead CHECK (group_id IS NOT NULL OR NOT is_group_lead);
 
--- A statement line has at most one confirmed PAIR, or the confirmed rows of ONE group (the trigger below keeps the two apart)
+-- A statement line has at most one confirmed PAIR, or ONE group: the pair, and the lead (one row per group, chosen by the service), are the
+-- rows the index holds, so two groups, or a pair and a group, of one statement line cannot both be confirmed whatever the isolation level of
+-- the writers (the lock and the checks of the trigger below say it first with a typed error)
 DROP INDEX uq_reconciliation_confirmed_statement_line;
-CREATE UNIQUE INDEX uq_reconciliation_confirmed_statement_line ON reconciliation_matches (statement_line_id) WHERE status = 'confirmed' AND group_id IS NULL;
+CREATE UNIQUE INDEX uq_reconciliation_confirmed_statement_line ON reconciliation_matches (statement_line_id) WHERE status = 'confirmed' AND (group_id IS NULL OR is_group_lead);
 
 -- The decision. A pair keeps its rule (the same amount in the same direction); a row of a group skips the amount of the row (the group
 -- is checked as a whole below). Both take the lock of the statement line first, so a pair and a group, or two groups, of the same line
@@ -78,19 +82,20 @@ BEGIN
 END $$;
 
 -- The group as a whole, at the COMMIT of the transaction (the rows of a group are written one by one, so no row can say it alone): the
--- confirmed rows of the group are of ONE statement line, at least two, and the signed sum of their lines of the books is exactly the amount
+-- confirmed rows of the group are of ONE statement line, at least two, with exactly one lead, and the signed sum of their lines of the books is exactly the amount
 -- of that line. It also runs when a row of a group is taken back, so a group is taken back whole or not at all. Fails closed.
 CREATE FUNCTION check_reconciliation_group() RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE
   pieces integer;
+  leads integer;
   statement_lines integer;
   total bigint;
   statement_cents integer;
 BEGIN
-  SELECT pg_catalog.count(*), pg_catalog.count(DISTINCT m.statement_line_id), COALESCE(pg_catalog.sum(l.debit_cents - l.credit_cents), 0)
-  INTO pieces, statement_lines, total
+  SELECT pg_catalog.count(*), pg_catalog.count(*) FILTER (WHERE m.is_group_lead), pg_catalog.count(DISTINCT m.statement_line_id), COALESCE(pg_catalog.sum(l.debit_cents - l.credit_cents), 0)
+  INTO pieces, leads, statement_lines, total
   FROM public.reconciliation_matches m
   JOIN public.journal_lines l ON l.id = m.journal_line_id
   WHERE m.organization_id = NEW.organization_id AND m.group_id = NEW.group_id AND m.status = 'confirmed';
@@ -101,7 +106,7 @@ BEGIN
   SELECT s.amount_cents INTO statement_cents
   FROM public.bank_statement_lines s
   WHERE s.id = NEW.statement_line_id AND s.organization_id = NEW.organization_id;
-  IF statement_lines <> 1 OR pieces < 2 OR statement_cents IS NULL OR total IS DISTINCT FROM statement_cents::bigint THEN
+  IF statement_lines <> 1 OR pieces < 2 OR leads <> 1 OR statement_cents IS NULL OR total IS DISTINCT FROM statement_cents::bigint THEN
     RAISE EXCEPTION 'RECONCILIATION_GROUP: the lines of the group do not add up to the statement line';
   END IF;
   RETURN NULL;

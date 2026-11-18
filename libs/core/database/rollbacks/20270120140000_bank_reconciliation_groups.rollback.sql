@@ -48,8 +48,10 @@ BEGIN
   RETURN NEW;
 END $$;
 
+ALTER TABLE reconciliation_matches DROP CONSTRAINT IF EXISTS chk_reconciliation_group_lead;
 ALTER TABLE reconciliation_matches DROP CONSTRAINT IF EXISTS chk_reconciliation_group;
 DROP INDEX IF EXISTS "reconciliation_matches_organization_id_group_id_idx";
+ALTER TABLE "reconciliation_matches" DROP COLUMN IF EXISTS "is_group_lead";
 ALTER TABLE "reconciliation_matches" DROP COLUMN IF EXISTS "group_id";
 
 COMMIT;
